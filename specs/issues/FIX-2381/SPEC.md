@@ -61,23 +61,32 @@ flowchart LR
 ## What changes
 
 - **`@flow-state-dev/orchestration/inbox`** gains, on `InboxClient`, `board(at)`, which returns
-  the board's actions bound to `at = { flowId, sessionId, board }` (`board` is the collection id,
-  such as Workforce's `"tasks"`) ([D1](DECISIONS.md#d1)):
+  the board's actions bound to `at = { flowId, sessionId, board }` ([D1](DECISIONS.md#d1)).
+  `board` is the **collection id** (Workforce's `"tasks"`), not a row's board ref
+  (`<sessionId>.tasks`); a reader holding a ref gets the id with its own `collectionOfBoard`:
   - `cancel(id)` → `updateTask { id, status: "cancelled" }`, resolving to the ids it took along.
   - `steer(id, message)` → `updateTask { id, message }`.
   - `release(id)` → `updateTask { id, status: "pending" }` on a held row.
-  - `retry(id)` → FIX-2383's verb, in whatever shape its spec settles. The task keeps its id.
+  - `retry(id)` → FIX-2383's verb. It lands with FIX-2383's implementation: the package PR stacks
+    on it, and adds `retry` only once that verb exists on its base. Until then the surface is the
+    other four.
   - `refile(row, overrides?)` → `createTask` with the row's `goal`, `title`, `context`,
     `assignee`, `labels` and `priority`, overrides winning, resolving to the new task id
-    ([D3](DECISIONS.md#d3)).
+    ([D3](DECISIONS.md#d3)). Its input is a `RefileRow` with exactly those fields, so a browser's
+    row or a server's `Task` fits.
+- **Workforce's conversation board exposes `context` to the browser**, beside `goal`. Without it a
+  re-file from a browser's row would silently drop part of the brief ([D3](DECISIONS.md#d3)).
 - **`taskActionName(tool, board)`** is exported from the same entry: the one place an app gets a
-  board's action name (for an `InboxRow.holder`, say). It uses `taskToolSuffix`, which moves to a
+  board's action name, for a reader that builds an `InboxRow.holder` or a test that acts on the
+  board directly. An app that changes a task calls `board(at)`, never a name it built. It uses `taskToolSuffix`, which moves to a
   browser-safe leaf module so `./inbox` stays free of the task board's runtime.
 - **One send routine.** The answer path's send, wait, list-the-output, reject-on-`ok:false` loop
-  becomes the routine every board action and every row answer goes through.
+  becomes the routine every board action and every row answer goes through. It pages the
+  session's requests to find the answer (20 pages of 100, as Shift Manager's `runAction` does),
+  and a finished action whose answer it can't find rejects rather than reading as a yes.
 - **Shift Manager** (second PR, stacked per the build order): `reads.ts` drops its
-  `UPDATE_TASK_ACTION` copy for `taskActionName`, and `LabReader` exposes the board's actions for
-  FIX-2382's buttons to call.
+  `UPDATE_TASK_ACTION` copy for `taskActionName`, and `LabReader.taskActions(conversation)` returns
+  `inbox.board(...)` for that conversation, one getter, for FIX-2382's buttons to call.
 - **Docs:** the orchestration README's Inbox section gains the board actions. The epic's guide
   (*building a workforce app from the packages*, FIX-2387) names them; no page of its own.
 
@@ -94,6 +103,7 @@ engine. Workforce's board id.
 |---|---|
 | `createInboxClient` and its `answerRowQuestion` loop | **Extends.** The loop becomes the shared routine; the client gains `board(at)` |
 | The task tools' `updateTask` and `createTask` actions | **Reuses.** No new board verb here; the helper only names and sends them |
+| Workforce's `CONVERSATION_BOARD_CLIENT_FIELDS` | **Extends** by one field, `context` |
 | `taskToolSuffix` in `task-tools-capability.ts` | **Moves** to a leaf module, re-exported where it is today |
 | FIX-2383's retry verb | **Reuses**, as this issue's base branch |
 | Shift Manager's `UPDATE_TASK_ACTION`, the Claude Code-style lab's copy and `run` loop | **Replaced:** Shift Manager's here; the lab's in FIX-2382's lab stack, which owns that file in the wave |

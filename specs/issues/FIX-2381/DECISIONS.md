@@ -34,9 +34,15 @@ already do.
 ## D3 · A re-file copies what a browser's row carries
 
 `refile(row, overrides)` sends `goal`, `title`, `context`, `assignee`, `labels` and `priority`
-from the row, overrides winning. It doesn't copy `input`, `metadata` or `deps`: a browser's row
+from the row, overrides winning. It takes a `RefileRow` of exactly those fields, not an
+`InboxRow`, which carries fewer. It doesn't copy `input`, `metadata` or `deps`: a browser's row
 doesn't carry the first two (BP-015 keeps them on the server), and old `deps` may name finished
 rows. An override can set any of them.
+
+- **`context` joins the conversation board's browser fields.** It is the rest of the brief the
+  user or a worker wrote beside `goal`, which is exposed already. Without it, a browser's re-file
+  drops part of the brief with no sign. The other way, a server read just for re-file, adds an
+  action to fetch text that is no more private than the goal.
 
 - **Re-file vs retry:** retry (FIX-2383) keeps the id, the history and the spend, and is the
   default after a failure. Re-file is for a task that should run again *changed*, which a started
@@ -55,6 +61,8 @@ rows. An override can set any of them.
   FIX-2379's slice merges, per the epic's build order (`2379 → 2381 → 2380`).
 - **E5 · The Claude Code-style lab's copy goes in FIX-2382's lab stack**, which owns `adapter.ts`
   in that wave. This issue's PRs don't touch the lab.
+- **E7 · The send routine pages the session's requests** (20 × 100, as Shift Manager's
+  `runAction`), and a finished action whose answer isn't found rejects.
 - **E6 · No changeset unless the package PR adds a public export**, which it does: one `minor`
   fragment for `@flow-state-dev/orchestration`.
 
@@ -62,3 +70,13 @@ rows. An override can set any of them.
 
 - Drafted 2026-10-31 from the issue, the epic's decisions and review record, and the code on
   `main` at `675f61441`.
+
+## Notes from review
+
+- Codex (e813f22): one P2, folded. A browser's row has no `context`, so re-file would drop it.
+  The conversation board now exposes `context` (D3).
+- Cursor (e813f22): direction approved. Folded: `retry` lands with FIX-2383's verb; `at.board` is
+  the collection id, not a row's ref; `taskActionName` is for readers, and apps call `board(at)`;
+  the routine pages requests like `runAction`; `RefileRow` names the copied fields;
+  `LabReader.taskActions` is one getter returning `inbox.board(...)`. Its performance note (one
+  send-wait-list per action) is inherited from the answer path and left as it is.
