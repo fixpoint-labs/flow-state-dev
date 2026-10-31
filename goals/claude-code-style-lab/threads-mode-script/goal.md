@@ -12,8 +12,9 @@ nothing in the lab but configuration, React UI and small flows.
 
 **Input:** `fixtures/input.json`: a project name, the ask (three vendors, one thread each), your
 answer to a thread's question, and the code change, with a marker the script fills in per run.
-It is **held-out**: no worker file, prompt or flow names any of it. The thread worker's
-instructions say to ask which region matters, so step 3 doesn't hang on the model's choice.
+It is **held-out**: no worker file, prompt or flow names any of it. The ask itself says each
+thread should first ask which region you host in, so step 3 doesn't hang on the model's choice; the
+thread worker asks only when a request calls for it, so the lead must carry that into each goal.
 
 **Signal:** one browser on `fsdev dev --config labs/claude-code-style/fsdev.config.mts --app
 @flow-state-dev/claude-code-style`, with a fresh data folder and a fresh `file://` repository, which the lab is told it may cut

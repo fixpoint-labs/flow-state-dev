@@ -1,6 +1,6 @@
 {
   "project": "Status page pick",
-  "ask": "Research three vendors for a status page, one thread each, and draft a summary of each for me to review.",
+  "ask": "Research three vendors for a status page, one thread each, and draft a summary of each for me to review. Each thread should first ask me which region we host in.",
   "answer": "Europe. We host in Frankfurt, so EU data residency matters most.",
   "change": "Add a CHANGELOG line for the vendor pick: add the line \"- {marker}\" at the end of CHANGELOG.md in the project."
 }

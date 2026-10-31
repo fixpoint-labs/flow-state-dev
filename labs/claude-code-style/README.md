@@ -14,8 +14,10 @@ needs is a gap filed against the package.
 - **Center:** the main thread. It is the only place you type. The main session does part of the
   work itself and starts background tasks for the long pieces. It reads the project's files itself,
   so a question about the code is answered in the same turn, and a code change goes to `desk.coder`.
-  A background result shows as a card at the point the main session took it, even while its turn is
-  still running.
+  A background result shows as one line, its title and status, at the point the main session took
+  it, even while its turn is still running. Click it to read the task's reply; the main session
+  adds only what's new rather than repeating it. Tool calls read as plain words ("Waiting for your
+  answer", "Sent for review"). Enter sends; Cmd+Enter (Ctrl+Enter) sends from every box in the lab.
 - **Right:** the background tasks, read only. A row opens to show the task's work. To stop or steer
   a task, ask the main session.
 
@@ -34,7 +36,11 @@ threads, each a task in a session of its own, and the right pane is the status b
 - **The right pane** is as wide as you drag its left edge (or move it with the arrow keys once it
   has focus), and keeps that width across reloads.
 - **A thread's view** replaces the board, with a back arrow. You can talk in it: your line steers
-  the thread's task and answers its open question. You can pin it there.
+  the thread's task and answers its open question. Cmd+Enter (Ctrl+Enter) answers, or requests
+  changes when it is ready for review; plain Enter is a new line. You can pin it there.
+- **A thread's goal** carries what it needs, since a thread sees nothing else: what to do, the ids,
+  links and branches you named, where the work lives, and what done means. A thread asks you
+  something only when the request leaves a choice that only you can make.
 - **A code change** goes to `desk.thread-coder`, which runs through Claude Code (its `harness` setting).
   Its card and row are tagged, and a run that made changes waits for your review. The thread's
   view says so once, in a card: the commit count, the branch shown short (the full name on hover)
