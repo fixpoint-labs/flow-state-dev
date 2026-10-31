@@ -8,6 +8,7 @@
 <meta property="og:title" content="Flow State · Software that reshapes itself around you">
 <meta property="og:description" content="Start from an app that already works. Tell it how you work, and it rebuilds itself around you.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=Space+Grotesk:wght@400;500;700&display=swap">
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -106,7 +107,7 @@
 <span class="name">Sidebar</span>
 <div class="chain"><span class="blk"><em>+</em>Investor updates</span><span class="blk"><em>+</em>Customer calls</span></div>
 </div>
-<span class="foot">Every change is real software Maya owns, and she can change it again any time.</span>
+<span class="hood-caption">Every change is real software Maya owns, and she can change it again any time.</span>
 </div>
 </div>
 </div>
@@ -193,6 +194,7 @@
   var REQ = "I run my week around investor updates and customer calls. Give me a section for each, and start my mornings with a briefing instead of an empty chat box.";
   var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var timers = [];
+  if (reduce) document.querySelectorAll("svg").forEach(function (svg) { if (svg.pauseAnimations) svg.pauseAnimations(); });
   function at(ms, fn) { timers.push(setTimeout(fn, ms)); }
   function clear() { timers.forEach(clearTimeout); timers = []; }
   function setStep(n) {
