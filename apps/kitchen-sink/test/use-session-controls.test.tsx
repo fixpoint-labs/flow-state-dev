@@ -15,11 +15,10 @@ type Props = { id: string | undefined; recorded: RecordedSessionControls | undef
 const BUILD_RECORD: RecordedSessionControls = {
   currentMode: "build",
   thinkingStyle: "background-work",
-  requestCount: 3,
   features: { biasCheck: true, search: false, fetch: true, crawl: false },
 };
 
-const NO_TURNS: RecordedSessionControls = { currentMode: "ask", thinkingStyle: "default", requestCount: 0 };
+const NO_TURNS: RecordedSessionControls = { currentMode: "ask", thinkingStyle: "default" };
 
 function render(initial: Props) {
   return renderHook(({ id, recorded }: Props) => useSessionControls(id, recorded), { initialProps: initial });
@@ -61,7 +60,7 @@ describe("useSessionControls", () => {
     const { result, rerender } = render({ id: "sess-a", recorded: BUILD_RECORD });
     act(() => result.current.setMode("interview"));
 
-    rerender({ id: "sess-a", recorded: { ...BUILD_RECORD, requestCount: 4 } });
+    rerender({ id: "sess-a", recorded: { ...BUILD_RECORD, currentMode: "debate" } });
     expect(result.current.mode).toBe("interview");
   });
 
@@ -77,5 +76,13 @@ describe("useSessionControls", () => {
   it("fills features a record leaves out from the defaults", () => {
     const { result } = render({ id: "sess-a", recorded: { ...BUILD_RECORD, features: { search: false } } });
     expect(result.current.features).toEqual({ ...DEFAULT_FEATURES, search: false });
+  });
+
+  it("restores a session reopened during, or after a failed, first turn", () => {
+    // `run` records the controls before the generator runs and counts the
+    // request only at the end, so the count is still zero here.
+    const midFirstTurn = { ...BUILD_RECORD, requestCount: 0 };
+    const { result } = render({ id: "sess-a", recorded: midFirstTurn });
+    expect(result.current.mode).toBe("build");
   });
 });

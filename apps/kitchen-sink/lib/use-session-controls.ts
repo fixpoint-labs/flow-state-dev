@@ -7,7 +7,7 @@
  * `modeStatus` client data. This hook seeds the controls from that record when
  * a session opens, so a session that last ran in Build reopens in Build.
  *
- * A session with no turns yet has nothing recorded and opens on the defaults.
+ * A session that never ran projects the defaults, so it opens on them.
  * Seeding happens once per session, and never over a choice the user made in
  * that session before its record arrived. Like `useSessionDraft`, the state is
  * reset during render when `sessionId` changes, not in an effect, so a frame
@@ -23,7 +23,6 @@ import { DEFAULT_FEATURES, type Features } from "@/components/feature-selector";
 export interface RecordedSessionControls {
   currentMode: Mode;
   thinkingStyle: ThinkingStyle | undefined;
-  requestCount: number;
   features?: Partial<Features>;
 }
 
@@ -64,16 +63,17 @@ export function useSessionControls(
   let current = state;
   if (current.sessionId !== sessionId) current = defaults(sessionId);
   if (!current.settled && sessionId !== undefined && recorded !== undefined) {
-    current =
-      recorded.requestCount > 0
-        ? {
-            sessionId,
-            mode: recorded.currentMode,
-            thinkingStyle: recorded.thinkingStyle ?? "default",
-            features: { ...DEFAULT_FEATURES, ...recorded.features },
-            settled: true,
-          }
-        : { ...current, settled: true };
+    // Applied whether or not a turn has finished: `run` records the controls
+    // before its generator runs and counts the request only at the end, so a
+    // session reopened mid-way through (or after a failed) first turn still
+    // has them. A session that never ran projects the defaults.
+    current = {
+      sessionId,
+      mode: recorded.currentMode,
+      thinkingStyle: recorded.thinkingStyle ?? "default",
+      features: { ...DEFAULT_FEATURES, ...recorded.features },
+      settled: true,
+    };
   }
   if (current !== state) setState(current);
 
