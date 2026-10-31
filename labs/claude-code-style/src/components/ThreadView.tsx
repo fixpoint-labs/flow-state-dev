@@ -1,5 +1,5 @@
-import { useJumpToLatest } from "@flow-state-dev/react";
-import { useState, type FormEvent } from "react";
+import { isSendKey, useJumpToLatest } from "@flow-state-dev/react";
+import { useState, type FormEvent, type KeyboardEvent } from "react";
 import type { LabAdapter, TaskRow } from "../adapter";
 import { useWatch } from "../lib/use-watch";
 import { Entry } from "./Entry";
@@ -14,6 +14,8 @@ import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus
  * answers its open question when it has one. When it is ready for
  * review, *Resolve* accepts it and *Request changes* sends your words back.
  * A finished task's composer is off: you ask the main session to follow up.
+ * Cmd+Enter (Ctrl+Enter) does what the box's main button does: answer or send,
+ * or request changes when it is ready for review. Plain Enter is a new line.
  */
 export function ThreadView({
   adapter,
@@ -39,8 +41,8 @@ export function ThreadView({
   const words = text.trim();
   const finished = task.status === "completed" || task.status === "cancelled" || task.status === "errored";
 
-  const say = (event: FormEvent) => {
-    event.preventDefault();
+  const say = (event?: FormEvent) => {
+    event?.preventDefault();
     if (!words) return;
     setText("");
     feed.sent();
@@ -51,6 +53,12 @@ export function ThreadView({
     setText("");
     feed.sent();
     void adapter.requestChanges(sessionId, task.id, words);
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!isSendKey(event)) return;
+    event.preventDefault();
+    if (column === "review") requestChanges();
+    else say();
   };
 
   return (
@@ -95,6 +103,7 @@ export function ThreadView({
             rows={2}
             value={text}
             onChange={(event) => setText(event.target.value)}
+            onKeyDown={onKeyDown}
             placeholder={question ? "Answer the task…" : column === "review" ? "What should change…" : "Say something in this task…"}
             className="block w-full resize-none border border-border bg-card px-3 py-2 text-sm outline-none focus:border-ring"
           />

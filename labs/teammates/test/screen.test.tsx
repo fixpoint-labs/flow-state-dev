@@ -502,6 +502,19 @@ describe("the teammates screen", () => {
     expect(researcherBox.value).toBe("");
   });
 
+  it("sends with Cmd+Enter and Ctrl+Enter as well as Enter, and Shift+Enter stays a new line", async () => {
+    render(<App adapter={fast()} />);
+    const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "first line" } });
+    fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+    expect(box.value).toBe("first line");
+    fireEvent.keyDown(box, { key: "Enter", metaKey: true });
+    await waitFor(() => expect(entries("user").some((e) => e.textContent?.includes("first line"))).toBe(true));
+    fireEvent.change(box, { target: { value: "second line" } });
+    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
+    await waitFor(() => expect(entries("user").some((e) => e.textContent?.includes("second line"))).toBe(true));
+  });
+
   it("doesn't send when Enter ends an input method's composition", async () => {
     render(<App adapter={fast()} />);
     const box = await screen.findByLabelText("Message Chief of Staff");
@@ -580,6 +593,33 @@ describe("the teammates screen", () => {
     await tell("Chief of Staff", "Fix the typo in the README's first line.");
     await waitFor(() => expect(status("Chief of Staff")).toBe("Running coding task: Fix the typo in the README's first line"), { interval: 5, timeout: 2000 });
     expect(header()).toBe("Running coding task: Fix the typo in the README's first line");
+  });
+
+  it("hires with Cmd+Enter in the instructions and saves new ones with Ctrl+Enter, never from a form that can't send yet", async () => {
+    render(<App adapter={fast()} />);
+    await screen.findByLabelText("Message Chief of Staff");
+    fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
+    const form = screen.getByRole("form", { name: "Hire a teammate" });
+    const instructions = within(form).getByLabelText("Teammate instructions");
+    // No name or role yet: the shortcut sends nothing, as the disabled button wouldn't.
+    await act(async () => fireEvent.keyDown(instructions, { key: "Enter", metaKey: true }));
+    expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3);
+    fireEvent.change(within(form).getByLabelText("Teammate name"), { target: { value: "tester" } });
+    fireEvent.change(within(form).getByLabelText("Teammate role"), { target: { value: "Runs the tests." } });
+    fireEvent.change(instructions, { target: { value: "Run them all." } });
+    // Plain Enter in the instructions is a new line.
+    await act(async () => fireEvent.keyDown(instructions, { key: "Enter" }));
+    expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3);
+    await act(async () => fireEvent.keyDown(instructions, { key: "Enter", metaKey: true }));
+    await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(4));
+
+    await screen.findByLabelText("Message tester");
+    fireEvent.click(within(conversation()).getByRole("button", { name: "Instructions" }));
+    const edit = screen.getByRole("form", { name: "Instructions for tester" });
+    const box = within(edit).getByLabelText("New instructions for tester");
+    fireEvent.change(box, { target: { value: "Answer in one sentence." } });
+    await act(async () => fireEvent.keyDown(box, { key: "Enter", ctrlKey: true }));
+    await waitFor(() => expect(screen.queryByRole("form", { name: "Instructions for tester" })).toBeNull());
   });
 
   it("hires a teammate you can talk to, changes its instructions, and fires it; the files' workers can't be", async () => {

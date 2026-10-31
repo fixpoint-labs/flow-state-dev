@@ -73,6 +73,40 @@ describe("the threads-mode screen", () => {
     expect(rowsIn("Ready for review").join()).toMatch(/Vendor B · regions/);
   });
 
+  it("sends an answer with Cmd+Enter or Ctrl+Enter, keeps plain Enter a new line, and sends nothing from an empty box", async () => {
+    await startThreadsSession(0.01);
+    await ask("Research three vendors for a status page, one thread each.");
+    await waitFor(() => expect(rowsIn("Waiting on you").join()).toMatch(/Which region matters/));
+    fireEvent.click(within(card("Vendor B · regions")).getByRole("button", { name: "Answer" }));
+    const view = screen.getByRole("complementary", { name: "Task: Vendor B · regions" });
+    const box = within(view).getByLabelText("Message this task");
+    // An empty box sends nothing, shortcut or not.
+    fireEvent.keyDown(box, { key: "Enter", metaKey: true });
+    // Plain Enter in a longer answer is a new line, never a send.
+    fireEvent.change(box, { target: { value: "EU" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 30)));
+    expect(card("Vendor B · regions").dataset.column).toBe("waiting");
+    // Cmd+Enter answers, the same as the button.
+    fireEvent.keyDown(box, { key: "Enter", metaKey: true });
+    await waitFor(() => expect(card("Vendor B · regions").dataset.column).toBe("working"));
+    expect((box as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("requests changes with Ctrl+Enter in the What should change box", async () => {
+    await startThreadsSession(0.01);
+    await ask("Research three vendors for a status page, one thread each.");
+    await waitFor(() => expect(card("Vendor C · summary").dataset.column).toBe("review"));
+    fireEvent.click(within(card("Vendor C · summary")).getByRole("button", { name: "Request changes" }));
+    const view = screen.getByRole("complementary", { name: "Task: Vendor C · summary" });
+    const box = within(view).getByPlaceholderText("What should change…");
+    fireEvent.change(box, { target: { value: "Add the EU pricing." } });
+    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
+    // Back to work with your words: a request for changes, not a line said in passing.
+    await waitFor(() => expect(card("Vendor C · summary").dataset.column).toBe("working"));
+    expect(within(view).getByText("Add the EU pricing.")).toBeTruthy();
+  });
+
   it("resolves a thread ready for review, moving it under Resolved, collapsed to a count", async () => {
     await startThreadsSession(0.01);
     await ask("Research three vendors for a status page, one thread each.");

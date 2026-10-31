@@ -186,6 +186,12 @@ export {
   type JumpToLatestOptions
 } from "./hooks/useJumpToLatest";
 
+export {
+  isSendKey,
+  type SendKeyEvent,
+  type SendKeyOptions
+} from "./send-key";
+
 export type {
   BlockComponentType,
   RendererRegistry

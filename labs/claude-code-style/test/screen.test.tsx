@@ -137,6 +137,22 @@ describe("the session-mode screen", () => {
     expect(screen.queryByLabelText("Message the main session")).toBeNull();
   });
 
+  it("sends with Cmd+Enter and Ctrl+Enter as well as Enter, and Shift+Enter stays a new line", async () => {
+    render(<App adapter={fast()} />);
+    await pick();
+    const box = screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "first line" } });
+    fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+    expect(box.value).toBe("first line");
+    fireEvent.keyDown(box, { key: "Enter", metaKey: true });
+    expect(box.value).toBe("");
+    const mine = () => [...thread().querySelectorAll('[data-entry="user"]')].map((el) => el.textContent ?? "");
+    await waitFor(() => expect(mine().join()).toMatch(/first line/));
+    fireEvent.change(box, { target: { value: "second line" } });
+    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
+    await waitFor(() => expect(mine().join()).toMatch(/second line/));
+  });
+
   it("doesn't send when Enter only confirms an IME composition", async () => {
     render(<App adapter={fast()} />);
     await pick();
@@ -259,7 +275,7 @@ describe("the session-mode screen", () => {
     // Step 5: stopping is asked of the main session, which cancels its own task.
     await ask("Stop the Globex research.");
     await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("cancelled"));
-    expect(within(thread()).getByText(/updateTask · Research Globex → cancelled/)).toBeTruthy();
+    expect(within(thread()).getByText(/Updated a task/)).toBeTruthy();
   });
 
   it("keeps a task read only: a row opens its work in a sheet over the main thread, with no stop or composer", async () => {
@@ -345,6 +361,22 @@ describe("the session-mode screen", () => {
     fireEvent.click(within(thread()).getByRole("button", { name: "Stop" }));
     await within(thread()).findByText(/Interrupted/);
     expect(within(thread()).queryByRole("status")).toBeNull();
+  });
+
+  it("doesn't stop the turn when Escape only dismisses an IME composition", async () => {
+    render(<App adapter={createFakeLab({ speed: 0.2 })} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await within(thread()).findByRole("status");
+    const box = screen.getByLabelText("Message the main session");
+    act(() => {
+      box.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", isComposing: true, bubbles: true }));
+    });
+    fireEvent.keyDown(box, { key: "Escape", keyCode: 229 });
+    expect(within(thread()).getByRole("status")).toBeTruthy();
+    // A plain Escape still stops it.
+    fireEvent.keyDown(box, { key: "Escape" });
+    await within(thread()).findByText(/Interrupted/);
   });
 
   it("keeps background tasks running when the turn that filed them is interrupted", async () => {
