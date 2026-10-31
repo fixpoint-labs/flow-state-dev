@@ -1,7 +1,7 @@
 /**
  * Public surface of `@flow-state-dev/cursor`: the Cursor harness block, its
  * opt-in capability, the client seam and its version gate, the sandbox probe,
- * the sign-in check, the pure translation layer, the cost derivation, the handle and wire types,
+ * the sign-in check and its readiness check, the pure translation layer, the cost derivation, the handle and wire types,
  * and the typed errors.
  *
  * A *harness* is a coding agent driven as a block — you hand it a prompt, it
@@ -19,7 +19,7 @@ export {
   type CursorSdkImporter,
 } from "./cursor-client";
 export { probeCursorSandbox, type CursorSandboxProbeOptions, type CursorSandboxSupport } from "./sandbox-probe";
-export { cursorSignIn, type CursorSignIn } from "./sign-in";
+export { checkCursorReadiness, cursorSignIn, CURSOR_SIGN_IN_REMEDY, type CursorSignIn } from "./sign-in";
 export { translateCursorMessage } from "./translate";
 export { estimateCursorCost } from "./cost";
 export {

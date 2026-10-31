@@ -190,6 +190,12 @@ Without a key, the SDK must be installed. If it can't be loaded, the call reject
 import's own error, such as Node's `ERR_MODULE_NOT_FOUND`. A missing, unreadable or malformed
 `auth.json` is not an error: the SDK reports it as no stored login, so the result is `none`.
 
+`checkCursorReadiness(env)` answers as core's `HarnessReadiness`, for harness-manager's
+`harnessReadiness`: `{ ready: true }` for a key or a stored login, `{ ready: false, reason,
+remedy }` with `CURSOR_SIGN_IN_REMEDY` ("Set CURSOR_API_KEY, or sign in to Cursor") for neither,
+and not ready with `"Install @cursor/sdk, then re-check"` when the SDK can't be loaded or
+answer. Unlike `cursorSignIn`, it never rejects.
+
 ## The handle
 
 The neutral harness handle (`source: "cursor/sdk"`, `status`, `sessionId`, `url`,

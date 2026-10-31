@@ -160,6 +160,13 @@ when `@openai/codex-sdk` can't be loaded. The shape follows `probeClaudeAccount`
 in `@flow-state-dev/claude-code`. It checks where a credential would come from,
 not that it works: a rejected key still reads `account`.
 
+`checkCodexReadiness(options)` takes the same options and answers as core's
+`HarnessReadiness`, for harness-manager's `harnessReadiness`: `{ ready: true }`,
+or `{ ready: false, reason, remedy }` with `CODEX_SIGN_IN_REMEDY` ("Run
+`codex login`, or set CODEX_API_KEY") when nobody is signed in, `"Install
+@openai/codex-sdk"` when the SDK is missing, and `"Re-check"` with
+`unanswered: true` when Codex gave no answer. It never throws.
+
 ## Reading usage left
 
 `readCodexUsage({ env, timeoutMs?, signal? })` asks Codex how much of each

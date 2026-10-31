@@ -511,6 +511,8 @@ export type {
   HarnessCallbackContext,
   HarnessCostBasis,
   HarnessFailureKind,
+  HarnessReadiness,
+  HarnessReadinessCheck,
   HarnessResolver,
   HarnessRunCost,
   HarnessRunEnvelope,

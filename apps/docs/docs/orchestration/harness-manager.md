@@ -350,6 +350,100 @@ A checkout lives on the machine that made it, unless you give the manager somewh
 
 How promptly the harness then returns is the harness's own business, and harnesses differ. Neither bounds what the run *spawned*: a command the agent's process started can outlive the kill. The sandbox you configure on the harness is the fence for a runaway command, not this deadline.
 
+## Which harnesses can run here
+
+A coding agent can only run on a machine where its SDK is installed and a user
+is signed in or a key is set. `harnessReadiness` checks each harness you offer,
+keeps the answers, and tells a screen, a coordinator or a gate which ones are
+ready and what to run for the rest.
+
+Hand it one check per harness, keyed by the harness's name, with the `label`
+the user sees. Each integration ships its check:
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS } from "@flow-state-dev/claude-code/sdk";
+import { checkCodexReadiness, CODEX_PASS } from "@flow-state-dev/codex";
+import { checkCursorReadiness } from "@flow-state-dev/cursor";
+import { formatHarnessReadiness, harnessReadiness } from "@flow-state-dev/harness-manager";
+
+const readiness = harnessReadiness({
+  "claude-code": {
+    label: "Claude Code",
+    check: () => checkClaudeCodeReadiness({ env: harnessEnv({ pass: CLAUDE_CODE_PASS }) }),
+  },
+  codex: {
+    label: "Codex",
+    check: () => checkCodexReadiness({ env: harnessEnv({ pass: CODEX_PASS }), timeoutMs: 30_000 }),
+  },
+  cursor: {
+    label: "Cursor",
+    check: () => checkCursorReadiness(harnessEnv({ pass: ["PATH", "HOME", "CURSOR_API_KEY"] })),
+  },
+});
+
+// At start. read() never throws, so a missing sign-in never stops the server.
+void readiness.read().then((rows) => console.log(formatHarnessReadiness(rows)));
+// Coding harnesses on this machine:
+// ✓ Cursor
+// ✗ Codex: Codex has no credential: Not logged in. Run `codex login`, or set CODEX_API_KEY.
+```
+
+A check answers whether a credential is there, not whether it works. A key that
+is set but rejected reads as ready and fails on the run's first turn.
+
+### Reading the rows
+
+`read({ refresh? })` returns one `HarnessReadinessRow` per harness, in the order
+you gave them:
+
+```ts
+{
+  harness: "codex",
+  label: "Codex",
+  ready: false,
+  reason: "Codex has no credential: Not logged in",  // null when ready
+  remedy: "Run `codex login`, or set CODEX_API_KEY", // null when ready or none named
+  unanswered: false,       // true when the check gave no answer either way
+  checkedAt: 1798012000000,
+}
+```
+
+The first read runs every check. Later reads return the kept rows, and nothing
+polls. `refresh: true` checks every harness again, and `refresh: "codex"` checks
+one. Reads that arrive together share one check per harness.
+
+A check that throws, rejects or takes longer than `timeoutMs` (default
+`READINESS_CHECK_TIMEOUT_MS`, 30 seconds) comes back as a row with
+`ready: false`, `unanswered: true` and a plain `reason`. Pass
+`harnessReadiness(slots, { timeoutMs })` to change the limit.
+
+The rows describe this machine, so they live in the process and are never
+stored. Another process checks its own machine.
+
+### Using them
+
+- **A screen.** `harnessReadinessAction(readiness)` is a flow-level action. Its input is `{ refresh?: boolean }` and it answers `{ harnesses: HarnessReadinessRow[] }`, with no model call. Draw a chip per row, and send `{ refresh: true }` for Re-check.
+- **A coordinator.** Add `harnessReadinessCapability(readiness)` to its `uses`. It puts the rows in the generator's context, followed by `READINESS_GUIDANCE`, which tells the model to file coding work only on a ready harness and to say what to run for one that isn't.
+- **A gate before a task starts.** `readiness.refusal(harness)` returns `undefined` when the harness can run. A harness last read as not ready is checked once more first, so a sign-in made since then counts. Otherwise it returns a sentence that names the harness, says why and says what to run. A harness you didn't pass to `harnessReadiness` answers `undefined`.
+
+```ts
+import { defineFlow } from "@flow-state-dev/core";
+import { harnessReadinessAction } from "@flow-state-dev/harness-manager";
+
+defineFlow({
+  kind: "projects",
+  actions: { harnessReadiness: harnessReadinessAction(readiness) },
+});
+
+const why = await readiness.refusal("codex");
+// "Codex isn't set up on this machine: Codex has no credential: Not logged in.
+//  Run `codex login`, or set CODEX_API_KEY. Then start the task again."
+```
+
+`harnessManager` doesn't consult readiness on its own. Call `refusal` from your
+flow's gate if you want a task refused before it reaches a harness that can't run.
+
 ## Subscription usage
 
 A coding agent on a subscription plan stops working when one of its limit windows
@@ -502,8 +596,10 @@ and the run-context types, `WorkspaceConfig`, the construction-time guards
 `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing
 your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per
 organization, the run-record collection for building a status
-surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with its collection and
-helpers.
+surface (a run's questions are on its task's row), the [usage query](#subscription-usage) with its collection and
+helpers, and the [readiness read](#which-harnesses-can-run-here) (`harnessReadiness`,
+`harnessReadinessAction`, `harnessReadinessCapability`, `formatHarnessReadiness`,
+`harnessReadinessRowSchema`, `READINESS_CHECK_TIMEOUT_MS`, `READINESS_GUIDANCE`).
 
 `@flow-state-dev/harness-manager/checkout` is how a run gets a directory:
 `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the

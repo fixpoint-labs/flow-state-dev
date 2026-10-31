@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { probeClaudeAccount } from "../../src/sdk/account-probe";
+import { checkClaudeCodeReadiness, CLAUDE_SIGN_IN_REMEDY, probeClaudeAccount } from "../../src/sdk/account-probe";
 
 /** A scripted SDK whose `query` answers `accountInfo` with `info`, recording what it was handed. */
 function scriptedSdk(info: () => Promise<Record<string, unknown>>) {
@@ -147,4 +147,44 @@ describe("probeClaudeAccount, on the installed Agent SDK", () => {
     const result = await probeClaudeAccount({ env: { ...base(), ANTHROPIC_API_KEY: "sk-ant-api03-not-a-real-key" } });
     expect(result).toMatchObject({ status: "account", apiKeySource: "ANTHROPIC_API_KEY" });
   }, 30_000);
+});
+
+describe("checkClaudeCodeReadiness, scripted", () => {
+  it("is ready when the probe finds an account", async () => {
+    const sdk = scriptedSdk(async () => ({ apiKeySource: "ANTHROPIC_API_KEY" }));
+    expect(await checkClaudeCodeReadiness({ env: {}, importSdk: sdk.importSdk })).toEqual({ ready: true });
+  });
+
+  it("is not ready with the sign-in remedy when there is no credential", async () => {
+    const sdk = scriptedSdk(async () => ({ apiProvider: "firstParty" }));
+    const answer = await checkClaudeCodeReadiness({ env: {}, importSdk: sdk.importSdk });
+    expect(answer).toMatchObject({ ready: false, remedy: CLAUDE_SIGN_IN_REMEDY });
+    expect(answer).not.toHaveProperty("unanswered");
+  });
+
+  it("asks once more when the first probe went unanswered, and is ready if the second finds an account", async () => {
+    let asked = 0;
+    const sdk = scriptedSdk(() => (asked++ === 0 ? new Promise(() => {}) : Promise.resolve({ tokenSource: "claude.ai" })));
+    expect(await checkClaudeCodeReadiness({ env: {}, timeoutMs: 50, importSdk: sdk.importSdk })).toEqual({ ready: true });
+    expect(asked).toBe(2);
+  });
+
+  it("is unanswered, with Re-check as the remedy, when neither probe answers", async () => {
+    const sdk = scriptedSdk(() => new Promise(() => {}));
+    expect(await checkClaudeCodeReadiness({ env: {}, timeoutMs: 50, importSdk: sdk.importSdk })).toMatchObject({
+      ready: false,
+      remedy: "Re-check",
+      unanswered: true,
+    });
+  });
+
+  it("names the SDK to install when it can't be loaded", async () => {
+    const answer = await checkClaudeCodeReadiness({
+      env: {},
+      importSdk: async () => {
+        throw new Error("Cannot find package '@anthropic-ai/claude-agent-sdk'");
+      },
+    });
+    expect(answer).toMatchObject({ ready: false, remedy: "Install @anthropic-ai/claude-agent-sdk" });
+  });
 });
