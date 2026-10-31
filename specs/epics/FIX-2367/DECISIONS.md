@@ -37,9 +37,14 @@ Solid edges are the calls. Dashed edges lost, and the label says why.
 | **Because** | The session stream already crosses processes on every store, so widening it is the cheapest set, about two issues. Its price is a store read every second for every open view of every scope, whether anything changed. An in-process fan-out fails today: BullMQ's `dispatch-only` and `worker-only` modes run actions in other processes. Ably alone makes a paid service the only way to get push, even on a laptop. The bus reads only after a notice, and Ably then fills the serverless case |
 | **Locks in** | An epic slot while the active-epic cap is already exceeded (the owner chose this one). The Postgres bus is no longer a collapse candidate |
 
-**What would change my mind:** evidence that a store read each second per open view is cheap at
-the viewer counts we target. Then widen the session stream to user and org scopes, and cut the
-bus, the Postgres bus and the socket.
+**What would change my mind:** the cost measured as cheap. The metric is store queries per
+second from session-stream connections. Each open view costs at least four today (two request
+lists, a runs list and an identity check, per tick of `SESSION_STREAM_TIMINGS.intervalMs` in
+`session-stream-routes.ts`), and widening multiplies that by the scopes it watches, on a primary
+Postgres pool of 10 by default. The code gives no defensible threshold, so the bus child
+measures it at the view counts the labs and Shift Manager run and sets one. If those queries
+fit with headroom, widen the session stream to user and org scopes and cut the bus, the
+Postgres bus and the socket.
 
 ![D1: a push channel worth six issues and a closure. Chosen: bus, Postgres, socket, beside widening the session stream and an in-process fan-out. Decides it: what an open view costs the store. Price: six issues and a closure. Flips if a store read each second per viewer is cheap at the viewer counts we target](figures/d1-worth-it.svg)
 
@@ -111,7 +116,7 @@ It comes down to Postgres on two processes: with one seam it writes a socket ser
 |---|---|
 | **Instead of** | Leaving `GET /sessions/:id/stream`'s once-a-second read as it is, a second live path beside the bus |
 | **Because** | That read costs a store read a second for every open connection, whether or not anything changed. Woken, an idle view costs nothing, and the bus has a real consumer the day it lands. The stream's cross-process reach then rests on the bus, so the timed read stays as a slow fallback where the bus can't cross processes: the in-memory bus on two or more processes, and serverless hosts. The wake goes in the bus child, because the delivery child is already the largest |
-| **Locks in** | One live path, with the timed read as its fallback (ER-3). The bus child changes a route that works today across processes, so it proves both the woken and the fallback path |
+| **Locks in** | The bus child owns the wake. The timed read stays **only** where the bus can't cross processes (the in-memory bus on two or more processes, and serverless hosts); with a cross-process bus it is off. No child adds an always-on poll beside the session stream and the socket (ER-3). The bus child changes a route that works today across processes, so it proves both the woken and the fallback path |
 
 **What would change my mind:** the read cost measured as negligible at our viewer counts, or the
 bus child unable to land the wake without the delivery child.
@@ -130,7 +135,7 @@ Every rule has one owner. A *consumes* cell is a place a child must not re-decid
 |---|---|---|---|
 | ER-1 | A notice names a topic and a change kind. It never carries rows ([D2](#d2)) | the bus | Every child's spec review |
 | ER-2 | Topics come only from the session, user and org scopes, optionally narrowed to one resource under them. No child invents a topic of its own | the bus | Each publisher's spec review |
-| ER-3 | Every new publisher publishes through the one bus, and the bus wakes the session stream ([D6](#d6)). Its timed read is a fallback, not a second live path; no child adds one, in a product ticket or a lab | the bus | Every child's spec review |
+| ER-3 | Every new publisher publishes through the one bus, and the bus wakes the session stream ([D6](#d6)). Its timed read runs only where the bus can't cross processes; no child adds an always-on poll, in a product ticket or a lab | the bus | Every child's spec review |
 | ER-4 | A subscribe is checked on the server, from the caller's trusted identity, by the check the scope's read route already uses (BP-031), on every connect and reconnect, not only the first (FIX-1620). Never a claim the client sends; never a second check | delivery | Delivery's and FIX-380's spec review; closure leg c |
 | ER-5 | Every client hook goes through `client.subscribe`, and polls when `GET /capabilities` says there is no push. One obvious way per scope: a scope `live: true` already watches gets no second hook | delivery | FIX-1506's and the task board's spec review |
 | ER-6 | Notices are at most once: no replay, no acks, nothing stored. A client reads again on connect and reconnect | the bus | Each adapter's spec review |
@@ -142,6 +147,7 @@ Every rule has one owner. A *consumes* cell is a place a child must not re-decid
 |---|---|---|
 | The notice and topic shape | the bus · every publisher · delivery · FIX-380 | The bus defines it once (ER-1, ER-2). A child that needs a field comments up here |
 | The `bus` slot in `resolve-slots.ts` | the bus · Postgres bus · FIX-380 | The bus adds the slot and its default to the primary; an adapter declares it in its `capabilities` |
+| The session stream's wake | the bus · delivery · the task board child | The bus child owns it, and the only timed read is its fallback where the bus can't cross processes ([D6](#d6)) |
 | The task board's topic | the task board child · the bus | The conversation's session topic, published from whichever process settles the task |
 | The user-stream route and `GET /capabilities` | delivery · FIX-380 | Delivery owns what capabilities reports. FIX-380 reports its own kind and mints its token through the ER-4 check |
 | The resource hooks' invalidation | FIX-1506 · delivery | One invalidation path with two sources: the writer's own `resource_change` item and the notice. The writer's tab reads once, not twice |
