@@ -1,4 +1,7 @@
 {
+  "git": {
+    "deploymentEnabled": false
+  },
   "crons": [
     { "path": "/api/cron/static/monday-summary", "schedule": "0 9 * * 1" },
     { "path": "/api/cron/schedule-tick", "schedule": "*/15 * * * *" }
