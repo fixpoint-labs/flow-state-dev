@@ -186,7 +186,7 @@ function SessionBody({
                     isStreaming={session.isStreaming}
                     isFinishing={session.isFinishing}
                     showWorkedFor
-                    latestCompletedAtMs={turnRequest?.completedAtMs}
+                    latestCompletedAtMs={turnRequest?.completedAtMs ?? turnRequest?.failedAtMs}
                     statusMessage={session.statusMessage}
                   />
                 </>

@@ -64,8 +64,10 @@ export async function handleGetRequestStatus(
     status: record.status,
     startedAtMs: record.startedAtMs,
     ageMs: Math.max(0, now - record.startedAtMs),
-    ...(record.completedAtMs !== undefined
-      ? { completedAtMs: record.completedAtMs }
+    // A failed request records `failedAtMs`, not
+    // `completedAtMs`; either is when it reached its terminal status.
+    ...((record.completedAtMs ?? record.failedAtMs) !== undefined
+      ? { completedAtMs: record.completedAtMs ?? record.failedAtMs }
       : {}),
     ...(active?.lastHeartbeatAt !== undefined
       ? { lastHeartbeatAt: active.lastHeartbeatAt }

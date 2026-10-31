@@ -22,6 +22,10 @@
  *     fails, state rewinds to the full read's.
  *   - no state read in the stream's non-completed end: the "failed end"
  *     case fails.
+ *   - a non-completed end that changed resources taking the full read, as
+ *     it did: the "changed resources" case fails (an item page is read).
+ *   - no live changes put back on a state read that was out: the "live
+ *     change while a state read is out" case fails, state rewinds.
  *   - no state read after a stop: the "stop" case fails.
  *   - `followedRequest` from `latestRequest` alone: both "beside it" cases
  *     fail (null, or only the stream's status with no times).
@@ -190,6 +194,43 @@ describe("refresh({ items: false })", () => {
   });
 });
 
+describe("a live change while a state read is out", () => {
+  it("is put back on top of what the read returned", async () => {
+    const { result } = await mount();
+    act(() => void result.current.followRequest("req_turn"));
+
+    act(() => void result.current.refresh({ items: false }));
+    await flush();
+    const stateOnly = stateCalls.length - 1;
+
+    // The turn's stream patches state after the read was requested; the
+    // server answered the read before it kept that patch.
+    act(() =>
+      connections.at(-1)!.callbacks.onItemAdded?.({
+        type: "item.added",
+        item: {
+          id: "sc1",
+          type: "state_change",
+          status: "completed",
+          requestId: "req_turn",
+          itemIndex: 1,
+          provenance: { blockName: "test", blockInstanceId: "test-1", phase: "main" },
+          ts: 2000,
+          scope: "session",
+          operation: "set",
+          delta: { phase: "streamed" },
+          version: 2,
+          transient: false,
+        },
+      }),
+    );
+    expect(result.current.snapshot?.clientData.session).toEqual({ phase: "streamed" });
+
+    await land(stateOnly, snapshot("read-before-the-patch"));
+    expect(result.current.snapshot?.clientData.session).toEqual({ phase: "streamed" });
+  });
+});
+
 describe("state at a request's end", () => {
   it("a failed end re-reads state only", async () => {
     const { result } = await mount();
@@ -203,6 +244,35 @@ describe("state at a request's end", () => {
     expect(itemReads()).toHaveLength(itemReadsBefore);
     await land(stateCalls.indexOf(stateOnlyReads()[0]!), snapshot("failure-recorded"));
     expect(result.current.snapshot?.clientData.session).toEqual({ phase: "failure-recorded" });
+  });
+
+  it("a failed end that changed resources still re-reads state only, not the history", async () => {
+    const { result } = await mount();
+    act(() => void result.current.followRequest("req_turn"));
+    const itemReadsBefore = itemReads().length;
+
+    act(() =>
+      connections.at(-1)!.callbacks.onItemAdded?.({
+        type: "item.added",
+        item: {
+          id: "rc1",
+          type: "resource_change",
+          status: "completed",
+          requestId: "req_turn",
+          itemIndex: 1,
+          provenance: { blockName: "test", blockInstanceId: "test-1", phase: "main" },
+          ts: 2000,
+          resourcePath: "notes",
+          changeType: "created",
+          transient: true,
+        },
+      }),
+    );
+    act(() => connections.at(-1)!.callbacks.onRequestStatus?.({ type: "request.failed", status: "failed" }));
+    await flush();
+
+    expect(itemReads()).toHaveLength(itemReadsBefore);
+    expect(stateOnlyReads()).toHaveLength(1);
   });
 
   it("a completed end makes the full read it always made, and no state-only one", async () => {
