@@ -3,24 +3,14 @@
  * (FIX-2364). On a real model, over the Teammates lab's HTTP API, against
  * `fsdev dev --app @flow-state-dev/teammates`. See goal.md for the contract.
  *
- * Leg 1: the user hires a worker of their own with a description and nothing
- * else (no instructions, no file tools), so what it is told about asking comes
- * from the built-in worker flow's default layer alone. The working folder's
- * last commit changed `docs/pricing.md` and wrote a wrong saving (40%). The
- * worker is asked to review "PR #42", which it can't see. Graded on every
- * reply its conversation holds once it goes quiet:
- *   - looked: it called a tool (asking a teammate is looking);
- *   - no paste: no reply asks the user to paste, share or send the diff,
- *     link or copy;
- * Reported, not graded: whether a reply names the 40% claim, which it can
- * only learn through a teammate who reads the file.
- * Leg 2 (FIX-2336's check, kept as a regression): Chief of Staff, asked what
- * its teammates are doing, messages them or reads their conversations, and
- * offers nothing it could have done.
+ * Leg 1: a hired worker with a description and no instructions or file tools
+ * is asked to review "PR #42". It must call a tool, and no reply asks the
+ * user to paste the diff.
+ * Leg 2: Chief of Staff, asked what its teammates are doing, messages them or
+ * reads their conversations, and offers nothing it could have done.
  *
  * Control (`GOAL_CONTROL=old-rule`, same command): the layer's rule is
- * patched back to its one-line wording from before FIX-2364. Leg 1 must FAIL.
- * Leg 2 is not the control's: Chief of Staff's own file says the same.
+ * patched back to its one-line wording. Leg 1 must FAIL.
  *
  * Run: pnpm tsx goals/teammates-lab/works-it-out-first/run.mts
  */
@@ -45,7 +35,6 @@ import { itemsOf, sleep, startTeammates, type Fsd } from "../lab.mts";
 
 const fixture = loadFixture<{
   worker: { id: string; description: string };
-  tools: string[] | null;
   file: string;
   before: string;
   after: string;
@@ -151,7 +140,7 @@ await runGoal(async (failures, tell) => {
         ((await me.flow(ROSTER).createSession()) as { id: string }).id;
       const hired = await me.flow(ROSTER).send(
         "hire",
-        { id: fixture.worker.id, flow: "agent", description: fixture.worker.description, ...(fixture.tools === null ? {} : { settings: { tools: fixture.tools } }) },
+        { id: fixture.worker.id, flow: "agent", description: fixture.worker.description },
         { sessionId: rosterSession }
       );
       const hire = await hired.wait();
