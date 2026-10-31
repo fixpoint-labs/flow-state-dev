@@ -682,6 +682,7 @@ export function useSession(
   // live changes since it landed on top.
   const heldStateRef = useRef<{
     state: Pick<SessionStateSnapshotResponse, "clientData" | "resources">;
+    detail: SessionDetail;
     changesAt: number;
   } | null>(null);
   // Request status reads take a place in order; only the last one requested
@@ -1060,7 +1061,7 @@ export function useSession(
    * had arrived when its read was requested, and none that came after.
    */
   const applySnapshot = useCallback(
-    (nextSnapshot: SessionStateSnapshotResponse, read: SnapshotRead): boolean => {
+    (nextSnapshot: SessionStateSnapshotResponse, read: SnapshotRead, nextDetail?: SessionDetail): boolean => {
       if (read.sequence <= snapshotAppliedSequenceRef.current) return false;
       snapshotAppliedSequenceRef.current = read.sequence;
       // A read requested after the one that failed has landed: the view is
@@ -1100,11 +1101,18 @@ export function useSession(
       // The state half: unless a newer read of state has landed (then the
       // view keeps that, with what the stream merged into it since).
       // A state-only read that landed before this one is newer than it.
+      // The session's detail was read with the state, so it goes with it.
       const heldState = heldStateRef.current;
       heldStateRef.current = null;
+      const superseded = read.state.sequence <= stateAppliedSequenceRef.current;
       const state =
         takeState(merged, read.state) ??
         (heldState !== null ? withLiveChanges({ ...merged, ...heldState.state }, heldState.changesAt) : null);
+      if (!superseded) {
+        if (nextDetail !== undefined) setDetail(nextDetail);
+      } else if (heldState !== null) {
+        setDetail(heldState.detail);
+      }
       snapshotLandedRef.current = true;
       setSnapshot((prev) =>
         state !== null ? { ...merged, ...state } : prev === null ? merged : { ...merged, clientData: prev.clientData, resources: prev.resources }
@@ -1205,10 +1213,8 @@ export function useSession(
         fetchSessionSnapshot()
       ]);
 
-      // The detail was read with the snapshot, so it is as old as it is.
-      if (nextSnapshot !== null && applySnapshot(nextSnapshot, read)) {
-        setDetail(nextDetail);
-      }
+      // The detail was read with the snapshot, so it lands with its state.
+      if (nextSnapshot !== null) applySnapshot(nextSnapshot, read, nextDetail);
     } catch (cause) {
       failSnapshotRead(read, cause);
     }
@@ -1269,15 +1275,16 @@ export function useSession(
         sessionsApi.get(sessionId),
         sessionsApi.state(sessionId, { includeItems: false })
       ]);
+      const superseded = read.sequence <= stateAppliedSequenceRef.current;
       const state = takeState(next, read);
+      if (!superseded && snapshotLandedRef.current) setDetail(nextDetail);
       if (state === null) return;
       if (!snapshotLandedRef.current) {
         // The mount read is still out and holds older state: it loads this.
-        heldStateRef.current = { state, changesAt: liveChangeCountRef.current };
+        heldStateRef.current = { state, detail: nextDetail, changesAt: liveChangeCountRef.current };
         return;
       }
       setSnapshot((prev) => (prev === null ? prev : { ...prev, ...state }));
-      setDetail(nextDetail);
     } catch {
       // Best effort: see above.
     }
@@ -1686,7 +1693,7 @@ export function useSession(
 
         if (nextSnapshot !== null) {
           // Not landing means a read of this session requested since has.
-          if (applySnapshot(nextSnapshot, read)) setDetail(nextDetail);
+          applySnapshot(nextSnapshot, read, nextDetail);
           setSnapshotAppliedFor(sessionId);
         }
 

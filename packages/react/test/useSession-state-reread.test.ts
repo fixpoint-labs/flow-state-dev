@@ -19,7 +19,9 @@
  *   - no state sequence (a state-only read always lands): the "late
  *     state-only read" case fails, state rewinds.
  *   - a full read always taking state: the "newer state-only read" case
- *     fails, state rewinds to the full read's.
+ *     fails, state rewinds to the full read's; a full read always setting
+ *     its detail: the same case fails on the title, and the "before the
+ *     mount read" case too.
  *   - no state read in the stream's non-completed end: the "failed end"
  *     case fails.
  *   - a non-completed end that changed resources taking the full read, as
@@ -198,6 +200,8 @@ describe("refresh({ items: false })", () => {
 
   it("a full read landing after a newer state-only read loads its items and keeps the newer state", async () => {
     const { result } = await mount();
+    const detail = (title: string) => ({ id: "sess1", flowKind: "demo", userId: "devuser", title, createdAt: 0, updatedAt: 0 });
+    sessionsMock.get.mockResolvedValueOnce(detail("older")).mockResolvedValueOnce(detail("newer"));
 
     act(() => void result.current.refresh());
     await flush();
@@ -211,6 +215,8 @@ describe("refresh({ items: false })", () => {
 
     expect(result.current.items.map((item) => item.id)).toEqual(["m1", "m2"]);
     expect(result.current.snapshot?.clientData.session).toEqual({ phase: "newer" });
+    // The detail was read with each state, so it is the newer one's too.
+    expect(result.current.detail?.title).toBe("newer");
   });
 });
 
@@ -348,6 +354,8 @@ describe("live changes a state read may already hold", () => {
 
 describe("a state-only read that lands before the mount read", () => {
   it("is what the mount read loads, since it is newer", async () => {
+    sessionsMock.get.mockResolvedValueOnce({ id: "sess1", flowKind: "demo", userId: "devuser", title: "mount", createdAt: 0, updatedAt: 0 });
+    sessionsMock.get.mockResolvedValueOnce({ id: "sess1", flowKind: "demo", userId: "devuser", title: "held", createdAt: 0, updatedAt: 0 });
     const { result } = renderHook(() => useSession("sess1", { flowKind: "demo", items: true }));
     await flush();
     act(() => void result.current.refresh({ items: false }));
@@ -360,6 +368,7 @@ describe("a state-only read that lands before the mount read", () => {
 
     expect(result.current.items.map((item) => item.id)).toEqual(["m1"]);
     expect(result.current.snapshot?.clientData.session).toEqual({ phase: "newer" });
+    expect(result.current.detail?.title).toBe("held");
   });
 });
 
