@@ -38,6 +38,22 @@ export {
 
 export { sessionQueryFor } from "./session-client/session-query";
 export {
+  followSession,
+  type FollowSessionOptions,
+  type SessionConnectionState
+} from "./session-client/follow-session";
+export {
+  mayReplaceItem,
+  readSessionHistory,
+  type ReadSessionHistoryOptions
+} from "./session-client/session-history";
+export {
+  sessionFeed,
+  type SessionFeed,
+  type SessionFeedOptions,
+  type SessionFeedSnapshot
+} from "./session-client/session-feed";
+export {
   harnessLines,
   sendHarnessLine,
   steerRunningTurn,

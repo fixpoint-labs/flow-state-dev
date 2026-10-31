@@ -11,12 +11,13 @@
 import { useMemo } from "react";
 import {
   compareItemOrder,
+  followSession,
   readEveryCollectionPage,
   type ResourcesApi,
   type SessionsApi
 } from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { coalescedReads, followSession } from "../../internal/followSession";
+import { coalescedReads } from "../../internal/coalescedReads";
 import { useFencedRead, type ReadDriver } from "../../internal/useFencedRead";
 
 /**
