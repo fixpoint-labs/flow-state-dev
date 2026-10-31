@@ -5,7 +5,7 @@
  * and holds why, for the box to show with Retry. The draft is kept per `id`
  * (a session, a task) across a reload.
  */
-import { useDraft } from "@flow-state-dev/react";
+import { clearDraft, useDraft } from "@flow-state-dev/react";
 import { useRef, useState } from "react";
 
 export function useDraftSend(namespace: string, id: string) {
@@ -16,13 +16,16 @@ export function useDraftSend(namespace: string, id: string) {
   current.current = text;
   /** Send the box's text through `send`, which resolves once the line has landed. */
   const submit = async (send: (line: string) => Promise<unknown>) => {
-    const line = text.trim();
+    const typed = text;
+    const line = typed.trim();
     if (!line || sending) return;
     setSending(true);
     setFailure(undefined);
     try {
       await send(line);
-      if (current.current.trim() === line) setText("");
+      // The box may have closed and reopened while it ran: the stored draft goes only if it is still this line.
+      clearDraft(namespace, id, typed);
+      if (current.current === typed) setText("");
     } catch (error) {
       setFailure(error instanceof Error ? error.message : String(error));
     } finally {

@@ -544,6 +544,28 @@ describe("the teammates screen", () => {
     expect(box.value).toBe("and a second thought");
   });
 
+  it("keeps a draft revised after a reload when the send from before the reload lands", async () => {
+    const lab = fast();
+    let land!: () => void;
+    const adapter = {
+      ...lab,
+      send: (sessionId: string, text: string) => new Promise<void>((resolve) => (land = resolve)).then(() => lab.send(sessionId, text)),
+    };
+    const first = render(<App adapter={adapter} />);
+    await tell("Chief of Staff", "first ask");
+    first.unmount();
+
+    const second = render(<App adapter={adapter} />);
+    const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
+    expect(box.value).toBe("first ask");
+    fireEvent.change(box, { target: { value: "first ask, revised" } });
+    await act(async () => land());
+    second.unmount();
+
+    render(<App adapter={lab} />);
+    expect(((await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement).value).toBe("first ask, revised");
+  });
+
   it("brings an unsent draft back after a reload, for that worker only", async () => {
     const lab = fast();
     const first = render(<App adapter={lab} />);

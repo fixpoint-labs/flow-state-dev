@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useRef } from "react";
 import { act, renderHook } from "@testing-library/react";
 
-import { useDraft } from "../src/hooks/useDraft";
+import { clearDraft, useDraft } from "../src/hooks/useDraft";
 
 /** Kitchen Sink's namespace: the key its own copy of this hook wrote, so drafts stored then still read. */
 const NS = "kitchen-sink:composer-draft";
@@ -174,5 +174,27 @@ describe("useDraft", () => {
 
     expect(result.current.draft).toBe("revised while waiting");
     expect(localStorage.getItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a")).toBe("revised while waiting");
+  });
+
+  it("ignores a setter called after the box closed, so a late send can't wipe the draft of the box opened since", () => {
+    const first = renderHook(() => useSessionDraft("sess-a"));
+    act(() => first.result.current[1]("sent line"));
+    const lateSetter = first.result.current[1];
+    first.unmount();
+    const again = renderHook(() => useSessionDraft("sess-a"));
+    act(() => again.result.current[1]("revised after reopening"));
+
+    act(() => lateSetter(""));
+
+    expect(again.result.current[0]).toBe("revised after reopening");
+    expect(localStorage.getItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a")).toBe("revised after reopening");
+  });
+
+  it("clearDraft with the sent text drops the stored draft only while it is still that text", () => {
+    localStorage.setItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a", "revised");
+    clearDraft(NS, "sess-a", "sent line");
+    expect(localStorage.getItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a")).toBe("revised");
+    clearDraft(NS, "sess-a", "revised");
+    expect(localStorage.getItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a")).toBeNull();
   });
 });

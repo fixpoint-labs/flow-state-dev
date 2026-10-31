@@ -1,4 +1,4 @@
-import { isSendKey, useDraft } from "@flow-state-dev/react";
+import { clearDraft, isSendKey, useDraft } from "@flow-state-dev/react";
 import { useRef, type FormEvent, type KeyboardEvent } from "react";
 import { useSubmit } from "../lib/use-submit";
 
@@ -29,17 +29,18 @@ export function Composer({
   const [text, setText] = useDraft("teammates:draft", sessionId);
   const current = useRef(text);
   current.current = text;
-  const { error, busy, submit } = useSubmit(async (line: string) => {
-    await onSend(line);
-    if (current.current.trim() === line) setText("");
+  const { error, busy, submit } = useSubmit(async (typed: string) => {
+    await onSend(typed.trim());
+    // The box may have closed and reopened while it ran: the stored draft goes only if it is still this line.
+    clearDraft("teammates:draft", sessionId, typed);
+    if (current.current === typed) setText("");
   });
   const send = (event?: FormEvent) => {
-    const line = text.trim();
-    if (!line || busy) {
+    if (!text.trim() || busy) {
       event?.preventDefault();
       return;
     }
-    void submit(event, line);
+    void submit(event, text);
   };
   const onSubmit = (event: FormEvent) => send(event);
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {

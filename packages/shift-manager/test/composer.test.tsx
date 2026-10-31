@@ -112,7 +112,10 @@ describe("a send finishes under StrictMode (dev mounts every effect twice)", () 
 });
 
 describe("a reload keeps what was typed, and what may already have been sent (SM-ROB-8)", () => {
-  const composer = (draftKey: string, send: () => Promise<void> = () => new Promise(() => {})) => (
+  const composer = (
+    draftKey: string,
+    send: (message: string, held: () => void) => Promise<void> = () => new Promise(() => {}),
+  ) => (
     <TurnComposer testId="t" label="Message worker" placeholder="" blocked={null} draftKey={draftKey} send={send} />
   );
 
@@ -140,6 +143,43 @@ describe("a reload keeps what was typed, and what may already have been sent (SM
     expect(screen.getByTestId("t-status").getAttribute("data-state")).toBe("unconfirmed");
     expect(screen.getByTestId("t-error").textContent).toBe("the connection dropped");
     expect(screen.queryByTestId("t-retry")).toBeNull();
+  });
+
+  it("doesn't bring a line back as unsent when it lands after its composer closed", async () => {
+    const reply = gate();
+    const first = render(
+      composer("conversation:w-1", async (_message?: string, held?: () => void) => {
+        held?.();
+        await reply.done;
+      }),
+    );
+    fireEvent.change(screen.getByTestId("t-input"), { target: { value: "ship it" } });
+    await act(async () => fireEvent.click(screen.getByTestId("t-send")));
+    first.unmount();
+    await act(async () => reply.open());
+
+    render(composer("conversation:w-1"));
+    expect((screen.getByTestId("t-input") as HTMLInputElement).value).toBe("");
+  });
+
+  it("keeps a line typed in a reopened composer when the earlier send settles", async () => {
+    const reply = gate();
+    const first = render(
+      composer("conversation:w-1", async () => {
+        await reply.done;
+      }),
+    );
+    fireEvent.change(screen.getByTestId("t-input"), { target: { value: "ship it" } });
+    await act(async () => fireEvent.click(screen.getByTestId("t-send")));
+    first.unmount();
+
+    const second = render(composer("conversation:w-1"));
+    fireEvent.change(screen.getByTestId("t-input"), { target: { value: "ship it today" } });
+    await act(async () => reply.open());
+    second.unmount();
+
+    render(composer("conversation:w-1"));
+    expect((screen.getByTestId("t-input") as HTMLInputElement).value).toBe("ship it today");
   });
 
   it("forgets the warning once a send lands", async () => {

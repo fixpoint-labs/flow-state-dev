@@ -394,18 +394,20 @@ const [draft, setDraft] = useDraft("my-app:composer", sessionId);
 const latest = useRef(draft);
 latest.current = draft;
 const send = async () => {
-  const line = draft.trim();
-  await sendLine(line); // throws when the send fails: the draft stays
-  // Clear only if nothing was typed while the send ran.
-  if (latest.current.trim() === line) setDraft("");
+  const typed = draft;
+  await sendLine(typed.trim()); // throws when the send fails: the draft stays
+  // The box may have closed and reopened meanwhile: drop the stored copy only if it is still this text.
+  clearDraft("my-app:composer", sessionId, typed);
+  // Clear the box only if nothing was typed while the send ran.
+  if (latest.current === typed) setDraft("");
 };
 return <textarea value={draft} onChange={(e) => setDraft(e.target.value)} />;
 ```
 
-Clear the draft only once the send has landed, so a failed send leaves the text where it was. `setDraft("")` drops the stored copy. A setter held from an earlier `id`, such as a slow send that settles after the person switched sessions, stores under that id and leaves the box they're looking at alone.
+Clear the draft only once the send has landed, so a failed send leaves the text where it was. `setDraft("")` drops the stored copy. A setter held from an earlier `id`, such as a slow send that settles after the person switched sessions, stores under that id and leaves the box they're looking at alone. A setter called after the box unmounted does nothing, since the box opened next owns the stored draft.
 
 - `id` may be `undefined` while the box doesn't know where it writes yet. Text typed then is kept in memory and stored once `id` arrives.
-- `clearDraft(namespace, id)`: drop the stored copy without touching what any box shows, for a send the server took while the person kept typing.
+- `clearDraft(namespace, id, sent?)`: drop the stored copy without touching what any box shows, for a send the server took while the person kept typing. With `sent`, it drops the copy only if it still holds that text.
 - Storage that throws (quota, private mode) keeps the draft in memory only.
 
 ### `isSendKey(event, options?)`

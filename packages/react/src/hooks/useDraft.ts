@@ -10,7 +10,7 @@
  *
  * Storage that throws (quota, private mode) leaves the draft in memory only.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 function storageKey(namespace: string, id: string): string {
   return `${namespace}:${id}`;
@@ -37,9 +37,12 @@ function writeDraft(namespace: string, id: string | undefined, text: string): vo
 
 /**
  * Drop the stored draft for `id`, leaving any box's in-memory text alone: for a
- * send the server took while the box may already hold newer text.
+ * send the server took while the box may already hold newer text. With `sent`,
+ * the stored draft is dropped only if it is still that text, so a send that
+ * settles after the box was closed and reopened keeps what was typed since.
  */
-export function clearDraft(namespace: string, id: string | undefined): void {
+export function clearDraft(namespace: string, id: string | undefined, sent?: string): void {
+  if (sent !== undefined && readDraft(namespace, id) !== sent) return;
   writeDraft(namespace, id, "");
 }
 
@@ -47,7 +50,9 @@ export function clearDraft(namespace: string, id: string | undefined): void {
  * The unsent text for one box, restored from storage when it opens. The setter
  * stores as it sets; setting `""` drops the stored draft. A setter kept from an
  * earlier `id` (a slow send that settles after the box moved on) stores under
- * that id and leaves the shown draft alone.
+ * that id and leaves the shown draft alone. A setter called after the box
+ * unmounted does nothing: the box opened next owns the stored draft, so clear
+ * a send that settles late with {@link clearDraft} and its `sent` text.
  */
 export function useDraft(namespace: string, id: string | undefined): [string, (text: string) => void] {
   const [state, setState] = useState(() => ({ id, draft: readDraft(namespace, id) }));
@@ -62,8 +67,15 @@ export function useDraft(namespace: string, id: string | undefined): [string, (t
     setState({ id, draft });
   }
 
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => void (mounted.current = false);
+  }, []);
+
   const setDraft = useCallback(
     (text: string) => {
+      if (!mounted.current) return;
       writeDraft(namespace, id, text);
       setState((prev) => (prev.id === id ? { id, draft: text } : prev));
     },

@@ -24,7 +24,7 @@
  * 1.5px ink box with ⏎ beside it and the send state under it (v2:175-178).
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { useDraft } from "@flow-state-dev/react";
+import { clearDraft, useDraft } from "@flow-state-dev/react";
 import { TurnNotDelivered, type TurnStop } from "../lib/send";
 
 /** Where a composer's unsent line is kept (`useDraft`), and beside it an *unconfirmed* send's warning. */
@@ -278,8 +278,7 @@ export function TurnComposer({
   const current = useRef(draft);
   current.current = draft;
   const setDraft = useCallback(
-    (next: string | ((now: string) => string)) => {
-      const text = typeof next === "function" ? next(current.current) : next;
+    (text: string) => {
       current.current = text;
       setDraftText(text);
     },
@@ -300,7 +299,9 @@ export function TurnComposer({
     const leave = () => {
       if (left) return;
       left = true;
-      setDraft((current) => (current === submitted ? "" : current));
+      // The composer may have closed and reopened meanwhile: the stored draft goes only if it is still this line.
+      clearDraft(DRAFT, draftKey, submitted);
+      if (current.current === submitted) setDraft("");
       onHeld?.(message);
     };
     if (await run((held) => send(message, () => {
@@ -311,7 +312,8 @@ export function TurnComposer({
       onDelivered?.(message);
     } else if (left) {
       // It failed after it left: put it back, unless another line was started.
-      setDraft((current) => (current === "" ? submitted : current));
+      // A composer that has closed puts nothing back (its draft setter does nothing then).
+      if (current.current === "") setDraft(submitted);
     }
   };
 

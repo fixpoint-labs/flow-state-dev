@@ -219,6 +219,38 @@ describe("the session-mode screen", () => {
     expect(box.value).toBe("and a second thought");
   });
 
+  it("keeps a draft revised after a reload when the send from before the reload lands", async () => {
+    const lab = fast();
+    let land!: () => void;
+    const adapter = {
+      ...lab,
+      send: (sessionId: string, text: string) => new Promise<void>((resolve) => (land = resolve)).then(() => lab.send(sessionId, text)),
+    };
+    const open = async () => {
+      await pick();
+      fireEvent.click(within(screen.getByRole("navigation", { name: "Sessions" })).getByRole("button", { name: /Draft the launch note/ }));
+      await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"));
+      return screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    };
+    const first = render(<App adapter={adapter} />);
+    const box = await open();
+    await act(async () => {
+      fireEvent.change(box, { target: { value: "tighten the intro" } });
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+    first.unmount();
+
+    const second = render(<App adapter={adapter} />);
+    const again = await open();
+    expect(again.value).toBe("tighten the intro");
+    fireEvent.change(again, { target: { value: "tighten the intro, and the outro" } });
+    await act(async () => land());
+    second.unmount();
+
+    render(<App adapter={lab} />);
+    expect((await open()).value).toBe("tighten the intro, and the outro");
+  });
+
   it("brings an unsent draft back after a reload, for its own session only", async () => {
     const lab = fast();
     const open = async (title: RegExp, heading: string) => {
