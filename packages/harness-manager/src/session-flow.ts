@@ -43,8 +43,9 @@
  * on the turn. A red check is reported, never a failed turn: the person is
  * there, and the next turn is theirs.
  *
- * When a turn ends, however it ended, the flow also records what it spent on
- * its record: the request's own spend, as every harness reports it into the
+ * When the harness step ends, however it ended, the flow also records what
+ * the turn spent on its record, inside the turn so it lands before the
+ * request publishes its end: the request's own spend, as every harness reports it into the
  * request (`reportHarnessSpend`), folded by orchestration's `taskSpendView`
  * so a turn reads like a task. And a subscription window a harness hears
  * about during a run (`onUsage`) lands in the person's usage record, read
@@ -439,6 +440,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
           failure: harnessFailureKind(error),
           stopped: ctx.signal.aborted,
           error: error.message,
+          ...turnEndOf(ctx, requestId),
         })),
       );
       throw error;
@@ -521,21 +523,19 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       await changeState(harnessCtx, (state) => withTurn(state, requestId, (record) => ({ ...record, head })));
     },
   });
-  // When a turn ends, however it ended: what it spent, on its record. The
+  // When the harness step returns: what the turn spent, on its record. The
   // harness reported its run into the request before its block returned, so
-  // the request's pending spend is the whole turn. A failed write is a note,
-  // never a failed turn.
+  // the request's pending spend is the whole turn. Written inside the turn,
+  // not at `onFinished`, so it lands before the request publishes its end and
+  // a page that refreshes on that end reads it. A turn that threw records it
+  // in `recordFailure`'s write instead. A failed write is a note, never a
+  // failed turn.
   const turnSpend = handler({
     name: "turn-spend",
-    execute: async (_input: unknown, ctx): Promise<void> => {
-      const harnessCtx = ctx as unknown as HarnessCallbackContext;
-      const requestId = requestOf(harnessCtx);
-      if ((harnessCtx.session.state as HarnessSessionState).turns?.[requestId] === undefined) return;
-      const spend = turnSpendOf(readRequestSpend(ctx), requestId);
+    execute: async (_handle: HarnessRunHandle, ctx): Promise<void> => {
+      const requestId = ctx.request.identity.id;
       try {
-        await changeState(harnessCtx, (state) =>
-          withTurn(state, requestId, (record) => ({ ...record, spend, endedAt: Date.now() })),
-        );
+        await changeState(ctx, (state) => withTurn(state, requestId, (record) => ({ ...record, ...turnEndOf(ctx, requestId) })));
       } catch (error) {
         ctx.emit.status(`What the turn spent was not recorded: ${(error as Error).message}`, { transient: false });
       }
@@ -543,7 +543,6 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   });
   const turnEnd = sequencer({ name: "turn-end", inputSchema: z.unknown() })
     .tap(recordTurnHead)
-    .tap(turnSpend)
     .tap(branchPullRequests);
   // What one turn's commits changed, between the commits its record keeps. A
   // read: answered in the response and stored nowhere, so an opened patch
@@ -591,6 +590,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     .tap(titleFromPrompt)
     .step(agent.rescue([{ block: recordFailure }]))
     .tap(recordFailedOutcome)
+    .tap(turnSpend)
     .tap(verifyTurn);
 
   return defineFlow({
@@ -621,6 +621,11 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
           : { ok: false, message: HARNESS_SESSION_MODEL_REQUIRED },
     },
   })();
+}
+
+/** What a turn's record gets when its harness step ends: what it spent, and when. */
+function turnEndOf(ctx: object, requestId: string): { spend: ReturnType<typeof turnSpendOf>; endedAt: number } {
+  return { spend: turnSpendOf(readRequestSpend(ctx), requestId), endedAt: Date.now() };
 }
 
 /**

@@ -17,12 +17,13 @@
 
 **Run:** `pnpm tsx goals/harness-manager/a-turn-records-what-it-spent/run.mts`
 
-**Controls:** on the same command.
+**Controls:**
 
-- `GOAL_CONTROL=no-turn-spend`: the flow's turn-end step is dropped, as a flow that never writes a turn's spend would. **t** and **s** FAIL on `spend` being null.
+- Today's `main`: the same `run.mts` copied into a worktree of `main` and run there. That flow writes no turn spend, so **t** and **s** FAIL on `spend` being missing. The flow writes the spend inside its turn, before the request publishes its end, so no switch from outside the package can turn it off; the baseline is the control.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-10-31 | implementation branch, on 45cefc5 | claude-haiku-4-5 (API key) | **PASS** | Linux container. **t**: 17,634 in · 73 out · $0.022405, 4.0 s. **s**: stopped, 17,491 in · 4 out, no charge reported for the stopped run. Control `no-turn-spend` FAILED **t** (no spend, no `endedAt`) and **s** (no spend) |
 | 2026-10-31 | after merging FIX-2387's branch (with FIX-2384) | claude-haiku-4-5 (API key) | **PASS** | Rerun on the stacked branch. **t**: 17,487 in · 58 out · $0.0221, 3.2 s. **s**: stopped, 17,491 in · 6 out. Control `no-turn-spend` FAILED **t** and **s** again |
+| 2026-10-31 | spend written inside the turn (after Codex's ordering finding) | claude-haiku-4-5 (API key) | **PASS** | **t**: 17,489 in · 68 out · $0.0088, 3.1 s. **s**: stopped, 17,493 in · 4 out. The `no-turn-spend` control above no longer bites (it dropped `onFinished`, which no longer writes), so it is retired. Control is now `main` 675f614 in a worktree: **FAILED** **t** (no spend, no `endedAt`) and **s** (no spend) |

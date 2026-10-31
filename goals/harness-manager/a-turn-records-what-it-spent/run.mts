@@ -12,9 +12,10 @@
  *     charge above zero, and `endedAt` is at or after the turn's start.
  *   - **s**: a turn stopped mid-run still has `spend`, naming Claude Code.
  *
- * Control: `GOAL_CONTROL=no-turn-spend` drops the flow's turn-end step, as a
- * flow that never writes a turn's spend would. **t** and **s** FAIL on
- * `spend` being null.
+ * Control: the same script run from a worktree of `main`, whose flow writes
+ * no turn spend. **t** and **s** FAIL on `spend` being missing. The flow
+ * writes the spend inside its turn, where nothing outside the package can
+ * switch it off, so the baseline is the control.
  *
  * Run: pnpm tsx goals/harness-manager/a-turn-records-what-it-spent/run.mts
  */
@@ -28,7 +29,6 @@ import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import { harnessSessionFlow, type HarnessSessionState, type HarnessTurnRecord } from "@flow-state-dev/harness-manager";
 import { runGoal } from "../../lib/index.mts";
 
-const control = process.env.GOAL_CONTROL ?? "";
 if ((process.env.ANTHROPIC_API_KEY ?? "") === "" && (process.env.MY_ANTHROPIC_API_KEY ?? "") !== "") {
   process.env.ANTHROPIC_API_KEY = process.env.MY_ANTHROPIC_API_KEY;
 }
@@ -54,7 +54,6 @@ await runGoal(async (failures) => {
         detached: true,
       } as never) as never,
   });
-  if (control === "no-turn-spend") (flow as { request?: unknown }).request = undefined;
 
   const stores = createInMemoryStores();
   const born = async (sessionId: string) => {
@@ -89,7 +88,7 @@ await runGoal(async (failures) => {
       if ((tSpend.inputTokens ?? 0) + (tSpend.outputTokens ?? 0) <= 0) failures.push(`t: no tokens recorded (${tSpend.inputTokens} in, ${tSpend.outputTokens} out)`);
       if (!(typeof tSpend.costUsd === "number" && tSpend.costUsd > 0)) failures.push(`t: no charge recorded on an API-key run (costUsd ${tSpend.costUsd})`);
     }
-    if (t !== undefined && (t.endedAt === null || t.at === null || t.endedAt < t.at)) failures.push(`t: endedAt ${t.endedAt} is not at or after the start ${t.at}`);
+    if (t !== undefined && (t.endedAt == null || t.at == null || t.endedAt < t.at)) failures.push(`t: endedAt ${t.endedAt} is not at or after the start ${t.at}`);
 
     // s — a turn stopped mid-run.
     await born("goal-s");
@@ -100,7 +99,7 @@ await runGoal(async (failures) => {
     const s = await recordOf("goal-s");
     evidence.push(`s: stopped=${s?.stopped} error=${JSON.stringify(s?.error)} spend=${JSON.stringify(s?.spend ?? null)}`);
     if (s === undefined) failures.push("s: the stopped turn left no record");
-    else if (s.spend === null) failures.push("s: the stopped turn's record has no spend");
+    else if (s.spend == null) failures.push("s: the stopped turn's record has no spend");
     else if (s.spend.harness !== "claude-code") failures.push(`s: the stopped turn's spend names ${s.spend.harness}, not claude-code`);
   } finally {
     rmSync(scratch, { recursive: true, force: true });

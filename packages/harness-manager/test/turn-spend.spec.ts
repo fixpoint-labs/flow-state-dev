@@ -11,6 +11,8 @@
  * Red states produced before these were trusted:
  *   - drop the turn-end spend step from `onFinished`: every `spend` here is null.
  *   - drop `onUsage` from the feeds: the usage query lists no window.
+ *   - write the spend from the flow's `onFinished` instead: the request's
+ *     terminal status is published before the spend lands.
  */
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
 import { reportHarnessSpend, type HarnessBlock, type HarnessCallbackContext } from "@flow-state-dev/core/types";
@@ -114,6 +116,23 @@ describe("a harness session turn's spend", () => {
     const turn = await onlyTurn(stores, "s-none");
     expect(turn.spend).toBeNull();
     expect(turn.endedAt).not.toBeNull();
+  });
+  // A page refreshes the session when it sees the turn end, so the spend must
+  // be stored by the time the request publishes its terminal status.
+  it("is stored before the request publishes that it completed", async () => {
+    const stores = createInMemoryStores();
+    await born(stores, "s-order");
+    const seen: Array<Promise<unknown>> = [];
+    const persist = stores.request.persistEvents.bind(stores.request);
+    stores.request.persistEvents = (requestId, events) => {
+      if (events.some((event) => (event as { type?: string }).type === "request.completed")) {
+        seen.push(stores.session.get("s-order").then((session) => Object.values((session?.state as HarnessSessionState).turns ?? {})[0]?.spend ?? null));
+      }
+      return persist(requestId, events);
+    };
+    await run(stores, "s-order", { spend: { inputTokens: 10, outputTokens: 2, costUsd: 0.001, billing: "api-key" } });
+    expect(seen).toHaveLength(1);
+    expect(await seen[0]).toMatchObject({ inputTokens: 10, outputTokens: 2 });
   });
 });
 
