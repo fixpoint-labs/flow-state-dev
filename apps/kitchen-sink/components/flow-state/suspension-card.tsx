@@ -7,7 +7,7 @@ import { Approval } from "./approval";
 import { Question } from "./question";
 import { Selection } from "./selection";
 import { Form } from "./form";
-import { ReviewSuspension } from "./review-hold";
+import { ReviewSuspension, takesReviewVerdict } from "./review-hold";
 import { useSuspensionResolution } from "./suspension-resolution";
 
 /**
@@ -15,9 +15,9 @@ import { useSuspensionResolution } from "./suspension-resolution";
  * the single `suspension` renderer; it picks the right card by `reason` and
  * `resumeSchema` shape — the binary approval card, a clarifying-question card, a
  * selection card, or a flat-form card. Mirrors the built-in `ItemRenderer`
- * dispatch so the polished and minimal surfaces stay aligned. A stop whose
- * `kind` is `review` (a coding run's changes, harness-manager's
- * `reviewChanges`) is drawn by the `ReviewSuspension` card instead.
+ * dispatch so the polished and minimal surfaces stay aligned. A `kind:
+ * "review"` stop whose resume schema takes the review verdict (`accepted`, or
+ * `revise` with words) is drawn by the `ReviewSuspension` card instead.
  *
  * Because registering this as the `suspension` slot bypasses the built-in
  * `ItemRenderer`'s `render.component` check, the escape hatch is honored here
@@ -45,9 +45,9 @@ export function SuspensionCard({ item }: { item: SuspensionItem }) {
     }
   }
 
-  // A coding run's review (harness-manager's `reviewChanges`) takes a verdict,
+  // A review that takes a verdict (Accept, or Ask for changes with words) is
   // not free text: its own card builds the only answers it accepts.
-  if (item.kind === "review") {
+  if (item.kind === "review" && takesReviewVerdict(item.resumeSchema)) {
     return <ReviewSuspension item={item} isResolved={isResolved} resolution={resolution} />;
   }
 

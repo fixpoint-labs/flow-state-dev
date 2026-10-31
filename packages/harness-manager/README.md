@@ -341,7 +341,7 @@ await inbox.answer(item, { value: { verdict: "revise", words: "Keep the old endp
 
 That posts to the engine's answer route, `POST /api/flows/:flow/requests/:requestId/answer` with `{ suspensionId, action: "submit", data }`. Blank `words` are refused with a 400, and the review stays open.
 
-To draw the review in a browser, add the ui registry's `review-hold` component (`fsdev ui add review-hold`). It shows the commits, the branch and the judge's verdict, and sends only these two answers. The registry's `SuspensionCard` draws it for any `kind: "review"` stop.
+To draw the review in a browser, add the ui registry's `review-hold` component (`fsdev ui add review-hold`). It offers Accept and Ask for changes, and sends only these two answers. The registry's `SuspensionCard` draws it for this stop, with the stop's prompt.
 
 - **Accepted**: the task completes with no further run, output `review: "accepted"`.
 - **Revise**: the words are written on the task as the user's steer, and one more run starts on the same attempt, continuing the same coding session with the words in its prompt, as any steer is taken. If it commits again it is reviewed again, over all the branch's commits. Each revision counts toward the task's steer limit; past it the attempt fails. If the harness confirmed no coding session, the revision fails the attempt instead, and the next attempt's brief carries the words.

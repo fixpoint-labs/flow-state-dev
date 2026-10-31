@@ -7,33 +7,33 @@ import { useSuspensionResolver } from "@flow-state-dev/react";
 import { CheckIcon, MinusIcon } from "lucide-react";
 
 /**
- * A coding run's review, waiting on the user: the commits it made on its
- * branch, the judge's verdict, and **Accept** or **Ask for changes**.
+ * A review waiting on the user: **Accept** or **Ask for changes**. For a
+ * coding run's review (harness-manager's `reviewChanges`) it shows the
+ * commits the run made on its branch and the judge's verdict; for any other
+ * review it shows the stop's prompt, which holds the work under review.
  *
- * harness-manager's `reviewChanges` stops a run that committed with
- * `suspendForUser({ kind: "review" })`. Its data is `{ branch, commits,
- * subjects, judge }` and its answer is `harnessReviewAnswerSchema`'s:
- * `{ verdict: "accepted" }` or `{ verdict: "revise", words }` (harness-manager
- * README, "Reviewing a run's changes"). This card is the one place an app reads
- * that data and builds those answers.
+ * The card sends only `{ verdict: "accepted" }` or `{ verdict: "revise",
+ * words }` (harness-manager's `harnessReviewAnswerSchema`). It spells none of
+ * harness-manager's stop fields: an app reads a coding run's review with
+ * harness-manager's browser entry and passes the result as `review`.
  *
  * Two ways in:
  *
- * - {@link ReviewHold}: drawn from a task's hold (an Inbox hold's `detail` is
- *   the stop's data), with the app's own `answer`, typically the Inbox
- *   client's `answerOne(hold, { value })`.
+ * - {@link ReviewHold}: drawn from a task's hold, with the app's own `answer`,
+ *   typically the Inbox client's `answerOne(hold, { value })`.
  * - {@link ReviewSuspension}: drawn for a `suspension` item, answered through
- *   the nearest `SuspensionResolverProvider`.
- *   `SuspensionCard` routes every `kind: "review"` stop here.
+ *   the nearest `SuspensionResolverProvider`. `SuspensionCard` routes a
+ *   `kind: "review"` stop that takes a verdict ({@link takesReviewVerdict})
+ *   here, in prompt form.
  */
 
-/** A run's review, read from its stop's data. `null` where the data had nothing readable. */
+/** A coding run's review, as the card draws it. `null` where the run's record had nothing readable. */
 export interface ReviewDetail {
   /** The run's branch. */
   branch: string | null;
   /** How many commits it made over its base; `null` when git couldn't count them. */
   commits: number | null;
-  /** Its commit subjects, newest first, at most 20. */
+  /** Its commit subjects, newest first. */
   subjects: string[];
   /** The judge's verdict on the run, or `null` when no judge read it. */
   judge: { verdict: string; confidence: number; reason: string } | null;
@@ -52,21 +52,19 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /**
- * A review stop's data as the card reads it. Every field is checked: a field
- * that is missing or the wrong type reads as unknown, never a throw.
+ * Whether a stop's resume schema (its JSON Schema) takes the review's verdict:
+ * branches whose `verdict` is the constant `accepted` and `revise`. A review
+ * stop whose answer is something else is not this card's to draw.
  */
-export function reviewDetailOf(data: unknown): ReviewDetail {
-  const d = isRecord(data) ? data : {};
-  const judge = isRecord(d.judge) ? d.judge : null;
-  return {
-    branch: typeof d.branch === "string" && d.branch !== "" ? d.branch : null,
-    commits: typeof d.commits === "number" && Number.isFinite(d.commits) ? d.commits : null,
-    subjects: Array.isArray(d.subjects) ? d.subjects.filter((s): s is string => typeof s === "string") : [],
-    judge:
-      judge !== null && typeof judge.verdict === "string" && typeof judge.confidence === "number"
-        ? { verdict: judge.verdict, confidence: judge.confidence, reason: typeof judge.reason === "string" ? judge.reason : "" }
-        : null,
-  };
+export function takesReviewVerdict(schema: unknown): boolean {
+  if (!isRecord(schema)) return false;
+  const branches = Array.isArray(schema.anyOf) ? schema.anyOf : Array.isArray(schema.oneOf) ? schema.oneOf : [];
+  const verdicts = new Set<unknown>();
+  for (const branch of branches) {
+    if (!isRecord(branch) || !isRecord(branch.properties) || !isRecord(branch.properties.verdict)) continue;
+    verdicts.add(branch.properties.verdict.const);
+  }
+  return verdicts.has("accepted") && verdicts.has("revise");
 }
 
 /**
@@ -101,14 +99,17 @@ export function judgeLine(review: ReviewDetail): string {
  * commits and the judge: an app's diff of the run goes there.
  */
 export function ReviewHold({
-  data,
+  prompt,
+  review,
   answer,
   unanswerable,
   resolved,
   children,
 }: {
-  /** The review stop's data: harness-manager's `{ branch, commits, subjects, judge }`. */
-  data: unknown;
+  /** The stop's prompt: what a review that isn't a coding run's shows. */
+  prompt?: string;
+  /** A coding run's review, from harness-manager's browser reader. Absent: the card shows `prompt`. */
+  review?: ReviewDetail | null;
   /** Send the answer. Absent: the card can't answer, and says `unanswerable`. */
   answer?: (answer: ReviewAnswer) => Promise<void>;
   /** Why this review can't be answered here. */
@@ -117,7 +118,6 @@ export function ReviewHold({
   resolved?: "accepted" | "revise" | "answered";
   children?: ReactNode;
 }) {
-  const review = reviewDetailOf(data);
   const [words, setWords] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -144,7 +144,7 @@ export function ReviewHold({
     if (trimmed !== "") void send({ verdict: "revise", words: trimmed });
   };
 
-  const more = (review.commits ?? review.subjects.length) - Math.min(review.subjects.length, SUBJECTS_SHOWN);
+  const more = review ? (review.commits ?? review.subjects.length) - Math.min(review.subjects.length, SUBJECTS_SHOWN) : 0;
   const canAnswer = answer !== undefined && (unanswerable === undefined || unanswerable === null);
   return (
     <section
@@ -153,38 +153,47 @@ export function ReviewHold({
       className="my-1.5 min-w-0 rounded-lg border border-success bg-success/10 px-3 py-2 text-sm [overflow-wrap:anywhere]"
     >
       <div className="font-semibold">Ready for review</div>
-      <div className="mt-0.5 flex min-w-0 flex-wrap gap-x-1 text-xs">
-        <span className="shrink-0" data-review-commits>
-          {commitCount(review)}
-        </span>
-        {review.branch === null ? null : (
-          <>
-            <span className="shrink-0">on</span>
-            <code title={review.branch} data-review-branch className="min-w-0 truncate font-mono [overflow-wrap:normal]">
-              {shortBranch(review.branch)}
-            </code>
-          </>
-        )}
-      </div>
-      {review.subjects.length > 0 ? (
-        <ul className="mt-1 text-xs text-muted-foreground">
-          {review.subjects.slice(0, SUBJECTS_SHOWN).map((subject, i) => (
-            <li key={i} title={subject} className="truncate [overflow-wrap:normal]">
-              · {subject}
-            </li>
-          ))}
-          {more > 0 ? <li>· and {more} more</li> : null}
-        </ul>
+      {review ? (
+        <>
+          <div className="mt-0.5 flex min-w-0 flex-wrap gap-x-1 text-xs">
+            <span className="shrink-0" data-review-commits>
+              {commitCount(review)}
+            </span>
+            {review.branch === null ? null : (
+              <>
+                <span className="shrink-0">on</span>
+                <code title={review.branch} data-review-branch className="min-w-0 truncate font-mono [overflow-wrap:normal]">
+                  {shortBranch(review.branch)}
+                </code>
+              </>
+            )}
+          </div>
+          {review.subjects.length > 0 ? (
+            <ul className="mt-1 text-xs text-muted-foreground">
+              {review.subjects.slice(0, SUBJECTS_SHOWN).map((subject, i) => (
+                <li key={i} title={subject} className="truncate [overflow-wrap:normal]">
+                  · {subject}
+                </li>
+              ))}
+              {more > 0 ? <li>· and {more} more</li> : null}
+            </ul>
+          ) : null}
+          {children}
+          <div className="mt-1.5 text-xs" data-review-judge>
+            <span className="font-semibold">{judgeLine(review)}</span>
+            {review.judge && review.judge.reason !== "" ? (
+              <p title={review.judge.reason} className="mt-0.5 line-clamp-3 text-muted-foreground">
+                {review.judge.reason}
+              </p>
+            ) : null}
+          </div>
+        </>
+      ) : prompt ? (
+        <p className="mt-0.5 text-xs whitespace-pre-wrap" data-review-prompt>
+          {prompt}
+        </p>
       ) : null}
-      {children}
-      <div className="mt-1.5 text-xs" data-review-judge>
-        <span className="font-semibold">{judgeLine(review)}</span>
-        {review.judge && review.judge.reason !== "" ? (
-          <p title={review.judge.reason} className="mt-0.5 line-clamp-3 text-muted-foreground">
-            {review.judge.reason}
-          </p>
-        ) : null}
-      </div>
+      {review ? null : children}
       {canAnswer ? (
         <div className="mt-2 flex flex-col gap-1.5">
           <textarea
@@ -266,9 +275,12 @@ export const NO_RESOLVER_UNANSWERABLE =
  */
 export function ReviewSuspension({
   item,
+  review,
   isResolved,
 }: {
   item: SuspensionItem;
+  /** A coding run's review, when the app read one from the stop. Absent: the stop's prompt. */
+  review?: ReviewDetail | null;
   isResolved?: boolean;
   /** Accepted for `SuspensionCard`'s call shape; a resume's status doesn't say which verdict was sent. */
   resolution?: SuspensionStatus;
@@ -280,7 +292,8 @@ export function ReviewSuspension({
       : (reply: ReviewAnswer) => resolver({ suspensionId: item.suspensionId, requestId: item.requestId, action: "submit", data: reply });
   return (
     <ReviewHold
-      data={item.data}
+      {...(item.message ? { prompt: item.message } : {})}
+      {...(review ? { review } : {})}
       {...(answer === undefined ? { unanswerable: NO_RESOLVER_UNANSWERABLE } : { answer })}
       resolved={isResolved === true ? "answered" : undefined}
     />
