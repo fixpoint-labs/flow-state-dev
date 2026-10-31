@@ -756,6 +756,8 @@ await createInboxClient(client).answer(items[0], { approved: true });
 
 The answer is typed by what the question asks: an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, and a confirm `{ done, note? }`. The client sends each where it belongs: a stop to the [answer call](/docs/api/client#answerbody), and a question or a confirm to its board's `updateTask` action, as the signed-in user. There a question's `text` becomes the `message`, and a confirm's `note` becomes the `message` beside `done`. The package README's [Inbox section](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/orchestration/README.md#inbox) has the full call list.
 
+To draw a task's own card or row, `taskRowView(row, holds?)` from the same entry gives one display state for it: `queued`, `held`, `running`, `waiting`, `failed`, `done` or `cancelled`. A task that waits on the user reads `waiting` whatever its stored status, and its `hold` says what it asks. Pass the row's Inbox item's `holds` if you have them, since they also say where each answer goes. Without them the view reads the row's own holds. The view also carries the task's spend, harness, model and times.
+
 ## Assignees that dispatch {#assignees-that-dispatch}
 
 <a id="assignees-that-hand-off"></a>
