@@ -97,6 +97,8 @@ It's the same on every attempt, so a retry or a run that resumes after someone's
 
 Ending cleanly and finishing the job are two different answers. A run that exhausts its turn or spend budget commits the part it got through and reports `stopped-at-limit`. A completion check that answers from the branch alone (a commit exists, a pull request exists) settles that row as done with half the work in it. Reading `stopReport` is how a phase refuses that, as the sample above does.
 
+`isDone` can also answer `{ done, reason?, checks? }` instead of a boolean, to say why a run isn't done. To make done mean your project's own commands pass, wrap the phase in `commandCheck`; see [Checking the work with commands](#checking-the-work-with-commands).
+
 If a phase reads collections of its own, ship them as a capability and put it on the manager's `uses`:
 
 ```ts
@@ -135,7 +137,7 @@ harnessManager({ ledgers: conversationLedgers, judge: { block: answerJudge, floo
 
 A run's changes are the commits it made over the base its branch was cut from. A run is reviewed when it would otherwise complete (the [judge](#checking-the-work-with-a-judge) said done, there is no judge, or the judge's verdict fell under its floor) and its branch has commits. If git can't read the count, the run is reviewed anyway, and the review says the commits couldn't be read. A run with no commits completes without a review, and a failed run fails its attempt without one. A judge's confident verdicts skip the review: *not done* fails the attempt, and *ask* holds the task on a question.
 
-While the review waits, the task stays `in_progress` on the same attempt and keeps its claim. The checkout is released. The user's Inbox lists it as a review titled "Review the run's changes". The prompt gives the number of commits and up to 20 of their subjects, then what the judge said: its verdict, confidence and reason, or "No judge read this run." The judge's verdict is information, not approval, and the prompt says so. On the task row, the review is an open hold with `source.kind: "suspension"` and `ask.kind: "review"` (see [A task waiting on a user](./task-board.md#a-task-waiting-on-a-user)), and its data carries `{ branch, commits, subjects, files, fileCount, added, removed, judge }`. The prompt also says how many files changed and by how many lines, "N files changed (+a −d)." `files` lists up to 200 changed files as `{ path, added, removed }`, where `added` and `removed` are `null` for a binary file, and `fileCount`, `added` and `removed` count every changed file. `files`, `fileCount`, `added` and `removed` are all `null` when git couldn't read the diff. Only committed changes count, so uncommitted work in the checkout isn't part of it, and a rename shows as the old path removed and the new path added.
+While the review waits, the task stays `in_progress` on the same attempt and keeps its claim. The checkout is released. The user's Inbox lists it as a review titled "Review the run's changes". The prompt gives the number of commits and up to 20 of their subjects, a line "N files changed (+a −d).", then "Checks n/m passed." when the phase ran commands, then what the judge said: its verdict, confidence and reason, or "No judge read this run." The judge's verdict is information, not approval, and the prompt says so. On the task row, the review is an open hold with `source.kind: "suspension"` and `ask.kind: "review"` (see [A task waiting on a user](./task-board.md#a-task-waiting-on-a-user)), and its data carries `{ branch, commits, subjects, files, fileCount, added, removed, judge, checks }`, where `checks` holds the results of the phase's [commands](#checking-the-work-with-commands), or `null` when it ran none. `files` lists up to 200 changed files as `{ path, added, removed }`, where `added` and `removed` are `null` for a binary file, and `fileCount`, `added` and `removed` count every changed file. `files`, `fileCount`, `added` and `removed` are all `null` when git couldn't read the diff. Only committed changes count, so uncommitted work in the checkout isn't part of it, and a rename shows as the old path removed and the new path added.
 
 The user answers from the Inbox. A screen of your own answers with the Inbox client, and the answer must match `harnessReviewAnswerSchema`:
 
@@ -207,6 +209,71 @@ harnessManager({ ledgers: conversationLedgers, judge: { block: answerJudge, floo
 ```
 
 `confidence` and `floor` run from 0 to 1. A judge adds a step after the completion check, so pass `judge: true` to `harnessDrainBudgetMs` when you size your shutdown.
+
+## Checking the work with commands
+
+A judge reads the run. `commandCheck` runs your project's own commands in the run's checkout, such as a typecheck and a test suite, and the run is done only when they pass. It wraps a phase and hands back a phase, so it works on any board, with or without a judge.
+
+```ts
+import { commandCheck, harnessManager } from "@flow-state-dev/harness-manager";
+
+const codePhase = commandCheck(
+  {
+    phase: "code",
+    buildPrompt: (run) =>
+      run.feedback === undefined ? run.task.goal : `${run.task.goal}\n\nWhy the last attempt stopped:\n${run.feedback}`,
+    isDone: (run) => run.stopReport === "finished",
+  },
+  { commands: ["pnpm typecheck", "pnpm --filter web test"], timeoutMs: 10 * 60_000 },
+);
+
+harnessManager({ /* board, workspace, harness, … */ phase: codePhase, reviewChanges: true });
+```
+
+The phase's own `isDone` runs first. Only when it says done do the commands run, so under the phase above a run that stopped at its limit runs none. They run in order, and a failing command doesn't stop the ones after it. `timeoutMs` is one wall clock for all of them: when it runs out, the running command is stopped with its process group and recorded as timed out, and the rest are skipped.
+
+**A red command makes the attempt not done.** Red means it exited non-zero, timed out, was skipped or couldn't run. The attempt fails and goes back to the board, and the next attempt's `run.feedback` names each red command, why it's red, and the end of its output. Put `run.feedback` in your prompt, as the example does, so the agent sees what broke.
+
+**The results are kept.** The run record has them as `checks`, whatever the verdict, so a failed attempt's record says which command was red. Each result looks like this:
+
+```ts
+{
+  command: "pnpm --filter web test",
+  exitCode: 1,         // null when stopped, skipped or refused
+  timedOut: false,
+  skipped: false,
+  durationMs: 41_220,
+  tail: "FAIL src/cart.test.ts\n  expected 3, received 2\n…", // the last 4,000 characters of stdout and stderr together
+}
+```
+
+With [`reviewChanges`](#reviewing-a-runs-changes) on, a done run's review carries the same results as `checks` in its data, and its prompt says "Checks 2/2 passed." For the screen, `fsdev ui add run-checks` adds a `RunChecks` component: give it `checks` and it shows the count, open on the failures when any are red, each command opening into its output. It draws nothing for `null`.
+
+The options:
+
+| Option | What it takes |
+|---|---|
+| `commands` | A list of commands, or a function handed the run (the same context `isDone` gets) that answers one, sync or async. Asked again on every attempt. An empty list runs nothing and passes |
+| `timeoutMs` | The wall clock for all the commands together, a positive whole number of milliseconds. Anything else throws when you call `commandCheck` |
+| `env` | Extra environment variables, laid over the server process's own |
+
+**A command is a program and its arguments, run with no shell.** Quotes group words, as `node scripts/check.mjs "two words"`. A line with `&&`, `||`, `|`, `;`, `&`, `<`, `>`, `$(` or a backtick in it is refused, even inside quotes, so `pnpm build && pnpm test` is two entries: `["pnpm build", "pnpm test"]`. A refused line never starts. Its result has `exitCode: null` with the refusal in `tail`. A program that isn't installed exits `127`.
+
+**Size your shutdown for it.** `commandCheck` sets the phase's `doneTimeoutMs` (how long its completion check may take) to the phase's own bound, a minute unless it set one, plus `timeoutMs`. Pass the same number to `harnessDrainBudgetMs({ ..., doneTimeoutMs: codePhase.doneTimeoutMs })`, or a shutdown can stop a check partway.
+
+The commands run the checkout's own scripts, and the agent can edit those. Treat a green result as evidence for whoever reviews the run, not as proof the agent left the scripts alone.
+
+A phase of your own can answer the same way without `commandCheck`: `isDone` may return `{ done, reason?, checks? }` instead of a boolean. `reason` reaches the next attempt as `run.feedback` when `done` is false, and `checks` goes on the run record. `commandChecksPassed`, `commandChecksSummary` and `commandChecksFailure` build the pass test, the "Checks n/m passed" line and the next attempt's text from a list of results.
+
+**In a coding chat.** `harnessSessionFlow`, the flow behind a chat with one harness session, takes a `verify` option with the same fields as `commandCheck`: `{ commands, timeoutMs, env? }`.
+
+```ts
+harnessSessionFlow({ /* agent, workspace, … */ verify: { commands: ["pnpm typecheck"], timeoutMs: 5 * 60_000 } });
+```
+
+After a turn the harness finished, and that wasn't stopped, it runs the commands in the session's working directory and records the results on that turn's record as `checks`. A red check doesn't fail the turn: the user reads it and decides what to ask next. A `commands` function there is handed `{ place, cwd }`.
+
+For a project on Workforce, the project's members can name the commands. See [Checks a project's coding work runs](../workforce/projects.md#checks-a-projects-coding-work-runs).
 
 ## Talking to a run
 
@@ -457,8 +524,8 @@ stable.
 
 `@flow-state-dev/harness-manager` is the supported host API: everything above,
 plus the pieces you need around it: `harnessManager` and its options,
-`harnessSessionDoor`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer`, `PhaseSpec`
-and the run-context types, `WorkspaceConfig`, the construction-time guards
+`harnessSessionDoor`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer`, `PhaseSpec`,
+`PhaseDoneVerdict` and the run-context types, `commandCheck` and its helpers, `WorkspaceConfig`, the construction-time guards
 (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`,
 `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing
 your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per
