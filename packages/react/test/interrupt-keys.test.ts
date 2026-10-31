@@ -57,6 +57,15 @@ describe("createInterruptKeys", () => {
     expect(keys.press(esc(), 30)).toBe("armed");
   });
 
+  it("never stops on a held Esc: its auto-repeats are not second presses", () => {
+    const keys = createInterruptKeys();
+    expect(keys.press(esc(), 0)).toBe("armed");
+    expect(keys.press(esc({ repeat: true }), 30)).toBeNull();
+    expect(keys.press(esc({ repeat: true }), 60)).toBeNull();
+    // A real second press still stops.
+    expect(keys.press(esc(), 400)).toBe("interrupt");
+  });
+
   it("ignores an Esc that ends an input method's composition", () => {
     const keys = createInterruptKeys();
     keys.press(esc(), 0);

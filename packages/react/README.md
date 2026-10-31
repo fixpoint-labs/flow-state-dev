@@ -438,6 +438,7 @@ Some Esc presses never count, and each one also clears an armed first press:
 - An Esc typed in a text field (textarea, input, select, contenteditable). The field owns that key. Cmd/Ctrl+. still works there.
 - An Esc whose default is already prevented. A dialog or sheet that closes on Esc should call `event.preventDefault()`, so the press that closed it can't become half of a stop. With `target: "document"`, a dismisser that listens on the document has to use the capture phase, so it runs first.
 - An Esc that ends an input method's composition.
+- An auto-repeat from a held Esc. Holding the key is one press.
 
 `interruptChordLabel()` returns the chord as the platform writes it (`⌘.` or `Ctrl+.`), for a hint or a button title.
 

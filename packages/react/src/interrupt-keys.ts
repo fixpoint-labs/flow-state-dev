@@ -5,7 +5,8 @@
  * at once, since nobody types it by accident. An Esc in a text field belongs
  * to the field, and an Esc something already handled (a sheet or dialog that
  * closed on it, which prevents its default) is spent: neither counts, and
- * either clears an armed first press.
+ * either clears an armed first press. A held key's auto-repeats are not
+ * presses.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -18,6 +19,8 @@ export type InterruptKeyEvent = {
   metaKey: boolean;
   ctrlKey: boolean;
   defaultPrevented?: boolean;
+  /** An auto-repeat from a held key. */
+  repeat?: boolean;
   target?: EventTarget | null;
   keyCode?: number;
   isComposing?: boolean;
@@ -69,6 +72,8 @@ export function createInterruptKeys(options: InterruptKeysOptions = {}): {
   let armedAt: number | null = null;
   return {
     press(event, now = Date.now()) {
+      // A held key repeats: holding Esc to dismiss is one press, never two.
+      if (event.repeat === true) return null;
       if (isStopChord(event)) {
         armedAt = null;
         return "interrupt";
