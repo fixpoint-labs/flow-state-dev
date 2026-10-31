@@ -9,7 +9,8 @@ needs is a gap filed against the package.
   session mode, and Projects is threads mode. Each session in the view is with the view's main
   worker. *New session* asks which project the session works in, with no
   default, offering only projects you may work in (a member of a shared one, or the owner of a
-  private one), then opens it in the view's mode.
+  private one), then opens it in the view's mode. A session whose tasks wait on you (a question,
+  a review, or a failed task) shows how many under its title.
 - **Center:** the main thread. It is the only place you type. The main session does part of the
   work itself and starts background tasks for the long pieces. It reads the project's files itself,
   so a question about the code is answered in the same turn, and a code change goes to `desk.coder`.
@@ -62,7 +63,8 @@ Open the address it prints as `App:`. The pages call the lab's API, so a plain V
 only 404s.
 
 `desk.coder` and `desk.thread-coder` run through Claude Code, so the host also needs
-`ANTHROPIC_API_KEY`. The host is durable: a thread's question and review wait on you across a
+`ANTHROPIC_API_KEY`. A worker you give `harness: codex` or `harness: cursor` needs that harness signed
+in too (Cursor reads `CURSOR_API_KEY`). The host is durable: a thread's question and review wait on you across a
 restart, and a coding run's review needs durable execution. Its settings
 are read from the environment, all optional:
 
@@ -122,3 +124,10 @@ a package call:
 `review: true`, as threads mode's `desk.thread-coder` is, runs on the manager built with
 `reviewChanges: true`: a run that committed waits for your review before its task completes.
 Session mode's `desk.coder` has no review line, since that mode has no review to answer.
+
+The flow builds Claude Code, Codex and Cursor, so a coding worker on any of them is one more
+`WORKER.md` with that `harness:` line. A Claude Code worker can also name a `permissionMode:`:
+`acceptEdits` (the default) or `plan`. The flow builds a manager for each. `default` isn't offered:
+the manager turns no tool approval into a wait on you, so a run in it would only be refused its
+tools. Nor is `bypassPermissions`, which a worker's own line shouldn't be able to turn on. A worker on another harness that names a `permissionMode:` is
+refused when its task runs.

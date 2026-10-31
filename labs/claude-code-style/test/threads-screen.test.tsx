@@ -102,6 +102,15 @@ describe("the threads-mode screen", () => {
     await waitFor(() => expect(card("Vendor C · summary").textContent).toMatch(/Revised draft attached/));
   });
 
+  it("marks a session in the list with how many of its threads wait on you, so you see it without opening it", async () => {
+    render(<App adapter={createFakeLab({ speed: 0.01 })} />);
+    fireEvent.click(within(screen.getByRole("tablist", { name: "View" })).getByRole("tab", { name: "Projects" }));
+    const row = within(screen.getByRole("navigation", { name: "Sessions" })).getByRole("button", { name: /Billing triage/ });
+    // The failed export waits on you; the pinned digest is still working, and done threads owe you nothing.
+    expect(row.textContent).toMatch(/1 waiting on you/);
+    expect(within(row).getByLabelText("waiting on you")).toBeTruthy();
+  });
+
   it("keeps a pinned thread under Pinned whatever its status, and unpins it", async () => {
     render(<App adapter={createFakeLab({ speed: 0.01 })} />);
     fireEvent.click(within(screen.getByRole("tablist", { name: "View" })).getByRole("tab", { name: "Projects" }));
