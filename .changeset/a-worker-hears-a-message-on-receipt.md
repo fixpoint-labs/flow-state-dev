@@ -1,5 +1,0 @@
----
-"@flow-state-dev/workforce": minor
----
-
-Workers hear a message through the `onMessageReceived` entry, which `hireWorkforce` requires on every worker flow on an installation (FIX-2238). A received message lands as a history line plus its own client item (`workforce:received`, with `from`, `id` and `inReplyTo`). A worker answers with `sendMessage({ inReplyTo })`; its plain text reaches no one. An answer lands in the session the original was sent from, and a message to the worker that filed the sender's task lands in the filing conversation. One budget covers a typed message: 6 messages in all, 3 per request. A task filed held starts a fresh budget when released. Coordinators can be messaged whatever their routing. A worker that hears only in its tasks' sessions (`hears: "task-sessions"`) is refused by name with `task_sessions_only`. Build the entry with `messageReceivedEntry({ installation, flowKind, turn?, hears? })` (or spread the session kit's `entries`), and add `workerMessagesResources` to a flow without the kit.
