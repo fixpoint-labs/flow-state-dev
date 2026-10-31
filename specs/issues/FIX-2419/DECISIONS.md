@@ -48,7 +48,8 @@ flowchart TD
   already hands back a branch that exists (`provisionWorktree`), so the only new step is making
   the local branch from the remote's when it is absent: after a fetch of that one branch, under
   the pinned-fetch rules for a listed repository, set to track it. Neither local nor remote has
-  it: refused, `no-such-branch`.
+  it: refused, `no-such-branch`. The flag is what keeps a mistyped new-branch name from quietly
+  tracking some remote branch: without it the host still cuts afresh.
 - **A listed repository's branch is the person's own.** A run on it commits to it, which is what
   they asked for. Git refuses a branch checked out in another worktree, the person's own checkout
   included; the refusal names it.
@@ -56,7 +57,10 @@ flowchart TD
 - **A PR is resolved to its head branch with `gh`** (`pullRequestHead`, beside the host's other
   `gh` read), not fetched as `refs/pull/N/head`. A detached copy of the head could not be pushed
   back to the PR, and the PR loop exists to push back. A fork's PR is refused: its branch is not
-  on `origin`, and pushing to a fork is FIX-1768's question.
+  on `origin`, and pushing to a fork is FIX-1768's question. A fork is the PR's head repository
+  differing from its base repository, as GitHub reports them. The harness-manager resolves the PR
+  to `{ branch }` before `provision`, so neither `PlaceRequest` nor the host knows about PRs; the
+  session keeps `{ pullRequest }` in `start` because the app shows which PR the session is on.
 - **A remote branch as a base** (`origin/main`) is fetched before the cut, by the code that
   fetches an upstream today, from the pinned URL. **A failed fetch is refused**
   (`remote-unreadable`), and so is an existing branch the repository lacks whose fetch fails
@@ -107,4 +111,18 @@ flowchart TD
 
 ## Notes from review
 
-None yet.
+Round 1 (Codex, Cursor, a second-look pass), folded where it changed the approach:
+
+- **Active-run exclusion** moved into `remove` itself (D3), from Codex.
+- **The sign-off line** no longer offers a force for uncommitted changes; that is a non-goal.
+- **ER-5's "one path" covers removing a finished run's worktree.** The provision rollback and
+  `branchAside` stay as they are: they undo a failed provision or move a branch aside, and route
+  through nothing.
+- **The unique-commits guard reads the last fetch.** A stale `origin/<branch>` can let a delete
+  through that a fresh fetch would refuse; the commits stay in the reflog. Noted, not fetched.
+- **`list` runs one `git status` per worktree.** Fine for the tens a person has; an opt-in flag if
+  a disk full of them makes it slow.
+- **Kept as specced:** the three-way `start` (above, D2), the `removed` flag (the app's Worktree
+  menu reads it to show the worktree is gone; the next turn re-provisions from the kept branch),
+  the CLI and branch delete in this slice (ER-5 wants one removal path from the start), and the
+  goal check, which proves at the HTTP seam what unit tests cannot: a mid-turn removal refused.
