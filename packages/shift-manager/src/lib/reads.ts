@@ -64,7 +64,7 @@ import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
 import { ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import type { Client } from "@flow-state-dev/client";
-import { createInboxClient, inboxItems, taskHoldSchema, type InboxAnswer, type InboxHold, type InboxItem, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, inboxItems, taskActionName, taskHoldSchema, type InboxAnswer, type TaskActions, type InboxHold, type InboxItem, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
 import { withRetiredShapes } from "@flow-state-dev/orchestration/tasks";
 
 /** Why a read did not load. */
@@ -609,10 +609,10 @@ function boardOwnerOf(row: BoardRow): InboxRow["holder"] {
 
 /**
  * The action a conversation answers a task's question through: the task
- * tools' `updateTask`, named for the conversation board's id (`tasks`) by the
- * task tools' action rule.
+ * tools' `updateTask` on the conversation board, named by orchestration
+ * (FIX-2381).
  */
-export const UPDATE_TASK_ACTION = "updateTask_tasks";
+export const UPDATE_TASK_ACTION = taskActionName("updateTask", CONVERSATION_BOARD_COLLECTION);
 
 /** Run `task` over `inputs`, `size` at a time, keeping order. */
 async function inBatches<T, R>(inputs: readonly T[], size: number, task: (input: T) => Promise<R>): Promise<R[]> {
@@ -641,6 +641,12 @@ export type LabReader = {
    * refusal.
    */
   answerOne(hold: InboxHold<unknown>, answer: InboxAnswer): Promise<void>;
+  /**
+   * A conversation's task actions (FIX-2381): cancel, steer, release and
+   * re-file its board's tasks through orchestration's Inbox client, as the
+   * user. Each rejects with the board's refusal.
+   */
+  taskActions(conversation: { id: string; flowId: string }): TaskActions;
 };
 
 /**
@@ -1053,5 +1059,8 @@ export function createLabReader(client: Client): LabReader {
 
   const answerOne: LabReader["answerOne"] = (hold, answer) => inbox.answerOne(hold, answer);
 
-  return { read, readBoard, resume, answerOne };
+  const taskActions: LabReader["taskActions"] = (conversation) =>
+    inbox.board({ flowId: conversation.flowId, sessionId: conversation.id, board: CONVERSATION_BOARD_COLLECTION });
+
+  return { read, readBoard, resume, answerOne, taskActions };
 }

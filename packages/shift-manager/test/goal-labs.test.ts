@@ -113,6 +113,17 @@ describe.each([
     if (boards === undefined || !boards.ok) throw new Error(`the conversation's board did not load: ${JSON.stringify(boards)}`);
     expect(boards.value.refs).toEqual([`${conversation}.tasks`]);
     expect(boards.value.rows.map((r) => [r.id, r.assignee, r.boardRef])).toEqual([[taskId, assignee, `${conversation}.tasks`]]);
+
+    // The reader's task actions work that board as the user (FIX-2381), each read back from the board:
+    // the row re-filed held, then cancelled; a steer on a finished row refused in the board's words.
+    const reader = createLabReader(client);
+    const tasks = reader.taskActions({ id: conversation, flowId: flowKind });
+    const done = boards.value.rows[0]!;
+    const again = await tasks.refile({ goal: "a row the snapshot must hold", assignee: done.assignee }, { held: true });
+    expect((await reader.readBoard(conversation)).find((r) => r.id === again)?.status).toBe("held");
+    await tasks.cancel(again);
+    expect((await reader.readBoard(conversation)).find((r) => r.id === again)?.status).toBe("cancelled");
+    await expect(tasks.steer(taskId, "too late")).rejects.toThrow(/task_finished/);
   }, 60_000);
 
   // Jump to finds a document through the flow of a session the user has. fsd
