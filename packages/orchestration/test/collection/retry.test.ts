@@ -16,6 +16,7 @@ import {
   type TaskChangeEvent,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { ticketForClaim } from "../../src/tasks/claim-ticket";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
 type Backing = { tasks: TaskCollectionRef; events: TaskChangeEvent[] };
@@ -73,7 +74,7 @@ describe.each(BACKINGS)("retrying a task (%s)", (_name, makeBacking) => {
     expect(retried.completedAt).toBeUndefined();
     expect(retried.retryLedger).toEqual({ granted: 1, deniedByBudget: false });
     // Everything the retry doesn't reset is the failed row's: steers, spend, output, filing.
-    const { status: _s, feedback: _f, error: _e, completedAt: _c, retryLedger: _r, updatedAt: _u, revision: _v, writeLog: _w, ...keptAfter } = retried as Task & Record<string, unknown>;
+    const { status: _s, feedback: _f, error: _e, completedAt: _c, retryLedger: _r, retryPending: _o, updatedAt: _u, revision: _v, writeLog: _w, ...keptAfter } = retried as Task & Record<string, unknown>;
     const { status: _s2, feedback: _f2, error: _e2, completedAt: _c2, retryLedger: _r2, updatedAt: _u2, revision: _v2, writeLog: _w2, ...keptBefore } = failed as Task & Record<string, unknown>;
     expect(JSON.parse(JSON.stringify(keptAfter))).toEqual(JSON.parse(JSON.stringify(keptBefore)));
     expect(retried.steers?.map((steer) => steer.message)).toEqual(["use the staging key"]);
@@ -143,6 +144,31 @@ describe.each(BACKINGS)("retrying a task (%s)", (_name, makeBacking) => {
     await claimAndFail(tasks, "t", "second");
     // The second ending resumes the second wait, not a gate long resolved.
     expect(tasks.get("t")).toMatchObject({ resumeOwed: true, wait: { gateId: "g2", requestId: "r2" } });
+  });
+
+  it("drops the ended attempt's unanswered question, so the retry can run", async () => {
+    const { tasks } = await makeBacking();
+    const collection = tasks;
+    await tasks.createTask({ id: "t", goal: "g", assignee: "ops" });
+    const claimed = await tasks.claim("w", { leaseDurationMs: 10_000 });
+    expect(await collection.ask!("t", [{ kind: "question", prompt: "Which region?" }], { claim: ticketForClaim(tasks.collectionId, claimed!) })).toMatchObject({ outcome: "recorded" });
+    await tasks.cancel("t");
+    await tasks.payOwedCascades?.();
+
+    expect(await tasks.retry!("t")).toEqual({ outcome: "recorded" });
+    expect(tasks.get("t")!.holds ?? []).toEqual([]);
+    expect((await tasks.claim("w", { leaseDurationMs: 10_000 }))?.id).toBe("t");
+  });
+
+  it("marks the row a pending retry until its next claim", async () => {
+    const { tasks } = await makeBacking();
+    await tasks.createTask({ id: "t", goal: "g", assignee: "ops" });
+    await claimAndFail(tasks, "t", "boom");
+    expect(tasks.get("t")!.retryPending).toBeUndefined();
+    await tasks.retry!("t");
+    expect(tasks.get("t")!.retryPending).toBe(true);
+    await tasks.claim("w", { leaseDurationMs: 10_000 });
+    expect(tasks.get("t")!.retryPending).toBeUndefined();
   });
 
   it("refuses a skipped dependent until its dependency is retried, then clears the skip", async () => {
