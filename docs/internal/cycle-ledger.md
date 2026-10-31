@@ -80,3 +80,4 @@ earlier cycle files are records and are not rewritten.
 | 25 | one task primitive epic wrap (FIX-2056) (2026-10-24) | [`cycle-25.md`](cycle-ledger/cycle-25.md) |
 | 26 | one waiting-on-a-person epic wrap (FIX-2058) (2026-10-27) | [`cycle-26.md`](cycle-ledger/cycle-26.md) |
 | 27 | harness subscription-usage epic wrap (FIX-2139) (2026-10-29) | [`cycle-27.md`](cycle-ledger/cycle-27.md) |
+| 29 | same pieces, different apps epic wrap (FIX-2152) (2026-10-30); 28 is the open FIX-2071 draft | [`cycle-29.md`](cycle-ledger/cycle-29.md) |
