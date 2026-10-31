@@ -494,12 +494,16 @@ function isStartable(task: Task, rows: readonly Task[]): boolean {
 
 /**
  * Whether `other`, a holder of `task`'s session, waits behind `task` instead
- * of blocking it. Two started rows can both be waiting on one session once a
- * retry reopens one (FIX-2383); each would block the other forever, so the
- * earlier-filed one runs first. A running holder always blocks.
+ * of blocking it. A retry (FIX-2383) can leave a started row waiting on a
+ * session another row holds; each would block the other forever. So a waiting
+ * holder never blocks the row running in the session (its recovery, after its
+ * lease lapsed), and of two waiting started rows the earlier-filed one runs
+ * first. A running holder always blocks.
  */
 function queuedAfter(other: Task, task: Task): boolean {
-  if (other.status !== "pending" || task.status !== "pending" || !hasStarted(task)) return false;
+  if (other.status !== "pending") return false;
+  if (task.status === "in_progress") return true;
+  if (task.status !== "pending" || !hasStarted(task)) return false;
   return task.createdAt !== other.createdAt ? task.createdAt < other.createdAt : task.id < other.id;
 }
 

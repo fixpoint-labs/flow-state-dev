@@ -352,6 +352,28 @@ describe("retryTask on a conversation's board (FIX-2383)", () => {
     }
   });
 
+  it("lets the row running in the session recover after its worker died, ahead of a retried row waiting on it", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "pm");
+      const filing = await host.filingOf("alice", conv);
+      const base = (id: string, createdAt: number) =>
+        ({ ...recorded(id, "eng.tasker", id), undispatched: undefined, session: "ongoing", attempts: 1, startedAt: createdAt, createdAt, updatedAt: createdAt }) as Task;
+      // A runs in the delegate's ongoing session; its worker died, so its lease lapsed.
+      await host.writeRow("alice", filing, { ...base("task_running", 1000), status: "in_progress", claimedBy: "conversation-tasks", leaseUntil: Date.now() - 1_000 } as Task);
+      // B ran once in the same session before, and was cancelled.
+      await host.writeRow("alice", filing, { ...base("task_retried", 2000), status: "cancelled", completedAt: 2000 } as Task);
+
+      expect(await act(host, conv, "retryTask_tasks", { id: "task_retried" })).toEqual({ ok: true });
+      await host.settled();
+      expect(host.runs.map((run) => /task_(running|retried)/.exec(run.message)?.[0])).toEqual(["task_running", "task_retried"]);
+      expect(await host.row("alice", filing, "task_running")).toMatchObject({ status: "completed" });
+      expect(await host.row("alice", filing, "task_retried")).toMatchObject({ status: "completed", attempts: 2 });
+    } finally {
+      await host.dispose();
+    }
+  });
+
   it("runs two retried tasks of one ongoing session in turn, neither waiting on the other forever", async () => {
     let release!: () => void;
     const busy = new Promise<void>((resolve) => {
