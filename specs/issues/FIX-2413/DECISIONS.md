@@ -41,9 +41,12 @@ share.
 - **A dismissed Esc is spent.** An Esc whose default was prevented never arms. Dismissers that
   can share a press with the gesture prevent the default: Jump to, and the lab's `Sheet`, which
   moves its listener to the capture phase so it runs before React's handlers see the key.
-- **Time source for *run stopped at*.** The request record's `completedAtMs`, read with the
-  status the screen already polls. It is the run's word, as the rest of this screen is. No time
-  when the record has none, rather than the browser's clock.
+- **Time source for *run stopped at*.** The status snapshot's `completedAtMs`, read once the
+  record reads `aborted`. It is the run's word, as the rest of this screen is. No time when the
+  record has none, rather than the browser's clock. An aborted record stamps `abortedAt`, not
+  `completedAtMs`, and the status route passed only the latter, against its own type's doc
+  ("reached a terminal status"). The route now maps the aborted and failed stamps too: a fix
+  to the contract it already states, not a new field.
 - **The lab keeps its interrupted entry.** *Interrupted. Background tasks keep running.* already
   says what happened, in the thread, where the lab reports a turn's end. The time line is Shift
   Manager's, where a run is a task with a status line.

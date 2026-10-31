@@ -75,6 +75,10 @@ any arming. An Esc during IME composition is the input method's.
 - **Claude Code-style lab**: the composer loses its Esc branch; the thread view takes the hook
   for the turn; `Sheet.tsx` closes on a capture-phase listener and prevents the default, so the
   Esc that closed it is spent. The hint under the composer changes to match.
+- **Engine, one line:** the request status route fills `completedAtMs` for an aborted or failed
+  request from the time it stopped (`abortedAt`, `failedAtMs`). Its type already promises "the
+  time the request reached a terminal status"; today only a completed request gets it, so an
+  interrupted run has no time to show.
 - **Docs:** the react README gains `createInterruptKeys` / `useInterruptKeys` beside
   `isSendKey`; a changeset for `@flow-state-dev/react` (a new export a consumer can use).
 
@@ -87,6 +91,8 @@ any arming. An Esc during IME composition is the input method's.
 | `TaskProvider.requestInterrupt` (`task.tsx`) | The one abort write; waits for the record | Unchanged. The deliberate gesture is the confirm, so no confirm step is added here |
 | Lab `Composer` Esc branch, `Sheet` document listener | Stop on Esc; close on Esc, both on one press | Esc branch removed; Sheet's listener spends the Esc |
 | FIX-2340 (backlog) | Will lift the labs' sheet into `packages/ui` | Carries the capture-and-prevent rule with it. Build order: FIX-2340 → 2413 → 2401 lists 2340 first, but it has not started and this change is two lines in `Sheet.tsx`, so 2413 does not wait |
+
+| Request status route (`engine`) | `completedAtMs` only on a completed request | Also on an aborted or failed one, as its type documents. Generic, no workforce noun |
 
 **Adds:** one small module and one hook in `@flow-state-dev/react` (no workforce noun; ER-1).
 **Removes:** two app-local Esc-stops. **Net:** one rule for a stop key instead of two, and the
