@@ -17,4 +17,9 @@ reverse.
 
 ## Notes from review
 
-None yet.
+Round 1 (Cursor, approved the direction). Below the bar, recorded for the implementer:
+
+- Give the nav shells (`NavItem`, `RailItem`) a `to: Route` prop that renders `RouteLink`, so classes, `aria-current` and test ids stay in one place, rather than a raw `RouteLink` at every entry.
+- Keep the full modifier matrix in one place, the `RouteLink` test; the Tasks test asserts only row-versus-link behaviour.
+- External links (GitHub, DevTool, `target="_blank"`) are not routes and stay plain `<a>`; only in-app `Route` destinations use `RouteLink`.
+- The *how we'll know* sentence restates the figure; one of the two would do.
