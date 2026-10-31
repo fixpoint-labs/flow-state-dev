@@ -93,7 +93,9 @@ The host's code, before and after (the Claude Code-style lab's phase):
   `{ done, reason?, checks? }` as well as a boolean: `reason` is added to the not-done feedback,
   and `checks` goes on the run record (every attempt) and on the review's `data`.
   `harnessSessionFlow` takes `verify` (the same options) and records `checks` on the turn
-  record. One runner serves both.
+  record. One runner serves both, and it lives in `@flow-state-dev/workspace`
+  (`runCheckoutCommands`, beside the package's one process door), where FIX-2420's setup command
+  runs too and where workforce's write check reads what a command may be.
 - **workforce.** The project row gains `checks: string[]` (default `[]`, client-exposed), a
   `setChecks` write beside `setMcpServers`, `checks` on create, and `projectChecks()`: the run's
   project's commands, read with `runProjectOf` as `projectMcpTools()` reads its servers.
@@ -101,7 +103,10 @@ The host's code, before and after (the Claude Code-style lab's phase):
   output tail behind a toggle.
 - **Apps, in the build order:** Shift Manager's Checks tab, the Claude Code-style ReviewCard,
   Teammates' TaskPopup and Kitchen Sink's turn notice render the component; both labs' prompt
-  builders add `feedback`; a red result holds back the default focus on Resolve.
+  builders add `feedback`; a red result holds back the default focus on Resolve. Each app's
+  workspace host also turns on FIX-2420's `setup: { command }` (for example `pnpm install`) in
+  the same PR, since the checks need the dependencies; Kitchen Sink's turn notice also says when
+  `turn.setup` failed.
 - **Docs:** `packages/harness-manager/README.md` and `apps/docs/docs/orchestration/harness-manager.md`
   (a *Checking the work with commands* section beside *Checking the work with a judge*, and
   `verify` under the session flow); `packages/workforce/README.md` and

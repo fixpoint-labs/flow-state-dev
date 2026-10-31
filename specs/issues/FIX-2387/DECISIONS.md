@@ -84,7 +84,15 @@ a choice to fail the turn.
   for a person, not a grader the agent cannot reach; devteam's acceptance check keeps that job.
 - **E8 · `projectChecks()` answers `[]`** for a run with no project, or a refused lookup, and the
   run source refuses that run on its own. A files-only project's checks still run, in its folder.
-- **E9 · One runner** serves `commandCheck` and `verify`; neither shells out on its own.
+- **E9 · One runner** serves `commandCheck` and `verify`; neither shells out on its own. It is
+  `runCheckoutCommands` in `@flow-state-dev/workspace`, which harness-manager and workforce both
+  depend on, so the write check (`checkoutCommandProblem`) and the run agree on what a command is.
+- **E11 · `verify` is a step of the turn, not of the turn's end.** It reads the run's outcome
+  (only a finished turn is checked), and the turn notice shows the checks while the turn runs.
+  The turn-end sequencer FIX-2384 added (`recordTurnHead`, `branchPullRequests`) stays as it is.
+- **E12 · FIX-2420's `setup` option is turned on by these app PRs.** Its own slice turns it on in
+  no app; each app's adoption here adds the one line, since the checks are what need it (the
+  FIX-2369 epic thread's call).
 - **E10 · PRs.** The package slice (harness-manager, workforce, ui registry, the goal check) is
   stacked on FIX-2384's branch and merges after FIX-2420, as the epic's build order says. Each
   app adopts in its own stack there: Shift Manager's `TaskFrame.tsx` (wave 3), the Claude
