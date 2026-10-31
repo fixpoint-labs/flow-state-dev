@@ -25,3 +25,4 @@
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-10-31 | implementation branch, on 45cefc5 | claude-haiku-4-5 (API key) | **PASS** | Linux container. **t**: 17,634 in · 73 out · $0.022405, 4.0 s. **s**: stopped, 17,491 in · 4 out, no charge reported for the stopped run. Control `no-turn-spend` FAILED **t** (no spend, no `endedAt`) and **s** (no spend) |
+| 2026-10-31 | after merging FIX-2387's branch (with FIX-2384) | claude-haiku-4-5 (API key) | **PASS** | Rerun on the stacked branch. **t**: 17,487 in · 58 out · $0.0221, 3.2 s. **s**: stopped, 17,491 in · 6 out. Control `no-turn-spend` FAILED **t** and **s** again |

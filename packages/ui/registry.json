@@ -564,6 +564,20 @@
         "target": "components/flow-state/generative/link-card.tsx"
       }],
       "categories": ["ai", "generative"]
+    },
+    {
+      "name": "run-changes",
+      "title": "Run Changes",
+      "type": "registry:component",
+      "description": "What a coding run changed: \"Files changed (+a −d)\", opening into each file's lines and, a file at a time, its patch. Pairs with harness-manager's review data and its changes read.",
+      "dependencies": ["lucide-react"],
+      "registryDependencies": ["tokens"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/run-changes.tsx",
+        "target": "components/flow-state/run-changes.tsx"
+      }],
+      "categories": ["ai", "code"]
     }
   ]
 }

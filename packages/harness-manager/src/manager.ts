@@ -121,7 +121,7 @@ import {
 import { askMarkerPath, readAskMarker } from "./ask";
 import { HeldOnQuestion, askStep } from "./ask-step";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
-import { readRunCommits, type RunCommits } from "./commits";
+import { readRunCommits, readRunDiff, runDiffSchema, type RunCommits, type RunDiff } from "./commits";
 import { commandCheckResultSchema, commandChecksSummary, readVerdict, type CommandCheckResult } from "./command-check";
 import { progressNoteOf, throttledNotes, type ProgressNotes } from "./progress-note";
 import {
@@ -493,7 +493,10 @@ export interface ManagerOptions {
    * On, a run the phase's check passed (and the {@link judge}, when one read
    * it, found done or was under its floor) that has commits over its base
    * waits through `ctx.suspendForUser({ kind: "review" })`, its prompt naming the
-   * commits and the judge's verdict as information. The answer is
+   * commits, the files they changed and the judge's verdict as information.
+   * The stop's `data` carries each changed file's added and removed lines
+   * (`files`, FIX-2384); a screen reads one file's patch through
+   * `harnessRunChangesRead`. The answer is
    * `{ verdict: "accepted" }`, which completes the task with no further
    * harness run, or `{ verdict: "revise", words }`, whose words become the
    * user's steer: the run goes on in the same coding session on the same
@@ -842,6 +845,13 @@ const managerStateSchema = z.object({
         .nullable()
         .default(null),
       /**
+       * What those commits changed, file by file, read once by `decide` when
+       * the run will be reviewed (FIX-2384), for the review's prompt and its
+       * data. `null` when no review reads it, and on a decision kept before
+       * it was read (BP-030).
+       */
+      diff: runDiffSchema.nullable().default(null),
+      /**
        * How this decision's review ended (FIX-2163): `accepted` or `deadline`
        * settle on it; `revise` and `cancelled` must not complete the run.
        */
@@ -1090,6 +1100,7 @@ function reviewPrompt(
   changes: RunCommits | null,
   branch: string | null,
   read: HarnessJudgeVerdict | null,
+  diff: RunDiff | null,
   checks: CommandCheckResult[] | null = null,
 ): string {
   const lines: string[] = [];
@@ -1099,6 +1110,9 @@ function reviewPrompt(
     lines.push(`${changes.count} commit${changes.count === 1 ? "" : "s"} on ${branch ?? "the run's branch"}:`);
     lines.push(...changes.subjects.map((subject) => `- ${subject}`));
     if (changes.count > changes.subjects.length) lines.push(`- and ${changes.count - changes.subjects.length} more`);
+    if (diff?.verified === true) {
+      lines.push(`${diff.fileCount} file${diff.fileCount === 1 ? "" : "s"} changed (+${diff.added} −${diff.removed}).`);
+    }
   }
   lines.push("");
   if (checks !== null && checks.length > 0) lines.push(`${commandChecksSummary(checks)}.`);
@@ -2502,7 +2516,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           judged: false,
           review: null,
         };
-        await ctx.sequencer!.patchState({ decided: { settle, output, changes: commits, reviewed: null, checks } });
+        // Read once here, so the review's prompt and data come from state alone.
+        const diff: RunDiff | null =
+          reviewChanges && settle === "complete" && state.filesOnly !== true && commits.verified && commits.count > 0
+            ? await readRunDiff(state.workspacePath!, state.baseRef, state.baseCommit)
+            : null;
+        await ctx.sequencer!.patchState({ decided: { settle, output, changes: commits, diff, reviewed: null, checks } });
         return judgeInput;
       };
       // A run of kept files alone has no branch, so nothing on one to review: a verified none.
@@ -2969,12 +2988,17 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         asked = await ctx.suspendForUser({
           kind: "review",
           title: "Review the run's changes",
-          prompt: reviewPrompt(changes, decision.output.branch, read, decision.checks ?? null),
+          prompt: reviewPrompt(changes, decision.output.branch, read, decision.diff ?? null, decision.checks ?? null),
           resumeSchema: harnessReviewAnswerSchema,
           data: {
             branch: decision.output.branch,
             commits: changes?.verified === true ? changes.count : null,
             subjects: changes?.subjects ?? [],
+            // Each changed file's lines, when they were read (FIX-2384); `null` when they couldn't be.
+            files: decision.diff?.verified === true ? decision.diff.files : null,
+            fileCount: decision.diff?.verified === true ? decision.diff.fileCount : null,
+            added: decision.diff?.verified === true ? decision.diff.added : null,
+            removed: decision.diff?.verified === true ? decision.diff.removed : null,
             judge: read,
             checks: decision.checks ?? null,
           },

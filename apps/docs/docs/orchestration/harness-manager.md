@@ -135,7 +135,7 @@ harnessManager({ ledgers: conversationLedgers, judge: { block: answerJudge, floo
 
 A run's changes are the commits it made over the base its branch was cut from. A run is reviewed when it would otherwise complete (the [judge](#checking-the-work-with-a-judge) said done, there is no judge, or the judge's verdict fell under its floor) and its branch has commits. If git can't read the count, the run is reviewed anyway, and the review says the commits couldn't be read. A run with no commits completes without a review, and a failed run fails its attempt without one. A judge's confident verdicts skip the review: *not done* fails the attempt, and *ask* holds the task on a question.
 
-While the review waits, the task stays `in_progress` on the same attempt and keeps its claim. The checkout is released. The user's Inbox lists it as a review titled "Review the run's changes". The prompt gives the number of commits and up to 20 of their subjects, then what the judge said: its verdict, confidence and reason, or "No judge read this run." The judge's verdict is information, not approval, and the prompt says so. On the task row, the review is an open hold with `source.kind: "suspension"` and `ask.kind: "review"` (see [A task waiting on a user](./task-board.md#a-task-waiting-on-a-user)), and its data carries `{ branch, commits, subjects, judge }`.
+While the review waits, the task stays `in_progress` on the same attempt and keeps its claim. The checkout is released. The user's Inbox lists it as a review titled "Review the run's changes". The prompt gives the number of commits and up to 20 of their subjects, then what the judge said: its verdict, confidence and reason, or "No judge read this run." The judge's verdict is information, not approval, and the prompt says so. On the task row, the review is an open hold with `source.kind: "suspension"` and `ask.kind: "review"` (see [A task waiting on a user](./task-board.md#a-task-waiting-on-a-user)), and its data carries `{ branch, commits, subjects, files, fileCount, added, removed, judge }`. The prompt also says how many files changed and by how many lines, "N files changed (+a −d)." `files` lists up to 200 changed files as `{ path, added, removed }`, where `added` and `removed` are `null` for a binary file, and `fileCount`, `added` and `removed` count every changed file. `files`, `fileCount`, `added` and `removed` are all `null` when git couldn't read the diff. Only committed changes count, so uncommitted work in the checkout isn't part of it, and a rename shows as the old path removed and the new path added.
 
 The user answers from the Inbox. A screen of your own answers with the Inbox client, and the answer must match `harnessReviewAnswerSchema`:
 
@@ -162,6 +162,15 @@ A revision with blank words is refused with a 400, and the review stays open.
 **A cancel while the review waits** closes it and starts nothing. The branch's commits and the run's kept files stay.
 
 Reviews need a host with [durable execution](../advanced/durable-execution.md). A host can restart while a review waits. The answer picks the run back up.
+
+To show a file's lines, declare `harnessRunChangesRead` on the coding flow beside its [session door](#the-session-door), with the same `board` resolver: `reads: { changes: harnessRunChangesRead({ board, uses }) }`. It's a [flow read](../fundamentals/flows.md#reads-looking-without-storing), so the answer comes back in the response and is stored nowhere. Call it on the run's own session. The input is `{ taskId?, path? }`, and `taskId` defaults to the session's task. With no `path` it answers the run's `diff`; with `{ path }` it answers that file's `patch`, its unified diff cut at 64,000 characters with `truncated` set when it was cut. `verified: false` on either means git couldn't read it. A session that ran no task is refused with `HarnessRunChangesRefused`, and so is a `taskId` from another session.
+
+```ts
+const { diff } = await client.flow("coder").read("changes", {}, { sessionId });
+const { patch } = await client.flow("coder").read("changes", { path: "src/api.ts" }, { sessionId });
+```
+
+For the screen, `fsdev ui add run-changes` adds a `RunChanges` component. Give it the review's `files`, `fileCount`, `added` and `removed`, and it shows "N files changed (+a −d)", opening into the list of changed files. Pass `loadPatch={async (path) => (await client.flow("coder").read("changes", { path }, { sessionId })).patch}` and each file opens into its patch, read the first time it's opened. With `files={null}` it draws nothing, so say in your own words that the changes couldn't be read.
 
 ## Running tasks from more than one board
 

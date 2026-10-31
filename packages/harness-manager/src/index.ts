@@ -44,6 +44,9 @@
  *   question holds its task on the board, so a host reads questions there.
  * - `harnessUsageAction`, the one query for how much of each harness's
  *   subscription a person has used, and the collection behind it.
+ * - `harnessRunChangesRead`, the read for what a run's commits changed: each
+ *   file and its lines, or one file's patch. A run review's data carries the
+ *   same files; `harnessSessionFlow` declares the same read per turn.
  *
  * **Checkout internals are NOT here.** They live behind
  * `@flow-state-dev/harness-manager/checkout`, a separate entry point, because
@@ -145,7 +148,28 @@ export {
   type HarnessSessionState,
   type HarnessSessionWorkspace,
   type HarnessTurnRecord,
+  harnessTurnChangesInputSchema,
 } from "./session-flow";
+
+// ── What a run changed: its files and lines, or one file's patch ────────────
+export {
+  harnessRunChangesRead,
+  harnessRunChangesInputSchema,
+  harnessRunChangesOutputSchema,
+  HarnessRunChangesRefused,
+  type HarnessRunChangesReadOptions,
+} from "./run-changes";
+export {
+  MAX_DIFF_FILES,
+  MAX_PATCH_CHARS,
+  runChangesSchema,
+  runDiffSchema,
+  runFilePatchSchema,
+  type RunChanges,
+  type RunDiff,
+  type RunDiffFile,
+  type RunFilePatch,
+} from "./commits";
 // ── A scripted harness for model-free checks ────────────────────────────────
 export {
   harnessStub,
