@@ -40,6 +40,23 @@ describe("useSubmit", () => {
     expect(result.current.error).toBeUndefined();
   });
 
+  it("runs the action once when called twice before it settles, even before a re-render", async () => {
+    const call = held();
+    const { result } = renderHook(() => useSubmit(call.run));
+    act(() => {
+      const { submit } = result.current;
+      void submit(undefined, "first");
+      void submit(undefined, "second");
+    });
+    expect(call.args).toEqual([["first"]]);
+    await call.settle();
+    act(() => {
+      void result.current.submit(undefined, "after");
+    });
+    expect(call.args).toEqual([["first"], ["after"]]);
+    await call.settle();
+  });
+
   it("keeps a refusal's message instead of throwing, and clears it when run again", async () => {
     const call = held();
     const { result } = renderHook(() => useSubmit(call.run));

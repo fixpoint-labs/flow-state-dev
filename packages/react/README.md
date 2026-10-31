@@ -400,7 +400,7 @@ return (
 ```
 
 - `submit(event?, ...args)`: runs `action(...args)`. Pass a form's submit event to prevent its default. It never throws.
-- `busy`: `true` while the action runs.
+- `busy`: `true` while the action runs. A call made while one runs does nothing, even before `busy` re-renders.
 - `error`: the last refusal's message, cleared when the action runs again.
 
 It wraps any async call. To send one flow action, use `useAction`.

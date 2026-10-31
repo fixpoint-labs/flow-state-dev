@@ -3,7 +3,7 @@
  * runs and keeps a refusal to show. Wraps any async call (an adapter's, a
  * client's); `useAction` is the hook for sending one flow action.
  */
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 
 /** What `useSubmit` returns. */
 export interface Submit<A extends unknown[]> {
@@ -11,7 +11,7 @@ export interface Submit<A extends unknown[]> {
   busy: boolean;
   /** The last refusal's message, or `undefined`. Cleared when the action runs again. */
   error: string | undefined;
-  /** Runs the action. Pass the form event, if any, to prevent its default; never throws. */
+  /** Runs the action. Pass the form event, if any, to prevent its default; never throws. A call while one runs does nothing. */
   submit: (event: FormEvent | undefined, ...args: A) => Promise<void>;
 }
 
@@ -23,8 +23,12 @@ export interface Submit<A extends unknown[]> {
 export function useSubmit<A extends unknown[]>(action: (...args: A) => Promise<void>): Submit<A> {
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  // Held synchronously: a second call before React re-renders `busy` must not run the action again.
+  const running = useRef(false);
   const submit = async (event: FormEvent | undefined, ...args: A) => {
     event?.preventDefault();
+    if (running.current) return;
+    running.current = true;
     setBusy(true);
     setError(undefined);
     try {
@@ -32,6 +36,7 @@ export function useSubmit<A extends unknown[]>(action: (...args: A) => Promise<v
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      running.current = false;
       setBusy(false);
     }
   };
