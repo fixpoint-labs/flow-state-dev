@@ -173,6 +173,9 @@ claudeCodeAgent({
   // Which filesystem settings the run loads. Omitted, it loads all of them,
   // exactly as the CLI does.
   settingSources: ["user"],
+  // Settings for this run, above every source it loads (Claude Code's
+  // `settings.json` shape). Here: none of the loaded sources' hooks run.
+  settings: { disableAllHooks: true },
   // The run's environment. Unset, the run inherits your server's whole
   // `process.env`. Set, it REPLACES that environment: here, only the named
   // variables reach the run (`harnessEnv` is from `@flow-state-dev/core`).
@@ -206,6 +209,27 @@ users can write — then those files are user input, and the run reading
 configuration out of them means your users configure your agent. Pass `[]` to
 load none, or list only the sources you control.
 
+**A repository you trust: its conventions, with its hooks off.** `"project"`
+loads the repository's `CLAUDE.md`, its skills and its `.claude/settings.json`,
+and that file can hold hooks: shell commands Claude Code runs by itself on events
+like a prompt or a stop, which show in no transcript. A run can write one into the
+file for the next run to execute. `settings` is a settings layer of your own, in
+`settings.json` shape, that sits above every source the run loads, so
+`settings: { disableAllHooks: true }` keeps the conventions and turns every hook
+off:
+
+```ts
+claudeCodeAgent({
+  cwd,
+  settingSources: ["project"],
+  settings: { disableAllHooks: true },
+  env: harnessEnv({ pass: CLAUDE_CODE_PASS }),
+});
+```
+
+`settings` is forwarded as given and unset by default. With `mcpTools` set, the
+run's settings also carry `disableClaudeAiConnectors: true`, whatever yours say.
+
 **`env` decides what the run can read.** Leave it unset and the Claude Code
 process starts with your server's entire `process.env`: every API key, token and
 connection string in it, readable by any shell command the model runs. Setting
@@ -219,7 +243,10 @@ your own: `PATH`, `HOME`, `USER`, `SHELL`, `TMPDIR`, `ANTHROPIC_API_KEY`,
 `CLAUDE_CODE_OAUTH_TOKEN`, and the proxy and CA settings a proxied network
 needs, in upper and lower case. `harnessEnv({ pass: CLAUDE_CODE_PASS })`
 builds the `env`; hand the same one to `probeClaudeAccount`, `listClaudeModels`
-and `readClaudeUsage` so they see the run's account.
+and `readClaudeUsage` so they see the run's account. To hand the run a key of your
+own as well, add its name: `harnessEnv({ pass: [...CLAUDE_CODE_PASS, "GH_TOKEN"] })`.
+A variable you pass is readable by every command the run starts, and the model can
+print it.
 
 Include lowercase proxy names too; curl reads only `http_proxy`.
 

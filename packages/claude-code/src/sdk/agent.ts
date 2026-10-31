@@ -302,6 +302,22 @@ export interface ClaudeCodeAgentOptions {
    */
   settingSources?: ClaudeAgentSettingSource[];
   /**
+   * Settings for this run, in Claude Code's `settings.json` shape, forwarded to
+   * the SDK as given. Default: unset, which hands the SDK no settings of its own.
+   *
+   * They sit above every source `settingSources` loads, so a key here beats
+   * the same key in the repository's `.claude/settings.json`. The case it is
+   * for: a host that trusts the repository a run works in sets
+   * `settingSources: ["project"]` to load its `CLAUDE.md` and skills, and
+   * `settings: { disableAllHooks: true }` so the repository's hooks, which run
+   * by themselves and show in no transcript, stay off.
+   *
+   * With `mcpTools` set, the run's settings also carry
+   * `disableClaudeAiConnectors: true`, whatever this says: `mcpTools` is the
+   * run's whole MCP set. The object is not modified.
+   */
+  settings?: Record<string, unknown>;
+  /**
    * Environment variables for the run's own process. Default: unset, which
    * hands the run the server's **entire** `process.env` — every key, token and
    * connection string the server holds, readable by any shell command the
@@ -827,6 +843,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     onUsage,
     onActivity,
     settingSources,
+    settings,
     env,
     sandbox,
     mcpTools,
@@ -1023,8 +1040,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         // Spread conditionally rather than passed as `undefined`. For
         // `settingSources` the two are different instructions — absent means
         // "load all of them", `[]` means "load none" — and the same care costs
-        // nothing for the other two.
+        // nothing for the others.
         ...(settingSources !== undefined ? { settingSources } : {}),
+        ...(settings !== undefined ? { settings } : {}),
         ...(env !== undefined ? { env } : {}),
         ...(sandboxSettings !== undefined ? { sandbox: sandboxSettings } : {}),
         // In-session, from the block's own conversation state; detached, from
@@ -1144,7 +1162,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         handedTools =
           typeof mcpTools === "function" ? await resolveMcpTools(mcpTools, ctx) : mcpTools;
         if (handedTools !== undefined) {
-          Object.assign(queryOptions, mcpQueryOptions(handedTools));
+          Object.assign(queryOptions, mcpQueryOptions(handedTools, settings));
           // With `mcpTools` set, the relayed tools are allowed without asking.
           queryOptions.allowedTools = [
             ...new Set([...(queryOptions.allowedTools ?? []), ...relayedToolNames(handedTools)]),
@@ -1666,10 +1684,13 @@ async function closeMcpTools(tools: ClaudeCodeMcpTools | undefined): Promise<voi
  *
  * `strictMcpConfig` keeps out `.mcp.json`, settings-file and plugin servers;
  * it does not keep out the signed-in account's claude.ai connectors, which
- * `disableClaudeAiConnectors` does, read from the run's settings.
+ * `disableClaudeAiConnectors` does, read from the run's settings. That switch
+ * is merged into the host's own `settings`, last, so no host value turns the
+ * connectors back on.
  */
 function mcpQueryOptions(
   tools: ClaudeCodeMcpTools,
+  hostSettings: Record<string, unknown> | undefined,
 ): Pick<ClaudeAgentQueryOptions, "mcpServers" | "strictMcpConfig" | "settings"> {
   return {
     mcpServers: Object.fromEntries(
@@ -1679,7 +1700,7 @@ function mcpQueryOptions(
       ]),
     ),
     strictMcpConfig: true,
-    settings: { disableClaudeAiConnectors: true },
+    settings: { ...hostSettings, disableClaudeAiConnectors: true },
   };
 }
 
