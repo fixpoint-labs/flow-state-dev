@@ -14,7 +14,8 @@ FIX-1786's wrap reached this spec on Oct 31, a week after its bar closed. Org pr
 now line: its closure merged Oct 6, and the bar closes when the epic wraps. FIX-1765's lane ends in
 a cross on Oct 13, canceled into FIX-1764. Memory's (FIX-1775) ends in a done mark on Oct 9 with no
 bar, and its long-session half was never filed. Coding tasks (FIX-1763), gaps between epics
-(FIX-2273) and Workforce over MCP (FIX-2331) carry filing ticks and no approved objective. Three
+(FIX-2273), Workforce over MCP (FIX-2331) and the daily driver (FIX-2369, filed Oct 31 20:19, at
+the now line) carry filing ticks and no approved objective. Three
 lanes stay empty by plan.
 
 ## What each epic consumes and releases
@@ -47,8 +48,8 @@ lanes stay empty by plan.
   task, so the run was refused) left with it and are already Done, FIX-1969 under FIX-1786. Two rows
   only Jake's machine can run: FIX-1904's V1 row, a Claude Code run signed in through a claude.ai
   subscription (OAuth), and a confirming run of goal leg c.
-- **What FIX-2152 left behind.** FIX-2359 (the Claude Code-style lab's finished-task panel) in
-  review; FIX-2349 and FIX-2350 (a Teammates coding task shown failed while running, and started
+- **What FIX-2152 left behind.** FIX-2359 (the Claude Code-style lab's finished-task panel) Done
+  Oct 31; FIX-2349 and FIX-2350 (a Teammates coding task shown failed while running, and started
   twice), FIX-2340 (one session overlay for both labs), FIX-2323 (a crashed run's tokens) and
   FIX-2167 (coordinator sessions in `listWorkerSessions`) in Backlog, still its children. Owed on
   Jake's machine: browser checks at 1440 and 1920 wide (FIX-2337), and real-model runs of both labs
