@@ -67,9 +67,8 @@ flowchart LR
   end
   subgraph after["After"]
     P2["session: provision"] --> S2["state.workspace<br/>path, branch, baseCommit, commits"]
-    M2["board task: output<br/>branch, commits, base, path"] --> V2["FIX-2379 task-row view"]
-    S2 --> W2["workPlace · ./browser"]
-    V2 --> W2
+    M2["board task: output<br/>branch, commits, base, path"] --> W2["workPlace · ./browser"]
+    S2 --> W2
     W2 --> C2["work-place chip · ui registry"]
   end
 ```
@@ -93,7 +92,8 @@ commands need; both are read through one shape and drawn by one chip.
 - **Apps adopt later, in their stacks** (the epic's build order): Kitchen Sink's
   `harness-session.tsx` and worktree code, Shift Manager's `TaskFrame.tsx`, and the Claude
   Code-style `adapter.ts` with its task sheet and result line. A task row carries the output
-  through FIX-2379's task-row view, never an app's own reader (epic ER-4).
+  through harness-manager's `./browser` reader, composed beside FIX-2379's task-row view, never
+  an app's own reader (epic ER-4).
 - **Docs:** harness-manager's README (the session state field, the two output fields, the browser
   reader) and the ui registry page for the chip.
 
@@ -113,7 +113,7 @@ Kitchen Sink names a session's branch and where its worktrees live.
 | Workspace host's provision result, `repo.baseCommit` | **Reused**: it already returns the commit a new branch was cut at |
 | The session flow's turn-end handler (`branchPullRequests`) | **Extended** by one call that records the count. FIX-2384's stack edits this region; merge order resolves it |
 | FIX-2385's `./browser` entry | **Extended** with `workPlace` (ER-4) |
-| FIX-2379's task-row view | **Consumed**: it carries the output fields. A comment on its spec asks for `base` and `path` |
+| FIX-2379's task-row view | **Left alone**: it stays in orchestration and carries no harness-manager output field (the epic's call). Apps compose `workPlace` beside it |
 | The review stop's `branch`, `commits`, `subjects` (Claude Code-style `reviewStopOf`) | **Kept**. A review shows subjects for a person to judge; the chip is for finding the work. The lab's adoption reads the output, not the stop |
 
 **Adds:** one session state field, two output fields, one browser helper, one registry

@@ -51,8 +51,10 @@ flowchart TD
   moves; the commit the branch was cut at does not.
 - **Defaulted to `null`** so outputs stored before this change still parse (BP-030), and `null`
   for a run with no repository, like `branch`.
-- **Locks in:** two fields on the output. FIX-2379's task-row view carries them; this issue asks
-  on that spec rather than reading the output a second way (epic ER-4).
+- **Locks in:** two fields on the output, read through harness-manager's `./browser` entry
+  (`workPlace`, D3), the one reader of a run's branch, commits, base and path. FIX-2379's
+  task-row view stays in orchestration and carries none of them: orchestration can't read
+  harness-manager's schema (the epic's call). An app composes the two reads.
 
 <a name="d3"></a>
 ## D3 · One shape and one chip, apart
@@ -80,4 +82,5 @@ flowchart TD
 
 ## Notes from review
 
-None yet.
+- FIX-2369 epic (on FIX-2379's seam): the task-row view carries no harness-manager output; a run's
+  branch, commits, `base` and `path` are read through harness-manager's `./browser`. Folded into D2.
