@@ -56,10 +56,15 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
   inline box) lands in that app's stack, per the build order.
 - **E2 · Layer boundary:** all of it is the ui registry and the apps. No worker, task or
   harness noun enters the component: `who` is a free label the app fills.
-- **E3 · Busy and refused states** are the component's: *Retrying…* while the promise runs, the
+- **E3 · Busy and refused states** are the component's, the same pattern as `StuckRequestBanner`'s
+  `isDismissing` (state set before the await, cleared in `finally`): *Retrying…* while the promise runs, the
   rejection's message inline after, the button back. This matches FIX-2372's rule for mutation
   buttons without depending on it.
 - **E4 · Wording:** the line uses *worker* only through the app's `who`; no copy names a role.
+- **E6 · Kitchen Sink has one failure path.** Today a failed request can show twice: as an
+  `ErrorDisplay` in the stream (`chatAssistantRenderers`) and as the bare `session.error` box in
+  `ConversationBody`. After its slice, the stream's `error` renderer is `RequestRecovery`, and the
+  box shows only for an error no ErrorItem carries.
 - **E5 · Colours** use the `destructive` token, as `ErrorDisplay` does; the palette census and
   token tests cover it.
 
@@ -71,4 +76,17 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 ## Notes from review
 
-None yet.
+Round 1 (2026-10-31): Codex, no findings. Cursor (simplify review), approved; its Kitchen Sink
+point is folded as E6, the rest recorded here for the implementer:
+
+- "Stub optional callback props (names + absent-means-no-button) even if unused in 2370, so
+  2377 doesn't churn three app slices with a rename." *Not stubbed:* 2377's Continue and Discard
+  are new optional props, which an app that doesn't pass them never sees, so nothing renames.
+- "Startup key warnings help the verification story but aren't required for 'failed turn inline
+  + Retry'." *Kept:* the issue names them, and the app slices' `fsdev run` check relies on them.
+- "One dashed edge or bullet that an optional `footer` / actions slot on `ErrorDisplay` was
+  considered and rejected." *Covered by D1's third column:* a slot on `ErrorDisplay` is still
+  drawn by an item renderer that has no callback, and 2377's interrupted case has no item.
+
+FSD Architect's coherence note: the name stays `request-recovery`, the one ER-4 and the FIX-2377
+row already point at. No change to the epic.

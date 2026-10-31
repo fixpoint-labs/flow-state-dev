@@ -75,7 +75,10 @@ In each adapter unit case, dropping the `"error"` branch fails it. Each PR shows
   `client.flow(f).request(id).retry()` or `useSession().resumeLatestRequest()`.
 - **App slices** (later, in their stacks): both lab adapters map `type: "error"` items to an error
   entry and mark an unfinished message of that request incomplete; each lab's entry renders
-  `RequestRecovery`; Kitchen Sink replaces its inline error box with it. Each lab's host logs one
+  `RequestRecovery`. Kitchen Sink shows a failed turn once, in the stream: its `error` item renderer
+  becomes `RequestRecovery` (with `onRetry` on the latest request), and the bare `session.error` box
+  stays only for an error with no ErrorItem behind it, such as a send refused before a request
+  exists ([E6](DECISIONS.md#decided-not-asked)). Each lab's host logs one
   startup warning when neither `AI_GATEWAY_API_KEY` nor `ANTHROPIC_API_KEY` is set.
 - **Docs:** `packages/ui/README.md` gains a `request-recovery` row; `apps/docs/docs/ui/flow-aware-components.md`
   gains a *RequestRecovery* section (what it shows, the `onRetry` contract, latest-only).
