@@ -33,6 +33,8 @@ export type { ParsedInput } from "./chat/parse";
 export type { FlowActionTarget } from "./chat/targets";
 export type { ChatRenderer } from "./chat/render";
 export { registerUiCommand } from "./commands/ui";
+export { registerWorktreesCommand, executeWorktreesCommand } from "./commands/worktrees";
+export type { WorktreesCommandOptions } from "./commands/worktrees";
 // Three names, not six. A shipper embeds the block, renders it, and asserts its own copy —
 // the command-form table and the comparison verdict are how `renderNextSteps` and
 // `assertCanonicalNextSteps` do their jobs, and publishing them would make narrowing this
