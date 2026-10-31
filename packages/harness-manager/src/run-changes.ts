@@ -96,9 +96,13 @@ export function harnessRunChangesRead(options: HarnessRunChangesReadOptions): Re
           ? { taskId: row.id, diff: { files: [], fileCount: 0, added: 0, removed: 0, verified: true }, patch: null }
           : { taskId: row.id, diff: null, patch: { path: input.path, patch: "", truncated: false, verified: true } };
       }
-      // No checkout recorded: no base to read against, so the read answers unverified.
-      const cwd = record?.workspacePath ?? null;
-      const changes = await readRunChanges(cwd ?? "", cwd === null ? null : (record!.baseRef ?? null), record?.baseCommit ?? null, at);
+      // No checkout recorded: nothing to read, so the read answers unverified without running git.
+      if (record?.workspacePath == null) {
+        return input.path === undefined
+          ? { taskId: row.id, diff: { files: [], fileCount: 0, added: 0, removed: 0, verified: false }, patch: null }
+          : { taskId: row.id, diff: null, patch: { path: input.path, patch: "", truncated: false, verified: false } };
+      }
+      const changes = await readRunChanges(record.workspacePath, record.baseRef ?? null, record.baseCommit ?? null, at);
       return { taskId: row.id, ...changes };
     },
   });
