@@ -23,7 +23,7 @@ already shows.**
   FIX-2409's change notices through FIX-2367's `client.subscribe`), and the server cost of reading
   every request to answer one page (FIX-877, FIX-1672).
 - **Not done if:** a session of more than 1,000 items read through the client comes back without
-  its newest item, or a refresh misses a reply that finished after a later item was stored.
+  its newest item, or a refresh shows a reply half-written after it finished.
 
 ```mermaid
 flowchart LR
@@ -45,10 +45,11 @@ flowchart LR
 - **Unit:** `packages/client/test/session-window.test.ts` against a source that answers as the
   engine's state route does. It pins: two calls for a long session and one for a short one; a
   session that grows between calls; item types kept across reads; *Load earlier* with no gap and
-  no call at the start; **a reply stored behind the newest item is in the refresh**, and a read
-  past the old end misses it ([D1](DECISIONS.md#d1)); a read that pages while an item is stored
-  behind it starts over; a session created again under the id starts over at its end. Each of the
-  last three has a control prototyped to fail.
+  no call at the start; **a refresh shows a reply's finished text when it first read the reply
+  half-written, and an item stored behind the newest one**, which a read past the old end misses
+  ([D1](DECISIONS.md#d1)); a read that pages while an item is stored behind it starts over; a
+  session created again under the id starts over at its end. Each of these has a control
+  prototyped to fail.
 - **The issue's app test** (seed more than 1,000 items, assert the newest reply renders) belongs to
   the Shift Manager's adoption, in the wave-2 stack ([below](#what-stays-as-it-is)).
 
@@ -103,7 +104,7 @@ adoption lands.
 
 - **Refresh re-reads the window, not only what came after it** ([D1](DECISIONS.md#d1)). *If wrong:*
   a view with no feed reads a few hundred items per refresh rather than a handful; a delta read
-  would be cheaper but drops replies that finish late.
+  would be cheaper but leaves a reply half-written on screen and drops items stored late.
 - **The helper is three functions over `sessions.state`, not a new route option** ([D2](DECISIONS.md#d2)).
   *If wrong:* a long session's first read costs two calls, each of which reads every request on
   the server (FIX-877), until a route option is added.

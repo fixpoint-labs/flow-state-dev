@@ -11,14 +11,17 @@ earlier*, take new items from the feed "or an offset delta". The epic places it 
 
 | | From the window's start (chosen) | Offset delta past the old end | Delta with a fixed overlap |
 |---|---|---|---|
-| A reply that finished after a later item was stored | in the next read | **missed until a full reload** | missed when it lands further back than the overlap |
+| A reply first read while still being written | its finished text in the next read | **stuck on the half it read** | stuck once it is further back than the overlap |
+| An item stored behind items already read | in the next read | **missed until a full reload** | missed when further back than the overlap |
 | Items per refresh | the window (200 at first) | only the new ones | new ones plus the overlap |
-| Window stays one unbroken run | yes | yes | yes |
 
-- **Because:** the state route orders items by `ts`, then `itemIndex` (`compareItemOrder`). A
-  reply is stamped when it starts and stored when it finishes, so a user's next line, sent while
-  the reply streams, is stored first and sorts after it. The reply lands *behind* the old end. The
-  unit test reproduces it and shows the delta missing it.
+- **Because:** a running request's items are stored while it runs and rewritten in place by id
+  (`RequestStore.persistItems`, FIX-811, FIX-1735), and the state route orders items by their
+  stamp, then `itemIndex` (`compareItemOrder`). Checked on a real host: a slow request's first
+  message sits ahead of a later request's messages. So a reply the window read half-written
+  finishes at a position the window already holds, and an item stamped before the newest one but
+  stored after it lands behind the old end. The unit tests reproduce both and show the delta
+  missing them.
 - **The cost is bounded and temporary.** A refresh reads what the person has on screen, against
   the Shift Manager's 1,000 every 5 seconds today. FIX-2409 replaces the refresh with change
   notices, and a view on FIX-2374's feed takes new items from the stream and never refreshes.
