@@ -498,6 +498,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       // A turn that never reached a git checkout has no base: an unverified, empty answer.
       // `== null`: a turn recorded before these fields has neither, and reads unverified (BP-030).
       const base = record.base ?? null;
+      // With a base commit the read uses it alone; the ref only has to be non-null (`resolveBases`).
       return readRunChanges(existsSync(cwd) ? cwd : "", base === null ? null : "HEAD", base, {
         ...(record.head != null ? { head: record.head } : {}),
         ...(input.path !== undefined ? { path: input.path } : {}),
