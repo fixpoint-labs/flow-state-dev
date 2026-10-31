@@ -7,9 +7,6 @@ import {
   compareItemOrder,
   createRequestStreamStore,
   createSSEClientFromResponse,
-  followSession,
-  mayReplaceItem,
-  readSessionHistory,
   type ExecuteActionResponse,
   type FlowHandle,
   type RequestSSECallbacks,
@@ -31,6 +28,7 @@ import type {
   SessionRun,
   StateChangeItem
 } from "@flow-state-dev/core/items";
+import { followSession, mayReplaceItem, readSessionHistory } from "@flow-state-dev/client/internal";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 // Canonical helper from the zero-dependency contracts layer (value-import).
 // Previously hand-mirrored here because react may only type-import core.
@@ -1562,8 +1560,7 @@ export function useSession(
     const close = followSession({
       sessionId,
       client: fsd,
-      since: snapshotAtRef.current,
-      sessionCreatedAt: followedSessionCreatedAt,
+      after: { at: snapshotAtRef.current, sessionCreatedAt: followedSessionCreatedAt },
       itemTypes: itemConfig.itemTypes,
       onItem: acceptItem,
       onRuns: (event) => {

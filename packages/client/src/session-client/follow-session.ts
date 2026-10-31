@@ -24,8 +24,13 @@ export type FollowSessionOptions = {
   readonly sessionId: string;
   /** The view's client: the stream goes through its transport, with the view's credential. */
   readonly client: { readonly sessions: Pick<SessionsApi, "stream"> };
-  readonly since?: number;
-  readonly sessionCreatedAt?: number;
+  /**
+   * The history read the stream follows on from: its `at` (passed as `since`)
+   * and `sessionCreatedAt`, so nothing kept after that read is missed and the
+   * stream follows that session and none that takes its id later. Omit to
+   * follow from the stream's own opening read.
+   */
+  readonly after?: { readonly at?: number; readonly sessionCreatedAt?: number };
   readonly itemTypes?: string[];
   /**
    * A finished item the session kept, including those the stream's opening
@@ -36,55 +41,50 @@ export type FollowSessionOptions = {
   readonly onItem: (event: SessionItemEvent) => void;
   /** The session's unfinished runs: named first on every connection, then on each change. */
   readonly onRuns?: (event: SessionRunsChangedEvent) => void;
-  /**
-   * The stream had named the runs and has stopped following the session: a
-   * reconnect failed, or it was refused for good. A stream refused or dropped
-   * before it named anything reports nothing, and the view carries on as it
-   * would without the stream.
-   */
-  readonly onLapsed?: () => void;
   /** Each change of {@link SessionConnectionState}, after the first (`connecting`). */
   readonly onConnection?: (state: SessionConnectionState) => void;
+  /**
+   * Read off the state: the stream had named the runs and has stopped
+   * following the session, on entering `lapsed`, or `stopped` after `live`.
+   * A stream refused or dropped before it named anything reports nothing, and
+   * the view carries on as it would without the stream.
+   */
+  readonly onLapsed?: () => void;
 };
 
 /** Open the session's stream. Returns what closes it. */
 export function followSession(options: FollowSessionOptions): () => void {
-  let following = false;
   let state: SessionConnectionState = "connecting";
+  let vouched = false;
   const enter = (next: SessionConnectionState): void => {
     if (state === next || state === "stopped") return;
     state = next;
+    if (next === "live") vouched = true;
     options.onConnection?.(next);
+    if (next === "lapsed" || (next === "stopped" && vouched)) options.onLapsed?.();
   };
 
   const handle = options.client.sessions.stream(options.sessionId, {
-    since: options.since,
-    sessionCreatedAt: options.sessionCreatedAt,
+    since: options.after?.at,
+    sessionCreatedAt: options.after?.sessionCreatedAt,
     itemTypes: options.itemTypes,
     onItem: options.onItem,
     onRuns: (event) => {
-      following = true;
       enter("live");
       options.onRuns?.(event);
     },
     // The first try after a drop takes about a second, the stream's own pace;
-    // once one has failed, what it last said may no longer be current.
+    // once one has failed, what it last said may no longer be current. Until
+    // the runs are named, nothing was vouched for, so there is nothing to lapse.
     onReconnecting: ({ attempt }) => {
-      if (!following) return;
-      if (attempt >= 2) {
-        enter("lapsed");
-        options.onLapsed?.();
-      } else {
-        enter("reconnecting");
-      }
+      if (vouched) enter(attempt >= 2 ? "lapsed" : "reconnecting");
     },
     // Refused for good, or the session is gone.
-    onStop: () => {
-      enter("stopped");
-      if (following) options.onLapsed?.();
-    }
+    onStop: () => enter("stopped")
   });
   return () => {
+    // A view that closes the stream itself is not told it lapsed.
+    vouched = false;
     enter("stopped");
     handle.close();
   };

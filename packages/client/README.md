@@ -228,17 +228,15 @@ or you called `close()`. A server without the stream reads `stopped` with the
 history loaded.
 
 `runs` is the session's unfinished runs as the stream last named them, `null`
-until it has. `error` is a failed history read; the feed reads again every two
-seconds (`retryMs`) while it is open. Pass `itemTypes` to keep only some item
+until it has. `error` is a failed history read. The feed reads again after two
+seconds, then four, eight and sixteen (`retryMs` sets the first wait), and after
+that reads `stopped` with the error. Pass `itemTypes` to keep only some item
 types, and `includeTransient: true` to keep transient ones. Each change is a new
-frozen snapshot, also available from `feed.getSnapshot()`. One feed holds one
-connection, so views of the same session should share it.
+frozen snapshot, also available from `feed.getSnapshot()`.
 
-The pieces the feed is built from are exported too, for a view that joins its
-own sources: `readSessionHistory(fsd.sessions, sessionId)` reads every page of a
-session's history as one snapshot, `followSession({ sessionId, client, ... })`
-follows the stream and reports its state (`onConnection`), and
-`mayReplaceItem(held, next)` is the rule for which of two copies to keep.
+One feed holds one history read and one connection. Views of the same session
+should share one feed: two feeds, or a feed beside `useSession({ live: true })`,
+read and stream the session twice.
 
 ## Stream state store
 
@@ -286,11 +284,9 @@ const snapshot = await fsd.sessions.state("sess_1", {
   clientData: ["session.artifactsList", "user.preferences"],
 });
 // `snapshot.at` is the server time the read began. Items come in pages
-// (`pagination.hasMore`, `pagination.nextOffset`). `readSessionHistory` reads
-// every page as one snapshot, starting over if the history moves under it; pass
-// its `at` and `sessionCreatedAt` to `fsd.sessions.stream` (`since`,
-// `sessionCreatedAt`) so the stream follows the session you read. Or use
-// `sessionFeed`, which does both.
+// (`pagination.hasMore`, `pagination.nextOffset`). To follow the session, use
+// `sessionFeed`, which reads every page and then follows the stream from the
+// first page's `at` and `sessionCreatedAt`.
 
 // List a session's requests. A finished request carries `result`: `error` when
 // it failed, and `hasOutput`. Pass `includeResultOutput` for the action's return
@@ -412,10 +408,7 @@ the flow is wired up.
 - `createRequestStreamStore({ keyOf? })` — Headless request-stream accumulator (sorted items, streaming text, status/sequence)
 - `bindStoreToCallbacks(store, options?)` — Map SSE events onto a store (the shared reducer)
 - `compareItemOrder(a, b)` — Display order for items from many requests (`ts`, `itemIndex`, `requestId`, then `id`); a session snapshot's items come in this order, so sort merged items with it
-- `sessionFeed(client, sessionId, { itemTypes?, includeTransient?, retryMs? })` — Follow one session without React: `getSnapshot()` / `subscribe()` give `{ items, runs, state, error }`; `followResponse(response)` keeps a send's answer as it is written; `close()`
-- `followSession({ sessionId, client, since?, sessionCreatedAt?, itemTypes?, onItem, onRuns?, onLapsed?, onConnection? })` — Follow a session's stream and report its `SessionConnectionState`; returns the close
-- `readSessionHistory(sessions, sessionId, { itemTypes?, pageLimit?, attempts? })` — Every page of a session's history as one snapshot; throws if the history moved during every attempt
-- `mayReplaceItem(held, next)` — Whether one copy of an item may replace another: never a partial over a finished copy, never an earlier emission over a later one
+- `sessionFeed(client, sessionId, { itemTypes?, includeTransient?, retryMs? })` — Follow one session without React: `getSnapshot()` / `subscribe()` give `{ items, runs, state, error }`, where `state` is a `SessionConnectionState`; `followResponse(response)` keeps a send's answer as it is written; `close()`
 - `sessionQueryFor(address, flows)` — Build the `sessions.list` filter (`flowId` or `flowKind`) for one flow address
 - `sendHarnessLine(prompt, running, sender)` — Send a line typed into a harness session: into the running turn when its harness takes it (the flow's steer action, core's `harnessSteering`), else as the next turn. Answers `"taken"`, `"after-this-turn"` or `"turn"`
 - `harnessLines(sendOne?)` — Keep one page's lines in typed order: `send(prompt, running, sender)` waits for the line before, and once a line has gone to run after the running turn, later lines follow it until `turnChanged()`

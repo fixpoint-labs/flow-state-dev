@@ -20,15 +20,20 @@ import { createSSEClientFromResponse } from "../stream-client/streams";
 import { followSession, type SessionConnectionState } from "./follow-session";
 import { mayReplaceItem, readSessionHistory } from "./session-history";
 
-/** How long a failed history read waits before it is read again, by default. */
+/** How long the first retry of a failed history read waits, by default; each later one waits twice as long. */
 const DEFAULT_RETRY_MS = 2_000;
+/** How many times a failed history read is tried again before the feed stops. */
+const HISTORY_RETRIES = 4;
 
 export type SessionFeedOptions = {
   /** Keep only these item types. Default: every type. */
   readonly itemTypes?: string[];
   /** Keep transient items too. Default false, as `useSession`. */
   readonly includeTransient?: boolean;
-  /** How long a failed history read waits before it is read again. Default 2000. */
+  /**
+   * How long the first retry of a failed history read waits, in ms; each later
+   * one waits twice as long, and after four the feed stops. Default 2000.
+   */
   readonly retryMs?: number;
 };
 
@@ -40,7 +45,10 @@ export type SessionFeedSnapshot = {
   readonly runs: readonly SessionRun[] | null;
   /** How far `items` and `runs` can be trusted. See {@link SessionConnectionState}. */
   readonly state: SessionConnectionState;
-  /** The last history read's failure, while it is read again; `null` once a read lands. */
+  /**
+   * The last history read's failure: while it is read again, and after the
+   * feed gave up (`stopped`). `null` once a read lands.
+   */
   readonly error: Error | null;
 };
 
@@ -81,6 +89,7 @@ export function sessionFeed(
   let closed = false;
   let stopStream: (() => void) | undefined;
   let retry: ReturnType<typeof setTimeout> | undefined;
+  let failures = 0;
 
   const keep = (item: OutputItem): boolean => {
     if (!passes(item)) return false;
@@ -101,8 +110,15 @@ export function sessionFeed(
       history = await readSessionHistory(client.sessions, sessionId, { itemTypes: types });
     } catch (cause) {
       if (closed) return;
-      publish({ error: cause instanceof Error ? cause : new Error(String(cause)) });
-      retry = setTimeout(() => void start(), retryMs);
+      const error = cause instanceof Error ? cause : new Error(String(cause));
+      // Backed off, and given up: a fixed retry against a host that is down is a steady poll.
+      if (failures >= HISTORY_RETRIES) {
+        publish({ error, state: "stopped" });
+        return;
+      }
+      publish({ error });
+      retry = setTimeout(() => void start(), retryMs * 2 ** failures);
+      failures += 1;
       return;
     }
     if (closed) return;
@@ -112,8 +128,7 @@ export function sessionFeed(
     stopStream = followSession({
       sessionId,
       client,
-      since: history.at,
-      sessionCreatedAt: history.sessionCreatedAt,
+      after: history,
       itemTypes: types,
       onItem: ({ item }) => {
         if (keep(item)) publish({ items: sortedItems() });

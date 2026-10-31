@@ -37,16 +37,7 @@ export {
 } from "./client";
 
 export { sessionQueryFor } from "./session-client/session-query";
-export {
-  followSession,
-  type FollowSessionOptions,
-  type SessionConnectionState
-} from "./session-client/follow-session";
-export {
-  mayReplaceItem,
-  readSessionHistory,
-  type ReadSessionHistoryOptions
-} from "./session-client/session-history";
+export type { SessionConnectionState } from "./session-client/follow-session";
 export {
   sessionFeed,
   type SessionFeed,

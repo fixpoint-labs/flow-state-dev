@@ -225,6 +225,25 @@ describe("sessionFeed", () => {
     expect(feed.getSnapshot().state).toBe("connecting");
   });
 
+  it("backs off a failing history read and gives up after four retries, rather than poll a host that is down", async () => {
+    const at: number[] = [];
+    const h = host(() => {
+      at.push(Date.now());
+      return json({ error: "down" }, 503);
+    });
+    const feed = sessionFeed(h.client, "s1", { retryMs: 10 });
+    feeds.push(feed);
+
+    await until(() => feed.getSnapshot().state === "stopped");
+    expect(feed.getSnapshot().error).not.toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(at).toHaveLength(5);
+    // Each wait is longer than the one before.
+    const gaps = at.slice(1).map((t, i) => t - at[i]);
+    expect(gaps[3]).toBeGreaterThan(gaps[0]);
+    expect(h.streams).toHaveLength(0);
+  });
+
   it("stops on close: the state says stopped, the stream is closed, and no listener hears anything after", async () => {
     const h = host(() => json(snapshot([])));
     const feed = sessionFeed(h.client, "s1");
