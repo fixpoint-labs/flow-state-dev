@@ -39,6 +39,14 @@ is written, and how far a caller-named id is trusted.
   task's view finds scope-marked work and misses door turns. If instead the engine copies a
   tag key into `item.taskId`, it is `taskOf` under another name, with an untyped object in its
   place. The task noun is in the item contract either way; the tag only hides it.
+- **A reserved `taskId` key in every action's input, rejected.** The engine would stamp from it
+  with no option at all. But every action in every flow would then carry a meaning for one key
+  it never declared, and a strict schema refuses it anyway. `taskOf` keeps the opt-in explicit,
+  per action, beside `userMessage`.
+- **Clearing a scope's mark** (`_markTaskScope(null)`) falls back to the request's task, not to
+  no task: the request's task is the default under every scope that marks nothing.
+- **If approved, ER-1 gets a line in the epic's decisions** naming this exception (the first
+  input-driven source of `taskId` in core), so the next reader of ER-1 sees it there.
 - **What would change my mind:** a reading of ER-1 that forbids any new task-shaped field in
   core, even one that only labels. Then the door marks its scope in Workforce and Shift Manager
   keeps pairing the line by request, with the steer case left open.
@@ -49,7 +57,7 @@ is written, and how far a caller-named id is trusted.
 | | Trust it as a label (chosen) | Check it against the session before stamping | Derive it on the server only |
 |---|---|---|---|
 | Works in a worker session that holds several tasks | yes | yes, at the cost of a ledger read per turn | **no:** only the caller knows which task's screen the line came from |
-| A wrong id can misfile a line | only under a task this session ran, and only in the sender's own view | no | no |
+| A wrong id can misfile a line | only under another task this same session ran, for anyone who reads this session | no | no |
 | Cost | none | a read, and the echo is already written before a block can refuse | — |
 
 - **Because:** BP-031 covers auth and routing, and the stamp is neither. A steer still picks the
@@ -57,7 +65,8 @@ is written, and how far a caller-named id is trusted.
   gate a stamp on the task's `task-change` items in the same session (`itemsForTask`), so an id
   for a task this session never ran attaches to nothing.
 - **Locks in:** no refusal for an unknown id. If a later reader starts deciding by `taskId`,
-  that reader checks it, not the door.
+  that reader checks it, not the door. `docs/architecture/items.md` says so where it documents
+  `taskId`, so the rule is not only in this spec.
 
 <a name="open"></a>
 ## Open
@@ -75,7 +84,10 @@ is written, and how far a caller-named id is trusted.
   `taskOf: doorTaskOf`. The hire's door contract is unchanged, so no existing flow is refused.
 - **E2 · The inventory says whether a door takes a task** (`doorTakesTask`, from `taskOf` being
   declared on `respond`). A strict door refuses a key it doesn't declare, so an app must know
-  before it sends one. Old rows read `false` (BP-030).
+  before it sends one. Old rows read `false` (BP-030), so Shift Manager on `main` between the
+  two PRs behaves as today. Rejected: make the hire's door check require every door to accept
+  `taskId`. That refuses custom flows that are valid today, and a door that accepts the key
+  still stamps nothing without `taskOf`, so the app could still not count on the stamp.
 - **E3 · Trace items stay unstamped** (`block_trace`, `router_decision`, `state_change`), as they
   are under `_markTaskScope`. Readers attribute content items, not traces.
 - **E4 · No `sessionStorage` interim.** The issue's "until then" is replaced by the fix itself,
@@ -94,3 +106,10 @@ is written, and how far a caller-named id is trusted.
   line and the reply stamped, and with `taskOf` removed the test failed on the missing stamps.
 - 2026-10-31, the epic's EM asked for a generic caller tag in place of `taskOf`, to keep the task
   noun out of the engine. Weighed in D1 and rejected; D1 left open for Jake.
+
+## Notes from review
+
+- Second look (9a5638d): folded the reserved-key alternative (D1, rejected), the precedence
+  under `_markTaskScope(null)` and the replay case (D1 and the engine tests), the ER-1 line in
+  the epic, the `items.md` note, who sees a misfiled line (D2), and why the inventory flag beats
+  a stricter door check (E2).

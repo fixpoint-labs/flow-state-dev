@@ -42,8 +42,9 @@ flowchart LR
 - **Control that must fail:** the door without `taskOf`. Prototyped: the first case fails (the
   messages come back with no `taskId`), the second passes.
 - **Engine, a unit test beside `runAction`'s:** an action with `taskOf` stamps its echo and a
-  block's emitted item; an inner scope marked with another task keeps its own mark; an action
-  with no `taskOf` stamps nothing.
+  block's emitted item; an inner scope marked with another task keeps its own mark, and one
+  cleared with `_markTaskScope(null)` falls back to the request's task; a resumed request
+  (replay) still stamps what it emits; an action with no `taskOf` stamps nothing.
 - **Shift Manager (PR 2):** the FIX-2009 tests in `packages/shift-manager/test/task-screen.test.tsx`
   gain a remount: send a line, unmount the task screen, mount it again, and the line and
   `Heard: …` are still in the Session tab. Control: the composer sends no `taskId`, and the
@@ -67,8 +68,9 @@ flowchart LR
   to `taskItems` are deleted (ER-3: the adopting PR deletes the app's copy).
 - **Docs:** `packages/workforce/README.md` and `apps/docs/docs/workforce/messaging-workers.md`
   say a door takes an optional task id; `apps/docs/docs/fundamentals/actions.md` documents
-  `taskOf` beside `userMessage`; `apps/docs/docs/streaming/items.md` names it as a second source
-  of `taskId`.
+  `taskOf` beside `userMessage`; `apps/docs/docs/streaming/items.md` and
+  `docs/architecture/items.md` name it as a second source of `taskId`, and say it is a label a
+  reader must not decide by unchecked.
 
 ## What stays as it is
 
