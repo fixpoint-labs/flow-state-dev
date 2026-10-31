@@ -19,11 +19,11 @@
  * run with no project is refused `no-project` before any checkout (spec D3).
  * `fsdev.config.mts` builds it: a worktree of the project's repository.
  */
-import { defineFlow, handler, router, sequencer } from "@flow-state-dev/core";
+import { defineFlow, handler, harnessEnv, router, sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition, HarnessBlock } from "@flow-state-dev/core/types";
-import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
-import { codexAgent } from "@flow-state-dev/codex";
-import { cursorAgent } from "@flow-state-dev/cursor";
+import { CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
+import { CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
 import { goalJudge, harnessManager, harnessSessionDoor, harnessTalkTurn, taskIssueSegment, type HarnessFeeds, type PhaseSpec } from "@flow-state-dev/harness-manager";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
@@ -69,6 +69,7 @@ const PERMISSION_MODES = ["acceptEdits", "plan"] as const;
 const claudeCode = (permissionMode: (typeof PERMISSION_MODES)[number]) => (feeds: HarnessFeeds) =>
   claudeCodeAgent({
     ...feeds,
+    env: harnessEnv({ pass: CLAUDE_CODE_PASS }),
     detached: true,
     recordWork: true,
     allowedTools: ["Read", "Write", "Edit", "Bash"],
@@ -81,18 +82,31 @@ const CURSOR_MODEL = "default";
 /**
  * One builder per manager the flow builds. `claude-code-plan` is Claude Code in `plan` mode; it is
  * not a name a worker's `harness:` line may use.
+ *
+ * Each run starts with only the variables its harness's package names (`CLAUDE_CODE_PASS`,
+ * `CODEX_PASS`, `CURSOR_PASS`), read when the run's block is built. With no `env`, a run would
+ * start with the lab server's whole environment, every key and token in it, and its model has a
+ * shell. This filters what a run starts with; it is not a boundary (FIX-1930).
  */
-const HARNESSES: Record<string, (feeds: HarnessFeeds) => HarnessBlock> = {
+export const HARNESSES: Record<string, (feeds: HarnessFeeds) => HarnessBlock> = {
   "claude-code": claudeCode("acceptEdits"),
   "claude-code-plan": claudeCode("plan"),
   codex: (feeds) =>
-    codexAgent({ cwd: feeds.cwd, resume: feeds.resume, onSession: feeds.onSession, onActivity: feeds.onActivity, name: "codex" }) as unknown as HarnessBlock,
+    codexAgent({
+      cwd: feeds.cwd,
+      resume: feeds.resume,
+      onSession: feeds.onSession,
+      onActivity: feeds.onActivity,
+      client: { env: harnessEnv({ pass: CODEX_PASS }) },
+      name: "codex",
+    }) as unknown as HarnessBlock,
   cursor: (feeds) =>
     cursorAgent({
       cwd: feeds.cwd,
       resume: feeds.resume,
       onSession: feeds.onSession,
       onActivity: feeds.onActivity,
+      env: harnessEnv({ pass: CURSOR_PASS }),
       // Cursor's SDK refuses a local agent with no model. "default" is Cursor's own pick, which every account's catalog has.
       model: CURSOR_MODEL,
       name: "cursor",

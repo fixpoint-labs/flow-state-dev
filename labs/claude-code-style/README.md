@@ -74,7 +74,9 @@ only 404s.
 
 `desk.coder` and `desk.thread-coder` run through Claude Code, so the host also needs
 `ANTHROPIC_API_KEY`. A worker you give `harness: codex` or `harness: cursor` needs that harness signed
-in too (Cursor reads `CURSOR_API_KEY`). The host is durable: a thread's question and review wait on you across a
+in too (Cursor reads `CURSOR_API_KEY`). A coding run starts with only the variables its harness
+needs (`CLAUDE_CODE_PASS`, `CODEX_PASS` or `CURSOR_PASS` from its package), never the rest of the
+host's environment. That filters what a run starts with; it isn't a security boundary. The host is durable: a thread's question and review wait on you across a
 restart, and a coding run's review needs durable execution. Its settings
 are read from the environment, all optional:
 
