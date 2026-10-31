@@ -81,7 +81,9 @@ commands need; both are read through one shape and drawn by one chip.
   Path, branch and base are written when the workspace is provisioned; the count is read at turn
   end, in the same `onFinished` handler that already checks the branch's pull requests.
 - **The workspace interface can say what it cut** ([D1](DECISIONS.md#d1)): `provision` may
-  return `{ path, baseCommit }` instead of a path. A path alone still works, and records no base.
+  return `{ path, baseCommit?, branch? }` instead of a path, the one return shape FIX-2419 and
+  FIX-2420 also extend (whichever merges first defines it; the others add their field). A path
+  alone still works, and records no base.
 - **The board manager's output gains `base` and `path`** ([D2](DECISIONS.md#d2)), defaulted to
   `null` so stored outputs parse (BP-030). `branch` and `commits` are already there.
 - **One reader and one chip** ([D3](DECISIONS.md#d3)): harness-manager's `./browser` entry
