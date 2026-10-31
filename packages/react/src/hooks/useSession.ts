@@ -64,6 +64,13 @@ type SnapshotRead = { arrivalsBefore: number; sequence: number; state: StateRead
 const KEPT_LIVE_CHANGES = 256;
 
 /**
+ * In live mode, how soon a shown request read as not yet ended is read
+ * again, first and at most: the wait doubles between the two.
+ */
+const RUNNING_STATUS_REREAD_MS = 1_000;
+const RUNNING_STATUS_REREAD_MAX_MS = 30_000;
+
+/**
  * Whether a live change can be put back on top of a read that may already
  * hold it (see `isReplayableStateChange`). A resource change carries the
  * whole entry, so it always can.
@@ -2268,6 +2275,26 @@ export function useSession(
     followedReadRef.current = unfollowedShownId;
     readFollowedStatus(unfollowedShownId);
   }, [unfollowedShownId, readFollowedStatus]);
+
+  // In live mode, that record read as not yet ended is read again until it
+  // says the request has: the session stream carries another client's items
+  // but not its request's end. The wait doubles each time, and every read
+  // schedules the next, a failed one too.
+  const [runningRereads, setRunningRereads] = useState<{ id: string | null; count: number }>({ id: null, count: 0 });
+  const runningReadId =
+    live && unfollowedShownId !== null && readFollowed?.id === unfollowedShownId && !hasEnded(readFollowed.status)
+      ? unfollowedShownId
+      : null;
+  const runningRereadCount = runningRereads.id === runningReadId ? runningRereads.count : 0;
+  useEffect(() => {
+    if (runningReadId === null) return;
+    const wait = Math.min(RUNNING_STATUS_REREAD_MAX_MS, RUNNING_STATUS_REREAD_MS * 2 ** runningRereadCount);
+    const timer = setTimeout(() => {
+      setRunningRereads({ id: runningReadId, count: runningRereadCount + 1 });
+      readFollowedStatus(runningReadId);
+    }, wait);
+    return () => clearTimeout(timer);
+  }, [runningReadId, runningRereadCount, readFollowedStatus]);
 
   const followedRequest = useMemo((): FollowedRequest | null => {
     if (shownRequestId === null) return null;

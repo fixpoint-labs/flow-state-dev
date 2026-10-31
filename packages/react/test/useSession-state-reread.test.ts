@@ -55,6 +55,10 @@
  *     after the session changed" case fails (a read for the old session).
  *   - no stream status cleared by a dismissal: the "dismissed" case fails
  *     (the request still reads in progress).
+ *   - a shown request's record read once while it ran, live: the "live, is
+ *     read again" case fails (it reads in progress after the request ended);
+ *     no doubling: the same case fails on the read count; read again without
+ *     `live` too: the "not live" case fails.
  *   - reading the followed request's status as soon as its stream ends,
  *     before the latest-request read lands: the "record when it ends" case
  *     fails (a status read the latest read made needless).
@@ -86,6 +90,7 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
           connections.push({ url: options.url, callbacks: options as never });
           return { close() {}, get lastEventId() { return undefined; } };
         },
+        sessionStream: () => ({ close() {}, lastAt: undefined, stopped: false }),
       }),
   };
 });
@@ -134,9 +139,9 @@ async function land(index: number, value: unknown) {
 const itemReads = () => stateCalls.filter((call) => call.options.includeItems === true);
 const stateOnlyReads = () => stateCalls.filter((call) => call.options.includeItems === false);
 
-/** Mount with one item from `req_turn` and the state `phase: "mounted"`. */
-async function mount() {
-  const hook = renderHook(() => useSession("sess1", { flowKind: "demo", items: true }));
+/** Mount with one item from `req_turn` and the state `phase: "mounted"`, live if asked. */
+async function mount(options: { live?: boolean } = {}) {
+  const hook = renderHook(() => useSession("sess1", { flowKind: "demo", items: true, ...options }));
   await flush();
   await land(0, snapshot("mounted", [message("m1", "req_turn")]));
   return hook;
@@ -671,5 +676,50 @@ describe("followedRequest", () => {
     // A re-render with nothing new reads nothing more.
     await flush();
     expect(requestMock.status).toHaveBeenCalledTimes(1);
+  });
+
+  describe("read while it is still running", () => {
+    const running = { id: "req_turn", status: "in_progress", startedAtMs: 10, ageMs: 1 };
+    beforeEach(() => {
+      sessionsMock.requests.mockResolvedValue([
+        { id: "req_steer", status: "completed", flowKind: "demo", actionName: "steer", userId: "devuser", createdAt: 0, updatedAt: 0 },
+      ]);
+      requestMock.status.mockResolvedValue(running);
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it("live, is read again until its record says it ended, then no more", async () => {
+      // Another client's request: the session stream brings its items, never
+      // its end, so a record read once while it ran would read running forever.
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const { result } = await mount({ live: true });
+      await flush();
+      expect(result.current.followedRequest).toEqual({ id: "req_turn", status: "in_progress", startedAtMs: 10 });
+
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      expect(requestMock.status).toHaveBeenCalledTimes(2);
+      expect(result.current.followedRequest?.status).toBe("in_progress");
+
+      requestMock.status.mockResolvedValue({ id: "req_turn", status: "completed", startedAtMs: 10, completedAtMs: 20, ageMs: 1 });
+      // The wait doubled: nothing at the old interval, a read at the new one.
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      expect(requestMock.status).toHaveBeenCalledTimes(2);
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      expect(requestMock.status).toHaveBeenCalledTimes(3);
+      expect(result.current.followedRequest).toEqual({ id: "req_turn", status: "completed", startedAtMs: 10, completedAtMs: 20 });
+
+      await act(() => vi.advanceTimersByTimeAsync(120_000));
+      expect(requestMock.status).toHaveBeenCalledTimes(3);
+    });
+
+    it("not live, is read once: the view updates on interaction, as its items do", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const { result } = await mount();
+      await flush();
+      expect(result.current.followedRequest?.status).toBe("in_progress");
+
+      await act(() => vi.advanceTimersByTimeAsync(120_000));
+      expect(requestMock.status).toHaveBeenCalledTimes(1);
+    });
   });
 });
