@@ -39,9 +39,9 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     };
   }, [adapter]);
 
-  const openNew = (mode: ModeId, project: ProjectRow) => {
-    void adapter.openSession(mode, project.id).then((row) => select(mode, row.id));
-  };
+  // ProjectPicker holds its buttons while this runs and shows a refusal.
+  const openNew = (mode: ModeId, project: ProjectRow) =>
+    adapter.openSession(mode, project.id).then((row) => select(mode, row.id));
   const inView = sessions.filter((s) => modeOfWorker(s.worker)?.id === view);
 
   const selected = inView.find((s) => s.id === selectedId);
