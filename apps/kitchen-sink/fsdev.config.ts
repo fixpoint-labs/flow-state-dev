@@ -8,12 +8,9 @@
  * behind `vercelPostgresStores()`; the lazy router and Next.js wiring live
  * behind `@flow-state-dev/vercel/next`.
  *
- * Profile selection: an explicit `FSD_ENV` wins. Without it, the Postgres-backed
- * `prod` profile is picked whenever `FSD_DB_URL` or `DATABASE_URL` is set, and
- * the SQLite-backed `dev` profile otherwise. A database URL also closes the
- * DevTool's debug endpoints and skips the interrupted-run scan, whichever
- * profile is active, so a stray `FSD_DB_URL` in a local shell moves dev onto
- * Postgres. The `[flowstate]` line logged at startup names what was picked.
+ * Profile selection: `FSD_ENV` wins. Otherwise `FSD_DB_URL` or `DATABASE_URL`
+ * selects `prod` (Postgres); neither selects `dev` (SQLite). Debug endpoints
+ * and the interrupted-run scan follow that URL, not the profile.
  *
  * Run a flow from the CLI without the browser (from this directory):
  *   pnpm fsdev run chat-agent run -i '{"message":"hi","mode":"ask"}'
@@ -73,7 +70,6 @@ const databaseUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
 const openaiApiKey = process.env.OPENAI_API_KEY;
 const redisUrl = process.env.REDIS_URL;
 const bullmqDispatch = process.env.FSD_BULLMQ_DISPATCH === "1";
-// The `dev` profile's store: SQLite unless `STORE_TYPE` asks for another.
 const devStore =
   process.env.STORE_TYPE === "memory"
     ? "memory"
@@ -205,11 +201,7 @@ const flowstate = createFlowState({
             : localSqliteStores(),
     },
   },
-  // Default to the Postgres profile whenever a database URL is configured
-  // (the deployed/Vercel case), so persistence works without a separate
-  // FSD_ENV. Local dev with no DB gets the SQLite `dev` profile. An explicit
-  // FSD_ENV always overrides this default; the gates below still follow the
-  // database URL, not the profile.
+  // Deployed has a database URL, so it persists without setting `FSD_ENV`.
   defaultProfile: databaseUrl ? "prod" : "dev",
   // Scheduled dispatches are fire-and-forget; keep the serverless function
   // alive until runAction settles so results persist after the 202. `after`
@@ -251,11 +243,7 @@ const flowstate = createFlowState({
   },
 });
 
-// Which store this process runs on, said once per start (and once per HMR
-// re-evaluation, which builds a fresh FlowState). Reading `activeProfile`
-// resolves `FSD_ENV` now, so a profile name that isn't declared fails the
-// start here rather than at the first request. Written to stderr: the `fsdev`
-// CLI imports this config and keeps stdout for its NDJSON.
+// stderr: `fsdev run` owns stdout. Reading the profile resolves `FSD_ENV` now.
 const activeProfile = flowstate.activeProfile;
 const activeStore = activeProfile === "prod" ? "postgres" : devStore;
 console.error(

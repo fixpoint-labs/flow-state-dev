@@ -10,10 +10,8 @@
  * A scenario that names a hold (`holdBeforeAnswer`) is held before its model
  * runs, so a page can be seen showing a worker as working before it answers.
  *
- * This is an app-local test seam, not deployment glue, gated by an explicit
- * env flag. It lives in `lib/` beside the script it plays (`e2e-mock-script.ts`)
- * because the app's own config imports it: nothing under `test/` is shipped
- * code.
+ * App-local test seam, gated by an explicit env flag. The config imports it,
+ * so it sits in `lib/` next to `e2e-mock-script.ts`.
  */
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import type { ModelResolver } from "@flow-state-dev/core";
