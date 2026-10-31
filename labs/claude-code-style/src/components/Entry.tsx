@@ -82,6 +82,7 @@ function ResultLine({ entry }: { entry: Extract<ThreadEntry, { kind: "result" }>
     <section
       aria-label={`Background result: ${entry.title}`}
       data-entry="result"
+      data-task-id={entry.taskId}
       data-during-turn={entry.duringTurn ? "true" : "false"}
       className="min-w-0 [overflow-wrap:anywhere]"
     >

@@ -53,3 +53,17 @@ describe("a tool call in a thread or a task's work", () => {
     }
   });
 });
+
+describe("a delegate's answer that landed in the conversation as written", () => {
+  it("is a result line under the delegate's name, not the main session's own words", async () => {
+    const { entriesOf } = await import("../src/adapter");
+    const reply = "- Apply the theme before first paint.\n- Label the icon-only mark.";
+    const entries = entriesOf([
+      { id: "i1", type: "message", role: "user", requestId: "r1", content: [{ type: "output_text", text: "Review PR #4272" }] },
+      { id: "i2", type: "message", role: "assistant", requestId: "r1", agentName: "coordinator-judgment", content: [{ type: "output_text", text: "Started a review thread." }] },
+      { id: "i3", type: "message", role: "assistant", requestId: "r2", agentName: "desk.thread", content: [{ type: "output_text", text: reply }] },
+    ]);
+    expect(entries.map((e) => e.kind)).toEqual(["user", "assistant", "result"]);
+    expect(entries[2]).toMatchObject({ kind: "result", title: "Answer from thread", status: "completed", summary: reply });
+  });
+});
