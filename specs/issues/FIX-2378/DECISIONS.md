@@ -35,9 +35,9 @@ rides. That is D1, the one call; the rest is decided below.
   means. This spec carries data about a line that a filer says *about* a task. Core has no field
   for that meaning, and it would be a package noun. So the reading is: a meaning core already types
   keeps its typed field, and a package's own data about a line rides `metadata` under that
-  package's key, with its reader. The epic's
-  [Who owns what](../../epics/FIX-2369/DECISIONS.md#who-owns-what) is asked to record this one
-  reading so both specs can cite it.
+  package's key, with its reader. The epic records this one reading in its ER-1 row
+  ([Who owns what](../../epics/FIX-2369/DECISIONS.md#who-owns-what), amended by #4408), and both
+  specs cite it.
 - **Locks in:** an open field any package may write. A key clash between two packages is possible
   in principle; each key names its package's noun, and the reader validates the shape, so a stray
   value reads as "not a notice".
