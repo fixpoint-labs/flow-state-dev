@@ -42,14 +42,15 @@ feed has five states ([its D2](../FIX-2374/DECISIONS.md#d2)) and no attempt coun
 ## D3 · Three PRs, in the epic's build order
 
 The epic's [build order](../../epics/FIX-2369/DECISIONS.md#coordination-seams) puts this issue in
-three places: after FIX-2374 as a package dependent, in Shift Manager's wave-2 stack after
+three places: after FIX-2374 as a package dependent (the registry slice needs only its state
+names, so it goes from `main`), in Shift Manager's wave-2 stack after
 FIX-2408, and, since the labs' bar reads the feed, after each lab's FIX-2374 stack.
 
 | PR | Holds | Base |
 |---|---|---|
-| 1 · registry | `connection-banner.tsx` (the bar, `isFeedStale`, `STALE_CLASS`), `connection-screen.tsx`, `registry.json`, stories, tests, the ui README | FIX-2374's branch, then `main` once it merges |
-| 2 · Shift Manager | Installs both, deletes `Refusal`/`Unreachable`, D2's keep-the-shell rule, stale styling and stopped clocks in `Tasks.tsx`, `TaskFrame.tsx` and the running lines | Its wave-2 stack, after FIX-2408 |
-| 3 · labs | Each lab installs both, draws the bar from its feed, greys its dots and gates `useNow` on not stale; Teammates wraps its boot read in `connection-screen` | After that lab's FIX-2374 stack merges |
+| 1 · registry | `connection-banner.tsx` (the bar, `isFeedStale`, `STALE_CLASS`), `connection-screen.tsx`, `registry.json`, tests, the ui README and docs page | `main`: it imports nothing from FIX-2374 (E5) |
+| 2 · Shift Manager | Installs both, deletes `Refusal`/`Unreachable`, D2's keep-the-shell rule, stale styling and stopped clocks in `Tasks.tsx`, `TaskFrame.tsx` and the running lines | Shift Manager's wave-2 stack: on FIX-2374's adoption PR there, after FIX-2408 |
+| 3 · labs | Each lab installs both, draws the bar from its feed, greys its dots and gates `useNow` on not stale; Teammates wraps its boot read in `connection-screen` | Stacked on FIX-2374's adoption PR in that lab |
 
 - **Because:** wave 1 touches no app file, and each hot file has one open stack.
 - **Locks in:** the issue is Done when PR 3 merges for both labs, not at PR 1.
@@ -68,7 +69,9 @@ FIX-2408, and, since the labs' bar reads the feed, after each lab's FIX-2374 sta
 - **E4 · `stopped` says "The server stopped this feed"** and offers Retry only when the app passes
   `onRetry` (it reopens its feed). `close()` on unmount never draws, since the bar unmounts too.
 - **E5 · The bar takes a structural `{ state }`**, as `stuck-request-banner` takes its session, and
-  imports only the state type from `@flow-state-dev/client`.
+  spells the five states as its own union. The registry's generic components import nothing from
+  `@flow-state-dev/*`, and a `sessionFeed` snapshot fits the union, so an app passes it as it is.
+  A renamed state breaks the app's typecheck where it passes the feed, not silently.
 - **E6 · Kitchen Sink installs both** to keep its byte-identical drift test whole, and draws
   neither: it follows sessions through `useSession`, which this issue leaves alone.
 - **E7 · No changeset.** `@flow-state-dev/ui` and the apps are private.

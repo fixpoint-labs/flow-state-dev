@@ -70,10 +70,10 @@ for a first read, before there is anything to keep on screen.
 copy, no change to any package's runtime code, and no new server route. It adds nothing an app
 must keep in step by hand: the drift tests hold every installed copy to the registry.
 
-**Builds in three PRs, in the epic's build order.** The registry slice stacks on FIX-2374 (it
-imports the feed's state type). Shift Manager's part goes in its wave-2 stack after FIX-2408. Each
-lab's part goes after that lab's FIX-2374 stack merges, since the bar reads the feed the lab
-adopts there. See [D3](DECISIONS.md#d3).
+**Builds in three PRs, in the epic's build order.** The registry slice goes from `main`: it
+needs only the feed's state names. Shift Manager's part and each lab's part stack on FIX-2374's
+adoption PR in that app, since the bar reads the feed the app adopts there (after FIX-2408 in
+Shift Manager). See [D3](DECISIONS.md#d3).
 
 ---
 
