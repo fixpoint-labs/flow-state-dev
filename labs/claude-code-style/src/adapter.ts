@@ -265,7 +265,11 @@ function filedTaskOf(item: Item): string | undefined {
   return output?.ok === true && typeof output.taskId === "string" ? output.taskId : undefined;
 }
 
-/** A worker's id, `team.worker`: what a delegate's answer that landed in a conversation is written under. A block's name has no dot. */
+/**
+ * A worker's id, `team.worker`: what a delegate's answer that landed in a conversation is written
+ * under. It is the only way a delegate writes into the main session's thread; the session's own
+ * text carries a block's name, which has no dot. Workforce marks the item no other way today.
+ */
 const WORKER_ID = /^[a-z0-9-]+\.[a-z0-9-]+$/;
 
 /**
