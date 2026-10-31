@@ -61,7 +61,8 @@ flowchart LR
     end.
   - `readSessionEarlier(source, window, { limit? })`: the window grown back by `limit` items.
   - `refreshSessionWindow(source, window)`: the window read again.
-  - A `SessionItemsWindow`: `items` oldest first, `start`, `total`, `hasEarlier`, the item types
+  - A `SessionItemsWindow`: `items` oldest first, `start`, `total`, `hasEarlier` (always `start > 0`,
+    counted in the window's item types), the item types
     it was read with, and the read's `at` and `sessionCreatedAt` for `sessions.stream`.
   - `source` is `Pick<SessionsApi, "state">`, as `readEveryCollectionPage` takes `listCollectionItems`.
 - **Every read is one shape** ([D1](DECISIONS.md#d1)): from a start position to the session's end,
@@ -97,6 +98,7 @@ flowchart LR
 | Shift Manager `send.ts` `sessionHoldsLine`: reads from the newest page back | **Generalised** here; deleted in the adoption PR |
 | Shift Manager `run.ts` `readSessionItems`: oldest first, 5 pages, `truncated` | **Replaced** in the adoption PR |
 | `readSessionHistory` (FIX-2374, #4360): `useSession`'s paging loop moved into `client`, internal | **Extended** with `offset`; the window reads only through it |
+| The Teammates lab's `session-feed.ts` loop, and the `readHistory()` example on the client API page | **Not touched here.** The lab's copy is FIX-2374's to replace with `sessionFeed` (its adoption, wave 2); the docs example goes when that page points at `sessionFeed` |
 | `readEveryCollectionPage`: the shared collection page loop | **Pattern followed** (a function over a narrow source, in `client`) |
 | `sessions.state` and its `pagination` | **Used** as it is |
 

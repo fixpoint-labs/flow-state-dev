@@ -55,6 +55,9 @@ earlier*, take new items from the feed "or an offset delta". The epic places it 
   `readSessionHistory` refuses a page from another session.
 - **E4 · `readSessionEarlier` at the start returns the same window with no call**, so a stray
   click costs nothing.
+- **E7 · The tail's first call asks for a full page, not one item.** A session that fits is then
+  one call, which is most sessions; a longer one pays for 200 items it drops, on its first read
+  only. A one-item probe would make every read two calls. (Cursor, round 1.)
 - **E5 · `patch` changeset**, as recent additive client exports.
 - **E6 · The real-host check lives in `packages/node/test`**, beside `client-own-sessions`: `node`
   already depends on both the engine and the client, and `client` must not depend on the engine.
@@ -69,3 +72,6 @@ earlier*, take new items from the feed "or an offset delta". The epic places it 
 - FSD Architect, round 1 (417ff27): folded. The window builds on FIX-2374's `readSessionHistory`
   with an `offset`, and the "paging rule in two places" debt is gone. Checked that the window's
   `at` and `sessionCreatedAt` are the `after` that #4360's `followSession` takes.
+- Cursor (417ff27): approved. Shared pager folded with the Architect's; attempts now follow
+  `readSessionHistory` (5); `hasEarlier` stated as `start > 0`; the full-page first call kept as E7;
+  the lab's and the docs page's copies of the loop named in the debt table with their owner.
