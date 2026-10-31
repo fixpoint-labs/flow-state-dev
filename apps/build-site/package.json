@@ -5,5 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node serve.mjs"
+  },
+  "engines": {
+    "node": "22.x"
   }
 }

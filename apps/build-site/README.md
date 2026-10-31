@@ -19,7 +19,7 @@ pnpm --filter @flow-state-dev/build-site dev   # http://localhost:3002
 
 ## Deploy
 
-Host `public/` as a static site. On Vercel, set the root directory to `apps/build-site`; `vercel.json` skips the install and build (the page and `api/waitlist.js` need no dependencies, and a workspace-wide install would compile every package's native modules) and serves `public/`.
+Host `public/` as a static site. On Vercel, set the root directory to `apps/build-site`; `vercel.json` skips the install and build (the page and `api/waitlist.js` need no dependencies, and a workspace-wide install would compile every package's native modules) and serves `public/`. Packaging `api/waitlist.js` still runs a workspace install, so `engines` pins Node 22, where `better-sqlite3` has a prebuilt binary instead of a native compile.
 
 Set these environment variables on the Vercel project:
 
