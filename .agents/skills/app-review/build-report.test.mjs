@@ -82,6 +82,14 @@ const clash = structuredClone(again)
 clash.apps[0].findings = [finding('AL-USA-1'), finding('AL-R2-USA-1')]
 assert.match(merge(clash, two.data, {}).problems.join('\n'), /AL-USA-1 was already used by an earlier run/)
 
+// Repeated item ids, from a fresh synthesizer or among a fold's new items, are a problem.
+const twoItems = structuredClone(fresh)
+twoItems.synth.items.push(item('R-01', ['alpha'], ['AL-USA-2']))
+assert.match(merge(twoItems, null, {}).problems.join('\n'), /item id R-01 appears more than once/)
+const twoNew = structuredClone(fold)
+twoNew.synth.newItems.push(item('R-02', ['gamma'], []))
+assert.match(merge(twoNew, one.data, {}).problems.join('\n'), /item id R-02 appears more than once/)
+
 // Extract round-trips the data, including text that would close the script tag.
 const tricky = structuredClone(two.data)
 tricky.items[0].problem = 'ends a tag: </script> and <b>'

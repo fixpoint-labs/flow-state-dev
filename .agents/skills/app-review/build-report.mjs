@@ -122,6 +122,12 @@ export function merge(wf, prior, meta = {}) {
   const rejected = [...((prior && prior.rejected) || []), ...s.rejected]
   const covered = new Set([...items.flatMap((i) => i.sourceFindings), ...rejected.map((r) => r.findingId)])
   for (const a of wf.apps) for (const f of a.findings) if (!covered.has(f.id)) problems.push(`finding ${f.id} is in no item and not rejected`)
+  // The page looks items up by id, so a repeated id would silently show one item for both.
+  const seenItems = new Set()
+  for (const i of items) {
+    if (seenItems.has(i.id)) problems.push(`item id ${i.id} appears more than once`)
+    seenItems.add(i.id)
+  }
   const known = new Set(appsOut.map((a) => a.key))
   for (const i of items) for (const a of i.apps) if (!known.has(a)) problems.push(`${i.id} names unknown app ${a}`)
 
