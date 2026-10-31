@@ -115,8 +115,8 @@ It comes down to Postgres on two processes: with one seam it writes a socket ser
 | | |
 |---|---|
 | **Instead of** | Leaving `GET /sessions/:id/stream`'s once-a-second read as it is, a second live path beside the bus |
-| **Because** | That read costs a store read a second for every open connection, whether or not anything changed. Woken, an idle view costs nothing, and the bus has a real consumer the day it lands. The stream's cross-process reach then rests on the bus, so the timed read stays as a slow fallback where the bus can't cross processes: the in-memory bus on two or more processes, and serverless hosts. The wake goes in the bus child, because the delivery child is already the largest |
-| **Locks in** | The bus child owns the wake. The timed read stays **only** where the bus can't cross processes (the in-memory bus on two or more processes, and serverless hosts); with a cross-process bus it is off. No child adds an always-on poll beside the session stream and the socket (ER-3). The bus child changes a route that works today across processes, so it proves both the woken and the fallback path |
+| **Because** | That read costs a store read a second for every open connection, whether or not anything changed. Woken, an idle view costs nothing, and the bus has a real consumer the day it lands. The stream also sends other callers' items and run changes, which a plain reply makes with no resource, state or task write, so the bus child publishes the session topic from the request and session store writes the stream reads (`resolveStores`), or turning the timer off would strand them. The stream's cross-process reach then rests on the bus, so the timed read stays as a slow fallback where the bus can't cross processes: the in-memory bus on two or more processes, and serverless hosts. The wake goes in the bus child, because the delivery child is already the largest |
+| **Locks in** | The bus child owns the wake and its publisher: an item persisted under a session's request, a request status change, and a run created or updated each publish that session's topic. The timed read stays **only** where the bus can't cross processes (the in-memory bus on two or more processes, and serverless hosts); with a cross-process bus it is off. No child adds an always-on poll beside the session stream and the socket (ER-3). The bus child changes a route that works today across processes, so it proves both the woken and the fallback path, and a reply with no other write (closure leg d) |
 
 **What would change my mind:** the read cost measured as negligible at our viewer counts, or the
 bus child unable to land the wake without the delivery child.
@@ -147,7 +147,7 @@ Every rule has one owner. A *consumes* cell is a place a child must not re-decid
 |---|---|---|
 | The notice and topic shape | the bus · every publisher · delivery · FIX-380 | The bus defines it once (ER-1, ER-2). A child that needs a field comments up here |
 | The `bus` slot in `resolve-slots.ts` | the bus · Postgres bus · FIX-380 | The bus adds the slot and its default to the primary; an adapter declares it in its `capabilities` |
-| The session stream's wake | the bus · delivery · the task board child | The bus child owns it, and the only timed read is its fallback where the bus can't cross processes ([D6](#d6)) |
+| The session stream's wake | the bus · delivery · the task board child | The bus child owns it, and its publish from request and session writes in `resolveStores`; the only timed read is its fallback where the bus can't cross processes ([D6](#d6)) |
 | The task board's topic | the task board child · the bus | The conversation's session topic, published from whichever process settles the task |
 | The user-stream route and `GET /capabilities` | delivery · FIX-380 | Delivery owns what capabilities reports. FIX-380 reports its own kind and mints its token through the ER-4 check |
 | The resource and state hooks' invalidation | FIX-1506 · delivery | One invalidation path with two sources: the writer's own `resource_change` or `state_change` item and the notice. The writer's tab reads once, not twice |
@@ -157,8 +157,9 @@ Every rule has one owner. A *consumes* cell is a place a child must not re-decid
 
 - **The socket lives on the existing user-stream route.** Its user guard and the capabilities
   flag were left for this; a new path would be a second door with a second guard.
-- **Request-finished notices are out.** FIX-2043 is a read by id; the request's own stream
-  already tells its caller when it ends.
+- **Reading a request's result by id is FIX-2043's, not a notice.** No topic per request: the
+  request's own stream tells its caller when it ends. A request's items and status still publish
+  its session's topic ([D6](#d6)); that is the session view, not the result.
 - **FIX-1506 keeps its parent, FIX-2171.** It is a row here, linked, and blocks the closure.
 - **FIX-1506 publishes scope-state writes too.** A `ctx.user` or `ctx.org` patch emits
   `state_change` through `wrapStateOpsWithEmit`, not `onResourceChanged`, so a resource-only
@@ -187,6 +188,8 @@ reuse rows. Its one hold became [D6](#d6).
   read per second per scope per view. The hold became D6: the bus wakes the session stream.
 - **Review (Oct 31)** — FIX-1506 widened to scope-state writes, which skip `onResourceChanged`;
   closure leg a patches `ctx.org`. D1's flip names its metric; D6's timed read is fallback only.
+- **Review (Oct 31)** — D6's wake widened to request and run writes, which a plain reply makes
+  alone; closure leg d checks it with the timed read off. FIX-2043 stays out, as a read by id.
 
 <a name="open"></a>
 **Open: none.**

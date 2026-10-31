@@ -30,34 +30,36 @@ framework's hooks, not by writing push code.**
 | **The real need** | Goal 2's scoped state only holds if a change to org state is seen by everyone looking at it, not only by the tab that wrote it. Goal 1: the apps we run stop polling |
 | **Smaller, and rejected** | Widening the session stream's once-a-second read to user and org scopes: it crosses processes, at a store read per viewer per scope per second ([D1](DECISIONS.md#d1)). Or FIX-1506 alone, in process, which BullMQ's separate workers already defeat |
 | **Bigger, and not this epic's** | Rows on the push (live sync), anything sent back over the socket (interrupts, barge-in), push on serverless without a managed service |
-| **Not done if** | A viewer on another process misses a change · a subscribe or a reconnect to a scope the caller can't read succeeds · a lab or Shift Manager still polls, or the session stream still reads each second, with the Postgres bus configured · an app has two hooks for watching one scope (`live: true` beside the push hook) · the docs imply push on Vercel without Ably · a closure bug is open |
+| **Not done if** | A viewer on another process misses a change · a subscribe or a reconnect to a scope the caller can't read succeeds · a lab or Shift Manager still polls, or the session stream still reads each second, with the Postgres bus configured · with the timed read off, a session view on another process misses a plain reply that wrote no resource, state or task · an app has two hooks for watching one scope (`live: true` beside the push hook) · the docs imply push on Vercel without Ably · a closure bug is open |
 
 ```mermaid
 flowchart LR
   A["a real app · Node host · 2 processes · Postgres · polls off"] --> L1["leg a · A patches org state and an org resource, B watches from process 2"]
   A --> L2["leg b · Shift Manager, a task settles"]
   A --> L3["leg c · a user who can't read the scope subscribes"]
+  A --> L4["leg d · A sends a plain chat reply, B's tab on process 2"]
   L1 --> T["what each browser shows"]
   L2 --> T
   L3 --> T
-  T -->|"a and b update within 1 s · c is refused"| P["PASS · the epic's goal is met"]
+  L4 --> T
+  T -->|"a, b and d update within 1 s · c is refused"| P["PASS · the epic's goal is met"]
   C["control · in-memory bus, not Postgres"] -.-> L1
   L1 -.->|"under the control"| F["must FAIL · B never updates"]
 ```
 
-Polling is off, so a poll can't pass legs a and b. Leg c is there because a push that skips the
+Polling and the session stream's timed read are off, so neither can pass legs a, b and d. Leg d writes no resource, state or task, so only the request and run publish carries it. Leg c is there because a push that skips the
 access check passes the other two.
 
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue's ([FIX-2368](https://linear.app/fixpoint-labs/issue/FIX-2368)), on one `main` commit after every other child merges. Its clean run is the wrap condition |
-| **Signal** | Leg a: B's browser shows both of A's changes within 1 s, the plain `ctx.org` state patch and the resource row. Leg b: the board updates within 1 s, with no read between notices. Leg c: the subscribe is refused, and no notice reaches that user |
+| **Signal** | Leg a: B's browser shows both of A's changes within 1 s, the plain `ctx.org` state patch and the resource row. Leg b: the board updates within 1 s, with no read between notices. Leg c: the subscribe is refused, and no notice reaches that user. Leg d: B's session view shows A's reply within 1 s |
 | **Anti-game** | Assert on what each browser shows, not on calls to `publish`. Two real processes, not two clients of one |
-| **Control that must fail** | The in-memory bus on two processes: leg a must FAIL. Today's `main`: legs a and b must FAIL |
+| **Control that must fail** | The in-memory bus on two processes: leg a must FAIL. Today's `main`: legs a and b must FAIL. The request and run publish cut out: leg d must FAIL |
 
 ## What's in the box
 
-![In the box: a notice that names a scope and carries no rows; topics from the session, user and org scopes; a bus with an in-memory default and a Postgres adapter; one WebSocket per client on the Node host; client.subscribe and hooks that read again on a notice; polling when there is no push; two publishers. Composed in by the app: which views watch, its host, the Postgres bus. Replaced in one line: the Ably adapter. Not built, below a fence: rows on the push, replay, items on the socket, push on serverless without Ably, request-finished notices, session-to-session messages](figures/end-state.svg)
+![In the box: a notice that names a scope and carries no rows; topics from the session, user and org scopes; a bus with an in-memory default and a Postgres adapter; one WebSocket per client on the Node host; client.subscribe and hooks that read again on a notice; polling when there is no push; three publishers: request and run writes, scope changes, task boards. Composed in by the app: which views watch, its host, the Postgres bus. Replaced in one line: the Ably adapter. Not built, below a fence: rows on the push, replay, items on the socket, push on serverless without Ably, a topic per request, session-to-session messages](figures/end-state.svg)
 
 Everything in the box is what an app gets for nothing. The fence is [D2](DECISIONS.md#d2): the
 push carries no rows, so it needs no access check and no replay of its own.
@@ -72,13 +74,13 @@ The reviewed snapshot. Live state is the epic's sub-issues in Linear.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| FIX-XXX · the bus | The notice and topic shape, `publish` and `subscribe`, an in-memory adapter, and a `bus` slot in the stores profile. The session stream woken by it, its timed read kept as the fallback ([D6](DECISIONS.md#d6)) | The seam every other child is written against | Not filed |
+| FIX-XXX · the bus | The notice and topic shape, `publish` and `subscribe`, an in-memory adapter, and a `bus` slot in the stores profile. The session stream woken by it: a publish on the session topic from every request and session store write the stream reads, in `resolveStores`; its timed read kept as the fallback ([D6](DECISIONS.md#d6)) | The seam every other child is written against | Not filed |
 | FIX-XXX · Postgres bus | A bus on `LISTEN`/`NOTIFY`: one shared listening connection per process, from the tail pool `store-postgres` already opens, fanned out in process. The Postgres adapter backs the `bus` slot by default ([D5](DECISIONS.md#d5)) | Without it nothing new crosses a process, and BullMQ's `dispatch-only` and `worker-only` modes run actions in other processes today | Not filed |
 | FIX-XXX · WebSocket delivery | The Node host serves the user-stream route as a WebSocket, a second way notices reach a client beside the session stream; per-topic subscribe, checked on the server at every connect; `GET /capabilities` reports push; `client.subscribe`; a hook on `followSession`'s pattern that reads again on a notice and polls without push; the realtime guide | The wire, and the one client path | Not filed |
 | [FIX-1506](https://linear.app/fixpoint-labs/issue/FIX-1506) · resource and scope-state changes reach other sessions | `onResourceChanged` publishes a notice for its scope, and so do scope-state writes (`ctx.user`, `ctx.org`, `ctx.session` patches, which emit `state_change` through `wrapStateOpsWithEmit`, not `onResourceChanged`); the resource and state hooks read again on one | The outcome FIX-1506 asked for, widened to plain user and org state, which the goal names | Todo · keeps parent FIX-2171, linked here · scope widened by this set |
 | FIX-XXX · task board notices, polls off | A task-board change publishes a notice on the conversation's session topic, from whichever process settles the task; Shift Manager and the Teammates lab move their polls behind notices | Goal 1: the apps we run stop polling ([FIX-2286 D3](../../issues/FIX-2286/DECISIONS.md#d3)) | Not filed |
 | [FIX-380](https://linear.app/fixpoint-labs/issue/FIX-380) · Ably adapter | Bus and delivery through Ably, with a server-minted token for the topics the caller may read | Serverless push, and the test that the two seams are the right two ([D5](DECISIONS.md#d5)) | Backlog · re-scoped from a spike |
-| [FIX-2368](https://linear.app/fixpoint-labs/issue/FIX-2368) · closure · **required** | The QA run on one `main` commit: the three legs, each team's journey (Vercel with Ably among them), every child's goal check | The only child that runs the whole set | Backlog · blocked by every other child |
+| [FIX-2368](https://linear.app/fixpoint-labs/issue/FIX-2368) · closure · **required** | The QA run on one `main` commit: the four legs, each team's journey (Vercel with Ably among them), every child's goal check | The only child that runs the whole set | Backlog · blocked by every other child |
 
 3 filed, 4 not yet. Is six really five? Not by cutting the Postgres bus: BullMQ hosts already
 run two processes. A Redis bus on BullMQ's own connection is a possible follow-up, not filed.
@@ -125,6 +127,7 @@ publishers and Ably. Every child blocks the closure issue.
 | `wrapStateOpsWithEmit` (`scope-emit.ts`), through `emitWrap` in `createExecutionContext.ts`: scope-state writes emit `state_change` items, a separate path from resources | **Builds on.** FIX-1506 publishes beside this emit too, so a plain `ctx.org` patch reaches other sessions |
 | The task substrate's `onChange` (`TaskChangeEvent`), adapted to `task-change` component items | **Builds on.** The task-board child publishes from the same callback |
 | `GET /sessions/:id/stream` (`session-stream-routes.ts`): other writers' items and run notices for one session, on every store, across processes, by a store read about once a second per connection | **Extended.** Kept beside the socket; the bus wakes its read, and the timed read stays as the fallback ([D6](DECISIONS.md#d6)) |
+| `resolveStores` (`http-handlers.ts`): every registry, `createFlowState`'s and BullMQ workers' included, passes its `request` and `session` stores through it, and those carry every write the session stream reads: items, request status, and runs (child sessions, whose status is their requests') | **Builds on.** The bus child wraps those two stores' writes there to publish the session topic, the run's parent's too, instead of at a dozen call sites |
 | `followSession` and `coalescedReads` (`react/src/internal/followSession.ts`), shared by `useSession({ live })` and `BoardList`'s `ReadDriver` | **Extended.** The notice hook is another driver on them: hear, then one coalesced read |
 | `StreamBridge` (`engine/src/transports/runner.ts`), Redis in `bullmq/src/stream-bridge.ts` | **Not extended** ([D5](DECISIONS.md#d5)) |
 | `GET /users/:userId/stream`, routed and guarded as a user route, answering 501 | **Extended.** The Node host serves it as the WebSocket; the guard stays |
@@ -146,7 +149,7 @@ publishers and Ably. Every child blocks the closure issue.
 
 | The debt | |
 |---|---|
-| **Adds** | One stores slot, one bus contract with two adapters, one socket path in the Node host, one client call and one hook. The Ably package |
+| **Adds** | One stores slot, one bus contract with two adapters, a publish on request and session writes, one socket path in the Node host, one client call and one hook. The Ably package |
 | **Removes** | The 501 user-stream answer, the Teammates lab's and Shift Manager's fixed polls, FIX-1506's remount workaround, the session stream's read each second where the bus crosses processes |
 | **Leaves** | `useSession`'s same-session path beside the notice path; one invalidation path, two sources (see the seam). The session stream's timed read, as a slow fallback where the bus can't cross processes: the in-memory bus on two or more, and serverless ([D6](DECISIONS.md#d6)) |
 
