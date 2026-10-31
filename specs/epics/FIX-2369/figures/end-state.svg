@@ -32,7 +32,7 @@
     <text class="t-lbl" x="42" y="70">CLIENT · REACT</text>
     <text class="t-s" x="42" y="92">session feed: items, runs,</text>
     <text class="t-s" x="42" y="112">connection state</text>
-    <text class="t-s" x="42" y="132">change signal</text>
+    <text class="t-s" x="42" y="132">refresh on FIX-2367 notices</text>
     <text class="t-s" x="42" y="152">tail read · Load earlier</text>
     <text class="t-s" x="42" y="172">state-only re-read · live list</text>
     <rect class="pkg" x="210" y="52" width="166" height="146" rx="5"/>
@@ -107,6 +107,6 @@
     <rect class="out" x="752" y="398" width="172" height="62" rx="5"/>
     <text class="t-lbl" x="762" y="418">FIX-2252</text>
     <text class="t-s" x="762" y="440">when a worktree is stale</text>
-    <text class="t-s" x="16" y="490">FIX-2274 and FIX-1768 block the closure: the goal needs them, another epic owns them.</text>
+    <text class="t-s" x="16" y="490">FIX-2274 blocks the closure. FIX-2367&#x27;s delivery child gates FIX-2409, 2411 and 2412.</text>
   </g>
 </svg>

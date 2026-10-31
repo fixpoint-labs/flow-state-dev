@@ -8,7 +8,7 @@
 |---|---|---|
 | **develops FSD in these apps** | A failed turn vanishes without a word. A coding run's diff, tests and branch are found by hand in a terminal. A restart loses the turn that was running | Sees why a turn failed and retries it. Reads what a run changed, with typecheck and tests already run, before accepting it. Continues a turn a restart cut off |
 | **hardens the packages** | Each app polls on its own and keeps its own copy of the session feed, the task-row view and the recovery UI. A fix lands in one app | A fix lands once, in the package that owns the noun, and four apps pick it up |
-| **builds the next workforce app** | Copies a lab's adapter, and its bugs | Gets the feed, the change signal, the task-row view, the task actions, a run's changes and its checks from packages and the ui registry |
+| **builds the next workforce app** | Copies a lab's adapter, and its bugs | Gets the feed, live updates through `client.subscribe`, the task-row view, the task actions, a run's changes and its checks from packages and the ui registry |
 | **leaves coding runs unattended** | Runs bypass permissions. A harness that isn't signed in is found when a task fails. Polls freeze silently when the server goes | An approval parks the run as a hold. Readiness shows before anything runs. A banner says the server is gone |
 
 **Why now.** The two labs from [FIX-2152](../FIX-2152/SPEC.md) shipped (FIX-2153, FIX-2154 and
@@ -73,7 +73,7 @@ ship. Each child documents its own surface in its package README.
 
 The reviewed snapshot. All 57 children are in Backlog with no spec PR; live state is in
 [Linear](https://linear.app/fixpoint-labs/issue/FIX-2369). Bugs take the direct route and get
-no spec. Build order is in [Stacks and waves](#stacks-and-waves).
+no spec. The build order is [DECISIONS.md → Coordination seams](DECISIONS.md#coordination-seams).
 
 | Issue | What it delivers | Package or app |
 |---|---|---|
@@ -90,7 +90,7 @@ no spec. Build order is in [Stacks and waves](#stacks-and-waves).
 | FIX-2374 | A non-React session feed in the client: items, runs, connection state | client, react |
 | FIX-2378 | Structured task-result and delegate markers, not regex over text | orchestration, workforce |
 | FIX-2408 | Tail-first session reads with *Load earlier* | client |
-| FIX-2409 | One change signal that refreshes an app's snapshot | client |
+| FIX-2409 | An app's snapshot refreshes on FIX-2367's notices, with an *as of* label | apps, through `client.subscribe` |
 | FIX-2410 | A state-only re-read in useSession, and the followed request's status | react |
 | FIX-2412 | A live roster | workforce |
 | **Control running work** | | |
@@ -137,16 +137,17 @@ no spec. Build order is in [Stacks and waves](#stacks-and-waves).
 | FIX-2418 | Not-yet-built placeholders and ticket ids hidden by default | SM |
 | **Debug and test** | | |
 | FIX-2405 | *Open in DevTool* links, with the address reader shared | devtool/react |
-| FIX-2406 | Contract tests run the real lab adapter, not only the fake | labs |
+| FIX-2406 | One contract-test matrix for both labs, real adapters and fakes | labs |
 | FIX-2407 | A restart goal that proves each app's durability claim | goals |
 | FIX-2424 | Kitchen Sink's config tells the truth | KS |
-| FIX-2425 · closure · **required** | The QA plan on one `main` commit: both legs in all four apps, each child's goal check, the seams | blocked by every other child, and by FIX-2274 and FIX-1768 |
+| FIX-2425 · closure · **required** | The QA plan on one `main` commit: both legs in all four apps, each child's goal check, the seams | blocked by every other child, and by FIX-2274 |
 
 57 children: 56 and the closure. By their own *where it's built*, 32 of the 56 put work in a
 package and 40 are needed by two or more apps. **Consumed, not owned:** FIX-2274 (a follow-up
-continues its root task's run, in the gap epic FIX-2273) and FIX-1768 (push, PR, cleanup, in
-FIX-1763) block the closure already; FIX-2367 (push channel), FIX-2168 and FIX-2164 (task
-timing and step fields), and FIX-2252 (worktree staleness) are inputs that don't.
+continues its root task's run, in the gap epic FIX-2273) blocks the closure. FIX-2367 (push
+channel) gates FIX-2409, 2411 and 2412 through its delivery child. FIX-1768 (push, PR, cleanup,
+in FIX-1763), FIX-2168 and FIX-2164 (task timing and step fields), and FIX-2252 (worktree
+staleness) are inputs that don't block it: the goal stops at a reviewed branch.
 
 **Is 57 really 54?** The analysis says three items serve no closure check: FIX-2402, FIX-2404
 and FIX-2423. Moving them out changes what users get, so it is [Open](DECISIONS.md#open), not
@@ -157,51 +158,33 @@ small app work with no package dependency.
 
 ```mermaid
 flowchart LR
-  Q["wave 0 · 18 app quick wins · to main any time"] --> CL["FIX-2425 · closure · required"]
-  A["stack A · FIX-2374 then 2409, 2410, 2373, 2411, 2412"] -->|"items, runs, connection state, a change signal"| AP["app adoption chains · CC, TM, KS, SM"]
-  B["stack B · FIX-2383 then 2381, 2382"] -->|"retry, cancel, steer, release"| AP
-  C["stack C · FIX-2379 then 2380, 2394, 2423"] -->|"one display state"| AP
-  C -->|"one display state"| B
-  D["stack D · FIX-2370 then 2377"] -->|"one recovery component"| AP
-  H1["stack H1 · FIX-2385 then 2386, 2419, 2388"] -->|"branch, commits, base, issue"| AP
-  H2["stack H2 · FIX-2384 then 2387, 2398"] -->|"diff, checks, spend"| AP
+  Q["wave 0 · 14 app quick wins · to main any time"] --> CL["FIX-2425 · closure · required"]
+  A["FIX-2374 · session feed"] -->|"items, runs, connection state"| AP["short app stacks · from main after their package slices"]
+  B["FIX-2383 then 2381"] -->|"retry, cancel, steer, release"| AP
+  C["FIX-2379 · task-row view"] -->|"one display state"| AP
+  D["FIX-2370 then 2377"] -->|"one recovery component"| AP
+  H1["FIX-2385 then 2386, 2419, 2388"] -->|"branch, commits, base, issue"| AP
+  H2["FIX-2384 then 2387, 2398"] -->|"diff, checks, spend"| AP
   W["FIX-2420 · setup hook"] -.->|"deps installed before checks run"| H2
   S["wave 1 singles · 2378 2389 2391 2393 2402 2405 2407 2408 2421 2422"] -->|"markers, holds, readiness, links"| AP
-  AP --> CL
+  P["FIX-2367 · delivery child · client.subscribe · consumed"] -.-> G["FIX-2409, 2411, 2412"]
+  G --> AP
+  T["FIX-2367 · task board child · consumed"] -.->|"owns two polls"| AP
+  AP --> M6["FIX-2406 · one contract-test matrix"]
+  M6 --> CL
   X1["FIX-2274 · consumed"] -.->|"the root run's identity"| X["FIX-2361 · follow-up sees earlier work"]
   X --> CL
-  P["FIX-2367 · push channel · consumed"] -.->|"later swaps the signal's source"| A
-  M["FIX-1768 · push, PR, cleanup · consumed"] -.-> CL
 ```
 
-An edge is what one stack hands the next. A solid edge is a stack: the child starts on its
-parent's branch. A dashed edge from a consumed issue is an input another epic owns, never
-re-parented. The dashed edge from FIX-2420 is *merge after*, not a stack: checks need deps
-installed at run time, not FIX-2420's code. Nothing in wave 0 waits on anything.
+Stack heads only. A solid edge is what one piece hands the next. A dashed edge from a consumed
+issue is an input another epic owns, never re-parented. The dashed edge from FIX-2420 is *merge
+after*, not a stack.
 
-### Stacks and waves
-
-A **wave** is a child's depth in its stack, so wave *n* starts as soon as its wave *n−1*
-parent has a branch. Waves 0 and 1 never touch the same files (apps against packages), so they
-run fully in parallel. A foundation child ships its **package slice** first, from `main`, then one
-**adoption slice per app** in that app's chain ([D3](DECISIONS.md#d3)). Hot-file ownership is in
+**How it lands ([D3](DECISIONS.md#d3)).** Wave 0 is 14 app quick wins, to `main` any time.
+Wave 1 is 17 package slices, from `main`, merged first. Waves 2 to 4 are package dependents and
+short app stacks, five deep at most, each starting from `main` once its package slice lands.
+The one build order, with hot-file owners and stack order, is
 [DECISIONS.md → Coordination seams](DECISIONS.md#coordination-seams).
-
-| Wave | Children | Base |
-|---|---|---|
-| **0 · quick wins** | Bugs FIX-2392 and FIX-2415. App-only, no package dependency: FIX-2371, 2372, 2390, 2395, 2397, 2399, 2400, 2401, 2403, 2404, 2413, 2414, 2416, 2417, 2418, 2424 | `main`, any time. Where two touch one file they merge in the seams table's order |
-| **1 · package foundations** | FIX-2374, 2379, 2383, 2370, 2385, 2384, 2420 (heads of stacks A, C, B, D, H1, H2 and the setup hook) · singles FIX-2378, 2389, 2391, 2393, 2402, 2405, 2407, 2408, 2421, 2422 | `main`, all in parallel |
-| **2 · first dependents** | FIX-2409, 2410, 2373 on 2374 · 2381 on 2383 · 2380, 2394 on 2379 · 2377 on 2370 · 2386 on 2385 (merges after 2379) · 2387 on 2384 (merges after 2420) · 2361 on FIX-2274's branch · app-only FIX-2375 and 2376, which read 2374's runs, in the lab chains · each foundation's adoption slices start their app chains | its parent's branch |
-| **3** | FIX-2411, 2412 on 2409 · 2382 on 2381 · 2419 on 2386 · 2398 on 2387 · 2423 on 2380 · 2396 on 2385 (merges after 2393) | its parent's branch |
-| **4** | FIX-2388 on 2419 · FIX-2406 at the tail of each lab's adapter chain | its parent's branch |
-| **closure** | FIX-2425: its QA plan is specced now, and its run waits for every merge | `main` |
-
-**The app adoption chains** each hold one hot file, in this order; a link stacks on the one before
-it. Lab adapters: FIX-2374 → 2378 → 2379 → 2370 → 2375 → 2376 → 2393 → 2406 in the Claude
-Code-style lab, and the same in Teammates with 2398 before 2406. Kitchen Sink's
-`flow-state/page.tsx`: wave 0's 2415 → 2416 → 2417 → 2400, then 2370 → 2377 → 2376 → 2411 → 2405.
-Shift Manager's `TaskFrame.tsx`: 2413 → 2418 (wave 0), then 2382 → 2384 → 2387 → 2386. The
-rest are in the seams table.
 
 ## What stays as it is
 
@@ -209,7 +192,7 @@ rest are in the seams table.
 - **harness-manager's verdict path.** `isDone` and the judge stay the one way a run is judged;
   checks compose into `isDone`, they don't sit beside it.
 - **The push channel**, PR opening and cleanup, and worktree staleness: FIX-2367, FIX-1768 and
-  FIX-2252 own them.
+  FIX-2252 own them. Apps consume FIX-2367's `client.subscribe`; nothing here builds a signal.
 - **Kitchen Sink is glue.** A need it shows is built in a package; KS only wires it.
 - **No inventory tables.** Lab READMEs don't get their inventory or code-stats tables back.
 
@@ -228,6 +211,7 @@ rest are in the seams table.
 | `goals/lib/server.mts` and `durable.mts` | **Extended** by FIX-2407's restart helper (folded here from `@flow-state-dev/testing`) |
 | [FIX-2152](../FIX-2152/DECISIONS.md#who-owns-what) ER-3: "a piece of UI both labs need is copied" | **Amended** by [D4](DECISIONS.md#d4): it goes to the ui registry |
 | FIX-2152 ER-4: a need goes to the package | **Kept**, widened to four apps as ER-3 |
+| FIX-2367's merged ER-3, ER-5 and seams row (#4294) | **Kept.** FIX-2409, 2411 and 2412 consume `client.subscribe`; its task board child converts the two task-board polls |
 
 The set's **Builds on / Adds** table, one row per package item, with the reuse verdict for each,
 is in [DECISIONS.md → Analysis](DECISIONS.md#analysis).
@@ -236,7 +220,7 @@ is in [DECISIONS.md → Analysis](DECISIONS.md#analysis).
 |---|---|
 | **Removes** | Teammates' 169-line `session-feed.ts`; the Claude Code-style lab's re-read pollers; Shift Manager's four pollers; three copies of the task-row view; the regexes over notice text; KS's `BackgroundWorkRefresh` ("Demo debt") and its hard-coded `SHELL_COORDINATORS`; each moved copy above |
 | **Adds** | About 20 package entries, seven registry components, one new subpath export (`@flow-state-dev/harness-manager/browser`) |
-| **Leaves** | FIX-2409's focus-and-age refresh, a stopgap source that FIX-2367 replaces ([D2](DECISIONS.md#d2)) |
+| **Leaves** | The Teammates task-view poll and Shift Manager's TasksPanel poll, until FIX-2367's task board child converts them ([D2](DECISIONS.md#d2)) |
 
 **Net: down.** Each lifted piece removes two to four app copies, and the next app starts with none.
 
@@ -251,14 +235,16 @@ of each. If wrong: package surface grows faster than apps shrink.
 
 1. **[D1](DECISIONS.md#d1) · Four daily-driver apps are worth one epic of shared package work,
    now.** If wrong: 57 children of polish while the framework's own goals wait.
-2. **[D2](DECISIONS.md#d2) · One session feed and one change signal in the client; FIX-2367
-   swaps the signal's source later.** If wrong: five pollers to unpick when push lands.
-3. **[D3](DECISIONS.md#d3) · Stacked PRs, one owner per hot file at a time.** If wrong: rebase
-   churn in deep stacks, or conflicts piling into the last PR.
-4. **[D4](DECISIONS.md#d4) · A piece two apps need lives in its package or the ui registry.**
-   If wrong: the registry grows components that each app then bends.
 
 **Open, one:** [should FIX-2402, FIX-2404 and FIX-2423 leave the epic?](DECISIONS.md#open)
+
+**Decided, engineering, not asked:**
+
+- [D2](DECISIONS.md#d2): every change reaches an app through FIX-2367's `client.subscribe`, polling
+  only without push. The epic waits on FIX-2367's delivery child for FIX-2409, 2411 and 2412.
+- [D3](DECISIONS.md#d3): package slices merge first; app stacks are five deep at most, from `main`.
+- [D4](DECISIONS.md#d4): a piece two apps need lives in its package or the ui registry.
+- The closure does not wait on FIX-1768: the goal stops at a reviewed branch.
 
 Epic · 56 children and a closure · Workforce: Shift Manager · Goal 1, validate through real
 usage · Goal 4, keep the foundation honest
