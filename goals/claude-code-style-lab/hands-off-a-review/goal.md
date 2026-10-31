@@ -44,7 +44,7 @@ control), or when every thread answered into the conversation, so no result reac
 
 **Controls** (`GOAL_CONTROL=<name>`; each swaps one line of a worker file for its opposite for the
 run, and puts it back):
-- `region-line`: the thread worker's "Start on the work at once" swapped for the old "Ask which
+- `region-line`: the thread worker's "and start on it at once." swapped for the old "Ask which
   region matters before you start". Must FAIL 2.
 - `thin-handoff`: the lead's handoff line swapped for "Give each thread a goal of five words or
   fewer". Must FAIL 1.
@@ -59,3 +59,5 @@ run, and puts it back):
 | 2026-10-31 | this change | openai/gpt-5.4 | FAIL (expected) | Control `thin-handoff`. Signal 1: the goal was "Review PR #4272", with no branch, detail or done |
 | 2026-10-31 | this change | openai/gpt-5.4 | FAIL (expected) | Control `restate`. Signal 5: the lead wrote 99% of the reply again, in 7 list items |
 | 2026-10-31 | this change | openai/gpt-5.4 | PASS 1 of 4 | Signals 1 to 4 passed in every run. Signal 5 failed 3 of 4: the lead listed the findings again (690, 619, 830 characters), paraphrased rather than copied (0 to 49% word for word), despite its instructions. The lead takes every notice in a turn under `routing: judgment`; a prompt doesn't stop it relaying |
+| 2026-10-31 | this change (with FIX-2366) | openai/gpt-5.4 | PASS | Thread worker reworded to look before it asks; lead text as in the threads-mode PASS. Attempt 1 of 3, signal 5 included (0% of the reply again) |
+| 2026-10-31 | this change (with FIX-2366) | openai/gpt-5.4 | FAIL (expected) | Control `region-line`, on the new anchor. Signal 2: two threads asked "Which region…" |

@@ -49,7 +49,7 @@ const LONGEST_ANSWER = 300;
  * replaces the line this change added with its opposite, so the check sees the lab without it.
  */
 const PLANTS: Record<string, { file: string; from: string; to: string }> = {
-  "region-line": { file: "thread/WORKER.md", from: "Start on the work at once.", to: "Ask which region matters before you start (holdTaskForUser)." },
+  "region-line": { file: "thread/WORKER.md", from: "and start on it at once.", to: "and before you start, ask which region matters (holdTaskForUser)." },
   "thin-handoff": {
     file: "lead/WORKER.md",
     from: "A thread sees only its goal, so write each goal so it can be done with nothing else",

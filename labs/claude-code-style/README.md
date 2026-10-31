@@ -39,8 +39,9 @@ threads, each a task in a session of its own, and the right pane is the status b
   the thread's task and answers its open question. Cmd+Enter (Ctrl+Enter) answers, or requests
   changes when it is ready for review; plain Enter is a new line. You can pin it there.
 - **A thread's goal** carries what it needs, since a thread sees nothing else: what to do, the ids,
-  links and branches you named, where the work lives, and what done means. A thread asks you
-  something only when the request leaves a choice that only you can make.
+  links and branches you named, where the work lives, and what done means. A thread starts at
+  once and looks before it asks: it asks you only what depends on you, a choice only you can make
+  or a check you asked it to make with you.
 - **A code change** goes to `desk.thread-coder`, which runs through Claude Code (its `harness` setting).
   Its card and row are tagged, and a run that made changes waits for your review. The thread's
   view says so once, in a card: the commit count, the branch shown short (the full name on hover)

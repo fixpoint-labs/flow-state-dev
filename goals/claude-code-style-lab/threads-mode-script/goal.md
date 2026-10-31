@@ -12,9 +12,11 @@ nothing in the lab but configuration, React UI and small flows.
 
 **Input:** `fixtures/input.json`: a project name, the ask (three vendors, one thread each), your
 answer to a thread's question, and the code change, with a marker the script fills in per run.
-It is **held-out**: no worker file, prompt or flow names any of it. The ask itself says each
-thread should first ask which region you host in, so step 3 doesn't hang on the model's choice; the
-thread worker asks only when a request calls for it, so the lead must carry that into each goal.
+It is **held-out**: no worker file, prompt or flow names any of it. The ask itself says all three
+start right away and each thread checks with you on the hosting region while it works, so step 3
+doesn't hang on the model's choice. The thread worker asks only when a request calls for it, so the
+lead must carry that into each goal. Said as "first ask me", the lead filed each task with the
+question attached, and a task with an open question waits instead of running.
 
 **Signal:** one browser on `fsdev dev --config labs/claude-code-style/fsdev.config.mts --app
 @flow-state-dev/claude-code-style`, with a fresh data folder and a fresh `file://` repository, which the lab is told it may cut
@@ -85,3 +87,6 @@ failed.
 | 2026-10-30 | 863a0e13 | openai/gpt-5.4 | FAIL (control `no-delegates`) | Signal 2: no thread filed |
 | 2026-10-30 | 07753056 | openai/gpt-5.4 | PASS | Closure re-run after #4262. Attempt 1 of 3; coding card `claude-sonnet-5`, worktree branch holds the line |
 | 2026-10-30 | 07753056 | openai/gpt-5.4 | FAIL (control `no-delegates`) | Signals 1 and 2: line not marked, no thread filed |
+| 2026-10-31 | this change (FIX-2363/2366) | openai/gpt-5.4 | FAIL | Ask said "first ask me which region": the lead filed each task with `questions`, so all three waited instead of running. Signal 2 |
+| 2026-10-31 | this change | openai/gpt-5.4 | FAIL | Ask reworded. The lead routed with `resultTo: "conversation"` (one thread per round), then wrote three identical goals the board took as the same work. Signal 2 both times |
+| 2026-10-31 | this change | openai/gpt-5.4 | PASS | Lead's results paragraph moved below its filing rules, each goal names its piece, never `questions` on a new task. Attempt 1 of 3; coding card `claude-sonnet-5` |
