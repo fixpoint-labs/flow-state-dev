@@ -1,5 +1,5 @@
 import { useJumpToLatest } from "@flow-state-dev/react";
-import { Fragment, useCallback, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { BoardTask, ConversationEntry, LabAdapter, WorkerRow } from "../adapter";
 import type { Look } from "../lib/looks";
 import { useStatusLine } from "../lib/status";
@@ -34,7 +34,8 @@ function placeholderOf(entry: TaskEntry, harness: string | undefined): BoardTask
  * the worker reads word for word begin. A message another worker sent that
  * waits for the current answer shows as a pending line until it lands. A
  * teammate the user hired also gets its instructions and a fire control in
- * the header.
+ * the header. Fire asks first in a row under the header, with Keep focused,
+ * so a stray Enter keeps the teammate.
  *
  * New content settles in place: the list follows it only while you are at
  * the end, and offers *Jump to latest* when you have scrolled up. A task card
@@ -77,10 +78,11 @@ export function Conversation({
   const pending = pendingFor(worker.id, talk, entries);
   const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
   const status = useStatusLine(adapter, worker, sessionId, nameOf, isCoding);
-  const [panel, setPanel] = useState<"instructions">();
-  const fire = () => {
-    if (window.confirm(`Fire ${worker.name}? It leaves your roster; this conversation stays readable.`)) void onFire();
-  };
+  const [panel, setPanel] = useState<"instructions" | "fire">();
+  const keep = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (panel === "fire") keep.current?.focus();
+  }, [panel]);
 
   const last = entries[entries.length - 1];
   // An answer on screen, written or being written, is the sign it is answering; the line shows only before one starts.
@@ -117,7 +119,7 @@ export function Conversation({
             <button type="button" onClick={() => setPanel((p) => (p === "instructions" ? undefined : "instructions"))} className={HEADER_BUTTON}>
               Instructions
             </button>
-            <button type="button" onClick={fire} className={HEADER_BUTTON}>
+            <button type="button" onClick={() => setPanel("fire")} aria-expanded={panel === "fire"} className={HEADER_BUTTON}>
               Fire
             </button>
           </>
@@ -136,6 +138,27 @@ export function Conversation({
           Talk
         </button>
       </header>
+      {panel === "fire" ? (
+        <div
+          role="group"
+          aria-label={`Fire ${worker.name}?`}
+          className="flex items-center gap-3 border-b border-border bg-destructive/10 px-6 py-2 text-sm"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.stopPropagation();
+              setPanel(undefined);
+            }
+          }}
+        >
+          <span className="min-w-0 flex-1">Fire {worker.name}? It leaves your roster; this conversation stays readable.</span>
+          <button type="button" onClick={() => void onFire()} className={cn(HEADER_BUTTON, "text-destructive")}>
+            Fire
+          </button>
+          <button ref={keep} type="button" onClick={() => setPanel(undefined)} className={HEADER_BUTTON}>
+            Keep
+          </button>
+        </div>
+      ) : null}
       {panel === "instructions" ? (
         <div className="border-b border-border px-6 py-3">
           <InstructionsForm
@@ -200,7 +223,7 @@ export function Conversation({
         </div>
         <JumpToLatestButton feed={feed} />
       </div>
-      <Composer workerName={worker.name} running={running} onSend={(text) => {
+      <Composer sessionId={sessionId} workerName={worker.name} running={running} onSend={(text) => {
           // Your own line takes you to the end, wherever you had scrolled to.
           feed.sent();
           void adapter.send(sessionId, text);

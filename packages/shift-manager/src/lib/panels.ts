@@ -55,12 +55,6 @@ function keep(userId: string, collapsed: Collapsed) {
   }
 }
 
-/** Whether a key pressed on `target` is typing: in a field, a text area, a select or editable text. */
-export function isTyping(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
-}
-
 // Read again on every resize; the store renders only when the answer changes.
 function subscribeNarrow(onChange: () => void) {
   window.addEventListener("resize", onChange);

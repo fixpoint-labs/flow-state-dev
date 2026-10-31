@@ -402,6 +402,19 @@ The send shortcut for a message box. Cmd+Enter on a Mac and Ctrl+Enter elsewhere
 - `enterSends` (default `false`): plain Enter sends too, as in a chat composer. Leave it off in a box for a longer answer, where Enter is a new line.
 - Shift+Enter never sends, and neither does an Enter that confirms an input method's composition (CJK and the like, including Safari's `keyCode` 229).
 
+### `isTypingTarget(target)`
+
+Whether a key landed in something the person types into: an input, a text area, a select, or editable text. A page-wide shortcut that is a printable key checks it first, so `/` or `?` typed into a message box stays text.
+
+```ts
+window.addEventListener("keydown", (event) => {
+  if (event.key === "/" && !isTypingTarget(event.target)) {
+    event.preventDefault();
+    composer.current?.focus();
+  }
+});
+```
+
 ## Voice playback
 
 `useVoice` covers both whole-buffer playback (one buffer per `OutputAudioContent` from batch providers like OpenAI) and streaming playback (per-chunk audio via `content.audio.delta` from streaming providers). The audio player handles both modes transparently — flow authors don't change anything to opt in.

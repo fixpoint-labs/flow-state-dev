@@ -93,6 +93,7 @@ export function Thread({
         </div>
       ) : (
         <Composer
+          sessionId={session.id}
           running={running}
           onSend={(text) => {
             // Your own line brings you back to the end, wherever you had scrolled to.

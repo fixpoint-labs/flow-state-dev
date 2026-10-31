@@ -28,6 +28,10 @@ theme on purpose, so it reads as the app it copies.
   a click outside it, and the conversation under it keeps its place.
 - **Right:** Talk, the worker's exchanges with the other workers, grouped by worker, from the
   message log. It closes.
+- **Keys:** ⌘K (Ctrl+K) finds a teammate by its name or role, or opens *Hire a teammate*. Alt+↑
+  and Alt+↓ move to the previous or next teammate. `/` puts the cursor in the composer, and `?`
+  lists every key. Opening a teammate puts the cursor in its composer. Firing a teammate you hired
+  asks first in a row under the header, with *Keep* focused.
 
 Workers message each other where you can see it. When Chief of Staff messages researcher, a line,
 *Messaged researcher*, shows in Chief of Staff's conversation and the message lands in researcher's.

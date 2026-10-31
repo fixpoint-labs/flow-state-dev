@@ -642,8 +642,18 @@ describe("the teammates screen", () => {
     await act(async () => fireEvent.click(within(edit).getByRole("button", { name: "Save instructions" })));
     await waitFor(() => expect(screen.queryByRole("form", { name: "Instructions for tester" })).toBeNull());
 
-    window.confirm = () => true;
-    await act(async () => fireEvent.click(within(conversation()).getByRole("button", { name: "Fire" })));
+    // Fire asks in a row under the header, with Keep focused; Keep leaves the teammate where it is.
+    window.confirm = () => {
+      throw new Error("Fire must not open a browser confirm");
+    };
+    fireEvent.click(within(conversation()).getByRole("button", { name: "Fire" }));
+    const ask = within(conversation()).getByRole("group", { name: "Fire tester?" });
+    await waitFor(() => expect(document.activeElement).toBe(within(ask).getByRole("button", { name: "Keep" })));
+    fireEvent.click(within(ask).getByRole("button", { name: "Keep" }));
+    expect(within(conversation()).queryByRole("group", { name: "Fire tester?" })).toBeNull();
+    expect(workerRow("tester")).not.toBeNull();
+    fireEvent.click(within(conversation()).getByRole("button", { name: "Fire" }));
+    await act(async () => fireEvent.click(within(within(conversation()).getByRole("group", { name: "Fire tester?" })).getByRole("button", { name: "Fire" })));
     await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3));
     expect(workerRow("tester")).toBeNull();
   });

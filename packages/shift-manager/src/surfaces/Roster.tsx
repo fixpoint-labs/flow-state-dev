@@ -69,6 +69,8 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
   return (
     <li
       className={`${COLUMNS_GRID} border-b px-2 py-2.5 text-sm`}
+      // Focusable by script, not by Tab: Jump to lands a worker's result on its row.
+      tabIndex={-1}
       data-testid="roster-worker"
       data-worker-id={worker.id}
       data-status={status}

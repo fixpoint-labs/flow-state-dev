@@ -7,10 +7,13 @@ import { useState, type FormEvent, type KeyboardEvent } from "react";
  * turn runs, Send becomes Stop; a line you send then waits for the turn.
  */
 export function Composer({
+  sessionId,
   running,
   onSend,
   onStop,
 }: {
+  /** The session it types to; `/` and a session switch find its composer by it. */
+  sessionId: string;
   running: boolean;
   onSend: (text: string) => void;
   onStop: () => void;
@@ -41,6 +44,8 @@ export function Composer({
       <div className="border border-border bg-card focus-within:border-ring">
         <textarea
           aria-label="Message the main session"
+          data-composer
+          data-session-id={sessionId}
           rows={3}
           value={text}
           onChange={(event) => setText(event.target.value)}

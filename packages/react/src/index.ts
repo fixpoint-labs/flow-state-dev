@@ -188,6 +188,7 @@ export {
 
 export {
   isSendKey,
+  isTypingTarget,
   type SendKeyEvent,
   type SendKeyOptions
 } from "./send-key";

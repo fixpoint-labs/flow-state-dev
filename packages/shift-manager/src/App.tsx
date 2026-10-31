@@ -37,7 +37,8 @@ import { Messages } from "./surfaces/Messages";
 import { Schedules } from "./surfaces/Schedules";
 import { Usage } from "./surfaces/Usage";
 import { SessionView } from "./surfaces/SessionView";
-import { isTyping, usePanels } from "./lib/panels";
+import { isTypingTarget } from "@flow-state-dev/react";
+import { usePanels } from "./lib/panels";
 
 /**
  * @param devtoolUrl The devtool a task's trace link opens: the one Shift Manager
@@ -117,7 +118,7 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
       // and `]` only where there is a panel. AltGr, which types `[` on some
       // layouts, reports Ctrl and Alt held.
       const altGraph = typeof e.getModifierState === "function" && e.getModifierState("AltGraph");
-      if (e.repeat || e.metaKey || ((e.ctrlKey || e.altKey) && !altGraph) || isTyping(e.target)) return;
+      if (e.repeat || e.metaKey || ((e.ctrlKey || e.altKey) && !altGraph) || isTypingTarget(e.target)) return;
       if (e.key === "[") toggleNav();
       else if (e.key === "]" && hasPanel) togglePanel();
     };
@@ -156,7 +157,7 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
       ) : (
         levels
       )}
-      {jumping !== null ? <JumpTo snapshot={snapshot} gaps={gaps} initialQuery={jumping} onClose={() => setJumping(null)} /> : null}
+      {jumping !== null ? <JumpTo snapshot={snapshot} gaps={gaps} client={client} initialQuery={jumping} onClose={() => setJumping(null)} /> : null}
     </div>
   );
 }
