@@ -45,10 +45,12 @@ flowchart LR
 
 - **Goal leg, `goals/teammates-lab/routes-only-to-ready-harnesses`**, real model, 3 of 3 runs.
   The Teammates lab on a fresh store, with Cursor ready (a `CURSOR_API_KEY` in its environment)
-  and Codex not (no `CODEX_API_KEY`, no `codex` on the run's `PATH`). Graded on three signals:
-  the start log carries the Codex row with `codex login` in it; the read action returns
-  `codex` with `ready: false` and a remedy, and after a stand-in `codex` that answers
-  `login status` is put on `PATH`, `{ refresh: true }` returns `ready: true`; and asked "have
+  and Codex not (no `CODEX_API_KEY`, and `CODEX_HOME` pointed at an empty folder, so the SDK's
+  own `codex login status` finds no login; `PATH` does not pick the program, the SDK does).
+  Graded on three signals: the start log carries the Codex row with `codex login` in it; the
+  read action returns `codex` with `ready: false` and a remedy, and after the goal runs the
+  SDK's own program with `login --with-api-key` and a dummy key into that `CODEX_HOME`,
+  `{ refresh: true }` returns `ready: true`; and asked "have
   Codex add a line to the README", Chief of Staff files **no** task on the Codex worker and its
   reply names what to run (it may offer, or use, Cursor).
 - **Control that must fail:** `GOAL_CONTROL=no-readiness-context` leaves the readiness
@@ -67,7 +69,7 @@ flowchart LR
 
 ```diff
   // labs/teammates/host.mts
-+ import { harnessReadiness, harnessReadinessAction, harnessReadinessCapability } from "@flow-state-dev/harness-manager";
++ import { formatHarnessReadiness, harnessReadiness, harnessReadinessAction, harnessReadinessCapability } from "@flow-state-dev/harness-manager";
 + import { checkCodexReadiness } from "@flow-state-dev/codex";
 + import { checkCursorReadiness } from "@flow-state-dev/cursor";
 + import { checkClaudeCodeReadiness } from "@flow-state-dev/claude-code/sdk";
@@ -112,10 +114,13 @@ flowchart LR
   pre-start gate.
 - **Adoption, after the package slice merges**, per the epic's build order: Teammates and Claude
   Code-style (the start table, the read action, Chief of Staff's context, and Teammates'
-  `READY` deleted); Kitchen Sink (`MODE_CHECKS`' sign-in parts call the integration checks, the
-  picker shows the remedy and a dev-only Re-check that clears the gate's memo, and Flow State
-  checks the gateway key); Shift Manager's devteam (`startHarness` reports instead of refusing,
-  and its Lab gets the read action). Each adopting PR deletes the app's copy (ER-3).
+  `READY` deleted); Kitchen Sink (each harness mode's sign-in leg in `MODE_CHECKS` calls the
+  integration check and keeps no probe logic of its own; the gate's memo is the one cache, and
+  its dev-only Re-check decides again; the picker shows the remedy; Flow State checks the
+  gateway key; see [E11](DECISIONS.md#e11) for a mode that turns ready after start); Shift
+  Manager's devteam (`startHarness` reports instead of refusing, for every harness it offers,
+  including any `codex` or `cursor` refusal FIX-2390 lands first, and its Lab gets the read
+  action). Each adopting PR deletes the app's copy (ER-3).
 - **Docs:** the harness-manager README (a *Readiness* section after *Subscription usage*); the
   three integration READMEs (the new check); `apps/docs/docs/orchestration/harness-manager.md`,
   extended with a readiness section beside its usage section rather than a new page; a

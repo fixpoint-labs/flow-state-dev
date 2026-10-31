@@ -70,6 +70,15 @@ flowchart TD
 - **E10 · Order of work.** The package slice is one PR from `main` (wave 1, no app file).
   Teammates' `host.mts` and `coder.ts` change in the adoption PR, first in that file's merge
   order (2391 → 2380 → …). FIX-2403 draws the labs' chips from the read action.
+- <a name="e11"></a>**E11 · Kitchen Sink registers a harness flow only for a mode ready at start**, and that
+  stays. `fsdev.config.ts` builds its flow list once from the gate, so Re-check refreshes the
+  picker's reasons and remedies but can't add a route. A mode that turns ready after start shows
+  as ready with "restart the server to open it" rather than a link that would 404. Registering
+  every built flow and refusing at request time would take away the fence that keeps an
+  unavailable mode's routes not found, which is a separate decision.
+- **E12 · No host bundle helper yet.** Wiring readiness in a host takes four harness-manager
+  imports and one check per harness. If the adoption PRs show the same five lines in every host,
+  a helper that bundles them can follow without renaming anything D1 locks in.
 
 ## Considered and dropped
 
@@ -79,6 +88,16 @@ flowchart TD
 - **Storing readings like usage.** Usage is per person and expensive to read; readiness is per
   machine and cheap. A store would add a writer and a schema for a fact that is stale the moment
   the process restarts.
+
+## Notes from review
+
+- Round 1 (b536a8f). Cursor approved the direction; its missing import in the diff is fixed, and
+  its two-memo point is folded into the Kitchen Sink adoption line; its bundle-helper idea is
+  E12. Codex: the goal's signed-out state and Re-check transition now use an empty `CODEX_HOME`
+  and the SDK's own program, since `PATH` doesn't pick it (verified in
+  `packages/codex/src/usage.ts`); Kitchen Sink's flow list being fixed at start is E11. FSD
+  Architect: FIX-2390's `codex` and `cursor` refusals in `startHarness` are listed as removed at
+  adoption if they land first.
 
 ## How it got here
 
