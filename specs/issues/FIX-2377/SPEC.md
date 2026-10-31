@@ -62,7 +62,8 @@ flowchart LR
   behaviour as the server loads. The Discard leg fails (409, still listed). Shown red in the PR.
 - **Unit, engine:** abort of an interrupted request no gate holds moves it to `aborted` and
   answers 204; the parked cases keep their behaviour; a continue that wins the race keeps it
-  running. The existing "stays stopped" cases in `park-owed.test.ts` now read `aborted`.
+  running. The existing "stays stopped" cases in `park-owed.test.ts`, and `abort.test.ts`'s second
+  abort after a cut-off run, now read `aborted`.
 - **Unit, client:** `interruptedBySession` keeps only the actions given, drops entries with no
   session, groups by session, oldest first.
 - **Render, registry:** the interrupted state shows its line; Continue and Discard each call
