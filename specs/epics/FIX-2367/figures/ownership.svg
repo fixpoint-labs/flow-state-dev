@@ -1,0 +1,146 @@
+<svg viewBox="0 0 940 430" role="img" aria-label="Who owns what: seven rules every child obeys, by six issues. The bus issue decides ER-1, notices carry no rows; ER-2, topics come only from scopes; ER-3, every publisher uses the one bus; and ER-6, notices are at most once. The delivery issue builds ER-4, a subscribe is checked on the server by the scope's read check, and ER-5, every hook goes through client.subscribe and polls without push, and decides ER-7, SSE streams don't change. Every other cell is consumes: the Postgres bus, the resource-change publisher FIX-1506, the task-board publisher and the Ably adapter FIX-380 obey rules they do not decide. Each rule has exactly one owner."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A; } }
+    .bg   { fill:var(--surface); }
+    .head { fill:var(--surface-2); }
+    .row  { stroke:var(--rule); stroke-width:1; }
+    .own  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .use  { fill:var(--accent-soft); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; font-weight:600; }
+    .t-id  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; font-weight:600; }
+    .t-r   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-own { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+    .t-use { fill:var(--accent); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="430"/>
+
+  <g id="columns">
+    <rect class="head" x="16" y="16" width="908" height="56" rx="6"/>
+    <text class="t-lbl" x="32" y="40">RULE EVERY CHILD OBEYS</text>
+    <text class="t-lbl" x="32" y="56">ROW · ONE OWNER · CONSUMERS</text>
+    <text class="t-col" x="447" y="40" text-anchor="middle">BUS</text>
+    <text class="t-lbl" x="447" y="56" text-anchor="middle">FIX-XXX</text>
+    <text class="t-col" x="533" y="40" text-anchor="middle">PG BUS</text>
+    <text class="t-lbl" x="533" y="56" text-anchor="middle">FIX-XXX</text>
+    <text class="t-col" x="619" y="40" text-anchor="middle">DELIVERY</text>
+    <text class="t-lbl" x="619" y="56" text-anchor="middle">FIX-XXX</text>
+    <text class="t-col" x="705" y="40" text-anchor="middle">RESOURCES</text>
+    <text class="t-lbl" x="705" y="56" text-anchor="middle">FIX-1506</text>
+    <text class="t-col" x="791" y="40" text-anchor="middle">TASK BOARD</text>
+    <text class="t-lbl" x="791" y="56" text-anchor="middle">FIX-XXX</text>
+    <text class="t-col" x="877" y="40" text-anchor="middle">ABLY</text>
+    <text class="t-lbl" x="877" y="56" text-anchor="middle">FIX-380</text>
+  </g>
+
+  <g id="er-1">
+    <text class="t-id" x="32" y="101">ER-1</text>
+    <text class="t-r" x="80" y="101">A notice names a topic and a change kind,</text>
+    <text class="t-r" x="80" y="116">never rows</text>
+    <rect class="own" x="409" y="90" width="76" height="28" rx="4"/>
+    <text class="t-own" x="447" y="108" text-anchor="middle">decides</text>
+    <rect class="use" x="495" y="90" width="76" height="28" rx="4"/>
+    <text class="t-use" x="533" y="108" text-anchor="middle">consumes</text>
+    <rect class="use" x="581" y="90" width="76" height="28" rx="4"/>
+    <text class="t-use" x="619" y="108" text-anchor="middle">consumes</text>
+    <rect class="use" x="667" y="90" width="76" height="28" rx="4"/>
+    <text class="t-use" x="705" y="108" text-anchor="middle">consumes</text>
+    <rect class="use" x="753" y="90" width="76" height="28" rx="4"/>
+    <text class="t-use" x="791" y="108" text-anchor="middle">consumes</text>
+    <rect class="use" x="839" y="90" width="76" height="28" rx="4"/>
+    <text class="t-use" x="877" y="108" text-anchor="middle">consumes</text>
+    <line class="row" x1="16" y1="125" x2="924" y2="125"/>
+  </g>
+  <g id="er-2">
+    <text class="t-id" x="32" y="143">ER-2</text>
+    <text class="t-r" x="80" y="143">Topics come only from the session, user</text>
+    <text class="t-r" x="80" y="158">and org scopes</text>
+    <rect class="own" x="409" y="132" width="76" height="28" rx="4"/>
+    <text class="t-own" x="447" y="150" text-anchor="middle">decides</text>
+    <rect class="use" x="581" y="132" width="76" height="28" rx="4"/>
+    <text class="t-use" x="619" y="150" text-anchor="middle">consumes</text>
+    <rect class="use" x="667" y="132" width="76" height="28" rx="4"/>
+    <text class="t-use" x="705" y="150" text-anchor="middle">consumes</text>
+    <rect class="use" x="753" y="132" width="76" height="28" rx="4"/>
+    <text class="t-use" x="791" y="150" text-anchor="middle">consumes</text>
+    <rect class="use" x="839" y="132" width="76" height="28" rx="4"/>
+    <text class="t-use" x="877" y="150" text-anchor="middle">consumes</text>
+    <line class="row" x1="16" y1="167" x2="924" y2="167"/>
+  </g>
+  <g id="er-3">
+    <text class="t-id" x="32" y="185">ER-3</text>
+    <text class="t-r" x="80" y="185">Every publisher publishes through</text>
+    <text class="t-r" x="80" y="200">the one bus</text>
+    <rect class="own" x="409" y="174" width="76" height="28" rx="4"/>
+    <text class="t-own" x="447" y="192" text-anchor="middle">decides</text>
+    <rect class="use" x="495" y="174" width="76" height="28" rx="4"/>
+    <text class="t-use" x="533" y="192" text-anchor="middle">consumes</text>
+    <rect class="use" x="667" y="174" width="76" height="28" rx="4"/>
+    <text class="t-use" x="705" y="192" text-anchor="middle">consumes</text>
+    <rect class="use" x="753" y="174" width="76" height="28" rx="4"/>
+    <text class="t-use" x="791" y="192" text-anchor="middle">consumes</text>
+    <rect class="use" x="839" y="174" width="76" height="28" rx="4"/>
+    <text class="t-use" x="877" y="192" text-anchor="middle">consumes</text>
+    <line class="row" x1="16" y1="209" x2="924" y2="209"/>
+  </g>
+  <g id="er-4">
+    <text class="t-id" x="32" y="227">ER-4</text>
+    <text class="t-r" x="80" y="227">A subscribe is checked on the server, by</text>
+    <text class="t-r" x="80" y="242">the scope's existing read check</text>
+    <rect class="own" x="581" y="216" width="76" height="28" rx="4"/>
+    <text class="t-own" x="619" y="234" text-anchor="middle">builds</text>
+    <rect class="use" x="839" y="216" width="76" height="28" rx="4"/>
+    <text class="t-use" x="877" y="234" text-anchor="middle">consumes</text>
+    <line class="row" x1="16" y1="251" x2="924" y2="251"/>
+  </g>
+  <g id="er-5">
+    <text class="t-id" x="32" y="269">ER-5</text>
+    <text class="t-r" x="80" y="269">Every hook goes through client.subscribe,</text>
+    <text class="t-r" x="80" y="284">and polls when there is no push</text>
+    <rect class="own" x="581" y="258" width="76" height="28" rx="4"/>
+    <text class="t-own" x="619" y="276" text-anchor="middle">builds</text>
+    <rect class="use" x="667" y="258" width="76" height="28" rx="4"/>
+    <text class="t-use" x="705" y="276" text-anchor="middle">consumes</text>
+    <rect class="use" x="753" y="258" width="76" height="28" rx="4"/>
+    <text class="t-use" x="791" y="276" text-anchor="middle">consumes</text>
+    <rect class="use" x="839" y="258" width="76" height="28" rx="4"/>
+    <text class="t-use" x="877" y="276" text-anchor="middle">consumes</text>
+    <line class="row" x1="16" y1="293" x2="924" y2="293"/>
+  </g>
+  <g id="er-6">
+    <text class="t-id" x="32" y="311">ER-6</text>
+    <text class="t-r" x="80" y="311">Notices are at most once: no replay,</text>
+    <text class="t-r" x="80" y="326">no acks, nothing stored</text>
+    <rect class="own" x="409" y="300" width="76" height="28" rx="4"/>
+    <text class="t-own" x="447" y="318" text-anchor="middle">decides</text>
+    <rect class="use" x="495" y="300" width="76" height="28" rx="4"/>
+    <text class="t-use" x="533" y="318" text-anchor="middle">consumes</text>
+    <rect class="use" x="581" y="300" width="76" height="28" rx="4"/>
+    <text class="t-use" x="619" y="318" text-anchor="middle">consumes</text>
+    <rect class="use" x="839" y="300" width="76" height="28" rx="4"/>
+    <text class="t-use" x="877" y="318" text-anchor="middle">consumes</text>
+    <line class="row" x1="16" y1="335" x2="924" y2="335"/>
+  </g>
+  <g id="er-7">
+    <text class="t-id" x="32" y="353">ER-7</text>
+    <text class="t-r" x="80" y="353">SSE request and item streams don't change;</text>
+    <text class="t-r" x="80" y="368">only notices go on the socket</text>
+    <rect class="own" x="581" y="342" width="76" height="28" rx="4"/>
+    <text class="t-own" x="619" y="360" text-anchor="middle">decides</text>
+    <rect class="use" x="839" y="342" width="76" height="28" rx="4"/>
+    <text class="t-use" x="877" y="360" text-anchor="middle">consumes</text>
+    <line class="row" x1="16" y1="377" x2="924" y2="377"/>
+  </g>
+
+  <g id="legend">
+    <rect class="own" x="32" y="393" width="14" height="14" rx="3"/>
+    <text class="t-lbl" x="54" y="404">DECIDES OR BUILDS · EXACTLY ONE PER ROW</text>
+    <rect class="use" x="380" y="393" width="14" height="14" rx="3"/>
+    <text class="t-lbl" x="402" y="404">CONSUMES · MUST NOT RE-DECIDE</text>
+  </g>
+</svg>

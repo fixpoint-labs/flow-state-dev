@@ -1,0 +1,92 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="What's in the box. In the box, what an app gets for nothing: a notice that names a scope and carries no rows; topics taken from the session, user and org scopes; a bus with an in-memory default and a Postgres adapter; one WebSocket per client on the Node host, subscribed per topic and checked on the server; client.subscribe and React hooks that read again on a notice; polling when no push is configured; and two publishers, resource changes and the task board. Composed in by the app: which views watch which scope, its host, and the Postgres bus in its stores profile. Replaced in one line: the Ably adapter fills both the bus and the delivery, for serverless hosts. Below a fence, not built: rows on the push, replay or acknowledgement of notices, items or interrupts over the socket, push on serverless without a managed service, and request-finished notices."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .app   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .swap  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; stroke-dasharray:5 4; }
+    .cell  { fill:var(--surface); stroke:var(--rule); stroke-width:1; }
+    .fence { stroke:var(--gone); stroke-width:2; stroke-dasharray:8 5; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-x   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; text-decoration:line-through; }
+    .c-code { fill:var(--code); } .c-acc { fill:var(--accent); } .c-prose { fill:var(--prose); } .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="16" width="600" height="280" rx="8"/>
+    <text class="t-tag c-code" x="32" y="38">IN THE BOX · WHAT AN APP GETS FOR NOTHING</text>
+    <rect class="cell" x="32" y="52" width="276" height="50" rx="5"/>
+    <text class="t-b" x="44" y="72">A notice: this scope changed</text>
+    <text class="t-s" x="44" y="90">a topic and a change kind, never rows</text>
+    <rect class="cell" x="324" y="52" width="276" height="50" rx="5"/>
+    <text class="t-b" x="336" y="72">Topics from the scopes we have</text>
+    <text class="t-s" x="336" y="90">session · user · org, and a resource under one</text>
+    <rect class="cell" x="32" y="112" width="276" height="50" rx="5"/>
+    <text class="t-b" x="44" y="132">The bus: publish and subscribe</text>
+    <text class="t-s" x="44" y="150">in-memory default · a stores-profile slot</text>
+    <rect class="cell" x="324" y="112" width="276" height="50" rx="5"/>
+    <text class="t-b" x="336" y="132">Postgres bus</text>
+    <text class="t-s" x="336" y="150">LISTEN/NOTIFY on the existing tail pool</text>
+    <rect class="cell" x="32" y="172" width="276" height="50" rx="5"/>
+    <text class="t-b" x="44" y="192">One WebSocket per client</text>
+    <text class="t-s" x="44" y="210">on the Node host, topics checked server-side</text>
+    <rect class="cell" x="324" y="172" width="276" height="50" rx="5"/>
+    <text class="t-b" x="336" y="192">client.subscribe and hooks</text>
+    <text class="t-s" x="336" y="210">a notice makes the hook read again</text>
+    <rect class="cell" x="32" y="232" width="276" height="50" rx="5"/>
+    <text class="t-b" x="44" y="252">Polling when there is no push</text>
+    <text class="t-s" x="44" y="270">the capabilities route says which</text>
+    <rect class="cell" x="324" y="232" width="276" height="50" rx="5"/>
+    <text class="t-b" x="336" y="252">Two publishers</text>
+    <text class="t-s" x="336" y="270">resource changes · the task board</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="app" x="632" y="16" width="292" height="160" rx="8"/>
+    <text class="t-tag c-acc" x="648" y="38">COMPOSED IN BY THE APP</text>
+    <text class="t-b" x="648" y="66">Which views watch which scope</text>
+    <text class="t-s" x="648" y="84">by using the hooks it already uses</text>
+    <text class="t-b" x="648" y="110">Its host</text>
+    <text class="t-s" x="648" y="128">Node gets push · serverless polls</text>
+    <text class="t-b" x="648" y="154">The Postgres bus, for 2+ processes</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="swap" x="632" y="190" width="292" height="106" rx="8"/>
+    <text class="t-tag c-prose" x="648" y="212">REPLACED IN ONE LINE</text>
+    <text class="t-b" x="648" y="240">Ably adapter (FIX-380)</text>
+    <text class="t-s" x="648" y="258">fills the bus and the delivery,</text>
+    <text class="t-s" x="648" y="274">so serverless hosts get push</text>
+  </g>
+
+  <g id="fence">
+    <line class="fence" x1="16" y1="322" x2="924" y2="322"/>
+    <text class="t-tag c-gone" x="16" y="344">NOT BUILT · BELOW THE FENCE</text>
+  </g>
+
+  <g id="not-built">
+    <text class="t-x" x="16" y="372">Rows on the push</text>
+    <text class="t-s" x="16" y="390">the read stays the fetch (D2)</text>
+    <text class="t-x" x="200" y="372">Replay or acks of notices</text>
+    <text class="t-s" x="200" y="390">at most once; read on reconnect</text>
+    <text class="t-x" x="400" y="372">Items or interrupts on the socket</text>
+    <text class="t-s" x="400" y="390">SSE request streams stay (D4)</text>
+    <text class="t-x" x="620" y="372">Push on serverless without Ably</text>
+    <text class="t-s" x="620" y="390">serverless polls (D3)</text>
+    <text class="t-x" x="16" y="428">Request-finished notices</text>
+    <text class="t-s" x="16" y="446">FIX-2043 stays a read by id</text>
+    <text class="t-x" x="200" y="428">Session-to-session messages</text>
+    <text class="t-s" x="200" y="446">a notice reaches screens, not workers</text>
+  </g>
+</svg>
