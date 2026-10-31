@@ -31,7 +31,7 @@ orchestration, so a task that waits on a person says so in every app, with the s
 flowchart LR
   R["task row<br/>(listTasks, or a browser's board read)"] --> V["taskRowView(row, holds?)"]
   H["the row's Inbox holds<br/>(inboxItems, optional)"] -.-> V
-  V --> S["state · waitingOn · holds<br/>spend · harness · times"]
+  V --> S["state · hold · holds<br/>spend · harness · times"]
   S --> SM["Shift Manager"]
   S --> TM["Teammates"]
   S --> CC["Claude Code-style"]
@@ -64,9 +64,10 @@ read ([D1](DECISIONS.md#d1)).
 - **One display state** ([D1](DECISIONS.md#d1)): `queued`, `held`, `running`, `waiting`, `failed`,
   `done`, `cancelled`. *Waiting* is any open user hold on a row that isn't terminal, whatever the
   stored status. The stored status stays on the view beside it.
-- **`waitingOn`**: the oldest open user hold's kind and prompt, and the hold itself (where its
-  answer goes, whether it can be answered, and the `detail` a reader found for it, such as a
-  review stop's data). `null` when nothing waits on the user.
+- **`hold`**: the oldest open user hold (what it asks, where its answer goes, whether it can be
+  answered, and the `detail` a reader found for it, such as a review stop's data). `null` when
+  nothing waits on the user. The issue's `waitingOn` is a retired name (the vocabulary sweep's
+  `hold-names` rule), so the view names the hold itself.
 - **Spend and harness** read from either form a row carries: the stored ledger (a raw board row),
   folded by `taskSpendView`, or the already-folded view `listTasks` publishes, kept as it is.
   Each form has a test. A spend in neither form reads as none, never a throw. **Times**: created, updated, started and completed, `null` where the row has none.

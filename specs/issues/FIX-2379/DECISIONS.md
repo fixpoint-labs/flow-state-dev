@@ -51,14 +51,14 @@ output, the view should take that function as an option rather than reading the 
   Manager's rule today).
 - **A malformed stored spend reads as `null`**: a view never throws on a row (the Teammates
   lab's guard today).
-- **`waitingOn.kind` keeps the Inbox's kinds** (`confirm` stays `confirm`); Claude Code-style's
+- **`hold.ask.kind` keeps the Inbox's kinds** (`confirm` stays `confirm`); Claude Code-style's
   `confirm` to `input` mapping is that lab's to drop or keep.
 
 ## Notes from review
 
 Round 1 (Cursor, approved; Codex, no findings). Below the bar, recorded for the implementer:
 
-- **Pin the return shape** in the README: stored `status` beside display `state`, `error` and `statusNote` passed through, and `holds` kept beside `waitingOn.hold` on purpose (a screen that lists every open ask needs all of them).
+- **Pin the return shape** in the README: stored `status` beside display `state`, `error` and `statusNote` passed through, and `holds` kept beside `hold` on purpose (a screen that lists every open ask needs all of them).
 - **One caller recipe** for a refresh that already ran `inboxItems`: index `item.holds` by task id and pass them per row, so no app runs `openUserHolds` twice or keeps its own `holdsOf` map.
 - **`taskSpendView` parses with zod and can throw:** the view wraps it, lifting the Teammates lab's try/catch, so no adopter guards spend.
 - **"Oldest" is `openedAt` order,** the same order `inboxItems` sorts an item's holds in.
