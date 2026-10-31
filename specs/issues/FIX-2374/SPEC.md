@@ -53,13 +53,15 @@ built from them. `useSession` keeps its own join because it carries rules a feed
 **How we verify.**
 
 - **Real host (new), `packages/node/test/session-feed.test.ts`.** A `serve()` host with a small
-  flow. A feed opened by one client hears a turn a second client sends (the item, then the run
-  starting and ending), reads `live`, keeps a reply streamed through `followResponse` growing in
-  place, and reads `reconnecting` and then `lapsed` when the host closes. Starting the host again
-  on the same port brings it back to `live`.
+  flow. A feed opened by one client reads the history, reads `live` once the stream names the
+  session's runs, hears a turn a second client sends, keeps its own send through
+  `followResponse`, and reads `reconnecting` and then `lapsed` when the host closes. Starting the
+  host again on the same port brings it back to `live`. (A run here is background work under the
+  session; the stream names an empty list for a session with none.)
 - **Client unit tests (new), `packages/client/test/session-feed.test.ts`**, against a scripted
-  fetch: history paging that restarts when the history moves, a partial copy never replacing a
-  finished one, `stopped` on a 404, `close()`.
+  fetch: an answer growing in place through `followResponse` and a late partial copy never
+  replacing the finished one, `stopped` on a 404, a failed history read retried, `close()`. The
+  paged read keeps `useSession`'s existing tests for history that moves.
 - **Control that must fail:** each check's red state is produced in the build PR, not argued:
   the feed with its lapse mapping removed fails the restart case; the feed with `mayReplaceItem`
   replaced by "last copy wins" fails the partial-copy case.
