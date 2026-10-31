@@ -144,6 +144,23 @@ const { execute, loading, error } = useAction({
 await execute({ message: "Hello!" });
 ```
 
+### `useSubmit(action)`
+
+Holds a button or form while an async call runs, and keeps the refusal to show instead of throwing.
+
+```tsx
+const pin = useSubmit(() => api.pin(taskId));
+
+<button disabled={pin.busy} onClick={() => void pin.submit(undefined)}>Pin</button>;
+{pin.error ? <p role="alert">Couldn't pin: {pin.error}</p> : null}
+```
+
+- `submit(event?, ...args)` runs `action(...args)`. It prevents a form event's default and never throws. A call made while one is running does nothing, so a double click sends once.
+- `busy` is `true` while the action runs.
+- `error` is the last refusal's message. It clears when the action runs again.
+
+It wraps any async call. To send a flow action, use `useAction`.
+
 ### `useRequestStream(options)`
 
 Direct request-stream access. Message and reasoning text streams in token-by-token.

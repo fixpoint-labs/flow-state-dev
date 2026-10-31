@@ -253,6 +253,19 @@ const { execute, loading, error } = useAction({
 });
 ```
 
+### `useSubmit` — Buttons That Change Something
+
+For a button whose call may be slow or refused (pin, resolve, create), `useSubmit` holds it while the call runs and keeps the refusal to show beside it:
+
+```tsx
+const resolve = useSubmit(() => api.resolve(taskId));
+
+<button disabled={resolve.busy} onClick={() => void resolve.submit(undefined)}>Resolve</button>;
+{resolve.error ? <p role="alert">Couldn't resolve: {resolve.error}</p> : null}
+```
+
+A second click while the first call runs does nothing, and a failed call never reads as done. It takes any async function; `useAction` is the one tied to a flow action.
+
 ### `useRequestStream` — Direct Stream Access
 
 ```tsx
