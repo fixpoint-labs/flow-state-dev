@@ -69,3 +69,4 @@ task settles), through the AI Gateway. Claude Code needs `ANTHROPIC_API_KEY`.
 | 2026-10-30 | 863a0e13 + layer fix | openai/gpt-5.4 | FAIL (control `answer-again-off`) | Signal 4 only: a task settled while the first turn ran and no card showed inside it |
 | 2026-10-30 | 07753056 | openai/gpt-5.4 | PASS | Closure re-run (FIX-2156) after #4262. Attempt 1 of 3: 2 tasks, the card inside the first `respond`, 6 harness entries |
 | 2026-10-30 | 07753056 | openai/gpt-5.4 | FAIL (control `answer-again-off`) | Signal 4 only |
+| 2026-10-31 | 92a0928 | openai/gpt-5.4 | PASS | FIX-2364 regression re-run on the final default-layer wording, merged with main after #4287. Attempt 1 of 3: 2 tasks, 5 harness entries |
