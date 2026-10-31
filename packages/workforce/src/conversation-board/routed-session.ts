@@ -61,12 +61,13 @@ const keyOf = (sessionId: string): string => encodeURIComponent(sessionId);
 
 /**
  * Whether `holder` holds `sessionId` now: its row, as stored now (another
- * request may have ended it), is open there, not held, and not waiting to run again after a retry.
+ * request may have ended it), is open there and not held. A retried row still holds the
+ * record it was named in: the record is what keeps two boards out of one session.
  */
 async function holds(ctx: BlockContext, holder: RoutedSessionHolder, sessionId: string): Promise<boolean> {
   const ledger = await conversationLedgerAt(ctx, holder.partition);
   const row = ledger === undefined ? undefined : await readCommittedTask(ledger, holder.taskId);
-  return row !== undefined && row.targetSessionId === sessionId && !isTerminalStatus(row.status) && row.status !== "held" && row.retryPending !== true;
+  return row !== undefined && row.targetSessionId === sessionId && !isTerminalStatus(row.status) && row.status !== "held";
 }
 
 /**
