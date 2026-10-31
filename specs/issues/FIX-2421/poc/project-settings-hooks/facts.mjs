@@ -39,7 +39,7 @@ try {
     const ss = [...src.matchAll(/settingSources:\s*(\[[^\]]*\])/g)].map((m) => m[1]).join(" ") || "unset";
     console.log(`${f}\n    settingSources: ${ss} · env: ${/env:/.test(src) ? "set" : "none"} · spec says: ${EXPECTED[f]}`);
   }
-  const copies = execFileSync("git", ["grep", "-lE", "CURSOR_PASS = \\[", "--", ":!packages/cursor"], { encoding: "utf8" }).split("\n").filter(Boolean);
+  const copies = execFileSync("git", ["grep", "-lE", "CURSOR_PASS = \\[", "--", ":!packages/cursor", ":!specs"], { encoding: "utf8" }).split("\n").filter(Boolean);
   console.log(`CURSOR_PASS lists outside the cursor package: ${copies.length} (${copies.join(", ")})`);
   if (copies.length !== 2) failed = true;
   const pkg = execFileSync("git", ["grep", "-c", "CURSOR_PASS", "--", "packages/cursor/src"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
