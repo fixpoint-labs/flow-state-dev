@@ -401,6 +401,26 @@ single-generator  0.720±0.070   0.690±0.090          0.705±0.083
 
 See the [Benchmarks docs](https://flow-state.dev/docs/testing/benchmarks) for the methodology and the [walkthrough guide](https://flow-state.dev/guides/choosing-patterns-with-benchmarks) for a worked example.
 
+### `fsdev worktrees` — List or remove a workspace host's worktrees
+
+Lists every git worktree a workspace host made under `<root>` (the host's `root`), one line each: `clean`, `dirty` or `gone`, the branch, the directory. It looks in each clone under the root, each repository a host on the root listed (named by the pin files in `<root>/.fetch-pins/`), and any `--repo`.
+
+```bash
+fsdev worktrees /var/fsd/runs
+fsdev worktrees /var/fsd/runs --json
+fsdev worktrees /var/fsd/runs --remove /var/fsd/runs/acme/u1/run-7/checkout --delete-branch
+```
+
+| Flag | Description |
+|------|-------------|
+| `--repo <path...>` | More repositories on this machine to look in |
+| `--remove <dir>` | Remove the worktree at this directory instead of listing |
+| `--delete-branch` | With `--remove`, delete its branch too |
+| `--force` | With `--delete-branch`, delete a branch holding the only copy of some commits |
+| `--json` | Print the listing as JSON |
+
+`--remove` goes through the host's `remove`, so it refuses the same things: uncommitted or untracked changes, a place being provisioned, a worktree a run is working in (`in-use`, while the run holds `<dir>.lock`), and with `--delete-branch` a branch whose commits no other branch or remote holds, unless `--force`. A refusal removes nothing, prints `Refused (<reason>): <message>`, and exits 1.
+
 ## Environment variables
 
 `fsdev run`, `fsdev dev`, `fsdev serve`, `fsdev chat`, and `fsdev benchmark` load `.env.local` before importing your config, so generator providers see your gateway and API keys. `fsdev serve` also reads `$HOST` and `$PORT` for its bind defaults.

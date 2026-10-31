@@ -105,6 +105,7 @@ import {
 } from "./source-read";
 import type { FlushReport, Place } from "./types";
 import { pinFetchSettings } from "./repository";
+import { worktreeLockPath } from "./occupancy";
 import { WorkspaceRefusedError } from "./refused";
 import { firstLine, gitAnsweredNo, ignoredProblem, isAncestor, isStrictlyInside, NO_HOOKS, provisionWorktree, remainingBudget, type IgnoredDirectory, type MovedBack, type OffBranch } from "./worktree";
 
@@ -442,6 +443,8 @@ export interface WorkspaceHost {
    * - refused, `uncommitted-work`, while the worktree holds uncommitted or
    *   untracked changes (ignored files go with it);
    * - refused, `place-busy`, while a provision of the place holds its lock;
+   * - refused, `in-use`, while a run holds the worktree in use
+   *   (`occupyWorktree`);
    * - with `deleteBranch`, refused, `unique-commits`, while the branch holds
    *   commits no other branch or remote-tracking ref holds, unless `force`.
    *
@@ -1846,6 +1849,18 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     if (lease === undefined) {
       throw new WorkspaceRefusedError("place-busy", `${entry.cwd} is being provisioned right now; nothing was removed. Try again once it is ready.`);
     }
+    // A run working there holds its in-use lock (`occupyWorktree`) for as long
+    // as it works. Taken here, never judged stale, so a run can't start while
+    // the tree goes, and one that is running is never removed from under it.
+    const use = tryAcquireLock(worktreeLockPath(entry.cwd), { ...HOST_LOCK_BOUNDS, staleAfterMs: Number.MAX_SAFE_INTEGER, heartbeatMs: undefined }, { now });
+    if (use === undefined) {
+      releaseLock(lease);
+      throw new WorkspaceRefusedError(
+        "in-use",
+        `a run is working in ${entry.cwd}; nothing was removed. Try again once it ends. If nothing runs there, ` +
+          `delete ${worktreeLockPath(entry.cwd)}, left by a run that stopped without letting go.`,
+      );
+    }
     try {
       if (existsSync(entry.cwd)) {
         const changes = await git(entry.cwd, ["status", "--porcelain", "--untracked-files=normal"], left());
@@ -1884,6 +1899,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       }
       return { cwd: entry.cwd, branch, branchDeleted };
     } finally {
+      releaseLock(use);
       releaseLock(lease);
     }
   }

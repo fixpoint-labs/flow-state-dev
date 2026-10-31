@@ -13,6 +13,8 @@ import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { localWorkspaceHost, WorkspaceRefusedError } from "../src/local-host";
+import { releaseLock } from "../src/lock";
+import { occupyWorktree, worktreeLockPath } from "../src/occupancy";
 import { createRemote, git, tempDir, type Remote } from "./git-fixtures";
 
 const noSource = () => ({ kind: "refused" as const, reason: "unused", message: "unused" });
@@ -195,6 +197,20 @@ describe("list and remove", () => {
     const removed = await h.remove!({ place: ["run-1"] }, { deleteBranch: true });
     expect(removed.branchDeleted).toBe(true);
     expect(git(repo, "branch", "--list", "fsd/run-1")).toBe("");
+  });
+
+  it("refuses to remove a clean worktree a run is working in, and removes it once the run lets go", async () => {
+    const { h, place } = await made();
+    const lease = await occupyWorktree(place.cwd);
+
+    const refusal = await h.remove!({ place: ["run-1"] }).catch((error: unknown) => error);
+    expect((refusal as WorkspaceRefusedError).reason).toBe("in-use");
+    expect(existsSync(place.cwd)).toBe(true);
+
+    releaseLock(lease);
+    await h.remove!({ place: ["run-1"] });
+    expect(existsSync(place.cwd)).toBe(false);
+    expect(existsSync(worktreeLockPath(place.cwd))).toBe(false);
   });
 
   it("rejects a target that names no worktree of the host's", async () => {

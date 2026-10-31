@@ -4,8 +4,9 @@
  *
  * Built on `@flow-state-dev/workspace`'s host: the listing is `list`, and
  * removal is `remove`, the one removal path, so a terminal refuses exactly
- * what a session's Worktree menu refuses (uncommitted work, a place being
- * provisioned, a branch holding the only copy of a commit unless forced).
+ * what a session's Worktree menu refuses (uncommitted work, a worktree a run
+ * is working in, a place being provisioned, a branch holding the only copy of
+ * a commit unless forced).
  *
  * The host's root is the argument. The repositories asked are each clone
  * under the root, each repository a host on this root listed (from the fetch
