@@ -85,6 +85,9 @@ flowchart TD
 - **E6 · The step-run state is lifted, then reshaped.** `withState` keeps its meaning;
   `runState` takes states, not items, so the pure file needs no item types. `tool.tsx` calls
   both, and its render tests stay as they are. The open-while-running rule is new.
+  One step's state is shared too: a pure helper turns a call's status (running, waiting,
+  failed, done) and its result into its state through `toolOutcome`, so neither lab copies
+  `tool.tsx`'s `lineState`.
 - **E7 · The real-tool test lives with the tools, in `packages/workforce/test/`,** importing the
   registry file by path, as Kitchen Sink's drift test imports `packages/ui/scripts`. A change
   to a tool's output then fails where the tool is.
@@ -92,7 +95,8 @@ flowchart TD
   task's (`createTask` filed held, `getTask`'s task failed) and says nothing about the call;
   tests lock both.
 - **E9 · Wording.** The examples in `SPEC.md` show the shape (verb, then subject, then a count);
-  the exact words are the implementer's.
+  the exact words are the implementer's, and once chosen, the package check's exact-line
+  assertions are their contract.
 
 ## Considered and dropped
 
@@ -115,6 +119,14 @@ exact line and the control empties the entries and stubs the outcome together); 
 leg (it has no map to restore, so its control is popup-only, and the goal is named); all twelve
 tools get words; *not done if* gains the zero-match, raw-name and fold cases; the labs commit to
 red; Teammates reads through `sessionFeed`. Recorded: E2's exception, E6's reshape, E8.
+
+## Notes from review
+
+- Cursor (154da69), approved direction. Folded: one step's state is a shared helper (E6), and
+  E9 names the tests as the wording's contract. Recorded for the implementer: open/fold rules
+  sit beside label composition in `tool-grouping.ts` only because E1 keeps the file count; a
+  `tool-step-run.ts` is the cleaner home if that count is ever relaxed. D2's cross-app change is
+  already the sign-off's line to weigh.
 
 ## How it got here
 

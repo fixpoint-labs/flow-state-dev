@@ -104,7 +104,8 @@ delete their own.
   the code" (a project read merges with any other "read a file").
 - **One step-run state.** `tool.tsx` already turns a run's steps into one state and says it
   in words ("Read 6 files (1 failed)", "Reading src/a.ts…"), privately. Those two pieces move
-  into `tool-grouping.ts`, reshaped to take states, and both labs and `tool.tsx` call them. The
+  into `tool-grouping.ts`, reshaped to take states, with one step's state (its status and
+  `toolOutcome`) beside them, and both labs and `tool.tsx` call them. The
   rule that a run is open while it is running and folded once it isn't is new, written there,
   and the labs follow it; the registry's own `ToolGroup` keeps its `defaultOpen` prop.
 - **Labs (wave 3).** Claude Code-style replaces `lib/tool-line.ts` with the registry helpers.
