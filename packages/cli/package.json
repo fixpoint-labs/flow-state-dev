@@ -61,6 +61,7 @@
     "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/store-sqlite": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
+    "@flow-state-dev/workspace": "workspace:*",
     "commander": "^13.1.0"
   },
   "peerDependencies": {

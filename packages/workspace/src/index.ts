@@ -45,10 +45,12 @@ export type { HeldWork, HeldWorkMismatchField, HeldWorkStore, RecordedHold, Skip
 export type { IgnoredDirectory, MovedBack, OffBranch } from "./worktree";
 export { isStrictlyInside } from "./worktree";
 export { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, run } from "./exec";
-export { BRANCH_PULL_REQUESTS_TIMEOUT_MS, recordBranchPullRequests } from "./branch-pull-requests";
+export { BRANCH_PULL_REQUESTS_TIMEOUT_MS, pullRequestHead, recordBranchPullRequests } from "./branch-pull-requests";
 export type {
   BranchPullRequestsContext,
   BranchPullRequestsResult,
+  PullRequestHead,
+  PullRequestHeadOptions,
   RecordBranchPullRequestsOptions,
 } from "./branch-pull-requests";
 export type { RunOptions } from "./exec";
@@ -57,10 +59,14 @@ export type { AcquireOptions, LockBounds, LockLease } from "./lock";
 export { identityFromCommonDir, repositoryIdentity, resolvesToCommit } from "./repository";
 export { redactRemote } from "./remotes";
 export type {
+  ListedWorktree,
   LocalWorkspaceHostOptions,
   PlaceOrigin,
   PlaceRequest,
   RecordedPlace,
+  RemovedWorktree,
+  RemoveOptions,
+  RemoveTarget,
   WorkspaceHost,
   WorkspacePlace,
 } from "./local-host";

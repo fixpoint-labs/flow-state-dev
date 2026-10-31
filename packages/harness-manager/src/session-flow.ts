@@ -39,6 +39,14 @@
  * `recordBranchPullRequests`), and adds what the turn's tool calls did not
  * show: one opened by a raw API call, say.
  *
+ * **Where a session starts** (`start`) is the person's pick at create, fixed
+ * like the model: a ref to cut a new branch from, an existing branch, or a
+ * pull request's head branch. The host's workspace honours it on the first
+ * provision (`resolveHarnessSessionStart` turns it into a workspace host's
+ * request) and says which branch the session got, which the flow records.
+ * **`removeWorktree`** removes the session's worktree through the host's one
+ * removal path, refused while a turn runs.
+ *
  * Nothing here names a harness. A harness that needs more than these feeds has
  * found a gap in its own package. The flow writes no item of its own.
  */
@@ -62,7 +70,7 @@ import type {
   HarnessSessionHook,
   HarnessSteerHook,
 } from "@flow-state-dev/core/types";
-import { recordBranchPullRequests } from "@flow-state-dev/workspace";
+import { pullRequestHead, recordBranchPullRequests } from "@flow-state-dev/workspace";
 import { z } from "zod";
 
 import { isTrackerIssue, issueSpecOptions, readIssueSpecSection, TRACKER_ISSUE_REFUSED, type IssueSpecOption } from "./issue-spec";
@@ -89,6 +97,34 @@ export const harnessTurnRecordSchema = z.object({
 export type HarnessTurnRecord = z.infer<typeof harnessTurnRecordSchema>;
 
 /**
+ * Where a session starts, picked at create: exactly one of
+ * - `base`: cut a new branch from this ref (`origin/main` is fetched first),
+ * - `branch`: work on this existing branch, as it stands,
+ * - `pullRequest`: work on this pull request's head branch.
+ */
+export const harnessSessionStartSchema = z.union([
+  z.object({ base: z.string().min(1) }).strict(),
+  z.object({ branch: z.string().min(1) }).strict(),
+  z.object({ pullRequest: z.number().int().positive() }).strict(),
+]);
+
+/** Where a session starts. */
+export type HarnessSessionStart = z.infer<typeof harnessSessionStartSchema>;
+
+/** Where a session works, recorded the first time it is provisioned. */
+export const harnessSessionWorkspaceRecordSchema = z.object({
+  /** The working directory. */
+  path: z.string(),
+  /** The branch the workspace gave the session; `null` when it named none. */
+  branch: z.string().nullable().default(null),
+  /** Whether the worktree was removed (`removeWorktree`). The next turn provisions it again. */
+  removed: z.boolean().default(false),
+});
+
+/** Where a session works. */
+export type HarnessSessionWorkspaceRecord = z.infer<typeof harnessSessionWorkspaceRecordSchema>;
+
+/**
  * A harness session's state. `model` is the person's pick, set when the
  * session is created and never after. The other two are written only by the
  * session flow's own resolvers, never by a caller (`serverOwned`).
@@ -108,6 +144,14 @@ export const harnessSessionStateSchema = z.object({
    * names none, and on every session stored before issues could be named.
    */
   issue: z.string().min(1).optional().readonly(),
+  /**
+   * Where the session starts. Set at create and fixed, like `model`. Absent:
+   * wherever the host starts a session by default, as every session stored
+   * before it could be picked does.
+   */
+  start: harnessSessionStartSchema.optional().readonly(),
+  /** Where the session works, once it has. Written only by the flow. */
+  workspace: harnessSessionWorkspaceRecordSchema.nullable().default(null),
   /** The conversation this session is bound to. Written only by `onSession`. */
   binding: z
     .object({ confirmed: z.string().nullable().default(null) })
@@ -135,14 +179,65 @@ export interface HarnessSessionPlace {
   readonly issue?: string;
 }
 
+/** What `HarnessSessionWorkspace.provision` is told beside the place. */
+export interface HarnessSessionProvisionRequest {
+  /** The session's start, when it picked one. Honoured when the workspace is made; a later provision hands it back. */
+  readonly start?: HarnessSessionStart;
+}
+
+/** What `HarnessSessionWorkspace.provision` made, when it says more than the path. */
+export interface HarnessSessionProvisioned {
+  /** The working directory. */
+  readonly path: string;
+  /** The branch the session works on. The turn-end check reads it. */
+  readonly branch?: string;
+}
+
 /** Where the host's sessions work. Each call is one session's, keyed on its place. */
 export interface HarnessSessionWorkspace {
-  /** The session's working directory, made on its first turn and handed back after. */
-  provision(place: HarnessSessionPlace): Promise<string>;
+  /**
+   * The session's working directory, made on its first turn and handed back
+   * after: the path, or the path and the branch it gave the session.
+   */
+  provision(place: HarnessSessionPlace, request?: HarnessSessionProvisionRequest): Promise<string | HarnessSessionProvisioned>;
   /** Where the session's working directory is, without making it. */
   locate(place: HarnessSessionPlace): string;
-  /** The branch whose pull requests the turn-end check reads, or `null` to skip the check. */
+  /**
+   * The branch whose pull requests the turn-end check reads, or `null` to
+   * skip the check. A branch `provision` named is read first.
+   */
   branch(place: HarnessSessionPlace): string | null;
+  /**
+   * Remove the session's worktree, and with `deleteBranch` its branch, through
+   * the host's one removal path (`WorkspaceHost.remove`). Optional: without
+   * it, `removeWorktree` is refused.
+   */
+  remove?(place: HarnessSessionPlace, options: { deleteBranch: boolean; force: boolean }): Promise<{ branchDeleted: boolean }>;
+}
+
+/** What a workspace host's provision needs from a session's start (`PlaceRequest` and `RepoRunSource`). */
+export interface ResolvedHarnessSessionStart {
+  /** Cut the session's branch from this ref (`RepoRunSource.baseRef`). */
+  readonly baseRef?: string;
+  /** Work on this existing branch instead of cutting the session's own (`PlaceRequest.branch` with `existing`). */
+  readonly branch?: string;
+}
+
+/**
+ * Turn a session's start into what a workspace host's provision takes. A pull
+ * request is asked of GitHub (`pullRequestHead`), in `options.cwd`, a checkout
+ * of its repository, and refused when it comes from a fork. No start: `{}`,
+ * the host's default.
+ */
+export async function resolveHarnessSessionStart(
+  start: HarnessSessionStart | undefined,
+  options: { readonly cwd: string; readonly gh?: string },
+): Promise<ResolvedHarnessSessionStart> {
+  if (start === undefined) return {};
+  if ("base" in start) return { baseRef: start.base };
+  if ("branch" in start) return { branch: start.branch };
+  const head = await pullRequestHead({ cwd: options.cwd, number: start.pullRequest, ...(options.gh !== undefined ? { gh: options.gh } : {}) });
+  return { branch: head.branch };
 }
 
 /** What the session flow hands a harness block. Spread all but `worktree` into its options. */
@@ -267,6 +362,13 @@ export function harnessSessionTitle(prompt: string): string {
   return line.length <= TITLE_LENGTH ? line : `${line.slice(0, TITLE_LENGTH - 1).trimEnd()}…`;
 }
 
+/** The message a create with a malformed start is refused with. */
+export const HARNESS_SESSION_START_INVALID =
+  "A session's start (`state.start`) is exactly one of { base: <ref> }, { branch: <name> } or { pullRequest: <number> }.";
+
+/** The message `removeWorktree` is refused with on a host that removes nothing. */
+export const HARNESS_SESSION_REMOVE_UNSUPPORTED = "This host's workspace does not remove worktrees.";
+
 /** The message a create without a model is refused with. */
 export const HARNESS_SESSION_MODEL_REQUIRED = "A new session must name the model it runs (`state.model`).";
 
@@ -290,7 +392,19 @@ export function harnessSessionFeeds(
   return {
     onSteerable: (steer, ctx) => steering.onSteerable(steer, ctx),
     model: (ctx) => (ctx.session.state as HarnessSessionState).model ?? defaultModel,
-    cwd: (ctx) => workspace.provision(placeOf(kind, ctx)),
+    cwd: async (ctx) => {
+      const state = ctx.session.state as HarnessSessionState;
+      const provisioned = await workspace.provision(placeOf(kind, ctx), state.start !== undefined ? { start: state.start } : {});
+      const made = typeof provisioned === "string" ? { path: provisioned } : provisioned;
+      // Recorded on the first provision, and again after a removal; a hand-back changes nothing.
+      if (state.workspace == null || state.workspace.removed) {
+        await changeState(ctx, (current) => ({
+          ...current,
+          workspace: { path: made.path, branch: made.branch ?? null, removed: false },
+        }));
+      }
+      return made.path;
+    },
     worktree: (ctx) => workspace.locate(placeOf(kind, ctx)),
     resume: async (ctx) => {
       const requestId = requestOf(ctx);
@@ -413,7 +527,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       const turnRecord = (harnessCtx.session.state as HarnessSessionState).turns?.[requestOf(harnessCtx)];
       if (turnRecord === undefined) return;
       const place = placeOf(options.kind, harnessCtx);
-      const branch = options.workspace.branch(place);
+      const branch = (harnessCtx.session.state as HarnessSessionState).workspace?.branch ?? options.workspace.branch(place);
       if (branch === null) return;
       const cwd = options.workspace.locate(place);
       if (!existsSync(cwd)) return;
@@ -422,6 +536,26 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       if (result.status === "unavailable") {
         ctx.emit.status(`Pull requests on the session's branch were not checked: ${result.reason}`, { transient: false });
       }
+    },
+  });
+  // The session's worktree, removed through the host's one removal path. A
+  // turn holds the session while it runs, so this is refused then (`reject`).
+  const removeWorktree = handler({
+    name: "remove-worktree",
+    inputSchema: z.object({ deleteBranch: z.boolean().default(false), force: z.boolean().default(false) }),
+    execute: async (input, ctx): Promise<{ removed: true; branchDeleted: boolean }> => {
+      const harnessCtx = ctx as unknown as HarnessCallbackContext;
+      if (options.workspace.remove === undefined) {
+        throw new Error(HARNESS_SESSION_REMOVE_UNSUPPORTED);
+      }
+      const { branchDeleted } = await options.workspace.remove(placeOf(options.kind, harnessCtx), {
+        deleteBranch: input.deleteBranch,
+        force: input.force,
+      });
+      await changeState(harnessCtx, (state) =>
+        state.workspace == null ? state : { ...state, workspace: { ...state.workspace, removed: true } },
+      );
+      return { removed: true, branchDeleted };
     },
   });
   // With `issueSpec` on, a session that names an issue opens each turn with
@@ -463,24 +597,28 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
         concurrency: "defer",
       },
       steer,
+      removeWorktree: { block: removeWorktree, concurrency: "reject" },
     },
     request: { onFinished: branchPullRequests },
     session: {
       stateSchema: harnessSessionStateSchema,
-      // The page reads the model, the issue, the binding and the turns. The
-      // model and issue are the creator's to name, once; nothing a caller
-      // sends writes the other two.
-      client: { expose: ["model", "issue", "binding", "turns"] },
-      serverOwned: ["binding", "turns"],
-      // Every path that creates a session asks this: a new session runs a named model.
-      // An issue is optional, and when named it must be a tracker key: it
-      // becomes a path segment and a branch name.
-      createCheck: ({ state }) =>
-        typeof state.model !== "string" || state.model === ""
-          ? { ok: false, message: HARNESS_SESSION_MODEL_REQUIRED }
-          : state.issue !== undefined && !isTrackerIssue(state.issue)
-            ? { ok: false, message: HARNESS_SESSION_ISSUE_REFUSED }
-            : { ok: true },
+      // The page reads the model, the issue, the start, the binding, the
+      // turns and the workspace. The model, issue and start are the creator's
+      // to name, once; nothing a caller sends writes the rest.
+      client: { expose: ["model", "issue", "start", "binding", "turns", "workspace"] },
+      serverOwned: ["binding", "turns", "workspace"],
+      // Every path that creates a session asks this: a new session runs a
+      // named model, a start it names is one the flow can honour, and an
+      // issue it names is a tracker key (it becomes a path segment and a
+      // branch name).
+      createCheck: ({ state }) => {
+        if (typeof state.model !== "string" || state.model === "") return { ok: false, message: HARNESS_SESSION_MODEL_REQUIRED };
+        if (state.start !== undefined && !harnessSessionStartSchema.safeParse(state.start).success) {
+          return { ok: false, message: HARNESS_SESSION_START_INVALID };
+        }
+        if (state.issue !== undefined && !isTrackerIssue(state.issue)) return { ok: false, message: HARNESS_SESSION_ISSUE_REFUSED };
+        return { ok: true };
+      },
     },
   })();
 }
