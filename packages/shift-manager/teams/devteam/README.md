@@ -154,8 +154,16 @@ uses its own default: `stub` for DevTeam, `claude-code` for `fsd`.
 |---|---|
 | `stub` | The scripted coder, no model. It says what it's doing in the run's session and commits one file, so the row settles `completed`. |
 | `claude-code` | Claude Code through its Agent SDK, set up as the honesty check sets it up. At start the Lab asks Claude Code for an account (a sign-in or an Anthropic key) and refuses to start without one, naming what to set. Nothing falls back to the scripted coder (`stub`). |
+| `codex` | Codex through its SDK, handed only `CODEX_PASS` from the server's environment. At start the Lab asks Codex for a sign-in (`codex login` or `CODEX_API_KEY`) and refuses to start without one, the same way. |
+| `cursor` | Cursor through its SDK, in a process of its own handed only `CURSOR_PASS`. At start the Lab reads Cursor's sign-in (a stored login or `CURSOR_API_KEY`) and refuses to start without one, the same way. |
 
-A `Coder:` line at start names the coder it started with.
+Codex and Cursor don't take the project's MCP servers the Lab relays, and report no usage
+windows, so Usage shows Claude Code only. One coder serves the whole process.
+
+A `Coder:` line at start names the coder it started with and, on a real one, how long each run
+may take. That is 20 minutes unless `DEVFORCE_LAB_RUN_MINUTES` names another whole number of
+minutes; it also sets the scripted coder's budget, which is otherwise one minute. A value that
+isn't a positive whole number is refused at start.
 
 The scripted coder (`stub`) pauses 2 s before each of its five steps so you can watch them arrive.
 `DEVFORCE_LAB_STEP_MS` changes the pause; a test that only needs the row to settle sets it to `0`.

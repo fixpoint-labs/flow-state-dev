@@ -27,6 +27,7 @@ import { harnessEnv } from "@flow-state-dev/core";
 import {
   TESTED_SDK_VERSION,
   cursorAgent,
+  CURSOR_PASS,
   cursorSignIn,
   readInstalledCursorSdkVersion,
   type CursorAgentOptions,
@@ -56,34 +57,7 @@ export const CURSOR_SESSION = flowKindOf(modeById("cursor"));
  */
 export const CURSOR_DEFAULT_MODEL = "composer-2.5";
 
-/**
- * The only variables of the server's environment Cursor's runtime is handed
- * (what its commands start with, not what they could read: see the header).
- * `PATH` (its shell finds commands through it), `HOME` (Cursor keeps its
- * agents and its stored login there, so a resumed agent is found only with the
- * same `HOME`), `USER`, `SHELL` and `TMPDIR` (its shell), `CURSOR_API_KEY`, and
- * the proxy and CA settings a proxied network needs. Add a name here, never a
- * spread of `process.env`.
- */
-export const CURSOR_PASS = [
-  "PATH",
-  "HOME",
-  "USER",
-  "SHELL",
-  "TMPDIR",
-  "CURSOR_API_KEY",
-  "HTTPS_PROXY",
-  "https_proxy",
-  "HTTP_PROXY",
-  "http_proxy",
-  "ALL_PROXY",
-  "all_proxy",
-  "NO_PROXY",
-  "no_proxy",
-  "NODE_EXTRA_CA_CERTS",
-] as const;
-
-/** The environment Cursor's runtime gets, and the one its sign-in is checked over. */
+/** The environment Cursor's runtime gets (the package's `CURSOR_PASS`), and the one its sign-in is checked over. */
 export function cursorEnv(env: Record<string, string | undefined> = process.env): Record<string, string> {
   return harnessEnv({ pass: CURSOR_PASS, env });
 }

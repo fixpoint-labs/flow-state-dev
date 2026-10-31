@@ -72,10 +72,12 @@
     "@flow-state-dev/fsdev": "workspace:*"
   },
   "devDependencies": {
+    "@cursor/sdk": "1.0.40",
     "@flow-state-dev/claude-code": "workspace:*",
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/codex": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/cursor": "workspace:*",
     "@flow-state-dev/design-system": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/harness-manager": "workspace:*",

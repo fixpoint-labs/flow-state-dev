@@ -2,10 +2,31 @@ import { interruptChordLabel, isSendKey } from "@flow-state-dev/react";
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 
 /**
+ * Which coder a code change goes to, as the composer's chip offers it. *Auto* leaves the main
+ * session's own pick (Claude Code); each other choice names the worker its `Coder:` line routes to
+ * (the main and lead `WORKER.md` files read that line).
+ */
+export const CODER_CHOICES = ["Auto", "Plan first", "Codex", "Cursor"] as const;
+export type CoderChoice = (typeof CODER_CHOICES)[number];
+
+/**
+ * The line you send, with the chip's choice on it: one plain `Coder: <choice>` line at the end, so
+ * what the main session reads is what your line shows. *Auto* adds nothing.
+ *
+ * @param text What you typed, trimmed.
+ * @param coder The chip's choice.
+ */
+export function withCoder(text: string, coder: CoderChoice): string {
+  return coder === "Auto" ? text : `${text}\n\nCoder: ${coder}`;
+}
+
+/**
  * The only place you type to the main session. Enter or Cmd+Enter (Ctrl+Enter)
  * sends, Shift+Enter is a new line. While a
  * turn runs, Send becomes Stop; a line you send then waits for the turn. Esc
  * here is the text box's: the stop keys are the thread's (Esc Esc, Cmd/Ctrl+.).
+ * The *Coder* chip picks who makes a code change you ask for: it holds for the
+ * session while it is open, and rides on each line as {@link withCoder} writes it.
  */
 export function Composer({
   running,
@@ -20,11 +41,12 @@ export function Composer({
   onStop: () => void;
 }) {
   const [text, setText] = useState("");
+  const [coder, setCoder] = useState<CoderChoice>("Auto");
   const send = () => {
     const line = text.trim();
     if (!line) return;
     setText("");
-    onSend(line);
+    onSend(withCoder(line, coder));
   };
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -51,6 +73,21 @@ export function Composer({
           className="block w-full resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
         />
         <div className="flex items-center justify-end gap-2 px-2 pb-2">
+          <label className="mr-auto flex items-center gap-1 border border-border px-2 py-0.5 text-xs text-muted-foreground">
+            Coder
+            <select
+              aria-label="Coder"
+              value={coder}
+              onChange={(event) => setCoder(event.target.value as CoderChoice)}
+              className="bg-transparent text-foreground outline-none"
+            >
+              {CODER_CHOICES.map((choice) => (
+                <option key={choice} value={choice}>
+                  {choice}
+                </option>
+              ))}
+            </select>
+          </label>
           {running ? (
             <button
               type="button"

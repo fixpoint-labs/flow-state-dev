@@ -36,7 +36,7 @@ import { CODEX_PASS, codexAgent, probeCodexAccount } from "@flow-state-dev/codex
 import { harnessEnv } from "@flow-state-dev/core";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { CLAUDE_CODE_PASS, claudeCodeAgent, probeClaudeAccount } from "@flow-state-dev/claude-code/sdk";
-import { cursorAgent, cursorSignIn } from "@flow-state-dev/cursor";
+import { CURSOR_PASS, cursorAgent, cursorSignIn } from "@flow-state-dev/cursor";
 import { createFlowState } from "@flow-state-dev/engine";
 import { system } from "@flow-state-dev/memory";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
@@ -120,9 +120,6 @@ const HARNESSES: Record<string, Harness> = {
       agent: { mode: "agent", local: { sandboxOptions: { enabled: false } } },
     } as never) as unknown as HarnessBlock,
 };
-
-/** The variables Cursor's runtime is handed: its shell's, its sign-in, and a proxied network's. */
-const CURSOR_PASS = ["PATH", "HOME", "USER", "SHELL", "TMPDIR", "CURSOR_API_KEY", "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy", "NODE_EXTRA_CA_CERTS"];
 
 /** A harness this machine can't run, in a sentence that names it and what's missing. */
 const notSetUp = (harness: string, reason: string, fix: string) => `${harness} isn't set up on this machine: ${reason}. ${fix}, then start the task again.`;
