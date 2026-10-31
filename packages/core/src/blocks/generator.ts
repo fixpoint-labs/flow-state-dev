@@ -1664,9 +1664,11 @@ async function emitGeneratorStep(
 
 /**
  * A tool renamed while a request may still be suspended inside it, by its old
- * name: resume only. A step recorded under the old name resumes the renamed
- * tool, under the old name's block path, so its stop still matches the answer.
- * The model never sees the old name. FIX-2317 renamed the model's stop for a
+ * name: resume only, and only as a fallback. A step recorded under the old name
+ * resumes the renamed tool when the resolved tools have nothing by the old
+ * name, under the old name's block path, so its stop still matches the answer.
+ * A tool that still has the old name (an app's own) resumes as itself. The
+ * model never sees the old name. FIX-2317 renamed the model's stop for a
  * person to `suspendForUser`, and such a stop can wait for days. Remove the
  * entry once no request suspended before FIX-2317 can still be answered.
  */
@@ -1674,8 +1676,12 @@ const RESUMED_UNDER_FORMER_NAME: Readonly<Record<string, string>> = {
   waitForUser: "suspendForUser", // retired-name-refusal: a stop suspended before FIX-2317, resumed under its new name
 };
 
-/** The tool a recorded call resumes: the renamed tool for a former name, else the name itself. */
-function resumedToolName(recorded: string): string {
+/**
+ * The tool a recorded call resumes: the recorded name while a resolved tool has
+ * it, else the renamed tool for a former name, else the recorded name.
+ */
+function resumedToolName(recorded: string, resolved: (name: string) => boolean): string {
+  if (resolved(recorded)) return recorded;
   return RESUMED_UNDER_FORMER_NAME[recorded] ?? recorded;
 }
 
@@ -1713,7 +1719,7 @@ async function runResumeStep(
   );
 
   for (const c of resumeStep.calls) {
-    const resumedAs = resumedToolName(c.toolName);
+    const resumedAs = resumedToolName(c.toolName, (name) => toolset.byName.has(name));
     const entry = toolset.byName.get(resumedAs) ?? toolset.byAlias.get(c.alias);
     let output: LLMToolResultOutput;
     if (c.kind === "completed") {
@@ -1957,10 +1963,11 @@ async function applyGeneratorResume(args: {
   const rs = reconstruction.resumeStep;
   const pendingCall = rs.calls.find((c) => c.kind === "pending");
   if (pendingCall !== undefined) {
+    const resolvedNames = new Set(toolset.entries.map((e) => e.block.name));
     validateResumableTool(
       blockName,
-      resumedToolName(pendingCall.toolName),
-      new Set(toolset.entries.map((e) => e.block.name)),
+      resumedToolName(pendingCall.toolName, (name) => resolvedNames.has(name)),
+      resolvedNames,
     );
   }
 
