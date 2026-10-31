@@ -25,6 +25,19 @@ rides. That is D1, the one call; the rest is decided below.
   the same name and shape `ContainerItem` already has, and the option on both message emitters.
   The engine never reads it, and history (`itemToLLMMessages`) holds the text alone. Orchestration
   owns the `taskNotice` key and workforce the `delegateAnswer` key, each with its reader (ER-1).
+- **This opens the message item on purpose.** Until now `MessageItem` carried no open field, and
+  a structured payload rode a `component` item (the Architect cites FIX-1585 for this; its spec is
+  not in the repository to check). D1 reverses that for messages only, because the data describes
+  the line itself, and a second item would have to be paired back to it.
+- **How this reads ER-1 beside FIX-2422 (#4386).** The two specs don't pick opposite answers. They
+  use two different fields for two different meanings. FIX-2422 stamps the typed `taskId` on a door
+  turn's items because that turn works for the task, and that is exactly what `taskId` already
+  means. This spec carries data about a line that a filer says *about* a task. Core has no field
+  for that meaning, and it would be a package noun. So the reading is: a meaning core already types
+  keeps its typed field, and a package's own data about a line rides `metadata` under that
+  package's key, with its reader. The epic's
+  [Who owns what](../../epics/FIX-2369/DECISIONS.md#who-owns-what) is asked to record this one
+  reading so both specs can cite it.
 - **Locks in:** an open field any package may write. A key clash between two packages is possible
   in principle; each key names its package's noun, and the reader validates the shape, so a stray
   value reads as "not a notice".
@@ -52,8 +65,24 @@ something else.
   readers and deletes its regexes in the same PR (ER-3).
 - **E6 · `parseNotice` takes a structural item type**, not core's `MessageItem`, so a lab's own
   narrower `Item` type fits once it adds `metadata`.
+- **E7 · The keys stay internal.** Apps call `parseNotice` and `delegateAnswerOf`, which check
+  the shape. They don't read `metadata.taskNotice` or `metadata.delegateAnswer` directly, so neither package
+  exports its key (Cursor review).
+- **E8 · Two readers, not one.** A delegate's answer is a workforce noun, and orchestration knows
+  nothing of delegates (ER-1), so each package reads its own key. Cursor's single
+  orchestration-owned reader would move workforce's noun into orchestration.
 
 ## How it got here
 
 - Drafted 2026-10-31 with the build prototyped beside it, so each control was seen failing before
   the check was proposed (see the build PR).
+
+## Notes from review
+
+- FSD Architect (bcb54d8): FIX-2422 and this spec read ER-1 differently. Folded into D1: they use
+  two fields for two meanings, and the epic is asked to record the one reading. The FIX-1585
+  reversal is named in D1.
+- Cursor (bcb54d8, approved): the keys made internal (E7). Two readers kept (E8). `title` and
+  `detail` kept (E3). Notes on repeated wave narration and the mermaid figure are left to the
+  template, which asks for both.
+- Codex (bcb54d8): no findings.

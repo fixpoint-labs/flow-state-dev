@@ -67,13 +67,13 @@ package tests on the real engine:
   L1 (ER-1).
 - **Orchestration, beside `noticeText`:** `noticeMetadata(notice, task)` (the item's
   `taskNotice` data: board, task, attempt, ending, title, what came back, cancelled dependents),
-  `parseNotice(item)` and `NOTICE_ITEM_KEY`, from `./tasks`, which the labs already import in the
+  and `parseNotice(item)`, from `./tasks`, which the labs already import in the
   browser.
 - **Workforce:** every line a conversation says about a task is emitted with its data: the board's
   notice line, a line a running turn took (`takeFinishedTasks`), and a routed failure's line carry
   `noticeMetadata`; a delegate's answer that lands as written, from the board or a coordinator,
   carries `delegateAnswerMetadata({ worker, taskId })`. `delegateAnswerOf(item)` reads it, from the
-  root and `./browser`.
+  root and `./browser`. The keys stay internal ([E7](DECISIONS.md#decided-not-asked)).
 - **Docs:** the orchestration and workforce READMEs, `docs/architecture/items.md`, and the
   *Emitting items* page (attaching data a client reads). A changeset for the five packages.
 
@@ -93,7 +93,7 @@ the workforce copy of the notice schema (FIX-2099's).
 | Claude Code-style `RESULT_LINE` and `WORKER_ID`; Teammates' `task_` id regex | **Left for wave 3**, which deletes them in the PR that adopts `parseNotice` and `delegateAnswerOf` (ER-3) |
 | FIX-2099 (notice schema copied into workforce) | **Unchanged**: no field added to the notice itself |
 
-**Adds:** one optional field on a core item and its option; three orchestration exports; three
+**Adds:** one optional field on a core item and its option; two orchestration exports; two
 workforce exports. **Removes:** nothing yet; wave 3 removes two regexes per lab. **Debt:** a text
 fallback in `parseNotice` for lines stored before this, kept while such sessions exist. **Net:**
 down once wave 3 lands.
