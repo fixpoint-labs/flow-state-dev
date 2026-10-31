@@ -2588,7 +2588,27 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // from, leaving the row `in_progress` with nothing to settle it. The
         // bound is the constant the budget already spends, so it makes the
         // advertised number true rather than adding one.
-        const verdict = readVerdict(await withDeadline(
+        //
+        // **Under the checkout's lease again.** The agent step let it go when
+        // the agent stopped, but a check may run the project's own commands
+        // here (`commandCheck`), and they write to the tree. Taking the lease
+        // back keeps a replacement attempt from provisioning the checkout
+        // under them. The wait for it counts against the same bound, so the
+        // drain budget stays true; a wait that outlives it means this attempt
+        // was displaced, and it fails rather than check another's tree.
+        const doneBoundMs = runPhase.doneTimeoutMs ?? NETWORK_CALL_TIMEOUT_MS;
+        const doneStarted = Date.now();
+        const doneLease = await acquireCheckout(
+          state.workspacePath!,
+          `${identity.taskId}#${identity.attempt}`,
+          ownership,
+          Date.now,
+          AbortSignal.any([ctx.signal, AbortSignal.timeout(doneBoundMs)]),
+        );
+        await ctx.sequencer!.patchState({ lockPath: doneLease.lockPath, leaseToken: doneLease.token });
+        let doneAnswer: Awaited<ReturnType<PhaseSpec["isDone"]>>;
+        try {
+          doneAnswer = await withDeadline(
           async () =>
             runPhase.isDone({
               epic: state.epic!,
@@ -2608,9 +2628,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               answer: handle.finalMessage,
               ctx,
             }),
-          runPhase.doneTimeoutMs ?? NETWORK_CALL_TIMEOUT_MS,
+          Math.max(1, doneBoundMs - (Date.now() - doneStarted)),
           `the ${state.phase} phase's completion check`,
-        ));
+          );
+        } finally {
+          releaseLeaseFromState(ctx);
+        }
+        const verdict = readVerdict(doneAnswer);
         // **The checks it ran go on the run record, whatever the verdict**, so
         // a failed attempt's row says which command was red and how.
         if (verdict.checks !== undefined) {

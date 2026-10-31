@@ -7,7 +7,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { heard } from "./heard";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -117,6 +117,12 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
       `console.log("all good");\n`,
   );
   writeFileSync(join(sourceRepo, "hang.mjs"), "setInterval(() => {}, 1000);\n");
+  // Green only while the run holds its checkout: the lock sits beside it.
+  writeFileSync(
+    join(sourceRepo, "lock.mjs"),
+    `import { existsSync } from "node:fs";\n` +
+      `if (!existsSync(process.cwd() + ".lock")) { console.error("the checkout is not held"); process.exit(4); }\n`,
+  );
   execFileSync("git", ["add", "."], { cwd: sourceRepo });
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "checks"], { cwd: sourceRepo });
   const basePhase: PhaseSpec = {
@@ -252,7 +258,13 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
   /** The engine's record of a review hold's stop, with the `data` a screen reads. */
   const suspension = async (hold: SuspensionHold) =>
     (await (await runtime()).stores.suspensions.get(hold.source.requestId, hold.source.suspensionId)) as { data?: any } | null;
-  return { act, row, until, review, waiting, answer, start, retry, seen, runRow, suspension, dispose: () => state.dispose() };
+  return { act, row, until, review, waiting, answer, start, retry, seen, runRow, suspension, checkouts: join(dir, "checkouts"), dispose: () => state.dispose() };
+}
+
+/** Every checkout lock left under `root`. */
+function lockFilesUnder(root: string): string[] {
+  if (!existsSync(root)) return [];
+  return (readdirSync(root, { recursive: true }) as string[]).filter((path) => path.endsWith(".lock"));
 }
 
 describe("a run is done only when its checks pass", () => {
@@ -314,6 +326,21 @@ describe("a run is done only when its checks pass", () => {
         expect.objectContaining({ command: "node hang.mjs", timedOut: true }),
         expect.objectContaining({ command: "node check.mjs", skipped: true }),
       ]);
+    } finally {
+      await h.dispose();
+    }
+  }, 90_000);
+
+  it("holds the checkout while the commands run, and lets it go after", async () => {
+    // A replacement attempt takes the checkout's lock before it provisions,
+    // so commands that write to the tree must run under that lock.
+    const h = host({ script: ["fixes"], checks: ["node lock.mjs"] });
+    try {
+      await h.start();
+      const done = await h.until((t) => t.status === "completed", "the run to complete");
+      expect(done.attempts).toBe(1);
+      expect((await h.runRow()).checks).toEqual([expect.objectContaining({ command: "node lock.mjs", exitCode: 0 })]);
+      expect(lockFilesUnder(h.checkouts)).toEqual([]);
     } finally {
       await h.dispose();
     }
