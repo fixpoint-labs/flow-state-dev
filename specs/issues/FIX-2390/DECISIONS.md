@@ -78,4 +78,8 @@ it.
   words the two `WORKER.md` files name, since a prompt file can't import a constant; the hint
   routing is lab-only, and Shift Manager's choice stays process-level; D1 trades deterministic
   routing for no package surface, which the goal leg and its controls keep honest.
-- Codex (5f78b89): no findings, three runs.
+- Codex (5f78b89, 116c250): no findings.
+- **Settled while building:** the first `no-route` control (routing text out, delegates kept)
+  passed. The `Coder:` line and each coder's own description route the change; the routing
+  text only shapes the goal (a plan goal asks for a plan). The control that must fail is now
+  `no-delegates`, which plants what actually routes.

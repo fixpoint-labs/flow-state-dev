@@ -52,8 +52,8 @@ new worker is a `WORKER.md` on the existing `harness-thread` flow.
   never on adapter return values. The Codex leg grades the filing and the tag, not the run's
   outcome, so it needs no Codex account.
 - **Controls that must fail:** `no-hint`, the chip's line left off the sent message (must fail
-  the Codex filings in both modes); `no-route`, the routing text removed from `desk.main`'s and
-  `desk.lead`'s files, their delegates kept (must fail the same signals). Both run and fail
+  the Codex filings in both modes); `no-delegates`, the new coders taken off `desk.main`'s and
+  `desk.lead`'s delegates (must fail the same signals). Both run and fail
   before the PR is ready (ER-6).
 - **Regression:** `session-mode-script` and `threads-mode-script` pass unchanged, with the chip
   on *Auto*.
