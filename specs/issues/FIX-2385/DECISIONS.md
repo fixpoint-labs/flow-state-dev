@@ -27,7 +27,7 @@ fails, and where one storage key lives.
 | | Pass through (chosen) | A package error type |
 |---|---|---|
 | Each app words its own failure | yes | it unwraps first |
-| Shift Manager changes | none: its catch already words a raw error | its `RunReadError` maps a second type |
+| Shift Manager changes | an import only: the package drops the app's `fail()` wrapper, and the task screen's catch already words a raw error with `describeFailure` | its `RunReadError` maps a second type |
 
 - **Because:** `RunReadError` carries Shift Manager's wording (`describeFailure`), which a package
   must not own. The task screen's catch already handles any error.
@@ -61,8 +61,13 @@ fails, and where one storage key lives.
 ## How it got here
 
 - Drafted 2026-10-31 with the move built beside it, to prove both controls fail before proposing
-  the checks. The build is at `/mnt/project-files/FIX-2385/impl.patch`.
+  the checks.
 
 ## Notes from review
 
-- None yet.
+- Cursor (2cc91d8): approved direction. Folded: D2's table now says the package drops the app's
+  `fail()` wrapper; the testing devDependency is named in the spec's Adds; the local patch path is
+  dropped. For the implementer: keep `@flow-state-dev/client` imports in the entry's modules
+  type-only, so the browser walk stays small. Deferred, uncertain until FIX-2384/2396: the pull
+  request read lists the session's rows and filters by request, which may over-fetch as callers
+  grow; don't swap in a read-every-page helper without a product reason.

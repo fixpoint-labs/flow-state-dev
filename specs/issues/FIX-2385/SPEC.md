@@ -63,7 +63,8 @@ The package root's exports.
 | `ResourcesApi` (client) | **Reused** as a `Pick`, as the client's own `read-every-page` does |
 | The run record (`runs/**`), not client-readable | **Untouched.** FIX-2386 decides how a browser reads branch and commits |
 
-**Adds:** one subpath, one dependency. **Removes:** the app's copy. **Debt:** the file-ops key
+**Adds:** one subpath, one dependency (`@flow-state-dev/client`, types only), one dev
+dependency (`@flow-state-dev/testing`, for the guard). **Removes:** the app's copy. **Debt:** the file-ops key
 `observed-file-ops` is still spelled in two packages, Claude Code's recorder and this reader, as
 it was in Shift Manager ([D3](DECISIONS.md#d3)). **Net:** smaller; one reader where there was an
 app-private one.
