@@ -12,17 +12,10 @@
 
 A stop that waits for a user holds its task and ends exactly once (FIX-2129).
 
-- **`ctx.waitForUser({ kind, prompt, deadline? })`** (`core`): stop the request for an `approval`, a `review` or an `input`. It returns the answer, or `{ cancelled: true }` when the task was cancelled while it waited. At its deadline an approval reads as a no (`deadline: true`) and a review or an input throws `SuspensionTimeoutError`, which the block may catch. With no `deadline`, the host's `userDeadlineMs` applies, else none: the stop waits until it is answered, stopped or cancelled.
+- **`ctx.suspendForUser({ kind, prompt, deadline? })`** (`core`): stop the request for an `approval`, a `review` or an `input`. It returns the answer, or `{ cancelled: true }` when the task was cancelled while it waited. At its deadline an approval reads as a no (`deadline: true`) and a review or an input throws `SuspensionTimeoutError`, which the block may catch. With no `deadline`, the host's `userDeadlineMs` applies, else none: the stop waits until it is answered, stopped or cancelled. The model's tool is `suspendForUser`; the task's open stop is listed on `Task.holds`.
 - **The answer route** (`engine`): `POST /api/flows/:flowKind/requests/:requestId/answer` answers a user's stop in any run, a task board's included, after the resume path's ownership checks; a request handle's `answer` (`client`) calls it. Who answered is the signed-in caller.
 - **`userDeadlineMs`** (`createFlowState`, `engine`): the host's deadline for a user's stop, unset by default.
-- **A task waiting on a user** (`orchestration`): `getTask` and `listTasks` show `waitingOn` and, for `"user"`, `waitingFor` (the stop's kind, prompt and deadline). A cancel resumes the run `cancelled` (its writes, its result and its filings are refused), a stop cancels the task instead of failing the try, and a cancelled task refuses new filings (`parent_cancelled`).
 - **Cancel one stop:** `RequestHost.resumeWait({ suspension: { requestId, suspensionId }, outcome: { cancelled: true } })`.
-- `contracts` exports `isUserSuspension` and `waitForUserKindOf`, and `SuspensionStatus` gains `"cancelled"`.
+- `contracts` exports `isUserSuspension` and `suspendForUserKindOf`, and `SuspensionStatus` gains `"cancelled"`.
 
-**Migration:**
-
-- `TaskWaitingOn` reads `"user"` where it read `"person"`. Stored rows are not migrated.
-- A raw `ctx.suspend` with `user_approval` or `user_input` now gets the same mark, cancel and stop as `waitForUser`. A raw `user_input` stop past its `timeoutMs` now resumes its block with `SuspensionTimeoutError` instead of staying parked, and a cancelled one throws `SuspensionRejectedError` with `cancelled: true`.
-- `isExpiredApproval` is now `continuesAtExpiry`, which also covers a user's review and input.
-- A filing by a cancelled task is refused (`TaskFilingRefusedError`, rule `parent_cancelled`), and a piece filed on a task session's board under a cancelled task is refused before it is added, so it is never claimable.
-- Shift Manager answers every ask through the answer route; `REOPENED_SOURCES` and `DISPATCHED_RUN_UNANSWERABLE` are gone.
+A raw `ctx.suspend` with `user_approval` or `user_input` now gets the same mark, cancel and stop as `suspendForUser`. A raw `user_input` stop past its `timeoutMs` now resumes its block with `SuspensionTimeoutError` instead of staying parked, and a cancelled one throws `SuspensionRejectedError` with `cancelled: true`. A filing by a cancelled task is refused (`TaskFilingRefusedError`, rule `parent_cancelled`). Shift Manager answers every ask through the answer route.
