@@ -43,6 +43,9 @@ is written, and how far a caller-named id is trusted.
   with no option at all. But every action in every flow would then carry a meaning for one key
   it never declared, and a strict schema refuses it anyway. `taskOf` keeps the opt-in explicit,
   per action, beside `userMessage`.
+- **`userMessage` returning `{ text, taskId }`, rejected.** One hook at the same write site, but
+  it widens a signature every flow already uses, and the stamp covers more than the echo: every
+  item of the request. A second option beside it says that.
 - **Clearing a scope's mark** (`_markTaskScope(null)`) falls back to the request's task, not to
   no task: the request's task is the default under every scope that marks nothing.
 - **If approved, ER-1 gets a line in the epic's decisions** naming this exception (the first
@@ -80,12 +83,14 @@ is written, and how far a caller-named id is trusted.
 ## Decided, not asked
 
 - **E1 · Which doors:** every built-in door (the `agent` flow, the coordinator flow, the error
-  reporter). A custom worker flow opts in with `doorTaskId` in its input and
-  `taskOf: doorTaskOf`. The hire's door contract is unchanged, so no existing flow is refused.
+  reporter). A custom worker flow opts in with one helper, `doorTask(inputSchema)`, which gives
+  the input schema and `taskOf` together. The hire's door contract is unchanged, so no existing
+  flow is refused. A door using it does not also mark its scope with the same id.
 - **E2 · The inventory says whether a door takes a task** (`doorTakesTask`, from `taskOf` being
   declared on `respond`). A strict door refuses a key it doesn't declare, so an app must know
   before it sends one. Old rows read `false` (BP-030), so Shift Manager on `main` between the
-  two PRs behaves as today. Rejected: make the hire's door check require every door to accept
+  two PRs behaves as today. Its reader is Shift Manager's browser, which knows a worker only
+  through the inventory, so a derivation on the server would not reach it. Rejected: make the hire's door check require every door to accept
   `taskId`. That refuses custom flows that are valid today, and a door that accepts the key
   still stamps nothing without `taskOf`, so the app could still not count on the stamp.
 - **E3 · Trace items stay unstamped** (`block_trace`, `router_decision`, `state_change`), as they
@@ -94,8 +99,10 @@ is written, and how far a caller-named id is trusted.
   which lands in the same epic wave as Shift Manager's adoption.
 - **E5 · Two PRs, per FIX-2369's build order.** PR 1 is the package slice (core, engine,
   workforce, docs), from `main`, in wave 1, touching no app file. PR 2 is Shift Manager's
-  adoption, the root of the wave-2 `task.tsx` stack (2422 → 2374 → 2408 → 2373 → 2409); it
-  deletes `sent` and `noteSent` in the same change (ER-3).
+  adoption, the root of the wave-2 `task.tsx` stack (2422 → 2374 → 2408 → 2373 → 2409).
+- **E7 · Shift Manager keeps its sent list for doors that keep no task id** (Codex, P2). Deleting
+  it outright would make a line to such a door vanish at once, not only on reload. ER-3 is met
+  for the doors that stamp: their turns are shown by the stamp alone, through the package.
 - **E6 · The name `taskOf`**, beside `userMessage`: both read the action's input and say what the
   request's items are. The implementer may rename it if review finds a clearer one.
 
@@ -113,3 +120,6 @@ is written, and how far a caller-named id is trusted.
   under `_markTaskScope(null)` and the replay case (D1 and the engine tests), the ER-1 line in
   the epic, the `items.md` note, who sees a misfiled line (D2), and why the inventory flag beats
   a stricter door check (E2).
+- Cursor (9a5638d, approved): folded one door helper in place of two exports (E1), no second
+  scope mark, the `userMessage` return shape as a rejected option (D1), the inventory field's
+  reader (E2), and which test owns precedence. Codex (9a5638d, P2): folded as E7.

@@ -36,6 +36,8 @@ flowchart LR
 
 **How we verify.**
 
+- **Who tests what.** The engine test owns precedence (the request's task against a scope's
+  mark); the workforce test proves only that the built-in doors are wired.
 - **Package, `packages/workforce/test/door-task-stamp.test.ts` (new).** A turn on the built-in
   `agent` door with `{ message, taskId }`, read back from the store: the user's line and the
   reply both carry the task id. The same turn without `taskId` stamps nothing.
@@ -57,15 +59,21 @@ flowchart LR
   hands it to the execution context as the request's task, so every item the request emits
   carries it unless a nearer scope marks another task with `_markTaskScope`. Trace items stay
   unstamped, as they are under `_markTaskScope` today.
-- **Workforce, the doors** ([D2](DECISIONS.md#d2)). `worker-door.ts` exports `doorTaskId` (an
-  optional, non-empty string for the door's input) and `doorTaskOf`. The built-in doors (the
-  `agent` flow, the coordinator flow, the error reporter) take `{ message, taskId? }` and declare
-  `taskOf: doorTaskOf`. The worker inventory row says whether a worker's door takes a task
-  (`doorTakesTask`, `false` on rows written before it), so an app sends the id only to a door
-  that keeps it: a strict door refuses a key it doesn't declare.
-- **Shift Manager (PR 2, wave 2).** The task composer sends `taskId` to a door that takes one; the
-  Session tab keeps only `itemsForTask`, and the `sent` list, `noteSent` and the `sent` argument
-  to `taskItems` are deleted (ER-3: the adopting PR deletes the app's copy).
+- **Workforce, the doors** ([D2](DECISIONS.md#d2)). `worker-door.ts` exports one opt-in,
+  `doorTask(inputSchema)`, which returns the door's input extended with an optional, non-empty
+  `taskId` and the matching `taskOf`, spread into the `respond` action together so a door can't
+  take the key and forget to stamp it. The built-in doors (the `agent` flow, the coordinator flow,
+  the error reporter) use it. They do not also call `_markTaskScope`: the request's task already
+  covers the turn. The worker inventory row says whether a worker's door takes a task
+  (`doorTakesTask`, `false` on rows written before it). Its reader is Shift Manager's browser,
+  which sends through the client and sees only the inventory, and a strict door refuses a key it
+  doesn't declare.
+- **Shift Manager (PR 2, wave 2).** The task composer sends `taskId` to a door whose row says
+  `doorTakesTask`, and the Session tab shows that door's turns by `itemsForTask` alone. For a door
+  that keeps no task id (an app's own flow that hasn't opted in), the in-view list of sent
+  requests stays, so its line still shows until the view closes, as today; nothing regresses. The
+  list then serves only those doors, and Shift Manager's own test doors opt in, so the FIX-2009
+  tests run on the stamp.
 - **Docs:** `packages/workforce/README.md` and `apps/docs/docs/workforce/messaging-workers.md`
   say a door takes an optional task id; `apps/docs/docs/fundamentals/actions.md` documents
   `taskOf` beside `userMessage`; `apps/docs/docs/streaming/items.md` and
@@ -85,12 +93,13 @@ worker marks its scope; sessions, routing and admission.
 | `OutputItem.taskId` and `ctx._markTaskScope` (FIX-658) | **Extends:** a second way to set the same stamp, at the request instead of a scope. No new item field |
 | `itemsForTask` in `@flow-state-dev/contracts` | **Reused** as is. It already keeps only stamps of tasks the session's `task-change` items name |
 | The `userMessage` echo in `runAction` | **Extends:** the echo carries the stamp |
-| `worker-door.ts`, the one definition of a door | **Extends** with the task id's schema and `taskOf` |
-| Shift Manager's `sent` list and `taskItems(…, sent)` (FIX-2009) | **Removed** in PR 2 |
+| `worker-door.ts`, the one definition of a door | **Extends** with `doorTask`, the task id's schema and `taskOf` together |
+| Shift Manager's `sent` list and `taskItems(…, sent)` (FIX-2009) | **Narrowed** in PR 2 to doors that keep no task id |
 | The worker inventory row | **Extends** with `doorTakesTask`, defaulted for old rows (BP-030) |
 
-**Adds:** one action option, two door exports, one inventory field. **Removes:** Shift Manager's
-in-memory list of sent requests. **Debt:** a custom worker flow's door stamps nothing until it
+**Adds:** one action option, one door helper, one inventory field. **Removes:** Shift Manager's
+reliance on its in-memory list for every built-in door; the list stays as the fallback for a door
+that keeps no task id. **Debt:** a custom worker flow's door stamps nothing until it
 opts in. **Net:** small, and smaller than the app copy it replaces.
 
 ## Sign off
