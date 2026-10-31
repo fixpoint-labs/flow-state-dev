@@ -28,9 +28,9 @@ framework's hooks, not by writing push code.**
 | Is it the right goal? | |
 |---|---|
 | **The real need** | Goal 2's scoped state only holds if a change to org state is seen by everyone looking at it, not only by the tab that wrote it. Goal 1: the apps we run stop polling |
-| **Smaller, and rejected** | Widening the session stream's once-a-second read to user and org scopes: it crosses processes, at a store read per viewer per scope per second. Or FIX-1506 alone, in process, which BullMQ's separate workers already defeat ([D1](DECISIONS.md#d1)) |
+| **Smaller, and rejected** | Widening the session stream's once-a-second read to user and org scopes: it crosses processes, at a store read per viewer per scope per second ([D1](DECISIONS.md#d1)). Or FIX-1506 alone, in process, which BullMQ's separate workers already defeat |
 | **Bigger, and not this epic's** | Rows on the push (live sync), anything sent back over the socket (interrupts, barge-in), push on serverless without a managed service |
-| **Not done if** | A viewer on another process misses a change · a subscribe or a reconnect to a scope the caller can't read succeeds · a lab or Shift Manager still polls with push configured · an app has two hooks for watching one scope (`live: true` beside the push hook) · the docs imply push on Vercel without Ably · a closure bug is open |
+| **Not done if** | A viewer on another process misses a change · a subscribe or a reconnect to a scope the caller can't read succeeds · a lab or Shift Manager still polls, or the session stream still reads each second, with the Postgres bus configured · an app has two hooks for watching one scope (`live: true` beside the push hook) · the docs imply push on Vercel without Ably · a closure bug is open |
 
 ```mermaid
 flowchart LR
@@ -72,7 +72,7 @@ The reviewed snapshot. Live state is the epic's sub-issues in Linear.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| FIX-XXX · the bus | The notice and topic shape, `publish` and `subscribe`, an in-memory adapter, and a `bus` slot in the stores profile. If the [open hold](DECISIONS.md#open) goes as recommended, the session stream woken by it | The seam every other child is written against | Not filed |
+| FIX-XXX · the bus | The notice and topic shape, `publish` and `subscribe`, an in-memory adapter, and a `bus` slot in the stores profile. The session stream woken by it, its timed read kept as the fallback ([D6](DECISIONS.md#d6)) | The seam every other child is written against | Not filed |
 | FIX-XXX · Postgres bus | A bus on `LISTEN`/`NOTIFY`: one shared listening connection per process, from the tail pool `store-postgres` already opens, fanned out in process. The Postgres adapter backs the `bus` slot by default ([D5](DECISIONS.md#d5)) | Without it nothing new crosses a process, and BullMQ's `dispatch-only` and `worker-only` modes run actions in other processes today | Not filed |
 | FIX-XXX · WebSocket delivery | The Node host serves the user-stream route as a WebSocket, a second way notices reach a client beside the session stream; per-topic subscribe, checked on the server at every connect; `GET /capabilities` reports push; `client.subscribe`; a hook on `followSession`'s pattern that reads again on a notice and polls without push; the realtime guide | The wire, and the one client path | Not filed |
 | [FIX-1506](https://linear.app/fixpoint-labs/issue/FIX-1506) · resource changes reach other sessions | `onResourceChanged` publishes a notice for its scope; the resource hooks read again on one | The outcome FIX-1506 asked for | Todo · keeps parent FIX-2171, linked here |
@@ -82,8 +82,7 @@ The reviewed snapshot. Live state is the epic's sub-issues in Linear.
 
 3 filed, 4 not yet. Is six really five? Not by cutting the Postgres bus: BullMQ hosts already
 run two processes. A Redis bus on BullMQ's own connection is a possible follow-up, not filed.
-Docs are not a row; the delivery child publishes the guide. A bug the closure run finds joins
-as a row that blocks it.
+A bug the closure run finds joins as a row that blocks it.
 
 ## How the issues flow into each other
 
@@ -106,14 +105,13 @@ flowchart LR
 
 An edge is what one issue hands the next; a dashed input is consumed, not owned; a dashed node
 isn't filed yet. The bus goes first. The Postgres bus and delivery run in parallel, then the two
-publishers and Ably. FIX-1506 is a row of the set but keeps its parent, FIX-2171. Every child
-blocks the closure issue, which waits on all of them.
+publishers and Ably. Every child blocks the closure issue.
 
 ## What stays as it is
 
 - **SSE request and item streams**, resume included. Items never move onto the socket ([D4](DECISIONS.md#d4)).
 - **Reads and the existing routes.** A notice triggers them; it doesn't replace them.
-- **The session stream** and `useSession({ live })`. Whether the bus wakes its once-a-second read is [open](DECISIONS.md#open).
+- **The session stream's route** and `useSession({ live })`, as clients see them. Only what wakes its read changes ([D6](DECISIONS.md#d6)).
 - **Same-session `resource_change` items.** The writer's tab still sees its own change on its stream.
 - **Serverless hosts and Kitchen Sink**, which runs on Next. They poll until Ably ships ([D3](DECISIONS.md#d3)).
 - **Request results.** [FIX-2043](https://linear.app/fixpoint-labs/issue/FIX-2043) (read a result by id) stays its own fix; the request stream already tells its caller when it ends.
@@ -125,7 +123,7 @@ blocks the closure issue, which waits on all of them.
 |---|---|
 | `onResourceChanged` and `makeResourceChangeHandler` (`createExecutionContext.ts`), writing to one request's emitter | **Builds on.** FIX-1506 adds a publish beside the emit |
 | The task substrate's `onChange` (`TaskChangeEvent`), adapted to `task-change` component items | **Builds on.** The task-board child publishes from the same callback |
-| `GET /sessions/:id/stream` (`session-stream-routes.ts`): other writers' items and run notices for one session, on every store, across processes, by a store read about once a second per connection | **Kept** beside the socket. Whether the bus wakes its read is [open](DECISIONS.md#open) |
+| `GET /sessions/:id/stream` (`session-stream-routes.ts`): other writers' items and run notices for one session, on every store, across processes, by a store read about once a second per connection | **Extended.** Kept beside the socket; the bus wakes its read, and the timed read stays as the fallback ([D6](DECISIONS.md#d6)) |
 | `followSession` and `coalescedReads` (`react/src/internal/followSession.ts`), shared by `useSession({ live })` and `BoardList`'s `ReadDriver` | **Extended.** The notice hook is another driver on them: hear, then one coalesced read |
 | `StreamBridge` (`engine/src/transports/runner.ts`), Redis in `bullmq/src/stream-bridge.ts` | **Not extended** ([D5](DECISIONS.md#d5)) |
 | `GET /users/:userId/stream`, routed and guarded as a user route, answering 501 | **Extended.** The Node host serves it as the WebSocket; the guard stays |
@@ -148,8 +146,8 @@ blocks the closure issue, which waits on all of them.
 | The debt | |
 |---|---|
 | **Adds** | One stores slot, one bus contract with two adapters, one socket path in the Node host, one client call and one hook. The Ably package |
-| **Removes** | The 501 user-stream answer, the Teammates lab's and Shift Manager's fixed polls, FIX-1506's remount workaround |
-| **Leaves** | `useSession`'s same-session path beside the notice path; one invalidation path, two sources (see the seam). The session stream's once-a-second read, unless the owner has the bus wake it ([open](DECISIONS.md#open)) |
+| **Removes** | The 501 user-stream answer, the Teammates lab's and Shift Manager's fixed polls, FIX-1506's remount workaround, the session stream's read each second where the bus crosses processes |
+| **Leaves** | `useSession`'s same-session path beside the notice path; one invalidation path, two sources (see the seam). The session stream's timed read, as a slow fallback where the bus can't cross processes: the in-memory bus on two or more, and serverless ([D6](DECISIONS.md#d6)) |
 
 **Net: up**, by one push channel. It is the one Goal 2 is missing, and every later realtime need
 is a publisher or a listener on it; FIX-1658's pushed wake for the lease backend is the likely
@@ -163,16 +161,15 @@ with polls off. If wrong: an epic that wraps with one process working.
 **[The debt](#whats-already-here-and-the-debt): up**, by one push channel, which removes two
 polls and a workaround. If wrong: a channel only two apps use.
 
-1. **[D1](DECISIONS.md#d1) · A push channel is worth six issues and a closure, now**, over
-   widening the session stream's per-second read. If wrong: an epic slot over the cap, on a gap
-   about two issues could have closed.
-2. **[D5](DECISIONS.md#d5) · Two seams, a bus in the stores profile and delivery at the host;
+1. **[D5](DECISIONS.md#d5) · Two seams, a bus in the stores profile and delivery at the host;
    `StreamBridge` not extended; the primary adapter backs `bus`.** If wrong: two places to
    configure, for an adapter split nobody uses.
 
-D2, D3 and D4 were signed off by the owner before drafting and are recorded with their
-trade-offs in [DECISIONS.md](DECISIONS.md).
+The owner decided on Oct 31: **[D1](DECISIONS.md#d1)**, the bus, the Postgres bus and the socket
+over widening the session stream, and **[D6](DECISIONS.md#d6)**, the bus wakes the session
+stream's read, in the bus child, with the timed read as the fallback. D2, D3 and D4 were decided
+before drafting. All are recorded with their trade-offs in [DECISIONS.md](DECISIONS.md).
 
-**Open: one.** [Does the bus wake the session stream's read?](DECISIONS.md#open) Recommended: yes, in the bus child.
+**Open: none.**
 
 Epic · 6 issues and a closure · Realtime / WebSockets · Goal 2, scoped state · Goal 1, validate through real usage
