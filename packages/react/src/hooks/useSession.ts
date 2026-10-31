@@ -1590,6 +1590,10 @@ export function useSession(
           setStatusMessage("");
           streamHandleRef.current?.close();
           streamHandleRef.current = null;
+          // A dropped stream no longer reports on the request: its record
+          // says where it is, until a resume follows it again.
+          setStreamStatus((current) => (current?.id === requestId ? null : current));
+          readRecordOf(requestId);
         }
       };
 
@@ -2276,14 +2280,21 @@ export function useSession(
     readFollowedStatus(unfollowedShownId);
   }, [unfollowedShownId, readFollowedStatus]);
 
-  // In live mode, that record read as not yet ended is read again until it
-  // says the request has: the session stream carries another client's items
-  // but not its request's end. The wait doubles each time, and every read
-  // schedules the next, a failed one too.
+  // In live mode, a shown request no stream follows whose record reads as
+  // not yet ended is read again until it says the request has: the session
+  // stream carries the request's items but not its end. Its record is the
+  // latest-request read when it is the latest, else its own status. The wait
+  // doubles each time, and every read schedules the next, a failed one too.
   const [runningRereads, setRunningRereads] = useState<{ id: string | null; count: number }>({ id: null, count: 0 });
+  const shownIsLatest = shownRequestId !== null && latestRequest?.id === shownRequestId;
+  const shownRecordStatus = shownIsLatest
+    ? latestRequest.status
+    : readFollowed !== null && readFollowed.id === shownRequestId
+      ? readFollowed.status
+      : null;
   const runningReadId =
-    live && unfollowedShownId !== null && readFollowed?.id === unfollowedShownId && !hasEnded(readFollowed.status)
-      ? unfollowedShownId
+    live && shownStreamStatus === null && shownRecordStatus !== null && !hasEnded(shownRecordStatus)
+      ? shownRequestId
       : null;
   const runningRereadCount = runningRereads.id === runningReadId ? runningRereads.count : 0;
   useEffect(() => {
@@ -2291,10 +2302,11 @@ export function useSession(
     const wait = Math.min(RUNNING_STATUS_REREAD_MAX_MS, RUNNING_STATUS_REREAD_MS * 2 ** runningRereadCount);
     const timer = setTimeout(() => {
       setRunningRereads({ id: runningReadId, count: runningRereadCount + 1 });
-      readFollowedStatus(runningReadId);
+      if (shownIsLatest) void refreshLatestRequest();
+      else readFollowedStatus(runningReadId);
     }, wait);
     return () => clearTimeout(timer);
-  }, [runningReadId, runningRereadCount, readFollowedStatus]);
+  }, [runningReadId, runningRereadCount, shownIsLatest, refreshLatestRequest, readFollowedStatus]);
 
   const followedRequest = useMemo((): FollowedRequest | null => {
     if (shownRequestId === null) return null;

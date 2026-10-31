@@ -58,7 +58,10 @@
  *   - a shown request's record read once while it ran, live: the "live, is
  *     read again" case fails (it reads in progress after the request ended);
  *     no doubling: the same case fails on the read count; read again without
- *     `live` too: the "not live" case fails.
+ *     `live` too: the "not live" case fails; only a request other than the
+ *     latest read again: the "latest request shown" case fails.
+ *   - a dropped stream leaving its status in place: the "dropped stream" case
+ *     fails (in progress over a completed record).
  *   - reading the followed request's status as soon as its stream ends,
  *     before the latest-request read lands: the "record when it ends" case
  *     fails (a status read the latest read made needless).
@@ -646,6 +649,21 @@ describe("followedRequest", () => {
     expect(requestMock.status).not.toHaveBeenCalled();
   });
 
+  it("a dropped stream leaves the request's record to say where it is", async () => {
+    const { result } = await mount();
+    act(() => void result.current.followRequest("req_turn"));
+    expect(result.current.followedRequest).toEqual({ id: "req_turn", status: "in_progress" });
+
+    // It finished while the connection was down: no end ever reached the view.
+    sessionsMock.requests.mockResolvedValue([
+      { id: "req_turn", status: "completed", startedAtMs: 10, completedAtMs: 20, flowKind: "demo", actionName: "turn", userId: "devuser", createdAt: 0, updatedAt: 0 },
+    ]);
+    act(() => connections.at(-1)!.callbacks.onError?.(new Error("dropped")));
+    await flush();
+
+    expect(result.current.followedRequest).toEqual({ id: "req_turn", status: "completed", startedAtMs: 10, completedAtMs: 20 });
+  });
+
   it("a followed request that ends with a request sent beside it newest reads its own status", async () => {
     const { result } = await mount();
     act(() => void result.current.followRequest("req_turn"));
@@ -710,6 +728,29 @@ describe("followedRequest", () => {
 
       await act(() => vi.advanceTimersByTimeAsync(120_000));
       expect(requestMock.status).toHaveBeenCalledTimes(3);
+    });
+
+    it("live, the latest request shown is read again through the latest-request read until it ended", async () => {
+      sessionsMock.requests.mockResolvedValue([
+        { id: "req_turn", status: "in_progress", startedAtMs: 10, flowKind: "demo", actionName: "turn", userId: "devuser", createdAt: 0, updatedAt: 0 },
+      ]);
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const { result } = await mount({ live: true });
+      await flush();
+      expect(result.current.followedRequest).toEqual({ id: "req_turn", status: "in_progress", startedAtMs: 10 });
+      const latestReads = sessionsMock.requests.mock.calls.length;
+
+      sessionsMock.requests.mockResolvedValue([
+        { id: "req_turn", status: "completed", startedAtMs: 10, completedAtMs: 20, flowKind: "demo", actionName: "turn", userId: "devuser", createdAt: 0, updatedAt: 0 },
+      ]);
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      await flush();
+      expect(sessionsMock.requests.mock.calls.length).toBe(latestReads + 1);
+      expect(result.current.followedRequest).toEqual({ id: "req_turn", status: "completed", startedAtMs: 10, completedAtMs: 20 });
+      expect(requestMock.status).not.toHaveBeenCalled();
+
+      await act(() => vi.advanceTimersByTimeAsync(120_000));
+      expect(sessionsMock.requests.mock.calls.length).toBe(latestReads + 1);
     });
 
     it("not live, is read once: the view updates on interaction, as its items do", async () => {
