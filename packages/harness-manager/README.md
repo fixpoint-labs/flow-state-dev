@@ -280,7 +280,7 @@ Pass `issueSpec: true` to `harnessManager` or `harnessSessionFlow`, and a run th
 harnessManager({ /* ... */ issueSpec: { path: (issue) => `docs/specs/${issue}.md` } });
 ```
 
-The section starts `## This work is for issue <ISSUE>` and is read fresh on every board attempt. A session gets it on each turn until the harness confirms a conversation. A spec longer than 64 KB (`ISSUE_SPEC_MAX_BYTES`) is cut, with a line saying so. A missing file becomes one line saying there is no spec, and the run goes ahead. A path that leaves the checkout is refused, and no file is read. Without `issueSpec`, the prompt is the phase's (or the person's) alone.
+The section starts `## This work is for issue <ISSUE>` and is read fresh on every board attempt. A session gets it on each turn until the harness confirms a conversation. A spec longer than 64 KB (`ISSUE_SPEC_MAX_BYTES`) is cut, with a line saying so. A missing file becomes one line saying there is no spec, and the run goes ahead. A path that leaves the checkout is refused, and no file is read. Without `issueSpec`, the prompt is the phase's (or the user's) alone.
 
 `readIssueSpecSection(cwd, issue, options?)` builds the same section, for a phase that writes its own brief. `isTrackerIssue(value)` checks the key grammar, `TRACKER_ISSUE_REFUSED` is the message a bad key gets, and `defaultIssueSpecPath(issue)` is the default path.
 
