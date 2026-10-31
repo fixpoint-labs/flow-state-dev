@@ -25,9 +25,10 @@ is today.
 | FIX-2058 · one Inbox | FIX-2056's claim gate and steer, durable execution by default (FIX-2063) | One Inbox item per stop for a person; the answer by steer; `answerTask` and the parks retired ([*decided once*](DECISIONS.md)) |
 | FIX-2070 · messages | FIX-2056's task and its sessions | Send and call, delivery and budget; `receive` in place of today's message entry |
 | FIX-2092 · phased workflows | FIX-2056's delegation board and `onTaskSettled`, FIX-2058's holds for an approval between phases | Phases as a view over task rows; a template that files a phased task graph. A design to prove by POC before its spec |
-| FIX-2071 · coordination renames | FIX-2058, FIX-2070 | One term per thing, *hold* and `updateTask`'s `question` field included; FIX-2056's read for retired rows removed no earlier than here |
+| FIX-2071 · coordination renames | FIX-2058, FIX-2070's builds | One term per thing, *hold* and `updateTask`'s `question` field included; FIX-2056's read for retired rows removed no earlier than here |
 
-FIX-2058 wrapped Oct 27, so FIX-2070 and FIX-2092 are free to start, and FIX-2071 waits on FIX-2070 alone.
+FIX-2071 built once FIX-2070's builds had landed and wrapped Oct 30, ahead of FIX-2070's closure
+(FIX-2242).
 
 FIX-2056's wrap recommended fixing FIX-2182 (a dispatcher's `wait` restates the board's `mode`)
 and FIX-2183 ("hold" names four things) before FIX-2058 built on them. Neither was done, and
@@ -73,6 +74,13 @@ FIX-2215, a review's *request changes* carrying the reviewer's words, went to Wo
 Manager. Lessons are [#3953](https://github.com/fixpoint-labs/flow-state-dev/pull/3953) and the
 docs polish [#3954](https://github.com/fixpoint-labs/flow-state-dev/pull/3954).
 
+## What FIX-2071 left open
+
+The closure, FIX-2249, merged Oct 30
+([#4244](https://github.com/fixpoint-labs/flow-state-dev/pull/4244)). Lessons are draft
+[#4245](https://github.com/fixpoint-labs/flow-state-dev/pull/4245): two owner asks (give the
+second-look review its own identity; one BP-030 sentence) and fold candidates F1–F7 to file.
+
 ## Milestones
 
 The Linear project keeps three milestones; v3 (True Plan Mode shipped) and v5 (docs and pattern
@@ -100,5 +108,5 @@ next regression gate is FIX-2070's closure.
 - **Waiting on several tasks at once, and a row-less question tool for workers.** FIX-1870 ruled
   both out and FIX-2056's five task tools add neither; neither has an epic.
 - **Spend caps on delegated work (FIX-933).** Filed under FIX-930, never started.
-- **Anything after the renames.** No epic is filed after FIX-2071. The project's remaining life
-  is FIX-2070 and FIX-2092, then FIX-2071.
+- **Anything after the renames.** FIX-2071 wrapped Oct 30 and no epic is filed after it. The
+  project's remaining life is FIX-2070's closure and FIX-2092.
