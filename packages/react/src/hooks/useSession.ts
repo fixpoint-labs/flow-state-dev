@@ -28,7 +28,7 @@ import type {
   SessionRun,
   StateChangeItem
 } from "@flow-state-dev/core/items";
-import type { ResumeAction } from "@flow-state-dev/core/types";
+import type { RequestStatus, ResumeAction } from "@flow-state-dev/core/types";
 // Canonical helper from the zero-dependency contracts layer (value-import).
 // Previously hand-mirrored here because react may only type-import core.
 import { resolveItemVisibility } from "@flow-state-dev/contracts";
@@ -57,7 +57,41 @@ const SNAPSHOT_READ_ATTEMPTS = 5;
  * Where one snapshot read stands, taken when it is requested: how many live
  * copies had arrived by then, and its place among the reads requested.
  */
-type SnapshotRead = { arrivalsBefore: number; sequence: number };
+/**
+ * A snapshot read's places in order: `sequence` among the reads that load
+ * items, `stateSequence` among every read of session state, the state-only
+ * ones (`refresh({ items: false })`, a request's end) included.
+ */
+type SnapshotRead = { arrivalsBefore: number; sequence: number; stateSequence: number };
+
+/**
+ * The request a view shows last, as {@link SessionView.followedRequest}
+ * reports it: the fields of a request summary its status needs.
+ */
+export type FollowedRequest = Pick<SessionRequestSummary, "id" | "status" | "startedAtMs" | "completedAtMs">;
+
+/** Options for {@link SessionView.refresh}. */
+export type SessionRefreshOptions = {
+  /**
+   * `false` re-reads the session's state, detail and background work, and no
+   * item history: one state read, whatever the history's length. The items on
+   * screen stay as they are. Default `true`: the whole view.
+   */
+  items?: boolean;
+};
+
+const TERMINAL_REQUEST_STATUSES: ReadonlySet<string> = new Set([
+  "completed",
+  "failed",
+  "incomplete",
+  "interrupted",
+  "aborted"
+]);
+
+/** Whether a request with this status has ended (a suspended one has not). */
+function hasEnded(status: string): boolean {
+  return TERMINAL_REQUEST_STATUSES.has(status);
+}
 
 /**
  * Rows the mount's in-progress lookup reads.
@@ -313,6 +347,18 @@ export type SessionView = {
    * Refreshed on mount and whenever an SSE stream reaches a terminal state.
    */
   readonly latestRequest: SessionRequestSummary | null;
+  /**
+   * The request the view shows last: the one the newest item on screen
+   * belongs to (with `items: false`, the one the hook last followed), so a
+   * request sent beside it, such as a steered line, doesn't take its place.
+   * `null` until the view shows one.
+   *
+   * While its stream runs, `status` comes from the stream. When it ends, or
+   * once it is shown after a reload, its record is read: from the
+   * `latestRequest` read when it is the newest request, else with one status
+   * read (`GET /:flowKind/requests/:requestId/status`).
+   */
+  readonly followedRequest: FollowedRequest | null;
   readonly items: OutputItem[];
   /**
    * Mid-stream resource_change notices, in arrival order. Independent of the
@@ -446,7 +492,17 @@ export type SessionView = {
    * nothing.
    */
   followRequest: (requestId: string) => boolean;
-  refresh: () => Promise<void>;
+  /**
+   * Re-read the view: the snapshot with its whole item history, and the
+   * background work. `refresh({ items: false })` re-reads state, detail and
+   * background work only, and leaves the items as they are; use it when only
+   * state changed, such as after a request sent beside the one the view
+   * follows. A state read never rewinds state a newer read already set.
+   *
+   * The hook already re-reads state when a request it follows ends, however
+   * it ended, and after a stop.
+   */
+  refresh: (options?: SessionRefreshOptions) => Promise<void>;
   /**
    * Subscribe to streaming TTS audio chunks (FIX-523). Chunks are live-only
    * and not retained in session item state — the durable representation is
@@ -559,6 +615,10 @@ export function useSession(
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [snapshot, setSnapshot] = useState<SessionStateSnapshotResponse | null>(null);
   const [latestRequest, setLatestRequest] = useState<SessionRequestSummary | null>(null);
+  // The status the stream of the request the view follows last reported.
+  const [streamStatus, setStreamStatus] = useState<{ id: string; status: RequestStatus } | null>(null);
+  // The record of a shown request that isn't the newest, from a status read.
+  const [readFollowed, setReadFollowed] = useState<FollowedRequest | null>(null);
   const [items, setItems] = useState<OutputItem[]>([]);
   // Mid-stream resource_change notices. These items are transient on the SSE
   // stream and are therefore filtered out of `items` by default — so a hook
@@ -600,6 +660,15 @@ export function useSession(
   // that item again.
   const snapshotSequenceRef = useRef(0);
   const snapshotAppliedSequenceRef = useRef(0);
+  // State is read by the full reads above and by state-only reads, which
+  // load no items, so state takes its own place in order. A state-only read
+  // that lands late doesn't rewind state; a full read that lands after a
+  // newer state-only read still loads its items, and keeps the newer state.
+  const stateSequenceRef = useRef(0);
+  const stateAppliedSequenceRef = useRef(0);
+  // Whether a full snapshot of this session has landed: a state-only read
+  // merges into one, and before then the mount read brings state anyway.
+  const snapshotLandedRef = useRef(false);
   // The error a snapshot read that failed left, with that read's place in
   // order. A read requested after it that lands takes it away; an older one
   // landing late does not, and no read takes away an error from anywhere else.
@@ -890,7 +959,8 @@ export function useSession(
   const beginSnapshotRead = useCallback(
     (): SnapshotRead => ({
       arrivalsBefore: liveArrivalsRef.current,
-      sequence: ++snapshotSequenceRef.current
+      sequence: ++snapshotSequenceRef.current,
+      stateSequence: ++stateSequenceRef.current
     }),
     []
   );
@@ -938,7 +1008,14 @@ export function useSession(
           merged = next;
         }
       }
-      setSnapshot(merged);
+      // A state-only read requested after this one has landed: its state is
+      // newer, so keep it, with what the stream has merged into it since.
+      const stateIsNewer = read.stateSequence > stateAppliedSequenceRef.current;
+      if (stateIsNewer) stateAppliedSequenceRef.current = read.stateSequence;
+      snapshotLandedRef.current = true;
+      setSnapshot((prev) =>
+        stateIsNewer || prev === null ? merged : { ...merged, clientData: prev.clientData, resources: prev.resources }
+      );
 
       if (!itemConfig.enabled) {
         storeRef.current.clear();
@@ -1103,6 +1180,56 @@ export function useSession(
   }, [sessionId, sessionsApi, fetchSessionSnapshot, applySnapshot, beginSnapshotRead, failSnapshotRead]);
 
   /**
+   * Re-read the session's state and detail, and no items: one state read
+   * with `includeItems: false`. Merges state into the snapshot on screen and
+   * lands only if no state read requested after it has landed. Best effort,
+   * like `refreshLatestRequest`: a failed read leaves state as it was, and
+   * the next read of either kind brings it current.
+   */
+  /**
+   * Read one request's record for `followedRequest`, when the latest-request
+   * read doesn't cover it. Best effort, like that read: on failure the
+   * stream's status stands.
+   */
+  const readFollowedStatus = useCallback(
+    (requestId: string): void => {
+      flow
+        .request(requestId)
+        .status()
+        .then(
+          (record) =>
+            setReadFollowed({
+              id: record.id,
+              status: record.status,
+              startedAtMs: record.startedAtMs,
+              ...(record.completedAtMs !== undefined ? { completedAtMs: record.completedAtMs } : {})
+            }),
+          () => undefined
+        );
+    },
+    [flow]
+  );
+
+  const refreshState = useCallback(async () => {
+    if (sessionId === undefined) return;
+    const stateSequence = ++stateSequenceRef.current;
+    try {
+      const [nextDetail, next] = await Promise.all([
+        sessionsApi.get(sessionId),
+        sessionsApi.state(sessionId, { includeItems: false })
+      ]);
+      if (!snapshotLandedRef.current || stateSequence <= stateAppliedSequenceRef.current) return;
+      stateAppliedSequenceRef.current = stateSequence;
+      setSnapshot((prev) =>
+        prev === null ? prev : { ...prev, clientData: next.clientData, resources: next.resources }
+      );
+      setDetail(nextDetail);
+    } catch {
+      // Best effort: see above.
+    }
+  }, [sessionId, sessionsApi]);
+
+  /**
    * Attach to an existing request's stream, optionally resuming from a cursor.
    * Used by both sendAction (new requests) and autoResume (in-progress requests).
    *
@@ -1119,6 +1246,7 @@ export function useSession(
       }
 
       setIsStreaming(true);
+      setStreamStatus({ id: requestId, status: "in_progress" });
       // Resumed after its last event, the stream skips a status that already
       // said the request no longer blocks: keep what the view had. From the
       // start, only this stream's own events may set where a resume picks up.
@@ -1327,6 +1455,7 @@ export function useSession(
           });
         },
         onRequestStatus: (event) => {
+          setStreamStatus({ id: requestId, status: event.status });
           if (
             event.status === "completed" ||
             event.status === "failed" ||
@@ -1354,12 +1483,20 @@ export function useSession(
             ) {
               resourceChangedDuringStreamRef.current = false;
               void refreshSnapshot();
+            } else {
+              // However else it ended, what it wrote to state as it ended
+              // (a failure record, say) may have come after the stream's
+              // last event: re-read state, not the items.
+              void refreshState();
             }
 
             // Refresh the latestRequest summary so consumers can render
             // recovery affordances (e.g. a Resume button when status moves
-            // to `interrupted`).
-            void refreshLatestRequest();
+            // to `interrupted`). It is this request's record too, unless a
+            // request sent beside it is newer: then read this one's own.
+            void refreshLatestRequest().then((latest) => {
+              if (latest?.id !== requestId) readFollowedStatus(requestId);
+            });
           }
         },
         onError: () => {
@@ -1394,7 +1531,9 @@ export function useSession(
       itemConfig.itemTypes,
       flow,
       refreshSnapshot,
+      refreshState,
       refreshLatestRequest,
+      readFollowedStatus,
       scheduleContentFlush,
       flushContentDeltas,
       takeLiveItem
@@ -1423,6 +1562,10 @@ export function useSession(
     // Every read in flight was requested for what the view showed before: a
     // previous session, or another item filter. None may land now.
     snapshotAppliedSequenceRef.current = snapshotSequenceRef.current;
+    stateAppliedSequenceRef.current = stateSequenceRef.current;
+    snapshotLandedRef.current = false;
+    setStreamStatus(null);
+    setReadFollowed(null);
 
     if (sessionId === undefined) {
       resourceChangedDuringStreamRef.current = false;
@@ -1988,7 +2131,10 @@ export function useSession(
     }
 
     if (!refused) injectSyntheticAbortItem(requestId);
-  }, [flow, flushContentDeltas, injectSyntheticAbortItem]);
+    // The stream closed with the stop, so what the request wrote to state as
+    // it stopped never reaches the view through it.
+    void refreshState();
+  }, [flow, flushContentDeltas, injectSyntheticAbortItem, refreshState]);
 
   const followRequest = useCallback(
     (requestId: string) => {
@@ -2004,12 +2150,58 @@ export function useSession(
     [attachToStream]
   );
 
-  const refresh = useCallback(async () => {
-    // Refreshes the whole view, background work included. Under the
-    // interaction-only design this is also the app's way to bring a
-    // just-launched job onto the screen without sending another action.
-    await Promise.all([refreshSnapshot(), refreshChildSessions()]);
-  }, [refreshSnapshot, refreshChildSessions]);
+  const refresh = useCallback(
+    async (refreshOptions?: SessionRefreshOptions) => {
+      // Refreshes the whole view, background work included. Under the
+      // interaction-only design this is also the app's way to bring a
+      // just-launched job onto the screen without sending another action.
+      // `items: false` leaves the item history out.
+      const readState = refreshOptions?.items === false ? refreshState : refreshSnapshot;
+      await Promise.all([readState(), refreshChildSessions()]);
+    },
+    [refreshSnapshot, refreshState, refreshChildSessions]
+  );
+
+  // The request the view shows last: the newest item's, else the one it
+  // last followed (a view with `items: false` holds no items).
+  const shownRequestId = items.at(-1)?.requestId ?? streamStatus?.id ?? null;
+
+  // A shown request the view hasn't followed (after a reload, say) and the
+  // latest-request read doesn't name: read its record once. One the view
+  // follows is read when its stream ends (see `attachToStream`).
+  const shownStreamStatus = streamStatus?.id === shownRequestId ? streamStatus.status : null;
+  const unfollowedShownId =
+    shownRequestId !== null && latestRequest !== null && latestRequest.id !== shownRequestId && shownStreamStatus === null
+      ? shownRequestId
+      : null;
+  const followedReadRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (unfollowedShownId === null || followedReadRef.current === unfollowedShownId) return;
+    followedReadRef.current = unfollowedShownId;
+    readFollowedStatus(unfollowedShownId);
+  }, [unfollowedShownId, readFollowedStatus]);
+
+  const followedRequest = useMemo((): FollowedRequest | null => {
+    if (shownRequestId === null) return null;
+    const record: FollowedRequest | null =
+      latestRequest?.id === shownRequestId
+        ? {
+            id: latestRequest.id,
+            status: latestRequest.status,
+            ...(latestRequest.startedAtMs !== undefined ? { startedAtMs: latestRequest.startedAtMs } : {}),
+            ...(latestRequest.completedAtMs !== undefined ? { completedAtMs: latestRequest.completedAtMs } : {})
+          }
+        : readFollowed?.id === shownRequestId
+          ? readFollowed
+          : null;
+    // A running stream is newer than any record; an ended one is settled by
+    // the record once it says so too.
+    if (shownStreamStatus === null) return record;
+    if (!hasEnded(shownStreamStatus) || record === null || !hasEnded(record.status)) {
+      return { ...record, id: shownRequestId, status: shownStreamStatus };
+    }
+    return record;
+  }, [shownRequestId, latestRequest, readFollowed, shownStreamStatus]);
 
   const resumeLatestRequest = useCallback(async () => {
     if (sessionId === undefined) return;
@@ -2201,6 +2393,7 @@ export function useSession(
     continueRequest,
     followRequest,
     refresh,
+    followedRequest,
     subscribeAudioDelta
   };
 }
