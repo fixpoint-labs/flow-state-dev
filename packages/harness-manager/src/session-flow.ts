@@ -596,7 +596,9 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     description: "One turn of a harness session: the prompt, run by the harness where the session works.",
     inputSchema: z.object({ prompt: z.string().min(1) }),
   }).tap(titleFromPrompt);
-  const turn = (withIssueSpec === undefined ? opened : opened.step(withIssueSpec))
+  // The brief provisions the checkout, so a failure there is the turn's
+  // failure too, recorded the way the harness's own is.
+  const turn = (withIssueSpec === undefined ? opened : opened.step(withIssueSpec.rescue([{ block: recordFailure }])))
     .step(agent.rescue([{ block: recordFailure }]))
     .tap(recordFailedOutcome);
 

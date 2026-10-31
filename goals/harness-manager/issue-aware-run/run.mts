@@ -28,6 +28,7 @@ import { createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "@
 import {
   HARNESS_FEATURE_KEY,
   harnessSessionFlow,
+  runBoardSegment,
   runTopic,
   type HarnessSessionFeeds,
   type HarnessSessionPlace,
@@ -36,7 +37,6 @@ import { z } from "zod";
 
 import { goalTmpDir, runGoal } from "../../lib/index.mts";
 import { CONVERSATIONS, PHASE, claimHost, cleanUpHosts, messageOf } from "../../../packages/harness-manager/test/claim-host.ts";
-import { runBoardSegment } from "../../../packages/harness-manager/src/workspace.ts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 if (!["", "no-brief", "task-branch"].includes(CONTROL)) throw new Error(`unknown GOAL_CONTROL "${CONTROL}"`);

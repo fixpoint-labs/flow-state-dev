@@ -11,8 +11,12 @@
  *   - `createCheck` without the issue check: a path-climbing issue is stored.
  *   - the brief step's binding guard dropped: the second turn repeats the spec.
  *   - `placeOf` without the issue: the workspace never sees it.
+ *   - the brief step without its rescue: a checkout that fails to provision
+ *     leaves the turn with no error recorded.
+ *   - containment checked on the path alone: a linked spec reads a file
+ *     outside the checkout into the prompt.
  */
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
@@ -134,6 +138,16 @@ describe("a session born with its issue", () => {
     expect(prompts).toEqual(["Go."]);
   });
 
+  // The page shows a failed turn's error from its record; the brief provisions first, so its failure must land there too.
+  it("records the turn's error when the checkout fails to provision before the brief", async () => {
+    const workspace = { ...specWorkspace(), provision: async () => { throw new Error("no room for a checkout"); } };
+    const stores = createInMemoryStores();
+    const result = await turn(stores, { workspace, agent: recordingAgent([]), issueSpec: true }, "s-5", "Go.", { model: "m", issue: ISSUE });
+    expect(result.error).toBeDefined();
+    const turns = Object.values(((await stores.session.get("s-5")) as { state: { turns?: Record<string, { error?: string }> } }).state.turns ?? {});
+    expect(turns.map((t) => t.error)).toEqual(["no room for a checkout"]);
+  });
+
   it("gets no spec, and no issue on its place, when it names none", async () => {
     const prompts: string[] = [];
     const workspace = specWorkspace();
@@ -190,6 +204,33 @@ describe("the spec section", () => {
   it("refuses a path that leaves the checkout, and reads nothing", async () => {
     const section = await readIssueSpecSection(specWorkspace().dir, ISSUE, { path: () => "../outside.md" });
     expect(section).toContain("is outside this checkout");
+  });
+
+  // A repository's spec can be a link; following one out of the checkout would put any file the host can read in the prompt.
+  it("refuses a spec, or a spec directory, linked to a file outside the checkout", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "harness-issue-outside-"));
+    dirs.push(outside);
+    writeFileSync(join(outside, "SPEC.md"), "outside-secret");
+    const linkedFile = mkdtempSync(join(tmpdir(), "harness-issue-link-"));
+    dirs.push(linkedFile);
+    mkdirSync(join(linkedFile, "specs/issues/FIX-3"), { recursive: true });
+    symlinkSync(join(outside, "SPEC.md"), join(linkedFile, "specs/issues/FIX-3/SPEC.md"));
+    const linkedDir = mkdtempSync(join(tmpdir(), "harness-issue-linkdir-"));
+    dirs.push(linkedDir);
+    mkdirSync(join(linkedDir, "specs/issues"), { recursive: true });
+    symlinkSync(outside, join(linkedDir, "specs/issues/FIX-3"));
+    for (const dir of [linkedFile, linkedDir]) {
+      const section = await readIssueSpecSection(dir, "FIX-3");
+      expect(section).toContain("is outside this checkout");
+      expect(section).not.toContain("outside-secret");
+    }
+  });
+
+  it("reads a spec linked to another file inside the checkout", async () => {
+    const dir = specWorkspace().dir;
+    mkdirSync(join(dir, "specs/issues/FIX-4"), { recursive: true });
+    symlinkSync(join(dir, "specs/issues", ISSUE, "SPEC.md"), join(dir, "specs/issues/FIX-4/SPEC.md"));
+    expect(await readIssueSpecSection(dir, "FIX-4")).toContain(MARKER);
   });
 
   it("cuts a spec over the cap and says so", async () => {

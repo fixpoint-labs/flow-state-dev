@@ -17,7 +17,7 @@
  * A missing spec is one line, never a failure: an issue filed without a spec
  * is ordinary, and the run still has its goal.
  */
-import { open } from "node:fs/promises";
+import { open, realpath } from "node:fs/promises";
 import { isAbsolute, join, normalize, relative } from "node:path";
 
 import { OWNED_SEGMENT } from "./identity";
@@ -84,10 +84,23 @@ export async function readIssueSpecSection(cwd: string, issue: string, options: 
   if (isAbsolute(relativePath) || inside === "" || inside.startsWith("..") || isAbsolute(inside)) {
     return `${heading}\n\nIts spec path, ${relativePath}, is outside this checkout, so no spec was read.`;
   }
+  const missing = `${heading}\n\nThere is no spec for it at ${relativePath} in this checkout. Work from the task as given.`;
+  // A link inside the checkout can point out of it: check where it resolves.
+  let resolved: string;
+  try {
+    const [realCwd, realFile] = await Promise.all([realpath(cwd), realpath(absolute)]);
+    const real = relative(realCwd, realFile);
+    if (real === "" || real.startsWith("..") || isAbsolute(real)) {
+      return `${heading}\n\nIts spec path, ${relativePath}, is outside this checkout, so no spec was read.`;
+    }
+    resolved = realFile;
+  } catch {
+    return missing;
+  }
   let text: string;
   let cut = false;
   try {
-    const file = await open(absolute, "r");
+    const file = await open(resolved, "r");
     try {
       const buffer = Buffer.alloc(ISSUE_SPEC_MAX_BYTES + 1);
       const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
@@ -97,7 +110,7 @@ export async function readIssueSpecSection(cwd: string, issue: string, options: 
       await file.close();
     }
   } catch {
-    return `${heading}\n\nThere is no spec for it at ${relativePath} in this checkout. Work from the task as given.`;
+    return missing;
   }
   // A cut can land inside a multi-byte character; drop the replacement it decodes to.
   if (cut) text = text.replace(/�$/, "");
