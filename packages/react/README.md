@@ -391,10 +391,13 @@ Keeps what someone has typed in a message box across a reload. The text is store
 
 ```tsx
 const [draft, setDraft] = useDraft("my-app:composer", sessionId);
+const latest = useRef(draft);
+latest.current = draft;
 const send = async () => {
-  const line = draft;
+  const line = draft.trim();
   await sendLine(line); // throws when the send fails: the draft stays
-  setDraft("");
+  // Clear only if nothing was typed while the send ran.
+  if (latest.current.trim() === line) setDraft("");
 };
 return <textarea value={draft} onChange={(e) => setDraft(e.target.value)} />;
 ```

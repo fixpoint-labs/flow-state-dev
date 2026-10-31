@@ -272,8 +272,8 @@ export function TurnComposer({
   const { state, run, reset } = useTurnSend(unconfirmed === "" ? undefined : { kind: "unconfirmed", reason: unconfirmed });
   useEffect(() => {
     if (state.kind === "unconfirmed") setUnconfirmed(state.reason);
-    else if (state.kind !== "idle") setUnconfirmed("");
-  }, [state, setUnconfirmed]);
+    else if (state.kind !== "idle" && unconfirmed !== "") setUnconfirmed("");
+  }, [state, unconfirmed, setUnconfirmed]);
   // The draft as last drawn: a send that settles later decides against what is in the box now.
   const current = useRef(draft);
   current.current = draft;
