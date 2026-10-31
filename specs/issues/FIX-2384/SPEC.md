@@ -75,9 +75,10 @@ package read, without its own git code.**
   exported from the `session-door.ts` module so `run-changes.ts` can share it; it is not in the
   package's `index.ts`, so the public API does not grow).
 - **`session-flow.ts`**: each turn record gains `base` (recorded by the `cwd` feed when the turn
-  first reaches its checkout) and `head` (recorded at turn end). The flow's one `request.onFinished` hook
-  is now the `turnEnd` sequencer (block name `turn-end`): `recordTurnHead`, then the existing PR
-  check. The flow declares `reads: { changes }` keyed by turn.
+  first reaches its checkout) and `head` (recorded inside the turn: a step after the harness, or
+  `recordFailure` for a turn that threw). The flow's one `request.onFinished` hook is now the
+  `turnEnd` sequencer (block name `turn-end`), holding the existing PR check. The flow declares
+  `reads: { changes }` keyed by turn.
 - **`packages/ui`**: registry item `run-changes` ("N files changed (+a −d)", per-file rows, a
   patch on open through the app's `loadPatch`). Appended to `registry.json`; README row.
 - **Docs**: harness-manager README and `apps/docs/docs/orchestration/harness-manager.md`.

@@ -36,15 +36,16 @@ Engineering calls inside the direction FIX-2369 fixed. None is asked.
 | | |
 |---|---|
 | **Instead of** | A step before the harness that provisions the checkout itself |
-| **Because** | The harness provisions through the `cwd` feed; recording there needs no second provisioning call and no change to when provisioning happens (FIX-2420 owns the first-turn setup wait in this region). The end is recorded by `recordTurnHead`, the first step of the `turnEnd` sequencer that is the flow's `request.onFinished` hook, so a stopped or failed turn still has one |
+| **Because** | The harness provisions through the `cwd` feed; recording there needs no second provisioning call and no change to when provisioning happens (FIX-2420 owns the first-turn setup wait in this region). The end is recorded inside the turn, by `recordTurnHead` after the harness step and by `recordFailure` for a turn that threw, so a stopped or failed turn still has one. Not in `request.onFinished`: the engine emits the terminal status before that hook runs, and a page refreshes on that status |
 | **Locks in** | A turn that never reaches a git checkout keeps `base: null`, records no `head`, and reads unverified. The turn-end step only locates the checkout when a base exists, so a host whose sessions have no checkout is never asked for one |
 
 ## Notes for the stacked children
 
-- **FIX-2387, FIX-2398** stack on this branch in the turn-end region: `turnEnd` is now a sequencer
-  (`recordTurnHead` then `branchPullRequests`). Append steps to `turnEnd`; never register a
-  second `onFinished` or replace it, since a flow has one and the head must be recorded on every
-  turn end.
+- **FIX-2387, FIX-2398** stack on this branch in the turn-end region. Session state a page reads
+  on the turn's end is written inside the turn (a tap after the harness step, or `recordFailure`
+  for a turn that threw), since the terminal status is emitted before `request.onFinished` runs.
+  `turnEnd` is a sequencer holding only effects no page reads on refresh (`branchPullRequests`).
+  Append such steps to it; never register a second `onFinished` or replace it.
 - **App adoption** (Kitchen Sink, Claude Code-style, Teammates, Shift Manager): install
   `run-changes` with `fsdev ui add run-changes`, pass the review data's `files`, and wire
   `loadPatch` to the `changes` read on the run's session (board runs) or with `{ turn }` (session
