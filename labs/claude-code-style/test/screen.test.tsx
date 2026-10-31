@@ -363,6 +363,22 @@ describe("the session-mode screen", () => {
     expect(within(thread()).queryByRole("status")).toBeNull();
   });
 
+  it("doesn't stop the turn when Escape only dismisses an IME composition", async () => {
+    render(<App adapter={createFakeLab({ speed: 0.2 })} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await within(thread()).findByRole("status");
+    const box = screen.getByLabelText("Message the main session");
+    act(() => {
+      box.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", isComposing: true, bubbles: true }));
+    });
+    fireEvent.keyDown(box, { key: "Escape", keyCode: 229 });
+    expect(within(thread()).getByRole("status")).toBeTruthy();
+    // A plain Escape still stops it.
+    fireEvent.keyDown(box, { key: "Escape" });
+    await within(thread()).findByText(/Interrupted/);
+  });
+
   it("keeps background tasks running when the turn that filed them is interrupted", async () => {
     render(<App adapter={createFakeLab({ speed: 0.1 })} />);
     await pick();

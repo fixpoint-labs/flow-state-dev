@@ -27,6 +27,8 @@ export function Composer({
     send();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    // A key that ends an IME composition is the input method's, not a send or a stop (229: Safari's keydown for it).
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     if (isSendKey(event, { enterSends: true })) {
       event.preventDefault();
       send();
