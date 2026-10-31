@@ -129,6 +129,22 @@ describe.each(BACKINGS)("retrying a task (%s)", (_name, makeBacking) => {
     expect(events).toHaveLength(count);
   });
 
+  it("frees the last attempt's resumed wait, so the next attempt's wait and ending reach their request", async () => {
+    const { tasks } = await makeBacking();
+    await tasks.createTask({ id: "t", goal: "g", assignee: "ops" });
+    expect(await tasks.markWait!("t", { gateId: "g1", deadline: 5000, requestId: "r1" })).toEqual({ outcome: "recorded" });
+    await claimAndFail(tasks, "t", "first");
+    expect(await tasks.retry!("t")).toEqual({ outcome: "declined", reason: "settling", status: "errored" });
+    await tasks.clearResumeOwed!("t");
+
+    expect(await tasks.retry!("t")).toEqual({ outcome: "recorded" });
+    expect(tasks.get("t")!.wait).toBeUndefined();
+    expect(await tasks.markWait!("t", { gateId: "g2", deadline: 5000, requestId: "r2" })).toEqual({ outcome: "recorded" });
+    await claimAndFail(tasks, "t", "second");
+    // The second ending resumes the second wait, not a gate long resolved.
+    expect(tasks.get("t")).toMatchObject({ resumeOwed: true, wait: { gateId: "g2", requestId: "r2" } });
+  });
+
   it("refuses a skipped dependent until its dependency is retried, then clears the skip", async () => {
     const { tasks } = await makeBacking();
     await tasks.createTasks([

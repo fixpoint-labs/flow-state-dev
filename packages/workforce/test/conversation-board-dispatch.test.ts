@@ -351,4 +351,38 @@ describe("retryTask on a conversation's board (FIX-2383)", () => {
       await host.dispose();
     }
   });
+
+  it("runs two retried tasks of one ongoing session in turn, neither waiting on the other forever", async () => {
+    let release!: () => void;
+    const busy = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const host = bootBoardHost({ holds: new Map([["busy", busy]]) });
+    try {
+      const conv = await host.conversation("alice", "pm");
+      const filing = await host.filingOf("alice", conv);
+      // Two rows that each ran once in the delegate's ongoing session, and were cancelled.
+      const ran = (id: string, createdAt: number): Task =>
+        ({ ...recorded(id, "eng.tasker", id), undispatched: undefined, session: "ongoing", status: "cancelled", attempts: 1, startedAt: createdAt, completedAt: createdAt, createdAt, updatedAt: createdAt }) as Task;
+      await host.writeRow("alice", filing, ran("task_first", 1000));
+      await host.writeRow("alice", filing, ran("task_second", 2000));
+      // A third row holds the session while both are retried.
+      const busyTask = await act(host, conv, "createTask_tasks", { goal: "[hold:busy] task_busy", assignee: "eng.tasker", session: "ongoing" });
+      for (let i = 0; i < 200 && (await host.row("alice", filing, busyTask.taskId!))?.status !== "in_progress"; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(await host.row("alice", filing, busyTask.taskId!)).toMatchObject({ status: "in_progress" });
+
+      expect(await act(host, conv, "retryTask_tasks", { id: "task_second" })).toEqual({ ok: true });
+      expect(await act(host, conv, "retryTask_tasks", { id: "task_first" })).toEqual({ ok: true });
+      release();
+      await host.settled();
+      // Both started rows waited on the one session: the earlier-filed one runs first, then the other.
+      expect(host.runs.map((run) => /task_(busy|first|second)/.exec(run.message)?.[0])).toEqual(["task_busy", "task_first", "task_second"]);
+      expect(await host.row("alice", filing, "task_first")).toMatchObject({ status: "completed", attempts: 2 });
+      expect(await host.row("alice", filing, "task_second")).toMatchObject({ status: "completed", attempts: 2 });
+    } finally {
+      await host.dispose();
+    }
+  });
 });
