@@ -37,14 +37,15 @@ export async function POST(request) {
   const res = await fetch("https://api.resend.com/contacts", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ email, unsubscribed: false, ...(segment ? { segments: [{ id: segment }] } : {}) }),
+    body: JSON.stringify({ email, ...(segment ? { segments: [{ id: segment }] } : {}) }),
   });
 
   if (!res.ok) {
-    const detail = await res.text();
+    const detail = await res.json().catch(() => ({}));
     // Signing up twice is still a signup.
-    if (/already exists/i.test(detail)) return Response.json({ ok: true });
-    console.error(`waitlist: Resend returned ${res.status}: ${detail}`);
+    if (/already exists/i.test(detail.message ?? "")) return Response.json({ ok: true });
+    // Resend's message can echo the email back, so log only the status and error name.
+    console.error(`waitlist: Resend returned ${res.status} ${detail.name ?? "unknown_error"}`);
     return Response.json({ error: "Something went wrong. Try again in a minute." }, { status: 502 });
   }
 
