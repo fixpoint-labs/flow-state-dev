@@ -187,4 +187,29 @@ describe("what a turn changed", () => {
       diff: { files: [], verified: false },
     });
   });
+
+  it("reads a turn recorded before turns kept a base as unverified, never as the branch's changes", async () => {
+    // An older record has no `base` or `head` at all. Read as "HEAD", the
+    // base falls back to `origin/HEAD` and reports every later turn's work as this one's.
+    const stores = createInMemoryStores();
+    const { dir, flow } = committing();
+    try {
+      git(dir, "update-ref", "refs/remotes/origin/HEAD", "HEAD");
+      writeFileSync(join(dir, "later.txt"), "later\n");
+      git(dir, "add", ".");
+      git(dir, "commit", "-q", "-m", "later");
+      const now = Date.now();
+      const legacyTurn = { asked: null, confirmed: null, failure: null, stopped: null, error: null, at: now, steered: null };
+      await stores.session.set(
+        "s-legacy",
+        { id: "s-legacy", flowKind: "stub-session", userId: "u", orgId: DEFAULT_ORG_ID, metadata: undefined, latestRequestId: undefined, state: { model: "stub-model", turns: { req_old: legacyTurn } }, version: 0, createdAt: now, updatedAt: now, journal: [] } as never,
+        "any" as never,
+      );
+      expect(await runRead({ flow, readName: "changes", input: { turn: "req_old" }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-legacy", stores })).toMatchObject({
+        diff: { files: [], verified: false },
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
