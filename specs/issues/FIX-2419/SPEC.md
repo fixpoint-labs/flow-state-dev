@@ -57,7 +57,8 @@ flowchart LR
 - **Controls that must fail:** `GOAL_CONTROL=no-fetch` cuts from the tracking ref without
   fetching; leg a fails **`a:fresh`**. `GOAL_CONTROL=cut` ignores `branch` and cuts a new one;
   leg b fails **`b:on-branch`**. `GOAL_CONTROL=lose-work` skips the uncommitted-work check; leg c
-  fails **`c:dirty-refused`**.
+  fails **`c:dirty-refused`**. Each control reddens only its own legs (`cut` also reddens
+  `b:recorded`, which reads the same branch).
 - **Unit:** the host's `list`, `remove` and existing-branch checkout over cloned remotes and
   listed repositories; a fork PR refused by `pullRequestHead` (a stub `gh` on `PATH`); a create
   whose `start` is malformed refused; `start` fixed after create.
@@ -83,7 +84,9 @@ already exists, and one way to list and remove what it made.
   harness session state, `{ base } | { branch } | { pullRequest }`, read-only like `model`.
   Absent means the host's default, so every stored session reads as it did.
 - **The workspace gets the start** ([D1](DECISIONS.md#d1)): `HarnessSessionWorkspace.provision`
-  takes it and returns the branch it gave the session, beside FIX-2386's path and base. The
+  takes it as `start` on its request object (the seam FIX-2386 and FIX-2420 share:
+  `provision(place, { start?, onSetup? })` returning a path or `{ path, baseCommit?, branch?,
+  setup? }`, each issue adding its own field), and returns the branch it gave the session. The
   turn-end pull-request check reads that recorded branch, since a PR session's branch is not one
   the host could name in advance.
 - **The host checks out an existing branch** ([D2](DECISIONS.md#d2)): `PlaceRequest.existing`.
@@ -92,8 +95,8 @@ already exists, and one way to list and remove what it made.
   out at, so FIX-2386's count is the run's own commits.
 - **A remote branch as a base is fetched first** ([D2](DECISIONS.md#d2)): a base naming a
   pinned remote's branch (`origin/main`) in a listed repository is fetched under the same pinned
-  rules as an upstream today, then cut. A failed fetch warns and cuts from the copy on disk, as
-  an upstream does.
+  rules as an upstream today, then cut. A failed fetch is refused: the tracking ref on disk is
+  shared with every run, which can move it.
 - **A PR is its head branch** ([D2](DECISIONS.md#d2)): `pullRequestHead` in the workspace's
   GitHub module asks `gh` for the head branch; a PR from a fork is refused by name.
 - **One removal path** ([D3](DECISIONS.md#d3), epic ER-5): `WorkspaceHost.list()` and

@@ -35,7 +35,11 @@ flowchart TD
 - **The workspace returns the branch.** A PR's branch is known only after asking GitHub, so the
   provision result names it and FIX-2386's record keeps it. The turn-end check reads the record,
   falling back to `HarnessSessionWorkspace.branch` for a session recorded before it.
-- **Locks in:** `start` on session state, and a second argument to `provision`.
+- **One seam with FIX-2386 and FIX-2420.** `provision(place, request)` takes a request object,
+  `{ start?, onSetup? }`, and returns a path or `{ path, baseCommit?, branch?, setup? }`.
+  Whichever of the three merges first defines the shape and the others add their field, so
+  there is one provision call, not three.
+- **Locks in:** `start` on session state, and a `start` field on `provision`'s request.
 
 <a name="d2"></a>
 ## D2 · The host checks out an existing branch; a PR is its head branch
@@ -54,9 +58,11 @@ flowchart TD
   back to the PR, and the PR loop exists to push back. A fork's PR is refused: its branch is not
   on `origin`, and pushing to a fork is FIX-1768's question.
 - **A remote branch as a base** (`origin/main`) is fetched before the cut, by the code that
-  fetches an upstream today, from the pinned URL. A failed fetch warns and cuts from the copy on
-  disk, as an upstream does: refusing would stop offline work for a freshness the person can
-  see on the branch.
+  fetches an upstream today, from the pinned URL. **A failed fetch is refused**
+  (`remote-unreadable`), and so is an existing branch the repository lacks whose fetch fails
+  (`no-such-branch`). The tracking ref on disk is shared with every run's worktree, and a run
+  can move it; the host already refuses to cut an upstream base from it for that reason. A
+  person offline picks the local branch instead.
 - **Locks in:** one request flag and one `gh` read. The board manager can pass `existing` when
   the PR loop needs it, with no new host code.
 
