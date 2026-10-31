@@ -29,6 +29,15 @@
  *   - no state read after a stop: the "stop" case fails.
  *   - `followedRequest` from `latestRequest` alone: both "beside it" cases
  *     fail (null, or only the stream's status with no times).
+ *   - every live change put back, `increment` too: the "increment the read
+ *     already holds" case fails (the count reads 2).
+ *   - a state-only read that lands before the mount read dropped, as it was:
+ *     the "before the mount read" case fails, state is the mount read's.
+ *   - no stream status set by a stop: the "stopped" case fails (the request
+ *     still reads in progress); not cleared on a refused stop: the "refused"
+ *     case fails.
+ *   - no session fence on the status read: the "session changed" case fails
+ *     (the old session's record shows).
  *   - reading the followed request's status as soon as its stream ends,
  *     before the latest-request read lands: the "record when it ends" case
  *     fails (a status read the latest read made needless).
@@ -64,6 +73,7 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
   };
 });
 
+import { ClientHttpError } from "@flow-state-dev/client";
 import { useSession } from "../src/hooks/useSession";
 
 function message(id: string, requestId: string) {
@@ -231,6 +241,57 @@ describe("a live change while a state read is out", () => {
   });
 });
 
+describe("an increment the read already holds", () => {
+  it("is not put back a second time", async () => {
+    const { result } = await mount();
+    act(() => void result.current.followRequest("req_turn"));
+    act(() => void result.current.refresh({ items: false }));
+    await flush();
+    const stateOnly = stateCalls.length - 1;
+
+    const counted = (count: number) => ({ ...snapshot("counting"), clientData: { session: { phase: "counting", count } } });
+    act(() =>
+      connections.at(-1)!.callbacks.onItemAdded?.({
+        type: "item.added",
+        item: {
+          id: "sc-inc",
+          type: "state_change",
+          status: "completed",
+          requestId: "req_turn",
+          itemIndex: 1,
+          provenance: { blockName: "test", blockInstanceId: "test-1", phase: "main" },
+          ts: 2000,
+          scope: "session",
+          operation: "increment",
+          delta: { count: 1 },
+          version: 2,
+          transient: false,
+        },
+      }),
+    );
+    // The server kept the increment before it answered the read.
+    await land(stateOnly, counted(1));
+    expect(result.current.snapshot?.clientData.session).toEqual({ phase: "counting", count: 1 });
+  });
+});
+
+describe("a state-only read that lands before the mount read", () => {
+  it("is what the mount read loads, since it is newer", async () => {
+    const { result } = renderHook(() => useSession("sess1", { flowKind: "demo", items: true }));
+    await flush();
+    act(() => void result.current.refresh({ items: false }));
+    await flush();
+    const stateOnly = stateCalls.length - 1;
+
+    await land(stateOnly, snapshot("newer"));
+    expect(result.current.snapshot).toBeNull();
+    await land(0, snapshot("mounted", [message("m1", "req_turn")]));
+
+    expect(result.current.items.map((item) => item.id)).toEqual(["m1"]);
+    expect(result.current.snapshot?.clientData.session).toEqual({ phase: "newer" });
+  });
+});
+
 describe("state at a request's end", () => {
   it("a failed end re-reads state only", async () => {
     const { result } = await mount();
@@ -301,6 +362,57 @@ describe("state at a request's end", () => {
 });
 
 describe("followedRequest", () => {
+  it("a stopped request reads stopped, not still in progress", async () => {
+    const { result } = await mount();
+    act(() => void result.current.followRequest("req_turn"));
+    await act(async () => {
+      await result.current.abortRequest();
+    });
+    await flush();
+    expect(result.current.followedRequest?.status).toBe("aborted");
+  });
+
+  it("a refused stop leaves the request's own record to say how it ended", async () => {
+    const { result } = await mount();
+    act(() => void result.current.followRequest("req_turn"));
+    flowMock.abort.mockRejectedValue(new ClientHttpError("Abort request failed (409)", { status: 409, body: "" }));
+    sessionsMock.requests.mockResolvedValue([
+      { id: "req_turn", status: "completed", startedAtMs: 10, completedAtMs: 20, flowKind: "demo", actionName: "turn", userId: "devuser", createdAt: 0, updatedAt: 0 },
+    ]);
+    await act(async () => {
+      await result.current.abortRequest();
+    });
+    await flush();
+    expect(result.current.followedRequest).toEqual({ id: "req_turn", status: "completed", startedAtMs: 10, completedAtMs: 20 });
+  });
+
+  it("a status read for the session before does not land after the session changed", async () => {
+    sessionsMock.requests.mockResolvedValue([
+      { id: "req_steer", status: "completed", flowKind: "demo", actionName: "steer", userId: "devuser", createdAt: 0, updatedAt: 0 },
+    ]);
+    const answers: Array<(value: unknown) => void> = [];
+    requestMock.status.mockImplementation(() => new Promise((resolve) => answers.push(resolve)));
+    const { result, rerender } = renderHook(({ id }) => useSession(id, { flowKind: "demo", items: true }), {
+      initialProps: { id: "sess1" as string | undefined },
+    });
+    await flush();
+    await land(0, snapshot("mounted", [message("m1", "req_turn")]));
+    await flush();
+    expect(requestMock.status).toHaveBeenCalledTimes(1);
+
+    rerender({ id: "sess2" });
+    await flush();
+    // The new session shows an item of the same request id; its own read is
+    // still out when the old session's answer arrives.
+    await land(stateCalls.length - 1, { ...snapshot("other", [message("m9", "req_turn")]), sessionId: "sess2" });
+    await act(async () => {
+      answers[0]!({ id: "req_turn", status: "failed", startedAtMs: 1, completedAtMs: 2, ageMs: 1 });
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    });
+    // The new session's own read is still out: nothing is known yet.
+    expect(result.current.followedRequest).toBeNull();
+  });
+
   it("reads the stream's status while it runs, then the record when it ends", async () => {
     const { result } = await mount();
     act(() => void result.current.followRequest("req_turn"));

@@ -63,6 +63,17 @@ type SnapshotRead = { arrivalsBefore: number; sequence: number; state: StateRead
 const KEPT_LIVE_CHANGES = 256;
 
 /**
+ * Whether a live change lands the same whether or not a read already holds
+ * it. Only these are put back on top of a read: an `increment` or `push` the
+ * read already holds would count twice.
+ */
+function isRepeatable(item: StateChangeItem | ResourceChangeItem): boolean {
+  if (item.type === "resource_change") return true;
+  const { operation } = item as StateChangeItem;
+  return operation === "set" || operation === "patch" || operation === "delete_key";
+}
+
+/**
  * The request a view shows last, as {@link SessionView.followedRequest}
  * reports it: the fields of a request summary its status needs.
  */
@@ -664,6 +675,16 @@ export function useSession(
   // may not hold it, so it is put back on top of what the read returned.
   const liveChangesRef = useRef<Array<{ n: number; item: StateChangeItem | ResourceChangeItem }>>([]);
   const liveChangeCountRef = useRef(0);
+  // A state-only read that landed before the first full snapshot: newer than
+  // the state the mount read holds, so that read loads it instead, with the
+  // live changes since it landed on top.
+  const heldStateRef = useRef<{
+    state: Pick<SessionStateSnapshotResponse, "clientData" | "resources">;
+    changesAt: number;
+  } | null>(null);
+  // Bumped on every session change: a request status read for the session
+  // before doesn't land.
+  const followedGenerationRef = useRef(0);
   // The error a snapshot read that failed left, with that read's place in
   // order. A read requested after it that lands takes it away; an older one
   // landing late does not, and no read takes away an error from anywhere else.
@@ -967,21 +988,15 @@ export function useSession(
   );
 
   /**
-   * The state half of a read, or `null` when a read of state requested after
-   * it has already landed. It is what the read returned, with the live
-   * changes that arrived while it was out put back on top (they are set
-   * operations, so one the read already holds lands the same).
+   * State, with the repeatable live changes numbered after `after` put back
+   * on top. A non-repeatable one (`increment`, `push`) is left out: the read
+   * may already hold it, and the next read brings it either way.
    */
-  const takeState = useCallback(
-    (
-      next: SessionStateSnapshotResponse,
-      read: StateRead
-    ): Pick<SessionStateSnapshotResponse, "clientData" | "resources"> | null => {
-      if (read.sequence <= stateAppliedSequenceRef.current) return null;
-      stateAppliedSequenceRef.current = read.sequence;
+  const withLiveChanges = useCallback(
+    (next: SessionStateSnapshotResponse, after: number): Pick<SessionStateSnapshotResponse, "clientData" | "resources"> => {
       let merged: SessionStateSnapshotResponse = next;
       for (const { n, item } of liveChangesRef.current) {
-        if (n <= read.changesBefore) continue;
+        if (n <= after || !isRepeatable(item)) continue;
         const changed =
           item.type === "state_change"
             ? mergeStateChangeIntoSnapshot(merged, item as StateChangeItem)
@@ -991,6 +1006,23 @@ export function useSession(
       return { clientData: merged.clientData, resources: merged.resources };
     },
     []
+  );
+
+  /**
+   * The state half of a read, or `null` when a read of state requested after
+   * it has already landed. It is what the read returned, with the live
+   * changes that arrived while it was out put back on top.
+   */
+  const takeState = useCallback(
+    (
+      next: SessionStateSnapshotResponse,
+      read: StateRead
+    ): Pick<SessionStateSnapshotResponse, "clientData" | "resources"> | null => {
+      if (read.sequence <= stateAppliedSequenceRef.current) return null;
+      stateAppliedSequenceRef.current = read.sequence;
+      return withLiveChanges(next, read.changesBefore);
+    },
+    [withLiveChanges]
   );
 
   /** Keep a live state or resource change the stream merged, for reads in flight to put back. */
@@ -1045,7 +1077,12 @@ export function useSession(
       }
       // The state half: unless a newer read of state has landed (then the
       // view keeps that, with what the stream merged into it since).
-      const state = takeState(merged, read.state);
+      // A state-only read that landed before this one is newer than it.
+      const heldState = heldStateRef.current;
+      heldStateRef.current = null;
+      const state =
+        takeState(merged, read.state) ??
+        (heldState !== null ? withLiveChanges({ ...merged, ...heldState.state }, heldState.changesAt) : null);
       snapshotLandedRef.current = true;
       setSnapshot((prev) =>
         state !== null ? { ...merged, ...state } : prev === null ? merged : { ...merged, clientData: prev.clientData, resources: prev.resources }
@@ -1104,7 +1141,7 @@ export function useSession(
       setItems(storeRef.current.getSorted());
       return true;
     },
-    [itemConfig.enabled, itemConfig.includeTransient, itemConfig.itemTypes, takeState]
+    [itemConfig.enabled, itemConfig.includeTransient, itemConfig.itemTypes, takeState, withLiveChanges]
   );
 
   /**
@@ -1162,11 +1199,13 @@ export function useSession(
    */
   const readFollowedStatus = useCallback(
     (requestId: string): void => {
+      const generation = followedGenerationRef.current;
       flow
         .request(requestId)
         .status()
         .then(
           (record) =>
+            generation === followedGenerationRef.current &&
             setReadFollowed({
               id: record.id,
               status: record.status,
@@ -1194,9 +1233,13 @@ export function useSession(
         sessionsApi.get(sessionId),
         sessionsApi.state(sessionId, { includeItems: false })
       ]);
-      if (!snapshotLandedRef.current) return;
       const state = takeState(next, read);
       if (state === null) return;
+      if (!snapshotLandedRef.current) {
+        // The mount read is still out and holds older state: it loads this.
+        heldStateRef.current = { state, changesAt: liveChangeCountRef.current };
+        return;
+      }
       setSnapshot((prev) => (prev === null ? prev : { ...prev, ...state }));
       setDetail(nextDetail);
     } catch {
@@ -1543,7 +1586,9 @@ export function useSession(
     stateAppliedSequenceRef.current = stateSequenceRef.current;
     snapshotLandedRef.current = false;
     liveChangesRef.current = [];
+    heldStateRef.current = null;
     followedReadRef.current = null;
+    followedGenerationRef.current += 1;
     setStreamStatus(null);
     setReadFollowed(null);
 
@@ -2109,11 +2154,21 @@ export function useSession(
       setIsStuck(false);
     }
 
-    if (!refused) injectSyntheticAbortItem(requestId);
+    if (!refused) {
+      injectSyntheticAbortItem(requestId);
+      // The stream closed, so it reports no end: the stop is the end.
+      setStreamStatus((current) => (current?.id === requestId ? { id: requestId, status: "aborted" } : current));
+    } else {
+      // The request ended first; its record, not the closed stream, says how.
+      setStreamStatus((current) => (current?.id === requestId ? null : current));
+      void refreshLatestRequest().then((latest) => {
+        if (latest?.id !== requestId) readFollowedStatus(requestId);
+      });
+    }
     // The stream closed with the stop, so what the request wrote to state as
     // it stopped never reaches the view through it.
     void refreshState();
-  }, [flow, flushContentDeltas, injectSyntheticAbortItem, refreshState]);
+  }, [flow, flushContentDeltas, injectSyntheticAbortItem, refreshState, refreshLatestRequest, readFollowedStatus]);
 
   const followRequest = useCallback(
     (requestId: string) => {
