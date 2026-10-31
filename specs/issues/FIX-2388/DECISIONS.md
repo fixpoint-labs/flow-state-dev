@@ -87,4 +87,16 @@ flowchart TD
 
 ## Notes from review
 
-None yet.
+Round 1 (Codex: no findings; Cursor: approve). Carried for the implementer, none changes direction:
+
+- **One reader, one grammar.** The session flow and the manager both call the same section builder
+  (`readIssueSpecSection`), and the issue is checked by one grammar. `trackerIssue` is set once,
+  where the run opens, from the parsed `harnessFeature` key, and the branch reads the same value.
+- **"Reuse `heldPromptSection`" means the board's after-provision brief step.** The session flow has
+  no such hook; it gets its own step before the harness, calling the shared builder.
+- **The session brief is composed into the outbound prompt, never attached to the `cwd` feed.** It
+  runs once per turn, and only while no conversation is confirmed, so a harness resolving `cwd`
+  twice reads nothing twice.
+- **`{ path }` stays.** One option field, and a repository with another spec layout needs it on day one.
+- **Unit cases that repeat the goal legs** are kept where they guard what the goal can't reach
+  (grammar, read-only issue, a run keeping its recorded branch, the cap).
