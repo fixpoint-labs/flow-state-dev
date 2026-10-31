@@ -89,11 +89,13 @@ function seedWorkdir(dir: string): string {
  * Say one line in a worker's conversation and wait for it to go quiet: every
  * reply the conversation then holds, and the tools its turns called. A reply
  * can come in a later turn (a teammate's reply waking it, or a turn parked on
- * one), so the whole conversation is read once no request in any of the user's
- * conversations has been open for 20s.
+ * one), so the conversation is read once no request in any of the user's
+ * conversations has been open for 20s, and only what came after this ask is
+ * graded: an earlier ask's reply or tool calls never count for this one.
  */
 async function ask(fsd: Fsd, worker: string, line: string) {
   const session = await createWorkforceClient(fsd).ensureWorkerSession({ worker });
+  const before = (await itemsOf(fsd, session.id)).length;
   const sent = await fsd.flow(session.flowId ?? session.flowKind).send("respond", { message: line }, { sessionId: session.id });
   await sent.wait();
   for (let waited = 0, quiet = 0; waited < 8 * 60_000 && quiet < 20_000; waited += 2_000) {
@@ -108,7 +110,7 @@ async function ask(fsd: Fsd, worker: string, line: string) {
     quiet = running === 0 ? quiet + 2_000 : 0;
     await sleep(2_000);
   }
-  const items = await itemsOf(fsd, session.id);
+  const items = (await itemsOf(fsd, session.id)).slice(before);
   const reply = items
     .filter((item) => item.type === "message" && item.role === "assistant")
     .map((item) => (item.content ?? []).map((part) => part.text ?? "").join(""))
