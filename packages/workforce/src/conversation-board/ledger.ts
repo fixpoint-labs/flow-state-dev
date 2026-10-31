@@ -78,6 +78,8 @@ export const CONVERSATION_BOARD_CLIENT_FIELDS = [
   "id",
   "title",
   "goal",
+  // The rest of the brief, so a browser re-files a task whole (FIX-2381).
+  "context",
   "status",
   "assignee",
   "run",

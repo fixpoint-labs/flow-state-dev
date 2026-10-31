@@ -38,6 +38,9 @@ function updateOf(kind: InboxAskKind, answer: InboxAnswer): { message?: string; 
 /** How long the board's answer is waited on, and how often the request's wait looks at it. */
 const ANSWER_TIMEOUT_MS = 30_000;
 const ANSWER_POLL_MS = 150;
+/** Requests listed per page, and pages at most, while looking for the action's answer. */
+const REQUEST_PAGE = 100;
+const REQUEST_PAGES = 20;
 
 /**
  * Run one of a board's actions on the session that holds it, as the signed-in
@@ -62,11 +65,17 @@ async function sendBoardAction(client: Client, flowId: string, sessionId: string
     if (error instanceof ClientHttpError && error.status === 0) throw new Error("The action was sent, and the board didn't say in time whether it took it.");
     throw error;
   }
-  // The status carries no output: the session's listing does.
-  const listed = await client.sessions.requests(sessionId, { status, includeResultOutput: true, limit: 100 });
-  const found = listed.find((request) => request.id === requestId);
+  // The status carries no output: the session's listing does, a page at a time on a busy session.
+  let found: Awaited<ReturnType<Client["sessions"]["requests"]>>[number] | undefined;
+  for (let page = 0; page < REQUEST_PAGES && found === undefined; page += 1) {
+    const listed = await client.sessions.requests(sessionId, { status, includeResultOutput: true, limit: REQUEST_PAGE, offset: page * REQUEST_PAGE });
+    found = listed.find((request) => request.id === requestId);
+    if (listed.length < REQUEST_PAGE) break;
+  }
   if (status !== "completed") throw new Error(found?.result?.error?.message ?? `The board's ${action} ended ${status}.`);
-  const output = (found?.result?.output ?? {}) as Record<string, unknown>;
+  // Done, with no answer to read: never taken as a yes.
+  if (found === undefined) throw new Error(`The board's ${action} finished, and its answer isn't in the session's requests.`);
+  const output = (found.result?.output ?? {}) as Record<string, unknown>;
   if (output.ok === false) throw new Error(typeof output.error === "string" ? output.error : "The board refused it.");
   return output;
 }

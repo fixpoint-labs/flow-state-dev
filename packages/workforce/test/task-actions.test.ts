@@ -10,7 +10,7 @@
  * tests, where the routine lives).
  */
 import { describe, expect, it } from "vitest";
-import { createInboxClient, type TaskBoardAt } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, type RefileRow, type TaskBoardAt } from "@flow-state-dev/orchestration/inbox";
 import { bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
 
 /** A gate a `[hold:<name>]` task waits on, and its release. */
@@ -25,6 +25,17 @@ async function file(host: BoardHost, conv: string, input: Record<string, unknown
   expect(result.error, messageOf(result.error)).toBeUndefined();
   expect(result.output.ok, JSON.stringify(result.output)).toBe(true);
   return result.output.taskId as string;
+}
+
+/** One row of the conversation's board, as `alice`'s browser reads it: the fields the board exposes, nothing more. */
+async function browserRow(host: BoardHost, sessionId: string, taskId: string): Promise<Record<string, unknown>> {
+  const path = ["sessions", sessionId, "resources", "tasks"];
+  const router = (await host.state.getRouter()) as any;
+  const response: Response = await router.GET(new Request(`http://localhost/api/flows/${path.join("/")}`, { headers: { "x-user": "alice" } }), { params: { path } });
+  const body = (await response.json()) as { items?: Array<{ clientData: Record<string, unknown> }> };
+  const found = body.items?.find((item) => item.clientData.id === taskId)?.clientData;
+  if (found === undefined) throw new Error(`the browser's read has no row ${taskId}`);
+  return found;
 }
 
 async function until<T>(read: () => Promise<T>, ok: (value: T) => boolean, what: string): Promise<T> {
@@ -70,8 +81,9 @@ describe("a board's task actions, through the Inbox client, on a real conversati
       await expect(tasks.cancel(id)).rejects.toThrow(/cancelled/);
       expect(await row(id)).toEqual(before);
 
-      // Re-file: a new row with what the old one carried, the override winning.
-      const again = await tasks.refile((await row(id))!, { goal: "Audit licenses, active repos only" });
+      // Re-file, from the row as a browser reads it: a new row with the whole brief, the override winning.
+      const seen = await browserRow(host, conv, id);
+      const again = await tasks.refile(seen as unknown as RefileRow, { goal: "Audit licenses, active repos only" });
       expect(again).not.toBe(id);
       expect(await row(again)).toMatchObject({
         goal: "Audit licenses, active repos only",

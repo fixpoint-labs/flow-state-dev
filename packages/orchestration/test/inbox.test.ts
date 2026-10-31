@@ -424,3 +424,26 @@ describe("taskActionName: a board's action, named as the task tools register it 
     expect(taskActionName("createTask", "eng.feature.work")).toBe("createTask_eng_feature_work");
   });
 });
+
+describe("a board's task actions read the board's answer before they resolve (FIX-2381)", () => {
+  const at = { flowId: "desk", sessionId: "s_desk", board: "tasks" };
+  const board = (listings: unknown[][]) => {
+    const send = vi.fn(async () => ({ id: "req_act" }));
+    const flow = vi.fn(() => ({ send, request: () => ({ wait: async () => ({ status: "completed" }) }) }));
+    const requests = vi.fn(async () => listings.shift() ?? []);
+    return { send, requests, tasks: createInboxClient({ flow, sessions: { requests } } as unknown as Client).board(at) };
+  };
+  const page = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `req_other_${i}`, result: { output: { ok: true } } }));
+
+  it("sends the board's own updateTask and createTask, and finds the answer past the first page", async () => {
+    const { send, requests, tasks } = board([page(100), [{ id: "req_act", result: { output: { ok: true, cancelled: ["t2"] } } }]]);
+    expect(await tasks.cancel("t1")).toEqual(["t2"]);
+    expect(send.mock.calls[0]).toEqual(["updateTask_tasks", { id: "t1", status: "cancelled" }, { sessionId: "s_desk" }]);
+    expect(requests).toHaveBeenCalledTimes(2);
+  });
+
+  it("never takes a finished action with no answer to read as a yes", async () => {
+    const { tasks } = board([page(3)]);
+    await expect(tasks.steer("t1", "go")).rejects.toThrow(/answer isn't in the session's requests/);
+  });
+});
