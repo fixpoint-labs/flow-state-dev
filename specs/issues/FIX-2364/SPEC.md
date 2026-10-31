@@ -27,8 +27,8 @@ can with its tools before it asks the user anything, and asks only what depends 
   (FIX-2361, Architect design first; it also drops the Claude Code-style `thread` worker's "can't
   see or change the project's code" line when it grants that worker read access), and fixing
   app prompts that contradict the rule. FIX-2363 owns the `thread` worker's "ask which region
-  matters"; its "the user is the one you ask" and "never message another worker" lines have no
-  owner yet, and the build PR files a follow-up for them.
+  matters"; its "the user is the one you ask" and "never message another worker" lines had no
+  owner until FIX-2366, filed for them.
 - **Not done if:** a worker with nothing but a description, asked to review a PR it can't see,
   asks the user to paste it; or the FIX-2334 and FIX-2336 checks stop passing.
 
