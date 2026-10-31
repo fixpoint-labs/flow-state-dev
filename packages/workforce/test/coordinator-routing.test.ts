@@ -47,6 +47,7 @@ import { handler } from "@flow-state-dev/core";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { bootHost, messageOf, quiet, standardWorkers } from "./coordinator-harness";
+import { TOOL_USE_RULE } from "../src/messages/worker-identity";
 
 const heardBy = (host: ReturnType<typeof bootHost>) => host.heard.map((h) => h.worker);
 
@@ -643,7 +644,8 @@ describe("judgment (V7)", () => {
     // coordinator could message, delegate or not: sendMessage's tool list,
     // and the identity layer's (FIX-2334), which leads the system message.
     const messages = judgment.calls[0]!.input as Array<{ role: string; content: unknown }>;
-    const identity = /^You are [\s\S]*?do it\.\n/;
+    // The layer ends with its rule, so the strip ends there too.
+    const identity = new RegExp(`^You are [\\s\\S]*?${TOOL_USE_RULE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\n`);
     const prompt = JSON.stringify(
       messages
         .filter((m) => !(typeof m.content === "string" && m.content.startsWith("<tools>")))

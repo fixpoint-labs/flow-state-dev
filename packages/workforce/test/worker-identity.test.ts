@@ -105,6 +105,27 @@ describe("what a worker is told first", () => {
     }
   });
 
+  // FIX-2364: a lead or main session works things out first too, not just the
+  // workers it hands work to. A coordinator's judgment turn shares the agent
+  // turn, so it is told the same rule, ahead of its own file.
+  it("tells a coordinator's own turn to work things out first, ahead of its own instructions", async () => {
+    const judgment = mockGenerator({ script: [{ when: () => true, then: { text: "On it." } }] });
+    const lead = worker("eng.lead", { flow: "coordinator", description: "Hands out the work.", delegates: ["eng.cy"] }, "Lead's own instructions.", "Engineering");
+    const h = bootBoardHost({ standard: [...roster(), lead], judgment });
+    try {
+      const created = await h.create("alice", "coordinator", { state: { workerId: "eng.lead" } });
+      if (created.status !== 201) throw new Error(`creating eng.lead's session failed: ${JSON.stringify(created.body)}`);
+      await h.post("alice", created.body.session!.id, "respond", { message: "Review what the last task did." }, "coordinator");
+      await h.settled();
+      const system = systemsOf(judgment)[0]!;
+      expect(system.startsWith("You are lead, on the Engineering team.")).toBe(true);
+      expect(system).toContain(TOOL_USE_RULE);
+      expect(system.indexOf("Lead's own instructions.")).toBeGreaterThan(system.indexOf(TOOL_USE_RULE));
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("names a worker with no name: by its id's worker segment", async () => {
     const agentAnswer = mockGenerator({ script: [{ when: () => true, then: { text: "Hi." } }] });
     const h = bootBoardHost({ standard: roster(), agentAnswer, judgment: mockGenerator({ script: [{ when: () => true, then: { text: "" } }] }) });
