@@ -68,6 +68,18 @@ export async function readRunStatus(client: Client, run: Pick<OpenRun, "flowId" 
   }
 }
 
+/**
+ * When the run's request record says the run ended, in ms since epoch, or
+ * `undefined` when the record carries no end time.
+ */
+export async function readRunEnd(client: Client, run: Pick<OpenRun, "flowId" | "requestId">): Promise<number | undefined> {
+  try {
+    return (await client.flow(run.flowId).request(run.requestId).status()).completedAtMs;
+  } catch (error) {
+    return fail(error);
+  }
+}
+
 /** Items per session-state page. */
 const ITEM_PAGE = 200;
 /** How many pages the Session reads before it says there is more than it shows. */

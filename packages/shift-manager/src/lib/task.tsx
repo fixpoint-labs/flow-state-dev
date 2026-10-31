@@ -27,7 +27,7 @@ import type { RequestStatus } from "@flow-state-dev/core/types";
 import { allRows, type LoadedSnapshot } from "./derive";
 import { useLab } from "./lab-data";
 import { conversationBoardRef, describeFailure, type BoardRow, type Failure } from "./reads";
-import { interruptRun, readRunStatus, resolveRunFlow, RunReadError, type OpenRun } from "./run";
+import { interruptRun, readRunEnd, readRunStatus, resolveRunFlow, RunReadError, type OpenRun } from "./run";
 
 /** How often, and how many times, a task screen re-reads its row. */
 export const REREAD_EVERY_MS = 2_000;
@@ -75,6 +75,8 @@ export type TaskView = {
   reportStatus(status: string): void;
   interrupt: InterruptState;
   requestInterrupt(): Promise<void>;
+  /** When an aborted run stopped, by its request record; `undefined` until read, or when the record has no end time. */
+  stoppedAt: number | undefined;
   devtoolUrl: string | undefined;
   /** Request ids this composer started, newest last, for this open task only (FIX-2009). */
   sent: readonly string[];
@@ -284,6 +286,22 @@ export function TaskProvider({
     }
   }, [client, openRun, interrupt.kind, reportStatus]);
 
+  // An aborted run's end time, from its record, for "run stopped at".
+  const [stopped, setStopped] = useState<{ requestId: string; at: number | undefined } | undefined>();
+  useEffect(() => {
+    if (openRun === undefined || currentStatus !== "aborted") return;
+    let live = true;
+    readRunEnd(client, openRun)
+      .then((at) => {
+        if (live) setStopped({ requestId: openRun.requestId, at });
+      })
+      // No end time is only a missing detail: the line still says interrupted.
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [client, openRun, currentStatus]);
+
   const [sent, setSent] = useState<string[]>([]);
   useEffect(() => setSent([]), [boardRef, taskId]);
   const noteSent = useCallback((requestId: string) => setSent((held) => (held.includes(requestId) ? held : [...held, requestId])), []);
@@ -307,6 +325,7 @@ export function TaskProvider({
     reportStatus,
     interrupt,
     requestInterrupt,
+    stoppedAt: stopped !== undefined && stopped.requestId === openRun?.requestId ? stopped.at : undefined,
     devtoolUrl,
     sent,
     noteSent,

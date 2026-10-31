@@ -412,6 +412,33 @@ The send shortcut for a message box. Cmd+Enter on a Mac and Ctrl+Enter elsewhere
 - `enterSends` (default `false`): plain Enter sends too, as in a chat composer. Leave it off in a box for a longer answer, where Enter is a new line.
 - Shift+Enter never sends, and neither does an Enter that confirms an input method's composition (CJK and the like, including Safari's `keyCode` 229).
 
+### `useInterruptKeys(options)` and `createInterruptKeys(options?)`
+
+The keyboard stop for anything long-running, such as an agent's turn. Esc means "dismiss" everywhere, so one Esc never stops anything. Esc arms, and a second Esc within 1.5 seconds stops. Cmd+. on a Mac, or Ctrl+. elsewhere, stops at once.
+
+```tsx
+const keys = useInterruptKeys({ enabled: running, onInterrupt: () => void stop() });
+
+<div tabIndex={-1} onKeyDown={keys.onKeyDown}>
+  …
+  {keys.armed ? "press Esc again to interrupt" : "esc esc to interrupt"}
+</div>
+```
+
+- `enabled`: whether there is anything to stop. While it is `false`, no key is handled and the gesture disarms.
+- `onInterrupt`: called once for each completed gesture.
+- `windowMs` (default `1500`): how long the first Esc waits for its second.
+- `armed`: `true` while a first Esc waits. Use it for a "press Esc again" hint. It clears itself when the window runs out.
+- `onKeyDown`: accepts a React or a DOM keyboard event. Attach it to the scope that can stop, or to `document` so it works wherever focus is.
+
+Some Esc presses never count, and each one also clears an armed first press:
+
+- An Esc typed in a text field (textarea, input, select, contenteditable). The field owns that key. Cmd/Ctrl+. still works there.
+- An Esc whose default is already prevented. A dialog or sheet that closes on Esc should call `event.preventDefault()`, so the press that closed it can't become half of a stop. A document listener only sees it in time if it listens in the capture phase.
+- An Esc that ends an input method's composition.
+
+`createInterruptKeys` is the same rule without React. Its `press(event)` returns `"interrupt"`, `"armed"`, or `null`.
+
 ## Voice playback
 
 `useVoice` covers both whole-buffer playback (one buffer per `OutputAudioContent` from batch providers like OpenAI) and streaming playback (per-chunk audio via `content.audio.delta` from streaming providers). The audio player handles both modes transparently — flow authors don't change anything to opt in.

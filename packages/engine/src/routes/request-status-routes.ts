@@ -59,14 +59,18 @@ export async function handleGetRequestStatus(
   const active = await ctx.stores.activeRequests.get(requestId);
   const now = Date.now();
 
+  // When it reached its terminal status: an aborted or failed run stamps its
+  // own field rather than `completedAtMs`, and the snapshot names them all one way.
+  const endedAtMs =
+    record.completedAtMs ??
+    (record.status === "aborted" ? record.abortedAt : record.status === "failed" ? record.failedAtMs : undefined);
+
   const snapshot: RequestStatusSnapshot = {
     id: requestId,
     status: record.status,
     startedAtMs: record.startedAtMs,
     ageMs: Math.max(0, now - record.startedAtMs),
-    ...(record.completedAtMs !== undefined
-      ? { completedAtMs: record.completedAtMs }
-      : {}),
+    ...(endedAtMs !== undefined ? { completedAtMs: endedAtMs } : {}),
     ...(active?.lastHeartbeatAt !== undefined
       ? { lastHeartbeatAt: active.lastHeartbeatAt }
       : {}),

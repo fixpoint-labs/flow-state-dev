@@ -1,4 +1,5 @@
-import { useJumpToLatest } from "@flow-state-dev/react";
+import { useInterruptKeys, useJumpToLatest } from "@flow-state-dev/react";
+import { useEffect } from "react";
 import type { LabAdapter, ProjectRow, SessionRow, TaskRow } from "../adapter";
 import { elapsed, useNow, useWatch } from "../lib/use-watch";
 import { modeOfWorker } from "../modes";
@@ -12,6 +13,9 @@ import { ThreadCard } from "./ThreadCard";
  * composer. The header names the session's project; a session with none gets
  * no composer, so nothing runs until it has one (spec D3). In threads mode a
  * thread the lead filed is a card here, read from its task row.
+ *
+ * Esc twice, or Cmd/Ctrl+., stops the turn from anywhere on the page. One Esc
+ * never does: it closes a sheet, or belongs to the text box it was typed in.
  */
 export function Thread({
   adapter,
@@ -37,6 +41,13 @@ export function Thread({
   const now = useNow(running);
   const count = view?.entries.length ?? 0;
   const feed = useJumpToLatest({ resetKey: session.id });
+  const keys = useInterruptKeys({ enabled: running && session.projectId !== null, onInterrupt: () => void adapter.interrupt(session.id) });
+  // On the document, so the keys work wherever focus is; a sheet's Esc arrives here already spent.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => keys.onKeyDown(event);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [keys.onKeyDown]);
 
   return (
     <main aria-label="Main thread" className="flex h-full min-h-0 min-w-0 flex-col">
@@ -94,6 +105,7 @@ export function Thread({
       ) : (
         <Composer
           running={running}
+          armed={keys.armed}
           onSend={(text) => {
             // Your own line brings you back to the end, wherever you had scrolled to.
             feed.sent();
