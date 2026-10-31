@@ -55,7 +55,9 @@ function schemaViolations(value, schema, path = '') {
   const out = []
   const types = [].concat(schema.type || [])
   const actual = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value
-  if (types.length && !types.includes(actual)) {
+  // JSON Schema's `integer` is a whole `number`; the harness validates it that way.
+  const intOk = actual === 'number' && Number.isInteger(value) && types.includes('integer')
+  if (types.length && !types.includes(actual) && !intOk) {
     out.push(`${path || 'root'} is ${actual}, schema allows ${types.join('|')}`)
     return out
   }
@@ -10112,11 +10114,105 @@ check('INVARIANT: a dead worker never mutates a row beyond its cursor', async ()
 })
 
 // ---------------------------------------------------------------------------
+// app-review — lead per app → lens sub-agents → one synthesizer
+// ---------------------------------------------------------------------------
+
+const reviewApps = [
+  { key: 'alpha', name: 'Alpha', dir: 'labs/alpha', prefix: 'AL' },
+  { key: 'beta', name: 'Beta', dir: 'labs/beta', prefix: 'BE' },
+]
+const reviewBrief = { summary: 's', architecture: 'a', knownGaps: [], userJourneys: [] }
+const reviewFinding = (title) => ({ title, problem: 'p', proposal: 'q', evidence: ['x.ts:1'], impact: 3, effort: 'S', likelyLayer: 'app-only', matchesExisting: '' })
+const reviewItem = (id, apps, sourceFindings) => ({ id, title: 't', theme: 'T', apps, home: 'app', package: 'labs/alpha', rationale: 'r', problem: 'p', proposal: 'q', impact: 3, effort: 'S', priority: 'P2', sourceFindings, evidence: [] })
+function reviewResponder({ deadLeads = [], noFindings = false, synth } = {}) {
+  return (prompt, opts) => {
+    const [role, app] = (opts.label || '').split(':')
+    if (role === 'lead') return deadLeads.includes(app) ? null : reviewBrief
+    if (role === 'synthesizer') return synth
+    return { findings: noFindings ? [] : [reviewFinding(`${role} on ${app} 1`), reviewFinding(`${role} on ${app} 2`)] }
+  }
+}
+const freshSynth = { executiveSummary: 'e', themes: [{ name: 'T', description: 'd' }], items: [reviewItem('R-01', ['alpha', 'beta'], ['AL-USA-1', 'BE-USA-1'])], rejected: [] }
+
+check('app-review: a lead per app, every lens per app, then one synthesizer that sees every finding', async () => {
+  const { result, calls } = await run('app-review.js', { args: { apps: reviewApps, focus: 'FOCUS-MARKER' }, respond: reviewResponder({ synth: freshSynth }) })
+  assert.deepEqual(labels(calls, 'lead:').sort(), ['lead:alpha', 'lead:beta'])
+  assert.equal(calls.filter((c) => c.phase === 'Find').length, 6, 'three default lenses for each of two apps')
+  assert.equal(labels(calls, 'synthesizer').length, 1)
+  // Finding ids are stable: app prefix, lens tag, ordinal — the report and the merge key on them.
+  const ids = result.apps.flatMap((a) => a.findings.map((f) => f.id))
+  assert.ok(ids.includes('AL-USA-1') && ids.includes('BE-DOI-2') && ids.includes('AL-ROB-1'), ids.join(','))
+  const synthPrompt = calls.find((c) => c.label === 'synthesizer').prompt
+  for (const id of ids) assert.ok(synthPrompt.includes(id), `synthesizer never sees ${id}`)
+  // The user's focus is what makes each run adapt; it has to reach every agent, not just the lead.
+  for (const c of calls) assert.ok(c.prompt.includes('FOCUS-MARKER'), `${c.label} lost the focus`)
+  assert.equal(result.mode, 'fresh')
+  assert.deepEqual(result.synth, freshSynth)
+})
+
+check('app-review: custom lenses and minPerLens replace the defaults', async () => {
+  const { calls } = await run('app-review.js', {
+    args: { apps: [reviewApps[0]], minPerLens: 8, lenses: [{ key: 'voice-latency', prompt: 'LENS: voice latency' }] },
+    respond: reviewResponder({ synth: { ...freshSynth, items: [reviewItem('R-01', ['alpha'], ['AL-VOI-1'])] } }),
+  })
+  const finds = calls.filter((c) => c.phase === 'Find')
+  assert.equal(finds.length, 1)
+  assert.equal(finds[0].label, 'voice-latency:alpha')
+  assert.match(finds[0].prompt, /LENS: voice latency/)
+  assert.match(finds[0].prompt, /AT LEAST 8 /)
+})
+
+check('app-review: fold mode points every agent at the prior items and asks for updates, not a rewrite', async () => {
+  // R-42 names `gamma`, an app only the prior run reviewed: fold mode has to accept it.
+  const synth = { executiveSummary: 'e', updates: [], newItems: [reviewItem('R-42', ['beta', 'gamma'], ['BE-USA-1'])], newThemes: [], rejected: [] }
+  const { result, calls } = await run('app-review.js', {
+    args: { apps: reviewApps, prior: { itemsFile: '/tmp/prior-items.json', apps: ['gamma'] } },
+    respond: reviewResponder({ synth }),
+  })
+  for (const c of calls.filter((c) => c.phase !== 'Map')) assert.ok(c.prompt.includes('/tmp/prior-items.json'), `${c.label} can't see the prior items`)
+  const s = calls.find((c) => c.label === 'synthesizer')
+  assert.ok(s.schema.properties.updates && s.schema.properties.newItems && !s.schema.properties.items, 'fold synth returns updates + newItems')
+  assert.equal(result.mode, 'fold')
+})
+
+check('app-review: lenses that share a prefix still mint distinct finding ids', async () => {
+  const lenses = [{ key: 'performance', prompt: 'LENS: p' }, { key: 'persistence', prompt: 'LENS: q' }]
+  const { result } = await run('app-review.js', { args: { apps: [reviewApps[0]], lenses }, respond: reviewResponder({ synth: { ...freshSynth, items: [reviewItem('R-01', ['alpha'], ['AL-PER-1'])] } }) })
+  const ids = result.apps[0].findings.map((f) => f.id)
+  assert.equal(new Set(ids).size, ids.length, `duplicate ids: ${ids.join(',')}`)
+  assert.ok(ids.includes('AL-PER-1') && ids.includes('AL-PER2-1'), ids.join(','))
+})
+
+check('app-review: runTag makes finding ids distinct across runs', async () => {
+  const { result } = await run('app-review.js', { args: { apps: [reviewApps[0]], runTag: 'r2' }, respond: reviewResponder({ synth: { ...freshSynth, items: [reviewItem('R-01', ['alpha'], ['AL-R2-USA-1'])] } }) })
+  const ids = result.apps[0].findings.map((f) => f.id)
+  assert.ok(ids.includes('AL-R2-USA-1') && ids.includes('AL-R2-ROB-2'), ids.join(','))
+})
+
+check('app-review: a dead lead drops only its app, and says so', async () => {
+  const { result, calls, logs } = await run('app-review.js', { args: { apps: reviewApps }, respond: reviewResponder({ deadLeads: ['beta'], synth: freshSynth }) })
+  assert.equal(calls.filter((c) => (c.label || '').endsWith(':beta') && c.phase === 'Find').length, 0, 'no lens runs without a brief')
+  assert.deepEqual(result.apps.map((a) => a.app), ['alpha'])
+  assert.deepEqual(result.lost, ['beta'])
+  assert.ok(logs.some((l) => l.includes('beta')), 'the loss is logged, not silent')
+})
+
+check('app-review: no findings anywhere skips the synthesizer', async () => {
+  const { result, calls } = await run('app-review.js', { args: { apps: reviewApps }, respond: reviewResponder({ noFindings: true }) })
+  assert.equal(labels(calls, 'synthesizer').length, 0)
+  assert.equal(result.synth, null)
+})
+
+check('app-review: refuses to run without apps', async () => {
+  await assert.rejects(() => run('app-review.js', { args: { focus: 'x' }, respond: () => null }), /args\.apps/)
+})
+
+// ---------------------------------------------------------------------------
 // meta contract — phases declared must match the phases actually started
 // ---------------------------------------------------------------------------
 
 check('every phase() a script can start is declared in meta.phases', async () => {
-  for (const name of ['epic-wake.js', 'issue-multi-pr.js']) {
+  for (const name of ['epic-wake.js', 'issue-multi-pr.js', 'app-review.js']) {
     const src = readFileSync(join(HERE, name), 'utf8')
     const declared = [...src.matchAll(/\{ title: '([^']+)'/g)].map((m) => m[1])
     const started = [...src.matchAll(/^phase\('([^']+)'\)/gm)].map((m) => m[1])
