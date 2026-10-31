@@ -16,8 +16,8 @@
  * - `TEAMMATES_RUNS`: the folder coding runs' worktrees go in (default
  *   `teammates-runs/` beside the store).
  * - `TEAMMATES_RUN_TIMEOUT_MS`: the wall-clock budget for one coding run, in
- *   milliseconds (default 20 minutes). Not a positive whole number, and the lab
- *   fails to start.
+ *   milliseconds (default 20 minutes). A value that isn't a positive whole
+ *   number a timer can hold stops the lab at start.
  */
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -30,15 +30,13 @@ const PROJECT_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const store = process.env.TEAMMATES_STORE ?? defaultStore();
 mkdirSync(dirname(store), { recursive: true });
 
-const runTimeoutMs = runTimeout(process.env.TEAMMATES_RUN_TIMEOUT_MS);
-
 export default await openTeammates({
   store,
   model: process.env.TEAMMATES_MODEL ?? "openai/gpt-6-luna",
   userId: process.env.TEAMMATES_USER ?? "you",
   workdir: process.env.TEAMMATES_WORKDIR ?? PROJECT_ROOT,
   runsRoot: process.env.TEAMMATES_RUNS ?? join(dirname(store), "teammates-runs"),
+  runTimeoutMs: runTimeout(process.env.TEAMMATES_RUN_TIMEOUT_MS),
   ...(process.env.TEAMMATES_TREE === undefined ? {} : { tree: process.env.TEAMMATES_TREE }),
-  ...(runTimeoutMs === undefined ? {} : { runTimeoutMs }),
   ...(process.env.TEAMMATES_HARNESS === undefined ? {} : { harness: process.env.TEAMMATES_HARNESS }),
 });
