@@ -850,8 +850,11 @@ export function useSession(
       setLatestRequest(null);
       return null;
     }
+    const generation = sessionGenerationRef.current;
     try {
       const list = await sessionsApi.requests(sessionId, { limit: 1 });
+      // The session changed while the read was out: it describes the last one.
+      if (generation !== sessionGenerationRef.current) return null;
       const latest = list[0] ?? null;
       setLatestRequest(latest);
       return latest;
@@ -1253,7 +1256,10 @@ export function useSession(
    */
   const readRecordOf = useCallback(
     (requestId: string): void => {
+      const generation = sessionGenerationRef.current;
       void refreshLatestRequest().then((latest) => {
+        // The session changed while the latest read was out: not this one's.
+        if (generation !== sessionGenerationRef.current) return;
         if (latest?.id !== requestId) readFollowedStatus(requestId);
       });
     },

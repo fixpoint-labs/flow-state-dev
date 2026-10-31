@@ -46,6 +46,9 @@
  *   - no session fence on the status read: the "session changed" case fails
  *     (the old session's record shows); a session fence alone: the "shown
  *     request changed" case fails (followedRequest reads null).
+ *   - no session check on the latest-request read, or before the status
+ *     read that follows it: the "latest read answers after the session
+ *     changed" case fails.
  *   - no session check after the stop or dismissal's await: the "resolves
  *     after the session changed" case fails (a read for the old session).
  *   - no stream status cleared by a dismissal: the "dismissed" case fails
@@ -537,6 +540,30 @@ describe("followedRequest", () => {
       for (let i = 0; i < 5; i += 1) await Promise.resolve();
     });
     expect(result.current.followedRequest).toEqual({ id: "req_next", status: "completed", startedAtMs: 40, completedAtMs: 50 });
+  });
+
+  it("a request's end whose latest read answers after the session changed reads no status for it", async () => {
+    let answerLatest!: (value: unknown) => void;
+    const { result, rerender } = renderHook(({ id }) => useSession(id, { flowKind: "demo", items: true }), {
+      initialProps: { id: "sess1" },
+    });
+    await flush();
+    await land(0, snapshot("mounted", [message("m1", "req_turn")]));
+    act(() => void result.current.followRequest("req_turn"));
+
+    sessionsMock.requests.mockImplementationOnce(() => new Promise((resolve) => (answerLatest = resolve)));
+    act(() => connections.at(-1)!.callbacks.onRequestStatus?.({ type: "request.failed", status: "failed" }));
+    await flush();
+
+    rerender({ id: "sess2" });
+    await flush();
+    const statusReads = requestMock.status.mock.calls.length;
+    await act(async () => {
+      answerLatest([{ id: "req_other", status: "completed", flowKind: "demo", actionName: "turn", userId: "devuser", createdAt: 0, updatedAt: 0 }]);
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    });
+    expect(requestMock.status.mock.calls.length).toBe(statusReads);
+    expect(result.current.latestRequest).toBeNull();
   });
 
   it("a status read for the session before does not land after the session changed", async () => {
