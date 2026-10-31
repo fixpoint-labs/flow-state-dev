@@ -143,7 +143,7 @@ Code-style lab, each from `main` once the card has merged.
 | Claude Code-style `ReviewCard`, `lib/review.ts`, `reviewStopOf` | **Superseded** by `review-hold`; deleted |
 | Registry `suspension-card`, `question`, `approval` | **Extended:** the dispatcher gains a `review` route |
 | Inbox client `answerOne`, `inboxItems` | **Builds on** |
-| FIX-2379 `taskRowView` and its `waitingOn.hold` | **Builds on.** The popup's question and review come from it |
+| FIX-2379 `taskRowView` and its `hold` | **Builds on.** The popup's question and review come from it |
 | Shift Manager `AskCard` | **Builds on.** Unchanged; it draws the card through `SuspensionCard` |
 
 **Builds on / Adds.** `review-hold` (adds) against Claude Code-style's `ReviewCard`: **extend**,
