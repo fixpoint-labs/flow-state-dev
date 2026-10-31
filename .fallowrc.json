@@ -79,7 +79,9 @@
     "apps/docs/scripts/brand-lint-fixtures/**",
     "goals/_template/**",
     "goals/*/*/harness*.mts",
-    "goals/*/*/host/**"
+    "goals/*/*/host/**",
+    // flow-state.build is a static page: its HTML loads the stylesheet, which no import reaches.
+    "apps/build-site/public/**"
   ],
 
   // Analyzed (their imports count) but never reported: vendored shadcn and
