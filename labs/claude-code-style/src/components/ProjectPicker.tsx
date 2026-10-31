@@ -7,7 +7,8 @@ import type { ProjectRow } from "../adapter";
  * It asks before the composer opens and has no default, so a coding run never
  * lands in a repository nobody chose. *New project* adds one: a name and the
  * repository its coding runs clone. Picking is held while the session opens,
- * so a second click can't open two, and a session that fails to open says so here.
+ * and creating while the project is made, so a second click can't do either twice;
+ * a refusal says so here.
  */
 export function ProjectPicker({
   projects,
@@ -20,19 +21,12 @@ export function ProjectPicker({
 }) {
   const [name, setName] = useState("");
   const [repository, setRepository] = useState("");
-  const [error, setError] = useState<string | undefined>();
   const pick = useSubmit(onPick);
-  const create = (event: React.FormEvent) => {
-    event.preventDefault();
-    setError(undefined);
-    onCreate(name.trim(), repository.trim()).then(
-      () => {
-        setName("");
-        setRepository("");
-      },
-      (failed: unknown) => setError(failed instanceof Error ? failed.message : String(failed)),
-    );
-  };
+  const create = useSubmit(async () => {
+    await onCreate(name.trim(), repository.trim());
+    setName("");
+    setRepository("");
+  });
   return (
     <main aria-label="Main thread" className="flex h-full min-h-0 min-w-0 flex-col items-center justify-center px-6">
       <section aria-label="Choose a project" className="w-full max-w-sm">
@@ -57,7 +51,7 @@ export function ProjectPicker({
             Couldn't open the session: {pick.error}
           </p>
         )}
-        <form aria-label="New project" onSubmit={create} className="mt-6 flex flex-col gap-2">
+        <form aria-label="New project" onSubmit={(event) => void create.submit(event)} className="mt-6 flex flex-col gap-2">
           <h2 className="text-xs font-semibold">New project</h2>
           <input
             aria-label="Project name"
@@ -75,14 +69,14 @@ export function ProjectPicker({
           />
           <button
             type="submit"
-            disabled={name.trim() === "" || repository.trim() === ""}
+            disabled={create.busy || name.trim() === "" || repository.trim() === ""}
             className="border border-border bg-background px-3 py-2 text-left text-sm font-semibold hover:bg-accent disabled:opacity-50"
           >
             Create project
           </button>
-          {error === undefined ? null : (
+          {create.error === undefined ? null : (
             <p role="alert" className="text-xs text-destructive">
-              {error}
+              {create.error}
             </p>
           )}
         </form>

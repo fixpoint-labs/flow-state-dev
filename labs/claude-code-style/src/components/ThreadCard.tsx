@@ -13,7 +13,16 @@ import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus
  * you type the words. *Resolve* is held while its answer is on its way, and
  * says so inline when the answer is refused.
  */
-export function ThreadCard({
+export function ThreadCard(props: {
+  adapter: LabAdapter;
+  sessionId: string;
+  task: TaskRow | undefined;
+  onOpen: (taskId: string) => void;
+}) {
+  return props.task ? <LoadedThreadCard {...props} task={props.task} /> : null;
+}
+
+function LoadedThreadCard({
   adapter,
   sessionId,
   task,
@@ -21,11 +30,10 @@ export function ThreadCard({
 }: {
   adapter: LabAdapter;
   sessionId: string;
-  task: TaskRow | undefined;
+  task: TaskRow;
   onOpen: (taskId: string) => void;
 }) {
-  const resolve = useSubmit(() => adapter.resolve(sessionId, task!.id));
-  if (!task) return null;
+  const resolve = useSubmit(() => adapter.resolve(sessionId, task.id));
   const column = statusColumn(task);
   const button = "border border-border bg-muted px-2 py-0.5 text-xs hover:bg-accent";
   const primary = "bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground";

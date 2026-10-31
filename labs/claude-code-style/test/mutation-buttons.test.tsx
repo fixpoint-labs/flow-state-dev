@@ -150,4 +150,21 @@ describe("buttons that change something", () => {
     expect(screen.queryByLabelText("Message the main session")).toBeNull();
     expect((project as HTMLButtonElement).disabled).toBe(false);
   });
+  it("creates one project for a double submit, and keeps the form filled with the refusal when it can't", async () => {
+    const createProject = held();
+    render(<App adapter={{ ...createFakeLab({ speed: 0.01 }), createProject: async () => (await createProject.run(), undefined as never) }} />);
+    const form = await screen.findByRole("form", { name: "New project" });
+    fireEvent.change(within(form).getByLabelText("Project name"), { target: { value: "billing" } });
+    fireEvent.change(within(form).getByLabelText("Repository"), { target: { value: "file:///tmp/billing" } });
+    const create = button(form, "Create project");
+    fireEvent.click(create);
+    fireEvent.click(create);
+    expect(createProject.calls).toBe(1);
+    expect(create.disabled).toBe(true);
+
+    await createProject.settle(new Error("repository not found"));
+    expect(within(form).getByRole("alert").textContent).toBe("repository not found");
+    expect((within(form).getByLabelText("Project name") as HTMLInputElement).value).toBe("billing");
+    expect(create.disabled).toBe(false);
+  });
 });
