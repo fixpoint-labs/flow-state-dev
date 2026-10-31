@@ -43,13 +43,14 @@ flowchart TD
 | A third-party tool whose `ok: false` means something else | reads failed | reads done | reads done |
 
 - **Because:** every workforce and task tool reports failure the same few ways, by design a
-  result and not a throw: `{ ok: false, error }`, `{ kind: "refused", reason, message }`, and a
-  read's `status` other than `ok`. Reading the shape covers the next tool without an edit. The
-  read's `status` is the one rule tied to a tool name.
+  result and not a throw: `{ ok: false, error }`, `{ kind: "refused", reason, message }`,
+  `{ status: "failed", error }` (a `sendMessage` that waited on a reply its message never got
+  to give), and a read's `status` other than `ok`. Reading the shape covers the next tool
+  without an edit. The read's `status` is the one rule tied to a tool name.
 - **What it changes beyond the labs:** Kitchen Sink's and Shift Manager's tool lines, on their
   next registry copy, say "(failed)" for such a result, which they read as done today. That is
   the point of the change, not a side effect.
-- **Locks in:** the three shapes as the failure contract a tool can rely on to be shown as
+- **Locks in:** the four shapes as the failure contract a tool can rely on to be shown as
   failed. A zero-match search is **not** a failure: it says `no matches`.
 
 <a name="d3"></a>
@@ -91,9 +92,10 @@ flowchart TD
 - **E7 · The real-tool test lives with the tools, in `packages/workforce/test/`,** importing the
   registry file by path, as Kitchen Sink's drift test imports `packages/ui/scripts`. A change
   to a tool's output then fails where the tool is.
-- **E8 · A read's `status` is the only failure rule tied to a name.** A `status` elsewhere is a
-  task's (`createTask` filed held, `getTask`'s task failed) and says nothing about the call;
-  tests lock both.
+- **E8 · A read's `status` is the only failure rule tied to a name.** Elsewhere a top-level
+  `status` counts only as `failed` with an `error` beside it (the waited send's shape); any
+  other `status` is a task's (`createTask` filed held, `getTask`'s nested task failed) and says
+  nothing about the call. Tests lock all three.
 - **E9 · Wording.** The examples in `SPEC.md` show the shape (verb, then subject, then a count);
   the exact words are the implementer's, and once chosen, the package check's exact-line
   assertions are their contract.
@@ -122,6 +124,9 @@ red; Teammates reads through `sessionFeed`. Recorded: E2's exception, E6's resha
 
 ## Notes from review
 
+- Codex (f198514), folded: a `sendMessage` with `wait: true` whose message was refused or
+  undeliverable answers `{ status: "failed", sent, error }`, a fourth failure shape D2 missed.
+  D2 and E8 now carry it.
 - Cursor (154da69), approved direction. Folded: one step's state is a shared helper (E6), and
   E9 names the tests as the wording's contract. Recorded for the implementer: open/fold rules
   sit beside label composition in `tool-grouping.ts` only because E1 keeps the file count; a

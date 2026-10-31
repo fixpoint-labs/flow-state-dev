@@ -98,7 +98,8 @@ delete their own.
   the result as an optional third argument, so a line can say more once the call is done. A
   board-qualified name (`createTask_<board>`) reads as its base.
 - **Whether it worked.** A new `toolOutcome(name, output)` says `failed` when the result says
-  so: `ok: false`, `kind: "refused"`, or a read whose status isn't `ok` ([D2](DECISIONS.md#d2)).
+  so: `ok: false`, `kind: "refused"`, `status: "failed"` with an `error`, or a read whose status
+  isn't `ok` ([D2](DECISIONS.md#d2)).
   The registry's tool line uses it, so a refused call reads "(failed)" as a thrown one does.
 - **Group verbs.** `TOOL_VERB_MAP` gains these tools, so a run reads "Read 6 files and searched
   the code" (a project read merges with any other "read a file").
