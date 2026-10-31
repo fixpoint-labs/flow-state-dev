@@ -2,6 +2,10 @@
  * The harness session flow, against a stub harness rather than a real one:
  * what it does is the same for every harness it runs.
  *
+ * Refused while a turn runs is concurrency the engine enforces at its dispatch
+ * seam, which `runAction` bypasses; the goal check
+ * `goals/harness-manager/session-worktree-lifecycle` proves it over HTTP.
+ *
  * Red states produced before these were trusted:
  *   - drop the "already titled" guard: the second turn retitles the session.
  *   - drop the empty-title guard: a whitespace-only prompt writes an empty title.
@@ -15,7 +19,10 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import {
+  HARNESS_SESSION_REMOVE_UNSUPPORTED,
   harnessSessionFlow,
+  harnessSessionStartSchema,
+  harnessSessionStateSchema,
   harnessSessionTitle,
   type HarnessSessionFeeds,
   type HarnessSessionPlace,
@@ -105,5 +112,131 @@ describe("the turn-end pull request check", () => {
     const workspace = noWorkspace("sessions/s-branch");
     await turn(createInMemoryStores(), "s-branch", "hello", workspace);
     expect(workspace.located).toEqual([{ flowKind: "stub-session", sessionId: "s-branch" }]);
+  });
+});
+
+/** A harness that provisions its working directory, as a real one does, and waits on `gate` when given one. */
+const provisioningAgent = (gate?: Promise<void>) => (feeds: HarnessSessionFeeds) =>
+  handler({
+    name: "provisioning-harness",
+    inputSchema: z.object({ prompt: z.string() }),
+    execute: async (_input, ctx) => {
+      await feeds.resume(ctx as unknown as HarnessCallbackContext);
+      await feeds.cwd(ctx as unknown as HarnessCallbackContext);
+      await gate;
+      return { outcome: "completed" };
+    },
+  }) as unknown as HarnessBlock;
+
+/** A workspace that logs what it was asked and names the branch it gives a session. */
+function recordingWorkspace() {
+  const provisioned: Array<{ place: HarnessSessionPlace; start: unknown }> = [];
+  const removed: Array<{ place: HarnessSessionPlace; deleteBranch: boolean; force: boolean }> = [];
+  const located: HarnessSessionPlace[] = [];
+  const workspace: HarnessSessionWorkspace = {
+    provision: async (place, request) => {
+      provisioned.push({ place, start: request?.start });
+      return { path: `/places/${place.sessionId}`, branch: "fix/review-notes" };
+    },
+    locate: (place) => {
+      located.push(place);
+      return `/places/${place.sessionId}`;
+    },
+    branch: () => "sessions/never-read",
+    remove: async (place, options) => {
+      removed.push({ place, ...options });
+      return { branchDeleted: options.deleteBranch };
+    },
+  };
+  return { workspace, provisioned, removed, located };
+}
+
+async function seed(stores: ReturnType<typeof createInMemoryStores>, sessionId: string, state: Record<string, unknown>) {
+  const now = Date.now();
+  await stores.session.set(
+    sessionId,
+    { id: sessionId, flowKind: "stub-session", userId: "u", orgId: DEFAULT_ORG_ID, metadata: undefined, latestRequestId: undefined, state, version: 0, createdAt: now, updatedAt: now, journal: [] } as never,
+    "any" as never,
+  );
+}
+
+function act(stores: ReturnType<typeof createInMemoryStores>, sessionId: string, workspace: HarnessSessionWorkspace, actionName: string, input: unknown, gate?: Promise<void>) {
+  return runAction({
+    flow: harnessSessionFlow({ kind: "stub-session", workspace, agent: provisioningAgent(gate) }),
+    actionName,
+    input,
+    userId: "u",
+    orgId: DEFAULT_ORG_ID,
+    sessionId,
+    stores,
+    runtimeConfig: {},
+  } as never);
+}
+
+describe("where a session starts", () => {
+  it("is handed to the workspace on every provision, so the first one can honour it", async () => {
+    const stores = createInMemoryStores();
+    const { workspace, provisioned } = recordingWorkspace();
+    await seed(stores, "s-start", { model: "stub-model", start: { pullRequest: 812 } });
+
+    await act(stores, "s-start", workspace, "turn", { prompt: "address the review" });
+
+    expect(provisioned.map((call) => call.start)).toEqual([{ pullRequest: 812 }]);
+  });
+
+  it("records the branch the workspace gave the session, and the turn-end check reads it", async () => {
+    const stores = createInMemoryStores();
+    const { workspace, located } = recordingWorkspace();
+    await seed(stores, "s-record", { model: "stub-model", start: { branch: "fix/review-notes" } });
+
+    await act(stores, "s-record", workspace, "turn", { prompt: "go" });
+
+    const state = (await stores.session.get("s-record"))?.state as Record<string, unknown>;
+    expect(state.workspace).toEqual({ path: "/places/s-record", branch: "fix/review-notes", removed: false });
+    // The check ran for the recorded branch, not the host's `branch()`, which names one it never gave.
+    expect(located).toHaveLength(1);
+  });
+
+  it("is checked at create: a malformed start is refused, so a session never starts somewhere it didn't ask for", () => {
+    expect(harnessSessionStartSchema.safeParse({ base: "origin/main" }).success).toBe(true);
+    expect(harnessSessionStartSchema.safeParse({ base: "main", branch: "x" }).success).toBe(false);
+    expect(harnessSessionStartSchema.safeParse({ pullRequest: -1 }).success).toBe(false);
+    expect(harnessSessionStateSchema.shape.start.isOptional()).toBe(true);
+  });
+});
+
+describe("removing a session's worktree", () => {
+  it("goes through the workspace's remove and marks the record removed", async () => {
+    const stores = createInMemoryStores();
+    const { workspace, removed } = recordingWorkspace();
+    await seed(stores, "s-rm", { model: "stub-model" });
+    await act(stores, "s-rm", workspace, "turn", { prompt: "go" });
+
+    await act(stores, "s-rm", workspace, "removeWorktree", { deleteBranch: true });
+
+    expect(removed).toEqual([{ place: { flowKind: "stub-session", sessionId: "s-rm" }, deleteBranch: true, force: false }]);
+    const state = (await stores.session.get("s-rm"))?.state as { workspace: { removed: boolean } };
+    expect(state.workspace.removed).toBe(true);
+  });
+
+  it("provisions again on the next turn, and records it live", async () => {
+    const stores = createInMemoryStores();
+    const { workspace, provisioned } = recordingWorkspace();
+    await seed(stores, "s-again", { model: "stub-model" });
+    await act(stores, "s-again", workspace, "turn", { prompt: "go" });
+    await act(stores, "s-again", workspace, "removeWorktree", {});
+    await act(stores, "s-again", workspace, "turn", { prompt: "and again" });
+
+    expect(provisioned).toHaveLength(2);
+    const state = (await stores.session.get("s-again"))?.state as { workspace: { removed: boolean } };
+    expect(state.workspace.removed).toBe(false);
+  });
+
+  it("is refused on a host whose workspace removes nothing", async () => {
+    const stores = createInMemoryStores();
+    await seed(stores, "s-none", { model: "stub-model" });
+    const result = (await act(stores, "s-none", noWorkspace(), "removeWorktree", {})) as { output?: unknown; items: unknown[] };
+    expect(result.output).toBeUndefined();
+    expect(JSON.stringify(result.items)).toContain(HARNESS_SESSION_REMOVE_UNSUPPORTED);
   });
 });
