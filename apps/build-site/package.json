@@ -1,0 +1,8 @@
+{
+  "name": "@flow-state-dev/build-site",
+  "private": true,
+  "description": "flow-state.build: the landing page for everyday users. Static HTML, no build step.",
+  "scripts": {
+    "dev": "node serve.mjs"
+  }
+}

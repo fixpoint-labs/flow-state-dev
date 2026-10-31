@@ -97,3 +97,11 @@ body:has(main.fs-landing) {
 }
 .fs-landing .fs-dark .fs-sheet{background-image:none}
 
+/* The two-door switch shared with flow-state.build: this page is the developers' door. */
+.fs-landing .fs-doors{display:inline-flex;border:1px solid rgba(236,231,218,.6)}
+.fs-landing .fs-doors a{display:flex;align-items:baseline;gap:6px;min-height:40px;box-sizing:border-box;padding:10px 14px;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;text-decoration:none;color:#cbc5b5}
+.fs-landing .fs-doors a+a{border-left:1px solid rgba(236,231,218,.6)}
+.fs-landing .fs-doors a.on{background:#f4f1e4;color:#141310}
+.fs-landing .fs-doors a:not(.on):hover{background:#e8f551;color:#1b1a15}
+.fs-landing .fs-doors a span{opacity:.65}
+@media (max-width:760px){.fs-landing .fs-doors a span{display:none}}
