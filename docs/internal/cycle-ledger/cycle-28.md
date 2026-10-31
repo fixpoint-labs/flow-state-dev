@@ -77,11 +77,9 @@ set, and every child is merged.
 **Out of the sample:** #4094 (FIX-2157) and #4024 (FIX-2242) are the other sides of (d) and (e), not
 this epic's work.
 
-**Endpoints and rounds.** As cycle 27: direction artifacts end at the owner's merge, and a **round** is a
-distinct reviewer pass that drew a thread or a hold. Implementation **waves** are distinct passes that
-drew a thread, clustered by reviewed head. A "Second look + architecture pass" comment is one review
-body (cycle 19). Classes come from the lead point of each finding and are approximate (about ±10%).
-Times are UTC.
+**Endpoints and rounds.** As cycle 27 (rounds and waves unchanged); a "Second look + architecture pass"
+comment is one review body (cycle 19). Classes come from the lead point of each finding and are
+approximate (about ±10%). Times are UTC.
 
 **Every act sits behind the shared `jhoffner` login**, so this entry doesn't say who merged what. In
 this cycle that login is also the cause of (a).
@@ -148,7 +146,7 @@ spelling at replay ≥4→0 · refuse a renamed or removed option by name 4→8 
 | #4095 | 5 | 0 | no | `.changeset/shift-coordinator-name.md:5` |
 | #4128 | 5 | 0 | no | `budget` ×2 meanings |
 | #4090 | 2 | 0 | yes, folded | — |
-| #4244 | 5 | 0 | no | the class in (c), unfiled |
+| #4244 | 5 | 0 | no | the class in (c), unfiled until the wrap (FIX-2356) |
 
 The two that got a reply were each answered by an agent that was reading the whole conversation for
 some other reason: the epic agent folding two reviews together, and a worker that was already
@@ -175,14 +173,14 @@ author's own comment.
 
 **(b) Renamed keys, rung 1: a fold, plus a BP-030 sharpening.** One `refuseRemovedOptions(options,
 { key: message }, where)` helper would make "add the old key to the table" the obvious step for the next
-rename (job audit, F1). The leftover judgment is a rename spec deciding which of BP-030's halves
+rename (job audit, FIX-2352). The leftover judgment is a rename spec deciding which of BP-030's halves
 applies. It lands as one sentence in BP-030's second bullet, proposed text: *"A store reset meets
 the dual-read bullet only. A renamed key a caller passes (an option, a tool parameter, a config field)
 is still refused by name."* That is landing altitude 2, a sharpened existing BP. No new BP.
 
 **(c) Live files under history, rung 1: folds.** Move each check a goal or script runs out of `specs/**/poc/`
-into its consumer (F5), and widen the identifier rules' file scope to `docs/contributing/` and `.agents/`
-(F3). Proof that F3 goes red on a real past mistake: `dispatcher-names` matches `isInProcessDispatcher` and
+into its consumer (FIX-2356), and widen the identifier rules' file scope to `docs/contributing/` and `.agents/`
+(FIX-2354). Proof that FIX-2354 goes red on a real past mistake: `dispatcher-names` matches `isInProcessDispatcher` and
 `topologicalDispatcher`, and today `architecture-reference.md:78` and `issue-multi-pr.js:16` hold one each.
 Adding the two trees to `ROOTS` alone fails *totality*: 99 files under them match no rule. So the identifier
 rules' `files` need the two trees too, not just `ROOTS`.
@@ -194,7 +192,7 @@ rules' `files` need the two trees too, not just `ROOTS`.
 **Accepted (for the owner's review on this PR):**
 - (a): the owner ask for a separate second-look identity, and the rung-3 readiness check, not built.
 - (b): the BP-030 sentence above, not written into `best-practices.md` here.
-- Job audit: folds F1–F7, for the coordinator to file.
+- Job audit: seven folds, filed as FIX-2352 to FIX-2358.
 
 **Rejected:**
 - *A new BP for (a) or (b).* (b) is BP-030's own second bullet; (a) is one line in an existing skill.
@@ -221,15 +219,15 @@ listed here):
   `refuseRetiredDispatcherOption` (`engine/src/transports/runner.ts:178`, called from four entry
   points), the board's `dispatcher` check (`task-board/index.ts:759`), `hopLimit`
   (`workforce/src/messages/message-limits.ts:31`), and `answers_not_question`
-  (`orchestration/src/skills/task-tools-capability.ts:1469`). Each one is hand-written. **Fold: F1.**
+  (`orchestration/src/skills/task-tools-capability.ts:1469`). Each one is hand-written. **Fold: FIX-2352.**
 - **refuse a retired name in CI, 3→3.** `one-word-per-thing`, `check-retired-terms` (its `goal-names`
   exception deleted) and `runs-on-one-task`. FIX-2056's removed task tools are now refused by two of
   them: `task-tool-names` in `RETIRED`, and `runs-on-one-task`'s `REMOVED`. Cursor raised it on #4092,
-  and the answer was *"bundled on purpose"*. **Fold: F7** (low).
+  and the answer was *"bundled on purpose"*. **Fold: FIX-2358** (low).
 - **rename identifiers across the repo, 1→8.** `rename-sequencer-then-to-step.ts` before, and seven
   one-shot codemods after. ER-2 told the second child to extract a shared `renameIdentifiers` helper,
   and none did: the children landed together, and each said the next one's names did not overlap. The
-  codemods exist so a conflicting PR can be regenerated, and none is left in flight. **Fold: F6**
+  codemods exist so a conflicting PR can be regenerated, and none is left in flight. **Fold: FIX-2357**
   (low). Delete them or consolidate them, whichever the owner prefers.
 - **read a stored old spelling at replay, ≥4→0.** `upgradeWorkerEntryNames`, `legacyPostRowId` and the
   two `ask` readers are gone from `packages` and `apps` (no hit off a `retired-name-refusal` line). This
@@ -238,15 +236,15 @@ listed here):
 The renames that left a second meaning or a stale copy behind, found by checking the jobs above:
 
 - **cap a message chain, 1→1,** but `budget` now names both the cap and what is left of it.
-  **Fold: F2.**
+  **Fold: FIX-2353.**
 - **choose where a flow action runs, 1→1,** but six places still call the runner a dispatcher.
-  **Fold: F3**, which also widens the identifier rules' file scope.
+  **Fold: FIX-2354**, which also widens the identifier rules' file scope.
 - **name the coordinator worker, 1→1,** but a pending changeset still says the old id stands.
-  **Fix: F4.**
+  **Fix: FIX-2355.**
 - **live checks under retained specs:** three are read at runtime. They are FIX-1792's inventory (by
   `goals/coordinators/every-coordinator-is-a-worker-file/run.mts:34`), FIX-2162's caller census (by
   `goals/client/does-every-job-with-one-client/check.mjs:111`) and FIX-1428's copy census (by
-  `scripts/validate-reserved-names.mjs:62`). **Fold: F5.**
+  `scripts/validate-reserved-names.mjs:62`). **Fold: FIX-2356.**
 
 ## Scoring the previous cycle's claims
 
