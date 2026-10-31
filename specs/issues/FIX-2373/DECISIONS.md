@@ -76,8 +76,27 @@ FIX-2408, and, since the labs' bar reads the feed, after each lab's FIX-2374 sta
   neither: it follows sessions through `useSession`, which this issue leaves alone.
 - **E7 · No changeset.** `@flow-state-dev/ui` and the apps are private.
 
+## Notes from review
+
+For the implementer; none changes the direction.
+
+- **`isFeedStale` could live in the client** beside the feed's state type (Cursor). Kept in the
+  registry for now (E5: generic registry components import nothing from `@flow-state-dev/*`). If
+  FIX-2374 exports an equivalent, the banner imports it and the registry's copy goes.
+- **A third backoff sequence** (Cursor): the stream's retry starts at about 1s, Teammates' boot loop
+  at 2s. The screen's 2, 4, 8… up to 30 is deliberate (a first read is a whole page of reads, so a
+  slower start is fine), but reuse a shared helper if one exists when this is built.
+- **Two "connection" surfaces** (Cursor): `stuck-request-banner` opens "Connection lost" for one
+  request; this bar says "Lost the server". Keep the wording disjoint, and draw the server bar above
+  the request banner when both show.
+- **Every clock** (Cursor): gate each elapsed-time clock on not stale, including Shift Manager's
+  `TaskFrame` and `Tasks` intervals and the labs' `useNow`. The browser check covers each app.
+- **The link to FIX-2374's D2** resolves once that spec merges.
+
 ## How it got here
 
 - **Draft** — framed from the issue and the code on `main` at `675f614`: one health signal (the
   feed's `state`), one bar and one first-read screen in the registry, and three PRs that follow
   the epic's stacks; builds on FIX-2374's `sessionFeed` and Shift Manager's two screens.
+- **Round 1** — Cursor approved with five optional notes, recorded above; one clarifying sentence
+  added on the "worst of" rule. Codex found no issues.

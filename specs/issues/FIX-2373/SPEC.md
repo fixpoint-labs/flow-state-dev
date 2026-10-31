@@ -34,8 +34,11 @@ flowchart LR
   FR["first read fails"] --> C["ConnectionScreen<br/>refused · unreachable + backoff retry"]
 ```
 
-The bar and the stale styling read one boolean from one function. The full-screen page is only
-for a first read, before there is anything to keep on screen.
+The bar and the stale styling read one boolean from one function. Where a screen depends on more
+than one source (Shift Manager's snapshot read and the feeds on screen), the app passes the worst
+state of them, ordered `stopped` › `lapsed` › the rest; the snapshot read reports a state from its
+own last result, never a count of failures. The full-screen page is only for a first read, before
+there is anything to keep on screen.
 
 **How we verify.**
 
