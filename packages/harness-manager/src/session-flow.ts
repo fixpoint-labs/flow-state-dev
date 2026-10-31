@@ -443,6 +443,9 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
           ...turnEndOnce(ctx, requestId, record),
         })),
       );
+      // A stopped or failed turn still records where its changes end. Never in
+      // place of the harness's error: a head that can't be written is left unset.
+      await writeTurnHead(ctx as unknown as HarnessCallbackContext).catch(() => undefined);
       throw error;
     },
   });
@@ -506,22 +509,24 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       }
     },
   });
-  // When a turn ends, however it ended: the commit its checkout is on, where
-  // the turn's changes end. A checkout git can't read leaves it unset, and
-  // the read then ends at the checkout's HEAD.
+  // The commit the turn's checkout is on, where its changes end. Written
+  // inside the turn, as it succeeds (a step after the harness) or as it throws
+  // (`recordFailure`): a page refreshes on the turn's terminal status, which
+  // the engine emits before `request.onFinished` runs. A checkout git can't
+  // read leaves it unset, and the read then ends at the checkout's HEAD.
+  async function writeTurnHead(ctx: HarnessCallbackContext): Promise<void> {
+    const requestId = requestOf(ctx);
+    // A turn that never reached a git checkout has no base, so nothing for an end to bound.
+    if ((ctx.session.state as HarnessSessionState).turns?.[requestId]?.base == null) return;
+    const cwd = options.workspace.locate(placeOf(options.kind, ctx));
+    if (!existsSync(cwd)) return;
+    const head = await headCommit(cwd);
+    if (head === null) return;
+    await changeState(ctx, (state) => withTurn(state, requestId, (record) => ({ ...record, head })));
+  }
   const recordTurnHead = handler({
     name: "record-turn-head",
-    execute: async (_input: unknown, ctx): Promise<void> => {
-      const harnessCtx = ctx as unknown as HarnessCallbackContext;
-      const requestId = requestOf(harnessCtx);
-      // A turn that never reached a git checkout has no base, so nothing for an end to bound.
-      if ((harnessCtx.session.state as HarnessSessionState).turns?.[requestId]?.base == null) return;
-      const cwd = options.workspace.locate(placeOf(options.kind, harnessCtx));
-      if (!existsSync(cwd)) return;
-      const head = await headCommit(cwd);
-      if (head === null) return;
-      await changeState(harnessCtx, (state) => withTurn(state, requestId, (record) => ({ ...record, head })));
-    },
+    execute: async (_input: unknown, ctx): Promise<void> => writeTurnHead(ctx as unknown as HarnessCallbackContext),
   });
   // When the harness step returns: what the turn spent, on its record. The
   // harness reported its run into the request before its block returned, so
@@ -541,9 +546,8 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       }
     },
   });
-  const turnEnd = sequencer({ name: "turn-end", inputSchema: z.unknown() })
-    .tap(recordTurnHead)
-    .tap(branchPullRequests);
+  // Only effects no page reads on the turn's end: anything a page shows then is written inside the turn.
+  const turnEnd = sequencer({ name: "turn-end", inputSchema: z.unknown() }).tap(branchPullRequests);
   // What one turn's commits changed, between the commits its record keeps. A
   // read: answered in the response and stored nowhere, so an opened patch
   // never lands in the session's log.
@@ -592,6 +596,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     .step(agent.rescue([{ block: recordFailure }]))
     .tap(recordFailedOutcome)
     .tap(turnSpend)
+    .tap(recordTurnHead)
     .tap(verifyTurn);
 
   return defineFlow({

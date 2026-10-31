@@ -9,7 +9,7 @@
  * never off the harness's own report.
  *
  * Red states produced before these were trusted:
- *   - drop the turn-end spend step from `onFinished`: every `spend` here is null.
+ *   - drop the `turn-spend` step (and the failure write's spend): every `spend` here is null.
  *   - drop `onUsage` from the feeds: the usage query lists no window.
  *   - write the spend from the flow's `onFinished` instead: the request's
  *     terminal status is published before the spend lands.
