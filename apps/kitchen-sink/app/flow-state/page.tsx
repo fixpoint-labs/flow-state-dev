@@ -443,11 +443,6 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
     [],
   );
 
-  // setMessage is re-created when the session resolves, and the stale one drops writes.
-  const handleSuggestionClick = useCallback((text: string) => {
-    setMessage(text);
-  }, [setMessage]);
-
   const handleSaveArtifact = useCallback(
     async (artifact: { id: string; title: string; content: string }) => {
       if (!flow.activeSessionId) return;
@@ -482,7 +477,6 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
       onThinkingEnabledChange={handleThinkingEnabledChange}
       onSetFeatures={setFeatures}
       onSubmit={handleSubmit}
-      onSuggestionClick={handleSuggestionClick}
     />
   );
   const stream =
@@ -779,7 +773,6 @@ interface ChatPanelProps {
   onThinkingEnabledChange: (value: boolean) => void;
   onSetFeatures: (value: Features) => void;
   onSubmit: (msg: PromptInputMessage) => Promise<void>;
-  onSuggestionClick: (text: string) => void;
 }
 
 /** Memoized conversation body — only re-renders when items/streaming/error change, not on typing. */
@@ -902,7 +895,6 @@ function ChatPanel({
   onThinkingEnabledChange,
   onSetFeatures,
   onSubmit,
-  onSuggestionClick,
 }: ChatPanelProps) {
   return (
     // Bridge the session's streaming resume to the inline approval cards
@@ -924,7 +916,7 @@ function ChatPanel({
 
       <div className="border-t">
         {!conversationLoading && session.items.length === 0 && (
-          <SuggestionRow onSuggestionClick={onSuggestionClick} disabled={isDisabled} />
+          <SuggestionRow onSuggestionClick={onSetMessage} disabled={isDisabled} />
         )}
         <StuckRequestBanner session={session} />
         {/* Outside the conversation, deliberately: a child session's output is not
