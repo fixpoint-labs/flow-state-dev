@@ -85,7 +85,7 @@ the request's own ledger at its end ([D2](DECISIONS.md#d2)).
 
 **Docs:** harness-manager README (the turn record's `spend` and `endedAt`, the `onUsage` feed,
 `usageReaders`), orchestration README (`costUsd` on the spend view), ui README (the `spend`
-item). No new docs-site page: the harness session and task-board pages gain one line each.
+item), and the docs site's *Flow-aware components* page gains a *Spend* section. No new page.
 
 ## The PR plan
 
