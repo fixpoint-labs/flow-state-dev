@@ -36,6 +36,7 @@
 <form id="join" novalidate>
 <label for="fb-email" style="position: absolute; left: -9999px;">Email</label>
 <input id="fb-email" type="email" placeholder="you@yourcompany.com" autocomplete="email" required>
+<input name="company" tabindex="-1" autocomplete="off" aria-hidden="true" style="position: absolute; left: -9999px;">
 <button type="submit">Join the waitlist</button>
 </form>
 <p class="note" id="joinNote" aria-live="polite">Early access opens to a small group first.</p>
@@ -231,12 +232,21 @@
   });
   play();
 
-  /* Waitlist: no signup service is wired up yet, so say so plainly. */
+  /* Waitlist: posts to the /api/waitlist function, which adds the email to Resend. */
   var form = document.getElementById("join"), note = document.getElementById("joinNote"), email = document.getElementById("fb-email");
+  var submit = form.querySelector("button"), honeypot = form.elements.company;
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     if (!email.value || !email.checkValidity()) { note.textContent = "Enter an email address like you@yourcompany.com."; email.focus(); return; }
-    note.textContent = "The waitlist opens with the launch. Nothing was saved yet.";
+    submit.disabled = true; note.textContent = "Adding you…";
+    fetch("/api/waitlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email.value, company: honeypot.value }) })
+      .then(function (res) { return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; }); })
+      .then(function (r) {
+        if (r.ok) { form.reset(); note.textContent = "You're on the list. We'll email you when early access opens."; }
+        else note.textContent = r.data.error || "Something went wrong. Try again in a minute.";
+      })
+      .catch(function () { note.textContent = "Couldn't reach the server. Check your connection and try again."; })
+      .finally(function () { submit.disabled = false; });
   });
 })();
 </script>
