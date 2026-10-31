@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { readEveryCollectionPage, type Client } from "@flow-state-dev/client";
 import { createInboxClient } from "@flow-state-dev/orchestration/inbox";
 import { reconcileInbox, rowTruthOf, suspensionTruthOf, taskItemId, type InboxTruth } from "@flow-state-dev/orchestration/inbox/check";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
 import { connect } from "../src/lib/connection";
 import {
@@ -33,10 +34,14 @@ afterEach(async () => {
 });
 
 async function lab() {
+  return (await labWithState()).client;
+}
+
+async function labWithState() {
   const opened = await openAskLab();
   const s = await serveLab(opened.flowState);
   served.push(s);
-  return connect({ baseUrl: s.baseUrl, userId: ASK_LAB_USER_ID });
+  return { client: await connect({ baseUrl: s.baseUrl, userId: ASK_LAB_USER_ID }), flowState: opened.flowState };
 }
 
 type Loaded = Exclude<LabSnapshot, { refused: object } | { unreachable: object }>;
@@ -83,9 +88,9 @@ describe("the Inbox against a real Lab", () => {
     for (const item of items) {
       expect(item.task).not.toBeNull();
       expect(item.id).toBe(taskItemId(item.task!.board, item.task!.taskId));
-      expect(item).toMatchObject({ answerable: true, unanswerable: null, questions: [expect.objectContaining({ source: expect.objectContaining({ kind: "suspension" }), answerable: true })] });
+      expect(item).toMatchObject({ answerable: true, unanswerable: null, holds: [expect.objectContaining({ source: expect.objectContaining({ kind: "suspension" }), answerable: true })] });
       // Drawn with the pending ask the run's session holds, though it lists from the row.
-      expect(item.questions[0]!.detail?.item.suspensionId).toBe(item.questions[0]!.id);
+      expect(item.holds[0]!.detail?.item.suspensionId).toBe(item.holds[0]!.id);
     }
     const rows = await boardRows(client, "ops.desk");
     const truth = await readTruth(client, rows);
@@ -95,7 +100,7 @@ describe("the Inbox against a real Lab", () => {
 
     // Control duplicate-item: red.
     // The item twice, and with it the stop it shows.
-    expect(reconcileInbox([...items, items[0]!], truth)).toMatchObject({ green: false, duplicate: [items[0]!.id, items[0]!.questions[0]!.id] });
+    expect(reconcileInbox([...items, items[0]!], truth)).toMatchObject({ green: false, duplicate: [items[0]!.id, items[0]!.holds[0]!.id] });
     // Control drop-row-holds: the same reads listed without the boards. Red: the tasks' items are missing.
     const dropped = inboxSection(snapshot.asks, {}, snapshot.sessions);
     const droppedResult = reconcileInbox(dropped.ok ? dropped.value : [], truth);
@@ -113,11 +118,11 @@ describe("the Inbox against a real Lab", () => {
     const left = after.inbox.ok ? after.inbox.value : [];
     const rowsAfter = await boardRows(client, "ops.desk");
     const truthAfter = await readTruth(client, rowsAfter);
-    expect(reconcileInbox(left, { ...truthAfter, closed: [answered.questions[0]!.id] })).toMatchObject({ green: true });
+    expect(reconcileInbox(left, { ...truthAfter, closed: [answered.holds[0]!.id] })).toMatchObject({ green: true });
     // Control mirror-skips-close: the row as it was before the resume, against the stops as they are now. Red.
     const stale = reconcileInbox(left, { ...truthAfter, rows: truth.rows });
     expect(stale.green).toBe(false);
-    expect(stale.drift).toEqual([`question ${answered.questions[0]!.id} on ${answered.task!.board}:${answered.task!.taskId}: no live stop`]);
+    expect(stale.drift).toEqual([`question ${answered.holds[0]!.id} on ${answered.task!.board}:${answered.task!.taskId}: no live stop`]);
   });
 
   it("a user's own ask, with no task row: listed once, on its own, answerable and green", async () => {
@@ -127,8 +132,32 @@ describe("the Inbox against a real Lab", () => {
     await client.flow(ASKER_FLOW).send("ask", { what: "ship it" }, { sessionId });
     const snapshot = await settled(client, 1);
     const items = snapshot.inbox.ok ? snapshot.inbox.value : [];
-    expect(items[0]).toMatchObject({ task: null, answerable: true, questions: [expect.objectContaining({ source: expect.objectContaining({ kind: "suspension" }) })] });
+    expect(items[0]).toMatchObject({ task: null, answerable: true, holds: [expect.objectContaining({ source: expect.objectContaining({ kind: "suspension" }) })] });
     const truth = await readTruth(client, await boardRows(client, sessionId));
     expect(reconcileInbox(items, truth)).toMatchObject({ green: true });
+  });
+
+  // FIX-2317: a row stored before the rename keeps its holds as `questions`. The server's claim
+  // still reads them, so a browser list that dropped them would leave the task waiting on a
+  // question nobody could answer. A run's stop would still list from its session; a question
+  // kept on the row lists only from the row, so the check is on one.
+  it("a row stored with its holds under questions still lists its question, answerable, through the resource route", async () => {
+    const { client, flowState } = await labWithState();
+    await client.flow(COORDINATOR_FLOW).send("respond", { message: "ship it" }, { sessionId: "ops.desk" });
+    await settled(client, 2);
+    const store = (await flowState.getRuntime()).stores.resourceState;
+    const cell = `${ASK_LAB_USER_ID}:~org:${DEFAULT_ORG_ID}`;
+    const stored = Object.entries(await store.getByPrefix("user", cell, "tasks/")).filter(([, value]) => Array.isArray((value.state as { holds?: unknown }).holds));
+    expect(stored).toHaveLength(2);
+    const [key, value] = stored[0]!;
+    const { holds, ...rest } = value.state as Record<string, unknown>;
+    const question = { id: "q_legacy", actor: "user", openedAt: 1, source: { kind: "row", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which region?" } };
+    expect((await store.set("user", cell, key, { ...rest, questions: [...(holds as unknown[]), question] } as never, value.version)).ok).toBe(true);
+    const legacy = await eventually(async () => {
+      const snapshot = (await createLabReader(client).read()) as Loaded;
+      const listed = (snapshot.inbox?.ok ? snapshot.inbox.value : []).flatMap((item) => item.holds).find((hold) => hold.id === "q_legacy");
+      return listed?.answerable === true ? listed : undefined;
+    }, "the legacy row's question listed, answerable");
+    expect(legacy).toMatchObject({ source: { kind: "row" }, ask: { kind: "question", prompt: "Which region?" } });
   });
 });

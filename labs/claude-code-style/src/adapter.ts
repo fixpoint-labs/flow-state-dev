@@ -22,7 +22,7 @@
  */
 import { createClient, type Client, type SessionSummary } from "@flow-state-dev/client";
 import { readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
-import { createInboxClient, inboxItems, type InboxAnswer, type InboxQuestion, type InboxRow, type TaskQuestion } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, inboxItems, type InboxAnswer, type InboxHold, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
 import type { TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import {
   createWorkforceClient,
@@ -418,7 +418,7 @@ function createWiredLab(fsd: Client): LabAdapter {
   };
 
   /** A listed task row, as much as the screen reads. */
-  type Listed = TaskRow & { runSessionId?: string; run?: { sessionId: string; requestId: string }; questions?: TaskQuestion[] };
+  type Listed = TaskRow & { runSessionId?: string; run?: { sessionId: string; requestId: string }; holds?: TaskHold[] };
 
   /** Each listed task's run session, by task id, as the last list saw it. */
   const runSessionOf = new Map<string, string>();
@@ -439,7 +439,7 @@ function createWiredLab(fsd: Client): LabAdapter {
       ...(task.statusNote == null ? {} : { statusNote: task.statusNote }),
       ...(typeof task.updatedAt === "number" ? { updatedAt: task.updatedAt } : {}),
       ...(task.run?.sessionId === undefined ? {} : { runSessionId: task.run.sessionId, run: task.run }),
-      ...(Array.isArray(task.questions) ? { questions: task.questions } : {}),
+      ...(Array.isArray(task.holds) ? { holds: task.holds } : {}),
       ...(task.spend == null ? {} : { spend: task.spend }),
     }));
   };
@@ -448,7 +448,7 @@ function createWiredLab(fsd: Client): LabAdapter {
   const runFlows = new Map<string, string | null>();
 
   /** Each task's open holds for you, as the Inbox reads them: what its answer takes and where it goes. */
-  const holdsOf = async (sessionId: string, listed: readonly Listed[]): Promise<Map<string, InboxQuestion[]>> => {
+  const holdsOf = async (sessionId: string, listed: readonly Listed[]): Promise<Map<string, InboxHold[]>> => {
     // A question is answered on the board's own session; a run's stop, in the run's session.
     if (!runFlows.has(sessionId)) runFlows.set(sessionId, await flowOfSession(sessionId));
     for (const task of listed) {
@@ -464,11 +464,11 @@ function createWiredLab(fsd: Client): LabAdapter {
       assignee: task.assignee ?? null,
       status: task.status,
       run: task.run ?? null,
-      questions: task.questions ?? [],
+      holds: task.holds ?? [],
       holder: { sessionId, action: UPDATE_TASK_ACTION },
     }));
     const items = inboxItems({ rows, suspensions: [], flowOf: (id) => runFlows.get(id) });
-    return new Map(items.flatMap((item) => (item.task === null ? [] : [[item.task.taskId, [...item.questions]] as const])));
+    return new Map(items.flatMap((item) => (item.task === null ? [] : [[item.task.taskId, [...item.holds]] as const])));
   };
 
   /** A session's tasks, each with what its first open hold waits on you for: the one place a hold becomes a row's `waitingOn`. */
@@ -514,7 +514,7 @@ function createWiredLab(fsd: Client): LabAdapter {
     const listed = await listedWithWaitingOn(sessionId);
     const rows = await Promise.all(
       listed.map(async (task): Promise<TaskRow> => {
-        const { runSessionId: _session, run: _run, questions: _questions, ...row } = task;
+        const { runSessionId: _session, run: _run, holds: _holds, ...row } = task;
         // The harness its run reported; until one reports, the assignee's `harness` setting.
         const harness = task.spend?.harness ?? (await harnessOf(task));
         const review = harness !== undefined && row.status === "completed" ? await reviewOf(sessionId, task) : undefined;
@@ -529,7 +529,7 @@ function createWiredLab(fsd: Client): LabAdapter {
   };
 
   /** The open hold a thread's task holds you on that asks for `asks` (a question, a review), or undefined. */
-  const holdOn = async (sessionId: string, taskId: string, asks: "question" | "review"): Promise<InboxQuestion | undefined> => {
+  const holdOn = async (sessionId: string, taskId: string, asks: "question" | "review"): Promise<InboxHold | undefined> => {
     const holds = await holdsOf(sessionId, (await tasksOf(sessionId)).filter((task) => task.id === taskId));
     return holds.get(taskId)?.find((hold) => hold.ask.kind === asks);
   };

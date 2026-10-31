@@ -9,8 +9,8 @@
 import { z } from "zod";
 import { persistedTaskStatusSchema, type TaskStatus } from "./task-status";
 import { taskSteerSchema } from "./steer";
-import { QUEUED_WAIT } from "./retired-shapes";
-import { taskQuestionSchema } from "./question";
+import { QUEUED_WAIT, SUSPENDED_WAIT } from "./retired-shapes";
+import { taskHoldSchema } from "./hold";
 import { taskSpendSchema } from "./spend";
 
 /** The base Task schema. */
@@ -478,41 +478,50 @@ export const taskSchema = z.object({
 
   /**
    * What keeps this running task open while no worker holds it (FIX-2077 D1):
-   * `"wait"`, its own request is suspended (a stop for a person, which the
-   * row's suspension hold in `holds` mirrors, or any other: a webhook, a
-   * call); `"filed"`, work it filed that still holds it. Only on an
-   * `in_progress` row. A waiting row has no lease, so the reclaim leaves it
+   * `"suspended"`, its own request is suspended (a `suspendForUser` stop,
+   * which the row's suspension hold in `holds` mirrors, or any other: a
+   * webhook, a call); `"filed"`, work it filed that still keeps it open. Only on an
+   * `in_progress` row. A row kept open has no lease, so the reclaim leaves it
    * alone: that task is never run again by a lapse. `"steer"`, a steer no
    * request has taken (FIX-2086 D2): the turn owed for it is on its way, with
    * no lease. The request admitted for it next clears it and starts a lease;
    * every ending, and every claim, clears it.
    *
-   * Not FIX-2080's `held`, which is a status before a start, nor `holds`,
-   * which says what a person holds the row on. Server-written by the claim
-   * gate (`setKeptOpenBy`), never by a caller. **Absent, or `null`, reads as
-   * waiting on nothing** (BP-030). `"queued"`, which a row stored while a
-   * queued message held it open carries, reads as `"filed"`: its request had
-   * answered (the retired-shape map's `queued` entry).
+   * Not FIX-2080's `held`, which is the filer's hold, a status before a start,
+   * nor `holds`, which says what the row is held on for a person, nor `wait`,
+   * a request waiting on this row's ending. Server-written by the claim gate
+   * (`setKeptOpenBy`), never by a caller. **Absent, or `null`, reads as kept
+   * open by nothing** (BP-030). `"queued"`, which a row stored while a queued
+   * message held it open carries, reads as `"filed"`: its request had
+   * answered (the retired-shape map's `queued` entry). `"wait"`, the name for
+   * `"suspended"` before FIX-2317, reads as `"suspended"`.
    */
   // Only the retired-shape read drops a legacy row's lease: a bare parse keeps
   // it, and every src read of a stored row goes through `withRetiredShapes` first.
   keptOpenBy: z
-    .preprocess((value) => (value === QUEUED_WAIT ? "filed" : value), z.enum(["wait", "filed", "steer"]).nullable())
+    .preprocess(
+      (value) => (value === QUEUED_WAIT ? "filed" : value === SUSPENDED_WAIT ? "suspended" : value),
+      z.enum(["suspended", "filed", "steer"]).nullable()
+    )
     .optional(),
 
   /**
-   * What holds the task on its row (FIX-2133 D2): its questions and confirms
-   * (`source.kind: "row"`), and the mirror of a task run's stop for a person
-   * (`"suspension"`), oldest first. *Open holds* (`openQuestions`) is the one
-   * predicate every reader asks: the claim never takes a row with one, the row
-   * settles with one only by cancel, and the Inbox lists a row's open
-   * `actor: "user"` holds. Before its start a held row is `pending`; midway,
-   * `in_progress` with no lease. A cancel closes every hold.
+   * What holds the task on its row for a person (FIX-2133 D2, FIX-2317): its
+   * question holds, a question or a confirm kept on the row (`source.kind:
+   * "row"`), and the mirror of a task run's `suspendForUser` stop
+   * (`"suspension"`), oldest first. A question is one kind of hold, beside the
+   * filer's (status `held`). *Open holds* (`openHolds`) is the one predicate
+   * every reader asks: the claim never takes a row with one, the row settles
+   * with one only by cancel, and the Inbox lists a row's open `actor: "user"`
+   * holds. Before its start a held row is `pending`; midway, `in_progress`
+   * with no lease. A cancel closes every hold.
    *
-   * Server-written by the collection's one question write (`collection/questions`),
-   * never by a caller. **Absent** on a row nothing has held.
+   * Server-written by the collection's one hold write (`collection/holds`),
+   * never by a caller. **Absent** on a row nothing has held. A row stored with
+   * them under `questions` (FIX-2183's name) reads them here (the
+   * retired-shape map's `questions` entry).
    */
-  questions: z.array(taskQuestionSchema).optional(),
+  holds: z.array(taskHoldSchema).optional(),
 
   /**
    * The row's turn generation (FIX-2133 D3): advanced by every claim of the

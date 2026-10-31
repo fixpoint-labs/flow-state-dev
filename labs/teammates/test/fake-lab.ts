@@ -241,7 +241,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       }
       return [[700, say(w, "On it.")], [2000, sendMessage(w, message.from, "Done. It's in the doc.", message.id)]];
     }
-    // writer waits for your yes before it publishes: `waitForUser` with an approval.
+    // writer waits for your yes before it publishes: `suspendForUser` with an approval.
     if (w.row.id === WRITER && /\bpublish\b/i.test(job.text)) {
       const suspensionId = nextId("sus");
       approvals.set(suspensionId, w);

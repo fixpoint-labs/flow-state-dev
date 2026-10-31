@@ -221,7 +221,7 @@ That coding worker answers from the coding session the task ran in, by resuming 
 
 ## When a task asks a question
 
-A task can stop midway to ask a question and wait for the answer (see [A task's questions](../orchestration/task-board.md#a-tasks-questions)). The question comes from a model's `askQuestion` tool, from code calling `askMidway(ctx, board, [{ prompt }])`, or from a coding run in Shift Manager's `devteam` Lab. Whichever it is, the worker that filed the task gets a message about it.
+A task can stop midway to ask a question and wait for the answer (see [A task's questions](../orchestration/task-board.md#a-tasks-questions)). The question comes from a model's `holdTaskForUser` tool, from code calling `askMidway(ctx, board, [{ prompt }])`, or from a coding run in Shift Manager's `devteam` Lab. Whichever it is, the worker that filed the task gets a message about it.
 
 Each question is one message from the task's worker to the filer. It lands in the conversation that filed the task and wakes the filing worker there, like any other message. The filer's model reads:
 

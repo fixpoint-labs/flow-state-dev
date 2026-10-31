@@ -9,7 +9,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler, sequencer, SuspensionTimeoutError } from "@flow-state-dev/core";
-import type { FlowInstance, SuspensionRecord, WaitForUserOptions } from "@flow-state-dev/core/types";
+import type { FlowInstance, SuspensionRecord, SuspendForUserOptions } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
@@ -44,9 +44,9 @@ function askingFlow(seen: string[]): FlowInstance {
     name: "ask",
     inputSchema: z.any(),
     outputSchema: z.any(),
-    execute: async (input: { options: WaitForUserOptions; twice?: boolean; catchDeadline?: boolean }, ctx) => {
+    execute: async (input: { options: SuspendForUserOptions; twice?: boolean; catchDeadline?: boolean }, ctx) => {
       try {
-        const first = await ctx.waitForUser(input.options as never);
+        const first = await ctx.suspendForUser(input.options as never);
         seen.push(`first:${JSON.stringify(first)}`);
         return input.twice === true ? { again: input.options } : first;
       } catch (error) {
@@ -62,9 +62,9 @@ function askingFlow(seen: string[]): FlowInstance {
     name: "again",
     inputSchema: z.any(),
     outputSchema: z.any(),
-    execute: async (input: { again?: WaitForUserOptions }, ctx) => {
+    execute: async (input: { again?: SuspendForUserOptions }, ctx) => {
       if (input?.again === undefined) return input;
-      const second = await ctx.waitForUser(input.again as never);
+      const second = await ctx.suspendForUser(input.again as never);
       seen.push(`second:${JSON.stringify(second)}`);
       return second;
     }
@@ -140,7 +140,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("waitForUser: what the stop records", () => {
+describe("suspendForUser: what the stop records", () => {
   it("records its kind beside the reason it maps to, and a deadline only when one is set (D3)", async () => {
     const seen: string[] = [];
     const flow = askingFlow(seen);
@@ -165,7 +165,7 @@ describe("waitForUser: what the stop records", () => {
   });
 });
 
-describe("waitForUser: a deadline", () => {
+describe("suspendForUser: a deadline", () => {
   it("an input's deadline throws SuspensionTimeoutError into the block, which may catch it; its work isn't run again", async () => {
     const seen: string[] = [];
     const flow = askingFlow(seen);
@@ -193,7 +193,7 @@ describe("waitForUser: a deadline", () => {
   });
 });
 
-describe("waitForUser: a cancel (the board's debt payment)", () => {
+describe("suspendForUser: a cancel (the board's debt payment)", () => {
   it("a task's cancel resolves the stop cancelled and continues it: the block reads { cancelled: true }, and a later wait in the run is cancelled at once", async () => {
     const seen: string[] = [];
     const flow = askingFlow(seen);
@@ -332,7 +332,7 @@ async function crashAfterAudit(
   );
 }
 
-describe("waitForUser: a crash after the stop's resolution was logged replays it as that ending, never as an answer", () => {
+describe("suspendForUser: a crash after the stop's resolution was logged replays it as that ending, never as an answer", () => {
   const routes = {
     // The sweep's re-drive of a resolved stop.
     sweep: async (h: ReturnType<typeof harness>, requestId: string, gate: SuspensionRecord) =>
@@ -385,7 +385,7 @@ describe("waitForUser: a crash after the stop's resolution was logged replays it
   }
 });
 
-describe("waitForUser in a nested sequencer", () => {
+describe("suspendForUser in a nested sequencer", () => {
   it("restores the nested sequencer's own state on the answer, so its later steps read what earlier ones wrote", async () => {
     const seen: string[] = [];
     const mark = handler({
@@ -401,7 +401,7 @@ describe("waitForUser in a nested sequencer", () => {
       name: "ask",
       inputSchema: z.any(),
       outputSchema: z.any(),
-      execute: async (_input, ctx) => ctx.waitForUser({ kind: "input", prompt: "?" } as never)
+      execute: async (_input, ctx) => ctx.suspendForUser({ kind: "input", prompt: "?" } as never)
     });
     const read = handler({
       name: "read",

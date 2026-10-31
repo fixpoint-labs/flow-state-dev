@@ -106,9 +106,9 @@ export type {
 export { REQUEST_RESUME_SEAM, requestResumeOf } from "./request-resume";
 export type { RequestResume } from "./request-resume";
 
-/** Waiting for a user (FIX-2129): `ctx.waitForUser`, its options and what it returns. */
-export { waitForUserOn } from "./wait-for-user";
-export type { ApprovalAnswer, UserAnswer, WaitForUser, WaitForUserCancelled, WaitForUserContext, WaitForUserOptions } from "./wait-for-user";
+/** Waiting for a user (FIX-2129): `ctx.suspendForUser`, its options and what it returns. */
+export { suspendForUserOn } from "./suspend-for-user";
+export type { ApprovalAnswer, UserAnswer, SuspendForUser, SuspendForUserCancelled, SuspendForUserContext, SuspendForUserOptions } from "./suspend-for-user";
 
 /** The request-end seam (FIX-2077): a framework package's hook after a request's last drain. */
 export {
@@ -420,12 +420,12 @@ export type {
   SuspensionRecord,
   SuspensionSkipped,
   SuspensionStatus,
-  WaitForUserKind
+  SuspendForUserKind
 } from "./suspension";
 export {
   RESUME_ACTION_STATUS,
   isUserSuspension,
-  waitForUserKindOf,
+  suspendForUserKindOf,
   SUSPENSION_SKIPPED,
   TERMINAL_SUSPENSION_STATUSES,
   isTerminalSuspensionStatus,

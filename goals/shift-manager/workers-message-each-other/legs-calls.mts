@@ -163,7 +163,7 @@ export async function leg10b(world: World): Promise<LegResult> {
 
   // Researcher's conversation stops for Alice.
   const stopTurn = await act(alice, researcher.flowKind, researcher.id, "respond", {
-    message: `Before anything else, call waitForUser with kind "approval" and prompt "May I publish the ${fyi} report?", and wait for my answer.`,
+    message: `Before anything else, call suspendForUser with kind "approval" and prompt "May I publish the ${fyi} report?", and wait for my answer.`,
   });
   const stop = await until(async () => {
     const stops = (await alice.routes.items(researcher.id, "suspension")).filter((i) => i.requestId === stopTurn.requestId && i.reason === "user_approval");

@@ -110,7 +110,7 @@ function stopperFlow(installation: WorkerInstallation) {
     inputSchema: z.object({ message: z.string() }),
     execute: async (input, ctx) => {
       if (!input.message.includes("[stop]")) return `heard: ${input.message}`;
-      const answer = await (ctx as unknown as { waitForUser(options: unknown): Promise<unknown> }).waitForUser({ kind: "input", prompt: "Go ahead?" });
+      const answer = await (ctx as unknown as { suspendForUser(options: unknown): Promise<unknown> }).suspendForUser({ kind: "input", prompt: "Go ahead?" });
       return `went ahead: ${JSON.stringify(answer)}`;
     }
   });

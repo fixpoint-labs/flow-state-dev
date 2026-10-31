@@ -14,7 +14,7 @@ import { AgentMarkdown } from "./flow-state/message-response";
  * line, "researcher finished: …", that opens the task's popup, where its
  * result is; a routed answer, which names no task, is shown as said. A worker's text is
  * Markdown; your own lines are shown as typed. A worker that waits for your
- * yes (`waitForUser` with an approval) is a card with Approve and Deny until
+ * yes (`suspendForUser` with an approval) is a card with Approve and Deny until
  * you answer. Memoized: a streamed chunk redraws only the entry that changed.
  */
 export const Entry = memo(function Entry({

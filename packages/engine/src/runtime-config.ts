@@ -120,13 +120,13 @@ export interface RuntimeConfig {
   waitDeadlines?: { defaultMs?: number; minMs?: number; maxMs?: number };
   /**
    * The deadline a stop that waits for a user gets when it names none, in
-   * milliseconds from the stop (FIX-2129, epic D3): every `ctx.waitForUser`
+   * milliseconds from the stop (FIX-2129, epic D3): every `ctx.suspendForUser`
    * without a `deadline`, and every held question. **Unset by default**: such
    * a stop waits until it is answered, stopped or cancelled. Separate from
    * `waitDeadlines`, which bounds waits on work. Between
    * {@link MIN_USER_DEADLINE_MS} and {@link MAX_USER_DEADLINE_MS}. A raw
    * `ctx.suspend` never reads it: its own `timeoutMs` is its only deadline.
-   * Read by `ctx.waitForUser` with or without a request host, and exposed as `RequestHost.userDeadlineMs`.
+   * Read by `ctx.suspendForUser` with or without a request host, and exposed as `RequestHost.userDeadlineMs`.
    */
   userDeadlineMs?: number;
 }
