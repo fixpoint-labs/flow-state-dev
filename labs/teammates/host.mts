@@ -170,6 +170,21 @@ export function workingFolder(workdir: string | undefined): string {
 }
 
 /**
+ * The coding-run budget, checked: `TEAMMATES_RUN_TIMEOUT_MS` as a whole number
+ * of milliseconds, or `undefined` (the host's default) when unset.
+ *
+ * @throws When the setting is not a positive whole number.
+ */
+export function runTimeout(value: string | undefined): number | undefined {
+  if (value === undefined || value.trim() === "") return undefined;
+  const ms = Number(value);
+  if (!Number.isInteger(ms) || ms <= 0) {
+    throw new Error(`teammates: TEAMMATES_RUN_TIMEOUT_MS is ${JSON.stringify(value)}, not a positive whole number of milliseconds.`);
+  }
+  return ms;
+}
+
+/**
  * Build the lab's server.
  *
  * @throws When the working folder is unset, missing or not a git checkout, or the workers' tree doesn't load.

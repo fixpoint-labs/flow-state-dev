@@ -101,6 +101,8 @@ This builds the pages and serves them with the lab's server (`fsdev.config.mts`)
 | `TEAMMATES_STORE` | the SQLite file | `.fsdev/teammates.sqlite` here |
 | `TEAMMATES_USER` | who the page acts as | `you` |
 | `TEAMMATES_TREE` | the workers' tree | `workforce/` here |
+| `TEAMMATES_RUNS` | the folder each coding run's worktree goes in | `.fsdev/teammates-runs/` here |
+| `TEAMMATES_RUN_TIMEOUT_MS` | the wall-clock budget for one coding run, in milliseconds | `1200000` (20 minutes) |
 
 The model needs a credential the gateway takes (`AI_GATEWAY_API_KEY`). Each coding agent needs its
 own sign-in: Claude Code signed in, or `ANTHROPIC_API_KEY`; Codex signed in (`codex login`), or
@@ -111,7 +113,7 @@ search needs one search provider's key (`TAVILY_API_KEY`, `EXA_API_KEY`, `BRAVE_
 With `TEAMMATES_WORKDIR` unset, the working folder is the root of this repository. Naming a folder
 that doesn't exist or isn't a git checkout stops the lab at start with an error that names the
 setting and the path; it never falls back to the current directory. Each coding run
-works in a worktree of the folder, under the lab's `.fsdev/teammates-runs/`, so the checkout's
+works in a worktree of the folder, under the lab's `.fsdev/teammates-runs/` (or `TEAMMATES_RUNS`), so the checkout's
 `.gitignore` must ignore `**/.fsdev/`, where a run keeps its own notes; a run refuses a checkout
 that doesn't. The checkout's own branch and working tree are never changed.
 
@@ -157,10 +159,6 @@ hire here, gets its initial on a palette color picked from its id.
 
 Not wired yet:
 
-- **Cursor under a long runs folder.** Cursor's SDK names a folder of its own after the run's whole
-  worktree path, and the worktree path `harness-manager` makes is long, so under the lab's default
-  runs folder a Cursor run fails with `ENAMETOOLONG` (FIX-2344). A short `runsRoot`, such as
-  `/tmp/r`, works today.
 - **Editing a worker from the files.** They are read-only on the roster; how a user changes one (a
   fork that stands in for it, or another way) waits on a product call.
 - **Saving writer's drafts.** No package tool writes files from a worker's turn yet, so writer
