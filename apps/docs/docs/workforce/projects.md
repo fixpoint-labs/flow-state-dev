@@ -863,7 +863,7 @@ The project is the one the conversation works in: a project coordinator's conver
 
 The key is the stored key of the user the worker is talking to, the same one their coding runs use. Two members of a project each act in the tracker as themselves. A server that user has no key for, one the server no longer offers, or one that can't be reached is left out, and the conversation is told once which server and why. The message never includes an address or a key.
 
-The model never sees the key either. It goes in the connection's headers only, and a failed call's error has the address and key taken out. A connection opens once per project, user and set of keys, is reused across steps and turns, and closes after `idleMs` without use. A changed key or server list applies from the next step.
+The model never sees the key either. It goes in the connection's headers only, and a failed call's error has the address and key taken out. A connection opens once per project, user and set of keys, is reused across steps and turns, and closes after `idleMs` without use. A changed key or server list applies from the next turn; a turn already under way finishes on the connection it started with.
 
 The capability installs the keys collection on the worker's model block so it can read the key. The model's document tools don't list or read that collection, but core's `resourceTools()` reads any collection by path, so don't give it to the same worker.
 

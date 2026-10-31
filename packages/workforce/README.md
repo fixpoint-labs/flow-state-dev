@@ -1734,7 +1734,7 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   conversation with no project gets no tools and hears nothing; a server with no key, or one that
   fails to connect, is left out and said once per conversation. The connection for one project,
   owner and set of keys is kept across steps and turns and closed after `idleMs` (default five
-  minutes) without use; a changed key or list opens a new one. Pass it on the worker flow's `uses`:
+  minutes) without use; a changed key or list opens a new one, used from the next turn. Pass it on the worker flow's `uses`:
 
   ```ts
   const linear = projectMcpCapability(

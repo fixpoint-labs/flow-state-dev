@@ -22,8 +22,9 @@
  * before every step of every turn, so the connection for one project, owner
  * and set of keys is opened once and kept while it is used, then closed after
  * `idleMs` without a call or a resolve. A changed key or server list makes a
- * different entry, so the next step uses it, and the old one closes when it
- * goes idle. A server that failed to connect stays failed for that entry, so
+ * different entry, used from the next turn (the generator compiles a turn's
+ * tool handlers once, so a turn already under way keeps the connection it
+ * started with), and the old one closes when it goes idle. A server that failed to connect stays failed for that entry, so
  * a down server costs one attempt per idle window, not one per step.
  *
  * **A server it can't have is left out and said once per conversation**, as
