@@ -30,7 +30,8 @@ import { doorOf, inboxItemAt, rosterOf, waited, workerLabel, type LoadedSnapshot
 import type { InboxHold, InboxItem as OrchestrationInboxItem } from "@flow-state-dev/orchestration/inbox";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Ask, type Failure } from "../lib/reads";
-import { navigate, pathFor } from "../lib/routes";
+import { navigate } from "../lib/routes";
+import { RouteLink } from "../components/RouteLink";
 import { readSessionItems, RunReadError } from "../lib/run";
 import { sendTurn, TurnNotDelivered } from "../lib/send";
 import { emptyInboxSentence } from "../lib/tasks";
@@ -282,9 +283,9 @@ function HeldQuestions({ item }: { item: InboxItem }) {
         {task === null ? null : (
           <Meta className="text-muted-foreground" testId="inbox-detail-head">
             {workerLabel(item.task!.assignee ?? "unassigned")} waits on {item.holds.length === 1 ? "your answer" : `${item.holds.length} answers`} to start or go on with{" "}
-            <a href={pathFor(task)} onClick={(e) => (e.preventDefault(), navigate(task))} className="underline" data-testid="inbox-held-task">
+            <RouteLink to={task} className="underline" data-testid="inbox-held-task">
               {item.task!.title}
-            </a>
+            </RouteLink>
           </Meta>
         )}
         <ol className="flex flex-col gap-3" data-testid="inbox-held-questions">

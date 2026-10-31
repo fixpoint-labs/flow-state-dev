@@ -13,9 +13,10 @@ import { useEffect, useState } from "react";
 import { COLUMNS, columnFor } from "../lib/columns";
 import { boardOwnerOf, openRows, rosterOf, workerFor, workerLabel, type LoadedSnapshot } from "../lib/derive";
 import type { BoardRow } from "../lib/reads";
-import { navigate, TASK_GROUPINGS, type TaskGrouping } from "../lib/routes";
+import { navigate, TASK_GROUPINGS, type Route, type TaskGrouping } from "../lib/routes";
 import { elapsed, isQueued, tasksSummary } from "../lib/tasks";
 import { EmptyState, Meta, ScreenTitle, SectionFailure, STATE_OF_COLUMN, StateSquare } from "../components/ui";
+import { RouteLink, isPlainClick } from "../components/RouteLink";
 import { useLab } from "../lib/lab-data";
 import { cn } from "../lib/utils";
 import type { Gaps } from "../gaps";
@@ -35,6 +36,11 @@ function useNow(running: boolean): number {
 }
 
 /** A mono cell: the id, NOW, STREAM, TIME and COST columns (v2:677-683). */
+/** A row's task screen, at its session tab. */
+function taskRoute(row: BoardRow): Route {
+  return { level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" };
+}
+
 const MONO_CELL = "py-2 pr-3 font-mono text-[11.5px] font-medium whitespace-nowrap";
 
 /** A row's stream as the table writes it: a conversation's `@<worker>` as it is, else `#<workstream>` or `#<conversation id>`. */
@@ -170,7 +176,11 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                       data-board-ref={row.boardRef}
                       data-task-id={row.id}
                       data-status={row.status}
-                      onClick={() => navigate({ level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" })}
+                      onClick={(event) => {
+                        // The title is the row's link; a click on it, or a click the browser owns, is not the row's.
+                        if ((event.target as Element).closest("a") !== null || !isPlainClick(event)) return;
+                        navigate(taskRoute(row));
+                      }}
                     >
                       <td className="px-2 py-2" title={row.status} data-testid="task-row-status">
                         <StateSquare state={STATE_OF_COLUMN[columnFor(row.status)]} className="align-middle" />
@@ -179,7 +189,9 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                         {row.id}
                       </td>
                       <td className="truncate py-2 pr-3 text-[13.5px]" data-testid="task-row-title">
-                        {row.title}
+                        <RouteLink to={taskRoute(row)} className="hover:underline" data-testid="task-row-link">
+                          {row.title}
+                        </RouteLink>
                       </td>
                       <td className={cn(MONO_CELL, "text-muted-foreground")} title={gaps.now} data-testid="task-row-now">
                         —

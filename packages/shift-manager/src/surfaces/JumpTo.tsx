@@ -15,6 +15,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { allRows, shiftCoordinatorOf, workerLabel, type LoadedSnapshot } from "../lib/derive";
 import { handToShiftCoordinator } from "../lib/outbox";
 import { navigate, type Route } from "../lib/routes";
+import { RouteLink } from "../components/RouteLink";
 import type { Gaps } from "../gaps";
 
 type Entry = { group: "Views" | "Workers" | "Tasks" | "Resources"; label: string; hint: string; to: Route };
@@ -131,19 +132,19 @@ export function JumpTo({
               {entries.map((entry) => {
                 const at = shown.indexOf(entry);
                 return (
-                  <button
+                  <RouteLink
                     key={`${entry.group}:${entry.label}:${entry.hint}`}
-                    type="button"
+                    to={entry.to}
                     role="option"
                     aria-selected={at === highlighted}
-                    onClick={() => go(entry)}
+                    onNavigate={onClose}
                     onMouseMove={() => setActive(at)}
                     data-testid="jump-result"
                     className={`flex w-full items-center justify-between px-2 py-1.5 text-left text-sm ${at === highlighted ? "bg-accent text-accent-foreground" : ""}`}
                   >
                     <span className="truncate">{entry.label}</span>
                     <span className="ml-2 truncate text-xs text-muted-foreground">{entry.hint}</span>
-                  </button>
+                  </RouteLink>
                 );
               })}
             </section>

@@ -21,6 +21,7 @@ import { themeLabel, type ThemeLook } from "../lib/theme";
 import { useLab } from "../lib/lab-data";
 import { useRoster, withRoster } from "../lib/roster";
 import { navigate } from "../lib/routes";
+import { RouteLink } from "../components/RouteLink";
 import type { Gaps } from "../gaps";
 
 const NEVER = () => () => {};
@@ -91,14 +92,13 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
             —
           </span>
         </p>
-        <button
-          type="button"
-          onClick={() => navigate({ level: "worker-settings", worker: worker.id })}
-          className="mt-1 border px-1.5 py-0.5 text-xs hover:border-foreground"
+        <RouteLink
+          to={{ level: "worker-settings", worker: worker.id }}
+          className="mt-1 inline-block border px-1.5 py-0.5 text-xs hover:border-foreground"
           data-testid="roster-worker-settings"
         >
           Settings
-        </button>
+        </RouteLink>
       </div>
       <div className="space-y-1 pt-0.5">
         <span className="flex gap-0.5">
@@ -121,18 +121,17 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
           </span>
         ) : (
           held.map((row) => (
-            <button
+            <RouteLink
               key={`${row.boardRef}/${row.id}`}
-              type="button"
               title={row.title}
               className={`border px-1.5 py-0.5 text-xs hover:border-foreground ${onYou.has(row) ? "bg-attention text-attention-foreground" : ""}`}
-              onClick={() => navigate({ level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" })}
+              to={{ level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" }}
               data-testid="roster-holding"
               data-board-ref={row.boardRef}
               data-task-id={row.id}
             >
               {row.id}
-            </button>
+            </RouteLink>
           ))
         )}
       </div>
