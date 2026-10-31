@@ -102,8 +102,8 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 <p style="margin: 0; font-size: 13px; line-height: 1.55; color: #3d3a32;">Many people on one workforce, each with their own sessions and state.</p>
 </li><li style="display: flex; flex-direction: column; gap: 8px; padding: 14px 0 0; border-top: 1px solid rgba(27,26,21,.3);">
 <svg viewBox="0 0 40 26" aria-hidden="true" style="display: block; width: 40px; height: 26px;"><rect x="2" y="3" width="15" height="20" fill="none" stroke="#1b1a15" stroke-width="1.3"></rect><rect x="23" y="3" width="15" height="20" fill="none" stroke="#1b1a15" stroke-width="1.3"></rect><path d="M17 13 H23" stroke="#1b1a15" stroke-width="1.2" stroke-dasharray="2 2"></path><path d="M5 9 H14 M26 9 H35" stroke="rgba(27,26,21,.35)"></path></svg>
-<h3 style="margin: 0; font-size: 15px; letter-spacing: -0.02em; font-weight: 700;">Multiple backends</h3>
-<p style="margin: 0; font-size: 13px; line-height: 1.55; color: #3d3a32;">Run more than one backend and connect them across machines or environments.</p>
+<h3 style="margin: 0; font-size: 15px; letter-spacing: -0.02em; font-weight: 700;">Scale across servers</h3>
+<p style="margin: 0; font-size: 13px; line-height: 1.55; color: #3d3a32;">Run your backend on several hosts and add more servers as load grows.</p>
 </li><li style="display: flex; flex-direction: column; gap: 8px; padding: 14px 0 0; border-top: 1px solid rgba(27,26,21,.3);">
 <svg viewBox="0 0 40 26" aria-hidden="true" style="display: block; width: 40px; height: 26px;"><rect x="4" y="7" width="18" height="12" fill="none" stroke="#1b1a15" stroke-width="1.3"></rect><path d="M22 10 H30 M22 16 H30" stroke="#1b1a15" stroke-width="1.3"></path><rect x="30" y="6" width="6" height="14" fill="#f8f6f0" stroke="#1b1a15" stroke-width="1.2"></rect></svg>
 <h3 style="margin: 0; font-size: 15px; letter-spacing: -0.02em; font-weight: 700;">MCP</h3>

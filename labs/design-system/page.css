@@ -128,7 +128,7 @@ body {
 
 .sheet::before,
 .sheets h2::before {
-  content: "SHEET " counter(sheet, decimal-leading-zero) " —";
+  content: "SECTION " counter(sheet, decimal-leading-zero) " —";
   display: block;
   margin-bottom: 10px;
   font-family: var(--font-mono);
