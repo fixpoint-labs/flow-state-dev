@@ -63,10 +63,13 @@ All of these were run against a prototype of the build. The controls failed as s
   on every later provision until it exits 0 ([D3](DECISIONS.md#d3)), inside the provision's one
   budget ([D4](DECISIONS.md#d4)). `PlaceRequest.onSetup` is told before it starts;
   `WorkspacePlace.setup` says `done`, or `failed` with the tail ([D2](DECISIONS.md#d2)).
-- **`@flow-state-dev/harness-manager`, session flow**: `HarnessSessionWorkspace.provision` is
-  handed `{ onSetup }` and may return `{ cwd, setup }` instead of a bare path. The turn record
-  gains `setup: { state, tail } | null`. A host that returns a bare path records nothing, so
-  Kitchen Sink's current wiring is unchanged. This is the one hunk in `session-flow.ts`'s turn
+- **`@flow-state-dev/harness-manager`, session flow**: `HarnessSessionWorkspace.provision`'s
+  second argument is one request object, and this adds `onSetup` to it; FIX-2419's `start` is
+  another field of the same object, not a third argument. Its result is FIX-2386's object
+  (`{ path, baseCommit? }`, or a bare path), and this adds `setup?` to it
+  ([E2](DECISIONS.md#decided-not-asked)). The turn record gains `setup: { state, tail } | null`.
+  A host that returns a bare path records nothing, so Kitchen Sink's current wiring is
+  unchanged. This is the one hunk in `session-flow.ts`'s turn
   record region the epic's build order names.
 - **`@flow-state-dev/harness-manager`, task-board runs**: `WorkspaceConfig.setup` is passed to
   the host. A run says "Setting up the worktree…" (live) while setup runs, and keeps
@@ -87,6 +90,7 @@ places (no repository) run nothing. Core and the engine are untouched.
 | Workspace `provisionWorktree`'s `prepare`, which runs before the checkout | **Extended** with an after-checkout phase, in the host rather than in `worktree.ts`, so a tree rebuilt from held work is covered too |
 | `repo.created`, set by every `worktree add` and never by a hand-back | **Reused** as "this provision made the tree". Its doc says "whether this call cut the branch", which is narrower than what it does; corrected in the same change |
 | The provisioning marker beside a checkout | **Reused** as the pattern: a setup marker beside it says a setup is still owed |
+| FIX-2386's `provision` result `{ path, baseCommit }` and FIX-2419's `start` argument (both in spec review) | **Extended**: one field each, `setup` on the result and `onSetup` on the request object. Whichever of the three merges first defines the object; the others add a field |
 | `PlaceRequest.progress` (`lost`, `restoring`) | **Considered, not widened**: its one caller writes the value as a place state. `onSetup` sits beside it |
 | `exec.ts`'s `run`, the one place the package spawns | **Reused**, by line, keeping the last lines |
 | Workspace README: "run any setup the checkout needs as part of the run" | **Amended**: the host can now do it |

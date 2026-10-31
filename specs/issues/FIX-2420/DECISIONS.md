@@ -66,8 +66,11 @@ provisioning path; ER-2: optional, a host opts in). What's left is the shape.
 
 - **E1 · `onSetup` beside `progress`, not a third `progress` state.** The manager writes
   `progress`'s value as a place state; "setting up" isn't one.
-- **E2 · The session flow's `provision` may return `{ cwd, setup }` or a bare path.** A bare path
-  records nothing, so Kitchen Sink keeps working before its stack wires it.
+- **E2 · One `provision` shape, shared with FIX-2386 and FIX-2419.** The result is FIX-2386's
+  `{ path, baseCommit?, branch?, setup? }`, or a bare path; this adds `setup`, and uses `path`,
+  not `cwd`, because it is the same directory. The second argument is one request object,
+  `{ onSetup, start? }`; this adds `onSetup`, and FIX-2419's `start` is a field beside it. A bare
+  path records nothing, so Kitchen Sink keeps working before its stack wires it.
 - **E3 · Task-board runs say it on the stream, not on the run record.** "Setting up the
   worktree…" is a live status; "Setup failed: <tail>" is kept. A record field waits for a page
   that reads it.
@@ -84,4 +87,7 @@ provisioning path; ER-2: optional, a host opts in). What's left is the shape.
 
 ## Notes from review
 
-*(None yet.)*
+- FSD Architect (6d6dd2b): three specs were widening `provision` separately, with two names
+  for the path. Folded: E2 extends FIX-2386's object, uses `path`, and names FIX-2386 and
+  FIX-2419 under *What's already here*. The second argument is a single object, so FIX-2419's
+  `start` and this `onSetup` don't compete for positions.
