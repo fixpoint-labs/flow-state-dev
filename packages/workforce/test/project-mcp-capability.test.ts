@@ -8,7 +8,7 @@
  * `{ ok: true }`, so every answer below says which: the server's text, or that.
  *
  * The project and the owner come from the conversation's server-written
- * fields, never from what the model or the person writes: a conversation
+ * fields, never from what the model or the user writes: a conversation
  * with no project gets nothing, whatever its message names.
  */
 import { createClient } from "@flow-state-dev/client";

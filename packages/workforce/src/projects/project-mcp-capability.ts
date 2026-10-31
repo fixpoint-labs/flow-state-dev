@@ -9,7 +9,7 @@
  * and stored rows only, never from a tool argument or a prompt (BP-031); the
  * key is the owner's own (`mcp-credentials/*`), or the operator's `seedEnv`;
  * and the connection is FSD's one MCP client. A lead such as a project's
- * coordinator can then read the issue a person names ("implement FIX-2165")
+ * coordinator can then read the issue a user names ("implement FIX-2165")
  * from the tracker rather than guess at it.
  *
  * One preset, `tools`, off until a worker's own file picks it
