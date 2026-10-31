@@ -10,7 +10,8 @@ changed, and for one file's patch.
 
 The package slice of a wave-1 child of [FIX-2369](../../epics/FIX-2369/SPEC.md). The epic spec
 (#4358) fixed its direction ("`readRunDiff`, read action — extend `commits.ts`"); this records the
-shape that was built. The apps adopt it in their own stacks (build order:
+shape that was built. The epic's "read action" means a read a person's screen calls, which this
+builds as a flow read (FIX-2286), not an action whose return is recorded ([D1](DECISIONS.md#d1)). The apps adopt it in their own stacks (build order:
 [FIX-2369 DECISIONS → Coordination seams](../../epics/FIX-2369/DECISIONS.md#coordination-seams)).
 
 ## Who feels it, before and after
@@ -58,14 +59,25 @@ package read, without its own git code.**
   `runChangesSchema`; caps `MAX_DIFF_FILES` (200 listed; totals count all) and
   `MAX_PATCH_CHARS` (64,000).
 - **`manager.ts`**: with `reviewChanges`, `decide` reads the diff once, beside the commits, onto
-  `decided.diff` (`.nullable().default(null)`, BP-030). The review prompt adds "N files changed
-  (+a −d)."; the stop's `data` adds `files`, `fileCount`, `added`, `removed`.
+  `decided.diff` (`.nullable().default(null)`, BP-030). That one value is the source of both the
+  review prompt's "N files changed (+a −d)." line and the stop's `data` fields `files`,
+  `fileCount`, `added`, `removed`. It is a second git pass after `readRunCommits`, kept apart on
+  purpose: the commit count and subjects are read for every run (the output and the judge need
+  them), and the numstat only when a review will read it. Merging them would make every run pay
+  for the diff.
+- **A board `changes` read with no `path` runs the numstat again.** `decided.diff` lives in the
+  manager's per-request state, which a read on the run's session can't reach, and it is gone once
+  the run settles. During a review a screen already has the files from the stop's data and needs
+  only `path` reads; the no-path read is for after (Shift Manager's Diff tab on a finished task).
+  One bounded git call; accepted.
 - **`run-changes.ts`** (new): `harnessRunChangesRead({ board, uses })`, a flow **read** for a
   board run, found from the run's session as the session door finds it (`sessionRow`, now
-  exported from `session-door.ts` inside the package).
+  exported from the `session-door.ts` module so `run-changes.ts` can share it; it is not in the
+  package's `index.ts`, so the public API does not grow).
 - **`session-flow.ts`**: each turn record gains `base` (recorded by the `cwd` feed when the turn
-  first reaches its checkout) and `head` (recorded at turn end, before the PR check, now one
-  `turn-end` sequencer). The flow declares `reads: { changes }` keyed by turn.
+  first reaches its checkout) and `head` (recorded at turn end). The flow's one `request.onFinished` hook
+  is now the `turnEnd` sequencer (block name `turn-end`): `recordTurnHead`, then the existing PR
+  check. The flow declares `reads: { changes }` keyed by turn.
 - **`packages/ui`**: registry item `run-changes` ("N files changed (+a −d)", per-file rows, a
   patch on open through the app's `loadPatch`). Appended to `registry.json`; README row.
 - **Docs**: harness-manager README and `apps/docs/docs/orchestration/harness-manager.md`.

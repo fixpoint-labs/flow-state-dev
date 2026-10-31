@@ -21,8 +21,12 @@ import { cn } from "@/lib/utils";
 /** One file a run changed. `added`/`removed` are `null` for a binary file. */
 export type RunChangesFile = { path: string; added: number | null; removed: number | null };
 
-/** One file's patch, as the app's read answered it. */
-export type RunChangesPatch = { patch: string; truncated: boolean };
+/**
+ * One file's patch, as the app's read answered it. `verified: false` means
+ * git couldn't read it (the checkout is gone, say): the file shows that and
+ * reads again when reopened, rather than claiming it has no changes.
+ */
+export type RunChangesPatch = { patch: string; truncated: boolean; verified?: boolean };
 
 export interface RunChangesProps {
   /** The files the run changed, or `null` when they couldn't be read. */
@@ -88,7 +92,12 @@ function FileRow({ file, loadPatch }: { file: RunChangesFile; loadPatch?: RunCha
     if (!next || loadPatch === undefined || (state !== null && state.status !== "failed")) return;
     setState({ status: "loading" });
     loadPatch(file.path).then(
-      (patch) => setState({ status: "ready", patch }),
+      (patch) =>
+        setState(
+          patch.verified === false
+            ? { status: "failed", message: "git couldn't read it from the run's checkout" }
+            : { status: "ready", patch },
+        ),
       (error: unknown) => setState({ status: "failed", message: error instanceof Error ? error.message : String(error) }),
     );
   };

@@ -66,6 +66,18 @@ describe("a run's changes", () => {
     expect(await screen.findByText(/couldn't be read: no checkout/)).toBeTruthy();
   });
 
+  it("says an unread patch couldn't be read instead of showing no changes, and reads it again on reopen", async () => {
+    const loadPatch = vi.fn(async () => ({ patch: "", truncated: false, verified: false }));
+    render(<RunChanges files={files} loadPatch={loadPatch} defaultOpen />);
+    const row = screen.getByRole("button", { name: /src\/a\.ts/ });
+    fireEvent.click(row);
+    expect(await screen.findByText(/couldn't be read: git couldn't read it/)).toBeTruthy();
+    expect(screen.queryByText("No changes to show.")).toBeNull();
+    fireEvent.click(row);
+    fireEvent.click(row);
+    expect(loadPatch).toHaveBeenCalledTimes(2);
+  });
+
   it("draws nothing when the run's changes couldn't be read", () => {
     const { container } = render(<RunChanges files={null} />);
     expect(container.innerHTML).toBe("");
