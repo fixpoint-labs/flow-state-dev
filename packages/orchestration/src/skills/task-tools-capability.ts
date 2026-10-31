@@ -105,6 +105,8 @@ import {
   waitOnTask,
 } from "../tasks/helpers/wait-on-task";
 import { cancelAndResume } from "../tasks/helpers/user-stop";
+import { taskToolSuffix } from "./task-tool-names";
+export { taskToolSuffix } from "./task-tool-names";
 
 /** A filing's question as the board keeps it: a plain string is a question. */
 function askOf(question: string | { kind: "question" | "confirm"; prompt: string; onNo?: "cancel" | "continue" }): QuestionInit {
@@ -2161,20 +2163,6 @@ export function taskToolsForTurn(
 // ---------------------------------------------------------------------------
 // The task tools as flow actions
 // ---------------------------------------------------------------------------
-
-/**
- * The qualifier that makes one board's task tools distinct from
- * another's: the board's collection id with every character a provider does
- * not allow in a tool name (`[a-zA-Z0-9_-]`) turned into `_`. So
- * `eng.feature.work`'s tools are `updateTask_eng_feature_work`.
- *
- * **Pinned.** It is the name a model is told about on a dotted board and the
- * name an action carries under {@link taskToolActions}, and the DevTool scopes
- * a row's actions to its board by it.
- */
-export function taskToolSuffix(collectionId: string): string {
-  return collectionId.replace(/[^a-zA-Z0-9_-]/g, "_");
-}
 
 /**
  * What {@link taskToolActions} reads off a board handle. Structural, so this

@@ -1328,6 +1328,24 @@ await createInboxClient(client).answer(items[0], { approved: true });
 - **One item per task, however many questions it has.** A task's questions and confirms, asked at filing or midway, list oldest first as its `holds`, beside a stop in its run.
 - **The answer is typed by what the question asks:** an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, a confirm `{ done, note? }` (a No cancels the task unless the confirm was filed with `onNo: "continue"`). `answer(item, value, questionId?)` answers the item's first question, or the one named; `answerOne(question, value)` answers one question directly. A task run's stop goes to the engine's answer route, which records who answered. A question or a confirm goes to its board's `updateTask` action, as the signed-in user, in the session that board lives in, and the call rejects with the board's refusal. A question on a board the reader can't reach says so in `unanswerable`.
 
+### Task actions
+
+The same client works a board's tasks. `board(at)` binds the board once, by the flow and session that hold it and its collection id, and each call runs the board's own action as the signed-in user:
+
+```ts
+const tasks = createInboxClient(client).board({ flowId, sessionId, board: "tasks" });
+
+await tasks.release(taskId);                 // a held task may start
+await tasks.steer(taskId, "Skip the archived repos");
+const alsoCancelled = await tasks.cancel(taskId); // the dependents it took along
+const newId = await tasks.refile(row, { goal: "Audit active repos only" });
+```
+
+- **The board decides what's allowed.** A call resolves on the board's yes and rejects with its words on a refusal: a finished task takes no steer and no second cancel.
+- **`refile(row, overrides?)`** files the task again as a new row, copying its `goal`, `title`, `context`, `assignee`, `labels` and `priority`, with `overrides` winning. Use it when a task should run again with changes.
+- **Answering a task's question** stays `answer` / `answerOne`.
+- **`taskActionName(tool, board)`** names a board's action (`taskActionName("updateTask", "tasks")` is `"updateTask_tasks"`), for an app that names a row's `holder`.
+
 ## Documentation
 
 - [Orchestration overview](https://flow-state.dev/docs/orchestration/overview)

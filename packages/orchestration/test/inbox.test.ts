@@ -9,7 +9,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import type { Client, SessionRequestSummary } from "@flow-state-dev/client";
-import { createInboxClient, inboxItems, type InboxRow, type InboxSuspension } from "../src/inbox";
+import { createInboxClient, inboxItems, taskActionName, type InboxRow, type InboxSuspension } from "../src/inbox";
 import { reconcileInbox, rowTruthOf, suspensionTruthOf, taskItemId, type InboxTruth } from "../src/inbox/check";
 import { NO_BOARD_UNANSWERABLE, NO_FLOW_UNANSWERABLE } from "../src/inbox/holds";
 import type { TaskHold } from "../src/tasks";
@@ -415,5 +415,12 @@ describe("suspensionTruthOf: what a session's suspended requests record", () => 
       { suspensionId: "a", sessionId: "s", requestId: "r1", taskRun: true },
       { suspensionId: "d", sessionId: "s", requestId: "r2", taskRun: false },
     ]);
+  });
+});
+
+describe("taskActionName: a board's action, named as the task tools register it (FIX-2381)", () => {
+  it("joins the tool and the board's suffix, a dotted board's dots made safe", () => {
+    expect(taskActionName("updateTask", "tasks")).toBe("updateTask_tasks");
+    expect(taskActionName("createTask", "eng.feature.work")).toBe("createTask_eng_feature_work");
   });
 });

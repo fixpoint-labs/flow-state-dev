@@ -21,8 +21,14 @@
  * runtime. A browser reads the rows and the sessions, a server reads
  * `listTasks`; both hand them to {@link inboxItems}, the only function that
  * builds an item (the task-surface sweep fails one built anywhere else).
+ *
+ * **Task actions.** `createInboxClient(client).board(at)` cancels, steers,
+ * releases and re-files a board's tasks through the board's own actions
+ * (FIX-2381), and {@link taskActionName} names those actions.
  */
-export { createInboxClient, type InboxClient } from "./client";
+export { createInboxClient, type InboxClient, type RefileOverrides, type RefileRow, type TaskActions, type TaskBoardAt } from "./client";
+// A board's action names, for an app that names a row's `holder` (FIX-2381).
+export { taskActionName, taskToolSuffix } from "../skills/task-tool-names";
 export { inboxItems } from "./list";
 // What a row's holds are, for a reader that parses a published row (FIX-2133).
 export { taskHoldSchema, type TaskHold } from "../tasks/schema/hold";

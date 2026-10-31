@@ -460,18 +460,17 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
 
   /** An app's workforce client for `userId`, talking to this host's router. */
   const inProcess = createInProcessFetch(state);
-  const client = (userId: string) =>
-    createWorkforceClient(
-      createClient({
-        userId,
-        // This host's router in-process, as `userId`.
-        fetcher: (input, init) => {
-          const headers = new Headers(init?.headers);
-          headers.set("x-user", userId);
-          return inProcess(input, { ...init, headers });
-        }
-      })
-    );
+  /** An app's framework client for `userId`, talking to this host's router in-process, as `userId`. */
+  const fsd = (userId: string) =>
+    createClient({
+      userId,
+      fetcher: (input, init) => {
+        const headers = new Headers(init?.headers);
+        headers.set("x-user", userId);
+        return inProcess(input, { ...init, headers });
+      }
+    });
+  const client = (userId: string) => createWorkforceClient(fsd(userId));
 
   /**
    * Make every new request on `actionName` fail to be written, as a store
@@ -529,6 +528,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     session,
     requestsOf,
     messages,
+    fsd,
     client,
     hire,
     fire,
