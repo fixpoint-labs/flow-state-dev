@@ -4,6 +4,7 @@ import type { LabAdapter, TaskRow } from "../adapter";
 import { useWatch } from "../lib/use-watch";
 import { Entry } from "./Entry";
 import { JumpToLatestButton } from "./JumpToLatest";
+import { ReviewCard } from "./ReviewCard";
 import { Spend } from "./Spend";
 import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus";
 
@@ -70,22 +71,19 @@ export function ThreadView({
           {pinned ? "Unpin" : "Pin"}
         </button>
       </div>
-      <div className="px-4 pt-2 text-xs text-muted-foreground">{statusLine(task)}</div>
+      {/* Ready for review is said once, by its card above the composer. */}
+      {column === "review" ? null : <div className="px-4 pt-2 text-xs text-muted-foreground [overflow-wrap:anywhere]">{statusLine(task)}</div>}
       <Spend task={task} split className="px-4" />
-      <div ref={feed.ref} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-2">
+      <div ref={feed.ref} className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-2 [overflow-wrap:anywhere]">
         {work?.entries.map((entry) => <Entry key={entry.id} entry={entry} />)}
         <JumpToLatestButton feed={feed} />
       </div>
       {question ? (
-        <div role="note" className="mx-3 border border-attention bg-attention/10 px-3 py-2 text-sm">
+        <div role="note" className="mx-3 border border-attention bg-attention/10 px-3 py-2 text-sm [overflow-wrap:anywhere]">
           <span className="font-semibold">Waiting on you</span> · {question.prompt}
         </div>
       ) : null}
-      {column === "review" ? (
-        <div role="note" className="mx-3 border border-success bg-success/10 px-3 py-2 text-sm">
-          <span className="font-semibold">Ready for review</span> · {task.waitingOn?.prompt}
-        </div>
-      ) : null}
+      {column === "review" ? <ReviewCard task={task} review={work?.review} /> : null}
       {finished ? (
         <p role="note" className="px-4 py-3 text-xs text-muted-foreground">
           This task is finished. To follow up or retry, ask the main session.

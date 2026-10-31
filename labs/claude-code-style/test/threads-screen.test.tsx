@@ -141,7 +141,7 @@ describe("the threads-mode screen", () => {
     const coder = card("Add a CHANGELOG line for the vendor pick");
     expect(within(coder).getByText("Claude Code")).toBeTruthy();
     await waitFor(() => expect(coder.dataset.column).toBe("review"));
-    expect(coder.textContent).toMatch(/Ready for review · Judge: pass · 1 commit/);
+    expect(coder.textContent).toMatch(/Ready for review · 1 commit on conductor\//);
     // The model and tokens its Claude Code run reported, read off the board's row.
     expect(within(coder).getByText("claude-sonnet-4-5 · 13.6k tokens")).toBeTruthy();
     expect(rowsIn("Ready for review").join()).toMatch(/Claude Code/);
@@ -159,5 +159,42 @@ describe("the threads-mode screen", () => {
     fireEvent.click(within(view).getByRole("button", { name: "Resolve" }));
     await waitFor(() => expect(within(view).queryByLabelText("Message this task")).toBeNull());
     expect(within(view).getByText(/This task is finished/)).toBeTruthy();
+  });
+
+  it("says a coding task is ready for review once, in short lines that fit the panel", async () => {
+    await startThreadsSession(0.01);
+    await ask("Add a CHANGELOG line for the vendor pick");
+    const coder = await waitFor(() => card("Add a CHANGELOG line for the vendor pick"));
+    await waitFor(() => expect(coder.dataset.column).toBe("review"));
+    fireEvent.click(within(coder).getByRole("button", { name: "View task" }));
+    const view = screen.getByRole("complementary", { name: "Task: Add a CHANGELOG line for the vendor pick" });
+    const review = await within(view).findByRole("region", { name: "Ready for review" });
+    // Said once: the header carries no second copy of the review.
+    expect(view.textContent!.match(/Ready for review/g)).toHaveLength(1);
+    // The branch, short, with the full name on hover.
+    const branch = review.querySelector("[data-review-branch]") as HTMLElement;
+    expect(branch.textContent).toBe("…/t-7f3c2e1a9b--code");
+    expect(branch.title).toMatch(/^conductor\/t0\/ha62422c.*--code$/);
+    expect(review.textContent).toMatch(/1 commit/);
+    expect(review.querySelector("[data-review-judge]")!.textContent).toMatch(/^Judge: done, 0\.91The CHANGELOG gains one line/);
+    // The stop's boilerplate is for the prompt, not the card.
+    expect(view.textContent).not.toMatch(/information, not approval/);
+    expect(within(view).getByRole("button", { name: "Resolve" })).toBeTruthy();
+  });
+
+  it("widens the side panel from its edge and remembers the width", async () => {
+    localStorage.clear();
+    await startThreadsSession(0.01);
+    const edge = screen.getByRole("separator", { name: "Resize the side panel" });
+    expect(edge.getAttribute("aria-valuenow")).toBe("304");
+    fireEvent.keyDown(edge, { key: "ArrowLeft" });
+    fireEvent.keyDown(edge, { key: "ArrowLeft" });
+    expect(edge.getAttribute("aria-valuenow")).toBe("336");
+    expect(localStorage.getItem("claude-code-style:pane-width")).toBe("336");
+    cleanup();
+    // A reload opens at the width you left.
+    await startThreadsSession(0.01);
+    expect(screen.getByRole("separator", { name: "Resize the side panel" }).getAttribute("aria-valuenow")).toBe("336");
+    localStorage.clear();
   });
 });

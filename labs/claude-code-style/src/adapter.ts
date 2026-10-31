@@ -128,9 +128,24 @@ export interface TaskRow {
   spend?: TaskSpendView;
 }
 
+/**
+ * What a coding run's review stop carries beside its prompt (harness-manager's
+ * review `data`): the branch, how many commits and their subjects, and the
+ * judge's verdict. `commits` is null when they couldn't be read; `judge`, when
+ * no judge read the run.
+ */
+export interface ReviewDetail {
+  branch: string | null;
+  commits: number | null;
+  subjects: string[];
+  judge: { verdict: string; confidence: number; reason: string } | null;
+}
+
 /** The read-only work of one task. */
 export interface TaskWork {
   entries: ThreadEntry[];
+  /** Its run's latest review stop, when it made one. */
+  review?: ReviewDetail;
 }
 
 /** Everything the screen reads and writes. */
@@ -184,6 +199,9 @@ interface Item {
   blockName?: string;
   content?: { type: string; text?: string }[];
   output?: unknown;
+  /** A `suspension` item's: what it waits on, and what it carries beside its prompt. */
+  kind?: string;
+  data?: Record<string, unknown>;
 }
 
 /**
@@ -217,6 +235,23 @@ function every<T>(read: () => Promise<T>, onChange: (value: T) => void, everyMs 
   return () => {
     live = false;
     clearTimeout(timer);
+  };
+}
+
+/**
+ * A run's latest review stop, as its `suspension` item carries it
+ * (harness-manager's review `data`), or undefined before it makes one. The
+ * latest wins: a run sent back for changes stops for review again.
+ */
+function reviewStopOf(items: readonly Item[]): ReviewDetail | undefined {
+  const stop = [...items].reverse().find((item) => item.type === "suspension" && item.kind === "review" && item.data !== undefined);
+  if (stop === undefined) return undefined;
+  const data = stop.data as Partial<ReviewDetail>;
+  return {
+    branch: typeof data.branch === "string" ? data.branch : null,
+    commits: typeof data.commits === "number" ? data.commits : null,
+    subjects: Array.isArray(data.subjects) ? data.subjects.filter((s): s is string => typeof s === "string") : [],
+    judge: data.judge ?? null,
   };
 }
 
@@ -359,11 +394,11 @@ function createWiredLab(fsd: Client): LabAdapter {
       .filter((request) => TURN_ACTIONS.has(request.actionName))
       .sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0));
 
-  /** Every item of a session of the types a thread draws, every page. */
-  const itemsOf = async (sessionId: string): Promise<Item[]> => {
+  /** Every item of a session of the types a thread draws (or `types`), every page. */
+  const itemsOf = async (sessionId: string, types: readonly string[] = THREAD_ITEMS): Promise<Item[]> => {
     const items: Item[] = [];
     for (let offset = 0; ; ) {
-      const page = (await fsd.sessions.state(sessionId, { includeItems: true, itemTypes: THREAD_ITEMS, offset, limit: 100 })) as {
+      const page = (await fsd.sessions.state(sessionId, { includeItems: true, itemTypes: [...types], offset, limit: 100 })) as {
         items?: Item[];
         pagination?: { hasMore: boolean; nextOffset: number };
       };
@@ -601,7 +636,10 @@ function createWiredLab(fsd: Client): LabAdapter {
     watchTaskWork: (_sessionId, taskId, onChange) =>
       every(async () => {
         const runSession = runSessionOf.get(taskId);
-        return { entries: runSession === undefined ? [] : entriesOf(await itemsOf(runSession)) };
+        if (runSession === undefined) return { entries: [] };
+        const items = await itemsOf(runSession, [...THREAD_ITEMS, "suspension"]);
+        const review = reviewStopOf(items);
+        return { entries: entriesOf(items.filter((item) => item.type !== "suspension")), ...(review === undefined ? {} : { review }) };
       }, onChange, 2000),
     sayInThread: async (sessionId, taskId, line) => {
       // A line answers the question the thread holds you on; with none open, it is a steer on its task.

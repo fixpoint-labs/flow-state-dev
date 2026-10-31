@@ -31,11 +31,14 @@ threads, each a task in a session of its own, and the right pane is the status b
   *Ready for review* and *Resolved*, collapsed to a count. A column is read from the task's
   status and what it waits on, never a mark the lab keeps. A failed thread waits on you; ask the
   main session to retry it.
+- **The right pane** is as wide as you drag its left edge (or move it with the arrow keys once it
+  has focus), and keeps that width across reloads.
 - **A thread's view** replaces the board, with a back arrow. You can talk in it: your line steers
   the thread's task and answers its open question. You can pin it there.
 - **A code change** goes to `desk.thread-coder`, which runs through Claude Code (its `harness` setting).
-  Its card and row are tagged, and a run that made changes waits for your review, with the
-  judge's verdict shown as information. A run nobody reviews by the deadline lands in *Resolved*
+  Its card and row are tagged, and a run that made changes waits for your review. The thread's
+  view says so once, in a card: the commit count, the branch shown short (the full name on hover)
+  and the judge's verdict on one line, as information. A run nobody reviews by the deadline lands in *Resolved*
   marked *Not reviewed*, so it never reads as approved.
 
 Scope is core messaging and session management. There are no file diffs, permission prompts,
@@ -113,6 +116,7 @@ a package call:
 | A thread card, and *Sent to a task* | the lead's `createTask` call in the session's items |
 | The board's columns | the status of each row the `listTasks_tasks` read returns, and its open holds, read with `inboxItems` from `@flow-state-dev/orchestration/inbox` |
 | A coding thread's tag | the `harness` action of the coding flow, asked in the thread's run session |
+| A coding thread's review card | the `data` of the review stop (`suspension` item) in the thread's run session: branch, commits, subjects and the judge's verdict |
 | *Not reviewed* | a finished coding thread's output, `review: "deadline"`, through `getTask_tasks` |
 | Answering in a thread | the Inbox client's `answerHold` on its open question; with none, `updateTask_tasks` with your line as a steer |
 | *Resolve* and *Request changes* | the Inbox client's `answerHold` on its review: `{ verdict: "accepted" }` or `{ verdict: "revise", words }` |
