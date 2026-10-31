@@ -1282,7 +1282,7 @@ interface OwnedLoopToolEntry {
   alias: string;
   /** Tool as passed to each step call — pre-renamed to `alias`, no execute. */
   modelTool: GeneratorModelTool;
-  execute: (args: unknown, options?: { toolCallId?: string; stepNumber?: number }) => Promise<unknown>;
+  execute: (args: unknown, options?: { toolCallId?: string; stepNumber?: number; pathName?: string }) => Promise<unknown>;
   mapModelOutput?: (output: unknown, ctx: BlockContext) => string | Promise<string>;
 }
 
@@ -1663,6 +1663,23 @@ async function emitGeneratorStep(
 }
 
 /**
+ * A tool renamed while a request may still be suspended inside it, by its old
+ * name: resume only. A step recorded under the old name resumes the renamed
+ * tool, under the old name's block path, so its stop still matches the answer.
+ * The model never sees the old name. FIX-2317 renamed the model's stop for a
+ * person to `suspendForUser`, and such a stop can wait for days. Remove the
+ * entry once no request suspended before FIX-2317 can still be answered.
+ */
+const RESUMED_UNDER_FORMER_NAME: Readonly<Record<string, string>> = {
+  waitForUser: "suspendForUser", // retired-name-refusal: a stop suspended before FIX-2317, resumed under its new name
+};
+
+/** The tool a recorded call resumes: the renamed tool for a former name, else the name itself. */
+function resumedToolName(recorded: string): string {
+  return RESUMED_UNDER_FORMER_NAME[recorded] ?? recorded;
+}
+
+/**
  * Re-runs (or injects) the suspending step's tool calls on resume (FIX-814),
  * building that step's assistant + tool-result messages. Per-call:
  *  - `completed` → inject the persisted `modelOutput` (never re-run, never
@@ -1696,7 +1713,8 @@ async function runResumeStep(
   );
 
   for (const c of resumeStep.calls) {
-    const entry = toolset.byName.get(c.toolName) ?? toolset.byAlias.get(c.alias);
+    const resumedAs = resumedToolName(c.toolName);
+    const entry = toolset.byName.get(resumedAs) ?? toolset.byAlias.get(c.alias);
     let output: LLMToolResultOutput;
     if (c.kind === "completed") {
       // Rebuild the exact live envelope from the raw output + persisted mapped
@@ -1712,7 +1730,12 @@ async function runResumeStep(
         // A mapper that throws is not the tool's failure: the executor records
         // it and rethrows, and it propagates below as it does in the live loop.
         const ran = await entry
-          .execute(c.arguments, { toolCallId: c.toolCallId, stepNumber: resumeStep.stepNumber })
+          .execute(c.arguments, {
+            toolCallId: c.toolCallId,
+            stepNumber: resumeStep.stepNumber,
+            // Re-entered under the recorded name's path, so its stop matches the one recorded.
+            ...(resumedAs !== c.toolName ? { pathName: c.toolName } : {}),
+          })
           .then((real) => ({ ok: true as const, real }), (err: unknown) => ({ ok: false as const, err }));
         if (ran.ok) {
           const mapped = entry.mapModelOutput !== undefined
@@ -1936,7 +1959,7 @@ async function applyGeneratorResume(args: {
   if (pendingCall !== undefined) {
     validateResumableTool(
       blockName,
-      pendingCall.toolName,
+      resumedToolName(pendingCall.toolName),
       new Set(toolset.entries.map((e) => e.block.name)),
     );
   }
