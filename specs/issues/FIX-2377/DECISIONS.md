@@ -44,7 +44,8 @@ Today `recordRequestStop` writes `abortRequested` only while a request is `in_pr
 - **Locks in:** `abort()` on an interrupted request succeeds and ends it. A caller that relied on
   the 409 to tell an interrupted request apart reads its status instead. Pre-1.0, and the
   engine's own tests are the only callers found that assert the 409 (`park-owed.test.ts`'s
-  "stays stopped" cases, which now read `aborted`). The engine is L1, and nothing here names a
+  "stays stopped" cases, and `abort.test.ts`'s second abort of a request whose signal cut it off,
+  which now end it `aborted` first). The engine is L1, and nothing here names a
   worker, task or app.
 - **What would change it:** a product reason for a discarded turn to stay resumable later. Then
   it needs a state of its own, and this becomes an engine issue of its own.
