@@ -80,6 +80,9 @@ flowchart LR
 - **No engine or route change.** The state route already returns `pagination.total`.
 - **No feed and no poll.** New items arriving live are FIX-2374's `sessionFeed` (epic ER-4). The
   window's `at` and `sessionCreatedAt` are what that feed, or `sessions.stream`, follows from.
+  These functions are the client's only public session-history read: `sessionFeed` starts from
+  `readSessionTail`, and FIX-2374's own history read stays internal. Whichever of the two merges
+  second builds on the other (epic EM call, 2026-10-31).
 - **`useSession`** reads the whole history, as its callers expect.
 
 ## What's already here, and the debt
