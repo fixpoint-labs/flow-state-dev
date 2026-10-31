@@ -37,6 +37,7 @@ import { useFlowContext } from "../context/FlowContext";
 import { useClient } from "../internal/useClient";
 import {
   isReducibleStateChange,
+  isReplayableStateChange,
   mergeStateChangeIntoSnapshot
 } from "../internal/mergeStateChangeIntoSnapshot";
 import {
@@ -63,13 +64,12 @@ type SnapshotRead = { arrivalsBefore: number; sequence: number; state: StateRead
 const KEPT_LIVE_CHANGES = 256;
 
 /**
- * Whether a live change lands the same whether or not a read already holds
- * it. An `increment` or `push` the read already holds would count twice.
+ * Whether a live change can be put back on top of a read that may already
+ * hold it (see `isReplayableStateChange`). A resource change carries the
+ * whole entry, so it always can.
  */
 function isRepeatable(item: StateChangeItem | ResourceChangeItem): boolean {
-  if (item.type === "resource_change") return true;
-  const { operation } = item as StateChangeItem;
-  return operation !== "increment" && operation !== "push";
+  return item.type === "resource_change" || isReplayableStateChange(item as StateChangeItem);
 }
 
 /**
@@ -674,6 +674,9 @@ export function useSession(
   // may not hold it, so it is put back on top of what the read returned.
   const liveChangesRef = useRef<Array<{ n: number; item: StateChangeItem | ResourceChangeItem }>>([]);
   const liveChangeCountRef = useRef(0);
+  // The number of the newest live change dropped from the kept window: a read
+  // requested before it can't be checked against what it missed.
+  const liveChangesDroppedThroughRef = useRef(0);
   // A state-only read that landed before the first full snapshot: newer than
   // the state the mount read holds, so that read loads it instead, with the
   // live changes since it landed on top.
@@ -987,21 +990,28 @@ export function useSession(
   );
 
   /**
-   * State, with the live changes numbered after `after` put back on top; or
-   * `null` when one of them can't be put back (an `increment` or `push` the
-   * read may already hold). A read carries no version to tell, so the view
-   * keeps the state it holds, which has every live change, and the next
-   * read brings it current.
+   * State, with the live changes numbered after `after` put back on top.
+   * A read carries no version to say which of them it holds, so only the
+   * changes after the last one that can't be put back (see `isRepeatable`)
+   * are: none lands over the effect of an `increment`, `push`, `atomic` or
+   * updater patch the read may hold. What the read lacks of those comes
+   * with the next read, at the latest the one at the request's end, taken
+   * with its stream closed. `null` when changes in the window were dropped
+   * from the kept list: the view keeps the state it has until that read.
    */
   const withLiveChanges = useCallback(
     (
       next: SessionStateSnapshotResponse,
       after: number
     ): Pick<SessionStateSnapshotResponse, "clientData" | "resources"> | null => {
+      if (after < liveChangesDroppedThroughRef.current) return null;
       const since = liveChangesRef.current.filter(({ n }) => n > after);
-      if (!since.every(({ item }) => isRepeatable(item))) return null;
+      let from = 0;
+      since.forEach(({ item }, index) => {
+        if (!isRepeatable(item)) from = index + 1;
+      });
       let merged: SessionStateSnapshotResponse = next;
-      for (const { item } of since) {
+      for (const { item } of since.slice(from)) {
         const changed =
           item.type === "state_change"
             ? mergeStateChangeIntoSnapshot(merged, item as StateChangeItem)
@@ -1034,7 +1044,10 @@ export function useSession(
   const keepLiveChange = useCallback((item: StateChangeItem | ResourceChangeItem): void => {
     const kept = liveChangesRef.current;
     kept.push({ n: ++liveChangeCountRef.current, item });
-    if (kept.length > KEPT_LIVE_CHANGES) kept.splice(0, kept.length - KEPT_LIVE_CHANGES);
+    if (kept.length > KEPT_LIVE_CHANGES) {
+      const dropped = kept.splice(0, kept.length - KEPT_LIVE_CHANGES);
+      liveChangesDroppedThroughRef.current = dropped[dropped.length - 1]!.n;
+    }
   }, []);
 
   /**
@@ -1602,6 +1615,7 @@ export function useSession(
     stateAppliedSequenceRef.current = stateSequenceRef.current;
     snapshotLandedRef.current = false;
     liveChangesRef.current = [];
+    liveChangesDroppedThroughRef.current = liveChangeCountRef.current;
     heldStateRef.current = null;
     followedReadRef.current = null;
     followedReadSequenceRef.current += 1;

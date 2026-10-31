@@ -30,8 +30,12 @@
  *   - `followedRequest` from `latestRequest` alone: both "beside it" cases
  *     fail (null, or only the stream's status with no times).
  *   - every live change put back, `increment` too: the "counted twice" case
- *     fails (the count reads 2); only the repeatable ones put back: the "set
- *     then an increment" case fails (the count reads 1).
+ *     fails (the count reads 2); every repeatable one put back, skipping the
+ *     rest: the "set then an increment" case fails (the count reads 1); every change before
+ *     an `atomic` or updater patch put back too: the "set then an atomic" and
+ *     "updater patch" cases fail (the set's 1 over the read); none put back
+ *     after one either: the "set after an atomic" case fails; no check for
+ *     dropped changes: the "partly dropped" case fails (the count reads 0).
  *   - a state-only read that lands before the mount read dropped, as it was:
  *     the "before the mount read" case fails, state is the mount read's.
  *   - no stream status set by a stop: the "stopped" case fails (the request
@@ -245,7 +249,7 @@ describe("a live change while a state read is out", () => {
   });
 });
 
-describe("an increment or push while a state read is out", () => {
+describe("live changes a state read may already hold", () => {
   const counted = (count: number, items: unknown[] = []) => ({
     ...snapshot("counting", items),
     clientData: { session: { phase: "counting", count } },
@@ -293,6 +297,50 @@ describe("an increment or push while a state read is out", () => {
     expect(result.current.snapshot?.clientData.session).toEqual({ phase: "counting", count: 2 });
     await land(stateOnly, counted(2));
     expect(result.current.snapshot?.clientData.session).toEqual({ phase: "counting", count: 2 });
+  });
+  it("a set then an atomic change the read already holds: the read's state, not the set put back over it", async () => {
+    const { result, stateOnly } = await mountCounting();
+    act(() => connections.at(-1)!.callbacks.onItemAdded?.(change("sc-set", "set", { count: 1 })));
+    act(() => connections.at(-1)!.callbacks.onItemAdded?.(change("sc-atomic", "atomic", undefined)));
+    expect(result.current.snapshot?.clientData.session).toEqual({ phase: "counting", count: 1 });
+    await land(stateOnly, counted(2));
+    expect(result.current.snapshot?.clientData.session).toEqual({ phase: "counting", count: 2 });
+  });
+
+  it("a set after an atomic change is still put back", async () => {
+    const { result, stateOnly } = await mountCounting();
+    act(() => connections.at(-1)!.callbacks.onItemAdded?.(change("sc-atomic", "atomic", undefined)));
+    act(() => connections.at(-1)!.callbacks.onItemAdded?.(change("sc-set", "set", { count: 7 })));
+    // The server answered after the atomic change and before the set.
+    await land(stateOnly, counted(3));
+    expect(result.current.snapshot?.clientData.session).toEqual({ phase: "counting", count: 7 });
+  });
+
+  it("an updater patch counts as one that can't be put back", async () => {
+    const { result, stateOnly } = await mountCounting();
+    act(() => connections.at(-1)!.callbacks.onItemAdded?.(change("sc-set", "set", { count: 1 })));
+    act(() =>
+      connections.at(-1)!.callbacks.onItemAdded?.({
+        ...change("sc-patch", "patch", { path: "count" }),
+        item: { ...change("sc-patch", "patch", { path: "count" }).item, path: "count" },
+      }),
+    );
+    await land(stateOnly, counted(5));
+    expect(result.current.snapshot?.clientData.session).toEqual({ phase: "counting", count: 5 });
+  });
+
+  it("a read whose window of live changes was partly dropped is not reconciled", async () => {
+    const { result, stateOnly } = await mountCounting();
+    act(() => connections.at(-1)!.callbacks.onItemAdded?.(change("sc-inc", "increment", { count: 1 })));
+    act(() => {
+      for (let i = 0; i < 300; i += 1) {
+        connections.at(-1)!.callbacks.onItemAdded?.(change(`sc-set-${i}`, "set", { phase: `p${i}` }));
+      }
+    });
+    expect(result.current.snapshot?.clientData.session).toEqual({ phase: "p299", count: 1 });
+    // The read holds neither the increment nor the sets.
+    await land(stateOnly, counted(0));
+    expect(result.current.snapshot?.clientData.session).toEqual({ phase: "p299", count: 1 });
   });
 });
 

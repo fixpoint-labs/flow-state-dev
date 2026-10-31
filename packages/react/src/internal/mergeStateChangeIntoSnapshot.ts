@@ -178,6 +178,27 @@ function reduceScopeData(
 }
 
 /**
+ * Whether applying `sc` again over state that already holds it lands the
+ * same, and the reducer can apply it at all: `set`, `delete_key`, and a
+ * `patch` that carries its values. Not `increment` or `push` (they would
+ * count twice), nor `atomic` or a `patchState(key, updater)` patch (no
+ * value to apply, so the reducer leaves state as it was).
+ */
+export function isReplayableStateChange(sc: StateChangeItem): boolean {
+  if (sc.operation === "set" || sc.operation === "delete_key") return true;
+  if (sc.operation !== "patch") return false;
+  const d = sc.delta as Record<string, unknown> | null | undefined;
+  const isUpdaterPatch =
+    typeof sc.path === "string" &&
+    d !== null &&
+    typeof d === "object" &&
+    Object.keys(d).length === 1 &&
+    hasOwn(d, "path") &&
+    typeof d.path === "string";
+  return !isUpdaterPatch;
+}
+
+/**
  * Returns a new snapshot with `clientData[sc.scope]` merged from the delta,
  * or the original snapshot reference unchanged when the delta yields no
  * observable difference. Returns `prev` unchanged when no snapshot exists yet
