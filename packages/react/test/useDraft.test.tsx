@@ -3,7 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useRef } from "react";
 import { act, renderHook } from "@testing-library/react";
 
-import { SESSION_DRAFT_STORAGE_PREFIX, useSessionDraft } from "../lib/use-session-draft";
+import { useDraft } from "../src/hooks/useDraft";
+
+/** Kitchen Sink's namespace: the key its own copy of this hook wrote, so drafts stored then still read. */
+const NS = "kitchen-sink:composer-draft";
+const SESSION_DRAFT_STORAGE_PREFIX = `${NS}:`;
+const useSessionDraft = (id: string | undefined) => useDraft(NS, id);
 
 afterEach(() => {
   localStorage.clear();
@@ -27,7 +32,20 @@ function useSendOnSuccess(sessionId: string | undefined, send: () => Promise<voi
   return { draft, setDraft, submit };
 }
 
-describe("useSessionDraft", () => {
+describe("useDraft", () => {
+  it("reads a draft Kitchen Sink stored before the hook moved here", () => {
+    localStorage.setItem("kitchen-sink:composer-draft:sess-old", "typed last week");
+    const { result } = renderHook(() => useDraft("kitchen-sink:composer-draft", "sess-old"));
+    expect(result.current[0]).toBe("typed last week");
+  });
+
+  it("keeps namespaces apart: one app's draft for an id is not another's", () => {
+    const a = renderHook(() => useDraft("app-a:draft", "s1"));
+    act(() => a.result.current[1]("for app a"));
+    const b = renderHook(() => useDraft("app-b:draft", "s1"));
+    expect(b.result.current[0]).toBe("");
+  });
+
   it("restores text saved for a session", () => {
     localStorage.setItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a", "half written");
 

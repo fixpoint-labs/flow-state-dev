@@ -26,11 +26,11 @@
  * read again, the rows it still has say `was working at the last check`.
  */
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import type { useSession } from "@flow-state-dev/react";
+import { clearDraft, useDraft, type useSession } from "@flow-state-dev/react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { SessionConversationLoading } from "@/components/session-conversation-loading";
-import { clearSessionDraftStorage, useSessionDraft } from "@/lib/use-session-draft";
+import { SESSION_DRAFT } from "@/lib/session-draft";
 import { COORDINATOR_ASK, delegateOfRun, isCoordinatorFlow, workerAskFor } from "@/lib/workforce-shell";
 
 type Session = ReturnType<typeof useSession>;
@@ -213,7 +213,7 @@ function Composer({
   placeholder: string;
   send: (text: string) => Promise<{ request: { id: string } }>;
 }) {
-  const [draft, setDraft] = useSessionDraft(session.sessionId);
+  const [draft, setDraft] = useDraft(SESSION_DRAFT, session.sessionId);
   const [pending, setPending] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -289,7 +289,7 @@ function Composer({
       // Storage clears when the door accepts the send so a reload mid-request
       // does not restore text the server already took, unless the user revised
       // the draft while the POST was in flight.
-      if (draftRef.current.trim() === text) clearSessionDraftStorage(session.sessionId);
+      if (draftRef.current.trim() === text) clearDraft(SESSION_DRAFT, session.sessionId);
       setPending(response.request.id);
     } catch (cause) {
       setFailure(cause instanceof Error ? cause.message : String(cause));

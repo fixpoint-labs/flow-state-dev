@@ -13,7 +13,11 @@ import { createFakeLab } from "./fake-lab";
 // The script runs at a hundredth of real time.
 const fast = () => createFakeLab({ speed: 0.01 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // Drafts are kept in storage across a reload; one test's must not reach the next.
+  window.localStorage.clear();
+});
 
 async function ask(text: string) {
   const box = await screen.findByLabelText("Message the main session");
@@ -145,7 +149,8 @@ describe("the session-mode screen", () => {
     fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
     expect(box.value).toBe("first line");
     fireEvent.keyDown(box, { key: "Enter", metaKey: true });
-    expect(box.value).toBe("");
+    // The box empties once the send lands.
+    await waitFor(() => expect(box.value).toBe(""));
     const mine = () => [...thread().querySelectorAll('[data-entry="user"]')].map((el) => el.textContent ?? "");
     await waitFor(() => expect(mine().join()).toMatch(/first line/));
     fireEvent.change(box, { target: { value: "second line" } });
@@ -167,6 +172,69 @@ describe("the session-mode screen", () => {
     fireEvent.keyDown(box, { key: "Enter", keyCode: 229 });
     expect(box.value).toBe("日本");
     expect(within(thread()).queryByText("日本", { ignore: "textarea" })).toBeNull();
+  });
+
+  it("keeps a line whose send fails, says why, and sends it again on Retry", async () => {
+    const lab = fast();
+    let refuse = true;
+    const adapter = {
+      ...lab,
+      send: (sessionId: string, text: string) =>
+        refuse ? Promise.reject(new Error("the server refused it (401)")) : lab.send(sessionId, text),
+    };
+    render(<App adapter={adapter} />);
+    await pick();
+    const box = screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    const mine = () => [...thread().querySelectorAll('[data-entry="user"]')].map((el) => el.textContent ?? "");
+    await ask("Summarize the vendor notes");
+    const alert = await within(thread()).findByRole("alert");
+    expect(alert.textContent).toMatch(/Not sent: the server refused it \(401\)/);
+    // Nothing typed is lost, and nothing claims it was sent.
+    expect(box.value).toBe("Summarize the vendor notes");
+    expect(mine()).toEqual([]);
+
+    refuse = false;
+    fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(mine().join()).toMatch(/Summarize the vendor notes/));
+    expect(box.value).toBe("");
+    expect(within(thread()).queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps what you typed while a send was in flight once it lands", async () => {
+    const lab = fast();
+    let land!: () => void;
+    const adapter = {
+      ...lab,
+      send: (sessionId: string, text: string) => new Promise<void>((resolve) => (land = resolve)).then(() => lab.send(sessionId, text)),
+    };
+    render(<App adapter={adapter} />);
+    await pick();
+    const box = screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    await ask("first ask");
+    expect(box.value).toBe("first ask");
+    expect(within(thread()).getByRole("button", { name: "Sending…" })).toBeTruthy();
+    fireEvent.change(box, { target: { value: "and a second thought" } });
+    await act(async () => land());
+    await waitFor(() => expect(within(thread()).getByRole("button", { name: "Send" })).toBeTruthy());
+    expect(box.value).toBe("and a second thought");
+  });
+
+  it("brings an unsent draft back after a reload, for its own session only", async () => {
+    const lab = fast();
+    const open = async (title: RegExp, heading: string) => {
+      fireEvent.click(within(screen.getByRole("navigation", { name: "Sessions" })).getByRole("button", { name: title }));
+      await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe(heading));
+      return screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    };
+    const first = render(<App adapter={lab} />);
+    await pick();
+    fireEvent.change(await open(/Draft the launch note/, "Draft the launch note"), { target: { value: "half a thought" } });
+    first.unmount();
+
+    render(<App adapter={lab} />);
+    await pick();
+    expect((screen.getByLabelText("Message the main session") as HTMLTextAreaElement).value).toBe("");
+    expect((await open(/Draft the launch note/, "Draft the launch note")).value).toBe("half a thought");
   });
 
   it("clears an unsent draft when another session is opened, so it can't be sent to the wrong one", async () => {

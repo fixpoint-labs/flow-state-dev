@@ -170,6 +170,7 @@ export function Conversation({
   const composer = (
     <TurnComposer
       testId={`${testId}-composer`}
+      draftKey={`conversation:${worker.id}`}
       scale={scale}
       label={`Message ${name}`}
       placeholder={`Message ${name}…`}

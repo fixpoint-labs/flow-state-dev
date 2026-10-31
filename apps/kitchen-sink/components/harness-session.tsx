@@ -25,6 +25,7 @@ import {
   FlowProvider,
   useResourceCollectionList,
   useResourceManifest,
+  useDraft,
   useHarnessLines,
   useSession,
   type SessionView,
@@ -73,7 +74,7 @@ import {
   type TurnNotice,
 } from "@/lib/harness-turn";
 import type { HarnessSessionState } from "@flow-state-dev/harness-manager";
-import { useSessionDraft } from "@/lib/use-session-draft";
+import { SESSION_DRAFT } from "@/lib/session-draft";
 
 export interface HarnessSessionViewProps {
   /** The mode's label, from the mode list. */
@@ -111,7 +112,7 @@ function SessionBody({
   onTitled?: () => void;
 }) {
   const session = useSession(sessionId, { items: true, autoResume: true });
-  const [message, setMessage] = useSessionDraft(sessionId);
+  const [message, setMessage] = useDraft(SESSION_DRAFT, sessionId);
   const messageRef = useRef(message);
   messageRef.current = message;
 

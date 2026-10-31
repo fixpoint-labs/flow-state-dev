@@ -28,7 +28,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { PickedSessionPanel } from "../components/picked-session-panel";
-import { SESSION_DRAFT_STORAGE_PREFIX } from "../lib/use-session-draft";
+import { SESSION_DRAFT } from "../lib/session-draft";
+
+const SESSION_DRAFT_STORAGE_PREFIX = `${SESSION_DRAFT}:`;
 
 afterEach(() => {
   cleanup();

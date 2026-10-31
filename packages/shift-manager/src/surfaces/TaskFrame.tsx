@@ -271,6 +271,7 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
   return (
     <TurnComposer
       testId="task-composer"
+      draftKey={`task:${task.taskId}`}
       label={`Message ${worker ?? "this worker"}`}
       placeholder={`Message ${worker ?? "this worker"}…`}
       blocked={blocked}

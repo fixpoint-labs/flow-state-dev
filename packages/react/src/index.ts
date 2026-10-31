@@ -186,6 +186,8 @@ export {
   type JumpToLatestOptions
 } from "./hooks/useJumpToLatest";
 
+export { useDraft, clearDraft } from "./hooks/useDraft";
+
 export {
   isSendKey,
   type SendKeyEvent,

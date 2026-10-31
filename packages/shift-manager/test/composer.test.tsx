@@ -9,7 +9,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { TurnComposer } from "../src/components/TurnComposer";
 import { TurnNotDelivered } from "../src/lib/send";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
 
 /** A promise and the function that settles it. */
 function gate() {
@@ -105,5 +108,52 @@ describe("a send finishes under StrictMode (dev mounts every effect twice)", () 
     await act(async () => fireEvent.click(screen.getByTestId("turn-send")));
     expect(screen.getByTestId("turn-status").getAttribute("data-state")).toBe("delivered");
     expect(input.value).toBe("");
+  });
+});
+
+describe("a reload keeps what was typed, and what may already have been sent (SM-ROB-8)", () => {
+  const composer = (draftKey: string, send: () => Promise<void> = () => new Promise(() => {})) => (
+    <TurnComposer testId="t" label="Message worker" placeholder="" blocked={null} draftKey={draftKey} send={send} />
+  );
+
+  it("brings a half-written line back to its own composer, and only there", () => {
+    const first = render(composer("task:t-1"));
+    fireEvent.change(screen.getByTestId("t-input"), { target: { value: "half an instruction" } });
+    first.unmount();
+
+    const again = render(composer("task:t-1"));
+    expect((screen.getByTestId("t-input") as HTMLInputElement).value).toBe("half an instruction");
+    again.unmount();
+    render(composer("task:t-2"));
+    expect((screen.getByTestId("t-input") as HTMLInputElement).value).toBe("");
+  });
+
+  it("brings an unconfirmed line back with its warning and no Retry, so a reload doesn't invite a second send", async () => {
+    const first = render(composer("conversation:w-1", () => Promise.reject(new Error("the connection dropped"))));
+    fireEvent.change(screen.getByTestId("t-input"), { target: { value: "ship it" } });
+    await act(async () => fireEvent.click(screen.getByTestId("t-send")));
+    expect(screen.getByTestId("t-status").getAttribute("data-state")).toBe("unconfirmed");
+    first.unmount();
+
+    render(composer("conversation:w-1"));
+    expect((screen.getByTestId("t-input") as HTMLInputElement).value).toBe("ship it");
+    expect(screen.getByTestId("t-status").getAttribute("data-state")).toBe("unconfirmed");
+    expect(screen.getByTestId("t-error").textContent).toBe("the connection dropped");
+    expect(screen.queryByTestId("t-retry")).toBeNull();
+  });
+
+  it("forgets the warning once a send lands", async () => {
+    const first = render(composer("conversation:w-1", () => Promise.reject(new Error("the connection dropped"))));
+    fireEvent.change(screen.getByTestId("t-input"), { target: { value: "ship it" } });
+    await act(async () => fireEvent.click(screen.getByTestId("t-send")));
+    first.unmount();
+
+    const second = render(composer("conversation:w-1", () => Promise.resolve()));
+    await act(async () => fireEvent.click(screen.getByTestId("t-send")));
+    expect(screen.getByTestId("t-status").getAttribute("data-state")).toBe("delivered");
+    second.unmount();
+    render(composer("conversation:w-1"));
+    expect((screen.getByTestId("t-input") as HTMLInputElement).value).toBe("");
+    expect(screen.getByTestId("t-status").getAttribute("data-state")).not.toBe("unconfirmed");
   });
 });

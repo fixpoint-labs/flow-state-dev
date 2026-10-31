@@ -1,37 +1,40 @@
 import { isSendKey } from "@flow-state-dev/react";
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import type { FormEvent, KeyboardEvent } from "react";
+import { useDraftSend } from "../lib/use-draft-send";
 
 /**
  * The only place you type to the main session. Enter or Cmd+Enter (Ctrl+Enter)
  * sends, Shift+Enter is a new line. While a
  * turn runs, Send becomes Stop; a line you send then waits for the turn.
+ *
+ * A line stays in the box until its send lands ({@link useDraftSend}): a
+ * failed one says why, with Retry. The draft is kept per session across a
+ * reload.
  */
 export function Composer({
+  sessionId,
   running,
   onSend,
   onStop,
 }: {
+  sessionId: string;
   running: boolean;
-  onSend: (text: string) => void;
+  /** Resolves once the line has landed; rejects with why it didn't. */
+  onSend: (text: string) => Promise<void>;
   onStop: () => void;
 }) {
-  const [text, setText] = useState("");
-  const send = () => {
-    const line = text.trim();
-    if (!line) return;
-    setText("");
-    onSend(line);
-  };
+  const { text, setText, sending, failure, submit } = useDraftSend("claude-code-style:draft", sessionId);
+  const send = () => submit(onSend);
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
-    send();
+    void send();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // A key that ends an IME composition is the input method's, not a send or a stop (229: Safari's keydown for it).
     if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     if (isSendKey(event, { enterSends: true })) {
       event.preventDefault();
-      send();
+      void send();
     } else if (event.key === "Escape" && running) {
       onStop();
     }
@@ -60,13 +63,21 @@ export function Composer({
           ) : null}
           <button
             type="submit"
-            disabled={!text.trim()}
+            disabled={!text.trim() || sending}
             className="bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground disabled:opacity-40"
           >
-            Send
+            {sending ? "Sending…" : "Send"}
           </button>
         </div>
       </div>
+      {failure !== undefined ? (
+        <p role="alert" className="mt-1 text-xs text-destructive">
+          Not sent: {failure} ·{" "}
+          <button type="button" className="underline" onClick={() => void send()}>
+            Retry
+          </button>
+        </p>
+      ) : null}
       <p className="mt-1 text-xs text-muted-foreground">You talk only to the main session{running ? " · Esc to stop the turn" : ""}</p>
     </form>
   );

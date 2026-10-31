@@ -385,6 +385,26 @@ A feed that opens is already at its end on the first frame: on mount, when `rese
 - `jump()`: to the end, smoothly.
 - `sent()`: call when the person sends a line. It jumps to the end and brings the next content that lands below into view, which is the line they sent. What arrives after that stays below.
 
+### `useDraft(namespace, id)`
+
+Keeps what someone has typed in a message box across a reload. The text is stored in `localStorage` under `<namespace>:<id>` and read back when the box opens.
+
+```tsx
+const [draft, setDraft] = useDraft("my-app:composer", sessionId);
+const send = async () => {
+  const line = draft;
+  await sendLine(line); // throws when the send fails: the draft stays
+  setDraft("");
+};
+return <textarea value={draft} onChange={(e) => setDraft(e.target.value)} />;
+```
+
+Clear the draft only once the send has landed, so a failed send leaves the text where it was. `setDraft("")` drops the stored copy. A setter held from an earlier `id`, such as a slow send that settles after the person switched sessions, stores under that id and leaves the box they're looking at alone.
+
+- `id` may be `undefined` while the box doesn't know where it writes yet. Text typed then is kept in memory and stored once `id` arrives.
+- `clearDraft(namespace, id)`: drop the stored copy without touching what any box shows, for a send the server took while the person kept typing.
+- Storage that throws (quota, private mode) keeps the draft in memory only.
+
 ### `isSendKey(event, options?)`
 
 The send shortcut for a message box. Cmd+Enter on a Mac and Ctrl+Enter elsewhere send from any box, so a person never has to reach for the button.
