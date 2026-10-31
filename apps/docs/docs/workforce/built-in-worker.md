@@ -94,7 +94,7 @@ const flows = hireWorkforce(installation);
 | `skills` | Skills every worker on this flow holds, on top of the ones its own folders hold. A name that collides with a skill a worker already holds is refused at the hire. |
 | `model` | The model a worker uses when its own file names none. |
 | `maxSteps` | How many model steps one turn may take. Defaults to `8`. See [below](#when-a-turn-runs-out-of-steps). |
-| `settings` | Settings of your app's own that a worker's file may set, such as an icon your screen draws. The flow never reads them. See [Settings a user can see](./workers-on-disk.md#settings-a-user-can-see). |
+| `settings` | Extra settings your app defines for a worker's file to set, such as an icon your screen draws. The flow doesn't use them; your app reads them. See [Settings a user can see](./workers-on-disk.md#settings-a-user-can-see). |
 | `classifierModel` | The model behind `skills.enableLlmClassifier`, an optional per-turn check that decides whether a skill applies. [Using them](#using-them) covers what it costs. |
 | `confidenceThreshold` | How sure that check must be before it counts a skill as matching. Defaults to `0.65`. |
 | `uses` | Capabilities every worker on this flow carries, attached to the generator that answers. |

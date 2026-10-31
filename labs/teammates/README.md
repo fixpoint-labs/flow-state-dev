@@ -7,7 +7,7 @@ package.
 
 Its theme is its own: a dark, chat-first look like Grok Bot's, in `src/lib/theme.css`, over the
 registry's `tokens` item. The other labs take theirs from the design system; this one keeps a local
-theme on purpose, so it reads as the app it copies.
+theme so it reads as the app it copies.
 
 - **Left:** the teammates, Chief of Staff, researcher and writer. Each row is a teammate with an
   ongoing role, never a list of sessions. A row shows the teammate's icon on its color, a line
@@ -18,12 +18,12 @@ theme on purpose, so it reads as the app it copies.
   tasks they started; each opens its run in a popup, read only.
 - **Center:** the chosen worker's one conversation. It goes on for weeks, past its history window
   of 50 turns: before a turn leaves the window, it is folded into a running summary that the worker
-  reads with the turns it still has word for word. A divider marks where those begin; it reads
-  *summarized* only when earlier turns were summarized. New content settles in place: the list
-  follows an answer as it is written only while you are at the end, and offers *Jump to latest*
-  when you have scrolled up; a task's line is drawn the moment it is filed and fills in where it is.
-  Enter sends; Cmd+Enter (Ctrl+Enter) sends from every box, including a teammate's instructions,
-  where plain Enter is a new line.
+  reads with the turns it still has word for word. A divider marks where the word-for-word turns
+  begin, and reads *summarized* once earlier turns have been folded in.
+- **Typing and scrolling:** the list follows an answer as it is written only while you are at the
+  end, and offers *Jump to latest* when you have scrolled up; a task's line is drawn the moment it is
+  filed and fills in where it is. Enter sends; Cmd+Enter (Ctrl+Enter) sends from every box,
+  including a teammate's instructions, where plain Enter is a new line.
 - **Popup:** a message line or a task line in the conversation opens that piece of work in a popup
   over it: the other worker's session, read only and live. It closes with Esc, its close button, or
   a click outside it, and the conversation under it keeps its place.
@@ -72,8 +72,8 @@ steps are plain: what the agent wrote, as text, and what it did, such as *Read
 …/src/session-feed.ts*, *Edit README.md* or the command it ran. A run of steps folds into one line,
 *Ran 3 commands and edited a file*, that opens to each one. The steps read the same on all three
 agents, though each names its tools its own way. A Claude Code run loads the working folder's own
-Claude Code settings and `CLAUDE.md`, never this machine's, so an output style set there doesn't
-show in its steps.
+Claude Code settings and `CLAUDE.md`, not your user-level ones, so an output style set in yours
+doesn't show in its steps.
 
 Before a task starts, its agent's own sign-in check runs. An agent this machine isn't set up for
 fails the task at once, with a line that names it and what's missing, such as "Codex isn't set up on
@@ -100,7 +100,7 @@ The lab runs on a real model and a durable SQLite store, served by `fsdev dev`:
 pnpm --filter @flow-state-dev/teammates dev
 ```
 
-This builds the pages and serves them with the lab's server (`fsdev.config.mts`). It reads:
+The command builds the pages and serves them with the lab's server (`fsdev.config.mts`). It reads:
 
 | Variable | What it sets | Default |
 |---|---|---|
