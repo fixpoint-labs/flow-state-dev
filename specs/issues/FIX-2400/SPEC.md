@@ -55,7 +55,8 @@ to grade.
 All three apps write one address, read it once on load, and read it again on Back
 ([D1](DECISIONS.md#d1)). The name for "the session this page shows" is devtool's
 `SESSION_ADDRESS_PARAM` (`session`), the name Shift Manager's *Open trace* links and Kitchen
-Sink's harness modes already use.
+Sink's harness modes already use. Each app parses its own address; the labs' `view`, `worker` and `task`
+need their own reader, so `readSessionAddress()` alone is not enough there.
 
 | App | Address |
 |---|---|
