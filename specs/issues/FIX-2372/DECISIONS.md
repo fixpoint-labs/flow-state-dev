@@ -27,7 +27,8 @@ Code-style lab and *Talk* in Kitchen Sink. The one decision is where the hook li
 ## Decided, not asked
 
 - **E1 · Teammates' contract moves as is** (`submit(event?, ...args)`, `busy`, `error` as a
-  string), so its call sites change only their import.
+  string), so its call sites change only their import. It gains one thing: a call made while one
+  is running does nothing, so safety doesn't rest on every button wiring `disabled`.
 - **E2 · The task view's composer calls share one hold.** Resolving while a request for changes
   is in flight is never meant.
 - **E3 · A steer's words clear on success, not before the call,** and only if the box still
@@ -40,3 +41,10 @@ Code-style lab and *Talk* in Kitchen Sink. The one decision is where the hook li
 
 - Drafted 2026-10-31 after the build PR (#4376) shipped a per-app copy. The epic thread routed it
   back to the spec route (Improvement) and asked for the hook's home to be this spec's decision.
+
+## Notes from review
+
+- Cursor (741f48f): approved direction. Folded: the hook guards re-entry itself, as `useApproval`
+  does (E1); the controls no longer name the build PR. Kept: E2 to E5 stay listed as decided,
+  since a reviewer reads them as the behaviour the build must keep; D1's table keeps the copy and
+  registry columns, since those are the options the epic thread weighed.

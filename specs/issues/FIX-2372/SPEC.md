@@ -27,8 +27,8 @@ inline. One hook does it, in `@flow-state-dev/react`.**
 
 **How we verify.**
 
-- **Unit, `packages/react/test/useSubmit.test.ts`:** busy while the action runs, error kept on
-  refusal and cleared on the next try, no throw.
+- **Unit, `packages/react/test/useSubmit.test.ts`:** busy while the action runs, a second call
+  before it settles does nothing, error kept on refusal and cleared on the next try, no throw.
 - **Lab screen, `labs/claude-code-style/test/mutation-buttons.test.tsx`:** on the fake adapter
   with one call swapped for one the test settles: double-click Resolve (card) sends once and
   shows the refusal; Request changes holds the review buttons and keeps the words on refusal; a
@@ -36,8 +36,8 @@ inline. One hook does it, in `@flow-state-dev/react`.**
   one session and the picker shows the refusal.
 - **Kitchen Sink, `apps/kitchen-sink/test/team-panel.test.tsx`:** double click on *Talk*, then a
   click on another worker, records one open; the refusal shows; the buttons come back.
-- **Controls that must fail:** each of those app tests run against `main`'s components. All
-  five lab cases and the Kitchen Sink case fail there (produced on the build PR, #4376).
+- **Controls that must fail:** each of those app tests, run against the components as they
+  were before this issue, fails; so does the hook's double-call case without its re-entry guard.
 - **Regression:** the Teammates lab's existing tests pass on the shared hook unchanged.
 
 ## What changes
