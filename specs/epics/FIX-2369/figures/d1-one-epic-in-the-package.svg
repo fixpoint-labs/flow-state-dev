@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 428" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="D1: one epic that fixes each need once in the package that owns it, chosen, beside each app fixing its own and one epic per app. Decided by whether a fix carries over to every app. Price: 57 children under one closure.">
+     aria-label="D1: one epic that fixes each need once in the package that owns it, chosen, beside each app fixing its own and one epic per app. Decided by whether a fix carries over to every app. Price: 54 children under one closure.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -73,7 +73,7 @@
     <text class="t-lbl" x="32" y="218">SIZE OF</text>
     <text class="t-lbl" x="32" y="231">THE WORK</text>
     <text class="mark minus" x="226" y="224">−</text>
-    <text class="t-b" x="244" y="223">57 children, one closure</text>
+    <text class="t-b" x="244" y="223">54 children, one closure</text>
     <text class="t-s" x="244" y="241">the largest set we have run</text>
     <text class="mark plus" x="466" y="224">+</text>
     <text class="t-b" x="484" y="223">Small, local changes</text>

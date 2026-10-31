@@ -2,8 +2,8 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-The calls that sit above any one of the 56 children: what was chosen, what lost, and what each
-locks in. D1 is the objective and is on the sign-off with one open scope question. D2 to D4 are
+The calls that sit above any one of the 53 children: what was chosen, what lost, and what each
+locks in. D1 is the objective and is on the sign-off. D2 to D4 are
 engineering calls, recorded here so no child reopens them; they are not asked.
 
 ## The tree
@@ -18,7 +18,6 @@ flowchart TD
   D3 -.->|"rejected"| X3["all parallel from main · one long stack per file"]
   E --> D4["D4 · shared UI in the ui registry"]
   D4 -.->|"rejected"| X4["copied into each app"]
-  E --> O["Open · move three items out"]
 ```
 
 <a name="d1"></a>
@@ -27,13 +26,13 @@ flowchart TD
 | | |
 |---|---|
 | **Instead of** | Each app fixes its own findings · or one epic per app |
-| **Because** | 40 of the 56 children are needed by two or more apps. Fixed per app, each fix lands up to four times and the copies drift, which is what the review found. Per-app epics make the same fix four times or leave the package fix with no owner, and only two epics run at once |
+| **Because** | 40 of the 53 children are needed by two or more apps. Fixed per app, each fix lands up to four times and the copies drift, which is what the review found. Per-app epics make the same fix four times or leave the package fix with no owner, and only two epics run at once |
 | **Locks in** | Package slices go first and apps adopt after, so the epic is as slow as its slowest foundation: FIX-2389 (the one L-sized package child), FIX-2361 (design first), and FIX-2367's delivery child, which this set consumes ([D2](#d2)) |
 
 **What would change my mind:** if FSD stops being developed in these apps. Then this is polish
 for apps nobody drives, and the epic should not finish.
 
-![D1: one epic that fixes each need once in the package that owns it, chosen, beside each app fixing its own and one epic per app. Decides it: whether a fix carries over. Price: 57 children under one closure. Flips if FSD stops being developed in these apps](figures/d1-one-epic-in-the-package.svg)
+![D1: one epic that fixes each need once in the package that owns it, chosen, beside each app fixing its own and one epic per app. Decides it: whether a fix carries over. Price: 54 children under one closure. Flips if FSD stops being developed in these apps](figures/d1-one-epic-in-the-package.svg)
 
 It comes down to whether a fix carries over: per app, the same bug is fixed four times.
 
@@ -82,35 +81,6 @@ It comes down to rebase chains: no stack in this set is more than five deep.
 
 It comes down to the fix: one source to fix, or a copy per app to find.
 
-<a name="open"></a>
-## Open
-
-### Three items no closure check needs: move them out of this epic, or keep all 57?
-
-**Plain terms.** Three children make the apps nicer but are not on the path the closure tests:
-renaming and archiving sessions in the Claude Code-style lab (FIX-2402), a tidier Talk panel in
-Teammates (FIX-2404), and letting Kitchen Sink's assistant hand a change to a coding worker
-(FIX-2423). The epic cannot wrap until every child is done, so these hold the wrap.
-
-**The trade-off.** Moving them out makes the epic three children smaller, removes the one
-L-sized app child, and drops two package additions that only one app uses (title and archive
-verbs on workforce sessions, and a Kitchen Sink coding worker). You get those three things
-later, or not at all.
-
-**My recommendation: move them out**, still filed in the project and linked to this epic. None is
-on the goal path, and two of them add package surface for a single app, which is the pattern
-this epic exists to stop.
-
-**What would change my mind:** if you use the lab's session list every day and it already gets in
-your way. Then FIX-2402 is a daily-driver need and stays.
-
-**What being wrong costs: low.** Each is independent of the rest; moving one back in is a
-re-parent and a blocks relation.
-
-![Open: move FIX-2402, FIX-2404 and FIX-2423 out, recommended, beside keeping all 57. Decides it: whether the closure waits on them. Price: three fewer things from this epic. Flips if the session list is a daily need](figures/open-move-three-out.svg)
-
-It comes down to the wrap: the closure waits on three children its checks never touch.
-
 ## Who owns what
 
 ![Who owns what: nine rules, each with one owner. The artifact owners FIX-2374, 2409, 2379, 2370 and 2385 own the rule that every other child consumes their artifact. FIX-2387 owns opt-in behaviour and FIX-2420 worktrees. Each child owns keeping L1 generic, one implementation per need, a failing control and the worker word. The coordinator owns the build order and the consumed issues](figures/ownership.svg)
@@ -141,8 +111,8 @@ five deep, and each hot file has one open stack at a time. Paths checked on `mai
 
 | Wave | Hot file or seam | Stack, in order | Starts | Rule |
 |---|---|---|---|---|
-| 0 | Quick wins: 2392, 2404, 2424 alone; Kitchen Sink `flow-state/page.tsx`; Shift Manager `TaskFrame.tsx`, `Tasks.tsx`, `JumpTo.tsx`, `task.tsx`; the labs' `App.tsx` and composers | Merge order: 2415 → 2416 → 2417 → 2400 · 2413 → 2418 → 2414 → 2401 · 2413 → 2371 · 2372 → 2400 · 2371 → 2390 | Now, from `main` | Not stacked; each merges the same day. None reads a wave-1 artifact (ER-4); 2418's COST column is filled by 2398's slice, not here |
-| 1 | Package slices | 2374, 2379, 2383, 2370, 2385, 2384, 2420, 2378, 2389, 2391, 2393, 2402, 2405, 2407, 2408, 2421, 2422 | Now, from `main` | No app file, except Shift Manager's own copy that 2385 and 2405 move out. They merge before any app stack that needs them |
+| 0 | Quick wins: 2392, 2424 alone; Kitchen Sink `flow-state/page.tsx`; Shift Manager `TaskFrame.tsx`, `Tasks.tsx`, `JumpTo.tsx`, `task.tsx`; the labs' `App.tsx` and composers | Merge order: 2415 → 2416 → 2417 → 2400 · 2413 → 2418 → 2414 → 2401 · 2413 → 2371 · 2372 → 2400 · 2371 → 2390 | Now, from `main` | Not stacked; each merges the same day. None reads a wave-1 artifact (ER-4); 2418's COST column is filled by 2398's slice, not here |
+| 1 | Package slices | 2374, 2379, 2383, 2370, 2385, 2384, 2420, 2378, 2389, 2391, 2393, 2405, 2407, 2408, 2421, 2422 | Now, from `main` | No app file, except Shift Manager's own copy that 2385 and 2405 move out. They merge before any app stack that needs them |
 | 1–4 | `session-flow.ts`, the *session state, workspace, create input* region; harness-manager `package.json` exports | 2385 → 2386 → 2419 → 2388 | Stacked | 2384, 2391 and 2398 add to `./browser` after 2385 (ER-4) |
 | 1–3 | `session-flow.ts`, the *turn record, turn end, feeds* region | 2384 → 2387 → 2398 | Stacked; 2387 merges after 2420 | FIX-2420's one hunk (wait for setup on the first turn) lands in wave 1 |
 | 1–2 | Package dependents | 2383 → 2381 · 2374 → 2410 · 2374 → 2373 · 2379 → 2380 · 2370 → 2377 | Stacked | 2370 and 2377 stay two issues in one stack: 2377 adds the client's interrupted-requests helper, and its check needs a server restart, which 2370's does not |
@@ -159,9 +129,8 @@ five deep, and each hot file has one open stack at a time. Paths checked on `mai
 | 3 | Claude Code-style `Entry.tsx`, `TasksPane.tsx`, `TaskCard.tsx` | 2399 → 2394 | After 2379 merges; 2394 merges after 2397 | 2394 is one PR for both labs |
 | 3 | Shift Manager `TaskFrame.tsx` | 2382 → 2384 → 2387 → 2386 | After those package slices and wave 0's 2413 and 2418 | One tab per child: Diff is 2384's, Checks is 2387's |
 | 3 | Kitchen Sink `flow-state/page.tsx`, stack 2 | 2411 → 2405 | After stack 1 merges | — |
-| 4 | Claude Code-style `adapter.ts`, stack 3 | 2382 → 2386 → 2384 → 2387 → 2389 | After stack 2 merges | Each adds a function and leaves the entry mapping alone. 2402 and 2405 merge in order after |
+| 4 | Claude Code-style `adapter.ts`, stack 3 | 2382 → 2386 → 2384 → 2387 → 2389 | After stack 2 merges | Each adds a function and leaves the entry mapping alone. 2405 merges in order after |
 | 4 | Teammates `adapter.ts` and `Popups.tsx`, stack 3 | 2380 → 2382 → 2398 → 2396 | After stack 2 merges | 2405 merges in order after |
-| 4 | Kitchen Sink coding worker | 2423 | After 2380 merges | Only if it stays ([Open](#open)) |
 | 4 | The labs' contract tests | 2406 | After both labs' stack 2 merges | **One owner, one PR from `main`:** a single scenario matrix (a mid-turn result, a failed turn, a held question and its answer, an interrupt, a lapsed feed) run against both real adapters and both fakes |
 | — | `packages/ui/registry.json` (8 additions) | Merge order | — | Append-only; a conflict at the tail is one line. 2377 extends 2370's entry |
 | — | `packages/harness-manager/src/manager.ts` | Merge order | — | 3,586 lines; the edits (2386 output, 2387 `isDone`, 2388 phase input, 2389 approval) are hundreds of lines apart |
@@ -173,8 +142,9 @@ five deep, and each hot file has one open stack at a time. Paths checked on `mai
 
 ## Decided, recorded so no child reopens them
 
-Engineering calls, one line each.
+Engineering calls, one line each, and one product call from review.
 
+- **FIX-2402, FIX-2404 and FIX-2423 moved to [FIX-2430](https://linear.app/fixpoint-labs/issue/FIX-2430).** Jake, in review: "Move the large one and two which add package changes into a separate epic, and then keep the rest." No closure check needed them, and no remaining child depends on them.
 - **D2, D3 and D4 above** are engineering calls. They are recorded, not asked.
 - **The closure does not wait on FIX-1768.** Leg a stops at a reviewed branch; pushing and opening
   a PR is FIX-1768's goal, not this one's. The coordinator removes its blocks relation on FIX-2425. FIX-2274
@@ -216,9 +186,9 @@ Run in the authoring context, not by a fresh sub-agent: this session had no way 
 The coordinator may re-run it independently before the gate.
 
 **Verdict:** Right approach, with changes. The division holds. The changes are three folds,
-one open cut, and review round 1's folds (D2 now follows FIX-2367, and the build order uses short stacks).
+one cut (taken in review), and review round 1's folds (D2 now follows FIX-2367, and the build order uses short stacks).
 
-1. **Reuse** — 25 Adds checked below: 20 extend an existing piece and 5 reuse one. Nothing is
+1. **Reuse** — 24 Adds checked below: 19 extend an existing piece and 5 reuse one. Nothing is
    genuinely new. Three moved the set: the restart helper (extend `goals/lib`), the approval
    hold (extend task holds and the inbox), the request-recovery pair (one component). Review
    round 1 moved a fourth: the change signal reuses FIX-2367's `client.subscribe`.
@@ -236,7 +206,7 @@ one open cut, and review round 1's folds (D2 now follows FIX-2367, and the build
    follows its ER-3 and ER-5); FIX-2344 Done (shrinks FIX-2392); FIX-2364 and FIX-2363 Done
    (workers work things out before asking, which narrows FIX-2361's symptom but not its cause);
    FIX-2340 open (Esc seam).
-5. **Necessity** — 53 of 56 carry a part of the goal. FIX-2402, 2404 and 2423 don't: Open.
+5. **Necessity** — 53 of 56 carried a part of the goal. FIX-2402, 2404 and 2423 didn't, and moved to FIX-2430 in review.
 6. **Ergonomics** — a developer building the next app meets `sessionFeed`, `client.subscribe`,
    `taskRowView`, task actions and the harness-manager browser entry. Each replaces app code. One
    surprise found and folded: a second client constructor for task actions. One walked past:
@@ -250,7 +220,7 @@ one open cut, and review round 1's folds (D2 now follows FIX-2367, and the build
 | Approval hold must be a task hold answered through the inbox | 1 | Yes | Folded |
 | 2370 and 2377 are one component | 1 | Yes | Folded, ER-4 |
 | D2 forks from merged FIX-2367 ER-3 and ER-5 (Architect, round 1) | 1, 4 | Yes | Folded, D2 |
-| Three items serve no closure check | 5 | Changes what users get | Open |
+| Three items serve no closure check | 5 | Changes what users get | Cut in review: moved to FIX-2430 |
 | Task actions as a new constructor | 6 | Yes | Folded |
 | `useAction` name clash | 6 | No | Recorded, FIX-2372's implementer note |
 | FIX-2388's evidence claim is wrong | routed | No | Recorded |
@@ -279,7 +249,6 @@ one open cut, and review round 1's folds (D2 now follows FIX-2367, and the build
 | base choice, list and remove (2419) | `HarnessSessionWorkspace`, workspace host; FIX-1768 | extend: one removal path |
 | `issue` field, Linear relay (2388) | `projectMcpTools`, project `mcpServers` | reuse |
 | door task stamp (2422) | door turn metadata | extend |
-| title and archive verbs (2402) | `listWorkerSessions` | extend (Open) |
 | trusted-repo policy (2421) | env-pass helpers in claude-code, codex, cursor | extend |
 | `readDevtoolUrl`, trace link (2405) | Shift Manager's `connection.ts`, `SESSION_ADDRESS_PARAM` | reuse: a move |
 | restart helper (2407) | `goals/lib/server.mts`, `durable.mts` | extend `goals/lib` |
@@ -295,4 +264,5 @@ one open cut, and review round 1's folds (D2 now follows FIX-2367, and the build
   D3 changed: package slices merge first, then app stacks of five or fewer, and the seams table
   is the only build order (Cursor). D2 to D4 left the sign-off as engineering calls, and four
   wave-0 items moved behind the artifact they read (Codex). ER-4 to ER-8 became one ER-4.
-  FIX-2406 has one owner. The closure no longer waits on FIX-1768.
+  FIX-2406 has one owner. The closure no longer waits on FIX-1768. Jake answered the Open:
+  FIX-2402, 2404 and 2423 moved to FIX-2430, leaving 53 children and the closure.

@@ -37,7 +37,7 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">D3 · AN ENGINEERING CALL</text>
-    <text class="t-q" x="32" y="52">How do 57 children land without long rebase chains?</text>
+    <text class="t-q" x="32" y="52">How do 54 children land without long rebase chains?</text>
   </g>
 
   <g id="options">

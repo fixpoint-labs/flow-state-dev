@@ -71,7 +71,7 @@ ship. Each child documents its own surface in its package README.
 
 ## The set · as of 2026-10-31
 
-The reviewed snapshot. All 57 children are in Backlog with no spec PR; live state is in
+The reviewed snapshot. All 54 children are in Backlog with no spec PR; live state is in
 [Linear](https://linear.app/fixpoint-labs/issue/FIX-2369). Bugs take the direct route and get
 no spec. The build order is [DECISIONS.md → Coordination seams](DECISIONS.md#coordination-seams).
 
@@ -114,7 +114,6 @@ no spec. The build order is [DECISIONS.md → Coordination seams](DECISIONS.md#c
 | FIX-2388 | Issue-aware work: a Linear relay and an `issue` field | harness-manager, workforce |
 | FIX-2419 | Choose a run's starting point; list and remove worktrees | harness-manager, workspace |
 | FIX-2420 | A setup hook after checkout warms a fresh worktree | workspace, harness-manager |
-| FIX-2423 | Kitchen Sink hires a coding worker and hands desk work to a harness | KS |
 | **See what the work is doing** | | |
 | FIX-2393 | Tool lines that say what was read, run or edited | ui registry, labs |
 | FIX-2394 | Task time, progress and stall signals | labs, via FIX-2379 |
@@ -126,9 +125,7 @@ no spec. The build order is [DECISIONS.md → Coordination seams](DECISIONS.md#c
 | **Navigate and get started** | | |
 | FIX-2400 | Selection survives a reload, in the URL | labs, KS |
 | FIX-2401 | Keyboard-first navigation and focus | labs, SM |
-| FIX-2402 | Sessions list: rename, archive, search | workforce, CC lab · [Open](DECISIONS.md#open) |
 | FIX-2403 | A first run that teaches | apps, workforce |
-| FIX-2404 | Teammates' Talk panel | TM · [Open](DECISIONS.md#open) |
 | FIX-2411 | A live session list with per-row status | react |
 | FIX-2414 | Shift Manager routes are real links | SM |
 | FIX-2415 | Flow State's suggestion chips do nothing (bug) | KS |
@@ -142,23 +139,20 @@ no spec. The build order is [DECISIONS.md → Coordination seams](DECISIONS.md#c
 | FIX-2424 | Kitchen Sink's config tells the truth | KS |
 | FIX-2425 · closure · **required** | The QA plan on one `main` commit: both legs in all four apps, each child's goal check, the seams | blocked by every other child, and by FIX-2274 |
 
-57 children: 56 and the closure. By their own *where it's built*, 32 of the 56 put work in a
+54 children: 53 and the closure. By their own *where it's built*, 31 of the 53 put work in a
 package and 40 are needed by two or more apps. **Consumed, not owned:** FIX-2274 (a follow-up
 continues its root task's run, in the gap epic FIX-2273) blocks the closure. FIX-2367 (push
 channel) gates FIX-2409, 2411 and 2412 through its delivery child. FIX-1768 (push, PR, cleanup,
 in FIX-1763), FIX-2168 and FIX-2164 (task timing and step fields), and FIX-2252 (worktree
 staleness) are inputs that don't block it: the goal stops at a reviewed branch.
 
-**Is 57 really 54?** The analysis says three items serve no closure check: FIX-2402, FIX-2404
-and FIX-2423. Moving them out changes what users get, so it is [Open](DECISIONS.md#open), not
-done here. Everything else carries a part of the goal, and most of what remains is
-small app work with no package dependency.
+**Moved to [FIX-2430](https://linear.app/fixpoint-labs/issue/FIX-2430):** FIX-2402, FIX-2404 and FIX-2423, which no closure check needs ([decided in review](DECISIONS.md#decided-recorded-so-no-child-reopens-them)).
 
 ## How the issues flow into each other
 
 ```mermaid
 flowchart LR
-  Q["wave 0 · 14 app quick wins · to main any time"] --> CL["FIX-2425 · closure · required"]
+  Q["wave 0 · 13 app quick wins · to main any time"] --> CL["FIX-2425 · closure · required"]
   A["FIX-2374 · session feed"] -->|"items, runs, connection state"| AP["short app stacks · from main after their package slices"]
   B["FIX-2383 then 2381"] -->|"retry, cancel, steer, release"| AP
   C["FIX-2379 · task-row view"] -->|"one display state"| AP
@@ -166,7 +160,7 @@ flowchart LR
   H1["FIX-2385 then 2386, 2419, 2388"] -->|"branch, commits, base, issue"| AP
   H2["FIX-2384 then 2387, 2398"] -->|"diff, checks, spend"| AP
   W["FIX-2420 · setup hook"] -.->|"deps installed before checks run"| H2
-  S["wave 1 singles · 2378 2389 2391 2393 2402 2405 2407 2408 2421 2422"] -->|"markers, holds, readiness, links"| AP
+  S["wave 1 singles · 2378 2389 2391 2393 2405 2407 2408 2421 2422"] -->|"markers, holds, readiness, links"| AP
   P["FIX-2367 · delivery child · client.subscribe · consumed"] -.-> G["FIX-2409, 2411, 2412"]
   G --> AP
   T["FIX-2367 · task board child · consumed"] -.->|"owns two polls"| AP
@@ -180,8 +174,8 @@ Stack heads only. A solid edge is what one piece hands the next. A dashed edge f
 issue is an input another epic owns, never re-parented. The dashed edge from FIX-2420 is *merge
 after*, not a stack.
 
-**How it lands ([D3](DECISIONS.md#d3)).** Wave 0 is 14 app quick wins, to `main` any time.
-Wave 1 is 17 package slices, from `main`, merged first. Waves 2 to 4 are package dependents and
+**How it lands ([D3](DECISIONS.md#d3)).** Wave 0 is 13 app quick wins, to `main` any time.
+Wave 1 is 16 package slices, from `main`, merged first. Waves 2 to 4 are package dependents and
 short app stacks, five deep at most, each starting from `main` once its package slice lands.
 The one build order, with hot-file owners and stack order, is
 [DECISIONS.md → Coordination seams](DECISIONS.md#coordination-seams).
@@ -234,9 +228,7 @@ look fixed and still aren't where FSD gets built.
 of each. If wrong: package surface grows faster than apps shrink.
 
 1. **[D1](DECISIONS.md#d1) · Four daily-driver apps are worth one epic of shared package work,
-   now.** If wrong: 57 children of polish while the framework's own goals wait.
-
-**Open, one:** [should FIX-2402, FIX-2404 and FIX-2423 leave the epic?](DECISIONS.md#open)
+   now.** If wrong: 54 children of polish while the framework's own goals wait.
 
 **Decided, engineering, not asked:**
 
@@ -246,5 +238,5 @@ of each. If wrong: package surface grows faster than apps shrink.
 - [D4](DECISIONS.md#d4): a piece two apps need lives in its package or the ui registry.
 - The closure does not wait on FIX-1768: the goal stops at a reviewed branch.
 
-Epic · 56 children and a closure · Workforce: Shift Manager · Goal 1, validate through real
+Epic · 53 children and a closure · Workforce: Shift Manager · Goal 1, validate through real
 usage · Goal 4, keep the foundation honest
