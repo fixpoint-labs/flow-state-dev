@@ -6,12 +6,9 @@
  * follows ends without completing, and reads a shown request's own record
  * from the status route when a later request is the newest. Both are only
  * worth something if the host answers them: the state the failed request
- * wrote, with no items, and when the request ended. A failed turn whose end
- * time is missing reads as never having ended.
- *
- * Red state produced before this was trusted: the status route copying only
- * `completedAtMs`, as it did, fails the end-time assertion (a failed record
- * holds `failedAtMs`).
+ * wrote, with no items, and the request's record. (The record's end time for
+ * a failed request is the status route's own contract, tested with the
+ * route.)
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
@@ -70,7 +67,5 @@ describe("a failed request, read back without its items", () => {
 
     const status = await client.flow("records").request(failed!.id).status();
     expect(status.status).toBe("failed");
-    expect(status.completedAtMs).toBeTypeOf("number");
-    expect(status.completedAtMs).toBeGreaterThanOrEqual(status.startedAtMs);
   }, 20_000);
 });

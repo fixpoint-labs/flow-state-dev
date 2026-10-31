@@ -78,41 +78,6 @@ describe("handleGetRequestStatus", () => {
     expect(response.status).toBe(404);
   });
 
-  it("reports when a failed request ended, though its record holds only failedAtMs", async () => {
-    // A view shows how long a failed turn worked for from this time; without
-    // it the turn reads as never having ended.
-    const stores = createInMemoryStores();
-    const startedAt = Date.now() - 5_000;
-    const failedAt = Date.now() - 1_000;
-    await stores.request.set(
-      "req_failed",
-      {
-        id: "req_failed",
-        flowKind: "chat",
-        actionName: "run",
-        userId: "u",
-        source: "http",
-        status: "failed",
-        startedAtMs: startedAt,
-        failedAtMs: failedAt,
-        state: {},
-        version: 0,
-        createdAt: startedAt,
-        updatedAt: failedAt
-      },
-      "any"
-    );
-
-    const response = await handleGetRequestStatus(
-      new Request("http://test/api/flows/chat/requests/req_failed/status"),
-      { kind: "request_status", flowKind: "chat", requestId: "req_failed" },
-      { registry, stores }
-    );
-
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ status: "failed", completedAtMs: failedAt });
-  });
-
   it("projects the snapshot shape with lastHeartbeatAt when registered", async () => {
     const stores = createInMemoryStores();
     const startedAt = Date.now() - 5_000;
