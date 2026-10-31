@@ -149,7 +149,8 @@ export function useInterruptKeys(options: UseInterruptKeysOptions): {
 
   const onKeyDown = useCallback(
     (event: InterruptKeyEvent) => {
-      if (!enabled) return;
+      // A held key's repeat is no press at all: it neither counts nor clears an armed first Esc.
+      if (!enabled || event.repeat === true) return;
       const result = gesture.current.press(event);
       if (result === "interrupt") {
         event.preventDefault?.();
