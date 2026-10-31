@@ -687,6 +687,10 @@ export function useSession(
   // Request status reads take a place in order; only the last one requested
   // lands, and a session change retires every one in flight.
   const followedReadSequenceRef = useRef(0);
+  // Bumped on every session change. A stop or dismissal that awaited the
+  // server checks it before touching the view: the session it began in may
+  // be gone, and its reads would land on the next one.
+  const sessionGenerationRef = useRef(0);
   // The error a snapshot read that failed left, with that read's place in
   // order. A read requested after it that lands takes it away; an older one
   // landing late does not, and no read takes away an error from anywhere else.
@@ -1619,6 +1623,7 @@ export function useSession(
     heldStateRef.current = null;
     followedReadRef.current = null;
     followedReadSequenceRef.current += 1;
+    sessionGenerationRef.current += 1;
     setStreamStatus(null);
     setReadFollowed(null);
 
@@ -1949,12 +1954,16 @@ export function useSession(
       }
       letGoRef.current.add(targetId);
 
+      const generation = sessionGenerationRef.current;
       try {
         await flow.request(targetId).abort();
       } catch {
         // Network failure or a 409 against an already-terminal record both
         // land here. The local cleanup below still runs so the UI clears.
       }
+      // The session changed while the stop was out: the view, its stream and
+      // its reads belong to the next one now.
+      if (generation !== sessionGenerationRef.current) return;
 
       streamHandleRef.current?.close();
       streamHandleRef.current = null;
@@ -2165,8 +2174,10 @@ export function useSession(
     // accidental disconnect (browser reload, network drop). A refused stop
     // means the request finished first: the server's account of it stands,
     // so the view stops claiming a stop.
+    const generation = sessionGenerationRef.current;
     const refused = await serverRefusedStop(flow, requestId);
     if (refused) stoppedRequestsRef.current.delete(requestId);
+    if (generation !== sessionGenerationRef.current) return;
 
     // The view moved to another request while the stop was out (one followed
     // once the stopped request ended, say): that one keeps its stream.

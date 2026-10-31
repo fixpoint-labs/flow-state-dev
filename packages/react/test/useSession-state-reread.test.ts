@@ -44,6 +44,8 @@
  *   - no session fence on the status read: the "session changed" case fails
  *     (the old session's record shows); a session fence alone: the "shown
  *     request changed" case fails (followedRequest reads null).
+ *   - no session check after the stop or dismissal's await: the "resolves
+ *     after the session changed" case fails (a read for the old session).
  *   - no stream status cleared by a dismissal: the "dismissed" case fails
  *     (the request still reads in progress).
  *   - reading the followed request's status as soon as its stream ends,
@@ -415,6 +417,38 @@ describe("state at a request's end", () => {
 
     expect(itemReads()).toHaveLength(itemReadsBefore + 1);
     expect(stateOnlyReads()).toHaveLength(0);
+  });
+
+  it("a stop or dismissal that resolves after the session changed reads nothing for the next session", async () => {
+    for (const stop of ["abortRequest", "dismissRequest"] as const) {
+      stateCalls.length = 0;
+      let release!: () => void;
+      flowMock.abort.mockImplementation(() => new Promise<void>((resolve) => (release = resolve)));
+      const { result, rerender, unmount } = renderHook(({ id }) => useSession(id, { flowKind: "demo", items: true }), {
+        initialProps: { id: "sess1" },
+      });
+      await flush();
+      await land(0, snapshot("mounted", [message("m1", "req_turn")]));
+      act(() => void result.current.followRequest("req_turn"));
+
+      let stopped!: Promise<void>;
+      act(() => {
+        stopped = result.current[stop]("req_turn" as never);
+      });
+      rerender({ id: "sess2" });
+      await flush();
+      await land(stateCalls.length - 1, { ...snapshot("second"), sessionId: "sess2" });
+      const readsBefore = stateCalls.length;
+
+      await act(async () => {
+        release();
+        await stopped;
+      });
+      await flush();
+      expect(stateCalls.length, stop).toBe(readsBefore);
+      expect(result.current.snapshot?.clientData.session, stop).toEqual({ phase: "second" });
+      unmount();
+    }
   });
 
   it("a stop re-reads state only", async () => {
