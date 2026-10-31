@@ -87,6 +87,7 @@ reading the stream as one flag, `childSessionsStale`, derived from the same five
 | `sessions.stream()`: backoff, `since` on reconnect, `onStop` on 401/403/404/409/501 | **Builds on**, unchanged |
 | `createRequestStreamStore` + `bindStoreToCallbacks` + `createSSEClientFromResponse` | **Builds on** for `followResponse`, as Teammates does today |
 | Teammates `session-feed.ts` (its own paging, merge rule and a raw `sessions.stream` with no connection health), Claude Code-style `watchThread`/`watchTaskWork`, Shift Manager's session re-reads | **Left for wave 2.** This thread ships one adoption PR per app after this merges, and each deletes the app's copy (ER-3). The task-board polls stay FIX-2367's task-board child's |
+| FIX-2408's tail-first history read (spec #4395) | **Owns the public history read** ([E9](DECISIONS.md#decided-not-asked)). `sessionFeed` moves onto it, in whichever PR merges second |
 | FIX-2367's delivery child, which also names a `followSession` lift | **This issue owns the lift.** That child is not filed yet, so it builds on this `followSession` and its five states, and adds no states of its own |
 
 **Net:** one public export added to the client (`sessionFeed`, with its snapshot and state

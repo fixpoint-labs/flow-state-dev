@@ -73,6 +73,11 @@ The issue says "rebase useSession on it". There are two readings.
 - **E7 · Changeset:** a `minor` for `@flow-state-dev/client` (new public exports). React's change
   is internal.
 
+- **E9 · FIX-2408 owns the public history read** (EM call, epic seam). `readSessionHistory`
+  stays internal. Once FIX-2408's tail read lands, `sessionFeed` starts from it, since its window
+  carries `at` and `sessionCreatedAt`, rather than reading from offset 0. Whichever of the two
+  merges second makes the switch: in FIX-2408's PR if this merges first, or as a follow-up commit
+  here if FIX-2408 lands first.
 - **E8 · Page size stays 100**, `useSession`'s. Teammates reads 500 a page today; its adoption
   PR takes the default unless a measured read says otherwise.
 
