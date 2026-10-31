@@ -71,13 +71,19 @@ flowchart TD
 
 | Step | Refused when | Forceable |
 |---|---|---|
-| Remove the worktree | Uncommitted or untracked changes; a provision of the place in flight; a turn running (the session action) | No |
+| Remove the worktree | Uncommitted or untracked changes; a provision of the place in flight; a run working in it (`in-use`) | No |
 | Delete the branch | It holds commits no other branch or remote-tracking ref holds | Yes, `force` |
 
 - **Because:** uncommitted changes exist only in that directory, and a person in a menu can
   commit them first. A branch's commits are recoverable from the reflog for a while and the person
   can see the count before forcing; FIX-1768's "nothing unpushed is deleted" is the same rule,
   without the force.
+- **Active-run exclusion is part of the removal contract, not of one caller.** A turn holds the
+  worktree's `<dir>.lock` from provision to turn end, the lease a board run already takes on its
+  checkout; `remove` takes it without waiting and refuses `in-use` if it can't. So the CLI or
+  FIX-1768's cleanup can't take a clean worktree from under a running harness. The session
+  action's `reject` concurrency stays as the fast path. A lock left by a dead process is never
+  treated as stale by `remove`; the person deletes the file.
 - **One path** (ER-5): `WorkspaceHost.remove`. The session action, `fsdev worktrees`, FIX-1768
   after a merge and FIX-2252 on staleness all call it. Nothing else runs `git worktree remove`.
 - **`list` asks git, not the directory tree**: `git worktree list` in each clone under the root

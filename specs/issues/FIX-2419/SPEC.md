@@ -100,8 +100,10 @@ already exists, and one way to list and remove what it made.
 - **A PR is its head branch** ([D2](DECISIONS.md#d2)): `pullRequestHead` in the workspace's
   GitHub module asks `gh` for the head branch; a PR from a fork is refused by name.
 - **One removal path** ([D3](DECISIONS.md#d3), epic ER-5): `WorkspaceHost.list()` and
-  `WorkspaceHost.remove()`. Removal refuses uncommitted or untracked changes and a place being
-  provisioned; deleting the branch refuses commits no other branch or remote ref holds, unless
+  `WorkspaceHost.remove()`. Removal refuses uncommitted or untracked changes, a place being
+  provisioned, and a worktree a run is working in (`in-use`: a turn holds `<dir>.lock` from
+  provision to turn end, the same lease a board run takes, so every caller is refused, not only
+  the session action); deleting the branch refuses commits no other branch or remote ref holds, unless
   forced. The session flow's `removeWorktree` action calls it through an optional
   `HarnessSessionWorkspace.remove`, refused while a turn runs (`concurrency: "reject"`), and marks
   the session's record removed. `fsdev worktrees <root>` lists and removes from a terminal.
@@ -126,6 +128,7 @@ still keeps the directory; the board manager's run source and its `baseRef`.
 | FIX-2386's `workspace` record on session state | **Extended** with `removed`; its branch becomes what the turn-end check reads |
 | `./branch-pull-requests`, the host's only `gh` caller | **Extended** with `pullRequestHead` |
 | Core's `reject` concurrency | **Reused**: a `turn` occupies the session, so `removeWorktree` is refused while one runs |
+| The board's per-checkout run lock (`lockPathFor`) | **Reused** as the in-use lock: `occupyWorktree` takes the same `<dir>.lock`, so `remove` refuses a worktree a turn or a board run holds |
 | Held work, `checkpoint`, `release` | **Kept**. Removal does not drop held packs; FIX-1768 owns that with its overlay |
 
 **Adds:** one session field and action, two host methods and one request flag, one `gh` read,
@@ -138,9 +141,9 @@ says it was removed, and the person reading it decides. Kept files under a remov
 ## Sign off
 
 **Approve by merging.** The goal, and the debt above. The call to weigh is
-[D3](DECISIONS.md#d3): removal refuses to lose work unless forced, and only for the branch, never
-for uncommitted changes. *If wrong:* a force for uncommitted changes is one more flag on the same
-`remove`; nothing else moves.
+[D3](DECISIONS.md#d3): removal never discards uncommitted changes and never takes a worktree a
+run is working in; only deleting the branch can be forced. Forcing past uncommitted changes is a
+non-goal. *If wrong:* that force is one more flag on the same `remove`; nothing else moves.
 
 Feature · `workspace`, `harness-manager`, `fsdev` · medium · package slice in 1 PR stacked on
 FIX-2386; app adoption in the epic's Kitchen Sink, Shift Manager and lab stacks · epic FIX-2369
