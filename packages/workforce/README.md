@@ -1723,6 +1723,28 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   // and the same `workspace` on the coding workers' harnessManager
   ```
 
+- **`projectMcpCapability(servers, { operator?, allow?, idleMs? })`** gives an agent or
+  coordinator worker the MCP servers its conversation's project names, as tools on its model
+  (`mcp__<server>__<tool>`), keyed with the user it is talking to. It shares `projectMcpTools`'
+  resolution: the project and owner come from the conversation's server-written fields (never a
+  tool argument), the key is the owner's stored one (or `seedEnv` for `operator`), and the
+  connection is one `createMcpManager`. Its one preset, `tools`, is off until a worker's own file
+  picks it (`capabilities: { projectMcp: [tools] }`). `allow(server, tool)` narrows the tools, so a
+  read-only tracker is the host's `linear` entry with an `allow` that keeps the read tools. A
+  conversation with no project gets no tools and hears nothing; a server with no key, or one that
+  fails to connect, is left out and said once per conversation. The connection for one project,
+  owner and set of keys is kept across steps and turns and closed after `idleMs` (default five
+  minutes) without use; a changed key or list opens a new one. Pass it on the worker flow's `uses`:
+
+  ```ts
+  const linear = projectMcpCapability(
+    { linear: { url: "https://mcp.linear.app/mcp", seedEnv: "LINEAR_API_KEY" } },
+    { operator: "u_ops", allow: (_server, tool) => /^(get|list|search)_/.test(tool) },
+  );
+  defineCoordinatorFlow({ installation, agent: { uses: [linear] } });
+  defineAgentWorkerFlow({ installation, model, uses: [linear] });
+  ```
+
 - **`projectMcpTools(servers, { operator })`** is a resolver for a coding harness's per-run
   tools, in `claudeCodeAgent`'s `mcpTools` shape. It finds the run's project and owner the way
   `projectWorkspace()` does, connects to each server the project names in `servers`
@@ -2692,6 +2714,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `WorkerCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that worker wants. Read by the built-in `agent` worker flow; validated at the hire. |
 | `defineProjectsCollection()` / `definePrivateProjectsCollection()` | The shared projects (`projects/*` at org scope) and the private ones (the same keys at each user's scope), both shared across flows and browser-readable through `expose`. Every call returns the same declaration, so they never conflict. `defineProjectFilesCollection` and `definePrivateProjectFilesCollection` declare the files; neither has a browser read. |
 | `defineProjectBlocks({ mcpServers? })` | Returns `{ createProject, setRepository, setMcpServers, setBrief, readProject, listProjects, readProjectFiles, actions }`. `mcpServers` names the MCP servers a project may name; absent, none. See [Projects](#projects). |
+| `projectMcpCapability(servers, { operator?, env?, allow?, idleMs? })` / `PROJECT_MCP_CAPABILITY` / `PROJECT_MCP_IDLE_MS` | The `projectMcp` capability: a `tools` preset a worker picks in its file, giving its model the conversation's project MCP servers as tools with the talking user's key, over a kept connection. See [Projects](#projects). |
 | `projectMcpTools(servers, { operator?, env? })` / `ProjectMcpServers` / `ProjectMcpToolsResolver` | The resolver a coding harness calls once per run for its project's MCP tools, relayed through FSD's own connection with the run owner's key. See [Projects](#projects). |
 | `defineMcpCredentialsCollection()` / `mcpCredentialsCapability` / `mcpCredentialProblem(value)` / `MCP_CREDENTIALS_PREFIX` | Each user's MCP server keys, `mcp-credentials/*` at user scope (client read: `setAt` only), the capability the resolving block holds, and the check a key route runs on a value. |
 | `checkedMcpServers(names, offered)` / `isMcpServerName(value)` | The check both project writes run on `mcpServers`. |

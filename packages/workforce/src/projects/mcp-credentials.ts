@@ -14,11 +14,12 @@
  * The writes go around the action pipeline, since an action's input is kept
  * on its request record: a host writes a record through its own route
  * ({@link mcpCredentialProblem} checks the value), and the one reader of the
- * value is the relay that connects a run's servers (`projectMcpTools`), on
- * the server.
+ * value is the shared resolution that connects a run's or a worker's servers
+ * (`projectMcpTools`, `projectMcpCapability`), on the server.
  *
- * Not installed on any generator: only the block a coding run asks its tools
- * from holds it ({@link mcpCredentialsCapability}).
+ * Held by the block a coding run asks its tools from, and by a worker's model
+ * block when it carries `projectMcpCapability` ({@link mcpCredentialsCapability}).
+ * The collection is not `llmReadable`, so no resource tool lists or reads it.
  *
  * This key prefix is a public surface: moving it loses every stored key.
  */
