@@ -564,6 +564,20 @@
         "target": "components/flow-state/run-changes.tsx"
       }],
       "categories": ["ai", "code"]
+    },
+    {
+      "name": "run-checks",
+      "title": "Run Checks",
+      "type": "registry:component",
+      "description": "A coding run's checks: \"Checks 2/2 passed\", red when any failed, opening into each command and the end of its output. Pairs with harness-manager's commandCheck results.",
+      "dependencies": ["lucide-react"],
+      "registryDependencies": ["tokens"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/run-checks.tsx",
+        "target": "components/flow-state/run-checks.tsx"
+      }],
+      "categories": ["ai", "code"]
     }
   ]
 }
