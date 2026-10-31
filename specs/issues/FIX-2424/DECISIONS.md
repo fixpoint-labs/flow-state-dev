@@ -35,9 +35,12 @@
 
 - **E1 · stderr, not stdout.** The `fsdev` CLI imports this config and keeps stdout for NDJSON.
 - **E2 · Logged when the config loads**, once per HMR re-evaluation too, since each builds a
-  fresh FlowState. Reading `activeProfile` there moves an undeclared `FSD_ENV` failure from the
-  first request to the start.
+  fresh FlowState. The config reads the synchronous `flowstate.activeProfile` getter right after
+  `createFlowState`, never `ready()`, so no store opens. That read moves an undeclared `FSD_ENV`
+  failure from the first request to the start (after the workforce and harness awaits).
 - **E3 · `durable` is one const** used by both `createFlowState` and the line, so the log can't
-  disagree with the config.
+  disagree with the config. `durable: true` forces durability on over every store
+  (`resolveDurabilityProvider`), so the option is also the effective value here; the comment says
+  so, including that `STORE_TYPE=memory` loses its stops with the process.
 - **E4 · The resolver's new name is `lib/test-model-resolver.ts`**, beside `lib/e2e-mock-script.ts`.
 - **E5 · No changeset:** Kitchen Sink is a private app.
