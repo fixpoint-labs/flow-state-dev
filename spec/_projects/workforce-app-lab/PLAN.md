@@ -7,14 +7,15 @@ deliberately not next. Each epic's own plan owns its checks.
 
 ![The arc](figures/arc.svg)
 
-Day sixteen. Three bars are closed: the shell's at its closure merge on Oct 4, hand-offs' (FIX-1815)
-at its Oct 11 wrap, and the dev Lab's (FIX-1903) at its Oct 14 wrap, two days after its approval.
-Org primitives runs to the now line: its closure merged Oct 6, and the bar closes when the epic
-wraps. FIX-1786's bar runs from its Oct 6 approval to the now line. Three lanes opened Oct 4 with a
-tick and no approved objective. FIX-1765's ends in a cross on Oct 13, canceled into FIX-1764.
-Memory's (FIX-1775) ends in a done mark on Oct 9 with no bar: Linear closed it when its first child
-merged, and its long-session half was never filed. FIX-1763's children are building with no
-objective. Those two are the gaps to watch. Three lanes stay empty by plan.
+Day thirty-three. Five bars are closed: the shell's at its closure merge on Oct 4, hand-offs'
+(FIX-1815) at its Oct 11 wrap, the dev Lab's (FIX-1903) at its Oct 14 wrap, FIX-1786's at Linear
+Done on Oct 23, and the labs' (FIX-2152) at its closure merge on Oct 31, eight days after approval.
+FIX-1786's bar closes on Linear alone: no wrap update reached this spec. Org primitives runs to the
+now line: its closure merged Oct 6, and the bar closes when the epic wraps. FIX-1765's lane ends in
+a cross on Oct 13, canceled into FIX-1764. Memory's (FIX-1775) ends in a done mark on Oct 9 with no
+bar, and its long-session half was never filed. Coding tasks (FIX-1763), gaps between epics
+(FIX-2273) and Workforce over MCP (FIX-2331) carry filing ticks and no approved objective. Three
+lanes stay empty by plan.
 
 ## What each epic consumes and releases
 
@@ -31,6 +32,7 @@ objective. Those two are the gaps to watch. Three lanes stay empty by plan.
 | **private & shared** · FIX-1786 | Everything in flight in Workforce, boards, engine scopes and Shift Manager, inventoried first (FIX-1787); FIX-1778's named assignment | Workers as private resources, coordinators in place of mailboxes and rooms, one-owner workstreams, and the retired terms gone from code and docs. Private or shared projects are settled (Q2); what overturns calls in force waits on T2 to T5 ([Decisions](DECISIONS.md) → Open) |
 | **hand-offs** · FIX-1815 | FIX-1786's assigned-task path, whose reply still ends the task (FIX-1794 BR-25); a feasibility spike that found ask viable as park-and-resume Released Oct 11: ask, `addTask` with `waitForResponse`, which parks and resumes with one answer; assign, whose session stays open through a question and after it finishes, with follow-ups in that session. Both on the board's existing answer-once checks; skill sub-agents removed. What siblings inherit is [Decisions](DECISIONS.md) 16 to 22 |
 | **dev Lab** · FIX-1903 | FIX-1763's repository floor (FIX-1762: a project's one remote, a worktree mapped from it); FIX-1650's shared projects; DevTeam's tree, unedited | The `fsd` profile as the default dev Lab: FSD and Shift Manager on this repository, worktrees cut from the user's checkout through a host-config mapping, and a project's MCP servers, Linear first, given to Claude Code runs as tools with each user's own key. What siblings inherit is [Decisions](DECISIONS.md) 23 to 25 |
+| **same pieces, different apps** · FIX-2152 | Workforce's one task primitive (FIX-2056) and worker messaging (FIX-1989), outside this project; the design system and the `packages/ui` registry | Two labs under `labs/`, a Claude Code-style app (session and threads modes) and a Grok Bot-style Teammates app, each with an inventory of what it adds. Into Workforce: a person's sessions of one worker, a public take of a settled notice for the running turn, and the default prompt layer that tells a worker who it is. What siblings inherit is [Decisions](DECISIONS.md) 26 to 31 |
 
 ## What is deliberately not next
 
@@ -45,6 +47,12 @@ objective. Those two are the gaps to watch. Three lanes stay empty by plan.
   task, so the run was refused) left with it and are already Done, FIX-1969 under FIX-1786. Two rows
   only Jake's machine can run: FIX-1904's V1 row, a Claude Code run signed in through a claude.ai
   subscription (OAuth), and a confirming run of goal leg c.
+- **What FIX-2152 left behind.** FIX-2359 (the Claude Code-style lab's finished-task panel) in
+  review; FIX-2349 and FIX-2350 (a Teammates coding task shown failed while running, and started
+  twice), FIX-2340 (one session overlay for both labs), FIX-2323 (a crashed run's tokens) and
+  FIX-2167 (coordinator sessions in `listWorkerSessions`) in Backlog, still its children. Owed on
+  Jake's machine: browser checks at 1440 and 1920 wide (FIX-2337), and real-model runs of both labs
+  on the Cursor default harness.
 - **A skill's private team** (FIX-1819), Backlog until someone needs one now that ask has shipped.
 - **Anything in Cycle 1.** This project is a Cycle 2 candidate.
 - **A second Lab's shell.** CyberForce arrives on this one.

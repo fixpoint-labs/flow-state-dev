@@ -148,6 +148,47 @@ FIX-1904, FIX-1905 and FIX-1906.
     Cursor and Codex get project servers later, on this path
     ([D3](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/issues/FIX-1905/DECISIONS.md#d3)).
 
+### Settled by FIX-2152, recorded at its wrap on 2026-10-31
+
+The labs are Workforce apps beside Shift Manager, so what they settled binds any sibling that
+hires workers, runs coding work, or names the coordinator. Sources: FIX-2152's retained
+[spec](https://github.com/fixpoint-labs/flow-state-dev/tree/main/specs/epics/FIX-2152) and its
+children's, as merged to `main`. Its closure, FIX-2156, ran on 07753056: all six lab goals pass
+and every control fails ([#4278](https://github.com/fixpoint-labs/flow-state-dev/pull/4278)).
+
+26. **Projects are not required to run work.** Jake, 2026-10-29 (FIX-2335): the Teammates lab has
+    no projects. Every run works in one folder the operator names at start, `TEAMMATES_WORKDIR`,
+    on the existing constant run source; unset or missing, the lab fails at start and never falls
+    back to the current directory or its own checkout, and no model sees or names a path. This
+    amends FIX-2152 [ER-8](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/epics/FIX-2152/DECISIONS.md#who-owns-what)
+    and FIX-2154 [D3](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/issues/FIX-2154/DECISIONS.md)
+    **for that lab only**. Shift Manager and every other lab still run in a project's checkout
+    (24), and Workforce stays project-agnostic, with no no-projects mode in the package. A sibling
+    that wants projectless runs does it in its host, as this lab did.
+27. **A coding run is a background task, not a teammate** (FIX-2332, amending FIX-2154 D4). The
+    coding worker stays on the roster but off the list of people you talk to. Each coding task
+    shows as a background item and as a card in the conversation that started it, both opening
+    to the run read only, and its result lands as the task's. A person never types to a harness.
+    It binds FIX-1652's harness visibility and FIX-1763: a harness run is reached through its task.
+28. **The Teammates lab's coordinator is Chief of Staff** (FIX-2336), `chief-of-staff`, and it acts
+    rather than offering: it asks a teammate when asked about one and hands work to whoever fits.
+    The name is the lab's. Shift Manager's coordinator is still the Shift Coordinator (FIX-1775),
+    and FIX-1650's CoS default is the same role; an epic that renames either records it here.
+29. **A worker knows who it is, and work for a delegate goes as a task** (FIX-2334, then #4262).
+    Workforce's default prompt layer, read from the roster each request, gives a worker its name,
+    team and description, and the teammates it can reach. Since #4262 it marks each messageable
+    delegate whose flow takes tasks, with a line that work for a delegate goes as a task, not as a
+    message. The closure's first run found a main worker messaging work instead (0 of 6 filed),
+    and #4262 is the fix. An app adds no prompt text to say any of this
+    ([default worker flow](https://github.com/fixpoint-labs/flow-state-dev/blob/main/docs/architecture/workforce-default-worker-flow.md)).
+30. **The Teammates lab's default coding harness is Cursor** (FIX-2342, #4226). A coding worker
+    whose file names no harness runs on Cursor; Claude Code and Codex stay one `harness:` line
+    away. Lab-scoped: the dev Lab's Claude Code runs (25) don't change.
+31. **An agent flow never reads an app's settings to change how it behaves** (FIX-2341). The
+    built-in `agent` flow takes an app's own settings, such as a worker's icon or color, through
+    `defineAgentWorkerFlow({ settings })`, for the app to read. The flow never looks at them, so
+    they can't change how a worker runs; a setting that should is one of the flow's own.
+
 ## Open
 
 ### What FIX-1786 would change. These are tensions, not decisions
