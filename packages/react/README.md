@@ -385,6 +385,26 @@ A feed that opens is already at its end on the first frame: on mount, when `rese
 - `jump()`: to the end, smoothly.
 - `sent()`: call when the person sends a line. It jumps to the end and brings the next content that lands below into view, which is the line they sent. What arrives after that stays below.
 
+### `useSubmit(action)`
+
+Holds a button or form while its call runs, and keeps the refusal to show. Use it for any call that changes something, so a double click sends it once and a failure never looks like it worked.
+
+```tsx
+const pin = useSubmit(() => adapter.pin(taskId));
+return (
+  <>
+    <button disabled={pin.busy} onClick={() => void pin.submit(undefined)}>Pin</button>
+    {pin.error ? <p role="alert">Couldn't pin: {pin.error}</p> : null}
+  </>
+);
+```
+
+- `submit(event?, ...args)`: runs `action(...args)`. Pass a form's submit event to prevent its default. It never throws.
+- `busy`: `true` while the action runs.
+- `error`: the last refusal's message, cleared when the action runs again.
+
+It wraps any async call. To send one flow action, use `useAction`.
+
 ### `isSendKey(event, options?)`
 
 The send shortcut for a message box. Cmd+Enter on a Mac and Ctrl+Enter elsewhere send from any box, so a person never has to reach for the button.

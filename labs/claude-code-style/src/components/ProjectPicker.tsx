@@ -1,6 +1,6 @@
+import { useSubmit } from "@flow-state-dev/react";
 import { useState } from "react";
 import type { ProjectRow } from "../adapter";
-import { useSubmit } from "../lib/use-submit";
 
 /**
  * *New session*'s question (spec D3): which project the session works in.

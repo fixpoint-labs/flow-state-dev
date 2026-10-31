@@ -1,5 +1,5 @@
+import { useSubmit } from "@flow-state-dev/react";
 import type { LabAdapter, TaskRow } from "../adapter";
-import { useSubmit } from "../lib/use-submit";
 import { cn } from "../lib/utils";
 import { Spend } from "./Spend";
 import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus";

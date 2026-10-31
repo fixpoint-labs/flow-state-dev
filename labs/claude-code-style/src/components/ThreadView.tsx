@@ -1,7 +1,6 @@
-import { isSendKey, useJumpToLatest } from "@flow-state-dev/react";
+import { isSendKey, useJumpToLatest, useSubmit } from "@flow-state-dev/react";
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 import type { LabAdapter, TaskRow } from "../adapter";
-import { useSubmit } from "../lib/use-submit";
 import { useWatch } from "../lib/use-watch";
 import { Entry } from "./Entry";
 import { JumpToLatestButton } from "./JumpToLatest";
