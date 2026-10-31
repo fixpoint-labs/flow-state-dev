@@ -4,7 +4,7 @@
  * packages (contract C1, `docs/architecture/workforce-default-worker-flow.md`).
  *
  * Two pieces, in order: who the worker is and who it can reach, read from the
- * roster each request; then one rule on using tools. Fixed framework text: an
+ * roster each request; then the rule to work things out first. Fixed text: an
  * app that wants other words registers its own `agent` worker flow.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
@@ -19,9 +19,17 @@ import { MAX_LISTED_RECIPIENTS, rosterDisplayName, rosterTeamName, workerRecipie
 /** The longest description the layer quotes for one worker. */
 const MAX_DESCRIPTION = 160;
 
-/** The layer's second piece: one general rule, naming no tool. */
-export const TOOL_USE_RULE =
-  "Use your tools to do what you're asked before you answer. Don't offer to do something you can do now: do it.";
+/**
+ * The layer's second piece: work things out yourself first (FIX-2364). Names
+ * no tool, so it holds for every worker whatever it was granted.
+ */
+export const TOOL_USE_RULE = [
+  "Work things out yourself first.",
+  "- Look before you ask anyone anything. Use your tools, and ask a teammate who can read what you can't: files, branches, diffs, pull requests, tasks and their results.",
+  "- Never ask the user to paste, share or send something the system holds or a teammate can find: a diff, a branch, a pull request, a file, a link, a task's result, an id. If you still can't reach it, say what you looked at and what you couldn't see, then do the job as far as what you found allows.",
+  "- Ask the user only what truly depends on them: a preference, a decision that is theirs, or a fact nobody on the team can reach. When a sensible assumption will do, make it, say it, and go on.",
+  "- Act, don't offer. Do what you were asked this turn, then say what you did. Don't end with \"if you want, I can…\" for something you could have done. Anything that needs the user's say-so still waits for it: sending or posting for them, merging, spending, deleting, or what your instructions say to confirm. Ask for that once, and say why."
+].join("\n");
 
 /** Marks a teammate that is also the worker's delegate. */
 export const DELEGATE_MARK = "(your delegate: takes your tasks too)";
