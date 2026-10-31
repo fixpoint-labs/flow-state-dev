@@ -1,14 +1,18 @@
 /**
- * A call (FIX-2239): `sendMessage({ to, text, wait: true })` waits for the
- * recipient's reply in the same request, until the reply or the deadline, on
- * the engine's one wait gate. The reply is the final text of the recipient's
- * `onMessageReceived` turn, and nothing else is sent back.
+ * Waiting for a reply (FIX-2239, one contract with the reply request since
+ * FIX-2318): `sendMessage({ to, text, wait: true })` is a message that asks
+ * for a reply, whose sender waits for the answer in the same request, until
+ * the answer or the deadline, on the engine's one wait gate. The answer is the
+ * reply request's one answer (the recipient's turn's final text, or its own
+ * `sendMessage({ inReplyTo })`), held for the wait: the tool's result, and no
+ * message.
  *
  * Why it matters: a worker that needs an answer before it can answer its user
- * had only a task and `getTask` to get one. A call must not turn into a send
- * where it can't wait, must never wait past its deadline, must keep a late
- * reply for the caller to collect without sending again, and must queue behind
- * a recipient stopped for the user instead of running beside the stop.
+ * had only a task and `getTask` to get one. A wait must not turn into a send
+ * where it can't wait, must never wait past its deadline, must still get the
+ * answer after its deadline (as a message, without sending again), and must
+ * queue behind a recipient stopped for the user instead of running beside the
+ * stop.
  *
  * The caller is the agent worker (Otto), driven step by step so its tool call
  * can park and resume. Everything is read from the store and each session's
@@ -30,7 +34,7 @@ import { messageReceivedEntry, messageReceivedSchema } from "../src/messages/mes
 import { RECEIVED_MARK } from "../src/messages/received-mark";
 import { deriveWorkerSessionId } from "../src/workers/derive-session-id";
 import { createWorkerInstallation, type WorkerInstallation } from "../src/workers/installation";
-import { callWorker } from "../src/messages/call";
+import { sendAndWaitForReply } from "../src/messages/wait-for-reply";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -89,11 +93,11 @@ function ottoModel(plans: Record<string, () => Array<{ args: Record<string, unkn
   return { model, seen };
 }
 
-/** The lead's judgment: a call's turn answers with the codename; anything else is quiet. */
+/** The lead's judgment: a reply request's turn answers with the codename; anything else is quiet. */
 function leadAnswers(reply = "The codename is Bluebird.") {
   return mockGenerator({
     script: [
-      { when: (input) => JSON.stringify(input).includes("they are waiting for your answer"), then: { text: reply } },
+      { when: (input) => JSON.stringify(input).includes("they asked for a reply"), then: { text: reply } },
       { when: () => true, then: { text: "" } }
     ]
   });
@@ -226,8 +230,22 @@ async function landedIn(h: BoardHost, sessionId: string) {
   ) as any[];
 }
 
-describe("a call", { timeout: 40_000 }, () => {
-  it("gets the recipient's reply as its tool's result, in the same request, and the recipient sends nothing back", async () => {
+/** The ids of the messages `sessionId` heard, as their received items say. */
+async function heardIn(h: BoardHost, sessionId: string): Promise<string[]> {
+  return (await h.requestsOf(sessionId))
+    .flatMap((request) => (request as unknown as { items?: any[] }).items ?? [])
+    .filter((item) => item.type === "component" && item.component === "workforce:received")
+    .map((item) => item.data?.id as string);
+}
+
+/** The asks in the log (the messages that answer nothing), and the answers to `id`. */
+async function asksAndAnswers(h: BoardHost, id?: string) {
+  const rows = await logRows(h);
+  return { asks: rows.filter((row) => row.inReplyTo === undefined), answers: rows.filter((row) => id !== undefined && row.inReplyTo === id) };
+}
+
+describe("a send that waits for its reply", { timeout: 40_000 }, () => {
+  it("gets the recipient's answer as its tool's result, in the same request, and no message lands in its conversation", async () => {
     const { model } = ottoModel({ "Ask the lead": () => [{ args: { to: "lead", text: "What is the codename?", wait: true } }] });
     const { h, otto } = await boot(model);
     await h.post("alice", otto, "respond", { message: "Ask the lead for the codename" }, "agent");
@@ -235,16 +253,20 @@ describe("a call", { timeout: 40_000 }, () => {
     await h.settled();
 
     const [output] = await toolOutputs(h, otto);
-    expect(output).toEqual({ status: "answered", callId: expect.stringMatching(/^msg_/), reply: "The codename is Bluebird." });
+    expect(output).toEqual({ status: "answered", sent: expect.stringMatching(/^msg_/), reply: "The codename is Bluebird." });
     // One request: the answer to Alice holds the reply.
     const turns = await ottoTurns(h, otto);
     expect(turns).toHaveLength(1);
     expect(JSON.stringify(turns[0]!.result?.output)).toContain("Bluebird");
-    // The reply is the call's result, not a second message: one row, a call, marked replied.
-    const rows = await logRows(h);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ id: output!.callId, call: true, status: "delivered", repliedAt: expect.any(Number) });
-    expect(rows[0]!.repliedAt).toBeLessThanOrEqual(rows[0]!.deadlineAt);
+    // The message is a reply request with a deadline, answered in time by the one answer row, held for the wait.
+    const { asks, answers } = await asksAndAnswers(h, output!.sent);
+    expect(asks).toHaveLength(1);
+    expect(asks[0]).toMatchObject({ id: output!.sent, replyRequested: true, status: "delivered", answeredBy: answers[0]?.id });
+    expect(asks[0]!.waitEndedAt).toBeUndefined();
+    expect(answers).toHaveLength(1);
+    expect(answers[0]).toMatchObject({ from: "lead", to: "otto", text: "The codename is Bluebird.", status: "delivered" });
+    expect(answers[0]!.at).toBeLessThanOrEqual(asks[0]!.deadlineAt);
+    expect(await heardIn(h, otto)).toEqual([]);
     expect((await h.messages(otto)).some((m) => m.text.includes("From lead"))).toBe(false);
   });
 
@@ -271,7 +293,7 @@ describe("a call", { timeout: 40_000 }, () => {
     expect(await logRows(h)).toHaveLength(1);
   });
 
-  it("takes one wait per model step: a second call in the same step is refused before its row", async () => {
+  it("takes one wait per model step: a second wait in the same step is refused before its row", async () => {
     const { model } = ottoModel({
       "Ask twice": () => [
         { args: { to: "lead", text: "What is the codename?", wait: true } },
@@ -285,33 +307,29 @@ describe("a call", { timeout: 40_000 }, () => {
     const outputs = await toolOutputs(h, otto);
     expect(outputs.filter((o) => o.status === "answered")).toHaveLength(1);
     expect(outputs.filter((o) => typeof o.error === "string" && o.error.startsWith("wait_already_pending"))).toHaveLength(1);
-    expect(await logRows(h)).toHaveLength(1);
+    expect((await asksAndAnswers(h)).asks).toHaveLength(1);
   });
 
-  it("refuses a deadline outside the host's bounds, and waiting again on a call it didn't send, writing nothing", async () => {
+  it("refuses a deadline outside the host's bounds, writing nothing", async () => {
     const { model } = ottoModel({
-      "Too long": () => [{ args: { to: "lead", text: "What is the codename?", wait: true, deadline: 999_999_999 } }],
-      "Not mine": () => [{ args: { callId: "msg_nobodys" } }]
+      "Too long": () => [{ args: { to: "lead", text: "What is the codename?", wait: true, deadline: 999_999_999 } }]
     });
     const { h, otto } = await boot(model);
     await h.post("alice", otto, "respond", { message: "Too long" }, "agent");
     await h.settled();
-    await h.post("alice", otto, "respond", { message: "Not mine" }, "agent");
-    await h.settled();
     const outputs = await toolOutputs(h, otto);
     expect(outputs[0]).toMatchObject({ ok: false, error: expect.stringMatching(/^wait_deadline_out_of_range/) });
-    expect(outputs[1]).toMatchObject({ ok: false, error: expect.stringMatching(/^no_such_call/) });
     expect(await logRows(h)).toEqual([]);
   });
 });
 
-describe("a call to a worker that runs nothing on a message", { timeout: 40_000 }, () => {
+describe("a wait on a worker that runs nothing on a message", { timeout: 40_000 }, () => {
   const quiet = (unmarked = false): BoardHostOptions => ({
     standard: [...boardWorkers(), { id: "quiet", declared: { flow: "quiet", description: "Takes messages, answers none." }, body: "", skills: [] }],
     flows: (installation) => ({ quiet: { flow: quietFlow(installation, unmarked), roles: [] } })
   });
 
-  // Silence passed off as an answer reads as "it said nothing": the call must say no reply will ever come.
+  // Silence passed off as an answer reads as "it said nothing": the wait must say no reply will ever come.
   it("is refused no_reply before anything is written, and a plain send to it still lands", async () => {
     let first = true;
     const { model } = ottoModel({
@@ -334,35 +352,35 @@ describe("a call to a worker that runs nothing on a message", { timeout: 40_000 
     expect(await until(async () => (await logRows(h))[0]?.status === "delivered")).toBe(true);
   });
 
-  it("answers failed with no_reply once it lands, where the sender couldn't tell up front", async () => {
+  it("is answered 'no answer' once it lands, where the sender couldn't tell up front", async () => {
     const { model } = ottoModel({ "Ask the quiet one": () => [{ args: { to: "quiet", text: "What is the codename?", wait: true } }] });
     const { h, otto } = await boot(model, quiet(true));
     await h.post("alice", otto, "respond", { message: "Ask the quiet one" }, "agent");
     expect(await until(async () => (await ottoTurns(h, otto))[0]?.status === "completed")).toBe(true);
     await h.settled();
     const [output] = await toolOutputs(h, otto);
+    // The reply request's own guarantee: one answer, the framework's "no answer", never silence.
     expect(output).toEqual({
-      status: "failed",
-      callId: expect.stringMatching(/^msg_/),
-      error: expect.stringMatching(/^no_reply: "quiet" takes messages but runs nothing on them/)
+      status: "answered",
+      sent: expect.stringMatching(/^msg_/),
+      reply: "No answer came back: this worker doesn't answer messages.",
+      noAnswer: true
     });
-    // It was sent and it landed: only the reply never comes.
-    const rows = await logRows(h);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ id: output!.callId, call: true, status: "delivered" });
-    expect(rows[0]!.repliedAt).toBeUndefined();
+    const { asks, answers } = await asksAndAnswers(h, output!.sent);
+    expect(asks[0]).toMatchObject({ id: output!.sent, replyRequested: true, status: "delivered" });
+    expect(answers).toHaveLength(1);
+    expect(answers[0]).toMatchObject({ from: "quiet", noAnswer: true });
+    expect(await heardIn(h, otto)).toEqual([]);
   });
 });
 
-describe("a call into a session stopped for the user", { timeout: 60_000 }, () => {
-  it("queues behind the stop, answers running at its deadline saying so, and waiting again by its id returns the kept reply", async () => {
-    let callId = "";
+describe("a wait into a session stopped for the user", { timeout: 60_000 }, () => {
+  it("queues behind the stop, answers running at its deadline saying so, and the answer comes later as a message, sent once", async () => {
     const { model } = ottoModel({
       "Ask the stopper": () => [
         { args: { to: "stopper", text: "What is the codename?", wait: true, deadline: 1_000 } },
         { args: { to: "stopper", text: "FYI: the deploy waits on you." } }
-      ],
-      "Get the answer": () => [{ args: { callId } }]
+      ]
     });
     const { h, otto } = await boot(model);
     const { sessionId, stopped } = await stoppedConversation(h);
@@ -371,14 +389,16 @@ describe("a call into a session stopped for the user", { timeout: 60_000 }, () =
     await h.post("alice", otto, "respond", { message: "Ask the stopper for the codename" }, "agent");
     expect(await until(async () => (await ottoTurns(h, otto))[0]?.status === "completed")).toBe(true);
     const outputs = await toolOutputs(h, otto);
-    const call = outputs.find((o) => o.callId !== undefined)!;
-    // The deadline came first: the caller goes on, told the recipient waits on the user.
-    expect(call).toEqual({ status: "running", callId: expect.stringMatching(/^msg_/), recipient: "waiting_on_person" });
+    const waited = outputs.find((o) => o.status !== undefined)!;
+    // The deadline came first: the sender goes on, told the recipient waits on the user.
+    expect(waited).toEqual({ status: "running", sent: expect.stringMatching(/^msg_/), recipient: "waiting_on_person" });
     expect(Date.now() - asked).toBeGreaterThanOrEqual(1_000);
-    // Nothing landed while the stop is open: neither the call nor the plain message.
+    // Nothing landed while the stop is open: neither the waited message nor the plain one.
     expect(await landedIn(h, sessionId)).toEqual([]);
     const rows = await logRows(h);
     expect(rows.every((row) => row.queuedBehind === "user" && row.status === "unconfirmed")).toBe(true);
+    // The wait ended on the message's row, so its answer won't be held for it.
+    expect(rows.find((row) => row.id === waited.sent)!.waitEndedAt).toEqual(expect.any(Number));
     // The stopped request still waits on its user: the queued messages never touched it.
     expect((await (await h.state.getRuntime()).stores.request.get(stopped))?.status).toBe("suspended");
 
@@ -388,29 +408,26 @@ describe("a call into a session stopped for the user", { timeout: 60_000 }, () =
     // Landed after the stopped request ended, not when it merely resumed: the session was busy until then.
     const stoppedEnd = (await (await h.state.getRuntime()).stores.request.get(stopped)) as any;
     expect(stoppedEnd.status).toBe("completed");
-    const delivered = await logRows(h);
+    const delivered = (await asksAndAnswers(h)).asks;
     expect(delivered.every((row) => row.status === "delivered" && row.queuedBehind === undefined)).toBe(true);
     for (const row of delivered) expect(row.deliveredAt).toBeGreaterThanOrEqual(stoppedEnd.completedAtMs);
 
-    // Waiting again sends nothing: the kept reply comes back, and there is still one row for the call.
-    callId = call.callId;
-    await h.post("alice", otto, "respond", { message: "Get the answer" }, "agent");
-    await h.settled();
-    const again = (await toolOutputs(h, otto)).at(-1);
-    expect(again).toEqual({ status: "answered", callId, reply: "The codename is Bluebird (you asked: What is the codename?)" });
-    expect((await logRows(h)).filter((row) => row.call === true)).toHaveLength(1);
+    // The answer reaches Otto as a message, like any reply, and nothing was sent again: one ask, one answer.
+    expect(await until(async () => (await asksAndAnswers(h, waited.sent)).answers.length === 1)).toBe(true);
+    const { answers } = await asksAndAnswers(h, waited.sent);
+    expect(answers[0]).toMatchObject({ from: "stopper", toSession: otto, text: "The codename is Bluebird (you asked: What is the codename?)" });
+    expect(await until(async () => (await heardIn(h, otto)).includes(answers[0]!.id))).toBe(true);
+    expect((await asksAndAnswers(h)).asks).toHaveLength(2);
   });
 });
 
-describe("a call into a busy recipient", { timeout: 60_000 }, () => {
-  it("queues behind the turn it is running, answers running at its deadline and stops nothing; the reply is kept", async () => {
-    let callId = "";
+describe("a wait into a busy recipient", { timeout: 60_000 }, () => {
+  it("queues behind the turn it is running, answers running at its deadline and stops nothing; the answer comes later as a message", async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => (release = resolve));
     let holding = true;
     const { model } = ottoModel({
-      "Ask the lead": () => [{ args: { to: "lead", text: "What is the codename?", wait: true, deadline: 1_000 } }],
-      "Get the answer": () => [{ args: { callId, deadline: 5_000 } }]
+      "Ask the lead": () => [{ args: { to: "lead", text: "What is the codename?", wait: true, deadline: 1_000 } }]
     });
     const { h, otto } = await boot(model, {
       // The lead's own turn on Alice's line holds until the test lets it go.
@@ -428,26 +445,26 @@ describe("a call into a busy recipient", { timeout: 60_000 }, () => {
 
     await h.post("alice", otto, "respond", { message: "Ask the lead for the codename" }, "agent");
     expect(await until(async () => (await ottoTurns(h, otto))[0]?.status === "completed")).toBe(true);
-    const call = (await toolOutputs(h, otto)).find((o) => o.callId !== undefined)!;
+    const waited = (await toolOutputs(h, otto)).find((o) => o.status !== undefined)!;
     // Busy, not waiting on the user: running, and nothing more said.
-    expect(call).toEqual({ status: "running", callId: expect.stringMatching(/^msg_/) });
+    expect(waited).toEqual({ status: "running", sent: expect.stringMatching(/^msg_/) });
     expect(await landedIn(h, lead)).toEqual([]);
-    // The deadline stopped nothing: the lead's turn runs on, then the call's turn after it.
+    // The deadline stopped nothing: the lead's turn runs on, then the waited message's turn after it.
     release();
     expect(await until(async () => (await landedIn(h, lead)).length === 1)).toBe(true);
     expect((await (await h.state.getRuntime()).stores.request.get(busy))?.status).toBe("completed");
-    const [row] = await logRows(h);
-    expect(row!.repliedAt).toBeGreaterThan(row!.deadlineAt);
 
-    callId = call.callId;
-    await h.post("alice", otto, "respond", { message: "Get the answer" }, "agent");
-    await h.settled();
-    expect((await toolOutputs(h, otto)).at(-1)).toEqual({ status: "answered", callId, reply: "The codename is Bluebird." });
-    expect(await logRows(h)).toHaveLength(1);
+    // Answered after the wait ended: the same answer, as a message that wakes Otto.
+    expect(await until(async () => (await asksAndAnswers(h, waited.sent)).answers.length === 1)).toBe(true);
+    const { asks, answers } = await asksAndAnswers(h, waited.sent);
+    expect(asks).toHaveLength(1);
+    expect(answers[0]).toMatchObject({ from: "lead", toSession: otto, text: "The codename is Bluebird." });
+    expect(answers[0]!.at).toBeGreaterThan(asks[0]!.waitEndedAt);
+    expect(await until(async () => (await heardIn(h, otto)).includes(answers[0]!.id))).toBe(true);
   });
 });
 
-describe("a call's depth", () => {
+describe("a wait's depth", () => {
   it("is refused wait_too_deep at the sixth wait, before anything is sent", async () => {
     const memo = new Map<string, unknown>();
     const written: unknown[] = [];
@@ -469,7 +486,7 @@ describe("a call's depth", () => {
       request: { identity: { id: "req_1" }, state: {}, atomicState: async (m: unknown) => written.push(m) }
     };
     const installation = createWorkerInstallation({ standardWorkers: boardWorkers(), workerFlows: () => ({}) as never });
-    const outcome = await callWorker(ctx as never, installation, "agent", { to: "lead", text: "Hi?", wait: true } as never, "sendMessage");
+    const outcome = await sendAndWaitForReply(ctx as never, installation, "agent", { to: "lead", text: "Hi?", wait: true } as never, "sendMessage");
     expect(outcome).toMatchObject({ ok: false, error: expect.stringMatching(/^wait_too_deep: waits nest at most 5 deep, and this one would make 6/) });
     expect(written).toEqual([]);
     // A wait refused for its depth doesn't hold the step: another wait in it may still go.
@@ -477,7 +494,7 @@ describe("a call's depth", () => {
     // Five deep is allowed: the refusal is the sixth's.
     ctx.requestHost.waits.depth = async () => 5;
     memo.clear();
-    const allowed = await callWorker(ctx as never, installation, "agent", { to: "lead", text: "Hi?" } as never, "sendMessage").catch((error: unknown) => ({
+    const allowed = await sendAndWaitForReply(ctx as never, installation, "agent", { to: "lead", text: "Hi?" } as never, "sendMessage").catch((error: unknown) => ({
       threw: String(error)
     }));
     expect(JSON.stringify(allowed)).not.toContain("wait_too_deep");
@@ -518,22 +535,22 @@ function killableStores(stores: StoreAdapter, dies: (method: string, args: unkno
   return { stores: { ...stores, resolve } as StoreAdapter, dead: () => dead };
 }
 
-/** The calling request's write as it pays the call's budget, before its row. */
+/** The waiting request's write as it pays the send's budget, before its row. */
 const paysBudget = (method: string, args: unknown[]) =>
   (method.startsWith("set") || method.startsWith("patch")) && JSON.stringify(args).includes('"workforceMessagesPaid":["msg_');
 
-/** The call's row landing, before its dispatch. */
-const writesCallRow = (method: string, args: unknown[]) => {
+/** The waited ask's row landing (the one row with a deadline), before its dispatch. */
+const writesWaitedRow = (method: string, args: unknown[]) => {
   if (!method.startsWith("set")) return false;
   const written = JSON.stringify(args);
-  return written.includes("workforce/messages/") && written.includes('"call":true');
+  return written.includes("workforce/messages/") && written.includes('"deadlineAt":');
 };
 
 /**
- * Otto calls the lead on a host whose process dies at `dies`; a second host
+ * Otto waits on the lead on a host whose process dies at `dies`; a second host
  * on the same stores takes over. The request that asked, and the next host.
  */
-async function callThenDie(dies: (method: string, args: unknown[]) => boolean, options: BoardHostOptions = {}) {
+async function waitThenDie(dies: (method: string, args: unknown[]) => boolean, options: BoardHostOptions = {}) {
   const { model } = ottoModel({ "Ask the lead": () => [{ args: { to: "lead", text: "What is the codename?", wait: true } }] });
   const shared = inMemoryStores();
   const killed = killableStores(shared, dies);
@@ -563,7 +580,7 @@ async function callThenDie(dies: (method: string, args: unknown[]) => boolean, o
   return { next, otto, asked };
 }
 
-describe("a call whose process dies before it parks", { timeout: 60_000 }, () => {
+describe("a wait whose process dies before it parks", { timeout: 60_000 }, () => {
   // The dead host's request still owes its request-end hooks, and that debt is
   // kept per process, which both hosts share here: the next host's shutdown
   // would wait its whole drain budget for a run that never ends. Runs before
@@ -573,29 +590,30 @@ describe("a call whose process dies before it parks", { timeout: 60_000 }, () =>
   });
 
   // The bug (FIX-2269): the caller's request was left `interrupted` behind no
-  // gate, so nothing continued it and the call never answered its user, though
+  // gate, so nothing continued it and the wait never answered its user, though
   // the recipient could still have answered it.
-  it("is continued by the next host after its row: the same call is answered in the same request, and its row is written once", async () => {
-    const { next, otto, asked } = await callThenDie(writesCallRow);
+  it("is continued by the next host after its row: the same wait is answered in the same request, and its row is written once", async () => {
+    const { next, otto, asked } = await waitThenDie(writesWaitedRow);
 
     // The request that asked is the one that answered: continued, not run again.
     const turns = await ottoTurns(next, otto);
     expect(turns.map((t) => t.id)).toEqual([asked]);
     const outputs = await toolOutputs(next, otto);
-    expect(outputs).toEqual([{ status: "answered", callId: expect.stringMatching(/^msg_/), reply: "The codename is Bluebird." }]);
+    expect(outputs).toEqual([{ status: "answered", sent: expect.stringMatching(/^msg_/), reply: "The codename is Bluebird." }]);
     expect(JSON.stringify(turns[0]!.result?.output)).toContain("Bluebird");
-    // One row, the call the first host wrote, delivered once and replied to.
-    const rows = await logRows(next);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ id: outputs[0]!.callId, call: true, status: "delivered", repliedAt: expect.any(Number) });
-    expect(await landedIn(next, rows[0]!.toSession)).toHaveLength(1);
+    // One ask, the row the first host wrote, delivered once and answered once.
+    const { asks, answers } = await asksAndAnswers(next, outputs[0]!.sent);
+    expect(asks).toHaveLength(1);
+    expect(asks[0]).toMatchObject({ id: outputs[0]!.sent, replyRequested: true, status: "delivered", answeredBy: answers[0]?.id });
+    expect(answers).toHaveLength(1);
+    expect(await landedIn(next, asks[0]!.toSession)).toHaveLength(1);
   });
 
   it("pays its budget once when it died after paying and before its row: one message a turn still sends it", async () => {
-    const { next, otto } = await callThenDie(paysBudget, { hire: { messages: { perTurn: 1 } } });
+    const { next, otto } = await waitThenDie(paysBudget, { hire: { messages: { perTurn: 1 } } });
 
     const outputs = await toolOutputs(next, otto);
-    expect(outputs).toEqual([{ status: "answered", callId: expect.stringMatching(/^msg_/), reply: "The codename is Bluebird." }]);
-    expect(await logRows(next)).toHaveLength(1);
+    expect(outputs).toEqual([{ status: "answered", sent: expect.stringMatching(/^msg_/), reply: "The codename is Bluebird." }]);
+    expect((await asksAndAnswers(next)).asks).toHaveLength(1);
   });
 });

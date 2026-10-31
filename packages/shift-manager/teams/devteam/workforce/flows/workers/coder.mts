@@ -136,8 +136,9 @@ export interface CoderWorkerFlowOptions {
   /**
    * Stop a running run for a user's steer, and continue its coding session
    * with the line in the same request (harness-manager's `stopsOnAbort`). Only
-   * for a harness whose abort waits for its process to exit. Absent: off, and
-   * a steer waits for the run's own end.
+   * for a harness whose abort waits for its process to exit. Absent: what the
+   * harness declares (Claude Code stops; the stub doesn't, and a steer waits
+   * for the run's own end).
    */
   stopsOnAbort?: boolean;
   /** The file-declared documents, as `resourcesFromDocs` built them. */
@@ -167,7 +168,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     phase: options.phase,
     workspace: options.workspace,
     runTimeoutMs: options.runTimeoutMs,
-    ...(options.stopsOnAbort === true ? { stopsOnAbort: true } : {}),
+    ...(options.stopsOnAbort === undefined ? {} : { stopsOnAbort: options.stopsOnAbort }),
     harness: options.harness,
     // The collections a project's run source reads, on the blocks that ask it.
     ...("provision" in options.workspace ? { uses: [projectWorkspaceCapability] } : {}),
@@ -182,7 +183,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     phase: options.answerPhase,
     workspace: options.answerWorkspace,
     runTimeoutMs: options.runTimeoutMs,
-    ...(options.stopsOnAbort === true ? { stopsOnAbort: true } : {}),
+    ...(options.stopsOnAbort === undefined ? {} : { stopsOnAbort: options.stopsOnAbort }),
     harness: options.harness,
     uses: [projectWorkspaceCapability],
   } as never) as TaskWorker;

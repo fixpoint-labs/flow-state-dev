@@ -3,7 +3,7 @@
  * cancel owes that run.
  *
  * The claim gate mirrors the stop on the row (a suspension hold in
- * `Task.questions`, FIX-2133) in the write that drops its lease. Any write
+ * `Task.holds`, FIX-2133) in the write that drops its lease. Any write
  * that then ends the row (a cancel, a cascade's cancel) owes the parked run
  * its `cancelled` resume, on the board's existing owed-resume mark
  * (`Task.resumeOwed`), in that same write, with the mirror it is owed to kept

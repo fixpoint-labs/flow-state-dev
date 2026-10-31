@@ -1,6 +1,6 @@
 /**
  * What holds a task on its row (FIX-2133 D2, the epic FIX-2058's ER-8): one
- * list of holds, `Task.questions`, whatever the row's status.
+ * list of holds, `Task.holds`, whatever the row's status.
  *
  * Two sources, discriminated on `source.kind`:
  *

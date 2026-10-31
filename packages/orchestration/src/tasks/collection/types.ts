@@ -125,7 +125,7 @@ export type TaskWriteDeclineReason =
    */
   | "steer-limit"
   /**
-   * The row is held (FIX-2133, `Task.questions`): a settlement, a lease renewal or
+   * The row is held (FIX-2133, `Task.holds`): a settlement, a lease renewal or
    * a turn's mirror of its stop, refused while a hold is open. A held row
    * settles only by cancel; it starts no turn and renews no lease until its
    * holds close. Its open holds come from one source at a time, so a turn that
@@ -852,7 +852,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   ): Promise<TaskWriteOutcome>;
   /**
    * Ask questions midway (FIX-2133): the turn holding the task's claim opens
-   * row holds (`Task.questions`), drops the lease and ends its turn unsettled, in
+   * row holds (`Task.holds`), drops the lease and ends its turn unsettled, in
    * one write. The row stays `in_progress` on its attempt with no lease until
    * every question is answered (or a deadline the host set passes), then owes
    * one more turn on that attempt (`turnOwed`), which the claim takes.

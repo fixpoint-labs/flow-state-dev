@@ -9,7 +9,8 @@ needs is a gap filed against the package.
   session mode, and Projects is threads mode. Each session in the view is with the view's main
   worker. *New session* asks which project the session works in, with no
   default, offering only projects you may work in (a member of a shared one, or the owner of a
-  private one), then opens it in the view's mode.
+  private one), then opens it in the view's mode. A session whose tasks wait on you (a question,
+  a review, or a failed task) shows how many under its title.
 - **Center:** the main thread. It is the only place you type. The main session does part of the
   work itself and starts background tasks for the long pieces. It reads the project's files itself,
   so a question about the code is answered in the same turn, and a code change goes to `desk.coder`.
@@ -21,10 +22,10 @@ needs is a gap filed against the package.
 ## Threads mode
 
 In the Projects view, the main session is a coordinator, `desk.lead`. It hands each request to
-threads, each a task in a session of its own, and the right pane is the status board, *Threads*.
+threads, each a task in a session of its own, and the right pane is the status board, *Tasks*.
 
-- **Center:** your line is marked *Sent to a thread*, and each thread is a compact card where the
-  lead filed it, with *View thread*, *Answer* when it asks you something, and *Resolve* and
+- **Center:** your line is marked *Sent to a task*, and each thread is a compact card where the
+  lead filed it, with *View task*, *Answer* when it asks you something, and *Resolve* and
   *Request changes* when it is ready for review.
 - **Right:** the board groups threads by what you owe them: *Pinned*, *Working*, *Waiting on you*,
   *Ready for review* and *Resolved*, collapsed to a count. A column is read from the task's
@@ -62,7 +63,8 @@ Open the address it prints as `App:`. The pages call the lab's API, so a plain V
 only 404s.
 
 `desk.coder` and `desk.thread-coder` run through Claude Code, so the host also needs
-`ANTHROPIC_API_KEY`. The host is durable: a thread's question and review wait on you across a
+`ANTHROPIC_API_KEY`. A worker you give `harness: codex` or `harness: cursor` needs that harness signed
+in too (Cursor reads `CURSOR_API_KEY`). The host is durable: a thread's question and review wait on you across a
 restart, and a coding run's review needs durable execution. Its settings
 are read from the environment, all optional:
 
@@ -108,7 +110,7 @@ a package call:
 | Interrupting | aborting the session's running turn; its tasks keep running |
 | The tasks pane and a task's work | the `listTasks_tasks` read (stores nothing per poll), and the items of the task's run session |
 | Threads mode's sessions | the same, with `desk.lead`, a `coordinator`, as the main worker |
-| A thread card, and *Sent to a thread* | the lead's `createTask` call in the session's items |
+| A thread card, and *Sent to a task* | the lead's `createTask` call in the session's items |
 | The board's columns | the status of each row the `listTasks_tasks` read returns, and its open holds, read with `inboxItems` from `@flow-state-dev/orchestration/inbox` |
 | A coding thread's tag | the `harness` action of the coding flow, asked in the thread's run session |
 | *Not reviewed* | a finished coding thread's output, `review: "deadline"`, through `getTask_tasks` |
@@ -122,3 +124,10 @@ a package call:
 `review: true`, as threads mode's `desk.thread-coder` is, runs on the manager built with
 `reviewChanges: true`: a run that committed waits for your review before its task completes.
 Session mode's `desk.coder` has no review line, since that mode has no review to answer.
+
+The flow builds Claude Code, Codex and Cursor, so a coding worker on any of them is one more
+`WORKER.md` with that `harness:` line. A Claude Code worker can also name a `permissionMode:`:
+`acceptEdits` (the default) or `plan`. The flow builds a manager for each. `default` isn't offered:
+the manager turns no tool approval into a wait on you, so a run in it would only be refused its
+tools. Nor is `bypassPermissions`, which a worker's own line shouldn't be able to turn on. A worker on another harness that names a `permissionMode:` is
+refused when its task runs.

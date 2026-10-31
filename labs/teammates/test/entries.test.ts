@@ -4,7 +4,7 @@
  * on the line: that is a finished task, never one drawn as failed. A
  * `user_approval` stop is an approval entry, answered once it resumes. In a
  * popup, only a `sendMessage` that sent something is a sent step. A sent
- * message is replied once a reply lands, or, for a call, once it is answered.
+ * message is replied once its reply is in the log, waited on or not.
  * Its popup reads the session the log says it was delivered to.
  */
 import { describe, expect, it } from "vitest";
@@ -65,11 +65,11 @@ describe("a session's steps in a popup", () => {
     ]);
   });
 
-  it("draws a wait-again and a refused call as tool steps, never as messages sent", () => {
-    const waitAgain = send("m2", { callId: "msg_1" }, { callId: "msg_1", answered: false });
-    const refused = send("m3", { to: "teammates.writer" }, { ok: false, error: "missing_message: Nothing was sent." });
-    expect(toSteps([waitAgain, refused])).toEqual([
-      { id: "m2", kind: "tool", tool: "sendMessage", text: "Used sendMessage" },
+  it("draws a waited send as sent, and a refused send as a tool step, never as a message sent", () => {
+    const waited = send("m2", { to: "teammates.writer", text: "Draft it?", wait: true }, { status: "answered", sent: "msg_2", reply: "Done." });
+    const refused = send("m3", { to: "teammates.writer", text: "Hi." }, { ok: false, error: "no_worker: Nothing was sent." });
+    expect(toSteps([waited, refused])).toEqual([
+      { id: "m2", kind: "sent", text: "Draft it?", to: "teammates.writer" },
       { id: "m3", kind: "tool", tool: "sendMessage", text: "Used sendMessage" },
     ]);
   });
@@ -84,8 +84,8 @@ describe("how a sent message stands", () => {
     expect(answerIn([sent, reply], "msg_1")).toBe("replied");
   });
 
-  it("is replied when it was a call and the call was answered, with no reply message", () => {
-    expect(answerIn([{ ...sent, callAnswered: true }], "msg_1")).toBe("replied");
+  it("is replied when a waited send took the answer as its result: the answer is still a row in the log", () => {
+    expect(answerIn([{ ...sent, replyRequested: true }, reply], "msg_1")).toBe("replied");
   });
 
   // The framework's "no answer" is a reply row too: it must not read as an answer.

@@ -1,5 +1,5 @@
 /**
- * Legs 10, 10b and 10c (FIX-2239): a call, a message whose sender waits for
+ * Legs 10, 10b and 10c (FIX-2239; one contract with the reply request since FIX-2318): a call, a message whose sender waits for
  * the reply in the same request. Assertions are tagged `<leg>:<name>`. See
  * goal.md.
  *
@@ -34,7 +34,7 @@ import { endOf, file, rowOf, startOf } from "./legs-targets.mts";
 
 type SessionSummary = { id: string; flowKind: string };
 /** A call's row: a message row with the call's own fields. */
-type CallRow = Row & { at: number; call?: boolean; deadlineAt?: number; repliedAt?: number; queuedBehind?: string; deliveredAs?: string };
+type CallRow = Row & { at: number; replyRequested?: boolean; deadlineAt?: number; waitEndedAt?: number; answeredBy?: string; inReplyTo?: string; queuedBehind?: string; deliveredAs?: string };
 
 const ENDED = new Set(["completed", "failed", "aborted", "cancelled", "errored", "expired"]);
 /** The host's wait default this run sets (`DEVTEAM_WAIT_DEFAULT_MS`, run.mts). */
@@ -109,13 +109,14 @@ export async function leg10(world: World): Promise<LegResult> {
     const requests = await alice.routes.requests(researcher.id);
     const answering = requests.find((q) => (q.result?.output as { reply?: unknown } | undefined)?.reply === call.output.reply);
     if (answering === undefined) r.failures.push(`10:answer-in-turn — no request in Researcher's session outputs the reply Helper A got`);
-    r.notes.push(`call ${call.output.callId} answered "${String(call.output.reply).slice(0, 80)}" in Researcher's request ${answering?.id}`);
+    r.notes.push(`call ${call.output.sent} answered "${String(call.output.reply).slice(0, 80)}" in Researcher's request ${answering?.id}`);
   }
   await quiet(alice, 180_000);
-  if (call !== undefined && typeof call.output?.callId === "string") {
+  if (call !== undefined && typeof call.output?.sent === "string") {
     const rows = await callRows(alice);
-    const asRow = rows.find((m) => m.id === call.output.callId);
-    const after = rows.filter((m) => m.from === RESEARCHER && m.to === HELPER_A && asRow !== undefined && m.at >= asRow.at);
+    const asRow = rows.find((m) => m.id === call.output.sent);
+    // The one answer is a row of its own (FIX-2318), held for the wait: any other row from Researcher is a second line.
+    const after = rows.filter((m) => m.from === RESEARCHER && m.to === HELPER_A && asRow !== undefined && m.at >= asRow.at && m.id !== asRow.answeredBy);
     const heard = (await receivedIn(alice, helperA.id)).filter((m) => m.from === RESEARCHER).length - receivedBefore;
     if (after.length > 0 || heard > 0) {
       r.failures.push(`10:no-second-line — after the call Researcher sent Helper A ${after.length} message(s) and Helper A's conversation gained ${heard} from Researcher: ${show(after.map((m) => m.text.slice(0, 80)))}`);
@@ -152,7 +153,7 @@ export async function leg10(world: World): Promise<LegResult> {
   return r;
 }
 
-/** Leg 10b: a call and a send into a session stopped for a person queue; the reply is kept; waiting again gets it. Also `10:default-deadline`. */
+/** Leg 10b: a call and a send into a session stopped for a person queue; the answer after the deadline comes as a message. Also `10:default-deadline`. */
 export async function leg10b(world: World): Promise<LegResult> {
   const r: LegResult = { failures: [], notes: [] };
   const { alice } = world;
@@ -182,7 +183,7 @@ export async function leg10b(world: World): Promise<LegResult> {
       `Then send ${RESEARCHER} a plain message, without wait: "FYI: ${fyi}". Then tell me what you got.`,
   );
   const call = queuedTurn.calls.find((c) => isWait(c) && c.args.to === RESEARCHER);
-  const callId = typeof call?.output?.callId === "string" ? (call.output.callId as string) : undefined;
+  const callId = typeof call?.output?.sent === "string" ? (call.output.sent as string) : undefined;
   const plain = queuedTurn.calls.find((c) => !isWait(c) && typeof c.output?.sent === "string");
   if (call === undefined || call.args.deadline !== 5000) {
     r.failures.push(`10b:queued — Helper A made no call with deadline 5000: ${show(queuedTurn.calls.map((c) => c.args))}`);
@@ -216,7 +217,7 @@ export async function leg10b(world: World): Promise<LegResult> {
   if (plainCall === undefined || plainCall.args.deadline !== undefined) {
     r.failures.push(`10:default-deadline — Helper A made no call without a deadline: ${show(defaultTurn.calls.map((c) => c.args))}`);
   } else {
-    const row = (await callRows(alice)).find((m) => m.id === plainCall.output?.callId);
+    const row = (await callRows(alice)).find((m) => m.id === plainCall.output?.sent);
     const at = resumedAt(defaultTurn);
     const waited = row === undefined || at === undefined ? undefined : at - row.at;
     if (plainCall.output?.status !== "running" || waited === undefined || waited < WAIT_DEFAULT_MS || waited > WAIT_DEFAULT_MS + SLACK_MS) {
@@ -225,7 +226,7 @@ export async function leg10b(world: World): Promise<LegResult> {
     r.notes.push(`the call with no deadline answered ${plainCall.output?.status} after ${waited} ms`);
   }
 
-  // 10b:kept — Alice answers; the messages land after the stopped request ends; waiting again gets the kept reply.
+  // 10b:kept — Alice answers; the messages land after the stopped request ends; the answer then comes as a message.
   await alice.flow(researcher.flowKind).request(stopTurn.requestId!).answer({ suspensionId: String(stop.suspensionId), action: "approve" });
   const landed = await until(async () => {
     const received = (await receivedIn(alice, researcher.id)).filter((m) => m.id === callId || m.id === plain?.output?.sent);
@@ -245,19 +246,22 @@ export async function leg10b(world: World): Promise<LegResult> {
     }
   }
   if (landed === undefined) r.failures.push(`10b:kept — the queued messages never landed in Researcher's session after Alice answered`);
-  const rowsBefore = await callRows(alice);
-  const kept = await talkThrough(world, "10b", HELPER_A, helperA, `Get me ${RESEARCHER}'s answer to the seven-times-six question you asked earlier.`);
-  const again = kept.calls.find((c) => c.args.callId === callId);
+  // The wait ended at its deadline, so the one answer reaches Helper A as a message (FIX-2318), and nothing is sent again.
+  const answer = await until(async () => {
+    const heard = (await receivedIn(alice, helperA.id)).filter((m) => m.from === RESEARCHER && m.inReplyTo === callId);
+    return heard.length > 0 ? heard : undefined;
+  }, 180_000);
+  await quiet(alice, 180_000);
   const rowsAfter = await callRows(alice);
-  const newRows = rowsAfter.filter((m) => !rowsBefore.some((b) => b.id === m.id) && m.from === HELPER_A);
-  if (again === undefined || again.output?.status !== "answered" || !String(again.output?.reply ?? "").includes("42")) {
-    r.failures.push(`10b:kept — Helper A didn't wait again with call ${callId} and get the reply: ${show(kept.calls.map((c) => ({ args: c.args, output: c.output })))}`);
-  }
   const callRowsFor = rowsAfter.filter((m) => m.id === callId);
-  if (newRows.length > 0 || callRowsFor.length !== 1) {
-    r.failures.push(`10b:kept — waiting again wrote ${newRows.length} new row(s) (${show(newRows.map((m) => m.text.slice(0, 60)))}); the call has ${callRowsFor.length} row(s)`);
+  const answers = rowsAfter.filter((m) => m.inReplyTo === callId);
+  if (answer === undefined || answer.length !== 1 || !answer[0]!.text.includes("42")) {
+    r.failures.push(`10b:kept — Helper A's conversation didn't hear Researcher's answer with 42 once as a message: ${show(answer)}`);
   }
-  r.notes.push(`waiting again answered ${show(again?.output)}`);
+  if (callRowsFor.length !== 1 || callRowsFor[0]!.waitEndedAt === undefined || answers.length !== 1) {
+    r.failures.push(`10b:kept — the call has ${callRowsFor.length} row(s) (wait ended ${String(callRowsFor[0]?.waitEndedAt)}) and ${answers.length} answer row(s), not one each`);
+  }
+  r.notes.push(`the answer after the deadline: ${show(answer)}`);
   return r;
 }
 
@@ -288,13 +292,14 @@ export async function leg10c(world: World): Promise<LegResult> {
   let taken = 0;
   for (const s of sessions) {
     for (const c of await callsIn(alice, s.id).catch((): Call[] => [])) {
-      if (typeof c.output?.callId === "string") callIds.add(c.output.callId);
-      if (Object.hasOwn(c.args, "call") && (typeof c.output?.sent === "string" || typeof c.output?.callId === "string")) taken += 1;
+      if (isWait(c) && typeof c.output?.sent === "string") callIds.add(c.output.sent);
+      if (Object.hasOwn(c.args, "call") && typeof c.output?.sent === "string") taken += 1;
     }
   }
-  const unset = (await callRows(alice)).filter((m) => m.call === true && !callIds.has(m.id));
+  // A row's deadline is server-set from `wait` only (FIX-2318): none without a wait behind it.
+  const unset = (await callRows(alice)).filter((m) => m.deadlineAt !== undefined && !callIds.has(m.id));
   if (taken > 0 || unset.length > 0) {
-    r.failures.push(`10c:not-settable — ${taken} call(s) naming \`call\` were taken, and ${unset.length} row(s) carry a call flag no call set: ${show(unset.map((m) => m.id))}`);
+    r.failures.push(`10c:not-settable — ${taken} call(s) naming \`call\` were taken, and ${unset.length} row(s) carry a deadline no wait set: ${show(unset.map((m) => m.id))}`);
   }
   await quiet(alice, 180_000);
   return r;

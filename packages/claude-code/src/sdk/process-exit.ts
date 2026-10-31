@@ -2,6 +2,9 @@
  * A spawn hook for the Agent SDK that keeps hold of the Claude Code process, so
  * an aborted run can wait for that process to actually exit.
  *
+ * It can also kill that process ({@link TrackedProcess.kill}), which an
+ * aborted run does once its grace for the exit runs out.
+ *
  * The SDK's own stream is not a reliable exit signal: on abort it gives the
  * process ~2s and then ends its stream (and resolves `return()`) whether or not
  * the process has gone. The process writes the session's transcript until it
@@ -38,6 +41,12 @@ export interface TrackedProcess {
    * SDK that never reached its spawn.
    */
   exited: () => Promise<void> | null;
+  /**
+   * Send the spawned process `SIGKILL` if it has not exited, and resolve once
+   * it has. Resolves at once when nothing was spawned, the process never
+   * started, or it has already exited (FIX-2312).
+   */
+  kill: () => Promise<void>;
   /** The end of what the process wrote to stderr, trimmed; `""` when nothing. */
   stderrTail: () => string;
 }
@@ -45,19 +54,22 @@ export interface TrackedProcess {
 /** Create a {@link TrackedProcess} for one run. */
 export function trackProcess(): TrackedProcess {
   let exited: Promise<void> | null = null;
+  let child: ChildProcess | null = null;
+  let gone = false;
   let tail = "";
   return {
     spawn: (options) => {
-      const child = spawn(options.command, options.args, {
+      const spawned = spawn(options.command, options.args, {
         cwd: options.cwd,
         env: options.env,
         signal: options.signal,
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
       });
+      child = spawned;
       // Read, so a chatty process can never block on a full pipe.
-      child.stderr?.setEncoding("utf8");
-      child.stderr?.on("data", (chunk: string) => {
+      spawned.stderr?.setEncoding("utf8");
+      spawned.stderr?.on("data", (chunk: string) => {
         tail = (tail + chunk).slice(-STDERR_TAIL_CHARS);
       });
       // `close` would also wait for grandchildren holding the pipes open;
@@ -68,14 +80,25 @@ export function trackProcess(): TrackedProcess {
       // node also emits `error` the moment the forwarded `signal` aborts, which
       // is before the process it is killing has gone.
       exited = new Promise<void>((resolve) => {
-        child.once("exit", () => resolve());
-        child.on("error", () => {
-          if (child.pid === undefined) resolve();
+        spawned.once("exit", () => {
+          gone = true;
+          resolve();
+        });
+        spawned.on("error", () => {
+          if (spawned.pid === undefined) {
+            gone = true;
+            resolve();
+          }
         });
       });
-      return child;
+      return spawned;
     },
     exited: () => exited,
+    kill: async () => {
+      if (child === null || exited === null || gone || child.pid === undefined) return;
+      child.kill("SIGKILL");
+      await exited;
+    },
     stderrTail: () => tail.trim(),
   };
 }

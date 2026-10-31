@@ -33,6 +33,7 @@ import {
 } from "@flow-state-dev/workforce/browser";
 import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
 import { projectIdOf, refuseExisting } from "./lib/new-project";
+import { waitingOnYou } from "./lib/columns";
 import { resultSummary } from "./lib/result-summary";
 
 /** Stops a watch. */
@@ -48,6 +49,8 @@ export interface SessionRow {
   updatedAt: number;
   /** A turn is running in it now. */
   running: boolean;
+  /** How many of its tasks wait on you (`waitingOnYou`): a question, a review, or a failure to retry. */
+  waiting: number;
   /** The project the session works in (spec D3), or null when it has none and must ask. */
   projectId: string | null;
 }
@@ -382,7 +385,12 @@ function createWiredLab(fsd: Client): LabAdapter {
   };
 
   const rowOf = async (worker: string, session: SessionSummary): Promise<SessionRow> => {
-    const [detail, turns, title] = await Promise.all([fsd.sessions.get(session.id), runningTurns(session.id), titleOf(session.id)]);
+    const [detail, turns, title, waiting] = await Promise.all([
+      fsd.sessions.get(session.id),
+      runningTurns(session.id),
+      titleOf(session.id),
+      waitingCountFor(session.id),
+    ]);
     const project = (detail.state as Record<string, unknown> | undefined)?.[WORK_PROJECT_STATE_KEY];
     return {
       id: session.id,
@@ -390,8 +398,23 @@ function createWiredLab(fsd: Client): LabAdapter {
       worker,
       updatedAt: session.updatedAt,
       running: turns.length > 0,
+      waiting,
       projectId: typeof project === "string" ? project : null,
     };
+  };
+
+  /**
+   * How many of a session's tasks wait on you, read as the board reads them (its tasks and their
+   * open holds), without the harness and review reads the board's cards add. A board that can't be
+   * read counts none and says why in the console, so the list never fails on it.
+   */
+  const waitingCountFor = async (sessionId: string): Promise<number> => {
+    try {
+      return waitingOnYou(await listedWithWaitingOn(sessionId));
+    } catch (cause) {
+      console.warn(`[claude-code-style] couldn't count what session ${sessionId} waits on you for:`, cause);
+      return 0;
+    }
   };
 
   /** A listed task row, as much as the screen reads. */
@@ -448,6 +471,18 @@ function createWiredLab(fsd: Client): LabAdapter {
     return new Map(items.flatMap((item) => (item.task === null ? [] : [[item.task.taskId, [...item.holds]] as const])));
   };
 
+  /** A session's tasks, each with what its first open hold waits on you for: the one place a hold becomes a row's `waitingOn`. */
+  const listedWithWaitingOn = async (sessionId: string): Promise<Listed[]> => {
+    const listed = await tasksOf(sessionId);
+    const holds = await holdsOf(sessionId, listed);
+    return listed.map((task) => {
+      const hold = holds.get(task.id)?.[0];
+      return hold === undefined
+        ? task
+        : { ...task, waitingOn: { kind: hold.ask.kind === "confirm" ? "input" : hold.ask.kind, prompt: hold.ask.prompt } };
+    });
+  };
+
   /** The harness each coding worker runs through, asked once of a run session of it. */
   const harnesses = new Map<string, Promise<string | undefined>>();
   const harnessOf = async (task: Listed): Promise<string | undefined> => {
@@ -476,20 +511,15 @@ function createWiredLab(fsd: Client): LabAdapter {
 
   /** A session's board as the screen draws it: each row with what it waits on you for, its harness and its review. */
   const boardOf = async (sessionId: string) => {
-    const listed = await tasksOf(sessionId);
-    const holds = await holdsOf(sessionId, listed);
+    const listed = await listedWithWaitingOn(sessionId);
     const rows = await Promise.all(
       listed.map(async (task): Promise<TaskRow> => {
-        const { runSessionId: _session, run: _run, holds: _questions, ...row } = task;
-        const hold = holds.get(row.id)?.[0];
+        const { runSessionId: _session, run: _run, holds: _holds, ...row } = task;
         // The harness its run reported; until one reports, the assignee's `harness` setting.
         const harness = task.spend?.harness ?? (await harnessOf(task));
         const review = harness !== undefined && row.status === "completed" ? await reviewOf(sessionId, task) : undefined;
         return {
           ...row,
-          ...(hold === undefined
-            ? {}
-            : { waitingOn: { kind: hold.ask.kind === "confirm" ? "input" : hold.ask.kind, prompt: hold.ask.prompt } }),
           ...(harness === undefined ? {} : { harness }),
           ...(review === undefined ? {} : { review }),
         };
@@ -543,7 +573,7 @@ function createWiredLab(fsd: Client): LabAdapter {
       if (project === undefined) throw new Error(`"${projectId}" names no project.`);
       const created = await fsd.flow(await flowOf(worker)).createSession({ state: { [WORKER_ID_STATE_KEY]: worker } });
       await workforce.setWorkProject(worker, project, { sessionId: created.id });
-      return { id: created.id, title: "New session", worker, updatedAt: created.updatedAt, running: false, projectId };
+      return { id: created.id, title: "New session", worker, updatedAt: created.updatedAt, running: false, waiting: 0, projectId };
     },
     send: async (sessionId, text) => {
       await fsd.flow(await flowOfSession(sessionId)).send("respond", { message: text }, { sessionId });

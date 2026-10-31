@@ -29,7 +29,7 @@
  * - **suspended** — the row records the stop (`keptOpenBy: "suspended"`) and drops
  *   its lease (D1), in one write; a stop for a person, by the one predicate
  *   `isUserSuspension`, is mirrored in that write as the row's suspension hold
- *   (`Task.questions`, FIX-2133 D2), what it asks with it. The resume is admitted
+ *   (`Task.holds`, FIX-2133 D2), what it asks with it. The resume is admitted
  *   like any request, and its admission closes the mirror. A row a question
  *   holds takes no mirror (one wait per turn): the stop is cancelled instead,
  *   and the run resumes `cancelled`.

@@ -29,6 +29,7 @@ import type {
   ThreadView,
   Unsubscribe,
 } from "../src/adapter";
+import { waitingOnYou } from "../src/lib/columns";
 import { modeById, modeOfWorker, type ModeId } from "../src/modes";
 
 /** How the fake keeps time. Tests pass `speed` to run the script fast. */
@@ -312,7 +313,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
   const seed = (title: string, ago: number, projectId: string | null, lines: [string, string]) => {
     const id = nextId("session");
     sessions.set(id, {
-      row: { id, title, worker: modeById("session").worker, updatedAt: now() - ago, running: false, projectId },
+      row: { id, title, worker: modeById("session").worker, updatedAt: now() - ago, running: false, waiting: 0, projectId },
       entries: [
         { kind: "user", id: nextId("u"), text: lines[0] },
         { kind: "assistant", id: nextId("a"), text: lines[1] },
@@ -347,7 +348,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
     ];
     pins.add(tasks[0].id);
     sessions.set(id, {
-      row: { id, title: "Billing triage", worker: modeById("threads").worker, updatedAt: now() - ago, running: false, projectId: "project-vendor-notes" },
+      row: { id, title: "Billing triage", worker: modeById("threads").worker, updatedAt: now() - ago, running: false, waiting: 0, projectId: "project-vendor-notes" },
       entries: [
         { kind: "user", id: nextId("u"), text: "Triage this week's billing work, a thread each.", sentToThread: true },
         ...tasks.map((t): ThreadEntry => ({ kind: "thread", id: nextId("card"), taskId: t.id })),
@@ -365,7 +366,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
   return {
     modes: ["session", "threads"],
     watchSessions(onChange) {
-      return watch(() => onChange([...sessions.values()].map((s) => s.row).sort((a, b) => b.updatedAt - a.updatedAt)));
+      return watch(() => onChange([...sessions.values()].map((s) => ({ ...s.row, waiting: waitingOnYou(s.tasks) })).sort((a, b) => b.updatedAt - a.updatedAt)));
     },
 
     async listProjects() {
@@ -381,7 +382,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
     async openSession(mode: ModeId, projectId: string) {
       if (!mayWorkIn.some((p) => p.id === projectId)) throw new Error(`not-a-member: ${projectId}`);
       const id = nextId("session");
-      const row: SessionRow = { id, title: "New session", worker: modeById(mode).worker, updatedAt: now(), running: false, projectId };
+      const row: SessionRow = { id, title: "New session", worker: modeById(mode).worker, updatedAt: now(), running: false, waiting: 0, projectId };
       sessions.set(id, { row, entries: [], running: false, queue: [], timers: [], taskTimers: [], tasks: [] });
       notify();
       return row;

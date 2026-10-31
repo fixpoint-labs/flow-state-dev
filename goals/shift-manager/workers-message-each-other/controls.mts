@@ -28,8 +28,8 @@ export const CONTROL_NAMES = [
   "no-person-hold",
   "ignore-deadline",
   "no-default-deadline",
-  "send-again",
-  "relay-the-call",
+  "held-after-wait",
+  "relay-the-wait",
   "no-step-guard",
 ] as const;
 export type ControlName = (typeof CONTROL_NAMES)[number];
@@ -51,9 +51,8 @@ const SEND = `${MESSAGES}/send-message.ts`;
 const TARGET = `${MESSAGES}/message-target.ts`;
 const DELIVERY = `${MESSAGES}/delivery.ts`;
 /** The anchor every recipient-refusal patch adds after: the first check `recipientRefusal` makes. */
-const CALL = `${MESSAGES}/call.ts`;
+const CALL = `${MESSAGES}/wait-for-reply.ts`;
 const QUEUE = `${MESSAGES}/queue.ts`;
-const TOOL = `${MESSAGES}/message-tool.ts`;
 /** The one wait check a call and `getTask` share. */
 const WAIT_CHECK = "packages/orchestration/src/tasks/helpers/wait-on-task.ts";
 const NOT_YOURSELF = String.raw`if \(to === sender && !answering\) return "not_yourself: you can't message yourself\.";`;
@@ -320,36 +319,25 @@ export const CONTROLS: Record<ControlName, Control> = {
     patches: [{ module: WAIT_CHECK, from: String.raw`const deadlineMs = options\.deadlineMs \?\? defaultMs;`, to: "const deadlineMs = options.deadlineMs ?? maxMs;" }],
     does: "a call with no deadline waits the host's maximum, not its default",
   },
-  "send-again": {
-    name: "send-again",
+  "held-after-wait": {
+    name: "held-after-wait",
     legs: ["10b"],
     assertion: "10b:kept",
-    patches: [
-      {
-        module: TOOL,
-        from: String.raw`return callAnswer\(await waitAgain\(ctx(?: as never)?, callId, deadline\)\);`,
-        to:
-          '{ const row = (await (await import("./message-log")).messageLogOf(ctx).getOptional(callId))?.state; ' +
-          'return callAnswer(await callWorker(ctx, installation, flowKind, { to: row?.to ?? "", text: row?.text ?? "" }, SEND_MESSAGE_TOOL)); }',
-      },
-    ],
-    does: "waiting again sends the call's message again, as a new call",
+    patches: [{ module: CALL, from: String.raw`\{ \.\.\.row, waitEndedAt: Date\.now\(\) \}`, to: "row" }],
+    does: "a wait that ends at its deadline doesn't say so, so its late answer is held for a wait that is gone and never lands",
   },
-  "relay-the-call": {
-    name: "relay-the-call",
+  "relay-the-wait": {
+    name: "relay-the-wait",
     legs: ["10"],
     assertion: "10:no-second-line",
     patches: [
       {
-        module: ENTRY,
-        from: String.raw`return \{ reply: reply\.slice\(0, MAX_MESSAGE_CHARS\) \};`,
-        to:
-          '{ const row = typeof call === "string" ? (await messageLogOf(ctx).getOptional(call))?.state : undefined; ' +
-          'if (row !== undefined) await (await import("./send-message")).sendMessage(ctx, options.installation, options.flowKind, { to: row.from, text: reply, inReplyTo: row.id }, "relay-the-call"); ' +
-          'return { reply: reply.slice(0, MAX_MESSAGE_CHARS) }; }',
+        module: CALL,
+        from: String.raw`if \(row\.inReplyTo === undefined\) return "not-held";`,
+        to: 'return "not-held";',
       },
     ],
-    does: "a call's reply is also sent back to the caller as a message",
+    does: "the answer to a wait never wakes it, so it lands as a message too (and the wait reads it at its request's end)",
   },
   "no-step-guard": {
     name: "no-step-guard",

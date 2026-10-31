@@ -92,7 +92,7 @@ export type InboxRow = {
   readonly updatedAt?: number | null;
   /** The run working it: the session and request its stop is in. */
   readonly run?: { readonly sessionId: string; readonly requestId: string } | null;
-  /** What holds it (`Task.questions`): its questions and confirms, and its run's stop for a person. */
+  /** What holds it (`Task.holds`): its questions and confirms, and its run's stop for a person. */
   readonly holds?: readonly TaskHold[] | null;
   /** Its steers, as far as the Inbox reads them: which hold each answers. A question is open while none carries its id. */
   readonly steers?: readonly { readonly id: string; readonly answers?: string }[] | null;

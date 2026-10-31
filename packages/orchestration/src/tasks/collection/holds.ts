@@ -1,12 +1,13 @@
 /**
- * The one question write, and the one predicate every reader asks of it, *open
- * questions* (FIX-2133 D2, the epic FIX-2058's ER-8).
+ * The one hold write, and the one predicate every reader asks of it, *open
+ * holds* (FIX-2133 D2, the epic FIX-2058's ER-8; a question is one kind of
+ * hold since FIX-2317).
  *
- * Both backings call {@link holdWrite} for every change to `Task.questions`, decided
+ * Both backings call {@link holdWrite} for every change to `Task.holds`, decided
  * on the committed row inside their write: a filing or a midway ask opens row
- * questions, an answer or a deadline releases one, the claim gate's stop arm opens
- * a task run's mirror and its resume closes it. Cancel closes every question with
- * the row: an ended row has no open question ({@link openHolds}), and its mirror
+ * holds, an answer or a deadline releases one, the claim gate's stop arm opens
+ * a task run's mirror and its resume closes it. Cancel closes every hold with
+ * the row: an ended row has no open hold ({@link openHolds}), and its mirror
  * stays only as the address of the `cancelled` resume it owes
  * ({@link keptOnEnding}).
  *
@@ -147,7 +148,7 @@ export interface QuestionAnswer {
   readonly key?: string;
 }
 
-/** Every change to `Task.questions`. */
+/** Every change to `Task.holds`. */
 export type HoldChange =
   /** A midway ask: the turn holding the claim opens questions. The caller fences it on the claim. */
   | { readonly op: "ask"; readonly holds: readonly RowHold[] }
@@ -249,7 +250,7 @@ export function holdWrite(task: Task, change: HoldChange): HoldWriteResult {
   }
 }
 
-/** `questions` with the mirror taken out; `undefined` when nothing is left. */
+/** `holds` with the mirror taken out; `undefined` when nothing is left. */
 function withoutMirror(holds: Task["holds"]): Task["holds"] {
   const rest = (holds ?? []).filter((hold) => !isSuspensionHold(hold));
   return rest.length === 0 ? undefined : rest;
