@@ -492,7 +492,7 @@ Two conversations can file a task with the same id for the same worker, and each
 
 ### When a task stops on a question
 
-A delegate working a task sometimes can't go on without you: which region, which account, whether it may delete something. It asks you instead of guessing, with its `askQuestion` tool. The task waits on the question, nothing runs while it waits, and the question shows in your Inbox.
+A delegate working a task sometimes can't go on without you: which region, which account, whether it may delete something. It asks you instead of guessing, with its `holdTaskForUser` tool. The task waits on the question, nothing runs while it waits, and the question shows in your Inbox.
 
 Answer it from the Inbox, or by typing the answer in the task's session: a line there answers the task's oldest open question. An app answers with the board's `updateTask` action, naming the question (`getTask_tasks` lists it under `questions`):
 
@@ -506,7 +506,7 @@ await help.send(
 
 The coordinator can answer a question its delegate asked midway, with its `updateTask` tool. The coordinator answers a question only when the task runs in a session of its own. When the task runs in the delegate's ongoing session, you answer it. The first answer wins; a later one is kept as an ordinary message to the task. The task takes one more turn in its own task session, the one that asked, on the same attempt, with everything it did before and your answer. When it finishes, the conversation hears that.
 
-An answer doesn't use up the task's retries, and the task can ask again. It has started, so it can't be reassigned. A question waits for as long as it takes, unless your host sets a deadline for the user's answer; cancel the task if nobody will answer. A delegate can also stop for your approval or your review of its work, with its `waitForUser` tool; that shows in your Inbox as well, and only you answer it there. See [A task waiting on a user](../orchestration/task-board.md#a-task-waiting-on-a-user).
+An answer doesn't use up the task's retries, and the task can ask again. It has started, so it can't be reassigned. A question waits for as long as it takes, unless your host sets a deadline for the user's answer; cancel the task if nobody will answer. A delegate can also stop for your approval or your review of its work, with its `suspendForUser` tool; that shows in your Inbox as well, and only you answer it there. See [A task waiting on a user](../orchestration/task-board.md#a-task-waiting-on-a-user).
 
 ### Steering a task while it runs
 

@@ -131,7 +131,7 @@ export type ConversationEntry =
   | { kind: "task"; id: string; taskId: string; title: string; to: string }
   /** A task it filed ended, as a line under the name of the worker that ran it; `title` is the task's, once its row is read. */
   | { kind: "result"; id: string; taskId: string; from: string; text: string; title?: string; failed?: boolean; cancelled?: boolean }
-  /** The worker waits for your yes (`waitForUser` with an approval); `resolution` once answered. */
+  /** The worker waits for your yes (`suspendForUser` with an approval); `resolution` once answered. */
   | { kind: "approval"; id: string; requestId: string; suspensionId: string; text: string; resolution?: string };
 
 /** What a conversation shows now. */
@@ -153,10 +153,8 @@ export interface TalkRow {
   at: number;
   /** It was refused, or nobody took it in time: it will never land. */
   undelivered?: boolean;
-  /** The sender asked for a reply and went on: an answer comes back as a message. */
+  /** The sender asked for a reply: one answer comes back, as a message or as a waited send's result. */
   replyRequested?: boolean;
-  /** A call the recipient answered: its reply was the call's result, never a message of its own. */
-  callAnswered?: boolean;
   /** The framework's "no answer" to the message it replies to: the recipient's turn gave none. */
   noAnswer?: boolean;
 }
@@ -407,7 +405,7 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
       if (text.trim() !== "") entries.push({ kind: "assistant", id: item.id, text, ...(item.status === "in_progress" ? { streaming: true } : {}) });
     } else if (item.type === "tool_output" && item.toolCall?.name === SEND_MESSAGE_TOOL) {
       const args = parseArgs(item);
-      const messageId = item.output?.sent ?? item.output?.callId;
+      const messageId = item.output?.sent;
       if (typeof messageId === "string" && typeof args.to === "string") {
         entries.push({ kind: "sent", id: item.id, messageId, to: args.to, text: String(args.text ?? "") });
       }
@@ -444,10 +442,10 @@ export function answeringOf(items: readonly Item[], inProgress: readonly string[
   return inProgress.length > 0 || items.some((i) => i.status === "in_progress" && live(i.requestId));
 }
 
-/** Who a `sendMessage` output went to, when it sent one: a wait-again or a refused call sent nothing. */
+/** Who a `sendMessage` output went to, when it sent one: a refused send sent nothing. */
 function sentTo(item: Item): string | undefined {
   const to = parseArgs(item).to;
-  const messageId = item.output?.sent ?? item.output?.callId;
+  const messageId = item.output?.sent;
   return typeof messageId === "string" && typeof to === "string" ? to : undefined;
 }
 
@@ -636,7 +634,6 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
               at: m.at,
               ...(m.inReplyTo === undefined ? {} : { inReplyTo: m.inReplyTo }),
               ...(m.replyRequested === true ? { replyRequested: true } : {}),
-              ...(m.call === true && m.repliedAt !== undefined ? { callAnswered: true } : {}),
               ...(m.noAnswer === true ? { noAnswer: true } : {}),
               ...(m.status === "refused" || m.status === "undeliverable" ? { undelivered: true } : {}),
             }));

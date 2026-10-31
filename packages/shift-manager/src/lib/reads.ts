@@ -59,12 +59,13 @@
  */
 import { ClientHttpError, readEveryCollectionPage, type ResourceManifest, type SessionSummary } from "@flow-state-dev/client";
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
-import { isUserSuspension, waitForUserKindOf, type ResumeAction } from "@flow-state-dev/core/types";
+import { isUserSuspension, suspendForUserKindOf, type ResumeAction } from "@flow-state-dev/core/types";
 import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
 import { ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import type { Client } from "@flow-state-dev/client";
-import { createInboxClient, inboxItems, taskQuestionSchema, type InboxAnswer, type InboxQuestion, type InboxItem, type InboxRow, type TaskQuestion } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, inboxItems, taskHoldSchema, type InboxAnswer, type InboxHold, type InboxItem, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
+import { withRetiredShapes } from "@flow-state-dev/orchestration/tasks";
 
 /** Why a read did not load. */
 export type Failure = { message: string; httpStatus?: number };
@@ -192,7 +193,7 @@ export type BoardRow = {
    * stop for the user. Empty when nothing does. The Inbox lists the task's
    * item from the open ones.
    */
-  questions: TaskQuestion[];
+  holds: TaskHold[];
   /** Its steers as the Inbox reads them: which question each answers. A question is open while none does. */
   steers: Array<{ id: string; answers?: string }>;
   createdAt: number | null;
@@ -326,7 +327,7 @@ const NO_ROSTER_FLOW = `Unknown flow "${ROSTER_FLOW}"`;
 
 /** What a user's ask asks for: an approval, a review, or a question (an input). */
 function askTypeOf(item: SuspensionItem): Ask["kind"] {
-  const asked = waitForUserKindOf(item) ?? (suspensionShape(item) === "approval" ? "approval" : "input");
+  const asked = suspendForUserKindOf(item) ?? (suspensionShape(item) === "approval" ? "approval" : "input");
   return asked === "input" ? "question" : asked;
 }
 
@@ -471,10 +472,10 @@ function strings(value: unknown): string[] {
  * The holds a row publishes (FIX-2133), each read against the hold's own
  * shape: one that doesn't parse is none, never a guess.
  */
-function toHolds(value: unknown): TaskQuestion[] {
+function toHolds(value: unknown): TaskHold[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((hold) => {
-    const parsed = taskQuestionSchema.safeParse(hold);
+    const parsed = taskHoldSchema.safeParse(hold);
     return parsed.success ? [parsed.data] : [];
   });
 }
@@ -496,7 +497,9 @@ function toSteerAnswers(value: unknown): Array<{ id: string; answers?: string }>
  * Brief's `distinctTitle` (`lib/tasks.ts`) is written against that, and shows
  * a title only when it differs from `goal`.
  */
-export function toBoardRow(boardRef: string, ownerSessionId: string, topic: string, data: unknown): BoardRow {
+export function toBoardRow(boardRef: string, ownerSessionId: string, topic: string, stored: unknown): BoardRow {
+  // A row stored in an older shape (its holds under `questions`, say) reads in the current one (BP-030).
+  const data = withRetiredShapes(stored);
   return {
     boardRef,
     ownerSessionId,
@@ -510,7 +513,7 @@ export function toBoardRow(boardRef: string, ownerSessionId: string, topic: stri
     deps: strings(field(data, "deps")),
     run: toRunLink(field(data, "run")),
     error: field(data, "error") == null ? null : String(field(data, "error")),
-    questions: toHolds(field(data, "questions")),
+    holds: toHolds(field(data, "holds")),
     steers: toSteerAnswers(field(data, "steers")),
     createdAt: time(field(data, "createdAt")),
     updatedAt: time(field(data, "updatedAt")),
@@ -583,7 +586,7 @@ export function inboxSection(
         flowId: ask.flowId,
         requestId: ask.item.requestId,
         suspensionId: ask.item.suspensionId,
-        kind: waitForUserKindOf(ask.item) ?? "input",
+        kind: suspendForUserKindOf(ask.item) ?? "input",
         prompt: ask.item.message,
         ...(ask.item.title ? { title: ask.item.title } : {}),
         since: ask.since,
@@ -637,7 +640,7 @@ export type LabReader = {
    * board's `updateTask`, as the user (FIX-2133). Rejects with the board's
    * refusal.
    */
-  answerOne(hold: InboxQuestion<unknown>, answer: InboxAnswer): Promise<void>;
+  answerOne(hold: InboxHold<unknown>, answer: InboxAnswer): Promise<void>;
 };
 
 /**
@@ -1028,7 +1031,7 @@ export function createLabReader(client: Client): LabReader {
     if (ask.flowId === null) throw new Error(UNOWNED_SESSION_UNANSWERABLE);
     // Orchestration's one answer call, as the Inbox makes it for an item's hold:
     // the card's resolution read as the answer its ask takes.
-    const asks = waitForUserKindOf(ask.item) ?? "input";
+    const asks = suspendForUserKindOf(ask.item) ?? "input";
     const typed: InboxAnswer =
       asks === "approval"
         ? { approved: answer.action === "approve", ...(answer.data === undefined ? {} : { data: answer.data }) }

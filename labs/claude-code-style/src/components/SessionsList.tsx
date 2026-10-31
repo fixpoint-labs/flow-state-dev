@@ -7,7 +7,7 @@ import { MODES, type ModeId } from "../modes";
  * The left pane: the view switch (Sessions or Projects) on top, then
  * *New session*, then the view's sessions, newest first. The view sets the
  * mode, so *New session* opens one in the view's mode. Each row is a title,
- * its age, and a dot while its turn runs.
+ * its age, a dot while its turn runs, and how many of its tasks wait on you.
  */
 export function SessionsList({
   view,
@@ -77,13 +77,17 @@ export function SessionsList({
                 )}
               >
                 <span
-                  aria-label={row.running ? "running" : undefined}
-                  className={cn("mt-1.5 size-2 shrink-0 rounded-full", row.running ? "bg-info animate-pulse" : "bg-transparent")}
+                  aria-label={row.running ? "running" : row.waiting > 0 ? "waiting on you" : undefined}
+                  className={cn(
+                    "mt-1.5 size-2 shrink-0 rounded-full",
+                    row.running ? "bg-info animate-pulse" : row.waiting > 0 ? "bg-attention" : "bg-transparent",
+                  )}
                 />
                 <span className="min-w-0">
                   <span className={cn("block truncate text-sm", selected && "font-semibold")}>{row.title}</span>
                   <span className="block text-xs text-muted-foreground">
                     {row.running ? "running" : age(row.updatedAt, now)}
+                    {row.waiting > 0 && <span className="text-foreground"> · {row.waiting} waiting on you</span>}
                   </span>
                 </span>
               </button>

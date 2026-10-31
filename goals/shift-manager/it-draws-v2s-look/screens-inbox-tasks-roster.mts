@@ -50,9 +50,9 @@ const DONE = new Set(["completed", "cancelled"]);
 const RUNNING = "in_progress";
 /** A row waiting on the person: running, held on a question no steer answers yet (FIX-2131; it was `parked`). */
 const onQuestion = (row: Record<string, any>) => {
-  if (row.status !== RUNNING || !Array.isArray(row.questions)) return false;
+  if (row.status !== RUNNING || !Array.isArray(row.holds)) return false;
   const answered = new Set(((row.steers ?? []) as Array<{ answers?: string }>).flatMap((s) => (typeof s.answers === "string" ? [s.answers] : [])));
-  return (row.questions as Array<{ id: string; source?: { kind?: string } }>).some((h) => h.source?.kind === "row" && !answered.has(h.id));
+  return (row.holds as Array<{ id: string; source?: { kind?: string } }>).some((h) => h.source?.kind === "row" && !answered.has(h.id));
 };
 /** Queued is every open row that isn't running: v2's QUEUED (v2:916). A row waiting on the person is running, held on its question. */
 const isQueued = (status: string) => !DONE.has(status) && status !== RUNNING && status !== "errored";

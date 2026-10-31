@@ -153,7 +153,7 @@ export function rosterOf(snapshot: LoadedSnapshot): Roster {
  */
 export function inboxItemIdOf(snapshot: LoadedSnapshot, suspensionId: string): string {
   const items = snapshot.inbox.ok ? snapshot.inbox.value : [];
-  return items.find((item) => item.questions.some((hold) => hold.id === suspensionId))?.id ?? suspensionId;
+  return items.find((item) => item.holds.some((hold) => hold.id === suspensionId))?.id ?? suspensionId;
 }
 
 /**
@@ -164,7 +164,7 @@ export function inboxItemIdOf(snapshot: LoadedSnapshot, suspensionId: string): s
 export function inboxItemAt(snapshot: LoadedSnapshot, id: string | null): InboxItem<Ask> | null {
   if (id === null) return null;
   const items = snapshot.inbox.ok ? snapshot.inbox.value : [];
-  return items.find((item) => item.id === id) ?? items.find((item) => item.questions.some((hold) => hold.id === id)) ?? null;
+  return items.find((item) => item.id === id) ?? items.find((item) => item.holds.some((hold) => hold.id === id)) ?? null;
 }
 
 /**
@@ -176,7 +176,7 @@ export function inboxItemAt(snapshot: LoadedSnapshot, id: string | null): InboxI
 export function waitsOnYou(snapshot: LabSnapshot | undefined, row: BoardRow | undefined): boolean {
   if (snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined || row === undefined || !snapshot.inbox.ok) return false;
   return snapshot.inbox.value.some(
-    (item) => item.task?.board === row.boardRef && item.task.taskId === row.id && item.questions.some((hold) => hold.source.kind === "row"),
+    (item) => item.task?.board === row.boardRef && item.task.taskId === row.id && item.holds.some((hold) => hold.source.kind === "row"),
   );
 }
 

@@ -181,10 +181,10 @@ export {
 } from "./hooks/useReadFence";
 
 export {
-  useFollowLatest,
-  type FollowLatest,
-  type FollowLatestOptions
-} from "./hooks/useFollowLatest";
+  useJumpToLatest,
+  type JumpToLatest,
+  type JumpToLatestOptions
+} from "./hooks/useJumpToLatest";
 
 export type {
   BlockComponentType,

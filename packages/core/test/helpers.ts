@@ -2,7 +2,7 @@ import type { BlockContext, BlockDefinition, ResponseEmitterHandle } from "../sr
 import { asRuntime } from "../src/types/block";
 import type { GeneratorModel, ModelResolver } from "../src/types/model";
 import type { ScopeStateOps } from "../src/types/state";
-import { waitForUserOn, type WaitForUser } from "../src/types/wait-for-user";
+import { suspendForUserOn, type SuspendForUser } from "../src/types/suspend-for-user";
 
 /**
  * Drive a block from test code (FIX-503). Recovers the substrate runtime
@@ -47,7 +47,7 @@ export function createMockContext(overrides?: MockContextOverrides): BlockContex
 
   const baseContext: BlockContext = {
     // Built on whatever `suspend` the context ends up with, as the runtime's is.
-    waitForUser: ((options: Parameters<WaitForUser>[0]) => waitForUserOn(merged, options)) as WaitForUser,
+    suspendForUser: ((options: Parameters<SuspendForUser>[0]) => suspendForUserOn(merged, options)) as SuspendForUser,
     request: {
       identity: { type: "request", id: "req_1" },
       incarnation: "inc_1",

@@ -62,7 +62,7 @@ import {
   answerOf,
   getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
-  isRowQuestion,
+  isRowHold,
   MAX_STEERS,
   readCommittedTask,
   resolveResourceCollection,
@@ -468,7 +468,7 @@ export interface ManagerOptions {
    *
    * On, a run the phase's check passed (and the {@link judge}, when one read
    * it, found done or was under its floor) that has commits over its base
-   * waits through `ctx.waitForUser({ kind: "review" })`, its prompt naming the
+   * waits through `ctx.suspendForUser({ kind: "review" })`, its prompt naming the
    * commits and the judge's verdict as information. The answer is
    * `{ verdict: "accepted" }`, which completes the task with no further
    * harness run, or `{ verdict: "revise", words }`, whose words become the
@@ -537,6 +537,10 @@ export interface ManagerOptions {
    * its process to exit (FIX-2086). Otherwise two processes could share one
    * checkout. Off: the steer waits for the step's own end. The row is polled
    * ({@link STEER_POLL_MS}) while a step runs.
+   *
+   * Absent: what the harness block declares (`HarnessBlock.stopsOnAbort`,
+   * FIX-2312), so Claude Code's runs are stopped and other harnesses' aren't.
+   * Set it to override the harness either way.
    *
    * A run that offers a live steer (`onSteerable`) takes the line into its
    * turn instead, and is never stopped for one it took; the row is polled
@@ -1413,7 +1417,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   if ("announce" in (options as object)) {
     throw new Error(
       "[harness-manager] `announce` was removed: a run's question now keeps its task waiting on the board, " +
-        "where the Inbox lists it. Read held tasks from the board (`openRowQuestions`) instead of being told.",
+        "where the Inbox lists it. Read held tasks from the board (`openRowHolds`) instead of being told.",
     );
   }
 
@@ -2761,6 +2765,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       if (note !== null) progressNotes.get(ctx.request.identity.id)?.report(note);
     },
   });
+  /** The host's word, else what the harness declares (FIX-2312). */
+  const stopsOnAbort = options.stopsOnAbort ?? harnessBlock.stopsOnAbort === true;
 
   /**
    * Each running step's progress notes (FIX-2290), by request. Written through
@@ -2917,9 +2923,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const reviewed = async (outcome: "accepted" | "deadline" | "revise" | "cancelled") =>
         ctx.sequencer!.patchState({ decided: { ...decision, reviewed: outcome } });
 
-      let asked: Awaited<ReturnType<BlockContext["waitForUser"]>>;
+      let asked: Awaited<ReturnType<BlockContext["suspendForUser"]>>;
       try {
-        asked = await ctx.waitForUser({
+        asked = await ctx.suspendForUser({
           kind: "review",
           title: "Review the run's changes",
           prompt: reviewPrompt(changes, decision.output.branch, read),
@@ -3025,7 +3031,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // Stopped only once the harness confirmed a session to resume: a stop
         // before that would cost the attempt the steer must not use. A line
         // handed live needs one too, for the step a refusal falls back to.
-        const wanted = options.stopsOnAbort === true || watch.steer !== null;
+        const wanted = stopsOnAbort || watch.steer !== null;
         const confirmed = wanted && owed && (await readConfirmedSession(ctx, state.topic!, state.attempt!)) !== null;
         if (!live() || !confirmed) return;
         const steer = watch.steer;
@@ -3045,7 +3051,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               return;
             }
             handLive(ctx, steer, take.steers, () => {
-              if (options.stopsOnAbort === true && live() && !controller.signal.aborted) stop();
+              if (stopsOnAbort && live() && !controller.signal.aborted) stop();
             });
           })();
           nextStep.taking.add(taking);
@@ -3056,7 +3062,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           }
           return;
         }
-        if (options.stopsOnAbort === true) stop();
+        if (stopsOnAbort) stop();
         return;
       } catch {
         // A read that fails stops nothing: the step's own end takes the steer.
@@ -3409,10 +3415,10 @@ function heldTicket(
 }
 
 /** Whether `steer` answers one of `row`'s questions for a person: a steer a deadline wrote is a message, not an answer. */
-function isAnswer(row: Pick<Task, "questions">, steer: Pick<TaskSteer, "answers" | "from">): boolean {
+function isAnswer(row: Pick<Task, "holds">, steer: Pick<TaskSteer, "answers" | "from">): boolean {
   if (steer.answers === undefined || steer.from === "board") return false;
-  const hold = row.questions?.find((h) => h.id === steer.answers);
-  return hold !== undefined && isRowQuestion(hold);
+  const hold = row.holds?.find((h) => h.id === steer.answers);
+  return hold !== undefined && isRowHold(hold);
 }
 
 /**
@@ -3423,8 +3429,8 @@ function isAnswer(row: Pick<Task, "questions">, steer: Pick<TaskSteer, "answers"
 function answeredQuestions(row: Task | undefined): AnsweredQuestion[] {
   if (row === undefined) return [];
   const answered: AnsweredQuestion[] = [];
-  for (const hold of row.questions ?? []) {
-    if (!isRowQuestion(hold)) continue;
+  for (const hold of row.holds ?? []) {
+    if (!isRowHold(hold)) continue;
     const steer = answerOf(row, hold.id);
     if (steer === undefined || !isAnswer(row, steer)) continue;
     answered.push({ question: hold.ask.prompt, answer: steer.message });

@@ -737,7 +737,9 @@ function rejectOnAbort(signal: AbortSignal): { promise: Promise<never>; stop: ()
  * block settles. The process keeps writing the session's transcript until it
  * exits, so a run stopped early and resumed straight away would otherwise be
  * told its conversation does not exist. Bounded so a process that never exits
- * cannot hold the block.
+ * cannot hold the block: past it, the block sends the process `SIGKILL` and
+ * waits for it to exit (FIX-2312), so the block never returns while its
+ * process still runs.
  *
  * Sized against the SDK's own shutdown: on abort it closes the process's input
  * and gives it 2s to exit before sending `SIGTERM`. A process that exits on
@@ -791,13 +793,14 @@ async function settledWithin(promise: Promise<unknown>, ms: number): Promise<voi
  * (FIX-1301) — `query()`'s loop is raced against the signal rather than awaited
  * outright, so the block's deadline is not bounded by whenever the SDK's stream
  * happens to settle. The rejection itself can arrive up to
- * {@link abortExitGrace} later: the already-wired `abortController` (below)
- * tells the SDK to stop, and the block then waits, bounded, for the agent's
- * process to exit (observed through the SDK's spawn hook — the SDK's own stream
- * can end first), so the session's transcript is complete before anyone can
- * resume it. A subprocess the vendor spawned can therefore outlive the abort —
- * the working directory's sandbox is the fence for that, not this block's
- * deadline.
+ * {@link abortExitGrace} later, plus the moment a kill takes: the already-wired
+ * `abortController` (below) tells the SDK to stop, and the block then waits,
+ * bounded, for the agent's process to exit (observed through the SDK's spawn
+ * hook — the SDK's own stream can end first), so the session's transcript is
+ * complete before anyone can resume it. A process still running at the bound
+ * is sent `SIGKILL` and waited for. A subprocess the agent's process spawned (a
+ * `Bash` tool command) can still outlive the abort — the working directory's
+ * sandbox is the fence for that, not this block's deadline.
  *
  * See {@link ClaudeCodeAgentOptions.detached} for the background-work mode.
  */
@@ -859,7 +862,11 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     );
   }
 
-  return handler({
+  // Declares `stopsOnAbort` (core's harness contract, FIX-2312): when its
+  // abort signal fires, the block returns only after its agent process has
+  // exited (killed past `abortExitGrace`), so a host may stop this run and
+  // start the next in its checkout.
+  return Object.assign(handler({
     name,
     description:
       "Run the Claude Code Agent SDK in-process, translating its streamed messages into FSD items.",
@@ -1415,6 +1422,10 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
             await settledWithin(loop, deadline - Date.now());
             const exited = agentProcess.exited();
             if (exited !== null) await settledWithin(exited, deadline - Date.now());
+            // Past the grace, the process is killed and waited for, so the
+            // block never returns while its process still runs (FIX-2312:
+            // `stopsOnAbort` promises a host the checkout is free).
+            await agentProcess.kill();
           }
           if (abortedByOurSignal && inFlightRef.current) {
             // The abandoned loop can still be mid-`await` on its own
@@ -1557,7 +1568,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         await closeMcpTools(handedTools);
       }
     },
-  });
+  }), { stopsOnAbort: true as const });
 }
 
 /**

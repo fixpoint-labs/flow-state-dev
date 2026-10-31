@@ -92,7 +92,7 @@ const row = (ownerSessionId: string, id: string, status: string): BoardRow => ({
   deps: [],
   run: null,
   error: null,
-  questions: [],
+  holds: [],
   steers: [],
   createdAt: null,
   updatedAt: null,
@@ -166,7 +166,7 @@ describe("what needs the user, in the shift summary (FIX-2131)", () => {
   const heldOnQuestion = (holder: string, id: string, extra: Partial<BoardRow> = {}): BoardRow => ({
     ...row(holder, id, "in_progress"),
     assignee: "eng.coder",
-    questions: [
+    holds: [
       {
         id: `q-${id}`,
         actor: "user",
@@ -174,7 +174,7 @@ describe("what needs the user, in the shift summary (FIX-2131)", () => {
         source: { kind: "row", closedBy: [{ by: "answer" }] },
         ask: { kind: "question", prompt: "Approve the plan to merge the rounding copies?" },
       },
-    ] as BoardRow["questions"],
+    ] as BoardRow["holds"],
     ...extra,
   });
 

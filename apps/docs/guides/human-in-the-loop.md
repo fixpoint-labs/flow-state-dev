@@ -13,8 +13,8 @@ HITL is built on suspend/resume, which is part of [durable execution](/docs/adva
 
 If what you're gating is a task on a board rather than one step of a flow, the same stop works from inside the task's run, and the task board adds one more way to wait. Pick by who reads the answer:
 
-- **The code that asked reads it on its next line.** An approval or a review: `ctx.waitForUser({ kind: "approval" | "review", prompt })`, or a model's `waitForUser` tool. The run stops, and the answer resumes it.
-- **The work can go on from the answer later.** A question: the worker's model calls `askQuestion`, or its code calls `askMidway`. The task waits on the question, the turn ends, and the answer starts the task's next turn.
+- **The code that asked reads it on its next line.** An approval or a review: `ctx.suspendForUser({ kind: "approval" | "review", prompt })`, or a model's `suspendForUser` tool. The run stops, and the answer resumes it.
+- **The work can go on from the answer later.** A question: the worker's model calls `holdTaskForUser`, or its code calls `askMidway`. The task waits on the question, the turn ends, and the answer starts the task's next turn.
 - **You need a form.** `ctx.suspend()` with your own schema, as this guide builds.
 
 The first two show in the user's [Inbox](/docs/orchestration/task-board#building-an-inbox), and so does a `ctx.suspend()` whose reason is `user_approval` or `user_input`; one with a reason of your own doesn't. See [A task waiting on a user](/docs/orchestration/task-board#a-task-waiting-on-a-user) and [A task's questions](/docs/orchestration/task-board#a-tasks-questions).

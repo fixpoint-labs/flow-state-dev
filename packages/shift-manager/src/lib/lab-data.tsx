@@ -11,7 +11,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import type { Client } from "@flow-state-dev/client";
-import type { InboxAnswer, InboxQuestion } from "@flow-state-dev/orchestration/inbox";
+import type { InboxAnswer, InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { connect, type Connection } from "./connection";
 import { createLabReader, type Ask, type LabReader, type LabSnapshot } from "./reads";
 
@@ -30,7 +30,7 @@ export type LabData = {
   /** Answer an ask; on success, refresh so it leaves every surface together. */
   answer(ask: Ask, answer: { action: ResumeAction; data?: unknown }): Promise<void>;
   /** Answer one of an Inbox item's holds (a task's question or confirm); on success, refresh. */
-  answerOne(hold: InboxQuestion<unknown>, answer: InboxAnswer): Promise<void>;
+  answerOne(hold: InboxHold<unknown>, answer: InboxAnswer): Promise<void>;
   /**
    * The session of the latest ask answered here, with a count that moves once
    * the answer lands and again once the run it resumed stops running.

@@ -42,3 +42,7 @@ Each leg passes in 3 runs of 3 (`GOAL_RUNS`, default 3).
 | 2026-10-29 | 1052e82f+ | openai/gpt-5.4-mini | FAIL (expected) | `no-owner-check`: [2] *no value* (the consult read the other user's conversation and returned its value) and *refused no_session* |
 | 2026-10-29 | 1052e82f+ | openai/gpt-5.4-mini, openai/gpt-5.4, gpt-6-luna | PASS | 3 of 3 runs with *reading names it*; both wordings drawn; writer 1/8 → 1/8; session A 1 → 1 |
 | 2026-10-29 | 1052e82f+ | openai/gpt-5.4-mini | FAIL (expected) | `no-consult`: [1] lead messaged writer instead (writer 1 → 3 requests, 2 log rows), no reading, no utility model; [2] no consult |
+| 2026-10-30 | 863a0e13 | gpt-6-luna | PASS | Closure run (FIX-2156). 3 of 3 |
+| 2026-10-30 | 863a0e13 | gpt-6-luna | FAIL (expected) | `no-owner-check`: [2] *no value*, *refused no_session*, all 3 runs |
+| 2026-10-30 | 07753056 | gpt-6-luna | PASS | Closure re-run after #4262. 3 of 3 |
+| 2026-10-30 | 07753056 | gpt-6-luna | FAIL (expected) | `no-owner-check`: [2] *no value*, *refused no_session*, all 3 runs |

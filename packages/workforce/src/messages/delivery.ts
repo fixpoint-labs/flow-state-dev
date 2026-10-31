@@ -174,8 +174,9 @@ export function isFinalRefusal(refused: DispatchRefusal): boolean {
 /**
  * Dispatch `row` to its recipient's `onMessageReceived`, at the address the row keeps whole.
  *
- * @param waits The sender parks on the request this starts (a call's first
- *   dispatch, FIX-2239), so the engine counts it in the chain of waits.
+ * @param waits The sender parks on the request this starts (the first
+ *   dispatch of a message whose sender waits for the reply, FIX-2318), so the
+ *   engine counts it in the chain of waits.
  */
 export function dispatchMessage(ctx: BlockContext, row: WorkerMessageRow, from: string, waits = false): Promise<DispatchOutcome> {
   return dispatchThroughSeam(ctx, {

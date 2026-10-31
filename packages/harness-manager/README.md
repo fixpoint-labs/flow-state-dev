@@ -316,7 +316,7 @@ The recorded session is the one the harness *confirmed* it was in. If the agent 
 ### Upgrading from the question inbox
 
 - The manager keeps no questions of its own. Removed: `askQuestion`, `answerQuestion`, `listQuestions`, `readQuestion`, `withdrawQuestion`, `inboxCollection`, `INBOX`, `questionTopic`, `questionFingerprint`, `parseQuestionTopic`, `HarnessRunParked` and the `QuestionAnnouncement` type. <!-- retired-name-refusal: migration note -->
-- `harnessManager({ announce })` is refused at construction. Read held tasks from the board (its rows' open questions, `openRowQuestions`) and answer with its `updateTask` action.
+- `harnessManager({ announce })` is refused at construction. Read held tasks from the board (its rows' open questions, `openRowHolds`) and answer with its `updateTask` action.
 - `run.answers` reads the task's answered questions from its row.
 - `run.askMarkerPath` is `.fsdev/ask/<attempt>-<run>.md`. A phase that names a path of its own must use the one it is handed.
 - `askMarkerPath(path, attempt, run)` and `readAskMarker(path, attempt, run)` take the run.
@@ -327,7 +327,7 @@ The recorded session is the one the harness *confirmed* it was in. If the agent 
 
 A run's changes are the commits it made over the base its branch was cut from. A run that would complete (the judge said done, there is no judge, or the judge's verdict was under its `floor`) and has commits on its branch waits for a review. So does a run whose commit count git couldn't read; its review says the commits couldn't be read. A run with no commits completes unreviewed. A failed run fails its attempt unreviewed. A judge's confident verdicts skip the review: *not done* fails the attempt, and *ask* holds the task on a question.
 
-While it waits, the task stays `in_progress` on the same attempt and keeps its claim, and the checkout is free. The row lists the wait among its open `questions`, with `source.kind: "suspension"` and `ask.kind: "review"`, titled "Review the run's changes". Its prompt gives the commit count and up to 20 commit subjects, then the judge's verdict, confidence and reason ("No judge read this run." without one), and the line "The judge's verdict is information, not approval." The hold's data is `{ branch, commits, subjects, judge }`. The Inbox lists it as a review.
+While it waits, the task stays `in_progress` on the same attempt and keeps its claim, and the checkout is free. The row lists the wait among its open `holds`, with `source.kind: "suspension"` and `ask.kind: "review"`, titled "Review the run's changes". Its prompt gives the commit count and up to 20 commit subjects, then the judge's verdict, confidence and reason ("No judge read this run." without one), and the line "The judge's verdict is information, not approval." The hold's data is `{ branch, commits, subjects, judge }`. The Inbox lists it as a review.
 
 The answer is a `HarnessReviewAnswer`, checked against `harnessReviewAnswerSchema`: `{ verdict: "accepted" }`, or `{ verdict: "revise", words }` with non-blank `words`. With the Inbox client:
 
@@ -467,7 +467,7 @@ the coding flow gives its turn a `sendMessage` of its own.
 
 ### Stopping a step for a steer
 
-By default a running step finishes first, and the next step takes the steer. Build the manager with `stopsOnAbort: true` when your harness's abort resolves only once its process has exited. The manager then reads its row every `STEER_POLL_MS` (one second) while a step runs, and once the harness has confirmed a coding session to resume, a new message stops the running step, and the next step starts at once with it. The stop ends the step, not the request, and the checkout keeps what the stopped step wrote. A message that arrives before the session is confirmed waits for the step's own end. Leave the option off for a harness whose abort can return while its process still runs.
+By default a running step finishes first, and the next step takes the steer. The manager stops it instead when the harness declares `stopsOnAbort: true` on the block its factory returns (a field of core's `HarnessBlock`). The declaration says that when its abort signal fires, the block returns only after its process has exited. A command that process started may still be running, and can keep writing to the checkout while the next step works there ([Claude Code's note](../claude-code/README.md#stopping-a-run-for-a-message)). Claude Code's block declares it. For a harness that doesn't, build the manager with `stopsOnAbort: true`; the option, set either way, overrides what the harness declares. The manager then reads its row every `STEER_POLL_MS` (one second) while a step runs, and once the harness has confirmed a coding session to resume, a new message stops the running step, and the next step starts at once with it. The stop ends the step, not the request, and the checkout keeps what the stopped step wrote. A message that arrives before the session is confirmed waits for the step's own end. Leave the option off for a harness whose abort can return while its process still runs.
 
 A step never runs for a task its attempt no longer holds. The manager reads the task's row every `STEER_POLL_MS` while a step runs, and if the task is cancelled, finishes, or is claimed again, it aborts the running step's harness within that second and the request takes no further step. A cancelled task's harness doesn't keep working on a run that can record nothing.
 
@@ -571,7 +571,7 @@ from `/`. Given a location it cannot resolve, it refuses and names the option.
 - **Usage rows are keyed by the bare user id.** Where one user id is reachable from two tenants, both see that user's plan and percents.
 - **No retention policy.** Run records grow without bound.
 - **A harness that can't resume can't be talked to once finished.** Talk resumes the confirmed coding session, so the door refuses a finished run whose harness never confirmed one (`cannot-continue`).
-- **A steer waits for the step to end** unless the run takes it live (Cursor today) or the manager is built with `stopsOnAbort: true`. Claude Code and Codex runs don't take a line mid-turn yet.
+- **A steer waits for the step to end** unless the run takes it live (Cursor today) or the step is stopped for it (a harness that declares `stopsOnAbort`, as Claude Code does, or a manager built with `stopsOnAbort: true`). A stopped step's harness process has exited, but a command it started may still run in the checkout. Claude Code and Codex runs don't take a line mid-turn yet.
 - **A steer step needs a confirmed session.** The step a steer adds resumes the coding session the run confirmed. On a run whose harness confirmed none, a steer that arrives after its last step is left on the task untaken: only the `STEER_TURN_ENTRY` turn acts on it, and a host without that entry completes the task over it.
 - **Reviewing changes needs durable execution.** On a host without it, a manager built with `reviewChanges: true` refuses the run before any harness step, and the task is cancelled with a message naming durable execution.
 - **Git worktrees specifically**, as above.

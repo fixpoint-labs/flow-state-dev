@@ -13,7 +13,8 @@ import { mockGenerator, type MockGeneratorInstance } from "@flow-state-dev/testi
 import type { WorkerManifest } from "../src";
 import { rosterDisplayName, rosterTeamName, workerRecipients } from "../src/messages/recipients";
 import type { RosterWorker, WorkerInstallation } from "../src/workers/installation";
-import { TOOL_USE_RULE } from "../src/messages/worker-identity";
+import { DELEGATE_MARK, DELEGATE_RULE, TOOL_USE_RULE, workerIdentityPrompt } from "../src/messages/worker-identity";
+import { DELEGATES_STATE } from "../src/delegates/delegate-keys";
 import { bootBoardHost, type BoardHost } from "./conversation-board-harness";
 
 const worker = (id: string, declared: Record<string, unknown>, body = "", teamName?: string): WorkerManifest => ({
@@ -25,9 +26,10 @@ const worker = (id: string, declared: Record<string, unknown>, body = "", teamNa
 });
 
 const roster = (): WorkerManifest[] => [
-  worker("eng.ana", { name: "Ana", description: "Runs the team's work with you.", delegates: ["eng.tasker"] }, "Ana's own instructions.", "Engineering"),
+  worker("eng.ana", { name: "Ana", description: "Runs the team's work with you.", delegates: ["eng.tasker", "eng.cy"] }, "Ana's own instructions.", "Engineering"),
   worker("eng.bo", { description: "Knows colours." }, "You help.", "Engineering"),
-  worker("eng.tasker", { flow: "tasker", description: "Does tasks." }, "", "Engineering")
+  worker("eng.tasker", { flow: "tasker", description: "Does tasks." }, "", "Engineering"),
+  worker("eng.cy", { description: "Researches." }, "You research.", "Engineering")
 ];
 
 /** The system message of each model call the agent turn made, in order. */
@@ -77,6 +79,11 @@ describe("what a worker is told first", () => {
       expect(tasksOnly).toContain("File one a task with createTask");
       expect(tasksOnly).toContain("- tasker (eng.tasker): Does tasks.");
       expect(system).toContain(TOOL_USE_RULE);
+      // A delegate listed only as someone to message got whole pieces of work
+      // as messages, which no board row tracks: it is marked as taking tasks.
+      expect(teammates).toContain(`- cy (eng.cy): Researches. ${DELEGATE_MARK}`);
+      expect(teammates).toContain("- bo (eng.bo): Knows colours.\n");
+      expect(teammates).toContain(DELEGATE_RULE);
     } finally {
       await h.dispose();
     }
@@ -91,6 +98,8 @@ describe("what a worker is told first", () => {
       const system = systemsOf(agentAnswer)[0]!;
       expect(system).not.toContain("File one a task with createTask");
       expect(system).toContain("filed by the workers they report to, not by you:\n- tasker (eng.tasker)");
+      expect(system).not.toContain(DELEGATE_MARK);
+      expect(system).not.toContain(DELEGATE_RULE);
     } finally {
       await h.dispose();
     }
@@ -107,6 +116,59 @@ describe("what a worker is told first", () => {
     } finally {
       await h.dispose();
     }
+  });
+});
+
+describe("the delegates the layer marks", () => {
+  // The board takes a task for the conversation's own list once an add or a
+  // remove has set it, so the mark follows that list, not the worker's file.
+  const installation = {
+    workerFlows: () => ({ agent: { roles: ["contributor"] }, chat: { roles: [] } }),
+    roster: async () =>
+      [
+        { id: "eng.ana", name: null, teamName: null, description: null, flow: "agent", delegates: ["eng.cy", "eng.di"] },
+        { id: "eng.bo", name: null, teamName: null, description: null, flow: "agent", delegates: [] },
+        { id: "eng.cy", name: null, teamName: null, description: null, flow: "agent", delegates: [] },
+        { id: "eng.di", name: null, teamName: null, description: null, flow: "chat", delegates: [] }
+      ] as unknown as RosterWorker[]
+  } as unknown as WorkerInstallation;
+  const layerFor = (state: Record<string, unknown>) =>
+    workerIdentityPrompt({ session: { state: { workerId: "eng.ana", ...state } } } as never, installation);
+
+  it("marks the file's delegates while the conversation has set none", async () => {
+    const layer = (await layerFor({}))!;
+    expect(layer).toContain(`- cy (eng.cy) ${DELEGATE_MARK}`);
+    expect(layer).not.toContain(`- bo (eng.bo) ${DELEGATE_MARK}`);
+  });
+
+  // The board refuses a task for a worker whose flow takes none, so naming one
+  // as taking tasks sends the model to a createTask that fails.
+  it("doesn't mark a delegate whose flow takes no task", async () => {
+    const layer = (await layerFor({}))!;
+    expect(layer).toContain("- di (eng.di)\n");
+    expect(layer).not.toContain(`- di (eng.di) ${DELEGATE_MARK}`);
+  });
+
+  it("marks the conversation's own list once it is set: an added one marked, a removed one not", async () => {
+    const layer = (await layerFor({ [DELEGATES_STATE]: [{ worker: "eng.bo" }] }))!;
+    expect(layer).toContain(`- bo (eng.bo) ${DELEGATE_MARK}`);
+    expect(layer).toContain("- cy (eng.cy)\n");
+    expect(layer).not.toContain(`- cy (eng.cy) ${DELEGATE_MARK}`);
+  });
+});
+
+describe("a teammate list cut at its cap", () => {
+  // Past the cap a delegate can be missing from the list, so the layer must
+  // not tell the model the list is complete and no lookup is needed.
+  it("sends the model to listDelegates for the rest instead of calling the list current", async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ id: `eng.w${i}`, name: null, teamName: null, description: null, flow: "agent", delegates: [] }));
+    const installation = {
+      workerFlows: () => ({ agent: { roles: ["contributor"] } }),
+      roster: async () => [{ id: "eng.ana", name: null, teamName: null, description: null, flow: "agent", delegates: [] }, ...many] as unknown as RosterWorker[]
+    } as unknown as WorkerInstallation;
+    const layer = (await workerIdentityPrompt({ session: { state: { workerId: "eng.ana" } } } as never, installation))!;
+    expect(layer).toContain("call listDelegates for the rest");
+    expect(layer).not.toContain("no tool call is needed");
   });
 });
 

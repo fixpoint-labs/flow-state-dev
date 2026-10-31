@@ -73,7 +73,7 @@ export type Task = {
   error?: string;
   feedback?: string;
   /** What the task waits on a person for: its questions and its run's stop. */
-  questions?: TaskHoldWire[];
+  holds?: TaskHoldWire[];
   /** Messages on the task; one naming a question (`answers`) closes it. */
   steers?: { id: string; message: string; answers?: string }[];
   labels?: string[];
@@ -96,15 +96,29 @@ export type TaskHoldWire = {
 const SETTLED: ReadonlySet<string> = new Set(["completed", "errored", "cancelled"]);
 
 /**
+ * A `task-change` item logged before FIX-2317 carries the row's holds as
+ * `questions`. A session's item log replays it as stored, so the fold reads it
+ * under `holds`, as the server's retired-shape map (`withRetiredShapes`, its
+ * `questions` entry) reads a stored row. Without it, an old session's task
+ * shows no open question while the board still holds it (BP-030).
+ */
+function withHoldsUnderTheirName(task: Task): Task {
+  const legacy = (task as Task & { questions?: TaskHoldWire[] }).questions;
+  if (!Array.isArray(legacy)) return task;
+  const { questions: _questions, ...rest } = task as Task & { questions?: TaskHoldWire[] };
+  return task.holds === undefined ? { ...rest, holds: legacy } : rest;
+}
+
+/**
  * What a running task waits on a person for, as the person was asked: the
  * prompt of its oldest open hold. A question is open while no steer answers
  * it; a stop is open while it is on the row. `undefined` when nothing holds
  * the task, or it has settled.
  */
-export function waitPrompt(task: Pick<Task, "status" | "questions" | "steers">): string | undefined {
-  if (task.questions === undefined || SETTLED.has(task.status)) return undefined;
+export function waitPrompt(task: Pick<Task, "status" | "holds" | "steers">): string | undefined {
+  if (task.holds === undefined || SETTLED.has(task.status)) return undefined;
   const answered = new Set((task.steers ?? []).flatMap((steer) => (steer.answers === undefined ? [] : [steer.answers])));
-  return task.questions.find((hold) => hold.source.kind !== "row" || !answered.has(hold.id))?.ask.prompt;
+  return task.holds.find((hold) => hold.source.kind !== "row" || !answered.has(hold.id))?.ask.prompt;
 }
 
 /** Counts payload on `task-board-meta` completion. */
@@ -282,7 +296,7 @@ export function groupCollections(
       }
       bucket.tsById.set(change.taskId, ts);
       bucket.tasksById.set(change.taskId, {
-        task: change.task,
+        task: withHoldsUnderTheirName(change.task),
         kind: change.kind,
         prevStatus: change.prevStatus,
         changeCount,

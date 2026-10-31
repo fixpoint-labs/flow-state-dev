@@ -23,8 +23,8 @@ import { deliveredByWait, droppedHeldNotices, recordEnding as recordNoticeOwed, 
 import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
 import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
 import { steersForAttempt, untakenSteers } from "../steers";
-import type { SuspensionQuestion } from "../schema/question";
-import { answerOf, askedOnTicket, droppedMirror, hasOpenQuestion, questionWrite, isRowQuestion, keptOnEnding, newRowQuestions, openRowQuestions, owesTurn } from "./questions";
+import type { SuspensionHold } from "../schema/hold";
+import { answerOf, askedOnTicket, droppedMirror, hasOpenHold, holdWrite, isRowHold, keptOnEnding, newRowHolds, openRowHolds, owesTurn } from "./holds";
 import type { TaskChangeKind } from "./change-event";
 import type {
   ClaimOptions,
@@ -95,7 +95,7 @@ export function buildInitialTask<TInput, TOutput>(
   // from starting until it is answered (FIX-2133), due when the host sets a deadline.
   const holds =
     init.questions !== undefined && init.questions.length > 0
-      ? newRowQuestions(init.questions, now, filing.questionDueMs !== undefined ? { dueMs: filing.questionDueMs } : {})
+      ? newRowHolds(init.questions, now, filing.holdDueMs !== undefined ? { dueMs: filing.holdDueMs } : {})
       : undefined;
   const filedUnder = filing.filedUnder;
   return {
@@ -137,7 +137,7 @@ export function buildInitialTask<TInput, TOutput>(
           },
         }
       : {}),
-    ...(holds !== undefined ? { questions: holds } : {}),
+    ...(holds !== undefined ? { holds: holds } : {}),
     // Server-written by the backing (FIX-2078), never from `init`.
     ...(filer !== undefined ? { filer: { sessionId: filer.sessionId, ...(filer.requestId !== undefined ? { requestId: filer.requestId } : {}) } } : {}),
     createdAt: now,
@@ -154,7 +154,7 @@ export function buildInitialTask<TInput, TOutput>(
  */
 export interface FilingStamp {
   readonly filedUnder?: { readonly tenantId?: string; readonly orgId?: string };
-  readonly questionDueMs?: number;
+  readonly holdDueMs?: number;
 }
 
 /**
@@ -803,7 +803,7 @@ export function transitionDeclineReason(
     changeKind !== undefined &&
     SETTLEMENT_CHANGE_KINDS.has(changeKind) &&
     !isTerminalStatus(task.status) &&
-    hasOpenQuestion(task)
+    hasOpenHold(task)
   ) {
     return "open-question";
   }
@@ -812,11 +812,11 @@ export function transitionDeclineReason(
   const claim = options.claim;
   if (options.ifAllowed === true && isTerminalStatus(task.status)) return "terminal";
   // FIX-2133: a confirm's No cancels only while its confirm is open, on the committed row.
-  const whileQuestionOpen = (options as { whileQuestionOpen?: string }).whileQuestionOpen;
-  if (whileQuestionOpen !== undefined) {
-    const hold = task.questions?.find((h) => h.id === whileQuestionOpen);
-    if (hold === undefined || !isRowQuestion(hold)) return "no-such-question";
-    if (answerOf(task, whileQuestionOpen) !== undefined) return "answered";
+  const whileHoldOpen = (options as { whileHoldOpen?: string }).whileHoldOpen;
+  if (whileHoldOpen !== undefined) {
+    const hold = task.holds?.find((h) => h.id === whileHoldOpen);
+    if (hold === undefined || !isRowHold(hold)) return "no-such-question";
+    if (answerOf(task, whileHoldOpen) !== undefined) return "answered";
   }
   if (claim !== undefined && !ticketNamesTask(claim, collectionId, task)) return "not-my-task";
   // FIX-2133, at the settle (FIX-2132): a turn that asked midway settles nothing on its own
@@ -857,8 +857,8 @@ export function transitionDeclineReason(
   if (claim !== undefined && !adopting && leaseLapsed(task, now)) return "lost-claim";
   // FIX-2133: a renewal (any open hold), or a mirror of a run's stop (an open
   // row hold: one source at a time), refused on the committed row.
-  if (options.refuseWithOpenQuestion === "any" && hasOpenQuestion(task)) return "open-question";
-  if (options.refuseWithOpenQuestion === "row" && openRowQuestions(task).length > 0) return "open-question";
+  if (options.refuseWithOpenHold === "any" && hasOpenHold(task)) return "open-question";
+  if (options.refuseWithOpenHold === "row" && openRowHolds(task).length > 0) return "open-question";
   // Last: a write from an attempt that lost the row is refused as that, never
   // as owing a steer the row's next attempt holds (FIX-2086).
   if (options.refuseUntakenSteers === true && targetStatus === "completed" && untakenSteers(task).length > 0) {
@@ -958,7 +958,7 @@ export function isReady(
   task: Task,
   lookup: (id: string) => Task | undefined
 ): boolean {
-  if (task.status !== "pending" || hasOpenQuestion(task)) return false;
+  if (task.status !== "pending" || hasOpenHold(task)) return false;
   return depsSatisfied(task, lookup);
 }
 
@@ -1001,7 +1001,7 @@ export function isClaimable(
 ): boolean {
   // FIX-2133: a row with an open hold is never admitted, before its start or
   // midway; a running row that owes a turn on its same attempt is (D3).
-  if (hasOpenQuestion(task)) return false;
+  if (hasOpenHold(task)) return false;
   if (task.status !== "pending" && !leaseLapsed(task, now) && !owesTurn(task)) return false;
   return depsSatisfied(task, lookup);
 }
@@ -1198,11 +1198,11 @@ export function requireClaimTicket(
 export function waitingOnPatch(
   task: Task,
   keptOpenBy: Task["keptOpenBy"],
-  options: { leaseUntil?: number; answer?: { output: unknown }; question?: SuspensionQuestion; resume?: boolean; owesTurn?: boolean }
+  options: { leaseUntil?: number; answer?: { output: unknown }; hold?: SuspensionHold; resume?: boolean; owesTurn?: boolean }
 ): Partial<Task> {
   if (keptOpenBy == null) {
     assertValidLeaseDeadline(options.leaseUntil ?? Number.NaN);
-    const resumed = options.resume === true ? questionWrite(task, { op: "resume" }) : "unchanged";
+    const resumed = options.resume === true ? holdWrite(task, { op: "resume" }) : "unchanged";
     const takesTurn = task.turnOwed === true;
     return {
       keptOpenBy: undefined,
@@ -1222,7 +1222,7 @@ export function waitingOnPatch(
     }
   }
   // A stop for a person, mirrored in the same write (FIX-2133); any other wait mirrors nothing.
-  const mirrored = options.question === undefined ? "unchanged" : questionWrite(task, { op: "mirror", hold: options.question });
+  const mirrored = options.hold === undefined ? "unchanged" : holdWrite(task, { op: "mirror", hold: options.hold });
   return {
     keptOpenBy: keptOpenBy,
     leaseUntil: options.leaseUntil,

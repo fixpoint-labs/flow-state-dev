@@ -2,8 +2,9 @@
  * Who talked to whom (FIX-1989), from the user's message log.
  * A message makes no task row, so nothing here is on Tasks.
  *
- * A call (FIX-2239) says where its answer is: waiting, answered, or answered
- * after its sender's deadline.
+ * A message that asks for a reply (FIX-2310) says where its answer is:
+ * waiting, answered, or, when its sender waited (FIX-2318), answered after
+ * the wait ended.
  */
 import { useMemo } from "react";
 import { EmptyState, Meta, ScreenTitle, SectionFailure } from "../components/ui";
@@ -35,16 +36,16 @@ function statusNote(row: WorkerMessageRow): string | null {
   return null;
 }
 
-/** Where a call's answer is, or `null` for a plain message or a call that ended undelivered. */
-function callNote(row: WorkerMessageRow): string | null {
-  if (row.call !== true || row.status === "refused" || row.status === "undeliverable") return null;
-  if (row.repliedAt === undefined) return row.queuedBehind === "user" ? "call · waiting on the user" : "call · waiting";
-  return row.deadlineAt !== undefined && row.repliedAt > row.deadlineAt ? "call · answered late" : "call · answered";
+/** Where a reply request's answer is, or `null` for a plain message or one that ended undelivered. */
+function replyNote(row: WorkerMessageRow): string | null {
+  if (row.replyRequested !== true || row.status === "refused" || row.status === "undeliverable") return null;
+  if (row.answeredBy === undefined) return row.queuedBehind === "user" ? "reply · waiting on the user" : "reply · waiting";
+  return row.waitEndedAt !== undefined ? "reply · answered late" : "reply · answered";
 }
 
 function MessageLine({ row }: { row: WorkerMessageRow }) {
   const note = statusNote(row);
-  const call = callNote(row);
+  const reply = replyNote(row);
   return (
     <li
       className="grid grid-cols-[max-content_max-content_1fr] items-baseline gap-x-3 py-1.5"
@@ -66,9 +67,9 @@ function MessageLine({ row }: { row: WorkerMessageRow }) {
       </span>
       <span className="min-w-0 truncate text-sm" data-testid="message-text" title={row.text}>
         {firstLine(row.text)}
-        {call === null ? null : (
-          <Meta className="ml-2 text-muted-foreground" testId="message-call-state">
-            {call}
+        {reply === null ? null : (
+          <Meta className="ml-2 text-muted-foreground" testId="message-reply-state">
+            {reply}
           </Meta>
         )}
         {note === null ? null : (

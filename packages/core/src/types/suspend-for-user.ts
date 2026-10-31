@@ -2,7 +2,7 @@
  * Waiting for a user (FIX-2129, ER-1): the one call a block makes when its
  * code reads a person's answer on its next line.
  *
- *   const asked = await ctx.waitForUser({ kind: "input", prompt: "Which region?", deadline: 2 * DAY });
+ *   const asked = await ctx.suspendForUser({ kind: "input", prompt: "Which region?", deadline: 2 * DAY });
  *   if (asked.cancelled) return { skipped: true };
  *   const region = asked.answer;
  *
@@ -31,10 +31,10 @@
  */
 import type { ZodTypeAny } from "zod";
 import { SuspensionRejectedError, SuspensionTimeoutError, type SuspendOptions } from "../errors/suspension-error";
-import type { WaitForUserKind } from "./suspension";
+import type { SuspendForUserKind } from "./suspension";
 
-/** What {@link WaitForUser} takes. */
-export interface WaitForUserOptions<K extends WaitForUserKind = WaitForUserKind> {
+/** What {@link SuspendForUser} takes. */
+export interface SuspendForUserOptions<K extends SuspendForUserKind = SuspendForUserKind> {
   /** What the stop asks for. */
   readonly kind: K;
   /** What the user is asked, shown where they answer it. May be markdown. */
@@ -59,34 +59,34 @@ export interface WaitForUserOptions<K extends WaitForUserKind = WaitForUserKind>
 }
 
 /** The task was cancelled while the stop waited: nobody answered. */
-export type WaitForUserCancelled = { readonly cancelled: true };
+export type SuspendForUserCancelled = { readonly cancelled: true };
 
 /**
  * How an approval came back: a yes (with any data sent with it), a no, or
  * cancelled. A no at the stop's deadline carries `deadline: true`.
  */
 export type ApprovalAnswer =
-  | WaitForUserCancelled
+  | SuspendForUserCancelled
   | { readonly cancelled: false; readonly approved: true; readonly answer?: unknown }
   | { readonly cancelled: false; readonly approved: false; readonly deadline: boolean; readonly answer?: unknown };
 
 /** How a review or an input came back: the answer, or cancelled. */
-export type UserAnswer<T = unknown> = WaitForUserCancelled | { readonly cancelled: false; readonly answer: T };
+export type UserAnswer<T = unknown> = SuspendForUserCancelled | { readonly cancelled: false; readonly answer: T };
 
-/** `ctx.waitForUser`: stop the request until the user answers (see the module header). */
-export interface WaitForUser {
-  (options: WaitForUserOptions<"approval">): Promise<ApprovalAnswer>;
-  <T = unknown>(options: WaitForUserOptions<"review" | "input">): Promise<UserAnswer<T>>;
+/** `ctx.suspendForUser`: stop the request until the user answers (see the module header). */
+export interface SuspendForUser {
+  (options: SuspendForUserOptions<"approval">): Promise<ApprovalAnswer>;
+  <T = unknown>(options: SuspendForUserOptions<"review" | "input">): Promise<UserAnswer<T>>;
 }
 
-/** What {@link waitForUserOn} reads off the context. */
-export interface WaitForUserContext {
+/** What {@link suspendForUserOn} reads off the context. */
+export interface SuspendForUserContext {
   suspend?(options: SuspendOptions): Promise<unknown>;
   readonly requestHost?: { readonly userDeadlineMs?: number };
 }
 
 /** The suspension one wait for a user is. */
-function suspendOptionsOf(options: WaitForUserOptions, deadline: number | undefined): SuspendOptions {
+function suspendOptionsOf(options: SuspendForUserOptions, deadline: number | undefined): SuspendOptions {
   const approval = options.kind === "approval";
   return {
     reason: approval ? "user_approval" : "user_input",
@@ -102,24 +102,24 @@ function suspendOptionsOf(options: WaitForUserOptions, deadline: number | undefi
 }
 
 /** The deadline a call waits for: its own, else the host's, else none. */
-function deadlineOf(ctx: WaitForUserContext, options: WaitForUserOptions): number | undefined {
+function deadlineOf(ctx: SuspendForUserContext, options: SuspendForUserOptions): number | undefined {
   const deadline = options.deadline ?? ctx.requestHost?.userDeadlineMs;
   if (deadline === undefined) return undefined;
   if (!Number.isFinite(deadline) || deadline <= 0) {
-    throw new TypeError(`waitForUser: deadline must be a positive number of milliseconds, got ${String(deadline)}`);
+    throw new TypeError(`suspendForUser: deadline must be a positive number of milliseconds, got ${String(deadline)}`);
   }
   return deadline;
 }
 
 /**
- * Wait for a user on `ctx`: the body of `ctx.waitForUser`, which the runtime
+ * Wait for a user on `ctx`: the body of `ctx.suspendForUser`, which the runtime
  * binds to each block's context.
  *
  * @throws {SuspensionTimeoutError} At a review's or an input's deadline.
  * @throws When the host has no durable execution, as `ctx.suspend` does.
  */
-export async function waitForUserOn(ctx: WaitForUserContext, options: WaitForUserOptions): Promise<ApprovalAnswer | UserAnswer> {
-  if (ctx.suspend === undefined) throw new Error("waitForUser needs ctx.suspend, which only a durable host provides.");
+export async function suspendForUserOn(ctx: SuspendForUserContext, options: SuspendForUserOptions): Promise<ApprovalAnswer | UserAnswer> {
+  if (ctx.suspend === undefined) throw new Error("suspendForUser needs ctx.suspend, which only a durable host provides.");
   const suspendOptions = suspendOptionsOf(options, deadlineOf(ctx, options));
   try {
     const answer = await ctx.suspend(suspendOptions);
