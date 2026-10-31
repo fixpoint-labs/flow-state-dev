@@ -26,8 +26,9 @@ flowchart TD
 | How current the count is | As of the last turn's end | Live |
 | New mechanism | A field, written by the flow's own resolvers (`serverOwned`) | An action and its access rule |
 
-- **Because:** the place is decided once, at provision, and never changes for the session's
-  life; the session flow already writes server-owned state on every turn. The count changes only
+- **Because:** the path and base are decided at provision and never change for the session's
+  life; the session flow already writes server-owned state on every turn, and that write rides
+  the session's existing change notice (FIX-2367's `client.subscribe`), so no poll is added. The count changes only
   when the harness runs, which is during a turn, so reading it at turn end misses only commits a
   person makes by hand between turns.
 - **The base comes from the workspace, not the checkout.** `provision` may return
@@ -35,20 +36,30 @@ flowchart TD
   `readRunCommits` refuses to trust a base read from the checkout, for the reason in its own
   header (a run can move any named ref). A path alone still works and records `baseCommit: null`,
   so Kitchen Sink keeps compiling until its own stack adopts the new return.
-- **Written once.** The record is written on the provision that cut the branch, and a later
-  provision never overwrites it. A session stored before this change gets path and branch on its
-  next turn, with no base and so no count.
+- **The base is kept, never replaced.** The record takes `baseCommit` the first time `provision`
+  reports one, and a later provision never overwrites it. A session stored before this change
+  gets path and branch on its next turn (not on open), with no base and so no count, until the
+  workspace reports one.
+- **Branch and count describe the same work.** A harness can switch the checkout to a branch of
+  its own, and the count reads the checkout's `HEAD`. So at turn end the flow records the branch
+  `HEAD` is on beside the count it read, and the chip's branch, count and `git log` all name one
+  line of work. The base stays the one recorded (review, Codex).
 - **Locks in:** `workspace` on harness session state, exposed to the client and owned by the
   server. A read action, if one is ever wanted, reads the same record.
 
 <a name="d2"></a>
-## D2 · The board manager's output gains `base` and `path`
+## D2 · The board manager's output gains `baseCommit` and `path`
 
 - **Because:** the copy commands need both, and the manager's run record already holds them
   (`baseCommit`, `workspacePath`). The output is what a task row carries, so a page needs no
   second read of the run record. Both fields are bounded strings (BP-042).
-- **`base` is the commit, not the ref.** `git log main..branch` changes meaning when `main`
-  moves; the commit the branch was cut at does not.
+- **The commit, not the ref, and one name for it.** `git log main..branch` changes meaning when
+  `main` moves; the commit the branch was cut at does not. The output calls it `baseCommit`, as
+  session state and the run record do, so `workPlace` maps no names (review, Architect).
+- **This issue owns the place fields on the output**: `branch`, `commits`, `baseCommit`, `path`.
+  FIX-2361 adds `head` and `pullRequest` beside them, and `workPlace` reads what is there. A
+  follow-up keyed to its root task's run reports that run's place, and its count covers the
+  root's commits too: that is the intent.
 - **Defaulted to `null`** so outputs stored before this change still parse (BP-030), and `null`
   for a run with no repository, like `branch`.
 - **Locks in:** two fields on the output, read through harness-manager's `./browser` entry
@@ -60,7 +71,7 @@ flowchart TD
 ## D3 · One shape and one chip, apart
 
 - **`workPlace` in harness-manager's `./browser`** takes either source and returns
-  `{ branch, path, base, commits }`, where `commits` is `null` when no base was recorded, and the
+  `{ branch, path, baseCommit, commits }`, where `commits` is `null` when no base was recorded, and the
   commands. Only harness-manager knows both sources' fields, so the shaping lives with them.
 - **The `work-place` registry chip takes plain props.** The registry copies files into apps
   (`fsdev ui add`), and a chip that imported harness-manager would pull a server package's name
@@ -68,7 +79,7 @@ flowchart TD
 - **Commands are shell-quoted.** A Kitchen Sink worktree lives under `XDG_STATE_HOME`, which
   can hold a space.
 - **No run-record read is opened.** Everything the chip needs for a board task is on the task's
-  output (`branch`, `commits`, `base`, `path`, and `review`), which the board already publishes to
+  output (`branch`, `commits`, `baseCommit`, `path`, and `review`), which the board already publishes to
   the page. The user-scoped `runs/**` record stays closed to the client, as its header says, and
   the count is the one the manager read at settle. So `readRecordedWork` gains no `run` section:
   a page passes the row's output, or the session's state, to `workPlace`.
@@ -76,8 +87,8 @@ flowchart TD
 
 ## Decided, not asked
 
-- **E1 · Names are the implementer's** (`workPlace`, `work-place`, the state field), as long as
-  the browser entry exports one helper and the registry one component.
+- **E1 · Names are fixed:** `workPlace`, the `work-place` component, `state.workspace`, and
+  `baseCommit` in every source (review, Cursor).
 - **E2 · No subjects in the session record.** The count is what the chip shows; FIX-2384's diff
   read lists what changed.
 - **E3 · The count is `readRunCommits`'s, unverified as unknown.** A count git couldn't read
@@ -86,6 +97,16 @@ flowchart TD
   Code-style lab adopt in the stacks the epic's build order names.
 
 ## Notes from review
+
+- Round 1 (fe4cf58). Folded: the branch recorded beside the count at turn end (Codex); one name,
+  `baseCommit`, and this issue owning the output's place fields (Architect); names fixed (Cursor).
+- Codex, for the implementer: the board output's `commits` is a bare count, and
+  `readRunCommits` answers `0, verified: false` when git can't read the checkout. The output should
+  carry that, so `workPlace` shows *unknown*, not 0 (E3).
+- Cursor, for the implementer: reuse an existing shell quoter if one fits a browser leaf
+  (`packages/cli/src/next-steps.ts` has `shellQuote`; the cli package is not a harness-manager
+  dependency); a unit test on the turn-end count beside the goal leg; FIX-2384 edits the same
+  turn-end handler, which the epic's build order names.
 
 - FIX-2369 epic (on FIX-2379's seam): the task-row view carries no harness-manager output; a run's
   branch, commits, `base` and `path` are read through harness-manager's `./browser`. Folded into D2.

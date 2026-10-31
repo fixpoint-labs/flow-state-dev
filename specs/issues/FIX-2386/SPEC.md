@@ -67,7 +67,7 @@ flowchart LR
   end
   subgraph after["After"]
     P2["session: provision"] --> S2["state.workspace<br/>path, branch, baseCommit, commits"]
-    M2["board task: output<br/>branch, commits, base, path"] --> W2["workPlace · ./browser"]
+    M2["board task: output<br/>branch, commits, baseCommit, path"] --> W2["workPlace · ./browser"]
     S2 --> W2
     W2 --> C2["work-place chip · ui registry"]
   end
@@ -78,13 +78,14 @@ commands need; both are read through one shape and drawn by one chip.
 
 - **The session flow records where it works** ([D1](DECISIONS.md#d1)): a server-owned,
   client-exposed `workspace` field on session state, `{ path, branch, baseCommit, commits }`.
-  Path, branch and base are written when the workspace is provisioned; the count is read at turn
-  end, in the same `onFinished` handler that already checks the branch's pull requests.
+  Path and base are written when the workspace is provisioned; the count, and the branch the
+  checkout is on, are read at turn end, in the same `onFinished` handler that already checks the
+  branch's pull requests.
 - **The workspace interface can say what it cut** ([D1](DECISIONS.md#d1)): `provision` may
   return `{ path, baseCommit?, branch? }` instead of a path, the one return shape FIX-2419 and
   FIX-2420 also extend (whichever merges first defines it; the others add their field). A path
   alone still works, and records no base.
-- **The board manager's output gains `base` and `path`** ([D2](DECISIONS.md#d2)), defaulted to
+- **The board manager's output gains `baseCommit` and `path`** ([D2](DECISIONS.md#d2)), defaulted to
   `null` so stored outputs parse (BP-030). `branch` and `commits` are already there.
 - **One reader and one chip** ([D3](DECISIONS.md#d3)): harness-manager's `./browser` entry
   (FIX-2385's) exports `workPlace`, which takes session state or a task's output and returns one
@@ -110,7 +111,7 @@ Kitchen Sink names a session's branch and where its worktrees live.
 | Piece | What this does with it |
 |---|---|
 | `readRunCommits` (`commits.ts`) and the run record's base | **Reused** by both paths. The session flow calls it at turn end with the recorded base |
-| Manager output `branch`, `commits` | **Extended** with `base` and `path`, both from the run record the manager already keeps |
+| Manager output `branch`, `commits` | **Extended** with `baseCommit` and `path`, both from the run record the manager already keeps |
 | `HarnessSessionWorkspace.provision`, `branch`, `locate` | **Extended**: `provision` may report the base; `branch` still decides the pull-request check |
 | Workspace host's provision result, `repo.baseCommit` | **Reused**: it already returns the commit a new branch was cut at |
 | The session flow's turn-end handler (`branchPullRequests`) | **Extended** by one call that records the count. FIX-2384's stack edits this region; merge order resolves it |
