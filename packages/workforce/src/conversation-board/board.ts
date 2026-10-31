@@ -1303,6 +1303,17 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         if (outcome.outcome !== "declined" && hasStartable(ref, id)) await triggerPass(ctx);
         return outcome;
       },
+      // A retry (FIX-2383) leaves the row waiting again: one now startable starts the board, as a release does.
+      ...(ref.retry === undefined
+        ? {}
+        : {
+            async retry(id: string) {
+              await owePass(ctx);
+              const outcome = await ref.retry!(id);
+              if (outcome.outcome === "recorded" && hasStartable(ref, id)) await triggerPass(ctx);
+              return outcome;
+            }
+          }),
       // A steer (FIX-2086), a routed task's included (FIX-2083): one that
       // leaves the task waiting on it (it ran nothing, waiting on its filed
       // work) starts the turn it is owed, in the task's session.
@@ -1591,6 +1602,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         return board.hold(id);
       },
       release: byRow("release") as TaskCollectionRef["release"],
+      ...(board.retry === undefined ? {} : { retry: byRow("retry") as NonNullable<TaskCollectionRef["retry"]> }),
       // A step runs after this turn, in this request: a wait on it would never end.
       ...(board.markWait === undefined
         ? {}

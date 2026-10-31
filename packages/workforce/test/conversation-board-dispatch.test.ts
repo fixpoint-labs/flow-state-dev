@@ -331,3 +331,24 @@ describe("starting work on a conversation's board (BR-8 to BR-11, BR-24)", () =>
     }
   });
 });
+
+describe("retryTask on a conversation's board (FIX-2383)", () => {
+  it("starts a cancelled task again as the same row, with no other touch of the board", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "pm");
+      const filing = await host.filingOf("alice", conv);
+      const filed = await act(host, conv, "createTask_tasks", { held: true, goal: "Audit licenses", assignee: "eng.tasker" });
+      await act(host, conv, "updateTask_tasks", { id: filed.taskId!, status: "cancelled" });
+      await host.settled();
+      expect(host.runs).toEqual([]);
+
+      expect(await act(host, conv, "retryTask_tasks", { id: filed.taskId! })).toEqual({ ok: true });
+      await host.settled();
+      expect(await host.row("alice", filing, filed.taskId!)).toMatchObject({ status: "completed", attempts: 1, assignee: "eng.tasker" });
+      expect(host.runs.map((run) => run.taskId)).toEqual([filed.taskId]);
+    } finally {
+      await host.dispose();
+    }
+  });
+});
