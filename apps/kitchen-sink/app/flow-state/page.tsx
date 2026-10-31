@@ -443,9 +443,10 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
     [],
   );
 
+  // setMessage is re-created when the session resolves, and the stale one drops writes.
   const handleSuggestionClick = useCallback((text: string) => {
     setMessage(text);
-  }, []);
+  }, [setMessage]);
 
   const handleSaveArtifact = useCallback(
     async (artifact: { id: string; title: string; content: string }) => {
