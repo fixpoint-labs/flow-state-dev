@@ -9,21 +9,18 @@
  */
 import { describe, expect, it } from "vitest";
 import type { ClaudeAccountProbe } from "@flow-state-dev/claude-code/sdk";
-import type { CodexAccountProbe } from "@flow-state-dev/codex";
-import type { CursorSignIn } from "@flow-state-dev/cursor";
 import { HARNESS_ENV, RUN_MINUTES_ENV, SCRIPTED_RUN_TIMEOUT_MS, startHarness, type HarnessChoice } from "../teams/devteam/harness.mts";
 
 /** Start with `value` as the variable and a probe that answers `answer`; report what happened. */
 async function start(
   defaultChoice: HarnessChoice,
   value: string | undefined,
-  answer?: ClaudeAccountProbe | CodexAccountProbe | CursorSignIn,
+  answer?: ClaudeAccountProbe,
   runMinutes?: string,
 ) {
   const lines: string[] = [];
   let probed = 0;
-  // One scripted answer serves whichever harness is asked; a case that names no answer must not ask.
-  const probe = async (): Promise<any> => {
+  const probe = async () => {
     probed += 1;
     if (answer === undefined) throw new Error("this case should not probe");
     return answer;
@@ -34,8 +31,6 @@ async function start(
       stepMs: "0",
       runMinutes,
       probe,
-      probeCodex: probe,
-      probeCursor: probe,
       log: (line) => lines.push(line),
     });
     return { harness, lines, probed, refused: undefined };
@@ -121,29 +116,15 @@ describe("DevTeam's coder (default stub)", () => {
 });
 
 describe("Codex and Cursor as the coder", () => {
-  it("codex with a sign-in is Codex, and the start line names where its credential comes from", async () => {
-    const started = await start("claude-code", "codex", { status: "account", source: "login" });
-    expect(started.harness?.name).toBe("codex");
-    expect(started.probed).toBe(1);
-    expect(started.lines).toEqual([`Coder: Codex, on its saved login; each run may take 20 minutes (${RUN_MINUTES_ENV}).`]);
-  });
-
-  it("cursor with a key is Cursor", async () => {
-    const started = await start("stub", "cursor", { status: "key" });
-    expect(started.harness?.name).toBe("cursor");
-    expect(started.lines).toEqual([`Coder: Cursor, on CURSOR_API_KEY; each run may take 20 minutes (${RUN_MINUTES_ENV}).`]);
-  });
-
-  // A Lab that quietly ran the stub would report a model's work that no model did.
+  // Readiness for every harness is reported, not refused (FIX-2391): no sign-in check is added here.
   it.each([
-    ["codex", { status: "none", reason: "Codex found no sign-in" }, "codex login"],
-    ["cursor", { status: "none", reason: "no CURSOR_API_KEY in the run's environment and no stored login" }, "CURSOR_API_KEY"],
-  ] as const)("%s with no sign-in refuses, naming what to set, and never falls back to the script", async (value, answer, fix) => {
-    const started = await start("claude-code", value, answer as never);
-    expect(started.harness).toBeUndefined();
-    expect(started.refused).toContain(answer.reason);
-    expect(started.refused).toContain(fix);
-    expect(started.lines).toEqual([]);
+    ["codex", "Codex"],
+    ["cursor", "Cursor"],
+  ] as const)("%s starts without asking for a sign-in, and the start line says it wasn't checked", async (value, label) => {
+    const started = await start("claude-code", value);
+    expect(started.harness?.name).toBe(value);
+    expect(started.probed).toBe(0);
+    expect(started.lines).toEqual([`Coder: ${label}, not checked for a sign-in at start; each run may take 20 minutes (${RUN_MINUTES_ENV}).`]);
   });
 });
 

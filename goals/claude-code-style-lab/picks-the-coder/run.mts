@@ -14,8 +14,8 @@
  * Controls (`GOAL_CONTROL=<name>`, same command). Each plants its change for
  * the run and puts it back:
  *   - `no-hint`: the composer sends what you typed without the chip's line. Must FAIL signals 1 and 3.
- *   - `no-route`: the routing text taken out of `desk.main`'s and `desk.lead`'s files, the
- *     delegates kept. Must FAIL signals 1 and 3.
+ *   - `no-delegates`: the new coders taken off `desk.main`'s and `desk.lead`'s delegates, the
+ *     routing text kept. Must FAIL signals 1 and 3.
  *
  * Run: pnpm tsx goals/claude-code-style-lab/picks-the-coder/run.mts
  */
@@ -43,13 +43,9 @@ const PLANTS: Record<string, { file: string; from: string | RegExp; to: string }
       to: "return text;",
     },
   ],
-  "no-route": [
-    { file: join(WORKERS, "main", "WORKER.md"), from: /\n\nWhich coder takes a code change:[\s\S]*$/, to: "\n" },
-    {
-      file: join(WORKERS, "lead", "WORKER.md"),
-      from: /The coder is desk\.thread-coder \(Claude Code\), unless[\s\S]*?for this message only\./,
-      to: "The coder is desk.thread-coder.",
-    },
+  "no-delegates": [
+    { file: join(WORKERS, "main", "WORKER.md"), from: ", desk.coder-plan, desk.coder-codex, desk.coder-cursor]", to: "]" },
+    { file: join(WORKERS, "lead", "WORKER.md"), from: ", desk.thread-coder-plan, desk.thread-coder-codex, desk.thread-coder-cursor]", to: "]" },
   ],
 };
 
@@ -103,6 +99,13 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     await sent.wait();
     const found = (await fsd.sessions.requests(sessionId, { includeResultOutput: true, limit: 30 })).find((r) => r.id === sent.id);
     return ((found?.result?.output as { tasks?: any[] } | undefined)?.tasks ?? []) as any[];
+  };
+  /** One task as the board's `getTask` reads it: unlike a listed row, it carries the task's output. */
+  const taskOf = async (flow: "agent" | "coordinator", sessionId: string, id: string): Promise<any> => {
+    const sent = await fsd.flow(flow).send("getTask_tasks", { id }, { sessionId });
+    await sent.wait();
+    const found = (await fsd.sessions.requests(sessionId, { includeResultOutput: true, limit: 30 })).find((r) => r.id === sent.id);
+    return (found?.result?.output as { task?: any } | undefined)?.task;
   };
   const until = async <T,>(check: () => Promise<T | undefined>, forMs: number, everyMs = 3_000): Promise<T | undefined> => {
     for (let waited = 0; waited < forMs; waited += everyMs) {
@@ -173,7 +176,10 @@ async function attempt(n: number, failures: string[], notes: string[], tell: Tel
     else {
       seen.add(plan.id);
       if (plan.assignee !== "desk.coder-plan") failures.push(`2: Plan first filed the change to ${plan.assignee}, not desk.coder-plan`);
-      const ended = await until(async () => (await rowsOf("agent", session)).find((t) => t.id === plan.id && SETTLED.has(t.status)), 20 * 60_000, 5_000);
+      const ended = await until(async () => {
+        const read = await taskOf("agent", session, plan.id);
+        return read !== undefined && SETTLED.has(read.status) ? read : undefined;
+      }, 20 * 60_000, 5_000);
       if (ended === undefined) failures.push("2: the plan task never settled");
       else {
         const output = JSON.stringify(ended.output ?? "");

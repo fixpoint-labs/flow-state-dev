@@ -22,10 +22,10 @@
  *   reported as a model's. At start, {@link startHarness} asks Claude Code for
  *   an account (`probeClaudeAccount`) and refuses to start without one.
  * - **`codex`** / **`cursor`**: Codex or Cursor through its SDK, each handed
- *   only its own environment pass-list (`CODEX_PASS`, `CURSOR_PASS`) and
- *   refused at start without a sign-in (`probeCodexAccount`, `cursorSignIn`),
- *   the same rule as Claude Code. Neither takes the project's MCP servers the
- *   Lab relays, nor reports usage windows.
+ *   only its own environment pass-list (`CODEX_PASS`, `CURSOR_PASS`). Neither
+ *   is asked for a sign-in at start: a run with none fails, and says why, in
+ *   the run itself. Neither takes the project's MCP servers the Lab relays,
+ *   nor reports usage windows.
  *
  * One harness serves the whole process; a choice per task is a later change.
  * Every real run may take {@link RUN_MINUTES_ENV} minutes,
@@ -38,8 +38,8 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CLAUDE_CODE_PASS, claudeCodeAgent, probeClaudeAccount, type ClaudeAccountProbe } from "@flow-state-dev/claude-code/sdk";
-import { CODEX_PASS, codexAgent, probeCodexAccount, type CodexAccountProbe } from "@flow-state-dev/codex";
-import { CURSOR_PASS, cursorAgent, cursorSignIn, type CursorSignIn } from "@flow-state-dev/cursor";
+import { CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
+import { CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
 import { harnessEnv } from "@flow-state-dev/core";
 import {
   mcpCredentialsCapability,
@@ -88,12 +88,12 @@ export function claudeCodeEnv(): Record<string, string> {
   return harnessEnv({ pass: CLAUDE_CODE_PASS });
 }
 
-/** The environment a Codex run gets, and the one its sign-in is probed with: only {@link CODEX_PASS}. */
+/** The environment a Codex run gets: only {@link CODEX_PASS}. */
 export function codexEnv(): Record<string, string> {
   return harnessEnv({ pass: CODEX_PASS });
 }
 
-/** The environment a Cursor run gets, and the one its sign-in is read with: only {@link CURSOR_PASS}. */
+/** The environment a Cursor run gets: only {@link CURSOR_PASS}. */
 export function cursorEnv(): Record<string, string> {
   return harnessEnv({ pass: CURSOR_PASS });
 }
@@ -303,28 +303,26 @@ export interface StartHarnessOptions {
   runMinutes?: string | undefined;
   /** Asks Claude Code for an account; `probeClaudeAccount` over the run's own environment by default. */
   probe?: () => Promise<ClaudeAccountProbe>;
-  /** Asks Codex for a sign-in; `probeCodexAccount` over {@link codexEnv} by default. */
-  probeCodex?: () => Promise<CodexAccountProbe>;
-  /** Reads Cursor's sign-in; `cursorSignIn` over {@link cursorEnv} by default. */
-  probeCursor?: () => Promise<CursorSignIn>;
   /** Where the start line goes; stderr by default. */
   log?: (line: string) => void;
 }
 
 /**
  * Pick a served Lab's coder at start: {@link selectHarness} with the profile's
- * default, then, on a real harness, ask it for a sign-in before the Lab listens.
+ * default, then, on Claude Code, ask it for an account before the Lab listens.
+ * Codex and Cursor are not asked: their readiness is reported, not refused.
  *
- * Two outcomes, run or refuse. With no sign-in, or no SDK, this throws a
- * message naming what to set, and never hands back the scripted run instead.
+ * On Claude Code, two outcomes, run or refuse. With no account, or no Agent
+ * SDK, this throws a message naming what to set, and never hands back the
+ * scripted run instead.
  * A start that goes ahead logs one line naming the coder and, on a real
  * harness, its run budget.
  *
  * @param defaultChoice The profile's coder when {@link HARNESS_ENV} names none.
  * @param options Seams for checks; a served Lab passes none.
  * @returns The chosen harness.
- * @throws When the choice or the budget is malformed, or a real harness was
- *   chosen and has no sign-in or no SDK.
+ * @throws When the choice or the budget is malformed, or Claude Code was
+ *   chosen and has no account or no SDK.
  */
 export async function startHarness(defaultChoice: HarnessChoice, options: StartHarnessOptions = {}): Promise<SelectedHarness> {
   const value = "value" in options ? options.value : process.env[HARNESS_ENV];
@@ -337,16 +335,8 @@ export async function startHarness(defaultChoice: HarnessChoice, options: StartH
     return harness;
   }
   const budget = `each run may take ${harness.runTimeoutMs / 60_000} minutes (${RUN_MINUTES_ENV})`;
-  if (harness.name === "codex") {
-    const account = await (options.probeCodex ?? (() => probeCodexAccount({ env: codexEnv() })))();
-    if (account.status !== "account") throw new Error(otherRefusalOf("Codex", account.reason, "Sign in with `codex login`, or set CODEX_API_KEY"));
-    log(`Coder: Codex, on ${account.source === "api-key" ? "CODEX_API_KEY" : "its saved login"}; ${budget}.`);
-    return harness;
-  }
-  if (harness.name === "cursor") {
-    const signIn = await (options.probeCursor ?? (() => cursorSignIn(cursorEnv())))();
-    if (signIn.status === "none") throw new Error(otherRefusalOf("Cursor", signIn.reason, "Sign in to Cursor, or set CURSOR_API_KEY"));
-    log(`Coder: Cursor, on ${signIn.status === "key" ? "CURSOR_API_KEY" : "its stored login"}; ${budget}.`);
+  if (harness.name === "codex" || harness.name === "cursor") {
+    log(`Coder: ${harness.name === "codex" ? "Codex" : "Cursor"}, not checked for a sign-in at start; ${budget}.`);
     return harness;
   }
   const account = await (options.probe ?? (() => probeClaudeAccount({ env: claudeCodeEnv() })))();
@@ -355,10 +345,6 @@ export async function startHarness(defaultChoice: HarnessChoice, options: StartH
   return harness;
 }
 
-/** Why a Lab on Codex or Cursor won't start, and what to set to start it. */
-function otherRefusalOf(harness: string, reason: string, fix: string): string {
-  return `${reason}, so this Lab's ${harness} coder can't run. ${fix}, and start again. To run the scripted coder instead, which needs no credential, set ${HARNESS_ENV}=stub.`;
-}
 
 /**
  * Where an account's credential comes from, for the start line: the key or

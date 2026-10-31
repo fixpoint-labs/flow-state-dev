@@ -28,7 +28,7 @@ a tree from the project.
 Which coder takes a code change: `desk.coder` (Claude Code), unless the user's message ends with a
 `Coder:` line or the user names one in words. `Coder: Plan first`, or "plan it first", goes to
 `desk.coder-plan`, which reads and changes nothing: its goal asks for a plan of the change, not the
-change, and once the user has read the plan, the change itself goes to the coder they pick then.
+change, that names the files it read and what they hold, and once the user has read the plan, the change itself goes to the coder they pick then.
 `Coder: Codex` goes to `desk.coder-codex`, and `Coder: Cursor` to `desk.coder-cursor`. The line
 is the user's choice for this message only; it says nothing about other pieces of work.
 

@@ -41,8 +41,13 @@ needs `ANTHROPIC_API_KEY`.
 
 **Controls** (`GOAL_CONTROL=<name>`; each plants its change for the run and puts it back):
 - `no-hint`: the composer sends what you typed without the chip's line. Must FAIL signals 1 and 3.
-- `no-route`: the routing text taken out of `desk.main`'s and `desk.lead`'s files, their delegates
-  kept. Must FAIL signals 1 and 3.
+- `no-delegates`: the new coders taken off `desk.main`'s and `desk.lead`'s delegates, the routing
+  text kept. Must FAIL signals 1 and 3.
+
+A first control, `no-route` (the routing text taken out, the delegates kept), **passed**: the
+`Coder:` line and each coder's own description route the change without it. So the routing text
+isn't what files a change to the right coder; the delegate list and the line are, and the
+controls plant those.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

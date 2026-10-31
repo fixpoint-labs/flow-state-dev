@@ -154,8 +154,8 @@ uses its own default: `stub` for DevTeam, `claude-code` for `fsd`.
 |---|---|
 | `stub` | The scripted coder, no model. It says what it's doing in the run's session and commits one file, so the row settles `completed`. |
 | `claude-code` | Claude Code through its Agent SDK, set up as the honesty check sets it up. At start the Lab asks Claude Code for an account (a sign-in or an Anthropic key) and refuses to start without one, naming what to set. Nothing falls back to the scripted coder (`stub`). |
-| `codex` | Codex through its SDK, handed only `CODEX_PASS` from the server's environment. At start the Lab asks Codex for a sign-in (`codex login` or `CODEX_API_KEY`) and refuses to start without one, the same way. |
-| `cursor` | Cursor through its SDK, in a process of its own handed only `CURSOR_PASS`. At start the Lab reads Cursor's sign-in (a stored login or `CURSOR_API_KEY`) and refuses to start without one, the same way. |
+| `codex` | Codex through its SDK, handed only `CODEX_PASS` from the server's environment. It needs `codex login` or `CODEX_API_KEY`; the Lab doesn't check at start, so a run with neither fails and says why. |
+| `cursor` | Cursor through its SDK, in a process of its own handed only `CURSOR_PASS`. It needs a stored login or `CURSOR_API_KEY`; the Lab doesn't check at start, so a run with neither fails and says why. |
 
 Codex and Cursor don't take the project's MCP servers the Lab relays, and report no usage
 windows, so Usage shows Claude Code only. One coder serves the whole process.

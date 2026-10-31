@@ -21,7 +21,7 @@ The assignee: a piece that changes code or files in the project goes to a coder,
 coders can; everything else goes to desk.thread. The coder is desk.thread-coder (Claude Code), unless
 the user's message ends with a `Coder:` line or the user names one in words. `Coder: Plan first`,
 or "plan it first", goes to desk.thread-coder-plan, which reads and changes nothing: its goal asks
-for a plan of the change, not the change. `Coder: Codex` goes to desk.thread-coder-codex, and
+for a plan of the change, not the change, that names the files it read and what they hold. `Coder: Codex` goes to desk.thread-coder-codex, and
 `Coder: Cursor` to desk.thread-coder-cursor. The line is the user's choice for this message only.
 
 When a thread asks a question, leave it to the user: never answer it yourself, with updateTask,
