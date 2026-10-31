@@ -52,3 +52,9 @@ controls plant those.
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-10-31 | 1971676 (local) | openai/gpt-5.4, Claude Code | FAIL | Signals 1 and 3 passed. Signal 2 read the plan off `listTasks`, which carries no output; the check now reads it with `getTask` |
+| 2026-10-31 | 1971676+wip (local) | openai/gpt-5.4, Claude Code | FAIL | Signals 1 and 3 passed. Signal 2: the goal judge read the plan as "not done" ("doesn't show the work, such as reading the code"), and the retry ended errored. The routing text now has a plan goal name the files it read and what they hold |
+| 2026-10-31 | 1971676+wip (local) | openai/gpt-5.4 | FAIL (control `no-hint`) | Signals 1, 2 and 3: every change went to `desk.coder` / `desk.thread-coder`, and Plan first's line was committed |
+| 2026-10-31 | 1971676+wip (local) | openai/gpt-5.4, Claude Code | PASS (control `no-route`, since replaced) | The routing text isn't what routes: the `Coder:` line and the coders' own descriptions do. Replaced by `no-delegates` |
+| 2026-10-31 | d4e72dd (local) | openai/gpt-5.4, Claude Code | PASS | Attempt 1 of 3: filed to `desk.coder-codex`; `desk.coder-plan` answered a 1,933-character plan and nothing was committed; `desk.thread-coder-codex`, card and row tagged Codex |
+| 2026-10-31 | d4e72dd (local) | openai/gpt-5.4 | FAIL (control `no-delegates`) | Signal 1 went to `desk.coder`; signal 2 filed no coding task; signal 3 went to `desk.thread-coder`, untagged Codex |
