@@ -11,6 +11,7 @@ owner before drafting; they are recorded so no child reopens them.
 ```mermaid
 flowchart TD
   E["FIX-2367"] --> D1["D1 · six issues and a closure, now"]
+  D1 -.->|"rejected · a store read per viewer per second"| X1c["widen the session stream"]
   D1 -.->|"rejected · misses a second process"| X1["in-process fan-out only"]
   D1 -.->|"rejected · a paid service to run locally"| X1b["Ably only"]
   E --> D2["D2 · a notice, never rows · signed off"]
@@ -20,6 +21,8 @@ flowchart TD
   D4 -.->|"rejected · a stream per topic"| X4["SSE per topic"]
   E --> D5["D5 · two seams, bus and delivery"]
   D5 -.->|"rejected · Postgres writes a socket"| X5["one transport adapter"]
+  D5 -.->|"rejected · keyed by one request"| X5b["extend StreamBridge"]
+  E --> O1["open · does the bus wake the session stream?"]
 ```
 
 Solid edges are the calls. Dashed edges lost, and the label says why.
@@ -29,16 +32,18 @@ Solid edges are the calls. Dashed edges lost, and the label says why.
 
 | | |
 |---|---|
-| **Instead of** | FIX-1506 alone, as an in-process fan-out inside the engine · or Ably alone |
-| **Because** | A fan-out in one process passes on `fsdev dev` and fails the first time a host runs two. Ably alone reaches every process, but makes a paid service the only way to get push, including on a laptop. The bus with an in-memory default and a Postgres adapter covers both, and Ably then fills the serverless case |
-| **Locks in** | An epic slot while the active-epic cap is already exceeded (the owner asked for this one). A collapse trigger on the Postgres bus: cut it if no host we support runs more than one process |
+| **Instead of** | Widening `GET /sessions/:id/stream`'s once-a-second store read to user and org scopes · FIX-1506 alone, in process · Ably alone |
+| **Because** | The session stream already crosses processes on every store, so widening it is the cheapest set, about two issues. Its price is a store read every second for every open view of every scope, whether anything changed. An in-process fan-out fails today: BullMQ's `dispatch-only` and `worker-only` modes run actions in other processes. Ably alone makes a paid service the only way to get push, even on a laptop. The bus reads only after a notice, and Ably then fills the serverless case |
+| **Locks in** | An epic slot while the active-epic cap is already exceeded (the owner asked for this one). The Postgres bus is no longer a collapse candidate |
 
-**What would change my mind:** evidence that no deployment we care about runs more than one
-process. Then FIX-1506 plus the delivery child is the set.
+**What would change my mind:** evidence that a store read each second per open view is cheap at
+the viewer counts we target. Then widen the session stream to user and org scopes, and cut the
+bus, the Postgres bus and the socket.
 
-![D1: a push channel worth six issues and a closure. Chosen: bus, Postgres, socket, beside an in-process fan-out and beside Ably only. Decides it: a viewer on another process. Price: six issues and a closure. Flips if no host we support runs more than one process](figures/d1-worth-it.svg)
+![D1: a push channel worth six issues and a closure. Chosen: bus, Postgres, socket, beside widening the session stream and an in-process fan-out. Decides it: what an open view costs the store. Price: six issues and a closure. Flips if a store read each second per viewer is cheap at the viewer counts we target](figures/d1-worth-it.svg)
 
-It comes down to a viewer on another process: the in-process fan-out never reaches it.
+It comes down to what an open view costs: the widened stream reads every second, the bus only on
+a change.
 
 <a name="d2"></a>
 ## D2 · A push carries a notice, never rows · signed off
@@ -87,9 +92,9 @@ It comes down to watching one more topic: SSE opens another stream for it.
 
 | | |
 |---|---|
-| **Instead of** | One transport adapter that does both |
-| **Because** | The adapters split differently. Postgres crosses processes but holds no client sockets; the Node host holds sockets but can't cross processes; Ably does both. With one seam, a Postgres user writes a socket server to cross a process. The bus sits in the stores profile because the database that carries it is configured there; delivery sits at the host because only the host knows it can hold a socket |
-| **Locks in** | A `bus` slot in `CapabilitySlotMap`. Two places to configure. One notice shape across both seams (ER-1) |
+| **Instead of** | One transport adapter that does both · extending `StreamBridge` (`engine/src/transports/runner.ts`; Redis in `bullmq/src/stream-bridge.ts`, configured with `worker:`) · a missing `bus` slot that fails loudly |
+| **Because** | The adapters split differently. Postgres crosses processes but holds no client sockets; the Node host holds sockets but can't cross processes; Ably does both. With one seam, a Postgres user writes a socket server to cross a process. The bus sits in the stores profile because the database that carries it is configured there; delivery sits at the host because only the host knows it can hold a socket. `StreamBridge` is keyed by one request, ends with its result and carries abort; a topic outlives every request, so the bus is a sibling that keeps the bridge's invariant (stores persist, the push is best-effort). `resolveStores` fills a missing piece in memory, so a Postgres primary with no `bus` slot would run single-process without a word. The primary adapter backs `bus` when the profile names none and it declares the slot; a loud failure instead would break every single-process Postgres app that never asked for push |
+| **Locks in** | A `bus` slot in `CapabilitySlotMap`, defaulting to the primary adapter's. Two places to configure. One notice shape across both seams (ER-1) |
 
 **What would change my mind:** an adapter we'd ship that fills only the delivery seam turning out
 to need the bus's internals, or every adapter we'd ship filling both.
@@ -109,9 +114,9 @@ Every rule has one owner. Read a row to see where a rule is made and where it is
 |---|---|---|---|
 | ER-1 | A notice names a topic and a change kind. It never carries rows ([D2](#d2)) | the bus | Every child's spec review |
 | ER-2 | Topics come only from the session, user and org scopes, optionally narrowed to one resource under them. No child invents a topic of its own | the bus | Each publisher's spec review |
-| ER-3 | Every publisher publishes through the one bus. No child adds a second channel, in a product ticket or a lab | the bus | Every child's spec review |
-| ER-4 | A subscribe is checked on the server, from the caller's trusted identity, by the check the scope's read route already uses (BP-031). Never a claim the client sends; never a second check | delivery | Delivery's and FIX-380's spec review; closure leg c |
-| ER-5 | Every client hook goes through `client.subscribe`, and polls when `GET /capabilities` says there is no push | delivery | FIX-1506's and the task board's spec review |
+| ER-3 | Every new publisher publishes through the one bus. The session stream is the one live path already beside it ([open](#open)); no child adds another, in a product ticket or a lab | the bus | Every child's spec review |
+| ER-4 | A subscribe is checked on the server, from the caller's trusted identity, by the check the scope's read route already uses (BP-031), on every connect and reconnect, not only the first (FIX-1620). Never a claim the client sends; never a second check | delivery | Delivery's and FIX-380's spec review; closure leg c |
+| ER-5 | Every client hook goes through `client.subscribe`, and polls when `GET /capabilities` says there is no push. One obvious way per scope: a scope `live: true` already watches gets no second hook | delivery | FIX-1506's and the task board's spec review |
 | ER-6 | Notices are at most once: no replay, no acks, nothing stored. A client reads again on connect and reconnect | the bus | Each adapter's spec review |
 | ER-7 | SSE request and item streams don't change. Only notices and subscribe messages travel on the socket ([D4](#d4)) | delivery | Delivery's spec review |
 
@@ -120,7 +125,8 @@ Every rule has one owner. Read a row to see where a rule is made and where it is
 | Seam | Between | Rule |
 |---|---|---|
 | The notice and topic shape | the bus · every publisher · delivery · FIX-380 | The bus defines it once (ER-1, ER-2). A child that needs a field comments up here |
-| The `bus` slot in `resolve-slots.ts` | the bus · Postgres bus · FIX-380 | The bus adds the slot; an adapter declares it in its `capabilities` |
+| The `bus` slot in `resolve-slots.ts` | the bus · Postgres bus · FIX-380 | The bus adds the slot and its default to the primary; an adapter declares it in its `capabilities` |
+| The task board's topic | the task board child · the bus | The conversation's session topic, published from whichever process settles the task |
 | The user-stream route and `GET /capabilities` | delivery · FIX-380 | Delivery owns what capabilities reports. FIX-380 reports its own kind and mints its token through the ER-4 check |
 | The resource hooks' invalidation | FIX-1506 · delivery | One invalidation path with two sources: the writer's own `resource_change` item and the notice. The writer's tab reads once, not twice |
 | Shift Manager's `TasksPanel` and the Teammates lab's `adapter.ts` polls | the task board child | Only that child turns them into the fallback |
@@ -141,15 +147,37 @@ None built for this revision. The coordinator can dispatch one if review doubts 
 
 ## Analysis
 
-Not run on this revision: the drafting session had no way to dispatch the analysis sub-agent.
-The reuse table in [SPEC.md](SPEC.md#whats-already-here-and-the-debt) was checked against the
-code by hand (the user-stream route, the capabilities flag, the Postgres notifier and the slot
-map were found that way, and each became an *extend* rather than a new piece). The `analysis`
-and `reuse-review` pass is owed before the gate.
+The pre-gate `analysis` and `reuse-review` pass found the baseline wrong: the session stream
+already crosses processes for one session. Folded: the goal, D1's alternatives and flip, D5's
+`StreamBridge` verdict and bus default, ER-3 to ER-5, and the reuse rows. One new hold, below.
 
 ## How it got here
 
 - **Drafted (Oct 31)** — six issues and a closure under one outcome. D2, D3 and D4 came signed
   off; D1 and D5 are the asks. Docs folded into the delivery child instead of a row.
+- **Analysis folded (Oct 31)** — the baseline corrected to the session stream; the Postgres bus
+  kept, since BullMQ already runs two processes.
 
-**Open: none.**
+<a name="open"></a>
+## Open · Does the bus wake the session stream's read?
+
+**In plain terms.** The session stream reads the store about once a second for every open
+connection, whether or not anything changed. Once the bus exists, a request writing to the
+session could publish a notice, and the stream could read only when one arrives.
+
+**The trade-off.** Woken: one live path, and no read for an idle view; but the stream's
+cross-process reach then depends on the bus, so an in-memory bus on two processes or a
+serverless host must keep the timed read as its fallback. Left alone: no risk to a working
+route, and the cost of every open view stays as it is, as a second live path listed under
+*Leaves*.
+
+**Recommendation:** woken by the bus, in the bus child: it gives the bus a real consumer the day
+it lands, and the delivery child is already the largest. The timed read stays as a slow
+fallback where the bus can't cross processes.
+
+**What would change my mind:** the session stream's read cost measured as negligible at our
+viewer counts, or the bus child unable to land the wake without the delivery child.
+
+**What being wrong costs:** woken wrongly, a regression in a route that works today across
+processes; left wrongly, every open view keeps paying a store read a second, beside a bus built
+to remove it.
