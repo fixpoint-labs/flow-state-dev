@@ -101,6 +101,27 @@ describe("a board's task actions, through the Inbox client, on a real conversati
     }
   }, 30_000);
 
+  it("retries a failed task: the same id runs again and finishes", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "pm");
+      const filing = await host.filingOf("alice", conv);
+      const row = (id: string) => host.row("alice", filing, id);
+      const tasks = createInboxClient(host.fsd("alice")).board({ flowId: "coordinator", sessionId: conv, board: "tasks" });
+      const id = await file(host, conv, { goal: "[fail-until:2] Audit licenses", assignee: "eng.tasker", maxAttempts: 1 });
+      await until(() => row(id), (r) => r?.status === "errored", "the task never failed");
+      await tasks.retry(id);
+      const done = await until(() => row(id), (r) => r?.status === "completed", "the retried task never finished");
+      expect(done?.id).toBe(id);
+      expect(host.runs.filter((r) => r.taskId === id).map((r) => r.attempt)).toEqual([1, 2]);
+      // A finished task isn't retried, in the board's words.
+      await expect(tasks.retry(id)).rejects.toThrow(/follow-up|completed/);
+      await host.settled();
+    } finally {
+      await host.dispose();
+    }
+  }, 30_000);
+
   it("control wrong-board: actions bound to a board the flow doesn't have refuse every leg, and write nothing", async () => {
     const host = bootBoardHost();
     try {
@@ -112,6 +133,7 @@ describe("a board's task actions, through the Inbox client, on a real conversati
       await expect(tasks.release(id)).rejects.toThrow();
       await expect(tasks.steer(id, "x")).rejects.toThrow();
       await expect(tasks.cancel(id)).rejects.toThrow();
+      await expect(tasks.retry(id)).rejects.toThrow();
       await expect(tasks.refile({ goal: "Audit licenses", assignee: "eng.tasker" })).rejects.toThrow();
       expect((await host.row("alice", filing, id))?.status).toBe("held");
       expect((await host.rows("alice")).length).toBe(1);

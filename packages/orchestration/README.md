@@ -1356,6 +1356,7 @@ const tasks = createInboxClient(client).board({ flowId, sessionId, board: "tasks
 
 await tasks.release(taskId);                 // a held task may start
 await tasks.steer(taskId, "Skip the archived repos");
+await tasks.retry(failedId);                 // same id, history and spend, one more try
 const alsoCancelled = await tasks.cancel(taskId); // the dependents it took along
 const newId = await tasks.refile(row, { goal: "Audit active repos only" });
 ```

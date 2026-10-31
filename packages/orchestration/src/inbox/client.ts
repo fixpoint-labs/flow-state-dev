@@ -6,8 +6,8 @@
  * board's `updateTask` action on the session that holds the board, as the
  * signed-in user (FIX-2133 D1). The routing lives here and nowhere else.
  *
- * It also holds a board's task actions (FIX-2381): cancel, steer, release and
- * re-file, bound to a board with `board(at)`, through the same send-and-read
+ * It also holds a board's task actions (FIX-2381): cancel, steer, release, retry
+ * and re-file, bound to a board with `board(at)`, through the same send-and-read
  * routine the row answers use, so an app names no board action and builds no
  * payload of its own.
  */
@@ -127,6 +127,11 @@ export type TaskActions = {
   /** Release held task `id`, so it may start. */
   release(id: string): Promise<void>;
   /**
+   * Retry failed or cancelled task `id` (FIX-2383): the same task back to
+   * waiting, keeping its id, history and spend, with one more try.
+   */
+  retry(id: string): Promise<void>;
+  /**
    * File `row` again as a new task: its goal, title, context, assignee,
    * labels and priority, with `overrides` winning. For a task that should run
    * again changed. Resolves to the new task's id.
@@ -160,6 +165,9 @@ function taskActionsAt(client: Client, at: TaskBoardAt): TaskActions {
     async release(id) {
       await send(update, { id, status: "pending" });
     },
+    async retry(id) {
+      await send(taskActionName("retryTask", at.board), { id });
+    },
     async refile(row, overrides = {}) {
       const output = await send(taskActionName("createTask", at.board), refiled(row, overrides));
       if (typeof output.taskId !== "string") throw new Error("The board filed the task and named no id for it.");
@@ -178,7 +186,7 @@ export type InboxClient = {
   /** Answer one hold, as an item's are answered: for a hold drawn on its own, such as an ask in a task's session view. */
   answerOne(hold: InboxHold<unknown>, answer: InboxAnswer): Promise<void>;
   /**
-   * A board's task actions (cancel, steer, release, re-file), bound to where
+   * A board's task actions (cancel, steer, release, retry, re-file), bound to where
    * the board runs. Answering a task's question stays {@link answerOne}'s.
    */
   board(at: TaskBoardAt): TaskActions;
