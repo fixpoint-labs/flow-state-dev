@@ -64,6 +64,12 @@ how a terminal row reopens, who may ask, and what the attempt budget says.
 - **E5 · The board starts the row** the way a release does: Workforce's conversation board owes
   and triggers its pass after the write (`owePass`, `triggerPass`). A row back at `pending` alone
   schedules nothing.
+- **E6 · A retried row waits like a new one, with nothing of the last attempt open.** Until its
+  next claim the row is `retryPending` and holds no session (Workforce's one-open-task rule and
+  the routed-session record), so it can't lock out the row running there or another retried
+  row. The retry closes what ended with the attempt: a resumed wait slot is freed, unanswered
+  questions are dropped (answered ones stay beside their steers). Found in Codex's review of
+  the build.
 
 ## How it got here
 
