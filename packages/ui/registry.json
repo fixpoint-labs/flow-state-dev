@@ -550,6 +550,34 @@
         "target": "components/flow-state/generative/link-card.tsx"
       }],
       "categories": ["ai", "generative"]
+    },
+    {
+      "name": "connection-banner",
+      "title": "Connection Banner",
+      "type": "registry:component",
+      "description": "Thin bar that says the server is gone, read from a session feed's state, plus isFeedStale and STALE_CLASS for greying status lines while it shows.",
+      "dependencies": ["lucide-react"],
+      "registryDependencies": ["button", "tokens"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/connection-banner.tsx",
+        "target": "components/flow-state/connection-banner.tsx"
+      }],
+      "categories": ["framework"]
+    },
+    {
+      "name": "connection-screen",
+      "title": "Connection Screen",
+      "type": "registry:component",
+      "description": "Full-screen page for a failed first read: refused (no retry) or unreachable (Retry, plus an automatic retry with backoff).",
+      "dependencies": [],
+      "registryDependencies": ["button"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/connection-screen.tsx",
+        "target": "components/flow-state/connection-screen.tsx"
+      }],
+      "categories": ["framework"]
     }
   ]
 }
