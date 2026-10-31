@@ -188,6 +188,13 @@ export const EXCEPTIONS = [
     why: "the English 'room for'",
   },
   {
+    id: "landing-room-metaphor",
+    terms: ["room"],
+    where: (path) => path === "apps/build-site/public/index.html",
+    strip: /\binside their room\b|\brebuild the room\b/g,
+    why: "flow-state.build's headline metaphor (an assistant's room you can rebuild), not the retired coordinator term",
+  },
+  {
     id: "project-member",
     terms: ["member"],
     strip: /\b(?:project|org|organization|team)(?:'s)?\s+members?\b|\b(?:project|org)Members?\b|\bmembers\??\s*:|\bmembers\?(?=,)|\bone of its members\b|\.members\b|["'`]members["'`]|\bisMember\b|\bnot-a-member\b|\bprivate-has-members\b|\bnon-members?\b|\b(?:is|are|aren't|isn't|they're|not) a member of\b|\ba member of any team\b|\bmembers? of (?:both|the default) projects\b|\bmembers?\s+of\s+(?:the |a |an |that |this |its |their |your |every )?(?:shared |private )?(?:project|org|organization|team)s?\b|\b[Mm]embers only\b|\bLAB_USERS\.member\b|\bas: "member"|\bmember(?=: \{ userId)|\bu_devforce_member\b|\bdevforce-lab-verified-member\b/g,

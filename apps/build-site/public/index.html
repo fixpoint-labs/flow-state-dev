@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flow State · Software that reshapes itself around you</title>
+<meta name="description" content="Start from an app that already works. Tell it how you work, and it rebuilds its own screens, sidebar and helpers while you use it.">
+<meta property="og:title" content="Flow State · Software that reshapes itself around you">
+<meta property="og:description" content="Start from an app that already works. Tell it how you work, and it rebuilds itself around you.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=Space+Grotesk:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="fb">
+<div class="fb-page">
+
+<nav class="nav" aria-label="Flow State sites">
+<a class="brand" href="#top" aria-label="Flow State for everyone">
+<svg viewBox="0 0 150 90" aria-hidden="true" style="display: block; width: 46px; height: auto; overflow: visible;"><g fill="none" stroke="rgba(27,26,21,.55)" stroke-width="1.6" stroke-dasharray="3 5"><path d="M0 45 H31"><animate attributeName="stroke-dashoffset" from="0" to="-16" dur="0.8s" repeatCount="indefinite"></animate></path><path d="M119 45 H150"><animate attributeName="stroke-dashoffset" from="0" to="-16" dur="0.8s" repeatCount="indefinite"></animate></path><path d="M0 18 C40 18 50 12 75 12 C100 12 110 18 150 18"><animate attributeName="stroke-dashoffset" from="0" to="-16" dur="0.8s" repeatCount="indefinite"></animate></path><path d="M0 72 C40 72 50 78 75 78 C100 78 110 72 150 72"><animate attributeName="stroke-dashoffset" from="0" to="-16" dur="0.8s" repeatCount="indefinite"></animate></path></g><g fill="none" stroke="#1b1a15" stroke-width="6"><path d="M31 45 Q53 7 75 45 Q53 83 31 45 Z"></path><path d="M53 45 Q75 7 97 45 Q75 83 53 45 Z"></path><path d="M75 45 Q97 7 119 45 Q97 83 75 45 Z"></path></g></svg>
+<b>Flow State</b><small>.build</small>
+</a>
+<div class="doors" role="group" aria-label="Choose your door">
+<a class="on" href="#top" aria-current="page">For everyone <span>.build</span></a>
+<a href="https://flow-state.dev">For developers <span>.dev</span></a>
+</div>
+</nav>
+
+<header class="hero" id="top">
+<div class="hero-copy">
+<span class="label">Flow State · early access</span>
+<h1>Software that reshapes itself <span class="voice">around <mark>you.</mark></span></h1>
+<p class="lede">Start from an app that already works. Tell it how you work, and it rebuilds its own screens, sidebar and helpers while you use it. The helpers keep working after you close the laptop.</p>
+<div class="join">
+<form id="join" novalidate>
+<label for="fb-email" style="position: absolute; left: -9999px;">Email</label>
+<input id="fb-email" type="email" placeholder="you@yourcompany.com" autocomplete="email" required>
+<input name="company" tabindex="-1" autocomplete="off" aria-hidden="true" style="position: absolute; left: -9999px;">
+<button type="submit">Join the waitlist</button>
+</form>
+<p class="note" id="joinNote" aria-live="polite">Early access opens to a small group first.</p>
+</div>
+</div>
+
+<div class="stage">
+<div class="demo" id="demo" data-step="0">
+<div class="win" role="img" aria-label="Demo: a founder asks a plain chat app to reorganize around investor updates and customer calls. The sidebar rebuilds, the home screen becomes a morning briefing, and a helper drafts Friday's investor update.">
+<div class="win-bar"><i></i><i></i><i></i><span class="t">Maya's workspace</span><span class="status"><b></b>Reshaping</span></div>
+<div class="app">
+<aside class="side">
+<div class="item on old"><span class="ic"></span>New chat</div>
+<div class="item new on"><span class="ic round"></span>Morning briefing</div>
+<div class="grp new">Your week</div>
+<div class="item new"><span class="ic"></span>Investor updates<span class="worker" title="A helper is working"></span></div>
+<div class="item new"><span class="ic"></span>Customer calls</div>
+<div class="grp">Chats</div>
+<div class="item">Pricing ideas</div>
+<div class="item">Hiring a designer</div>
+<div class="item">Lisbon offsite</div>
+</aside>
+<div class="main">
+<div class="pane chat">
+<div class="empty"><span class="voice">How can I help?</span><span class="label">The same blank box everyone gets</span></div>
+<div class="bubble" id="bubble"></div>
+<div class="reply">
+<span>→ Adding Investor updates and Customer calls</span>
+<span>→ Turning your home into a morning briefing</span>
+<span>→ Hiring a helper for Friday updates</span>
+</div>
+<div class="composer"><span class="txt" id="typed"></span><span class="send" aria-hidden="true">↑</span></div>
+</div>
+<div class="pane brief">
+<div class="date">Friday, Nov 6 · 7:00</div>
+<h4>Good morning, Maya.</h4>
+<div class="cards">
+<div class="card">
+<span class="k">Customer calls today</span>
+<div class="row"><span>Northwind renewal</span><b>11:00</b></div>
+<div class="row"><span>Acme onboarding</span><b>3:30</b></div>
+</div>
+<div class="card hide-sm">
+<span class="k">This week</span>
+<div class="row"><span>Revenue / mo</span><b>$18.4k</b></div>
+<div class="row"><span>vs last week</span><b>+6%</b></div>
+</div>
+<div class="card wide draft">
+<span class="k">Investor update · due today</span>
+<span class="pending">A helper is pulling this week's numbers…</span>
+<div class="ready">
+<p>Draft ready: revenue up 6%, Acme signed, one hire in progress. Two questions for you before it goes out.</p>
+<div class="acts"><span>Review draft</span><span>Edit tone</span></div>
+</div>
+</div>
+</div>
+</div>
+<div class="hood" aria-hidden="true">
+<span class="label">Under the hood: what Maya's request became</span>
+<div class="flow">
+<span class="name">Morning briefing</span>
+<div class="chain"><span class="blk"><em>when</em>weekdays 7:00</span><span class="arrow">→</span><span class="blk"><em>read</em>calendar + numbers</span><span class="arrow">→</span><span class="blk"><em>write</em>briefing</span><span class="arrow">→</span><span class="blk"><em>show</em>as home</span></div>
+</div>
+<div class="flow">
+<span class="name">Investor update helper</span>
+<div class="chain"><span class="blk"><em>when</em>Fridays</span><span class="arrow">→</span><span class="blk"><em>read</em>this week</span><span class="arrow">→</span><span class="blk"><em>write</em>draft</span><span class="arrow">→</span><span class="blk"><em>wait</em>for Maya</span></div>
+</div>
+<div class="flow">
+<span class="name">Sidebar</span>
+<div class="chain"><span class="blk"><em>+</em>Investor updates</span><span class="blk"><em>+</em>Customer calls</span></div>
+</div>
+<span class="hood-caption">Every change is real software Maya owns, and she can change it again any time.</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<ol class="steps" id="steps"><li><b>01</b>Plain app</li><li><b>02</b>Say how you work</li><li><b>03</b>It reshapes</li><li><b>04</b>New home</li><li><b>05</b>A helper drafts</li><li><b>06</b>How it’s built</li></ol>
+<div class="ctrl">
+<span class="hint" id="hint" aria-live="polite">Starting the demo</span>
+<div class="btns">
+<button type="button" id="play">Play</button>
+<button type="button" id="hoodBtn" aria-pressed="false">Under the hood</button>
+</div>
+</div>
+</div>
+</header>
+
+<section class="band" aria-labelledby="why-title">
+<div class="split">
+<div class="l">
+<span class="label">Why this is different</span>
+<h2 id="why-title">Other assistants build inside their room. <span class="voice">Flow State lets you rebuild the room.</span></h2>
+</div>
+<div class="r">
+<div class="compare">
+<div>
+<span class="label">A great assistant</span>
+<h3>Makes things for you</h3>
+<ul><li>Answers and documents appear inside its chat</li><li>The app looks the same for everyone</li><li>Your way of working bends to the tool</li></ul>
+</div>
+<div>
+<span class="label" style="color: #1b1a15;">A workspace that becomes yours</span>
+<h3>Becomes the thing you need</h3>
+<ul style="color: #1b1a15;"><li>Screens, sidebar and home page change when you ask</li><li>Helpers keep working while you're away</li><li>The tool bends to the way you work</li></ul>
+</div>
+</div>
+<div class="body"><p>Start from something that works, then say what you'd change. There's no setup to learn, no template to pick, and nothing technical to open.</p></div>
+</div>
+</div>
+<div class="ideas">
+<div><span class="label">A coach</span><q>Put each client in the sidebar and prep me before every session.</q><p>A section per client, with notes and a prep brief ready before each call.</p></div>
+<div><span class="label">A shop owner</span><q>Start my day with what sold, what's low, and who's waiting on a reply.</q><p>A morning screen instead of five tabs, and a helper that drafts the replies.</p></div>
+<div><span class="label">A writer</span><q>Hide everything except today's chapter and my research.</q><p>A quieter app with fewer buttons, shaped around deep work.</p></div>
+</div>
+</section>
+
+<section class="band alt" aria-labelledby="own-title">
+<div class="split">
+<div class="l">
+<span class="label">Yours to keep</span>
+<h2 id="own-title">Every change you ask for is <span class="voice">real software you own.</span></h2>
+</div>
+<div class="r">
+<div class="body"><p>Behind the friendly surface, your requests become the same open-source building blocks engineers use. Nothing is a mock-up, and nothing is locked inside someone else's product.</p></div>
+<div class="own">
+<div><h3>Any AI you like</h3><p>Works with models from any AI lab, so you can switch whenever a better one comes out.</p></div>
+<div><h3>Your work stays yours</h3><p>Your notes, files and helpers live with you, not inside a company you rent from.</p></div>
+<div><h3>Share what you make</h3><p>Built something that works? Share it, or start from what others made.</p></div>
+</div>
+<div><a class="btn" href="https://flow-state.dev">For developers: see how it's built on flow-state.dev →</a></div>
+</div>
+</div>
+</section>
+
+<section class="close" aria-labelledby="close-title">
+<span class="label">The idea</span>
+<h2 id="close-title">Software made for an audience of one. <span class="voice">You.</span></h2>
+<p style="color: #3d3a32; max-width: 54ch; font-size: 18px;">Everyone will work with AI. The app you work in should fit you as well as the work does. Flow State is open source, so the world can find better ways to work instead of waiting for one company to ship them.</p>
+<a class="btn btn-hi" href="#top">Join the waitlist ↑</a>
+</section>
+
+<footer class="foot">
+<span style="padding: 12px 0;">Flow State · Fixpoint Labs</span>
+<span style="display: flex; gap: 20px;"><a href="#top">flow-state.build</a><a href="https://flow-state.dev">flow-state.dev</a></span>
+</footer>
+
+</div>
+</div>
+<script>
+/* Hero demo: types Maya's request, then steps the app through its reshape and loops. */
+(function () {
+  var demo = document.getElementById("demo"), typed = document.getElementById("typed"), bubble = document.getElementById("bubble");
+  var steps = Array.prototype.slice.call(document.querySelectorAll("#steps li"));
+  var playBtn = document.getElementById("play"), hoodBtn = document.getElementById("hoodBtn"), hint = document.getElementById("hint");
+  var REQ = "I run my week around investor updates and customer calls. Give me a section for each, and start my mornings with a briefing instead of an empty chat box.";
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var timers = [];
+  if (reduce) document.querySelectorAll("svg").forEach(function (svg) { if (svg.pauseAnimations) svg.pauseAnimations(); });
+  function at(ms, fn) { timers.push(setTimeout(fn, ms)); }
+  function clear() { timers.forEach(clearTimeout); timers = []; }
+  function setStep(n) {
+    demo.dataset.step = n;
+    steps.forEach(function (li, i) { li.className = i === n - 1 || (n === 0 && i === 0) ? "on" : i < n - 1 ? "done" : ""; });
+    hoodBtn.setAttribute("aria-pressed", n === 6 ? "true" : "false");
+    hoodBtn.classList.toggle("pressed", n === 6);
+  }
+  function run() {
+    at(2600, function () { setStep(3); });
+    at(4000, function () { setStep(4); });
+    at(6400, function () { setStep(5); });
+    at(10200, function () { setStep(6); hint.textContent = "The same app, now shaped around Maya"; });
+    at(16000, play);
+  }
+  function play() {
+    clear(); setStep(1); typed.textContent = ""; bubble.textContent = "";
+    hint.textContent = "Watch Maya reshape her app"; playBtn.textContent = "Replay";
+    if (reduce) { bubble.textContent = REQ; setStep(2); run(); return; }
+    typed.classList.add("typing");
+    var caret = document.createElement("span"); caret.className = "caret";
+    var i = 0;
+    (function type() {
+      typed.textContent = REQ.slice(0, i); typed.appendChild(caret);
+      if (i < REQ.length) { i += 1; at(i < 4 ? 120 : 24, type); }
+      else at(500, function () { bubble.textContent = REQ; typed.textContent = ""; typed.classList.remove("typing"); setStep(2); run(); });
+    })();
+  }
+  playBtn.addEventListener("click", play);
+  hoodBtn.addEventListener("click", function () {
+    clear(); typed.classList.remove("typing"); typed.textContent = "";
+    if (demo.dataset.step === "6") { setStep(5); hint.textContent = "The same app, now shaped around Maya"; }
+    else { bubble.textContent = REQ; setStep(6); hint.textContent = "The change, as building blocks"; }
+  });
+  play();
+
+  /* Waitlist: posts to the /api/waitlist function, which adds the email to Resend. */
+  var form = document.getElementById("join"), note = document.getElementById("joinNote"), email = document.getElementById("fb-email");
+  var submit = form.querySelector("button"), honeypot = form.elements.company;
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (!email.value || !email.checkValidity()) { note.textContent = "Enter an email address like you@yourcompany.com."; email.focus(); return; }
+    submit.disabled = true; note.textContent = "Adding you…";
+    fetch("/api/waitlist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email.value, company: honeypot.value }) })
+      .then(function (res) { return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; }); })
+      .then(function (r) {
+        if (r.ok) { form.reset(); note.textContent = "You're on the list. We'll email you when early access opens."; }
+        else note.textContent = r.data.error || "Something went wrong. Try again in a minute.";
+      })
+      .catch(function () { note.textContent = "Couldn't reach the server. Check your connection and try again."; })
+      .finally(function () { submit.disabled = false; });
+  });
+})();
+</script>
+</body>
+</html>

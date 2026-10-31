@@ -60,6 +60,8 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
 
+  apps/build-site: {}
+
   apps/devtool:
     dependencies:
       '@flow-state-dev/client':
