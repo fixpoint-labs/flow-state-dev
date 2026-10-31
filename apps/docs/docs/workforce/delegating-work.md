@@ -202,7 +202,7 @@ The filing session hears each ending once, even if the server stops just after t
 | `listTasks_tasks` | This session's tasks only, even when another session has the same worker and the same delegates |
 | `getTask_tasks` | One task whole: its brief, its fields, how it stands, its delegate's status note, and its output |
 | `createTask_tasks` | Files a task: it starts at once, after its `deps`, or, with `held: true`, when you release it |
-| `updateTask_tasks` | Before the task starts: changes any of its fields, its delegate included, holds it (`status: "held"`) or releases it (`status: "pending"`). Until it finishes: sends it a `message`, or cancels it (`status: "cancelled"`), with nothing said in the conversation |
+| `updateTask_tasks` | Before the task starts: changes any of its fields, its delegate included, holds it (`status: "held"`) or releases it (`status: "pending"`). Until it finishes: sends it a `message`, or cancels it (`status: "cancelled"`), which the conversation hears like any other ending |
 
 A task that has started can't be changed, only steered with a message or cancelled: `updateTask_tasks` answers `field_locked_after_start`, naming the fields. A running task keeps its delegate; to move it, cancel it and file it again. Cancelling a running task takes effect: when its delegate finishes, the result is turned away. A finished task, a failed one included, changes no more, and `updateTask_tasks` answers `task_finished`. To have someone take on a failed task, file it again (`createTask_tasks`).
 
