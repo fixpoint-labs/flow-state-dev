@@ -57,7 +57,7 @@ export function ConversationFrame({
 }) {
   return (
     <div className="flex h-full flex-col" data-testid={testId}>
-      <div ref={feed?.ref} className="min-h-0 flex-1 overflow-y-auto px-8 pt-9 pb-3" data-testid={`${testId}-feed`} data-look="conversation-feed">
+      <div ref={feed?.ref} className="min-h-0 flex-1 overflow-y-auto px-8 pt-9 pb-10" data-testid={`${testId}-feed`} data-look="conversation-feed">
         <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6" data-look="conversation-column">
           {children}
         </div>

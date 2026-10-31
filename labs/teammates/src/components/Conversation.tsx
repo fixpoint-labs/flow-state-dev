@@ -148,7 +148,7 @@ export function Conversation({
           />
         </div>
       ) : null}
-      <div ref={feed.ref} data-scroller className="relative flex-1 overflow-y-auto px-6 py-4">
+      <div ref={feed.ref} data-scroller className="relative flex-1 overflow-y-auto px-6 pt-4 pb-10">
         <div data-column className="mx-auto flex max-w-(--thread-width) flex-col gap-3">
           {entries.length === 0 ? (
             <div className="mt-24 text-center text-sm text-muted-foreground">Say hello to {worker.name}. This is your one conversation with it.</div>

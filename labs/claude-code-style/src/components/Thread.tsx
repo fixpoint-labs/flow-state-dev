@@ -51,7 +51,7 @@ export function Thread({
           {mode?.label ?? session.worker}
         </span>
       </header>
-      <div ref={feed.ref} className="flex-1 overflow-y-auto px-6 py-4">
+      <div ref={feed.ref} className="flex-1 overflow-y-auto px-6 pt-4 pb-10">
         {count === 0 ? (
           <div className="mx-auto mt-24 max-w-sm text-center text-sm text-muted-foreground">
             {mode?.pane === "board"
