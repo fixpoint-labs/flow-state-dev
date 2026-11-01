@@ -30,7 +30,10 @@ vi.mock("../src/lib/conversation", () => ({
   },
 }));
 const navigated: unknown[] = [];
-vi.mock("../src/lib/routes", () => ({ navigate: (route: unknown) => void navigated.push(route) }));
+vi.mock("../src/lib/routes", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/lib/routes")>()),
+  navigate: (route: unknown) => void navigated.push(route),
+}));
 vi.mock("../src/lib/conversation-tasks", () => ({
   readConversationTasks: async (_c: unknown, flow: string, sessionId: string) => {
     calls.push(`list ${flow} ${sessionId}`);

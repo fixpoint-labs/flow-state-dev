@@ -50,6 +50,7 @@ import {
 import { describeFailure, type Failure, type Worker } from "../lib/reads";
 import { useRoster, withRoster } from "../lib/roster";
 import { navigate, PROJECT_TABS, type ProjectTab, type Route } from "../lib/routes";
+import { RouteLink } from "../components/RouteLink";
 import { useWorkforce } from "../lib/workforce";
 import type { Gaps } from "../gaps";
 
@@ -138,7 +139,7 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
         label="Project"
         tabs={PROJECT_TABS}
         selected={tab}
-        onSelect={(next) => navigate(at(route, next))}
+        onSelect={(next) => /* in place: the project's tabs */ navigate(at(route, next))}
       />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto" role="tabpanel" data-tabpanel={tab}>
         {body}
@@ -378,10 +379,9 @@ function EntryList({ entries, route }: { entries: readonly WorkstreamEntry[]; ro
           data-workstream-id={entry.id}
           data-stale={entry.stale ? "true" : undefined}
         >
-          <button
-            type="button"
+          <RouteLink
             className="flex w-full items-baseline justify-between gap-2 text-left text-sm hover:underline"
-            onClick={() => navigate(at(route, "workstreams", { owner: entry.owner, id: entry.id }))}
+            to={at(route, "workstreams", { owner: entry.owner, id: entry.id })}
           >
             <span className="truncate">{entry.title}</span>
             <span className="shrink-0 text-xs text-muted-foreground">
@@ -389,7 +389,7 @@ function EntryList({ entries, route }: { entries: readonly WorkstreamEntry[]; ro
               {entry.objectives.length === 0 ? "" : ` · ${entry.objectives.filter((o) => o.met).length} of ${entry.objectives.length} objectives met`}
               {entry.stale ? " · gone quiet" : ""}
             </span>
-          </button>
+          </RouteLink>
         </li>
       ))}
     </ul>
@@ -422,14 +422,13 @@ function EntryView({
 }) {
   const { client } = useLab();
   const back = (
-    <button
-      type="button"
+    <RouteLink
       className="text-xs underline"
       data-testid="project-entry-back"
-      onClick={() => navigate(at(route, "workstreams"))}
+      to={at(route, "workstreams")}
     >
       All workstreams
-    </button>
+    </RouteLink>
   );
   if (entry === undefined) {
     return (
@@ -613,9 +612,9 @@ function OpenHint({ route, setup }: { route: ProjectRoute; setup: Read<ProjectSe
   return (
     <p className="border-t border-foreground/15 pt-3 text-xs text-muted-foreground" data-testid="project-open-hint">
       To open a workstream, ask your project coordinator for the work in{" "}
-      <button type="button" className="underline" onClick={() => navigate(at(route, "stream"))}>
+      <RouteLink className="underline" to={at(route, "stream")}>
         Stream
-      </button>
+      </RouteLink>
       . It picks the lead from your workers.
     </p>
   );

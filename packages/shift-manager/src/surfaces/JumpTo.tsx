@@ -25,6 +25,7 @@ import { allRows, shiftCoordinatorOf, workerLabel, type LoadedSnapshot } from ".
 import { handToShiftCoordinator } from "../lib/outbox";
 import { projectReaderOf, readProject, type WorkstreamEntry } from "../lib/projects";
 import { navigate, type Route } from "../lib/routes";
+import { RouteLink } from "../components/RouteLink";
 import type { Gaps } from "../gaps";
 
 const GROUPS = ["Views", "Projects", "Workstreams", "Workers", "Tasks", "Resources"] as const;
@@ -177,13 +178,13 @@ export function JumpTo({
     if (shiftCoordinator.worker.door === null) return setSendFailure(`${workerLabel(shiftCoordinator.worker.id)} ${gaps.turn.noDoor}`);
     handToShiftCoordinator(message);
     picked.current = true;
-    navigate({ level: "shift-coordinator" });
+    navigate({ level: "shift-coordinator" }); // in place: after a line is sent to the Shift Coordinator
     onClose();
   };
 
-  const go = (entry: Entry) => {
+  // A result's link has gone to its address in this tab: the palette closes and focus goes where the pick leads.
+  const went = (entry: Entry) => {
     picked.current = true;
-    navigate(entry.to);
     onClose();
     if (entry.focus !== undefined) focusWhenDrawn(entry.focus);
   };
@@ -233,16 +234,7 @@ export function JumpTo({
                 <CommandGroup key={group} heading={group.toUpperCase()} className="mb-2 p-0 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:tracking-wider">
                   {entries.length === 0 ? <p className="px-2 py-1 text-xs text-muted-foreground">No match.</p> : null}
                   {entries.map((entry) => (
-                    <CommandItem
-                      key={`${entry.group}:${entry.label}:${entry.hint}:${entry.keywords.join(",")}`}
-                      value={`${entry.group}:${entry.label}:${entry.hint}:${entry.keywords.join(",")}`}
-                      onSelect={() => go(entry)}
-                      data-testid="jump-result"
-                      className="justify-between rounded-none"
-                    >
-                      <span className="truncate">{entry.label}</span>
-                      <span className="ml-2 truncate text-xs text-muted-foreground">{entry.hint}</span>
-                    </CommandItem>
+                    <JumpResult key={`${entry.group}:${entry.label}:${entry.hint}:${entry.keywords.join(",")}`} entry={entry} onNavigate={() => went(entry)} />
                   ))}
                 </CommandGroup>
               ))}
@@ -265,5 +257,39 @@ export function JumpTo({
         </Command>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * One result: a real link to its address, inside the palette's item. Enter (or
+ * a click beside the link) is a plain click on that link, so every way to a
+ * result goes through it; a modified click on the link is the browser's.
+ */
+function JumpResult({ entry, onNavigate }: { entry: Entry; onNavigate: () => void }) {
+  const item = useRef<HTMLDivElement>(null);
+  // Set while a click on the link bubbles to its item, so the item doesn't click the link again.
+  const clickedLink = useRef(false);
+  return (
+    <CommandItem
+      ref={item}
+      value={`${entry.group}:${entry.label}:${entry.hint}:${entry.keywords.join(",")}`}
+      onSelect={() => {
+        if (clickedLink.current) return void (clickedLink.current = false);
+        item.current?.querySelector("a")?.click();
+      }}
+      data-testid="jump-result"
+      className="rounded-none p-0"
+    >
+      <RouteLink
+        to={entry.to}
+        tabIndex={-1}
+        onClick={() => void (clickedLink.current = true)}
+        onNavigate={onNavigate}
+        className="flex w-full items-center justify-between px-2 py-1.5"
+      >
+        <span className="truncate">{entry.label}</span>
+        <span className="ml-2 truncate text-xs text-muted-foreground">{entry.hint}</span>
+      </RouteLink>
+    </CommandItem>
   );
 }

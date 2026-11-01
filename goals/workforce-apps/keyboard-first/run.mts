@@ -162,7 +162,7 @@ function refuseDialogs(page: Page, leg: "a" | "b" | "c") {
 // ---- the page, read ------------------------------------------------------------
 
 /** What has focus: its tag, its attributes the steps read, and its text. */
-type Focused = { tag: string; text: string; composer: string | null; sessionId: string | null; workerId: string | null; inDialog: boolean; inJump: boolean; inView: boolean };
+type Focused = { tag: string; text: string; testId: string | null; composer: string | null; sessionId: string | null; workerId: string | null; inDialog: boolean; inJump: boolean; inView: boolean };
 const focused = (page: Page): Promise<Focused> =>
   page.evaluate(() => {
     const el = document.activeElement as HTMLElement | null;
@@ -170,6 +170,7 @@ const focused = (page: Page): Promise<Focused> =>
     return {
       tag: el?.tagName.toLowerCase() ?? "none",
       text: (el?.textContent ?? "").trim().slice(0, 80),
+      testId: el?.getAttribute("data-testid") ?? null,
       composer: el?.hasAttribute("data-composer") ? "yes" : null,
       sessionId: el?.getAttribute("data-session-id") ?? null,
       workerId: el?.getAttribute("data-worker-id") ?? null,
@@ -654,7 +655,8 @@ async function legC(browser: Browser, pages: string) {
         await page.getByTestId("jump-input").waitFor({ timeout: 5_000 });
         await page.keyboard.press("Escape");
         await until(page, () => document.querySelector('[data-testid="jump-dialog"]') === null, "Esc left the palette open", 5_000);
-        await focusBecomes(page, (f) => f.tag === "button" && f.text.includes("Shift Coordinator"), "after Esc focus is not back on the sidebar's Shift Coordinator", 3_000);
+        // The sidebar's entries are links since routes became real addresses; the oracle is the entry, not its tag.
+        await focusBecomes(page, (f) => f.testId === "nav-shift-coordinator", "after Esc focus is not back on the sidebar's Shift Coordinator", 3_000);
       });
       if (errors.length > 0) say(`page errors: ${errors.join(" | ").slice(0, 400)}`);
     } finally {
