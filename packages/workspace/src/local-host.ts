@@ -1982,7 +1982,8 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       const head = present ? await git(entry.cwd, ["rev-parse", "HEAD"], left()) : entry.head;
       // A detached HEAD's commits live only in this worktree's HEAD and reflog,
       // which removal deletes: refused like a branch's, unless forced.
-      if (branch === null && head !== null && present && removeOptions.force !== true) {
+      // Checked even when the directory is gone: git still keeps that HEAD, and pruning drops it.
+      if (branch === null && head !== null && removeOptions.force !== true) {
         const only = Number(await git(entry.repository, ["rev-list", "--count", head, "--not", "--branches", "--remotes", "--tags"], left()));
         if (only > 0) {
           throw new WorkspaceRefusedError(

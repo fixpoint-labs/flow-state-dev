@@ -9,7 +9,7 @@
  * moves on through another clone. Every assertion reads git, not what the
  * host reports.
  */
-import { existsSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { localWorkspaceHost, WorkspaceRefusedError } from "../src/local-host";
@@ -226,6 +226,18 @@ describe("list and remove", () => {
 
     await h.remove!({ place: ["run-1"] }, { force: true });
     expect(existsSync(place.cwd)).toBe(false);
+  });
+
+  it("refuses to drop a detached HEAD holding commits no ref holds when its directory has gone missing", async () => {
+    const { h, place } = await made();
+    git(place.cwd, "checkout", "-q", "--detach");
+    git(place.cwd, "commit", "-q", "--allow-empty", "-m", "only on the detached HEAD");
+    const moved = `${place.cwd}-moved`;
+    renameSync(place.cwd, moved);
+
+    const refusal = await h.remove!({ place: ["run-1"] }).catch((error: unknown) => error);
+    expect((refusal as WorkspaceRefusedError).reason).toBe("unique-commits");
+    expect(git(repo, "worktree", "list", "--porcelain")).toContain(place.cwd);
   });
 
   it("removes a detached HEAD whose commits a branch already holds", async () => {
