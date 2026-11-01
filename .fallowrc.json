@@ -94,6 +94,10 @@
     // The Claude Code-style lab's copies, as `fsdev ui add message` installed them.
     "labs/claude-code-style/src/components/ui/**",
     "labs/claude-code-style/src/components/flow-state/message.tsx",
+    // The stock shadcn copies the Teammates lab and Shift Manager palettes are built on.
+    "labs/teammates/src/components/ui/**",
+    "packages/shift-manager/src/components/ui/command.tsx",
+    "packages/shift-manager/src/components/ui/dialog.tsx",
     // The Teammates lab's copy of the registry's tool grouping.
     "labs/teammates/src/components/flow-state/tool-grouping.ts"
   ],
