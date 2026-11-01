@@ -1,6 +1,6 @@
 # Kitchen Sink
 
-Kitchen Sink is where you use each coding harness flow-state-dev supports, directly, and see whether its integration holds. It opens on a picker of modes. **Flow State** is the framework's own flows: the assistant, and the support desk with a coordinator and four specialists (see [The support team](#the-support-team-workforce)). The coding harness modes are listed beside it: [Claude Code](#claude-code-mode), [Cursor](#cursor-mode), and Codex, which says "not built yet" until it lands.
+Kitchen Sink is where you use each coding harness flow-state-dev supports, directly, and see whether its integration holds. It opens on a picker of modes. **Flow State** is the framework's own flows: the assistant, and the support desk with a coordinator and four specialists (see [The support team](#the-support-team-workforce)). The coding harness modes are listed beside it: [Claude Code](#claude-code-mode), [Cursor](#cursor-mode), and [Codex](#codex-mode).
 
 Kitchen Sink sets up a session and keeps it in step with the harness. It doesn't plan work for a harness or move work between harnesses; that is [Shift Manager](../../packages/shift-manager/README.md).
 

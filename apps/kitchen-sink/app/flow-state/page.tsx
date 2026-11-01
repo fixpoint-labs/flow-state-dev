@@ -44,7 +44,7 @@ import { ThinkingStyleSelector, type ThinkingStyle } from "@/components/thinking
 import { ModelSelector, type ModelId } from "@/components/model-selector";
 import { ThinkingToggle } from "@/components/thinking-toggle";
 import { DEFAULT_KITCHEN_SINK_MODEL } from "@/lib/models";
-import { FeatureSelector, type Features, DEFAULT_FEATURES } from "@/components/feature-selector";
+import { FeatureSelector, type Features } from "@/components/feature-selector";
 import { ClientDataBar } from "@/components/client-data-bar";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { TeamPanel } from "@/components/team-panel";
@@ -67,6 +67,7 @@ import { createWorkforceClient, type RosterEntry } from "@flow-state-dev/workfor
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import { pageGoalControl } from "@/lib/goal-control";
 import { useSessionDraft } from "@/lib/use-session-draft";
+import { useSessionControls, type RecordedSessionControls } from "@/lib/use-session-controls";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
 
@@ -199,9 +200,6 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
   const [message, setMessage] = useSessionDraft(flow.activeSessionId);
   const messageRef = useRef(message);
   messageRef.current = message;
-  const [mode, setMode] = useState<Mode>("ask");
-  const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>("default");
-  const [features, setFeatures] = useState<Features>(DEFAULT_FEATURES);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("chat");
@@ -268,7 +266,14 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
   const { items: artifactItems } = useResourceCollectionList(session, "artifacts", { limit: 50 });
 
-  const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number; thinkingStyle: string | undefined; activeSkills?: Array<{ name: string; source: string }> } | undefined;
+  const modeStatus = clientData.session?.modeStatus as (RecordedSessionControls & { activeSkills?: Array<{ name: string; source: string }> }) | undefined;
+  // Mode, thinking style and features are the session's: seeded from what it
+  // last ran with. Until its own snapshot arrives, the previous session's
+  // record is still on screen, so nothing is passed.
+  const { mode, setMode, thinkingStyle, setThinkingStyle, features, setFeatures } = useSessionControls(
+    flow.activeSessionId,
+    session.snapshot?.sessionId === flow.activeSessionId ? modeStatus : undefined,
+  );
   const userPrefs = clientData.user?.preferences as { displayName: string; selectedModel: string; thinkingEnabled: boolean } | undefined;
 
   // Derive artifact summaries from the paginated artifact list. Content is
@@ -440,7 +445,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
         setMobilePanel("chat");
       }
     },
-    [],
+    [setMode],
   );
 
   const handleSuggestionClick = useCallback((text: string) => {

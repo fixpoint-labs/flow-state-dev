@@ -194,7 +194,7 @@ picture.
 
 ## The slot
 
-The manager calls your factory once, with six feeds (`HarnessFeeds`):
+The manager calls your factory once, with six feeds (`HarnessFeeds`), and a seventh with [`approveTools`](#approving-a-runs-tool-calls):
 
 | Feed | What it does |
 |---|---|
@@ -204,8 +204,9 @@ The manager calls your factory once, with six feeds (`HarnessFeeds`):
 | `onSteerable` | Called by a harness whose run can take a line mid-turn, with the run's `steer` while it can and `null` after, so a steer reaches the step [as it runs](#a-run-that-takes-a-steer-live). Optional; a harness that can't steer ignores it. |
 | `onUsage` | Called by the harness with each subscription usage window its run reports, so the manager stores it in the run owner's [usage record](#subscription-usage). A harness that reports no usage ignores it. |
 | `onActivity` | Called by the harness with each assistant message and tool call of its run, so the manager keeps the task's [progress note](#how-a-running-task-is-doing) current. Optional; a harness that reports no activity ignores it. |
+| `onToolApproval` | Called by a harness that asks before each tool call (Claude Code), so a call the user hasn't allowed [waits for them](#approving-a-runs-tool-calls). Handed only with `approveTools: true`; Codex and Cursor ignore it. |
 
-They are the harness contract's own signatures, declared in `@flow-state-dev/core`. Each is handed the block's context, not the run's prompt.
+The first six are the harness contract's own signatures, declared in `@flow-state-dev/core`. `onToolApproval` is declared here (`HarnessToolApprovalHook`), shaped as `@flow-state-dev/claude-code`'s `onToolApproval` option, so `...feeds` passes it on. Each is handed the block's context, not the run's prompt.
 
 Everything else about the agent (model, tools, permissions, sandbox) you write inside the factory. Pointing the same manager at another harness is one line, and the manager is unchanged:
 
@@ -238,6 +239,8 @@ const stub = harnessStub({ finalMessage: "done" });
 const manager = harnessManager({ /* ... */ harness: stub.slot });
 // later: stub.runs[0].cwd is the checkout the first run was given
 ```
+
+Give it `toolCalls` and each run makes those calls in order, asking through `onToolApproval` when the manager hands it: an allowed call runs its `run`, a denied one is skipped, and a held one stops the run unrun until the manager resumes it, when it makes the call again. `stub.toolCalls` records what became of each. Without the feed every call runs unasked.
 
 The stub connects to no MCP servers. If your host hands it an `mcpTools` feed, each run writes a status line into its session naming the servers it skipped, so a user watching that session sees which ones the run went without. That feed reads the run's project, so the block needs the capability that holds it. If the feed comes from a capability such as workforce's `projectWorkspaceCapability`, pass that capability in `mcpUses`. If neither the stub nor the manager (`harnessManager({ uses })`) holds it, the run fails with an error that names the capability.
 
@@ -349,6 +352,36 @@ To draw the review in a browser, add the ui registry's `review-hold` component (
 - **Cancel** (the board's `updateTask` cancel): the review closes, no run starts, and the branch's commits and kept files stay.
 
 Reviews need a host with durable execution. A host can restart while a review waits; the answer continues the run.
+
+## Approving a run's tool calls
+
+`harnessManager({ ..., approveTools: true })` makes the user approve each tool call the harness hasn't been told it may make. Off by default, and with it off no feed is handed.
+
+```ts
+harnessManager({
+  ledgers: conversationLedgers,
+  approveTools: true,
+  harness: (feeds) =>
+    claudeCodeAgent({ ...feeds, detached: true, allowedTools: ["Read"], permissionMode: "default" }),
+  // ...
+});
+```
+
+A call `allowedTools` or `permissionMode` already allows runs unasked. Any other call stops the run before it runs: the harness process exits, the run's work is held and its kept files saved, and the checkout is released. The task stays `in_progress` on the same attempt, with an open hold of `source.kind: "suspension"` and `ask.kind: "approval"`, titled "Allow <tool>?". Its prompt names the tool, the command or file the call touches, and the run's folder; its data is `{ tool, touches, cwd, approveOptions }`. The Inbox lists it as an approval.
+
+The answer is the Inbox's approval answer:
+
+```ts
+import { ALLOW_FOR_RUN } from "@flow-state-dev/harness-manager";
+
+await inbox.answer(item, { approved: true });                              // Allow: once
+await inbox.answer(item, { approved: true, data: ALLOW_FOR_RUN.data });    // Allow for this run
+await inbox.answer(item, { approved: false, data: { note: "Not here." } }); // Deny, with a note
+```
+
+Each resumes the coding session that asked, with the checkout taken again. On a yes the model is told to make the call again, and the grant lets it through: once, or for the rest of the attempt with `{ scope: "run" }`. A grant covers the same tool on the same command or file (`grantMatches`), and any other call only with the same arguments, never the tool as a whole; the approval's prompt states that reach. A grant lives on the attempt, not the task row, so a retry asks again. On a no the session is told it may not, with the note, and the run goes on. At the host's `userDeadlineMs` it reads as a no; a cancel resumes nothing. Past 25 approvals in one attempt, the attempt fails and says why.
+
+The pieces are exported for a flow other than the manager to compose the same wait: the feed's types (`HarnessToolApprovalHook`, `HarnessToolApprovalRequest`, `HarnessToolApprovalDecision`), the held call (`heldToolCallOf`, `heldToolCallSchema`) and its decision (`heldToolDecision`), the grant rule (`grantMatches`, `toolGrantSchema`), the stop (`toolApprovalStop`, `toolApprovalYesSchema`, `ALLOW_FOR_RUN`) and what an answer means (`toolApprovalOutcome`).
 
 ## The pull requests a run opened
 
@@ -576,6 +609,7 @@ from `/`. Given a location it cannot resolve, it refuses and names the option.
 - **A steer waits for the step to end** unless the run takes it live (Cursor today) or the step is stopped for it (a harness that declares `stopsOnAbort`, as Claude Code does, or a manager built with `stopsOnAbort: true`). A stopped step's harness process has exited, but a command it started may still run in the checkout. Claude Code and Codex runs don't take a line mid-turn yet.
 - **A steer step needs a confirmed session.** The step a steer adds resumes the coding session the run confirmed. On a run whose harness confirmed none, a steer that arrives after its last step is left on the task untaken: only the `STEER_TURN_ENTRY` turn acts on it, and a host without that entry completes the task over it.
 - **Reviewing changes needs durable execution.** On a host without it, a manager built with `reviewChanges: true` refuses the run before any harness step, and the task is cancelled with a message naming durable execution.
+- **Approving tool calls needs durable execution, and covers Claude Code only.** `approveTools: true` is refused the same way on a host without durable execution. Codex and Cursor offer no per-call question and ignore the feed. A harness that calls the feed but whose stop doesn't wait for its process (`stopsOnAbort`) has its unallowed calls denied rather than held. Each answer restarts the harness and resumes its session, a few seconds.
 - **Git worktrees specifically**, as above.
 
 ## Running tests
