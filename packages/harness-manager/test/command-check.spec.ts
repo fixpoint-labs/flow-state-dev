@@ -28,6 +28,7 @@ import { commandCheck, harnessDrainBudgetMs, harnessManager, harnessTaskInputSch
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 import { cleanUpHosts } from "./claim-host";
+import { releaseLock, tryAcquireLock } from "@flow-state-dev/workspace";
 
 const BOARD_ID = "eng.feature.work";
 const FLOW = "checks-host";
@@ -53,7 +54,7 @@ interface SeenStep {
   cwd: string;
 }
 
-function stubHarness(script: Step[], seen: SeenStep[]) {
+function stubHarness(script: Step[], seen: SeenStep[], afterStep?: (cwd: string) => void) {
   return (feeds: HarnessFeeds): HarnessBlock =>
     handler({
       name: "stub-harness",
@@ -78,6 +79,7 @@ function stubHarness(script: Step[], seen: SeenStep[]) {
           execFileSync("git", ["add", "."], { cwd });
           execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", `Change ${n}`], { cwd });
         }
+        afterStep?.(cwd);
         return {
           source: "stub/test",
           status: "completed" as const,
@@ -93,7 +95,7 @@ function stubHarness(script: Step[], seen: SeenStep[]) {
     }) as unknown as HarnessBlock;
 }
 
-function host(options: { script: Step[]; reviewChanges?: boolean; durable?: boolean; userDeadlineMs?: number; checks?: string[]; timeoutMs?: number; slowBase?: { delayMs: number; doneTimeoutMs: number } }) {
+function host(options: { script: Step[]; reviewChanges?: boolean; durable?: boolean; userDeadlineMs?: number; checks?: string[]; timeoutMs?: number; slowBase?: { delayMs: number; doneTimeoutMs: number }; afterStep?: (cwd: string) => void }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-review-"));
   dirs.push(dir);
   const sourceRepo = join(dir, "repo");
@@ -139,7 +141,7 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
     workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
-    harness: stubHarness(options.script, seen),
+    harness: stubHarness(options.script, seen, (cwd) => options.afterStep?.(cwd)),
     ...(options.reviewChanges === true ? { reviewChanges: true } : {}),
   });
   const board = taskBoard({
@@ -359,6 +361,41 @@ describe("a run is done only when its checks pass", () => {
       const after = await h.until((t) => t.status === "pending" && typeof t.feedback === "string", "the first attempt to fail on time");
       expect(after.feedback).toMatch(/did not answer within/);
       // Long enough for the late check to have started its command, had it.
+      await new Promise((resolve) => setTimeout(resolve, 2_500));
+      expect(filesUnder(h.checkouts, ".marked")).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  }, 90_000);
+
+  it("runs no command for an attempt cancelled while it waited for the checkout", async () => {
+    // Something else holds the checkout when the agent stops, and the task is
+    // cancelled during the wait. The lock alone can't tell the attempt is
+    // gone, so the commands would run in a checkout no longer its own.
+    let intruder: ReturnType<typeof tryAcquireLock>;
+    let cancelled = false;
+    const h = host({
+      script: ["fixes"],
+      checks: ["node mark.mjs"],
+      afterStep: (cwd) => {
+        const grab = (): void => {
+          intruder = tryAcquireLock(`${cwd}.lock`, { waitMs: 0, pollMs: 5, staleAfterMs: 600_000 }, { owner: "someone-else" });
+          if (intruder === undefined) {
+            setTimeout(grab, 2);
+            return;
+          }
+          setTimeout(async () => {
+            await h.act("cancel");
+            cancelled = true;
+            setTimeout(() => releaseLock(intruder!), 500);
+          }, 300);
+        };
+        setTimeout(grab, 0);
+      },
+    });
+    try {
+      await h.start();
+      await h.until(() => cancelled, "the task to be cancelled");
       await new Promise((resolve) => setTimeout(resolve, 2_500));
       expect(filesUnder(h.checkouts, ".marked")).toEqual([]);
     } finally {
