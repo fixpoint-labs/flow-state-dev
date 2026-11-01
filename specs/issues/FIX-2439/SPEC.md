@@ -165,13 +165,13 @@ module at each point where it changes a worktree.
 | FIX-2419's `remove`, `occupyWorktree` in-use lock, and attach | **Extended**: each writes the row. The in-use lock already serializes the owner's and attached turns, so their row writes don't race |
 | `recordBranchPullRequests`, the host's only `gh` caller | **Extended** with an optional row to add to. Session rows still go through core's `writePullRequests` |
 | `observedPullRequestsCollection` (core) | **Copied in shape**: a collection in the package that owns its noun, written by one module and read live by the page |
-| `readRunCommits` (harness-manager) | **Not reused for sessions**: the host counts past the row's `baseCommit` itself, so the branch and the count come from one read. The board's settle count stays as it is |
+| `readRunCommits` (harness-manager) | **Narrowed**: the host counts past the row's `baseCommit` itself, so the branch and the count come from one read. The board's run output takes its count from `recordCheckout`'s return (FIX-2386 D2), and `readRunCommits` reads only the subjects |
 | FIX-2419's `state.workspace` record (path, branch, removed, owner) | **Extended** with `worktree`. Removing the copies is FIX-2386's job, so the shape has one owner |
 | Core's resource tools (FIX-2436: `llmReadable` only, no secret fields) | **Reused** as the agent's read path. No new tool |
 
 **Adds:** one collection and its writer module, two host methods, three request fields, one
 `recordBranchPullRequests` option, one session-record field, and one goal check. **Removes:**
-nothing. **Debt:** Kitchen Sink sessions get no row until Kitchen Sink provisions through the host
+`readRunCommits`' count, once FIX-2386 D2 reads it from `recordCheckout` (it keeps the subjects). **Debt:** Kitchen Sink sessions get no row until Kitchen Sink provisions through the host
 (its adoption stack, already owed by FIX-2419). Rows are never deleted: a `removed` row stays
 until FIX-2252's sweeper decides. A row can say `ready` for a directory someone deleted by hand or
 removed with `fsdev worktrees --remove`, until the next `recordCheckout` marks it `lost` or the
