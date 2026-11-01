@@ -240,6 +240,26 @@ describe("a worker's steps for itself run in its own request (D1)", () => {
     }
   });
 
+  it("refuses a retry of a failed step, which only its worker's own turn would start (FIX-2383)", async () => {
+    const h = host();
+    try {
+      // The editor has a delegate, so its session's actions reach a board that also holds its steps.
+      h.controls.plans.editor = outline;
+      h.controls.failSteps.add("Draft the post");
+      const talk = await h.open("alice", "editor");
+      expect((await h.act("alice", talk, "respond", { message: "write me a post" }, "stepper")).error).toBeUndefined();
+      await h.settled();
+      expect((await h.steps("alice")).find((row) => row.id === "s-draft")).toMatchObject({ status: "errored" });
+
+      const retried = await h.act("alice", talk, "retryTask_tasks", { id: "s-draft" }, "stepper");
+      expect(retried.error, messageOf(retried.error)).toBeUndefined();
+      expect(retried.output).toMatchObject({ ok: false, taskId: "s-draft", error: expect.stringMatching(/^step_cannot_be_retried: /) });
+      expect((await h.steps("alice")).find((row) => row.id === "s-draft")).toMatchObject({ status: "errored" });
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("answers around a failed step: it fails for good, the step after it never runs, and the answer names the failure", async () => {
     const h = host();
     try {
