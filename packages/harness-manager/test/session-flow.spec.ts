@@ -135,7 +135,8 @@ describe("what a turn changed", () => {
           const cwd = await feeds.cwd(ctx as unknown as HarnessCallbackContext);
           writeFileSync(join(cwd, `${input.prompt}.txt`), `${input.prompt}\n`);
           git(cwd, "add", ".");
-          git(cwd, "commit", "-q", "-m", input.prompt);
+          if (input.prompt === "amend") git(cwd, "commit", "-q", "--amend", "--no-edit");
+          else git(cwd, "commit", "-q", "-m", input.prompt);
           if (input.prompt === "throws") throw new Error("the harness fell over");
           return { outcome: "completed" };
         },
@@ -173,6 +174,32 @@ describe("what a turn changed", () => {
       const patch = (await read({ turn: turns[0]!.id, path: "first.txt" })) as { patch: { patch: string } };
       expect(patch.patch.patch).toContain("+first");
       await expect(read({ turn: "no-such-turn" })).rejects.toThrow(/no turn/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reads a turn that amended the previous turn's commit as only its own work", async () => {
+    // The amend rewrites turn 1's commit, so where turn 2's head and its base
+    // last met is before turn 1: a merge-base diff would read first.txt as turn 2's too.
+    const stores = createInMemoryStores();
+    const { dir, flow } = committing();
+    try {
+      const now = Date.now();
+      await stores.session.set(
+        "s-amend",
+        { id: "s-amend", flowKind: "stub-session", userId: "u", orgId: DEFAULT_ORG_ID, metadata: undefined, latestRequestId: undefined, state: { model: "stub-model" }, version: 0, createdAt: now, updatedAt: now, journal: [] } as never,
+        "any" as never,
+      );
+      const act = (prompt: string) =>
+        runAction({ flow, actionName: "turn", input: { prompt }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-amend", stores, runtimeConfig: {} } as never);
+      await act("first");
+      await act("amend");
+      const [, second] = Object.entries(((await stores.session.get("s-amend"))!.state as { turns: Record<string, { at: number }> }).turns)
+        .sort(([, a], [, b]) => a.at - b.at)
+        .map(([id]) => id);
+      const read = await runRead({ flow, readName: "changes", input: { turn: second }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-amend", stores });
+      expect(read).toMatchObject({ diff: { files: [{ path: "amend.txt" }], fileCount: 1, verified: true } });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

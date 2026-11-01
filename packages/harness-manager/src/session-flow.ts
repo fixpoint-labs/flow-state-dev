@@ -585,6 +585,8 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       const base = record.base ?? null;
       // With a base commit the read uses it alone; the ref only has to be non-null (`resolveBases`).
       return readRunChanges(existsSync(cwd) ? cwd : "", base === null ? null : "HEAD", base, {
+        // From the commit the turn started on, exactly: a turn that amended the last one's commit is still only its own work.
+        exactBase: true,
         ...(record.head != null ? { head: record.head } : {}),
         ...(input.path !== undefined ? { path: input.path } : {}),
       });
