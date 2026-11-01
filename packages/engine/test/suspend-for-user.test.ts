@@ -826,6 +826,44 @@ describe("writes after the resume, on a restored sequencer, are live", () => {
     await h.drain();
     expect(seen).toEqual([{ asked: 1 }]);
   });
+
+  it("replaying a completed step before the wait leaves the checkpoint taken at the wait in place", async () => {
+    // A crash between the replay of an earlier step and the gate restores
+    // from whatever checkpoint is latest. If the replay overwrote the one
+    // taken at the wait with an unmarked one, that restore would skip the
+    // reset and count the waiting step's write twice.
+    let h: ReturnType<typeof harness> | undefined;
+    let requestId = "";
+    let key = "";
+    let runs = 0;
+    const midReplay: unknown[] = [];
+    const done = handler({ name: "done", inputSchema: z.any(), outputSchema: z.any(), execute: (input) => input });
+    const waits = handler({
+      name: "waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        runs += 1;
+        if (runs === 2) {
+          await new Promise((settle) => setTimeout(settle, 20));
+          const latest = await h!.stores.checkpoints.latest(requestId, key);
+          midReplay.push({ atSuspension: latest?.atSuspension, state: latest?.state });
+        }
+        await ctx.sequencer!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        return null;
+      }
+    });
+    const block = sequencer({ name: "s", stateSchema: z.object({ asked: z.number().default(0) }) }).step(done).step(waits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    h = harness(flow);
+    const parked = await park(h, flow, {});
+    requestId = parked.requestId;
+    key = parked.gate.blockInstanceId;
+    expect((await answerRoute(h, requestId, { suspensionId: parked.gate.suspensionId, action: "submit", data: "ok" })).status).toBe(202);
+    await h.drain();
+    expect(midReplay).toEqual([{ atSuspension: true, state: { asked: 1 } }]);
+  });
 });
 
 describe("the answer route (D2)", () => {

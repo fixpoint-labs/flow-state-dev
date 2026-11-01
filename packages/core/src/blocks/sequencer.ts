@@ -934,6 +934,12 @@ function runSequencerOperations(
           const restored = { ...ctx.sequencer.state, ...resumeState.state };
           resumeState.restored = restored;
           await ctx.sequencer.setState(restored);
+          // The restored state is what the checkpoint holds, so a replayed
+          // step that leaves it unchanged writes no new checkpoint: one taken
+          // at the wait keeps its `atSuspension` mark until the gate (FIX-2444).
+          lastStateJson = JSON.stringify(
+            stripTransientKeys(ctx.sequencer.state as Record<string, unknown>, getTransientKeys(stateSchema))
+          );
         }
 
         for (let index = 0; index < operations.length; index += 1) {
