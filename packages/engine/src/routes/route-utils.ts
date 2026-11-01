@@ -29,6 +29,7 @@ import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
 import type { RequestRecord, SessionRecord, SessionStore } from "../stores/types";
+import { terminalAtMs } from "../stores/request-ended-at";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
@@ -767,11 +768,7 @@ export function requestStatusEventType(status: RequestRecord["status"]): Request
 
 export function buildReplayEvents(record: RequestRecord, session?: SessionRecord): RequestStreamEvent[] {
   const createdAt = record.startedAtMs ?? record.createdAt;
-  const statusTs =
-    record.completedAtMs ??
-    record.failedAtMs ??
-    record.updatedAt ??
-    createdAt;
+  const statusTs = terminalAtMs(record) ?? record.updatedAt ?? createdAt;
 
   const events: RequestStreamEvent[] = [
     {

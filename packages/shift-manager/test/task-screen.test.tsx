@@ -123,16 +123,45 @@ describe("Interrupt (BR-11, BR-13, BR-14)", () => {
   }, 30_000);
 });
 
-describe("Esc interrupts wherever the activity line says so", () => {
-  it("stops the run from the composer and from a tab with no Session mounted", async () => {
+describe("interrupting takes a deliberate gesture, never one Esc", () => {
+  it("one Esc, on the frame or in the composer, stops nothing; Esc Esc stops it from a tab with no Session mounted", async () => {
+    const opened = await openLab();
+    const row = await heldRow(opened, true);
+    const runtime = await opened.lab.flowState.getRuntime();
+    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/brief`);
+    await waitFor(() => expect(screen.getByTestId("run-state").getAttribute("data-state")).toBe("in_progress"), { timeout: 10_000 });
+    expect(screen.getByTestId("interrupt-hint").textContent).toMatch(/^esc esc or (⌘\.|Ctrl\+\.) to interrupt$/);
+    expect(screen.queryByTestId("task-session")).toBeNull();
+    const frame = screen.getByTestId("task-frame");
+    const composer = screen.getByTestId("task-composer-input");
+
+    // Typing in the composer: Esc is the box's, however many times.
+    fireEvent.keyDown(composer, { key: "Escape" });
+    fireEvent.keyDown(composer, { key: "Escape" });
+    // One Esc on the frame only arms, and says so.
+    fireEvent.keyDown(frame, { key: "Escape" });
+    expect(screen.getByTestId("interrupt-hint").textContent).toBe("press Esc again to interrupt");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(screen.getByTestId("run-state").getAttribute("data-state")).toBe("in_progress");
+    expect(((await runtime.stores.request.get(row.run!.requestId)) as { status: string }).status).toBe("in_progress");
+
+    // The second Esc inside the window stops it.
+    fireEvent.keyDown(frame, { key: "Escape" });
+    await waitFor(() => expect(screen.getByTestId("run-state").getAttribute("data-state")).toBe("aborted"), { timeout: 10_000 });
+    // And the line says when the run's record says it stopped.
+    const record = (await runtime.stores.request.get(row.run!.requestId)) as { abortedAt?: number };
+    expect(record.abortedAt).toBeTypeOf("number");
+    const clock = new Date(record.abortedAt!).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    expect((await screen.findByTestId("run-stopped-at")).textContent).toBe(`· run stopped at ${clock}`);
+  }, 30_000);
+
+  it("Cmd+. stops it at once, even from the composer", async () => {
     const opened = await openLab();
     const row = await heldRow(opened, true);
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/brief`);
     await waitFor(() => expect(screen.getByTestId("run-state").getAttribute("data-state")).toBe("in_progress"), { timeout: 10_000 });
-    expect(screen.getByTestId("task-activity").textContent).toContain("esc to interrupt");
-    expect(screen.queryByTestId("task-session")).toBeNull();
-    const composer = screen.getByTestId("task-composer-input");
-    fireEvent.keyDown(composer, { key: "Escape" });
+    expect(screen.getByTestId("task-interrupt").getAttribute("title")).toMatch(/^Stop this run \(Esc Esc or (⌘\.|Ctrl\+\.)\)$/);
+    fireEvent.keyDown(screen.getByTestId("task-composer-input"), { key: ".", metaKey: true });
     await waitFor(() => expect(screen.getByTestId("run-state").getAttribute("data-state")).toBe("aborted"), { timeout: 10_000 });
   }, 30_000);
 });

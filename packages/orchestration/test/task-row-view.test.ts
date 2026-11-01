@@ -5,8 +5,12 @@
  * The bug it exists to remove is a row that waits on the user reading as
  * running (or held) because a screen mapped the stored status alone. So the
  * cases that matter are a non-terminal row with an open user hold, in each
+<<<<<<< HEAD
  * status, and the same row once the hold is answered. The control at the end
  * runs those cases through the status-only mapping a lab shipped, and they fail.
+=======
+ * status, and the same row once the hold is answered.
+>>>>>>> origin/main
  */
 import { describe, expect, it } from "vitest";
 import { inboxItems, taskRowView, type TaskViewRow } from "../src/inbox";
@@ -143,6 +147,7 @@ describe("taskRowView: what else a screen draws", () => {
     expect(taskRowView(row({ title: null, goal: null })).title).toBe("t1");
   });
 });
+<<<<<<< HEAD
 
 describe("control: the status-only mapping fails the waiting cases", () => {
   // The mapping the Teammates lab shipped: every status but the terminal three reads running.
@@ -155,3 +160,5 @@ describe("control: the status-only mapping fails the waiting cases", () => {
     expect(taskRowView(r).state).toBe("waiting");
   });
 });
+=======
+>>>>>>> origin/main
