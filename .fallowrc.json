@@ -95,7 +95,12 @@
     "labs/claude-code-style/src/components/ui/**",
     "labs/claude-code-style/src/components/flow-state/message.tsx",
     // The Teammates lab's copy of the registry's tool grouping.
-    "labs/teammates/src/components/flow-state/tool-grouping.ts"
+    "labs/teammates/src/components/flow-state/tool-grouping.ts",
+    // Kitchen Sink's and Shift Manager's byte copies of the registry's review card:
+    // their suspension cards import ReviewSuspension; the card's other exports are
+    // for apps that draw holds.
+    "apps/kitchen-sink/components/flow-state/review-hold.tsx",
+    "packages/shift-manager/src/components/flow-state/review-hold.tsx"
   ],
 
   // Dead code fails `fallow audit` at its default severity. Complexity reports

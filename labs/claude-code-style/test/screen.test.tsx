@@ -13,9 +13,11 @@ import { createFakeLab } from "./fake-lab";
 // The script runs at a hundredth of real time.
 const fast = () => createFakeLab({ speed: 0.01 });
 
+// The app keeps what is open in the page's address, and drafts in storage across a reload;
+// each test starts on a bare address with no one else's drafts.
 afterEach(() => {
   cleanup();
-  // Drafts are kept in storage across a reload; one test's must not reach the next.
+  window.history.replaceState(null, "", "/");
   window.localStorage.clear();
 });
 
@@ -240,15 +242,20 @@ describe("the session-mode screen", () => {
     });
     first.unmount();
 
+    // A reload reopens the session the address names.
+    const reopened = async () => {
+      await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"));
+      return screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    };
     const second = render(<App adapter={adapter} />);
-    const again = await open();
+    const again = await reopened();
     expect(again.value).toBe("tighten the intro");
     fireEvent.change(again, { target: { value: "tighten the intro, and the outro" } });
     await act(async () => land());
     second.unmount();
 
     render(<App adapter={lab} />);
-    expect((await open()).value).toBe("tighten the intro, and the outro");
+    expect((await reopened()).value).toBe("tighten the intro, and the outro");
   });
 
   it("brings an unsent draft back after a reload, for its own session only", async () => {
@@ -263,6 +270,14 @@ describe("the session-mode screen", () => {
     fireEvent.change(await open(/Draft the launch note/, "Draft the launch note"), { target: { value: "half a thought" } });
     first.unmount();
 
+    // A reload reopens the session the address names, with its draft.
+    const second = render(<App adapter={lab} />);
+    await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"));
+    expect((screen.getByLabelText("Message the main session") as HTMLTextAreaElement).value).toBe("half a thought");
+    second.unmount();
+
+    // A page opened on no session starts a new one, and the draft stays with its own.
+    window.history.replaceState(null, "", "/");
     render(<App adapter={lab} />);
     await pick();
     expect((screen.getByLabelText("Message the main session") as HTMLTextAreaElement).value).toBe("");

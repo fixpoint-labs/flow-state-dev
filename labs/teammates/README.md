@@ -28,6 +28,9 @@ theme on purpose, so it reads as the app it copies.
   a click outside it, and the conversation under it keeps its place.
 - **Right:** Talk, the worker's exchanges with the other workers, grouped by worker, from the
   message log. It closes.
+- **The page's address** names the open teammate and an open task popup
+  (`?worker=<id>&session=<id>&task=<id>`), so a reload or a link reopens them, and Back returns
+  to what you had open before. A link to a teammate or task that is gone opens the first teammate.
 
 Workers message each other where you can see it. When Chief of Staff messages researcher, a line,
 *Messaged researcher*, shows in Chief of Staff's conversation and the message lands in researcher's.
