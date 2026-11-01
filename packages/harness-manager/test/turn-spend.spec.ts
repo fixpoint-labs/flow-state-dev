@@ -35,7 +35,9 @@ interface Script {
   /** A window heard during the run. */
   window?: boolean;
   /** An earlier run of this request already ended the turn with this run, as a turn continued after an interruption finds it. */
-  earlier?: { runId: string; inputTokens: number; outputTokens: number; costUsd: number | null };
+  earlier?: { runId?: string; inputTokens: number; outputTokens: number; costUsd: number | null };
+  /** The run reports with no id, as a harness that settles each report does. */
+  anonymous?: boolean;
   /** The run writes its report twice, as a harness reports its running total. */
   reportTwice?: boolean;
 }
@@ -53,7 +55,7 @@ const stubAgent = (script: Script) => (feeds: HarnessSessionFeeds) =>
         await harnessCtx.session.atomicState((state) => {
           const s = state as HarnessSessionState;
           const turn = s.turns?.[requestId];
-          const run = { ...earlier, harness: "stub", model: "stub-model", billing: "api-key" as const };
+          const run = { harness: "stub", model: "stub-model", ...earlier, billing: "api-key" as const };
           return { ...s, turns: { ...s.turns, [requestId]: { ...turn!, endedAt: 1, spentRuns: [run] } } };
         });
       }
@@ -69,7 +71,7 @@ const stubAgent = (script: Script) => (feeds: HarnessSessionFeeds) =>
       } finally {
         if (script.spend !== undefined) {
           if (script.reportTwice === true) reportHarnessSpend(ctx, { runId: "run-1", harness: "stub", model: "stub-model", ...script.spend, inputTokens: 1, outputTokens: 1 });
-          reportHarnessSpend(ctx, { runId: "run-1", harness: "stub", model: "stub-model", ...script.spend });
+          reportHarnessSpend(ctx, { ...(script.anonymous === true ? {} : { runId: "run-1" }), harness: "stub", model: "stub-model", ...script.spend });
         }
       }
     },
@@ -149,6 +151,17 @@ describe("a harness session turn's spend", () => {
     expect(turn.spend).toMatchObject({ inputTokens: 20, outputTokens: 2 });
     expect(turn.spend?.costUsd).toBeCloseTo(0.2);
     expect(turn.endedAt).toBeGreaterThan(1);
+  });
+
+  it("keeps an earlier run with no id even when its totals match this one's", async () => {
+    const stores = createInMemoryStores();
+    await run(stores, "s-anonymous", {
+      earlier: { inputTokens: 10, outputTokens: 1, costUsd: 0.1 },
+      anonymous: true,
+      spend: { inputTokens: 10, outputTokens: 1, costUsd: 0.1, billing: "api-key" },
+    });
+    const turn = await onlyTurn(stores, "s-anonymous");
+    expect(turn.spend).toMatchObject({ inputTokens: 20, outputTokens: 2 });
   });
 
   // A page refreshes the session when it sees the turn end, so the spend must
