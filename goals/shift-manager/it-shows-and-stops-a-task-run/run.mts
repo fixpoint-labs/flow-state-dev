@@ -61,6 +61,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Page } from "playwright";
 import { compareItemOrder, createClient } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
+import { OBSERVED_PLAN, OBSERVED_PLAN_LIST, planRowsPrefix, readPlanTarget } from "@flow-state-dev/core/types";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
@@ -248,16 +249,31 @@ function labApi(origin: string) {
     }
     return out;
   };
-  /** The rows a run recorded under its own request id, per recorded collection; `null` when its flow records none. */
-  const recorded = async (run: NonNullable<Row["run"]>, pattern: string): Promise<string[] | null> => {
+  /** A recorded collection's rows under one key prefix, as stored; `null` when the run's flow declares no such collection. */
+  const recordedRows = async (run: NonNullable<Row["run"]>, pattern: string, prefix: string) => {
     const manifest = await get(`/sessions/${enc(run.sessionId)}/manifest`);
     const ref = (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
     if (ref === undefined) return null;
-    const prefix = `${pattern.slice(0, -"/**".length)}/${run.requestId}/`;
     const body = await get(`/sessions/${enc(run.sessionId)}/resources/${enc(ref)}?limit=200&topicPrefix=${enc(prefix)}`);
-    return ((body.items ?? []) as Array<{ topic: string }>).map((i) => i.topic.split("/").slice(2).join("/"));
+    return (body.items ?? []) as Array<{ topic: string; clientData?: Record<string, unknown> }>;
   };
-  return { board, rows, ownerOf, requestStatus, sessionItems, recorded };
+  /** A row's key past its first two segments: `<request>/<invocation>/…`, or a plan's `<conversation>/…`. */
+  const keyOf = (topic: string) => topic.split("/").slice(2).join("/");
+  /** The files a run recorded under its own request id; `null` when its flow records none. */
+  const recordedFiles = async (run: NonNullable<Row["run"]>): Promise<string[] | null> =>
+    (await recordedRows(run, "observed-file-ops/**", `observed-file-ops/${run.requestId}/`))?.map((i) => keyOf(i.topic)) ?? null;
+  /**
+   * The plan a run recorded; `null` when its flow records none. A harness keeps
+   * the plan under its conversation and leaves a pointer to it under the run's
+   * request, so the pointer is followed by core's one reader rule.
+   */
+  const recordedPlan = async (run: NonNullable<Row["run"]>): Promise<string[] | null> => {
+    const markers = await recordedRows(run, `${OBSERVED_PLAN_LIST}/**`, planRowsPrefix(run.requestId, OBSERVED_PLAN_LIST));
+    const pointers = (markers ?? []).map((m) => ({ topic: m.topic, conversation: m.clientData?.conversation as string | null | undefined }));
+    const rows = await recordedRows(run, `${OBSERVED_PLAN}/**`, readPlanTarget(run.requestId, pointers).rowsPrefix);
+    return rows?.map((i) => keyOf(i.topic)) ?? null;
+  };
+  return { board, rows, ownerOf, requestStatus, sessionItems, recordedPlan, recordedFiles };
 }
 type LabApi = ReturnType<typeof labApi>;
 
@@ -318,7 +334,9 @@ async function reach(page: Page, origin: string, row: Row) {
   await page.goto(`${origin}/tasks`);
   await page.getByTestId("shell").waitFor({ timeout: 20_000 });
   if (row.status === "completed" || row.status === "cancelled") {
-    await page.getByTestId("jump-to").click();
+    // Jump to opens on ⌘K, as the sidebar footer's tip says (Ctrl+K off a Mac).
+    await page.keyboard.press("ControlOrMeta+K");
+    await page.getByTestId("jump-dialog").waitFor({ timeout: 5_000 });
     await page.getByTestId("jump-input").fill(row.title);
     await page.locator(`[data-testid=jump-dialog] section[aria-label="Tasks"] [data-testid=jump-result]`).filter({ hasText: row.title }).first().click();
   } else {
@@ -437,8 +455,8 @@ async function checkInspector({ page, devtool, api, tree, fail }: Ctx, row: Row)
   const started = await page.getByTestId("inspector-started-at").getAttribute("data-started-at");
   if (started !== String(row.startedAt ?? "")) fail("inspector", `started ${started}, stored ${row.startedAt}`);
 
-  const plan = await api.recorded(row.run!, "observed-plan/**");
-  const files = await api.recorded(row.run!, "observed-file-ops/**");
+  const plan = await api.recordedPlan(row.run!);
+  const files = await api.recordedFiles(row.run!);
   const sectionAgrees = async (stored: string[] | null, item: string, attr: string, none: string, what: string) => {
     if (stored === null) {
       if (!(await visible(page, none, 5_000))) fail("inspector", `the run's flow records no ${what}, and the inspector doesn't say so`);
