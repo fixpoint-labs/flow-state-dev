@@ -85,7 +85,7 @@ export function claudeCodeEnv(): Record<string, string> {
  * into `.claude/settings.json` for the next turn. The run works only in a
  * checkout its operator named, so the conventions load with no setting.
  */
-export const CLAUDE_CODE_REPO_OPTIONS = {
+const CLAUDE_CODE_REPO_OPTIONS = {
   settingSources: ["project"],
   settings: { disableAllHooks: true },
 } as const;

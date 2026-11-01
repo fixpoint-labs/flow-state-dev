@@ -198,8 +198,8 @@ export function codexClient(
   let resolver: Promise<ResolveCodexClient> | undefined;
   return async (ctx) => {
     if (trust.trusted) resolver ??= Promise.resolve(createDefaultResolveCodexClient(codexClientOptions(process.env, [], trust)));
-    resolver ??= listMcpServers(codexEnv()).then(
-      (names) => createDefaultResolveCodexClient(codexClientOptions(process.env, names)),
+    resolver ??= listMcpServers(codexEnv(process.env, trust)).then(
+      (names) => createDefaultResolveCodexClient(codexClientOptions(process.env, names, trust)),
       (error: unknown) => {
         // Not kept: the next run asks again. This one starts with whatever
         // servers Codex has, and the session says so, so it is never silent.
@@ -208,7 +208,7 @@ export function codexClient(
           `Codex's MCP servers could not be listed, so this run may start the ones your Codex settings name: ${error instanceof Error ? error.message : String(error)}`,
           { transient: false },
         );
-        return createDefaultResolveCodexClient(codexClientOptions(process.env));
+        return createDefaultResolveCodexClient(codexClientOptions(process.env, [], trust));
       },
     );
     const stopped = ctx.signal;

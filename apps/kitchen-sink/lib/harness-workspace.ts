@@ -33,10 +33,10 @@ import { dirname, join, resolve } from "node:path";
 export const HARNESS_WORKSPACE_SETTING = "KITCHEN_SINK_HARNESS_WORKSPACE";
 
 /** The host setting that marks the repository as trusted: `1` turns it on. */
-export const HARNESS_TRUSTED_SETTING = "KITCHEN_SINK_HARNESS_TRUSTED";
+const HARNESS_TRUSTED_SETTING = "KITCHEN_SINK_HARNESS_TRUSTED";
 
 /** The host setting that names, comma-separated, the keys a trusted run is handed. */
-export const HARNESS_PASS_SETTING = "KITCHEN_SINK_HARNESS_PASS";
+const HARNESS_PASS_SETTING = "KITCHEN_SINK_HARNESS_PASS";
 
 /**
  * Whether the operator trusts the repository, and the keys a trusted run gets.
