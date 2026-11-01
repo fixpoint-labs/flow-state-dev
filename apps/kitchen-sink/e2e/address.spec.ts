@@ -70,3 +70,22 @@ test("a link to a session that is gone opens the assistant, and the address drop
   // The read of the dead session's record is the one error this scenario causes.
   consoleErrors.splice(0, consoleErrors.length, ...consoleErrors.filter((e) => !e.includes("404")));
 });
+
+test("Back onto a session that is gone opens the assistant, not the conversation that was open", async ({
+  page,
+  sessionId,
+  consoleErrors,
+}) => {
+  await openKitchenSink(page, sessionId);
+  await openHelpDesk(page);
+
+  // An entry for a session that has since gone, then Back onto it.
+  await page.evaluate(() => {
+    window.history.pushState(null, "", "/flow-state?session=sess_gone_for_good");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(assistantComposer(page)).toBeEnabled();
+  await expect(picked(page)).toHaveCount(0);
+  await expect.poll(() => named(page)).toBe(sessionId);
+  consoleErrors.splice(0, consoleErrors.length, ...consoleErrors.filter((e) => !e.includes("404")));
+});

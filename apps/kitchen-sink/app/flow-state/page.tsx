@@ -206,7 +206,10 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
         setResolving(null);
       },
       () => {
-        if (current) setResolving(null);
+        // Gone: the assistant's conversation, not whichever was open before.
+        if (!current) return;
+        setPicked(null);
+        setResolving(null);
       },
     );
     return () => {
