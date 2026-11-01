@@ -46,7 +46,7 @@ import type {
 } from "@flow-state-dev/core/items";
 import type { BlockValueInternal, RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
-import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockOutputHint, EmitMessageOptions, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import {
   createScopePersist,
@@ -286,12 +286,12 @@ type EmissionContext = {
 function createEmitMessage(
   emCtx: EmissionContext
 ): {
-  (text: string, options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }): void;
-  (content: Content[], options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }): void;
+  (text: string, options?: EmitMessageOptions): void;
+  (content: Content[], options?: EmitMessageOptions): void;
 } {
   return function emitMessage(
     textOrContent: string | Content[],
-    options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
+    options?: EmitMessageOptions
   ): void {
     const content: Content[] =
       typeof textOrContent === "string"
@@ -313,7 +313,8 @@ function createEmitMessage(
       itemVisibility: options?.itemVisibility ?? emCtx.itemVisibility,
       agentName: options?.agentName ?? emCtx.agentName,
       role: "assistant",
-      content
+      content,
+      ...(options?.metadata !== undefined ? { metadata: options.metadata } : {})
     };
 
     void emCtx.response.emitItemAdded(item);
@@ -428,7 +429,7 @@ function createEmitMessageAwaited(
   emCtx: EmissionContext
 ): (
   text: string,
-  options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean; role?: "user" | "assistant" }
+  options?: EmitMessageOptions & { role?: "user" | "assistant" }
 ) => Promise<void> {
   return async function emitMessageAwaited(text, options): Promise<void> {
     const itemIndex = emCtx.nextItemIndex();
@@ -446,7 +447,8 @@ function createEmitMessageAwaited(
       itemVisibility: options?.itemVisibility ?? emCtx.itemVisibility,
       agentName: options?.agentName ?? emCtx.agentName,
       role: options?.role ?? "assistant",
-      content: [{ type: "output_text", text }]
+      content: [{ type: "output_text", text }],
+      ...(options?.metadata !== undefined ? { metadata: options.metadata } : {})
     };
     await emCtx.response.emitItemAdded(item);
     await emCtx.response.emitItemDone(item);

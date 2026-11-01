@@ -2218,6 +2218,14 @@ ends; a waiting turn gets the answer instead. See
 with durable execution, an ending whose notice was lost (a crash right after the task ended) is
 heard within seconds, without anyone opening the conversation, through the session's wake.
 
+**Reading a task's lines in a client.** Each line the conversation says about a task names that
+task as data on its message item, so a client draws it without matching the words. A task's ending
+is read with Orchestration's `parseNotice(item)`: which task, how it ended, its title and what came
+back. A task filed with `resultTo: "conversation"` lands its delegate's answer as written instead;
+read that with `delegateAnswerOf(item)`, which answers `{ worker, taskId }`, from
+`@flow-state-dev/workforce/browser`. The conversation's own words are neither. An answer stored
+before its item carried the marker reads as `undefined`.
+
 ## Filing tasks from any worker
 
 A worker files tasks when its `WORKER.md`'s `delegates:` names one that takes tasks, on a flow
@@ -2616,7 +2624,7 @@ coordinator's own turn's answer name, which its messages carry as `agentName`) a
 `WORK_PROJECT_STATE_KEY`, `SEND_MESSAGE_TOOL` (the
 tool a sent message is a call to), `MESSAGE_RECEIVED_ENTRY`, `RECEIVED_MESSAGE_COMPONENT` (the
 component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
-`WORKER_MESSAGES_RESOURCE` and `workerMessageRowSchema`, the same values the root exports, and reaches no Node built-in.
+`WORKER_MESSAGES_RESOURCE` and `workerMessageRowSchema`, `delegateAnswerOf`, the same values the root exports, and reaches no Node built-in.
 
 ## Exports
 
@@ -2626,6 +2634,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `AGENT_FLOW` | The kind name (`"agent"`) the hire step defaults to, and the key a replacement registers under. |
 | `takeFinishedTasks` / `finishedTaskSchema` / `FinishedTask` | A handler block that takes the tasks this conversation filed whose endings haven't been heard yet, says each as a line under its delegate's name, and returns them as `{ taskId, ending, worker?, line }[]`. Input is ignored. `[]` outside a turn a user's own message started (see [Answering again with finished tasks](#answering-again-with-finished-tasks)). |
 | `finishedTasksAnswerAgain({ message? })` / `FinishedTasksAnswerAgainOptions` | The block `answerAgain: true` uses: `takeFinishedTasks`, then `{ message }` naming each finished task and how it ended, or `{}` when nothing finished. `message(finished)` replaces the default wording. |
+| `delegateAnswerOf(item)` / `delegateAnswerMetadata({ worker, taskId })` / `DelegateAnswer` | A delegate's answer that landed in a conversation as written (a task filed with `resultTo: "conversation"`, routed or not), as its message item marks it: `{ worker, taskId }`, or `undefined` for any other item. `delegateAnswerMetadata` is the `metadata` such a line is emitted with. Also on `./browser`. |
 | `MAX_ANSWERS_AGAIN` | `3`, the most times one request answers again after its turn, the answer after a plan included. |
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability({ roster, inventory, sources? })` | The discovery door. Installs the `workers` source plus whatever other domains' sources you pass, and contributes one control tool, `discover`, which lists the standard workers the files declare. |

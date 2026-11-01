@@ -598,6 +598,24 @@ back. Once the session is free, apply `resendNowPatch(row)` to each row that sti
 with `ref.patchMetadata(row.id, resendNowPatch(row))`, and run the pass: the patch drops the resend
 backoff, so the pass sends the notice at once rather than at its next resend.
 
+**Reading a notice's line in a client.** `noticeText(notice, task)` is the notice in words, for a
+line in the conversation. Emit that line with `noticeMetadata(notice, task)` as its message's
+`metadata`, and a client reads it back with `parseNotice(item)`, from
+`@flow-state-dev/orchestration/tasks`, which is safe to import in a browser:
+
+```ts
+import { noticeMetadata, noticeText, parseNotice } from "@flow-state-dev/orchestration/tasks";
+
+ctx.emit.message(noticeText(notice, row), { metadata: noticeMetadata(notice, row) });
+
+// In the client:
+const line = parseNotice(item); // { taskId, ending, title, detail?, attempt?, boardId?, cancelled? } | undefined
+```
+
+`parseNotice` reads the data on the item, so a change to the line's wording doesn't break a client.
+A line stored before its item carried the data is read off its words; that read has no `attempt`
+or `boardId`. Any other item, a user's message included, is `undefined`.
+
 A notice that couldn't be sent when the row ended (the process died, the send failed) is sent
 about two seconds later, or as soon as the server is running again if it was down then: on a host with durable execution and a store that keeps wakes, the
 durability sweeper runs `onTaskSettled` in the filing session with an empty input, which sends

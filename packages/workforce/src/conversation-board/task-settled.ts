@@ -55,6 +55,7 @@ import {
   decideNotice,
   isTerminalStatus,
   noticeKey,
+  noticeMetadata,
   noticeText,
   type NoticePolicy,
   type Task,
@@ -73,6 +74,7 @@ import { noteTaskAnswer } from "@flow-state-dev/orchestration/task-board";
 import { admitOwnTask } from "./task-admission";
 import { anotherTurnWaitsOnItsPlan } from "./plan";
 import { noteTaskEndingRead, taskEndingReadsStateSchema } from "./task-ending-read";
+import { delegateAnswerMetadata } from "./delegate-answer";
 
 /** A notice, as the entries take it. */
 export const taskNoticeSchema = z
@@ -106,6 +108,8 @@ const settledSchema = z.object({
   act: z.enum(["none", "run-board", "wake-turn", "line"]),
   text: z.string().optional(),
   worker: z.string().optional(),
+  /** What the line's item carries: the notice (`noticeMetadata`), or a delegate's answer's marker. */
+  metadata: z.record(z.string(), z.unknown()).optional(),
   /** On a routed ending: what the conversation's routing is handed. */
   routed: z.unknown().optional(),
   /** On a routed ending: the notice, acknowledged once the routing's handling has run. `act` is what is said after that. */
@@ -292,7 +296,10 @@ const line = handler({
   inputSchema: settledSchema,
   outputSchema: z.object({}),
   execute: (settled: Settled, ctx) => {
-    ctx.emit.message(settled.text ?? "", settled.worker !== undefined ? { agentName: settled.worker } : {});
+    ctx.emit.message(settled.text ?? "", {
+      ...(settled.worker !== undefined ? { agentName: settled.worker } : {}),
+      ...(settled.metadata !== undefined ? { metadata: settled.metadata } : {})
+    });
     return {};
   }
 });
@@ -308,10 +315,19 @@ const runPass = handler({
   }
 });
 
-/** A conversation-result task's answer as it lands: the delegate's reply itself, or the ending in words. */
-function resultLine(notice: TaskNotice, row: { goal: string; title?: string; assignee?: string }): string {
+/**
+ * A conversation-result task's answer as it lands: the delegate's reply
+ * itself, marked as its answer, or the ending in words, marked as the notice.
+ */
+function resultLine(
+  notice: TaskNotice,
+  row: { goal: string; title?: string; assignee?: string }
+): { text: string; metadata: Record<string, unknown> } {
   const answer = notice.ending === "completed" ? answerTextOf(notice.output) : undefined;
-  return answer ?? noticeText(notice, row);
+  if (answer !== undefined && row.assignee !== undefined) {
+    return { text: answer, metadata: delegateAnswerMetadata({ worker: row.assignee, taskId: notice.taskId }) };
+  }
+  return { text: answer ?? noticeText(notice, row), metadata: noticeMetadata(notice, row) };
 }
 
 /**
@@ -362,7 +378,14 @@ export function taskSettledEntry(options: TaskSettledOptions) {
         const act = byTurn && decideNotice(notice, options.policy(ctx)).act === "wake-turn" ? "wake-turn" : "line";
         // noticeText quotes the task. A policy's task is the user's message.
         const text = byTurn ? noticeText(notice, row) : `${row.assignee ?? "The delegate"} couldn't answer: ${notice.error ?? "no error was recorded"}`;
-        return { act, routed, notice: notice as Settled["notice"], text, ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
+        return {
+          act,
+          routed,
+          notice: notice as Settled["notice"],
+          text,
+          metadata: noticeMetadata(notice, row),
+          ...(row.assignee !== undefined ? { worker: row.assignee } : {})
+        };
       }
       // `none` still carries `notice`: the routing runs, and nothing is said after it.
       return { act: "none", routed, notice: notice as Settled["notice"] };
@@ -371,7 +394,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     await ref.patchMetadata(row.id, clearNotice(notice));
     if (first !== true) return { act: "none" };
     const act = unrouted && decideNotice(notice, options.policy(ctx)).act === "wake-turn" ? "wake-turn" : "line";
-    return { act, text: resultLine(notice, row), ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
+    return { act, ...resultLine(notice, row), ...(row.assignee !== undefined ? { worker: row.assignee } : {}) };
   };
 
   const settle = handler({
@@ -406,6 +429,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       return {
         act: decision.act,
         text,
+        metadata: noticeMetadata(notice, row),
         ...(row.assignee !== undefined ? { worker: row.assignee } : {})
       };
     }
