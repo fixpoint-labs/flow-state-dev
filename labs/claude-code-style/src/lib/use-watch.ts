@@ -43,3 +43,16 @@ export function elapsed(fromMs: number, nowMs: number): string {
   const seconds = Math.max(0, Math.floor((nowMs - fromMs) / 1000));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
+
+/**
+ * Calls `onMissing` when `rows` have been read and `id` names none of them:
+ * an address naming a task that is gone. Never before the first read, since a
+ * slow read is not a missing row.
+ */
+export function useMissing(rows: readonly { id: string }[] | undefined, id: string | undefined, onMissing: () => void): void {
+  const missing = rows !== undefined && id !== undefined && !rows.some((row) => row.id === id);
+  useEffect(() => {
+    if (missing) onMissing();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missing]);
+}

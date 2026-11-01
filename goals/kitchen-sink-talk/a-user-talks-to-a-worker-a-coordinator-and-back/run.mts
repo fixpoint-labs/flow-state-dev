@@ -229,9 +229,12 @@ const DROP_USER_MESSAGES = `(() => {
 // The page, as a person uses it. One load per journey; a reload only at a leg's end.
 // ---------------------------------------------------------------------------
 
-/** Wait until the page can be used. */
+/** Wait until the page can be used: the assistant's composer, or, after a reload, the conversation the address reopened. */
 const ready = (page: Page) =>
-  page.locator('[data-testid="message-input"]:visible').waitFor({ state: "visible", timeout: 30_000 });
+  page
+    .locator('[data-testid="message-input"]:visible, [data-testid="picked-session"]:visible')
+    .first()
+    .waitFor({ state: "visible", timeout: 30_000 });
 
 /** Reload, the one each leg makes at its end, and wait until the page can be used. */
 async function reload(page: Page): Promise<void> {
