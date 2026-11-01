@@ -207,8 +207,10 @@ export async function runToEnd(
     };
     child.once("error", (error) => finish({ exitCode: 127, timedOut: false, output: `${output}${error.message}`.slice(-options.keepChars) }));
     child.once("close", (exitCode) => {
-      // The group, once the leader is gone: anything it left running goes with it.
-      if (timedOut) stopGroup();
+      // The group, once the leader is gone: anything it left running goes with
+      // it, on a clean exit too, so nothing it started outlives the call (the
+      // caller may let the checkout go next).
+      stopGroup();
       finish({ exitCode, timedOut, output });
     });
   });
