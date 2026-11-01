@@ -31,6 +31,10 @@
  * session stored before models could be picked, and `codexClientOptions`).
  * Sign-in, history and every other setting still come from Codex's home.
  *
+ * When the operator trusts the repository (`lib/harness-trust.ts`), the MCP
+ * servers your Codex settings name stay on, and the run is handed the keys the
+ * operator named. Codex reads the repository's `AGENTS.md` either way.
+ *
  * Under `KITCHEN_SINK_TEST_MODE=1` the SDK is replaced by the scripted Codex
  * (`lib/scripted-codex.ts`) and the check passes, unless
  * `KITCHEN_SINK_REAL_HARNESS=1` asks for the real one, which the goal check
@@ -61,6 +65,8 @@ import {
 } from "@flow-state-dev/codex";
 
 import { goalControl } from "./goal-control";
+import { harnessTrust, type RepoLine } from "./harness-trust";
+import type { HarnessTrust } from "./harness-workspace";
 import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { kitchenSinkHarnessFlow } from "./harness-session-flow";
@@ -102,9 +108,24 @@ export async function codexModelChoices(
   return { models: found.models.map(({ id, label }) => ({ id, label })), defaultId: preselected.id, reason: null, fallbackId: null };
 }
 
-/** The environment Codex's process gets, and the one its sign-in and sandbox are checked over. */
-export function codexEnv(env: Record<string, string | undefined> = process.env): Record<string, string> {
-  return harnessEnv({ pass: CODEX_PASS, env });
+/**
+ * The environment Codex's process gets, and the one its sign-in and sandbox are
+ * checked over: the Codex package's own pass-list, and the keys a trusting
+ * operator named.
+ */
+export function codexEnv(
+  env: Record<string, string | undefined> = process.env,
+  trust: HarnessTrust = harnessTrust(),
+): Record<string, string> {
+  return harnessEnv({ pass: [...CODEX_PASS, ...trust.pass], env });
+}
+
+/** The header's line for a Codex session: `AGENTS.md` always, and whether your MCP servers stay on. */
+export function codexRepoLine(trust: HarnessTrust = harnessTrust()): RepoLine {
+  return {
+    conventions: trust.trusted ? "AGENTS.md, with your Codex MCP servers on" : "AGENTS.md only, your Codex MCP servers off",
+    keys: trust.pass,
+  };
 }
 
 /** Whether this server runs the scripted Codex instead of the SDK. */
@@ -139,14 +160,18 @@ export interface CodexMcpServer {
  * `workspace-write` also lets a run write in `/tmp` and `$TMPDIR` by default,
  * where a repository or another session's files may sit.
  *
+ * Trusted, no server is turned off: `mcpServers` is not read.
+ *
  * @param mcpServers The MCP servers Codex's settings name (`userMcpServers`).
  */
 export function codexClientOptions(
   env: Record<string, string | undefined> = process.env,
   mcpServers: readonly CodexMcpServer[] = [],
+  trust: HarnessTrust = harnessTrust(),
 ): CodexClientOptions {
+  if (trust.trusted) mcpServers = [];
   return {
-    env: codexEnv(env),
+    env: codexEnv(env, trust),
     config: { service_tier: "default" },
     // The inventory can contain plugin/runtime servers absent from config.toml.
     // Even a disabled entry needs a transport; quote names so dots remain literal.
@@ -164,15 +189,17 @@ export function codexClientOptions(
  * said which MCP servers its settings name. Asked once per server process, on
  * the first run: a server added to your settings later stays on until restart.
  * A run stopped while the list is still coming stops then; the list goes on
- * for the next run.
+ * for the next run. Trusted, nothing is listed: no server is turned off.
  */
 export function codexClient(
   listMcpServers: (env: Record<string, string>) => Promise<readonly CodexMcpServer[]> = userMcpServers,
+  trust: HarnessTrust = harnessTrust(),
 ): ResolveCodexClient {
   let resolver: Promise<ResolveCodexClient> | undefined;
   return async (ctx) => {
-    resolver ??= listMcpServers(codexEnv()).then(
-      (names) => createDefaultResolveCodexClient(codexClientOptions(process.env, names)),
+    if (trust.trusted) resolver ??= Promise.resolve(createDefaultResolveCodexClient(codexClientOptions(process.env, [], trust)));
+    resolver ??= listMcpServers(codexEnv(process.env, trust)).then(
+      (names) => createDefaultResolveCodexClient(codexClientOptions(process.env, names, trust)),
       (error: unknown) => {
         // Not kept: the next run asks again. This one starts with whatever
         // servers Codex has, and the session says so, so it is never silent.
@@ -181,7 +208,7 @@ export function codexClient(
           `Codex's MCP servers could not be listed, so this run may start the ones your Codex settings name: ${error instanceof Error ? error.message : String(error)}`,
           { transient: false },
         );
-        return createDefaultResolveCodexClient(codexClientOptions(process.env));
+        return createDefaultResolveCodexClient(codexClientOptions(process.env, [], trust));
       },
     );
     const stopped = ctx.signal;

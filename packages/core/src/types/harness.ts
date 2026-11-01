@@ -483,7 +483,9 @@ export interface HarnessRunSpend {
   /**
    * The harness's own id for this run (FIX-2288). A later report with the same
    * id replaces the earlier one, so a harness reports its running total, never
-   * an increment. Absent: the report is one settled run of its own.
+   * an increment. Absent: the report is one settled run of its own, and the
+   * engine names it (a fresh `settled_…` id) as it counts it, so what a reader
+   * reads back, and what a continuation recovers from the log, carries that id.
    */
   runId?: string;
   /** The harness, by the name a usage record is kept under (`claude-code`, `codex`, `cursor`). */
@@ -516,7 +518,8 @@ export interface HarnessRunSpend {
  * tokens `null`), on each usage event its vendor sends (the run's total so
  * far), and from its `finally` when the run ends however it ends (the final
  * total). Each report carries the whole run so far, never an increment, and
- * the run counts once. Without a `runId`, each call is one settled run.
+ * the run counts once. Without a `runId`, each call is one settled run, which
+ * the engine gives an id of its own.
  *
  * @returns `false` when the context carries no spend ledger: a hand-built
  *   test context, or a block run outside a request. Nothing is counted then.

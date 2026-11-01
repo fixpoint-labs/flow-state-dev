@@ -59,6 +59,7 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `selection` | Single (enum) or multi (array of enum) choice card for a `user_input` suspension |
 | `form` | Flat-object form card for a `user_input` suspension — one control per scalar/enum property |
 | `model-badge` | Small pill showing the `ModelIdentity` that answered. Renders nothing when the model is undefined |
+| `spend` | One line for what a run spent: model, tokens, the vendor's charge when it reported one, and optionally attempts and duration. Reads a task's or a harness turn's folded spend |
 | `audit-annotation` | Compact card for `responseAuditor` findings: severity indicators, per-analyzer scores, evidence. Fed by the `audit-annotation` component item |
 
 ## Framework Integration
