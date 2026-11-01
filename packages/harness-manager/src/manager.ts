@@ -126,6 +126,7 @@ import { commandCheckResultSchema, commandChecksSummary, readVerdict, type Comma
 import { progressNoteOf, throttledNotes, type ProgressNotes } from "./progress-note";
 import {
   grantMatches,
+  MAX_APPROVAL_STEPS,
   heldToolCallOf,
   heldToolCallSchema,
   heldToolDecision,
@@ -3816,13 +3817,6 @@ function refusedMessage(by: "source" | "host", refusal: { reason: string; messag
 
 /** How often a running step's row is read for a steer (FIX-2086). */
 export const STEER_POLL_MS = 1_000;
-
-/**
- * How many times one try's run is resumed for a tool approval's answer
- * (FIX-2389). Each costs a harness restart, so a run past it is asking for
- * more than a person should click through; the try fails, saying so.
- */
-const MAX_APPROVAL_STEPS = 25;
 
 /** What a harness step stopped for a steer hands on, in place of a handle. */
 const STOPPED_FOR_STEER = "harness-manager:stopped-for-steer";

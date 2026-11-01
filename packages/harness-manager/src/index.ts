@@ -142,6 +142,7 @@ export {
   harnessTurnRecordSchema,
   HARNESS_SESSION_FAILED_OUTCOME,
   HARNESS_SESSION_MODEL_REQUIRED,
+  HARNESS_SESSION_APPROVALS_NEED_DURABLE,
   type HarnessSessionFeeds,
   type HarnessSessionFlowOptions,
   type HarnessSessionPlace,

@@ -222,6 +222,25 @@ Each answer costs a few seconds: the harness starts again and resumes its sessio
 
 Only Claude Code asks per call. Codex and Cursor take their sandbox and approval settings for the whole run, so they ignore the feed. Approvals need a host with [durable execution](../advanced/durable-execution.md), and a host can restart while one waits.
 
+### In a coding chat
+
+`harnessSessionFlow`, the flow behind a chat with one harness session, takes the same `approveTools` option. A call the harness doesn't allow stops the turn, and the turn's request waits for the same approval, with the same prompt, data and three answers. Your screen answers it through the engine's answer route, as it answers any paused request, and the answer resumes the conversation. Allow for this run lasts until the turn ends.
+
+```ts
+harnessSessionFlow({
+  kind: "claude-code-session",
+  workspace,
+  approveTools: true,
+  agent: (feeds) =>
+    claudeCodeAgent({
+      ...feeds,
+      detached: true,
+      permissionMode: "default",
+      allowedTools: ["Read", "Glob", "Grep"],
+    }),
+});
+```
+
 ## Running tasks from more than one board
 
 A manager built with `boardCollectionId` works one board. A worker that also takes tasks a coordinator files in a conversation needs more. Each conversation keeps its own board, the list of tasks filed from it, so there is no single board to name.
