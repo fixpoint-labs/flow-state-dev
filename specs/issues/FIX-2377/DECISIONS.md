@@ -106,8 +106,8 @@ Continue is the one that finishes it.
 
 <a name="e1"></a>
 - **E1 · Delivery follows the build order.** The package PR (engine branch, client function,
-  component state, Kitchen Sink's installed copy for the drift test, the goal leg, docs) stacks on
-  FIX-2370's implementation branch. Each app's slice lands in its own stack: Kitchen Sink's Flow
+  component state, the goal leg, docs) stacks on FIX-2370's implementation branch. Kitchen Sink
+  installs the component's copy with the slice that draws it, as FIX-2370 does. Each app's slice lands in its own stack: Kitchen Sink's Flow
   State page after FIX-2370 there (`2370 → 2377 → 2376`), its `harness-session.tsx` after
   FIX-2410; each lab's and Shift Manager's after that app's FIX-2370 slice.
 - **One path per app for the open conversation.** Kitchen Sink's Flow State chat keeps the
