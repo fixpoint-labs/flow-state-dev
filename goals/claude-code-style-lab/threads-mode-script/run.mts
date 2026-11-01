@@ -42,7 +42,7 @@ const WORKERS = join(LAB, "workforce", "teams", "desk", "workers");
 
 /** What a control changes in a worker file for its run: the text it replaces, and with what. */
 const PLANTS: Record<string, { file: string; from: string; to: string }> = {
-  "no-delegates": { file: "lead/WORKER.md", from: `delegates: [${THREAD}, ${CODER}]`, to: "delegates: []" },
+  "no-delegates": { file: "lead/WORKER.md", from: `delegates: [${THREAD}, ${CODER}, ${CODER}-plan, ${CODER}-codex, ${CODER}-cursor]`, to: "delegates: []" },
   ongoing: {
     file: "lead/WORKER.md",
     from: "leave session and resultTo out, so each piece runs in a new session of\nits own",

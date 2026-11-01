@@ -12,6 +12,7 @@
  */
 export { cursorAgent, type CursorAgentOptions } from "./agent";
 export { createCursorAgentCapability } from "./capability";
+export { CURSOR_PASS } from "./env-pass";
 export {
   assertTestedSdkVersion,
   createDefaultResolveCursorClient,

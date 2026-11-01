@@ -86,7 +86,15 @@ const HARNESSES: Record<string, (feeds: HarnessFeeds) => HarnessBlock> = {
   "claude-code": claudeCode("acceptEdits"),
   "claude-code-plan": claudeCode("plan"),
   codex: (feeds) =>
-    codexAgent({ cwd: feeds.cwd, resume: feeds.resume, onSession: feeds.onSession, onActivity: feeds.onActivity, name: "codex" }) as unknown as HarnessBlock,
+    codexAgent({
+      cwd: feeds.cwd,
+      resume: feeds.resume,
+      onSession: feeds.onSession,
+      onActivity: feeds.onActivity,
+      // Codex's own default sandbox is read-only; a coder has to edit and commit.
+      thread: { sandboxMode: "workspace-write" },
+      name: "codex",
+    }) as unknown as HarnessBlock,
   cursor: (feeds) =>
     cursorAgent({
       cwd: feeds.cwd,

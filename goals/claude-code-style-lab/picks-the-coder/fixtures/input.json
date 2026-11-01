@@ -1,0 +1,6 @@
+{
+  "project": "Coder pick",
+  "codex": "Change the first line of README.md in the project to exactly: # {marker}",
+  "plan": "Add the line \"{marker}\" at the end of README.md in the project.",
+  "threads": "Add the line \"- {marker}\" at the end of CHANGELOG.md in the project."
+}
