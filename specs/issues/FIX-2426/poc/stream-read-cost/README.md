@@ -22,11 +22,12 @@ stream open for a 10 s window at the shipped one-second interval. `idle`: nothin
 
 **Result, 2026-11-01** (`main` at 824ce87):
 
-| Shape | Viewers | Statements / viewer / s | DB ms / viewer / s | Share of a 10-connection pool |
-|---|---|---|---|---|
-| idle | 1 · 10 · 50 · 100 | 4.00 at every count | 3.1 – 5.8 | 0.0 · 0.4 · 1.7–1.9 · 3.1–3.8% |
-| active | 1 · 10 · 50 · 100 | 5.6 – 6.9 | 4.7 – 7.9 | 0.1 · 0.5 · 2.3–2.6 · 4.7–5.3% |
+| Shape | Viewers | Statements / viewer / s |
+|---|---|---|
+| idle | 1 · 10 · 50 · 100 | 4.00 at every count |
+| active | 1 · 10 · 50 · 100 | 5.6 – 6.9 |
 
 The control reports 0. One of three full-grid runs failed one case on the runs-frame assertion
-(not the counts); two reruns passed. PGlite runs in process, so database time is a floor for a
-networked Postgres; the statement count is exact.
+(not the counts); two reruns passed. The statement count is exact. Time inside the database is
+not measured: PGlite runs every query behind one lock, so a timer around `query()` counts other
+viewers' waits, and says nothing about a connection pool.

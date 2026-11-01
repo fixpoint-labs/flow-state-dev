@@ -4,7 +4,7 @@
 
 The calls that sit above any single issue: what was chosen, what lost, why, and what each locks
 in for the six issues under it. D5 is the sign-off. The owner decided D2, D3 and D4 before
-drafting, and D1 and D6 on Oct 31; they are recorded so no child reopens them.
+drafting, and D1 and D6 on Oct 31, amended Nov 1; they are recorded so no child reopens them.
 
 ## The tree
 
@@ -37,16 +37,19 @@ Solid edges are the calls. Dashed edges lost, and the label says why.
 | **Because** | The session stream already crosses processes on every store, so widening it is the cheapest set, about two issues. Its price is a store read every second for every open view of every scope, whether anything changed. An in-process fan-out fails today: BullMQ's `dispatch-only` and `worker-only` modes run actions in other processes. Ably alone makes a paid service the only way to get push, even on a laptop. The bus reads only after a notice, and Ably then fills the serverless case |
 | **Locks in** | An epic slot while the active-epic cap is already exceeded (the owner chose this one). The Postgres bus is no longer a collapse candidate |
 
-**What would change my mind:** the cost measured as cheap. The metric is store queries per
-second from session-stream connections. Each open view costs at least four today (two request
-lists, a runs list and an identity check, per tick of `SESSION_STREAM_TIMINGS.intervalMs` in
-`session-stream-routes.ts`), and widening multiplies that by the scopes it watches, on a primary
-Postgres pool of 10 by default. The code gives no defensible threshold, so the bus child
-measures it at the view counts the labs and Shift Manager run and sets one. If those queries
-fit with headroom, widen the session stream to user and org scopes and cut the bus, the
-Postgres bus and the socket.
+**What would change my mind:** store queries per second from session-stream connections,
+widened to session, user and org, **under 100 at 100 idle open views**. Then widen and cut the
+bus, the Postgres bus and the socket. One scope costs 4.00 per view today
+([FIX-2426's POC](../../issues/FIX-2426/DECISIONS.md#settled)), so widened about 1,200 at 100
+views, a small app and twenty times the labs. The bar sits twelve times under that, so only a
+redesigned read crosses it, not a tuned one.
 
-![D1: a push channel worth six issues and a closure. Chosen: bus, Postgres, socket, beside widening the session stream and an in-process fan-out. Decides it: what an open view costs the store. Price: six issues and a closure. Flips if a store read each second per viewer is cheap at the viewer counts we target](figures/d1-worth-it.svg)
+**The first flip fired; the bus was kept.** "Fits with headroom at the labs' view counts" fired
+at their one to five views. The owner kept the bus ([#4445](https://github.com/fixpoint-labs/flow-state-dev/pull/4445)):
+widening would ship polling for user and org changes, which FIX-1506 rules out, and leave
+FIX-380 without its seam.
+
+![D1: a push channel worth six issues and a closure. Chosen: bus, Postgres, socket, beside widening the session stream and an in-process fan-out. Decides it: what an open view costs the store. Price: six issues and a closure. Flips if, widened, 100 idle views cost under 100 store queries a second](figures/d1-worth-it.svg)
 
 It comes down to what an open view costs: the widened stream reads every second, the bus only on
 a change.
@@ -115,13 +118,15 @@ It comes down to Postgres on two processes: with one seam it writes a socket ser
 | | |
 |---|---|
 | **Instead of** | Leaving `GET /sessions/:id/stream`'s once-a-second read as it is, a second live path beside the bus |
-| **Because** | That read costs a store read a second for every open connection, whether or not anything changed. Woken, an idle view costs nothing, and the bus has a real consumer the day it lands. The stream also sends other callers' items and run changes, which a plain reply makes with no resource, state or task write, so the bus child publishes the session topic from the request and session store writes the stream reads (`resolveStores`), or turning the timer off would strand them. The stream's cross-process reach then rests on the bus, so the timed read stays as a slow fallback where the bus can't cross processes: the in-memory bus on two or more processes, and serverless hosts. The wake goes in the bus child, because the delivery child is already the largest |
+| **Because** | That read costs a store read a second for every open connection, whether or not anything changed. Woken, an idle view costs nothing, and the bus has a real consumer the day it lands. The stream also sends other callers' items and run changes, which a plain reply makes with no resource, state or task write, so the bus child publishes the session topic from every request and session store write, through one wrapper applied in `resolveStores` and at each entry that takes a raw registry (`runAction`, BullMQ's job processor, `fsdev run` and `chat`), or turning the timer off would strand them. The stream's cross-process reach then rests on the bus, so the timed read stays as a slow fallback where the bus can't cross processes: the in-memory bus on two or more processes, and serverless hosts. The wake goes in the bus child, because the delivery child is already the largest |
 | **Locks in** | The bus child owns the wake and its publisher: an item persisted under a session's request, a request status change, and a run created or updated each publish that session's topic. The timed read stays **only** where the bus can't cross processes (the in-memory bus on two or more processes, and serverless hosts); with a cross-process bus it is off. No child adds an always-on poll beside the session stream and the socket (ER-3). The bus child changes a route that works today across processes, so it proves both the woken and the fallback path, and a reply with no other write (closure leg d) |
 
-**What would change my mind:** the read cost measured as negligible at our viewer counts, or the
-bus child unable to land the wake without the delivery child.
+**What would change my mind:** the session stream alone **under 100 store queries a second at
+100 idle open views** (today 400; [D1](#d1)'s bar), or the bus child unable to land the wake
+without the delivery child. The first flip, a read "negligible at our viewer counts", fired with
+D1's; the bus was kept for the same reasons.
 
-![D6: when the session stream reads, once the bus exists. Chosen: when the bus wakes it, beside once a second as now. Decides it: what an idle view costs. Price: a working route changes. Flips if a store read each second is negligible at the viewer counts we target](figures/d6-bus-wakes-stream.svg)
+![D6: when the session stream reads, once the bus exists. Chosen: when the bus wakes it, beside once a second as now. Decides it: what an idle view costs. Price: a working route changes. Flips if 100 idle views cost the session stream under 100 store queries a second](figures/d6-bus-wakes-stream.svg)
 
 It comes down to the idle view: as now, it pays a read every second for nothing.
 
@@ -145,10 +150,10 @@ Every rule has one owner. A *consumes* cell is a place a child must not re-decid
 
 | Seam | Between | Rule |
 |---|---|---|
-| The notice and topic shape | the bus · every publisher · delivery · FIX-380 | The bus defines it once (ER-1, ER-2). A child that needs a field comments up here |
+| The notice and topic shape | the bus · every publisher · delivery · FIX-380 | The bus defines it once (ER-1, ER-2), with the wire's `topic.*` constructors, which name no user, org or tenant id. A child that needs a field comments up here |
 | The `bus` slot in `resolve-slots.ts` | the bus · Postgres bus · FIX-380 | The bus adds the slot and its default to the primary; an adapter declares it in its `capabilities` |
-| The session stream's wake | the bus · delivery · the task board child | The bus child owns it, and its publish from request and session writes in `resolveStores`; the only timed read is its fallback where the bus can't cross processes ([D6](#d6)) |
-| The task board's topic | the task board child · the bus | The conversation's session topic, published from whichever process settles the task |
+| The session stream's wake | the bus · delivery · the task board child | The bus child owns it, and its one write wrapper, in `resolveStores` and at each raw-registry entry; the only timed read is its fallback where the bus can't cross processes ([D6](#d6)) |
+| The task board's topic | the task board child · the bus | The conversation's session topic, with a *board change* kind, published from whichever process settles the task. The session stream wakes only on `items`, `request` and `run`, so a board is no second way to watch a session |
 | The user-stream route and `GET /capabilities` | delivery · FIX-380 | Delivery owns what capabilities reports. FIX-380 reports its own kind and mints its token through the ER-4 check |
 | The resource and state hooks' invalidation | FIX-1506 · delivery | One invalidation path with two sources: the writer's own `resource_change` or `state_change` item and the notice. The writer's tab reads once, not twice |
 | Shift Manager's `TasksPanel` and the Teammates lab's `adapter.ts` polls | the task board child | Only that child turns them into the fallback |
@@ -190,6 +195,8 @@ reuse rows. Its one hold became [D6](#d6).
   closure leg a patches `ctx.org`. D1's flip names its metric; D6's timed read is fallback only.
 - **Review (Oct 31)** — D6's wake widened to request and run writes, which a plain reply makes
   alone; closure leg d checks it with the timed read off. FIX-2043 stays out, as a read by id.
+- **Amended (Nov 1)** — D1's flip fired at the labs' view counts; the owner kept the bus. D1 and
+  D6 now flip in queries a second at 100 views. D6's publish also wraps raw-registry entries.
 
 <a name="open"></a>
 **Open: none.**
