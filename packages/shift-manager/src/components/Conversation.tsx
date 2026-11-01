@@ -170,7 +170,8 @@ export function Conversation({
   const composer = (
     <TurnComposer
       testId={`${testId}-composer`}
-      draftKey={`conversation:${worker.id}`}
+      // A session the view names (a project's, a workstream's) keeps its own draft; otherwise the worker's conversation does.
+      draftKey={session !== undefined ? `session:${session}` : `conversation:${worker.id}`}
       scale={scale}
       label={`Message ${name}`}
       placeholder={`Message ${name}…`}

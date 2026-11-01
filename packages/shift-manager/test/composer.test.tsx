@@ -198,6 +198,21 @@ describe("a reload keeps what was typed, and what may already have been sent (SM
     expect((screen.getByTestId("t-input") as HTMLInputElement).value).toBe("ship it today");
   });
 
+  it("keeps the warning through a reload while the next send is still out", async () => {
+    const first = render(composer("task:t-1", () => Promise.reject(new Error("the connection dropped"))));
+    fireEvent.change(screen.getByTestId("t-input"), { target: { value: "ship it" } });
+    await act(async () => fireEvent.click(screen.getByTestId("t-send")));
+    first.unmount();
+
+    const second = render(composer("task:t-1", () => new Promise(() => {})));
+    await act(async () => fireEvent.click(screen.getByTestId("t-send")));
+    second.unmount();
+
+    render(composer("task:t-1"));
+    expect((screen.getByTestId("t-input") as HTMLInputElement).value).toBe("ship it");
+    expect(screen.getByTestId("t-status").getAttribute("data-state")).toBe("unconfirmed");
+  });
+
   it("forgets the warning once a send lands", async () => {
     const first = render(composer("conversation:w-1", () => Promise.reject(new Error("the connection dropped"))));
     fireEvent.change(screen.getByTestId("t-input"), { target: { value: "ship it" } });
