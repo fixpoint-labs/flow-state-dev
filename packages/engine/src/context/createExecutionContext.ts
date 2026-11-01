@@ -3688,27 +3688,22 @@ export async function createExecutionContext<
     // once (FIX-2444). The resume runs the code up to that gate again (the
     // waiting block, its connector, a sequencer's own `.map`) on top of the
     // checkpoint the sequencer wrote at the suspension, which already holds
-    // every write that code made before it stopped. So when the waiting block
-    // reaches the last gate the log records for it, the restored sequencer's
-    // state is replaced by that checkpoint: what the re-run wrote again is
-    // dropped, and transient fields (which no checkpoint holds) keep what the
-    // re-run wrote. Code that never reaches the gate (a branch the restored
-    // state skips) keeps its writes. Any other state, such as a handler's own
-    // `ctx.self`, is not in the checkpoint and is left alone.
-    const settleReplayedState = async (callerLogicalId: string): Promise<void> => {
-      const replayLog = (rootContext as { _replayLog?: ReplayLog })._replayLog;
-      const resumeState = (rootContext as { _resumeState?: { state?: Record<string, unknown>; restored?: Record<string, unknown>; atSuspension?: boolean; blockInstanceId?: string } })._resumeState;
+    // every write that code made before it stopped. The checkpoint names the
+    // gate it was taken at, so when the re-run reaches that gate the restored
+    // sequencer's state is replaced by the checkpoint: what the re-run wrote
+    // again is dropped, and transient fields (which no checkpoint holds) keep
+    // what the re-run wrote. A checkpoint from an earlier gate (a crash before
+    // the later gate's was saved) settles at that earlier gate, so the writes
+    // between the two, which it lacks, are made once after it. Code that never
+    // reaches the gate (a branch the restored state skips) keeps its writes.
+    // Any other state, such as a handler's own `ctx.self`, is not in the
+    // checkpoint and is left alone.
+    const settleReplayedState = async (gateSuspensionId: string): Promise<void> => {
+      const resumeState = (rootContext as { _resumeState?: { state?: Record<string, unknown>; restored?: Record<string, unknown>; suspensionId?: string; blockInstanceId?: string } })._resumeState;
       // A checkpoint from a step boundary (one written before checkpoints were
-      // taken at the wait) lacks the waiting step's writes: the re-run's are
-      // the only copy, so they stay.
-      if (replayLog === undefined || resumeState?.restored === undefined || resumeState.atSuspension !== true) return;
-      // The waiting block: the one this continuation resolves, else (a
-      // crash's continuation) the one the latest logged answer resumed.
-      const pending = replayLog.pendingSuspension()?.blockLogicalId;
-      const waiting = pending ?? replayLog.resolvedInOrder().at(-1)?.blockLogicalId;
-      if (waiting !== callerLogicalId) return;
-      const logged = replayLog.resolvedResumes(waiting).length + (pending === waiting ? 1 : 0);
-      if ((resolvedResumeCursor.get(waiting) ?? 0) !== logged) return;
+      // taken at the wait) names no gate and lacks the waiting step's writes:
+      // the re-run's are the only copy, so they stay.
+      if (resumeState?.restored === undefined || resumeState.suspensionId !== gateSuspensionId) return;
       const restoredId = resumeState.blockInstanceId ?? buildBlockInstanceId(requestRef.current.id, ROOT_BLOCK_PATH, 0);
       for (let node = parentChain; node !== undefined; node = node.previous) {
         if (node.parent.instanceId === restoredId && node.parentStateContainer !== undefined) {
@@ -3937,8 +3932,8 @@ export async function createExecutionContext<
           const consumed = resolvedResumeCursor.get(callerLogicalId) ?? 0;
           if (consumed < resolved.length) {
             resolvedResumeCursor.set(callerLogicalId, consumed + 1);
-            await settleReplayedState(callerLogicalId);
             const entry = resolved[consumed];
+            await settleReplayedState(entry.suspensionId);
             // A user's stop replays as the stop, never as an answer
             // (FIX-2129): a crash after its resolution was logged must not
             // read it as approved. The run ends here, as the live stop does.
@@ -3985,7 +3980,7 @@ export async function createExecutionContext<
 
           if (isResolvingGate) {
             resolvedResumeCursor.set(callerLogicalId, position + 1);
-            await settleReplayedState(callerLogicalId);
+            await settleReplayedState(resumeCtx.suspensionId);
             // A task's run stopped while it waited for a user ends here
             // (FIX-2129, `stopsAtItsGate`): the claim gate ahead of it has
             // read the stop, and no block runs past the gate. The stop is

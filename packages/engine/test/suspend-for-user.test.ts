@@ -819,8 +819,8 @@ describe("writes after the resume, on a restored sequencer, are live", () => {
     const h = harness(flow);
     const { requestId, gate } = await park(h, flow, {});
     const saved = await h.stores.checkpoints.latest(requestId, gate.blockInstanceId);
-    expect(saved?.atSuspension).toBe(true);
-    const { atSuspension: _taken, ...legacy } = saved!;
+    expect(saved?.suspensionId).toBe(gate.suspensionId);
+    const { suspensionId: _taken, ...legacy } = saved!;
     await h.stores.checkpoints.write({ ...legacy, stepIndex: -1, state: { asked: 0 } });
     expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "ok" })).status).toBe(202);
     await h.drain();
@@ -872,7 +872,7 @@ describe("writes after the resume, on a restored sequencer, are live", () => {
     const h = harness(flow);
     const write = h.stores.checkpoints.write.bind(h.stores.checkpoints);
     h.stores.checkpoints.write = async (checkpoint) => {
-      if (checkpoint.atSuspension === true) order.push("checkpoint at the wait");
+      if (checkpoint.suspensionId !== undefined) order.push("checkpoint at the wait");
       return write(checkpoint);
     };
     const flushItems = h.stores.request.flushItems.bind(h.stores.request);
@@ -884,6 +884,39 @@ describe("writes after the resume, on a restored sequencer, are live", () => {
     await park(h, flow, {});
     expect(order[0]).toBe("wait logged");
     expect(order).toContain("checkpoint at the wait");
+  });
+
+  it("a checkpoint taken at an earlier wait settles at that wait, not at the one the step stopped at last", async () => {
+    // A crash after the second wait is logged but before its checkpoint is
+    // saved leaves the first wait's checkpoint as the latest. Settling it at
+    // the second wait would drop the write made between the two.
+    const seen: unknown[] = [];
+    const waits = handler({
+      name: "waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        await ctx.sequencer!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "first?" } as never);
+        await ctx.sequencer!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "second?" } as never);
+        seen.push(ctx.sequencer!.state);
+        return null;
+      }
+    });
+    const block = sequencer({ name: "s", stateSchema: z.object({ asked: z.number().default(0) }) }).step(waits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    const first = (await h.stores.checkpoints.latest(requestId, gate.blockInstanceId))!;
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "a" })).status).toBe(202);
+    await h.drain();
+    const [second] = (await h.provider.listSuspended({ status: "pending" })).filter((s) => s.requestId === requestId);
+    const latest = (await h.stores.checkpoints.latest(requestId, gate.blockInstanceId))!;
+    await h.stores.checkpoints.write({ ...first, version: latest.version + 1 });
+    expect((await answerRoute(h, requestId, { suspensionId: second!.suspensionId, action: "submit", data: "b" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([{ asked: 2 }]);
   });
 
   it("replaying a completed step before the wait leaves the checkpoint taken at the wait in place", async () => {
@@ -906,7 +939,7 @@ describe("writes after the resume, on a restored sequencer, are live", () => {
         if (runs === 2) {
           await new Promise((settle) => setTimeout(settle, 20));
           const latest = await h!.stores.checkpoints.latest(requestId, key);
-          midReplay.push({ atSuspension: latest?.atSuspension, state: latest?.state });
+          midReplay.push({ suspensionId: latest?.suspensionId, state: latest?.state });
         }
         await ctx.sequencer!.incState({ asked: 1 });
         await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
@@ -921,7 +954,7 @@ describe("writes after the resume, on a restored sequencer, are live", () => {
     key = parked.gate.blockInstanceId;
     expect((await answerRoute(h, requestId, { suspensionId: parked.gate.suspensionId, action: "submit", data: "ok" })).status).toBe(202);
     await h.drain();
-    expect(midReplay).toEqual([{ atSuspension: true, state: { asked: 1 } }]);
+    expect(midReplay).toEqual([{ suspensionId: parked.gate.suspensionId, state: { asked: 1 } }]);
   });
 
   it("a transient field the re-run removed before the wait stays removed", async () => {

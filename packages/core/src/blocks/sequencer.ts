@@ -70,8 +70,8 @@ export type ResumeState = {
    * the root sequencer's, the only one that sees it.
    */
   blockInstanceId?: string;
-  /** Whether the checkpoint was taken at the suspension (`SequencerCheckpoint.atSuspension`). */
-  atSuspension?: boolean;
+  /** The wait the checkpoint was taken at (`SequencerCheckpoint.suspensionId`). */
+  suspensionId?: string;
   /**
    * The state the restore produced (the checkpoint over schema defaults), set
    * by the owning sequencer when it restores. The engine resets the restored
@@ -283,6 +283,9 @@ type GeneratorModelUsageMeta = {
  * `terminal: true` signals the final emission for this sequencer's run
  * (success / error / cancellation). The durability hook treats terminal
  * frames as a delete signal.
+ *
+ * `suspensionId` names the wait a snapshot taken at a suspension holds the
+ * state of; such a snapshot is never skipped as unchanged (FIX-2444).
  */
 async function emitStateSnapshot(
   ctx: BlockContext,
@@ -293,7 +296,7 @@ async function emitStateSnapshot(
   version: number,
   stateSchema: ZodTypeAny | undefined,
   terminal: boolean = false,
-  atSuspension: boolean = false
+  suspensionId?: string
 ): Promise<string | undefined> {
   // Non-durable snapshots are observability-only and gated by tracingLevel
   // (FIX-406 6H). Durable snapshots must always emit — they're the crash-resume
@@ -329,7 +332,7 @@ async function emitStateSnapshot(
   // Skip step-boundary emissions when state hasn't changed. Terminal frames
   // always emit so the durability hook sees the delete signal even when the
   // last step left state untouched.
-  if (!terminal && !atSuspension && lastStateJson !== undefined && currentStateJson === lastStateJson) {
+  if (!terminal && suspensionId === undefined && lastStateJson !== undefined && currentStateJson === lastStateJson) {
     return lastStateJson;
   }
 
@@ -376,7 +379,7 @@ async function emitStateSnapshot(
     version,
     durable: effectiveDurable,
     terminal,
-    ...(atSuspension ? { atSuspension: true } : {})
+    ...(suspensionId !== undefined ? { suspensionId } : {})
   };
 
   // Trace types (`state_snapshot`) are resolved to `{false,false}` by
@@ -936,7 +939,7 @@ function runSequencerOperations(
           await ctx.sequencer.setState(restored);
           // The restored state is what the checkpoint holds, so a replayed
           // step that leaves it unchanged writes no new checkpoint: one taken
-          // at the wait keeps its `atSuspension` mark until the gate (FIX-2444).
+          // at the wait keeps its wait's id until the gate (FIX-2444).
           lastStateJson = JSON.stringify(
             stripTransientKeys(ctx.sequencer.state as Record<string, unknown>, getTransientKeys(stateSchema))
           );
@@ -1043,8 +1046,8 @@ function runSequencerOperations(
           // was written when the step before it ended: a write the waiting step
           // made before it stopped would read as never made, though what it
           // wrote from (an in-memory map, a one-shot read) may be gone.
-          // Written even when nothing changed, so the checkpoint is marked as
-          // taken at the wait (`atSuspension`), which the resume relies on.
+          // Written even when nothing changed, so the checkpoint names the
+          // wait it was taken at (`suspensionId`), which the resume settles at.
           if (durable && currentStepIndex >= 0) {
             snapshotVersion += 1;
             lastStateJson = await emitStateSnapshot(
@@ -1056,7 +1059,7 @@ function runSequencerOperations(
               snapshotVersion,
               stateSchema,
               false,
-              true
+              error.suspensionId
             );
           }
           throw error;

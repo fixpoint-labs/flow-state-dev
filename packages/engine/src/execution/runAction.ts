@@ -1609,7 +1609,7 @@ async function runActionAttempt<
     const next = prior.then(op, op);
     checkpointChains.set(k, next);
   }
-  // Checkpoints taken at a suspension (`atSuspension`), held until the
+  // Checkpoints taken at a suspension (`suspensionId`), held until the
   // suspension is in the log (FIX-2444). Saved before it, a crash in between
   // leaves a checkpoint holding the waiting step's writes with no logged gate
   // for the re-run to settle them at, so they would count twice. Dropped on
@@ -1674,7 +1674,7 @@ async function runActionAttempt<
                 parentBlockInstanceId,
                 stepIndex: item.stepIndex,
                 state: item.state,
-                ...(item.atSuspension === true ? { atSuspension: true } : {}),
+                ...(item.suspensionId !== undefined ? { suspensionId: item.suspensionId } : {}),
                 version: item.version,
                 createdAt: item.ts
               }).catch((err) => {
@@ -1685,7 +1685,7 @@ async function runActionAttempt<
                 });
               })
             );
-            if (item.atSuspension === true) heldSuspensionCheckpoints.push(save);
+            if (item.suspensionId !== undefined) heldSuspensionCheckpoints.push(save);
             else save();
           }
         }
@@ -2137,7 +2137,7 @@ async function runActionAttempt<
           );
           (ctx as any)._resumeState = {
             state: checkpoint?.state as Record<string, unknown> | undefined,
-            atSuspension: checkpoint?.atSuspension === true,
+            suspensionId: checkpoint?.suspensionId,
             blockInstanceId: suspension.blockInstanceId
           };
         }
@@ -2161,7 +2161,7 @@ async function runActionAttempt<
         if (checkpoint !== null) {
           (ctx as any)._resumeState = {
             state: checkpoint.state as Record<string, unknown> | undefined,
-            atSuspension: checkpoint.atSuspension === true
+            suspensionId: checkpoint.suspensionId
           };
         }
       }

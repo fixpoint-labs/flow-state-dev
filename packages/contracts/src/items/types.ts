@@ -616,10 +616,10 @@ export type StateSnapshotItem = OutputItemBase & {
   /** When true, this is the final emission for the sequencer run; the
    *  durability provider should `delete` rather than `write`. */
   terminal?: boolean;
-  /** When true, written as a suspension passed through the sequencer: the
-   *  state as it stood at the wait, holding the waiting step's writes before
-   *  it. Absent on step-boundary snapshots. */
-  atSuspension?: boolean;
+  /** Set when written as a suspension passed through the sequencer: the id of
+   *  the wait, whose state as it stood there this holds, with the waiting
+   *  step's writes before it. Absent on step-boundary snapshots. */
+  suspensionId?: string;
 };
 
 /**

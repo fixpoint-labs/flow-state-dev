@@ -21,12 +21,14 @@ export interface SequencerCheckpoint {
   /** Sequencer state at this boundary; validated against the sequencer's `stateSchema` at write time. */
   state: unknown;
   /**
-   * True when written as a suspension passed through the sequencer, so `state`
-   * holds the waiting step's writes before the wait (FIX-2444). Absent on a
-   * step-boundary checkpoint, and on one written before this field existed:
-   * a resume then leaves the waiting step's re-run writes as they are.
+   * The wait this was written at, when written as a suspension passed through
+   * the sequencer: `state` then holds the waiting step's writes before that
+   * wait, and a resume settles the re-run's state to it when the re-run
+   * reaches that same wait (FIX-2444). Absent on a step-boundary checkpoint,
+   * and on one written before this field existed: a resume then leaves the
+   * waiting step's re-run writes as they are.
    */
-  atSuspension?: boolean;
+  suspensionId?: string;
   /** Monotonic write counter, incremented on each overwrite for the same `(requestId, blockInstanceId)`. */
   version: number;
   /** Wall-clock timestamp at write time. */
