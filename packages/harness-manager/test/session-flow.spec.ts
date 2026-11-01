@@ -25,6 +25,7 @@ import { z } from "zod";
 
 import {
   HARNESS_SESSION_ATTACH_MISSING,
+  HARNESS_SESSION_ATTACH_NOT_YOURS,
   HARNESS_SESSION_ATTACHED_BRANCH_CHANGED,
   HARNESS_SESSION_REMOVE_NOT_OWNER,
   HARNESS_SESSION_REMOVE_UNSUPPORTED,
@@ -140,6 +141,9 @@ const provisioningAgent = (gate?: Promise<void>) => (feeds: HarnessSessionFeeds)
 const places = mkdtempSync(join(tmpdir(), "session-flow-places-"));
 
 /** A workspace that logs what it was asked, and writes each session's row with the branch it gives it, as a host does. */
+/** Owner sessions whose worktrees are another user's: not in this user's list of rows. */
+const othersWorktrees = new Set<string>(["s-owner-other"]);
+
 function recordingWorkspace() {
   const provisioned: Array<{ place: HarnessSessionPlace; start: unknown }> = [];
   const removed: Array<{ place: HarnessSessionPlace; deleteBranch: boolean; force: boolean }> = [];
@@ -162,6 +166,8 @@ function recordingWorkspace() {
       removed.push({ place, ...options });
       return { branchDeleted: options.deleteBranch };
     },
+    // As a real host does: attaching succeeds only on a row in the user's own list.
+    attach: async (owner) => (othersWorktrees.has(owner.sessionId) ? null : `row/${owner.sessionId}`),
   };
   return { workspace, provisioned, removed, located };
 }
@@ -216,8 +222,8 @@ describe("where a session starts", () => {
 
     const state = (await stores.session.get("s-record"))?.state as Record<string, unknown>;
     expect(state.workspace).toEqual({ worktree: "test/s-record" });
-    // The turn-end check ran, on the row's branch.
-    expect(located).toHaveLength(1);
+    // Located once for the turn's in-use lease, once for the turn-end check, which ran on the row's branch.
+    expect(located).toHaveLength(2);
   });
 
   it("reads a record stored with copies of the path and branch as no pointer, and points it at the row on the next turn", async () => {
@@ -332,8 +338,7 @@ describe("attaching a session to another session's worktree", () => {
 
     expect(provisioned).toEqual([]);
     const state = (await stores.session.get("s-attached-a"))?.state as Record<string, unknown>;
-    // This workspace attaches no rows, so there is no key to point at.
-    expect(state.workspace).toEqual({ worktree: null });
+    expect(state.workspace).toEqual({ worktree: "row/s-owner-a" });
     expect(existsSync(path)).toBe(true);
   });
 
@@ -357,6 +362,29 @@ describe("attaching a session to another session's worktree", () => {
 
     expect(check("s-new", { model: "m", start: { worktreeOf: "s-owner-t" } }, "a").ok).toBe(true);
     expect(check("s-new", { model: "m", start: { worktreeOf: "s-owner-t" } }, "b")).toMatchObject({ ok: false, status: 404 });
+  });
+
+  it("is refused at its turn for a worktree that isn't in the user's own list, and the harness never gets the path", async () => {
+    const stores = createInMemoryStores();
+    const { workspace } = recordingWorkspace();
+    const path = ownerWorktree("s-owner-other", "theirs");
+    await seed(stores, "s-snooping", { model: "stub-model", start: { worktreeOf: "s-owner-other" } });
+
+    const result = (await act(stores, "s-snooping", workspace, "turn", { prompt: "go" })) as { items: unknown[] };
+
+    expect(JSON.stringify(result.items)).toContain(HARNESS_SESSION_ATTACH_NOT_YOURS);
+    expect((await stores.session.get("s-snooping"))?.state).not.toHaveProperty("workspace.path", path);
+  });
+
+  it("is refused on a host that keeps no list of worktrees, since it can't say whose a worktree is", async () => {
+    const stores = createInMemoryStores();
+    const { workspace } = recordingWorkspace();
+    ownerWorktree("s-owner-g", "main");
+    await seed(stores, "s-attached-g", { model: "stub-model", start: { worktreeOf: "s-owner-g" } });
+
+    const result = (await act(stores, "s-attached-g", { ...workspace, attach: undefined }, "turn", { prompt: "go" })) as { items: unknown[] };
+
+    expect(JSON.stringify(result.items)).toContain(HARNESS_SESSION_ATTACH_NOT_YOURS);
   });
 
   it("is refused at a turn when the owner's worktree has gone since", async () => {
@@ -383,6 +411,27 @@ describe("attaching a session to another session's worktree", () => {
     open();
     await running;
     expect(existsSync(worktreeLockPath(path))).toBe(false);
+  });
+
+  it("makes the owner's next turn wait out an attached turn before provisioning, which could move the checkout", async () => {
+    const stores = createInMemoryStores();
+    const { workspace, provisioned } = recordingWorkspace();
+    ownerWorktree("s-owner-h", "main");
+    await seed(stores, "s-owner-h", { model: "stub-model" });
+    await seed(stores, "s-attached-h", { model: "stub-model", start: { worktreeOf: "s-owner-h" } });
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+
+    const attached = act(stores, "s-attached-h", workspace, "turn", { prompt: "long" }, gate);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const owner = act(stores, "s-owner-h", workspace, "turn", { prompt: "mine" });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(provisioned).toEqual([]);
+
+    open();
+    await attached;
+    await owner;
+    expect(provisioned.map((entry) => entry.place.sessionId)).toEqual(["s-owner-h"]);
   });
 
   it("can't remove the worktree: only its owner can", async () => {

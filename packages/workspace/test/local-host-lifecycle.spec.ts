@@ -213,6 +213,52 @@ describe("list and remove", () => {
     expect(existsSync(worktreeLockPath(place.cwd))).toBe(false);
   });
 
+  it("refuses to remove a detached HEAD holding commits no ref holds, unless forced", async () => {
+    const { h, place } = await made();
+    git(place.cwd, "checkout", "-q", "--detach");
+    git(place.cwd, "commit", "-q", "--allow-empty", "-m", "only on the detached HEAD");
+    const tip = git(place.cwd, "rev-parse", "HEAD");
+
+    const refusal = await h.remove!({ place: ["run-1"] }).catch((error: unknown) => error);
+    expect((refusal as WorkspaceRefusedError).reason).toBe("unique-commits");
+    expect(existsSync(place.cwd)).toBe(true);
+    expect(git(place.cwd, "rev-parse", "HEAD")).toBe(tip);
+
+    await h.remove!({ place: ["run-1"] }, { force: true });
+    expect(existsSync(place.cwd)).toBe(false);
+  });
+
+  it("removes a detached HEAD whose commits a branch already holds", async () => {
+    const { h, place } = await made();
+    git(place.cwd, "checkout", "-q", "--detach");
+    await h.remove!({ place: ["run-1"] });
+    expect(existsSync(place.cwd)).toBe(false);
+  });
+
+  it("lists and removes beside a cloned remote, whose bare clone is no worktree", async () => {
+    const both = localWorkspaceHost({ root, remotes: { allow: ["file"] }, localRepositories: [repo], source: noSource });
+    await both.provision({ kind: "repo", repo: upstream.url }, { place: ["cloned"], branch: "fsd/cloned" });
+    const local = await both.provision({ kind: "repo", repo }, { place: ["run-1"], branch: "fsd/run-1" });
+
+    const listed = await both.list!();
+    expect(listed.map((entry) => entry.branch).sort()).toEqual(["fsd/cloned", "fsd/run-1"]);
+
+    await both.remove!({ place: ["run-1"] });
+    expect(existsSync(local.cwd)).toBe(false);
+  });
+
+  it("lists a place named checkout as itself, and removes it by that place", async () => {
+    const h = host();
+    const place = await h.provision({ kind: "repo", repo }, { place: ["checkout"], branch: "fsd/checkout" });
+
+    const listed = await h.list!();
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatchObject({ place: ["checkout"], dir: listed[0]!.cwd });
+
+    await h.remove!({ place: ["checkout"] });
+    expect(existsSync(place.cwd)).toBe(false);
+  });
+
   it("rejects a target that names no worktree of the host's", async () => {
     await expect(host().remove!({ cwd: repo })).rejects.toThrow(/no worktree this host holds/);
   });

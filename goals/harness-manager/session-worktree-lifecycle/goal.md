@@ -25,6 +25,8 @@ clone that moves the remote's `main` after the person's last fetch.
 - **d:attached-turn**, **d:on-owner-branch**, **d:recorded**: a session attached to b's session
   commits onto b's branch in b's worktree, cuts no branch of its own, and records b's path with
   b as the owner.
+- **d:other-user-refused**: another user's session naming b's session as `worktreeOf` fails its
+  turn and commits nothing to b's branch: b's worktree is not in their list.
 - **d:remove-refused**: the attached session's `removeWorktree` fails and the worktree stays.
 - **d:waits-for-owner**: a turn of the attached session sent while b's turn is held commits
   nothing until b's turn ends; then both complete.
@@ -59,6 +61,8 @@ The mid-turn refusal goes through the engine's HTTP router, where concurrency is
 - `GOAL_CONTROL=no-attach`: the follow-up asks for b's branch (`start: { branch }`) instead of
   attaching, as a caller had to before. Must fail **d:attached-turn**, **d:on-owner-branch**,
   **d:recorded** and **d:waits-for-owner** only (git refuses a branch checked out elsewhere).
+- `GOAL_CONTROL=any-user`: the workspace answers every attach without reading the user's own
+  list of worktrees. Must fail **d:other-user-refused** only.
 
 ## Verdict log
 
@@ -66,3 +70,4 @@ The mid-turn refusal goes through the engine's HTTP router, where concurrency is
 |---|---|---|---|---|
 | 2026-10-31 | (impl branch, before push) | n/a | PASS | Each control reddened exactly its legs |
 | 2026-11-01 | (impl branch, attach amendment) | n/a | PASS | Leg d added; all four controls reddened exactly their legs |
+| 2026-11-01 | (#4472, review fixes) | n/a | PASS | d:other-user-refused added with control any-user; all five controls reddened exactly their legs |

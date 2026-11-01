@@ -66,7 +66,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { existsSync, linkSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { GIT_TIMEOUT_MS, run } from "./exec";
 import {
   asideName,
@@ -105,7 +105,7 @@ import {
 } from "./source-read";
 import type { FlushReport, Place } from "./types";
 import { pinFetchSettings } from "./repository";
-import { worktreeLockPath } from "./occupancy";
+import { checkedOutBranch, worktreeLockPath } from "./occupancy";
 import {
   attachToWorktree,
   markWorktreeProvisioning,
@@ -1903,13 +1903,19 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       for (const block of porcelain.split("\n\n")) {
         const lines = block.split("\n");
         const path = lines.find((line) => line.startsWith("worktree "))?.slice("worktree ".length);
-        if (path === undefined) continue;
+        // A clone under `.clones` is bare and lists itself; it is no one's worktree.
+        if (path === undefined || lines.includes("bare")) continue;
         const cwd = existsSync(path) ? realpathSync(path) : path;
         if (!isStrictlyInside(cwd, realRoot)) continue;
         const branchLine = lines.find((line) => line.startsWith("branch "));
         const head = lines.find((line) => line.startsWith("HEAD "))?.slice("HEAD ".length) ?? null;
-        // A remote run's worktree is its place's `checkout/`; a listed repository's, the place itself.
-        const dir = cwd.endsWith(`${sep}${CHECKOUT_DIR}`) ? dirname(cwd) : cwd;
+        // A clone's worktree is always its place's `checkout/`. A listed repository's is the place
+        // itself, unless kept files sit beside it (`locate`): then it is `checkout/` next to `project/`.
+        // Read from the layout, never the name alone, so a place named "checkout" stays itself.
+        const nested =
+          !localRepositories.has(repository) ||
+          (basename(cwd) === CHECKOUT_DIR && existsSync(join(dirname(cwd), PROJECT_DIR)));
+        const dir = nested ? dirname(cwd) : cwd;
         const dirty = existsSync(cwd)
           ? (await git(cwd, ["status", "--porcelain", "--untracked-files=normal"], left())) !== ""
           : null;
@@ -1968,7 +1974,24 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           );
         }
       }
-      const branch = entry.branch;
+      // Read again under the lease: a run that ended between `list()` and here may have moved HEAD.
+      const present = existsSync(entry.cwd);
+      const branch = present
+        ? (await git(entry.cwd, ["symbolic-ref", "--short", "-q", "HEAD"], left()).catch(() => "")) || null
+        : entry.branch;
+      const head = present ? await git(entry.cwd, ["rev-parse", "HEAD"], left()) : entry.head;
+      // A detached HEAD's commits live only in this worktree's HEAD and reflog,
+      // which removal deletes: refused like a branch's, unless forced.
+      if (branch === null && head !== null && present && removeOptions.force !== true) {
+        const only = Number(await git(entry.repository, ["rev-list", "--count", head, "--not", "--branches", "--remotes", "--tags"], left()));
+        if (only > 0) {
+          throw new WorkspaceRefusedError(
+            "unique-commits",
+            `${entry.cwd} is on a detached HEAD holding ${only} commit${only === 1 ? "" : "s"} no branch, tag or remote holds; ` +
+              `nothing was removed. Put ${only === 1 ? "it" : "them"} on a branch first, or remove with force.`,
+          );
+        }
+      }
       if (removeOptions.deleteBranch === true && branch !== null && removeOptions.force !== true) {
         const only = Number(
           await git(
@@ -2024,12 +2047,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       await recordWorktreeCheckout(recordOptions.worktrees, key, gone, recordOptions.by);
       return gone;
     }
-    let branch: string | null = null;
-    try {
-      branch = (await git(path, ["symbolic-ref", "--quiet", "--short", "HEAD"], GIT_TIMEOUT_MS)) || null;
-    } catch {
-      // A detached HEAD.
-    }
+    const branch = await checkedOutBranch(path);
     let commits: number | null = null;
     if (row.baseCommit !== null) {
       try {
