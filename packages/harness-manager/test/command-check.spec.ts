@@ -19,16 +19,15 @@ import {
   cancelAndResume,
   defineTaskCollection,
   getOrCreateTaskCollection,
-  openRowHolds,
   resolveResourceCollection,
   type SuspensionHold,
   type Task,
 } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { commandCheck, harnessDrainBudgetMs, harnessManager, harnessTaskInputSchema, resolveOwnership, runOwnerClaimOrder, runTopic, type HarnessFeeds, type HarnessJudgeVerdict, type PhaseSpec } from "../src";
+import { commandCheck, harnessDrainBudgetMs, harnessManager, harnessTaskInputSchema, resolveOwnership, runOwnerClaimOrder, runTopic, type HarnessFeeds, type PhaseSpec } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
-import { CONVERSATIONS, claimHost, cleanUpHosts } from "./claim-host";
+import { cleanUpHosts } from "./claim-host";
 
 const BOARD_ID = "eng.feature.work";
 const FLOW = "checks-host";
@@ -92,14 +91,6 @@ function stubHarness(script: Step[], seen: SeenStep[]) {
         };
       },
     }) as unknown as HarnessBlock;
-}
-
-/** A judge that answers `verdict`, read by the manager on a board read from the claim. */
-function scriptedJudge(verdict: HarnessJudgeVerdict) {
-  return {
-    floor: 0.7,
-    block: handler({ name: "scripted-judge", inputSchema: z.unknown(), outputSchema: z.unknown(), execute: () => verdict }),
-  };
 }
 
 function host(options: { script: Step[]; reviewChanges?: boolean; durable?: boolean; userDeadlineMs?: number; checks?: string[]; timeoutMs?: number; slowBase?: { delayMs: number; doneTimeoutMs: number } }) {
