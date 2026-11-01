@@ -139,4 +139,18 @@ describe("ConnectionScreen", () => {
     await act(async () => vi.advanceTimersByTime(1_000));
     expect(onRetry).toHaveBeenCalledTimes(2);
   });
+
+  it("a click during a slow read leaves one schedule, and nothing runs after the screen goes away", async () => {
+    const settle: Array<() => void> = [];
+    const onRetry = vi.fn(() => new Promise<void>((resolve) => settle.push(resolve)));
+    const { unmount } = render(<ConnectionScreen kind="unreachable" title="Can't reach" failure={{ message: "fetch failed" }} onRetry={onRetry} />);
+    await act(async () => vi.advanceTimersByTime(2_000));
+    await act(async () => fireEvent.click(screen.getByTestId("unreachable-retry")));
+    expect(onRetry).toHaveBeenCalledTimes(2);
+    // Both reads finish; only the latest may schedule the next.
+    await act(async () => settle.forEach((resolve) => resolve()));
+    unmount();
+    await act(async () => vi.advanceTimersByTime(120_000));
+    expect(onRetry).toHaveBeenCalledTimes(2);
+  });
 });

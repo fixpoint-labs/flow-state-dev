@@ -61,6 +61,8 @@ export function ConnectionScreen({
     if (!retrying) return;
     let open = true;
     let attempt = 0;
+    // Bumped by each read, so a read a click overtook doesn't schedule too.
+    let latest = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const schedule = () => {
       const delay = retryDelayMs(attempt);
@@ -71,12 +73,13 @@ export function ConnectionScreen({
     const read = async () => {
       clearTimeout(timer);
       setNextAt(null);
+      const mine = ++latest;
       try {
         await retry.current?.();
       } catch {
         // The app draws the failure; the schedule goes on.
       }
-      if (open) schedule();
+      if (open && mine === latest) schedule();
     };
     readNow.current = () => void read();
     schedule();
