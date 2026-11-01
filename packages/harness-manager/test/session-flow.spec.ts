@@ -211,7 +211,7 @@ describe("where a session starts", () => {
     await act(stores, "s-record", workspace, "turn", { prompt: "go" });
 
     const state = (await stores.session.get("s-record"))?.state as Record<string, unknown>;
-    expect(state.workspace).toEqual({ path: join(places, "s-record"), branch: "fix/review-notes", removed: false, owner: "s-record" });
+    expect(state.workspace).toEqual({ path: join(places, "s-record"), branch: "fix/review-notes", removed: false, owner: "s-record", worktree: null });
     // The check ran for the recorded branch, not the host's `branch()`, which names one it never gave.
     expect(located).toHaveLength(1);
   });
@@ -251,7 +251,7 @@ describe("removing a session's worktree", () => {
 
     await act(stores, "s-rm", workspace, "removeWorktree", { deleteBranch: true });
 
-    expect(removed).toEqual([{ place: { flowKind: "stub-session", sessionId: "s-rm" }, deleteBranch: true, force: false }]);
+    expect(removed).toEqual([{ place: { flowKind: "stub-session", sessionId: "s-rm" }, deleteBranch: true, force: false, worktrees: expect.objectContaining({ pattern: "worktrees/**" }) }]);
     const state = (await stores.session.get("s-rm"))?.state as { workspace: { removed: boolean } };
     expect(state.workspace.removed).toBe(true);
   });
@@ -315,7 +315,7 @@ describe("attaching a session to another session's worktree", () => {
 
     expect(provisioned).toEqual([]);
     const state = (await stores.session.get("s-attached-a"))?.state as Record<string, unknown>;
-    expect(state.workspace).toEqual({ path, branch: "fix/owners-branch", removed: false, owner: "s-owner-a" });
+    expect(state.workspace).toEqual({ path, branch: "fix/owners-branch", removed: false, owner: "s-owner-a", worktree: null });
   });
 
   it("is refused at create when the owner's worktree isn't there, or names itself", () => {
@@ -414,5 +414,17 @@ describe("attaching a session to another session's worktree", () => {
 
     const state = (await stores.session.get("s-attached-f"))?.state as { turns: Record<string, { error: string | null }> };
     expect(Object.values(state.turns).map((turnRecord) => turnRecord.error)).toEqual([null]);
+  });
+});
+
+describe("the user's worktree rows", () => {
+  it("are read-only to the model's resource tools, so only the workspace host writes a row", () => {
+    const flow = harnessSessionFlow({ kind: "stub-session", workspace: { provision: async () => "/x", locate: () => "/x", branch: () => null }, agent: provisioningAgent() }) as unknown as {
+      resources: Record<string, unknown>;
+      resourceVisibility: (ctx: unknown, resource: { name: string; ref: unknown }) => string;
+    };
+    expect(flow.resources.worktrees).toBeDefined();
+    expect(flow.resourceVisibility({}, { name: "worktrees", ref: {} })).toBe("read-only");
+    expect(flow.resourceVisibility({}, { name: "observed-pull-requests", ref: {} })).toBe("visible");
   });
 });

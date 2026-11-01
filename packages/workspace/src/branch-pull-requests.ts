@@ -31,6 +31,7 @@ import {
   type PullRequestRef,
 } from "@flow-state-dev/core";
 import { run } from "./exec";
+import { addWorktreePullRequests, type WorktreeCollection } from "./worktrees";
 import { WorkspaceRefusedError } from "./refused";
 
 /** How long the whole check may take, by default: every command it runs shares this one deadline. */
@@ -59,6 +60,8 @@ export interface RecordBranchPullRequestsOptions {
   readonly timeoutMs?: number;
   /** The `gh` to run. Default `"gh"` on `PATH`. */
   readonly gh?: string;
+  /** The worktree's row in the user's list (`./worktrees`): what is found is added to its `pullRequests` too. */
+  readonly worktree?: { readonly collection: WorktreeCollection; readonly key: string };
 }
 
 /** How a {@link recordBranchPullRequests} call ended. */
@@ -166,16 +169,21 @@ export async function recordBranchPullRequests(
     }),
   );
   const found: PullRequestRef[] = [];
+  // Every pull request GitHub listed, before the turn cutoff: the row's known
+  // ones are refreshed from it, so a merge or close a later turn sees lands.
+  const listed: PullRequestRef[] = [];
   for (const answer of asked) {
     if ("error" in answer) {
       return { status: "unavailable", reason: `GitHub could not be asked about branch ${answer.branch}: ${answer.error}` };
     }
     if (!Array.isArray(answer.listed)) continue;
     for (const entry of answer.listed as ListedPullRequest[]) {
+      const ref = refOf(entry);
+      if (ref === null) continue;
+      listed.push(ref);
       const created = typeof entry.created_at === "string" ? Date.parse(entry.created_at) : Number.NaN;
       if (options.openedSince !== undefined && !(created >= options.openedSince - CLOCK_SLACK_MS)) continue;
-      const ref = refOf(entry);
-      if (ref !== null) found.push(ref);
+      found.push(ref);
     }
   }
 
@@ -185,6 +193,10 @@ export async function recordBranchPullRequests(
       source: "branch",
       requestId: options.requestId === undefined ? (ctx.request?.identity.id ?? null) : options.requestId,
     });
+    if (options.worktree !== undefined) {
+      const summary = (ref: PullRequestRef) => ({ url: ref.url, number: ref.number, state: ref.state ?? null, title: ref.title ?? null });
+      await addWorktreePullRequests(options.worktree.collection, options.worktree.key, found.map(summary), listed.map(summary));
+    }
   } catch (err) {
     return { status: "unavailable", reason: `the pull requests could not be recorded: ${reasonOf(err)}` };
   }
