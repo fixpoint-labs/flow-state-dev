@@ -1,0 +1,81 @@
+<svg viewBox="0 0 940 330" role="img" aria-label="What changes, in three packages. Browser side: client.subscribe is new and opens one socket per client, reading on a timer when there is no push; useSubscription is new in react; client.stream, the old user stream reader, is removed. Engine: the user-stream route gains a POST that checks each topic with its scope's route check and mints a ticket; the socket session that verifies the ticket and subscribes to the bus is new; capabilities gains a push field; the 501 answer is removed. Node host: serve takes the upgrade on the user-stream route. The bus comes from FIX-2426."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .pkg   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .ext   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .gone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .input { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; text-decoration:line-through; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+
+  <g id="browser">
+    <rect class="pkg" x="16" y="16" width="290" height="250" rx="6"/>
+    <text class="t-lbl" x="32" y="36">CLIENT · REACT</text>
+    <rect class="new" x="32" y="48" width="258" height="58" rx="5"/>
+    <text class="t-b" x="44" y="70">client.subscribe(topics)</text>
+    <text class="t-s" x="44" y="88">one socket per client; a timer without push</text>
+    <rect class="new" x="32" y="118" width="258" height="58" rx="5"/>
+    <text class="t-b" x="44" y="140">useSubscription(topics, read)</text>
+    <text class="t-s" x="44" y="158">one coalesced read per change</text>
+    <rect class="gone" x="32" y="188" width="258" height="58" rx="5"/>
+    <text class="t-x" x="44" y="210">client.stream()</text>
+    <text class="t-s" x="44" y="228">SSE user stream with rows, never served</text>
+  </g>
+
+  <g id="engine">
+    <rect class="pkg" x="325" y="16" width="290" height="250" rx="6"/>
+    <text class="t-lbl" x="341" y="36">ENGINE</text>
+    <rect class="new" x="341" y="48" width="258" height="58" rx="5"/>
+    <text class="t-b" x="353" y="70">POST user stream · the mint</text>
+    <text class="t-s" x="353" y="88">each topic gets its route check; a ticket</text>
+    <rect class="new" x="341" y="118" width="258" height="58" rx="5"/>
+    <text class="t-b" x="353" y="140">socket session</text>
+    <text class="t-s" x="353" y="158">verifies the ticket; subscribes the bus</text>
+    <rect class="ext" x="341" y="188" width="122" height="58" rx="5"/>
+    <text class="t-b" x="353" y="210">capabilities</text>
+    <text class="t-s" x="353" y="228">+ push</text>
+    <rect class="gone" x="477" y="188" width="122" height="58" rx="5"/>
+    <text class="t-x" x="489" y="210">501 answer</text>
+    <text class="t-s" x="489" y="228">on the route</text>
+  </g>
+
+  <g id="node">
+    <rect class="pkg" x="634" y="16" width="290" height="106" rx="6"/>
+    <text class="t-lbl" x="650" y="36">NODE HOST</text>
+    <rect class="ext" x="650" y="48" width="258" height="58" rx="5"/>
+    <text class="t-b" x="662" y="70">serve() takes the upgrade</text>
+    <text class="t-s" x="662" y="88">on the user-stream route; push: false opts out</text>
+  </g>
+
+  <g id="bus">
+    <rect class="input" x="634" y="188" width="290" height="58" rx="5"/>
+    <text class="t-b" x="650" y="210">the bus · FIX-2426</text>
+    <text class="t-s" x="650" y="228">not built here: notices by topic</text>
+  </g>
+
+  <g id="legend">
+    <rect class="new" x="16" y="290" width="14" height="14" rx="3"/>
+    <text class="t-s" x="36" y="301">new</text>
+    <rect class="ext" x="86" y="290" width="14" height="14" rx="3"/>
+    <text class="t-s" x="106" y="301">extended</text>
+    <rect class="gone" x="176" y="290" width="14" height="14" rx="3"/>
+    <text class="t-s" x="196" y="301">removed</text>
+    <rect class="input" x="256" y="290" width="14" height="14" rx="3"/>
+    <text class="t-s" x="276" y="301">from another issue</text>
+  </g>
+</svg>
