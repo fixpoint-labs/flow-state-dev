@@ -1,0 +1,102 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="PD-2, whether a skill says how its work runs or only what to do. Chosen: a skill carries instructions only, and its work runs as a dependency graph on the task board. Instead of: an execution mode as a skill-level setting, as FIX-450 shipped with a pattern declared in SKILL.md frontmatter. It comes down to the first row, how many ways a skill&#x27;s work runs: instructions-only leaves one path, the board, while a per-skill mode keeps three, pattern, fork and board. The second row is the price: a skill that wants a bespoke loop cannot pick one under the chosen option, where a per-skill mode lets it declare one. The third row is what already shipped: FIX-450&#x27;s pattern frontmatter is reversed under the chosen option and stands under the other. Locks in: the board is a skill&#x27;s one execution path; context pattern and context fork are gone, and a SKILL.md declaring agents or workers is refused. Flips if: a skill&#x27;s work cannot run as a dependency graph on the board, which would mean PD-1 does not hold for skills."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">PD-2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Does a skill say how its work runs, or only what to do?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Instructions only; the board runs it</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">An execution mode per skill</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WAYS A SKILL&#x27;S</text>
+    <text class="t-lbl" x="32" y="169">WORK RUNS</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">One: a dependency graph on the board</text>
+    <text class="t-s" x="248" y="179">PD-1 applied to skills</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Three: pattern, fork, board</text>
+    <text class="t-s" x="612" y="179">each a path to keep right</text>
+  </g>
+
+  <g id="row-bespoke">
+    <text class="t-lbl" x="32" y="216">A SKILL THAT WANTS</text>
+    <text class="t-lbl" x="32" y="229">A BESPOKE LOOP</text>
+    <text class="mark minus" x="228" y="224">−</text>
+    <text class="t-b" x="248" y="223">Can&#x27;t pick one</text>
+    <text class="t-s" x="248" y="241">the board is the only path</text>
+    <text class="mark plus" x="592" y="224">+</text>
+    <text class="t-b" x="612" y="223">Declares it</text>
+    <text class="t-s" x="612" y="241">a pattern in SKILL.md frontmatter</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+
+  <g id="row-shipped">
+    <text class="t-lbl" x="32" y="274">WHAT FIX-450</text>
+    <text class="t-lbl" x="32" y="287">SHIPPED IN MAY</text>
+    <text class="mark minus" x="228" y="282">−</text>
+    <text class="t-b" x="248" y="281">Reversed</text>
+    <text class="t-s" x="248" y="299">by FIX-918, under FIX-930</text>
+    <text class="mark plus" x="592" y="282">+</text>
+    <text class="t-b" x="612" y="281">Stands as shipped</text>
+    <text class="t-s" x="612" y="299">no skill changes</text>
+    <line class="row" x1="16" y1="314" x2="924" y2="314"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
+    <text class="t-b" x="32" y="371">The board is a skill&#x27;s one execution path</text>
+    <text class="t-s" x="32" y="389">context: pattern and fork gone; agents: / workers: refused</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
+    <text class="t-b" x="494" y="371">A skill&#x27;s work can&#x27;t run as a dependency graph on the board</text>
+    <text class="t-s" x="494" y="389">then PD-1 does not hold for skills, and a mode returns</text>
+  </g>
+</svg>
