@@ -10,12 +10,18 @@
  *
  * The steer request records the line in session state, and the page follows
  * only the turn's stream, so without a re-read the line would stay hidden
- * until the turn ends. The session hook and the client are stubbed: the
- * stub's `refresh` is the only way the recorded line reaches the page.
+ * until the turn ends. That re-read is of state only: a whole-history read
+ * per steered line made a long session slower with each line (FIX-2410).
+ * The session hook and the client are stubbed: the stub's `refresh` is the
+ * only way the recorded line reaches the page.
  *
  * Red states produced before this was trusted:
  *   - drop the re-read after a taken line, and the "shows a taken line" case
  *     fails (no line-taken note).
+ *   - re-read with `refresh()` (the whole history), and the same case fails
+ *     on the state-only assertion.
+ *   - list the session's requests from the page to find the turn's status,
+ *     as it did, and the same case fails: the page reads it from the hook.
  *   - send a refused line through the session hook (`sendAction`), as the
  *     page did, and the "stays on the running turn" case fails: the hook
  *     leaves the running turn's stream for the waiting line's.
@@ -31,6 +37,10 @@ const steerRunningTurn = vi.fn();
 const sendAction = vi.fn(async () => undefined);
 const followRequest = vi.fn();
 const abortRequest = vi.fn(async () => undefined);
+/** Every `refresh` the page asks of the hook, with its options. */
+const refreshCalls = vi.fn();
+/** The client's `sessions.requests`: the page must not list requests itself. */
+const listRequests = vi.fn(async (..._args: unknown[]) => []);
 /** The client's `flow(kind).send`: a line sent beside the running turn. */
 const clientSend = vi.fn(async () => ({ id: "line-1" }));
 /** Ends the running turn in the stubbed hook. */
@@ -43,7 +53,7 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => ({
   steerRunningTurn: (...args: unknown[]) => steerRunningTurn(...args),
   createClient: () => ({
     flow: () => ({ send: (...args: unknown[]) => clientSend(...(args as [])) }),
-    sessions: { requests: async () => [] },
+    sessions: { requests: (...args: unknown[]) => listRequests(...args) },
   }),
 }));
 
@@ -54,7 +64,10 @@ vi.mock("@flow-state-dev/react", async (importOriginal) => ({
   useResourceCollectionList: () => ({ items: [], error: undefined }),
   useSession: () => {
     const [snapshot, setSnapshot] = useState({ clientData: { session: serverState } });
-    const refresh = useCallback(async () => setSnapshot({ clientData: { session: serverState } }), []);
+    const refresh = useCallback(async (options?: { items?: boolean }) => {
+      refreshCalls(options);
+      setSnapshot({ clientData: { session: serverState } });
+    }, []);
     const [isStreaming, setIsStreaming] = useState(true);
     endTurn = () => setIsStreaming(false);
     return {
@@ -71,7 +84,8 @@ vi.mock("@flow-state-dev/react", async (importOriginal) => ({
       isStreaming,
       isFinishing: false,
       statusMessage: "",
-      latestRequest: null,
+      latestRequest: { id: "line-0", status: "completed" },
+      followedRequest: { id: "turn-1", status: "in_progress" },
       items: [{ id: "i1", type: "message", role: "user", requestId: "turn-1", content: [] }],
     };
   },
@@ -90,6 +104,8 @@ afterEach(() => {
   clientSend.mockImplementation(async () => ({ id: "line-1" }));
   abortRequest.mockClear();
   clientSend.mockClear();
+  refreshCalls.mockClear();
+  listRequests.mockClear();
   serverState = {};
   localStorage.clear();
 });
@@ -122,6 +138,16 @@ describe("a line sent while the turn runs", () => {
     sendLine("use v3");
     await waitFor(() => expect(screen.getByTestId("line-taken").textContent).toContain("use v3"));
     expect(sendAction).not.toHaveBeenCalled();
+    // State only, never the whole history.
+    expect(refreshCalls).toHaveBeenCalledWith({ items: false });
+    expect(refreshCalls.mock.calls.every(([options]) => options?.items === false)).toBe(true);
+    // The turn's status is the hook's, though a line is the newest request:
+    // the page lists no requests of its own (the line machinery's reads name
+    // a status or ask for results).
+    const pageListing = listRequests.mock.calls.filter(
+      ([, options]) => JSON.stringify(options) === JSON.stringify({ limit: 20 }),
+    );
+    expect(pageListing).toHaveLength(0);
   });
 
   it("sends a line the turn refused as the next turn, with no taken note, and stays on the running turn", async () => {

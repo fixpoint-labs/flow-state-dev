@@ -105,6 +105,8 @@ await session.sendAction("chat", { message: "Hello!" });
 await session.abortRequest();      // Stop the in-flight request
 await session.resumeLatestRequest(); // Re-run the latest request if it was interrupted/failed
 session.refresh();                 // Force refetch
+session.refresh({ items: false }); // Re-read state only; the items on screen stay
+session.followedRequest;           // The request the view shows last, even when a later one was sent beside it
 ```
 
 ### Resuming an interrupted request
