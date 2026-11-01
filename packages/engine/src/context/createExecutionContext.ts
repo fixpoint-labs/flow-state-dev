@@ -3697,7 +3697,7 @@ export async function createExecutionContext<
     // `ctx.self`, is not in the checkpoint and is left alone.
     const settleReplayedState = async (callerLogicalId: string): Promise<void> => {
       const replayLog = (rootContext as { _replayLog?: ReplayLog })._replayLog;
-      const resumeState = (rootContext as { _resumeState?: { restored?: Record<string, unknown>; atSuspension?: boolean; blockInstanceId?: string } })._resumeState;
+      const resumeState = (rootContext as { _resumeState?: { state?: Record<string, unknown>; restored?: Record<string, unknown>; atSuspension?: boolean; blockInstanceId?: string } })._resumeState;
       // A checkpoint from a step boundary (one written before checkpoints were
       // taken at the wait) lacks the waiting step's writes: the re-run's are
       // the only copy, so they stay.
@@ -3712,11 +3712,19 @@ export async function createExecutionContext<
       const restoredId = resumeState.blockInstanceId ?? buildBlockInstanceId(requestRef.current.id, ROOT_BLOCK_PATH, 0);
       for (let node = parentChain; node !== undefined; node = node.previous) {
         if (node.parent.instanceId === restoredId && node.parentStateContainer !== undefined) {
-          // Replace, not merge: a field the re-run added that the restore
-          // didn't set (checkpoint over defaults) is dropped too. Transient fields keep the re-run's value.
+          // Replace, not merge, key by key: a field the checkpoint holds
+          // takes its value there; a field only the restore's schema defaults
+          // filled (one added to the schema later, or one the step removed
+          // before the wait) follows the re-run, present or removed; a field
+          // in neither is something the re-run added, and is dropped.
+          // Transient fields, which no checkpoint holds, follow the re-run.
           const stateRef = buildStateRef(node);
           const current = stateRef.state as Record<string, unknown>;
-          const settled: Record<string, unknown> = { ...resumeState.restored };
+          const saved = resumeState.state ?? {};
+          const settled: Record<string, unknown> = { ...saved };
+          for (const key of Object.keys(resumeState.restored)) {
+            if (!(key in saved) && key in current) settled[key] = current[key];
+          }
           for (const key of getTransientKeys(node.parent.stateSchema)) {
             if (key in current) settled[key] = current[key];
             else delete settled[key];

@@ -827,6 +827,31 @@ describe("writes after the resume, on a restored sequencer, are live", () => {
     expect(seen).toEqual([{ asked: 1 }]);
   });
 
+  it("a field removed before the wait stays removed though its schema has a default", async () => {
+    const seen: unknown[] = [];
+    const waits = handler({
+      name: "waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        await ctx.sequencer!.setState({ asked: 1 } as never);
+        await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        seen.push(ctx.sequencer!.state);
+        return null;
+      }
+    });
+    const block = sequencer({
+      name: "s",
+      stateSchema: z.object({ asked: z.number(), optional: z.string().optional() }).default({ asked: 0, optional: "empty" })
+    }).step(waits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "ok" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([{ asked: 1 }]);
+  });
+
   it("replaying a completed step before the wait leaves the checkpoint taken at the wait in place", async () => {
     // A crash between the replay of an earlier step and the gate restores
     // from whatever checkpoint is latest. If the replay overwrote the one
