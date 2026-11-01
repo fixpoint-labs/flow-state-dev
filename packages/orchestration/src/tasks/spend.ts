@@ -171,6 +171,8 @@ function unrecovered(live: TaskSpendSource[], recovered: TaskSpendSource[] | nul
       // The continuation reports the logged charge itself, as it does the tokens.
       costUsd: source.costUsd === null ? null : left(source.costUsd, logged.costUsd ?? 0),
     };
-    return kept.inputTokens === 0 && kept.outputTokens === 0 && (source.kind === "model" || kept.runs === 0) ? [] : [kept];
+    // A charge left with no tokens is a run's later report the log missed: still owed.
+    const charged = kept.costUsd !== null && kept.costUsd > 0;
+    return !charged && kept.inputTokens === 0 && kept.outputTokens === 0 && (source.kind === "model" || kept.runs === 0) ? [] : [kept];
   });
 }
