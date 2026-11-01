@@ -16,6 +16,7 @@ import { harnessSessionFlow, type HarnessSessionState, type HarnessSessionWorksp
 const dir = mkdtempSync(join(tmpdir(), "session-verify-"));
 writeFileSync(join(dir, "red.mjs"), "console.error('VERIFY-MARKER'); process.exit(1);");
 writeFileSync(join(dir, "green.mjs"), "console.log('ok');");
+writeFileSync(join(dir, "hang.mjs"), "setInterval(() => {}, 1000);");
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 const workspace: HarnessSessionWorkspace = { provision: async () => dir, locate: () => dir, branch: () => null };
@@ -28,7 +29,12 @@ const agentEnding = (outcome: "finished" | "failed") => () =>
     execute: async () => ({ source: "stub/test", status: "completed", sessionId: null, url: null, dispatchedAt: 0, outcome, finalMessage: null }),
   }) as unknown as HarnessBlock;
 
-async function turnOf(sessionId: string, outcome: "finished" | "failed", commands: string[]) {
+async function turnOf(
+  sessionId: string,
+  outcome: "finished" | "failed",
+  commands: string[] | (() => string[]),
+  signal?: AbortSignal,
+) {
   const stores = createInMemoryStores();
   const now = Date.now();
   await stores.session.set(
@@ -45,6 +51,7 @@ async function turnOf(sessionId: string, outcome: "finished" | "failed", command
     sessionId,
     stores,
     runtimeConfig: {},
+    ...(signal !== undefined ? { signal } : {}),
   } as never)) as { error?: unknown };
   const state = (await stores.session.get(sessionId))?.state as HarnessSessionState;
   return { result, turn: Object.values(state.turns ?? {})[0] };
@@ -66,6 +73,18 @@ describe("a session's checks at the end of a turn", () => {
     const { turn } = await turnOf("s-failed", "failed", ["node green.mjs"]);
     expect(turn?.checks ?? null).toBeNull();
   });
+
+  it("stops its commands when the turn is stopped", async () => {
+    // A stopped turn that kept running commands would hold the session's
+    // working directory until the checks' own clock ran out.
+    const stop = new AbortController();
+    const started = Date.now();
+    await turnOf("s-stopped", "finished", () => {
+      setTimeout(() => stop.abort(), 300);
+      return ["node hang.mjs"];
+    }, stop.signal);
+    expect(Date.now() - started).toBeLessThan(10_000);
+  }, 30_000);
 
   it("refuses a verify with no time budget when the flow is built", () => {
     expect(() =>
