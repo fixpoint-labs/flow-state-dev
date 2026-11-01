@@ -162,10 +162,9 @@ function PageInner() {
 type AddressWrite = "push" | "replace";
 
 /** Put the open conversation in the page's address, leaving any other parameter alone. */
-function writeSessionAddress(sessionId: string | undefined, how: AddressWrite): void {
+function writeSessionAddress(sessionId: string, how: AddressWrite): void {
   const url = new URL(window.location.href);
-  if (sessionId === undefined) url.searchParams.delete(SESSION_ADDRESS_PARAM);
-  else url.searchParams.set(SESSION_ADDRESS_PARAM, sessionId);
+  url.searchParams.set(SESSION_ADDRESS_PARAM, sessionId);
   if (url.href === window.location.href) return;
   if (how === "push") window.history.pushState(null, "", url);
   else window.history.replaceState(window.history.state, "", url);

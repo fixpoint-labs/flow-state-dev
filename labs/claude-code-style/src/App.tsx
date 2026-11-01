@@ -103,13 +103,15 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     // A run that changes nothing (a list refresh) leaves a pending pick's push for the write it is waiting on.
     if (writeAddress({ view, session: selectedId, task }, how.current)) how.current = "replace";
   }, [view, selectedId, task, listed]);
-  // A user's pick: a step Back returns from.
+  // A user's pick: a step Back returns from, and it wins over an address still waiting on the session list.
   const pick = (mode: ModeId, id: string | undefined) => {
     how.current = "push";
+    pending.current = null;
     select(mode, id);
   };
   const pickView = (mode: ModeId) => {
     how.current = "push";
+    pending.current = null;
     setView(mode);
   };
 

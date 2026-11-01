@@ -149,6 +149,29 @@ describe("the page's address", () => {
     await waitFor(() => expect(params().has("session")).toBe(false));
   });
 
+  it("keeps a view picked while the address's session is still being read", async () => {
+    const adapter = createFakeLab({ speed: 0.01 });
+    render(<App adapter={adapter} />);
+    await pick();
+    await ask("A line in the addressed session.");
+    const session = params().get("session");
+    expect(session).toBeTruthy();
+
+    // A reload whose session list is slow, and a pick of Projects before it arrives.
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const slow: LabAdapter = { ...adapter, watchSessions: (emit) => adapter.watchSessions((rows) => void held.then(() => emit(rows))) };
+    reload(slow);
+    fireEvent.click(tab("Projects"));
+    await act(async () => {
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(tab("Projects").getAttribute("aria-selected")).toBe("true");
+    expect(await screen.findByRole("region", { name: "Choose a project" })).toBeTruthy();
+    expect(params().get("view")).toBe("threads");
+  });
+
   it("keeps the session but drops a task that is gone", async () => {
     const adapter = createFakeLab({ speed: 0.01 });
     render(<App adapter={adapter} />);
