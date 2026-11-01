@@ -657,24 +657,18 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       await changeState(ctx, (state) => withTurn(state, requestId, (record) => ({ ...record, checks })));
     },
   });
-  const turn = approveTools
-    ? approvals
-        .turn({ agent, titleFromPrompt, recordTurnFailure })
-        .tap(recordFailedOutcome)
-        .tap(turnSpend)
-        .tap(recordTurnHead)
-        .tap(verifyTurn)
+  // The harness step, with its approval loop when `approveTools` is on; the
+  // turn's records come after it either way.
+  const harnessTurn = approveTools
+    ? approvals.turn({ agent, titleFromPrompt, recordTurnFailure })
     : sequencer({
         name: "turn",
         description: "One turn of a harness session: the prompt, run by the harness where the session works.",
         inputSchema: z.object({ prompt: z.string().min(1) }),
       })
         .tap(titleFromPrompt)
-        .step(agent.rescue([{ block: recordFailure }]))
-        .tap(recordFailedOutcome)
-        .tap(turnSpend)
-        .tap(recordTurnHead)
-        .tap(verifyTurn);
+        .step(agent.rescue([{ block: recordFailure }]));
+  const turn = harnessTurn.tap(recordFailedOutcome).tap(turnSpend).tap(recordTurnHead).tap(verifyTurn);
 
   return defineFlow({
     kind: options.kind,
