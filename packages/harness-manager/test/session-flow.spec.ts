@@ -15,7 +15,8 @@
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
-import { existsSync, mkdtempSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { worktreeLockPath } from "@flow-state-dev/workspace";
@@ -23,6 +24,9 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import {
+  HARNESS_SESSION_ATTACH_MISSING,
+  HARNESS_SESSION_ATTACHED_BRANCH_CHANGED,
+  HARNESS_SESSION_REMOVE_NOT_OWNER,
   HARNESS_SESSION_REMOVE_UNSUPPORTED,
   harnessSessionFlow,
   harnessSessionStartSchema,
@@ -167,9 +171,17 @@ async function seed(stores: ReturnType<typeof createInMemoryStores>, sessionId: 
   );
 }
 
-function act(stores: ReturnType<typeof createInMemoryStores>, sessionId: string, workspace: HarnessSessionWorkspace, actionName: string, input: unknown, gate?: Promise<void>) {
+function act(
+  stores: ReturnType<typeof createInMemoryStores>,
+  sessionId: string,
+  workspace: HarnessSessionWorkspace,
+  actionName: string,
+  input: unknown,
+  gate?: Promise<void>,
+  agent: (feeds: HarnessSessionFeeds) => HarnessBlock = provisioningAgent(gate),
+) {
   return runAction({
-    flow: harnessSessionFlow({ kind: "stub-session", workspace, agent: provisioningAgent(gate) }),
+    flow: harnessSessionFlow({ kind: "stub-session", workspace, agent }),
     actionName,
     input,
     userId: "u",
@@ -199,7 +211,7 @@ describe("where a session starts", () => {
     await act(stores, "s-record", workspace, "turn", { prompt: "go" });
 
     const state = (await stores.session.get("s-record"))?.state as Record<string, unknown>;
-    expect(state.workspace).toEqual({ path: join(places, "s-record"), branch: "fix/review-notes", removed: false });
+    expect(state.workspace).toEqual({ path: join(places, "s-record"), branch: "fix/review-notes", removed: false, owner: "s-record" });
     // The check ran for the recorded branch, not the host's `branch()`, which names one it never gave.
     expect(located).toHaveLength(1);
   });
@@ -263,5 +275,144 @@ describe("removing a session's worktree", () => {
     const result = (await act(stores, "s-none", noWorkspace(), "removeWorktree", {})) as { output?: unknown; items: unknown[] };
     expect(result.output).toBeUndefined();
     expect(JSON.stringify(result.items)).toContain(HARNESS_SESSION_REMOVE_UNSUPPORTED);
+  });
+});
+
+/** A real git worktree for `sessionId` under the recording workspace's places, on `branch`. */
+function ownerWorktree(sessionId: string, branch: string): string {
+  const path = join(places, sessionId);
+  mkdirSync(path, { recursive: true });
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: path, stdio: "pipe", timeout: 10_000 });
+  git("init", "-q", "-b", branch);
+  git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "owner's work");
+  return path;
+}
+
+/** The flow's create check, as every create path asks it. */
+function createCheck(workspace: HarnessSessionWorkspace) {
+  const flow = harnessSessionFlow({ kind: "stub-session", workspace, agent: provisioningAgent() }) as unknown as {
+    session: { createCheck: (input: unknown) => { ok: boolean; message?: string; status?: number } };
+  };
+  return (sessionId: string, state: Record<string, unknown>, tenantId?: string) =>
+    flow.session.createCheck({
+      principal: { userId: "u", orgId: DEFAULT_ORG_ID, ...(tenantId !== undefined ? { tenantId } : {}) },
+      sessionId,
+      flow: { kind: "stub-session", id: "stub-session" },
+      state,
+      via: "create",
+      readCollectionItem: async () => undefined,
+    });
+}
+
+describe("attaching a session to another session's worktree", () => {
+  it("works in the owner's worktree on the owner's branch, provisions nothing, and records whose it is", async () => {
+    const stores = createInMemoryStores();
+    const { workspace, provisioned } = recordingWorkspace();
+    const path = ownerWorktree("s-owner-a", "fix/owners-branch");
+    await seed(stores, "s-attached-a", { model: "stub-model", start: { worktreeOf: "s-owner-a" } });
+
+    await act(stores, "s-attached-a", workspace, "turn", { prompt: "follow up" });
+
+    expect(provisioned).toEqual([]);
+    const state = (await stores.session.get("s-attached-a"))?.state as Record<string, unknown>;
+    expect(state.workspace).toEqual({ path, branch: "fix/owners-branch", removed: false, owner: "s-owner-a" });
+  });
+
+  it("is refused at create when the owner's worktree isn't there, or names itself", () => {
+    const { workspace } = recordingWorkspace();
+    ownerWorktree("s-owner-b", "main");
+    const check = createCheck(workspace);
+
+    expect(check("s-new", { model: "m", start: { worktreeOf: "s-owner-b" } }).ok).toBe(true);
+    const missing = check("s-new", { model: "m", start: { worktreeOf: "s-never-made" } });
+    expect(missing).toMatchObject({ ok: false, message: HARNESS_SESSION_ATTACH_MISSING, status: 404 });
+    expect(check("s-self", { model: "m", start: { worktreeOf: "s-self" } }).ok).toBe(false);
+  });
+
+  it("is refused at create for another tenant's session, since the owner is looked up in the caller's tenant", () => {
+    // A host whose places are per tenant, as every real one is: only tenant "a" has the owner's worktree.
+    const tenantPath = (place: HarnessSessionPlace) => join(places, `${place.tenantId ?? "none"}--${place.sessionId}`);
+    mkdirSync(tenantPath({ flowKind: "stub-session", tenantId: "a", sessionId: "s-owner-t" }), { recursive: true });
+    const workspace: HarnessSessionWorkspace = { provision: async (place) => tenantPath(place), locate: tenantPath, branch: () => null };
+    const check = createCheck(workspace);
+
+    expect(check("s-new", { model: "m", start: { worktreeOf: "s-owner-t" } }, "a").ok).toBe(true);
+    expect(check("s-new", { model: "m", start: { worktreeOf: "s-owner-t" } }, "b")).toMatchObject({ ok: false, status: 404 });
+  });
+
+  it("is refused at a turn when the owner's worktree has gone since", async () => {
+    const stores = createInMemoryStores();
+    const { workspace } = recordingWorkspace();
+    await seed(stores, "s-orphan", { model: "stub-model", start: { worktreeOf: "s-owner-gone" } });
+
+    const result = (await act(stores, "s-orphan", workspace, "turn", { prompt: "go" })) as { items: unknown[] };
+
+    expect(JSON.stringify(result.items)).toContain(HARNESS_SESSION_ATTACH_MISSING);
+  });
+
+  it("holds the owner's worktree in use during its turn, the same lock the owner's turns take", async () => {
+    const stores = createInMemoryStores();
+    const { workspace } = recordingWorkspace();
+    const path = ownerWorktree("s-owner-c", "main");
+    await seed(stores, "s-attached-c", { model: "stub-model", start: { worktreeOf: "s-owner-c" } });
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+
+    const running = act(stores, "s-attached-c", workspace, "turn", { prompt: "long" }, gate);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(existsSync(worktreeLockPath(path))).toBe(true);
+    open();
+    await running;
+    expect(existsSync(worktreeLockPath(path))).toBe(false);
+  });
+
+  it("can't remove the worktree: only its owner can", async () => {
+    const stores = createInMemoryStores();
+    const { workspace, removed } = recordingWorkspace();
+    ownerWorktree("s-owner-d", "main");
+    await seed(stores, "s-attached-d", { model: "stub-model", start: { worktreeOf: "s-owner-d" } });
+    await act(stores, "s-attached-d", workspace, "turn", { prompt: "go" });
+
+    const result = (await act(stores, "s-attached-d", workspace, "removeWorktree", {})) as { items: unknown[] };
+
+    expect(JSON.stringify(result.items)).toContain(HARNESS_SESSION_REMOVE_NOT_OWNER);
+    expect(removed).toEqual([]);
+  });
+
+  it("records its turn as failed when it leaves the worktree on another branch", async () => {
+    const stores = createInMemoryStores();
+    const { workspace } = recordingWorkspace();
+    ownerWorktree("s-owner-e", "fix/owners-branch");
+    await seed(stores, "s-attached-e", { model: "stub-model", start: { worktreeOf: "s-owner-e" } });
+    const switching = (feeds: HarnessSessionFeeds) =>
+      handler({
+        name: "switching-harness",
+        inputSchema: z.object({ prompt: z.string() }),
+        execute: async (_input, ctx) => {
+          await feeds.resume(ctx as unknown as HarnessCallbackContext);
+          const cwd = await feeds.cwd(ctx as unknown as HarnessCallbackContext);
+          execFileSync("git", ["checkout", "-q", "-b", "its-own"], { cwd, stdio: "pipe", timeout: 10_000 });
+          return { outcome: "completed" };
+        },
+      }) as unknown as HarnessBlock;
+
+    await act(stores, "s-attached-e", workspace, "turn", { prompt: "go" }, undefined, switching);
+
+    const state = (await stores.session.get("s-attached-e"))?.state as { turns: Record<string, { error: string | null }> };
+    const errors = Object.values(state.turns).map((turnRecord) => turnRecord.error);
+    expect(errors.join(" ")).toContain(HARNESS_SESSION_ATTACHED_BRANCH_CHANGED);
+    expect(errors.join(" ")).toContain("fix/owners-branch");
+  });
+
+  it("leaves a turn that stays on the owner's branch unmarked", async () => {
+    const stores = createInMemoryStores();
+    const { workspace } = recordingWorkspace();
+    ownerWorktree("s-owner-f", "main");
+    await seed(stores, "s-attached-f", { model: "stub-model", start: { worktreeOf: "s-owner-f" } });
+
+    await act(stores, "s-attached-f", workspace, "turn", { prompt: "go" });
+
+    const state = (await stores.session.get("s-attached-f"))?.state as { turns: Record<string, { error: string | null }> };
+    expect(Object.values(state.turns).map((turnRecord) => turnRecord.error)).toEqual([null]);
   });
 });

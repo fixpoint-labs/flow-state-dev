@@ -55,7 +55,7 @@ export type {
 } from "./branch-pull-requests";
 export type { RunOptions } from "./exec";
 export { acquireLock, releaseLock, sleep, tryAcquireLock } from "./lock";
-export { occupyWorktree, worktreeLockPath } from "./occupancy";
+export { checkedOutBranch, occupyWorktree, worktreeLockPath } from "./occupancy";
 export type { AcquireOptions, LockBounds, LockLease } from "./lock";
 export { identityFromCommonDir, repositoryIdentity, resolvesToCommit } from "./repository";
 export { redactRemote } from "./remotes";

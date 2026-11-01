@@ -12,6 +12,7 @@
  * Controls: GOAL_CONTROL=no-fetch  (must FAIL a:fresh, and nothing else)
  *           GOAL_CONTROL=cut       (must FAIL b:on-branch and b:recorded, and nothing else)
  *           GOAL_CONTROL=lose-work (must FAIL c:dirty-refused, and nothing else)
+ *           GOAL_CONTROL=no-attach (must FAIL the d legs a branch can't do; see EXPECTED)
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -33,7 +34,13 @@ import { REPO_ROOT, intentFreeEnv, loadFixture, runGoal, silentLogger, stripInte
 stripIntentOverrides();
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const EXPECTED: Record<string, string[]> = { "no-fetch": ["a:fresh"], cut: ["b:on-branch", "b:recorded"], "lose-work": ["c:dirty-refused"] };
+const EXPECTED: Record<string, string[]> = {
+  "no-fetch": ["a:fresh"],
+  cut: ["b:on-branch", "b:recorded"],
+  "lose-work": ["c:dirty-refused"],
+  // no-attach: the follow-up asks for the owner's branch instead (`{ branch }`), as a caller had to before attaching.
+  "no-attach": ["d:attached-turn", "d:on-owner-branch", "d:recorded", "d:waits-for-owner"],
+};
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
 }
@@ -120,13 +127,19 @@ registry.registerMany([harnessSessionFlow({ kind: KIND, workspace, agent: stubAg
 const router = createFlowApiRouter({ registry, stores, runtimeConfig: { logger: silentLogger } } as never);
 
 async function create(state: Record<string, unknown>): Promise<string> {
+  const made = await tryCreate(state);
+  if (made.id === undefined) throw new Error(`create refused (${made.status})`);
+  return made.id;
+}
+
+/** Create a session; its id, or the status the create route refused it with. */
+async function tryCreate(state: Record<string, unknown>): Promise<{ status: number; id?: string }> {
   const res = await router.POST(
     new Request(`http://goal/api/flows/${KIND}/sessions`, { method: "POST", body: JSON.stringify({ userId: USER, state }) }),
     { params: { path: [KIND, "sessions"] } },
   );
   const body = (await res.json()) as { session?: { id: string } };
-  if (body.session === undefined) throw new Error(`create refused (${res.status}): ${JSON.stringify(body)}`);
-  return body.session.id;
+  return { status: res.status, ...(body.session !== undefined ? { id: body.session.id } : {}) };
 }
 
 /**
@@ -168,7 +181,9 @@ async function settled(requestId: string): Promise<string | undefined> {
 }
 
 const stateOf = async (sessionId: string) =>
-  ((await stores.session.get(sessionId))?.state ?? {}) as { workspace?: { path: string; branch: string | null; removed: boolean } };
+  ((await stores.session.get(sessionId))?.state ?? {}) as {
+    workspace?: { path: string; branch: string | null; removed: boolean; owner: string | null };
+  };
 
 const branchExists = (branch: string) => git(repo, "branch", "--list", branch) !== "";
 
@@ -221,6 +236,39 @@ await runGoal(async (failures, tell) => {
   check("b:on-branch", bSubject === fixture.subject, `${fixture.existingBranch}'s last commit is "${bSubject}", not the stub's`);
   check("b:recorded", (await stateOf(sB)).workspace?.branch === fixture.existingBranch, `recorded ${JSON.stringify((await stateOf(sB)).workspace)}`);
   evidence.push(`b: the stub's commit is on ${fixture.existingBranch}`);
+
+  // ---- leg d: a follow-up session attached to b's worktree ----------------
+  const missing = await tryCreate({ model: "stub", start: { worktreeOf: "sess_never_made" } });
+  check("d:missing-refused", missing.status === 404, `attaching to a session with no worktree answered ${missing.status}`);
+  const bPath = (await stateOf(sB)).workspace?.path ?? "";
+  // Whatever branch b's worktree is on (so leg d proves attaching, not leg b's start).
+  const ownerBranch = (await stateOf(sB)).workspace?.branch ?? fixture.existingBranch;
+  const ownerTip = git(repo, "rev-parse", ownerBranch);
+  const sE = await create({ model: "stub", start: CONTROL === "no-attach" ? { branch: ownerBranch } : { worktreeOf: sB } });
+  const eTurn = await act(sE, "turn", { prompt: "follow-up" });
+  check("d:attached-turn", eTurn.ended === "completed", `the attached turn ended ${eTurn.ended}`);
+  const onOwnerBranch = git(repo, "rev-parse", ownerBranch) !== ownerTip && git(repo, "log", "-1", "--format=%s", ownerBranch) === fixture.subject;
+  check("d:on-owner-branch", onOwnerBranch && !branchExists(sessionBranch(sE)), `the follow-up's commit is not on ${ownerBranch}, or it cut a branch of its own`);
+  const eRecord = (await stateOf(sE)).workspace;
+  check("d:recorded", eRecord?.path === bPath && eRecord.owner === sB, `recorded ${JSON.stringify(eRecord)}`);
+  const eRemove = await act(sE, "removeWorktree", {});
+  check("d:remove-refused", eRemove.ended === "failed" && existsSync(bPath), `the attached session's removal ended ${eRemove.ended}`);
+  // Both sessions' turns take the one worktree's in-use lock: the follow-up waits out the owner's turn.
+  gate = new Promise<void>((resolve) => (release = resolve));
+  const ownerTurn = act(sB, "turn", { prompt: "wait" });
+  await new Promise((r) => setTimeout(r, 150));
+  const before = git(repo, "rev-parse", ownerBranch);
+  const followUp = act(sE, "turn", { prompt: "follow-up two" });
+  await new Promise((r) => setTimeout(r, 300));
+  const movedWhileOwnerRan = git(repo, "rev-parse", ownerBranch) !== before;
+  release();
+  const [ownerEnded, followEnded] = await Promise.all([ownerTurn, followUp]);
+  check(
+    "d:waits-for-owner",
+    !movedWhileOwnerRan && ownerEnded.ended === "completed" && followEnded.ended === "completed",
+    `the follow-up committed while the owner's turn ran: ${movedWhileOwnerRan}; turns ended ${ownerEnded.ended} and ${followEnded.ended}`,
+  );
+  evidence.push(`d: attaching to a missing worktree 404, the follow-up committed on ${ownerBranch} in b's worktree, waited out b's turn, and could not remove it`);
 
   // ---- leg c: removal, which never loses work ----------------------------
   const sC = await create({ model: "stub" });

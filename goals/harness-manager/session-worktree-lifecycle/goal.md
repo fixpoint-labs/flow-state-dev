@@ -6,7 +6,9 @@
 remote's branch, or an existing branch to work on as it stands. When they are done, they remove
 the session's worktree (and, if they ask, its branch) from the session or from `fsdev worktrees`.
 Removal is refused while a turn runs, while the worktree holds uncommitted work, and, for the
-branch, while it holds the only copy of a commit unless forced.
+branch, while it holds the only copy of a commit unless forced. A follow-up session can attach to
+an earlier session's worktree and work there on its branch; the two never write at once, and only
+the owner removes it.
 
 **Input:** `fixtures/input.json`: the existing branch's name and the stub's commit subject. The
 repository is made fresh each run: a bare remote on disk, the person's clone, and a teammate's
@@ -18,6 +20,14 @@ clone that moves the remote's `main` after the person's last fetch.
   contains the remote's new tip, which the person's tracking ref did not have.
 - **b:on-branch**, **b:recorded**: a session created with `start: { branch }` commits onto that
   branch in the person's repository, and records it as its branch.
+- **d:missing-refused**: creating a session with `start: { worktreeOf }` naming a session that
+  has no worktree answers 404.
+- **d:attached-turn**, **d:on-owner-branch**, **d:recorded**: a session attached to b's session
+  commits onto b's branch in b's worktree, cuts no branch of its own, and records b's path with
+  b as the owner.
+- **d:remove-refused**: the attached session's `removeWorktree` fails and the worktree stays.
+- **d:waits-for-owner**: a turn of the attached session sent while b's turn is held commits
+  nothing until b's turn ends; then both complete.
 - **c:listed**: `fsdev worktrees <root> --json` lists the session's worktree.
 - **c:refused-mid-turn**: `removeWorktree` sent while a turn is held answers 409, and the
   worktree is still there.
@@ -46,9 +56,13 @@ The mid-turn refusal goes through the engine's HTTP router, where concurrency is
   fail **b:on-branch** and **b:recorded** only.
 - `GOAL_CONTROL=lose-work`: the workspace removes with `git worktree remove --force`, a second
   removal path. Must fail **c:dirty-refused** only.
+- `GOAL_CONTROL=no-attach`: the follow-up asks for b's branch (`start: { branch }`) instead of
+  attaching, as a caller had to before. Must fail **d:attached-turn**, **d:on-owner-branch**,
+  **d:recorded** and **d:waits-for-owner** only (git refuses a branch checked out elsewhere).
 
 ## Verdict log
 
 | Date | Commit | Model | Verdict | Notes |
 |---|---|---|---|---|
 | 2026-10-31 | (impl branch, before push) | n/a | PASS | Each control reddened exactly its legs |
+| 2026-11-01 | (impl branch, attach amendment) | n/a | PASS | Leg d added; all four controls reddened exactly their legs |
