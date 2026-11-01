@@ -67,7 +67,7 @@ Two ways to show that the server isn't answering. `ConnectionBanner` is a thin w
 
 While the bar shows, `isFeedStale(state)` returns true. Add `STALE_CLASS` to areas that draw status to grey them out and stop their pulsing dots and spinners, and pause any elapsed-time clocks of your own.
 
-`ConnectionScreen` is the full-screen page for when the first read fails. With `kind: "refused"` there is no retry. With `kind: "unreachable"` it shows a Retry button and retries on its own after 2, 4, 8… seconds, up to 30. Pass a stable `onRetry`, such as one from `useCallback`. Once a first read has landed, later failures belong to the banner.
+`ConnectionScreen` is the full-screen page for when the first read fails. With `kind: "refused"` there is no retry. With `kind: "unreachable"` it shows a Retry button and retries on its own after 2, 4, 8… seconds, up to 30. If `onRetry` returns a promise, the next wait starts once it settles. Once a first read has landed, later failures belong to the banner.
 
 ```bash
 fsdev ui add connection-banner
