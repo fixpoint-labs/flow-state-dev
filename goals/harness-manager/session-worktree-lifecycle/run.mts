@@ -12,6 +12,7 @@
  * Controls: GOAL_CONTROL=no-fetch  (must FAIL a:fresh, and nothing else)
  *           GOAL_CONTROL=cut       (must FAIL b:on-branch and b:recorded, and nothing else)
  *           GOAL_CONTROL=lose-work (must FAIL c:dirty-refused, and nothing else)
+ *           GOAL_CONTROL=no-attach (must FAIL the d legs a branch can't do; see EXPECTED)
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -26,14 +27,20 @@ import {
   type HarnessSessionFeeds,
   type HarnessSessionWorkspace,
 } from "@flow-state-dev/harness-manager";
-import { localWorkspaceHost } from "@flow-state-dev/workspace";
+import { localWorkspaceHost, type WorktreeRow } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import { REPO_ROOT, intentFreeEnv, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 
 stripIntentOverrides();
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const EXPECTED: Record<string, string[]> = { "no-fetch": ["a:fresh"], cut: ["b:on-branch", "b:recorded"], "lose-work": ["c:dirty-refused"] };
+const EXPECTED: Record<string, string[]> = {
+  "no-fetch": ["a:fresh"],
+  cut: ["b:on-branch", "b:recorded"],
+  "lose-work": ["c:dirty-refused"],
+  // no-attach: the follow-up asks for the owner's branch instead (`{ branch }`), as a caller had to before attaching.
+  "no-attach": ["d:attached-turn", "d:on-owner-branch", "d:recorded", "d:waits-for-owner"],
+};
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
 }
@@ -78,10 +85,12 @@ const workspace: HarnessSessionWorkspace = {
     const branch = existing ? resolved.branch! : sessionBranch(place.sessionId);
     const made = await host.provision(
       { kind: "repo", repo, ...(baseRef !== undefined ? { baseRef } : {}) },
-      { place: [place.sessionId], branch, existing },
+      { place: [place.sessionId], branch, existing, ...(request?.worktrees !== undefined ? { worktrees: request.worktrees } : {}) },
     );
-    return { path: made.cwd, branch };
+    return { path: made.cwd, ...(made.worktree !== undefined ? { worktree: made.worktree } : {}) };
   },
+  attach: async (owner, request) => await host.attach!({ place: [owner.sessionId] }, request),
+  recordCheckout: async (place, request) => await host.recordCheckout!({ place: [place.sessionId] }, request),
   locate: (place) => host.locate({ kind: "repo", repo }, { place: [place.sessionId] }).cwd,
   branch: (place) => sessionBranch(place.sessionId),
   remove: async (place, options) => {
@@ -120,13 +129,19 @@ registry.registerMany([harnessSessionFlow({ kind: KIND, workspace, agent: stubAg
 const router = createFlowApiRouter({ registry, stores, runtimeConfig: { logger: silentLogger } } as never);
 
 async function create(state: Record<string, unknown>): Promise<string> {
+  const made = await tryCreate(state);
+  if (made.id === undefined) throw new Error(`create refused (${made.status})`);
+  return made.id;
+}
+
+/** Create a session; its id, or the status the create route refused it with. */
+async function tryCreate(state: Record<string, unknown>): Promise<{ status: number; id?: string }> {
   const res = await router.POST(
     new Request(`http://goal/api/flows/${KIND}/sessions`, { method: "POST", body: JSON.stringify({ userId: USER, state }) }),
     { params: { path: [KIND, "sessions"] } },
   );
   const body = (await res.json()) as { session?: { id: string } };
-  if (body.session === undefined) throw new Error(`create refused (${res.status}): ${JSON.stringify(body)}`);
-  return body.session.id;
+  return { status: res.status, ...(body.session !== undefined ? { id: body.session.id } : {}) };
 }
 
 /**
@@ -167,8 +182,17 @@ async function settled(requestId: string): Promise<string | undefined> {
   return undefined;
 }
 
-const stateOf = async (sessionId: string) =>
-  ((await stores.session.get(sessionId))?.state ?? {}) as { workspace?: { path: string; branch: string | null; removed: boolean } };
+/** The worktree row a session points at (`state.workspace.worktree`), read as a page reads it. */
+async function rowOf(sessionId: string): Promise<WorktreeRow | undefined> {
+  const key = (((await stores.session.get(sessionId))?.state ?? {}) as { workspace?: { worktree: string | null } | null }).workspace?.worktree;
+  if (key == null) return undefined;
+  const res = await router.GET(
+    new Request(`http://goal/api/flows/sessions/${sessionId}/resources/worktrees?userId=${USER}`),
+    { params: { path: ["sessions", sessionId, "resources", "worktrees"] } },
+  );
+  const body = (await res.json()) as { items?: Array<{ clientData?: WorktreeRow }> };
+  return (body.items ?? []).map((item) => item.clientData).find((row) => row?.key === key);
+}
 
 const branchExists = (branch: string) => git(repo, "branch", "--list", branch) !== "";
 
@@ -219,13 +243,46 @@ await runGoal(async (failures, tell) => {
   check("b:turn", bTurn.ended === "completed", `turn ended ${bTurn.ended}`);
   const bSubject = git(repo, "log", "-1", "--format=%s", fixture.existingBranch);
   check("b:on-branch", bSubject === fixture.subject, `${fixture.existingBranch}'s last commit is "${bSubject}", not the stub's`);
-  check("b:recorded", (await stateOf(sB)).workspace?.branch === fixture.existingBranch, `recorded ${JSON.stringify((await stateOf(sB)).workspace)}`);
+  check("b:recorded", (await rowOf(sB))?.branch === fixture.existingBranch, `row ${JSON.stringify(await rowOf(sB))}`);
   evidence.push(`b: the stub's commit is on ${fixture.existingBranch}`);
+
+  // ---- leg d: a follow-up session attached to b's worktree ----------------
+  const missing = await tryCreate({ model: "stub", start: { worktreeOf: "sess_never_made" } });
+  check("d:missing-refused", missing.status === 404, `attaching to a session with no worktree answered ${missing.status}`);
+  const bPath = (await rowOf(sB))?.path ?? "";
+  // Whatever branch b's worktree is on (so leg d proves attaching, not leg b's start).
+  const ownerBranch = (await rowOf(sB))?.branch ?? fixture.existingBranch;
+  const ownerTip = git(repo, "rev-parse", ownerBranch);
+  const sE = await create({ model: "stub", start: CONTROL === "no-attach" ? { branch: ownerBranch } : { worktreeOf: sB } });
+  const eTurn = await act(sE, "turn", { prompt: "follow-up" });
+  check("d:attached-turn", eTurn.ended === "completed", `the attached turn ended ${eTurn.ended}`);
+  const onOwnerBranch = git(repo, "rev-parse", ownerBranch) !== ownerTip && git(repo, "log", "-1", "--format=%s", ownerBranch) === fixture.subject;
+  check("d:on-owner-branch", onOwnerBranch && !branchExists(sessionBranch(sE)), `the follow-up's commit is not on ${ownerBranch}, or it cut a branch of its own`);
+  const eRow = await rowOf(sE);
+  check("d:recorded", eRow?.path === bPath && eRow.owner?.id === sB && eRow.attached.some((entry) => entry.id === sE), `row ${JSON.stringify(eRow)}`);
+  const eRemove = await act(sE, "removeWorktree", {});
+  check("d:remove-refused", eRemove.ended === "failed" && existsSync(bPath), `the attached session's removal ended ${eRemove.ended}`);
+  // Both sessions' turns take the one worktree's in-use lock: the follow-up waits out the owner's turn.
+  gate = new Promise<void>((resolve) => (release = resolve));
+  const ownerTurn = act(sB, "turn", { prompt: "wait" });
+  await new Promise((r) => setTimeout(r, 150));
+  const before = git(repo, "rev-parse", ownerBranch);
+  const followUp = act(sE, "turn", { prompt: "follow-up two" });
+  await new Promise((r) => setTimeout(r, 300));
+  const movedWhileOwnerRan = git(repo, "rev-parse", ownerBranch) !== before;
+  release();
+  const [ownerEnded, followEnded] = await Promise.all([ownerTurn, followUp]);
+  check(
+    "d:waits-for-owner",
+    !movedWhileOwnerRan && ownerEnded.ended === "completed" && followEnded.ended === "completed",
+    `the follow-up committed while the owner's turn ran: ${movedWhileOwnerRan}; turns ended ${ownerEnded.ended} and ${followEnded.ended}`,
+  );
+  evidence.push(`d: attaching to a missing worktree 404, the follow-up committed on ${ownerBranch} in b's worktree, waited out b's turn, and could not remove it`);
 
   // ---- leg c: removal, which never loses work ----------------------------
   const sC = await create({ model: "stub" });
   await act(sC, "turn", { prompt: "work" });
-  const cPath = (await stateOf(sC)).workspace?.path ?? "";
+  const cPath = (await rowOf(sC))?.path ?? "";
   const cBranch = sessionBranch(sC);
   const listedBefore = tell.over("c:listed · fsdev worktrees", listedByCli().filter((entry) => entry.branch === cBranch));
   check("c:listed", listedBefore.length === 1, `fsdev worktrees listed ${listedBefore.length} entries on ${cBranch}`);
@@ -253,12 +310,12 @@ await runGoal(async (failures, tell) => {
     );
     const forced = await act(sC, "removeWorktree", { deleteBranch: true, force: true });
     check("c:forced", forced.ended === "completed" && !existsSync(cPath) && !branchExists(cBranch), `forced removal ended ${forced.ended}`);
-    check("c:record", (await stateOf(sC)).workspace?.removed === true, `record ${JSON.stringify((await stateOf(sC)).workspace)}`);
+    check("c:record", (await rowOf(sC))?.state === "removed", `row ${JSON.stringify(await rowOf(sC))}`);
   }
 
   const sD = await create({ model: "stub" });
   await act(sD, "turn", { prompt: "work" });
-  const dPath = (await stateOf(sD)).workspace?.path ?? "";
+  const dPath = (await rowOf(sD))?.path ?? "";
   const dRemoved = await act(sD, "removeWorktree", {});
   check("c:removed", dRemoved.ended === "completed" && !existsSync(dPath) && branchExists(sessionBranch(sD)), `plain removal ended ${dRemoved.ended}`);
   const listing = tell.over("c:unlisted · fsdev worktrees (sessions a and b still hold theirs)", listedByCli());

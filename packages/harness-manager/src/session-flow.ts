@@ -43,9 +43,17 @@
  * like the model: a ref to cut a new branch from, an existing branch, or a
  * pull request's head branch. The host's workspace honours it on the first
  * provision (`resolveHarnessSessionStart` turns it into a workspace host's
- * request) and says which branch the session got, which the flow records.
+ * request). The session records only the key of its worktree's row
+ * (`state.workspace.worktree`); the row holds which branch it got.
  * **`removeWorktree`** removes the session's worktree through the host's one
  * removal path, refused while a turn runs.
+ *
+ * **Attaching** (`start: { worktreeOf }`) is the one way two sessions share a
+ * worktree: the new session works in the owner session's worktree, on its
+ * branch, and makes neither. Each turn of either holds the worktree in use, so
+ * two harnesses never write to it at once. Only the owner removes it. An
+ * attached turn that leaves the worktree on another branch is recorded as
+ * failed: the owner's branch is the owner's.
  *
  * Nothing here names a harness. A harness that needs more than these feeds has
  * found a gap in its own package. The flow writes no item of its own.
@@ -70,7 +78,19 @@ import type {
   HarnessSessionHook,
   HarnessSteerHook,
 } from "@flow-state-dev/core/types";
-import { occupyWorktree, pullRequestHead, recordBranchPullRequests, releaseLock, type LockLease } from "@flow-state-dev/workspace";
+import {
+  checkedOutBranch,
+  occupyWorktree,
+  pullRequestHead,
+  recordBranchPullRequests,
+  releaseLock,
+  WORKTREES,
+  worktreesCollection,
+  type LockLease,
+  type WorktreeCollection,
+  type WorktreeOwner,
+  type WorktreeRecording,
+} from "@flow-state-dev/workspace";
 import { z } from "zod";
 
 import { isTrackerIssue, issueSpecOptions, readIssueSpecSection, TRACKER_ISSUE_REFUSED, type IssueSpecOption } from "./issue-spec";
@@ -100,25 +120,34 @@ export type HarnessTurnRecord = z.infer<typeof harnessTurnRecordSchema>;
  * Where a session starts, picked at create: exactly one of
  * - `base`: cut a new branch from this ref (`origin/main` is fetched first),
  * - `branch`: work on this existing branch, as it stands,
- * - `pullRequest`: work on this pull request's head branch.
+ * - `pullRequest`: work on this pull request's head branch,
+ * - `worktreeOf`: work in this other session's worktree, on its branch, making
+ *   neither (attaching). The session is the same user's and tenant's, of the
+ *   same flow.
  */
 export const harnessSessionStartSchema = z.union([
   z.object({ base: z.string().min(1) }).strict(),
   z.object({ branch: z.string().min(1) }).strict(),
   z.object({ pullRequest: z.number().int().positive() }).strict(),
+  z.object({ worktreeOf: z.string().min(1) }).strict(),
 ]);
 
 /** Where a session starts. */
 export type HarnessSessionStart = z.infer<typeof harnessSessionStartSchema>;
 
-/** Where a session works, recorded the first time it is provisioned. */
+/**
+ * Where a session works: a pointer to its worktree's row in the user's list
+ * (`worktreesCollection`), which owns the path, branch, base, commit count,
+ * owner and state. Nothing of the worktree is copied here, so the row is the
+ * one owner. A record stored before this shape held copies of the path and
+ * branch; they are dropped on read (BP-030).
+ */
 export const harnessSessionWorkspaceRecordSchema = z.object({
-  /** The working directory. */
-  path: z.string(),
-  /** The branch the workspace gave the session; `null` when it named none. */
-  branch: z.string().nullable().default(null),
-  /** Whether the worktree was removed (`removeWorktree`). The next turn provisions it again. */
-  removed: z.boolean().default(false),
+  /**
+   * The key of the worktree's row. `null` when the workspace wrote no row
+   * (one with no `worktrees` support, or a record from before rows existed).
+   */
+  worktree: z.string().nullable().default(null),
 });
 
 /** Where a session works. */
@@ -183,14 +212,16 @@ export interface HarnessSessionPlace {
 export interface HarnessSessionProvisionRequest {
   /** The session's start, when it picked one. Honoured when the workspace is made; a later provision hands it back. */
   readonly start?: HarnessSessionStart;
+  /** The user's worktree rows, to hand the host's provision (`PlaceRequest.worktrees`), so it writes the row. */
+  readonly worktrees?: WorktreeRecording;
 }
 
 /** What `HarnessSessionWorkspace.provision` made, when it says more than the path. */
 export interface HarnessSessionProvisioned {
   /** The working directory. */
   readonly path: string;
-  /** The branch the session works on. The turn-end check reads it. */
-  readonly branch?: string;
+  /** The key of the worktree's row, when the host wrote one (`WorkspacePlace.worktree`). */
+  readonly worktree?: string;
 }
 
 /** Where the host's sessions work. Each call is one session's, keyed on its place. */
@@ -212,7 +243,33 @@ export interface HarnessSessionWorkspace {
    * the host's one removal path (`WorkspaceHost.remove`). Optional: without
    * it, `removeWorktree` is refused.
    */
-  remove?(place: HarnessSessionPlace, options: { deleteBranch: boolean; force: boolean }): Promise<{ branchDeleted: boolean }>;
+  remove?(
+    place: HarnessSessionPlace,
+    options: { deleteBranch: boolean; force: boolean; worktrees?: WorktreeCollection },
+  ): Promise<{ branchDeleted: boolean }>;
+  /**
+   * Record that `session` works in `owner`'s worktree (`WorkspaceHost.attach`),
+   * returning the row's key, or `null` when it has none. Optional: without it,
+   * an attached session records no row key.
+   */
+  attach?(owner: HarnessSessionPlace, request: { worktrees: WorktreeCollection; by: WorktreeOwner }): Promise<string | null>;
+  /**
+   * Read the worktree at a turn's end and write its branch and commit count to
+   * its row (`WorkspaceHost.recordCheckout`). Optional: without it, the row
+   * keeps what provision wrote.
+   */
+  recordCheckout?(place: HarnessSessionPlace, request: { worktrees: WorktreeCollection; by?: WorktreeOwner }): Promise<unknown>;
+}
+
+/** The user's worktree rows off a block's context, when the flow has them. */
+function worktreesOf(ctx: { resources?: unknown }): WorktreeCollection | undefined {
+  const collection = (ctx.resources as Record<string, unknown> | undefined)?.[WORKTREES] as WorktreeCollection | undefined;
+  return typeof collection?.upsert === "function" ? collection : undefined;
+}
+
+/** The session a start attaches to, when it attaches (`{ worktreeOf }`). */
+export function harnessSessionAttachedTo(start: HarnessSessionStart | undefined): string | null {
+  return start !== undefined && "worktreeOf" in start ? start.worktreeOf : null;
 }
 
 /** What a workspace host's provision needs from a session's start (`PlaceRequest` and `RepoRunSource`). */
@@ -227,7 +284,8 @@ export interface ResolvedHarnessSessionStart {
  * Turn a session's start into what a workspace host's provision takes. A pull
  * request is asked of GitHub (`pullRequestHead`), in `options.cwd`, a checkout
  * of its repository, and refused when it comes from a fork. No start: `{}`,
- * the host's default.
+ * the host's default. An attaching start provisions nothing (the session flow
+ * locates the owner's worktree instead), so it is refused here.
  */
 export async function resolveHarnessSessionStart(
   start: HarnessSessionStart | undefined,
@@ -236,6 +294,7 @@ export async function resolveHarnessSessionStart(
   if (start === undefined) return {};
   if ("base" in start) return { baseRef: start.base };
   if ("branch" in start) return { branch: start.branch };
+  if ("worktreeOf" in start) throw new Error(HARNESS_SESSION_ATTACH_NOT_PROVISIONED);
   const head = await pullRequestHead({ cwd: options.cwd, number: start.pullRequest, ...(options.gh !== undefined ? { gh: options.gh } : {}) });
   return { branch: head.branch };
 }
@@ -307,6 +366,17 @@ function placeOf(kind: string, ctx: HarnessCallbackContext): HarnessSessionPlace
   };
 }
 
+/**
+ * Where the session works: its own place, or the place of the session it
+ * attached to. The owner's place takes this session's flow kind and tenant,
+ * never the caller's word, so a session of another tenant is never found.
+ */
+function workPlaceOf(kind: string, ctx: HarnessCallbackContext): HarnessSessionPlace {
+  const own = placeOf(kind, ctx);
+  const owner = harnessSessionAttachedTo((ctx.session.state as HarnessSessionState).start);
+  return owner === null ? own : { ...own, sessionId: owner };
+}
+
 const BLANK_TURN: HarnessTurnRecord = {
   asked: null,
   confirmed: null,
@@ -364,7 +434,23 @@ export function harnessSessionTitle(prompt: string): string {
 
 /** The message a create with a malformed start is refused with. */
 export const HARNESS_SESSION_START_INVALID =
-  "A session's start (`state.start`) is exactly one of { base: <ref> }, { branch: <name> } or { pullRequest: <number> }.";
+"A session's start (`state.start`) is exactly one of { base: <ref> }, { branch: <name> }, { pullRequest: <number> } or { worktreeOf: <session id> }.";
+
+/** The message an attaching session is refused with when the worktree it names isn't there. */
+export const HARNESS_SESSION_ATTACH_MISSING =
+  "The session this one attaches to (`start.worktreeOf`) has no worktree here: it is not this tenant's, was never provisioned, or was removed.";
+
+/** The message an attaching start is refused with when something asks a workspace to provision it. */
+export const HARNESS_SESSION_ATTACH_NOT_PROVISIONED =
+  "An attaching start (`{ worktreeOf }`) provisions nothing: the session works in the owner's worktree.";
+
+/** The message `removeWorktree` is refused with on a session that doesn't own its worktree. */
+export const HARNESS_SESSION_REMOVE_NOT_OWNER =
+  "This session works in another session's worktree (`start.worktreeOf`); only that session removes it.";
+
+/** The error an attached turn records when it left the shared worktree on another branch. */
+export const HARNESS_SESSION_ATTACHED_BRANCH_CHANGED =
+  "This session is attached to another session's worktree and may not change its branch.";
 
 /** The message `removeWorktree` is refused with on a host that removes nothing. */
 export const HARNESS_SESSION_REMOVE_UNSUPPORTED = "This host's workspace does not remove worktrees.";
@@ -389,28 +475,60 @@ export function harnessSessionFeeds(
   defaultModel?: string,
   steering: HarnessSteering = harnessSteering(),
   inUse: Map<string, LockLease> = new Map(),
+  attachedHeads: Map<string, string | null> = new Map(),
 ): HarnessSessionFeeds {
   return {
     onSteerable: (steer, ctx) => steering.onSteerable(steer, ctx),
     model: (ctx) => (ctx.session.state as HarnessSessionState).model ?? defaultModel,
     cwd: async (ctx) => {
       const state = ctx.session.state as HarnessSessionState;
-      const provisioned = await workspace.provision(placeOf(kind, ctx), state.start !== undefined ? { start: state.start } : {});
-      const made = typeof provisioned === "string" ? { path: provisioned } : provisioned;
+      const requestId = requestOf(ctx);
+      const owner = harnessSessionAttachedTo(state.start);
+      if (owner !== null) {
+        // Attached: the owner's worktree as it stands, never made or cut here.
+        const path = workspace.locate(workPlaceOf(kind, ctx));
+        if (!existsSync(path)) throw new Error(HARNESS_SESSION_ATTACH_MISSING);
+        if (!inUse.has(requestId)) inUse.set(requestId, await occupyWorktree(path, { owner: requestId }));
+        // Read once the owner's turn has let go, so it is the branch this turn starts on.
+        const branch = await checkedOutBranch(path);
+        if (!attachedHeads.has(requestId)) attachedHeads.set(requestId, branch);
+        const worktrees = worktreesOf(ctx);
+        let worktree = state.workspace?.worktree ?? null;
+        if (worktree === null && worktrees !== undefined && workspace.attach !== undefined) {
+          worktree = await workspace.attach(workPlaceOf(kind, ctx), { worktrees, by: { kind: "session", id: ctx.session.identity.id } });
+        }
+        if (state.workspace == null || state.workspace.worktree !== worktree) {
+          await changeState(ctx, (current) => ({ ...current, workspace: { worktree } }));
+        }
+        return path;
+      }
+      const worktrees = worktreesOf(ctx);
+      const title = ctx.session.metadata.title;
+      const provisioned = await workspace.provision(placeOf(kind, ctx), {
+        ...(state.start !== undefined ? { start: state.start } : {}),
+        ...(worktrees !== undefined
+          ? {
+              worktrees: {
+                collection: worktrees,
+                owner: { kind: "session" as const, id: ctx.session.identity.id },
+                ...(typeof title === "string" && title.trim() !== "" ? { label: title } : {}),
+              },
+            }
+          : {}),
+      });
+      const made: HarnessSessionProvisioned = typeof provisioned === "string" ? { path: provisioned } : provisioned;
       // Held in use until the turn ends, so the host's `remove`, from any
       // caller, refuses to take the tree from under the harness.
-      const requestId = requestOf(ctx);
       if (!inUse.has(requestId)) inUse.set(requestId, await occupyWorktree(made.path, { owner: requestId }));
-      // Recorded on the first provision, and again after a removal; a hand-back changes nothing.
-      if (state.workspace == null || state.workspace.removed) {
-        await changeState(ctx, (current) => ({
-          ...current,
-          workspace: { path: made.path, branch: made.branch ?? null, removed: false },
-        }));
+      // Recorded on the first provision, and again once a row is first
+      // written; any other hand-back changes nothing.
+      const worktree = made.worktree ?? state.workspace?.worktree ?? null;
+      if (state.workspace == null || state.workspace.worktree !== worktree) {
+        await changeState(ctx, (current) => ({ ...current, workspace: { worktree } }));
       }
       return made.path;
     },
-    worktree: (ctx) => workspace.locate(placeOf(kind, ctx)),
+    worktree: (ctx) => workspace.locate(workPlaceOf(kind, ctx)),
     resume: async (ctx) => {
       const requestId = requestOf(ctx);
       return (
@@ -456,7 +574,9 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   const steering = harnessSteering();
   // Each running turn's in-use lease on its worktree, by request id; let go when the request ends.
   const inUse = new Map<string, LockLease>();
-  const feeds = harnessSessionFeeds(options.kind, options.workspace, options.defaultModel, steering, inUse);
+  // The branch each attached turn started on, by request id: it must end on it.
+  const attachedHeads = new Map<string, string | null>();
+  const feeds = harnessSessionFeeds(options.kind, options.workspace, options.defaultModel, steering, inUse, attachedHeads);
   const agent = options.agent(feeds);
   // Core's steer action, allowed beside a running turn: it runs no harness, it
   // hands the running one a line. Recorded on the turn that took it.
@@ -530,22 +650,57 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     resources: { [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection },
     execute: async (_input: unknown, ctx): Promise<void> => {
       const harnessCtx = ctx as unknown as HarnessCallbackContext;
+      const requestId = requestOf(harnessCtx);
+      const state = harnessCtx.session.state as HarnessSessionState;
+      const place = workPlaceOf(options.kind, harnessCtx);
+      // An attached turn ends on the branch it started on: checked before the
+      // worktree is let go, so the owner's next turn can't have moved it yet.
+      if (attachedHeads.has(requestId)) {
+        const started = attachedHeads.get(requestId) ?? null;
+        attachedHeads.delete(requestId);
+        const ended = await checkedOutBranch(options.workspace.locate(place));
+        if (ended !== started) {
+          const error = `${HARNESS_SESSION_ATTACHED_BRANCH_CHANGED} It started on ${started ?? "a detached HEAD"} and ended on ${ended ?? "a detached HEAD"}.`;
+          await changeState(harnessCtx, (current) => withTurn(current, requestId, (record) => ({ ...record, error })));
+          ctx.emit.status(error, { transient: false });
+        }
+      }
+      // The row's branch and count, read while the turn still holds the
+      // worktree, so the owner's next turn can't have moved it yet. A failed
+      // read is a note, never a failed turn.
+      const worktrees = worktreesOf(ctx);
+      if (inUse.has(requestId) && worktrees !== undefined && options.workspace.recordCheckout !== undefined) {
+        try {
+          await options.workspace.recordCheckout(place, { worktrees, by: { kind: "session", id: harnessCtx.session.identity.id } });
+        } catch (error) {
+          ctx.emit.status(`The worktree's row was not updated: ${error instanceof Error ? error.message : String(error)}`, {
+            transient: false,
+          });
+        }
+      }
       // The turn is done with its worktree, however it ended.
-      const lease = inUse.get(requestOf(harnessCtx));
+      const lease = inUse.get(requestId);
       if (lease !== undefined) {
-        inUse.delete(requestOf(harnessCtx));
+        inUse.delete(requestId);
         releaseLock(lease);
       }
       // A turn has a record under its request; a `steer` request has none.
-      const turnRecord = (harnessCtx.session.state as HarnessSessionState).turns?.[requestOf(harnessCtx)];
+      const turnRecord = state.turns?.[requestId];
       if (turnRecord === undefined) return;
-      const place = placeOf(options.kind, harnessCtx);
-      const branch = (harnessCtx.session.state as HarnessSessionState).workspace?.branch ?? options.workspace.branch(place);
+      // The branch the row last read, else the host's name for it.
+      const key = (harnessCtx.session.state as HarnessSessionState).workspace?.worktree ?? null;
+      const row = key !== null && worktrees !== undefined ? await worktrees.getOptional(key) : undefined;
+      const branch = row?.state.branch ?? options.workspace.branch(place);
       if (branch === null) return;
       const cwd = options.workspace.locate(place);
       if (!existsSync(cwd)) return;
       // Only what was opened since the turn began: a branch the agent switched to may hold older pull requests.
-      const result = await recordBranchPullRequests(ctx, { cwd, branches: [branch], openedSince: turnRecord.at ?? undefined });
+      const result = await recordBranchPullRequests(ctx, {
+        cwd,
+        branches: [branch],
+        openedSince: turnRecord.at ?? undefined,
+        ...(key !== null && worktrees !== undefined ? { worktree: { collection: worktrees, key } } : {}),
+      });
       if (result.status === "unavailable") {
         ctx.emit.status(`Pull requests on the session's branch were not checked: ${result.reason}`, { transient: false });
       }
@@ -558,16 +713,21 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     inputSchema: z.object({ deleteBranch: z.boolean().default(false), force: z.boolean().default(false) }),
     execute: async (input, ctx): Promise<{ removed: true; branchDeleted: boolean }> => {
       const harnessCtx = ctx as unknown as HarnessCallbackContext;
+      const state = harnessCtx.session.state as HarnessSessionState;
+      // An attached session never owns its worktree; only the owner removes it.
+      if (harnessSessionAttachedTo(state.start) !== null) {
+        throw new Error(HARNESS_SESSION_REMOVE_NOT_OWNER);
+      }
       if (options.workspace.remove === undefined) {
         throw new Error(HARNESS_SESSION_REMOVE_UNSUPPORTED);
       }
+      const worktrees = worktreesOf(ctx);
       const { branchDeleted } = await options.workspace.remove(placeOf(options.kind, harnessCtx), {
         deleteBranch: input.deleteBranch,
         force: input.force,
+        ...(worktrees !== undefined ? { worktrees } : {}),
       });
-      await changeState(harnessCtx, (state) =>
-        state.workspace == null ? state : { ...state, workspace: { ...state.workspace, removed: true } },
-      );
+      // The row says it was removed (the host marks it); the session's pointer stays.
       return { removed: true, branchDeleted };
     },
   });
@@ -615,6 +775,12 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       removeWorktree: { block: removeWorktree, concurrency: "reject" },
     },
     request: { onFinished: branchPullRequests },
+    // The user's worktree rows: the host writes them through this flow's
+    // workspace, and every session and agent of the user reads them.
+    resources: { [WORKTREES]: worktreesCollection },
+    // The model may read the rows through core's resource tools, never write
+    // them: only the workspace host writes a row.
+    resourceVisibility: (_ctx, resource) => (resource.name === WORKTREES ? "read-only" : "visible"),
     session: {
       stateSchema: harnessSessionStateSchema,
       // The page reads the model, the issue, the start, the binding, the
@@ -626,12 +792,25 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       // named model, a start it names is one the flow can honour, and an
       // issue it names is a tracker key (it becomes a path segment and a
       // branch name).
-      createCheck: ({ state }) => {
+      createCheck: ({ state, principal, sessionId }) => {
         if (typeof state.model !== "string" || state.model === "") return { ok: false, message: HARNESS_SESSION_MODEL_REQUIRED };
-        if (state.start !== undefined && !harnessSessionStartSchema.safeParse(state.start).success) {
+        const start = harnessSessionStartSchema.safeParse(state.start);
+        if (state.start !== undefined && !start.success) {
           return { ok: false, message: HARNESS_SESSION_START_INVALID };
         }
         if (state.issue !== undefined && !isTrackerIssue(state.issue)) return { ok: false, message: HARNESS_SESSION_ISSUE_REFUSED };
+        // An attaching session names a worktree that is there now, in this tenant.
+        const owner = harnessSessionAttachedTo(start.success ? start.data : undefined);
+        if (owner !== null) {
+          const ownerPlace: HarnessSessionPlace = {
+            flowKind: options.kind,
+            sessionId: owner,
+            ...(principal.tenantId !== undefined ? { tenantId: principal.tenantId } : {}),
+          };
+          if (owner === sessionId || !existsSync(options.workspace.locate(ownerPlace))) {
+            return { ok: false, message: HARNESS_SESSION_ATTACH_MISSING, status: 404 };
+          }
+        }
         return { ok: true };
       },
     },

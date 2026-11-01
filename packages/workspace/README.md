@@ -353,6 +353,37 @@ It rejects for a target that isn't a worktree `list` reports, and refuses with a
 
 A refusal removes nothing. Kept files and held work are left where they are, in their collection and store. `fsdev worktrees` runs the same `list` and `remove` from a terminal.
 
+### The user's list of worktrees
+
+`worktreesCollection` holds one row for each worktree a host made, in a user-scoped collection named `worktrees`. Each session and agent of that user can read it. A page reads it through the flow's resource routes, and an agent reads it with core's resource tools because the collection is `llmReadable`. Neither can write it. Only the host writes rows. Give it the collection, which a block reads off `ctx.resources.worktrees` once its flow declares `worktreesCollection`, and it writes the row whenever it changes the worktree:
+
+```ts
+const place = await host.provision(answer, {
+  place: [sessionId],
+  branch,
+  worktrees: { collection: ctx.resources.worktrees, owner: { kind: "session", id: sessionId }, label: "Fix the export button" },
+});
+place.worktree; // the row's key
+
+await host.attach!({ place: [ownerId] }, { worktrees, by: { kind: "session", id: followUpId } }); // the key, or null with no row
+const read = await host.recordCheckout!({ place: [sessionId] }, { worktrees, by }); // at a turn's end: { present, branch, commits, at }
+await host.remove!({ place: [sessionId] }, { worktrees });
+```
+
+| Field | What it holds |
+| --- | --- |
+| `key` | The host's id and the place's segments. Opaque: read it back, don't build it |
+| `name` | `<slug of label>-<6 hex>`, such as `fix-the-export-button-13f1c6`. Written once and never recomputed. The directory keeps its own name |
+| `path`, `branch`, `repo`, `baseCommit` | Where the worktree is, the branch HEAD is on, the remote with any credentials removed, and the commit the branch was cut at |
+| `owner`, `attached` | `{ kind: "session" \| "run", id }`, and the sessions or runs working there beside it, each listed once as `{ kind, id, lastTurnAt }` |
+| `state` | `provisioning` before the worktree is made, `ready` after, `removed` once `remove` takes it, `lost` when `recordCheckout` finds the directory gone |
+| `commits`, `lastTurnAt` | Commits on HEAD past `baseCommit`, and when that was read. `commits` is `null` when it can't be counted. It is never 0 for "unknown" |
+| `pullRequests` | `{ url, number, state, title }` for each pull request `recordBranchPullRequests` found, when you pass it `worktree: { collection, key }` |
+
+`recordCheckout` reads the branch and the count in one pass, so a row never pairs one moment's branch with another moment's count. It returns what it read, so a caller that reports the branch or count (a run's output, say) uses the same read rather than counting again. Removing a worktree some other way than `host.remove` with the collection, `fsdev worktrees --remove` included, leaves its row `ready` until the next `recordCheckout` marks it `lost`.
+
+Rows are user-scoped, and a user's data is kept per organization, so an agent in one organization never reads another's rows. Through core's resource tools a model can read rows but should not write them: a flow that offers those tools marks `worktrees` read-only in its `resourceVisibility`, as the harness session flow does. Rows are never deleted: a removed worktree's row still says where the work was. A host given no collection writes nothing.
+
 Anything that runs work in a host's worktree holds it in use for as long as it works: `occupyWorktree(cwd)` waits for and takes the lock beside it, and `releaseLock(lease)` lets it go. A harness session's turn and a harness manager's run both do. The lease refreshes itself while held. `remove` never treats it as stale, so a lock left by a process that died has to be deleted by hand; the refusal names the file.
 
 ### Keeping a directory out of git
@@ -578,6 +609,7 @@ Git itself runs with `GIT_ALLOW_PROTOCOL` set to the listed schemes, with `--` b
 | `SourceReadRequest`, `SourceReadResult`, `SourceReadAt`, `SourceReadCut`, `GrepDialect`, `SOURCE_READ_LIMITS`, `SOURCE_READ_FRESH_MS` | What `readSource` takes and answers, its caps, and how long a fetch serves reads. |
 | `WorkspaceRefusedError` | What `provision`, `remove` and `pullRequestHead` reject with when they refuse. Carries `reason`. |
 | `occupyWorktree(cwd, { owner?, signal? })`, `worktreeLockPath(cwd)` | Hold a worktree in use while a run works there, so `remove` refuses it (`in-use`). Returns a lease for `releaseLock`. |
+| `checkedOutBranch(cwd)` | The branch checked out in the worktree at `cwd`, or `null` when HEAD is detached or git can't say. |
 | `pullRequestHead({ cwd, number, gh?, timeoutMs? })`, `PullRequestHead`, `PullRequestHeadOptions` | The branch a pull request's work is on, as `{ branch, commit, url }`, for a run that works on it with `existing: true`. See [Working on an existing branch](#working-on-an-existing-branch). |
 | `RunSource`, `RunSourceAnswer` | The run-source function type and its three answers. |
 | `recordBranchPullRequests(ctx, { cwd, branches?, openedSince?, requestId?, timeoutMs?, gh? })`, `BRANCH_PULL_REQUESTS_TIMEOUT_MS` | The branch check: asks GitHub, through the host's signed-in `gh`, which pull requests the checkout's branch (and any `branches`) has, and writes the ones created since `openedSince` into the session's pull-request record as `source: "branch"`. `timeoutMs` bounds the whole check. Returns `{ status: "recorded", branches, pullRequests }`, or `{ status: "unavailable", reason }` when `gh`, the remote or the store can't answer. It never throws. See [pull requests on a branch](https://flow-state.dev/docs/tools/workspace#pull-requests-on-a-branch). |

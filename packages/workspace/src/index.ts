@@ -1,7 +1,8 @@
 /**
  * `@flow-state-dev/workspace` — the file projection, the workspace host built
- * on it, and the host's turn-end check for the pull requests on a checkout's
- * branch (`./branch-pull-requests`).
+ * on it, the host's turn-end check for the pull requests on a checkout's
+ * branch (`./branch-pull-requests`), and the user's list of worktrees the host
+ * writes (`./worktrees`).
  *
  * One piece of machinery moving file content between resource collections and
  * wherever an agent works, so the shell path and the coding path share a
@@ -54,8 +55,21 @@ export type {
   RecordBranchPullRequestsOptions,
 } from "./branch-pull-requests";
 export type { RunOptions } from "./exec";
+export {
+  WORKTREES,
+  worktreeAttachedSchema,
+  worktreeKey,
+  worktreeName,
+  worktreeOwnerSchema,
+  worktreePullRequestSchema,
+  worktreeRowSchema,
+  worktreesCollection,
+  worktreeStateSchema,
+} from "./worktrees";
+export type { CheckoutSnapshot } from "./worktrees";
+export type { WorktreeAttached, WorktreeCollection, WorktreeOwner, WorktreePullRequest, WorktreeRecording, WorktreeRow, WorktreeState } from "./worktrees";
 export { acquireLock, releaseLock, sleep, tryAcquireLock } from "./lock";
-export { occupyWorktree, worktreeLockPath } from "./occupancy";
+export { checkedOutBranch, occupyWorktree, worktreeLockPath } from "./occupancy";
 export type { AcquireOptions, LockBounds, LockLease } from "./lock";
 export { identityFromCommonDir, repositoryIdentity, resolvesToCommit } from "./repository";
 export { redactRemote } from "./remotes";

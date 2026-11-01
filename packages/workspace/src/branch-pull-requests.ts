@@ -31,6 +31,7 @@ import {
   type PullRequestRef,
 } from "@flow-state-dev/core";
 import { run } from "./exec";
+import { addWorktreePullRequests, type WorktreeCollection } from "./worktrees";
 import { WorkspaceRefusedError } from "./refused";
 
 /** How long the whole check may take, by default: every command it runs shares this one deadline. */
@@ -59,6 +60,8 @@ export interface RecordBranchPullRequestsOptions {
   readonly timeoutMs?: number;
   /** The `gh` to run. Default `"gh"` on `PATH`. */
   readonly gh?: string;
+  /** The worktree's row in the user's list (`./worktrees`): what is found is added to its `pullRequests` too. */
+  readonly worktree?: { readonly collection: WorktreeCollection; readonly key: string };
 }
 
 /** How a {@link recordBranchPullRequests} call ended. */
@@ -185,6 +188,13 @@ export async function recordBranchPullRequests(
       source: "branch",
       requestId: options.requestId === undefined ? (ctx.request?.identity.id ?? null) : options.requestId,
     });
+    if (options.worktree !== undefined) {
+      await addWorktreePullRequests(
+        options.worktree.collection,
+        options.worktree.key,
+        found.map((ref) => ({ url: ref.url, number: ref.number, state: ref.state ?? null, title: ref.title ?? null })),
+      );
+    }
   } catch (err) {
     return { status: "unavailable", reason: `the pull requests could not be recorded: ${reasonOf(err)}` };
   }

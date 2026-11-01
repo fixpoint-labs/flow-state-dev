@@ -8,8 +8,23 @@
  * waited out provisioning would take the directory from under it. Every
  * caller that runs work in a host's worktree (a session's turn, a board run's
  * attempt) holds this one lock, at `<cwd>.lock`, so every removal sees it.
+ *
+ * Also what a caller sharing a worktree reads of it: the branch checked out
+ * there (`checkedOutBranch`), so a session attached to another's worktree can
+ * tell whether its turn left the owner's branch where it found it.
  */
+import { GIT_TIMEOUT_MS, run } from "./exec";
 import { acquireLock, HOST_LOCK_BOUNDS, type LockLease } from "./lock";
+
+/** The branch checked out in the worktree at `cwd`, or `null` when HEAD is detached or git can't say. */
+export async function checkedOutBranch(cwd: string): Promise<string | null> {
+  try {
+    const { stdout } = await run("git", ["symbolic-ref", "--short", "-q", "HEAD"], { cwd, timeoutMs: GIT_TIMEOUT_MS });
+    return stdout.trim() === "" ? null : stdout.trim();
+  } catch {
+    return null;
+  }
+}
 
 /** Where the in-use lock of the worktree at `cwd` lives: beside it, never inside. */
 export function worktreeLockPath(cwd: string): string {

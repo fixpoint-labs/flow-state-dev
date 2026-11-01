@@ -106,6 +106,18 @@ import {
 import type { FlushReport, Place } from "./types";
 import { pinFetchSettings } from "./repository";
 import { worktreeLockPath } from "./occupancy";
+import {
+  attachToWorktree,
+  markWorktreeProvisioning,
+  markWorktreeReady,
+  markWorktreeRemoved,
+  recordWorktreeCheckout,
+  worktreeKey,
+  type CheckoutSnapshot,
+  type WorktreeCollection,
+  type WorktreeOwner,
+  type WorktreeRecording,
+} from "./worktrees";
 import { WorkspaceRefusedError } from "./refused";
 import { firstLine, gitAnsweredNo, ignoredProblem, isAncestor, isStrictlyInside, NO_HOOKS, provisionWorktree, remainingBudget, type IgnoredDirectory, type MovedBack, type OffBranch } from "./worktree";
 
@@ -257,6 +269,12 @@ export interface PlaceRequest {
    * can record each before it happens. Awaited.
    */
   progress?: (state: "lost" | "restoring") => void | Promise<void>;
+  /**
+   * Write the worktree's row in the user's list (`./worktrees`): marked
+   * `provisioning` before the worktree is made and `ready` with its path,
+   * branch and base after. A repository run only. Absent: no row is written.
+   */
+  worktrees?: WorktreeRecording;
 }
 
 /** What a run's record says about its place. Every field may be absent. */
@@ -332,6 +350,8 @@ export interface WorkspacePlace {
   };
   /** Where a repository place came from. */
   origin?: PlaceOrigin;
+  /** The key of the worktree's row, when the provision was given `worktrees`. */
+  worktree?: string;
   /**
    * Present only when holding applies to this place: the host has a held-work
    * store, the source named a `heldPrefix`, and the branch came from a remote.
@@ -453,6 +473,26 @@ export interface WorkspaceHost {
    * target that names no worktree this host lists.
    */
   remove?(target: RemoveTarget, options?: RemoveOptions): Promise<RemovedWorktree>;
+  /**
+   * Record that `by` (a session or run) works in the place's worktree beside
+   * its owner (`start: { worktreeOf }`): added to the row's `attached`, once.
+   * The row's key, or `null` when the place has no row (made before rows were
+   * written, or with none asked for). Optional, as `remove` is.
+   */
+  attach?(target: { place: readonly string[] }, options: { worktrees: WorktreeCollection; by: WorktreeOwner }): Promise<string | null>;
+  /**
+   * Read the place's worktree at a turn's end and write it to its row: the
+   * branch HEAD is on and the commits past the row's `baseCommit` (`null`
+   * when there is no base or git can't count), with the time, in one write.
+   * A directory that is gone marks the row `lost`. `by`, when attached, has
+   * its own last-turn time set. Answers what it read, so a caller that reports
+   * the branch or count uses this one read; `null` for a place with no row.
+   * Optional, as `remove` is.
+   */
+  recordCheckout?(
+    target: { place: readonly string[] },
+    options: { worktrees: WorktreeCollection; by?: WorktreeOwner },
+  ): Promise<CheckoutSnapshot | null>;
 }
 
 /** One worktree a host holds, as `WorkspaceHost.list` reports it. */
@@ -482,6 +522,8 @@ export interface RemoveOptions {
   deleteBranch?: boolean;
   /** Delete the branch even when it holds the only copy of some commits. Ignored without `deleteBranch`. */
   force?: boolean;
+  /** The user's worktree rows: a removal marks the worktree's row `removed`. */
+  worktrees?: WorktreeCollection;
 }
 
 /** What `WorkspaceHost.remove` removed. */
@@ -1260,6 +1302,22 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   }
 
   async function provision(answer: RunSourceAnswer, request: PlaceRequest): Promise<WorkspacePlace> {
+    const recording = answer.kind === "repo" ? request.worktrees : undefined;
+    if (recording === undefined) return await provisionPlace(answer, request);
+    const key = worktreeKey(hostId(), request.place);
+    await markWorktreeProvisioning(recording, key, request.place);
+    const place = await provisionPlace(answer, request);
+    await markWorktreeReady(recording, key, request.place, {
+      path: place.cwd,
+      branch: place.repo?.branch ?? null,
+      repo: place.repo !== undefined ? redactRemote(place.repo.remote) : null,
+      baseCommit: place.repo?.baseCommit ?? null,
+      fresh: place.repo?.created === true,
+    });
+    return { ...place, worktree: key };
+  }
+
+  async function provisionPlace(answer: RunSourceAnswer, request: PlaceRequest): Promise<WorkspacePlace> {
     if (answer.kind === "refused") throw new WorkspaceRefusedError(answer.reason, answer.message);
     const dir = placeDir(request.place);
     // One budget for the whole provision, lock waits included.
@@ -1897,11 +1955,56 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         await git(entry.repository, ["branch", "-D", branch], left());
         branchDeleted = true;
       }
+      if (removeOptions.worktrees !== undefined) {
+        await markWorktreeRemoved(removeOptions.worktrees, worktreeKey(hostId(), "place" in target ? target.place : entry.place));
+      }
       return { cwd: entry.cwd, branch, branchDeleted };
     } finally {
       releaseLock(use);
       releaseLock(lease);
     }
+  }
+
+  async function attach(
+    target: { place: readonly string[] },
+    attachOptions: { worktrees: WorktreeCollection; by: WorktreeOwner },
+  ): Promise<string | null> {
+    const key = worktreeKey(hostId(), target.place);
+    return (await attachToWorktree(attachOptions.worktrees, key, attachOptions.by)) ? key : null;
+  }
+
+  async function recordCheckout(
+    target: { place: readonly string[] },
+    recordOptions: { worktrees: WorktreeCollection; by?: WorktreeOwner },
+  ): Promise<CheckoutSnapshot | null> {
+    const key = worktreeKey(hostId(), target.place);
+    const row = (await recordOptions.worktrees.getOptional(key))?.state;
+    if (row === undefined) return null;
+    const at = now();
+    const path = row.path;
+    if (path === null || !existsSync(path)) {
+      const gone: CheckoutSnapshot = { present: false, at };
+      await recordWorktreeCheckout(recordOptions.worktrees, key, gone, recordOptions.by);
+      return gone;
+    }
+    let branch: string | null = null;
+    try {
+      branch = (await git(path, ["symbolic-ref", "--quiet", "--short", "HEAD"], GIT_TIMEOUT_MS)) || null;
+    } catch {
+      // A detached HEAD.
+    }
+    let commits: number | null = null;
+    if (row.baseCommit !== null) {
+      try {
+        const counted = Number.parseInt(await git(path, ["rev-list", "--count", "HEAD", "--not", row.baseCommit], GIT_TIMEOUT_MS), 10);
+        commits = Number.isNaN(counted) ? null : counted;
+      } catch {
+        // Unknown, never 0.
+      }
+    }
+    const read: CheckoutSnapshot = { present: true, branch, commits, at };
+    await recordWorktreeCheckout(recordOptions.worktrees, key, read, recordOptions.by);
+    return read;
   }
 
   return {
@@ -1915,6 +2018,8 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     holds,
     list,
     remove,
+    attach,
+    recordCheckout,
     async checkpoint(place, recorded) {
       const holding = place.holding;
       if (heldWork === undefined || holding === undefined || place.kind !== "repo") return null;
