@@ -328,6 +328,12 @@ export interface WorkspacePlace {
     /** Whether this call cut the branch. `false` for a checkout handed back. */
     created: boolean;
     /**
+     * Whether this call cut the branch itself, not only made a new checkout
+     * of a branch that already existed (after a removal that kept the
+     * branch). Absent on places made before it existed.
+     */
+    branchCut?: boolean;
+    /**
      * The ref the run's branch was cut from, as asked (`"HEAD"` when none was
      * named). Only when `created`.
      */
@@ -906,6 +912,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         clone,
         branch,
         created: worktree.created,
+        branchCut: worktree.baseRef !== undefined,
         ...(started.baseRef !== undefined ? { baseRef: started.baseRef } : {}),
         ...(started.baseCommit !== undefined ? { baseCommit: started.baseCommit } : {}),
         ...(worktree.movedBack !== undefined ? { movedBack: worktree.movedBack } : {}),
@@ -956,6 +963,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       clone: repo,
       branch,
       created: worktree.created,
+      branchCut: worktree.baseRef !== undefined,
       ...(started.baseRef !== undefined ? { baseRef: started.baseRef } : {}),
       ...(started.baseCommit !== undefined ? { baseCommit: started.baseCommit } : {}),
       ...(worktree.movedBack !== undefined ? { movedBack: worktree.movedBack } : {}),
@@ -1305,19 +1313,31 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     const recording = answer.kind === "repo" ? request.worktrees : undefined;
     if (recording === undefined) return await provisionPlace(answer, request);
     const key = worktreeKey(hostId(), request.place);
-    await markWorktreeProvisioning(recording, key, request.place);
-    const place = await provisionPlace(answer, request);
-    await markWorktreeReady(recording, key, request.place, {
-      path: place.cwd,
-      branch: place.repo?.branch ?? null,
-      repo: place.repo !== undefined ? redactRemote(place.repo.remote) : null,
-      baseCommit: place.repo?.baseCommit ?? null,
-      fresh: place.repo?.created === true,
+    // Both writes run under the place's lock, the one `remove` takes, so a
+    // removal lands wholly before the provision or wholly after it.
+    const place = await provisionPlace(answer, request, {
+      before: () => markWorktreeProvisioning(recording, key, request.place),
+      after: (made) =>
+        markWorktreeReady(recording, key, request.place, {
+          path: made.cwd,
+          branch: made.repo?.branch ?? null,
+          repo: made.repo !== undefined ? redactRemote(made.repo.remote) : null,
+          baseCommit: made.repo?.baseCommit ?? null,
+          fresh: made.repo?.branchCut === true,
+        }),
     });
     return { ...place, worktree: key };
   }
 
-  async function provisionPlace(answer: RunSourceAnswer, request: PlaceRequest): Promise<WorkspacePlace> {
+  /**
+   * Make the place. `rows` are the worktree row's writes, run inside the
+   * place's lock: `before` ahead of the checkout, `after` once it is made.
+   */
+  async function provisionPlace(
+    answer: RunSourceAnswer,
+    request: PlaceRequest,
+    rows?: { before: () => Promise<void>; after: (place: WorkspacePlace) => Promise<void> },
+  ): Promise<WorkspacePlace> {
     if (answer.kind === "refused") throw new WorkspaceRefusedError(answer.reason, answer.message);
     const dir = placeDir(request.place);
     // One budget for the whole provision, lock waits included.
@@ -1353,15 +1373,28 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         // No kept files: the place is the checkout, with its marker and lock
         // beside it, exactly as places already on disk were made.
         mkdirSync(root, { recursive: true });
-        const repo = await locked(`${dir}${LOCAL_LOCK_SUFFIX}`, deadline, () =>
-          provisionLocalCheckout(local, answer.baseRef, dir, `${dir}${LOCAL_MARKER_SUFFIX}`, branch, request.ignored, deadline, request.existing === true),
-        );
-        return { kind: "repo", dir, cwd: dir, repo, origin: repo.created ? "new" : "live" };
+        return await locked(`${dir}${LOCAL_LOCK_SUFFIX}`, deadline, async () => {
+          await rows?.before();
+          const repo = await provisionLocalCheckout(
+            local,
+            answer.baseRef,
+            dir,
+            `${dir}${LOCAL_MARKER_SUFFIX}`,
+            branch,
+            request.ignored,
+            deadline,
+            request.existing === true,
+          );
+          const place: WorkspacePlace = { kind: "repo", dir, cwd: dir, repo, origin: repo.created ? "new" : "live" };
+          await rows?.after(place);
+          return place;
+        });
       }
       // Kept files: laid out like a remote run's place, the worktree in
       // checkout/ and the files in project/ beside it, never inside it.
       const { projectId, files } = answer;
       return await locked(join(dir, LOCK_SUFFIX), deadline, async () => {
+        await rows?.before();
         const repo = await provisionLocalCheckout(
           local,
           answer.baseRef,
@@ -1374,7 +1407,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         );
         const filesDir = join(dir, PROJECT_DIR);
         await provisionFiles(dir, PROJECT_DIR, projectId, files);
-        return {
+        const place: WorkspacePlace = {
           kind: "repo",
           dir,
           cwd: join(dir, CHECKOUT_DIR),
@@ -1382,7 +1415,9 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           holder: hold(filesDir),
           repo,
           origin: repo.created ? "new" : "live",
-        } satisfies WorkspacePlace;
+        };
+        await rows?.after(place);
+        return place;
       });
     }
 
@@ -1409,6 +1444,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       let repo: NonNullable<WorkspacePlace["repo"]>;
       let origin: PlaceOrigin;
       let extra: Pick<WorkspacePlace, "holding" | "heldDir"> = {};
+      await rows?.before();
       if (holding) {
         const made = await provisionHolding(answer as RepoRunSource & { heldPrefix: string }, remote, request, dir, branch, deadline);
         ({ repo, origin } = made);
@@ -1426,6 +1462,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         place.filesDir = join(dir, PROJECT_DIR);
         place.holder = hold(place.filesDir);
       }
+      await rows?.after(place);
       return place;
     });
   }
