@@ -16,7 +16,7 @@ import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { worktreeLockPath } from "@flow-state-dev/workspace";
@@ -203,6 +203,34 @@ function act(
 }
 
 describe("where a session starts", () => {
+  it("holds the worktree through the pull-request check, so the next turn there can't open one this turn takes for its own", async () => {
+    const stores = createInMemoryStores();
+    const { workspace } = recordingWorkspace();
+    await seed(stores, "s-pr-lease", { model: "stub-model" });
+    const cwd = join(places, "s-pr-lease");
+    mkdirSync(cwd, { recursive: true });
+    execFileSync("git", ["init", "-q", "-b", "fix/review-notes"], { cwd, stdio: "pipe" });
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "base"], { cwd, stdio: "pipe" });
+    // A `gh` that says whether the turn's in-use lock is still there when it is asked.
+    const bin = mkdtempSync(join(tmpdir(), "session-flow-gh-"));
+    const seen = join(bin, "seen");
+    writeFileSync(
+      join(bin, "gh"),
+      `#!/bin/sh\nif [ -e '${worktreeLockPath(cwd)}' ]; then echo held > '${seen}'; else echo free > '${seen}'; fi\necho '[]'\n`,
+      { mode: 0o755 },
+    );
+    const path = process.env.PATH;
+    process.env.PATH = `${bin}:${path ?? ""}`;
+    try {
+      await act(stores, "s-pr-lease", workspace, "turn", { prompt: "go" });
+    } finally {
+      process.env.PATH = path;
+    }
+
+    expect(readFileSync(seen, "utf8").trim()).toBe("held");
+    expect(existsSync(worktreeLockPath(cwd))).toBe(false);
+  });
+
   it("is handed to the workspace on every provision, so the first one can honour it", async () => {
     const stores = createInMemoryStores();
     const { workspace, provisioned } = recordingWorkspace();
