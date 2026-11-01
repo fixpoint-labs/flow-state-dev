@@ -58,6 +58,8 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `form` | Flat-object form card for a `user_input` suspension — one control per scalar/enum property |
 | `model-badge` | Small pill showing the `ModelIdentity` that answered. Renders nothing when the model is undefined |
 | `audit-annotation` | Compact card for `responseAuditor` findings: severity indicators, per-analyzer scores, evidence. Fed by the `audit-annotation` component item |
+| `connection-banner` | Thin bar that says the server is gone, read from a session feed's `state` (`sessionFeed` in `@flow-state-dev/client`, or any read that reports the same states). Shows on `lapsed` and `stopped`, never on a first load or an ordinary reconnect. Exports `isFeedStale(state)` and `STALE_CLASS`, which greys an area and stops its pulsing dots and spinners while the bar shows |
+| `connection-screen` | Full-screen page for a failed first read. `refused` draws no retry; `unreachable` has Retry and retries on its own at 2, 4, 8 seconds, up to 30 |
 
 ## Framework Integration
 

@@ -61,6 +61,33 @@ import { ModelBadge } from "@/components/flow-state/model-badge";
 <ModelBadge model={item.model} />
 ```
 
+## ConnectionBanner and ConnectionScreen
+
+Two ways to show that the server isn't answering. `ConnectionBanner` is a thin warning bar for a session that has already loaded. Pass it a `feed`, anything with a `state` of `connecting`, `live`, `reconnecting`, `lapsed` or `stopped`, such as a `sessionFeed` snapshot from `@flow-state-dev/client`. It draws nothing on a first load or an ordinary reconnect. On `lapsed` it reads "Lost the server 12s ago, retrying…", counting from when the feed stopped being live. On `stopped` it says the feed has ended, with a Retry button if you pass `onRetry`.
+
+While the bar shows, `isFeedStale(state)` returns true. Add `STALE_CLASS` to areas that draw status to grey them out and stop their pulsing dots and spinners, and pause any elapsed-time clocks of your own.
+
+`ConnectionScreen` is the full-screen page for when the first read fails. With `kind: "refused"` there is no retry. With `kind: "unreachable"` it shows a Retry button and retries on its own after 2, 4, 8… seconds, up to 30. If `onRetry` returns a promise, the next wait starts once it settles. Once a first read has landed, later failures belong to the banner.
+
+```bash
+fsdev ui add connection-banner
+fsdev ui add connection-screen
+```
+
+```tsx
+import { ConnectionBanner, STALE_CLASS, isFeedStale } from "@/components/flow-state/connection-banner";
+import { ConnectionScreen } from "@/components/flow-state/connection-screen";
+
+// Before the first read lands
+<ConnectionScreen kind="unreachable" title="Can't reach the server" failure={firstReadError} onRetry={load}>
+  Check that the dev server is running.
+</ConnectionScreen>
+
+// After it lands
+<ConnectionBanner feed={feed} onRetry={reopen} />
+<div className={isFeedStale(feed.state) ? STALE_CLASS : undefined}>{/* status lines */}</div>
+```
+
 ## AuditAnnotation
 
 A compact card for [Response Auditor](/docs/patterns/response-auditor) findings. It lists the surfaced results with severity indicators, per-analyzer scores, and the evidence each analyzer flagged. You don't render it by hand: the `responseAuditor` pattern emits an `audit-annotation` component item whenever a result surfaces, and `chatAssistantRenderers` maps that item to this card, so the audit shows up automatically on any chat surface wired with those renderers.
