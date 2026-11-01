@@ -1347,6 +1347,22 @@ await createInboxClient(client).answer(items[0], { approved: true });
 - **One item per task, however many questions it has.** A task's questions and confirms, asked at filing or midway, list oldest first as its `holds`, beside a stop in its run.
 - **The answer is typed by what the question asks:** an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, a confirm `{ done, note? }` (a No cancels the task unless the confirm was filed with `onNo: "continue"`). `answer(item, value, questionId?)` answers the item's first question, or the one named; `answerOne(question, value)` answers one question directly. A task run's stop goes to the engine's answer route, which records who answered. A question or a confirm goes to its board's `updateTask` action, as the signed-in user, in the session that board lives in, and the call rejects with the board's refusal. A question on a board the reader can't reach says so in `unanswerable`.
 
+### A task row, as a person sees it
+
+`taskRowView(row, holds?)` turns one task row into what a task screen draws, so every screen uses the same words for the same row:
+
+```ts
+import { taskRowView } from "@flow-state-dev/orchestration/inbox";
+
+const view = taskRowView(row, item?.holds);
+view.state;     // "queued" | "held" | "running" | "waiting" | "failed" | "done" | "cancelled"
+view.hold;  // the oldest open hold on the user (its ask, where the answer goes), or null
+```
+
+- **`waiting` wins over the stored status.** Any open hold on the user makes a row that isn't finished read `waiting`, whether it's `in_progress`, `held` or `pending`. A finished row reads as its ending, whatever an old hold says.
+- **`holds` is optional.** Pass the row's Inbox item's holds when you have them: they also include a stop found in the task's run before the row records it, and they know where each answer goes. Without them, the view reads the row's own holds; those say they can't be answered from here.
+- **It also carries** the stored `status` (a stored `blocked` reads `held`), `spend` with its `harness` and `model` (a raw row's stored spend is folded with `taskSpendView`; the spend `listTasks` already folded is kept as it is), `error`, `statusNote`, and `times` (created, updated, started, completed; `null` where the row has none). A stored spend it can't read comes back `null` instead of throwing.
+
 ### Task actions
 
 The same client works a board's tasks. `board(at)` binds the board once, by the flow and session that hold it and its collection id, and each call runs the board's own action as the signed-in user:

@@ -30,6 +30,8 @@ export { createInboxClient, type InboxClient, type RefileOverrides, type RefileR
 // A board's action names, for an app that names a row's `holder` (FIX-2381).
 export { taskActionName, taskToolSuffix } from "../skills/task-tool-names";
 export { inboxItems } from "./list";
+// One task row as a person sees it: the one status and waiting-on vocabulary (FIX-2379).
+export { taskRowView, type TaskRowState, type TaskRowView, type TaskViewRow } from "./row-view";
 // What a row's holds are, for a reader that parses a published row (FIX-2133).
 export { taskHoldSchema, type TaskHold } from "../tasks/schema/hold";
 export type {
