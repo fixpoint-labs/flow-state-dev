@@ -18,3 +18,4 @@ export {
   type RecordedWork,
   type RecordedWorkClient,
 } from "./recorded-work";
+export { reviewDetail, type ReviewDetail } from "./review-detail";

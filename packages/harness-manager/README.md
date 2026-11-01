@@ -346,6 +346,16 @@ That posts to the engine's answer route, `POST /api/flows/:flow/requests/:reques
 
 To draw the review in a browser, add the ui registry's `review-hold` component (`fsdev ui add review-hold`). It offers Accept and Ask for changes, and sends only these two answers. The registry's `SuspensionCard` draws it for this stop, with the stop's prompt.
 
+The stop's `data` names the run's branch, commit count, commit subjects and the judge's verdict. Read it in the browser with `reviewDetail` from `@flow-state-dev/harness-manager/browser`, an entry that imports no Node built-in, and hand the result to the card as `review`:
+
+```tsx
+import { reviewDetail } from "@flow-state-dev/harness-manager/browser";
+
+<ReviewSuspension item={item} review={reviewDetail(item.data)} />;
+```
+
+A field it can't read comes back `null` (or `[]` for the subjects), and data that isn't a review comes back `null`.
+
 - **Accepted**: the task completes with no further run, output `review: "accepted"`.
 - **Revise**: the words are written on the task as the user's steer, and one more run starts on the same attempt, continuing the same coding session with the words in its prompt, as any steer is taken. If it commits again it is reviewed again, over all the branch's commits. Each revision counts toward the task's steer limit; past it the attempt fails. If the harness confirmed no coding session, the revision fails the attempt instead, and the next attempt's brief carries the words.
 - **Deadline**: none unless the host sets `userDeadlineMs`. At the deadline the task completes with no further run, output `review: "deadline"`. Show that as not reviewed, never as approved.

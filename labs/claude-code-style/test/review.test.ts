@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { ReviewDetail } from "../src/adapter";
-import { commitCount, judgeLine, shortBranch } from "../src/lib/review";
+import { commitCount, judgeLine, shortBranch } from "../src/components/flow-state/review-hold";
 
 const BRANCH = "conductor/t0/ha62422c9f1e0b7d4c2a8e5f3b1d6a9c0e4f7b2d-h0163a0cb8e2d4f6a1c3b5d7e9f0a2c4e6b8d0f1a/t-7f3c2e1a9b--code";
 const review = (patch: Partial<ReviewDetail> = {}): ReviewDetail => ({

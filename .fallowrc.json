@@ -94,6 +94,8 @@
     // The Claude Code-style lab's copies, as `fsdev ui add message` installed them.
     "labs/claude-code-style/src/components/ui/**",
     "labs/claude-code-style/src/components/flow-state/message.tsx",
+    // and of the registry's review card, drawn for display only.
+    "labs/claude-code-style/src/components/flow-state/review-hold.tsx",
     // The Teammates lab's copy of the registry's tool grouping.
     "labs/teammates/src/components/flow-state/tool-grouping.ts",
     // Kitchen Sink's and Shift Manager's byte copies of the registry's review card:
