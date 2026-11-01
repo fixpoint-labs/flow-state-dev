@@ -426,6 +426,91 @@ describe("suspendForUser in a nested sequencer", () => {
   });
 });
 
+describe("suspendForUser after a state write in the same step", () => {
+  // A step that records what it asks about and then waits for the user must
+  // find that record when the run comes back. The resume runs the waiting
+  // step's code again from the saved state, and what the step recorded from
+  // is often gone by then (an in-memory map a restart empties), so the
+  // state is the only place the record lives.
+  function recordThenWait(inbox: string[], seen: string[]): FlowInstance {
+    const recordAndWait = handler({
+      name: "record-and-wait",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        const fresh = inbox.shift();
+        if (fresh !== undefined) await ctx.sequencer!.patchState({ asking: fresh });
+        const asking = (ctx.sequencer!.state as { asking: string | null }).asking;
+        seen.push(`asking: ${String(asking)}`);
+        if (asking === null) return { asked: null };
+        const answer = await ctx.suspendForUser({ kind: "input", prompt: `About ${asking}?` } as never);
+        return { asked: asking, answer };
+      }
+    });
+    const read = handler({
+      name: "read",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (input: { asked: string | null; answer?: unknown }, ctx) => {
+        seen.push(`after: ${JSON.stringify(input)} with ${String((ctx.sequencer!.state as { asking: string | null }).asking)}`);
+        return input;
+      }
+    });
+    const block = sequencer({ name: "s", stateSchema: z.object({ asking: z.string().nullable().default(null) }) })
+      .step(recordAndWait)
+      .step(read);
+    return defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+  }
+
+  it("keeps the write through a restart: the resumed step asks about what it recorded and takes the answer", async () => {
+    const seen: string[] = [];
+    const first = recordThenWait(["deploy"], seen);
+    const before = harness(first);
+    const { requestId, gate } = await park(before, first, {});
+
+    // A restart: a new engine (flow instance, registry, provider) over the
+    // same durable stores. The new process starts with an empty map.
+    const after = harness(recordThenWait([], seen));
+    const provider = createCheckpointDurabilityProvider(before.stores);
+    after.runtimeConfig.durabilityProvider = provider;
+    const answered = await handleAnswerSuspension(
+      new Request(`https://x/api/flows/asking/requests/${requestId}/answer`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ suspensionId: gate.suspensionId, action: "submit", data: "yes" })
+      }),
+      { kind: "answer_suspension", flowKind: "asking", requestId },
+      {
+        host: {
+          continueRequest: async (options: Parameters<typeof continueRequest>[0]) => {
+            const result = await continueRequest({
+              ...options,
+              stores: before.stores,
+              flowRegistry: after.registry,
+              runtimeConfig: after.runtimeConfig
+            });
+            after.finished.push(result.finished);
+            return result;
+          }
+        } as never,
+        registry: after.registry,
+        stores: before.stores,
+        durabilityProvider: provider,
+        principal: { userId: USER, orgId: DEFAULT_ORG_ID } as never
+      }
+    );
+    expect(answered.status).toBe(202);
+    await after.drain();
+
+    expect((await before.stores.request.get(requestId))?.status).toBe("completed");
+    expect(seen).toEqual([
+      "asking: deploy",
+      "asking: deploy",
+      'after: {"asked":"deploy","answer":{"cancelled":false,"answer":"yes"}} with deploy'
+    ]);
+  });
+});
+
 describe("the answer route (D2)", () => {
   it("answers the stop once, as the signed-in caller; a second answer is told it is resolved", async () => {
     const seen: string[] = [];

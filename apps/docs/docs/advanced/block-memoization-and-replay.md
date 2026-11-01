@@ -14,6 +14,8 @@ On resume, the runtime reads the item log for the continuing request and builds 
 
 The suspending block is the exception. It has no committed output yet (it threw a suspension signal rather than returning), so it re-runs. This time `ctx.suspend()` returns the resume data instead of pausing.
 
+Sequencer state is saved at the pause itself. If the suspending block wrote to `ctx.sequencer` state before it paused, the re-run starts with that write already in place, so it can read back what it recorded even when the source it recorded from is gone after a restart. The write runs again on the re-run too, so make it one that is safe to repeat: set a value rather than increment one (`incState`, `pushState`) before the pause.
+
 ## The sharp edge
 
 A block's output is what gets memoized. A side effect is not. If a block sends an email, writes to an external system, or charges a card, and then the request later suspends and resumes, that block re-executes only if it has no committed output yet. The suspending block is exactly that block.

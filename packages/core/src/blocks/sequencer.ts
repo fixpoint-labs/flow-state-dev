@@ -921,7 +921,7 @@ function runSequencerOperations(
         const ownsResumeState =
           resumeState?.blockInstanceId === undefined || resumeState.blockInstanceId === ctx._blockIdentity?.blockInstanceId;
         if (resumeState !== undefined && resumeState.state !== undefined && ownsResumeState && ctx.sequencer !== undefined) {
-          ctx.sequencer.setState({ ...ctx.sequencer.state, ...resumeState.state });
+          await ctx.sequencer.setState({ ...ctx.sequencer.state, ...resumeState.state });
         }
 
         for (let index = 0; index < operations.length; index += 1) {
@@ -1019,6 +1019,26 @@ function runSequencerOperations(
           // first sequencer to catch is the innermost, which owns the state.
           if (durable && error._sequencerInstanceId === undefined && ctx._blockIdentity?.blockInstanceId !== undefined) {
             error._sequencerInstanceId = ctx._blockIdentity.blockInstanceId;
+          }
+          // Save the state as it stands at the wait (FIX-2444). The resume runs
+          // the waiting step's code again from the checkpoint, and the last one
+          // was written when the step before it ended: a write the waiting step
+          // made before it stopped would read as never made, though what it
+          // wrote from (an in-memory map, a one-shot read) may be gone.
+          // Skipped when nothing changed, as at a step boundary.
+          if (durable && currentStepIndex >= 0) {
+            snapshotVersion += 1;
+            const prevStateJson = lastStateJson;
+            lastStateJson = await emitStateSnapshot(
+              ctx,
+              operations[currentStepIndex]?.nameFor?.(sequencerName) ?? operations[currentStepIndex]?.name ?? lastStepName,
+              currentStepIndex,
+              lastStateJson,
+              durable,
+              snapshotVersion,
+              stateSchema
+            );
+            if (lastStateJson === prevStateJson) snapshotVersion -= 1;
           }
           throw error;
         }
