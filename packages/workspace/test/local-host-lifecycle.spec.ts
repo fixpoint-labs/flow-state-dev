@@ -247,6 +247,18 @@ describe("list and remove", () => {
     expect(existsSync(local.cwd)).toBe(false);
   });
 
+  it("lists a place named checkout as itself, and removes it by that place", async () => {
+    const h = host();
+    const place = await h.provision({ kind: "repo", repo }, { place: ["checkout"], branch: "fsd/checkout" });
+
+    const listed = await h.list!();
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatchObject({ place: ["checkout"], dir: listed[0]!.cwd });
+
+    await h.remove!({ place: ["checkout"] });
+    expect(existsSync(place.cwd)).toBe(false);
+  });
+
   it("rejects a target that names no worktree of the host's", async () => {
     await expect(host().remove!({ cwd: repo })).rejects.toThrow(/no worktree this host holds/);
   });
