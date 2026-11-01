@@ -70,6 +70,12 @@ export type ResumeState = {
    * the root sequencer's, the only one that sees it.
    */
   blockInstanceId?: string;
+  /**
+   * The state the restore produced (the checkpoint over schema defaults), set
+   * by the owning sequencer when it restores. The engine resets the restored
+   * state to this when a replay reaches its logged gate (FIX-2444).
+   */
+  restored?: Record<string, unknown>;
 };
 
 /** Output schema for `.waitForCondition` — a single boolean `timedOut` flag. */
@@ -921,7 +927,9 @@ function runSequencerOperations(
         const ownsResumeState =
           resumeState?.blockInstanceId === undefined || resumeState.blockInstanceId === ctx._blockIdentity?.blockInstanceId;
         if (resumeState !== undefined && resumeState.state !== undefined && ownsResumeState && ctx.sequencer !== undefined) {
-          await ctx.sequencer.setState({ ...ctx.sequencer.state, ...resumeState.state });
+          const restored = { ...ctx.sequencer.state, ...resumeState.state };
+          resumeState.restored = restored;
+          await ctx.sequencer.setState(restored);
         }
 
         for (let index = 0; index < operations.length; index += 1) {

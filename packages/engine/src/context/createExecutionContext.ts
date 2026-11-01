@@ -3690,15 +3690,15 @@ export async function createExecutionContext<
     // checkpoint the sequencer wrote at the suspension, which already holds
     // every write that code made before it stopped. So when the waiting block
     // reaches the last gate the log records for it, the restored sequencer's
-    // state is set back to that checkpoint: what the re-run wrote again is
+    // state is replaced by that checkpoint: what the re-run wrote again is
     // dropped, and transient fields (which no checkpoint holds) keep what the
     // re-run wrote. Code that never reaches the gate (a branch the restored
     // state skips) keeps its writes. Any other state, such as a handler's own
     // `ctx.self`, is not in the checkpoint and is left alone.
     const settleReplayedState = async (callerLogicalId: string): Promise<void> => {
       const replayLog = (rootContext as { _replayLog?: ReplayLog })._replayLog;
-      const resumeState = (rootContext as { _resumeState?: { state?: Record<string, unknown>; blockInstanceId?: string } })._resumeState;
-      if (replayLog === undefined || resumeState?.state === undefined) return;
+      const resumeState = (rootContext as { _resumeState?: { restored?: Record<string, unknown>; blockInstanceId?: string } })._resumeState;
+      if (replayLog === undefined || resumeState?.restored === undefined) return;
       // The waiting block: the one this continuation resolves, else (a
       // crash's continuation) the one the latest logged answer resumed.
       const pending = replayLog.pendingSuspension()?.blockLogicalId;
@@ -3709,7 +3709,15 @@ export async function createExecutionContext<
       const restoredId = resumeState.blockInstanceId ?? buildBlockInstanceId(requestRef.current.id, ROOT_BLOCK_PATH, 0);
       for (let node = parentChain; node !== undefined; node = node.previous) {
         if (node.parent.instanceId === restoredId && node.parentStateContainer !== undefined) {
-          await buildStateRef(node).patchState(resumeState.state);
+          // Replace, not merge: a field the re-run added that the restore
+          // didn't set (checkpoint over defaults) is dropped too. Transient fields keep the re-run's value.
+          const stateRef = buildStateRef(node);
+          const current = stateRef.state as Record<string, unknown>;
+          const settled: Record<string, unknown> = { ...resumeState.restored };
+          for (const key of getTransientKeys(node.parent.stateSchema)) {
+            if (key in current) settled[key] = current[key];
+          }
+          await stateRef.setState(settled);
           return;
         }
       }
