@@ -243,21 +243,14 @@ export async function resolveResourceByPath(
 }
 
 /**
- * Content read gate. A collection instance carries its owning collection's
- * config (the server stamps `config: nsConfig` onto every instance ref), so the
- * collection-level `llmReadable` flag reaches each instance through `ref.config`.
+ * The one read gate, for a resource, a collection instance, or a collection.
+ * A collection instance carries its owning collection's config (the server
+ * stamps `config: nsConfig` onto every instance ref), so the collection-level
+ * `llmReadable` flag reaches each instance through `ref.config`. Listing,
+ * search and `readResource` all ask this, so the gate can't drift between them.
  */
-export function isLlmReadable(ref: ResourceRef<any>): boolean {
+export function isLlmReadable(ref: { config?: { llmReadable?: boolean } }): boolean {
   return ref.config?.llmReadable === true;
-}
-
-/**
- * The collection-level read gate: whether a collection opted in with
- * `llmReadable`. Every tool that lists, searches or reads a collection for the
- * model asks this one function, so the gate can't drift between them.
- */
-function isCollectionLlmReadable(ns: CollectionEntry): boolean {
-  return ns.ref.config?.llmReadable === true;
 }
 
 /** Content write gate. Independent of `llmReadable`, matching the single-resource contract. */
@@ -294,7 +287,7 @@ export function isLlmWritableNow(ref: ResourceRef<any>, ctx: BlockContext): bool
 export async function collectReadableResources(ctx: BlockContext): Promise<ResourceRef<any>[]> {
   const out: ResourceRef<any>[] = collectStaticResources(ctx).filter(isLlmReadable);
   for (const ns of collectCollections(ctx)) {
-    if (!isCollectionLlmReadable(ns)) continue;
+    if (!isLlmReadable(ns.ref)) continue;
     for (const instance of await ns.ref.list()) out.push(instance);
   }
   return out;
@@ -312,7 +305,7 @@ export async function collectReadableResources(ctx: BlockContext): Promise<Resou
  * collection that did not opt in is filtered out before anything reaches it.
  */
 export function collectReadableProjectedCollections(ctx: BlockContext): CollectionEntry[] {
-  return collectProjectedCollections(ctx).filter(isCollectionLlmReadable);
+  return collectProjectedCollections(ctx).filter((ns) => isLlmReadable(ns.ref));
 }
 
 /**
@@ -370,7 +363,7 @@ function resolvePathToCollection(
   // read-only isn't a target for a write. Either way the call answers as for a
   // path no collection matches.
   const collections = collectCollections(ctx).filter((ns) =>
-    intent === "read" ? isCollectionLlmReadable(ns) : ns.access === "visible"
+    intent === "read" ? isLlmReadable(ns.ref) : ns.access === "visible"
   );
 
   for (const ns of collections) {
