@@ -39,20 +39,16 @@ function toolNote(name: string, args: string): string {
   } catch {
     return name;
   }
-  const detail = toolCallTouches(parsed);
-  return detail === null ? name : `${name}: ${detail}`;
+  const detail = toolCallDetail(parsed);
+  return detail === null ? name : `${name}: ${detail.value}`;
 }
 
 /**
  * What a tool call touches, read off its arguments: the first of a file path,
- * a path, a command, a pattern, a query or a URL that is a non-empty string.
- * `null` when none is. Reads keys only, so no harness's input shape is named.
+ * a path, a command, a pattern, a query or a URL that is a non-empty string,
+ * with the argument key it was read from. `null` when none is. Reads keys
+ * only, so no harness's input shape is named.
  */
-export function toolCallTouches(args: unknown): string | null {
-  return toolCallDetail(args)?.value ?? null;
-}
-
-/** {@link toolCallTouches}, with the argument key it was read from. */
 export function toolCallDetail(args: unknown): { key: (typeof DETAIL_KEYS)[number]; value: string } | null {
   if (args === null || typeof args !== "object") return null;
   for (const key of DETAIL_KEYS) {
