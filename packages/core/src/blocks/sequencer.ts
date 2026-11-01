@@ -70,6 +70,8 @@ export type ResumeState = {
    * the root sequencer's, the only one that sees it.
    */
   blockInstanceId?: string;
+  /** Whether the checkpoint was taken at the suspension (`SequencerCheckpoint.atSuspension`). */
+  atSuspension?: boolean;
   /**
    * The state the restore produced (the checkpoint over schema defaults), set
    * by the owning sequencer when it restores. The engine resets the restored
@@ -290,7 +292,8 @@ async function emitStateSnapshot(
   durable: boolean,
   version: number,
   stateSchema: ZodTypeAny | undefined,
-  terminal: boolean = false
+  terminal: boolean = false,
+  atSuspension: boolean = false
 ): Promise<string | undefined> {
   // Non-durable snapshots are observability-only and gated by tracingLevel
   // (FIX-406 6H). Durable snapshots must always emit — they're the crash-resume
@@ -326,7 +329,7 @@ async function emitStateSnapshot(
   // Skip step-boundary emissions when state hasn't changed. Terminal frames
   // always emit so the durability hook sees the delete signal even when the
   // last step left state untouched.
-  if (!terminal && lastStateJson !== undefined && currentStateJson === lastStateJson) {
+  if (!terminal && !atSuspension && lastStateJson !== undefined && currentStateJson === lastStateJson) {
     return lastStateJson;
   }
 
@@ -372,7 +375,8 @@ async function emitStateSnapshot(
     state: structuredClone(visibleState),
     version,
     durable: effectiveDurable,
-    terminal
+    terminal,
+    ...(atSuspension ? { atSuspension: true } : {})
   };
 
   // Trace types (`state_snapshot`) are resolved to `{false,false}` by
@@ -1033,10 +1037,10 @@ function runSequencerOperations(
           // was written when the step before it ended: a write the waiting step
           // made before it stopped would read as never made, though what it
           // wrote from (an in-memory map, a one-shot read) may be gone.
-          // Skipped when nothing changed, as at a step boundary.
+          // Written even when nothing changed, so the checkpoint is marked as
+          // taken at the wait (`atSuspension`), which the resume relies on.
           if (durable && currentStepIndex >= 0) {
             snapshotVersion += 1;
-            const prevStateJson = lastStateJson;
             lastStateJson = await emitStateSnapshot(
               ctx,
               operations[currentStepIndex]?.nameFor?.(sequencerName) ?? operations[currentStepIndex]?.name ?? lastStepName,
@@ -1044,9 +1048,10 @@ function runSequencerOperations(
               lastStateJson,
               durable,
               snapshotVersion,
-              stateSchema
+              stateSchema,
+              false,
+              true
             );
-            if (lastStateJson === prevStateJson) snapshotVersion -= 1;
           }
           throw error;
         }

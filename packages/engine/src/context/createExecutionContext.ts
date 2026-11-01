@@ -3697,8 +3697,11 @@ export async function createExecutionContext<
     // `ctx.self`, is not in the checkpoint and is left alone.
     const settleReplayedState = async (callerLogicalId: string): Promise<void> => {
       const replayLog = (rootContext as { _replayLog?: ReplayLog })._replayLog;
-      const resumeState = (rootContext as { _resumeState?: { restored?: Record<string, unknown>; blockInstanceId?: string } })._resumeState;
-      if (replayLog === undefined || resumeState?.restored === undefined) return;
+      const resumeState = (rootContext as { _resumeState?: { restored?: Record<string, unknown>; atSuspension?: boolean; blockInstanceId?: string } })._resumeState;
+      // A checkpoint from a step boundary (one written before checkpoints were
+      // taken at the wait) lacks the waiting step's writes: the re-run's are
+      // the only copy, so they stay.
+      if (replayLog === undefined || resumeState?.restored === undefined || resumeState.atSuspension !== true) return;
       // The waiting block: the one this continuation resolves, else (a
       // crash's continuation) the one the latest logged answer resumed.
       const pending = replayLog.pendingSuspension()?.blockLogicalId;

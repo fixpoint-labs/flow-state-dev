@@ -1663,6 +1663,7 @@ async function runActionAttempt<
                 parentBlockInstanceId,
                 stepIndex: item.stepIndex,
                 state: item.state,
+                ...(item.atSuspension === true ? { atSuspension: true } : {}),
                 version: item.version,
                 createdAt: item.ts
               }).catch((err) => {
@@ -2123,6 +2124,7 @@ async function runActionAttempt<
           );
           (ctx as any)._resumeState = {
             state: checkpoint?.state as Record<string, unknown> | undefined,
+            atSuspension: checkpoint?.atSuspension === true,
             blockInstanceId: suspension.blockInstanceId
           };
         }
@@ -2145,7 +2147,8 @@ async function runActionAttempt<
         );
         if (checkpoint !== null) {
           (ctx as any)._resumeState = {
-            state: checkpoint.state as Record<string, unknown> | undefined
+            state: checkpoint.state as Record<string, unknown> | undefined,
+            atSuspension: checkpoint.atSuspension === true
           };
         }
       }

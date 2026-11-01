@@ -797,6 +797,35 @@ describe("writes after the resume, on a restored sequencer, are live", () => {
     await h.drain();
     expect(seen).toEqual([{ last: "new" }]);
   });
+
+  it("a request parked before checkpoints were taken at the wait keeps the re-run's write", async () => {
+    // Such a request's checkpoint is the one written when the step before the
+    // wait ended: it lacks the waiting step's write, so the re-run's is the
+    // only copy and no reset may drop it.
+    const seen: unknown[] = [];
+    const waits = handler({
+      name: "waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        await ctx.sequencer!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        seen.push(ctx.sequencer!.state);
+        return null;
+      }
+    });
+    const block = sequencer({ name: "s", stateSchema: z.object({ asked: z.number().default(0) }) }).step(waits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    const saved = await h.stores.checkpoints.latest(requestId, gate.blockInstanceId);
+    expect(saved?.atSuspension).toBe(true);
+    const { atSuspension: _taken, ...legacy } = saved!;
+    await h.stores.checkpoints.write({ ...legacy, stepIndex: -1, state: { asked: 0 } });
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "ok" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([{ asked: 1 }]);
+  });
 });
 
 describe("the answer route (D2)", () => {
