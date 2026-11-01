@@ -48,9 +48,15 @@ export function Sheet({ label, title, subtitle, onClose, children, footer }: {
   // Opens on the latest of the work it shows; what arrives after waits below the arrow.
   const feed = useJumpToLatest();
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => event.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    // Capture phase, and the Esc is spent: it closed the sheet, so it never also counts toward stopping the turn.
+    // Every Esc while the sheet is open closes it, from any focus: the sheet is read-only and holds no text field.
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
   }, [onClose]);
   if (host === null) return null;
   return createPortal(
