@@ -275,6 +275,25 @@ describe("sessionFeed", () => {
     expect(h.urls.filter((url) => url.includes("/stream"))).toEqual([]);
   });
 
+  it("shows a resumed gate's prompt once, as a fresh history read would, not the copy from before the resume", async () => {
+    // A gate shows a prompt, then suspends. On resume it runs again and shows
+    // the prompt under a new id. The person must see one prompt, not two.
+    const gate = "req_1:root/step[0]:0";
+    const owned = <T extends OutputItem>(item: T, itemIndex: number): T =>
+      ({ ...item, itemIndex, provenance: { blockName: "gate", blockInstanceId: gate, phase: "main" } }) as T;
+    const suspension = owned({ ...message("req_1", "su1", "", 11), type: "suspension", suspensionId: "s1", blockInstanceId: gate } as unknown as OutputItem, 1);
+    const resume = owned({ ...message("req_1", "re1", "", 12), type: "suspension_resume", suspensionId: "s1" } as unknown as OutputItem, 2);
+    const h = host(() => json(snapshot([owned(message("req_1", "p1", "approve?", 10), 0), suspension])));
+    const feed = sessionFeed(h.client, "s1");
+    feeds.push(feed);
+    await until(() => h.streams.length === 1);
+    expect(feed.getSnapshot().items.map((item) => item.id)).toEqual(["p1", "su1"]);
+
+    h.streams[0].send(itemFrame(1_001, resume) + itemFrame(1_002, owned(message("req_1", "p2", "approve?", 13), 3)));
+    await until(() => feed.getSnapshot().items.some((item) => item.id === "p2"));
+    expect(feed.getSnapshot().items.map((item) => item.id)).toEqual(["su1", "re1", "p2"]);
+  });
+
   it("keeps only the item types it was asked for, and no transient item", async () => {
     const transient = { ...message("req_1", "t1", "typing", 11), transient: true } as OutputItem;
     const status = { ...message("req_1", "st", "status", 12), type: "status" } as unknown as OutputItem;

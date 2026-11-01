@@ -11,7 +11,7 @@
  * answer being written comes from the send's own response, through
  * {@link SessionFeed.followResponse}.
  */
-import { compareItemOrder } from "@flow-state-dev/contracts/items";
+import { collapseToCanonicalLog, compareItemOrder } from "@flow-state-dev/contracts/items";
 import type { OutputItem, SessionRun } from "@flow-state-dev/core/items";
 import type { SessionsApi } from "../client";
 import { bindStoreToCallbacks } from "../stream-client/bind-store-to-callbacks";
@@ -102,7 +102,9 @@ export function sessionFeed(
     snapshot = Object.freeze({ ...snapshot, ...next });
     for (const listener of [...listeners]) listener(snapshot);
   };
-  const sortedItems = (): OutputItem[] => [...byKey.values()].sort(compareItemOrder);
+  // A resumed block's copies from before the resume drop out, as they do from
+  // a fresh history read and from `useSession`.
+  const sortedItems = (): OutputItem[] => collapseToCanonicalLog([...byKey.values()].sort(compareItemOrder));
 
   const start = async (): Promise<void> => {
     let history;
