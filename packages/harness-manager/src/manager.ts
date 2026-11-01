@@ -2300,8 +2300,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const place = placeFor(
         locationFor({ principal: runPrincipal(ctx), epic: state.epic!, issue: state.issue!, phase: state.phase! }, state.branch),
       );
-      await host.recordCheckout({ place }, { worktrees, by: { kind: "run", id: state.taskId ?? place.join("/") } });
-      return (await worktrees.getOptional(worktreeKey(host.hostId(), place))) !== undefined ? worktreeKey(host.hostId(), place) : null;
+      const read = await host.recordCheckout({ place }, { worktrees, by: { kind: "run", id: state.taskId ?? place.join("/") } });
+      // A null read means the place has no row.
+      return read === null ? null : worktreeKey(host.hostId(), place);
     } catch (error) {
       ctx.emit.status(`The run's worktree row was not updated: ${error instanceof Error ? error.message : String(error)}`, {
         transient: false,

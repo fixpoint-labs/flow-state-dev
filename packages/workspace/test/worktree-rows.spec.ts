@@ -6,11 +6,18 @@
  * The rows go into a `Map`-backed collection with the two members the writer
  * uses. Every assertion about the worktree reads git, not the row.
  */
-import { rmSync, writeFileSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorktreeCollection, WorktreeRow } from "../src/worktrees";
-import { worktreeKey, worktreeName, worktreeRowSchema } from "../src/worktrees";
+import {
+  addWorktreePullRequests,
+  markWorktreeProvisioning,
+  recordWorktreeCheckout,
+  worktreeKey,
+  worktreeName,
+  worktreeRowSchema,
+} from "../src/worktrees";
 import { localWorkspaceHost } from "../src/local-host";
 import { recordBranchPullRequests } from "../src/branch-pull-requests";
 import { createRemote, git, tempDir, type Remote } from "./git-fixtures";
@@ -21,7 +28,22 @@ const noSource = () => ({ kind: "refused" as const, reason: "unused", message: "
 function rows(): WorktreeCollection & { all: Map<string, WorktreeRow>; writes: { key: string; state: string | null }[] } {
   const all = new Map<string, WorktreeRow>();
   const writes: { key: string; state: string | null }[] = [];
-  const refOf = (key: string) => ({ path: `worktrees/${key}`, state: all.get(key)! });
+  const refOf = (key: string) => ({
+    path: `worktrees/${key}`,
+    state: all.get(key)!,
+    // Like the store: the updater runs against the stored row and runs again
+    // when another write landed in between.
+    updateState: async (updater: (state: WorktreeRow) => WorktreeRow | Promise<WorktreeRow>) => {
+      for (;;) {
+        const base = all.get(key)!;
+        const next = worktreeRowSchema.parse(await updater(base));
+        if (all.get(key) !== base) continue;
+        all.set(key, next);
+        writes.push({ key, state: next.state });
+        return;
+      }
+    },
+  });
   return {
     all,
     writes,
@@ -201,6 +223,92 @@ describe("attach and remove", () => {
   });
 });
 
+describe("a removal and a provision of one place", () => {
+  it("never interleave: the row's writes run under the lock removal takes", async () => {
+    const h = host();
+    const worktrees = rows();
+    const key = worktreeKey(h.hostId(), ["s-1"]);
+    const lock = `${join(root, "s-1")}.place.lock`;
+    const held: boolean[] = [];
+    const watched = Object.assign(Object.create(worktrees), {
+      upsert: async (...args: Parameters<typeof worktrees.upsert>) => {
+        held.push(existsSync(lock));
+        return worktrees.upsert(...args);
+      },
+      getOptional: async (k: string) => {
+        const ref = await worktrees.getOptional(k);
+        if (ref === undefined) return undefined;
+        return { ...ref, updateState: async (u: never) => (held.push(existsSync(lock)), ref.updateState(u)) };
+      },
+    });
+    await h.provision({ kind: "repo", repo }, { place: ["s-1"], branch: "fsd/s-1", worktrees: { collection: watched, owner } });
+    expect(held.length).toBeGreaterThanOrEqual(2);
+    expect(held.every(Boolean)).toBe(true);
+    // And a removal then a new provision leaves the checkout and a ready row.
+    await h.remove!({ place: ["s-1"] }, { worktrees });
+    expect(worktrees.all.get(key)!.state).toBe("removed");
+    const again = await h.provision({ kind: "repo", repo }, { place: ["s-1"], branch: "fsd/s-1", worktrees: { collection: worktrees, owner } });
+    expect(existsSync(again.cwd)).toBe(true);
+    expect(worktrees.all.get(key)!.state).toBe("ready");
+  });
+});
+
+describe("a checkout made again after a removal", () => {
+  it("keeps the branch's base when the branch was kept, and takes a new one when it was deleted", async () => {
+    const h = host();
+    const worktrees = rows();
+    const key = worktreeKey(h.hostId(), ["s-1"]);
+    const request = { place: ["s-1"], branch: "fsd/s-1", worktrees: { collection: worktrees, owner } };
+    const first = await h.provision({ kind: "repo", repo }, request);
+    const base = worktrees.all.get(key)!.baseCommit;
+    expect(base).not.toBeNull();
+    writeFileSync(join(first.cwd, "one.txt"), "1");
+    git(first.cwd, "add", "-A");
+    git(first.cwd, "commit", "-q", "-m", "one");
+    // Removed, the branch kept: a new checkout of the same branch.
+    await h.remove!({ place: ["s-1"] }, { worktrees });
+    const again = await h.provision({ kind: "repo", repo }, request);
+    expect(worktrees.all.get(key)!.baseCommit).toBe(base);
+    expect((await h.recordCheckout!({ place: ["s-1"] }, { worktrees }))).toMatchObject({ present: true, commits: 1 });
+    // Removed with the branch: the next provision cuts it again, from now.
+    await h.remove!({ place: ["s-1"] }, { worktrees, deleteBranch: true, force: true });
+    git(repo, "commit", "-q", "--allow-empty", "-m", "main moved");
+    await h.provision({ kind: "repo", repo }, request);
+    expect(worktrees.all.get(key)!.baseCommit).toBe(git(repo, "rev-parse", "HEAD"));
+    expect(again.repo?.branchCut).toBe(false);
+  });
+});
+
+describe("a turn-end read racing a removal", () => {
+  it("keeps the row removed when the removal commits while the read writes lost", async () => {
+    const worktrees = rows();
+    await markWorktreeProvisioning({ collection: worktrees, owner }, "k", ["s-1"]);
+    let raced = false;
+    const racing = Object.assign(Object.create(worktrees), {
+      getOptional: async (k: string) => {
+        const ref = await worktrees.getOptional(k);
+        if (ref === undefined) return undefined;
+        return {
+          ...ref,
+          updateState: (updater: (row: WorktreeRow) => WorktreeRow) =>
+            ref.updateState((row: WorktreeRow) => {
+              const out = updater(row);
+              // The removal commits after this read computed `lost`, before it lands.
+              if (!raced) {
+                raced = true;
+                worktrees.all.set(k, { ...worktrees.all.get(k)!, state: "removed" });
+              }
+              return out;
+            }),
+        };
+      },
+    });
+    await recordWorktreeCheckout(racing, "k", { present: false, at: 1 });
+    expect(raced).toBe(true);
+    expect(worktrees.all.get("k")!.state).toBe("removed");
+  });
+});
+
 describe("the pull requests on the branch", () => {
   it("are added to the row once each", async () => {
     const h = host();
@@ -224,6 +332,42 @@ describe("the pull requests on the branch", () => {
       expect(result.status).toBe("recorded");
     }
     expect(worktrees.all.get(key)!.pullRequests).toEqual([{ url: "https://github.com/o/r/pull/7", number: 7, state: "open", title: "T" }]);
+  });
+
+  it("keeps both of two turns' additions when they end together", async () => {
+    const worktrees = rows();
+    await markWorktreeProvisioning({ collection: worktrees, owner }, "k", ["s-1"]);
+    const pr = (n: number) => ({ url: `https://github.com/o/r/pull/${n}`, number: n, state: "open", title: null });
+    await Promise.all([addWorktreePullRequests(worktrees, "k", [pr(1)]), addWorktreePullRequests(worktrees, "k", [pr(2)])]);
+    expect(worktrees.all.get("k")!.pullRequests.map((p) => p.number).sort()).toEqual([1, 2]);
+  });
+
+  it("refreshes a known pull request opened before this turn, and adds no unknown older one", async () => {
+    const h = host();
+    const worktrees = rows();
+    const place = await h.provision({ kind: "repo", repo }, { place: ["s-1"], branch: "fsd/s-1", worktrees: { collection: worktrees, owner } });
+    const key = worktreeKey(h.hostId(), ["s-1"]);
+    await addWorktreePullRequests(worktrees, key, [{ url: "https://github.com/o/r/pull/7", number: 7, state: "open", title: "T" }]);
+    const gh = join(tempDir("gh"), "gh");
+    writeFileSync(
+      gh,
+      "#!/bin/sh\necho '[" +
+        '{"number":7,"html_url":"https://github.com/o/r/pull/7","title":"T","state":"closed","merged_at":"2030-01-02T00:00:00Z","created_at":"2030-01-01T00:00:00Z","head":{"ref":"fsd/s-1"}},' +
+        '{"number":8,"html_url":"https://github.com/o/r/pull/8","title":"Old","state":"open","created_at":"2030-01-01T00:00:00Z","head":{"ref":"fsd/s-1"}}' +
+        "]'\n",
+      { mode: 0o755 },
+    );
+    const observed = { getOptional: async () => undefined, upsert: async () => undefined };
+    const ctx = { resources: { "observed-pull-requests": observed }, request: { identity: { id: "r1" } } };
+    // This turn started after both were opened.
+    const result = await recordBranchPullRequests(ctx, {
+      cwd: place.cwd,
+      gh,
+      openedSince: Date.parse("2031-01-01T00:00:00Z"),
+      worktree: { collection: worktrees, key },
+    });
+    expect(result.status).toBe("recorded");
+    expect(worktrees.all.get(key)!.pullRequests).toEqual([{ url: "https://github.com/o/r/pull/7", number: 7, state: "merged", title: "T" }]);
   });
 });
 
