@@ -49,3 +49,11 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-11-01 | 5052658 | none | PASS | a1–a7, b1–b4, c1–c8 all PASS: two sessions opened and titled by keys; researcher opened by ⌘K; a hired teammate fired through the inline row; `eng.coder` (from the tree) opened `/roster?team=eng` with its row focused; the workstream board's ref opened its task; 16 Tab presses never left Jump to |
+| 2026-11-01 | 5052658 | none | FAIL (expected) | `no-composer-focus`: a1, a2, b1 red ("focus is on <body>"), every other step green |
+| 2026-11-01 | 5052658 | none | FAIL (expected) | `no-type-guard`: a7 red ("typing `?` in the composer opened the key list"), every other step green |
+| 2026-11-01 | 5052658 | none | FAIL (expected) | `no-roving`: a6 red ("2 elements with tabindex=\"0\""), every other step green |
+| 2026-11-01 | 5052658 | none | FAIL (expected) | `label-only`: c5 and c6 red ("Enter on `eng.coder` / the board ref left the palette open"), every other step green |
+| 2026-11-01 | 5052658 | none | FAIL (expected) | `plain-dialog`: c7 red ("Tab left the palette for <body>"), c8 red ("after Esc focus is not back on the sidebar's Shift Coordinator"), every other step green |
+| 2026-11-01 | 5052658 | none | FAIL (expected) | `browser-confirm`: b4 red ("a browser confirm box opened"), every other step green |
+| 2026-11-01 | before 5052658 | none | FAIL | the first green run: a1 red, "picking the project opened no session with its composer active". A new session reaches the list on its next 3 s read, after `focusWhenDrawn`'s 60 frames; fixed in 5052658 |
