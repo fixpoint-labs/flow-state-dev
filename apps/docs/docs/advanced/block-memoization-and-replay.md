@@ -14,7 +14,7 @@ On resume, the runtime reads the item log for the continuing request and builds 
 
 The suspending block is the exception. It has no committed output yet (it threw a suspension signal rather than returning), so it re-runs. This time `ctx.suspend()` returns the resume data instead of pausing.
 
-Sequencer state is saved at the pause itself. If the suspending block wrote to `ctx.sequencer` state before it paused, the re-run starts with that write already in place, so it can read back what it recorded even when the source it recorded from is gone after a restart. The write runs again on the re-run too, so make it one that is safe to repeat: set a value rather than increment one (`incState`, `pushState`) before the pause.
+Sequencer state is saved at the pause itself. If the suspending block wrote to `ctx.sequencer` state before it paused, the re-run starts with that write already in place, so it can read back what it recorded even when the source it recorded from is gone after a restart. Each sequencer-state write before the pause applies once: on the re-run, writes up to the pause are skipped because the saved state already holds them, and writes after it apply as usual. That covers `incState` and `pushState` too. Session, user and org state and resource writes are not covered by this: they re-run with the block, like any other side effect.
 
 ## The sharp edge
 

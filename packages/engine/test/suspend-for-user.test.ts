@@ -511,6 +511,85 @@ describe("suspendForUser after a state write in the same step", () => {
   });
 });
 
+describe("a state write before the wait applies once", () => {
+  // The resume runs the waiting step's code again, and the state it starts
+  // from already holds what that code wrote before it stopped. A write made
+  // again on top of it would count twice: a counter of how often the step
+  // asked would read 2 after one question.
+  it("an increment and a push made before the wait read once after the answer, through a restart", async () => {
+    const seen: string[] = [];
+    const flowFor = () => {
+      const countAndWait = handler({
+        name: "count-and-wait",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: async (_input, ctx) => {
+          await ctx.sequencer!.incState({ asked: 1 });
+          await ctx.sequencer!.pushState("log", "asked");
+          const answer = await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+          // After the answer, writes are live again.
+          await ctx.sequencer!.pushState("log", "answered");
+          return answer;
+        }
+      });
+      const read = handler({
+        name: "read",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: async (input, ctx) => {
+          seen.push(JSON.stringify(ctx.sequencer!.state));
+          return input;
+        }
+      });
+      const block = sequencer({
+        name: "s",
+        stateSchema: z.object({ asked: z.number().default(0), log: z.array(z.string()).default([]) })
+      })
+        .step(countAndWait)
+        .step(read);
+      return defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    };
+    const first = flowFor();
+    const h = harness(first);
+    const { requestId, gate } = await park(h, first, {});
+
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "ok" })).status).toBe(202);
+    await h.drain();
+    expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+    expect(seen).toEqual([JSON.stringify({ asked: 1, log: ["asked", "answered"] })]);
+  });
+});
+
+describe("a state write before the second wait in one step applies once", () => {
+  it("counts each wait once when one step waits twice", async () => {
+    const seen: string[] = [];
+    const twoWaits = handler({
+      name: "two-waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        await ctx.sequencer!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "first?" } as never);
+        await ctx.sequencer!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "second?" } as never);
+        seen.push(JSON.stringify(ctx.sequencer!.state));
+        return null;
+      }
+    });
+    const block = sequencer({ name: "s", stateSchema: z.object({ asked: z.number().default(0) }) }).step(twoWaits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "a" })).status).toBe(202);
+    await h.drain();
+    const [second] = (await h.provider.listSuspended({ status: "pending" })).filter((g) => g.requestId === requestId);
+    expect(second!.message).toBe("second?");
+    expect((await answerRoute(h, requestId, { suspensionId: second!.suspensionId, action: "submit", data: "b" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([JSON.stringify({ asked: 2 })]);
+  });
+});
+
 describe("the answer route (D2)", () => {
   it("answers the stop once, as the signed-in caller; a second answer is told it is resolved", async () => {
     const seen: string[] = [];

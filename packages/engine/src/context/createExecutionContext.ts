@@ -3678,11 +3678,34 @@ export async function createExecutionContext<
           name: matched.parent.name,
           instanceId: matched.parent.instanceId,
           input: matched.parent.input,
-          ...ops
+          ...(container === undefined ? ops : skipWhileReplayingToGate(ops))
         },
         () => (container?.read() ?? {}) as TState
       ) as unknown as StateRef<TState>;
     };
+
+    // A state write this scope's block made before the gate it waits at
+    // applies once (FIX-2444). On a continuation the waiting block's code runs
+    // again up to that gate, from a checkpoint the sequencer wrote at the
+    // suspension, so the state already holds every write that code made
+    // before it stopped. Until the block reaches the last gate the log
+    // records for it, its writes are already in that state and are skipped;
+    // from there on they are live. Reads are untouched.
+    const replayingToGate = (): boolean => {
+      const replayLog = (context as { _replayLog?: ReplayLog })._replayLog;
+      if (replayLog === undefined) return false;
+      const logicalId = `${requestRef.current.id}:${parentChain?.parent?.path ?? "root"}`;
+      const logged =
+        replayLog.resolvedResumes(logicalId).length + (replayLog.pendingSuspension()?.blockLogicalId === logicalId ? 1 : 0);
+      return (resolvedResumeCursor.get(logicalId) ?? 0) < logged;
+    };
+    const skipWhileReplayingToGate = <TOps extends Record<string, (...args: never[]) => Promise<unknown>>>(ops: TOps): TOps =>
+      Object.fromEntries(
+        Object.entries(ops).map(([op, write]) => [
+          op,
+          (...args: never[]) => (replayingToGate() ? Promise.resolve(true) : write(...args))
+        ])
+      ) as TOps;
 
     const context: ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState> = {
       flow,
