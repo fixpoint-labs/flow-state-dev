@@ -95,6 +95,13 @@ describe("only a notice's line is a notice", () => {
     expect(parseNotice({ type: "tool_output", metadata: noticeMetadata(notice({}), task) })).toBeUndefined();
   });
 
+  it("a line marked as something else is not read as a notice, even when it quotes one", () => {
+    // A delegate's answer that repeats an older task's ending names the task it answered in its own
+    // data; reading its words would tie it to the quoted task instead.
+    const quoted = noticeText(notice({ taskId: "task_old" }), task);
+    expect(parseNotice(item(quoted, { delegateAnswer: { worker: "otto", taskId: "task_new" } }))).toBeUndefined();
+  });
+
   it("malformed data is not a notice, and is not read as its words instead", () => {
     const words = noticeText(notice({}), task);
     expect(parseNotice(item(words, { [NOTICE_ITEM_KEY]: { taskId: "task_abc" } }))).toBeUndefined();

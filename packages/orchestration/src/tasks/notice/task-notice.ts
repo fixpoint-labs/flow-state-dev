@@ -765,8 +765,9 @@ export function parseNotice(item: {
 }): NoticeLine | undefined {
   if (item.type !== undefined && item.type !== "message") return undefined;
   if (item.role === "user") return undefined;
-  const marked = item.metadata?.[NOTICE_ITEM_KEY];
-  if (marked !== undefined) return lineOf(marked);
+  // A line that carries any data says what it is; only an unmarked line
+  // (stored before markers existed) is read off its words.
+  if (item.metadata !== undefined) return lineOf(item.metadata[NOTICE_ITEM_KEY]);
   const text = (item.content ?? []).map((part) => part.text ?? "").join("");
   return lineFromText(text);
 }
