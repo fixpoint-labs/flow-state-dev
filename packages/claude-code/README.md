@@ -108,6 +108,12 @@ conversation. The wait lasts at most 5 seconds; past that the block rejects anyw
 
 The block declares `stopsOnAbort: true` (core's `HarnessBlock` field): when its abort signal fires, the block returns only after its agent process has exited. The process gets 5 seconds to exit on its own; if it is still running then, the block kills it with `SIGKILL` and waits for it to exit. A process the agent started, such as a `Bash` tool command, can outlive that kill and keep writing to the working directory while the next step runs there. If the agent can start long-lived commands, build the manager with `stopsOnAbort: false`, so a steer waits for the run to end instead. A harness manager reads the field, so a line typed into a running Claude Code task stops the run and the same request continues its session with the line. A block rebuilt from it, through `connectInput` or a wrapping sequencer, doesn't carry the field; build the manager with `stopsOnAbort: true` to keep the stop for a wrapped block.
 
+### Asking before a tool call
+
+`onToolApproval` is called with each tool call the SDK doesn't already allow, and answers `{ decision: "allow" }`, `{ decision: "deny", message? }` or `{ decision: "held", message? }`. A deny tells the model and the turn goes on. A held call doesn't run, the turn stops (the SDK's `interrupt`), and the run records it as waiting on approval, not as denied: it is for a call a person decides outside the run. A harness manager built with `approveTools: true` hands one among its feeds, so `...feeds` passes it on, and resumes the session with the person's answer.
+
+A tool in `allowedTools`, and whatever `permissionMode` approves on its own (`acceptEdits` for file edits, `bypassPermissions` for everything), never reaches it. Under a manager with approvals on, name what a run may always do in `allowedTools` and use `permissionMode: "default"`.
+
 ### Giving a run its own working directory
 
 By default a run works in whatever directory the server process is running in.

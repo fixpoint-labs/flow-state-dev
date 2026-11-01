@@ -23,7 +23,7 @@ import { EmptyState, JumpToLatestButton, SectionFailure } from "../components/ui
 import { asksOfTask, waitsOnYou } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { collectionOfBoard, describeFailure, type Ask, type Failure } from "../lib/reads";
-import { navigate } from "../lib/routes";
+import { RouteLink } from "../components/RouteLink";
 import { followRequest, mergeItems, readSessionItems, RunReadError, taskItems, type OpenRun } from "../lib/run";
 import { useTask } from "../lib/task";
 
@@ -79,9 +79,9 @@ export function TaskSession() {
       {waiting ? (
         <div className="mx-4 mt-3 border px-3 py-2 text-xs" data-testid="session-waiting">
           <p className="font-medium">This task is waiting on you.</p>
-          <button type="button" className="mt-1 underline" onClick={() => navigate({ level: "inbox", item: null })}>
+          <RouteLink to={{ level: "inbox", item: null }} className="mt-1 inline-block underline">
             Answer it in Inbox
-          </button>
+          </RouteLink>
         </div>
       ) : null}
       {body}
@@ -247,9 +247,9 @@ function RunItems({ run }: { run: OpenRun }) {
 function PendingAsk({ ask }: { ask: Ask | undefined }) {
   if (ask === undefined) {
     return (
-      <button type="button" className="text-sm underline" onClick={() => navigate({ level: "inbox", item: null })}>
+      <RouteLink to={{ level: "inbox", item: null }} className="text-sm underline">
         Waiting on you: answer it in Inbox
-      </button>
+      </RouteLink>
     );
   }
   return (

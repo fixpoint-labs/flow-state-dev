@@ -52,7 +52,7 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `sandbox` | Source/preview tab wrapper for JSX artifacts using JSXPreview and CodeBlock |
 | `info-card` | Generative-UI info card: title, optional image, fact rows. Pairs with `emitInfoCard` |
 | `link-card` | Generative-UI link card: rich preview for an external URL. Pairs with `emitLinkCard` |
-| `approval` | Polished Approve / Reject card for a `user_approval` suspension. Collapses to a receipt on resolve |
+| `approval` | Polished Approve / Reject card for a `user_approval` suspension, with a button for each extra yes the stop offers (`data.approveOptions`). Collapses to a receipt on resolve |
 | `question` | Free-text answer card for a `user_input` suspension |
 | `selection` | Single (enum) or multi (array of enum) choice card for a `user_input` suspension |
 | `form` | Flat-object form card for a `user_input` suspension — one control per scalar/enum property |

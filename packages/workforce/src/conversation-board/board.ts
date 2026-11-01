@@ -350,6 +350,15 @@ const stepNotHeld = (taskId: string) =>
     taskId
   );
 
+/** The refusal for a retry of a step (FIX-2383): only its worker's own turn runs a step, so a retry would start nothing. */
+const stepNotRetried = (taskId: string) =>
+  new TaskWriteRefusedError(
+    "step_cannot_be_retried",
+    `task "${taskId}" is a step a worker planned for itself: it runs only in that worker's own turn, so a retry would start nothing. ` +
+      "Ask the worker to try it again, or file a follow-up. Nothing was written.",
+    taskId
+  );
+
 /** The refusal for a wait on a step: it runs after the waiting turn, in its request (FIX-2082). */
 const stepCannotWait = (taskId: string) =>
   new TaskWriteRefusedError(
@@ -1604,7 +1613,14 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         return board.hold(id);
       },
       release: byRow("release") as TaskCollectionRef["release"],
-      ...(board.retry === undefined ? {} : { retry: byRow("retry") as NonNullable<TaskCollectionRef["retry"]> }),
+      ...(board.retry === undefined
+        ? {}
+        : {
+            async retry(id: string) {
+              if (isStep(id)) throw stepNotRetried(id);
+              return board.retry!(id);
+            }
+          }),
       // A step runs after this turn, in this request: a wait on it would never end.
       ...(board.markWait === undefined
         ? {}
