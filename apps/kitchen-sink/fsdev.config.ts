@@ -8,9 +8,12 @@
  * behind `vercelPostgresStores()`; the lazy router and Next.js wiring live
  * behind `@flow-state-dev/vercel/next`.
  *
- * Profile selection: `FSD_ENV` picks the active profile, falling back to
- * `defaultProfile: "dev"` (SQLite) for local development and CI. Production
- * deploys set `FSD_ENV=prod` to select the Postgres-backed profile.
+ * Profile selection: an explicit `FSD_ENV` wins. Without it, the Postgres-backed
+ * `prod` profile is picked whenever `FSD_DB_URL` or `DATABASE_URL` is set, and
+ * the SQLite-backed `dev` profile otherwise. A database URL also closes the
+ * DevTool's debug endpoints and skips the interrupted-run scan, whichever
+ * profile is active, so a stray `FSD_DB_URL` in a local shell moves dev onto
+ * Postgres. The `[flowstate]` line logged at startup names what was picked.
  *
  * Run a flow from the CLI without the browser (from this directory):
  *   pnpm fsdev run chat-agent run -i '{"message":"hi","mode":"ask"}'
@@ -28,7 +31,7 @@ import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { setScheduleIndexImpl } from "@/lib/schedule-index";
 import { resolveKitchenSinkPrincipal } from "@/lib/kitchen-sink-principal";
 import { DEFAULT_KITCHEN_SINK_MODEL } from "@/lib/models";
-import { createKitchenSinkTestModelResolver } from "@/test/mock-flowstate";
+import { createKitchenSinkTestModelResolver } from "@/lib/test-model-resolver";
 import chatAgentFlow from "@/flows/chat-agent/flow";
 import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
@@ -70,6 +73,15 @@ const databaseUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
 const openaiApiKey = process.env.OPENAI_API_KEY;
 const redisUrl = process.env.REDIS_URL;
 const bullmqDispatch = process.env.FSD_BULLMQ_DISPATCH === "1";
+// Durable execution, read by `createFlowState` and the startup line alike.
+const durable = true;
+// The `dev` profile's store: SQLite unless `STORE_TYPE` asks for another.
+const devStore =
+  process.env.STORE_TYPE === "memory"
+    ? "memory"
+    : process.env.STORE_TYPE === "filesystem"
+      ? "filesystem"
+      : "sqlite";
 
 // BullMQ execution backend for local dev (docker compose Redis). Created
 // whenever REDIS_URL is set so Bull Board can mount the queue; only installed
@@ -88,7 +100,7 @@ const pgStores = vercelPostgresStores();
 // Install the Postgres-backed schedule index behind the stable proxy the
 // weekly-digest flow imports. The index no-ops until the prod profile resolves
 // its pool, so this is safe regardless of the active profile (dev never builds
-// the pool, leaving the proxy a no-op — matching in-memory's lack of scheduling).
+// the pool, leaving the proxy a no-op, so nothing is scheduled outside prod).
 setScheduleIndexImpl(pgStores.scheduleIndex);
 
 // The team under `workforce/`, built before the runtime is assembled.
@@ -188,17 +200,18 @@ const flowstate = createFlowState({
     // keeps the JSON-file store.
     dev: {
       primary:
-        process.env.STORE_TYPE === "memory"
+        devStore === "memory"
           ? inMemoryStores()
-          : process.env.STORE_TYPE === "filesystem"
+          : devStore === "filesystem"
             ? filesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") })
             : localSqliteStores(),
     },
   },
   // Default to the Postgres profile whenever a database URL is configured
   // (the deployed/Vercel case), so persistence works without a separate
-  // FSD_ENV. Local dev with no DB falls back to in-memory. An explicit
-  // FSD_ENV always overrides this default.
+  // FSD_ENV. Local dev with no DB gets the SQLite `dev` profile. An explicit
+  // FSD_ENV always overrides this default; the gates below still follow the
+  // database URL, not the profile.
   defaultProfile: databaseUrl ? "prod" : "dev",
   // Scheduled dispatches are fire-and-forget; keep the serverless function
   // alive until runAction settles so results persist after the 202. `after`
@@ -211,12 +224,12 @@ const flowstate = createFlowState({
   // Schema/recovery scans on cold start can exhaust the serverless pool before
   // real requests are served.
   detectInterruptedOnStartup: !databaseUrl,
-  // Durable execution is on by default wherever stores persist (the Postgres
-  // and filesystem profiles). Set here because the default `dev` profile is
-  // in-memory, where it is off unless asked for: its stops are lost when the
-  // process ends, which is fine for local dev. The retention sweeper bounds
-  // checkpoint/suspension/lease growth; a 60s cadence makes it observable.
-  durable: true,
+  // Durable execution is on by default wherever stores persist (Postgres,
+  // SQLite, filesystem). `true` also forces it on under `STORE_TYPE=memory`
+  // (tests, e2e), where its stops are lost when the process ends. The
+  // retention sweeper bounds checkpoint/suspension/lease growth; a 60s
+  // cadence makes it observable.
+  durable,
   durabilityRetention: { sweepIntervalMs: 60_000 },
   // Enable the gated debug endpoints (incl. the DevTool Suspensions list) for
   // local dev only. Deployed (DB present) stays fail-closed / env-gated.
@@ -239,6 +252,17 @@ const flowstate = createFlowState({
     console.error(`[flowstate] ${ctx.method} ${ctx.path}:`, error.message);
   },
 });
+
+// Which store this process runs on, said once per start (and once per HMR
+// re-evaluation, which builds a fresh FlowState). Reading `activeProfile`
+// resolves `FSD_ENV` now, so a profile name that isn't declared fails the
+// start here rather than at the first request. Written to stderr: the `fsdev`
+// CLI imports this config and keeps stdout for its NDJSON.
+const activeProfile = flowstate.activeProfile;
+const activeStore = activeProfile === "prod" ? "postgres" : devStore;
+console.error(
+  `[flowstate] profile=${activeProfile} store=${activeStore} durable=${durable} interruptedScan=${!databaseUrl}`,
+);
 
 // The workforce's stored-work upgrade runs before the first router (`lib/stored-work-upgrade.ts`).
 // Every caller gets this handle; only the HMR slot below keeps the raw one, to dispose it.

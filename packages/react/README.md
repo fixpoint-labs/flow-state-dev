@@ -331,7 +331,17 @@ function MyApproval({ item }) {
 }
 ```
 
-Returns `{ approve, reject, pendingAction, isResolving, error, resolved, resolvedStatus, outcome, canApprove, canReject }`. Resolution goes through `onApprove`/`onReject` if given, else the nearest `<SuspensionResolverProvider>` (streaming), else a non-streaming resume through the provider's client.
+Returns `{ approve, reject, approveWith, rejectWith, pendingAction, isResolving, error, resolved, resolvedStatus, outcome, canApprove, canReject }`. Resolution goes through `onApprove`/`onReject` if given, else the nearest `<SuspensionResolverProvider>` (streaming), else a non-streaming resume through the provider's client.
+
+`approve` and `reject` take no argument, so they wire straight to `onClick`. `approveWith(data)` and `rejectWith(data)` send `data` with the answer (handed to `onApprove`/`onReject` too). A stop that offers more than one yes lists them under `data.approveOptions`, each `{ label, data }`; `approveOptionsOf(item)` reads them, and a card draws one button per option:
+
+```tsx
+import { approveOptionsOf, useApproval } from "@flow-state-dev/react";
+
+{approveOptionsOf(item).map((option) => (
+  <button key={option.label} onClick={() => a.approveWith(option.data)}>{option.label}</button>
+))}
+```
 
 ### `<ApprovalRenderer>`
 
