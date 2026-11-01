@@ -6,15 +6,13 @@
  * The rows go into a `Map`-backed collection with the two members the writer
  * uses. Every assertion about the worktree reads git, not the row.
  */
-import { rmSync, writeFileSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorktreeCollection, WorktreeRow } from "../src/worktrees";
 import {
   addWorktreePullRequests,
   markWorktreeProvisioning,
-  markWorktreeReady,
-  markWorktreeRemoved,
   worktreeKey,
   worktreeName,
   worktreeRowSchema,
@@ -224,26 +222,33 @@ describe("attach and remove", () => {
   });
 });
 
-describe("a removal racing a provision", () => {
-  const made = { path: "/w/s-1", branch: "fsd/s-1", repo: null, baseCommit: "abc", fresh: true };
-
-  it("is never overwritten by the provision's late ready", async () => {
+describe("a removal and a provision of one place", () => {
+  it("never interleave: the row's writes run under the lock removal takes", async () => {
+    const h = host();
     const worktrees = rows();
-    await markWorktreeProvisioning({ collection: worktrees, owner }, "k", ["s-1"]);
-    // The removal lands between the worktree being made and the ready write.
-    await markWorktreeRemoved(worktrees, "k");
-    await markWorktreeReady({ collection: worktrees, owner }, "k", ["s-1"], made);
-    expect(worktrees.all.get("k")!.state).toBe("removed");
-  });
-
-  it("still lets a new provision after the removal mark the row ready", async () => {
-    const worktrees = rows();
-    await markWorktreeProvisioning({ collection: worktrees, owner }, "k", ["s-1"]);
-    await markWorktreeReady({ collection: worktrees, owner }, "k", ["s-1"], made);
-    await markWorktreeRemoved(worktrees, "k");
-    await markWorktreeProvisioning({ collection: worktrees, owner }, "k", ["s-1"]);
-    await markWorktreeReady({ collection: worktrees, owner }, "k", ["s-1"], made);
-    expect(worktrees.all.get("k")!.state).toBe("ready");
+    const key = worktreeKey(h.hostId(), ["s-1"]);
+    const lock = `${join(root, "s-1")}.place.lock`;
+    const held: boolean[] = [];
+    const watched = Object.assign(Object.create(worktrees), {
+      upsert: async (...args: Parameters<typeof worktrees.upsert>) => {
+        held.push(existsSync(lock));
+        return worktrees.upsert(...args);
+      },
+      getOptional: async (k: string) => {
+        const ref = await worktrees.getOptional(k);
+        if (ref === undefined) return undefined;
+        return { ...ref, updateState: async (u: never) => (held.push(existsSync(lock)), ref.updateState(u)) };
+      },
+    });
+    await h.provision({ kind: "repo", repo }, { place: ["s-1"], branch: "fsd/s-1", worktrees: { collection: watched, owner } });
+    expect(held.length).toBeGreaterThanOrEqual(2);
+    expect(held.every(Boolean)).toBe(true);
+    // And a removal then a new provision leaves the checkout and a ready row.
+    await h.remove!({ place: ["s-1"] }, { worktrees });
+    expect(worktrees.all.get(key)!.state).toBe("removed");
+    const again = await h.provision({ kind: "repo", repo }, { place: ["s-1"], branch: "fsd/s-1", worktrees: { collection: worktrees, owner } });
+    expect(existsSync(again.cwd)).toBe(true);
+    expect(worktrees.all.get(key)!.state).toBe("ready");
   });
 });
 

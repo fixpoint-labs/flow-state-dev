@@ -244,10 +244,9 @@ export async function markWorktreeReady(
     await recording.collection.upsert(key, fields(undefined));
     return;
   }
-  // Against the stored row, atomically. The provision wrote `provisioning`
-  // first, so a `removed` row here means a removal ran after it: the
-  // worktree is gone, and `ready` would be wrong.
-  await ref.updateState((row) => (row.state === "removed" ? row : { ...row, ...fields(row) }) as WorktreeRow);
+  // Against the stored row, atomically. The host calls this under the place's
+  // lock, the one removal takes, so no removal lands between the two writes.
+  await ref.updateState((row) => ({ ...row, ...fields(row) }) as WorktreeRow);
 }
 
 const same = (a: WorktreeOwner | null | undefined, b: WorktreeOwner) => a != null && a.kind === b.kind && a.id === b.id;
