@@ -305,6 +305,8 @@ export function TurnComposer({
     if (blocked !== null || line.trim().length === 0 || sending) return;
     const submitted = line;
     const message = line.trim();
+    // The warning this line was sent under: a send that ends after the composer closed clears only that one.
+    const warned = readDraft(UNCONFIRMED, draftKey);
     let left = false;
     // The line leaves the draft once the session holds it: only the line that
     // was sent goes, and anything typed since stays.
@@ -327,14 +329,17 @@ export function TurnComposer({
     }, (failed) => {
       // It may have arrived, and the box that would say so is closed: keep the warning beside the
       // draft, unless the draft is no longer this line (a newer send, or a newer line, owns it).
-      if (failed.kind === "unconfirmed" && readDraft(DRAFT, draftKey).trim() === submitted.trim()) saveDraft(UNCONFIRMED, draftKey, failed.reason);
+      if (failed.kind !== "unconfirmed") clearDraft(UNCONFIRMED, draftKey, warned);
+      else if (readDraft(DRAFT, draftKey).trim() === submitted.trim()) saveDraft(UNCONFIRMED, draftKey, failed.reason);
     });
     if (sent) {
       leave();
       onDelivered?.(message);
     } else if (delivered) {
-      // Delivered after the composer closed: only the stored draft is left to clear.
+      // Delivered after the composer closed: only what is stored is left to clear, the draft and
+      // the warning it was sent under (a warning a newer send left is not that one).
       clearDraft(DRAFT, draftKey, submitted);
+      clearDraft(UNCONFIRMED, draftKey, warned);
     } else if (left) {
       // It failed after it left: put it back, unless another line was started.
       // A composer that has closed puts nothing back (its draft setter does nothing then).
