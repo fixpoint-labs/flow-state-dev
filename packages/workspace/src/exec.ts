@@ -158,12 +158,13 @@ export interface RunToEndResult {
  * happened, not whether it worked. The process gets a group of its own, so
  * the wall clock stops what it started too (a test runner's workers), not
  * only the process named. A file that cannot be started at all resolves as
- * exit code 127, with the reason as its output.
+ * exit code 127, with the reason as its output. An aborted `signal` stops
+ * the group as the wall clock does, and reports it as timed out.
  */
 export async function runToEnd(
   file: string,
   args: string[],
-  options: { cwd: string; timeoutMs: number; keepChars: number; env?: Record<string, string> },
+  options: { cwd: string; timeoutMs: number; keepChars: number; env?: Record<string, string>; signal?: AbortSignal },
 ): Promise<RunToEndResult> {
   let output = "";
   const keep = (chunk: string) => {
@@ -187,10 +188,12 @@ export async function runToEnd(
         // Already gone.
       }
     };
-    const timer = setTimeout(() => {
+    const stop = () => {
       timedOut = true;
       stopGroup();
-    }, options.timeoutMs);
+    };
+    const timer = setTimeout(stop, options.timeoutMs);
+    options.signal?.addEventListener("abort", stop, { once: true });
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", keep);
@@ -199,6 +202,7 @@ export async function runToEnd(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      options.signal?.removeEventListener("abort", stop);
       resolve(result);
     };
     child.once("error", (error) => finish({ exitCode: 127, timedOut: false, output: `${output}${error.message}`.slice(-options.keepChars) }));
