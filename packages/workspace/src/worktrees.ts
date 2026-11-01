@@ -181,8 +181,16 @@ export interface WorktreeRecording {
   readonly label?: string;
 }
 
-async function current(collection: WorktreeCollection, key: string): Promise<WorktreeRow | undefined> {
-  return (await collection.getOptional(key))?.state as WorktreeRow | undefined;
+/**
+ * Change a row against the stored row: `change` runs inside `updateState`,
+ * which re-runs it when another write landed first, so every guard below
+ * reads the row it writes. `false` when the key has no row.
+ */
+async function change(collection: WorktreeCollection, key: string, fn: (row: WorktreeRow) => WorktreeRow): Promise<boolean> {
+  const ref = await collection.getOptional(key);
+  if (ref === undefined) return false;
+  await ref.updateState((row) => fn(row as WorktreeRow));
+  return true;
 }
 
 /**
@@ -195,11 +203,13 @@ export async function markWorktreeProvisioning(
   key: string,
   place: readonly string[],
 ): Promise<void> {
-  const prior = await current(recording.collection, key);
-  if (prior?.state === "ready") return;
+  const found = await change(recording.collection, key, (row) =>
+    row.state === "ready" ? row : { ...row, key, state: "provisioning", owner: row.owner ?? recording.owner },
+  );
+  if (found) return;
   await recording.collection.upsert(
     key,
-    { key, state: "provisioning", owner: prior?.owner ?? recording.owner },
+    { key, state: "provisioning", owner: recording.owner },
     { name: worktreeName(key, recording.label, place) },
   );
 }
@@ -239,26 +249,21 @@ export async function markWorktreeReady(
     owner: prior?.owner ?? recording.owner,
     ...(prior?.name == null ? { name: worktreeName(key, recording.label, place) } : {}),
   });
-  const ref = await recording.collection.getOptional(key);
-  if (ref === undefined) {
-    await recording.collection.upsert(key, fields(undefined));
-    return;
-  }
-  // Against the stored row, atomically. The host calls this under the place's
-  // lock, the one removal takes, so no removal lands between the two writes.
-  await ref.updateState((row) => ({ ...row, ...fields(row) }) as WorktreeRow);
+  // The host calls this under the place's lock, the one removal takes, so no
+  // removal lands between this and the provisioning write.
+  const found = await change(recording.collection, key, (row) => ({ ...row, ...fields(row) }) as WorktreeRow);
+  if (!found) await recording.collection.upsert(key, fields(undefined));
 }
 
 const same = (a: WorktreeOwner | null | undefined, b: WorktreeOwner) => a != null && a.kind === b.kind && a.id === b.id;
 
 /** Add a session or run to the worktree's attached list, once; never its owner. `false` when the key has no row. */
 export async function attachToWorktree(collection: WorktreeCollection, key: string, by: WorktreeOwner): Promise<boolean> {
-  const prior = await current(collection, key);
-  if (prior === undefined) return false;
-  if (same(prior.owner, by)) return true;
-  if ((prior.attached ?? []).some((entry) => same(entry, by))) return true;
-  await collection.upsert(key, { attached: [...(prior.attached ?? []), { kind: by.kind, id: by.id, lastTurnAt: null }] });
-  return true;
+  return await change(collection, key, (row) =>
+    same(row.owner, by) || (row.attached ?? []).some((entry) => same(entry, by))
+      ? row
+      : { ...row, attached: [...(row.attached ?? []), { kind: by.kind, id: by.id, lastTurnAt: null }] },
+  );
 }
 
 /** What the turn-end read found in the worktree. */
@@ -267,7 +272,7 @@ export type CheckoutSnapshot =
   | { readonly present: false; readonly at: number };
 
 /**
- * Write the turn-end read: branch and count together, in one upsert, so the
+ * Write the turn-end read: branch and count together, in one write, so the
  * row never shows one read's branch beside another's count. A directory that
  * is gone marks the row `lost`. A row already `removed` stays removed. `by`,
  * when it is attached, has its own `lastTurnAt` set too.
@@ -278,24 +283,22 @@ export async function recordWorktreeCheckout(
   snapshot: CheckoutSnapshot,
   by?: WorktreeOwner,
 ): Promise<void> {
-  const prior = await current(collection, key);
-  if (prior === undefined) return;
-  const attached =
-    by !== undefined && (prior.attached ?? []).some((entry) => same(entry, by))
-      ? { attached: prior.attached.map((entry) => (same(entry, by) ? { ...entry, lastTurnAt: snapshot.at } : entry)) }
-      : {};
-  if (!snapshot.present) {
-    if (prior.state !== "removed") await collection.upsert(key, { state: "lost", lastTurnAt: snapshot.at, ...attached });
-    return;
-  }
-  await collection.upsert(key, { branch: snapshot.branch, commits: snapshot.commits, lastTurnAt: snapshot.at, ...attached });
+  await change(collection, key, (row) => {
+    const attached =
+      by !== undefined && (row.attached ?? []).some((entry) => same(entry, by))
+        ? { attached: row.attached.map((entry) => (same(entry, by) ? { ...entry, lastTurnAt: snapshot.at } : entry)) }
+        : {};
+    if (!snapshot.present) {
+      // Checked against the stored row: a removal that commits first stays `removed`.
+      return row.state === "removed" ? row : { ...row, state: "lost", lastTurnAt: snapshot.at, ...attached };
+    }
+    return { ...row, branch: snapshot.branch, commits: snapshot.commits, lastTurnAt: snapshot.at, ...attached };
+  });
 }
 
 /** Mark a worktree removed. Its row stays: it is the record of where the work was. */
 export async function markWorktreeRemoved(collection: WorktreeCollection, key: string): Promise<void> {
-  const prior = await current(collection, key);
-  if (prior === undefined) return;
-  await collection.upsert(key, { state: "removed" });
+  await change(collection, key, (row) => ({ ...row, state: "removed" }));
 }
 
 /**
@@ -310,12 +313,10 @@ export async function addWorktreePullRequests(
   refreshed: readonly WorktreePullRequest[] = [],
 ): Promise<void> {
   if (pullRequests.length === 0 && refreshed.length === 0) return;
-  const ref = await collection.getOptional(key);
-  if (ref === undefined) return;
-  // Merged against the stored row, atomically, so two turns ending together
-  // both keep what they found.
-  await ref.updateState((row) => {
-    const merged = [...((row as WorktreeRow).pullRequests ?? [])];
+  // Merged against the stored row, so two turns ending together both keep
+  // what they found.
+  await change(collection, key, (row) => {
+    const merged = [...(row.pullRequests ?? [])];
     let changed = false;
     const apply = (pr: WorktreePullRequest, add: boolean) => {
       const at = merged.findIndex((known) => known.url === pr.url);

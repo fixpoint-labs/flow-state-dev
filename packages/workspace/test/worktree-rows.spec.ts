@@ -13,6 +13,7 @@ import type { WorktreeCollection, WorktreeRow } from "../src/worktrees";
 import {
   addWorktreePullRequests,
   markWorktreeProvisioning,
+  recordWorktreeCheckout,
   worktreeKey,
   worktreeName,
   worktreeRowSchema,
@@ -249,6 +250,36 @@ describe("a removal and a provision of one place", () => {
     const again = await h.provision({ kind: "repo", repo }, { place: ["s-1"], branch: "fsd/s-1", worktrees: { collection: worktrees, owner } });
     expect(existsSync(again.cwd)).toBe(true);
     expect(worktrees.all.get(key)!.state).toBe("ready");
+  });
+});
+
+describe("a turn-end read racing a removal", () => {
+  it("keeps the row removed when the removal commits while the read writes lost", async () => {
+    const worktrees = rows();
+    await markWorktreeProvisioning({ collection: worktrees, owner }, "k", ["s-1"]);
+    let raced = false;
+    const racing = Object.assign(Object.create(worktrees), {
+      getOptional: async (k: string) => {
+        const ref = await worktrees.getOptional(k);
+        if (ref === undefined) return undefined;
+        return {
+          ...ref,
+          updateState: (updater: (row: WorktreeRow) => WorktreeRow) =>
+            ref.updateState((row: WorktreeRow) => {
+              const out = updater(row);
+              // The removal commits after this read computed `lost`, before it lands.
+              if (!raced) {
+                raced = true;
+                worktrees.all.set(k, { ...worktrees.all.get(k)!, state: "removed" });
+              }
+              return out;
+            }),
+        };
+      },
+    });
+    await recordWorktreeCheckout(racing, "k", { present: false, at: 1 });
+    expect(raced).toBe(true);
+    expect(worktrees.all.get("k")!.state).toBe("removed");
   });
 });
 
