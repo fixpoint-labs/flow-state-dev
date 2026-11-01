@@ -9,13 +9,15 @@
 | **starts a Kitchen Sink harness session** while their checkout is on a stale feature branch | The session is cut from that branch's `HEAD`. Picking a model is the only choice | Picks *latest `origin/main`*, a named branch, or a pull request. The session records the pick, like the model |
 | **wants an agent to fix review comments on PR #812** | Can't. Every session cuts a new branch | Picks the pull request. The session works **on its head branch**, so its commits land where the PR will see them once pushed |
 | **is done with a session** | Its worktree and branch stay under `~/.local/state/…` forever. No screen lists them | Opens the session's Worktree menu: the path, *Remove worktree*, *Delete branch*. Refused while a turn runs, and refused when it would lose work |
+| **follows up on an earlier session's work** (a review fix, FIX-2361's follow-up run) | A new session gets a worktree of its own; asking for the earlier session's branch is refused, since git won't check a branch out twice | Attaches the new session to the earlier one's worktree (`start: { worktreeOf }`): same tree, same branch, never at the same time, and only the earlier session removes it |
 | **has a disk full of old worktrees** | `git worktree list` in each repository, by hand | `fsdev worktrees <root>` lists every worktree a host holds, with its branch and whether it has uncommitted changes, and removes one by path |
 | **builds the next consumer of cleanup** (FIX-1768 after a merge, FIX-2252 on staleness) | Would write a removal of its own | Calls the host's one `remove` |
 
 ## The goal, and how we'll know it's met
 
-**A person chooses where a coding session starts (fresh from the remote, an existing branch, or a
-pull request's branch), and can see and remove what a session left on disk without losing work.**
+**A person chooses where a coding session starts (fresh from the remote, an existing branch, a
+pull request's branch, or another session's worktree), and can see and remove what a session left
+on disk without losing work.**
 
 - **Smaller, and rejected:** a fetch before Kitchen Sink cuts from `HEAD`. It fixes the stale
   base for one app and leaves the PR loop and the pile of worktrees.
@@ -32,6 +34,9 @@ flowchart LR
   R["scratch repo + bare remote<br/>remote moves after the last fetch"] --> A["leg a · start: base origin/main"]
   R --> B["leg b · start: branch feature"]
   R --> C["leg c · remove, delete branch"]
+  B --> D["leg d · start: worktreeOf b"]
+  D --> D1["commits on b's branch in b's tree<br/>waits out b's turn · can't remove it"]
+  D -. "control no-attach" .-> X4["d:attached-turn FAILS"]
   A --> A1["branch cut at the remote's new tip"]
   B --> B1["stub's commit lands on feature"]
   C --> C1["refused mid-turn · refused dirty<br/>removed clean · branch kept until forced"]
@@ -53,15 +58,23 @@ flowchart LR
   refused with an untracked file in the worktree; with a clean tree it removes the worktree
   (`git worktree list` no longer shows it, the branch is still there); `deleteBranch` is refused
   while the branch holds the stub's commit and no other ref does, and `force` deletes it.
-  `fsdev worktrees` lists the worktree before removal and not after.
+  `fsdev worktrees` lists the worktree before removal and not after. Leg **d**: a session created
+  with `start: { worktreeOf }` naming one with no worktree is refused (404); one attached to b's
+  session commits onto b's branch in b's worktree and cuts no branch, records b as the owner,
+  can't remove the worktree, and a turn sent while b's turn is held commits nothing until b's
+  turn ends.
 - **Controls that must fail:** `GOAL_CONTROL=no-fetch` cuts from the tracking ref without
   fetching; leg a fails **`a:fresh`**. `GOAL_CONTROL=cut` ignores `branch` and cuts a new one;
   leg b fails **`b:on-branch`**. `GOAL_CONTROL=lose-work` skips the uncommitted-work check; leg c
-  fails **`c:dirty-refused`**. Each control reddens only its own legs (`cut` also reddens
+  fails **`c:dirty-refused`**. `GOAL_CONTROL=no-attach` asks for b's branch (`{ branch }`)
+  instead of attaching; leg d fails **`d:attached-turn`**, **`d:on-owner-branch`**,
+  **`d:recorded`** and **`d:waits-for-owner`**. Each control reddens only its own legs (`cut` also reddens
   `b:recorded`, which reads the same branch).
 - **Unit:** the host's `list`, `remove` and existing-branch checkout over cloned remotes and
   listed repositories; a fork PR refused by `pullRequestHead` (a stub `gh` on `PATH`); a create
-  whose `start` is malformed refused; `start` fixed after create.
+  whose `start` is malformed refused; `start` fixed after create; attaching refused at create for
+  a missing worktree, itself, or another tenant's session; an attached turn holds the owner's
+  lock, can't remove, and is recorded failed when it leaves the worktree on another branch.
 
 ## What changes
 
@@ -81,7 +94,8 @@ The session gains one choice, fixed at birth; the host gains a way to work on a 
 already exists, and one way to list and remove what it made.
 
 - **A session's start is chosen at create and fixed** ([D1](DECISIONS.md#d1)): `start` on
-  harness session state, `{ base } | { branch } | { pullRequest }`, read-only like `model`.
+  harness session state, `{ base } | { branch } | { pullRequest } | { worktreeOf }`, read-only
+  like `model`.
   Absent means the host's default, so every stored session reads as it did.
 - **The workspace gets the start** ([D1](DECISIONS.md#d1)): `HarnessSessionWorkspace.provision`
   takes it as `start` on its request object (the seam FIX-2386 and FIX-2420 share:
@@ -107,6 +121,11 @@ already exists, and one way to list and remove what it made.
   forced. The session flow's `removeWorktree` action calls it through an optional
   `HarnessSessionWorkspace.remove`, refused while a turn runs (`concurrency: "reject"`), and marks
   the session's record removed. `fsdev worktrees <root>` lists and removes from a terminal.
+- **A session can attach to another's worktree** ([D4](DECISIONS.md#d4)): `start: { worktreeOf:
+  sessionId }` works in the owner session's worktree on its branch, making neither. Every turn of
+  owner and attached sessions holds the same in-use lock, the record carries `owner`, only the
+  owner removes, and an attached turn that moves the branch is recorded failed. It is the one
+  way to share a worktree (ER-4).
 - **Apps adopt later, in their stacks**: Kitchen Sink's create form and Worktree menu
   (`harness-frame.tsx`, `harness-worktree.ts`), Shift Manager and the two labs.
 - **Docs:** workspace and harness-manager READMEs; the `fsdev` CLI page.

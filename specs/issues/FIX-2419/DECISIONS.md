@@ -4,7 +4,8 @@
 
 The epic settled where this lives (harness-manager and the workspace host), that removal is one
 path shared with FIX-1768 (ER-5), and the stack (2385 → 2386 → 2419 → 2388). What is left is
-where the choice is held, how the host honours each kind of start, and what removal refuses.
+where the choice is held, how the host honours each kind of start, what removal refuses, and
+how two sessions share one worktree (D4, an amendment Jake asked for on the spec PR).
 
 ```mermaid
 flowchart TD
@@ -14,6 +15,8 @@ flowchart TD
   D2 -.->|"rejected"| X2["a PR fetched by refs/pull/N"]
   I --> D3["D3 · remove refuses to lose work"]
   D3 -.->|"rejected"| X3["git worktree remove --force"]
+  I --> D4["D4 · attach to another session's worktree"]
+  D4 -.->|"rejected"| X4["a background / parent-session flag"]
 ```
 
 <a name="d1"></a>
@@ -97,6 +100,41 @@ flowchart TD
   branch if there is one, else afresh from the start. No refusal: a person who removed the
   worktree and then types is asking for it back.
 - **Locks in:** two host methods and one session action.
+
+<a name="d4"></a>
+## D4 · A session can attach to another session's worktree, and that is the only way to share one
+
+Asked for by Jake on the spec PR. Today each session gets its own worktree, keyed on its place,
+and `start: { branch }` can't reach another session's tree because git refuses a branch checked
+out elsewhere.
+
+| | Attached session | Owner session |
+|---|---|---|
+| Worktree and branch | The owner's, as they stand; makes neither | Its own, made on its first turn |
+| A turn | Holds the worktree's in-use lock, so it waits out the owner's turn | The same lock, so it waits out an attached turn |
+| Changing the branch | Not allowed: a turn that ends on another branch is recorded failed | Its own call |
+| `removeWorktree` | Refused | Allowed, under D3's rules |
+
+- **Shape:** `start: { worktreeOf: sessionId }`, a fourth arm of D1's union, fixed at create.
+  The default is unchanged: no `start` is a fresh `git worktree add` from the app's repository
+  on a branch of its own; clones only when the repository isn't local.
+- **Found by place, in the caller's tenant.** The owner's place is this session's flow kind and
+  tenant with the owner's id, never the caller's word for a tenant, so another tenant's session
+  is never found. `createCheck` refuses (404) a session naming itself or a worktree that isn't
+  there; a turn refuses the same if it has gone since (removed, or never provisioned).
+- **Ownership.** The workspace record gains `owner` (a session id; `null` on older records,
+  which are the session's own). The session action refuses removal from an attached session.
+  The host's `remove` is keyed by place, which is the owner's, so nothing else can name an
+  attached session's "own" worktree; `fsdev worktrees --remove` is a person at a terminal and
+  stays under D3's in-use and lose-work rules.
+- **No branch changes, detected rather than prevented.** Git can't stop a harness running
+  `git checkout`; the flow reads the branch when the turn takes the lock and again before it
+  lets go, and a change fails the turn with the two branch names. Nothing is switched back,
+  since that could lose work.
+- **One way (ER-4).** No separate background or parent-session flag. FIX-2361's follow-up runs
+  resolve to their root run's place through this same form, naming the root, not an attached
+  session (an attached session has no worktree of its own to attach to).
+- **Locks in:** a fourth `start` form and `owner` on the workspace record.
 
 ## Decided, not asked
 
