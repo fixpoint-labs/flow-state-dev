@@ -15,6 +15,10 @@
  * fine. Run the server as a separate OS user, or in a container, when it is
  * not.
  *
+ * Cursor loads none of the repository's project settings, trusted or not: its
+ * SDK can't load them with their hooks off. When the operator trusts the
+ * repository (`lib/harness-trust.ts`), the run is handed the keys they named.
+ *
  * Under `KITCHEN_SINK_TEST_MODE=1` the SDK is replaced by the scripted Cursor
  * (`lib/scripted-cursor.ts`), with `env` left unset (the scripted client runs
  * in this process, and the block refuses a custom client beside `env`), and
@@ -25,6 +29,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { harnessEnv } from "@flow-state-dev/core";
 import {
+  CURSOR_PASS,
   TESTED_SDK_VERSION,
   cursorAgent,
   cursorSignIn,
@@ -37,6 +42,8 @@ import {
 } from "@flow-state-dev/cursor";
 
 import { goalControl } from "./goal-control";
+import { harnessTrust, type RepoLine } from "./harness-trust";
+import type { HarnessTrust } from "./harness-workspace";
 import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { kitchenSinkHarnessFlow } from "./harness-session-flow";
@@ -57,35 +64,23 @@ export const CURSOR_SESSION = flowKindOf(modeById("cursor"));
 export const CURSOR_DEFAULT_MODEL = "composer-2.5";
 
 /**
- * The only variables of the server's environment Cursor's runtime is handed
- * (what its commands start with, not what they could read: see the header).
- * `PATH` (its shell finds commands through it), `HOME` (Cursor keeps its
- * agents and its stored login there, so a resumed agent is found only with the
- * same `HOME`), `USER`, `SHELL` and `TMPDIR` (its shell), `CURSOR_API_KEY`, and
- * the proxy and CA settings a proxied network needs. Add a name here, never a
- * spread of `process.env`.
+ * The environment Cursor's runtime gets, and the one its sign-in is checked
+ * over: the Cursor package's own pass-list (what its commands start with, not
+ * what they could read: see the header), and the keys a trusting operator named.
  */
-export const CURSOR_PASS = [
-  "PATH",
-  "HOME",
-  "USER",
-  "SHELL",
-  "TMPDIR",
-  "CURSOR_API_KEY",
-  "HTTPS_PROXY",
-  "https_proxy",
-  "HTTP_PROXY",
-  "http_proxy",
-  "ALL_PROXY",
-  "all_proxy",
-  "NO_PROXY",
-  "no_proxy",
-  "NODE_EXTRA_CA_CERTS",
-] as const;
+export function cursorEnv(
+  env: Record<string, string | undefined> = process.env,
+  trust: HarnessTrust = harnessTrust(),
+): Record<string, string> {
+  return harnessEnv({ pass: [...CURSOR_PASS, ...trust.pass], env });
+}
 
-/** The environment Cursor's runtime gets, and the one its sign-in is checked over. */
-export function cursorEnv(env: Record<string, string | undefined> = process.env): Record<string, string> {
-  return harnessEnv({ pass: CURSOR_PASS, env });
+/** The header's line for a Cursor session: no project settings, trusted or not. */
+export function cursorRepoLine(trust: HarnessTrust = harnessTrust()): RepoLine {
+  return {
+    conventions: trust.trusted ? "not loaded (Cursor can't load them with their hooks off)" : "not loaded",
+    keys: trust.pass,
+  };
 }
 
 /** Whether this server runs the scripted Cursor instead of the SDK. */

@@ -78,6 +78,19 @@ export function claudeCodeEnv(): Record<string, string> {
 }
 
 /**
+ * What a Claude Code run on the Lab coding path loads from its checkout: the
+ * repository's project settings, `CLAUDE.md` and skills, with a settings layer
+ * above them that turns every hook off, and never the operator's own user
+ * settings. A hook runs by itself, in no transcript, and a turn can write one
+ * into `.claude/settings.json` for the next turn. The run works only in a
+ * checkout its operator named, so the conventions load with no setting.
+ */
+export const CLAUDE_CODE_REPO_OPTIONS = {
+  settingSources: ["project"],
+  settings: { disableAllHooks: true },
+} as const;
+
+/**
  * Claude Code in the slot, as the honesty check runs it.
  *
  * `detached: true` because the harness is a child block of the flow's gated
@@ -101,6 +114,7 @@ export function claudeCodeHarness({ mcpTools, ...feeds }: HarnessFeeds): Harness
     ...feeds,
     ...(mcpTools === undefined ? {} : { mcpTools, uses: [projectWorkspaceCapability, mcpCredentialsCapability] }),
     env: claudeCodeEnv(),
+    ...CLAUDE_CODE_REPO_OPTIONS,
     detached: true,
     recordWork: true,
     allowedTools: ["Read", "Write", "Edit", "Bash"],
@@ -116,12 +130,14 @@ export function claudeCodeHarness({ mcpTools, ...feeds }: HarnessFeeds): Harness
  * Claude Code as the Error Reporter's harness (FIX-1983): read and search
  * only. `env` passes only {@link CLAUDE_CODE_PASS}, as the coder's does: the
  * tracker's key reaches the run through the Lab's connection, never the run.
+ * It loads what the coder loads ({@link CLAUDE_CODE_REPO_OPTIONS}).
  */
 export function errorReporterHarness({ cwd, mcpTools }: ErrorReporterHarnessFeeds): HarnessBlock {
   return claudeCodeAgent({
     cwd,
     ...(mcpTools === undefined ? {} : { mcpTools, uses: [projectWorkspaceCapability, mcpCredentialsCapability] }),
     env: claudeCodeEnv(),
+    ...CLAUDE_CODE_REPO_OPTIONS,
     detached: true,
     allowedTools: ["Read", "Grep", "Glob"],
     disallowedTools: ["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"],

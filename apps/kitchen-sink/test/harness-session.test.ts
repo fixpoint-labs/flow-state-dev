@@ -345,6 +345,42 @@ describe("where a session works (V6)", () => {
     expect(env!.PATH).toBe(process.env.PATH);
   });
 
+  it("untrusted, the run loads nothing from the repository and gets no named key (FIX-2421)", async () => {
+    vi.stubEnv("KITCHEN_SINK_HARNESS_PASS", "KITCHEN_SINK_NAMED_KEY");
+    vi.stubEnv("KITCHEN_SINK_NAMED_KEY", "named-but-not-trusted");
+    const stores = createInMemoryStores();
+    const recorder = recorded();
+    await turn(stores, recorder, "s-untrusted", "hello");
+    const run = recorder.runs[0]!;
+    expect(run.settingSources).toEqual([]);
+    expect(run.settings).toBeUndefined();
+    expect((run.env as Record<string, string | undefined>).KITCHEN_SINK_NAMED_KEY).toBeUndefined();
+  });
+
+  it("trusted, the run loads the repository's project settings with every hook off, and gets the named key (FIX-2421 D1)", async () => {
+    vi.stubEnv("KITCHEN_SINK_HARNESS_TRUSTED", "1");
+    vi.stubEnv("KITCHEN_SINK_HARNESS_PASS", "KITCHEN_SINK_NAMED_KEY");
+    vi.stubEnv("KITCHEN_SINK_NAMED_KEY", "the-operator-named-this");
+    vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "still-not-named");
+    const stores = createInMemoryStores();
+    const recorder = recorded();
+    await turn(stores, recorder, "s-trusted", "hello");
+    const run = recorder.runs[0]!;
+    // Never `user`: the operator's own settings stay out of a trusted run too.
+    expect(run.settingSources).toEqual(["project"]);
+    expect(run.settings).toMatchObject({ disableAllHooks: true });
+    const env = run.env as Record<string, string | undefined>;
+    expect(env.KITCHEN_SINK_NAMED_KEY).toBe("the-operator-named-this");
+    expect(env.KITCHEN_SINK_PLANTED_SECRET).toBeUndefined();
+  });
+
+  it("a turn's input that claims trust changes nothing: only the server's setting decides (FIX-2421, BP-031)", async () => {
+    const stores = createInMemoryStores();
+    const recorder = recorded();
+    await turn(stores, recorder, "s-claims-trust", "hello", { trusted: true, settingSources: ["project"] });
+    expect(recorder.runs[0]!.settingSources).toEqual([]);
+  });
+
   it("a deleted session leaves its worktree and branch (BR-23a)", async () => {
     const stores = createInMemoryStores();
     const recorder = recorded();
