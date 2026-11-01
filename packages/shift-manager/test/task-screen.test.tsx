@@ -481,7 +481,7 @@ describe("the inspector (BR-18 to BR-23)", () => {
     await renderAt(opened.served.baseUrl, `/tasks/${held.boardRef}/${waiting.taskId}/brief`);
     const after = await screen.findByTestId("inspector-after");
     expect(within(after).getAllByRole("listitem").map((li) => li.getAttribute("data-task-id"))).toEqual([held.id]);
-    fireEvent.click(within(after).getByRole("button"));
+    fireEvent.click(within(after).getByRole("link"));
     await waitFor(() => expect(window.location.pathname).toBe(`/tasks/${held.boardRef}/${held.id}/session`));
     const blocks = await screen.findByTestId("inspector-blocks");
     expect(within(blocks).getAllByRole("listitem").map((li) => li.getAttribute("data-task-id"))).toEqual([waiting.taskId]);

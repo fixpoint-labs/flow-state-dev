@@ -30,7 +30,7 @@ import type { ItemRenderSegment, RendererRegistry } from "@flow-state-dev/react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { COORDINATOR_ROUTE, RECEIVED_MESSAGE_COMPONENT, SEND_MESSAGE_TOOL } from "@flow-state-dev/workforce/browser";
-import { navigate } from "../lib/routes";
+import { RouteLink } from "./RouteLink";
 import { chatAssistantRenderers } from "./flow-state/chat-assistant";
 import { CoordinatorRoute } from "./CoordinatorRoute";
 import { ReceivedMessage } from "./ReceivedMessage";
@@ -190,9 +190,9 @@ function MessageCallLine({ item }: { item: ToolOutputItem }) {
       )}
       <p className="mt-0.5 flex gap-3 text-xs text-muted-foreground">
         {refused && reason !== undefined ? <span data-testid="message-call-reason">{reason}</span> : null}
-        <button type="button" className="hover:text-foreground hover:underline" onClick={() => navigate({ level: "messages" })} data-testid="message-call-messages">
+        <RouteLink className="hover:text-foreground hover:underline" to={{ level: "messages" }} data-testid="message-call-messages">
           Messages ›
-        </button>
+        </RouteLink>
       </p>
     </div>
   );
