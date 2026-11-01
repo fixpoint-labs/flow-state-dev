@@ -97,21 +97,46 @@ describe("ConnectionScreen", () => {
     expect(onRetry).not.toHaveBeenCalled();
   });
 
-  it("an unreachable server is retried on its own, further apart after each failure, and on the button", () => {
-    const onRetry = vi.fn();
-    const { rerender } = render(<ConnectionScreen kind="unreachable" title="Can't reach" failure={{ message: "fetch failed" }} onRetry={onRetry} />);
-    act(() => vi.advanceTimersByTime(1_999));
+  it("an unreachable server is retried on its own, further apart after each failure, and on the button", async () => {
+    const onRetry = vi.fn(() => Promise.resolve());
+    render(<ConnectionScreen kind="unreachable" title="Can't reach" failure={{ message: "fetch failed" }} onRetry={onRetry} />);
+    await act(async () => vi.advanceTimersByTime(1_999));
     expect(onRetry).not.toHaveBeenCalled();
-    act(() => vi.advanceTimersByTime(1));
+    await act(async () => vi.advanceTimersByTime(1));
     expect(onRetry).toHaveBeenCalledTimes(1);
-    // The retry failed: the app draws the screen for a new failure.
-    rerender(<ConnectionScreen kind="unreachable" title="Can't reach" failure={{ message: "fetch failed" }} onRetry={onRetry} />);
     expect(screen.getByTestId("unreachable-countdown").textContent).toBe("Trying again in 4s");
-    act(() => vi.advanceTimersByTime(3_999));
+    await act(async () => vi.advanceTimersByTime(3_999));
     expect(onRetry).toHaveBeenCalledTimes(1);
-    act(() => vi.advanceTimersByTime(1));
+    await act(async () => vi.advanceTimersByTime(1));
     expect(onRetry).toHaveBeenCalledTimes(2);
-    fireEvent.click(screen.getByTestId("unreachable-retry"));
+    await act(async () => fireEvent.click(screen.getByTestId("unreachable-retry")));
     expect(onRetry).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps one schedule when the parent re-renders with new props each time", async () => {
+    const onRetry = vi.fn(() => Promise.resolve());
+    const draw = () => <ConnectionScreen kind="unreachable" title="Can't reach" failure={{ message: "fetch failed" }} onRetry={() => onRetry()} />;
+    const { rerender } = render(draw());
+    for (let i = 0; i < 5; i += 1) {
+      rerender(draw());
+      await act(async () => vi.advanceTimersByTime(300));
+    }
+    // 1.5s in: the first retry, due at 2s, has not run, however often the parent drew.
+    expect(onRetry).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTime(500));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("a click on Retry replaces the pending automatic retry rather than adding one", async () => {
+    const onRetry = vi.fn(() => Promise.resolve());
+    render(<ConnectionScreen kind="unreachable" title="Can't reach" failure={{ message: "fetch failed" }} onRetry={onRetry} />);
+    await act(async () => vi.advanceTimersByTime(1_900));
+    await act(async () => fireEvent.click(screen.getByTestId("unreachable-retry")));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    // The 2s timer the click replaced never fires.
+    await act(async () => vi.advanceTimersByTime(3_000));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTime(1_000));
+    expect(onRetry).toHaveBeenCalledTimes(2);
   });
 });

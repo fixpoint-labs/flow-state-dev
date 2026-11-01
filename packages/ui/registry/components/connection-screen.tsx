@@ -27,7 +27,10 @@ export function retryDelayMs(attempt: number): number {
  * @param title The heading, in the app's words.
  * @param children What the person should check, in the app's words.
  * @param failure What the server answered, drawn as `<status> · <message>`.
- * @param onRetry Read again. Required for `unreachable`; may return the read's promise.
+ * @param onRetry Read again. Required for `unreachable`. Return the read's
+ *   promise and the next wait starts once it settles. The screen keeps one
+ *   schedule however often the parent re-renders it, and a click on Retry
+ *   reads at once and restarts the wait.
  */
 export function ConnectionScreen({
   kind,
@@ -45,23 +48,45 @@ export function ConnectionScreen({
   className?: string;
 }) {
   const retrying = kind === "unreachable" && onRetry !== undefined;
-  const attempt = useRef(0);
+  // The latest callback, so a parent's new function each render doesn't
+  // restart the schedule.
+  const retry = useRef(onRetry);
+  retry.current = onRetry;
   const [nextAt, setNextAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  // Each failure this screen is drawn for schedules the next automatic retry.
+  // One schedule per screen: read again, wait for that read, then wait longer
+  // before the next. A click reads now and restarts the wait from there.
+  const readNow = useRef<() => void>(() => {});
   useEffect(() => {
     if (!retrying) return;
-    const delay = retryDelayMs(attempt.current);
-    attempt.current += 1;
-    setNextAt(Date.now() + delay);
-    const timer = setTimeout(() => void onRetry?.(), delay);
+    let open = true;
+    let attempt = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      const delay = retryDelayMs(attempt);
+      attempt += 1;
+      setNextAt(Date.now() + delay);
+      timer = setTimeout(() => void read(), delay);
+    };
+    const read = async () => {
+      clearTimeout(timer);
+      setNextAt(null);
+      try {
+        await retry.current?.();
+      } catch {
+        // The app draws the failure; the schedule goes on.
+      }
+      if (open) schedule();
+    };
+    readNow.current = () => void read();
+    schedule();
     const tick = setInterval(() => setNow(Date.now()), 1000);
     return () => {
+      open = false;
       clearTimeout(timer);
       clearInterval(tick);
     };
-    // A new failure object is a new failed read: schedule again.
-  }, [retrying, onRetry, failure]);
+  }, [retrying]);
 
   const seconds = nextAt === null ? null : Math.max(0, Math.ceil((nextAt - now) / 1000));
   return (
@@ -77,7 +102,7 @@ export function ConnectionScreen({
         </p>
         {retrying ? (
           <div className="mt-3 flex items-center gap-3">
-            <Button variant="outline" size="sm" onClick={() => void onRetry?.()} data-testid="unreachable-retry">
+            <Button variant="outline" size="sm" onClick={() => readNow.current()} data-testid="unreachable-retry">
               Retry
             </Button>
             {seconds !== null ? (
