@@ -50,8 +50,9 @@ export function focusWhenDrawn(selector: string, withinMs = 5_000) {
   const until = Date.now() + withinMs;
   const attempt = () => {
     const found = document.querySelector<HTMLElement>(selector);
-    if (found !== null) found.focus();
-    else if (Date.now() < until) requestAnimationFrame(attempt);
+    found?.focus();
+    // Again until it holds: a dialog closing in the same moment can take focus back once.
+    if (document.activeElement !== found && Date.now() < until) requestAnimationFrame(attempt);
   };
   requestAnimationFrame(attempt);
 }
@@ -79,7 +80,11 @@ export function useFocusReturn(open: boolean) {
     },
     onCloseAutoFocus: (event: Event) => {
       event.preventDefault();
-      if (!moved.current) opener.current?.focus();
+      // Only when focus is lost (on the page body, or still in a closing dialog): a pick from
+      // another dialog over this one may already have put it where the person goes next.
+      const at = document.activeElement;
+      const lost = at === null || at === document.body || at.closest('[role="dialog"]') !== null;
+      if (!moved.current && lost) opener.current?.focus();
       opener.current = null;
     },
   };

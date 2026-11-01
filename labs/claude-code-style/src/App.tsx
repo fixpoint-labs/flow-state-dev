@@ -136,7 +136,9 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         </div>
       </div>
       <Switcher open={switching} onOpenChange={setSwitching} sessions={sessions} modes={adapter.modes} onPick={(mode, id) => {
+          // A pick goes somewhere: the key list, if it was open under the switcher, closes too.
           setSwitching(false);
+          setKeysOpen(false);
           pick(mode, id);
         }}
       />

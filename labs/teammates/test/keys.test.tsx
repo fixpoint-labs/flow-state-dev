@@ -97,4 +97,15 @@ describe("keys", () => {
       document.removeEventListener("keydown", listen);
     }
   });
+  it("a pick from ⌘K over the key list closes the key list too, so the hire form takes the keys", async () => {
+    await openApp();
+    press("?");
+    await screen.findByRole("dialog", { name: "Keys" });
+    press("k", { metaKey: true });
+    const input = await screen.findByRole("combobox");
+    fireEvent.change(input, { target: { value: "hire" } });
+    press("Enter", {}, input);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Teammate name")));
+  });
 });
