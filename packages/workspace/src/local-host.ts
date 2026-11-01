@@ -1158,6 +1158,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           request.ignored,
           deadline,
         );
+        oweSetup(repo, join(dir, SETUP_MARKER));
         const filesDir = join(dir, PROJECT_DIR);
         await provisionFiles(dir, PROJECT_DIR, projectId, files);
         const place: WorkspacePlace = {
@@ -1207,6 +1208,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         repo = await provisionClonedCheckout(remote, answer.baseRef, dir, branch, request.ignored, deadline);
         origin = repo.created ? "new" : "live";
       }
+      oweSetup(repo, join(dir, SETUP_MARKER));
       const place: WorkspacePlace = { kind: "repo", dir, cwd: join(dir, CHECKOUT_DIR), repo, origin, ...extra };
       if (answer.projectId !== undefined && answer.files !== undefined) {
         await provisionFiles(dir, PROJECT_DIR, answer.projectId, answer.files);
@@ -1224,6 +1226,15 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
    * or the last setup there never finished. The last step of a provision,
    * holding the place's lock, on what is left of its budget.
    */
+  /**
+   * Mark setup as owed the moment a provision makes the tree, before any step
+   * after it that can fail (filling kept files), so a retry that hands this
+   * checkout back still runs the setup.
+   */
+  function oweSetup(repo: NonNullable<WorkspacePlace["repo"]>, marker: string): void {
+    if (options.setup !== undefined && repo.created) writeFileSync(marker, "");
+  }
+
   async function withSetup(place: WorkspacePlace, marker: string, request: PlaceRequest, deadline: number): Promise<WorkspacePlace> {
     const fresh = place.repo?.created === true;
     const outcome = await setUpCheckout(options.setup, place.cwd, marker, fresh, () => remainingBudget(deadline, now), request.onSetup);

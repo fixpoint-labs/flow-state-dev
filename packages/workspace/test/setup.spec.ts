@@ -10,6 +10,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { localWorkspaceHost, type LocalWorkspaceHostOptions } from "../src/local-host";
+import { createFakeCollection } from "./fake-collection";
 import { createRemote, git, tempDir, type Remote } from "./git-fixtures";
 
 let root: string;
@@ -108,6 +109,31 @@ describe("a host's setup command", () => {
     // And once it has succeeded, never again.
     await host().provision(local(), { place: ["run-1"], branch: "fsd/run-1" });
     expect(runs()).toHaveLength(2);
+  });
+
+  it("still runs when the provision that made the checkout failed after making it", async () => {
+    // Kept files beside the checkout, whose first fill fails once: the tree is
+    // made, then the provision throws before setup.
+    const collection = createFakeCollection("project-files/**");
+    const list = collection.list.bind(collection);
+    let failOnce = true;
+    collection.list = async (prefix?: string) => {
+      if (failOnce) {
+        failOnce = false;
+        throw new Error("collection unavailable");
+      }
+      return await list(prefix);
+    };
+    const answer = { kind: "repo" as const, repo, baseRef: "main", projectId: "p1", files: { collection, collectionId: "project-files" } };
+
+    await expect(host().provision(answer, { place: ["run-1"], branch: "fsd/run-1" })).rejects.toThrow("collection unavailable");
+    expect(runs()).toEqual([]);
+    const retried = await host().provision(answer, { place: ["run-1"], branch: "fsd/run-1" });
+
+    // The retry hands the same tree back, and the setup it still owes runs.
+    expect(retried.repo?.created).toBe(false);
+    expect(retried.setup).toEqual({ status: "done" });
+    expect(runs()).toEqual([git(retried.cwd, "rev-parse", "--show-toplevel")]);
   });
 
   it("runs again in a tree made again for a branch that already exists", async () => {
