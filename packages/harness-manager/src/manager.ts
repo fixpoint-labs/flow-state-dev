@@ -1910,7 +1910,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    *
    * A refusal settles the row as before. Held work that disagrees with the
    * record holds the task on a question for the run's owner, before any
-   * harness runs.
+   * harness runs. The host's setup command, when it runs, is said on the
+   * stream; a failed one is said with its tail and the run goes on.
    */
   const provisionPlace = async (
     ctx: BlockContext,
@@ -1935,7 +1936,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         ignored: ASK_MARKER_IGNORED,
         ...(recorded !== undefined ? { recorded } : {}),
         ...(holding ? { progress: (reported: "lost" | "restoring") => recordPlace(ctx, before!, reported) } : {}),
+        // The host's setup command in a fresh checkout: the run waits on it,
+        // and the stream says so, then says what broke if it failed.
+        onSetup: () => ctx.emit.status("Setting up the worktree…"),
       });
+      if (place.setup?.status === "failed") {
+        ctx.emit.status(`Setup failed: ${place.setup.tail}`, { transient: false });
+      }
       // A checkout left on another branch with uncommitted changes is the
       // run's to sort out; running on it would commit to the wrong branch.
       if (place.repo?.offBranch !== undefined) {

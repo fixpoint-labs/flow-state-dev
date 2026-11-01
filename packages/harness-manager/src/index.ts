@@ -130,6 +130,8 @@ export {
   type HarnessSessionFlowOptions,
   type HarnessSessionPlace,
   type HarnessSessionState,
+  type HarnessSessionCheckout,
+  type HarnessSessionProvisionRequest,
   type HarnessSessionWorkspace,
   type HarnessTurnRecord,
 } from "./session-flow";

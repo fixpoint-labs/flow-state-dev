@@ -19,6 +19,7 @@ import {
   harnessSessionTitle,
   type HarnessSessionFeeds,
   type HarnessSessionPlace,
+  type HarnessSessionState,
   type HarnessSessionWorkspace,
 } from "../src";
 
@@ -105,5 +106,95 @@ describe("the turn-end pull request check", () => {
     const workspace = noWorkspace("sessions/s-branch");
     await turn(createInMemoryStores(), "s-branch", "hello", workspace);
     expect(workspace.located).toEqual([{ flowKind: "stub-session", sessionId: "s-branch" }]);
+  });
+});
+
+describe("a fresh checkout's setup, on the turn that waits for it", () => {
+  /** A harness that asks for its working directory, as every harness does before it runs. */
+  const cwdAgent = (feeds: HarnessSessionFeeds) =>
+    handler({
+      name: "stub-harness",
+      inputSchema: z.object({ prompt: z.string() }),
+      execute: async (_input, ctx) => {
+        await feeds.resume(ctx as unknown as HarnessCallbackContext);
+        await feeds.cwd(ctx as unknown as HarnessCallbackContext);
+        return { outcome: "completed" };
+      },
+    }) as unknown as HarnessBlock;
+
+  async function cwdTurn(stores: ReturnType<typeof createInMemoryStores>, sessionId: string, workspace: HarnessSessionWorkspace) {
+    if ((await stores.session.get(sessionId)) === undefined) {
+      const now = Date.now();
+      await stores.session.set(
+        sessionId,
+        { id: sessionId, flowKind: "stub-session", userId: "u", orgId: DEFAULT_ORG_ID, metadata: undefined, latestRequestId: undefined, state: { model: "stub-model" }, version: 0, createdAt: now, updatedAt: now, journal: [] } as never,
+        "any" as never,
+      );
+    }
+    return runAction({
+      flow: harnessSessionFlow({ kind: "stub-session", workspace, agent: cwdAgent }),
+      actionName: "turn",
+      input: { prompt: "hello" },
+      userId: "u",
+      orgId: DEFAULT_ORG_ID,
+      sessionId,
+      stores,
+      runtimeConfig: {},
+    } as never);
+  }
+
+  /** Each turn's `setup`, oldest first. */
+  async function setups(stores: ReturnType<typeof createInMemoryStores>, sessionId: string) {
+    const turns = ((await stores.session.get(sessionId))?.state as HarnessSessionState).turns ?? {};
+    return Object.values(turns)
+      .sort((a, b) => (a.at ?? 0) - (b.at ?? 0))
+      .map((record) => record.setup);
+  }
+
+  it("is running on the turn's record while the host runs it, then failed with its tail", async () => {
+    const stores = createInMemoryStores();
+    const seen: unknown[] = [];
+    const workspace: HarnessSessionWorkspace = {
+      ...noWorkspace(),
+      provision: async (_place, request) => {
+        await request.onSetup();
+        seen.push(...(await setups(stores, "s-setup")));
+        return { path: "/nowhere", setup: { status: "failed", tail: "ERR_LOCKFILE\nThe setup command exited 1." } };
+      },
+    };
+
+    await cwdTurn(stores, "s-setup", workspace);
+
+    // What a page reads while the first turn waits: "Setting up…".
+    expect(seen).toEqual([{ state: "running", tail: null }]);
+    // And after: "Setup failed: <tail>". The turn still ran in the checkout.
+    expect(await setups(stores, "s-setup")).toEqual([
+      { state: "failed", tail: "ERR_LOCKFILE\nThe setup command exited 1." },
+    ]);
+  });
+
+  it("is done when it succeeded, and absent on a later turn the host ran none for", async () => {
+    const stores = createInMemoryStores();
+    let first = true;
+    const workspace: HarnessSessionWorkspace = {
+      ...noWorkspace(),
+      provision: async (_place, request) => {
+        if (!first) return { path: "/nowhere" };
+        first = false;
+        await request.onSetup();
+        return { path: "/nowhere", setup: { status: "done" } };
+      },
+    };
+
+    await cwdTurn(stores, "s-done", workspace);
+    await cwdTurn(stores, "s-done", workspace);
+
+    expect(await setups(stores, "s-done")).toEqual([{ state: "done", tail: null }, null]);
+  });
+
+  it("is never recorded for a host that hands back a bare path", async () => {
+    const stores = createInMemoryStores();
+    await cwdTurn(stores, "s-bare", noWorkspace());
+    expect(await setups(stores, "s-bare")).toEqual([null]);
   });
 });

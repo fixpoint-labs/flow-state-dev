@@ -12,6 +12,7 @@
  * <root>/<place…>/
  *     .lock        held while a provision works on this place
  *     .checkout.provisioning   present while `git worktree add` runs
+ *     .checkout.setup          present while the operator's setup command is owed
  *     checkout/    a git worktree on the run's own branch (a repository run)
  *     project/     the kept files, beside the checkout and never inside it
  *     workspace/   the kept files as the working directory (a run with no repository)
@@ -19,7 +20,8 @@
  * <root>/<place…>/                  a repository the operator named in
  *                                   `localRepositories`, with no kept files: the
  * <root>/<place…>.provisioning      place IS the checkout, with its marker and lock
- * <root>/<place…>.place.lock        beside it, and the branch kept in that
+ * <root>/<place…>.place.lock        beside it (and `<place…>.setup`, its setup
+ *                                   marker), and the branch kept in that
  *                                   repository, never cloned
  * <root>/.fetch-pins/<key>.json     each such repository's remote URLs and branch
  *                                   upstreams, as a host start first saw them
@@ -106,6 +108,7 @@ import {
 import type { FlushReport, Place } from "./types";
 import { pinFetchSettings } from "./repository";
 import { WorkspaceRefusedError } from "./refused";
+import { setUpCheckout, type PlaceSetup, type WorkspaceSetup } from "./setup";
 import { firstLine, gitAnsweredNo, ignoredProblem, isAncestor, NO_HOOKS, provisionWorktree, remainingBudget, type IgnoredDirectory, type MovedBack, type OffBranch } from "./worktree";
 
 /** The directory names inside a place. People and agents read them. */
@@ -141,6 +144,13 @@ const PROVISIONING_MARKER = ".checkout.provisioning";
  */
 const LOCAL_MARKER_SUFFIX = ".provisioning";
 const LOCAL_LOCK_SUFFIX = ".place.lock";
+/**
+ * Present beside a checkout from just before the operator's setup command
+ * starts until it succeeds (`./setup`), so a failed or killed setup runs again
+ * on the next provision.
+ */
+const SETUP_MARKER = ".checkout.setup";
+const LOCAL_SETUP_SUFFIX = ".setup";
 /** This host's identity, in its root. Dot-prefixed, so no place is named over it. */
 const HOST_ID_FILE = ".host-id";
 /** Where a held snapshot is laid out for a person, beside the checkout. */
@@ -202,6 +212,18 @@ export interface LocalWorkspaceHostOptions {
   /** The clock the provision budget is measured on. For tests. */
   now?: () => number;
   /**
+   * A command run in each repository checkout this host makes, before it is
+   * handed over: `{ command: ["pnpm", "install", "--frozen-lockfile",
+   * "--prefer-offline"] }`, say. Absent by default, and then nothing runs.
+   *
+   * It runs once per fresh checkout, and again on the next provision until it
+   * exits 0. It is the last step of the provision and draws from its one
+   * budget, so raise `provisionTimeoutMs` to cover it. A failure doesn't fail
+   * the provision: the checkout is handed over with `place.setup` saying what
+   * went wrong. A place with no repository runs nothing. See `./setup`.
+   */
+  setup?: WorkspaceSetup;
+  /**
    * Where a run's held work goes. Absent by default, and then holding is off:
    * `checkpoint` returns `null` and starts no process, and `provision` does
    * what it always did, except that it rejects a recorded hold it cannot use
@@ -246,6 +268,12 @@ export interface PlaceRequest {
    * can record each before it happens. Awaited.
    */
   progress?: (state: "lost" | "restoring") => void | Promise<void>;
+  /**
+   * Told just before the host's setup command starts in this place's checkout
+   * (`LocalWorkspaceHostOptions.setup`), so the caller can say the run is
+   * waiting on it. Awaited. Never called when nothing runs.
+   */
+  onSetup?: () => void | Promise<void>;
 }
 
 /** What a run's record says about its place. Every field may be absent. */
@@ -296,7 +324,11 @@ export interface WorkspacePlace {
      */
     clone: string;
     branch: string;
-    /** Whether this call cut the branch. `false` for a checkout handed back. */
+    /**
+     * Whether this call made the checkout: it cut the branch, or checked out a
+     * branch that already existed into a new tree (a rebuild from held work
+     * included). `false` for a checkout handed back.
+     */
     created: boolean;
     /**
      * The ref the run's branch was cut from, as asked (`"HEAD"` when none was
@@ -321,6 +353,12 @@ export interface WorkspacePlace {
   };
   /** Where a repository place came from. */
   origin?: PlaceOrigin;
+  /**
+   * What the host's setup command came to, when this provision ran it
+   * (`LocalWorkspaceHostOptions.setup`). Absent when nothing ran: no setup
+   * configured, or a checkout already set up.
+   */
+  setup?: PlaceSetup;
   /**
    * Present only when holding applies to this place: the host has a held-work
    * store, the source named a `heldPrefix`, and the branch came from a remote.
@@ -1101,10 +1139,11 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         // No kept files: the place is the checkout, with its marker and lock
         // beside it, exactly as places already on disk were made.
         mkdirSync(root, { recursive: true });
-        const repo = await locked(`${dir}${LOCAL_LOCK_SUFFIX}`, deadline, () =>
-          provisionLocalCheckout(local, answer.baseRef, dir, `${dir}${LOCAL_MARKER_SUFFIX}`, branch, request.ignored, deadline),
-        );
-        return { kind: "repo", dir, cwd: dir, repo, origin: repo.created ? "new" : "live" };
+        return await locked(`${dir}${LOCAL_LOCK_SUFFIX}`, deadline, async () => {
+          const repo = await provisionLocalCheckout(local, answer.baseRef, dir, `${dir}${LOCAL_MARKER_SUFFIX}`, branch, request.ignored, deadline);
+          const place: WorkspacePlace = { kind: "repo", dir, cwd: dir, repo, origin: repo.created ? "new" : "live" };
+          return await withSetup(place, `${dir}${LOCAL_SETUP_SUFFIX}`, request, deadline);
+        });
       }
       // Kept files: laid out like a remote run's place, the worktree in
       // checkout/ and the files in project/ beside it, never inside it.
@@ -1121,7 +1160,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         );
         const filesDir = join(dir, PROJECT_DIR);
         await provisionFiles(dir, PROJECT_DIR, projectId, files);
-        return {
+        const place: WorkspacePlace = {
           kind: "repo",
           dir,
           cwd: join(dir, CHECKOUT_DIR),
@@ -1129,7 +1168,8 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           holder: hold(filesDir),
           repo,
           origin: repo.created ? "new" : "live",
-        } satisfies WorkspacePlace;
+        };
+        return await withSetup(place, join(dir, SETUP_MARKER), request, deadline);
       });
     }
 
@@ -1173,8 +1213,21 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         place.filesDir = join(dir, PROJECT_DIR);
         place.holder = hold(place.filesDir);
       }
-      return place;
+      return await withSetup(place, join(dir, SETUP_MARKER), request, deadline);
     });
+  }
+
+  /**
+   * `place`, with the operator's setup command run in its checkout when it is
+   * owed: this provision made the tree (`repo.created`, which every `worktree
+   * add` sets, a rebuild from held work included, and a hand-back never does),
+   * or the last setup there never finished. The last step of a provision,
+   * holding the place's lock, on what is left of its budget.
+   */
+  async function withSetup(place: WorkspacePlace, marker: string, request: PlaceRequest, deadline: number): Promise<WorkspacePlace> {
+    const fresh = place.repo?.created === true;
+    const outcome = await setUpCheckout(options.setup, place.cwd, marker, fresh, () => remainingBudget(deadline, now), request.onSetup);
+    return outcome === undefined ? place : { ...place, setup: outcome };
   }
 
   /**

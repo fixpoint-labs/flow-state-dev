@@ -82,6 +82,8 @@ If the saved work doesn't match the run's record, the harness doesn't run. The t
 
 Without a held-work store, nothing is saved and the record gets no `place` or `held`. A run whose record says its work was saved, with no live checkout on this machine, asks its owner the same way rather than starting over.
 
+If the host has a [setup command](../workspace/README.md#setting-up-a-fresh-checkout), such as `pnpm install`, it runs in each new checkout before the harness starts, so the run waits for it. While it runs, the run's stream shows "Setting up the worktree…". If it fails, the stream keeps "Setup failed:" with the last lines of output, and the run goes on in the checkout anyway. With a `WorkspaceConfig`, pass the command as `setup`.
+
 A run its workspace refuses is not retried. That covers a source answering `refused` and a host that won't provision what the source named, such as a remote it doesn't allow. The row is cancelled on its first attempt, before the harness starts, with the refusal as its reason.
 
 ## Running a board kept per organization
@@ -261,12 +263,14 @@ export const claudeCodeSession = harnessSessionFlow({
 
 `agent` builds the harness block from the feeds the flow hands it: `cwd`, `resume`, `onSession`, `model`, `worktree` and `onSteerable`. These are the session flow's own feeds. It has no `onUsage` or `onActivity`, which feed the manager's task records. `workspace` says where each session works: `provision` makes a session's directory on its first turn, `locate` finds it without making it, and `branch` names the branch whose pull requests the flow checks when a turn ends (`null` skips the check). A session is keyed by its flow kind, tenant and id, never by anything the caller sent.
 
+`provision(place, request)` returns the directory's path, or `{ path, setup }` to report the workspace host's setup command. Pass `request.onSetup` to the host's place request as `onSetup`, and return the place's `setup`. The turn that waited on it then records `setup` as `running` while the command runs, then `done`, or `failed` with the tail of its output. A host that returns a bare path records nothing.
+
 The flow handles the rest:
 
 - **Continuity.** `resume` hands the harness the conversation it last confirmed, and `onSession` is the only thing that records a new one. If the harness refuses to continue that conversation, the session stays bound to it, and each later turn fails the same way. To recover, start a new session.
 - **The model.** A session is created with the model it runs (`state.model`), which never changes after that. Creating one without a model is refused with `HARNESS_SESSION_MODEL_REQUIRED`. `defaultModel` is the model used for a stored session that has none recorded.
 - **Actions.** `turn` takes a prompt and waits for any running turn to finish first (`concurrency: "defer"`). `steer` hands a line to the running turn if its harness offered to take one, and answers `{ taken, live }`.
-- **A record per turn.** `state.turns` keeps the latest 20 turns, by request id. Each record holds the conversation the turn tried to resume, the one the harness confirmed, and how the turn failed: core's failure class, the harness's error text, and whether it was stopped. Read it to show a user why a turn failed. The schema is `harnessSessionStateSchema`.
+- **A record per turn.** `state.turns` keeps the latest 20 turns, by request id. Each record holds the conversation the turn tried to resume, the one the harness confirmed, how the turn failed (core's failure class, the harness's error text, and whether it was stopped), and the workspace's `setup` when the turn waited on one. Read it to show a user why a turn failed. The schema is `harnessSessionStateSchema`.
 - **A title.** The session takes its title from its first prompt (`harnessSessionTitle`).
 
 ## What a phase supplies

@@ -26,6 +26,12 @@
  * neutral `harnessFailureKind` and never a harness's message. A page derives
  * its notice from that record.
  *
+ * A session's first turn waits for its working directory, and with it for any
+ * setup command the host runs in a fresh checkout (`@flow-state-dev/workspace`'s
+ * `setup`). A host that reports that setup through `provision` gets it on the
+ * turn's record, `running` while it runs and then `done` or `failed` with the
+ * tail of its output, so the page can say "setting up" and why it failed.
+ *
  * The harness records each pull request its run opens, in core's record. When
  * a turn ends, however it ended, the flow also asks GitHub which pull requests
  * the session's branch has (`@flow-state-dev/workspace`'s
@@ -55,7 +61,7 @@ import type {
   HarnessSessionHook,
   HarnessSteerHook,
 } from "@flow-state-dev/core/types";
-import { recordBranchPullRequests } from "@flow-state-dev/workspace";
+import { recordBranchPullRequests, type PlaceSetup } from "@flow-state-dev/workspace";
 import { z } from "zod";
 
 /** What one turn asked for and what came of it, recorded under its request id. */
@@ -74,6 +80,18 @@ export const harnessTurnRecordSchema = z.object({
   at: z.number().nullable().default(null),
   /** Lines sent while the turn ran that the harness took into it (`steer`), oldest first. */
   steered: z.array(z.string()).nullable().default(null),
+  /**
+   * The host's setup command in the session's fresh checkout, when this turn
+   * waited on it: `running` while it runs, then `done`, or `failed` with the
+   * tail of its output. `null` on a turn that waited on none.
+   */
+  setup: z
+    .object({
+      state: z.enum(["running", "done", "failed"]),
+      tail: z.string().nullable().default(null),
+    })
+    .nullable()
+    .default(null),
 });
 
 /** One turn's record. */
@@ -114,10 +132,33 @@ export interface HarnessSessionPlace {
   readonly sessionId: string;
 }
 
+/**
+ * What `provision` hands back besides a bare path: the session's working
+ * directory and what the host reported making it. One object, which later
+ * fields join rather than each widening the result its own way.
+ */
+export interface HarnessSessionCheckout {
+  /** The session's working directory. */
+  readonly path: string;
+  /** What the host's setup command came to, when this provision ran it (`WorkspacePlace.setup`). */
+  readonly setup?: PlaceSetup;
+}
+
+/** What the flow hands `provision`, to pass on to the workspace host's place request. One object, so later fields join it. */
+export interface HarnessSessionProvisionRequest {
+  /** Call when the host's setup command starts (`PlaceRequest.onSetup`). Records it on the turn. */
+  readonly onSetup: () => Promise<void>;
+}
+
 /** Where the host's sessions work. Each call is one session's, keyed on its place. */
 export interface HarnessSessionWorkspace {
-  /** The session's working directory, made on its first turn and handed back after. */
-  provision(place: HarnessSessionPlace): Promise<string>;
+  /**
+   * The session's working directory, made on its first turn and handed back
+   * after. Return the place's path and `setup`, and pass `request.onSetup`
+   * to the host, to put the host's setup command on the turn's record; a
+   * bare path records none.
+   */
+  provision(place: HarnessSessionPlace, request: HarnessSessionProvisionRequest): Promise<string | HarnessSessionCheckout>;
   /** Where the session's working directory is, without making it. */
   locate(place: HarnessSessionPlace): string;
   /** The branch whose pull requests the turn-end check reads, or `null` to skip the check. */
@@ -191,6 +232,7 @@ const BLANK_TURN: HarnessTurnRecord = {
   error: null,
   at: null,
   steered: null,
+  setup: null,
 };
 
 /** `state` with the turn `requestId` changed by `change`, keeping only the latest {@link KEPT_TURNS}. */
@@ -258,7 +300,21 @@ export function harnessSessionFeeds(
   return {
     onSteerable: (steer, ctx) => steering.onSteerable(steer, ctx),
     model: (ctx) => (ctx.session.state as HarnessSessionState).model ?? defaultModel,
-    cwd: (ctx) => workspace.provision(placeOf(kind, ctx)),
+    cwd: async (ctx) => {
+      const requestId = requestOf(ctx);
+      const recordSetup = (setup: HarnessTurnRecord["setup"]) =>
+        changeState(ctx, (state) => withTurn(state, requestId, (turn) => ({ ...turn, setup })));
+      const made = await workspace.provision(placeOf(kind, ctx), {
+        onSetup: () => recordSetup({ state: "running", tail: null }),
+      });
+      if (typeof made === "string") return made;
+      if (made.setup !== undefined) {
+        await recordSetup(
+          made.setup.status === "done" ? { state: "done", tail: null } : { state: "failed", tail: made.setup.tail },
+        );
+      }
+      return made.path;
+    },
     worktree: (ctx) => workspace.locate(placeOf(kind, ctx)),
     resume: async (ctx) => {
       const requestId = requestOf(ctx);

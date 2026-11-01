@@ -30,7 +30,7 @@ import {
   type Task,
 } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { localWorkspaceHost, type RunSourceAnswer } from "@flow-state-dev/workspace";
+import { localWorkspaceHost, type LocalWorkspaceHostOptions, type RunSourceAnswer } from "@flow-state-dev/workspace";
 import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
@@ -130,6 +130,8 @@ function lab(options: {
   script: Step[];
   source: "files" | "repo" | "mapped" | "files-then-repo" | "refused" | "remote-not-allowed";
   maxAttempts?: number;
+  /** The host's setup command (`LocalWorkspaceHostOptions.setup`). */
+  setup?: LocalWorkspaceHostOptions["setup"];
 }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-host-"));
   dirs.push(dir);
@@ -180,6 +182,7 @@ function lab(options: {
       return answer();
     },
     provisionTimeoutMs: 20_000,
+    ...(options.setup !== undefined ? { setup: options.setup } : {}),
   });
 
   const ledger = defineTaskCollection({
@@ -339,7 +342,17 @@ function lab(options: {
     return (Object.values(rows)[0] as { state: Record<string, any> }).state;
   };
 
-  return { act, settled, held, record, seen, collection, remoteA, duringVerdict, asked: () => asked };
+  /** Every status line any request wrote, oldest first. */
+  const statuses = async (): Promise<string[]> => {
+    const rt = await runtime();
+    const requests = (await rt.stores.request.list({ withItems: true })) as Array<{ items?: Array<Record<string, any>> }>;
+    return requests
+      .flatMap((request) => request.items ?? [])
+      .filter((item) => item.type === "status")
+      .map((item) => String(item.message ?? item.content ?? ""));
+  };
+
+  return { act, settled, held, record, seen, collection, remoteA, duringVerdict, statuses, asked: () => asked };
 }
 
 describe("a run's kept files are saved wherever the run stops", () => {
@@ -510,4 +523,30 @@ describe("a run that left its checkout on a side branch with uncommitted changes
     expect(row.attempts).toBe(2);
     expect(JSON.stringify(row)).toContain("uncommitted changes, so it was left as it is");
   }, 60_000);
+});
+
+describe("a host that sets up each fresh checkout", () => {
+  it("runs its command before the harness, and a failure is kept on the stream while the run goes on", async () => {
+    const log = join(mkdtempSync(join(tmpdir(), "harness-manager-setup-")), "ran.log");
+    dirs.push(dirname(log));
+    const script =
+      "const fs = require('fs'); fs.appendFileSync(process.argv[1], process.cwd() + '\\n'); " +
+      "console.log('ERR_LOCKFILE_OUT_OF_DATE'); process.exit(1);";
+    const { act, settled, seen, statuses } = lab({
+      script: ["where"],
+      source: "repo",
+      setup: { command: ["node", "-e", script, log] },
+    });
+
+    await act("seed");
+    await act("drain");
+    await settled("completed");
+
+    // Ran once, in the checkout the harness was then handed.
+    const ran = readFileSync(log, "utf8").trim().split("\n");
+    expect(ran.map((dir) => basename(dir))).toEqual(seen);
+    const said = await statuses();
+    // "Setting up the worktree…" is live only (a transient status), so the stored stream holds the failure.
+    expect(said.find((line) => line.startsWith("Setup failed:"))).toContain("ERR_LOCKFILE_OUT_OF_DATE");
+  });
 });

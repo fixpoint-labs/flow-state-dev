@@ -53,6 +53,7 @@ import {
   WorkspaceRefusedError,
   type IgnoredDirectory,
   type WorkspaceHost,
+  type WorkspaceSetup,
 } from "@flow-state-dev/workspace";
 import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE, isAskMarkerPath } from "./ask";
 import { DERIVED_IDENTITY, LOCK_SUFFIX, OWNED_SEGMENT } from "./identity";
@@ -84,6 +85,12 @@ export interface WorkspaceConfig {
    * silently widen the bound.
    */
   provisionTimeoutMs?: number;
+  /**
+   * A command run in each fresh checkout before a run gets it, such as
+   * `pnpm install`. Passed to the workspace host as its `setup`; it draws from
+   * `provisionTimeoutMs`. Absent, nothing runs.
+   */
+  setup?: WorkspaceSetup;
 }
 
 /** One provisioned checkout. */
@@ -625,6 +632,7 @@ export function hostForConfig(config: WorkspaceConfig, now: () => number = Date.
     localRepositories: [sourceRepo],
     source: () => ({ kind: "repo", repo: sourceRepo, baseRef: config.baseRef }),
     ...(config.provisionTimeoutMs !== undefined ? { provisionTimeoutMs: config.provisionTimeoutMs } : {}),
+    ...(config.setup !== undefined ? { setup: config.setup } : {}),
     now,
   });
 }
