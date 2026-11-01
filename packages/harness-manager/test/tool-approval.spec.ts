@@ -20,13 +20,13 @@ describe("a held tool call", () => {
     expect(heldToolCallOf({ toolName: "Bash", input: { command: "touch marker", description: "x" } }, CWD)).toEqual({
       toolName: "Bash",
       touches: "touch marker",
-      key: JSON.stringify({ command: "touch marker", description: "x" }),
+      key: "touch marker",
       cwd: CWD,
     });
     expect(heldToolCallOf({ toolName: "Edit", input: { file_path: "src/a.ts", old_string: "a" } }, CWD).touches).toBe("src/a.ts");
   });
 
-  it("keys a call by its whole arguments, in a stable order", () => {
+  it("keys a call that names neither by its whole arguments, in a stable order", () => {
     const a = heldToolCallOf({ toolName: "Fetchy", input: { b: 1, a: 2 } }, CWD);
     const b = heldToolCallOf({ toolName: "Fetchy", input: { a: 2, b: 1 } }, CWD);
     expect(a.touches).toBeNull();
@@ -39,7 +39,7 @@ describe("a held tool call", () => {
   });
 });
 
-describe("the grant rule: the same tool with the same arguments", () => {
+describe("the grant rule: the same tool with the same command or file", () => {
   const call = heldToolCallOf({ toolName: "Bash", input: { command: "pnpm test" } }, CWD);
   const grant = { toolName: "Bash", key: call.key };
 
@@ -51,18 +51,20 @@ describe("the grant rule: the same tool with the same arguments", () => {
     expect(grantMatches(grant, heldToolCallOf({ toolName: "Bash", input: { command: "pnpm test -- foo" } }, CWD))).toBe(false);
   });
 
-  it("asks again for another edit to the same file: a grant covers the call the card showed, not the file", () => {
-    const edit = { toolName: "Edit", input: { file_path: "src/a.ts", old_string: "a", new_string: "b" } };
-    const allowed = heldToolCallOf(edit, CWD);
-    const grantEdit = { toolName: "Edit", key: allowed.key };
-    expect(grantMatches(grantEdit, heldToolCallOf(edit, CWD))).toBe(true);
-    const other = heldToolCallOf({ toolName: "Edit", input: { file_path: "src/a.ts", old_string: "a", new_string: "rm -rf" } }, CWD);
-    expect(other.touches).toBe(allowed.touches);
-    expect(grantMatches(grantEdit, other)).toBe(false);
+  it("covers every call of the tool on the file it named, as the stop says", () => {
+    const allowed = heldToolCallOf({ toolName: "Edit", input: { file_path: "src/a.ts", old_string: "a", new_string: "b" } }, CWD);
+    const next = heldToolCallOf({ toolName: "Edit", input: { file_path: "src/a.ts", old_string: "b", new_string: "c" } }, CWD);
+    expect(grantMatches({ toolName: "Edit", key: allowed.key }, next)).toBe(true);
+    expect(grantMatches({ toolName: "Edit", key: allowed.key }, heldToolCallOf({ toolName: "Edit", input: { file_path: "src/b.ts" } }, CWD))).toBe(false);
   });
 
-  it("asks again for the same command with other arguments", () => {
-    expect(grantMatches(grant, heldToolCallOf({ toolName: "Bash", input: { command: "pnpm test", run_in_background: true } }, CWD))).toBe(false);
+  it("asks again for the same query with other arguments: a query is not a reach", () => {
+    const tool = "mcp__docs__search";
+    const allowed = heldToolCallOf({ toolName: tool, input: { query: "grants", mode: "read" } }, CWD);
+    expect(allowed.touches).toBe("grants");
+    const grantQuery = { toolName: tool, key: allowed.key };
+    expect(grantMatches(grantQuery, heldToolCallOf({ toolName: tool, input: { mode: "read", query: "grants" } }, CWD))).toBe(true);
+    expect(grantMatches(grantQuery, heldToolCallOf({ toolName: tool, input: { query: "grants", mode: "write" } }, CWD))).toBe(false);
   });
 
   it("asks again for another tool on the same thing", () => {
@@ -83,6 +85,14 @@ describe("the stop a held call waits on", () => {
     expect(stop.data).toEqual({ tool: "Bash", touches: "touch marker", cwd: CWD, approveOptions: [ALLOW_FOR_RUN] });
   });
 
+  it("says how far Allow for this run reaches: the file or command, else this exact call", () => {
+    expect(stop.prompt).toContain("Allow for this run lets every **Bash** call on `touch marker` through");
+    const edit = toolApprovalStop(heldToolCallOf({ toolName: "Edit", input: { file_path: "src/a.ts", new_string: "x" } }, CWD));
+    expect(edit.prompt).toContain("Allow for this run lets every **Edit** call on `src/a.ts` through");
+    const search = toolApprovalStop(heldToolCallOf({ toolName: "mcp__docs__search", input: { query: "grants", mode: "read" } }, CWD));
+    expect(search.prompt).toContain("Allow for this run lets this exact call through again");
+  });
+
   it("takes only the run scope as a yes's data", () => {
     expect(toolApprovalYesSchema.safeParse(ALLOW_FOR_RUN.data).success).toBe(true);
     expect(toolApprovalYesSchema.safeParse({ scope: "tool" }).success).toBe(false);
@@ -94,7 +104,7 @@ describe("what an answer means for the run", () => {
 
   it("grants a plain yes once, and tells the session to make the call again", () => {
     const out = toolApprovalOutcome({ cancelled: false, approved: true }, call);
-    expect(out.grant).toEqual({ toolName: "Bash", key: call.key, scope: "once" });
+    expect(out.grant).toEqual({ toolName: "Bash", key: "touch marker", scope: "once" });
     expect(out.prompt).toContain("Make the call again");
   });
 

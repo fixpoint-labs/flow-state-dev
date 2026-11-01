@@ -49,10 +49,15 @@ function toolNote(name: string, args: string): string {
  * `null` when none is. Reads keys only, so no harness's input shape is named.
  */
 export function toolCallTouches(args: unknown): string | null {
+  return toolCallDetail(args)?.value ?? null;
+}
+
+/** {@link toolCallTouches}, with the argument key it was read from. */
+export function toolCallDetail(args: unknown): { key: (typeof DETAIL_KEYS)[number]; value: string } | null {
   if (args === null || typeof args !== "object") return null;
   for (const key of DETAIL_KEYS) {
     const detail = (args as Record<string, unknown>)[key];
-    if (typeof detail === "string" && detail.trim() !== "") return detail;
+    if (typeof detail === "string" && detail.trim() !== "") return { key, value: detail };
   }
   return null;
 }

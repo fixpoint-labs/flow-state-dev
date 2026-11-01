@@ -203,7 +203,7 @@ await inbox.answer(item, { approved: false, data: { note: "Not on this branch." 
 
 Each answer resumes the coding session that asked, in the same checkout. On a yes the model is told to make the call again, and this time it runs. On a no it's told it may not, with your note if you gave one, and the run goes on without it.
 
-**Allow for this run is narrow.** It covers the same tool called with the same arguments, never the tool as a whole and never a whole file. Allowing `pnpm test` still asks about `pnpm test -- foo`, and allowing one edit to a file still asks about a different edit to it. A retry of the task starts with no allowances.
+**Allow for this run is narrow.** It covers the same tool on the same command or the same file, never the tool as a whole, and the approval says so. Allowing `pnpm test` still asks about `pnpm test -- foo`, and allowing edits to one file still asks about the next file. Any other call, such as a search, is covered only with the same arguments, so the same search with another option asks again. A retry of the task starts with no allowances.
 
 **An approval has no deadline** unless the host sets `userDeadlineMs`. At the deadline it reads as a no, and the run goes on without the call. **A cancel while it waits** closes it and starts nothing.
 
