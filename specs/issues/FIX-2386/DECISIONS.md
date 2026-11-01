@@ -2,14 +2,15 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-The epic settled where this lives (harness-manager and the ui registry, D4 of FIX-2369) and the
-stack (2385 → 2386 → 2419 → 2388). What is left is how a session learns its place, what the
-board output adds, and the one shape both are read through.
+The epic settled where this lives (harness-manager and the ui registry, D4 of FIX-2369). The
+order is now 2385 → 2419 → 2439 → 2386, with 2386 landing in FIX-2439's window. What is left is
+how a session learns its place, what the board output adds, and the one shape both are read
+through.
 
 ```mermaid
 flowchart TD
-  I["FIX-2386"] --> D1["D1 · record the place on session state"]
-  D1 -.->|"rejected"| X1["a read action, asked per view"]
+  I["FIX-2386"] --> D1["D1 · session points at its worktree row"]
+  D1 -.->|"rejected"| X1["copies on session state, or a read per view"]
   I --> D2["D2 · output gains base and path"]
   D2 -.->|"rejected"| X2["a second read of the run record"]
   I --> D3["D3 · one shape, one chip"]
@@ -17,35 +18,45 @@ flowchart TD
 ```
 
 <a name="d1"></a>
-## D1 · A session records where it works on its own state
+## D1 · A session points at its worktree's row, and keeps only its own count
 
-| | Record on state (chosen) | A read action per view |
-|---|---|---|
-| What the page does | Reads `clientData.session`, which it already holds | Calls an action; git runs on every open |
-| After the session's worktree is deleted | The record is still there, so the chip says where it was | The read fails, and the place is gone |
-| How current the count is | As of the last turn's end | Live |
-| New mechanism | A field, written by the flow's own resolvers (`serverOwned`) | An action and its access rule |
+FIX-2439 adds a user-scoped `worktrees` collection, owned by the `workspace` mechanism and
+written by the workspace host on provision, attach and remove. That row is the one owner of a
+worktree's facts: name, path, branch, repo, `baseCommit`, owner, attached sessions, state and
+the pull requests on its branch. This issue lands in the same window as FIX-2439, right after
+FIX-2419, and reads the row from day one (review, amendment on this PR).
 
-- **Because:** the path and base are decided at provision and never change for the session's
-  life; the session flow already writes server-owned state on every turn, and that write rides
-  the session's existing change notice (FIX-2367's `client.subscribe`), so no poll is added. The count changes only
-  when the harness runs, which is during a turn, so reading it at turn end misses only commits a
-  person makes by hand between turns.
-- **The base comes from the workspace, not the checkout.** `provision` may return
-  `{ path, baseCommit }`. The workspace host already reports the commit it cut a new branch at;
-  `readRunCommits` refuses to trust a base read from the checkout, for the reason in its own
-  header (a run can move any named ref). A path alone still works and records `baseCommit: null`,
-  so Kitchen Sink keeps compiling until its own stack adopts the new return.
-- **The base is kept, never replaced.** The record takes `baseCommit` the first time `provision`
-  reports one, and a later provision never overwrites it. A session stored before this change
-  gets path and branch on its next turn (not on open), with no base and so no count, until the
-  workspace reports one.
+| | Pointer to the row (chosen) | Copies on session state | A read action per view |
+|---|---|---|---|
+| Who owns path, branch, base | The worktree row, once | The session, and later the row too | Git, on every open |
+| After the worktree is removed | The row says `removed`, so the chip still says where it was | Same, until the copies drift | The read fails |
+| Two sessions on one worktree | Both read one row; a non-owner shows "attached to …" | Each holds its own copy | Each runs git |
+| Later migration | None | Copies move to the row | None |
+
+- **`state.workspace` is `{ worktree, commits }`.** `worktree` is the row's key; `commits` is
+  this session's count of commits on the branch past the row's `baseCommit`, read at turn end.
+  No path, branch or base is copied onto session state. The field is server-owned and exposed
+  to the client, and its writes ride the session's existing change notice (FIX-2367's
+  `client.subscribe`), so no poll is added.
+- **The key is written when the session's worktree is provisioned or attached.** `provision`
+  returns the row's key with the path (`{ path, worktree }`, on the one return shape FIX-2419
+  and FIX-2420 also extend). The host writes the row; the session flow only stores the key.
+- **The count is the session's, read at turn end.** The turn-end handler reads the row for path
+  and `baseCommit`, counts with `readRunCommits`, and writes `commits`. A count git couldn't read,
+  or a row with no base, is `null`: unknown, never 0. It reads only during a turn because the
+  harness commits only during a turn, so it misses only commits a person makes by hand between
+  turns.
 - **Branch and count describe the same work.** A harness can switch the checkout to a branch of
-  its own, and the count reads the checkout's `HEAD`. So at turn end the flow records the branch
-  `HEAD` is on beside the count it read, and the chip's branch, count and `git log` all name one
-  line of work. The base stays the one recorded (review, Codex).
-- **Locks in:** `workspace` on harness session state, exposed to the client and owned by the
-  server. A read action, if one is ever wanted, reads the same record.
+  its own, and the count reads the checkout's `HEAD`. At turn end the flow hands the branch
+  `HEAD` is on to the workspace host, which updates the row (one writer, ER-5). The chip's branch,
+  count and `git log` then name one line of work (review, Codex).
+- **A session stored before this change** has no key, so it shows nothing until its next turn
+  provisions or attaches, which writes the row and the key.
+- **Rejected: copies on session state until FIX-2439 lands.** They would show the chip sooner,
+  but make the session a second owner that later needs migrating.
+- **Locks in:** `workspace: { worktree, commits }` on harness session state, and the session
+  flow as a reader of FIX-2439's rows, never a writer. A read action, if one is ever wanted,
+  reads the same row.
 
 <a name="d2"></a>
 ## D2 · The board manager's output gains `baseCommit` and `path`
@@ -62,6 +73,8 @@ flowchart TD
   root's commits too: that is the intent.
 - **Defaulted to `null`** so outputs stored before this change still parse (BP-030), and `null`
   for a run with no repository, like `branch`.
+- **They are copies of the worktree row, not a second owner.** The run record keeps its fields
+  for now; when FIX-2439's row exists, the output's place fields are taken from it.
 - **Locks in:** two fields on the output, read through harness-manager's `./browser` entry
   (`workPlace`, D3), the one reader of a run's branch, commits, base and path. FIX-2379's
   task-row view stays in orchestration and carries none of them: orchestration can't read
@@ -70,9 +83,12 @@ flowchart TD
 <a name="d3"></a>
 ## D3 · One shape and one chip, apart
 
-- **`workPlace` in harness-manager's `./browser`** takes either source and returns
-  `{ branch, path, baseCommit, commits }`, where `commits` is `null` when no base was recorded, and the
-  commands. Only harness-manager knows both sources' fields, so the shaping lives with them.
+- **`workPlace` in harness-manager's `./browser`** takes a task's output, or a session's
+  `workspace` with the worktree row it points at, and returns `{ name, branch, path, baseCommit,
+  state, attachedTo, commits }` and the commands. `commits` is `null` when unknown. Only
+  harness-manager knows both sources' fields, so the shaping lives with them.
+- **The chip reads the row's facts.** It shows the worktree's descriptive name, branch, state,
+  and "attached to …" when the session is not the worktree's owner (FIX-2419 D4).
 - **The `work-place` registry chip takes plain props.** The registry copies files into apps
   (`fsdev ui add`), and a chip that imported harness-manager would pull a server package's name
   into every app that adds it. Apps call `workPlace` and pass the result.
@@ -82,13 +98,13 @@ flowchart TD
   output (`branch`, `commits`, `baseCommit`, `path`, and `review`), which the board already publishes to
   the page. The user-scoped `runs/**` record stays closed to the client, as its header says, and
   the count is the one the manager read at settle. So `readRecordedWork` gains no `run` section:
-  a page passes the row's output, or the session's state, to `workPlace`.
+  a page passes a task's output, or a session's state with its worktree row, to `workPlace`.
 - **Locks in:** one helper and one component. A third app adds the chip and calls the helper.
 
 ## Decided, not asked
 
-- **E1 · Names are fixed:** `workPlace`, the `work-place` component, `state.workspace`, and
-  `baseCommit` in every source (review, Cursor).
+- **E1 · Names are fixed:** `workPlace`, the `work-place` component, `state.workspace` with
+  `worktree` (the row key), and `baseCommit` in every source (review, Cursor).
 - **E2 · No subjects in the session record.** The count is what the chip shows; FIX-2384's diff
   read lists what changed.
 - **E3 · The count is `readRunCommits`'s, unverified as unknown.** A count git couldn't read
