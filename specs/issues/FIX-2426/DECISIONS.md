@@ -2,9 +2,9 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-What was considered, what was chosen, why, and what each choice locks in. One decision and one
-open fork are the sign-off surface. The epic already decided the shape (D5, D6, ER-1 to ER-6);
-nothing here reopens it.
+What was considered, what was chosen, why, and what each choice locks in. One decision is the
+sign-off surface. The epic already decided the shape (epic D1, D5, D6, ER-1 to ER-6); nothing
+here reopens it.
 
 ## The tree
 
@@ -12,8 +12,8 @@ nothing here reopens it.
 flowchart TD
   I["FIX-2426"] --> D1["D1 · the timed read stays on the in-memory bus"]
   D1 -.->|"rejected · a wrong flag misses a process silently"| X1["an app option that declares one process"]
-  I --> O["Open · the D1 flip fired · keep the bus, recommended"]
-  O -.->|"not recommended · cost grows with open tabs"| X2["widen the session stream to user and org"]
+  I --> S["Settled · epic D1's flip fired · the owner kept the bus"]
+  S -.->|"rejected · polling ships for user and org"| X2["widen the session stream to user and org"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -24,8 +24,8 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | An app option that declares "this app runs on one process," which would let the in-memory bus turn the timer off too |
-| **Because** | The engine can't tell whether another process writes the same store. A BullMQ worker added later, or a second web process, is reached today by the timed read; with a wrong flag it is never reached, and nothing says so. The epic's D6 keeps the timer on the in-memory bus for this reason, and the in-memory bus is all this issue ships |
-| **Locks in** | A bus adapter declares whether it crosses processes, and only that turns the timer off. Single-process apps on the in-memory or SQLite stores keep paying 4 queries a second per idle tab until a crossing bus backs them. They get the instant wake now |
+| **Because** | The engine can't tell whether another process writes the same store. A BullMQ worker added later, or a second web process, is reached today by the timed read; with a wrong flag it is never reached, and nothing says so. Epic D6 keeps the timer on the in-memory bus for this reason, and the in-memory bus is all this issue ships |
+| **Locks in** | A bus adapter reports whether it crosses processes *right now*, and only that turns the timer off. The value may change at runtime (the Postgres bus's does when it stops hearing its own ping), and each change is delivered as an event. Single-process apps on the in-memory or SQLite stores keep paying 4 queries a second per idle tab until a crossing bus backs them. They get the instant wake now |
 
 ![With the in-memory bus, does the session stream keep its once-a-second read? Yes, until the bus crosses processes, chosen, beside an app option that declares one process. Decides it: a second process the app forgot. Price: idle views on one process still read](figures/d1-timed-read-stays.svg)
 
@@ -36,89 +36,103 @@ in-memory bus turns the timer off too, with no option.
 
 ## Decided, not asked
 
-- **Public names (ER-1, ER-2).** `ChangeNotice` is `{ topic, kind }`, never rows. A topic is
-  structured: `{ scope: "session" | "user" | "org", id, tenantId?, resource? }`; adapters derive
-  channel names from it. Not `Notice`: `task-notice` owns that word. The slot is `bus`, with
-  `publish` and `subscribe`.
-- **Topics carry the tenant**, so no subscriber hears another tenant's session (BP-035).
-- **This issue's kinds are `items`, `request` and `run`.** Later children add theirs at the one
-  definition.
-- **The convergence point is `resolveStores`** (tenet 5): `createFlowState` via
-  `resolveProfileStores`, the router, and BullMQ workers' `rt.stores` all pass through it. Wrapped:
-  request `set`, `delete`, `deleteIfStatus`, `setFieldsIfStatus`, `persistItems`; session `set`,
-  `delete`. Not `persistEvents`, which feeds the request stream. **The wrap is idempotent**:
-  `createFlowState`'s stores pass through `resolveStores` twice today. A public entry taking a raw
-  registry (a hand-built `createWorker`, a direct `runAction`) wraps too or is documented as
-  silent: with a crossing bus, a silent writer is a missed view.
+- **Names.** `ChangeNotice` is `{ topic, kind, origin? }`; not `Notice`, which `task-notice` owns. The
+  slot is `bus`, with `publish` and `subscribe`. This issue's kinds are `items`, `request` and
+  `run`; FIX-2429 adds a *board change*, not a "task notice".
+- **Two topic shapes, both owned here.** A bus topic is `{ scope, id, tenantId, resource? }`,
+  `tenantId` required, so no subscriber hears another tenant (BP-035); adapters derive channel
+  names from it. A wire topic names no user, org or tenant id: `topic.session(id)`, `topic.user()`
+  and `topic.org()`, each with an optional `resource`, in `@flow-state-dev/contracts` for client
+  and engine. FIX-2428's mint fills the rest from the caller.
+- **`origin?: { requestId }` names the request that made the change** (FIX-1506 D2, so the
+  writer's view skips the notice it already has from its own stream). An id says who wrote, not
+  what changed, so ER-1 and epic D2 hold: the notice still carries no rows, and any read the id
+  prompts is checked by its route. Optional; a write no request made sends none. Adapters and
+  delivery carry it through unchanged.
+- **Who hears a resource-narrowed notice:** subscribers of that resource's topic, and subscribers
+  of its scope's un-narrowed topic, each receiving the narrowed topic. A narrowed subscriber hears
+  only its resource. Same rule on the bus and the wire.
+- **The session stream filters by kind**: it subscribes its session's topic and wakes only on
+  `items`, `request` and `run`. State, resource and board notices on that topic never wake it,
+  so it is not a second way to watch a board or a resource.
+- **Lineage-shared session resources publish the writing session's topic only** (FIX-1506). ER-2
+  has no lineage topic, and no consumer needs one today: the one live lineage-shared collection,
+  a task board's ledger, also publishes the conversation's topic (FIX-2429). Who it affects: a
+  view of another session in the lineage watching any other lineage-shared resource, which sees
+  the change at its next read. A consumer that needs more raises it at the epic's topic seam.
+- **One wrapper, applied at every entry** (tenet 5): `resolveStores`, `runAction`, BullMQ's
+  `createFlowJobProcessor` (so `createFlowWorker`), and `fsdev run` and `chat`, which write the
+  session and settle requests beside `runAction`. Every write method on the request and session
+  stores is wrapped: `set`, `delete`, `patchField`, `incField`, `pushToArray`, `deleteField`, and
+  request `deleteIfStatus`, `setFieldsIfStatus`, `persistItems`. Not `persistEvents`, which feeds
+  the request stream. **The wrap is idempotent**, since stores pass several entries.
 - **A notice goes out only once its write can be read**: after the awaited write, and for the
-  buffered `persistItems`, after its batch lands. Earlier, the woken read finds nothing and
-  nothing wakes it again.
+  buffered `persistItems`, after its batch lands. A publisher may fold one topic's notices within
+  a tick into one.
+- **The wake reads at most once per `intervalMs`.** A notice after a quiet interval reads at once;
+  later ones fold into one read at the interval's end. `persistItems` runs on every streaming
+  update, and the stream sends only finished items, so uncapped a viewer reads back to back
+  through a reply. Capping at the stream keeps the wrapper free of each item's last status.
 - **A run's writes publish its parent's topic too**: the parent's view lists it in `session.runs`.
-- **A failed publish never fails the write** (ER-6).
-- **The stream coalesces**: at most one read in flight and one waiting.
-- **A bus that reconnects tells its subscribers to read once**, the server's form of ER-6's read on
-  reconnect.
-- **`bus` resolves as epic D5 says**: the profile's `bus`, else the primary when it declares it,
-  else in memory. A `bus` adapter that doesn't declare the slot fails at `ready()`.
+- **`crossesProcesses` can change, and the contract is its transition event.** The bus emits
+  each change (`onCrossingChange`); the stream keeps a cached boolean. A change to not crossing
+  is itself the wake: waiting streams resume the timed read within one interval. Polling the
+  value on each wait is an equivalent implementation. The ping and stale rule are FIX-2427's.
+- **A bus that reconnects tells its subscribers to read once.**
+- **A `bus` adapter that doesn't declare the slot fails at `ready()`.**
 
 ## Considered and dropped
 
 | Alternative | Why not |
 |---|---|
-| A publish at each write site | A dozen call sites, and a new writer forgets one. The epic chose `resolveStores` |
+| A publish at each write site | A dozen call sites, and a new writer forgets one. The epic chose one wrapper |
 | The timer and the wake, always both | The in-memory bus does this. On a crossing bus it keeps the cost D6 removes |
+| No publish for an in-progress `persistItems` | The wrapper would hold each item's last status to tell; the cap bounds the reads anyway |
+| A raw registry documented as silent | With a crossing bus, a silent writer is a view that never updates |
 | A slower fallback (5 s) once a bus exists | Changes latency on exactly the hosts that can't cross, with no measured need |
 | String topics (`"session:abc"`) | Every adapter and every subscriber parses them, and the tenant is easy to drop |
 | Publishing from `flow_events` (FIX-569) | Keyed by one request; a session view needs the session's topic |
 
-<a name="open"></a>
-## Open
-
-### The D1 flip fired: keep the bus, or widen the session stream?
-
-![D1's flip fired at our own apps' tab counts. Keep the bus, recommended, beside widening the session stream to user and org. Decides it: what a hundred idle tabs cost. Price: three channel issues against about two](figures/open-d1-flip.svg)
-
-It comes down to a hundred idle tabs: widened, about 1,200 queries a second doing nothing.
-
-| | |
-|---|---|
-| **In plain terms** | The epic chose a bus over widening the session stream, unless the stream's per-second reads proved cheap at our own apps' view counts. Measured: an idle open view makes the database answer 4 queries a second. The labs and Shift Manager run one to five views, under 1% of a 10-connection pool, so the flip fires as written |
-| **The trade-off** | Keep the bus: three channel issues (this one, the Postgres bus, the socket) before a browser sees push, and an idle tab costs nothing. Widen: about two issues, but every open tab costs the database whether or not anything changes, growing with users rather than activity. At 100 tabs over three scopes, about 1,200 queries a second, 10–15% of the pool. Widening also reopens the epic's signed goal, "without a store read per viewer per second" |
-| **My recommendation** | **Keep the bus.** The flip measured our labs, but the framework's target is the apps built on it, and 100 open tabs is a small one. The threshold set here: widen only if the widened read stays under 10% of the primary pool at the deployment's concurrent open views. Measured, that line is crossed near 70–100 views, sooner on a networked Postgres |
-| **What would change my mind** | The realtime set is only for our own apps for the next release, with no app past about 50 concurrent tabs in view. Then widening is cheaper today |
-| **If I'm wrong** | Kept wrongly: about one issue more than today's scale needed. Flipped wrongly: an app at a few hundred tabs spends a quarter of its pool reading nothing, and we build the bus later and undo the widening |
-
 <a name="settled"></a>
 ## Settled
 
+- **Epic D1's flip fired, and the owner kept the bus** ([epic D1](../../epics/FIX-2367/DECISIONS.md#d1),
+  [#4445](https://github.com/fixpoint-labs/flow-state-dev/pull/4445)). As first written, it fired
+  at the labs' one to five views. Widening would ship polling for user and org changes, which
+  FIX-1506 rules out, and leave FIX-380 without its seam. Epic D1 and D6 now flip under 100 store
+  queries a second at 100 idle views.
 - **An idle view costs at least four reads a second (epic D1)** — **CONFIRMED**, exactly 4.00
   statements per view per second at 1, 10, 50 and 100 views, by
   [`poc/stream-read-cost/`](poc/stream-read-cost/): the real router over the Postgres stores on
-  PGlite, every statement counted. With one request and two runs open: 5.6 to 6.9. Database time:
-  3 to 8 ms per view per second; 100 idle views hold 3–4% of a 10-connection pool for one scope.
-  Control `FIX2426_CONTROL=no-viewers` reports 0. One of three full-grid runs failed one case on
-  the runs-frame assertion, not the counts; two reruns passed. PGlite is in process, so these
-  times are a floor for a networked Postgres. The premise held; the threshold it sets is the open
-  fork above.
+  PGlite, every statement counted. With one request and two runs open: 5.6 to 6.9. Control
+  `FIX2426_CONTROL=no-viewers` reports 0. One of three full-grid runs failed one case on the
+  runs-frame assertion, not the counts; two reruns passed. **Pool occupancy is not established**:
+  PGlite runs every query behind one lock, so its timings include waits (Codex on #4445). They are
+  dropped, and with them the earlier pool shares and view-count crossover.
 
 ## Analysis
 
-2026-11-01 · watermark 2026-10-31 (epic approved) · **Right approach, one open fork.** Run
-inline by the author, with no fresh analyst in this dispatch: weaker than the skill asks.
+2026-11-01 · watermark 2026-10-31 (epic approved) · **Right approach.** Run inline by the author,
+with no fresh analyst in this dispatch: weaker than the skill asks.
 
 1. **Reuse** — each Adds row extends a slot, a function or a loop
    ([Builds on / Adds](SPEC.md#whats-already-here-and-the-debt)).
 2. **Prior art** — the usual `LISTEN`/`NOTIFY` pattern: the notice says something changed, the
    listener queries. FIX-2286 D3 says the same.
-3. **Other shapes** — widening the session stream, now the open fork.
+3. **Other shapes** — widening the session stream, which the owner rejected (epic D1).
 4. **New factors** — none since the epic's approval.
-5. **Necessity** — rests on the open fork.
+5. **Necessity** — earns its place with the bus kept (epic D1).
 6. **Ergonomics** — nothing new for app code; adapter authors learn one contract.
 7. **Concerns** — "notice" collides with `task-notice`; folded as `ChangeNotice`.
 
 ## How it got here
 
 - **Draft** — framed as the epic's seam and the stream's wake; `resolveStores` as the one publish
-  point; the D1 measurement built first, which fired the flip and made it the open fork.
+  point; the epic D1 measurement built first, which fired the flip and made it the open fork.
+- **Amended (Nov 1)** — the owner kept the bus. The wrap covers raw-registry entries and every
+  write method; the wake is capped; bus and wire topics split; `crossesProcesses` may change,
+  as a transition event (for FIX-2427); pool timings dropped.
+- **Seams from FIX-1506 (#4478)** — `origin` on the notice; a scope subscriber hears its
+  narrowed notices, the session stream filters by kind; lineage-shared resources a stated limit.
 
-**Open: the D1 flip.**
+**Open: none.**

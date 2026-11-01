@@ -23,7 +23,7 @@ carries the change; where none can, views keep today's one-second read and miss 
 | **The real need** | Epic D6 and ER-3, the bus wakes the session stream, and closure leg d, a plain reply reaching another process with the timed read off ([FIX-2367](../../epics/FIX-2367/SPEC.md#the-goal-and-how-well-know-its-met)) |
 | **Smaller, and rejected** | "A bus exists, with `publish`, `subscribe` and an in-memory adapter." It ships a seam nobody listens on, and the stream still reads each second |
 | **Bigger, and not this issue's** | Crossing processes (FIX-2427), push to the browser (delivery), resource and state notices (FIX-1506) |
-| **Not done if** | With the timer off, a view misses a plain reply that wrote no resource or state · a notice goes out before its write can be read, so the woken read finds nothing and nothing wakes it again · the in-memory bus turns the timer off · an idle view still reads with a bus that crosses processes · a write path that skips `resolveStores` goes unpublished with the timer off |
+| **Not done if** | With the timer off, a view misses a plain reply that wrote no resource or state · a notice goes out before its write can be read, so the woken read finds nothing and nothing wakes it again · the in-memory bus turns the timer off · an idle view still reads with a bus that crosses processes · a writer handed a raw registry goes unpublished with the timer off · a view reads more than once an interval during a streaming reply · a bus that stops crossing leaves a view without the timed read |
 
 ```mermaid
 flowchart LR
@@ -31,7 +31,7 @@ flowchart LR
   W --> V["what B's open view of s1 receives"]
   V -->|"the reply within 1 s · 0 statements while idle"| P["PASS · goal met"]
   F["each server on its own in-memory bus"] -.->|"timed read on"| V2["the reply within 2 s"]
-  C["control · the publish in resolveStores cut out"] -.-> W
+  C["control · the write wrapper cut out"] -.-> W
   V -.->|"under the control"| X["must FAIL · the reply never arrives"]
 ```
 
@@ -48,23 +48,26 @@ The check reads what B's stream delivers and what the database is asked, not whe
 
 ## What changes
 
-![Today every open session-stream view reads the request and session stores each second. After, the same writes pass through resolveStores, which publishes a notice on the session's topic to the bus once each write lands; the stream reads once when woken, and keeps its timed read only where the bus can't cross processes](figures/what-changes.svg)
+![Today every open session-stream view reads the request and session stores each second. After, the same writes pass through one wrapper, in resolveStores and at each raw-registry entry, which publishes a notice on the session's topic to the bus once each write lands; the stream reads when woken, at most once a second, and keeps its timed read only where the bus can't cross processes](figures/what-changes.svg)
 
 Same route, same events, same client. What changes is what makes a view read.
 
-**What a later child writes against.** Illustrative: `bus`, `publish`, `subscribe` and
-`ChangeNotice` are fixed ([decided, not asked](DECISIONS.md#decided-not-asked)); the rest is the
-implementer's.
+**What a later child writes against.** Illustrative: `bus`, `publish`, `subscribe`,
+`ChangeNotice`, `topic` and `onCrossingChange` are fixed ([decided, not asked](DECISIONS.md#decided-not-asked)); the
+rest is the implementer's.
 
 ```diff
-  // a publisher (FIX-1506, the task board)
+  // a publisher (FIX-1506, the task board): a bus topic names its id and tenant
 + await stores.bus.publish({ topic: { scope: "org", id: orgId, tenantId }, kind: "state" });
 
   // a listener (the session stream here; delivery next)
 + const stop = stores.bus.subscribe({ scope: "session", id: sessionId, tenantId }, () => readAgain());
 
+  // a client (FIX-2428): a wire topic names no user, org or tenant id
++ [topic.session(sessionId), topic.org(), topic.user({ resource: "drafts" })]
+
   // an adapter (the Postgres bus, Ably)
-+ { publish, subscribe, crossesProcesses: true }   // declared in `capabilities: ["primary", "bus"]`
++ { publish, subscribe, crossesProcesses, onCrossingChange }  // may change; slot in `capabilities: ["primary", "bus"]`
 ```
 
 **Docs:** update `persistence/overview.md` (*Store adapters*: the `bus` slot and when a view
@@ -85,18 +88,18 @@ delivery child's.
 |---|---|
 | What already says "something changed": `streaming` · `subscribeToEvents`; `bullmq` · `StreamBridge`; `onResourceChanged`; the task substrate's `onChange` | **Leaves alone.** Each is keyed by one request or one process (searched `subscribe`, `publish`, `notify`, `onChange`, `listen` in `packages/`). **This is the fifth, and the first keyed by a scope** |
 | `task-notice` · `recordEnding`: a task's ending, owed to its session | **Leaves alone.** A different job, which owns the word: the type here is `ChangeNotice` |
-| `store` · `resolveStores`, which every registry passes through | **Extends.** Wraps the request and session stores' writes to publish |
+| `store` · `resolveStores`, which `createFlowState` and the router pass through; `runAction`, BullMQ's `createFlowJobProcessor` and `fsdev run` and `chat` take a raw registry | **Extends.** Wraps the request and session stores' writes to publish, there and at each raw-registry entry |
 | `CapabilitySlotMap`, `resolve-slots.ts` | **Extends** with `bus`, defaulting to the primary when it declares it |
 | The session stream's loop (`session-stream-routes.ts`) | **Extends.** Its wait becomes: a notice, or the timer where the bus can't cross |
-| [Epic D5](../../epics/FIX-2367/DECISIONS.md#d5), [D6](../../epics/FIX-2367/DECISIONS.md#d6), [ER-1, ER-2, ER-3, ER-6](../../epics/FIX-2367/DECISIONS.md#who-owns-what) | **Kept**, and built here. D1's flip threshold is set here, and [fired](DECISIONS.md#open) |
+| [Epic D5](../../epics/FIX-2367/DECISIONS.md#d5), [D6](../../epics/FIX-2367/DECISIONS.md#d6), [ER-1, ER-2, ER-3, ER-6](../../epics/FIX-2367/DECISIONS.md#who-owns-what) | **Kept**, and built here. [Epic D1](../../epics/FIX-2367/DECISIONS.md#d1)'s flip was measured here and fired; the owner kept the bus |
 | [FIX-2286 D3](../FIX-2286/DECISIONS.md#d3): the push says when, a read says what | **Kept** |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | The bus contract and in-memory adapter | `streaming` · `subscribeToEvents`; `bullmq` · `StreamBridge` | Both end with one request; a topic outlives every request (epic D5) |
 | The `bus` slot | `store` · the `primary` slot | Extends the slot map; the primary backs it when it can |
-| One publish point | A publish at each write site | Composed: one wrapper in `resolveStores`, not a dozen call sites |
-| The stream's wake | The stream's timer | Extends it: the same read, woken |
+| One publish point | A publish at each write site | Composed: one wrapper, in `resolveStores` and at each raw-registry entry, not a dozen call sites |
+| The stream's wake | The stream's timer | Extends it: the same read, woken, at most once an interval |
 
 | The debt | |
 |---|---|
@@ -118,8 +121,7 @@ when FIX-2427 ships. If wrong: a fifth change signal nobody else adopts.
    processes; the in-memory bus keeps it.** If wrong: single-process apps pay 4 queries a second
    per idle tab that they never needed to.
 
-**Open: [the D1 flip fired](DECISIONS.md#open).** The measurement says an idle view is cheap at
-our own apps' tab counts. Keep the bus (recommended), or widen the session stream instead. This is
-the one to weigh: it decides whether this issue ships.
+**Open: none.** Epic D1's flip fired here; the owner kept the bus
+([epic D1](../../epics/FIX-2367/DECISIONS.md#d1)).
 
 Feature · `engine` · medium: one slot, one contract, one wrapper, one route's wait · epic FIX-2367
