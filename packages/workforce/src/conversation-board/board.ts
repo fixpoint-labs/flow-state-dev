@@ -350,6 +350,15 @@ const stepNotHeld = (taskId: string) =>
     taskId
   );
 
+/** The refusal for a retry of a step (FIX-2383): only its worker's own turn runs a step, so a retry would start nothing. */
+const stepNotRetried = (taskId: string) =>
+  new TaskWriteRefusedError(
+    "step_cannot_be_retried",
+    `task "${taskId}" is a step a worker planned for itself: it runs only in that worker's own turn, so a retry would start nothing. ` +
+      "Ask the worker to try it again, or file a follow-up. Nothing was written.",
+    taskId
+  );
+
 /** The refusal for a wait on a step: it runs after the waiting turn, in its request (FIX-2082). */
 const stepCannotWait = (taskId: string) =>
   new TaskWriteRefusedError(
@@ -469,10 +478,11 @@ function sessionKeyOf(task: Pick<Task, "id" | "assignee" | "followUpOf" | "sessi
 
 /**
  * Whether the row holds its session: started and unfinished, a retry
- * waiting to run again included. A held row hasn't started.
+ * waiting to run again included. A held row hasn't started, and a row a
+ * user's retry reopened (FIX-2383) waits like a new one until it is claimed.
  */
 function holdsSession(task: Task): boolean {
-  return !isTerminalStatus(task.status) && task.status !== "held" && hasStarted(task);
+  return !isTerminalStatus(task.status) && task.status !== "held" && task.retryPending !== true && hasStarted(task);
 }
 
 /**
@@ -491,6 +501,7 @@ function isStartable(task: Task, rows: readonly Task[]): boolean {
   if (key === undefined) return true;
   return !rows.some((other) => other.id !== task.id && holdsSession(other) && sessionKeyOf(other) === key);
 }
+
 
 /**
  * The sessions by id another board's routed task holds now, by board, as this
@@ -1303,6 +1314,17 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         if (outcome.outcome !== "declined" && hasStartable(ref, id)) await triggerPass(ctx);
         return outcome;
       },
+      // A retry (FIX-2383) leaves the row waiting again: one now startable starts the board, as a release does.
+      ...(ref.retry === undefined
+        ? {}
+        : {
+            async retry(id: string) {
+              await owePass(ctx);
+              const outcome = await ref.retry!(id);
+              if (outcome.outcome === "recorded" && hasStartable(ref, id)) await triggerPass(ctx);
+              return outcome;
+            }
+          }),
       // A steer (FIX-2086), a routed task's included (FIX-2083): one that
       // leaves the task waiting on it (it ran nothing, waiting on its filed
       // work) starts the turn it is owed, in the task's session.
@@ -1591,6 +1613,14 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         return board.hold(id);
       },
       release: byRow("release") as TaskCollectionRef["release"],
+      ...(board.retry === undefined
+        ? {}
+        : {
+            async retry(id: string) {
+              if (isStep(id)) throw stepNotRetried(id);
+              return board.retry!(id);
+            }
+          }),
       // A step runs after this turn, in this request: a wait on it would never end.
       ...(board.markWait === undefined
         ? {}
