@@ -101,7 +101,10 @@
     "apps/kitchen-sink/components/flow-state/run-changes.tsx",
     // Kitchen Sink's copy of the registry's run-checks, which the registry
     // drift test requires installed; its turn notice imports it later.
-    "apps/kitchen-sink/components/flow-state/run-checks.tsx"
+    "apps/kitchen-sink/components/flow-state/run-checks.tsx",
+    // Kitchen Sink's copy of the registry's spend, which the registry drift
+    // test requires installed; its harness session imports it later.
+    "apps/kitchen-sink/components/flow-state/spend.tsx"
   ],
 
   // Dead code fails `fallow audit` at its default severity. Complexity reports
