@@ -42,14 +42,16 @@ export function useLabKeys(on: { palette: () => void; step: (by: -1 | 1) => void
 
 /**
  * Focus the first element `selector` names once it is drawn: a selection
- * re-renders the center, so the element can arrive a frame or two later.
+ * re-renders the center, and something just made (a session, a hire) is drawn
+ * only once the next read of the list brings it, a few seconds later at most.
+ * So it keeps looking for up to `withinMs`.
  */
-export function focusWhenDrawn(selector: string) {
-  let tries = 0;
+export function focusWhenDrawn(selector: string, withinMs = 5_000) {
+  const until = Date.now() + withinMs;
   const attempt = () => {
     const found = document.querySelector<HTMLElement>(selector);
     if (found !== null) found.focus();
-    else if ((tries += 1) < 60) requestAnimationFrame(attempt);
+    else if (Date.now() < until) requestAnimationFrame(attempt);
   };
   requestAnimationFrame(attempt);
 }

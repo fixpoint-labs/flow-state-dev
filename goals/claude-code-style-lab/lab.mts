@@ -14,15 +14,15 @@ export const git = (cwd: string, ...args: string[]) => execFileSync("git", args,
 /** The lab checkout's state outside the goal's own scratch: a run must leave it as it was. */
 export const labCheckout = () => git(REPO_ROOT, "status", "--porcelain", "--", "labs/claude-code-style");
 
-/** The lab, served for `user` from a fresh data folder. */
-export async function startLab(data: string, user: string, env: Record<string, string>): Promise<{ origin: string; child: ChildProcess; log: () => string }> {
+/** The lab, served for `user` from a fresh data folder; `app` is what `--app` serves (default: the package's built pages). */
+export async function startLab(data: string, user: string, env: Record<string, string>, app = "@flow-state-dev/claude-code-style"): Promise<{ origin: string; child: ChildProcess; log: () => string }> {
   const port = 45_000 + Math.floor(Math.random() * 10_000);
   const origin = `http://127.0.0.1:${port}`;
   await refuseIfAnswering(origin);
   let log = "";
   const child = spawn(
     repoPath("node_modules", ".bin", "tsx"),
-    ["packages/cli/src/bin.ts", "dev", "--config", join(LAB, "fsdev.config.mts"), "--app", "@flow-state-dev/claude-code-style", "--port", String(port), "--no-open"],
+    ["packages/cli/src/bin.ts", "dev", "--config", join(LAB, "fsdev.config.mts"), "--app", app, "--port", String(port), "--no-open"],
     {
       cwd: REPO_ROOT,
       detached: true,
