@@ -42,6 +42,7 @@ A project's address is its visibility and its id, `{ visibility: "shared", id: "
 | `members` | On a shared project, who may open workstreams in it. Always includes the owner. A private project has only its owner |
 | `repository` | The git remote the project's code lives in, such as `https://github.com/acme/storefront.git`, or `null` |
 | `mcpServers` | The MCP servers the project's coding runs get, by name, such as `["linear"]`. Empty by default. See [Tools a project's coding work gets](#tools-a-projects-coding-work-gets) |
+| `checks` | The commands that check the project's code, such as `["pnpm typecheck"]`. Empty by default. See [Checks a project's coding work runs](#checks-a-projects-coding-work-runs) |
 
 Each workstream is its own entry, not part of the row, so two owners can update their workstreams at the same time.
 
@@ -124,6 +125,7 @@ The write is a `create`, never an overwrite. If the same owner sends the same id
 | `invalid-project-id` | The id is empty, `unassigned`, or not one path segment |
 | `private-has-members` | A private project names anyone besides its owner |
 | `invalid-repository` | The repository isn't a remote. See [A project's code and files](#a-projects-code-and-files) |
+| `invalid-check` | One of the `checks` isn't a single command. See [Checks a project's coding work runs](#checks-a-projects-coding-work-runs) |
 
 ### Changing the brief
 
@@ -828,6 +830,43 @@ claudeCodeAgent({
 ```
 
 Pass the same names to `defineProjectBlocks({ mcpServers: ["linear"] })`, so a project can name them. Each user's key is a record at `mcp-credentials/<server>` in their own user scope, `{ value, setAt }`. Write it from a route of your own rather than an action: an action's input is kept on its request record. A browser read of the collection shows `setAt` only. Shift Manager's [Settings](../shift-manager/settings.md) page is one such route.
+
+### Checks a project's coding work runs
+
+A project can name the commands that check its code: a typecheck, a test suite, a lint. On a host that turns them on, a coding run on the project counts as done only when they pass in its checkout. A failed command sends the work back for another attempt, and that attempt is handed the command and the end of its output.
+
+A member writes them when creating the project, or later with `setChecks`:
+
+```ts
+// at create
+{ id: "storefront", title: "Storefront", repository: "https://github.com/acme/storefront.git", checks: ["pnpm typecheck", "pnpm --filter web test"] }
+
+// later, from a member's session; [] clears them
+await projects.send("setChecks", { project: { visibility: "shared", id: "storefront" }, checks: ["pnpm typecheck"] }, { sessionId });
+```
+
+`setChecks` replaces the list whole and returns `{ project }`. Only members can call it. Each command is one program and its arguments, run with no shell, and quotes group words. Both writes refuse a line with `&&`, `||`, `|`, `;`, `&`, `<`, `>`, `$(` or a backtick in it, an empty line, and an unclosed quote, with `invalid-check`, and write nothing. Write `pnpm build && pnpm test` as two entries.
+
+**Nothing runs them until the host opts in.** A project's checks are a member's words, run on the machine that runs your coding workers. Whether that machine runs them is the host's call. To turn them on, pass `projectChecks()` as the commands of harness-manager's [`commandCheck`](../orchestration/harness-manager.md#checking-the-work-with-commands):
+
+```ts
+import { commandCheck, harnessManager } from "@flow-state-dev/harness-manager";
+import { localWorkspaceHost } from "@flow-state-dev/workspace";
+import { projectChecks, projectWorkspace, projectWorkspaceCapability } from "@flow-state-dev/workforce";
+
+harnessManager({
+  // ...the board it works and its other options, as usual
+  phase: commandCheck(codePhase, { commands: projectChecks(), timeoutMs: 10 * 60_000 }),
+  workspace: localWorkspaceHost({
+    root: "/var/fsd/runs",
+    remotes: { allow: ["github.com"] },
+    source: projectWorkspace(),
+  }),
+  uses: [projectWorkspaceCapability],
+});
+```
+
+Each attempt reads the checks of the project the run works in, found the same way [`projectWorkspace`](#coding-work-in-a-project) finds it. A list changed between two attempts applies to the second. A run with no project gets no checks. `timeoutMs` bounds all of a run's checks together. [Checking the work with commands](../orchestration/harness-manager.md#checking-the-work-with-commands) covers what a run records and how a review shows the results.
 
 ### Working in a checkout you already have
 

@@ -3,9 +3,10 @@
  * host that opts in to running them.
  *
  * A project names its checks on its row (`checks`); nothing runs them until a
- * host hands this resolver to harness-manager's `commandCheck` (or a session
- * flow's `verify`). That is the host's call, once, for its own machine: the
- * commands are a project member's words, run in the run's checkout.
+ * host hands this resolver to harness-manager's `commandCheck` as its
+ * `commands`. That is the host's call, once, for its own machine: the commands
+ * are a project member's words, run in the run's checkout. (A session flow's
+ * `verify` names its own commands: a session has no project to read.)
  *
  * Per run, it finds the run's project with the same reader `projectWorkspace()`
  * and `projectMcpTools()` use (`run-project.ts`), so the checks come from the

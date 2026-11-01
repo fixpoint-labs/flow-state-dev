@@ -11,7 +11,7 @@ Engineering calls inside the direction FIX-2369 fixed. None is asked.
 |---|---|
 | **Instead of** | An action that returns the patch (the issue's wording, "a read action") |
 | **Because** | An action's return is recorded on its trace and streamed (BP-042); a patch is data for a person. A flow read (FIX-2286) is answered in the response and stored nowhere, refuses writes, and takes no concurrency slot, so it runs beside a turn in flight |
-| **Locks in** | Apps call `POST /api/flows/:flow/:sessionId/reads/changes`. The session flow's read and the board read share one output shape, `{ diff, patch }` |
+| **Locks in** | Apps call `POST /api/flows/:flow/:sessionId/reads/changes`. The session flow's read and the board read share one output shape, one of two cases: `{ diff, patch: null }` without a `path`, or `{ diff: null, patch }` with one ([D3](#d3)). The board read adds `taskId` |
 
 <a name="d2"></a>
 ## D2 · The branch's commits, from where it last met the base
@@ -36,13 +36,16 @@ Engineering calls inside the direction FIX-2369 fixed. None is asked.
 | | |
 |---|---|
 | **Instead of** | A step before the harness that provisions the checkout itself |
-| **Because** | The harness provisions through the `cwd` feed; recording there needs no second provisioning call and no change to when provisioning happens (FIX-2420 owns the first-turn setup wait in this region). The end is recorded in `onFinished`, so a stopped or failed turn still has one |
+| **Because** | The harness provisions through the `cwd` feed; recording there needs no second provisioning call and no change to when provisioning happens (FIX-2420 owns the first-turn setup wait in this region). The end is recorded inside the turn, by `recordTurnHead` after the harness step and by `recordFailure` for a turn that threw, so a stopped or failed turn still has one. Not in `request.onFinished`: the engine emits the terminal status before that hook runs, and a page refreshes on that status |
 | **Locks in** | A turn that never reaches a git checkout keeps `base: null`, records no `head`, and reads unverified. The turn-end step only locates the checkout when a base exists, so a host whose sessions have no checkout is never asked for one |
 
 ## Notes for the stacked children
 
-- **FIX-2387, FIX-2398** stack on this branch in the turn-end region: `turnEnd` is now a sequencer
-  (`recordTurnHead` then `branchPullRequests`); add steps to it rather than replacing `onFinished`.
+- **FIX-2387, FIX-2398** stack on this branch in the turn-end region. Session state a page reads
+  on the turn's end is written inside the turn (a tap after the harness step, or `recordFailure`
+  for a turn that threw), since the terminal status is emitted before `request.onFinished` runs.
+  `turnEnd` is a sequencer holding only effects no page reads on refresh (`branchPullRequests`).
+  Append such steps to it; never register a second `onFinished` or replace it.
 - **App adoption** (Kitchen Sink, Claude Code-style, Teammates, Shift Manager): install
   `run-changes` with `fsdev ui add run-changes`, pass the review data's `files`, and wire
   `loadPatch` to the `changes` read on the run's session (board runs) or with `{ turn }` (session

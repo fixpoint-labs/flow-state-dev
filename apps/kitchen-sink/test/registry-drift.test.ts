@@ -37,7 +37,7 @@ describe("kitchen-sink registry drift (FIX-1477 V8)", () => {
     // files outside `generative/`) are installed here. If that count moves,
     // this test's scope moved with it and needs re-reading before trusting a
     // green result.
-    expect(compared.length).toBe(39);
+    expect(compared.length).toBe(40);
 
     expect(mismatches).toEqual([]);
   });

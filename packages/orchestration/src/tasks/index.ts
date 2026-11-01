@@ -31,7 +31,7 @@ export {
   type TaskSpendSource,
   type TaskSpendView,
 } from "./schema/spend";
-export { spendAfterWrite, taskSpendView, type TaskSpendWrite } from "./spend";
+export { requestSpendView, spendAfterWrite, taskSpendView, type TaskSpendWrite } from "./spend";
 export {
   taskStatusSchema,
   isTerminalStatus,

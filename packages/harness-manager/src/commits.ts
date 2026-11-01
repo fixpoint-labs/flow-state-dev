@@ -222,6 +222,8 @@ export async function readRunDiff(
         added: added === "-" ? null : Number.parseInt(added!, 10),
         removed: removed === "-" ? null : Number.parseInt(removed!, 10),
       };
+      // A row git didn't write as a count: say the diff couldn't be read rather than total a NaN.
+      if (Number.isNaN(file.added) || Number.isNaN(file.removed)) return UNVERIFIED_DIFF;
       diff.fileCount += 1;
       diff.added += file.added ?? 0;
       diff.removed += file.removed ?? 0;

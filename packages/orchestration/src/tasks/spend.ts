@@ -139,6 +139,18 @@ export function taskSpendView(task: Pick<Task, "spend"> & Partial<Pick<Task, "st
 }
 
 /**
+ * One request's spend, read as a task's spend reads (FIX-2398): the row
+ * {@link spendAfterWrite} settles from it, folded by {@link taskSpendView}.
+ * `null` when it spent nothing. For a reader with a request and no task row,
+ * such as a harness session's turn.
+ */
+export function requestSpendView(spend: RequestSpend, requestId: string): TaskSpendView | null {
+  // A row that ran only this request, which then settled: the write and the fold a task's row gets.
+  const settled = spendAfterWrite({ spend: null }, { requestId, part: "settle", spend });
+  return settled === undefined ? null : taskSpendView({ status: "completed", spend: settled });
+}
+
+/**
  * A superseded admission's live part, less what its continuation recovered
  * from the log, source by source: only what was never logged. With nothing
  * recorded as recovered (an older row), its harness runs whole and no model
@@ -156,6 +168,8 @@ function unrecovered(live: TaskSpendSource[], recovered: TaskSpendSource[] | nul
       outputTokens: left(source.outputTokens, logged.outputTokens),
       runs: left(source.runs, logged.runs),
       unreported: left(source.unreported, logged.unreported),
+      // The continuation reports the logged charge itself, as it does the tokens.
+      costUsd: source.costUsd === null ? null : left(source.costUsd, logged.costUsd ?? 0),
     };
     return kept.inputTokens === 0 && kept.outputTokens === 0 && (source.kind === "model" || kept.runs === 0) ? [] : [kept];
   });
