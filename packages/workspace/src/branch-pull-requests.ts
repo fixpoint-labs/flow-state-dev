@@ -60,8 +60,14 @@ export interface RecordBranchPullRequestsOptions {
   readonly timeoutMs?: number;
   /** The `gh` to run. Default `"gh"` on `PATH`. */
   readonly gh?: string;
-  /** The worktree's row in the user's list (`./worktrees`): what is found is added to its `pullRequests` too. */
-  readonly worktree?: { readonly collection: WorktreeCollection; readonly key: string };
+  /**
+   * The worktree's row in the user's list (`./worktrees`): what is found is
+   * added to its `pullRequests` too. `startedOn` is the pull request the
+   * session started on (`start: { pullRequest }`): opened before any turn, it
+   * is added to the row whatever `openedSince` says, though not to the
+   * session's record.
+   */
+  readonly worktree?: { readonly collection: WorktreeCollection; readonly key: string; readonly startedOn?: number };
 }
 
 /** How a {@link recordBranchPullRequests} call ended. */
@@ -195,7 +201,9 @@ export async function recordBranchPullRequests(
     });
     if (options.worktree !== undefined) {
       const summary = (ref: PullRequestRef) => ({ url: ref.url, number: ref.number, state: ref.state ?? null, title: ref.title ?? null });
-      await addWorktreePullRequests(options.worktree.collection, options.worktree.key, found.map(summary), listed.map(summary));
+      const startedOn = options.worktree.startedOn;
+      const seeded = startedOn === undefined ? [] : listed.filter((ref) => ref.number === startedOn && !found.includes(ref));
+      await addWorktreePullRequests(options.worktree.collection, options.worktree.key, [...found, ...seeded].map(summary), listed.map(summary));
     }
   } catch (err) {
     return { status: "unavailable", reason: `the pull requests could not be recorded: ${reasonOf(err)}` };

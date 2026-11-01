@@ -369,6 +369,38 @@ describe("the pull requests on the branch", () => {
     expect(result.status).toBe("recorded");
     expect(worktrees.all.get(key)!.pullRequests).toEqual([{ url: "https://github.com/o/r/pull/7", number: 7, state: "merged", title: "T" }]);
   });
+
+  it("lists the pull request the session started on, opened before any turn, on the row but not the session's record", async () => {
+    const h = host();
+    const worktrees = rows();
+    const place = await h.provision({ kind: "repo", repo }, { place: ["s-1"], branch: "fsd/s-1", worktrees: { collection: worktrees, owner } });
+    const key = worktreeKey(h.hostId(), ["s-1"]);
+    const gh = join(tempDir("gh"), "gh");
+    writeFileSync(
+      gh,
+      "#!/bin/sh\necho '[" +
+        '{"number":7,"html_url":"https://github.com/o/r/pull/7","title":"Started on","state":"open","created_at":"2030-01-01T00:00:00Z","head":{"ref":"fsd/s-1"}},' +
+        '{"number":6,"html_url":"https://github.com/o/r/pull/6","title":"Old","state":"closed","created_at":"2029-01-01T00:00:00Z","head":{"ref":"fsd/s-1"}}' +
+        "]'\n",
+      { mode: 0o755 },
+    );
+    const session = new Map<string, Record<string, unknown>>();
+    const observed = {
+      getOptional: async (k: string) => (session.has(k) ? { state: session.get(k) } : undefined),
+      upsert: async (k: string, u: Record<string, unknown>) => session.set(k, { ...session.get(k), ...u }),
+    };
+    const ctx = { resources: { "observed-pull-requests": observed }, request: { identity: { id: "r1" } } };
+    const result = await recordBranchPullRequests(ctx, {
+      cwd: place.cwd,
+      gh,
+      openedSince: Date.parse("2031-01-01T00:00:00Z"),
+      worktree: { collection: worktrees, key, startedOn: 7 },
+    });
+    expect(result).toMatchObject({ status: "recorded", pullRequests: [] });
+    expect(session.size).toBe(0);
+    // The one it started on, not the branch's other older one.
+    expect(worktrees.all.get(key)!.pullRequests).toEqual([{ url: "https://github.com/o/r/pull/7", number: 7, state: "open", title: "Started on" }]);
+  });
 });
 
 describe("a row's name", () => {

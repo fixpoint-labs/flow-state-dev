@@ -678,7 +678,16 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
         cwd,
         branches: [branch],
         openedSince: turnRecord.at ?? undefined,
-        ...(key !== null && worktrees !== undefined ? { worktree: { collection: worktrees, key } } : {}),
+        ...(key !== null && worktrees !== undefined
+          ? {
+              worktree: {
+                collection: worktrees,
+                key,
+                // The pull request the session started on predates every turn; the row lists it anyway.
+                ...(state.start !== undefined && "pullRequest" in state.start ? { startedOn: state.start.pullRequest } : {}),
+              },
+            }
+          : {}),
       });
       if (result.status === "unavailable") {
         ctx.emit.status(`Pull requests on the session's branch were not checked: ${result.reason}`, { transient: false });
