@@ -8,11 +8,7 @@
  */
 import { taskSpendView, type TaskSpendView } from "../tasks/spend";
 import { taskSpendViewSchema } from "../tasks/schema/spend";
-<<<<<<< HEAD
-import { persistedTaskStatusSchema } from "../tasks/schema/task-status";
-=======
 import { isTerminalStatus, persistedTaskStatusSchema, type TaskStatus } from "../tasks/schema/task-status";
->>>>>>> origin/main
 import type { Task } from "../tasks/schema/task";
 import { openUserHolds } from "./holds";
 import type { InboxHold, InboxRow } from "./types";
@@ -80,15 +76,6 @@ export type TaskRowView<TDetail = unknown> = {
   };
 };
 
-<<<<<<< HEAD
-const TERMINAL_STATE = { completed: "done", errored: "failed", cancelled: "cancelled" } as const;
-
-/** The stored status read forward, or the stored word when this version doesn't know it. */
-function storedStatus(status: string): string {
-  const parsed = persistedTaskStatusSchema.safeParse(status);
-  return parsed.success ? parsed.data : status;
-}
-=======
 /** Stored status → what a person sees. `waiting` is the one override, for a non-terminal row with an open user hold. */
 const DISPLAY_STATE: Record<TaskStatus, Exclude<TaskRowState, "waiting">> = {
   pending: "queued",
@@ -98,7 +85,6 @@ const DISPLAY_STATE: Record<TaskStatus, Exclude<TaskRowState, "waiting">> = {
   errored: "failed",
   cancelled: "cancelled",
 };
->>>>>>> origin/main
 
 /**
  * A row's spend as a view. `listTasks` publishes it folded already, and that
@@ -128,23 +114,6 @@ function spendOf(row: TaskViewRow, status: string): TaskSpendView | null {
  *   the Inbox read; those holds say they can't be answered from here.
  */
 export function taskRowView<TDetail = unknown>(row: TaskViewRow, holds?: readonly InboxHold<TDetail>[]): TaskRowView<TDetail> {
-<<<<<<< HEAD
-  const status = storedStatus(row.status);
-  const terminal = Object.hasOwn(TERMINAL_STATE, status);
-  const open = terminal
-    ? []
-    : [...(holds ?? openUserHolds<TDetail>({ ...row, status }, () => null))].sort((a, b) => a.openedAt - b.openedAt);
-  const first = open[0];
-  const state: TaskRowState = terminal
-    ? TERMINAL_STATE[status as keyof typeof TERMINAL_STATE]
-    : first !== undefined
-      ? "waiting"
-      : status === "held"
-        ? "held"
-        : status === "in_progress"
-          ? "running"
-          : "queued";
-=======
   const parsed = persistedTaskStatusSchema.safeParse(row.status);
   const status = parsed.success ? parsed.data : row.status;
   const terminal = parsed.success && isTerminalStatus(parsed.data);
@@ -152,7 +121,6 @@ export function taskRowView<TDetail = unknown>(row: TaskViewRow, holds?: readonl
     ? []
     : [...(holds ?? openUserHolds<TDetail>({ ...row, status }, () => null))].sort((a, b) => a.openedAt - b.openedAt);
   const state: TaskRowState = !terminal && open.length > 0 ? "waiting" : parsed.success ? DISPLAY_STATE[parsed.data] : "queued";
->>>>>>> origin/main
   const spend = spendOf(row, status);
   return {
     board: row.board,
@@ -162,11 +130,7 @@ export function taskRowView<TDetail = unknown>(row: TaskViewRow, holds?: readonl
     assignee: row.assignee ?? null,
     status,
     state,
-<<<<<<< HEAD
-    hold: first ?? null,
-=======
     hold: open[0] ?? null,
->>>>>>> origin/main
     holds: open,
     error: row.error ?? null,
     statusNote: row.statusNote ?? null,
