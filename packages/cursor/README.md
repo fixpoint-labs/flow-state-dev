@@ -135,6 +135,10 @@ server's included, through `/proc`. Use a separate user or a container when that
 `PATH`, `HOME` and `CURSOR_API_KEY` in it (`harnessEnv({ pass: [...] })` from
 `@flow-state-dev/core`). With `env` set, functions in `agent` or `send` and a custom
 `resolveCursorClient` are refused when the block is built, because they can't reach that process.
+`CURSOR_PASS` is the list a run needs to work, if you'd rather not write your own: `PATH`,
+`HOME`, `USER`, `SHELL`, `TMPDIR`, `CURSOR_API_KEY`, and the proxy and CA settings a proxied
+network needs, in upper and lower case. `env: harnessEnv({ pass: CURSOR_PASS })` builds it; hand
+the same `env` to `cursorSignIn` so it checks the run's sign-in.
 Leave it out and the runtime runs in your process, as before. Guide:
 [Choosing the environment the run starts with](https://flow-state.dev/docs/tools/cursor#choosing-the-environment-the-run-starts-with).
 

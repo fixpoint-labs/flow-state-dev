@@ -252,6 +252,21 @@ its agents and its stored login under it, so a run started with a different
 `HOME` can't resume an agent or find a login. Pass `CURSOR_API_KEY` unless the key
 goes in `agent.apiKey`.
 
+`CURSOR_PASS` is that list with what a run's shell and a proxied network need
+added: `PATH`, `HOME`, `USER`, `SHELL`, `TMPDIR`, `CURSOR_API_KEY`, and the proxy
+and CA settings in upper and lower case. Use it when you'd rather not write your
+own:
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
+
+cursorAgent({
+  cwd, resume, onSession,
+  env: harnessEnv({ pass: CURSOR_PASS }),
+});
+```
+
 The options cross into that process as data, so with `env` set a function anywhere
 in `agent` or `send` (`onStep`, `onDelta`, custom tools) is refused when the block
 is built, and so is your own `resolveCursorClient`, which would run Cursor outside
