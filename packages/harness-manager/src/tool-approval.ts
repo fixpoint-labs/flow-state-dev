@@ -174,6 +174,14 @@ export function toolApprovalStop(call: HeldToolCall): SuspendForUserOptions<"app
 }
 
 /**
+ * How many times one try's run is resumed for a tool approval's answer.
+ * Each costs a harness restart, so a run past it is asking for more than a
+ * user should click through; the try fails, saying so. Shared by every flow
+ * that holds a run's tool calls, so they stop at the same bound.
+ */
+export const MAX_APPROVAL_STEPS = 25;
+
+/**
  * How a resumed session is told a held call was not allowed: the closing words
  * of {@link toolApprovalOutcome}'s prompt on a no or at the deadline.
  */

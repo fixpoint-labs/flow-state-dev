@@ -147,6 +147,7 @@ export {
 // Exported for a flow other than the manager to compose the same wait.
 export {
   ALLOW_FOR_RUN,
+  MAX_APPROVAL_STEPS,
   grantMatches,
   heldToolCallOf,
   heldToolCallSchema,
