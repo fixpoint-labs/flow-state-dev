@@ -1,0 +1,174 @@
+<svg viewBox="0 0 940 774" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The arc: fifteen epic lanes against five weeks from Sep 29, with the now line at Oct 31 20:37 UTC. Six epics are done and five of them carry closed bars. The lab shell, FIX-1649, ran from its epic spec on Sep 29 to its closure merging on Oct 4. Hand-offs, FIX-1815, ran from its approval on Oct 8 to its wrap on Oct 11. The dev Lab, FIX-1903, ran from its approval on Oct 12 to its wrap on Oct 14. Private and shared, FIX-1786, ran from its approval on Oct 6 to Linear Done on Oct 23; its wrap was recorded here on Oct 31. Same pieces, different apps, FIX-2152, ran from its filing and approval on Oct 23 to its closure merging early on Oct 31; Linear has not closed it. Memory and context, FIX-1775, has no bar, only a done mark on Oct 9, when Linear closed it as its first child merged. Org primitives, FIX-1650, is the one epic in flight, from its approval on Oct 1 to the now line; its closure merged Oct 6 and it has not wrapped. Coding tasks FIX-1763 carries a filing tick from Oct 4 and no bar; its children are building anyway. Talk on a finished task, FIX-1765, was filed Oct 4 and canceled Oct 13. Gaps between epics, FIX-2273, filed Oct 28, and Workforce over MCP, FIX-2331, filed Oct 29, carry filing ticks and no bar. The daily driver, FIX-2369, filed Oct 31 20:19, carries a filing tick at the now line; its epic spec is being written. The eng workstream kit, attention and inspect, and review and GitHub wake are held with no bar.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .axis   { stroke:var(--rule); stroke-width:1; }
+    .tick   { stroke:var(--rule); stroke-width:1; stroke-dasharray:2 4; }
+    .done   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .flight { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .mark   { stroke:var(--code); stroke-width:1.4; }
+    .filed  { stroke:var(--ink-3); stroke-width:2; }
+    .drop   { stroke:var(--ink-3); stroke-width:1.6; fill:none; }
+    .start  { stroke:var(--accent); stroke-width:2.4; }
+    .now    { stroke:var(--gone); stroke-width:1.6; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-lane { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-now  { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:10px; }
+  </style>
+
+  <!-- 12px per day: x = 180 + 12 * (days since Sep 29 00:00 UTC). Now Oct 31 20:37 = 574.3.
+       Shell: spec 191.4 (Sep 29 22:44), approval tick 192.8 (Sep 30 01:33), closure merged 245.5
+       (Oct 4 10:56). Org primitives: approved 213.1 (Oct 1 18:13), to the now line.
+       FIX-1786: approved 273.0 (Oct 6 18:01), Linear Done 478.4 (Oct 23 20:52).
+       FIX-1815: approved 298.5 (Oct 8 20:58), wrapped 333.2 (Oct 11 18:28, Linear Done).
+       FIX-1903: approved 345.2 (Oct 12 18:23, #3164 merged), wrapped 371.8 (Oct 14 23:39, Linear Done).
+       FIX-2152: approved 478.9 (Oct 23 21:45, #3783 merged), closure #4278 merged 564.2 (Oct 31 00:23).
+       FIX-1775: Linear Done 309.3 (Oct 9 18:31), a mark, no bar.
+       FIX-1765: canceled 359.6 (Oct 13 23:10), a cross, no bar.
+       Filing ticks: FIX-1763 247.3 (Oct 4 14:40), FIX-1765 248.2 (Oct 4 16:22),
+       FIX-1775 251.3 (Oct 4 22:33), FIX-1786 264.5 (Oct 6 01:02), FIX-1815 298.1 (Oct 8 20:13),
+       FIX-1903 342.2 (Oct 12 12:25), FIX-2152 478.4 (Oct 23 20:43), FIX-2273 536.5 (Oct 28 16:58),
+       FIX-2331 550.5 (Oct 29 21:01), FIX-2369 574.2 (Oct 31 20:19).
+       Lanes 48px apart; annotations start at x=584, right of the now line. -->
+  <g id="axis">
+    <text class="t-lbl" x="16" y="20">EPIC</text>
+    <text class="t-lbl" x="180" y="20">SEP 29</text>
+    <text class="t-lbl" x="264" y="20">OCT 6</text>
+    <text class="t-lbl" x="348" y="20">OCT 13</text>
+    <text class="t-lbl" x="432" y="20">OCT 20</text>
+    <text class="t-lbl" x="516" y="20">OCT 27</text>
+    <path class="axis" d="M180 30 H900"/>
+    <path class="tick" d="M180 30 V746 M264 30 V746 M348 30 V746 M432 30 V746 M516 30 V746"/>
+  </g>
+
+  <g id="shell">
+    <text class="t-lane" x="16" y="56">lab shell</text>
+    <text class="t-s"    x="16" y="70">FIX-1649 · done</text>
+    <rect class="done" x="191.4" y="42" width="54.1" height="26" rx="2"/>
+    <path class="mark" d="M192.8 42 V68"/>
+    <text class="t-s" x="584" y="54">wrapped Oct 4 · closure FIX-1663, #2709</text>
+    <text class="t-s" x="584" y="67">Linear Done the same day, 35 of 35</text>
+  </g>
+
+  <g id="org">
+    <text class="t-lane" x="16" y="104">org primitives</text>
+    <text class="t-s"    x="16" y="118">FIX-1650 · in flight</text>
+    <rect class="flight" x="213.1" y="90" width="361.2" height="26" rx="2"/>
+    <text class="t-s" x="584" y="102">approved Oct 1 · 15 of 20 done, 3 canceled</text>
+    <text class="t-s" x="584" y="115">closure FIX-1720 merged Oct 6 · not wrapped</text>
+  </g>
+
+  <g id="coding">
+    <text class="t-lane" x="16" y="152">coding tasks</text>
+    <text class="t-s"    x="16" y="166">FIX-1763 · not started</text>
+    <path class="filed" d="M247.3 140 V162"/>
+    <text class="t-s" x="584" y="150">filed Oct 4 · no epic spec</text>
+    <text class="t-s" x="584" y="163">children building: 6 of 12 done</text>
+  </g>
+
+  <g id="finished">
+    <text class="t-lane" x="16" y="200">talk on a finished task</text>
+    <text class="t-s"    x="16" y="214">FIX-1765 · dropped</text>
+    <path class="filed" d="M248.2 188 V210"/>
+    <path class="drop" d="M354.6 194 L364.6 204 M364.6 194 L354.6 204"/>
+    <text class="t-s" x="584" y="198">canceled Oct 13 · folded into FIX-1764</text>
+    <text class="t-s" x="584" y="211">Jake: a person's message reopens it</text>
+  </g>
+
+  <g id="memory">
+    <text class="t-lane" x="16" y="248">memory &amp; context</text>
+    <text class="t-s"    x="16" y="262">FIX-1775 · done, flagged</text>
+    <path class="filed" d="M251.3 236 V258"/>
+    <path class="mark" d="M309.3 234 V260"/>
+    <text class="t-s" x="584" y="246">Done Oct 9 as FIX-1776 merged · no gate</text>
+    <text class="t-s" x="584" y="259">long-session half never filed</text>
+  </g>
+
+  <g id="private">
+    <text class="t-lane" x="16" y="296">private &amp; shared</text>
+    <text class="t-s"    x="16" y="310">FIX-1786 · done</text>
+    <path class="filed" d="M264.5 284 V306"/>
+    <rect class="done" x="273.0" y="282" width="205.4" height="26" rx="2"/>
+    <text class="t-s" x="584" y="294">Linear Done Oct 23 · 81 of 84, 2 canceled</text>
+    <text class="t-s" x="584" y="307">wrap recorded here Oct 31</text>
+  </g>
+
+  <g id="handoffs">
+    <text class="t-lane" x="16" y="344">hand-offs</text>
+    <text class="t-s"    x="16" y="358">FIX-1815 · done</text>
+    <path class="filed" d="M298.1 332 V354"/>
+    <rect class="done" x="298.5" y="330" width="34.7" height="26" rx="2"/>
+    <text class="t-s" x="584" y="342">wrapped Oct 11 · closure FIX-1820, #3048</text>
+    <text class="t-s" x="584" y="355">7 of 8 done, FIX-1818 canceled</text>
+  </g>
+
+  <g id="devlab">
+    <text class="t-lane" x="16" y="392">dev Lab</text>
+    <text class="t-s"    x="16" y="406">FIX-1903 · done</text>
+    <path class="filed" d="M342.2 380 V402"/>
+    <rect class="done" x="345.2" y="378" width="26.6" height="26" rx="2"/>
+    <text class="t-s" x="584" y="390">wrapped Oct 14 · closure FIX-1919, #3367</text>
+    <text class="t-s" x="584" y="403">9 of 9 done · FIX-1934 left open</text>
+  </g>
+
+  <g id="labs">
+    <text class="t-lane" x="16" y="440">same pieces, different apps</text>
+    <text class="t-s"    x="16" y="454">FIX-2152 · done</text>
+    <path class="filed" d="M478.4 428 V450"/>
+    <rect class="done" x="478.9" y="426" width="85.3" height="26" rx="2"/>
+    <text class="t-s" x="584" y="438">wrapped Oct 31 · closure FIX-2156, #4278</text>
+    <text class="t-s" x="584" y="451">6 goals pass on 07753056 · Linear open</text>
+  </g>
+
+  <g id="gaps">
+    <text class="t-lane" x="16" y="488">gaps between epics</text>
+    <text class="t-s"    x="16" y="502">FIX-2273 · not started</text>
+    <path class="filed" d="M536.5 476 V498"/>
+    <text class="t-s" x="584" y="486">filed Oct 28 · no epic spec</text>
+    <text class="t-s" x="584" y="499">1 of 3 children done</text>
+  </g>
+
+  <g id="mcp">
+    <text class="t-lane" x="16" y="536">Workforce over MCP</text>
+    <text class="t-s"    x="16" y="550">FIX-2331 · not started</text>
+    <path class="filed" d="M550.5 524 V546"/>
+    <text class="t-s" x="584" y="534">filed Oct 29 · no epic spec</text>
+    <text class="t-s" x="584" y="547">no children yet</text>
+  </g>
+
+  <g id="daily">
+    <text class="t-lane" x="16" y="584">daily driver</text>
+    <text class="t-s"    x="16" y="598">FIX-2369 · not started</text>
+    <path class="filed" d="M574.2 572 V594"/>
+    <text class="t-s" x="584" y="582">filed Oct 31 · epic spec being written</text>
+    <text class="t-s" x="584" y="595">57 children, all Backlog</text>
+  </g>
+
+  <g id="kit">
+    <text class="t-lane" x="16" y="632">eng workstream kit</text>
+    <text class="t-s"    x="16" y="646">FIX-1651 · held</text>
+  </g>
+
+  <g id="attention">
+    <text class="t-lane" x="16" y="680">attention &amp; inspect</text>
+    <text class="t-s"    x="16" y="694">FIX-1652 · held</text>
+  </g>
+
+  <g id="review">
+    <text class="t-lane" x="16" y="728">review &amp; GitHub wake</text>
+    <text class="t-s"    x="16" y="742">FIX-1653 · held</text>
+  </g>
+
+  <g id="now">
+    <path class="now" d="M574.3 30 V750"/>
+    <text class="t-now" x="500" y="764">now · Oct 31 20:37 UTC</text>
+  </g>
+</svg>
