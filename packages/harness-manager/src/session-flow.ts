@@ -77,7 +77,7 @@ import type {
   HarnessUsageHook,
   HarnessUsageReader,
 } from "@flow-state-dev/core/types";
-import { readRequestSpend, type HarnessRunSpend, type ModelUsageEntry } from "@flow-state-dev/core/types";
+import { readRequestTotalSpend } from "@flow-state-dev/core/types";
 import { recordBranchPullRequests, run } from "@flow-state-dev/workspace";
 import { readRunChanges, runChangesSchema } from "./commits";
 import { z } from "zod";
@@ -124,25 +124,6 @@ export const harnessTurnRecordSchema = z.object({
   spend: taskSpendViewSchema.nullable().default(null),
   /** When the turn ended, in epoch millis: its duration is `endedAt - at`. */
   endedAt: z.number().nullable().default(null),
-  /**
-   * The harness runs `spend` counts, as each last reported. Kept so a turn
-   * continued in a later run of its request (after an interruption) counts
-   * the runs before it too: a continued request's ledger holds only its own.
-   */
-  spentRuns: z
-    .array(
-      z.object({
-        runId: z.string().optional(),
-        harness: z.string(),
-        model: z.string().nullable().optional(),
-        inputTokens: z.number().nullable(),
-        outputTokens: z.number().nullable(),
-        costUsd: z.number().nullable(),
-        billing: z.enum(["api-key", "subscription"]).nullable(),
-      }),
-    )
-    .nullable()
-    .default(null),
 });
 
 /** One turn's record. */
@@ -297,7 +278,6 @@ const BLANK_TURN: HarnessTurnRecord = {
   checks: null,
   spend: null,
   endedAt: null,
-  spentRuns: null,
 };
 
 /** `state` with the turn `requestId` changed by `change`, keeping only the latest {@link KEPT_TURNS}. */
@@ -460,7 +440,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
           failure: harnessFailureKind(error),
           stopped: ctx.signal.aborted,
           error: error.message,
-          ...turnEndOf(ctx, requestId, record),
+          ...turnEndOf(ctx, requestId),
         })),
       );
       // A stopped or failed turn still records where its changes end. Never in
@@ -560,7 +540,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     execute: async (_handle: HarnessRunHandle, ctx): Promise<void> => {
       const requestId = ctx.request.identity.id;
       try {
-        await changeState(ctx, (state) => withTurn(state, requestId, (record) => ({ ...record, ...turnEndOf(ctx, requestId, record) })));
+        await changeState(ctx, (state) => withTurn(state, requestId, (record) => ({ ...record, ...turnEndOf(ctx, requestId) })));
       } catch (error) {
         ctx.emit.status(`What the turn spent was not recorded: ${(error as Error).message}`, { transient: false });
       }
@@ -653,31 +633,13 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
 
 /**
  * What a turn's record gets when its harness step ends: what it spent, and
- * when. The runs are this run of the request's, as its ledger reports them,
- * plus any an earlier run of the same request recorded that this one's
- * ledger doesn't hold (a turn continued after an interruption: its ledger
- * holds only its own runs). A run with an id is one run however often it is
- * written, so a second write in the same run of the request counts it once. Model
- * calls are the request's whole count (`ctx.request.tokenUsage`), not its
- * pending slice: an interruption's ending hands its calls on, and a
- * continuation replays them without making them again.
+ * when. The spend is the request's whole count, not what is left to hand on:
+ * a turn suspended, interrupted or continued spent what its earlier runs did
+ * too, and a replayed write reads the same number again.
  */
-function turnEndOf(
-  ctx: { request: { tokenUsage: { byModel: Record<string, ModelUsageEntry> } } },
-  requestId: string,
-  record: { spentRuns?: readonly HarnessRunSpend[] | null },
-): { spend: TaskSpendView | null; spentRuns: HarnessRunSpend[] | null; endedAt: number } {
-  const pending = readRequestSpend(ctx);
-  const now = pending?.harnessRuns ?? [];
-  // A run with an id is the same run wherever it is written, including one a
-  // continuation recovered from the log after this turn's earlier write (the
-  // engine names a run reported without an id, so that one has one too). One
-  // still without an id came from a seam that named none: a settled run of its
-  // own (the `HarnessRunSpend` contract), so an earlier one is always kept.
-  const earlier = (record.spentRuns ?? []).filter((run) => run.runId === undefined || !now.some((other) => other.runId === run.runId));
-  const harnessRuns = [...earlier, ...now];
-  const byModel = ctx.request.tokenUsage.byModel;
-  const spend = pending === undefined && harnessRuns.length === 0 ? null : requestSpendView({ byModel, harnessRuns }, requestId);
-  return { spend, spentRuns: harnessRuns.length === 0 ? null : harnessRuns, endedAt: Date.now() };
+function turnEndOf(ctx: object, requestId: string): { spend: TaskSpendView | null; endedAt: number } {
+  const total = readRequestTotalSpend(ctx);
+  const spend = total === undefined ? null : requestSpendView(total, requestId);
+  return { spend, endedAt: Date.now() };
 }
 

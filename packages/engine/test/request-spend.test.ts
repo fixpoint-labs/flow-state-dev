@@ -16,6 +16,7 @@ import {
   SESSION_REQUEST_END_HOOK,
   onRequestEnded,
   readRequestSpend,
+  readRequestTotalSpend,
   reportHarnessSpend,
   type FlowInstance,
   type GeneratorModel,
@@ -986,7 +987,20 @@ describe("request spend read mid-run", () => {
     expect(ledger.total().byModel["model-a"]!.total).toBe(4);
   });
 
+  // A resumed request's record carries the runs an earlier ending handed on:
+  // the whole request's spend still counts them, and no ending hands them on again.
+  it("counts a carried harness run in the total, never hands it on again, and hands on only a later report's change", () => {
+    const carried = { runId: "a", harness: "codex", inputTokens: 10, outputTokens: 2, costUsd: 0.1, billing: "api-key" as const };
+    const ledger = createRequestSpendLedger({}, {}, [], [carried]);
+    expect(ledger.total().harnessRuns).toEqual([carried]);
+    expect(ledger.pending().harnessRuns).toEqual([]);
+    ledger.reportHarnessRun({ ...carried, inputTokens: 15, outputTokens: 3, costUsd: 0.15 });
+    expect(ledger.pending().harnessRuns.map((run) => [run.runId, run.inputTokens, run.outputTokens])).toEqual([["a", 5, 1]]);
+    expect(ledger.total().harnessRuns.map((run) => [run.runId, run.inputTokens])).toEqual([["a", 15]]);
+  });
+
   it("reads undefined outside a request", () => {
     expect(readRequestSpend({})).toBeUndefined();
+    expect(readRequestTotalSpend({})).toBeUndefined();
   });
 });
