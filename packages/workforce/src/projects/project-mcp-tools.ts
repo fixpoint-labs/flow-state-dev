@@ -33,11 +33,17 @@
 
 import type { LooseBlockContext } from "@flow-state-dev/core";
 import type { HarnessCallbackContext } from "@flow-state-dev/core/types";
-import { createMcpManager, redactSecrets, type MCPClient, type MCPServerConfig } from "@flow-state-dev/tools/mcp";
+import {
+  createMcpManager,
+  redactSecrets,
+  type MCPCatalogTool,
+  type MCPClient,
+  type MCPServerConfig
+} from "@flow-state-dev/tools/mcp";
 import { isMcpServerName } from "./mcp-server-name";
 import { MCP_CREDENTIALS_RESOURCE, type McpCredential } from "./mcp-credentials";
-import { collectionAt } from "./project-address";
-import { runProjectOf } from "./run-project";
+import { collectionAt, type MissingCollection } from "./project-address";
+import { runProjectOf, type RunProject } from "./run-project";
 
 /** One MCP server a host offers: its HTTP address, and the variable that seeds the operator's key. */
 export interface ProjectMcpServerConfig {
@@ -118,68 +124,38 @@ const ENV_NAME = /^[A-Z_][A-Z0-9_]*$/;
  *   });
  */
 export function projectMcpTools(servers: ProjectMcpServers, options: ProjectMcpToolsOptions = {}): ProjectMcpToolsResolver {
-  checkProjectMcpServers(servers);
-  const env = () => options.env ?? process.env;
+  checkProjectMcpServers(servers, "projectMcpTools");
   const resolve = async (ctx: HarnessCallbackContext): Promise<Record<string, RelayedMcpServer>> => {
-    const found = await runProjectOf(ctx as unknown as LooseBlockContext);
-    if (found.kind === "refused") return {};
-    const named = found.project.mcpServers ?? [];
-    if (named.length === 0) return {};
-
+    const plan = await planProjectMcp(servers, options, ctx as unknown as LooseBlockContext, missingKeys);
+    if (plan === undefined) return {};
     const say = (message: string) => ctx.emit.status(message, { transient: false });
-    const keys = collectionAt<McpCredential>(ctx, MCP_CREDENTIALS_RESOURCE, missingKeys);
-    const configs: MCPServerConfig[] = [];
-    const secrets: string[] = [];
-    for (const name of named) {
-      const entry = Object.hasOwn(servers, name) ? servers[name] : undefined;
-      if (entry === undefined) {
-        say(`This run goes without MCP server "${name}": the project names it, and this server no longer offers it.`);
-        continue;
-      }
-      const stored = (await keys.getOptional(name))?.state.value;
-      const seeded = found.owner === options.operator && entry.seedEnv !== undefined ? env()[entry.seedEnv] : undefined;
-      const key = stored !== undefined && stored !== "" ? stored : seeded !== undefined && seeded !== "" ? seeded : undefined;
-      if (key === undefined) {
-        say(
-          `This run goes without MCP server "${name}": ${found.owner}'s key for it isn't set. ` +
-            `Set it in Settings, and the next run gets it.`
-        );
-        continue;
-      }
-      secrets.push(key);
-      configs.push({ name, transport: { type: "http", url: entry.url, headers: { Authorization: `Bearer ${key}` } } });
+    for (const { name, why } of plan.skipped) {
+      say(
+        why === "not-offered"
+          ? `This run goes without MCP server "${name}": the project names it, and this server no longer offers it.`
+          : `This run goes without MCP server "${name}": ${plan.owner}'s key for it isn't set. ` +
+              `Set it in Settings, and the next run gets it.`
+      );
     }
-    if (configs.length === 0) return {};
+    if (plan.configs.length === 0) return {};
 
-    const manager = createMcpManager({
-      servers: configs,
-      ...(options._createClient === undefined ? {} : { _createClient: options._createClient })
-    });
-    await manager.getTools();
-    const close = () => manager.close();
+    const connection = await connectProjectMcp(servers, plan, options._createClient);
+    for (const { name, reason } of connection.failed) {
+      say(`This run goes without MCP server "${name}": FSD couldn't connect to it (${reason}).`);
+    }
     const answer: Record<string, RelayedMcpServer> = {};
-    for (const server of manager.getCatalog().servers) {
-      if (server.status !== "connected") {
-        const url = servers[server.name]?.url;
-        say(`This run goes without MCP server "${server.name}": FSD couldn't connect to it (${scrub(server.error, [url, ...secrets])}).`);
-        continue;
-      }
-      const hidden = [servers[server.name]?.url, ...secrets];
+    for (const server of connection.servers) {
       answer[server.name] = {
         tools: server.tools.map((tool) => ({
           name: tool.originalName,
           description: tool.description,
           inputSchema: tool.jsonSchema,
-          // A failed call's message reaches the run and its session: the address and keys are taken out first.
-          call: (args, { signal }) =>
-            manager.callTool(tool.name, args, signal === undefined ? {} : { signal }).catch((error: unknown) => {
-              throw new Error(scrub(error instanceof Error ? error.message : String(error), hidden));
-            })
+          call: tool.call
         })),
-        close
+        close: connection.close
       };
     }
-    if (Object.keys(answer).length === 0) await close();
+    if (connection.servers.length === 0) await connection.close();
     return answer;
   };
   return Object.assign(resolve, {
@@ -190,10 +166,124 @@ export function projectMcpTools(servers: ProjectMcpServers, options: ProjectMcpT
   });
 }
 
+/**
+ * What one run's or conversation's project lets it connect to: each named
+ * server the host offers and the owner has a key for, as a connection config
+ * carrying that key, and each one left out and why.
+ */
+export interface ProjectMcpPlan {
+  /** The project, as `runProjectOf` found it. */
+  readonly project: RunProject["project"];
+  readonly visibility: RunProject["visibility"];
+  /** Whose keys these are: the request's resolved user, a member of the project. */
+  readonly owner: string;
+  /** One config per server to connect to, its `Authorization` header holding the owner's key. */
+  readonly configs: readonly MCPServerConfig[];
+  /** The keys in `configs`: what a message is scrubbed of. Never emitted. */
+  readonly secrets: readonly string[];
+  /** The servers the project names that are left out: not offered by this host, or no key. */
+  readonly skipped: ReadonlyArray<{ readonly name: string; readonly why: "not-offered" | "no-key" }>;
+}
+
+/**
+ * Plan the connections for one run or conversation: find its project and
+ * owner with `runProjectOf` (stored, server-written data only, BP-031), then
+ * pair each server the project names with the owner's key (or the
+ * operator's `seedEnv`).
+ *
+ * The block asking must hold `projectWorkspaceCapability` and
+ * `mcpCredentialsCapability`.
+ *
+ * @returns The plan, or `undefined` when the lookup refuses or the project
+ *   names no server: nothing to connect and nothing to say.
+ */
+export async function planProjectMcp(
+  servers: ProjectMcpServers,
+  options: Pick<ProjectMcpToolsOptions, "operator" | "env">,
+  ctx: LooseBlockContext,
+  missing: MissingCollection
+): Promise<ProjectMcpPlan | undefined> {
+  const found = await runProjectOf(ctx);
+  if (found.kind === "refused") return undefined;
+  const named = found.project.mcpServers ?? [];
+  if (named.length === 0) return undefined;
+
+  const env = options.env ?? process.env;
+  const keys = collectionAt<McpCredential>(ctx, MCP_CREDENTIALS_RESOURCE, missing);
+  const configs: MCPServerConfig[] = [];
+  const secrets: string[] = [];
+  const skipped: Array<{ name: string; why: "not-offered" | "no-key" }> = [];
+  for (const name of named) {
+    const entry = Object.hasOwn(servers, name) ? servers[name] : undefined;
+    if (entry === undefined) {
+      skipped.push({ name, why: "not-offered" });
+      continue;
+    }
+    const stored = (await keys.getOptional(name))?.state.value;
+    const seeded = found.owner === options.operator && entry.seedEnv !== undefined ? env[entry.seedEnv] : undefined;
+    const key = stored !== undefined && stored !== "" ? stored : seeded !== undefined && seeded !== "" ? seeded : undefined;
+    if (key === undefined) {
+      skipped.push({ name, why: "no-key" });
+      continue;
+    }
+    secrets.push(key);
+    configs.push({ name, transport: { type: "http", url: entry.url, headers: { Authorization: `Bearer ${key}` } } });
+  }
+  return { project: found.project, visibility: found.visibility, owner: found.owner, configs, secrets, skipped };
+}
+
+/** One connected tool: the catalog entry, and a call whose failure is scrubbed of the address and keys. */
+export interface ProjectMcpTool extends MCPCatalogTool {
+  call(args: Record<string, unknown>, options: { signal?: AbortSignal }): Promise<unknown>;
+}
+
+/** A plan's connections: the servers that connected, those that didn't and why, and one close for all. */
+export interface ProjectMcpConnection {
+  readonly servers: ReadonlyArray<{ readonly name: string; readonly tools: readonly ProjectMcpTool[] }>;
+  /** Each server that failed to connect, its reason scrubbed of the address and keys. */
+  readonly failed: ReadonlyArray<{ readonly name: string; readonly reason: string }>;
+  close(): Promise<void>;
+}
+
+/**
+ * Connect a plan's servers through one `createMcpManager` (FSD's only MCP
+ * client). A failed call's message, and a failed connection's reason, have
+ * the server's address and every key in the plan taken out.
+ */
+export async function connectProjectMcp(
+  servers: ProjectMcpServers,
+  plan: ProjectMcpPlan,
+  createClient?: (config: MCPServerConfig) => Promise<MCPClient>
+): Promise<ProjectMcpConnection> {
+  const manager = createMcpManager({ servers: [...plan.configs], ...(createClient === undefined ? {} : { _createClient: createClient }) });
+  await manager.getTools();
+  const connected: Array<{ name: string; tools: ProjectMcpTool[] }> = [];
+  const failed: Array<{ name: string; reason: string }> = [];
+  for (const server of manager.getCatalog().servers) {
+    const hidden = [servers[server.name]?.url, ...plan.secrets];
+    if (server.status !== "connected") {
+      failed.push({ name: server.name, reason: scrub(server.error, hidden) });
+      continue;
+    }
+    connected.push({
+      name: server.name,
+      tools: server.tools.map((tool) => ({
+        ...tool,
+        // A failed call's message reaches the run and its session: the address and keys are taken out first.
+        call: (args, { signal }) =>
+          manager.callTool(tool.name, args, signal === undefined ? {} : { signal }).catch((error: unknown) => {
+            throw new Error(scrub(error instanceof Error ? error.message : String(error), hidden));
+          })
+      }))
+    });
+  }
+  return { servers: connected, failed, close: () => manager.close() };
+}
+
 /** Refuse a host's server config that no run could use, naming the entry, never the address. */
-function checkProjectMcpServers(servers: ProjectMcpServers): void {
+export function checkProjectMcpServers(servers: ProjectMcpServers, caller: string): void {
   for (const [name, entry] of Object.entries(servers)) {
-    const at = `projectMcpTools: server "${isMcpServerName(name) ? name : "(invalid name)"}"`;
+    const at = `${caller}: server "${isMcpServerName(name) ? name : "(invalid name)"}"`;
     if (!isMcpServerName(name)) {
       throw new Error(`${at}: a server is named by lowercase letters, digits and hyphens, such as "linear".`);
     }

@@ -12,7 +12,8 @@
  * project and owner; `project-workspace.ts` for the run source a coding run
  * gets its files from; `project-source.ts` for the tools that read those files
  * without a run; `project-mcp-tools.ts` and `mcp-credentials.ts` for the
- * MCP servers a run gets and each user's keys for them; `work-project.ts` for
+ * MCP servers a run gets and each user's keys for them;
+ * `project-mcp-capability.ts` for the same servers as a worker's tools; `work-project.ts` for
  * the action that sets the project a user's conversation works in.
  */
 
@@ -67,6 +68,13 @@ export {
   mcpCredentialsCapability,
   type McpCredential
 } from "./mcp-credentials";
+
+export {
+  PROJECT_MCP_CAPABILITY,
+  PROJECT_MCP_IDLE_MS,
+  projectMcpCapability,
+  type ProjectMcpCapabilityOptions
+} from "./project-mcp-capability";
 
 export {
   projectMcpTools,
