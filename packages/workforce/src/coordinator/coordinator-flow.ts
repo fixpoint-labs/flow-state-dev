@@ -124,6 +124,7 @@ import {
   routedEndingSchema,
   type RoutedEnding
 } from "../conversation-board/task-settled";
+import { delegateAnswerMetadata } from "../conversation-board/delegate-answer";
 import { WORKER_TASK_ENTRY } from "../worker-task-entry";
 import { RESPOND_ACTION } from "../worker-door";
 import { declareBuiltInRoles, markRolePiece } from "../worker-roles";
@@ -1596,7 +1597,14 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       const post = ending.brief;
       if (post === undefined) {
         // Not routed: its answer lands, and nothing goes on.
-        if (body !== undefined) ctx.emit.message(body, ending.assignee === undefined ? {} : { agentName: ending.assignee });
+        if (body !== undefined) {
+          ctx.emit.message(
+            body,
+            ending.assignee === undefined
+              ? {}
+              : { agentName: ending.assignee, metadata: delegateAnswerMetadata({ worker: ending.assignee, taskId: ending.taskId }) }
+          );
+        }
         return { landed: body !== undefined };
       }
       const posted: RoundTask = { messageRequestId: post.messageRequestId, round: post.round, delegate: post.delegate };
@@ -1656,7 +1664,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       if (body === undefined || outcome.again === true) {
         return { landed: false, ...routeOnsOutput(await routeOnsFor(ctx as never, { closed: outcome.closed })) };
       }
-      ctx.emit.message(body, { agentName: post.delegate.worker });
+      ctx.emit.message(body, {
+        agentName: post.delegate.worker,
+        metadata: delegateAnswerMetadata({ worker: post.delegate.worker, taskId: ending.taskId })
+      });
       const routeOns = await routeOnsFor(ctx as never, {
         landed: { posted, body, kept: outcome.kept },
         closed: outcome.closed

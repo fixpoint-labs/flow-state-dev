@@ -83,3 +83,9 @@ export {
 export { MAX_RULES, MAX_RULE_CHARS, type StandingRule } from "./standing-rules/rules-list";
 export { RULE_TOOLS, STANDING_RULES_ACTION, STANDING_RULES_LINE } from "./standing-rules/keys";
 export type { StandingRulesActionInput, StandingRulesActionOutput } from "./standing-rules/rules-action";
+// A delegate's answer, as its message item marks it (FIX-2378): tell it from the conversation's own words.
+export {
+  delegateAnswerMetadata,
+  delegateAnswerOf,
+  type DelegateAnswer
+} from "./conversation-board/delegate-answer";

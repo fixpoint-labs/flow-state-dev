@@ -20,6 +20,7 @@ export type {
   InferFlowConfigFromSchema,
   RescueHandlerSpec,
   ResponseEmitterHandle,
+  EmitMessageOptions,
   RetryPolicy,
   StateRef,
   TargetRef,

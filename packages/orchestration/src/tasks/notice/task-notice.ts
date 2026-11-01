@@ -639,6 +639,138 @@ export function noticeText(
   }
 }
 
+/**
+ * The key a notice's line carries its structured form under, in its message
+ * item's `metadata` ({@link noticeMetadata}). Read it with {@link parseNotice}.
+ */
+export const NOTICE_ITEM_KEY = "taskNotice";
+
+/**
+ * A notice as its line's item carries it: which task, how it ended, and what
+ * came back, for a client to read instead of the line's words.
+ */
+export interface NoticeLine {
+  /** The ledger the task is on, by id. Absent on a line read off its text alone. */
+  readonly boardId?: string;
+  readonly taskId: string;
+  /** The attempt that ended. Absent on a line read off its text alone. */
+  readonly attempt?: number;
+  readonly ending: NoticeEnding;
+  /** The row's title, or its goal when it has none. */
+  readonly title: string;
+  /** What came back: a completion's output summary, a failure's error. Absent on a cancel. */
+  readonly detail?: string;
+  /** On a failure or a cancel: the dependents it cancelled that share its filer, by id. */
+  readonly cancelled?: readonly string[];
+}
+
+/**
+ * The `metadata` a notice's line is emitted with, so its item says which task
+ * ended and how without its words being parsed:
+ * `ctx.emit.message(noticeText(notice, task), { metadata: noticeMetadata(notice, task) })`.
+ *
+ * @param task The row's goal (or title), as {@link noticeText} takes it.
+ */
+export function noticeMetadata(
+  notice: TaskNotice,
+  task: { readonly goal: string; readonly title?: string }
+): { [NOTICE_ITEM_KEY]: NoticeLine } {
+  const detail =
+    notice.ending === "completed"
+      ? summary(notice.output ?? null)
+      : notice.ending === "cancelled"
+        ? undefined
+        : notice.error ?? "no error was recorded";
+  return {
+    [NOTICE_ITEM_KEY]: {
+      boardId: notice.boardId,
+      taskId: notice.taskId,
+      attempt: notice.attempt,
+      ending: notice.ending,
+      title: task.title ?? task.goal,
+      ...(detail !== undefined ? { detail } : {}),
+      ...(notice.cancelled !== undefined && notice.cancelled.length > 0 ? { cancelled: [...notice.cancelled] } : {})
+    }
+  };
+}
+
+/**
+ * {@link noticeText}'s words, read back: what a line stored before its item
+ * carried {@link noticeMetadata} says (BP-030). Kept beside the function that
+ * writes them, and tested against it, so the two change together.
+ */
+const NOTICE_LINE =
+  /^Task "([\s\S]+?)" \(([^)\s]+)\) (completed by [^:]+|failed for good with [^:]+|failed with [^:]+ and runs again|was cancelled)(?:[:;] ([\s\S]*))?$/;
+
+/** How {@link noticeText} names a failure's or a cancel's cancelled dependents. */
+const CASCADE = "it cancelled the tasks that depended on it: ";
+
+const ENDINGS: readonly NoticeEnding[] = ["completed", "errored", "retried", "cancelled"];
+
+function lineOf(value: unknown): NoticeLine | undefined {
+  if (value === null || typeof value !== "object") return undefined;
+  const line = value as Record<string, unknown>;
+  if (typeof line.taskId !== "string" || typeof line.title !== "string" || !ENDINGS.includes(line.ending as NoticeEnding)) return undefined;
+  const cancelled = Array.isArray(line.cancelled) ? line.cancelled.filter((id): id is string => typeof id === "string") : [];
+  return {
+    ...(typeof line.boardId === "string" ? { boardId: line.boardId } : {}),
+    taskId: line.taskId,
+    ...(typeof line.attempt === "number" ? { attempt: line.attempt } : {}),
+    ending: line.ending as NoticeEnding,
+    title: line.title,
+    ...(typeof line.detail === "string" ? { detail: line.detail } : {}),
+    ...(cancelled.length > 0 ? { cancelled } : {})
+  };
+}
+
+/** A line stored before {@link noticeMetadata}: its words, as {@link noticeText} wrote them. */
+function lineFromText(text: string): NoticeLine | undefined {
+  const match = NOTICE_LINE.exec(text);
+  if (match === null) return undefined;
+  const [, title, taskId, how, rest] = match;
+  const ending: NoticeEnding = how!.startsWith("completed")
+    ? "completed"
+    : how!.startsWith("failed for good")
+      ? "errored"
+      : how!.startsWith("failed")
+        ? "retried"
+        : "cancelled";
+  // A failure's or a cancel's cascade comes last: "; it cancelled the tasks that depended on it: a, b".
+  const cascadeAt = rest === undefined || ending === "completed" ? -1 : rest.lastIndexOf(CASCADE);
+  const said = cascadeAt === -1 ? rest : rest!.slice(0, cascadeAt).replace(/; $/, "");
+  const cancelled = cascadeAt === -1 ? [] : rest!.slice(cascadeAt + CASCADE.length).split(", ").filter((id) => id !== "");
+  const detail = ending === "cancelled" || said === undefined || said === "" ? undefined : said;
+  return {
+    taskId: taskId!,
+    ending,
+    title: title!,
+    ...(detail !== undefined ? { detail } : {}),
+    ...(cancelled.length > 0 ? { cancelled } : {})
+  };
+}
+
+/**
+ * The notice a message item is the line of, or `undefined` for any other
+ * item: read off the `metadata` {@link noticeMetadata} put on it, or, for a
+ * line stored before that, off its words. A client reads which task ended and
+ * how from this, never by matching {@link noticeText}'s wording itself.
+ *
+ * @param item A stored or streamed item: a message's `metadata` and `content`.
+ */
+export function parseNotice(item: {
+  readonly type?: string;
+  readonly role?: string;
+  readonly metadata?: Readonly<Record<string, unknown>> | undefined;
+  readonly content?: readonly { readonly type: string; readonly text?: string }[] | undefined;
+}): NoticeLine | undefined {
+  if (item.type !== undefined && item.type !== "message") return undefined;
+  if (item.role === "user") return undefined;
+  const marked = item.metadata?.[NOTICE_ITEM_KEY];
+  if (marked !== undefined) return lineOf(marked);
+  const text = (item.content ?? []).map((part) => part.text ?? "").join("");
+  return lineFromText(text);
+}
+
 /** The metadata key a notice settled undeliverable is recorded under, on its row. */
 export const UNDELIVERABLE_PREFIX = "noticeUndeliverable:";
 

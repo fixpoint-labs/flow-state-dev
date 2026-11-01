@@ -51,7 +51,7 @@ Structural items ignore `itemVisibility` for visibility resolution. `itemVisibil
 
 ### External items — what the user sees
 
-**`message`** is the primary content item. Generators emit these automatically; any block can call `ctx.emit.message()`. Messages enter LLM history so future model calls know what was said. This is the item type you'll work with most.
+**`message`** is the primary content item. Generators emit these automatically; any block can call `ctx.emit.message()`. Messages enter LLM history so future model calls know what was said. This is the item type you'll work with most. A handler-emitted message may carry `metadata` (`ctx.emit.message(text, { metadata })`): structured data for a client, opaque to the engine and never part of history. The emitting package owns its keys and exports their reader, as orchestration's `parseNotice` does for a task notice's line.
 
 **`reasoning`** holds chain-of-thought output when a model produces thinking. Rendered as a collapsible block in the UI. Goes into LLM history.
 
