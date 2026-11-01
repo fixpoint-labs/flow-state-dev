@@ -13,7 +13,11 @@ import { createFakeLab } from "./fake-lab";
 // The script runs at a hundredth of real time.
 const fast = () => createFakeLab({ speed: 0.01 });
 
-afterEach(cleanup);
+// The app keeps what is open in the page's address; each test starts on a bare one.
+afterEach(() => {
+  cleanup();
+  window.history.replaceState(null, "", "/");
+});
 
 async function ask(text: string) {
   const box = await screen.findByLabelText("Message the main session");
