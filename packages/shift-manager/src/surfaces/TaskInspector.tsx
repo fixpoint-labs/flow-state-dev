@@ -17,7 +17,8 @@ import { useLab } from "../lib/lab-data";
 import { describeFailure, GENERAL_TEAM, type Failure } from "../lib/reads";
 import type { Route } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
-import { readRecordedWork, RunReadError, type OpenRun, type RecordedWork } from "../lib/run";
+import { readRecordedWork, type RecordedWork } from "@flow-state-dev/harness-manager/browser";
+import { RunReadError, type OpenRun } from "../lib/run";
 import { useTask } from "../lib/task";
 import type { Gaps } from "../gaps";
 
