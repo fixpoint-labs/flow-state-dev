@@ -89,7 +89,7 @@ import type {
   HarnessUsageHook,
   HarnessUsageReader,
 } from "@flow-state-dev/core/types";
-import { readRequestSpend, type HarnessRunSpend } from "@flow-state-dev/core/types";
+import { readRequestSpend, type HarnessRunSpend, type ModelUsageEntry } from "@flow-state-dev/core/types";
 import { recordBranchPullRequests, run } from "@flow-state-dev/workspace";
 import { readRunChanges, runChangesSchema } from "./commits";
 import { z } from "zod";
@@ -598,7 +598,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   });
   // When the harness step returns: what the turn spent, on its record. The
   // harness reported its run into the request before its block returned, so
-  // the request's pending spend is the whole turn. Written inside the turn,
+  // the request's spend is the whole turn. Written inside the turn,
   // not at `onFinished`, so it lands before the request publishes its end and
   // a page that refreshes on that end reads it. A turn that threw records it
   // in `recordFailure`'s write instead. A failed write is a note, never a
@@ -725,11 +725,12 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
  * ledger doesn't hold (a turn continued after an interruption: its ledger
  * holds only its own runs). A run with an id is one run however often it is
  * written, so a second write in the same run of the request counts it once. Model
- * calls are the ledger's: a continued request's ledger carries the earlier
- * ones.
+ * calls are the request's whole count (`ctx.request.tokenUsage`), not its
+ * pending slice: an interruption's ending hands its calls on, and a
+ * continuation replays them without making them again.
  */
 function turnEndOf(
-  ctx: object,
+  ctx: { request: { tokenUsage: { byModel: Record<string, ModelUsageEntry> } } },
   requestId: string,
   record: { spentRuns?: readonly HarnessRunSpend[] | null },
 ): { spend: TaskSpendView | null; spentRuns: HarnessRunSpend[] | null; endedAt: number } {
@@ -742,7 +743,8 @@ function turnEndOf(
   // own (the `HarnessRunSpend` contract), so an earlier one is always kept.
   const earlier = (record.spentRuns ?? []).filter((run) => run.runId === undefined || !now.some((other) => other.runId === run.runId));
   const harnessRuns = [...earlier, ...now];
-  const spend = pending === undefined && harnessRuns.length === 0 ? null : requestSpendView({ byModel: pending?.byModel ?? {}, harnessRuns }, requestId);
+  const byModel = ctx.request.tokenUsage.byModel;
+  const spend = pending === undefined && harnessRuns.length === 0 ? null : requestSpendView({ byModel, harnessRuns }, requestId);
   return { spend, spentRuns: harnessRuns.length === 0 ? null : harnessRuns, endedAt: Date.now() };
 }
 
