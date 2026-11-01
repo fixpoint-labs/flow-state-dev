@@ -140,6 +140,13 @@ export interface RunFilePatch {
 export interface RunDiffOptions {
   /** The commit the diff ends at: a turn that recorded its own end reads only that turn's changes. */
   head?: string;
+  /**
+   * Start at the base commit itself rather than where `head` and the base
+   * last met. For a session turn, whose base is the commit its checkout was
+   * on: a turn that amended or rebased the previous turn's commit moves the
+   * meeting point back, and would read that earlier turn's work as its own.
+   */
+  exactBase?: boolean;
 }
 
 /** {@link RunDiff}, as a schema: what a review's data and a changes read carry. */
@@ -191,7 +198,8 @@ const UNVERIFIED_DIFF: RunDiff = { files: [], fileCount: 0, added: 0, removed: 0
  * The commit a run's diff starts at: where `head` and the base last met, so a
  * base that moved on after the branch was cut adds nothing to the run's diff.
  */
-async function diffStart(cwd: string, head: string, bases: string[]): Promise<string> {
+async function diffStart(cwd: string, head: string, bases: string[], exactBase = false): Promise<string> {
+  if (exactBase) return bases[0]!;
   return (await git(cwd, ["merge-base", head, ...bases])).trim();
 }
 
@@ -210,7 +218,7 @@ export async function readRunDiff(
   const bases = await resolveBases(cwd, baseRef, baseCommit);
   if (bases.length === 0) return UNVERIFIED_DIFF;
   try {
-    const start = await diffStart(cwd, head, bases);
+    const start = await diffStart(cwd, head, bases, options.exactBase);
     // `-z` keeps every path exactly as it is, whatever characters it holds.
     const out = await git(cwd, ["diff", "--numstat", "--no-renames", "-z", start, head]);
     const diff: RunDiff = { files: [], fileCount: 0, added: 0, removed: 0, verified: true };
@@ -257,7 +265,7 @@ export async function readRunFilePatch(
   const bases = await resolveBases(cwd, baseRef, baseCommit);
   if (bases.length === 0) return unverified;
   try {
-    const start = await diffStart(cwd, head, bases);
+    const start = await diffStart(cwd, head, bases, options.exactBase);
     let patch = "";
     let truncated = false;
     // Line by line, so a huge patch is never held whole: past the cut, lines are dropped.
