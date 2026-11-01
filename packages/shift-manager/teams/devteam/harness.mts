@@ -101,10 +101,20 @@ export function cursorEnv(): Record<string, string> {
 /**
  * Codex in the slot. It works where the manager places it and continues the
  * session the manager names, on {@link codexEnv} only. The Lab's relayed MCP
- * servers are not handed to it: Codex takes no relayed tools.
+ * servers are not handed to it: Codex takes no relayed tools. Its sandbox is
+ * `workspace-write`: Codex's own default is read-only, and a coder that can't
+ * write can't make the commit the phase waits for.
  */
 export function codexHarness({ cwd, resume, onSession, onActivity }: HarnessFeeds): HarnessBlock {
-  return codexAgent({ cwd, resume, onSession, onActivity, client: { env: codexEnv() }, name: "codex" } as never) as unknown as HarnessBlock;
+  return codexAgent({
+    cwd,
+    resume,
+    onSession,
+    onActivity,
+    client: { env: codexEnv() },
+    thread: { sandboxMode: "workspace-write" },
+    name: "codex",
+  } as never) as unknown as HarnessBlock;
 }
 
 /** The model a Cursor run uses: Cursor's own pick ("Auto"), which every account's catalog has. */
