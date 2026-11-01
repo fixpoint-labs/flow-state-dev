@@ -493,6 +493,11 @@ export function harnessSessionFeeds(
         }
         return path;
       }
+      // Held in use before provisioning, which can move the checkout back to
+      // this session's branch, and until the turn ends, so neither an attached
+      // session's running turn nor the host's `remove` has it moved under them.
+      const located = workspace.locate(workPlaceOf(kind, ctx));
+      if (!inUse.has(requestId)) inUse.set(requestId, await occupyWorktree(located, { owner: requestId, signal: ctx.signal }));
       const worktrees = worktreesOf(ctx);
       const title = ctx.session.metadata.title;
       const provisioned = await workspace.provision(placeOf(kind, ctx), {
@@ -508,9 +513,6 @@ export function harnessSessionFeeds(
           : {}),
       });
       const made: HarnessSessionProvisioned = typeof provisioned === "string" ? { path: provisioned } : provisioned;
-      // Held in use until the turn ends, so the host's `remove`, from any
-      // caller, refuses to take the tree from under the harness.
-      if (!inUse.has(requestId)) inUse.set(requestId, await occupyWorktree(made.path, { owner: requestId, signal: ctx.signal }));
       // Recorded on the first provision, and again after a removal or once a
       // row is first written; any other hand-back changes nothing.
       const worktree = made.worktree ?? state.workspace?.worktree ?? null;

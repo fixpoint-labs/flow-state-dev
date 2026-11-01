@@ -218,8 +218,9 @@ describe("where a session starts", () => {
 
     const state = (await stores.session.get("s-record"))?.state as Record<string, unknown>;
     expect(state.workspace).toEqual({ path: join(places, "s-record"), branch: "fix/review-notes", removed: false, owner: "s-record", worktree: null });
-    // The check ran for the recorded branch, not the host's `branch()`, which names one it never gave.
-    expect(located).toHaveLength(1);
+    // Located once for the turn's in-use lease, once for the turn-end check, which ran for the
+    // recorded branch, not the host's `branch()`, which names one it never gave.
+    expect(located).toHaveLength(2);
   });
 
   it("is checked at create: a malformed start is refused, so a session never starts somewhere it didn't ask for", () => {
@@ -393,6 +394,27 @@ describe("attaching a session to another session's worktree", () => {
     open();
     await running;
     expect(existsSync(worktreeLockPath(path))).toBe(false);
+  });
+
+  it("makes the owner's next turn wait out an attached turn before provisioning, which could move the checkout", async () => {
+    const stores = createInMemoryStores();
+    const { workspace, provisioned } = recordingWorkspace();
+    ownerWorktree("s-owner-h", "main");
+    await seed(stores, "s-owner-h", { model: "stub-model" });
+    await seed(stores, "s-attached-h", { model: "stub-model", start: { worktreeOf: "s-owner-h" } });
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+
+    const attached = act(stores, "s-attached-h", workspace, "turn", { prompt: "long" }, gate);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const owner = act(stores, "s-owner-h", workspace, "turn", { prompt: "mine" });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(provisioned).toEqual([]);
+
+    open();
+    await attached;
+    await owner;
+    expect(provisioned.map((entry) => entry.place.sessionId)).toEqual(["s-owner-h"]);
   });
 
   it("can't remove the worktree: only its owner can", async () => {
