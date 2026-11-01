@@ -61,6 +61,23 @@ import { ModelBadge } from "@/components/flow-state/model-badge";
 <ModelBadge model={item.model} />
 ```
 
+## Spend
+
+One line for what a coding run spent: the model, the tokens, and the vendor's charge when it reported one, like `claude-sonnet-4-5 · 12.4k tokens · $0.42`. Hand it the `spend` a task row carries (from `listTasks`), or the `spend` on a harness session's turn record; both have the same shape. A count nobody reported reads as "no tokens reported yet", never 0. A run on a subscription isn't billed per run, so it shows tokens and no dollar figure.
+
+```bash
+fsdev ui add spend
+```
+
+```tsx
+import { Spend } from "@/components/flow-state/spend";
+
+<Spend spend={task.spend} attempts={task.attempts} />
+<Spend spend={turn.spend} durationMs={turn.endedAt - turn.at} split />
+```
+
+`split` shows input and output apart. `attempts` appears from the second attempt on. `harnessLabel` puts the harness's name first, for a view that doesn't already show it.
+
 ## AuditAnnotation
 
 A compact card for [Response Auditor](/docs/patterns/response-auditor) findings. It lists the surfaced results with severity indicators, per-analyzer scores, and the evidence each analyzer flagged. You don't render it by hand: the `responseAuditor` pattern emits an `audit-annotation` component item whenever a result surfaces, and `chatAssistantRenderers` maps that item to this card, so the audit shows up automatically on any chat surface wired with those renderers.

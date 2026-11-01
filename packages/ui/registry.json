@@ -337,6 +337,20 @@
       "categories": ["ai", "framework"]
     },
     {
+      "name": "spend",
+      "title": "Spend",
+      "type": "registry:component",
+      "description": "One line for what a run spent: model, tokens, the vendor's charge when it reported one, and optionally attempts and duration. Reads a task row's or a harness turn's folded spend; a count nobody reported reads as such, never as 0, and a subscription run shows no dollar figure.",
+      "dependencies": [],
+      "registryDependencies": [],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/spend.tsx",
+        "target": "components/flow-state/spend.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
       "name": "approval",
       "title": "Approval",
       "type": "registry:component",
@@ -562,6 +576,20 @@
         "type": "registry:component",
         "path": "registry/components/run-changes.tsx",
         "target": "components/flow-state/run-changes.tsx"
+      }],
+      "categories": ["ai", "code"]
+    },
+    {
+      "name": "run-checks",
+      "title": "Run Checks",
+      "type": "registry:component",
+      "description": "A coding run's checks: \"Checks 2/2 passed\", red when any failed, opening into each command and the end of its output. Pairs with harness-manager's commandCheck results.",
+      "dependencies": ["lucide-react"],
+      "registryDependencies": ["tokens"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/run-checks.tsx",
+        "target": "components/flow-state/run-checks.tsx"
       }],
       "categories": ["ai", "code"]
     }

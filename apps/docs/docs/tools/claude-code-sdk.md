@@ -441,6 +441,7 @@ const checkoutFor = (ctx: object) => {
 claudeCodeAgent({
   cwd: (ctx) => checkoutFor(ctx),
   settingSources: ["user"],
+  settings: { disableAllHooks: true },
   env: { ...harnessEnv({ pass: ["PATH", "HOME", "ANTHROPIC_API_KEY"] }), CI: "1" },
   sandbox: async (ctx) => ({
     enabled: true,
@@ -465,6 +466,33 @@ directory is one your server assembled out of resources your own users can
 write, then those files are user input, and the run reading configuration from
 them means your users configure your agent. Pass `[]` to load none, or list only
 the sources you control.
+
+**`settings`** is a settings layer of your own for the run, in Claude Code's
+`settings.json` shape, forwarded as given. It sits above every source
+`settingSources` loads, so a key here wins over the same key in the repository's
+`.claude/settings.json`. Leave it out and the run gets none.
+
+The case it's for is a repository you trust. `"project"` loads its `CLAUDE.md`
+and skills, which is what you want, and also its hooks: shell commands Claude
+Code runs by itself on events like a prompt or a stop. They show in no transcript,
+and a run can write one into `.claude/settings.json` for the next run to execute.
+To load the conventions and keep every hook off:
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+
+claudeCodeAgent({
+  cwd,
+  settingSources: ["project"],
+  settings: { disableAllHooks: true },
+  env: harnessEnv({ pass: CLAUDE_CODE_PASS }),
+});
+```
+
+With `mcpTools` set, the run's settings also carry
+`disableClaudeAiConnectors: true`, whatever yours say, so the handed servers stay
+the run's whole MCP set.
 
 **`env`** sets the environment variables the run's process sees. Leave it unset and the run's process
 starts with your server's entire `process.env`: every API key, token and
@@ -500,7 +528,9 @@ Give that same `env` to
 [`probeClaudeAccount`](#checking-for-a-credential-before-you-start),
 [`listClaudeModels`](#choosing-the-model) and
 [`readClaudeUsage`](#reading-usage-left), so they see the account the run sees. If your runs need
-more, pass your own list.
+more, add the names to it: `harnessEnv({ pass: [...CLAUDE_CODE_PASS, "GH_TOKEN"] })`. Anything you
+pass is readable by every command the run starts, so the model can print it, and it can end up in a
+log or a commit.
 
 **`sandbox`** is the Agent SDK's sandbox settings, forwarded as given. Take a
 value or write a resolver. The resolver form is the one that matters: the

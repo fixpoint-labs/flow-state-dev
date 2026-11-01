@@ -69,6 +69,7 @@ export {
 export {
   harnessManager,
   harnessDrainBudgetMs,
+  DONE_STOP_GRACE_MS,
   resolveOwnership,
   requestTenant,
   describeTenant,
@@ -100,10 +101,23 @@ export {
   type PhaseRunContext,
   type PromptRunContext,
   type CompletionRunContext,
+  type PhaseDoneVerdict,
   type AnsweredQuestion,
   type RequestIdentityContext,
 } from "./manager";
 export { PROGRESS_NOTE_MS, progressNoteOf } from "./progress-note";
+
+// ── Checks: the project's commands, before a run is done ────────────────────
+export {
+  commandCheck,
+  commandCheckResultSchema,
+  commandChecksFailure,
+  commandChecksPassed,
+  commandChecksSummary,
+  type CommandCheckCommands,
+  type CommandCheckOptions,
+  type CommandCheckResult,
+} from "./command-check";
 
 // ── A line typed in a run's session: a steer, or talk once finished ─────────
 export {

@@ -256,15 +256,16 @@ export const claudeCodeSession = harnessSessionFlow({
 });
 ```
 
-`agent` builds the harness block from the feeds the flow hands it: `cwd`, `resume`, `onSession`, `model`, `worktree` and `onSteerable`. These are the session flow's own feeds. It has no `onUsage` or `onActivity`, which feed the manager's task records. `workspace` says where each session works: `provision` makes a session's directory on its first turn, `locate` finds it without making it, and `branch` names the branch whose pull requests the flow checks when a turn ends (`null` skips the check). A session is keyed by its flow kind, tenant and id, never by anything the caller sent.
+`agent` builds the harness block from the feeds the flow hands it: `cwd`, `resume`, `onSession`, `model`, `worktree`, `onSteerable` and `onUsage`. These are the session flow's own feeds. `onUsage` records a subscription window the harness hears about during a run in the user's [usage record](#subscription-usage), as the manager's does; the flow's `harnessUsage` action reads it, with the readers you pass as `usageReaders` (none by default). It has no `onActivity`, which feeds the manager's task records. `workspace` says where each session works: `provision` makes a session's directory on its first turn, `locate` finds it without making it, and `branch` names the branch whose pull requests the flow checks when a turn ends (`null` skips the check). A session is keyed by its flow kind, tenant and id, never by anything the caller sent.
 
 The flow handles the rest:
 
 - **Continuity.** `resume` hands the harness the conversation it last confirmed, and `onSession` is the only thing that records a new one. If the harness refuses to continue that conversation, the session stays bound to it, and each later turn fails the same way. To recover, start a new session.
 - **The model.** A session is created with the model it runs (`state.model`), which never changes after that. Creating one without a model is refused with `HARNESS_SESSION_MODEL_REQUIRED`. `defaultModel` is the model used for a stored session that has none recorded.
 - **Actions.** `turn` takes a prompt and waits for any running turn to finish first (`concurrency: "defer"`). `steer` hands a line to the running turn if its harness offered to take one, and answers `{ taken, live }`.
-- **A record per turn.** `state.turns` keeps the latest 20 turns, by request id. Each record holds the conversation the turn tried to resume, the one the harness confirmed, and how the turn failed: core's failure class, the harness's error text, and whether it was stopped. Read it to show a user why a turn failed. The schema is `harnessSessionStateSchema`.
+- **A record per turn.** `state.turns` keeps the latest 20 turns, by request id. Each record holds the conversation the turn tried to resume, the one the harness confirmed, and how the turn failed: core's failure class, the harness's error text, and whether it was stopped. Read it to show a user why a turn failed. When the turn ends, however it ended, its record also gets `spend`, what the turn spent as a task's spend reads (`taskSpendView`'s shape: model, tokens, and the vendor's charge when it reported one, `null` when the harness reported nothing), and `endedAt`, so the turn took `endedAt - at`. The schema is `harnessSessionStateSchema`.
 - **A title.** The session takes its title from its first prompt (`harnessSessionTitle`).
+- **Checks after a turn.** `verify` takes the options [`commandCheck`](#checking-the-work-with-commands) takes, `{ commands, timeoutMs, env? }`. After a turn whose harness reported `finished` and that wasn't stopped, the flow runs the commands in the session's working directory and records the results on the turn's record as `checks` (`null` when none ran). A red check doesn't fail the turn. A `commands` function is handed `{ place, cwd }`. A `timeoutMs` that isn't a positive whole number is refused when the flow is built.
 - **What a turn changed.** Each turn's record keeps `base`, the commit the session's checkout was on when the turn started working in it, and `head`, the commit at the end of the turn. Both are `null` when the checkout isn't a git repository. The flow declares a `changes` read: input `{ turn, path? }` (`harnessTurnChangesInputSchema`), where `turn` is the turn's request id, its key in `state.turns`. It answers `{ diff, patch }` (no `taskId`) as [the run's changes read](#reading-one-files-patch) does, for that turn's commits only. A turn still running reads up to the checkout's current HEAD.
 
 ## What a phase supplies
@@ -286,6 +287,8 @@ The flow handles the rest:
 
 `isDone` gets one fact `buildPrompt` does not: `run.stopReport`, how the run said it stopped, in the framework's own vocabulary (`"finished"`, `"stopped-at-limit"`, `"failed"`) and exactly as the harness reported it. A value this version of the framework doesn't define reaches `isDone` unchanged, and never as `"finished"`. `null` means no terminal result was reported at all. What "done" means is entirely the phase's call.
 
+`isDone` answers a boolean, or a `PhaseDoneVerdict`: `{ done, reason?, checks? }`. When `done` is false, `reason` is added to the attempt's failure, which the next attempt's `buildPrompt` reads as `run.feedback`. `checks` goes on the run record whatever the verdict. `isDone` gets a minute to answer; a phase that needs longer sets `doneTimeoutMs`; pass the same number to `harnessDrainBudgetMs({ doneTimeoutMs })`. When the time is up, `run.signal` is aborted and the manager waits up to `DONE_STOP_GRACE_MS` (5 s) for the check to stop before it lets the checkout go. A check that starts work of its own should stop it on that signal; `commandCheck` stops its running command and starts no more.
+
 Ending cleanly is not the same answer as finishing the job. A run that exhausts its turn or spend budget commits the part it got through and reports `stopped-at-limit`. A check that only asks whether the branch has a pull request settles that row as done with half the work in it.
 
 Collections a phase reads ride the standard `uses` option:
@@ -295,6 +298,46 @@ harnessManager({ …, uses: [myPhaseCapability] });
 ```
 
 A capability claiming one of the manager's own accessors (`runs`, `harness-usage`, the board's ledger) is refused when you build the manager, naming the key.
+
+## Checking the work with commands
+
+`commandCheck(phase, options)` wraps a phase so a run counts as done only when the project's own commands pass in the run's checkout: a typecheck, a test suite, a lint.
+
+```ts
+import { commandCheck, harnessManager } from "@flow-state-dev/harness-manager";
+
+const phase = commandCheck(
+  {
+    phase: "code",
+    buildPrompt: (run) =>
+      run.feedback === undefined ? run.task.goal : `${run.task.goal}\n\nWhy the last attempt stopped:\n${run.feedback}`,
+    isDone: (run) => run.stopReport === "finished",
+  },
+  { commands: ["pnpm typecheck", "pnpm --filter web test"], timeoutMs: 10 * 60_000 },
+);
+
+harnessManager({ /* board, workspace, harness, … */ phase, reviewChanges: true });
+```
+
+- **The phase's own check runs first.** The commands run only when it says done, so a run stopped at its limit runs none under the phase above.
+- **The commands run in order, in the run's checkout, inside one wall clock**, `timeoutMs` for all of them together. A failing command doesn't stop the ones after it. When the clock runs out, the running command is stopped with its process group and recorded as timed out, and the rest are skipped.
+- **Any red command makes the attempt not done.** A command is red when it exits non-zero, times out, is skipped, or can't run. The attempt fails and goes back to the board, and the next attempt's `run.feedback` names each red command, why it's red, and the end of its output. Put `run.feedback` in your prompt, as above, or the next attempt won't see it.
+- **Every result goes on the run record** as `checks`, whatever the verdict. Each is `{ command, exitCode, timedOut, skipped, durationMs, tail }` (`commandCheckResultSchema`). `tail` is the last 4,000 characters of standard output and standard error together, with colour codes removed. `exitCode` is `null` for a command that was stopped, skipped or refused.
+- **A done run under `reviewChanges`** carries the results on its review's data as `checks`, and its prompt gets the line "Checks n/m passed." (see [Reviewing a run's changes](#reviewing-a-runs-changes)).
+
+`options`:
+
+- `commands`: a list, or a function handed the same run context `isDone` gets and answering a list (sync or async), resolved on every attempt. An empty list runs nothing and passes.
+- `timeoutMs`: a positive whole number of milliseconds. Anything else throws when `commandCheck` is called.
+- `env`: extra environment variables, laid over the host process's own.
+
+**A command is one program and its arguments, run with no shell.** Single and double quotes group words. A line containing `&&`, `||`, `|`, `;`, `&`, `<`, `>`, `$(` or a backtick is refused, quoted or not, so write two commands as two entries. A refused line isn't started: its result has `exitCode: null` and the refusal as its `tail`. A program that can't be found exits `127`.
+
+**Size your shutdown with it.** `commandCheck` sets the phase's `doneTimeoutMs` to the phase's own bound (a minute unless it set one) plus `timeoutMs`. Pass it on, `harnessDrainBudgetMs({ ..., doneTimeoutMs: phase.doneTimeoutMs })`, or a shutdown can stop a check before it ends.
+
+To build your own display or message, `commandChecksPassed(results)` says whether all passed (an empty list passes), `commandChecksSummary(results)` answers `"Checks 2/3 passed"`, and `commandChecksFailure(results)` answers the text the next attempt gets, or `undefined` when all passed. `@flow-state-dev/ui`'s `run-checks` component (`fsdev ui add run-checks`) draws the results.
+
+The commands run the checkout's own scripts, and the agent can edit those. A green result says the scripts passed; it doesn't say the agent left them alone. For a project on Workforce, the project can name its commands; see `projectChecks()` in the workforce README.
 
 ## Continuing a run
 
@@ -328,7 +371,7 @@ The recorded session is the one the harness *confirmed* it was in. If the agent 
 
 A run's changes are the commits it made over the base its branch was cut from. A run that would complete (the judge said done, there is no judge, or the judge's verdict was under its `floor`) and has commits on its branch waits for a review. So does a run whose commit count git couldn't read; its review says the commits couldn't be read. A run with no commits completes unreviewed. A failed run fails its attempt unreviewed. A judge's confident verdicts skip the review: *not done* fails the attempt, and *ask* holds the task on a question.
 
-While it waits, the task stays `in_progress` on the same attempt and keeps its claim, and the checkout is free. The row lists the wait among its open `holds`, with `source.kind: "suspension"` and `ask.kind: "review"`, titled "Review the run's changes". Its prompt gives the commit count and up to 20 commit subjects, a line "N files changed (+a −d).", then the judge's verdict, confidence and reason ("No judge read this run." without one), and the line "The judge's verdict is information, not approval." The hold's data is `{ branch, commits, subjects, files, fileCount, added, removed, judge }`. `files` lists up to `MAX_DIFF_FILES` (200) changed files as `{ path, added, removed }`, with `added` and `removed` `null` for a binary file. `fileCount`, `added` and `removed` count every changed file, listed or not. `files`, `fileCount`, `added` and `removed` are all `null` when git couldn't read the diff. Only committed changes count: uncommitted work in the checkout isn't part of it. A rename reads as the old path removed and the new path added. The Inbox lists it as a review.
+While it waits, the task stays `in_progress` on the same attempt and keeps its claim, and the checkout is free. The row lists the wait among its open `holds`, with `source.kind: "suspension"` and `ask.kind: "review"`, titled "Review the run's changes". Its prompt gives the commit count and up to 20 commit subjects, a line "N files changed (+a −d).", then "Checks n/m passed." when the phase ran [checks](#checking-the-work-with-commands), then the judge's verdict, confidence and reason ("No judge read this run." without one), and the line "The judge's verdict is information, not approval." The hold's data is `{ branch, commits, subjects, files, fileCount, added, removed, judge, checks }`, where `checks` is the phase's check results, or `null` when it ran none. `files` lists up to `MAX_DIFF_FILES` (200) changed files as `{ path, added, removed }`, with `added` and `removed` `null` for a binary file. `fileCount`, `added` and `removed` count every changed file, listed or not. `files`, `fileCount`, `added` and `removed` are all `null` when git couldn't read the diff. Only committed changes count: uncommitted work in the checkout isn't part of it. A rename reads as the old path removed and the new path added. The Inbox lists it as a review.
 
 The answer is a `HarnessReviewAnswer`, checked against `harnessReviewAnswerSchema`: `{ verdict: "accepted" }`, or `{ verdict: "revise", words }` with non-blank `words`. With the Inbox client:
 
@@ -563,7 +606,7 @@ The record is `harnessUsageCollection` (`HARNESS_USAGE`, `harness-usage/**`, use
 
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `harnessRunChangesRead` with `HarnessRunChangesReadOptions`, `HarnessRunChangesRefused`, `harnessRunChangesInputSchema`, `harnessRunChangesOutputSchema`, `runChangesSchema`, `runDiffSchema`, `runFilePatchSchema`, `RunChanges`, `RunDiff`, `RunDiffFile`, `RunFilePatch`, `MAX_DIFF_FILES` and `MAX_PATCH_CHARS` for [reading what a run changed](#reading-one-files-patch), `harnessSessionFlow` with `harnessSessionFeeds`, `harnessSessionStateSchema`, `harnessTurnChangesInputSchema` and their types for [a harness as a session](#a-harness-as-a-session), `harnessStub` for [checks that run no model](#a-scripted-harness-for-checks), `upgradeKeptTurns`, `STEER_POLL_MS`, `PROGRESS_NOTE_MS` and `progressNoteOf` for [progress notes](#how-a-running-task-is-doing), `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
+**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `harnessRunChangesRead` with `HarnessRunChangesReadOptions`, `HarnessRunChangesRefused`, `harnessRunChangesInputSchema`, `harnessRunChangesOutputSchema`, `runChangesSchema`, `runDiffSchema`, `runFilePatchSchema`, `RunChanges`, `RunDiff`, `RunDiffFile`, `RunFilePatch`, `MAX_DIFF_FILES` and `MAX_PATCH_CHARS` for [reading what a run changed](#reading-one-files-patch), `harnessSessionFlow` with `harnessSessionFeeds`, `harnessSessionStateSchema`, `harnessTurnChangesInputSchema` and their types for [a harness as a session](#a-harness-as-a-session), `harnessStub` for [checks that run no model](#a-scripted-harness-for-checks), `upgradeKeptTurns`, `STEER_POLL_MS`, `PROGRESS_NOTE_MS` and `progressNoteOf` for [progress notes](#how-a-running-task-is-doing), `PhaseSpec`, `PhaseDoneVerdict` and the run-context types, `commandCheck` with `CommandCheckOptions`, `CommandCheckCommands`, `CommandCheckResult`, `commandCheckResultSchema`, `commandChecksPassed`, `commandChecksSummary` and `commandChecksFailure` for [checking the work with commands](#checking-the-work-with-commands), `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
 
 **`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 

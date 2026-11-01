@@ -171,9 +171,11 @@ before the task is checked. The write is `recordSpend(id, { requestId, part, spe
 { claim })`, fenced by the row's identity only, so a failed attempt's tokens land even
 after its row settled; it emits no `task-change`. A row written before this field reads
 `spend: null`. `taskSpendView(task)` folds it to `{ harness, model, inputTokens,
-outputTokens, unreported, live }`, the shape `listTasks` returns from
+outputTokens, costUsd, unreported, live }`, the shape `listTasks` returns from
 `taskToolActions` (never to a model): tokens are `null` until something reports one,
-never 0. If you implement `TaskCollectionRef` yourself, implement `recordSpend` too, or
+never 0. `costUsd` is the sum of the charges vendors reported (an API-key harness
+run), or `null` when none did; a subscription run reports none, and nothing estimates
+one. If you implement `TaskCollectionRef` yourself, implement `recordSpend` too, or
 the board writes no spend.
 
 `rowsInSession(ledger, sessionId)` returns the rows that run in a session, in ledger

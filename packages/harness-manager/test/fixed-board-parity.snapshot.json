@@ -6,6 +6,7 @@
     "baseCommit": "string",
     "baseRef": "main",
     "branch": "conductor/t0/h5deb09c2e3e2dc2442be4fa73730a5de109b88b7422214a4c0a5b86ffae490a4/hdfb6f541ef82e9100159f12a84e635d4dce04b31004d05980fc3cae9f5a19737/feature-board/fix-1--implement",
+    "checks": null,
     "childSessionId": "string",
     "costUsd": null,
     "filesOnly": null,

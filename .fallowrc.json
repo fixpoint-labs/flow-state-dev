@@ -27,6 +27,8 @@
     "packages/cli/test/fixtures/**/*.ts",
     // Fake Codex programs the codex specs spawn by path.
     "packages/codex/test/fake-*.mjs",
+    // A fake Claude Code CLI the claude-code settings spec spawns by path.
+    "packages/claude-code/test/sdk/fake-*.mjs",
 
     "apps/kitchen-sink/flows/**/index.ts",
     // Docusaurus seeds the config, sidebars and pages, not this theme module.
@@ -98,7 +100,13 @@
     "labs/teammates/src/components/flow-state/tool-grouping.ts",
     // Kitchen Sink's copy of the registry's run-changes, which the registry
     // drift test requires installed; its Changes section imports it later.
-    "apps/kitchen-sink/components/flow-state/run-changes.tsx"
+    "apps/kitchen-sink/components/flow-state/run-changes.tsx",
+    // Kitchen Sink's copy of the registry's run-checks, which the registry
+    // drift test requires installed; its turn notice imports it later.
+    "apps/kitchen-sink/components/flow-state/run-checks.tsx",
+    // Kitchen Sink's copy of the registry's spend, which the registry drift
+    // test requires installed; its harness session imports it later.
+    "apps/kitchen-sink/components/flow-state/spend.tsx"
   ],
 
   // Dead code fails `fallow audit` at its default severity. Complexity reports
