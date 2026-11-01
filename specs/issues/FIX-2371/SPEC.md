@@ -70,8 +70,8 @@ The text is in the box until the server has it; a reload at any point before tha
   issue asks. Both store drafts per session through `useDraft`.
 - **Shift Manager's `TurnComposer`** keeps its send states as they are, which already keep the
   draft until the session holds the line. It stores the draft through `useDraft`, keyed by the
-  target each caller passes (a conversation's worker, a task, an ask), and stores an
-  *unconfirmed* warning beside it until the next send.
+  target each caller passes (a conversation's session or worker, a task, an ask), and stores an
+  *unconfirmed* warning beside it until the next send ends.
 - **Kitchen Sink** deletes `lib/use-session-draft.ts` and imports the hook (ER-3);
   `clearSessionDraftStorage` becomes `clearDraft`.
 - **Docs:** `packages/react/README.md` documents `useDraft`; the Shift Manager README's `--dev`
