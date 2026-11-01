@@ -1,0 +1,79 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="What changes, in three places. Orchestration: the task-change adapter, which every board change already passes, keeps its item and also publishes a board notice on the session that filed the row, narrowed to the board. Engine: a seam on the block context hands that publish to the run's bus, with the tenant filled in. Views: Shift Manager's tasks panel and board card, the Teammates lab's and the claude-code-style lab's task lists subscribe the board's topic and read on a notice; their timers are removed; a live BoardList moves from following the session stream to the board notice. The bus and the socket come from FIX-2426 and FIX-2428."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .pkg   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .ext   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .gone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .input { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; text-decoration:line-through; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="orchestration">
+    <rect class="pkg" x="16" y="16" width="290" height="190" rx="6"/>
+    <text class="t-lbl" x="32" y="36">ORCHESTRATION</text>
+    <rect class="ext" x="32" y="48" width="258" height="64" rx="5"/>
+    <text class="t-b" x="44" y="70">the task-change adapter</text>
+    <text class="t-s" x="44" y="88">every board change passes it;</text>
+    <text class="t-s" x="44" y="103">its item stays as it is</text>
+    <rect class="new" x="32" y="124" width="258" height="66" rx="5"/>
+    <text class="t-b" x="44" y="146">+ a board notice</text>
+    <text class="t-s" x="44" y="164">on the session that filed the row,</text>
+    <text class="t-s" x="44" y="179">narrowed to the board</text>
+  </g>
+
+  <g id="engine">
+    <rect class="pkg" x="325" y="16" width="290" height="190" rx="6"/>
+    <text class="t-lbl" x="341" y="36">ENGINE</text>
+    <rect class="new" x="341" y="48" width="258" height="64" rx="5"/>
+    <text class="t-b" x="353" y="70">a publish seam on the context</text>
+    <text class="t-s" x="353" y="88">fills the tenant; hands the notice</text>
+    <text class="t-s" x="353" y="103">to the run's bus, on any process</text>
+    <rect class="input" x="341" y="124" width="258" height="66" rx="5"/>
+    <text class="t-b" x="353" y="146">the bus and the socket</text>
+    <text class="t-s" x="353" y="164">FIX-2426 and FIX-2428:</text>
+    <text class="t-s" x="353" y="179">not built here</text>
+  </g>
+
+  <g id="views">
+    <rect class="pkg" x="634" y="16" width="290" height="340" rx="6"/>
+    <text class="t-lbl" x="650" y="36">FIVE BOARD VIEWS</text>
+    <rect class="new" x="650" y="48" width="258" height="50" rx="5"/>
+    <text class="t-b" x="662" y="68">+ subscribe the board's topic</text>
+    <text class="t-s" x="662" y="86">read on a notice; poll only without push</text>
+    <rect class="gone" x="650" y="110" width="258" height="40" rx="5"/>
+    <text class="t-x" x="662" y="135">Shift Manager panel · 3 s</text>
+    <rect class="gone" x="650" y="158" width="258" height="40" rx="5"/>
+    <text class="t-x" x="662" y="183">Shift Manager board card · 3 s</text>
+    <rect class="gone" x="650" y="206" width="258" height="40" rx="5"/>
+    <text class="t-x" x="662" y="231">Teammates lab · 1.5 s</text>
+    <rect class="gone" x="650" y="254" width="258" height="40" rx="5"/>
+    <text class="t-x" x="662" y="279">claude-code-style lab · 2 s</text>
+    <rect class="ext" x="650" y="302" width="258" height="40" rx="5"/>
+    <text class="t-b" x="662" y="319">BoardList live</text>
+    <text class="t-s" x="662" y="334">session stream, now the board notice</text>
+  </g>
+
+  <g id="legend">
+    <rect class="new" x="16" y="370" width="14" height="14" rx="3"/>
+    <text class="t-s" x="36" y="381">new</text>
+    <rect class="ext" x="86" y="370" width="14" height="14" rx="3"/>
+    <text class="t-s" x="106" y="381">changed</text>
+    <rect class="gone" x="170" y="370" width="14" height="14" rx="3"/>
+    <text class="t-s" x="190" y="381">removed timer</text>
+    <rect class="input" x="290" y="370" width="14" height="14" rx="3"/>
+    <text class="t-s" x="310" y="381">from another issue</text>
+  </g>
+</svg>
