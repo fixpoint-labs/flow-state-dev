@@ -140,6 +140,40 @@ describe("a host's setup command", () => {
     expect(place.setup?.status === "failed" ? place.setup.tail : "").toContain("provisionTimeoutMs");
   }, 20_000);
 
+  it("stops what the setup command started too, within the budget", async () => {
+    // A script whose child outlives it and holds its output open, the way a
+    // package manager's lifecycle script can.
+    const late = join(scratch, "late");
+    const script = `sh -c 'sleep 5; echo late > "${late}"' & wait`;
+    const started = Date.now();
+    const place = await host({ setup: { command: ["sh", "-c", script] }, provisionTimeoutMs: 3_000 }).provision(
+      local(),
+      { place: ["run-1"], branch: "fsd/run-1" },
+    );
+    const took = Date.now() - started;
+
+    expect(place.setup?.status === "failed" ? place.setup.tail : "").toContain("provisionTimeoutMs");
+    // Handed over when the budget ran out, not when the child let go of the output.
+    expect(took).toBeLessThan(4_500);
+    // And the child is gone: it never got to touch anything after the budget.
+    await new Promise((resolve) => setTimeout(resolve, 5_500 - took));
+    expect(existsSync(late)).toBe(false);
+  }, 20_000);
+
+  it("keeps the last of a long error output, where the error is", async () => {
+    const noisy = [
+      "for (let i = 0; i < 2000; i++) process.stderr.write('progress line ' + i + ' '.repeat(40) + '\\n');",
+      "process.stderr.write('FINAL_INSTALL_ERROR\\n');",
+      "process.exitCode = 1;",
+    ].join(" ");
+    const place = await host({ setup: { command: ["node", "-e", noisy] } }).provision(
+      local(),
+      { place: ["run-1"], branch: "fsd/run-1" },
+    );
+
+    expect(place.setup?.status === "failed" ? place.setup.tail : "").toContain("FINAL_INSTALL_ERROR");
+  });
+
   it("names a command that could not start", async () => {
     const place = await host({ setup: { command: ["no-such-setup-command-fsd"] } }).provision(
       local(),

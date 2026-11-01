@@ -325,7 +325,7 @@ The command runs in the checkout itself, without a shell. Use `["sh", "-c", "…
 
 - **Once per new checkout.** It runs when a provision makes the tree: a new branch, an existing branch checked out into a new tree, or a tree rebuilt from held work. A checkout handed back as it was doesn't run it again.
 - **Again until it works.** A marker beside the checkout says a setup is still owed. It's written before the command starts and removed when it exits 0, so a failed or interrupted setup runs again on the next provision.
-- **Inside the provision's budget.** Setup is the last step of a provision, under the same lock and the same `provisionTimeoutMs`. If your install takes a while, raise that budget, since a caller that holds a lease across provisioning sizes it from that number.
+- **Inside the provision's budget.** Setup is the last step of a provision, under the same lock and the same `provisionTimeoutMs`. If your install takes a while, raise that budget, since a caller that holds a lease across provisioning sizes it from that number. When the budget runs out, the host kills the command and every process it started.
 - **A failure doesn't stop the run.** The checkout is handed over anyway, and `place.setup` says what happened: `{ status: "done" }`, or `{ status: "failed", tail }` with the command's last lines of output and how it ended. A caller that must not run without setup refuses on that. A run can often fix the cause itself, such as an out-of-date lockfile.
 
 Pass `onSetup` in the place request to hear when the command starts, so you can show that the run is waiting on it. A host without `setup` runs nothing, and `place.setup` is absent. So is a place with no repository.
