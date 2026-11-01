@@ -921,7 +921,14 @@ function runSequencerOperations(
         const ownsResumeState =
           resumeState?.blockInstanceId === undefined || resumeState.blockInstanceId === ctx._blockIdentity?.blockInstanceId;
         if (resumeState !== undefined && resumeState.state !== undefined && ownsResumeState && ctx.sequencer !== undefined) {
-          await ctx.sequencer.setState({ ...ctx.sequencer.state, ...resumeState.state });
+          // Marked so the engine's replay guard (FIX-2444), which skips the
+          // waiting block's writes up to its gate, lets the restore through.
+          (ctx as { _restoringCheckpoint?: boolean })._restoringCheckpoint = true;
+          try {
+            await ctx.sequencer.setState({ ...ctx.sequencer.state, ...resumeState.state });
+          } finally {
+            (ctx as { _restoringCheckpoint?: boolean })._restoringCheckpoint = false;
+          }
         }
 
         for (let index = 0; index < operations.length; index += 1) {

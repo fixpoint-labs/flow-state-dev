@@ -84,7 +84,7 @@ function waitedByStamp(source: string | undefined, metadata: unknown) {
 import { ensureSessionRecord, refuseReadonlyStateChange } from "./session-birth";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
-import { isTraceObservabilityEnabled, errorDetailsWithCause, estimateTokenCounter, isValidOrgId } from "@flow-state-dev/core";
+import { isTraceObservabilityEnabled, errorDetailsWithCause, estimateTokenCounter, isValidOrgId, buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
 import { cloneValue, getTransientKeys, getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
@@ -3678,7 +3678,7 @@ export async function createExecutionContext<
           name: matched.parent.name,
           instanceId: matched.parent.instanceId,
           input: matched.parent.input,
-          ...(container === undefined ? ops : skipWhileReplayingToGate(ops))
+          ...(container === undefined || !restoredFromCheckpoint(matched.parent.instanceId) ? ops : skipWhileReplayingToGate(ops))
         },
         () => (container?.read() ?? {}) as TState
       ) as unknown as StateRef<TState>;
@@ -3691,9 +3691,18 @@ export async function createExecutionContext<
     // before it stopped. Until the block reaches the last gate the log
     // records for it, its writes are already in that state and are skipped;
     // from there on they are live. Reads are untouched.
+    // Only the sequencer whose checkpoint this continuation restored holds
+    // those writes: any other container (a handler's own state) starts from
+    // its defaults and needs them made again. The restore itself is the
+    // sequencer's own write and always applies.
+    const restoredFromCheckpoint = (instanceId: string): boolean => {
+      const resumeState = (rootContext as { _resumeState?: { state?: unknown; blockInstanceId?: string } })._resumeState;
+      if (resumeState?.state === undefined) return false;
+      return instanceId === (resumeState.blockInstanceId ?? buildBlockInstanceId(requestRef.current.id, ROOT_BLOCK_PATH, 0));
+    };
     const replayingToGate = (): boolean => {
       const replayLog = (context as { _replayLog?: ReplayLog })._replayLog;
-      if (replayLog === undefined) return false;
+      if (replayLog === undefined || (context as { _restoringCheckpoint?: boolean })._restoringCheckpoint === true) return false;
       const logicalId = `${requestRef.current.id}:${parentChain?.parent?.path ?? "root"}`;
       const logged =
         replayLog.resolvedResumes(logicalId).length + (replayLog.pendingSuspension()?.blockLogicalId === logicalId ? 1 : 0);

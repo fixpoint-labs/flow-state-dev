@@ -590,6 +590,50 @@ describe("a state write before the second wait in one step applies once", () => 
   });
 });
 
+describe("a state write before the wait that no checkpoint holds", () => {
+  // Only the sequencer whose checkpoint the resume restores already holds
+  // the waiting block's earlier writes. Any other state (a handler's own
+  // container, rebuilt from its defaults) needs the re-run's writes.
+  it("a handler's own state, written before the wait, reads its write after the answer", async () => {
+    const seen: unknown[] = [];
+    const counted = handler({
+      name: "counted",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      stateSchema: z.object({ asked: z.number().default(0) }),
+      execute: async (_input, ctx) => {
+        await ctx.self!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        seen.push((ctx.self!.state as { asked: number }).asked);
+        return null;
+      }
+    });
+    const flow = defineFlow({ kind: "asking", actions: { run: { block: sequencer({ name: "s" }).step(counted) } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "a" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([1]);
+  });
+
+  it("a sequencer's own .map that writes and waits restores its checkpoint and counts once", async () => {
+    const seen: unknown[] = [];
+    const block = sequencer({ name: "s", stateSchema: z.object({ asked: z.number().default(0) }) })
+      .map(async (_input, ctx) => {
+        await ctx.sequencer!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        seen.push((ctx.sequencer!.state as { asked: number }).asked);
+        return null;
+      });
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "a" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([1]);
+  });
+});
+
 describe("the answer route (D2)", () => {
   it("answers the stop once, as the signed-in caller; a second answer is told it is resolved", async () => {
     const seen: string[] = [];
