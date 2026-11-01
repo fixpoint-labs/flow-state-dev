@@ -176,7 +176,7 @@ For the screen, `fsdev ui add run-changes` adds a `RunChanges` component. Give i
 
 ## Approving a run's tool calls
 
-Build the manager with `approveTools: true` and a person approves each tool call the harness hasn't been told it may make. It's off by default.
+Build the manager with `approveTools: true` and a user approves each tool call the harness hasn't been told it may make. It's off by default.
 
 ```ts
 harnessManager({

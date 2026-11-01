@@ -171,9 +171,10 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
   const runs: StubRun[] = [];
   const toolCalls: StubToolCallRecord[] = [];
   let sessions = 0;
-  // The next scripted call to make: a held call is made again by the run that resumes.
-  let nextCall = 0;
-  let heldLast = false;
+  // Where each coding session is in the script, by session id: a held call is
+  // made again by the run that resumes that session; a cold run starts over.
+  type ScriptProgress = { nextCall: number; heldLast: boolean };
+  const progressBy = new Map<string, ScriptProgress>();
 
   return {
     runs,
@@ -218,11 +219,14 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
             if ((options.stepEveryMs ?? 0) > 0) await pause(options.stepEveryMs!, ctx.signal);
             ctx.emit.message(step);
           }
+          // A cold run is a new coding session (another task, or a fresh attempt): it makes every scripted call from the top.
+          const progress = (run.resume === null ? undefined : progressBy.get(run.resume)) ?? { nextCall: 0, heldLast: false };
+          progressBy.set(session, progress);
           // Told the call it stopped on was not allowed, the run goes on without it, as a model does.
-          if (heldLast && input.prompt.includes(TOOL_NOT_ALLOWED)) nextCall += 1;
-          heldLast = false;
-          for (; nextCall < (options.toolCalls ?? []).length; nextCall += 1) {
-            const call = options.toolCalls![nextCall]!;
+          if (progress.heldLast && input.prompt.includes(TOOL_NOT_ALLOWED)) progress.nextCall += 1;
+          progress.heldLast = false;
+          for (; progress.nextCall < (options.toolCalls ?? []).length; progress.nextCall += 1) {
+            const call = options.toolCalls![progress.nextCall]!;
             const record = (decision: StubToolCallRecord["decision"]) =>
               toolCalls.push({ run: runs.length - 1, toolName: call.toolName, input: call.input, decision, at: Date.now() });
             if (onToolApproval === undefined) {
@@ -234,7 +238,7 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
             record(decision.decision);
             if (decision.decision === "allow") await call.run?.(run);
             if (decision.decision === "held") {
-              heldLast = true;
+              progress.heldLast = true;
               // Unrun, and the run waits for its stop, as Claude Code's turn does.
               // The longest timer there is: the stop (or the run's deadline) ends it.
               await pause(2 ** 31 - 1, ctx.signal);

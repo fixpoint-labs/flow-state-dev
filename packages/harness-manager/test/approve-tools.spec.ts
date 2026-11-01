@@ -23,7 +23,7 @@ import {
   type Task,
 } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { ALLOW_FOR_RUN, harnessManager, harnessStub, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds, type StubToolCall } from "../src";
+import { ALLOW_FOR_RUN, harnessManager, harnessStub, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds, type HarnessStubOptions, type StubToolCall } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 
@@ -45,7 +45,15 @@ function marker(name: string, command = `touch ${name}`): StubToolCall {
   return { toolName: "Bash", input: { command }, run: (run) => writeFileSync(join(run.cwd, name), "ran\n") };
 }
 
-function host(options: { calls: StubToolCall[]; approveTools?: boolean; durable?: boolean; userDeadlineMs?: number }) {
+function host(options: {
+  calls: StubToolCall[];
+  approveTools?: boolean;
+  durable?: boolean;
+  userDeadlineMs?: number;
+  statusOf?: HarnessStubOptions["statusOf"];
+  /** Every run starts a new coding session: the resume feed offers none. */
+  cold?: boolean;
+}) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-approve-"));
   dirs.push(dir);
   const sourceRepo = join(dir, "repo");
@@ -53,7 +61,7 @@ function host(options: { calls: StubToolCall[]; approveTools?: boolean; durable?
   seedRepo(sourceRepo);
 
   const ledger = defineTaskCollection({ id: BOARD_ID, scope: "org" as const, stateSchema: harnessTaskInputSchema });
-  const stub = harnessStub({ toolCalls: options.calls });
+  const stub = harnessStub({ toolCalls: options.calls, ...(options.statusOf === undefined ? {} : { statusOf: options.statusOf }) });
   const handed: Array<keyof HarnessFeeds> = [];
   const manager = harnessManager({
     boardCollectionId: BOARD_ID,
@@ -65,7 +73,7 @@ function host(options: { calls: StubToolCall[]; approveTools?: boolean; durable?
     ownership: { pollMs: 25 },
     harness: (feeds) => {
       handed.push(...(Object.keys(feeds) as Array<keyof HarnessFeeds>));
-      return stub.slot(feeds);
+      return stub.slot(options.cold === true ? { ...feeds, resume: async () => null } : feeds);
     },
     ...(options.approveTools === false ? {} : { approveTools: true }),
   });
@@ -306,6 +314,21 @@ describe("a coding run's tool call waits for a person's approval", () => {
       expect(h.handed).not.toContain("onToolApproval");
       expect(decisions(h)).toEqual(["0:unasked"]);
       expect(done.holds ?? []).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("makes the scripted calls again in a new coding session, so a cold retry still exercises them", async () => {
+    // The first attempt errors; the retry resumes nothing, so its script starts over.
+    const h = host({ calls: [marker("marker")], approveTools: false, cold: true, statusOf: (run) => (run.session === "sess_stub_1" ? "errored" : "completed") });
+    try {
+      await h.start();
+      await h.until((t) => t.status === "pending" && t.attempts === 1, "the first attempt to fail");
+      await h.act("drain");
+      await h.until((t) => t.status === "completed", "the retry to complete");
+      expect(h.stub.runs.map((run) => run.resume)).toEqual([null, null]);
+      expect(decisions(h)).toEqual(["0:unasked", "1:unasked"]);
     } finally {
       await h.dispose();
     }

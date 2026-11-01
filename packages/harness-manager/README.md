@@ -204,7 +204,7 @@ The manager calls your factory once, with six feeds (`HarnessFeeds`), and a seve
 | `onSteerable` | Called by a harness whose run can take a line mid-turn, with the run's `steer` while it can and `null` after, so a steer reaches the step [as it runs](#a-run-that-takes-a-steer-live). Optional; a harness that can't steer ignores it. |
 | `onUsage` | Called by the harness with each subscription usage window its run reports, so the manager stores it in the run owner's [usage record](#subscription-usage). A harness that reports no usage ignores it. |
 | `onActivity` | Called by the harness with each assistant message and tool call of its run, so the manager keeps the task's [progress note](#how-a-running-task-is-doing) current. Optional; a harness that reports no activity ignores it. |
-| `onToolApproval` | Called by a harness that asks before each tool call (Claude Code), so a call a person hasn't allowed [waits for them](#approving-a-runs-tool-calls). Handed only with `approveTools: true`; Codex and Cursor ignore it. |
+| `onToolApproval` | Called by a harness that asks before each tool call (Claude Code), so a call the user hasn't allowed [waits for them](#approving-a-runs-tool-calls). Handed only with `approveTools: true`; Codex and Cursor ignore it. |
 
 The first six are the harness contract's own signatures, declared in `@flow-state-dev/core`. `onToolApproval` is declared here (`HarnessToolApprovalHook`), shaped as `@flow-state-dev/claude-code`'s `onToolApproval` option, so `...feeds` passes it on. Each is handed the block's context, not the run's prompt.
 
@@ -424,7 +424,7 @@ The ui registry's `run-changes` component (`fsdev ui add run-changes`) draws the
 
 ## Approving a run's tool calls
 
-`harnessManager({ ..., approveTools: true })` makes a person approve each tool call the harness hasn't been told it may make. Off by default, and with it off no feed is handed.
+`harnessManager({ ..., approveTools: true })` makes the user approve each tool call the harness hasn't been told it may make. Off by default, and with it off no feed is handed.
 
 ```ts
 harnessManager({
