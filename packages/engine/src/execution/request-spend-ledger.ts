@@ -50,8 +50,8 @@ export interface RequestSpendLedger {
  * never ended (its process died) left in the log: counted, and handed on at
  * this run's first ending. `carriedHarnessRuns` are the harness runs an
  * earlier ending already handed on: in {@link RequestSpendLedger.total} like
- * `carried`, never handed on again, and a later report under the same run id
- * is handed on as its change since.
+ * `carried`, never handed on again, and a later report under the same run id,
+ * reported here or recovered from the log, is handed on as its change since.
  */
 export function createRequestSpendLedger(
   carried: Readonly<Record<string, ModelUsageEntry>> = {},
@@ -62,12 +62,17 @@ export function createRequestSpendLedger(
   const byModel: Record<string, ModelUsageEntry> = Object.assign(Object.create(null), copyOf(carried));
   for (const [model, entry] of Object.entries(recovered)) addEntry((byModel[model] ??= emptyEntry()), entry);
   // One entry per run, as last reported, in the order last reported. A report
-  // with no run id is a run of its own, under a key nothing else reports to;
-  // so is each run the log recovered.
-  const carriedRuns = carriedHarnessRuns.map((run, i): [string, HarnessRunSpend] => [run.runId === undefined ? `carried:${i}` : `run:${run.runId}`, { ...run }]);
-  const harnessRuns = new Map<string, HarnessRunSpend>([...carriedRuns, ...recoveredHarnessRuns.map((run, i): [string, HarnessRunSpend] => [`recovered:${i}`, { ...run }])]);
+  // with no run id is a run of its own, under a key nothing else reports to.
+  // A run the log recovered under a carried run's id is that run's later
+  // report: it replaces the carried one, which stays what was handed on.
+  const carriedRuns = keyedRuns(carriedHarnessRuns, "carried");
+  const harnessRuns = new Map<string, HarnessRunSpend>(carriedRuns);
+  for (const [key, run] of keyedRuns(recoveredHarnessRuns, "recovered")) {
+    harnessRuns.delete(key);
+    harnessRuns.set(key, run);
+  }
   // Each run as the last ending handed it on.
-  let takenRuns = new Map<string, HarnessRunSpend>(carriedRuns.map(([key, run]) => [key, { ...run }]));
+  let takenRuns = new Map<string, HarnessRunSpend>([...carriedRuns].map(([key, run]) => [key, { ...run }]));
   let takenByModel: Record<string, ModelUsageEntry> = copyOf(carried);
   let settledRuns = 0;
 
@@ -121,6 +126,20 @@ export function createRequestSpendLedger(
       return since();
     }
   };
+}
+
+/**
+ * `runs` by ledger key, each run at its last report: `run:<id>`, or
+ * `<prefix>:<index>` for a run that names no id.
+ */
+function keyedRuns(runs: readonly HarnessRunSpend[], prefix: string): Map<string, HarnessRunSpend> {
+  const keyed = new Map<string, HarnessRunSpend>();
+  runs.forEach((run, i) => {
+    const key = run.runId === undefined ? `${prefix}:${i}` : `run:${run.runId}`;
+    keyed.delete(key);
+    keyed.set(key, { ...run });
+  });
+  return keyed;
 }
 
 /** Whether two reports of one run say the same. */

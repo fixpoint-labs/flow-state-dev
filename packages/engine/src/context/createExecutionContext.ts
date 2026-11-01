@@ -3167,7 +3167,7 @@ export async function createExecutionContext<
   // that run's to hand on, so it is carried rather than recovered.
   const loggedSpend = loggedSpendOf(requestRecord.items ?? [], requestRecord.spentThroughItemIndex ?? -1);
   const requestSpendLedger = interruptedEndingLive
-    ? createRequestSpendLedger(sumSpend(requestRecord.spentByModel ?? {}, loggedSpend.byModel), {}, [], requestRecord.spentHarnessRuns)
+    ? createRequestSpendLedger(sumSpend(requestRecord.spentByModel ?? {}, loggedSpend.byModel), {}, [], [...(requestRecord.spentHarnessRuns ?? []), ...loggedSpend.harnessRuns])
     : createRequestSpendLedger(requestRecord.spentByModel, loggedSpend.byModel, loggedSpend.harnessRuns, requestRecord.spentHarnessRuns);
   const requestEndRegistry = createRequestEndRegistry(() => requestSpendLedger.takeSinceLastEnding());
   // How this request resumed (FIX-2129), read when a block asks: the
