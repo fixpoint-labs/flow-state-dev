@@ -13,6 +13,8 @@
  *   - drop `onUsage` from the feeds: the usage query lists no window.
  *   - write the spend from the flow's `onFinished` instead: the request's
  *     terminal status is published before the spend lands.
+ *   - keep a record's first end (skip a record that already ended), or count
+ *     only the ledger's runs: a continued turn reads 10 tokens, not 20.
  */
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
 import { reportHarnessSpend, type HarnessBlock, type HarnessCallbackContext } from "@flow-state-dev/core/types";
@@ -32,6 +34,10 @@ interface Script {
   fail?: boolean;
   /** A window heard during the run. */
   window?: boolean;
+  /** An earlier run of this request already ended the turn with this run, as a turn continued after an interruption finds it. */
+  earlier?: { runId: string; inputTokens: number; outputTokens: number; costUsd: number | null };
+  /** The run writes its report twice, as a harness reports its running total. */
+  reportTwice?: boolean;
 }
 
 const stubAgent = (script: Script) => (feeds: HarnessSessionFeeds) =>
@@ -41,6 +47,16 @@ const stubAgent = (script: Script) => (feeds: HarnessSessionFeeds) =>
     execute: async (_input, ctx) => {
       const harnessCtx = ctx as unknown as HarnessCallbackContext;
       await feeds.resume(harnessCtx);
+      const earlier = script.earlier;
+      if (earlier !== undefined) {
+        const requestId = harnessCtx.request.identity.id;
+        await harnessCtx.session.atomicState((state) => {
+          const s = state as HarnessSessionState;
+          const turn = s.turns?.[requestId];
+          const run = { ...earlier, harness: "stub", model: "stub-model", billing: "api-key" as const };
+          return { ...s, turns: { ...s.turns, [requestId]: { ...turn!, endedAt: 1, spentRuns: [run] } } };
+        });
+      }
       if (script.window === true) {
         await feeds.onUsage(
           { harness: "stub", window: { id: "five_hour", label: "5h", minutes: 300, usedPercent: 42, level: "ok", resetsAt: null }, observedAt: Date.now(), runStartedAt: Date.now() - 10, accountId: "acct" },
@@ -51,7 +67,10 @@ const stubAgent = (script: Script) => (feeds: HarnessSessionFeeds) =>
         if (script.fail === true) throw new Error("the run broke");
         return { outcome: "completed" };
       } finally {
-        if (script.spend !== undefined) reportHarnessSpend(ctx, { runId: "run-1", harness: "stub", model: "stub-model", ...script.spend });
+        if (script.spend !== undefined) {
+          if (script.reportTwice === true) reportHarnessSpend(ctx, { runId: "run-1", harness: "stub", model: "stub-model", ...script.spend, inputTokens: 1, outputTokens: 1 });
+          reportHarnessSpend(ctx, { runId: "run-1", harness: "stub", model: "stub-model", ...script.spend });
+        }
       }
     },
   }) as unknown as HarnessBlock;
@@ -117,6 +136,21 @@ describe("a harness session turn's spend", () => {
     expect(turn.spend).toBeNull();
     expect(turn.endedAt).not.toBeNull();
   });
+  // A turn continued after an interruption runs again under the same request,
+  // whose ledger then holds only the new run: the turn still counts both.
+  it("counts the runs of an earlier run of its request too, once each", async () => {
+    const stores = createInMemoryStores();
+    await run(stores, "s-continued", {
+      earlier: { runId: "run-0", inputTokens: 10, outputTokens: 1, costUsd: 0.1 },
+      reportTwice: true,
+      spend: { inputTokens: 10, outputTokens: 1, costUsd: 0.1, billing: "api-key" },
+    });
+    const turn = await onlyTurn(stores, "s-continued");
+    expect(turn.spend).toMatchObject({ inputTokens: 20, outputTokens: 2 });
+    expect(turn.spend?.costUsd).toBeCloseTo(0.2);
+    expect(turn.endedAt).toBeGreaterThan(1);
+  });
+
   // A page refreshes the session when it sees the turn end, so the spend must
   // be stored by the time the request publishes its terminal status.
   it("is stored before the request publishes that it completed", async () => {
