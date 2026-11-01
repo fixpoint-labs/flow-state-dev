@@ -440,7 +440,10 @@ jobs:
 
   e2e:
     name: Kitchen-sink E2E (Playwright)
-    runs-on: ubuntu-latest
+    # Pinned: the installed Playwright can't install chromium-headless-shell
+    # on ubuntu-26.04, which ubuntu-latest now resolves to. Unpin once
+    # Playwright supports 26.04 (FIX-2438).
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     # needs is queue order, not a build dependency. Still runs if Typecheck & Test fails.
     needs: [ci]
