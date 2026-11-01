@@ -322,10 +322,10 @@ const workspace: HarnessSessionWorkspace = {
 Pass `issueSpec: true` to `harnessManager` or `harnessSessionFlow`, and a run that names an issue opens its prompt with that issue's spec, read from the run's own checkout. A board task names its issue under `harnessFeature` (or in its payload, on a fixed board); a session names it in `state.issue`. The default file is `specs/issues/<ISSUE>/SPEC.md`. Point elsewhere with a function:
 
 ```ts
-harnessManager({ /* ... */ issueSpec: { path: (issue) => `docs/specs/${issue}.md` } });
+harnessManager({ /* ... */ issueSpec: { path: (issue) => `design/${issue}.md` } });
 ```
 
-The section starts `## This work is for issue <ISSUE>` and is read fresh on every board attempt. A session gets it on each turn until the harness confirms a conversation. A spec longer than 64 KB (`ISSUE_SPEC_MAX_BYTES`) is cut, with a line saying so. A missing file becomes one line saying there is no spec, and the run goes ahead. A path that leaves the checkout is refused, and no file is read. Without `issueSpec`, the prompt is the phase's (or the user's) alone.
+The section starts `## This work is for issue <ISSUE>` and is read fresh on every board attempt. A session gets it on each turn until the harness confirms a conversation. A spec longer than 64 KB (`ISSUE_SPEC_MAX_BYTES`) is cut, with a line saying so. A missing file becomes one line saying there is no spec, and the run goes ahead. A path that leaves the checkout, or a link that points out of it, is refused, and no file is read. Without `issueSpec`, the prompt is the phase's (or the user's) alone.
 
 `readIssueSpecSection(cwd, issue, options?)` builds the same section, for a phase that writes its own brief. `isTrackerIssue(value)` checks the key grammar, `TRACKER_ISSUE_REFUSED` is the message a bad key gets, and `defaultIssueSpecPath(issue)` is the default path.
 
