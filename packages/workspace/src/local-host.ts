@@ -1977,9 +1977,10 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       throw new WorkspaceRefusedError("place-busy", `${entry.cwd} is being provisioned right now; nothing was removed. Try again once it is ready.`);
     }
     // A run working there holds its in-use lock (`occupyWorktree`) for as long
-    // as it works. Taken here, never judged stale, so a run can't start while
-    // the tree goes, and one that is running is never removed from under it.
-    const use = tryAcquireLock(worktreeLockPath(entry.cwd), { ...HOST_LOCK_BOUNDS, staleAfterMs: Number.MAX_SAFE_INTEGER, heartbeatMs: undefined }, { now });
+    // as it works. Taken here, a holder never judged stale, so one that is
+    // running is never removed from under it; and refreshed while held, so a
+    // run can't judge this one stale and start while the tree goes.
+    const use = tryAcquireLock(worktreeLockPath(entry.cwd), { ...HOST_LOCK_BOUNDS, staleAfterMs: Number.MAX_SAFE_INTEGER }, { now });
     if (use === undefined) {
       releaseLock(lease);
       throw new WorkspaceRefusedError(
