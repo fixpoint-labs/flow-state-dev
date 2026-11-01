@@ -131,7 +131,7 @@ export interface CoderWorkerFlowOptions {
   judge?: HarnessJudge;
   /** Both managers hold a run with commits for the user's review (`reviewChanges`). Absent: off. */
   reviewChanges?: boolean;
-  /** Both managers ask a person before a run's tool calls (`approveTools`). Absent: off. */
+  /** Both managers ask the user before a run's tool calls (`approveTools`). Absent: off. */
   approveTools?: boolean;
   /** Wall-clock budget for one harness run. */
   runTimeoutMs: number;

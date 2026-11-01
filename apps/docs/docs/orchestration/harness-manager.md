@@ -165,7 +165,7 @@ Reviews need a host with [durable execution](../advanced/durable-execution.md). 
 
 ## Approving a run's tool calls
 
-Build the manager with `approveTools: true` and a person approves each tool call the harness hasn't been told it may make. It's off by default.
+Build the manager with `approveTools: true` and a user approves each tool call the harness hasn't been told it may make. It's off by default.
 
 ```ts
 harnessManager({
