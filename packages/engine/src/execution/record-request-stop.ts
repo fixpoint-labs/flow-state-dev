@@ -128,11 +128,20 @@ async function endInterrupted(
   id: string,
   incarnation: string
 ): Promise<RequestStopResult> {
+  // No run is left to stamp the ending, so this write does: `abortedAt` dates
+  // it for checkpoint pruning, and `finalizedAtMs` says nothing still writes.
+  const now = Date.now();
   const ended = await requests.setFieldsIfStatus(
     id,
-    { abortRequested: true, ...settledRecordFields({ status: "aborted" }) },
+    {
+      abortRequested: true,
+      abortedAt: now,
+      finalizedAtMs: now,
+      heartbeatsUntilFinalized: false,
+      ...settledRecordFields({ status: "aborted" })
+    },
     ["interrupted"],
-    Date.now(),
+    now,
     incarnation
   );
   if (ended.applied) return { kind: "ended" };

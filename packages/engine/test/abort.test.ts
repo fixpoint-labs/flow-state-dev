@@ -23,6 +23,7 @@ import {
 } from "../src/execution/abort-registry";
 import { handleAbortRequest } from "../src/routes/abort-routes";
 import { handleContinueRequest } from "../src/routes/recovery-routes";
+import { terminalAtMs } from "../src/stores/request-ended-at";
 import { recordRequestStop } from "../src/execution/record-request-stop";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";
 import { createInitialRequestRecord } from "../src/context/initial-request-record";
@@ -277,6 +278,10 @@ describe("handleAbortRequest", () => {
       expect(record?.status).toBe("aborted");
       expect(record?.abortRequested).toBe(true);
       expect(await interruptedIds()).toEqual([]);
+      // No run is left to stamp the ending: without these the record and its
+      // checkpoints are never pruned.
+      expect(terminalAtMs(record!)).toEqual(expect.any(Number));
+      expect(record?.finalizedAtMs).toEqual(expect.any(Number));
     });
 
     it("a second stop finds it terminal (409)", async () => {
