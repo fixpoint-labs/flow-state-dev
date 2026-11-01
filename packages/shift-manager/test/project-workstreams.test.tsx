@@ -462,7 +462,7 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     // Bob's entry: its details and report, never his session.
     act(() => fireEvent.click(screen.getByRole("tab", { name: /workstreams/i })));
     const bobs = (await screen.findAllByTestId("project-entry")).find((li) => li.getAttribute("data-owner") === BOB.userId)!;
-    act(() => fireEvent.click(bobs.querySelector("button")!));
+    act(() => fireEvent.click(bobs.querySelector("a")!));
     const details = await screen.findByTestId("project-entry-details");
     // DevTeam's `eng/workers/em/WORKER.md` names the EM; the entry shows that name, not its id.
     expect(details.textContent).toContain("led by Engineering Manager");
@@ -472,7 +472,7 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     // Her own entry opens on its lead's workstream session.
     act(() => fireEvent.click(screen.getByTestId("project-entry-back")));
     const hers = (await screen.findAllByTestId("project-entry")).find((li) => li.getAttribute("data-owner") === ALICE.userId)!;
-    act(() => fireEvent.click(hers.querySelector("button")!));
+    act(() => fireEvent.click(hers.querySelector("a")!));
     const conversation = await screen.findByTestId("project-entry-conversation", undefined, { timeout: 10_000 });
     expect(conversation.getAttribute("data-session-id")).toBe(own.sessionId);
   });
@@ -498,7 +498,7 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     const hers = await rowOf(ALICE.userId);
     expect(hers.textContent).toContain("1 of 2 objectives met");
 
-    act(() => fireEvent.click(hers.querySelector("button")!));
+    act(() => fireEvent.click(hers.querySelector("a")!));
     await screen.findByTestId("project-entry-conversation", undefined, { timeout: 10_000 });
     expect(marks(screen.getByTestId("project-entry-own"))).toEqual([
       ["survey", "true"],
@@ -508,7 +508,7 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     // Bob's entry draws the same list on its details.
     act(() => fireEvent.click(screen.getByTestId("project-entry-back")));
     const his = await rowOf(BOB.userId);
-    act(() => fireEvent.click(his.querySelector("button")!));
+    act(() => fireEvent.click(his.querySelector("a")!));
     expect(marks(await screen.findByTestId("project-entry-details"))).toEqual([
       ["survey", "true"],
       ["write-up", "false"],
