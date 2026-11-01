@@ -95,7 +95,10 @@
     "labs/claude-code-style/src/components/ui/**",
     "labs/claude-code-style/src/components/flow-state/message.tsx",
     // The Teammates lab's copy of the registry's tool grouping.
-    "labs/teammates/src/components/flow-state/tool-grouping.ts"
+    "labs/teammates/src/components/flow-state/tool-grouping.ts",
+    // Kitchen Sink's byte-identical copy of the registry's error.tsx, whose
+    // `ErrorBody` export is for `request-recovery`, which Kitchen Sink does not draw yet.
+    "apps/kitchen-sink/components/flow-state/error.tsx"
   ],
 
   // Dead code fails `fallow audit` at its default severity. Complexity reports
