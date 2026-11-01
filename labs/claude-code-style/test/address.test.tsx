@@ -102,6 +102,32 @@ describe("the page's address", () => {
     expect((await within(thread()).findAllByText(/First session's line\./)).length).toBeGreaterThan(0);
   });
 
+  it("goes Back from one session to another's open task sheet, and keeps it open", async () => {
+    render(<App adapter={createFakeLab({ speed: 0.01 })} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    const pane = () => screen.getByRole("complementary", { name: "Background tasks" });
+    await waitFor(() => expect(within(pane()).getByRole("button", { name: /Research Globex/ })).toBeTruthy());
+    fireEvent.click(within(pane()).getByRole("button", { name: /Research Globex/ }));
+    expect(screen.getByRole("dialog", { name: "Work: Research Globex" })).toBeTruthy();
+    fireEvent.click(within(sessionsList()).getByRole("button", { name: "+ New session" }));
+    await pick();
+    await ask("Second session's line.");
+    // Straight from the second session to the first: the pane stays drawn across the switch.
+    fireEvent.click(within(sessionsList()).getByRole("button", { name: /Compare Acme and Globex/ }));
+    expect(await screen.findByRole("dialog", { name: "Work: Research Globex" })).toBeTruthy();
+    fireEvent.click(within(sessionsList()).getByRole("button", { name: /Second session's line/ }));
+    await within(thread()).findAllByText(/Second session's line\./);
+
+    // Back reopens the first session's sheet: its task is not judged against the second session's rows.
+    await back();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await screen.findByRole("dialog", { name: "Work: Research Globex" })).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByRole("dialog", { name: "Work: Research Globex" })).toBeTruthy();
+    expect(params().get("task")).toBeTruthy();
+  });
+
   it("opens the default screen on a link whose session is gone, and drops the dead id from the address", async () => {
     window.history.replaceState(null, "", "/?session=session-gone&task=task-gone");
     render(<App adapter={createFakeLab({ speed: 0.01 })} />);

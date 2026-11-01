@@ -95,8 +95,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const task = selectedId === undefined ? undefined : openTask[selectedId];
   useEffect(() => {
     if (pending.current !== null) return;
-    writeAddress({ view, session: selectedId, task }, how.current);
-    how.current = "replace";
+    // A run that changes nothing (a list refresh) leaves a pending pick's push for the write it is waiting on.
+    if (writeAddress({ view, session: selectedId, task }, how.current)) how.current = "replace";
   }, [view, selectedId, task, listed]);
   // A user's pick: a step Back returns from.
   const pick = (mode: ModeId, id: string | undefined) => {
@@ -154,6 +154,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
           <PaneResizer width={paneWidth} onResize={setPaneWidth} />
           {selected && pane === "tasks" ? (
             <TasksPane
+              // Keyed by session: a switch never judges the open task against the last session's rows.
+              key={selected.id}
               adapter={adapter}
               sessionId={selected.id}
               openId={openTask[selected.id]}
@@ -162,6 +164,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
             />
           ) : selected && pane === "board" ? (
             <ThreadsBoard
+              // Keyed by session: a switch never judges the open task against the last session's rows.
+              key={selected.id}
               adapter={adapter}
               sessionId={selected.id}
               openId={openTask[selected.id]}

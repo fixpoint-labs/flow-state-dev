@@ -33,15 +33,19 @@ export function readAddress(): Address {
   };
 }
 
-/** Put `address` in the page's address, leaving any other parameter alone. Writes nothing when it is already there. */
-export function writeAddress(address: Address, how: AddressWrite): void {
+/**
+ * Put `address` in the page's address, leaving any other parameter alone.
+ * Writes nothing when it is already there, and says whether it wrote.
+ */
+export function writeAddress(address: Address, how: AddressWrite): boolean {
   const url = new URL(window.location.href);
   const set = (name: string, value: string | undefined) => (value === undefined ? url.searchParams.delete(name) : url.searchParams.set(name, value));
   // An open session's mode decides its view, so the view is written only without one.
   set(VIEW, address.session === undefined && address.view !== "session" ? address.view : undefined);
   set(SESSION_ADDRESS_PARAM, address.session);
   set(TASK, address.session === undefined ? undefined : address.task);
-  if (url.href === window.location.href) return;
+  if (url.href === window.location.href) return false;
   if (how === "push") window.history.pushState(null, "", url);
   else window.history.replaceState(window.history.state, "", url);
+  return true;
 }

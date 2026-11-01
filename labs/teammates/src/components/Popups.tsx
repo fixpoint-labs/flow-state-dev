@@ -56,7 +56,8 @@ export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, onClose, o
   onMissing?: () => void;
 }) {
   return popup.kind === "task" ? (
-    <TaskPopup adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} onClose={onClose} onMissing={onMissing} />
+    // Keyed by conversation: a switch never judges the task against the last conversation's rows.
+    <TaskPopup key={popup.sessionId} adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} onClose={onClose} onMissing={onMissing} />
   ) : (
     <MessagePopup adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} onClose={onClose} />
   );
