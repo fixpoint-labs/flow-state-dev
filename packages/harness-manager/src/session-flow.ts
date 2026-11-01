@@ -603,7 +603,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       const place = placeOf(options.kind, harnessCtx);
       const cwd = options.workspace.locate(place);
       if (!existsSync(cwd)) return;
-      const checks = await runCommandChecks(verify, cwd, { place, cwd });
+      const checks = await runCommandChecks(verify, cwd, { place, cwd }, ctx.signal);
       if (checks.length === 0) return;
       const requestId = ctx.request.identity.id;
       await changeState(ctx, (state) => withTurn(state, requestId, (record) => ({ ...record, checks })));
