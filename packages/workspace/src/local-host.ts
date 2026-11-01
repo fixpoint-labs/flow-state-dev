@@ -105,7 +105,7 @@ import {
 } from "./source-read";
 import type { FlushReport, Place } from "./types";
 import { pinFetchSettings } from "./repository";
-import { worktreeLockPath } from "./occupancy";
+import { checkedOutBranch, worktreeLockPath } from "./occupancy";
 import {
   attachToWorktree,
   markWorktreeProvisioning,
@@ -1903,7 +1903,8 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       for (const block of porcelain.split("\n\n")) {
         const lines = block.split("\n");
         const path = lines.find((line) => line.startsWith("worktree "))?.slice("worktree ".length);
-        if (path === undefined) continue;
+        // A clone under `.clones` is bare and lists itself; it is no one's worktree.
+        if (path === undefined || lines.includes("bare")) continue;
         const cwd = existsSync(path) ? realpathSync(path) : path;
         if (!isStrictlyInside(cwd, realRoot)) continue;
         const branchLine = lines.find((line) => line.startsWith("branch "));
@@ -1969,6 +1970,18 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         }
       }
       const branch = entry.branch;
+      // A detached HEAD's commits live only in this worktree's HEAD and reflog,
+      // which removal deletes: refused like a branch's, unless forced.
+      if (branch === null && entry.head !== null && existsSync(entry.cwd) && removeOptions.force !== true) {
+        const only = Number(await git(entry.repository, ["rev-list", "--count", entry.head, "--not", "--branches", "--remotes", "--tags"], left()));
+        if (only > 0) {
+          throw new WorkspaceRefusedError(
+            "unique-commits",
+            `${entry.cwd} is on a detached HEAD holding ${only} commit${only === 1 ? "" : "s"} no branch, tag or remote holds; ` +
+              `nothing was removed. Put ${only === 1 ? "it" : "them"} on a branch first, or remove with force.`,
+          );
+        }
+      }
       if (removeOptions.deleteBranch === true && branch !== null && removeOptions.force !== true) {
         const only = Number(
           await git(
@@ -2024,12 +2037,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       await recordWorktreeCheckout(recordOptions.worktrees, key, gone, recordOptions.by);
       return gone;
     }
-    let branch: string | null = null;
-    try {
-      branch = (await git(path, ["symbolic-ref", "--quiet", "--short", "HEAD"], GIT_TIMEOUT_MS)) || null;
-    } catch {
-      // A detached HEAD.
-    }
+    const branch = await checkedOutBranch(path);
     let commits: number | null = null;
     if (row.baseCommit !== null) {
       try {

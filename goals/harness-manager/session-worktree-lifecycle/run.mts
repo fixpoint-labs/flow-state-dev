@@ -13,6 +13,7 @@
  *           GOAL_CONTROL=cut       (must FAIL b:on-branch and b:recorded, and nothing else)
  *           GOAL_CONTROL=lose-work (must FAIL c:dirty-refused, and nothing else)
  *           GOAL_CONTROL=no-attach (must FAIL the d legs a branch can't do; see EXPECTED)
+ *           GOAL_CONTROL=any-user  (must FAIL d:other-user-refused, and nothing else)
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -40,6 +41,7 @@ const EXPECTED: Record<string, string[]> = {
   "lose-work": ["c:dirty-refused"],
   // no-attach: the follow-up asks for the owner's branch instead (`{ branch }`), as a caller had to before attaching.
   "no-attach": ["d:attached-turn", "d:on-owner-branch", "d:recorded", "d:waits-for-owner"],
+  "any-user": ["d:other-user-refused"],
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
@@ -85,10 +87,13 @@ const workspace: HarnessSessionWorkspace = {
     const branch = existing ? resolved.branch! : sessionBranch(place.sessionId);
     const made = await host.provision(
       { kind: "repo", repo, ...(baseRef !== undefined ? { baseRef } : {}) },
-      { place: [place.sessionId], branch, existing },
+      { place: [place.sessionId], branch, existing, ...(request?.worktrees !== undefined ? { worktrees: request.worktrees } : {}) },
     );
-    return { path: made.cwd, branch };
+    return { path: made.cwd, branch, ...(made.worktree !== undefined ? { worktree: made.worktree } : {}) };
   },
+  // any-user: a workspace that answers every attach, never asking the user's own list.
+  attach: async (owner, request) =>
+    CONTROL === "any-user" ? `any/${owner.sessionId}` : await host.attach!({ place: [owner.sessionId] }, request),
   locate: (place) => host.locate({ kind: "repo", repo }, { place: [place.sessionId] }).cwd,
   branch: (place) => sessionBranch(place.sessionId),
   remove: async (place, options) => {
@@ -126,16 +131,16 @@ const registry = createFlowRegistry();
 registry.registerMany([harnessSessionFlow({ kind: KIND, workspace, agent: stubAgent })]);
 const router = createFlowApiRouter({ registry, stores, runtimeConfig: { logger: silentLogger } } as never);
 
-async function create(state: Record<string, unknown>): Promise<string> {
-  const made = await tryCreate(state);
+async function create(state: Record<string, unknown>, userId = USER): Promise<string> {
+  const made = await tryCreate(state, userId);
   if (made.id === undefined) throw new Error(`create refused (${made.status})`);
   return made.id;
 }
 
 /** Create a session; its id, or the status the create route refused it with. */
-async function tryCreate(state: Record<string, unknown>): Promise<{ status: number; id?: string }> {
+async function tryCreate(state: Record<string, unknown>, userId = USER): Promise<{ status: number; id?: string }> {
   const res = await router.POST(
-    new Request(`http://goal/api/flows/${KIND}/sessions`, { method: "POST", body: JSON.stringify({ userId: USER, state }) }),
+    new Request(`http://goal/api/flows/${KIND}/sessions`, { method: "POST", body: JSON.stringify({ userId, state }) }),
     { params: { path: [KIND, "sessions"] } },
   );
   const body = (await res.json()) as { session?: { id: string } };
@@ -148,19 +153,19 @@ async function tryCreate(state: Record<string, unknown>): Promise<{ status: numb
  * the session until its own end-of-request work (the pull request check) is
  * done, a moment after its record reads completed.
  */
-async function act(sessionId: string, action: string, input: unknown, settle = true): Promise<{ status: number; ended?: string; requestId?: string }> {
+async function act(sessionId: string, action: string, input: unknown, settle = true, userId = USER): Promise<{ status: number; ended?: string; requestId?: string }> {
   for (let attempt = 0; ; attempt += 1) {
-    const sent = await send(sessionId, action, input, settle);
+    const sent = await send(sessionId, action, input, settle, userId);
     if (!settle || sent.status !== 409 || attempt >= 100) return sent;
     await new Promise((r) => setTimeout(r, 50));
   }
 }
 
-async function send(sessionId: string, action: string, input: unknown, settle: boolean): Promise<{ status: number; ended?: string; requestId?: string }> {
+async function send(sessionId: string, action: string, input: unknown, settle: boolean, userId = USER): Promise<{ status: number; ended?: string; requestId?: string }> {
   const res = await router.POST(
     new Request(`http://goal/api/flows/${KIND}/${sessionId}/actions/${action}`, {
       method: "POST",
-      body: JSON.stringify({ userId: USER, input }),
+      body: JSON.stringify({ userId, input }),
     }),
     { params: { path: [KIND, sessionId, "actions", action] } },
   );
@@ -251,6 +256,15 @@ await runGoal(async (failures, tell) => {
   check("d:on-owner-branch", onOwnerBranch && !branchExists(sessionBranch(sE)), `the follow-up's commit is not on ${ownerBranch}, or it cut a branch of its own`);
   const eRecord = (await stateOf(sE)).workspace;
   check("d:recorded", eRecord?.path === bPath && eRecord.owner === sB, `recorded ${JSON.stringify(eRecord)}`);
+  // Another user names b's session: the worktree isn't in their list, so their turn never gets it.
+  const sOther = await create({ model: "stub", start: { worktreeOf: sB } }, "u_someone_else");
+  const beforeOther = git(repo, "rev-parse", ownerBranch);
+  const otherTurn = await act(sOther, "turn", { prompt: "snoop" }, true, "u_someone_else");
+  check(
+    "d:other-user-refused",
+    otherTurn.ended === "failed" && git(repo, "rev-parse", ownerBranch) === beforeOther,
+    `another user's attached turn ended ${otherTurn.ended}`,
+  );
   const eRemove = await act(sE, "removeWorktree", {});
   check("d:remove-refused", eRemove.ended === "failed" && existsSync(bPath), `the attached session's removal ended ${eRemove.ended}`);
   // Both sessions' turns take the one worktree's in-use lock: the follow-up waits out the owner's turn.
