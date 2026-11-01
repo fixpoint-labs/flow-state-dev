@@ -265,6 +265,7 @@ The flow handles the rest:
 - **Actions.** `turn` takes a prompt and waits for any running turn to finish first (`concurrency: "defer"`). `steer` hands a line to the running turn if its harness offered to take one, and answers `{ taken, live }`.
 - **A record per turn.** `state.turns` keeps the latest 20 turns, by request id. Each record holds the conversation the turn tried to resume, the one the harness confirmed, and how the turn failed: core's failure class, the harness's error text, and whether it was stopped. Read it to show a user why a turn failed. The schema is `harnessSessionStateSchema`.
 - **A title.** The session takes its title from its first prompt (`harnessSessionTitle`).
+- **What a turn changed.** Each turn's record keeps `base`, the commit the session's checkout was on when the turn started working in it, and `head`, the commit at the end of the turn. Both are `null` when the checkout isn't a git repository. The flow declares a `changes` read: input `{ turn, path? }` (`harnessTurnChangesInputSchema`), where `turn` is the turn's request id, its key in `state.turns`. It answers `{ diff, patch }` (no `taskId`) as [the run's changes read](#reading-one-files-patch) does, for that turn's commits only. A turn still running reads up to the checkout's current HEAD.
 
 ## What a phase supplies
 
@@ -327,7 +328,7 @@ The recorded session is the one the harness *confirmed* it was in. If the agent 
 
 A run's changes are the commits it made over the base its branch was cut from. A run that would complete (the judge said done, there is no judge, or the judge's verdict was under its `floor`) and has commits on its branch waits for a review. So does a run whose commit count git couldn't read; its review says the commits couldn't be read. A run with no commits completes unreviewed. A failed run fails its attempt unreviewed. A judge's confident verdicts skip the review: *not done* fails the attempt, and *ask* holds the task on a question.
 
-While it waits, the task stays `in_progress` on the same attempt and keeps its claim, and the checkout is free. The row lists the wait among its open `holds`, with `source.kind: "suspension"` and `ask.kind: "review"`, titled "Review the run's changes". Its prompt gives the commit count and up to 20 commit subjects, then the judge's verdict, confidence and reason ("No judge read this run." without one), and the line "The judge's verdict is information, not approval." The hold's data is `{ branch, commits, subjects, judge }`. The Inbox lists it as a review.
+While it waits, the task stays `in_progress` on the same attempt and keeps its claim, and the checkout is free. The row lists the wait among its open `holds`, with `source.kind: "suspension"` and `ask.kind: "review"`, titled "Review the run's changes". Its prompt gives the commit count and up to 20 commit subjects, a line "N files changed (+a −d).", then the judge's verdict, confidence and reason ("No judge read this run." without one), and the line "The judge's verdict is information, not approval." The hold's data is `{ branch, commits, subjects, files, fileCount, added, removed, judge }`. `files` lists up to `MAX_DIFF_FILES` (200) changed files as `{ path, added, removed }`, with `added` and `removed` `null` for a binary file. `fileCount`, `added` and `removed` count every changed file, listed or not. `files`, `fileCount`, `added` and `removed` are all `null` when git couldn't read the diff. Only committed changes count: uncommitted work in the checkout isn't part of it. A rename reads as the old path removed and the new path added. The Inbox lists it as a review.
 
 The answer is a `HarnessReviewAnswer`, checked against `harnessReviewAnswerSchema`: `{ verdict: "accepted" }`, or `{ verdict: "revise", words }` with non-blank `words`. With the Inbox client:
 
@@ -347,6 +348,32 @@ That posts to the engine's answer route, `POST /api/flows/:flow/requests/:reques
 - **Cancel** (the board's `updateTask` cancel): the review closes, no run starts, and the branch's commits and kept files stay.
 
 Reviews need a host with durable execution. A host can restart while a review waits; the answer continues the run.
+
+### Reading one file's patch
+
+The review's data lists the files. To show a file's lines, declare `harnessRunChangesRead` on the coding flow beside its [session door](#talking-to-a-run), with the same `board` resolver the door takes:
+
+```ts
+import { harnessRunChangesRead, harnessSessionDoor } from "@flow-state-dev/harness-manager";
+
+defineFlow({
+  kind: "coder",
+  actions: { message: harnessSessionDoor({ name: "coder", harness, board }) },
+  reads: { changes: harnessRunChangesRead({ board, uses }) },
+  // ...
+});
+```
+
+It is a flow read: answered in the response, stored nowhere. Call it on the run's own session, `POST /api/flows/:flow/:sessionId/reads/changes` with `{ input }`, or with the client:
+
+```ts
+const { diff } = await client.flow("coder").read("changes", {}, { sessionId });
+const { patch } = await client.flow("coder").read("changes", { path: "src/api.ts" }, { sessionId });
+```
+
+The input is `{ taskId?, path? }`. `taskId` defaults to the task the session door would talk to, and may name only one of that session's own tasks. Without `path` it answers `{ taskId, diff, patch: null }`, with `diff` as `{ files, fileCount, added, removed, verified }`. With `path` it answers `{ taskId, diff: null, patch: { path, patch, truncated, verified } }`: that file's unified diff, cut at `MAX_PATCH_CHARS` (64,000 characters). `verified: false` means git couldn't read it. A run of kept files alone, with no repository, answers a verified empty diff. A session that ran no task, or a `taskId` from another session, fails with `HarnessRunChangesRefused`. While a review waits, its data already lists the files, so a review screen needs only `path` reads; a read without `path` runs git's line count again, and is for a finished task, whose review data is gone.
+
+The ui registry's `run-changes` component (`fsdev ui add run-changes`) draws the result. `<RunChanges>` takes the review's `files`, `fileCount`, `added` and `removed`, shows "N files changed (+a −d)", and opens into the list of changed files. Pass `loadPatch(path)`, your call to the read, and a file opens into its patch, read the first time it's opened. `files={null}` draws nothing.
 
 ## The pull requests a run opened
 
@@ -536,7 +563,7 @@ The record is `harnessUsageCollection` (`HARNESS_USAGE`, `harness-usage/**`, use
 
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `harnessSessionFlow` with `harnessSessionFeeds`, `harnessSessionStateSchema` and their types for [a harness as a session](#a-harness-as-a-session), `harnessStub` for [checks that run no model](#a-scripted-harness-for-checks), `upgradeKeptTurns`, `STEER_POLL_MS`, `PROGRESS_NOTE_MS` and `progressNoteOf` for [progress notes](#how-a-running-task-is-doing), `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
+**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `harnessRunChangesRead` with `HarnessRunChangesReadOptions`, `HarnessRunChangesRefused`, `harnessRunChangesInputSchema`, `harnessRunChangesOutputSchema`, `runChangesSchema`, `runDiffSchema`, `runFilePatchSchema`, `RunChanges`, `RunDiff`, `RunDiffFile`, `RunFilePatch`, `MAX_DIFF_FILES` and `MAX_PATCH_CHARS` for [reading what a run changed](#reading-one-files-patch), `harnessSessionFlow` with `harnessSessionFeeds`, `harnessSessionStateSchema`, `harnessTurnChangesInputSchema` and their types for [a harness as a session](#a-harness-as-a-session), `harnessStub` for [checks that run no model](#a-scripted-harness-for-checks), `upgradeKeptTurns`, `STEER_POLL_MS`, `PROGRESS_NOTE_MS` and `progressNoteOf` for [progress notes](#how-a-running-task-is-doing), `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
 
 **`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 

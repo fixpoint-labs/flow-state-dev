@@ -10,7 +10,11 @@
  */
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
-import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createInMemoryStores, runAction, runRead } from "@flow-state-dev/engine";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
@@ -105,5 +109,168 @@ describe("the turn-end pull request check", () => {
     const workspace = noWorkspace("sessions/s-branch");
     await turn(createInMemoryStores(), "s-branch", "hello", workspace);
     expect(workspace.located).toEqual([{ flowKind: "stub-session", sessionId: "s-branch" }]);
+  });
+});
+
+describe("what a turn changed", () => {
+  // A page shows each turn's own changes (FIX-2384): a later turn's commits
+  // must not be read as an earlier one's, and a turn's base comes from the
+  // checkout as the turn found it, never from the caller.
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args], { cwd, encoding: "utf8" });
+
+  /** A session that works in one real git checkout, and a harness that commits one file per turn, named by its prompt. */
+  function committing() {
+    const dir = mkdtempSync(join(tmpdir(), "hm-session-changes-"));
+    git(dir, "init", "-q", "-b", "main");
+    writeFileSync(join(dir, "README.md"), "start\n");
+    git(dir, "add", ".");
+    git(dir, "commit", "-q", "-m", "start");
+    const workspace: HarnessSessionWorkspace = { provision: async () => dir, locate: () => dir, branch: () => null };
+    const agent = (feeds: HarnessSessionFeeds) =>
+      handler({
+        name: "committing-harness",
+        inputSchema: z.object({ prompt: z.string() }),
+        execute: async (input, ctx) => {
+          const cwd = await feeds.cwd(ctx as unknown as HarnessCallbackContext);
+          writeFileSync(join(cwd, `${input.prompt}.txt`), `${input.prompt}\n`);
+          git(cwd, "add", ".");
+          if (input.prompt === "amend") git(cwd, "commit", "-q", "--amend", "--no-edit");
+          else git(cwd, "commit", "-q", "-m", input.prompt);
+          if (input.prompt === "throws") throw new Error("the harness fell over");
+          return { outcome: "completed" };
+        },
+      }) as unknown as HarnessBlock;
+    const flow = harnessSessionFlow({ kind: "stub-session", workspace, agent });
+    return { dir, flow };
+  }
+
+  it("reads each turn's own files between the commits its record keeps, and one file's patch", async () => {
+    const stores = createInMemoryStores();
+    const { dir, flow } = committing();
+    try {
+      const now = Date.now();
+      await stores.session.set(
+        "s-changes",
+        { id: "s-changes", flowKind: "stub-session", userId: "u", orgId: DEFAULT_ORG_ID, metadata: undefined, latestRequestId: undefined, state: { model: "stub-model" }, version: 0, createdAt: now, updatedAt: now, journal: [] } as never,
+        "any" as never,
+      );
+      const act = (prompt: string) =>
+        runAction({ flow, actionName: "turn", input: { prompt }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-changes", stores, runtimeConfig: {} } as never);
+      await act("first");
+      await act("second");
+      const turns = Object.entries(((await stores.session.get("s-changes"))!.state as { turns: Record<string, { at: number; base: string | null; head: string | null }> }).turns)
+        .sort(([, a], [, b]) => a.at - b.at)
+        .map(([id, record]) => ({ id, ...record }));
+      expect(turns).toHaveLength(2);
+      expect(turns[1]!.base).toBe(turns[0]!.head);
+
+      const read = (input: unknown) => runRead({ flow, readName: "changes", input, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-changes", stores });
+      expect(await read({ turn: turns[0]!.id })).toMatchObject({
+        diff: { files: [{ path: "first.txt", added: 1, removed: 0 }], verified: true },
+        patch: null,
+      });
+      expect(await read({ turn: turns[1]!.id })).toMatchObject({ diff: { files: [{ path: "second.txt" }] } });
+      const patch = (await read({ turn: turns[0]!.id, path: "first.txt" })) as { patch: { patch: string } };
+      expect(patch.patch.patch).toContain("+first");
+      await expect(read({ turn: "no-such-turn" })).rejects.toThrow(/no turn/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reads a turn that amended the previous turn's commit as only its own work", async () => {
+    // The amend rewrites turn 1's commit, so where turn 2's head and its base
+    // last met is before turn 1: a merge-base diff would read first.txt as turn 2's too.
+    const stores = createInMemoryStores();
+    const { dir, flow } = committing();
+    try {
+      const now = Date.now();
+      await stores.session.set(
+        "s-amend",
+        { id: "s-amend", flowKind: "stub-session", userId: "u", orgId: DEFAULT_ORG_ID, metadata: undefined, latestRequestId: undefined, state: { model: "stub-model" }, version: 0, createdAt: now, updatedAt: now, journal: [] } as never,
+        "any" as never,
+      );
+      const act = (prompt: string) =>
+        runAction({ flow, actionName: "turn", input: { prompt }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-amend", stores, runtimeConfig: {} } as never);
+      await act("first");
+      await act("amend");
+      const [, second] = Object.entries(((await stores.session.get("s-amend"))!.state as { turns: Record<string, { at: number }> }).turns)
+        .sort(([, a], [, b]) => a.at - b.at)
+        .map(([id]) => id);
+      const read = await runRead({ flow, readName: "changes", input: { turn: second }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-amend", stores });
+      expect(read).toMatchObject({ diff: { files: [{ path: "amend.txt" }], fileCount: 1, verified: true } });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("has the turn's end written by the time its terminal status is stored, so a page refreshing on it can read the turn", async () => {
+    // The engine emits a turn's terminal status before `request.onFinished`
+    // runs, and a page refreshes on that status: an end written after it lands
+    // on a page that has already read the turn. Snapshot the session the
+    // first time the request's events are flushed with its record settled.
+    for (const [prompt, status] of [["first", "completed"], ["throws", "failed"]] as const) {
+      const stores = createInMemoryStores();
+      const { dir, flow } = committing();
+      try {
+        const sessionId = `s-ordering-${prompt}`;
+        const now = Date.now();
+        await stores.session.set(
+          sessionId,
+          { id: sessionId, flowKind: "stub-session", userId: "u", orgId: DEFAULT_ORG_ID, metadata: undefined, latestRequestId: undefined, state: { model: "stub-model" }, version: 0, createdAt: now, updatedAt: now, journal: [] } as never,
+          "any" as never,
+        );
+        let atTerminal: Record<string, { head: string | null }> | null = null;
+        const flushEvents = stores.request.flushEvents.bind(stores.request);
+        stores.request.flushEvents = async (requestId: string) => {
+          await flushEvents(requestId);
+          if (atTerminal !== null || (await stores.request.get(requestId))?.status !== status) return;
+          atTerminal = ((await stores.session.get(sessionId))!.state as { turns: Record<string, { head: string | null }> }).turns;
+        };
+        await runAction({ flow, actionName: "turn", input: { prompt }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId, stores, runtimeConfig: {} } as never).catch(() => undefined);
+        const head = git(dir, "rev-parse", "HEAD").trim();
+        expect(atTerminal, `${prompt}: the terminal status was never stored`).not.toBeNull();
+        expect(Object.values(atTerminal!).map((record) => record.head), prompt).toEqual([head]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("records no base for a turn that never reached a git checkout, and reads it as unverified", async () => {
+    const stores = createInMemoryStores();
+    await turn(stores, "s-nogit", "hello");
+    const [id, record] = Object.entries(((await stores.session.get("s-nogit"))!.state as { turns: Record<string, { base: string | null }> }).turns)[0]!;
+    expect(record.base).toBeNull();
+    const flow = harnessSessionFlow({ kind: "stub-session", workspace: noWorkspace(), agent: stubAgent });
+    expect(await runRead({ flow, readName: "changes", input: { turn: id }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-nogit", stores })).toMatchObject({
+      diff: { files: [], verified: false },
+    });
+  });
+
+  it("reads a turn recorded before turns kept a base as unverified, never as the branch's changes", async () => {
+    // An older record has no `base` or `head` at all. Read as "HEAD", the
+    // base falls back to `origin/HEAD` and reports every later turn's work as this one's.
+    const stores = createInMemoryStores();
+    const { dir, flow } = committing();
+    try {
+      git(dir, "update-ref", "refs/remotes/origin/HEAD", "HEAD");
+      writeFileSync(join(dir, "later.txt"), "later\n");
+      git(dir, "add", ".");
+      git(dir, "commit", "-q", "-m", "later");
+      const now = Date.now();
+      const legacyTurn = { asked: null, confirmed: null, failure: null, stopped: null, error: null, at: now, steered: null };
+      await stores.session.set(
+        "s-legacy",
+        { id: "s-legacy", flowKind: "stub-session", userId: "u", orgId: DEFAULT_ORG_ID, metadata: undefined, latestRequestId: undefined, state: { model: "stub-model", turns: { req_old: legacyTurn } }, version: 0, createdAt: now, updatedAt: now, journal: [] } as never,
+        "any" as never,
+      );
+      expect(await runRead({ flow, readName: "changes", input: { turn: "req_old" }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-legacy", stores })).toMatchObject({
+        diff: { files: [], verified: false },
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
