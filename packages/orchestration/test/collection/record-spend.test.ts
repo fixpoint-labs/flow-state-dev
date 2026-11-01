@@ -188,6 +188,16 @@ describe.each([
     expect(view(collection)?.costUsd).toBeCloseTo(0.2);
   });
 
+  it("keeps a dead run's later charge when only its charge changed after the log's report", async () => {
+    // The run's live report raised its charge to $0.20 with the same tokens; the log holds the $0.10 report.
+    const { collection, claim } = await claimed();
+    const run = (costUsd: number): RequestSpend => ({ byModel: {}, harnessRuns: [{ runId: "r", harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 10, outputTokens: 2, costUsd, billing: "api-key" }] });
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: run(0.2), writer: "first", admittedAt: 1 }, { claim });
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: run(0.1), writer: "second", admittedAt: 2, recovered: run(0.1) }, { claim });
+    expect(view(collection)).toMatchObject({ inputTokens: 10, outputTokens: 2 });
+    expect(view(collection)?.costUsd).toBeCloseTo(0.2);
+  });
+
   it("keeps a dead run's harness tokens when its request is continued in a new process", async () => {
     // A harness run whose block never finished isn't in the log, so the continuation doesn't recover it: the row is its only record.
     const { collection, claim } = await claimed();

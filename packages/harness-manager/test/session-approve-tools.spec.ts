@@ -10,9 +10,10 @@
  *     turn" fails on the marker.
  *   - drop the grant from the answer's outcome: the re-issued call is held
  *     again, and "resumes on Allow" fails on its decisions.
- *   - save the turn's harness spend only when the turn ends, not before it
- *     waits: the run stopped for the approval is lost on resume, and "counts
- *     what each run spent" reads one run's tokens, not two.
+ *   - read the turn's spend from what this run of the request has left to
+ *     hand on (`readRequestSpend`) in place of the request's total: the run
+ *     stopped for the approval is lost on resume, and "counts what each run
+ *     spent" reads one run's tokens, not two.
  *   - throw past the approval limit instead of failing through the turn's
  *     failure record: the turn fails with no error, end or spend on its record.
  *   - drop the finished hook's end of an unended turn: a turn stopped while
@@ -210,7 +211,6 @@ describe("a harness session's tool call waits for the user", () => {
       expect(await h.ended(requestId!)).toBe("completed");
       expect(h.stub.runs).toHaveLength(2);
       const record = (await h.sessionState()).turns?.[requestId!];
-      expect(record?.spentRuns?.map((run) => run.runId)).toEqual([h.stub.runs[0]!.session, h.stub.runs[1]!.session]);
       expect(record?.spend).toMatchObject({ inputTokens: 20, outputTokens: 2 });
       expect(record?.spend?.costUsd).toBeCloseTo(0.2);
     } finally {
@@ -242,7 +242,6 @@ describe("a harness session's tool call waits for the user", () => {
       const record = (await h.sessionState()).turns?.[requestId!];
       expect(record?.error).toContain(`${MAX_APPROVAL_STEPS} tool approvals`);
       expect(record?.endedAt).not.toBeNull();
-      expect(record?.spentRuns).toHaveLength(MAX_APPROVAL_STEPS + 1);
       expect(record?.spend).toMatchObject({ inputTokens: MAX_APPROVAL_STEPS + 1 });
     } finally {
       await h.dispose();
