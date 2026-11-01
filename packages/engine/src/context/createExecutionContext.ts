@@ -3678,9 +3678,7 @@ export async function createExecutionContext<
           name: matched.parent.name,
           instanceId: matched.parent.instanceId,
           input: matched.parent.input,
-          ...(container === undefined || !restoredFromCheckpoint(matched.parent.instanceId)
-            ? ops
-            : skipReplayedWrites(ops, getTransientKeys(matched.parent.stateSchema), () => (container.read() ?? {}) as TState))
+          ...ops
         },
         () => (container?.read() ?? {}) as TState
       ) as unknown as StateRef<TState>;
@@ -3688,62 +3686,33 @@ export async function createExecutionContext<
 
     // A state write made before the gate this continuation waits at applies
     // once (FIX-2444). The resume runs the code up to that gate again (the
-    // waiting block, its connector, a sequencer's own `.map`) from the
+    // waiting block, its connector, a sequencer's own `.map`) on top of the
     // checkpoint the sequencer wrote at the suspension, which already holds
-    // every write that code made before it stopped. Until the waiting block
-    // reaches the last gate the log records for it, writes to that restored
-    // state are skipped, except to transient fields, which no checkpoint
-    // holds. From the gate on, writes are live. Reads are untouched.
-    //
-    // Only the container the continuation restored holds them (any other,
-    // such as a handler's own state, starts from its defaults), and the
-    // restore itself is the sequencer's own write and always applies.
-    const restoredFromCheckpoint = (instanceId: string): boolean => {
-      const resumeState = (rootContext as { _resumeState?: { state?: unknown; blockInstanceId?: string } })._resumeState;
-      if (resumeState?.state === undefined) return false;
-      return instanceId === (resumeState.blockInstanceId ?? buildBlockInstanceId(requestRef.current.id, ROOT_BLOCK_PATH, 0));
-    };
-    const replayingToGate = (): boolean => {
-      if ((context as { _restoringCheckpoint?: boolean })._restoringCheckpoint === true) return false;
+    // every write that code made before it stopped. So when the waiting block
+    // reaches the last gate the log records for it, the restored sequencer's
+    // state is set back to that checkpoint: what the re-run wrote again is
+    // dropped, and transient fields (which no checkpoint holds) keep what the
+    // re-run wrote. Code that never reaches the gate (a branch the restored
+    // state skips) keeps its writes. Any other state, such as a handler's own
+    // `ctx.self`, is not in the checkpoint and is left alone.
+    const settleReplayedState = async (callerLogicalId: string): Promise<void> => {
       const replayLog = (rootContext as { _replayLog?: ReplayLog })._replayLog;
-      if (replayLog === undefined) return false;
+      const resumeState = (rootContext as { _resumeState?: { state?: Record<string, unknown>; blockInstanceId?: string } })._resumeState;
+      if (replayLog === undefined || resumeState?.state === undefined) return;
       // The waiting block: the one this continuation resolves, else (a
-      // crash's continuation) the one the latest logged answer resumed, while
-      // it has not finished.
+      // crash's continuation) the one the latest logged answer resumed.
       const pending = replayLog.pendingSuspension()?.blockLogicalId;
-      const latest = replayLog.resolvedInOrder().at(-1)?.blockLogicalId;
-      const waiting = pending ?? (latest !== undefined && replayLog.getCompletedOutput(latest) === undefined ? latest : undefined);
-      if (waiting === undefined) return false;
+      const waiting = pending ?? replayLog.resolvedInOrder().at(-1)?.blockLogicalId;
+      if (waiting !== callerLogicalId) return;
       const logged = replayLog.resolvedResumes(waiting).length + (pending === waiting ? 1 : 0);
-      return (resolvedResumeCursor.get(waiting) ?? 0) < logged;
-    };
-    const skipReplayedWrites = <TState extends object>(
-      ops: Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState">,
-      transientKeys: ReadonlySet<string>,
-      read: () => TState
-    ): typeof ops => {
-      const transientOf = (values: object): Record<string, unknown> =>
-        Object.fromEntries(Object.entries(values).filter(([key]) => transientKeys.has(key)));
-      const patchTransient = async (values: object): Promise<boolean> => {
-        const kept = transientOf(values);
-        return Object.keys(kept).length === 0 ? true : ops.patchState(kept as Partial<TState>);
-      };
-      return {
-        patchState: (updates: Partial<TState>) => (replayingToGate() ? patchTransient(updates) : ops.patchState(updates)),
-        setState: (next) => (replayingToGate() ? patchTransient(next) : ops.setState(next)),
-        incState: (increments) => {
-          if (!replayingToGate()) return ops.incState(increments);
-          const kept = transientOf(increments) as Record<string, number>;
-          return Object.keys(kept).length === 0 ? Promise.resolve(true) : ops.incState(kept);
-        },
-        pushState: (field, value) =>
-          !replayingToGate() || transientKeys.has(field) ? ops.pushState(field, value) : Promise.resolve(true),
-        setStateRecord: (field, key, value) =>
-          !replayingToGate() || transientKeys.has(field) ? ops.setStateRecord(field, key, value) : Promise.resolve(true),
-        deleteStateRecord: (field, key) =>
-          !replayingToGate() || transientKeys.has(field) ? ops.deleteStateRecord(field, key) : Promise.resolve(true),
-        atomicState: (mutator) => (replayingToGate() ? patchTransient(mutator(read())) : ops.atomicState(mutator))
-      } as typeof ops;
+      if ((resolvedResumeCursor.get(waiting) ?? 0) !== logged) return;
+      const restoredId = resumeState.blockInstanceId ?? buildBlockInstanceId(requestRef.current.id, ROOT_BLOCK_PATH, 0);
+      for (let node = parentChain; node !== undefined; node = node.previous) {
+        if (node.parent.instanceId === restoredId && node.parentStateContainer !== undefined) {
+          await buildStateRef(node).patchState(resumeState.state);
+          return;
+        }
+      }
     };
 
     const context: ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState> = {
@@ -3948,6 +3917,7 @@ export async function createExecutionContext<
           const consumed = resolvedResumeCursor.get(callerLogicalId) ?? 0;
           if (consumed < resolved.length) {
             resolvedResumeCursor.set(callerLogicalId, consumed + 1);
+            await settleReplayedState(callerLogicalId);
             const entry = resolved[consumed];
             // A user's stop replays as the stop, never as an answer
             // (FIX-2129): a crash after its resolution was logged must not
@@ -3995,6 +3965,7 @@ export async function createExecutionContext<
 
           if (isResolvingGate) {
             resolvedResumeCursor.set(callerLogicalId, position + 1);
+            await settleReplayedState(callerLogicalId);
             // A task's run stopped while it waited for a user ends here
             // (FIX-2129, `stopsAtItsGate`): the claim gate ahead of it has
             // read the stop, and no block runs past the gate. The stop is

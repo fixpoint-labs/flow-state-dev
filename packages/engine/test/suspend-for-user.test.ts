@@ -711,6 +711,67 @@ describe("a state write before the wait, from code around the waiting block", ()
   });
 });
 
+describe("writes after the resume, on a restored sequencer, are live", () => {
+  // The resume settles the restored state once the re-run reaches the wait it
+  // stopped at. Every write after that point is new and must apply, whatever
+  // form it takes.
+  it("a keyed update after the answer applies", async () => {
+    const seen: unknown[] = [];
+    const waits = handler({
+      name: "waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        await ctx.sequencer!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        await ctx.sequencer!.patchState("count", (current: number) => current + 1);
+        seen.push(ctx.sequencer!.state);
+        return null;
+      }
+    });
+    const block = sequencer({
+      name: "s",
+      stateSchema: z.object({ asked: z.number().default(0), count: z.number().default(0) })
+    }).step(waits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "ok" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([{ asked: 1, count: 1 }]);
+  });
+
+  it("a step that reads the restored state and skips its wait still writes after it", async () => {
+    const seen: unknown[] = [];
+    const waitsOnce = handler({
+      name: "waits-once",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        const state = ctx.sequencer!.state as { prompted: boolean };
+        if (!state.prompted) {
+          await ctx.sequencer!.patchState({ prompted: true });
+          await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        }
+        await ctx.sequencer!.incState({ finished: 1 });
+        seen.push(ctx.sequencer!.state);
+        return null;
+      }
+    });
+    const block = sequencer({
+      name: "s",
+      stateSchema: z.object({ prompted: z.boolean().default(false), finished: z.number().default(0) })
+    }).step(waitsOnce);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "ok" })).status).toBe(202);
+    await h.drain();
+    expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+    expect(seen).toEqual([{ prompted: true, finished: 1 }]);
+  });
+});
+
 describe("the answer route (D2)", () => {
   it("answers the stop once, as the signed-in caller; a second answer is told it is resolved", async () => {
     const seen: string[] = [];
