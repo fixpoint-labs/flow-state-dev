@@ -11,7 +11,7 @@
  */
 
 /** The key a delegate's answer carries its marker under, in its message item's `metadata`. */
-export const DELEGATE_ANSWER_KEY = "delegateAnswer";
+const DELEGATE_ANSWER_KEY = "delegateAnswer";
 
 /** A delegate's answer, as its item names it. */
 export interface DelegateAnswer {

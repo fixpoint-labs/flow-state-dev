@@ -6,7 +6,7 @@
 "@flow-state-dev/workforce": patch
 ---
 
-A conversation's line about a task now says which task it is, as data, so an app reads it without parsing the words.
+A conversation's line about a task now says which task it is, as data, so an app reads it without parsing the words (FIX-2378).
 
 - `ctx.emit.message(text, { metadata })` attaches `metadata` to the message item. Clients read it; the model never sees it. `EmitMessageOptions` is exported from core.
 - Orchestration adds `noticeMetadata(notice, task)` and `parseNotice(item)` beside `noticeText`. `parseNotice` returns the task, its ending, title and what came back, and still reads lines stored before this from their words.
