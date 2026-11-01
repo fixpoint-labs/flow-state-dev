@@ -852,6 +852,40 @@ describe("writes after the resume, on a restored sequencer, are live", () => {
     expect(seen).toEqual([{ asked: 1 }]);
   });
 
+  it("saves the checkpoint taken at the wait only after the wait is in the log", async () => {
+    // Saved before it, a crash in between would leave a checkpoint holding
+    // the step's writes with no logged gate to settle them at, and the
+    // re-run would count them twice.
+    const order: string[] = [];
+    const waits = handler({
+      name: "waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        await ctx.sequencer!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        return null;
+      }
+    });
+    const block = sequencer({ name: "s", stateSchema: z.object({ asked: z.number().default(0) }) }).step(waits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const write = h.stores.checkpoints.write.bind(h.stores.checkpoints);
+    h.stores.checkpoints.write = async (checkpoint) => {
+      if (checkpoint.atSuspension === true) order.push("checkpoint at the wait");
+      return write(checkpoint);
+    };
+    const flushItems = h.stores.request.flushItems.bind(h.stores.request);
+    h.stores.request.flushItems = async (id) => {
+      const record = await h.stores.request.get(id);
+      if (record?.items?.some((item) => item.type === "suspension") === true) order.push("wait logged");
+      return flushItems(id);
+    };
+    await park(h, flow, {});
+    expect(order[0]).toBe("wait logged");
+    expect(order).toContain("checkpoint at the wait");
+  });
+
   it("replaying a completed step before the wait leaves the checkpoint taken at the wait in place", async () => {
     // A crash between the replay of an earlier step and the gate restores
     // from whatever checkpoint is latest. If the replay overwrote the one

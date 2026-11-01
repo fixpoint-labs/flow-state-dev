@@ -1609,6 +1609,17 @@ async function runActionAttempt<
     const next = prior.then(op, op);
     checkpointChains.set(k, next);
   }
+  // Checkpoints taken at a suspension (`atSuspension`), held until the
+  // suspension is in the log (FIX-2444). Saved before it, a crash in between
+  // leaves a checkpoint holding the waiting step's writes with no logged gate
+  // for the re-run to settle them at, so they would count twice. Dropped on
+  // any other ending: only a logged suspension resumes from one.
+  let heldSuspensionCheckpoints: Array<() => void> = [];
+  function releaseSuspensionCheckpoints(): void {
+    const held = heldSuspensionCheckpoints;
+    heldSuspensionCheckpoints = [];
+    for (const release of held) release();
+  }
   async function flushCheckpoints(): Promise<void> {
     if (checkpointChains.size === 0) return;
     await Promise.allSettled(checkpointChains.values());
@@ -1656,7 +1667,7 @@ async function runActionAttempt<
               );
             }
           } else {
-            chainCheckpoint(blockInstanceId, () =>
+            const save = () => chainCheckpoint(blockInstanceId, () =>
               options.stores.checkpoints.write({
                 requestId: requestIdForCheckpoint,
                 blockInstanceId,
@@ -1674,6 +1685,8 @@ async function runActionAttempt<
                 });
               })
             );
+            if (item.atSuspension === true) heldSuspensionCheckpoints.push(save);
+            else save();
           }
         }
         // state_snapshot items are transient by design — no items-log persist.
@@ -2476,6 +2489,7 @@ async function runActionAttempt<
         await response.emitItemDone(suspItem);
 
         await options.stores.request.flushItems(requestId);
+        releaseSuspensionCheckpoints();
         // The logged gate is what continues the request now: the park its wait
         // owed is paid. Not before the log: a gate the log doesn't name yet
         // can't be resumed, and the owe is what continues it then (FIX-2269).
