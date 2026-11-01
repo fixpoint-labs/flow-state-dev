@@ -60,6 +60,19 @@ describe("a failed turn's line", () => {
     expect(recoveryText).toBe(display.textContent);
   });
 
+  it.each([
+    ["a string output", { output: "401 Unauthorized: missing key" }],
+    ["structured details", { httpStatus: 401, errorType: "auth" }],
+  ])("draws %s the same as the item stream's error", (_label, details) => {
+    const item = { ...failed, details } as ErrorItem;
+    const { container: recovery } = render(<RequestRecovery reason={item.message} code={item.code} details={item.details} />);
+    const recoveryText = recovery.textContent;
+    expect(recoveryText).toContain("Details");
+    cleanup();
+    const { container: display } = render(<ErrorDisplay item={item} />);
+    expect(recoveryText).toBe(display.textContent);
+  });
+
   it("offers no Retry for a request the server won't retry", () => {
     render(<RequestRecovery reason={failed.message} />);
     expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();

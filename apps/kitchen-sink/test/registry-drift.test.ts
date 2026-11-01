@@ -25,7 +25,9 @@ const kitchenSinkTargetDir = join(testDir, "../components/flow-state");
 const drift = () =>
   compareRegistryCopies({
     targetDir: kitchenSinkTargetDir,
-    notInstalled: (file) => file.startsWith("generative/"),
+    // `request-recovery` is installed by the Kitchen Sink slice that draws it;
+    // a copy nothing imports would be dead code here until then.
+    notInstalled: (file) => file.startsWith("generative/") || file === "request-recovery.tsx",
     appOnly: APP_ONLY_FILES,
   });
 
@@ -33,11 +35,11 @@ describe("kitchen-sink registry drift (FIX-1477 V8)", () => {
   it("has every registry component byte-identical to its installed kitchen-sink copy", () => {
     const { compared, mismatches } = drift();
 
-    // 38 of the registry's component-directory files (all non-`.stories.tsx`
-    // files outside `generative/`) are installed here. If that count moves,
+    // 37 of the registry's component-directory files (all non-`.stories.tsx`
+    // files outside `generative/`, less `request-recovery.tsx`) are installed here. If that count moves,
     // this test's scope moved with it and needs re-reading before trusting a
     // green result.
-    expect(compared.length).toBe(38);
+    expect(compared.length).toBe(37);
 
     expect(mismatches).toEqual([]);
   });
