@@ -136,6 +136,19 @@ describe("the page's address", () => {
     expect(params().has("task")).toBe(false);
   });
 
+  it("goes Back to the default screen when the session a history entry names is gone", async () => {
+    render(<App adapter={createFakeLab({ speed: 0.01 })} />);
+    await pick();
+    await ask("A line in a live session.");
+    // An entry for a session that has since gone, then Back onto it.
+    await act(async () => {
+      window.history.pushState(null, "", "/?session=session-gone");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(await screen.findByRole("region", { name: "Choose a project" })).toBeTruthy();
+    await waitFor(() => expect(params().has("session")).toBe(false));
+  });
+
   it("keeps the session but drops a task that is gone", async () => {
     const adapter = createFakeLab({ speed: 0.01 });
     render(<App adapter={adapter} />);

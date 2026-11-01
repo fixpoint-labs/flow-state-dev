@@ -70,7 +70,12 @@ export function App({ adapter }: { adapter: LabAdapter }) {
       setOpenByView((open) => ({ ...open, [mode]: row.id }));
       addressedTask.current = address.task;
       setOpenTask((open) => ({ ...open, [row.id]: address.task }));
+      return;
     }
+    // A session that is gone: the default screen, as for an address that names none.
+    const fallback = address.view ?? "session";
+    setView(fallback);
+    setOpenByView((open) => ({ ...open, [fallback]: undefined }));
   }, []);
   useEffect(() => {
     if (listed !== undefined && pending.current !== null) open(pending.current, listed);

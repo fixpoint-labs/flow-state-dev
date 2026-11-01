@@ -114,6 +114,21 @@ describe("the page's address", () => {
     expect(params().get("worker")).toBe("teammates.writer");
   });
 
+  it("opens the teammate Back names, when Back comes before the roster is read", async () => {
+    const lab = fast();
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const adapter: LabAdapter = { ...lab, listWorkers: async () => (await held, lab.listWorkers()) };
+    render(<App adapter={adapter} />);
+    await act(async () => {
+      window.history.pushState(null, "", "/?worker=teammates.writer");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await act(async () => release());
+    expect(await screen.findByLabelText("Message writer")).toBeTruthy();
+    expect(params().get("worker")).toBe("teammates.writer");
+  });
+
   it("keeps a task popup open when it moves to a task in another conversation and back", async () => {
     // Each conversation's tasks arrive as soon as they are watched, so only a
     // popup that judges one conversation's task by another's rows drops it.

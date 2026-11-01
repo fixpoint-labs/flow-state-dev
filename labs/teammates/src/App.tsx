@@ -125,6 +125,11 @@ export function App({ adapter }: { adapter: LabAdapter }) {
       const named = readAddress();
       how.current = "replace";
       const talking = Object.keys(conversations.current);
+      // Before the roster is read: the load opens this address instead of the one the page loaded on.
+      if (talking.length === 0) {
+        start.current = named;
+        return;
+      }
       setSelected(named.worker !== undefined && talking.includes(named.worker) ? named.worker : talking[0]);
       setPopup(fromAddress(named));
     };
