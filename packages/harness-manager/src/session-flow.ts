@@ -615,7 +615,25 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     },
   });
   // Only effects no page reads on the turn's end: anything a page shows then is written inside the turn.
-  const turnEnd = sequencer({ name: "turn-end", inputSchema: z.unknown() }).tap(branchPullRequests);
+  // A turn whose record never ended: stopped while it waited on an approval,
+  // which the engine ends before any of the turn's own steps run again. Its
+  // record ends here, stopped, with what its runs spent and where its changes
+  // end. Every other turn ended its record inside the turn.
+  const endUnendedTurn = handler({
+    name: "end-unended-turn",
+    execute: async (_input: unknown, ctx): Promise<void> => {
+      const harnessCtx = ctx as unknown as HarnessCallbackContext;
+      const requestId = requestOf(harnessCtx);
+      const record = (harnessCtx.session.state as HarnessSessionState).turns?.[requestId];
+      // Only a turn that can wait on an approval reaches its end unended this way.
+      if (!approveTools || record === undefined || record.endedAt != null) return;
+      await changeState(harnessCtx, (state) =>
+        withTurn(state, requestId, (turn) => ({ ...turn, stopped: true, ...turnEndOf(ctx, requestId, turn) })),
+      );
+      await writeTurnHead(harnessCtx).catch(() => undefined);
+    },
+  });
+  const turnEnd = sequencer({ name: "turn-end", inputSchema: z.unknown() }).tap(endUnendedTurn).tap(branchPullRequests);
   // What one turn's commits changed, between the commits its record keeps. A
   // read: answered in the response and stored nowhere, so an opened patch
   // never lands in the session's log.

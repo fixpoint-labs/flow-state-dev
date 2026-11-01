@@ -15,6 +15,8 @@
  *     what each run spent" reads one run's tokens, not two.
  *   - throw past the approval limit instead of failing through the turn's
  *     failure record: the turn fails with no error, end or spend on its record.
+ *   - drop the finished hook's end of an unended turn: a turn stopped while
+ *     it waits ends `aborted` with no end, stop or spend on its record.
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -136,6 +138,12 @@ function host(options: {
       { params: { path } } as never,
     );
   };
+  /** Stop the turn through the engine's abort route, as a screen's stop button does. */
+  const stop = async (requestId: string): Promise<Response> => {
+    const router = await state.getRouter();
+    const path = [KIND, "requests", requestId, "abort"];
+    return router.POST(new Request(`http://localhost/api/flows/${path.join("/")}`, { method: "POST" }), { params: { path } } as never);
+  };
   const ended = (requestId: string) =>
     until(async () => {
       const now = await status(requestId);
@@ -144,7 +152,7 @@ function host(options: {
   const sessionState = async () => (await (await runtime()).stores.session.get(SESSION))?.state as HarnessSessionState;
   const ran = (name: string) => existsSync(join(cwd, name));
   const decisions = () => stub.toolCalls.map((call) => `${call.run}:${call.decision}`);
-  return { turn, pending, answer, ended, status, sessionState, ran, decisions, stub, handed, cwd, dispose: () => state.dispose() };
+  return { turn, pending, answer, stop, ended, status, sessionState, ran, decisions, stub, handed, cwd, dispose: () => state.dispose() };
 }
 
 describe("a harness session's tool call waits for the user", () => {
@@ -236,6 +244,28 @@ describe("a harness session's tool call waits for the user", () => {
       await h.dispose();
     }
   }, 120_000);
+
+  it("ends the turn on its record when the user stops it while it waits", async () => {
+    const h = host({ calls: [marker("marker")], spend: { inputTokens: 10, outputTokens: 1, costUsd: 0.1 } });
+    try {
+      const { requestId } = await h.turn("do the thing");
+      await h.pending(requestId!);
+      expect((await h.stop(requestId!)).status).toBe(204);
+      const deadline = Date.now() + 20_000;
+      for (;;) {
+        const record = (await h.sessionState()).turns?.[requestId!];
+        if (record?.endedAt != null) break;
+        if (Date.now() > deadline) throw new Error(`the stopped turn never ended on its record (request ${await h.status(requestId!)})`);
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      const record = (await h.sessionState()).turns?.[requestId!];
+      expect(record?.stopped).toBe(true);
+      expect(record?.spend).toMatchObject({ inputTokens: 10, outputTokens: 1 });
+      expect(h.ran("marker")).toBe(false);
+    } finally {
+      await h.dispose();
+    }
+  }, 30_000);
 
   it("never runs the call on Deny, tells the conversation with the user's note, and the turn goes on", async () => {
     const h = host({ calls: [marker("marker"), marker("second")] });
