@@ -417,6 +417,7 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
       // Set before the await: the new session can be drawn before it returns.
       how.current = "push";
       await flow.createSession();
+      setResolving(null);
       setPicked(null);
       leaf.refresh();
       setIsRailDrawerOpen(false);
@@ -431,6 +432,7 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
     async (worker: RosterEntry) => {
       const conversation = await workforce.ensureWorkerSession({ worker: worker.id });
       how.current = "push";
+      setResolving(null);
       setPicked({ sessionId: conversation.id, kind: conversation.flowKind, address: conversation.flowKind });
       setMobilePanel("chat");
     },
@@ -440,6 +442,8 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
   const handleSelectSession = useCallback(
     (id: string, leaf: FlowNavigatorLeaf) => {
       how.current = "push";
+      // A pick wins over an address still being read.
+      setResolving(null);
       if (leaf.kind === SHELL_FLOW) {
         flow.selectSession(id);
         setPicked(null);

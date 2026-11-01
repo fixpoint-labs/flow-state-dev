@@ -4,12 +4,16 @@
  * picked in the rail. Each case reads what is drawn, never the address alone,
  * so a page that writes the address and ignores it on load fails.
  *
- * Nothing here posts, so sharing the app's one user across parallel tests is
- * safe: each opens the person's one conversation with the coordinator, or its
- * own assistant session.
+ * Nothing here posts, but the tests share the app's one user and its one
+ * conversation with the coordinator. The first open creates that
+ * conversation, and two at once collide (a 409), so the tests run one at a
+ * time.
  */
 import type { Page } from "@playwright/test";
 import { test, expect, openKitchenSink } from "./fixtures";
+
+// One at a time, in file order: see the header.
+test.describe.configure({ mode: "default" });
 
 const COORDINATOR = "support.help";
 
@@ -88,4 +92,32 @@ test("Back onto a session that is gone opens the assistant, not the conversation
   await expect(picked(page)).toHaveCount(0);
   await expect.poll(() => named(page)).toBe(sessionId);
   consoleErrors.splice(0, consoleErrors.length, ...consoleErrors.filter((e) => !e.includes("404")));
+});
+
+test("a pick made while Back is still reading its session wins over the read", async ({
+  page,
+  sessionId,
+  consoleErrors: _consoleErrors,
+}) => {
+  await openKitchenSink(page, sessionId);
+  await openHelpDesk(page);
+
+  // Back to the assistant's session, with the read of its record held.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  let reading = false;
+  await page.route(`**/api/flows/sessions/${sessionId}`, async (route) => {
+    reading = true;
+    await held;
+    await route.continue();
+  });
+  await page.goBack();
+  await expect.poll(() => reading).toBe(true);
+
+  // The user picks the help desk again before the read returns.
+  await row(page, COORDINATOR).click();
+  release();
+  await page.waitForTimeout(500);
+  await expect(picked(page).getByTestId("coordinator-transcript")).toBeVisible();
+  expect(named(page)).not.toBe(sessionId);
 });
