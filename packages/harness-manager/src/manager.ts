@@ -723,6 +723,20 @@ const managerOutputSchema = z.object({
   branch: z.string().nullable(),
   /** How many commits the run's branch has that its base does not. */
   commits: z.number().int().nonnegative(),
+  /**
+   * Whether git read `commits` against the run's base. `false` when it
+   * couldn't, and `commits` is a fallback zero: show the count as unknown.
+   * `null` on an output kept before it existed (BP-030).
+   */
+  commitsVerified: z.boolean().nullable().default(null),
+  /**
+   * The commit the run's branch was cut at, so `git log <baseCommit>..<branch>`
+   * lists the run's commits. `null` for a run with no repository, or one whose
+   * record names no base. Defaulted so an output kept before it parses (BP-030).
+   */
+  baseCommit: z.string().nullable().default(null),
+  /** The run's checkout, where its branch is checked out. `null` for a run with no repository. Defaulted (BP-030). */
+  path: z.string().nullable().default(null),
   /** Whether the host's judge read the run before it settled. */
   judged: z.boolean(),
   /**
@@ -2511,6 +2525,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           answer: handle.finalMessage === null ? null : handle.finalMessage.slice(0, MAX_ANSWER_CHARS),
           branch: state.filesOnly === true ? null : state.branch!,
           commits: commits.count,
+          commitsVerified: commits.verified,
+          baseCommit: state.filesOnly === true ? null : state.baseCommit,
+          path: state.filesOnly === true ? null : state.workspacePath,
           judged: false,
           review: null,
         };

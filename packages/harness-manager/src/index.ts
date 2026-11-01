@@ -239,3 +239,6 @@ export {
 // that act on them are `@flow-state-dev/harness-manager/checkout` — see that
 // module for why the split is an entry point rather than a comment.
 export type { OwnershipBounds, WorkspaceConfig } from "./workspace";
+
+// Where a run's work went, from a task's output or a worktree row. Browser-safe; FIX-2385's `./browser` entry re-exports it.
+export { shellWord, workPlace, type WorkPlace, type WorkPlaceCommands, type WorkPlaceViewer } from "./work-place";

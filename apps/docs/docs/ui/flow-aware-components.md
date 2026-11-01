@@ -61,6 +61,24 @@ import { ModelBadge } from "@/components/flow-state/model-badge";
 <ModelBadge model={item.model} />
 ```
 
+## WorkPlace
+
+Shows where a coding run left its work: the branch, how many commits it made, and copy buttons for the commands that get you there. That's `git switch` to the branch, `cd` into the run's checkout, and `git log` over just the run's commits. When the count can't be known, it says so instead of showing zero.
+
+```bash
+fsdev ui add work-place
+```
+
+It takes plain props, which you get from `workPlace` in `@flow-state-dev/harness-manager`. Pass it a coding task's output, or the worktree row a harness session points at (`state.workspace.worktree` is the row's key in the user's `worktrees` list). From a row it also shows the worktree's name, its state when it isn't ready, and whose worktree it is when your session is attached to someone else's. For a run with no branch, it renders nothing.
+
+```tsx
+import { workPlace } from "@flow-state-dev/harness-manager";
+import { WorkPlace } from "@/components/flow-state/work-place";
+
+<WorkPlace place={workPlace(task.output)} />
+<WorkPlace place={workPlace(worktreeRow, { session: sessionId })} />
+```
+
 ## AuditAnnotation
 
 A compact card for [Response Auditor](/docs/patterns/response-auditor) findings. It lists the surfaced results with severity indicators, per-analyzer scores, and the evidence each analyzer flagged. You don't render it by hand: the `responseAuditor` pattern emits an `audit-annotation` component item whenever a result surfaces, and `chatAssistantRenderers` maps that item to this card, so the audit shows up automatically on any chat surface wired with those renderers.

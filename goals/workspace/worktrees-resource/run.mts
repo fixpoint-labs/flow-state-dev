@@ -81,7 +81,7 @@ const workspace: HarnessSessionWorkspace = {
       { kind: "repo", repo, ...(resolved.baseRef !== undefined ? { baseRef: resolved.baseRef } : {}) },
       { place: [place.sessionId], branch, existing, ...(worktrees !== undefined ? { worktrees } : {}) },
     );
-    return { path: made.cwd, branch, ...(made.worktree !== undefined ? { worktree: made.worktree } : {}) };
+    return { path: made.cwd, ...(made.worktree !== undefined ? { worktree: made.worktree } : {}) };
   },
   locate: (place) => host.locate({ kind: "repo", repo }, { place: [place.sessionId] }).cwd,
   branch: (place) => sessionBranch(place.sessionId),
@@ -178,7 +178,7 @@ async function rows(sessionId: string, userId = USER): Promise<WorktreeRow[]> {
 }
 
 const stateOf = async (sessionId: string) =>
-  ((await stores.session.get(sessionId))?.state ?? {}) as { workspace?: { path: string; worktree: string | null } | null };
+  ((await stores.session.get(sessionId))?.state ?? {}) as { workspace?: { worktree: string | null } | null };
 
 await runGoal(async (failures, tell) => {
   const legs: Record<string, boolean> = {};
@@ -194,8 +194,10 @@ await runGoal(async (failures, tell) => {
   if (aEnded !== "completed") failures.push(`setup: the first turn ended ${aEnded}`);
   const aBranch = sessionBranch(sA);
   const aState = (await stateOf(sA)).workspace;
+  // The session's directory, from the host, not from the row under test.
+  const aPath = workspace.locate({ flowKind: KIND, sessionId: sA });
   const aRows = tell.over("a:row · the user's rows", await rows(sA));
-  const row = aRows.find((r) => r.path === aState?.path);
+  const row = aRows.find((r) => r.key === aState?.worktree && r.path === aPath);
   const base = git(repo, "merge-base", "main", aBranch);
   check(
     "a:row",
@@ -226,8 +228,8 @@ await runGoal(async (failures, tell) => {
   const before = Date.now();
   await act(sA, "turn", { prompt: "switch" });
   const cRow = (await rows(sA)).find((r) => r.key === row?.key);
-  const head = git(aState?.path ?? repo, "symbolic-ref", "--short", "HEAD");
-  const counted = Number(git(aState?.path ?? repo, "rev-list", "--count", "HEAD", "--not", base));
+  const head = git(aPath, "symbolic-ref", "--short", "HEAD");
+  const counted = Number(git(aPath, "rev-list", "--count", "HEAD", "--not", base));
   check(
     "c:snapshot",
     head === "agent/switched" && cRow?.branch === head && cRow.commits === counted && (cRow.lastTurnAt ?? 0) >= before,
@@ -239,7 +241,7 @@ await runGoal(async (failures, tell) => {
   const dEnded = await act(sA, "removeWorktree", {});
   if (dEnded !== "completed") failures.push(`setup: removeWorktree ended ${dEnded}`);
   const dRow = (await rows(sA)).find((r) => r.key === row?.key);
-  check("d:removed", dRow?.state === "removed" && dRow.path === aState?.path, `row ${JSON.stringify(dRow)}`);
+  check("d:removed", dRow?.state === "removed" && dRow.path === aPath, `row ${JSON.stringify(dRow)}`);
   evidence.push(`d: row kept as ${dRow?.state}`);
 
   // ---- leg e: who reads it ----------------------------------------------
