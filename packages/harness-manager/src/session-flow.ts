@@ -80,6 +80,7 @@ import {
   worktreesCollection,
   type LockLease,
   type WorktreeCollection,
+  type WorktreeOwner,
   type WorktreeRecording,
 } from "@flow-state-dev/workspace";
 import { z } from "zod";
@@ -238,13 +239,13 @@ export interface HarnessSessionWorkspace {
    * returning the row's key, or `null` when it has none. Optional: without it,
    * an attached session records no row key.
    */
-  attach?(owner: HarnessSessionPlace, request: { worktrees: WorktreeCollection; session: string }): Promise<string | null>;
+  attach?(owner: HarnessSessionPlace, request: { worktrees: WorktreeCollection; by: WorktreeOwner }): Promise<string | null>;
   /**
    * Read the worktree at a turn's end and write its branch and commit count to
    * its row (`WorkspaceHost.recordCheckout`). Optional: without it, the row
    * keeps what provision wrote.
    */
-  recordCheckout?(place: HarnessSessionPlace, request: { worktrees: WorktreeCollection }): Promise<void>;
+  recordCheckout?(place: HarnessSessionPlace, request: { worktrees: WorktreeCollection; by?: WorktreeOwner }): Promise<unknown>;
 }
 
 /** The user's worktree rows off a block's context, when the flow has them. */
@@ -471,7 +472,7 @@ export function harnessSessionFeeds(
         const worktrees = worktreesOf(ctx);
         let worktree = recorded?.worktree ?? null;
         if (worktree === null && worktrees !== undefined && workspace.attach !== undefined) {
-          worktree = await workspace.attach(workPlaceOf(kind, ctx), { worktrees, session: ctx.session.identity.id });
+          worktree = await workspace.attach(workPlaceOf(kind, ctx), { worktrees, by: { kind: "session", id: ctx.session.identity.id } });
         }
         if (
           recorded == null ||
@@ -657,7 +658,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       const worktrees = worktreesOf(ctx);
       if (inUse.has(requestId) && worktrees !== undefined && options.workspace.recordCheckout !== undefined) {
         try {
-          await options.workspace.recordCheckout(place, { worktrees });
+          await options.workspace.recordCheckout(place, { worktrees, by: { kind: "session", id: harnessCtx.session.identity.id } });
         } catch (error) {
           ctx.emit.status(`The worktree's row was not updated: ${error instanceof Error ? error.message : String(error)}`, {
             transient: false,
@@ -742,6 +743,9 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     // The user's worktree rows: the host writes them through this flow's
     // workspace, and every session and agent of the user reads them.
     resources: { [WORKTREES]: worktreesCollection },
+    // The model may read the rows through core's resource tools, never write
+    // them: only the workspace host writes a row.
+    resourceVisibility: (_ctx, resource) => (resource.name === WORKTREES ? "read-only" : "visible"),
     session: {
       stateSchema: harnessSessionStateSchema,
       // The page reads the model, the binding and the turns. The model is the

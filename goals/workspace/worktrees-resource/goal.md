@@ -18,18 +18,22 @@ Kitchen Sink lists its own.
   `fix-the-export-button-<6 hex>`.
 - **a:key**: the session's `state.workspace.worktree` is that row's key.
 - **b:attached**: a second session created with `start: { worktreeOf }` runs a turn. The row
-  lists it in `attached`, its owner is unchanged, and the second session stores the same key.
+  lists it once in `attached` as a session with its last turn's time, its owner is unchanged,
+  and the second session stores the same key.
 - **c:snapshot**: a turn commits twice and then switches to a new branch. The row names the new
   branch, its `commits` equals `git rev-list --count HEAD --not <baseCommit>`, and
   `lastTurnAt` is from that turn.
 - **d:removed**: after `removeWorktree`, the row is still there, `removed`, with its path.
-- **e:same-user**, **e:other-user**: a new session of the same user lists the row through the
-  flow's resource route. A session of another user lists no rows.
+- **e:same-user**, **e:other-user**, **e:other-org**: a new session of the same user lists the
+  row through the flow's resource route. A session of another user lists no rows, and neither
+  does a session of the same user in another organization.
 
 **Controls:** each one reddens exactly the legs named.
 
 - `GOAL_CONTROL=no-row`: the workspace provisions without the collection. Every leg that reads
   a row fails.
-- `GOAL_CONTROL=no-checkout`: the workspace has no `recordCheckout`. Fails **c:snapshot**.
+- `GOAL_CONTROL=no-checkout`: the workspace has no `recordCheckout`. Fails **c:snapshot**, and
+  **b:attached**, whose last-turn time the same read writes.
 - `GOAL_CONTROL=keep-ready`: the workspace removes with `git worktree remove`, not the host.
   Fails **d:removed**.
+- `GOAL_CONTROL=one-org`: the principal resolver drops the organization. Fails **e:other-org**.

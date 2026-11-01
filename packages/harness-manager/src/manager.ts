@@ -2224,7 +2224,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const place = placeFor(
         locationFor({ principal: runPrincipal(ctx), epic: state.epic!, issue: state.issue!, phase: state.phase! }, state.branch),
       );
-      await host.recordCheckout({ place }, { worktrees });
+      await host.recordCheckout({ place }, { worktrees, by: { kind: "run", id: state.taskId ?? place.join("/") } });
       return (await worktrees.getOptional(worktreeKey(host.hostId(), place))) !== undefined ? worktreeKey(host.hostId(), place) : null;
     } catch (error) {
       ctx.emit.status(`The run's worktree row was not updated: ${error instanceof Error ? error.message : String(error)}`, {

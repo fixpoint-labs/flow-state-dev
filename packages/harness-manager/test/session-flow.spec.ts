@@ -416,3 +416,15 @@ describe("attaching a session to another session's worktree", () => {
     expect(Object.values(state.turns).map((turnRecord) => turnRecord.error)).toEqual([null]);
   });
 });
+
+describe("the user's worktree rows", () => {
+  it("are read-only to the model's resource tools, so only the workspace host writes a row", () => {
+    const flow = harnessSessionFlow({ kind: "stub-session", workspace: { provision: async () => "/x", locate: () => "/x", branch: () => null }, agent: provisioningAgent() }) as unknown as {
+      resources: Record<string, unknown>;
+      resourceVisibility: (ctx: unknown, resource: { name: string; ref: unknown }) => string;
+    };
+    expect(flow.resources.worktrees).toBeDefined();
+    expect(flow.resourceVisibility({}, { name: "worktrees", ref: {} })).toBe("read-only");
+    expect(flow.resourceVisibility({}, { name: "observed-pull-requests", ref: {} })).toBe("visible");
+  });
+});

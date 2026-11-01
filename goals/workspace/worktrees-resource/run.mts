@@ -10,8 +10,9 @@
  *
  * Run:      pnpm tsx goals/workspace/worktrees-resource/run.mts
  * Controls: GOAL_CONTROL=no-row      (must FAIL every leg that reads a row)
- *           GOAL_CONTROL=no-checkout (must FAIL c:snapshot, and nothing else)
+ *           GOAL_CONTROL=no-checkout (must FAIL b:attached and c:snapshot, and nothing else)
  *           GOAL_CONTROL=keep-ready  (must FAIL d:removed, and nothing else)
+ *           GOAL_CONTROL=one-org     (must FAIL e:other-org, and nothing else)
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -35,8 +36,11 @@ stripIntentOverrides();
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const EXPECTED: Record<string, string[]> = {
   "no-row": ["a:key", "a:row", "b:attached", "c:snapshot", "d:removed", "e:same-user"],
-  "no-checkout": ["c:snapshot"],
+  // no-checkout: b's own last-turn time is written by the same turn-end read.
+  "no-checkout": ["b:attached", "c:snapshot"],
   "keep-ready": ["d:removed"],
+  // one-org: the principal resolver drops the organization, so every request is the same one.
+  "one-org": ["e:other-org"],
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
@@ -46,6 +50,10 @@ const fixture = loadFixture<{ title: string; subject: string }>(import.meta.url)
 const KIND = "goal-worktrees";
 const USER = "u_goal";
 const OTHER = "u_other";
+const ORG = "org_goal_a";
+const OTHER_ORG = "org_goal_b";
+/** Who a request is: the user and organization headers this check's principal resolver reads, never the body. */
+const as = (userId: string, orgId: string) => ({ "x-user": userId, "x-org": orgId });
 
 const git = (cwd: string, ...args: string[]) =>
   execFileSync("git", ["-c", "user.email=goal@example.com", "-c", "user.name=goal", ...args], { cwd, encoding: "utf8", timeout: 30_000 }).trim();
@@ -123,11 +131,20 @@ const stubAgent = (feeds: HarnessSessionFeeds) =>
 const stores = createInMemoryStores() as unknown as StoreRegistry;
 const registry = createFlowRegistry();
 registry.registerMany([harnessSessionFlow({ kind: KIND, workspace, agent: stubAgent })]);
-const router = createFlowApiRouter({ registry, stores, runtimeConfig: { logger: silentLogger } } as never);
+const router = createFlowApiRouter({
+  registry,
+  stores,
+  runtimeConfig: { logger: silentLogger },
+  resolvePrincipal: (context: { request?: Request }) => {
+    const userId = context.request?.headers.get("x-user");
+    const orgId = CONTROL === "one-org" ? ORG : (context.request?.headers.get("x-org") ?? ORG);
+    return typeof userId === "string" ? { userId, orgId } : null;
+  },
+} as never);
 
-async function create(state: Record<string, unknown>, userId = USER): Promise<string> {
+async function create(state: Record<string, unknown>, userId = USER, orgId = ORG): Promise<string> {
   const res = await router.POST(
-    new Request(`http://goal/api/flows/${KIND}/sessions`, { method: "POST", body: JSON.stringify({ userId, state }) }),
+    new Request(`http://goal/api/flows/${KIND}/sessions`, { method: "POST", headers: as(userId, orgId), body: JSON.stringify({ userId, state }) }),
     { params: { path: [KIND, "sessions"] } },
   );
   const body = (await res.json()) as { session?: { id: string } };
@@ -141,6 +158,7 @@ async function act(sessionId: string, action: string, input: unknown): Promise<s
     const res = await router.POST(
       new Request(`http://goal/api/flows/${KIND}/${sessionId}/actions/${action}`, {
         method: "POST",
+        headers: as(USER, ORG),
         body: JSON.stringify({ userId: USER, input }),
       }),
       { params: { path: [KIND, sessionId, "actions", action] } },
@@ -167,9 +185,9 @@ async function act(sessionId: string, action: string, input: unknown): Promise<s
 }
 
 /** The rows a page in `sessionId` sees, through the flow's resource route. */
-async function rows(sessionId: string, userId = USER): Promise<WorktreeRow[]> {
+async function rows(sessionId: string, userId = USER, orgId = ORG): Promise<WorktreeRow[]> {
   const res = await router.GET(
-    new Request(`http://goal/api/flows/sessions/${sessionId}/resources/worktrees?userId=${userId}`),
+    new Request(`http://goal/api/flows/sessions/${sessionId}/resources/worktrees?userId=${userId}`, { headers: as(userId, orgId) }),
     { params: { path: ["sessions", sessionId, "resources", "worktrees"] } },
   );
   const body = (await res.json()) as { items?: Array<{ clientData?: WorktreeRow }> };
@@ -217,7 +235,13 @@ await runGoal(async (failures, tell) => {
   const bRow = (await rows(sA)).find((r) => r.key === row?.key);
   check(
     "b:attached",
-    bRow !== undefined && JSON.stringify(bRow.attached) === JSON.stringify([sB]) && bRow.owner?.id === sA && (await stateOf(sB)).workspace?.worktree === bRow.key,
+    bRow !== undefined &&
+      bRow.attached.length === 1 &&
+      bRow.attached[0]?.kind === "session" &&
+      bRow.attached[0].id === sB &&
+      (bRow.attached[0].lastTurnAt ?? 0) > 0 &&
+      bRow.owner?.id === sA &&
+      (await stateOf(sB)).workspace?.worktree === bRow.key,
     `row ${JSON.stringify(bRow)}; attached session's state ${JSON.stringify((await stateOf(sB)).workspace)}`,
   );
   evidence.push(`b: ${sB} listed as attached`);
@@ -251,7 +275,13 @@ await runGoal(async (failures, tell) => {
     emptyIs: "another user's session lists no rows",
   });
   check("e:other-user", otherRows.length === 0, `another user's session lists ${JSON.stringify(otherRows)}`);
-  evidence.push(`e: same user lists ${cRows.length}, another user ${otherRows.length}`);
+  // The same person, working in another organization, sees that organization's rows only.
+  const sOtherOrg = await create({ model: "stub" }, USER, OTHER_ORG);
+  const otherOrgRows = tell.over("e:other-org · the same user's rows in another organization", await rows(sOtherOrg, USER, OTHER_ORG), {
+    emptyIs: "the same user's session in another organization lists no rows",
+  });
+  check("e:other-org", otherOrgRows.length === 0, `the same user in another organization lists ${JSON.stringify(otherOrgRows)}`);
+  evidence.push(`e: same user lists ${cRows.length}, another user ${otherRows.length}, same user in another org ${otherOrgRows.length}`);
 
   if (CONTROL !== "") {
     const red = Object.entries(legs).filter(([, ok]) => !ok).map(([name]) => name).sort();
