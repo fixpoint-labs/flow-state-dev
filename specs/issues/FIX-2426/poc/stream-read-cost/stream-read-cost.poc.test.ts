@@ -12,7 +12,8 @@
  * PGlite, so it runs anywhere), every SQL statement counted at the executor.
  * One session with finished history, then N viewers hold the stream open for
  * a fixed window at the shipped one-second interval. Reported per viewer per
- * second: SQL statements, and time spent inside the database. Two shapes:
+ * second: SQL statements. Not time: PGlite runs every query behind one lock, so
+ * a timer around `query()` would count other viewers' waits. Two shapes:
  *
  *   idle    — nothing runs in the session; the case D6 makes free.
  *   active  — one request in progress and two background runs open, the case a
@@ -43,16 +44,14 @@ const VIEWERS = (process.env.FIX2426_VIEWERS ?? "1,10,50").split(",").map(Number
 const CONTROL = process.env.FIX2426_CONTROL;
 const HISTORY = 200;
 
-type Counter = { statements: number; dbMs: number; on: boolean };
+type Counter = { statements: number; on: boolean };
 
 function countingExecutor(pglite: PGlite, counter: Counter): QueryExecutor {
   return {
     async query(text: string, values?: unknown[]) {
-      const started = performance.now();
       const result = await pglite.query(text, values);
       if (counter.on) {
         counter.statements += 1;
-        counter.dbMs += performance.now() - started;
       }
       return { rows: result.rows as Record<string, unknown>[], rowCount: result.affectedRows ?? 0 };
     }
@@ -121,11 +120,11 @@ async function seed(stores: StoreRegistry, active: boolean): Promise<void> {
   }
 }
 
-type Row = { shape: string; viewers: number; perViewerPerSec: number; dbMsPerViewerPerSec: number; poolShare: string };
+type Row = { shape: string; viewers: number; perViewerPerSec: number };
 const rows: Row[] = [];
 
 async function measure(shape: "idle" | "active", viewers: number): Promise<Row> {
-  const counter: Counter = { statements: 0, dbMs: 0, on: false };
+  const counter: Counter = { statements: 0, on: false };
   const stores = await createPostgresStores({ executor: countingExecutor(await freshPglite(), counter) });
   await seed(stores, shape === "active");
 
@@ -168,11 +167,7 @@ async function measure(shape: "idle" | "active", viewers: number): Promise<Row> 
   }
   const seconds = WINDOW_MS / 1_000;
   const perViewerPerSec = viewers === 0 ? 0 : counter.statements / seconds / viewers;
-  const dbMsPerViewerPerSec = viewers === 0 ? 0 : counter.dbMs / seconds / viewers;
-  // Share of a 10-connection pool's time (10 000 connection-ms per second) the
-  // stream's reads hold, at this viewer count.
-  const poolShare = `${((counter.dbMs / seconds / 10_000) * 100).toFixed(1)}%`;
-  return { shape, viewers, perViewerPerSec, dbMsPerViewerPerSec, poolShare };
+  return { shape, viewers, perViewerPerSec };
 }
 
 describe("FIX-2426 POC · what an open session-stream view costs the store", () => {
@@ -184,8 +179,7 @@ describe("FIX-2426 POC · what an open session-stream view costs the store", () 
           .map(
             (r) =>
               `${r.shape.padEnd(7)} viewers=${String(r.viewers).padStart(3)}  ` +
-              `statements/viewer/s=${r.perViewerPerSec.toFixed(2).padStart(6)}  ` +
-              `db-ms/viewer/s=${r.dbMsPerViewerPerSec.toFixed(2).padStart(7)}  pool(10)=${r.poolShare}`
+              `statements/viewer/s=${r.perViewerPerSec.toFixed(2).padStart(6)}`
           )
           .join("\n")
     );

@@ -57,7 +57,7 @@ change is itself confidential. Then a check per notice is the price.
 | | |
 |---|---|
 | **Instead of** | Reading on a timer only when `GET /capabilities` says there is no push |
-| **Because** | A socket on a host with push still drops: a proxy's idle timeout, a deploy, a laptop that sleeps, a ticket that lands on another process. With the timer tied to capabilities alone, the screen goes stale with no sign of it. So `client.subscribe` reads on its timer from the first failed reconnect, the pace `followSession` already treats as lapsed, until the socket is back. Each connect and reconnect calls `onChange` once. The timer lives in `client.subscribe`, not in each hook, so every consumer gets one fallback (ER-5) |
+| **Because** | A socket on a host with push still drops: a proxy's idle timeout, a deploy, a laptop that sleeps, a ticket that lands on another process. With the timer tied to capabilities alone, the screen goes stale with no sign of it. So `client.subscribe` reads on its timer from the first failed reconnect, the pace `followSession` already treats as lapsed, until the socket is back. Each connect and reconnect calls `onChange` once. The timer lives in `client.subscribe`, not in each hook, so every consumer gets one fallback. This extends epic ER-5's "polls when `GET /capabilities` says there is no push" to a socket that is down; it doesn't replace it |
 | **Locks in** | `pollIntervalMs` on `client.subscribe` and `useSubscription`, a public name. A screen on a push host still costs a read per interval while its socket is down |
 
 ![D3: when the hook reads on a timer. Chosen: no push, or the socket down, beside no push only. Decides it: a socket that drops on a push host. Price: a read per interval while it is down. Flips if sockets on long-lived hosts never drop](figures/d3-fallback.svg)
@@ -68,18 +68,26 @@ It comes down to a socket that drops: without the timer, the screen stops changi
 
 - **Push is on whenever `serve()` is the host**, `fsdev dev` and `fsdev serve` included, with
   `push: false` to turn it off. `createServerApp` alone (Lambda, Bun, Deno) reports `push: null`.
-  The epic's goal is an app that writes no push code, so on is the default.
 - **The convergence point is the mint.** Every topic in a socket's subscription set came from a
   ticket the mint signed, on the first connect, on a topic added to an open socket, and on a
   reconnect. No socket message that names a topic is ever accepted on its own. FIX-380's token
   goes through the same mint (ER-4).
-- **User and org topics name no id on the wire.** The mint fills them from the caller's identity
-  (BP-031), so no one can name another user's or organization's scope. A session topic names
-  its session and passes the check `session_stream` uses. A topic narrowed to one resource
-  passes its scope's check.
+- **User and org topics name no id on the wire** (FIX-2426's wire topic). The mint fills them
+  from the caller's identity (BP-031), so no one can name another user's or organization's
+  scope. A session topic names its session and passes the check `session_stream` uses. A topic
+  narrowed to one resource passes its scope's check.
+- **A refused topic looks like an unknown one.** A session the caller can't read gets the answer
+  a missing session gets (`hiddenSessionResponse`), so the mint tells no one which ids exist. The
+  POST joins the engine's user-route scoping table (`user-route-scoping.test.ts`).
+- **One way to follow a session** (ER-5). `useSession({ live })` follows its own items; a session
+  topic on `useSubscription` is for flow `reads`. FIX-2429 moves `liveBoardDriver` onto it.
 - **`GET /capabilities` answers `{ userStream, push }`**, with `push` either
   `{ transport: "websocket" }` or `null`. A client that gets no `push` field, from an older
-  server, treats it as `null` (BP-030). `userStream` is true when this host serves the socket.
+  server, treats it as `null` (BP-030). Both stay: on FIX-380's Ably host `push` is set and
+  `userStream` false. The client branches only on `push`.
+- **`pushSecret` is `string | (() => string)`**, as the webhook verifiers take it. A ticket that
+  fails its signature check is logged, not only met by the timer. Signing may use `jose` or a
+  similar library; the format is the implementer's within D1.
 - **The ticket travels in the first socket message, not the URL**, so a proxy's access log never
   holds it. A socket with no valid ticket within five seconds is closed.
 - **One socket per client** (epic D4), shared by every `client.subscribe` call on it, with topics
@@ -90,7 +98,11 @@ It comes down to a socket that drops: without the timer, the screen stops changi
   (epic D5), so a later host reuses the check. The `ws` library handles frames in
   `@flow-state-dev/node`.
 - **`client.stream()` goes with no replacement under its name.** The server never served it and
-  it carried rows. Changesets for the client (minor: a removal) and for react and node.
+  it carried rows. `UserStreamEvent` and the user-only event types it unions go from
+  `@flow-state-dev/contracts` with it; `StreamEvent` stays, now `RequestStreamEvent`. Changesets
+  (minor) for client, react, node, engine (the POST, `push`, no 501), and contracts and core,
+  which re-exports its items. The client's
+  says: "`fsd.stream()` never worked (501); use `fsd.subscribe()`".
 - **`docs/mechanisms/mechanisms.yaml` gains a `push-delivery` row** (adapters: node; FIX-380 adds
   Ably), with the bus row FIX-2426 adds as what it is built on.
 
@@ -123,8 +135,8 @@ run a fresh `analysis` before the gate.
    short credential through an authenticated HTTP call and check it at connect. D1 follows them.
 3. **Other shapes** — cookie-only sign-in, the credential in the subprotocol; both in
    *Considered and dropped*.
-4. **New factors** — FIX-2426 has no spec yet. This spec uses only the epic's ER-1 and ER-2 shape
-   and names the topic constructors as FIX-2426's.
+4. **New factors** — FIX-2426's spec owns the wire topic and its `topic.*` constructors; this
+   spec uses them.
 5. **Necessity** — earns its place: it is the epic's one client path, and the epic's own apps
    need the bearer-header case.
 6. **Ergonomics** — one hook with the read the screen already has; one option, the interval.
@@ -135,5 +147,7 @@ run a fresh `analysis` before the gate.
 - **Draft** — the socket on the user-stream route under `serve()`, a per-topic ticket from a
   mint through the client's fetcher, `client.subscribe` with the timer inside it, and
   `useSubscription` over the coalesced read. `client.stream()` removed.
+- **Amended (Nov 1)** — a refused topic answers as a missing one; one way to follow a session;
+  the contracts types and changesets named; `pushSecret`'s shape; D3 tied to epic ER-5.
 
 **Open: none.**

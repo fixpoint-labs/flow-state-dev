@@ -65,18 +65,19 @@ was sent.
 Three packages gain one piece each, and the old user-stream reader that was never served goes.
 
 ```diff
- // a screen that watches a session (topic constructors are FIX-2426's, ER-2)
+ // a screen showing a flow read of a session (its own items stay on useSession({ live }))
+ const refresh = () => fsd.flow(flow).read("listTasks_tasks", {}, { sessionId }).then(show);
 -useEffect(() => {
 -  const timer = setInterval(refresh, 3000);
 -  return () => clearInterval(timer);
 -}, [refresh]);
-+useSubscription([topic.session(sessionId)], refresh, { pollIntervalMs: 3000 });
++useSubscription([topic.session(sessionId)], refresh, { pollIntervalMs: 3000 }); // topic: FIX-2426
 
  // outside React
 -fsd.stream({ onResourceChanged }); // the server answered 501
 +const sub = fsd.subscribe([topic.session(sessionId), topic.org()], {
 +  onChange: () => void reload(), // a notice, a connect, or a poll
-+  pollIntervalMs: 3000,          // only while there is no push
++  pollIntervalMs: 3000,          // while there is no push, or the socket is down (D3)
 +});
 +sub.close();
 
@@ -110,7 +111,8 @@ A topic reaches a socket only through the mint, so the socket itself never decid
 
 ## What stays as it is
 
-- **SSE request and item streams**, and the session stream with `useSession({ live })` (ER-7).
+- **SSE request and item streams**, and the session stream with `useSession({ live })` (ER-7),
+  still the one way to follow a session's own items (ER-5).
 - **Every read route**, which a notice triggers and never replaces.
 - **The user-stream route's guard.** The path's user must be the caller, as on every user route.
 - **Serverless hosts and `createServerApp`**: no socket, `push: null`, the hook reads on its timer.
@@ -141,9 +143,9 @@ A topic reaches a socket only through the mint, so the socket itself never decid
 
 | The debt | |
 |---|---|
-| **Removes** | `client.stream()`, `openUserStream`, its callback and handle types and its docs section; the 501 answer |
+| **Removes** | `client.stream()`, `openUserStream`, its callback and handle types and its docs section; the 501 answer; `UserStreamEvent` and the user-only event types it unions, in `@flow-state-dev/contracts` (only `client.stream()` used them) |
 | **Adds** | A second wire beside SSE (the epic's accepted channel). A `pushSecret` option, needed only for several processes behind one address. The timer inside `client.subscribe`, permanent by design (ER-5). The hour cap on a socket ([D2](DECISIONS.md#d2)) |
-| **Leaves** | The labs' and Shift Manager's polls (FIX-2429). The resource and state hooks (FIX-1506). The session stream beside the socket (epic, Leaves) |
+| **Leaves** | The labs' and Shift Manager's polls, and `BoardList`'s `liveBoardDriver` on the session stream (FIX-2429 moves both onto `client.subscribe`). The resource and state hooks (FIX-1506). The session stream beside the socket (epic, Leaves) |
 
 **Net: up**, by a socket path and one secret, inside the epic's one push channel; it removes a
 public method that never worked.

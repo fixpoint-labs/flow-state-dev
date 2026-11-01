@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Today: a request writes a reply to the request and session stores, and each open session-stream view reads those stores every second, four statements a second when nothing changed. After: the same writes pass through resolveStores, which publishes a notice on the session's topic to the bus after each write lands. The bus is a new stores slot with an in-memory adapter by default. The session stream subscribes to its session's topic and reads once when woken. The timed read stays only where the bus cannot cross processes: the in-memory bus, and serverless hosts."
+<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Today: a request writes a reply to the request and session stores, and each open session-stream view reads those stores every second, four statements a second when nothing changed. After: the same writes pass through one wrapper, applied in resolveStores and at each entry that takes a raw registry, which publishes a notice on the session's topic to the bus after each write lands. The bus is a new stores slot with an in-memory adapter by default. The session stream subscribes to its session's topic and reads when woken, at most once a second. The timed read stays only where the bus cannot cross processes: the in-memory bus, and serverless hosts."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -55,7 +55,7 @@
     <line class="ln" x1="218" y1="209" x2="300" y2="209"/>
     <polygon class="hd" points="300,204 309,209 300,214"/>
     <rect class="new" x="312" y="184" width="210" height="50" rx="5"/>
-    <text class="t-b" x="326" y="205">resolveStores wraps them</text>
+    <text class="t-b" x="326" y="205">One wrapper, every entry</text>
     <text class="t-s" x="326" y="222">publishes after the write lands</text>
 
     <line class="ln-c" x1="417" y1="234" x2="417" y2="282"/>
@@ -72,7 +72,7 @@
 
     <rect class="new" x="640" y="184" width="270" height="50" rx="5"/>
     <text class="t-b" x="654" y="205">Session stream, per open view</text>
-    <text class="t-s" x="654" y="222">reads once when woken · idle costs 0</text>
+    <text class="t-s" x="654" y="222">woken, at most a read a second · idle 0</text>
     <line class="ln" x1="640" y1="200" x2="532" y2="200"/>
     <polygon class="hd" points="532,195 523,200 532,205"/>
     <text class="t-e" x="548" y="192" style="fill:var(--ink-2)">one read</text>
