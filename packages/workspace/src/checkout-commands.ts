@@ -110,6 +110,12 @@ export interface RunCheckoutCommandsOptions {
   timeoutMs: number;
   /** Extra environment, laid over the process's own. */
   env?: Record<string, string>;
+  /**
+   * Stops the commands early: the running one is stopped with its group and
+   * reported as timed out, and any after it are skipped, as when the wall
+   * clock runs out.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -124,7 +130,7 @@ export async function runCheckoutCommands(options: RunCheckoutCommandsOptions): 
   const results: CheckoutCommandResult[] = [];
   for (const command of options.commands) {
     const left = deadline - Date.now();
-    if (left <= 0) {
+    if (left <= 0 || options.signal?.aborted === true) {
       results.push({ command, exitCode: null, timedOut: false, skipped: true, durationMs: 0, tail: "" });
       continue;
     }
@@ -140,6 +146,7 @@ export async function runCheckoutCommands(options: RunCheckoutCommandsOptions): 
       timeoutMs: left,
       keepChars: CHECK_OUTPUT_TAIL_CHARS * 2,
       ...(options.env !== undefined ? { env: options.env } : {}),
+      ...(options.signal !== undefined ? { signal: options.signal } : {}),
     });
     results.push({
       command,

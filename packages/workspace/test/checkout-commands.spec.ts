@@ -67,6 +67,16 @@ describe("runCheckoutCommands", () => {
     expect(results.some(checkoutCommandPassed)).toBe(false);
   });
 
+  it("stops the running command when its signal aborts, and starts none after it", async () => {
+    const stop = new AbortController();
+    setTimeout(() => stop.abort(), 300);
+    const started = Date.now();
+    const results = await runCheckoutCommands({ cwd: dir, commands: ["node hang.mjs", "node pass.mjs"], timeoutMs: 30_000, signal: stop.signal });
+    expect(Date.now() - started).toBeLessThan(10_000);
+    expect(results[0]).toMatchObject({ timedOut: true, exitCode: null });
+    expect(results[1]).toMatchObject({ skipped: true });
+  });
+
   it("reports a refused or missing program as a failed result, never a throw", async () => {
     const results = await runCheckoutCommands({ cwd: dir, commands: ["node pass.mjs && rm -rf /", "no-such-program-xyz"], timeoutMs: 30_000 });
     expect(results[0]).toMatchObject({ exitCode: null, skipped: false });
