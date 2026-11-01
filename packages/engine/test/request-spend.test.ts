@@ -609,6 +609,81 @@ describe("request spend ledger", () => {
     expect(total).toBe(calls * 3);
   });
 
+  it("keeps a harness run in a continuation's total when the interrupted run is still ending, and hands it on once", async () => {
+    // The continuation replays the finished harness step without running it,
+    // and the interrupted run's record holds no runs until its ending is done:
+    // the log is where the continuation's total reads the run from.
+    process.env.FSDEV_TRACE_OBSERVABILITY = "false";
+    const endings: RequestEnding[] = [];
+    let totalAtEnd: unknown;
+    let waited = false;
+    const harnessStep = handler({
+      name: "harness-step",
+      inputSchema: z.any(),
+      execute: (value, ctx) => {
+        reportHarnessSpend(ctx, { runId: "run-1", harness: "codex", inputTokens: 10, outputTokens: 2, costUsd: 0.1, billing: "api-key" });
+        return value;
+      }
+    });
+    const waitOnce = handler({
+      name: "wait-once",
+      inputSchema: z.any(),
+      execute: async (value, ctx) => {
+        if (waited) return value;
+        waited = true;
+        await new Promise((_resolve, reject) => ctx.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))));
+        return value;
+      }
+    });
+    const readTotal = handler({
+      name: "read-total",
+      inputSchema: z.any(),
+      execute: (value, ctx) => {
+        totalAtEnd = readRequestTotalSpend(ctx)?.harnessRuns.map((run) => [run.runId, run.inputTokens, run.costUsd]);
+        return value;
+      }
+    });
+    let releaseObserver: () => void = () => {};
+    let observerHeld = false;
+    const holdFirst = handler({
+      name: "hold-first",
+      inputSchema: z.any(),
+      execute: async () => {
+        if (observerHeld) return;
+        observerHeld = true;
+        await new Promise<void>((resolve) => (releaseObserver = resolve));
+      }
+    });
+    const flow = defineFlow({
+      kind: "spend-live-harness",
+      session: { [SESSION_REQUEST_END_HOOK]: () => (ending) => void endings.push(ending) },
+      request: { onFinished: holdFirst },
+      actions: {
+        run: { inputSchema: z.object({}), block: sequencer({ name: "seq", durable: true }).step(harnessStep).step(waitOnce).step(readTotal) }
+      }
+    })({ id: "spend-live-harness" });
+    const stores = createInMemoryStores();
+    const provider = createCheckpointDurabilityProvider({ checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases });
+    const runtimeConfig = { durabilityProvider: provider };
+    const disconnect = new AbortController();
+
+    const older = runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "run", input: {}, userId: "u1", requestId: "r-live-h", signal: disconnect.signal, stores, runtimeConfig });
+    while (!waited) await new Promise((resolve) => setTimeout(resolve, 5));
+    disconnect.abort();
+    while (!observerHeld) await new Promise((resolve) => setTimeout(resolve, 5));
+    await stores.request.flushItems("r-live-h");
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+    const { finished } = await continueRequest({ requestId: "r-live-h", stores, flowRegistry: registry, runtimeConfig });
+    await finished;
+    releaseObserver();
+    await older;
+
+    expect(totalAtEnd).toEqual([["run-1", 10, 0.1]]);
+    // The interrupted run hands the run on; the continuation does not again.
+    expect(endings.flatMap((ending) => ending.spend.harnessRuns.map((run) => run.inputTokens))).toEqual([10]);
+  });
+
   it("hands on an interrupted run's spend at the continuation when that run's process died before it ended", async () => {
     // The interrupted run settled its record, spent 3 in its observer, then its
     // process died before its ending ran: nothing it spent was handed on. A
@@ -997,6 +1072,15 @@ describe("request spend read mid-run", () => {
     ledger.reportHarnessRun({ ...carried, inputTokens: 15, outputTokens: 3, costUsd: 0.15 });
     expect(ledger.pending().harnessRuns.map((run) => [run.runId, run.inputTokens, run.outputTokens])).toEqual([["a", 5, 1]]);
     expect(ledger.total().harnessRuns.map((run) => [run.runId, run.inputTokens])).toEqual([["a", 15]]);
+  });
+
+  // A suspended request resumes a run, the run reports again, and the process
+  // dies: the log's newer report is that run's, not a second run.
+  it("takes a recovered report of a carried run as that run's latest, and hands on only its change", () => {
+    const carried = { runId: "a", harness: "codex", inputTokens: 10, outputTokens: 2, costUsd: 0.1, billing: "api-key" as const };
+    const ledger = createRequestSpendLedger({}, {}, [{ ...carried, inputTokens: 20, outputTokens: 4, costUsd: 0.2 }], [carried]);
+    expect(ledger.total().harnessRuns.map((run) => [run.runId, run.inputTokens, run.costUsd])).toEqual([["a", 20, 0.2]]);
+    expect(ledger.takeSinceLastEnding().harnessRuns.map((run) => [run.runId, run.inputTokens, run.costUsd])).toEqual([["a", 10, 0.1]]);
   });
 
   it("reads undefined outside a request", () => {
