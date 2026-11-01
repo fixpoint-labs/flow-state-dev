@@ -153,14 +153,16 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         onOpenChange={setSwitching}
         teammates={teammates}
         onPick={(id) => {
-          // A pick goes somewhere: the key list, if it was open under the switcher, closes too.
+          // A pick goes somewhere: the key list or a popup, if one was open under the switcher, closes too.
           setSwitching(false);
           setKeysOpen(false);
+          setPopup(undefined);
           pick(id, sessions);
         }}
         onHire={() => {
           setSwitching(false);
           setKeysOpen(false);
+          setPopup(undefined);
           setHiring(true);
           focusWhenDrawn('input[aria-label="Teammate name"]');
         }}

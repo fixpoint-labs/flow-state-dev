@@ -160,6 +160,21 @@ describe("the teammates screen", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("a pick from ⌘K over a popup closes the popup, so the picked conversation takes the keys", async () => {
+    render(<App adapter={fast()} />);
+    await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
+    const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
+    line.focus();
+    fireEvent.click(line);
+    screen.getByRole("dialog", { name: "Messaged researcher" });
+    act(() => void fireEvent.keyDown(document.activeElement!, { key: "k", metaKey: true }));
+    const input = await screen.findByRole("combobox");
+    fireEvent.change(input, { target: { value: "drafts and tightens" } });
+    act(() => void fireEvent.keyDown(input, { key: "Enter" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Message writer")));
+  });
+
   it("holds researcher's reply as pending while Chief of Staff answers you, and lands it after that answer", async () => {
     render(<App adapter={fast()} />);
     await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
