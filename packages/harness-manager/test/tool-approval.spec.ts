@@ -20,13 +20,13 @@ describe("a held tool call", () => {
     expect(heldToolCallOf({ toolName: "Bash", input: { command: "touch marker", description: "x" } }, CWD)).toEqual({
       toolName: "Bash",
       touches: "touch marker",
-      key: "touch marker",
+      key: JSON.stringify({ command: "touch marker", description: "x" }),
       cwd: CWD,
     });
     expect(heldToolCallOf({ toolName: "Edit", input: { file_path: "src/a.ts", old_string: "a" } }, CWD).touches).toBe("src/a.ts");
   });
 
-  it("keys a call that names neither by its whole arguments, in a stable order", () => {
+  it("keys a call by its whole arguments, in a stable order", () => {
     const a = heldToolCallOf({ toolName: "Fetchy", input: { b: 1, a: 2 } }, CWD);
     const b = heldToolCallOf({ toolName: "Fetchy", input: { a: 2, b: 1 } }, CWD);
     expect(a.touches).toBeNull();
@@ -39,7 +39,7 @@ describe("a held tool call", () => {
   });
 });
 
-describe("the grant rule: the same tool with the same command or file", () => {
+describe("the grant rule: the same tool with the same arguments", () => {
   const call = heldToolCallOf({ toolName: "Bash", input: { command: "pnpm test" } }, CWD);
   const grant = { toolName: "Bash", key: call.key };
 
@@ -49,6 +49,20 @@ describe("the grant rule: the same tool with the same command or file", () => {
 
   it("asks again for another command of the same tool: a grant never covers the tool alone", () => {
     expect(grantMatches(grant, heldToolCallOf({ toolName: "Bash", input: { command: "pnpm test -- foo" } }, CWD))).toBe(false);
+  });
+
+  it("asks again for another edit to the same file: a grant covers the call the card showed, not the file", () => {
+    const edit = { toolName: "Edit", input: { file_path: "src/a.ts", old_string: "a", new_string: "b" } };
+    const allowed = heldToolCallOf(edit, CWD);
+    const grantEdit = { toolName: "Edit", key: allowed.key };
+    expect(grantMatches(grantEdit, heldToolCallOf(edit, CWD))).toBe(true);
+    const other = heldToolCallOf({ toolName: "Edit", input: { file_path: "src/a.ts", old_string: "a", new_string: "rm -rf" } }, CWD);
+    expect(other.touches).toBe(allowed.touches);
+    expect(grantMatches(grantEdit, other)).toBe(false);
+  });
+
+  it("asks again for the same command with other arguments", () => {
+    expect(grantMatches(grant, heldToolCallOf({ toolName: "Bash", input: { command: "pnpm test", run_in_background: true } }, CWD))).toBe(false);
   });
 
   it("asks again for another tool on the same thing", () => {
@@ -80,7 +94,7 @@ describe("what an answer means for the run", () => {
 
   it("grants a plain yes once, and tells the session to make the call again", () => {
     const out = toolApprovalOutcome({ cancelled: false, approved: true }, call);
-    expect(out.grant).toEqual({ toolName: "Bash", key: "touch marker", scope: "once" });
+    expect(out.grant).toEqual({ toolName: "Bash", key: call.key, scope: "once" });
     expect(out.prompt).toContain("Make the call again");
   });
 

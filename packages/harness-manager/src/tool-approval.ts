@@ -19,7 +19,7 @@
  * - what a held call is ({@link heldToolCallOf}) and the decision that holds
  *   it ({@link heldToolDecision});
  * - the grant rule ({@link grantMatches}): the same tool, with the same
- *   command or file;
+ *   arguments;
  * - the stop a held call waits on ({@link toolApprovalStop}), and what its
  *   answer means for the run ({@link toolApprovalOutcome}).
  *
@@ -68,7 +68,11 @@ export const heldToolCallSchema = z.object({
   toolName: z.string(),
   /** The command, file or other thing the call touches (`progressNoteOf`'s keys), or `null`. */
   touches: z.string().nullable(),
-  /** What a grant matches beside the tool: `touches`, else the call's arguments as canonical JSON. */
+  /**
+   * What a grant matches beside the tool: the call's whole arguments as
+   * canonical JSON. Never `touches` alone, which names a file or command but
+   * not what an edit writes or how a command runs.
+   */
   key: z.string(),
   /** The run's working folder. */
   cwd: z.string(),
@@ -120,8 +124,7 @@ function canonicalJson(value: unknown): string {
  * @param cwd The run's working folder.
  */
 export function heldToolCallOf(request: Pick<HarnessToolApprovalRequest, "toolName" | "input">, cwd: string): HeldToolCall {
-  const touches = toolCallTouches(request.input);
-  return { toolName: request.toolName, touches, key: touches ?? canonicalJson(request.input), cwd };
+  return { toolName: request.toolName, touches: toolCallTouches(request.input), key: canonicalJson(request.input), cwd };
 }
 
 /** The feed's answer for a call it holds: the call doesn't run, and the turn stops. */
@@ -133,10 +136,11 @@ export function heldToolDecision(call: HeldToolCall): HarnessToolApprovalDecisio
 }
 
 /**
- * Whether a grant lets a call through: the same tool with the same command or
- * file (or, for a call that names neither, the same arguments). Never the
- * tool alone, so allowing one command for the run doesn't let every other
- * command through.
+ * Whether a grant lets a call through: the same tool with the same arguments,
+ * so only the call the person was shown. Never the tool alone, and never the
+ * file or command alone: allowing one edit to a file doesn't let a different
+ * edit to it through. A grant written under an older key (the file or command
+ * alone) matches nothing, so that call asks again.
  */
 export function grantMatches(grant: Pick<ToolGrant, "toolName" | "key">, call: Pick<HeldToolCall, "toolName" | "key">): boolean {
   return grant.toolName === call.toolName && grant.key === call.key;
