@@ -13,7 +13,7 @@
  *           GOAL_CONTROL=cut       (must FAIL b:on-branch and b:recorded, and nothing else)
  *           GOAL_CONTROL=lose-work (must FAIL c:dirty-refused, and nothing else)
  *           GOAL_CONTROL=no-attach (must FAIL the d legs a branch can't do; see EXPECTED)
- *           GOAL_CONTROL=any-user  (must FAIL d:other-user-refused, and nothing else)
+ *           GOAL_CONTROL=any-user  (must FAIL d:other-user-refused and d:recorded; see EXPECTED)
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -28,7 +28,7 @@ import {
   type HarnessSessionFeeds,
   type HarnessSessionWorkspace,
 } from "@flow-state-dev/harness-manager";
-import { localWorkspaceHost } from "@flow-state-dev/workspace";
+import { localWorkspaceHost, type WorktreeRow } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import { REPO_ROOT, intentFreeEnv, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 
@@ -41,7 +41,8 @@ const EXPECTED: Record<string, string[]> = {
   "lose-work": ["c:dirty-refused"],
   // no-attach: the follow-up asks for the owner's branch instead (`{ branch }`), as a caller had to before attaching.
   "no-attach": ["d:attached-turn", "d:on-owner-branch", "d:recorded", "d:waits-for-owner"],
-  "any-user": ["d:other-user-refused"],
+  // any-user: attach never reaches the host, so the follow-up points at a key no row holds and its row reads as nothing.
+  "any-user": ["d:other-user-refused", "d:recorded"],
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
@@ -89,11 +90,12 @@ const workspace: HarnessSessionWorkspace = {
       { kind: "repo", repo, ...(baseRef !== undefined ? { baseRef } : {}) },
       { place: [place.sessionId], branch, existing, ...(request?.worktrees !== undefined ? { worktrees: request.worktrees } : {}) },
     );
-    return { path: made.cwd, branch, ...(made.worktree !== undefined ? { worktree: made.worktree } : {}) };
+    return { path: made.cwd, ...(made.worktree !== undefined ? { worktree: made.worktree } : {}) };
   },
   // any-user: a workspace that answers every attach, never asking the user's own list.
   attach: async (owner, request) =>
     CONTROL === "any-user" ? `any/${owner.sessionId}` : await host.attach!({ place: [owner.sessionId] }, request),
+  recordCheckout: async (place, request) => await host.recordCheckout!({ place: [place.sessionId] }, request),
   locate: (place) => host.locate({ kind: "repo", repo }, { place: [place.sessionId] }).cwd,
   branch: (place) => sessionBranch(place.sessionId),
   remove: async (place, options) => {
@@ -185,10 +187,17 @@ async function settled(requestId: string): Promise<string | undefined> {
   return undefined;
 }
 
-const stateOf = async (sessionId: string) =>
-  ((await stores.session.get(sessionId))?.state ?? {}) as {
-    workspace?: { path: string; branch: string | null; removed: boolean; owner: string | null };
-  };
+/** The worktree row a session points at (`state.workspace.worktree`), read as a page reads it. */
+async function rowOf(sessionId: string): Promise<WorktreeRow | undefined> {
+  const key = (((await stores.session.get(sessionId))?.state ?? {}) as { workspace?: { worktree: string | null } | null }).workspace?.worktree;
+  if (key == null) return undefined;
+  const res = await router.GET(
+    new Request(`http://goal/api/flows/sessions/${sessionId}/resources/worktrees?userId=${USER}`),
+    { params: { path: ["sessions", sessionId, "resources", "worktrees"] } },
+  );
+  const body = (await res.json()) as { items?: Array<{ clientData?: WorktreeRow }> };
+  return (body.items ?? []).map((item) => item.clientData).find((row) => row?.key === key);
+}
 
 const branchExists = (branch: string) => git(repo, "branch", "--list", branch) !== "";
 
@@ -239,23 +248,23 @@ await runGoal(async (failures, tell) => {
   check("b:turn", bTurn.ended === "completed", `turn ended ${bTurn.ended}`);
   const bSubject = git(repo, "log", "-1", "--format=%s", fixture.existingBranch);
   check("b:on-branch", bSubject === fixture.subject, `${fixture.existingBranch}'s last commit is "${bSubject}", not the stub's`);
-  check("b:recorded", (await stateOf(sB)).workspace?.branch === fixture.existingBranch, `recorded ${JSON.stringify((await stateOf(sB)).workspace)}`);
+  check("b:recorded", (await rowOf(sB))?.branch === fixture.existingBranch, `row ${JSON.stringify(await rowOf(sB))}`);
   evidence.push(`b: the stub's commit is on ${fixture.existingBranch}`);
 
   // ---- leg d: a follow-up session attached to b's worktree ----------------
   const missing = await tryCreate({ model: "stub", start: { worktreeOf: "sess_never_made" } });
   check("d:missing-refused", missing.status === 404, `attaching to a session with no worktree answered ${missing.status}`);
-  const bPath = (await stateOf(sB)).workspace?.path ?? "";
+  const bPath = (await rowOf(sB))?.path ?? "";
   // Whatever branch b's worktree is on (so leg d proves attaching, not leg b's start).
-  const ownerBranch = (await stateOf(sB)).workspace?.branch ?? fixture.existingBranch;
+  const ownerBranch = (await rowOf(sB))?.branch ?? fixture.existingBranch;
   const ownerTip = git(repo, "rev-parse", ownerBranch);
   const sE = await create({ model: "stub", start: CONTROL === "no-attach" ? { branch: ownerBranch } : { worktreeOf: sB } });
   const eTurn = await act(sE, "turn", { prompt: "follow-up" });
   check("d:attached-turn", eTurn.ended === "completed", `the attached turn ended ${eTurn.ended}`);
   const onOwnerBranch = git(repo, "rev-parse", ownerBranch) !== ownerTip && git(repo, "log", "-1", "--format=%s", ownerBranch) === fixture.subject;
   check("d:on-owner-branch", onOwnerBranch && !branchExists(sessionBranch(sE)), `the follow-up's commit is not on ${ownerBranch}, or it cut a branch of its own`);
-  const eRecord = (await stateOf(sE)).workspace;
-  check("d:recorded", eRecord?.path === bPath && eRecord.owner === sB, `recorded ${JSON.stringify(eRecord)}`);
+  const eRow = await rowOf(sE);
+  check("d:recorded", eRow?.path === bPath && eRow.owner?.id === sB && eRow.attached.some((entry) => entry.id === sE), `row ${JSON.stringify(eRow)}`);
   // Another user names b's session: the worktree isn't in their list, so their turn never gets it.
   const sOther = await create({ model: "stub", start: { worktreeOf: sB } }, "u_someone_else");
   const beforeOther = git(repo, "rev-parse", ownerBranch);
@@ -287,7 +296,7 @@ await runGoal(async (failures, tell) => {
   // ---- leg c: removal, which never loses work ----------------------------
   const sC = await create({ model: "stub" });
   await act(sC, "turn", { prompt: "work" });
-  const cPath = (await stateOf(sC)).workspace?.path ?? "";
+  const cPath = (await rowOf(sC))?.path ?? "";
   const cBranch = sessionBranch(sC);
   const listedBefore = tell.over("c:listed · fsdev worktrees", listedByCli().filter((entry) => entry.branch === cBranch));
   check("c:listed", listedBefore.length === 1, `fsdev worktrees listed ${listedBefore.length} entries on ${cBranch}`);
@@ -315,12 +324,12 @@ await runGoal(async (failures, tell) => {
     );
     const forced = await act(sC, "removeWorktree", { deleteBranch: true, force: true });
     check("c:forced", forced.ended === "completed" && !existsSync(cPath) && !branchExists(cBranch), `forced removal ended ${forced.ended}`);
-    check("c:record", (await stateOf(sC)).workspace?.removed === true, `record ${JSON.stringify((await stateOf(sC)).workspace)}`);
+    check("c:record", (await rowOf(sC))?.state === "removed", `row ${JSON.stringify(await rowOf(sC))}`);
   }
 
   const sD = await create({ model: "stub" });
   await act(sD, "turn", { prompt: "work" });
-  const dPath = (await stateOf(sD)).workspace?.path ?? "";
+  const dPath = (await rowOf(sD))?.path ?? "";
   const dRemoved = await act(sD, "removeWorktree", {});
   check("c:removed", dRemoved.ended === "completed" && !existsSync(dPath) && branchExists(sessionBranch(sD)), `plain removal ended ${dRemoved.ended}`);
   const listing = tell.over("c:unlisted · fsdev worktrees (sessions a and b still hold theirs)", listedByCli());

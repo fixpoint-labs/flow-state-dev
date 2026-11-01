@@ -140,7 +140,7 @@ const provisioningAgent = (gate?: Promise<void>) => (feeds: HarnessSessionFeeds)
 /** Where the recording workspace's sessions "work": real paths, since a turn holds its worktree's in-use lock beside it. */
 const places = mkdtempSync(join(tmpdir(), "session-flow-places-"));
 
-/** A workspace that logs what it was asked and names the branch it gives a session. */
+/** A workspace that logs what it was asked, and writes each session's row with the branch it gives it, as a host does. */
 /** Owner sessions whose worktrees are another user's: not in this user's list of rows. */
 const othersWorktrees = new Set<string>(["s-owner-other"]);
 
@@ -151,7 +151,11 @@ function recordingWorkspace() {
   const workspace: HarnessSessionWorkspace = {
     provision: async (place, request) => {
       provisioned.push({ place, start: request?.start });
-      return { path: join(places, place.sessionId), branch: "fix/review-notes" };
+      const path = join(places, place.sessionId);
+      if (request?.worktrees === undefined) return path;
+      const key = `test/${place.sessionId}`;
+      await request.worktrees.collection.upsert(key, { key, path, branch: "fix/review-notes", state: "ready" });
+      return { path, worktree: key };
     },
     locate: (place) => {
       located.push(place);
@@ -209,7 +213,7 @@ describe("where a session starts", () => {
     expect(provisioned.map((call) => call.start)).toEqual([{ pullRequest: 812 }]);
   });
 
-  it("records the branch the workspace gave the session, and the turn-end check reads it", async () => {
+  it("records only the key of its worktree's row, which owns the path and branch", async () => {
     const stores = createInMemoryStores();
     const { workspace, located } = recordingWorkspace();
     await seed(stores, "s-record", { model: "stub-model", start: { branch: "fix/review-notes" } });
@@ -217,10 +221,23 @@ describe("where a session starts", () => {
     await act(stores, "s-record", workspace, "turn", { prompt: "go" });
 
     const state = (await stores.session.get("s-record"))?.state as Record<string, unknown>;
-    expect(state.workspace).toEqual({ path: join(places, "s-record"), branch: "fix/review-notes", removed: false, owner: "s-record", worktree: null });
-    // Located once for the turn's in-use lease, once for the turn-end check, which ran for the
-    // recorded branch, not the host's `branch()`, which names one it never gave.
+    expect(state.workspace).toEqual({ worktree: "test/s-record" });
+    // Located once for the turn's in-use lease, once for the turn-end check, which ran on the row's branch.
     expect(located).toHaveLength(2);
+  });
+
+  it("reads a record stored with copies of the path and branch as no pointer, and points it at the row on the next turn", async () => {
+    const stores = createInMemoryStores();
+    const { workspace } = recordingWorkspace();
+    await seed(stores, "s-legacy", {
+      model: "stub-model",
+      workspace: { path: join(places, "s-legacy"), branch: "old", removed: false, owner: "s-legacy", worktree: null },
+    });
+
+    await act(stores, "s-legacy", workspace, "turn", { prompt: "go" });
+
+    const state = (await stores.session.get("s-legacy"))?.state as Record<string, unknown>;
+    expect(state.workspace).toEqual({ worktree: "test/s-legacy" });
   });
 
   it("is checked at create: a malformed start is refused, so a session never starts somewhere it didn't ask for", () => {
@@ -250,7 +267,7 @@ describe("a turn's hold on its worktree", () => {
 });
 
 describe("removing a session's worktree", () => {
-  it("goes through the workspace's remove and marks the record removed", async () => {
+  it("goes through the workspace's remove and leaves the session's pointer as it was", async () => {
     const stores = createInMemoryStores();
     const { workspace, removed } = recordingWorkspace();
     await seed(stores, "s-rm", { model: "stub-model" });
@@ -259,11 +276,12 @@ describe("removing a session's worktree", () => {
     await act(stores, "s-rm", workspace, "removeWorktree", { deleteBranch: true });
 
     expect(removed).toEqual([{ place: { flowKind: "stub-session", sessionId: "s-rm" }, deleteBranch: true, force: false, worktrees: expect.objectContaining({ pattern: "worktrees/**" }) }]);
-    const state = (await stores.session.get("s-rm"))?.state as { workspace: { removed: boolean } };
-    expect(state.workspace.removed).toBe(true);
+    // The host marks the row removed; the session still points at it.
+    const state = (await stores.session.get("s-rm"))?.state as { workspace: unknown };
+    expect(state.workspace).toEqual({ worktree: "test/s-rm" });
   });
 
-  it("provisions again on the next turn, and records it live", async () => {
+  it("provisions again on the next turn", async () => {
     const stores = createInMemoryStores();
     const { workspace, provisioned } = recordingWorkspace();
     await seed(stores, "s-again", { model: "stub-model" });
@@ -272,8 +290,6 @@ describe("removing a session's worktree", () => {
     await act(stores, "s-again", workspace, "turn", { prompt: "and again" });
 
     expect(provisioned).toHaveLength(2);
-    const state = (await stores.session.get("s-again"))?.state as { workspace: { removed: boolean } };
-    expect(state.workspace.removed).toBe(false);
   });
 
   it("is refused on a host whose workspace removes nothing", async () => {
@@ -322,7 +338,8 @@ describe("attaching a session to another session's worktree", () => {
 
     expect(provisioned).toEqual([]);
     const state = (await stores.session.get("s-attached-a"))?.state as Record<string, unknown>;
-    expect(state.workspace).toEqual({ path, branch: "fix/owners-branch", removed: false, owner: "s-owner-a", worktree: "row/s-owner-a" });
+    expect(state.workspace).toEqual({ worktree: "row/s-owner-a" });
+    expect(existsSync(path)).toBe(true);
   });
 
   it("is refused at create when the owner's worktree isn't there, or names itself", () => {
