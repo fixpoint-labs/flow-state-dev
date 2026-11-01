@@ -2,7 +2,7 @@
  * The checks a host runs in a run's checkout: what a command is, and how a
  * set of them runs inside one wall clock.
  */
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -65,6 +65,20 @@ describe("runCheckoutCommands", () => {
     expect(results[0]).toMatchObject({ timedOut: true, exitCode: null, skipped: false });
     expect(results[1]).toMatchObject({ skipped: true, exitCode: null });
     expect(results.some(checkoutCommandPassed)).toBe(false);
+  });
+
+  it("leaves nothing a passing command started running after it", async () => {
+    // The check exits 0 but leaves a child behind in its group, which would
+    // write after the caller has let the checkout go.
+    writeFileSync(
+      join(dir, "leaves-child.mjs"),
+      `import { spawn } from "node:child_process";\n` +
+        `spawn(process.execPath, ["-e", "setTimeout(() => require('fs').writeFileSync('late.txt', 'x'), 500)"], { stdio: "ignore" }).unref();\n`,
+    );
+    const [result] = await runCheckoutCommands({ cwd: dir, commands: ["node leaves-child.mjs"], timeoutMs: 30_000 });
+    expect(result!.exitCode).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    expect(existsSync(join(dir, "late.txt"))).toBe(false);
   });
 
   it("stops the running command when its signal aborts, and starts none after it", async () => {
