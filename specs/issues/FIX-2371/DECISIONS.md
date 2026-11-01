@@ -49,7 +49,8 @@ This spec keeps the line in the box instead, marked *Sending…*, until the requ
 - **E2 · A success clears the box only if the text is unchanged**, as Shift Manager and Kitchen
   Sink already do: anything typed while the send ran stays.
 - **E3 · Send is disabled while a send runs**; the box stays editable.
-- **E4 · Shift Manager keys:** a conversation by its worker id, a task by its task id, an Inbox
+- **E4 · Shift Manager keys:** a conversation by the session its view names (a project's, a
+  workstream's), else by its worker id; a task by its task id; an Inbox
   reply by its ask's suspension id, under one `shift-manager:draft` namespace.
 - **E5 · Labs store per session** (`claude-code-style:draft`, `teammates:draft`). Switching
   sessions still shows that session's own draft, so the existing "a draft never reaches another
