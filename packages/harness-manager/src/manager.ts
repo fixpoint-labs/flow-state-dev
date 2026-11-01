@@ -125,6 +125,7 @@ import { readRunCommits, readRunDiff, runDiffSchema, type RunCommits, type RunDi
 import { commandCheckResultSchema, commandChecksSummary, readVerdict, type CommandCheckResult } from "./command-check";
 import { progressNoteOf, throttledNotes, type ProgressNotes } from "./progress-note";
 import {
+  MAX_APPROVAL_STEPS,
   grantMatches,
   MAX_APPROVAL_STEPS,
   heldToolCallOf,
