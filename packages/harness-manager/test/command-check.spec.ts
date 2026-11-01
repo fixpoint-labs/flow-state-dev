@@ -212,6 +212,12 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
   };
   const row = async (): Promise<Task> =>
     (await (await runtime()).stores.resourceState.get("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`))?.state as Task;
+  /** Overwrite the stored row, as a delete and a same-id refile would leave it. */
+  const replaceRow = async (change: (task: Task) => Task): Promise<void> => {
+    const stores = (await runtime()).stores;
+    const current = (await stores.resourceState.get("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`))!;
+    await stores.resourceState.set("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`, change(current.state as Task) as never, "any");
+  };
   const until = async (predicate: (task: Task) => boolean, what: string, timeoutMs = 30_000): Promise<Task> => {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
@@ -258,7 +264,7 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
   /** The engine's record of a review hold's stop, with the `data` a screen reads. */
   const suspension = async (hold: SuspensionHold) =>
     (await (await runtime()).stores.suspensions.get(hold.source.requestId, hold.source.suspensionId)) as { data?: any } | null;
-  return { act, row, until, review, waiting, answer, start, retry, seen, runRow, suspension, checkouts: join(dir, "checkouts"), dispose: () => state.dispose() };
+  return { act, row, replaceRow, until, review, waiting, answer, start, retry, seen, runRow, suspension, checkouts: join(dir, "checkouts"), dispose: () => state.dispose() };
 }
 
 /** Every file under `root` whose name ends with `suffix`. */
@@ -396,6 +402,42 @@ describe("a run is done only when its checks pass", () => {
     try {
       await h.start();
       await h.until(() => cancelled, "the task to be cancelled");
+      await new Promise((resolve) => setTimeout(resolve, 2_500));
+      expect(filesUnder(h.checkouts, ".marked")).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  }, 90_000);
+
+  it("runs no command for an attempt whose task was filed again while it waited", async () => {
+    // The task is deleted and filed again under the same id during the wait.
+    // The replacement is in progress on attempt 1, turn 1 as well; only its
+    // incarnation tells it from the task this attempt was working.
+    let intruder: ReturnType<typeof tryAcquireLock>;
+    let replaced = false;
+    const h = host({
+      script: ["fixes"],
+      checks: ["node mark.mjs"],
+      afterStep: (cwd) => {
+        const grab = (): void => {
+          intruder = tryAcquireLock(`${cwd}.lock`, { waitMs: 0, pollMs: 5, staleAfterMs: 600_000 }, { owner: "someone-else" });
+          if (intruder === undefined) {
+            setTimeout(grab, 2);
+            return;
+          }
+          setTimeout(async () => {
+            await h.replaceRow((task) => ({ ...task, incarnationId: "the-replacement" }));
+            replaced = true;
+            setTimeout(() => releaseLock(intruder!), 500);
+          }, 300);
+        };
+        setTimeout(grab, 0);
+      },
+    });
+    try {
+      await h.start();
+      await h.until(() => replaced, "the task to be filed again");
+      expect((await h.row()).incarnationId).toBe("the-replacement");
       await new Promise((resolve) => setTimeout(resolve, 2_500));
       expect(filesUnder(h.checkouts, ".marked")).toEqual([]);
     } finally {

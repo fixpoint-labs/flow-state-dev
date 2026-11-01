@@ -293,20 +293,24 @@ describe("the harness a Lab runs", () => {
       ...((await original()) as object),
       claudeCodeAgent: (options: Record<string, unknown>) => (handed.push(options), handler({ name: "x", execute: async () => null } as never)),
     }));
-    const { claudeCodeHarness } = await import("../teams/devteam/harness.mts");
+    const { claudeCodeHarness, errorReporterHarness } = await import("../teams/devteam/harness.mts");
     process.env.FSD_TEST_LINEAR_SEED = SENTINEL;
     try {
       const feeds = { cwd: () => "/w", resume: () => null, onSession: () => {}, onUsage: () => {} };
       claudeCodeHarness(feeds);
       claudeCodeHarness({ ...feeds, mcpTools: Object.assign(async () => ({}), { named: async () => [] }) });
+      errorReporterHarness({ cwd: () => "/w" } as never);
     } finally {
       delete process.env.FSD_TEST_LINEAR_SEED;
       vi.doUnmock("@flow-state-dev/claude-code/sdk");
     }
-    const [without, withTools] = handed;
+    const [without, withTools, reporter] = handed;
+    expect(reporter).toMatchObject({ settingSources: ["project"], settings: { disableAllHooks: true } });
     expect(Object.keys(without!).sort()).toEqual(
-      ["allowedTools", "cwd", "detached", "env", "onSession", "onUsage", "permissionMode", "recordWork", "resume", "systemPrompt"].sort(),
+      ["allowedTools", "cwd", "detached", "env", "onSession", "onUsage", "permissionMode", "recordWork", "resume", "settingSources", "settings", "systemPrompt"].sort(),
     );
+    // The checkout's conventions with every hook off, and never the operator's own user settings (FIX-2421 D2).
+    expect(without).toMatchObject({ settingSources: ["project"], settings: { disableAllHooks: true } });
     const { mcpTools, uses, ...rest } = withTools!;
     expect(rest).toEqual(without);
     expect(typeof mcpTools).toBe("function");

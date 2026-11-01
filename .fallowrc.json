@@ -27,6 +27,8 @@
     "packages/cli/test/fixtures/**/*.ts",
     // Fake Codex programs the codex specs spawn by path.
     "packages/codex/test/fake-*.mjs",
+    // A fake Claude Code CLI the claude-code settings spec spawns by path.
+    "packages/claude-code/test/sdk/fake-*.mjs",
 
     "apps/kitchen-sink/flows/**/index.ts",
     // Docusaurus seeds the config, sidebars and pages, not this theme module.

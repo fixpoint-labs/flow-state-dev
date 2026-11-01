@@ -2709,7 +2709,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           rowNow === undefined ||
           rowNow.status !== "in_progress" ||
           rowNow.attempts !== identity.attempt ||
-          (state.ticket != null && (rowNow.turn ?? 0) !== state.ticket.turn)
+          (state.ticket != null && (rowNow.turn ?? 0) !== state.ticket.turn) ||
+          // A task deleted and filed again under the same id can be on the same attempt and turn.
+          (identity.incarnationId !== undefined && rowNow.incarnationId != null && rowNow.incarnationId !== identity.incarnationId)
         ) {
           releaseLeaseFromState(ctx);
           throw new HarnessAttemptSuperseded(`its completion check started (the task is ${rowNow?.status ?? "gone"})`);
