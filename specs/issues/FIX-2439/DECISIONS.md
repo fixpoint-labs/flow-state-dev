@@ -45,6 +45,30 @@ flowchart TD
   `rev-list --count HEAD --not <baseCommit>` in the worktree, then writes both with
   `lastTurnAt` in one upsert. If there is no `baseCommit`, or git can't count, `commits` is `null`
   (unknown, never 0). If the directory is gone, the row becomes `lost`.
+- **`recordCheckout` returns what it read, so a run is counted once.** FIX-2386 D2 owns the
+  board output's place fields and fills `branch` and `commits` from this return at settle. The
+  manager's `readRunCommits` then reads only the subjects (review, Architect: "pick one owner").
+- **`baseCommit` follows the branch.** A provision that cuts a new branch (after a removal that
+  deleted the old one) writes the new base. A hand-back keeps the row's base.
+- **`attached` is `{ kind, id, lastTurnAt }[]`.** A session or a run can attach (a follow-up run
+  under FIX-2361 attaches to its root run's worktree, FIX-2419 D4). Each entry is listed once and
+  gets its `lastTurnAt` from its own turn-end read, so a reader tells current users from old
+  ones. Entries aren't dropped here: deciding that one is stale is FIX-2252's job.
+- **Who enforces "only the host writes".** No client write is declared. A model reaches rows
+  only through core's resource tools, and those write any collection a visibility rule leaves
+  `visible`, whatever its `llmWritable` says. The harness session flow therefore marks
+  `worktrees` read-only in its `resourceVisibility`, and a test checks that. The gap in core is
+  filed as FIX-2441: once it lands, the collection's own `llmWritable: false` is the gate in
+  every flow (review, Architect).
+- **Every removal in the epic passes the collection.** These are the session flow's
+  `removeWorktree` here, FIX-1768 after a merge, and FIX-2252's sweep. `fsdev worktrees --remove`
+  runs outside any request and has no user scope, so its row stays `ready` until the next
+  `recordCheckout` finds the directory gone (`lost`) or FIX-2252 reconciles it.
+- **User scope is per organization.** Since FIX-1790, every user key carries the organization
+  (`<user>:~org:<org>`), so an agent in one organization never reads another organization's
+  rows. Goal leg `e:other-org` checks this, and its `one-org` control shows that it can fail.
+  Rows follow every other user-scoped collection here. A session's tenant isn't part of the
+  user scope.
 - **The key** is the host id followed by the place segments, each escaped with core's
   `planKeySegment`. This is injective because a segment can't hold the separator. The host
   derives it from a place, so no caller looks it up. Hosts that share a root share an id, and so
@@ -67,19 +91,22 @@ directories.
 | The board's "the path is derived from the durable task" rule (`harness-manager/src/workspace.ts`) | Kept | Broken: the row becomes a second source the path depends on |
 | Existing worktrees on disk | Untouched | Move, or two layouts live side by side |
 | What a person sees | The name, in the chip and in `fsdev` once it reads rows | The same name, plus in `ls` |
-| FIX-2344's long paths | Still patched by its symlink | Shorter |
+| FIX-2344's long paths | Still long. The symlink is a patch, not a fix | Shorter |
 
 - **Because:** the person-facing win, a readable name for each worktree, comes from the row
   either way. The directory rename costs a store read in three synchronous places and reverses
-  a rule the board's retry logic depends on. FIX-2344 is already fixed for the failure it caused.
+  a rule the board's retry logic depends on.
+- **What this does not fix:** directory names and path length. FIX-2344's symlink keeps Cursor
+  runs working, but the paths are still long. The follow-up is **FIX-2442**: name new
+  directories from `row.name`, shorten the derived segments, and keep the
+  principal/org/tenant root (FIX-1926).
 - **The name:** a slug of `PlaceRequest.worktrees.label` (a task title or a session title),
   lower-case `a-z0-9-`, at most 32 characters, then `-` and the first 6 hex characters of
   sha256(key). With no label, the slug is the last place segment, cut to the same length. It is
   written on the row's first write and never recomputed, so a retitled session keeps its name.
 - **What would change my mind:** a need to `cd` into worktrees by name, or a filesystem limit
-  the symlink doesn't cover. Then a follow-up names directories from `row.name`. The name
-  already exists and never changes, so that follow-up adds a read and moves nothing in this
-  issue.
+  the symlink doesn't cover. Then FIX-2442 is pulled forward. The name already exists and never
+  changes, so FIX-2442 adds a read and moves nothing in this issue.
 - **Locks in:** `name` on the row, written once.
 
 <a name="d3"></a>
@@ -93,18 +120,19 @@ directories.
   so every block's context resolves it. It passes the collection through `HarnessSessionWorkspace`:
   - on `provision`'s request, with `owner: { kind: "session", id }` and the session's title as
     `label`;
-  - on the new optional `attach(place, ownerPlace, request)` and `recordCheckout(place, request)`;
+  - on the new optional `attach(owner, { worktrees, by })` and `recordCheckout(place, { worktrees, by })`;
   - on `remove`.
 
   An adapter that doesn't implement the new methods still works, and its sessions simply have no
-  row. The goal check's adapter and the README's example are thin wrappers over the host.
+  row. The flow marks `worktrees` read-only in its `resourceVisibility` (D1). The goal check's adapter and the README's example are thin wrappers over the host.
 - **The turn-end order:** check that an attached turn kept its branch (FIX-2419), call
   `recordCheckout`, release the in-use lock, then check for pull requests with the row. The
   snapshot is taken before the owner's next turn can move the checkout.
 - **The board manager** passes the collection on its one `host.provision` call, with
-  `owner: { kind: "run", id: runId }` and the task's title as the label. It calls
-  `recordCheckout` when a run settles. Its own record and output fields stay. FIX-2386 D2 moves
-  them onto the row later.
+  `owner: { kind: "run", id: taskId }`. With no label, the name's slug is its issue-phase
+  segment. It calls `recordCheckout` when a run settles. Its own record and output fields stay
+  for now. FIX-2386 D2 takes the output's `branch` and `commits` from `recordCheckout`'s
+  return (D1).
 - **Locks in:** `worktrees` as a request field and not a host option, and the adapter's two
   optional methods.
 
@@ -119,7 +147,28 @@ directories.
 - **E4 · `pullRequests` on the row is a summary** (`url`, `number`, `state`, `title`), added once
   per pull request. The session's `observed-pull-requests` rows stay the full record.
 - **E5 · No new tool.** Agents read rows through core's resource tools, which FIX-2436 limited to
-  `llmReadable` collections without secret fields. The row has no secret fields: the remote is
-  stored redacted.
+  `llmReadable` collections without secret fields. The row has no secret fields: the remote goes
+  through the workspace package's `redactRemote` before it is stored.
 - **E6 · The package slice touches no app file.** Kitchen Sink, Shift Manager and the labs adopt
   in their stacks.
+
+## Notes from review
+
+- Round 1 (6241558). Cursor approved. Codex found nothing.
+- Folded from the Architect:
+  - Who enforces the one writer: a read-only visibility rule, a test, and FIX-2441 for core's
+    write gap.
+  - Every removal path, and `fsdev` removals showing `lost` until they are reconciled.
+  - `recordCheckout` returns its snapshot, so FIX-2386 fills the run output from it.
+  - `attached` as `{ kind, id, lastTurnAt }[]`.
+  - Organization scope, with leg `e:other-org`.
+  - D2's limits, and its follow-up FIX-2442.
+  - `redactRemote` named in E5.
+  - `baseCommit` refreshed on a new cut.
+- Not folded:
+  - Leaving pull requests off the row (Cursor, optional). The chip reads one row, as #4369
+    decided.
+  - Moving `recordCheckout` into lock release (Cursor, optional). The lock is a file lease
+    (`occupyWorktree`) with no collection, and the one ordering lives in the session flow's
+    turn-end handler.
+  - #4385's build-order lines. They belong to that spec's thread, which has been told.

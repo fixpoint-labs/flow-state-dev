@@ -55,20 +55,23 @@ flowchart LR
   - Leg **a**: after the first turn, there is one row with `state: "ready"`, the session's path,
     the branch, `baseCommit` equal to `git merge-base`, `owner: { kind: "session", id }`, and a
     `name` matching `<slug>-<hex>`. The session's `state.workspace.worktree` is that row's key.
-  - Leg **b**: a second session created with `start: { worktreeOf }` runs a turn. The row has
-    `attached: [second]` and its owner is unchanged.
+  - Leg **b**: a second session created with `start: { worktreeOf }` runs a turn. The row lists
+    it once in `attached`, with its own `lastTurnAt`, and the owner is unchanged.
   - Leg **c**: a turn commits twice and then switches to a new branch. The row's `branch` is the
     new branch, `commits` is 2, and `lastTurnAt` is from that turn.
   - Leg **d**: after `removeWorktree`, the row is still there with `state: "removed"`.
   - Leg **e**: a new session of the same user lists the row. A session of another user lists
-    nothing. An agent reads the same rows with core's resource tools, which serve `llmReadable`
+    nothing, and so does a session of the same user in another organization. An agent reads the same rows with core's resource tools, which serve `llmReadable`
     collections (FIX-2436). The check doesn't drive a model.
 - **Controls that must fail.** Each one reddens only its own legs. `no-row` reddens every leg that
   reads a row, because each of them depends on the first write.
   - `GOAL_CONTROL=no-row` provisions without the collection, so leg a fails **`a:row`**.
-  - `GOAL_CONTROL=no-checkout` skips `recordCheckout`, so leg c fails **`c:snapshot`**.
+  - `GOAL_CONTROL=no-checkout` skips `recordCheckout`, so leg c fails **`c:snapshot`**, and leg b
+    fails **`b:attached`**, whose `lastTurnAt` comes from the same read.
   - `GOAL_CONTROL=keep-ready` removes with git directly, not through the host, so leg d fails
     **`d:removed`**.
+  - `GOAL_CONTROL=one-org` makes the principal resolver drop the organization, so leg e fails
+    **`e:other-org`**.
 - **Unit tests:**
   - The host writes `provisioning` before `git worktree add` and `ready` after it. A provision
     that fails leaves the row `provisioning`, never `ready`.
@@ -78,6 +81,7 @@ flowchart LR
   - Attaching twice lists the session once.
   - `recordBranchPullRequests` with a row adds each pull request to the row once.
   - The host with no collection writes nothing and behaves as it did before.
+  - The session flow marks `worktrees` read-only to the model's resource tools.
 
 ## What changes
 
@@ -103,7 +107,7 @@ module at each point where it changes a worktree.
   client write. Each row has these fields:
   - `key` and `name`
   - `path`, `branch`, `repo` (the remote, redacted), `baseCommit`
-  - `owner: { kind: "session" | "run", id }` and `attached: string[]`
+  - `owner: { kind: "session" | "run", id }` and `attached: { kind, id, lastTurnAt }[]`
   - `state`: `provisioning | ready | removed | lost`
   - `commits: number | null`, `lastTurnAt`
   - `pullRequests: { url, number, state, title }[]`
@@ -114,10 +118,11 @@ module at each point where it changes a worktree.
   The host calls it:
   - `PlaceRequest.worktrees: { collection, owner, label? }`: provision writes `provisioning`,
     then `ready`.
-  - `WorkspaceHost.attach(target, { worktrees, session })`: adds the session to `attached` and
+  - `WorkspaceHost.attach(target, { worktrees, by })`: adds the session or run to `attached` and
     returns the row's key.
-  - `WorkspaceHost.recordCheckout(target, { worktrees })`: reads HEAD's branch and the count
-    past `baseCommit` in one git pass, and writes them with `lastTurnAt` in one upsert.
+  - `WorkspaceHost.recordCheckout(target, { worktrees, by })`: reads HEAD's branch and the count
+    past `baseCommit` in one git pass, writes them with `lastTurnAt` in one upsert, and returns
+    what it read.
   - `RemoveOptions.worktrees`: removal writes `removed`.
 
   `recordBranchPullRequests` gains `worktree: { collection, key }` and adds what it found to the
@@ -168,8 +173,11 @@ module at each point where it changes a worktree.
 `recordBranchPullRequests` option, one session-record field, and one goal check. **Removes:**
 nothing. **Debt:** Kitchen Sink sessions get no row until Kitchen Sink provisions through the host
 (its adoption stack, already owed by FIX-2419). Rows are never deleted: a `removed` row stays
-until FIX-2252's sweeper decides. A row can say `ready` for a directory someone deleted by hand,
-until the next `recordCheckout` or the sweep. **Net:** medium, mostly in the workspace package.
+until FIX-2252's sweeper decides. A row can say `ready` for a directory someone deleted by hand or
+removed with `fsdev worktrees --remove`, until the next `recordCheckout` marks it `lost` or the
+sweep reconciles it. Core's resource tools ignore `llmWritable` on update and delete, so the
+session flow's visibility rule is the gate until FIX-2441. Directory paths stay long until
+FIX-2442. **Net:** medium, mostly in the workspace package.
 
 ## Sign off
 
