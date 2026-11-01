@@ -70,6 +70,13 @@ export const taskSpendViewSchema = z.object({
   inputTokens: z.number().nullable(),
   /** Output tokens likewise. */
   outputTokens: z.number().nullable(),
+  /**
+   * What the vendors billed, in US dollars: the sum of every charge a source
+   * reported (an API-key harness run), or `null` when none reported one. A
+   * subscription run reports none, and never reads as a cost. Never an
+   * estimate (FIX-2398 D3). Absent on a view stored before it existed.
+   */
+  costUsd: z.number().nullable().optional(),
   /** `true` while some source in the count hasn't reported its tokens. */
   unreported: z.boolean(),
   /** `true` while a request for the task is running; never on a terminal row. */

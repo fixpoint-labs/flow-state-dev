@@ -81,6 +81,7 @@
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { readCommitted, type UpdateStateRunner } from "@flow-state-dev/core/helpers";
 import { z } from "zod";
+import { commandCheckResultSchema } from "./command-check";
 
 /** Accessor key and storage prefix for the run record. */
 export const RUNS = "runs" as const;
@@ -283,6 +284,13 @@ export const runRecordStateSchema = z.object({
     .default(null),
   /** What the run cost, when the harness reported it. No decision reads this. */
   costUsd: z.number().nullable().default(null),
+  /**
+   * The checks the phase's completion check ran on this attempt
+   * (`commandCheck`): each command, how it ended, and the end of its output.
+   * Written whatever the verdict, so a failed attempt says which was red.
+   * `null` when none ran (BP-030).
+   */
+  checks: z.array(commandCheckResultSchema).nullable().default(null),
 
   // ── Denormalized: read from here for convenience, owned elsewhere ──────────
   /** The child session the run executed in (the runtime's). */
@@ -366,6 +374,7 @@ const ATTEMPT_SCOPED_CLEAR = {
   childSessionId: null,
   requestId: null,
   lastSave: null,
+  checks: null,
 } as const;
 
 /** What {@link writeRunRow} did. */

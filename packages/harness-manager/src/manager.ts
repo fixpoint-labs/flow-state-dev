@@ -31,6 +31,7 @@
  * path of its own.
  */
 import { existsSync } from "node:fs";
+import { setTimeout as sleepFor } from "node:timers/promises";
 import {
   OBSERVED_PULL_REQUESTS,
   SuspensionTimeoutError,
@@ -121,7 +122,8 @@ import {
 import { askMarkerPath, readAskMarker } from "./ask";
 import { HeldOnQuestion, askStep } from "./ask-step";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
-import { readRunCommits, type RunCommits } from "./commits";
+import { readRunCommits, readRunDiff, runDiffSchema, type RunCommits, type RunDiff } from "./commits";
+import { commandCheckResultSchema, commandChecksSummary, readVerdict, type CommandCheckResult } from "./command-check";
 import { progressNoteOf, throttledNotes, type ProgressNotes } from "./progress-note";
 import {
   MAX_APPROVAL_STEPS,
@@ -298,6 +300,29 @@ export interface CompletionRunContext extends PhaseRunContext {
    * run that ended with nothing to say has not answered.
    */
   answer: string | null;
+  /**
+   * Aborted when the completion check's time is up, or the request is
+   * cancelled. A check that starts work of its own (`commandCheck`'s
+   * commands) stops it and starts no more, because the manager lets the
+   * checkout go soon after.
+   */
+  signal?: AbortSignal;
+}
+
+/**
+ * What a phase's `isDone` may answer instead of a boolean: whether the job is
+ * done, why not, and the checks it ran (`commandCheck`).
+ *
+ * `reason` is added to the not-done message, which the board hands the next
+ * attempt as its `feedback`. `checks` goes on the run record whatever the
+ * verdict, and on the review's `data` when the run is done.
+ */
+export interface PhaseDoneVerdict {
+  done: boolean;
+  /** Why it isn't done, in words the next attempt can act on. Read only when `done` is false. */
+  reason?: string;
+  /** The checks the phase ran, in order. */
+  checks?: CommandCheckResult[];
 }
 
 /** Everything that makes one phase a phase. Three values, passed in. */
@@ -329,7 +354,14 @@ export interface PhaseSpec {
    * declining to is a real choice with a real cost; the framework imposes
    * nothing, because only the phase knows what finishing means for it.
    */
-  isDone(run: CompletionRunContext): boolean | Promise<boolean>;
+  isDone(run: CompletionRunContext): boolean | PhaseDoneVerdict | Promise<boolean | PhaseDoneVerdict>;
+  /**
+   * How long {@link isDone} may take, in milliseconds; a minute
+   * (`NETWORK_CALL_TIMEOUT_MS`) when unset. `commandCheck` sets it to cover its
+   * commands. Pass the same number to `harnessDrainBudgetMs({ doneTimeoutMs })`,
+   * or a shutdown can stop a check before it ends.
+   */
+  doneTimeoutMs?: number;
   /**
    * What this phase needs from the workspace, checked before anything is
    * claimed. Throws to refuse; absent means the phase needs nothing.
@@ -481,7 +513,10 @@ export interface ManagerOptions {
    * On, a run the phase's check passed (and the {@link judge}, when one read
    * it, found done or was under its floor) that has commits over its base
    * waits through `ctx.suspendForUser({ kind: "review" })`, its prompt naming the
-   * commits and the judge's verdict as information. The answer is
+   * commits, the files they changed and the judge's verdict as information.
+   * The stop's `data` carries each changed file's added and removed lines
+   * (`files`, FIX-2384); a screen reads one file's patch through
+   * `harnessRunChangesRead`. The answer is
    * `{ verdict: "accepted" }`, which completes the task with no further
    * harness run, or `{ verdict: "revise", words }`, whose words become the
    * user's steer: the run goes on in the same coding session on the same
@@ -878,10 +913,19 @@ const managerStateSchema = z.object({
         .nullable()
         .default(null),
       /**
+       * What those commits changed, file by file, read once by `decide` when
+       * the run will be reviewed (FIX-2384), for the review's prompt and its
+       * data. `null` when no review reads it, and on a decision kept before
+       * it was read (BP-030).
+       */
+      diff: runDiffSchema.nullable().default(null),
+      /**
        * How this decision's review ended (FIX-2163): `accepted` or `deadline`
        * settle on it; `revise` and `cancelled` must not complete the run.
        */
       reviewed: z.enum(["accepted", "deadline", "revise", "cancelled"]).nullable().default(null),
+      /** The checks the phase's `isDone` ran (`commandCheck`), for the review's `data`. `null` when it ran none. */
+      checks: z.array(commandCheckResultSchema).nullable().default(null),
     })
     .nullable()
     .default(null),
@@ -1124,6 +1168,8 @@ function reviewPrompt(
   changes: RunCommits | null,
   branch: string | null,
   read: HarnessJudgeVerdict | null,
+  diff: RunDiff | null,
+  checks: CommandCheckResult[] | null = null,
 ): string {
   const lines: string[] = [];
   if (changes === null || !changes.verified) {
@@ -1132,8 +1178,12 @@ function reviewPrompt(
     lines.push(`${changes.count} commit${changes.count === 1 ? "" : "s"} on ${branch ?? "the run's branch"}:`);
     lines.push(...changes.subjects.map((subject) => `- ${subject}`));
     if (changes.count > changes.subjects.length) lines.push(`- and ${changes.count - changes.subjects.length} more`);
+    if (diff?.verified === true) {
+      lines.push(`${diff.fileCount} file${diff.fileCount === 1 ? "" : "s"} changed (+${diff.added} −${diff.removed}).`);
+    }
   }
   lines.push("");
+  if (checks !== null && checks.length > 0) lines.push(`${commandChecksSummary(checks)}.`);
   lines.push(
     read === null
       ? "No judge read this run."
@@ -1206,12 +1256,20 @@ export async function withDeadline<T>(
   );
 }
 
+/**
+ * How long the manager waits, after the completion check's time is up and its
+ * signal aborted, for the check to stop before it lets the checkout go.
+ */
+export const DONE_STOP_GRACE_MS = 5_000;
+
 export function harnessDrainBudgetMs(options: {
   runTimeoutMs: number;
   provisionTimeoutMs?: number | undefined;
   ownershipWaitMs: number;
   /** The manager was given a judge, which runs after the completion check, bounded the same way. */
   judge?: boolean | undefined;
+  /** The phase's `doneTimeoutMs`, when it set one (`commandCheck`): the completion check's bound in place of a minute. */
+  doneTimeoutMs?: number | undefined;
 }): number {
   const work =
     options.ownershipWaitMs +
@@ -1221,7 +1279,9 @@ export function harnessDrainBudgetMs(options: {
     // run's pull requests. Each is bounded by this constant, and the budget has
     // to reserve time for each — a bound the budget does not account for is as
     // wrong as no bound.
-    NETWORK_CALL_TIMEOUT_MS * 3 +
+    NETWORK_CALL_TIMEOUT_MS * 2 +
+    (options.doneTimeoutMs ?? NETWORK_CALL_TIMEOUT_MS) +
+    DONE_STOP_GRACE_MS +
     (options.judge === true ? NETWORK_CALL_TIMEOUT_MS : 0);
 
   // `* 4 / 3` clears a reserve of up to a quarter; the flat minute dwarfs the
@@ -1251,6 +1311,12 @@ export function resolveOwnership(options: {
   runTimeoutMs: number;
   provisionTimeoutMs?: number | undefined;
   ownership?: Partial<OwnershipBounds> | undefined;
+  /**
+   * The phase's `doneTimeoutMs`, when it set one. The completion check holds
+   * the lock again, fresh, for up to this long plus the stop grace, so it is
+   * a third tail beside the run and the cleanup.
+   */
+  doneTimeoutMs?: number | undefined;
 }): { ownership: OwnershipBounds; maxLockHeldMs: number } {
   const { runTimeoutMs } = options;
   // **How long a live attempt can legitimately hold the lock.**
@@ -1289,8 +1355,9 @@ export function resolveOwnership(options: {
   // number is the floor `staleAfterMs` is REFUSED against, so every millisecond
   // of slack rejects deployments whose configuration is in fact safe.
   const provisionBudget = options.provisionTimeoutMs ?? GIT_TIMEOUT_MS;
+  const doneHoldMs = (options.doneTimeoutMs ?? NETWORK_CALL_TIMEOUT_MS) + DONE_STOP_GRACE_MS;
   const maxLockHeldMs =
-    provisionBudget + Math.max(runTimeoutMs, CHECKOUT_CLEANUP_TIMEOUT_MS);
+    provisionBudget + Math.max(runTimeoutMs, CHECKOUT_CLEANUP_TIMEOUT_MS, doneHoldMs);
 
   const ownership: OwnershipBounds = {
     // Sized against the lease-renewal lag that produces overlap, and well
@@ -1562,6 +1629,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   const { ownership } = resolveOwnership({
     runTimeoutMs,
     provisionTimeoutMs: host.provisionTimeoutMs,
+    doneTimeoutMs: runPhase.doneTimeoutMs,
     ...(options.ownership !== undefined ? { ownership: options.ownership } : {}),
   });
 
@@ -2529,6 +2597,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         settle: "asked" | "complete",
         commits: RunCommits,
         judgeInput: HarnessJudgeInput | null = null,
+        checks: CommandCheckResult[] | null = null,
       ): Promise<HarnessJudgeInput | null> => {
         const output: ManagerOutput = {
           issue: state.issue!,
@@ -2540,7 +2609,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           judged: false,
           review: null,
         };
-        await ctx.sequencer!.patchState({ decided: { settle, output, changes: commits, reviewed: null } });
+        // Read once here, so the review's prompt and data come from state alone.
+        const diff: RunDiff | null =
+          reviewChanges && settle === "complete" && state.filesOnly !== true && commits.verified && commits.count > 0
+            ? await readRunDiff(state.workspacePath!, state.baseRef, state.baseCommit)
+            : null;
+        await ctx.sequencer!.patchState({ decided: { settle, output, changes: commits, diff, reviewed: null, checks } });
         return judgeInput;
       };
       // A run of kept files alone has no branch, so nothing on one to review: a verified none.
@@ -2585,6 +2659,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // fixed path makes a run that quietly did nothing look exactly like a run
       // that asked.
       const question = await readAskMarker(state.workspacePath!, identity.attempt, state.run!);
+      // Why the phase's check said not done, when it said (`PhaseDoneVerdict.reason`).
+      let notDoneReason: string | undefined;
 
       // ── Arm 1: the verdict did NOT fail AND this run asked ──────────────────
       if (succeeded && question !== undefined) {
@@ -2605,30 +2681,90 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // from, leaving the row `in_progress` with nothing to settle it. The
         // bound is the constant the budget already spends, so it makes the
         // advertised number true rather than adding one.
-        const done = await withDeadline(
-          async () =>
-            runPhase.isDone({
-              epic: state.epic!,
-              issue: state.issue!,
-              phase: state.phase!,
-              attempt: identity.attempt,
-              workspacePath: state.workspacePath!,
-              branch: state.branch!,
-              // **Crossed as reported, and compared on by nothing here.** This
-              // block's own input schema reads `outcome` as a plain string
-              // deliberately, so a harness that reports outside the contract's
-              // three words is seen here rather than refused at the door;
-              // narrowing it or defaulting it to `finished` would put the
-              // silent partial success back, one layer down. `null` stays
-              // `null`: "reported nothing" is its own fact.
-              stopReport: handle.outcome,
-              answer: handle.finalMessage,
-              ctx,
-            }),
-          NETWORK_CALL_TIMEOUT_MS,
-          `the ${state.phase} phase's completion check`,
+        //
+        // **Under the checkout's lease again.** The agent step let it go when
+        // the agent stopped, but a check may run the project's own commands
+        // here (`commandCheck`), and they write to the tree. Taking the lease
+        // back keeps a replacement attempt from provisioning the checkout
+        // under them. The wait for it counts against the same bound, so the
+        // drain budget stays true; a wait that outlives it means this attempt
+        // was displaced, and it fails rather than check another's tree.
+        const doneBoundMs = runPhase.doneTimeoutMs ?? NETWORK_CALL_TIMEOUT_MS;
+        const doneStarted = Date.now();
+        const doneLease = await acquireCheckout(
+          state.workspacePath!,
+          `${identity.taskId}#${identity.attempt}`,
+          ownership,
+          Date.now,
+          AbortSignal.any([ctx.signal, AbortSignal.timeout(doneBoundMs)]),
         );
-        if (done) {
+        await ctx.sequencer!.patchState({ lockPath: doneLease.lockPath, leaseToken: doneLease.token });
+        // **Still the live attempt, now that it holds the lease.** The lock
+        // knows only who holds the files, and the wait for it can outlast a
+        // reclaim or a cancel: a replacement's checkout must not get this
+        // attempt's commands. Read from the committed row, as the steer watch
+        // does, since the request's own reads can be older than the wait.
+        const rowNow = await committedRow(ctx as BlockContext);
+        if (
+          rowNow === undefined ||
+          rowNow.status !== "in_progress" ||
+          rowNow.attempts !== identity.attempt ||
+          (state.ticket != null && (rowNow.turn ?? 0) !== state.ticket.turn) ||
+          // A task deleted and filed again under the same id can be on the same attempt and turn.
+          (identity.incarnationId !== undefined && rowNow.incarnationId != null && rowNow.incarnationId !== identity.incarnationId)
+        ) {
+          releaseLeaseFromState(ctx);
+          throw new HarnessAttemptSuperseded(`its completion check started (the task is ${rowNow?.status ?? "gone"})`);
+        }
+        // **Stopped before the lease goes.** `withDeadline` rejects on time
+        // but cannot stop the check, so the check gets a signal the deadline
+        // aborts, and the lease is let go only once the check has stopped or
+        // the grace has passed. A check that honours the signal (`commandCheck`)
+        // kills its running command and starts none after it.
+        const stopCheck = new AbortController();
+        const checking = Promise.resolve().then(() =>
+          runPhase.isDone({
+            epic: state.epic!,
+            issue: state.issue!,
+            phase: state.phase!,
+            attempt: identity.attempt,
+            workspacePath: state.workspacePath!,
+            branch: state.branch!,
+            // **Crossed as reported, and compared on by nothing here.** This
+            // block's own input schema reads `outcome` as a plain string
+            // deliberately, so a harness that reports outside the contract's
+            // three words is seen here rather than refused at the door;
+            // narrowing it or defaulting it to `finished` would put the
+            // silent partial success back, one layer down. `null` stays
+            // `null`: "reported nothing" is its own fact.
+            stopReport: handle.outcome,
+            answer: handle.finalMessage,
+            signal: AbortSignal.any([ctx.signal, stopCheck.signal]),
+            ctx,
+          }),
+        );
+        let doneAnswer: Awaited<ReturnType<PhaseSpec["isDone"]>>;
+        try {
+          doneAnswer = await withDeadline(
+            () => checking,
+            Math.max(1, doneBoundMs - (Date.now() - doneStarted)),
+            `the ${state.phase} phase's completion check`,
+          );
+        } catch (error) {
+          stopCheck.abort();
+          await Promise.race([checking.then(() => undefined, () => undefined), sleepFor(DONE_STOP_GRACE_MS, undefined, { ref: false })]);
+          throw error;
+        } finally {
+          releaseLeaseFromState(ctx);
+        }
+        const verdict = readVerdict(doneAnswer);
+        // **The checks it ran go on the run record, whatever the verdict**, so
+        // a failed attempt's row says which command was red and how.
+        if (verdict.checks !== undefined) {
+          await fenced(writeRunRow(ctx, identity, { checks: verdict.checks }), "the checks were recorded");
+        }
+        notDoneReason = verdict.done ? undefined : verdict.reason;
+        if (verdict.done) {
           // **Not completed on files it could not save.** Completing is the
           // last save point a run has, so a failed save here would settle the
           // row with the run's work only on this machine. Failing the attempt
@@ -2660,7 +2796,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
                   commits: { count: commits.count, subjects: commits.subjects },
                 }
               : null;
-          return keep("complete", commits, judgeInput);
+          return keep("complete", commits, judgeInput, verdict.checks ?? null);
         }
       }
 
@@ -2702,7 +2838,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             ? "the run stopped at its limit"
             : `the run terminated normally reporting ${handle.outcome ?? "no terminal result"}`;
       throw new HarnessAttemptFailed(
-        `${ended} and the ${state.phase} phase is still not done`,
+        `${ended} and the ${state.phase} phase is still not done` +
+          (notDoneReason === undefined || notDoneReason.trim() === "" ? "" : `: ${notDoneReason}`),
       );
     },
   });
@@ -3052,13 +3189,19 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         asked = await ctx.suspendForUser({
           kind: "review",
           title: "Review the run's changes",
-          prompt: reviewPrompt(changes, decision.output.branch, read),
+          prompt: reviewPrompt(changes, decision.output.branch, read, decision.diff ?? null, decision.checks ?? null),
           resumeSchema: harnessReviewAnswerSchema,
           data: {
             branch: decision.output.branch,
             commits: changes?.verified === true ? changes.count : null,
             subjects: changes?.subjects ?? [],
+            // Each changed file's lines, when they were read (FIX-2384); `null` when they couldn't be.
+            files: decision.diff?.verified === true ? decision.diff.files : null,
+            fileCount: decision.diff?.verified === true ? decision.diff.fileCount : null,
+            added: decision.diff?.verified === true ? decision.diff.added : null,
+            removed: decision.diff?.verified === true ? decision.diff.removed : null,
             judge: read,
+            checks: decision.checks ?? null,
           },
         });
       } catch (error) {

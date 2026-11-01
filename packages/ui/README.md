@@ -48,6 +48,8 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `task-plan` | Section-grouped renderer for a TaskCollection. Subscribes to `task-change` and `task-board-meta` |
 | `artifact` | Composable artifact viewer shell with header, actions, and content areas |
 | `file-tree` | Tree-structured file and folder display with expand/collapse and selection |
+| `run-changes` | What a coding run changed: "N files changed (+a −d)", opening into each file's added and removed lines and, through a `loadPatch` the app passes, one file's patch. Takes harness-manager's review data and its `changes` read as plain props |
+| `run-checks` | A coding run's checks: "Checks n/m passed", red and open when any failed, each command opening into the end of its output. Takes harness-manager's `commandCheck` results (review data, run record, session turn) as plain props |
 | `jsx-preview` | Live JSX/TSX renderer that treats its input as untrusted, with streaming support and error fallback. Renders only allowlisted HTML and static SVG tags (`div`, `table`, `img`, `svg`, ...), and drops `on*` handlers, `dangerouslySetInnerHTML`, `srcDoc`, `srcset`, the `form` attribute, and any URL that isn't http(s), mailto, tel or relative. `{...}` expressions are limited to a safe subset, and input over 100,000 characters is refused. Components passed in `components` are trusted and render as given; the JSX can read everything in `bindings` |
 | `sandbox` | Source/preview tab wrapper for JSX artifacts using JSXPreview and CodeBlock |
 | `info-card` | Generative-UI info card: title, optional image, fact rows. Pairs with `emitInfoCard` |
@@ -58,6 +60,7 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `selection` | Single (enum) or multi (array of enum) choice card for a `user_input` suspension |
 | `form` | Flat-object form card for a `user_input` suspension — one control per scalar/enum property |
 | `model-badge` | Small pill showing the `ModelIdentity` that answered. Renders nothing when the model is undefined |
+| `spend` | One line for what a run spent: model, tokens, the vendor's charge when it reported one, and optionally attempts and duration. Reads a task's or a harness turn's folded spend |
 | `audit-annotation` | Compact card for `responseAuditor` findings: severity indicators, per-analyzer scores, evidence. Fed by the `audit-annotation` component item |
 
 ## Framework Integration

@@ -50,7 +50,8 @@ export type ProjectRefusalReason =
   | "too-many-workstreams"
   | "other-project"
   | "invalid-mcp-server"
-  | "unknown-mcp-server";
+  | "unknown-mcp-server"
+  | "invalid-check";
 
 /** A project or workstream write refused on the project's own terms. */
 export class ProjectRefusedError extends Error {

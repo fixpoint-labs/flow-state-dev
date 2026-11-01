@@ -33,11 +33,11 @@ describe("kitchen-sink registry drift (FIX-1477 V8)", () => {
   it("has every registry component byte-identical to its installed kitchen-sink copy", () => {
     const { compared, mismatches } = drift();
 
-    // 38 of the registry's component-directory files (all non-`.stories.tsx`
+    // 41 of the registry's component-directory files (all non-`.stories.tsx`
     // files outside `generative/`) are installed here. If that count moves,
     // this test's scope moved with it and needs re-reading before trusting a
     // green result.
-    expect(compared.length).toBe(38);
+    expect(compared.length).toBe(41);
 
     expect(mismatches).toEqual([]);
   });
