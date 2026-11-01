@@ -18,6 +18,9 @@
  *     failure record: the turn fails with no error, end or spend on its record.
  *   - drop the finished hook's end of an unended turn: a turn stopped while
  *     it waits ends `aborted` with no end, stop or spend on its record.
+ *   - save the held call in the step that waits, just before it suspends
+ *     (FIX-2444's shape), rather than in the step before it: the resume reads
+ *     no held call, and both Allow cases, the restarted one too, end after one run.
  *   - drop the refusal of a turn sent while another waits: the second turn
  *     runs, confirms its own conversation, and the first turn's Allow resumes
  *     that one instead of its own.
@@ -67,21 +70,32 @@ function host(options: {
   const cwd = join(dir, "work");
   const stub = harnessStub({ toolCalls: options.calls, ...(options.spend === undefined ? {} : { spend: options.spend }) });
   const handed: string[] = [];
-  const flow = harnessSessionFlow({
-    kind: KIND,
-    workspace: { provision: async () => cwd, locate: () => cwd, branch: () => null },
-    agent: (feeds: HarnessSessionFeeds) => {
-      handed.push(...Object.keys(feeds));
-      return stub.slot(feeds as never) as HarnessBlock;
-    },
-    ...(options.approveTools === false ? {} : { approveTools: true }),
-  });
-  const state = createFlowState({
-    flows: { [KIND]: flow },
-    stores: { test: { primary: inMemoryStores() } },
-    defaultProfile: "test",
-    durable: options.durable ?? true,
-  } as never);
+  const makeFlow = () =>
+    harnessSessionFlow({
+      kind: KIND,
+      workspace: { provision: async () => cwd, locate: () => cwd, branch: () => null },
+      agent: (feeds: HarnessSessionFeeds) => {
+        handed.push(...Object.keys(feeds));
+        return stub.slot(feeds as never) as HarnessBlock;
+      },
+      ...(options.approveTools === false ? {} : { approveTools: true }),
+    });
+  const stores = inMemoryStores();
+  const makeState = (forFlow: ReturnType<typeof makeFlow>) =>
+    createFlowState({
+      flows: { [KIND]: forFlow },
+      stores: { test: { primary: stores } },
+      defaultProfile: "test",
+      durable: options.durable ?? true,
+    } as never);
+  let flow = makeFlow();
+  let state = makeState(flow);
+  /** A host restart: this process's flow and runtime go, and new ones start on the same stores. */
+  const restart = async () => {
+    await state.dispose();
+    flow = makeFlow();
+    state = makeState(flow);
+  };
   const runtime = async () =>
     (state as unknown as { getRuntime(): Promise<{ stores: any; runtimeConfig: { durabilityProvider?: any } }> }).getRuntime();
 
@@ -157,7 +171,7 @@ function host(options: {
   const sessionState = async () => (await (await runtime()).stores.session.get(SESSION))?.state as HarnessSessionState;
   const ran = (name: string) => existsSync(join(cwd, name));
   const decisions = () => stub.toolCalls.map((call) => `${call.run}:${call.decision}`);
-  return { turn, pending, answer, stop, ended, status, sessionState, ran, decisions, stub, handed, cwd, dispose: () => state.dispose() };
+  return { turn, pending, answer, stop, restart, ended, status, sessionState, ran, decisions, stub, handed, cwd, dispose: () => state.dispose() };
 }
 
 describe("a harness session's tool call waits for the user", () => {
@@ -197,6 +211,23 @@ describe("a harness session's tool call waits for the user", () => {
       const record = (await h.sessionState()).turns?.[requestId!];
       expect(record?.failure ?? null).toBeNull();
       expect(record?.endedAt).not.toBeNull();
+    } finally {
+      await h.dispose();
+    }
+  }, 30_000);
+
+  it("resumes the held call on Allow after the host restarts while the turn waits", async () => {
+    const h = host({ calls: [marker("marker")] });
+    try {
+      const { requestId } = await h.turn("do the thing");
+      await h.pending(requestId!);
+      await h.restart();
+      expect((await h.answer(requestId!, "approve")).status).toBe(202);
+      expect(await h.ended(requestId!)).toBe("completed");
+      expect(h.stub.runs).toHaveLength(2);
+      expect(h.stub.runs[1]!.resume).toBe(h.stub.runs[0]!.session);
+      expect(h.decisions()).toEqual(["0:held", "1:allow"]);
+      expect(h.ran("marker")).toBe(true);
     } finally {
       await h.dispose();
     }
