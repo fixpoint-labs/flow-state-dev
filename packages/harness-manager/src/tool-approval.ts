@@ -97,14 +97,6 @@ export const toolApprovalYesSchema = z.object({ scope: z.literal("run").optional
  */
 export const ALLOW_FOR_RUN = { label: "Allow for this run", data: { scope: "run" } } as const;
 
-/**
- * How many times one run is resumed for a tool approval's answer: one try of
- * a manager's task, or one turn of a session. Each costs a harness restart,
- * so a run past it is asking for more than a user should click through; it
- * fails, saying so.
- */
-export const MAX_APPROVAL_STEPS = 25;
-
 /** Canonical JSON: object keys sorted, so the same arguments give the same key. */
 function canonicalJson(value: unknown): string {
   const seen = new WeakSet<object>();

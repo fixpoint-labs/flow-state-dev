@@ -127,7 +127,6 @@ import { progressNoteOf, throttledNotes, type ProgressNotes } from "./progress-n
 import {
   MAX_APPROVAL_STEPS,
   grantMatches,
-  MAX_APPROVAL_STEPS,
   heldToolCallOf,
   heldToolCallSchema,
   heldToolDecision,
