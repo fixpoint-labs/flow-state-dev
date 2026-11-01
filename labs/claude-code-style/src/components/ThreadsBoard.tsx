@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { LabAdapter, TaskRow } from "../adapter";
 import { COLUMNS, columnOf, type Column } from "../lib/columns";
-import { age, useNow, useWatch } from "../lib/use-watch";
+import { age, useMissing, useNow, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Spend } from "./Spend";
 import { HarnessTag, statusLine, ThreadIcon } from "./ThreadStatus";
@@ -23,13 +23,18 @@ export function ThreadsBoard({
   sessionId,
   openId,
   onOpen,
+  onMissing,
 }: {
   adapter: LabAdapter;
   sessionId: string;
   openId: string | undefined;
   onOpen: (taskId: string | undefined) => void;
+  /** `openId` names no thread of this session's, once its rows are read. */
+  onMissing: () => void;
 }) {
-  const tasks = useWatch((emit: (rows: TaskRow[]) => void) => adapter.watchTasks(sessionId, emit), [adapter, sessionId]) ?? [];
+  const listed = useWatch((emit: (rows: TaskRow[]) => void) => adapter.watchTasks(sessionId, emit), [adapter, sessionId]);
+  const tasks = listed ?? [];
+  useMissing(listed, openId, onMissing);
   const pins = useWatch((emit: (ids: string[]) => void) => adapter.watchPins(emit), [adapter]) ?? [];
   const [collapsed, setCollapsed] = useState<Partial<Record<Column, boolean>>>({ resolved: true });
   const now = useNow(true, 30_000);

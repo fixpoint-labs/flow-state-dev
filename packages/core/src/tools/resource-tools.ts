@@ -4,6 +4,8 @@ import type { AnyResourceRef, ResourceRef } from "../types/resource";
 import type { ResourceCollectionRef } from "../types/resource-collection";
 import type { ResourceVisibility, ResourceVisibilityRule } from "../types/resource-visibility";
 import { handler } from "../blocks/handler";
+import { omitSecretFields } from "../helpers/client-projection";
+import type { JsonObject } from "../schema/common";
 import {
   extractBareTopic,
   isParameterizedPattern,
@@ -116,7 +118,8 @@ function collectStaticResources(ctx: BlockContext): ResourceRef<any>[] {
  *
  * Provides 4 tools, each acting on a path the caller already names:
  * - `createResource({ path, state? })` — Create a new resource instance
- * - `readResource({ path })` — Read a resource instance
+ * - `readResource({ path })` — Read a resource instance, in a collection that
+ *   opted in with `llmReadable`, without the fields its `secret` names
  * - `updateResource({ path, state? })` — Update a resource instance
  * - `deleteResource({ path })` — Delete a resource instance
  *
@@ -159,7 +162,7 @@ export function resourceTools() {
     execute: async (input, ctx) => {
       const { nsRef, key } = resolvePathToCollection(input.path, ctx);
       const handle = await nsRef.get(key);
-      return { path: input.path, state: handle.state as Record<string, unknown> };
+      return { path: input.path, state: omitSecretFields(nsRef.config, handle.state as JsonObject) };
     },
   });
 
@@ -240,11 +243,13 @@ export async function resolveResourceByPath(
 }
 
 /**
- * Content read gate. A collection instance carries its owning collection's
- * config (the server stamps `config: nsConfig` onto every instance ref), so the
- * collection-level `llmReadable` flag reaches each instance through `ref.config`.
+ * The one read gate, for a resource, a collection instance, or a collection.
+ * A collection instance carries its owning collection's config (the server
+ * stamps `config: nsConfig` onto every instance ref), so the collection-level
+ * `llmReadable` flag reaches each instance through `ref.config`. Listing,
+ * search and `readResource` all ask this, so the gate can't drift between them.
  */
-export function isLlmReadable(ref: ResourceRef<any>): boolean {
+export function isLlmReadable(ref: { config?: { llmReadable?: boolean } }): boolean {
   return ref.config?.llmReadable === true;
 }
 
@@ -282,7 +287,7 @@ export function isLlmWritableNow(ref: ResourceRef<any>, ctx: BlockContext): bool
 export async function collectReadableResources(ctx: BlockContext): Promise<ResourceRef<any>[]> {
   const out: ResourceRef<any>[] = collectStaticResources(ctx).filter(isLlmReadable);
   for (const ns of collectCollections(ctx)) {
-    if (ns.ref.config?.llmReadable !== true) continue;
+    if (!isLlmReadable(ns.ref)) continue;
     for (const instance of await ns.ref.list()) out.push(instance);
   }
   return out;
@@ -300,7 +305,7 @@ export async function collectReadableResources(ctx: BlockContext): Promise<Resou
  * collection that did not opt in is filtered out before anything reaches it.
  */
 export function collectReadableProjectedCollections(ctx: BlockContext): CollectionEntry[] {
-  return collectProjectedCollections(ctx).filter((ns) => ns.ref.config?.llmReadable === true);
+  return collectProjectedCollections(ctx).filter((ns) => isLlmReadable(ns.ref));
 }
 
 /**
@@ -353,9 +358,13 @@ function resolvePathToCollection(
   ctx: BlockContext,
   intent: "read" | "write" = "read"
 ): { nsRef: ResourceCollectionRef<any>; key: string | Record<string, string> } {
-  // A collection the rule leaves read-only isn't a target for a write: the
-  // write answers as for a path no collection matches.
-  const collections = collectCollections(ctx).filter((ns) => intent === "read" || ns.access === "visible");
+  // A read reaches only a collection that opted in with `llmReadable`, the same
+  // gate the content and search tools apply; a collection the rule leaves
+  // read-only isn't a target for a write. Either way the call answers as for a
+  // path no collection matches.
+  const collections = collectCollections(ctx).filter((ns) =>
+    intent === "read" ? isLlmReadable(ns.ref) : ns.access === "visible"
+  );
 
   for (const ns of collections) {
     const key = matchCollectionKey(ns, path);

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D6, decided by the owner: once the bus exists, when does the session stream read. Chosen: when the bus wakes it, with the timed read kept as a slow fallback. Instead of: once a second, as now. It comes down to what an idle view costs: woken, nothing while nothing changes; as now, a store read each second per open connection. A viewer on another process is reached through the bus, or by the timed read where the bus can't cross processes: the in-memory bus on two or more processes, and serverless. The price: a route that works today changes, in the bus child. Locks in one live path with the timed read as its fallback. Flips if a store read each second per connection is negligible at the viewer counts we target."
+<svg viewBox="0 0 940 420" role="img" aria-label="D6, decided by the owner: once the bus exists, when does the session stream read. Chosen: when the bus wakes it, with the timed read kept as a slow fallback. Instead of: once a second, as now. It comes down to what an idle view costs: woken, nothing while nothing changes; as now, a store read each second per open connection. A viewer on another process is reached through the bus, or by the timed read where the bus can't cross processes: the in-memory bus on two or more processes, and serverless. The price: a route that works today changes, in the bus child. Locks in one live path with the timed read as its fallback. Flips if 100 idle views cost the session stream under 100 store queries a second; today 400."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -96,8 +96,8 @@
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">A store read each second is negligible</text>
-    <text class="t-s" x="494" y="389">at the viewer counts we target: leave it</text>
+    <text class="t-b" x="494" y="371">100 idle views cost under 100 queries/s</text>
+    <text class="t-s" x="494" y="389">on the session stream, today 400: leave it</text>
   </g>
 
 </svg>

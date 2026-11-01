@@ -97,7 +97,12 @@
     // The Teammates lab's copy of the registry's tool grouping.
     "labs/teammates/src/components/flow-state/tool-grouping.ts",
     // Kitchen Sink's installed copy of the work-place chip, before an app view imports it.
-    "apps/kitchen-sink/components/flow-state/work-place.tsx"
+    "apps/kitchen-sink/components/flow-state/work-place.tsx",
+    // Kitchen Sink's and Shift Manager's byte copies of the registry's review card:
+    // their suspension cards import ReviewSuspension; the card's other exports are
+    // for apps that draw holds.
+    "apps/kitchen-sink/components/flow-state/review-hold.tsx",
+    "packages/shift-manager/src/components/flow-state/review-hold.tsx"
   ],
 
   // Dead code fails `fallow audit` at its default severity. Complexity reports
