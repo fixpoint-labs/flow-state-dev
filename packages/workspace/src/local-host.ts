@@ -2009,8 +2009,9 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           );
         }
       }
-      if (existsSync(entry.cwd)) await git(entry.repository, ["worktree", "remove", entry.cwd], left());
-      else await git(entry.repository, ["worktree", "prune"], left());
+      // With its directory gone, `remove` drops only this worktree's metadata;
+      // `prune` would drop every missing worktree's, and any detached HEAD with it.
+      await git(entry.repository, ["worktree", "remove", entry.cwd], left());
       let branchDeleted = false;
       if (removeOptions.deleteBranch === true && branch !== null) {
         await git(entry.repository, ["branch", "-D", branch], left());

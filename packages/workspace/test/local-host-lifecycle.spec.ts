@@ -240,6 +240,21 @@ describe("list and remove", () => {
     expect(git(repo, "worktree", "list", "--porcelain")).toContain(place.cwd);
   });
 
+  it("removes only the worktree it was asked for when others' directories are missing too", async () => {
+    const { h, place } = await made();
+    const other = await h.provision({ kind: "repo", repo }, { place: ["run-2"], branch: "fsd/run-2" });
+    git(other.cwd, "checkout", "-q", "--detach");
+    git(other.cwd, "commit", "-q", "--allow-empty", "-m", "only on run-2's detached HEAD");
+    renameSync(place.cwd, `${place.cwd}-moved`);
+    renameSync(other.cwd, `${other.cwd}-moved`);
+
+    await h.remove!({ place: ["run-1"] });
+
+    const listed = git(repo, "worktree", "list", "--porcelain");
+    expect(listed).not.toContain(place.cwd);
+    expect(listed).toContain(other.cwd);
+  });
+
   it("removes a detached HEAD whose commits a branch already holds", async () => {
     const { h, place } = await made();
     git(place.cwd, "checkout", "-q", "--detach");
