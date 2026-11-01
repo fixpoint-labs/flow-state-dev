@@ -262,6 +262,19 @@ describe("sessionFeed", () => {
     expect(feed.getSnapshot().items).toEqual([]);
   });
 
+  it("opens no stream when a listener closes the feed on the first history it hears", async () => {
+    const h = host(() => json(snapshot([message("req_1", "m1", "earlier", 10)])));
+    const feed = sessionFeed(h.client, "s1");
+    feed.subscribe((s) => {
+      if (s.items.length > 0) feed.close();
+    });
+
+    await until(() => feed.getSnapshot().state === "stopped");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // A closed feed holds no connection the caller can no longer stop.
+    expect(h.urls.filter((url) => url.includes("/stream"))).toEqual([]);
+  });
+
   it("keeps only the item types it was asked for, and no transient item", async () => {
     const transient = { ...message("req_1", "t1", "typing", 11), transient: true } as OutputItem;
     const status = { ...message("req_1", "st", "status", 12), type: "status" } as unknown as OutputItem;

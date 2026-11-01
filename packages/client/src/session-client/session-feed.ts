@@ -124,6 +124,8 @@ export function sessionFeed(
     if (closed) return;
     for (const item of history.items ?? []) keep(item);
     publish({ items: sortedItems(), error: null });
+    // A listener may close the feed on the history it just heard.
+    if (closed) return;
 
     stopStream = followSession({
       sessionId,
