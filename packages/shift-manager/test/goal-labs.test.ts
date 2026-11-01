@@ -15,7 +15,7 @@ import { loadFsdevConfig } from "@flow-state-dev/fsdev";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { Client } from "@flow-state-dev/client";
 import { connect } from "../src/lib/connection";
-import { collectionOfBoard, createLabReader, GENERAL_TEAM, type BoardRow } from "../src/lib/reads";
+import { collectionOfBoard, createLabReader, GENERAL_TEAM, type Ask, type BoardRow } from "../src/lib/reads";
 import { teamsOf, type LoadedSnapshot } from "../src/lib/derive";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { followRequest, readSessionItems, resolveRunFlow, taskItems } from "../src/lib/run";
@@ -170,7 +170,7 @@ describe("devteam: an approved task's run", () => {
     await opened?.lab.handle.close();
   });
 
-  it("streams its steps, stamped with the task, and settles the row the Tasks list and the task screen both read", async () => {
+  it("streams its steps, stamped with the task, waits for its review, and settles the row the Tasks list and the task screen both read", async () => {
     const { snapshot, client } = opened;
     const reader = createLabReader(client);
     if (!snapshot.asks.ok) throw new Error(snapshot.asks.failure.message);
@@ -197,6 +197,16 @@ describe("devteam: an approved task's run", () => {
       onStatus: () => {},
       onError: () => {},
     });
+
+    // The profile holds a run that committed for the user's review: Inbox
+    // shows it, and accepting it is what lets the row complete.
+    const review = await eventually<Ask>(async () => {
+      const next = await reader.read();
+      if (next.refused !== undefined) throw new Error(next.refused.message);
+      if (next.unreachable !== undefined) throw new Error(next.unreachable.message);
+      return next.asks.ok ? next.asks.value.find((a) => a.kind === "review" && a.sessionId === running.run!.sessionId) : undefined;
+    }, "the run's review to wait in Inbox", 45_000);
+    await reader.resume(review, { action: "submit", data: { verdict: "accepted" } });
 
     let last: BoardRow | undefined;
     const settled = await eventually<BoardRow>(async () => {
