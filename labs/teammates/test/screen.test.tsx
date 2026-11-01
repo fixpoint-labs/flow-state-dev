@@ -504,6 +504,82 @@ describe("the teammates screen", () => {
     expect(researcherBox.value).toBe("");
   });
 
+  it("keeps a line whose send fails, says why, and sends it again on Retry", async () => {
+    const lab = fast();
+    let refuse = true;
+    const adapter = {
+      ...lab,
+      send: (sessionId: string, text: string) =>
+        refuse ? Promise.reject(new Error("the server refused it (401)")) : lab.send(sessionId, text),
+    };
+    render(<App adapter={adapter} />);
+    const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
+    await tell("Chief of Staff", "Where is the launch plan?");
+    const alert = await within(conversation()).findByRole("alert");
+    expect(alert.textContent).toMatch(/Not sent: the server refused it \(401\)/);
+    // Nothing typed is lost, and nothing claims it was sent.
+    expect(box.value).toBe("Where is the launch plan?");
+    expect(entries("user").some((e) => e.textContent?.includes("Where is the launch plan?"))).toBe(false);
+
+    refuse = false;
+    fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(entries("user").some((e) => e.textContent?.includes("Where is the launch plan?"))).toBe(true));
+    expect(box.value).toBe("");
+    expect(within(conversation()).queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps what you typed while a send was in flight once it lands", async () => {
+    const lab = fast();
+    let land!: () => void;
+    const adapter = {
+      ...lab,
+      send: (sessionId: string, text: string) => new Promise<void>((resolve) => (land = resolve)).then(() => lab.send(sessionId, text)),
+    };
+    render(<App adapter={adapter} />);
+    const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
+    await tell("Chief of Staff", "first ask");
+    expect(box.value).toBe("first ask");
+    expect(within(conversation()).getByRole("button", { name: "Sending…" })).toBeTruthy();
+    fireEvent.change(box, { target: { value: "and a second thought" } });
+    await act(async () => land());
+    await waitFor(() => expect(within(conversation()).getByRole("button", { name: "Send" })).toBeTruthy());
+    expect(box.value).toBe("and a second thought");
+  });
+
+  it("keeps a draft revised after a reload when the send from before the reload lands", async () => {
+    const lab = fast();
+    let land!: () => void;
+    const adapter = {
+      ...lab,
+      send: (sessionId: string, text: string) => new Promise<void>((resolve) => (land = resolve)).then(() => lab.send(sessionId, text)),
+    };
+    const first = render(<App adapter={adapter} />);
+    await tell("Chief of Staff", "first ask");
+    first.unmount();
+
+    const second = render(<App adapter={adapter} />);
+    const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
+    expect(box.value).toBe("first ask");
+    fireEvent.change(box, { target: { value: "first ask, revised" } });
+    await act(async () => land());
+    second.unmount();
+
+    render(<App adapter={lab} />);
+    expect(((await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement).value).toBe("first ask, revised");
+  });
+
+  it("brings an unsent draft back after a reload, for that worker only", async () => {
+    const lab = fast();
+    const first = render(<App adapter={lab} />);
+    fireEvent.change(await screen.findByLabelText("Message Chief of Staff"), { target: { value: "half a thought" } });
+    first.unmount();
+
+    render(<App adapter={lab} />);
+    expect(((await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement).value).toBe("half a thought");
+    fireEvent.click(workerRow("researcher"));
+    expect(((await screen.findByLabelText("Message researcher")) as HTMLTextAreaElement).value).toBe("");
+  });
+
   it("sends with Cmd+Enter and Ctrl+Enter as well as Enter, and Shift+Enter stays a new line", async () => {
     render(<App adapter={fast()} />);
     const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;

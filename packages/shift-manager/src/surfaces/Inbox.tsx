@@ -509,6 +509,7 @@ function Reply({
     <div>
       <TurnComposer
         testId="inbox-reply"
+        draftKey={`reply:${ask.item.suspensionId}`}
         label={`Reply to ${workerLabel(ask.workerId ?? "this worker")}`}
         placeholder={`Reply to ${workerLabel(ask.workerId ?? "this worker")}…`}
         blocked={route.blocked}

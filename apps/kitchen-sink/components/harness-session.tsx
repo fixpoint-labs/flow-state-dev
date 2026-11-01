@@ -25,6 +25,8 @@ import {
   FlowProvider,
   useResourceCollectionList,
   useResourceManifest,
+  clearDraft,
+  useDraft,
   useHarnessLines,
   useSession,
   type SessionView,
@@ -73,7 +75,7 @@ import {
   type TurnNotice,
 } from "@/lib/harness-turn";
 import type { HarnessSessionState } from "@flow-state-dev/harness-manager";
-import { useSessionDraft } from "@/lib/use-session-draft";
+import { SESSION_DRAFT } from "@/lib/session-draft";
 
 export interface HarnessSessionViewProps {
   /** The mode's label, from the mode list. */
@@ -111,7 +113,7 @@ function SessionBody({
   onTitled?: () => void;
 }) {
   const session = useSession(sessionId, { items: true, autoResume: true });
-  const [message, setMessage] = useSessionDraft(sessionId);
+  const [message, setMessage] = useDraft(SESSION_DRAFT, sessionId);
   const messageRef = useRef(message);
   messageRef.current = message;
 
@@ -172,6 +174,8 @@ function SessionBody({
       try {
         const outcome = await lines.send(prompt);
         setLastLine(outcome);
+        // The view may have closed (a session switch) while it ran: the stored draft goes only if it is still this line.
+        clearDraft(SESSION_DRAFT, sessionId, prompt);
         if (messageRef.current.trim() === prompt) setMessage("");
         // The steer request records a taken line in session state, and this
         // view follows only the turn's stream: re-read it so the line shows now.
@@ -180,7 +184,7 @@ function SessionBody({
         // Keep the persisted draft so a failed send can be retried.
       }
     },
-    [lines, refresh, setMessage],
+    [lines, refresh, setMessage, sessionId],
   );
   const steered = turn === null ? [] : (state.turns?.[turn.requestId]?.steered ?? []);
 

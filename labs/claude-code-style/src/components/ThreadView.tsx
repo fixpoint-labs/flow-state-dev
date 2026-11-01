@@ -1,7 +1,8 @@
 import { isSendKey, useJumpToLatest } from "@flow-state-dev/react";
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import type { FormEvent, KeyboardEvent } from "react";
 import type { LabAdapter, TaskRow } from "../adapter";
 import { useWatch } from "../lib/use-watch";
+import { useDraftSend } from "../lib/use-draft-send";
 import { Entry } from "./Entry";
 import { JumpToLatestButton } from "./JumpToLatest";
 import { ReviewCard } from "./ReviewCard";
@@ -34,26 +35,26 @@ export function ThreadView({
     (emit: Parameters<LabAdapter["watchTaskWork"]>[2]) => adapter.watchTaskWork(sessionId, task.id, emit),
     [adapter, sessionId, task.id],
   );
-  const [text, setText] = useState("");
+  const { text, setText, sending, failure, submit } = useDraftSend("claude-code-style:task-draft", task.id);
   const feed = useJumpToLatest({ resetKey: task.id });
   const column = statusColumn(task);
   const question = task.waitingOn && task.waitingOn.kind !== "review" ? task.waitingOn : undefined;
   const words = text.trim();
   const finished = task.status === "completed" || task.status === "cancelled" || task.status === "errored";
 
+  // Your words stay in the box until they land; a failed send says why, with Retry.
   const say = (event?: FormEvent) => {
     event?.preventDefault();
-    if (!words) return;
-    setText("");
-    feed.sent();
-    void adapter.sayInThread(sessionId, task.id, words);
+    void submit((line) => {
+      feed.sent();
+      return adapter.sayInThread(sessionId, task.id, line);
+    });
   };
-  const requestChanges = () => {
-    if (!words) return;
-    setText("");
-    feed.sent();
-    void adapter.requestChanges(sessionId, task.id, words);
-  };
+  const requestChanges = () =>
+    void submit((line) => {
+      feed.sent();
+      return adapter.requestChanges(sessionId, task.id, line);
+    });
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (!isSendKey(event)) return;
     event.preventDefault();
@@ -107,18 +108,26 @@ export function ThreadView({
             placeholder={question ? "Answer the task…" : column === "review" ? "What should change…" : "Say something in this task…"}
             className="block w-full resize-none border border-border bg-card px-3 py-2 text-sm outline-none focus:border-ring"
           />
+          {failure !== undefined ? (
+            <p role="alert" className="mt-1 text-xs text-destructive">
+              Not sent: {failure} ·{" "}
+              <button type="button" className="underline" onClick={() => (column === "review" ? requestChanges() : say())}>
+                Retry
+              </button>
+            </p>
+          ) : null}
           <div className="mt-2 flex justify-end gap-1.5">
             {column === "review" ? (
               <>
                 <button type="button" onClick={() => void adapter.resolve(sessionId, task.id)} className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground">
                   Resolve
                 </button>
-                <button type="button" disabled={!words} onClick={requestChanges} className="border border-border px-2 py-1 text-xs disabled:opacity-40">
+                <button type="button" disabled={!words || sending} onClick={requestChanges} className="border border-border px-2 py-1 text-xs disabled:opacity-40">
                   Request changes
                 </button>
               </>
             ) : (
-              <button type="submit" disabled={!words} className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40">
+              <button type="submit" disabled={!words || sending} className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40">
                 {question ? "Answer" : "Send"}
               </button>
             )}

@@ -160,7 +160,7 @@ describe("V8", () => {
       files.filter((f) => read(f).split("\n").some((line) => CLASSIFIES.test(line))).map((f) => relative(src, f)).sort();
     const read = (f: string) => readFileSync(f, "utf8");
     expect(sites(code, read)).toEqual(["components/TurnComposer.tsx"]);
-    expect(read(join(src, "components/TurnComposer.tsx"))).toContain("useTurnSend()");
+    expect(read(join(src, "components/TurnComposer.tsx"))).toContain("useTurnSend(");
     // Planted: a composer that classifies a failure itself is caught.
     const planted = join(src, "surfaces/Planted.tsx");
     expect(sites([...code, planted], (f) => (f === planted ? `const retry = err instanceof TurnNotDelivered && err.kind === "not-sent";` : read(f)))).toContain(
