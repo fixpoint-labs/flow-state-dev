@@ -229,20 +229,25 @@ export async function markWorktreeReady(
   place: readonly string[],
   made: MadeWorktree,
 ): Promise<void> {
-  const prior = await current(recording.collection, key);
-  await recording.collection.upsert(
+  const fields = (prior: WorktreeRow | undefined): Partial<WorktreeRow> => ({
     key,
-    {
-      key,
-      state: "ready",
-      path: made.path,
-      branch: made.branch,
-      repo: made.repo,
-      baseCommit: made.fresh ? made.baseCommit : (prior?.baseCommit ?? made.baseCommit),
-      owner: prior?.owner ?? recording.owner,
-      ...(prior?.name == null ? { name: worktreeName(key, recording.label, place) } : {}),
-    },
-  );
+    state: "ready",
+    path: made.path,
+    branch: made.branch,
+    repo: made.repo,
+    baseCommit: made.fresh ? made.baseCommit : (prior?.baseCommit ?? made.baseCommit),
+    owner: prior?.owner ?? recording.owner,
+    ...(prior?.name == null ? { name: worktreeName(key, recording.label, place) } : {}),
+  });
+  const ref = await recording.collection.getOptional(key);
+  if (ref === undefined) {
+    await recording.collection.upsert(key, fields(undefined));
+    return;
+  }
+  // Against the stored row, atomically. The provision wrote `provisioning`
+  // first, so a `removed` row here means a removal ran after it: the
+  // worktree is gone, and `ready` would be wrong.
+  await ref.updateState((row) => (row.state === "removed" ? row : { ...row, ...fields(row) }) as WorktreeRow);
 }
 
 const same = (a: WorktreeOwner | null | undefined, b: WorktreeOwner) => a != null && a.kind === b.kind && a.id === b.id;
@@ -294,30 +299,42 @@ export async function markWorktreeRemoved(collection: WorktreeCollection, key: s
   await collection.upsert(key, { state: "removed" });
 }
 
-/** Add pull requests to a worktree's row, each once by link; a known one takes the newer state and title. */
+/**
+ * Add pull requests to a worktree's row, each once by link; a known one takes
+ * the newer state and title. `refreshed` only updates pull requests the row
+ * already lists, so a later turn can record that one merged or closed.
+ */
 export async function addWorktreePullRequests(
   collection: WorktreeCollection,
   key: string,
   pullRequests: readonly WorktreePullRequest[],
+  refreshed: readonly WorktreePullRequest[] = [],
 ): Promise<void> {
-  if (pullRequests.length === 0) return;
-  const prior = await current(collection, key);
-  if (prior === undefined) return;
-  const merged = [...(prior.pullRequests ?? [])];
-  let changed = false;
-  for (const pr of pullRequests) {
-    const at = merged.findIndex((known) => known.url === pr.url);
-    if (at === -1) {
-      merged.push(pr);
-      changed = true;
-      continue;
-    }
-    const known = merged[at]!;
-    const next = { ...known, state: pr.state ?? known.state, title: pr.title ?? known.title };
-    if (next.state !== known.state || next.title !== known.title) {
-      merged[at] = next;
-      changed = true;
-    }
-  }
-  if (changed) await collection.upsert(key, { pullRequests: merged });
+  if (pullRequests.length === 0 && refreshed.length === 0) return;
+  const ref = await collection.getOptional(key);
+  if (ref === undefined) return;
+  // Merged against the stored row, atomically, so two turns ending together
+  // both keep what they found.
+  await ref.updateState((row) => {
+    const merged = [...((row as WorktreeRow).pullRequests ?? [])];
+    let changed = false;
+    const apply = (pr: WorktreePullRequest, add: boolean) => {
+      const at = merged.findIndex((known) => known.url === pr.url);
+      if (at === -1) {
+        if (!add) return;
+        merged.push(pr);
+        changed = true;
+        return;
+      }
+      const known = merged[at]!;
+      const next = { ...known, state: pr.state ?? known.state, title: pr.title ?? known.title };
+      if (next.state !== known.state || next.title !== known.title) {
+        merged[at] = next;
+        changed = true;
+      }
+    };
+    for (const pr of pullRequests) apply(pr, true);
+    for (const pr of refreshed) apply(pr, false);
+    return changed ? { ...row, pullRequests: merged } : row;
+  });
 }
