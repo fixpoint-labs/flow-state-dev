@@ -31,6 +31,7 @@
  * path of its own.
  */
 import { existsSync } from "node:fs";
+import { setTimeout as sleepFor } from "node:timers/promises";
 import {
   OBSERVED_PULL_REQUESTS,
   SuspensionTimeoutError,
@@ -287,6 +288,13 @@ export interface CompletionRunContext extends PhaseRunContext {
    * run that ended with nothing to say has not answered.
    */
   answer: string | null;
+  /**
+   * Aborted when the completion check's time is up, or the request is
+   * cancelled. A check that starts work of its own (`commandCheck`'s
+   * commands) stops it and starts no more, because the manager lets the
+   * checkout go soon after.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -1188,6 +1196,12 @@ export async function withDeadline<T>(
   );
 }
 
+/**
+ * How long the manager waits, after the completion check's time is up and its
+ * signal aborted, for the check to stop before it lets the checkout go.
+ */
+export const DONE_STOP_GRACE_MS = 5_000;
+
 export function harnessDrainBudgetMs(options: {
   runTimeoutMs: number;
   provisionTimeoutMs?: number | undefined;
@@ -1207,6 +1221,7 @@ export function harnessDrainBudgetMs(options: {
     // wrong as no bound.
     NETWORK_CALL_TIMEOUT_MS * 2 +
     (options.doneTimeoutMs ?? NETWORK_CALL_TIMEOUT_MS) +
+    DONE_STOP_GRACE_MS +
     (options.judge === true ? NETWORK_CALL_TIMEOUT_MS : 0);
 
   // `* 4 / 3` clears a reserve of up to a quarter; the flat minute dwarfs the
@@ -1236,6 +1251,12 @@ export function resolveOwnership(options: {
   runTimeoutMs: number;
   provisionTimeoutMs?: number | undefined;
   ownership?: Partial<OwnershipBounds> | undefined;
+  /**
+   * The phase's `doneTimeoutMs`, when it set one. The completion check holds
+   * the lock again, fresh, for up to this long plus the stop grace, so it is
+   * a third tail beside the run and the cleanup.
+   */
+  doneTimeoutMs?: number | undefined;
 }): { ownership: OwnershipBounds; maxLockHeldMs: number } {
   const { runTimeoutMs } = options;
   // **How long a live attempt can legitimately hold the lock.**
@@ -1274,8 +1295,9 @@ export function resolveOwnership(options: {
   // number is the floor `staleAfterMs` is REFUSED against, so every millisecond
   // of slack rejects deployments whose configuration is in fact safe.
   const provisionBudget = options.provisionTimeoutMs ?? GIT_TIMEOUT_MS;
+  const doneHoldMs = (options.doneTimeoutMs ?? NETWORK_CALL_TIMEOUT_MS) + DONE_STOP_GRACE_MS;
   const maxLockHeldMs =
-    provisionBudget + Math.max(runTimeoutMs, CHECKOUT_CLEANUP_TIMEOUT_MS);
+    provisionBudget + Math.max(runTimeoutMs, CHECKOUT_CLEANUP_TIMEOUT_MS, doneHoldMs);
 
   const ownership: OwnershipBounds = {
     // Sized against the lease-renewal lag that produces overlap, and well
@@ -1546,6 +1568,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   const { ownership } = resolveOwnership({
     runTimeoutMs,
     provisionTimeoutMs: host.provisionTimeoutMs,
+    doneTimeoutMs: runPhase.doneTimeoutMs,
     ...(options.ownership !== undefined ? { ownership: options.ownership } : {}),
   });
 
@@ -2606,31 +2629,44 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           AbortSignal.any([ctx.signal, AbortSignal.timeout(doneBoundMs)]),
         );
         await ctx.sequencer!.patchState({ lockPath: doneLease.lockPath, leaseToken: doneLease.token });
+        // **Stopped before the lease goes.** `withDeadline` rejects on time
+        // but cannot stop the check, so the check gets a signal the deadline
+        // aborts, and the lease is let go only once the check has stopped or
+        // the grace has passed. A check that honours the signal (`commandCheck`)
+        // kills its running command and starts none after it.
+        const stopCheck = new AbortController();
+        const checking = Promise.resolve().then(() =>
+          runPhase.isDone({
+            epic: state.epic!,
+            issue: state.issue!,
+            phase: state.phase!,
+            attempt: identity.attempt,
+            workspacePath: state.workspacePath!,
+            branch: state.branch!,
+            // **Crossed as reported, and compared on by nothing here.** This
+            // block's own input schema reads `outcome` as a plain string
+            // deliberately, so a harness that reports outside the contract's
+            // three words is seen here rather than refused at the door;
+            // narrowing it or defaulting it to `finished` would put the
+            // silent partial success back, one layer down. `null` stays
+            // `null`: "reported nothing" is its own fact.
+            stopReport: handle.outcome,
+            answer: handle.finalMessage,
+            signal: AbortSignal.any([ctx.signal, stopCheck.signal]),
+            ctx,
+          }),
+        );
         let doneAnswer: Awaited<ReturnType<PhaseSpec["isDone"]>>;
         try {
           doneAnswer = await withDeadline(
-          async () =>
-            runPhase.isDone({
-              epic: state.epic!,
-              issue: state.issue!,
-              phase: state.phase!,
-              attempt: identity.attempt,
-              workspacePath: state.workspacePath!,
-              branch: state.branch!,
-              // **Crossed as reported, and compared on by nothing here.** This
-              // block's own input schema reads `outcome` as a plain string
-              // deliberately, so a harness that reports outside the contract's
-              // three words is seen here rather than refused at the door;
-              // narrowing it or defaulting it to `finished` would put the
-              // silent partial success back, one layer down. `null` stays
-              // `null`: "reported nothing" is its own fact.
-              stopReport: handle.outcome,
-              answer: handle.finalMessage,
-              ctx,
-            }),
-          Math.max(1, doneBoundMs - (Date.now() - doneStarted)),
-          `the ${state.phase} phase's completion check`,
+            () => checking,
+            Math.max(1, doneBoundMs - (Date.now() - doneStarted)),
+            `the ${state.phase} phase's completion check`,
           );
+        } catch (error) {
+          stopCheck.abort();
+          await Promise.race([checking.then(() => undefined, () => undefined), sleepFor(DONE_STOP_GRACE_MS, undefined, { ref: false })]);
+          throw error;
         } finally {
           releaseLeaseFromState(ctx);
         }
