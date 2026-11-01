@@ -2699,6 +2699,21 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           AbortSignal.any([ctx.signal, AbortSignal.timeout(doneBoundMs)]),
         );
         await ctx.sequencer!.patchState({ lockPath: doneLease.lockPath, leaseToken: doneLease.token });
+        // **Still the live attempt, now that it holds the lease.** The lock
+        // knows only who holds the files, and the wait for it can outlast a
+        // reclaim or a cancel: a replacement's checkout must not get this
+        // attempt's commands. Read from the committed row, as the steer watch
+        // does, since the request's own reads can be older than the wait.
+        const rowNow = await committedRow(ctx as BlockContext);
+        if (
+          rowNow === undefined ||
+          rowNow.status !== "in_progress" ||
+          rowNow.attempts !== identity.attempt ||
+          (state.ticket != null && (rowNow.turn ?? 0) !== state.ticket.turn)
+        ) {
+          releaseLeaseFromState(ctx);
+          throw new HarnessAttemptSuperseded(`its completion check started (the task is ${rowNow?.status ?? "gone"})`);
+        }
         // **Stopped before the lease goes.** `withDeadline` rejects on time
         // but cannot stop the check, so the check gets a signal the deadline
         // aborts, and the lease is let go only once the check has stopped or
