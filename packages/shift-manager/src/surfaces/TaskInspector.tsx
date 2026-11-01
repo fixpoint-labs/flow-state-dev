@@ -15,7 +15,8 @@ import { SectionFailure } from "../components/ui";
 import { asksOfTask, inboxItemIdOf, rosterOf, workerFor, workerLabel, waited, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, GENERAL_TEAM, type Failure } from "../lib/reads";
-import { navigate } from "../lib/routes";
+import type { Route } from "../lib/routes";
+import { RouteLink } from "../components/RouteLink";
 import { readRecordedWork, RunReadError, type OpenRun, type RecordedWork } from "../lib/run";
 import { useTask } from "../lib/task";
 import type { Gaps } from "../gaps";
@@ -44,7 +45,7 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
   const after = row === undefined ? [] : task.boardRows.filter((r) => row.deps.includes(r.id));
   const missingAfter = row === undefined ? [] : row.deps.filter((id) => !task.boardRows.some((r) => r.id === id));
   const blocks = row === undefined ? [] : task.boardRows.filter((r) => r.deps.includes(row.id));
-  const open = (id: string) => navigate({ level: "task", boardRef: task.boardRef, taskId: id, tab: "session" });
+  const taskAt = (id: string): Route => ({ level: "task", boardRef: task.boardRef, taskId: id, tab: "session" });
   // The oldest ask this task's run waits on: the snapshot holds them oldest first.
   const ask = asksOfTask(snapshot, row)[0];
 
@@ -66,9 +67,8 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
         </Section>
         {ask === undefined ? null : (
           <div className="px-4 pt-3.5">
-            <button
-              type="button"
-              onClick={() => navigate({ level: "inbox", item: inboxItemIdOf(snapshot, ask.item.suspensionId) })}
+            <RouteLink
+              to={{ level: "inbox", item: inboxItemIdOf(snapshot, ask.item.suspensionId) }}
               className="flex w-full justify-between border border-foreground bg-attention px-2.5 py-2 text-left font-mono text-[11.5px] font-medium text-attention-foreground"
               data-testid="inspector-needs"
               data-suspension-id={ask.item.suspensionId}
@@ -77,7 +77,7 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
                 {ask.kind} waiting {waited(ask.since, Date.now())}
               </span>
               <span>inbox ↗</span>
-            </button>
+            </RouteLink>
           </div>
         )}
         <Section title="HARNESS · TOKENS · COST" testId="inspector-harness">
@@ -101,9 +101,9 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
           <ul className="mb-2 text-sm" data-testid="inspector-after">
             {after.map((r) => (
               <li key={r.id} data-task-id={r.id}>
-                <button type="button" className="hover:underline" onClick={() => open(r.id)}>
+                <RouteLink to={taskAt(r.id)} className="hover:underline">
                   {r.title}
-                </button>
+                </RouteLink>
               </li>
             ))}
             {missingAfter.map((id) => (
@@ -117,9 +117,9 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
           <ul className="text-sm" data-testid="inspector-blocks">
             {blocks.map((r) => (
               <li key={r.id} data-task-id={r.id}>
-                <button type="button" className="hover:underline" onClick={() => open(r.id)}>
+                <RouteLink to={taskAt(r.id)} className="hover:underline">
                   {r.title}
-                </button>
+                </RouteLink>
               </li>
             ))}
             {blocks.length === 0 ? <li className="text-xs text-muted-foreground">Nothing</li> : null}
