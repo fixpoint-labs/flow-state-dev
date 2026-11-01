@@ -251,6 +251,15 @@ export function isLlmReadable(ref: ResourceRef<any>): boolean {
   return ref.config?.llmReadable === true;
 }
 
+/**
+ * The collection-level read gate: whether a collection opted in with
+ * `llmReadable`. Every tool that lists, searches or reads a collection for the
+ * model asks this one function, so the gate can't drift between them.
+ */
+function isCollectionLlmReadable(ns: CollectionEntry): boolean {
+  return ns.ref.config?.llmReadable === true;
+}
+
 /** Content write gate. Independent of `llmReadable`, matching the single-resource contract. */
 export function isLlmWritable(ref: ResourceRef<any>): boolean {
   return ref.config?.llmWritable === true;
@@ -285,7 +294,7 @@ export function isLlmWritableNow(ref: ResourceRef<any>, ctx: BlockContext): bool
 export async function collectReadableResources(ctx: BlockContext): Promise<ResourceRef<any>[]> {
   const out: ResourceRef<any>[] = collectStaticResources(ctx).filter(isLlmReadable);
   for (const ns of collectCollections(ctx)) {
-    if (ns.ref.config?.llmReadable !== true) continue;
+    if (!isCollectionLlmReadable(ns)) continue;
     for (const instance of await ns.ref.list()) out.push(instance);
   }
   return out;
@@ -303,7 +312,7 @@ export async function collectReadableResources(ctx: BlockContext): Promise<Resou
  * collection that did not opt in is filtered out before anything reaches it.
  */
 export function collectReadableProjectedCollections(ctx: BlockContext): CollectionEntry[] {
-  return collectProjectedCollections(ctx).filter((ns) => ns.ref.config?.llmReadable === true);
+  return collectProjectedCollections(ctx).filter(isCollectionLlmReadable);
 }
 
 /**
@@ -361,7 +370,7 @@ function resolvePathToCollection(
   // read-only isn't a target for a write. Either way the call answers as for a
   // path no collection matches.
   const collections = collectCollections(ctx).filter((ns) =>
-    intent === "read" ? ns.ref.config?.llmReadable === true : ns.access === "visible"
+    intent === "read" ? isCollectionLlmReadable(ns) : ns.access === "visible"
   );
 
   for (const ns of collections) {
