@@ -38,11 +38,12 @@ function writeDraft(namespace: string, id: string | undefined, text: string): vo
 /**
  * Drop the stored draft for `id`, leaving any box's in-memory text alone: for a
  * send the server took while the box may already hold newer text. With `sent`,
- * the stored draft is dropped only if it is still that text, so a send that
+ * the stored draft is dropped only if it is still that text (surrounding
+ * whitespace aside), so a send that
  * settles after the box was closed and reopened keeps what was typed since.
  */
 export function clearDraft(namespace: string, id: string | undefined, sent?: string): void {
-  if (sent !== undefined && readDraft(namespace, id) !== sent) return;
+  if (sent !== undefined && readDraft(namespace, id).trim() !== sent.trim()) return;
   writeDraft(namespace, id, "");
 }
 

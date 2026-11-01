@@ -24,6 +24,8 @@ function useSendOnSuccess(sessionId: string | undefined, send: () => Promise<voi
     const sent = text.trim();
     try {
       await send();
+      // The box may have closed (a session switch) while it ran: storage goes only if it still holds this line.
+      clearDraft(NS, sessionId, sent);
       if (draftRef.current.trim() === sent) setDraft("");
     } catch {
       // keep draft
@@ -188,6 +190,39 @@ describe("useDraft", () => {
 
     expect(again.result.current[0]).toBe("revised after reopening");
     expect(localStorage.getItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a")).toBe("revised after reopening");
+  });
+
+  it("drops the stored line when its send lands after the box closed, and keeps one typed in the box opened since", async () => {
+    const gates: Array<() => void> = [];
+    const send = () => new Promise<void>((resolve) => gates.push(resolve));
+
+    const first = renderHook(() => useSendOnSuccess("sess-a", send));
+    act(() => first.result.current.setDraft("landed later"));
+    let done!: Promise<void>;
+    act(() => {
+      done = first.result.current.submit("landed later");
+    });
+    first.unmount();
+    await act(async () => {
+      gates[0]();
+      await done;
+    });
+    expect(localStorage.getItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a")).toBeNull();
+
+    const second = renderHook(() => useSendOnSuccess("sess-a", send));
+    act(() => second.result.current.setDraft("sent, then closed"));
+    act(() => {
+      done = second.result.current.submit("sent, then closed");
+    });
+    second.unmount();
+    const third = renderHook(() => useSendOnSuccess("sess-a", send));
+    act(() => third.result.current.setDraft("sent, then closed, then revised"));
+    await act(async () => {
+      gates[1]();
+      await done;
+    });
+    expect(localStorage.getItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a")).toBe("sent, then closed, then revised");
+    expect(third.result.current.draft).toBe("sent, then closed, then revised");
   });
 
   it("clearDraft with the sent text drops the stored draft only while it is still that text", () => {

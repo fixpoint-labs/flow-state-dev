@@ -162,6 +162,22 @@ describe("a reload keeps what was typed, and what may already have been sent (SM
     expect((screen.getByTestId("t-input") as HTMLInputElement).value).toBe("");
   });
 
+  it("clears a line delivered after its composer closed, even when the session never said it held it (a task's send)", async () => {
+    const reply = gate();
+    const first = render(
+      composer("task:t-1", async () => {
+        await reply.done;
+      }),
+    );
+    fireEvent.change(screen.getByTestId("t-input"), { target: { value: "ship it" } });
+    await act(async () => fireEvent.click(screen.getByTestId("t-send")));
+    first.unmount();
+    await act(async () => reply.open());
+
+    render(composer("task:t-1"));
+    expect((screen.getByTestId("t-input") as HTMLInputElement).value).toBe("");
+  });
+
   it("keeps a line typed in a reopened composer when the earlier send settles", async () => {
     const reply = gate();
     const first = render(

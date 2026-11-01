@@ -288,8 +288,8 @@ function Composer({
       const response = await send(text);
       // Storage clears when the door accepts the send so a reload mid-request
       // does not restore text the server already took, unless the user revised
-      // the draft while the POST was in flight.
-      if (draftRef.current.trim() === text) clearDraft(SESSION_DRAFT, session.sessionId);
+      // the draft while the POST was in flight (or reopened the panel and typed).
+      clearDraft(SESSION_DRAFT, session.sessionId, text);
       setPending(response.request.id);
     } catch (cause) {
       setFailure(cause instanceof Error ? cause.message : String(cause));

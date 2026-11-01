@@ -7,6 +7,7 @@ import {
   FlowNavigator,
   FlowProvider,
   SuspensionResolverProvider,
+  clearDraft,
   useDraft,
   useFlow,
   useSession,
@@ -338,7 +339,8 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
       const text = msg.text.trim();
-      if (!flow.activeSessionId || text.length === 0) return;
+      const sessionId = flow.activeSessionId;
+      if (!sessionId || text.length === 0) return;
       try {
         await session.sendAction("run", {
           message: text,
@@ -346,6 +348,8 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
           thinkingStyle,
           features,
         }, { userMessage: text });
+        // The page may have moved to another session while it ran: the stored draft goes only if it is still this line.
+        clearDraft(SESSION_DRAFT, sessionId, text);
         if (messageRef.current.trim() === text) setMessage("");
       } catch {
         // Keep the persisted draft so a failed send can be retried.

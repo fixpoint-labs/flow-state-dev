@@ -49,6 +49,8 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => ({
 
 vi.mock("@flow-state-dev/react", async (importOriginal) => ({
   useHarnessLines: (await importOriginal<typeof import("@flow-state-dev/react")>()).useHarnessLines,
+  useDraft: (await importOriginal<typeof import("@flow-state-dev/react")>()).useDraft,
+  clearDraft: (await importOriginal<typeof import("@flow-state-dev/react")>()).clearDraft,
   FlowProvider: ({ children }: { children: ReactNode }) => children,
   useResourceManifest: () => ({ manifest: undefined, error: undefined }),
   useResourceCollectionList: () => ({ items: [], error: undefined }),

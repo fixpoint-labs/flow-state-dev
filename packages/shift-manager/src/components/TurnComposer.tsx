@@ -304,12 +304,21 @@ export function TurnComposer({
       if (current.current === submitted) setDraft("");
       onHeld?.(message);
     };
-    if (await run((held) => send(message, () => {
-      held();
-      leave();
-    }))) {
+    let delivered = false;
+    const sent = await run(async (held) => {
+      const result = await send(message, () => {
+        held();
+        leave();
+      });
+      delivered = true;
+      return result;
+    });
+    if (sent) {
       leave();
       onDelivered?.(message);
+    } else if (delivered) {
+      // Delivered after the composer closed: only the stored draft is left to clear.
+      clearDraft(DRAFT, draftKey, submitted);
     } else if (left) {
       // It failed after it left: put it back, unless another line was started.
       // A composer that has closed puts nothing back (its draft setter does nothing then).
