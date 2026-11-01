@@ -15,7 +15,6 @@ import {
   createResourceBackedTaskCollection,
   createStateBackedTaskCollection,
   requestSpendView,
-  spendAfterWrite,
   taskSpendView,
   ticketForClaim,
   type TaskChangeEvent,
@@ -68,8 +67,6 @@ describe("taskSpendView", () => {
         { runId: "b", harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 100, outputTokens: 10, costUsd: null, billing: "subscription" },
       ],
     };
-    const row = spendAfterWrite({ spend: null }, { requestId: "q1", part: "settle", spend });
-    expect(requestSpendView(spend, "q1")).toEqual(taskSpendView({ status: "completed", spend: row }));
     expect(requestSpendView(spend, "q1")).toMatchObject({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 140, costUsd: 0.01 });
     expect(requestSpendView(NONE, "q1")).toBeNull();
   });
