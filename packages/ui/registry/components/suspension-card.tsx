@@ -46,9 +46,11 @@ export function SuspensionCard({ item }: { item: SuspensionItem }) {
   }
 
   // A review that takes a verdict (Accept, or Ask for changes with words) is
-  // not free text: its own card builds the only answers it accepts.
+  // not free text: its own card builds the only answers it accepts. It draws
+  // the stop's prompt, never `item.data`: reading a coding run's review is
+  // harness-manager's browser reader, called by the app, which passes it in.
   if (item.kind === "review" && takesReviewVerdict(item.resumeSchema)) {
-    return <ReviewSuspension item={item} isResolved={isResolved} resolution={resolution} />;
+    return <ReviewSuspension item={item} isResolved={isResolved} />;
   }
 
   switch (suspensionShape(item)) {

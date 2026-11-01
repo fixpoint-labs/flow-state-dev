@@ -150,6 +150,9 @@ describe("SuspensionCard draws a review stop with the review card", () => {
     );
     expect(screen.getByText("Ready for review")).toBeTruthy();
     expect(screen.getByText("Review the run's changes")).toBeTruthy();
+    // The stop's data is left to harness-manager's reader in the app: the card reads none of it.
+    expect(screen.queryByText("4 commits")).toBeNull();
+    expect(screen.queryByText("Judge: done, 0.91")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Accept" }));
     await waitFor(() => expect(resolve).toHaveBeenCalledTimes(1));
     expect(resolve).toHaveBeenCalledWith({ suspensionId: "susp-1", requestId: "req-1", action: "submit", data: { verdict: "accepted" } });

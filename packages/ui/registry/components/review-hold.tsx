@@ -2,7 +2,6 @@
 
 import { useState, type ReactNode } from "react";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
-import type { SuspensionStatus } from "@flow-state-dev/core/types";
 import { useSuspensionResolver } from "@flow-state-dev/react";
 import { CheckIcon, MinusIcon } from "lucide-react";
 
@@ -282,8 +281,6 @@ export function ReviewSuspension({
   /** A coding run's review, when the app read one from the stop. Absent: the stop's prompt. */
   review?: ReviewDetail | null;
   isResolved?: boolean;
-  /** Accepted for `SuspensionCard`'s call shape; a resume's status doesn't say which verdict was sent. */
-  resolution?: SuspensionStatus;
 }) {
   const resolver = useSuspensionResolver();
   const answer =
