@@ -180,6 +180,17 @@ describe.each([
     expect(view(collection)).toMatchObject({ inputTokens: 400, outputTokens: 70, live: true });
   });
 
+  it("counts a dead run's charge once when its request is continued, as its tokens are", async () => {
+    // Two paid runs, one finished and logged: the continuation reports that one's charge again, so the row keeps only the other's.
+    const { collection, claim } = await claimed();
+    const paid = (runId: string): RequestSpend["harnessRuns"][number] => ({ runId, harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 100, outputTokens: 10, costUsd: 0.1, billing: "api-key" });
+    const logged: RequestSpend = { byModel: {}, harnessRuns: [paid("logged")] };
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: { byModel: {}, harnessRuns: [paid("logged"), paid("unfinished")] }, writer: "first", admittedAt: 1 }, { claim });
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: logged, writer: "second", admittedAt: 2, recovered: logged }, { claim });
+    expect(view(collection)).toMatchObject({ inputTokens: 200, outputTokens: 20 });
+    expect(view(collection)?.costUsd).toBeCloseTo(0.2);
+  });
+
   it("keeps a dead run's harness tokens when its request is continued in a new process", async () => {
     // A harness run whose block never finished isn't in the log, so the continuation doesn't recover it: the row is its only record.
     const { collection, claim } = await claimed();

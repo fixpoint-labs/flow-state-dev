@@ -180,6 +180,8 @@ function unrecovered(live: TaskSpendSource[], recovered: TaskSpendSource[] | nul
       outputTokens: left(source.outputTokens, logged.outputTokens),
       runs: left(source.runs, logged.runs),
       unreported: left(source.unreported, logged.unreported),
+      // The continuation reports the logged charge itself, as it does the tokens.
+      costUsd: source.costUsd === null ? null : left(source.costUsd, logged.costUsd ?? 0),
     };
     return kept.inputTokens === 0 && kept.outputTokens === 0 && (source.kind === "model" || kept.runs === 0) ? [] : [kept];
   });
