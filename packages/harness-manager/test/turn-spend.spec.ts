@@ -15,10 +15,12 @@
  *     terminal status is published before the spend lands.
  *   - keep a record's first end (skip a record that already ended), or count
  *     only the ledger's runs: a continued turn reads 10 tokens, not 20.
+ *   - read model calls from the request's pending slice: a turn continued
+ *     after a disconnect loses the calls its first run made.
  */
-import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, generator, handler, sequencer } from "@flow-state-dev/core";
 import { reportHarnessSpend, type HarnessBlock, type HarnessCallbackContext } from "@flow-state-dev/core/types";
-import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { continueRequest, createCheckpointDurabilityProvider, createFlowRegistry, createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
@@ -162,6 +164,52 @@ describe("a harness session turn's spend", () => {
     });
     const turn = await onlyTurn(stores, "s-anonymous");
     expect(turn.spend).toMatchObject({ inputTokens: 20, outputTokens: 2 });
+  });
+
+  // A disconnect ends the request's first run, which hands its spend on; the
+  // continuation replays the finished model call without making it again, so
+  // the turn's spend is the request's whole count, not what is left to hand on.
+  it("keeps the model calls a turn made before a disconnect when the turn is continued", async () => {
+    const stores = createInMemoryStores();
+    await born(stores, "s-disconnect");
+    let waited = false;
+    const waitOnce = handler({
+      name: "wait-once",
+      inputSchema: z.any(),
+      execute: async (value, ctx) => {
+        if (waited) return value;
+        waited = true;
+        await new Promise((_resolve, reject) => ctx.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))));
+        return value;
+      },
+    });
+    const agent = () =>
+      sequencer({ name: "stub-harness", durable: true, inputSchema: z.object({ prompt: z.string() }) })
+        .step(generator({ name: "ask", model: "openai/gpt-6-luna", prompt: () => "p", user: () => "u" }))
+        .step(waitOnce)
+        .step(handler({ name: "done", inputSchema: z.any(), execute: () => ({ outcome: "completed" }) })) as unknown as HarnessBlock;
+    const flow = harnessSessionFlow({ kind: "stub-session", workspace, agent });
+    const modelResolver = Object.assign(
+      () => ({ modelId: "openai/gpt-6-luna", generate: async () => ({ text: "ok", usage: { promptTokens: 10, completionTokens: 2, totalTokens: 12 } }) }),
+      { resolveId: (id: string) => id },
+    );
+    const provider = createCheckpointDurabilityProvider({ checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases });
+    const runtimeConfig = { durabilityProvider: provider, modelResolver };
+    const disconnect = new AbortController();
+
+    const first = runAction({ flow, actionName: "turn", input: { prompt: "hello" }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-disconnect", requestId: "r-disconnect", signal: disconnect.signal, stores, runtimeConfig } as never);
+    while (!waited) await new Promise((resolve) => setTimeout(resolve, 5));
+    disconnect.abort();
+    await (first as Promise<unknown>).catch(() => undefined);
+    expect((await stores.request.get("r-disconnect"))?.status).toBe("interrupted");
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+    const { finished } = await continueRequest({ requestId: "r-disconnect", stores, flowRegistry: registry, runtimeConfig } as never);
+    await finished;
+
+    expect((await stores.request.get("r-disconnect"))?.status).toBe("completed");
+    const turn = await onlyTurn(stores, "s-disconnect");
+    expect(turn.spend).toMatchObject({ model: "openai/gpt-6-luna", inputTokens: 10, outputTokens: 2 });
   });
 
   // A page refreshes the session when it sees the turn end, so the spend must
