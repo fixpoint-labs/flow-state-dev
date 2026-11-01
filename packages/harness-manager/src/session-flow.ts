@@ -656,8 +656,8 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
  * when. The runs are this run of the request's, as its ledger reports them,
  * plus any an earlier run of the same request recorded that this one's
  * ledger doesn't hold (a turn continued after an interruption: its ledger
- * holds only its own runs). A run is one run however often it is written, so
- * a second write in the same run of the request counts nothing twice. Model
+ * holds only its own runs). A run with an id is one run however often it is
+ * written, so a second write in the same run of the request counts it once. Model
  * calls are the ledger's: a continued request's ledger carries the earlier
  * ones.
  */
@@ -668,9 +668,10 @@ function turnEndOf(
 ): { spend: TaskSpendView | null; spentRuns: HarnessRunSpend[] | null; endedAt: number } {
   const pending = readRequestSpend(ctx);
   const now = pending?.harnessRuns ?? [];
-  const sameRun = (a: HarnessRunSpend, b: HarnessRunSpend) =>
-    a.runId !== undefined ? a.runId === b.runId : b.runId === undefined && JSON.stringify(a) === JSON.stringify(b);
-  const earlier = (record.spentRuns ?? []).filter((run) => !now.some((other) => sameRun(run, other)));
+  // A run with an id is the same run wherever it is written. One without is a
+  // settled run of its own (the `HarnessRunSpend` contract), so an earlier
+  // one is always kept: the turn writes once per run of its request.
+  const earlier = (record.spentRuns ?? []).filter((run) => run.runId === undefined || !now.some((other) => other.runId === run.runId));
   const harnessRuns = [...earlier, ...now];
   const spend = pending === undefined && harnessRuns.length === 0 ? null : requestSpendView({ byModel: pending?.byModel ?? {}, harnessRuns }, requestId);
   return { spend, spentRuns: harnessRuns.length === 0 ? null : harnessRuns, endedAt: Date.now() };
