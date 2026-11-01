@@ -35,18 +35,21 @@ export const CURSOR_SIGN_IN_REMEDY = "Set CURSOR_API_KEY, or sign in to Cursor";
 /**
  * Whether Cursor can run on this machine, as core's neutral readiness: the
  * answer of {@link cursorSignIn}, with what to do when there is none. An SDK
- * that won't load, or a sign-in read that fails, is not ready with its reason.
+ * that won't load, or a sign-in read that fails, is not ready with its reason;
+ * a key counts only when the SDK also loads, since a run needs both.
  * Never throws.
  */
 export async function checkCursorReadiness(env: Readonly<Record<string, string>>): Promise<HarnessReadiness> {
   let signIn: CursorSignIn;
   try {
     signIn = await cursorSignIn(env);
+    // A key answers without loading the SDK, and a run still needs the SDK.
+    if (signIn.status === "key") await import("@cursor/sdk");
   } catch (error) {
     return {
       ready: false,
       reason: `The Cursor SDK didn't load or answer: ${error instanceof Error ? error.message : String(error)}`,
-      remedy: "Install @cursor/sdk, then re-check",
+      remedy: "Install @cursor/sdk",
     };
   }
   return signIn.status === "none" ? { ready: false, reason: `Cursor has no sign-in: ${signIn.reason}`, remedy: CURSOR_SIGN_IN_REMEDY } : { ready: true };

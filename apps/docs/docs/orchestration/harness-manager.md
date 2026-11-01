@@ -424,8 +424,8 @@ stored. Another process checks its own machine.
 ### Using them
 
 - **A screen.** `harnessReadinessAction(readiness)` is a flow-level action. Its input is `{ refresh?: boolean }` and it answers `{ harnesses: HarnessReadinessRow[] }`, with no model call. Draw a chip per row, and send `{ refresh: true }` for Re-check.
-- **A coordinator.** Add `harnessReadinessCapability(readiness)` to its `uses`. It puts the rows in the generator's context, followed by `READINESS_GUIDANCE`, which tells the model to file coding work only on a ready harness and to say what to run for one that isn't.
-- **A gate before a task starts.** `readiness.refusal(harness)` returns `undefined` when the harness can run. A harness last read as not ready is checked once more first, so a sign-in made since then counts. Otherwise it returns a sentence that names the harness, says why and says what to run. A harness you didn't pass to `harnessReadiness` answers `undefined`.
+- **A coordinator.** Add `harnessReadinessCapability(readiness)` to its `uses`. It puts the rows in the generator's context, followed by `READINESS_GUIDANCE`, which tells the model to file coding work only on a ready harness and to say what to run for one that isn't. A turn reads the kept rows and runs no check. The rows change on a Re-check, or when a task start checks a harness again, which the guidance tells the model to try when the user says they've just signed in.
+- **A gate before a task starts.** `readiness.refusal(harness)` returns `undefined` when the harness can run. A harness that isn't marked ready gets one fresh check first, so a sign-in made since the last read counts. Otherwise it returns a sentence that names the harness, says why and says what to run. When the check got no answer, the sentence says it couldn't tell rather than that the harness isn't set up. A harness you didn't pass to `harnessReadiness` answers `undefined`.
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";

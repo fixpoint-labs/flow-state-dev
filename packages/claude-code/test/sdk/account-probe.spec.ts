@@ -169,13 +169,11 @@ describe("checkClaudeCodeReadiness, scripted", () => {
     expect(asked).toBe(2);
   });
 
-  it("is unanswered, with Re-check as the remedy, when neither probe answers", async () => {
+  it("is unanswered, with no remedy to follow, when neither probe answers", async () => {
     const sdk = scriptedSdk(() => new Promise(() => {}));
-    expect(await checkClaudeCodeReadiness({ env: {}, timeoutMs: 50, importSdk: sdk.importSdk })).toMatchObject({
-      ready: false,
-      remedy: "Re-check",
-      unanswered: true,
-    });
+    const answer = await checkClaudeCodeReadiness({ env: {}, timeoutMs: 50, importSdk: sdk.importSdk });
+    expect(answer).toMatchObject({ ready: false, unanswered: true });
+    expect(answer).not.toHaveProperty("remedy");
   });
 
   it("names the SDK to install when it can't be loaded", async () => {

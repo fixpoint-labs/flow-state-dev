@@ -133,6 +133,15 @@ describe("checkCodexReadiness", () => {
     expect(execFile).not.toHaveBeenCalled();
   });
 
+  it("is not ready on a key when the SDK can't be loaded: a run needs both", async () => {
+    findCodexProgram.mockRejectedValue(new Error("Cannot find package '@openai/codex-sdk'"));
+    expect(await checkCodexReadiness({ env: { CODEX_API_KEY: "k" } })).toEqual({
+      ready: false,
+      reason: "The Codex SDK could not be loaded: Cannot find package '@openai/codex-sdk'",
+      remedy: "Install @openai/codex-sdk",
+    });
+  });
+
   it("is ready on a login `codex login status` accepts", async () => {
     codexAnswers(null, "Logged in using ChatGPT\n");
     expect(await checkCodexReadiness({ env: {} })).toEqual({ ready: true });
@@ -147,12 +156,11 @@ describe("checkCodexReadiness", () => {
     });
   });
 
-  it("is unanswered, with Re-check as the remedy, when Codex never answered", async () => {
+  it("is unanswered, with no remedy to follow, when Codex never answered", async () => {
     codexAnswers(failure({ killed: true, signal: "SIGTERM" }));
     expect(await checkCodexReadiness({ env: {}, timeoutMs: 2_000 })).toEqual({
       ready: false,
       reason: "Codex did not answer within 2 s, so Codex's sign-in is unknown",
-      remedy: "Re-check",
       unanswered: true,
     });
   });

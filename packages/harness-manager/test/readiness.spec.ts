@@ -78,7 +78,7 @@ describe("harnessReadiness — the kept read", () => {
     );
     const [broken, slow] = await readiness.read();
     expect(broken).toMatchObject({ ready: false, unanswered: true, reason: "The check failed: SDK exploded" });
-    expect(slow).toMatchObject({ ready: false, unanswered: true, reason: "The check did not answer within 0.02 s", remedy: "Re-check" });
+    expect(slow).toMatchObject({ ready: false, unanswered: true, reason: "The check did not answer within 0.02 s", remedy: null });
   });
 
   it("refuses an empty host: there is nothing to read", () => {
@@ -103,6 +103,20 @@ describe("harnessReadiness — refusal before a task starts", () => {
     expect(codex.calls()).toBe(2);
   });
 
+  it("checks a harness with no kept row once, not twice, before refusing", async () => {
+    const codex = scripted([SIGNED_OUT]);
+    const readiness = harnessReadiness({ codex: { label: "Codex", check: codex.check } });
+    expect(await readiness.refusal("codex")).toMatch(/isn't set up/);
+    expect(codex.calls()).toBe(1);
+  });
+
+  it("says it couldn't tell, not that the harness isn't set up, when the check got no answer", async () => {
+    const readiness = harnessReadiness({ slow: { label: "Slow", check: scripted(["hang"]).check } }, { timeoutMs: 20 });
+    expect(await readiness.refusal("slow")).toBe(
+      "Couldn't tell whether Slow is set up on this machine: The check did not answer within 0.02 s. Try starting the task again in a moment.",
+    );
+  });
+
   it("refuses with a sentence that names the harness, says why, and what to run", async () => {
     const readiness = harnessReadiness({ codex: { label: "Codex", check: scripted([SIGNED_OUT]).check } });
     expect(await readiness.refusal("codex")).toBe(
@@ -117,16 +131,21 @@ describe("harnessReadiness — refusal before a task starts", () => {
 });
 
 describe("formatHarnessReadiness", () => {
-  it("prints one line per harness under a heading: ✓ for ready, ✗ with reason and remedy", async () => {
-    const readiness = harnessReadiness({
-      cursor: { label: "Cursor", check: scripted([READY]).check },
-      codex: { label: "Codex", check: scripted([SIGNED_OUT]).check },
-    });
+  it("prints one line per harness under a heading: ✓ for ready, ✗ with reason and remedy, ? for no answer", async () => {
+    const readiness = harnessReadiness(
+      {
+        cursor: { label: "Cursor", check: scripted([READY]).check },
+        codex: { label: "Codex", check: scripted([SIGNED_OUT]).check },
+        claude: { label: "Claude Code", check: scripted(["hang"]).check },
+      },
+      { timeoutMs: 20 },
+    );
     expect(formatHarnessReadiness(await readiness.read())).toBe(
       [
         "Coding harnesses on this machine:",
         "✓ Cursor",
         "✗ Codex: Codex has no credential: Not logged in. Run `codex login`, or set CODEX_API_KEY.",
+        "? Claude Code: The check did not answer within 0.02 s.",
       ].join("\n"),
     );
   });

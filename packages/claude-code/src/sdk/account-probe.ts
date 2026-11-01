@@ -125,6 +125,6 @@ export async function checkClaudeCodeReadiness(options: ProbeClaudeAccountOption
     return { ready: false, reason: `The Claude Code SDK is not installed: ${account.reason}`, remedy: "Install @anthropic-ai/claude-agent-sdk" };
   }
   return account.unanswered === true
-    ? { ready: false, reason: `${account.reason}, so Claude Code's sign-in is unknown`, remedy: "Re-check", unanswered: true }
+    ? { ready: false, reason: `${account.reason}, so Claude Code's sign-in is unknown`, unanswered: true }
     : { ready: false, reason: `Claude Code has no credential: ${account.reason}`, remedy: CLAUDE_SIGN_IN_REMEDY };
 }

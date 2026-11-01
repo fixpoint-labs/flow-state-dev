@@ -443,7 +443,8 @@ export type HarnessUsageReader = (options?: { signal?: AbortSignal }) => Promise
  * `ready: false` carries `reason`, what is wrong, and `remedy`, what the user
  * does about it, as two sentences so a chip can show the remedy alone.
  * `unanswered` is set when the check got no answer (it timed out, was stopped,
- * or could not start), so nothing is known either way.
+ * or could not start), so nothing is known either way; such a row usually has
+ * no remedy, since there is nothing to fix yet.
  */
 export type HarnessReadiness =
   | { ready: true }
@@ -453,7 +454,8 @@ export type HarnessReadiness =
  * Check, with no run, whether a harness can run on this machine: its SDK, its
  * sign-in or key. A host hands one per harness to whatever keeps the answer.
  * A check never throws for an expected state; it returns it with its reason.
- * `signal` aborts a check the caller stopped waiting for.
+ * `signal` aborts a check the caller stopped waiting for: a check that starts a
+ * process ends it then, or the process outlives the caller's timeout.
  */
 export type HarnessReadinessCheck = (options?: { signal?: AbortSignal }) => Promise<HarnessReadiness>;
 

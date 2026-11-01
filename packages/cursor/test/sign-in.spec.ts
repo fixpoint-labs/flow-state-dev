@@ -68,7 +68,21 @@ describe("checkCursorReadiness", () => {
     expect(await checkCursorReadiness({})).toEqual({
       ready: false,
       reason: "The Cursor SDK didn't load or answer: native module missing",
-      remedy: "Install @cursor/sdk, then re-check",
+      remedy: "Install @cursor/sdk",
     });
+  });
+
+  it("is not ready on a key when the SDK can't be loaded: a run needs both", async () => {
+    vi.resetModules();
+    vi.doMock("@cursor/sdk", () => {
+      throw new Error("Cannot find package '@cursor/sdk'");
+    });
+    try {
+      const { checkCursorReadiness: withoutSdk } = await import("../src/sign-in");
+      expect(await withoutSdk({ CURSOR_API_KEY: "k" })).toMatchObject({ ready: false, remedy: "Install @cursor/sdk" });
+    } finally {
+      vi.doUnmock("@cursor/sdk");
+      vi.resetModules();
+    }
   });
 });

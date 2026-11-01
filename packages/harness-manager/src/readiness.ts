@@ -15,7 +15,7 @@
  *   Re-check as `{ refresh: true }`;
  * - {@link harnessReadinessCapability}, a context entry a host adds to its
  *   coordinator's `uses`, so work is filed only on a ready harness;
- * - `read.refusal(harness)`, a coding flow's gate before a task starts.
+ * - `refusal(harness)`, a coding flow's gate before a task starts.
  *
  * ## Rules
  *
@@ -88,8 +88,8 @@ export interface HarnessReadinessRead {
   /**
    * Why a task on `harness` can't start, as a sentence that names it and
    * says what to do, or `undefined` when it can. A ready row answers without
-   * a check; a not-ready one is checked again first, so a sign-in made since
-   * the last read counts. A harness the host didn't name answers `undefined`:
+   * a check; a not-ready or missing one gets one fresh check, so a sign-in
+   * made since the last read counts. A harness the host didn't name answers `undefined`:
    * there is nothing to check.
    */
   refusal(harness: string): Promise<string | undefined>;
@@ -142,17 +142,25 @@ export function harnessReadiness(
     read,
     async refusal(harness) {
       if (!(harness in slots)) return undefined;
-      let row = rows.get(harness) ?? (await run(harness));
-      if (!row.ready) row = await run(harness);
+      if (rows.get(harness)?.ready === true) return undefined;
+      // No row, or a not-ready one: either way one fresh check answers.
+      const row = await run(harness);
       return row.ready ? undefined : refusalOf(row);
     },
   };
 }
 
-/** A task's refusal on a harness that isn't ready. */
+/** A task's refusal on a harness that isn't ready, or whose check got no answer. */
 function refusalOf(row: HarnessReadinessRow): string {
-  const fix = row.remedy === null ? "" : ` ${withStop(row.remedy)}`;
-  return `${row.label} isn't set up on this machine: ${withStop(row.reason ?? "its check failed")}${fix} Then start the task again.`;
+  const why = `${withStop(row.reason ?? "its check failed")}${remedyOf(row)}`;
+  return row.unanswered
+    ? `Couldn't tell whether ${row.label} is set up on this machine: ${why} Try starting the task again in a moment.`
+    : `${row.label} isn't set up on this machine: ${why} Then start the task again.`;
+}
+
+/** The row's remedy as a trailing sentence, or nothing. */
+function remedyOf(row: HarnessReadinessRow): string {
+  return row.remedy === null ? "" : ` ${withStop(row.remedy)}`;
 }
 
 /** `text` ending in one full stop. */
@@ -167,7 +175,7 @@ async function checkWithin(check: HarnessReadinessCheck, timeoutMs: number): Pro
   const timedOut = new Promise<HarnessReadiness>((resolve) => {
     timer = setTimeout(() => {
       controller.abort();
-      resolve({ ready: false, reason: `The check did not answer within ${timeoutMs / 1000} s`, remedy: "Re-check", unanswered: true });
+      resolve({ ready: false, reason: `The check did not answer within ${timeoutMs / 1000} s`, unanswered: true });
     }, timeoutMs);
   });
   try {
@@ -210,15 +218,15 @@ function messageOf(error: unknown): string {
 }
 
 /**
- * The rows as text: one line per harness, `✓ Cursor` or
- * `✗ Codex: <reason>. <remedy>.`, under a heading. The start log and the
- * coordinator's context both print this.
+ * The rows as text: one line per harness, `✓ Cursor`,
+ * `✗ Codex: <reason>. <remedy>.`, or `? Claude Code: <reason>.` for a check
+ * that got no answer, under a heading. The start log and the coordinator's
+ * context both print this.
  */
 export function formatHarnessReadiness(rows: readonly HarnessReadinessRow[]): string {
   const lines = rows.map((row) => {
     if (row.ready) return `✓ ${row.label}`;
-    const fix = row.remedy === null ? "" : ` ${withStop(row.remedy)}`;
-    return `✗ ${row.label}: ${withStop(row.reason ?? "its check failed")}${fix}`;
+    return `${row.unanswered ? "?" : "✗"} ${row.label}: ${withStop(row.reason ?? "its check failed")}${remedyOf(row)}`;
   });
   return ["Coding harnesses on this machine:", ...lines].join("\n");
 }
@@ -247,12 +255,16 @@ export function harnessReadinessAction(readiness: HarnessReadinessRead) {
 /** The guidance under the rows in the coordinator's context. */
 export const READINESS_GUIDANCE =
   "File coding work only on a harness marked ✓. If the user asks for one marked ✗, don't start it there: " +
-  "say it isn't set up and what to run, and offer a ready one.";
+  "say it isn't set up and what to run, and offer a ready one. One marked ? didn't answer its check: say so, and offer a ready one. " +
+  "If the user says they have just set a harness up, start the task: starting it checks that harness again.";
 
 /**
  * The readiness rows in a generator's context, for a host's coordinator:
  * `uses: [harnessReadinessCapability(readiness)]`. Reads the kept rows, so a
- * turn starts no check of its own once the first read has run.
+ * turn starts no check of its own once the first read has run. The rows move
+ * when something checks again: a Re-check, or a task start through `refusal`
+ * on a harness not marked ready, which the guidance tells the coordinator to
+ * try when the user says they have just signed in.
  */
 export function harnessReadinessCapability(readiness: HarnessReadinessRead) {
   return defineCapability({

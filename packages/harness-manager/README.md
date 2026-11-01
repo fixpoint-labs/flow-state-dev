@@ -598,10 +598,10 @@ void readiness.read().then((rows) => console.log(formatHarnessReadiness(rows)));
 
 - **`read({ refresh? })`** returns one `HarnessReadinessRow` per harness, in the order given: `harness`, `label`, `ready`, `reason`, `remedy`, `unanswered` and `checkedAt`. The first read runs every check; later reads return the kept rows. `refresh: true` checks every harness again, and `refresh: "codex"` checks one. Concurrent checks of one harness share one call. Nothing polls.
 - **It never throws.** A check that throws, rejects or outlasts `timeoutMs` (default `READINESS_CHECK_TIMEOUT_MS`, 30 s) is a row with `ready: false`, `unanswered: true` and a plain `reason`.
-- **`refusal(harness)`** is for a coding flow's gate before a task starts. It returns `undefined` when the harness can run, checking a not-ready harness once more first so a sign-in made since the last read counts. Otherwise it returns a sentence that names the harness, says why, and says what to run.
+- **`refusal(harness)`** is for a coding flow's gate before a task starts. It returns `undefined` when the harness can run, giving a harness not marked ready one fresh check first so a sign-in made since the last read counts. Otherwise it returns a sentence that names the harness, says why, and says what to run; when the check got no answer, the sentence says it couldn't tell.
 - **`harnessReadinessAction(readiness)`** is a flow-level action: input `{ refresh?: boolean }`, output `{ harnesses: HarnessReadinessRow[] }`. A screen draws chips from it, and Re-check is `{ refresh: true }`. No model call.
-- **`harnessReadinessCapability(readiness)`** puts the rows in a generator's context, followed by `READINESS_GUIDANCE` (file coding work only on a ready harness, and say what to run for one that isn't). Add it to your coordinator's `uses`.
-- **`formatHarnessReadiness(rows)`** is the text the start log and the context print.
+- **`harnessReadinessCapability(readiness)`** puts the rows in a generator's context, followed by `READINESS_GUIDANCE` (file coding work only on a ready harness, say what to run for one that isn't, and start the task when the user says they've just signed in, since a start checks again). A turn reads the kept rows and runs no check. Add it to your coordinator's `uses`.
+- **`formatHarnessReadiness(rows)`** is the text the start log and the context print: `✓` ready, `✗` not ready with its remedy, `?` no answer.
 
 Readiness is this machine's state, so it is kept in the process, not stored. Nothing here changes `harnessManager`: a host that installs none of it gets the run path it had.
 

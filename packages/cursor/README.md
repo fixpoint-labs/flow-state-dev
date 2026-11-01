@@ -193,8 +193,8 @@ import's own error, such as Node's `ERR_MODULE_NOT_FOUND`. A missing, unreadable
 `checkCursorReadiness(env)` answers as core's `HarnessReadiness`, for harness-manager's
 `harnessReadiness`: `{ ready: true }` for a key or a stored login, `{ ready: false, reason,
 remedy }` with `CURSOR_SIGN_IN_REMEDY` ("Set CURSOR_API_KEY, or sign in to Cursor") for neither,
-and not ready with `"Install @cursor/sdk, then re-check"` when the SDK can't be loaded or
-answer. Unlike `cursorSignIn`, it never rejects.
+and not ready with `"Install @cursor/sdk"` when the SDK can't be loaded or answer, which it
+checks even when `CURSOR_API_KEY` is set. Unlike `cursorSignIn`, it never rejects.
 
 ## The handle
 
