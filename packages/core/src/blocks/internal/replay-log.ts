@@ -52,6 +52,8 @@ export interface ResolvedResume {
   resolution: string | undefined;
   /** The suspension's reason, from its `suspension` item: whether it waited for a user. */
   reason: string | undefined;
+  /** The logical path of the block that waited at it (`${requestId}:${path}`), when its `suspension` item is in the log. */
+  blockLogicalId?: string;
   /**
    * True when the resolution was a skip — `ctx.suspend()` must return the
    * `SUSPENSION_SKIPPED` sentinel on replay, not the persisted `data`, so a
@@ -303,10 +305,12 @@ export function buildReplayLog(
     resolvedByLogical.set(s.logicalId, list);
   }
   const reasonOf = new Map(suspensions.map((s) => [s.suspensionId, s.reason]));
+  const logicalOf = new Map(suspensions.map((s) => [s.suspensionId, s.logicalId]));
   const inOrder: readonly ResolvedResume[] = [...resumeBySuspension].map(([suspensionId, resume]) => ({
     ...resume,
     suspensionId,
     reason: reasonOf.get(suspensionId),
+    blockLogicalId: logicalOf.get(suspensionId),
   }));
 
   const noResolved: readonly ResolvedResume[] = [];

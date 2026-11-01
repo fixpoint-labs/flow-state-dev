@@ -8,7 +8,7 @@
  * is the goal check `goals/task-board/holds-a-task-waiting-on-a-person/`.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_ORG_ID, defineFlow, handler, sequencer, SuspensionTimeoutError } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, handler, sequencer, SuspensionTimeoutError, transientSlot } from "@flow-state-dev/core";
 import type { FlowInstance, SuspensionRecord, SuspendForUserOptions } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
@@ -631,6 +631,83 @@ describe("a state write before the wait that no checkpoint holds", () => {
     expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "a" })).status).toBe(202);
     await h.drain();
     expect(seen).toEqual([1]);
+  });
+});
+
+describe("a state write before the wait, from code around the waiting block", () => {
+  const counter = () =>
+    handler({
+      name: "wait",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => ctx.suspendForUser({ kind: "input", prompt: "?" } as never)
+    });
+
+  it("a connector's write before its block waits applies once", async () => {
+    const seen: unknown[] = [];
+    const block = sequencer({ name: "s", stateSchema: z.object({ asked: z.number().default(0) }) })
+      .step(async (input: unknown, ctx) => {
+        await ctx.sequencer!.incState({ asked: 1 });
+        return input;
+      }, counter())
+      .map((_input, ctx) => {
+        seen.push((ctx.sequencer!.state as { asked: number }).asked);
+        return null;
+      });
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "a" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([1]);
+  });
+
+  it("a transient field written before the wait is written again, since no checkpoint holds it", async () => {
+    const seen: unknown[] = [];
+    const waits = handler({
+      name: "waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        await ctx.sequencer!.patchState({ ephemeral: "rebuilt", asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        seen.push(ctx.sequencer!.state);
+        return null;
+      }
+    });
+    const block = sequencer({
+      name: "s",
+      stateSchema: z.object({ asked: z.number().default(0), ephemeral: transientSlot(z.string().default("empty")) })
+    }).step(waits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "a" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([{ asked: 1, ephemeral: "rebuilt" }]);
+  });
+
+  it("a crash after the answer was logged replays the step's increment once", async () => {
+    const seen: unknown[] = [];
+    const waits = handler({
+      name: "waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        await ctx.sequencer!.incState({ asked: 1 });
+        const answer = await ctx.suspendForUser({ kind: "approval", prompt: "Ship?" } as never);
+        seen.push([(ctx.sequencer!.state as { asked: number }).asked, answer]);
+        return null;
+      }
+    });
+    const block = sequencer({ name: "s", stateSchema: z.object({ asked: z.number().default(0) }) }).step(waits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    await crashAfterAudit(h, requestId, gate, { status: "approved", resolution: "approved", resolvedBy: USER } as never);
+    await h.deps.continueRequest({ requestId } as never);
+    await h.drain();
+    expect(seen).toEqual([[1, { cancelled: false, approved: true }]]);
   });
 });
 

@@ -3678,43 +3678,73 @@ export async function createExecutionContext<
           name: matched.parent.name,
           instanceId: matched.parent.instanceId,
           input: matched.parent.input,
-          ...(container === undefined || !restoredFromCheckpoint(matched.parent.instanceId) ? ops : skipWhileReplayingToGate(ops))
+          ...(container === undefined || !restoredFromCheckpoint(matched.parent.instanceId)
+            ? ops
+            : skipReplayedWrites(ops, getTransientKeys(matched.parent.stateSchema), () => (container.read() ?? {}) as TState))
         },
         () => (container?.read() ?? {}) as TState
       ) as unknown as StateRef<TState>;
     };
 
-    // A state write this scope's block made before the gate it waits at
-    // applies once (FIX-2444). On a continuation the waiting block's code runs
-    // again up to that gate, from a checkpoint the sequencer wrote at the
-    // suspension, so the state already holds every write that code made
-    // before it stopped. Until the block reaches the last gate the log
-    // records for it, its writes are already in that state and are skipped;
-    // from there on they are live. Reads are untouched.
-    // Only the sequencer whose checkpoint this continuation restored holds
-    // those writes: any other container (a handler's own state) starts from
-    // its defaults and needs them made again. The restore itself is the
-    // sequencer's own write and always applies.
+    // A state write made before the gate this continuation waits at applies
+    // once (FIX-2444). The resume runs the code up to that gate again (the
+    // waiting block, its connector, a sequencer's own `.map`) from the
+    // checkpoint the sequencer wrote at the suspension, which already holds
+    // every write that code made before it stopped. Until the waiting block
+    // reaches the last gate the log records for it, writes to that restored
+    // state are skipped, except to transient fields, which no checkpoint
+    // holds. From the gate on, writes are live. Reads are untouched.
+    //
+    // Only the container the continuation restored holds them (any other,
+    // such as a handler's own state, starts from its defaults), and the
+    // restore itself is the sequencer's own write and always applies.
     const restoredFromCheckpoint = (instanceId: string): boolean => {
       const resumeState = (rootContext as { _resumeState?: { state?: unknown; blockInstanceId?: string } })._resumeState;
       if (resumeState?.state === undefined) return false;
       return instanceId === (resumeState.blockInstanceId ?? buildBlockInstanceId(requestRef.current.id, ROOT_BLOCK_PATH, 0));
     };
     const replayingToGate = (): boolean => {
-      const replayLog = (context as { _replayLog?: ReplayLog })._replayLog;
-      if (replayLog === undefined || (context as { _restoringCheckpoint?: boolean })._restoringCheckpoint === true) return false;
-      const logicalId = `${requestRef.current.id}:${parentChain?.parent?.path ?? "root"}`;
-      const logged =
-        replayLog.resolvedResumes(logicalId).length + (replayLog.pendingSuspension()?.blockLogicalId === logicalId ? 1 : 0);
-      return (resolvedResumeCursor.get(logicalId) ?? 0) < logged;
+      if ((context as { _restoringCheckpoint?: boolean })._restoringCheckpoint === true) return false;
+      const replayLog = (rootContext as { _replayLog?: ReplayLog })._replayLog;
+      if (replayLog === undefined) return false;
+      // The waiting block: the one this continuation resolves, else (a
+      // crash's continuation) the one the latest logged answer resumed, while
+      // it has not finished.
+      const pending = replayLog.pendingSuspension()?.blockLogicalId;
+      const latest = replayLog.resolvedInOrder().at(-1)?.blockLogicalId;
+      const waiting = pending ?? (latest !== undefined && replayLog.getCompletedOutput(latest) === undefined ? latest : undefined);
+      if (waiting === undefined) return false;
+      const logged = replayLog.resolvedResumes(waiting).length + (pending === waiting ? 1 : 0);
+      return (resolvedResumeCursor.get(waiting) ?? 0) < logged;
     };
-    const skipWhileReplayingToGate = <TOps extends Record<string, (...args: never[]) => Promise<unknown>>>(ops: TOps): TOps =>
-      Object.fromEntries(
-        Object.entries(ops).map(([op, write]) => [
-          op,
-          (...args: never[]) => (replayingToGate() ? Promise.resolve(true) : write(...args))
-        ])
-      ) as TOps;
+    const skipReplayedWrites = <TState extends object>(
+      ops: Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState">,
+      transientKeys: ReadonlySet<string>,
+      read: () => TState
+    ): typeof ops => {
+      const transientOf = (values: object): Record<string, unknown> =>
+        Object.fromEntries(Object.entries(values).filter(([key]) => transientKeys.has(key)));
+      const patchTransient = async (values: object): Promise<boolean> => {
+        const kept = transientOf(values);
+        return Object.keys(kept).length === 0 ? true : ops.patchState(kept as Partial<TState>);
+      };
+      return {
+        patchState: (updates: Partial<TState>) => (replayingToGate() ? patchTransient(updates) : ops.patchState(updates)),
+        setState: (next) => (replayingToGate() ? patchTransient(next) : ops.setState(next)),
+        incState: (increments) => {
+          if (!replayingToGate()) return ops.incState(increments);
+          const kept = transientOf(increments) as Record<string, number>;
+          return Object.keys(kept).length === 0 ? Promise.resolve(true) : ops.incState(kept);
+        },
+        pushState: (field, value) =>
+          !replayingToGate() || transientKeys.has(field) ? ops.pushState(field, value) : Promise.resolve(true),
+        setStateRecord: (field, key, value) =>
+          !replayingToGate() || transientKeys.has(field) ? ops.setStateRecord(field, key, value) : Promise.resolve(true),
+        deleteStateRecord: (field, key) =>
+          !replayingToGate() || transientKeys.has(field) ? ops.deleteStateRecord(field, key) : Promise.resolve(true),
+        atomicState: (mutator) => (replayingToGate() ? patchTransient(mutator(read())) : ops.atomicState(mutator))
+      } as typeof ops;
+    };
 
     const context: ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState> = {
       flow,
