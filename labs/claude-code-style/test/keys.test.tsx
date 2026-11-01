@@ -100,4 +100,20 @@ describe("keys", () => {
     expect(document.activeElement).toBe(projectsTab);
     expect(within(views).getAllByRole("tab").filter((t) => t.getAttribute("tabindex") === "0")).toEqual([projectsTab]);
   });
+  it("Esc closes the switcher and nothing under it: a popup or sheet listening on the document never sees it", async () => {
+    await openApp();
+    // What a popup or sheet underneath does: it closes on any Esc that reaches the document.
+    const under: string[] = [];
+    const listen = (event: KeyboardEvent) => void under.push(event.key);
+    document.addEventListener("keydown", listen);
+    try {
+      press("k", { metaKey: true });
+      const input = await screen.findByRole("combobox");
+      press("Escape", {}, input);
+      await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
+      expect(under).not.toContain("Escape");
+    } finally {
+      document.removeEventListener("keydown", listen);
+    }
+  });
 });

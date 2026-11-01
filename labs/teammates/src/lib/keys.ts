@@ -84,3 +84,13 @@ export function useFocusReturn(open: boolean) {
     },
   };
 }
+
+/**
+ * A dialog's Esc is its own. Radix closes the dialog from a capture listener
+ * on the document; stopping the event there keeps it from the popups and
+ * sheets underneath, whose own document listeners would close them too.
+ * Pass it as `onEscapeKeyDown`.
+ */
+export function ownEscape(event: KeyboardEvent) {
+  event.stopPropagation();
+}

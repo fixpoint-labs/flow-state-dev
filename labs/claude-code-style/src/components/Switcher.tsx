@@ -13,7 +13,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useFocusReturn } from "../lib/keys";
+import { ownEscape, useFocusReturn } from "../lib/keys";
 import { MODES, modeOfWorker, type ModeId } from "../modes";
 
 /** A result matches when its value or a keyword holds the query, ignoring case; no fuzzy match, so "new" finds New session and nothing it only resembles. */
@@ -53,6 +53,7 @@ export function Switcher({
       <DialogContent
         showCloseButton={false}
         onCloseAutoFocus={focus.onCloseAutoFocus}
+        onEscapeKeyDown={ownEscape}
         className="top-24 translate-y-0 gap-0 overflow-hidden rounded-none p-0"
       >
         <DialogTitle className="sr-only">Switch session</DialogTitle>
