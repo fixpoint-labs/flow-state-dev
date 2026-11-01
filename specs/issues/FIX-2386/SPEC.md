@@ -82,8 +82,9 @@ commands need; both are read through one shape and drawn by one chip.
 - **The session points at its worktree** ([D1](DECISIONS.md#d1)): a server-owned,
   client-exposed `workspace` field on session state, `{ worktree }`, the key of FIX-2439's
   row, which owns path, branch, base, count and state. At turn end, in the same `onFinished`
-  handler that already checks the branch's pull requests, the flow reads `HEAD`'s branch and the
-  count, and the workspace host writes both to the row as one snapshot.
+  handler that already checks the branch's pull requests, the flow calls the workspace's
+  `recordCheckout`, and the host reads `HEAD`'s branch and the count and writes both to the row as
+  one snapshot (FIX-2439).
 - **The workspace interface names the row** ([D1](DECISIONS.md#d1)): `provision` returns
   `{ path, worktree }` on the one return shape FIX-2419 and FIX-2420 also extend. A bare path
   still compiles and records no pointer.
@@ -114,7 +115,7 @@ Kitchen Sink names a session's branch and where its worktrees live.
 
 | Piece | What this does with it |
 |---|---|
-| `readRunCommits` (`commits.ts`) and the run record's base | **Reused** by both paths. The session flow calls it at turn end with the row's base |
+| `readRunCommits` (`commits.ts`) and the run record's base | **Reused** by the board path. A session's count is read by the workspace host's `recordCheckout` (FIX-2439) |
 | FIX-2439's `worktrees` rows | **Read**: the session stores the key and reads path, branch, base and state from the row. It never writes one |
 | Manager output `branch`, `commits` | **Extended** with `baseCommit` and `path`, both from the run record the manager already keeps |
 | `HarnessSessionWorkspace.provision`, `branch`, `locate` | **Extended**: `provision` returns the row key; `branch` still decides the pull-request check |

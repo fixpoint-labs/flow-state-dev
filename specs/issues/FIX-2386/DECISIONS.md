@@ -40,20 +40,23 @@ FIX-2419, and reads the row from day one (review, amendment on this PR).
   returns the row's key with the path (`{ path, worktree }`, on the one return shape FIX-2419
   and FIX-2420 also extend). The host writes the row; the session flow only stores the key.
 - **Branch and count are one snapshot on the row.** The count is a fact about the worktree's
-  checkout, not about one session: two sessions attached to one worktree see one `HEAD`. So at
-  turn end the flow reads `HEAD`'s branch and counts commits past the row's `baseCommit` with
-  `readRunCommits`, then hands both to the workspace host, which writes them to the row together
-  (one writer, ER-5). Whichever session's turn ended last, the chip's branch, count and `git log`
-  name one line of work (review, Codex, twice). A count git couldn't read, or a row with no
-  base, is `null`: unknown, never 0. It is read only at turn end because the harness commits
-  only during a turn, so it misses only commits a person makes by hand between turns. The row
-  gains `commits` beside `branch`; FIX-2439 owns the field.
+  checkout, not about one session: two sessions attached to one worktree see one `HEAD`. So the
+  turn-end handler calls the workspace's `recordCheckout(place, { worktrees })` while the turn
+  still holds the worktree. The host reads `HEAD`'s branch and the commits past the row's
+  `baseCommit`, and writes both with `lastTurnAt` in one upsert (FIX-2439): git has one reader
+  and the row one writer. Whichever session's turn ended last, the chip's branch, count and
+  `git log` name one line of work (review, Codex, twice). A count git couldn't read, or a row
+  with no base, is `null`: unknown, never 0. It is read only at turn end because the harness
+  commits only during a turn, so it misses only commits a person makes by hand between turns.
+- **This issue makes the record `{ worktree }`.** FIX-2419 adds a session `workspace` record
+  and FIX-2439 adds its `worktree` key; this issue drops the record's path, branch and owner
+  copies, so the shape has one owner.
 - **A session stored before this change** has no key, so it shows nothing until its next turn
   provisions or attaches, which writes the row and the key.
 - **Rejected: copies on session state until FIX-2439 lands.** They would show the chip sooner,
   but make the session a second owner that later needs migrating.
 - **Locks in:** `workspace: { worktree }` on harness session state; the session flow reads
-  FIX-2439's rows and reports branch and count through the workspace host, never writing a row. A read action, if one is ever wanted,
+  FIX-2439's rows and asks the workspace host to record the checkout, never writing a row. A read action, if one is ever wanted,
   reads the same row.
 
 <a name="d2"></a>
