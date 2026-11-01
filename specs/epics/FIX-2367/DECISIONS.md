@@ -138,7 +138,7 @@ Every rule has one owner. A *consumes* cell is a place a child must not re-decid
 
 | # | Rule every child obeys | Owner | Checked at |
 |---|---|---|---|
-| ER-1 | A notice names a topic and a change kind. It never carries rows ([D2](#d2)) | the bus | Every child's spec review |
+| ER-1 | A notice names a topic and a change kind, and may name the request that made it. It never carries rows ([D2](#d2)) | the bus | Every child's spec review |
 | ER-2 | Topics come only from the session, user and org scopes, optionally narrowed to one resource under them. No child invents a topic of its own | the bus | Each publisher's spec review |
 | ER-3 | Every new publisher publishes through the one bus, and the bus wakes the session stream ([D6](#d6)). Its timed read runs only where the bus can't cross processes; no child adds an always-on poll, in a product ticket or a lab | the bus | Every child's spec review |
 | ER-4 | A subscribe is checked on the server, from the caller's trusted identity, by the check the scope's read route already uses (BP-031), on every connect and reconnect, not only the first (FIX-1620). Never a claim the client sends; never a second check | delivery | Delivery's and FIX-380's spec review; closure leg c |
@@ -153,9 +153,9 @@ Every rule has one owner. A *consumes* cell is a place a child must not re-decid
 | The notice and topic shape | the bus · every publisher · delivery · FIX-380 | The bus defines it once (ER-1, ER-2), with the wire's `topic.*` constructors, which name no user, org or tenant id. A child that needs a field comments up here |
 | The `bus` slot in `resolve-slots.ts` | the bus · Postgres bus · FIX-380 | The bus adds the slot and its default to the primary; an adapter declares it in its `capabilities` |
 | The session stream's wake | the bus · delivery · the task board child | The bus child owns it, and its one write wrapper, in `resolveStores` and at each raw-registry entry; the only timed read is its fallback where the bus can't cross processes ([D6](#d6)) |
-| The task board's topic | the task board child · the bus | The conversation's session topic, with a *board change* kind, published from whichever process settles the task. The session stream wakes only on `items`, `request` and `run`, so a board is no second way to watch a session |
+| The task board's topic | the task board child · the bus | The conversation's session topic, with a *board change* kind, published from whichever process settles the task. A scope's subscriber also hears the notices narrowed under it; the session stream filters by kind and wakes only on `items`, `request` and `run`, so a board is no second way to watch a session |
 | The user-stream route and `GET /capabilities` | delivery · FIX-380 | Delivery owns what capabilities reports. FIX-380 reports its own kind and mints its token through the ER-4 check |
-| The resource and state hooks' invalidation | FIX-1506 · delivery | One invalidation path with two sources: the writer's own `resource_change` or `state_change` item and the notice. The writer's tab reads once, not twice |
+| The resource and state hooks' invalidation | FIX-1506 · delivery | One invalidation path with two sources: the writer's own `resource_change` or `state_change` item and the notice. The writer's tab reads once, not twice: the notice names its request (`origin`), and that view skips it |
 | Shift Manager's `TasksPanel` and the Teammates lab's `adapter.ts` polls | the task board child | Only that child turns them into the fallback |
 
 ## Decided in review, recorded so no child reopens them

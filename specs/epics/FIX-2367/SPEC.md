@@ -114,6 +114,7 @@ publishers and Ably. Every child blocks the closure issue.
 - **Same-session `resource_change` and `state_change` items.** The writer's tab still sees its own change on its stream.
 - **Serverless hosts and Kitchen Sink**, which runs on Next. They poll until Ably ships ([D3](DECISIONS.md#d3)).
 - **Request results.** [FIX-2043](https://linear.app/fixpoint-labs/issue/FIX-2043) (read a result by id) stays its own fix; the request stream already tells its caller when it ends.
+- **The state-only read.** [FIX-2410](https://linear.app/fixpoint-labs/issue/FIX-2410) (related) owns it; FIX-1506's state notice reuses it.
 - **Messages between sessions or workers.** Worker messaging (FIX-1989) owns that. A notice reaches screens.
 
 ## What's already here, and the debt

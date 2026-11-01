@@ -36,7 +36,7 @@ in-memory bus turns the timer off too, with no option.
 
 ## Decided, not asked
 
-- **Names.** `ChangeNotice` is `{ topic, kind }`; not `Notice`, which `task-notice` owns. The
+- **Names.** `ChangeNotice` is `{ topic, kind, origin? }`; not `Notice`, which `task-notice` owns. The
   slot is `bus`, with `publish` and `subscribe`. This issue's kinds are `items`, `request` and
   `run`; FIX-2429 adds a *board change*, not a "task notice".
 - **Two topic shapes, both owned here.** A bus topic is `{ scope, id, tenantId, resource? }`,
@@ -44,9 +44,22 @@ in-memory bus turns the timer off too, with no option.
   names from it. A wire topic names no user, org or tenant id: `topic.session(id)`, `topic.user()`
   and `topic.org()`, each with an optional `resource`, in `@flow-state-dev/contracts` for client
   and engine. FIX-2428's mint fills the rest from the caller.
-- **A resource-narrowed topic is its own channel**: a session's subscriber doesn't hear its
-  resources. The session stream wakes only on its un-narrowed topic with kind `items`, `request`
-  or `run`, so a board is not a second way to watch a session.
+- **`origin?: { requestId }` names the request that made the change** (FIX-1506 D2, so the
+  writer's view skips the notice it already has from its own stream). An id says who wrote, not
+  what changed, so ER-1 and epic D2 hold: the notice still carries no rows, and any read the id
+  prompts is checked by its route. Optional; a write no request made sends none. Adapters and
+  delivery carry it through unchanged.
+- **Who hears a resource-narrowed notice:** subscribers of that resource's topic, and subscribers
+  of its scope's un-narrowed topic, each receiving the narrowed topic. A narrowed subscriber hears
+  only its resource. Same rule on the bus and the wire.
+- **The session stream filters by kind**: it subscribes its session's topic and wakes only on
+  `items`, `request` and `run`. State, resource and board notices on that topic never wake it,
+  so it is not a second way to watch a board or a resource.
+- **Lineage-shared session resources publish the writing session's topic only** (FIX-1506). ER-2
+  has no lineage topic, and no consumer needs one today: the one live lineage-shared collection,
+  a task board's ledger, also publishes the conversation's topic (FIX-2429). Who it affects: a
+  view of another session in the lineage watching any other lineage-shared resource, which sees
+  the change at its next read. A consumer that needs more raises it at the epic's topic seam.
 - **One wrapper, applied at every entry** (tenet 5): `resolveStores`, `runAction`, BullMQ's
   `createFlowJobProcessor` (so `createFlowWorker`), and `fsdev run` and `chat`, which write the
   session and settle requests beside `runAction`. Every write method on the request and session
@@ -119,5 +132,7 @@ with no fresh analyst in this dispatch: weaker than the skill asks.
 - **Amended (Nov 1)** — the owner kept the bus. The wrap covers raw-registry entries and every
   write method; the wake is capped; bus and wire topics split; `crossesProcesses` may change,
   as a transition event (for FIX-2427); pool timings dropped.
+- **Seams from FIX-1506 (#4478)** — `origin` on the notice; a scope subscriber hears its
+  narrowed notices, the session stream filters by kind; lineage-shared resources a stated limit.
 
 **Open: none.**
