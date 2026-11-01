@@ -10,13 +10,13 @@ import type { SessionsApi } from "../client";
 import type { SessionStateSnapshotResponse } from "../types";
 
 /** Items per page when {@link readSessionHistory} is given none. */
-export const SESSION_HISTORY_PAGE_LIMIT = 100;
+const SESSION_HISTORY_PAGE_LIMIT = 100;
 
 /**
  * How many times a paged read starts over because the session's history moved
  * under it, before it fails rather than show part of the history as all of it.
  */
-export const SESSION_HISTORY_READ_ATTEMPTS = 5;
+const SESSION_HISTORY_READ_ATTEMPTS = 5;
 
 export type ReadSessionHistoryOptions = {
   readonly itemTypes?: string[];
