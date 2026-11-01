@@ -18,7 +18,7 @@ flowchart TD
 ```
 
 <a name="d1"></a>
-## D1 · A session points at its worktree's row, and keeps only its own count
+## D1 · A session points at its worktree's row
 
 FIX-2439 adds a user-scoped `worktrees` collection, owned by the `workspace` mechanism and
 written by the workspace host on provision, attach and remove. That row is the one owner of a
@@ -33,29 +33,27 @@ FIX-2419, and reads the row from day one (review, amendment on this PR).
 | Two sessions on one worktree | Both read one row; a non-owner shows "attached to …" | Each holds its own copy | Each runs git |
 | Later migration | None | Copies move to the row | None |
 
-- **`state.workspace` is `{ worktree, commits }`.** `worktree` is the row's key; `commits` is
-  this session's count of commits on the branch past the row's `baseCommit`, read at turn end.
-  No path, branch or base is copied onto session state. The field is server-owned and exposed
-  to the client, and its writes ride the session's existing change notice (FIX-2367's
-  `client.subscribe`), so no poll is added.
+- **`state.workspace` is `{ worktree }`, the row's key.** No path, branch, base or count is
+  copied onto session state. The field is server-owned and exposed to the client, and its writes
+  ride the session's existing change notice (FIX-2367's `client.subscribe`), so no poll is added.
 - **The key is written when the session's worktree is provisioned or attached.** `provision`
   returns the row's key with the path (`{ path, worktree }`, on the one return shape FIX-2419
   and FIX-2420 also extend). The host writes the row; the session flow only stores the key.
-- **The count is the session's, read at turn end.** The turn-end handler reads the row for path
-  and `baseCommit`, counts with `readRunCommits`, and writes `commits`. A count git couldn't read,
-  or a row with no base, is `null`: unknown, never 0. It reads only during a turn because the
-  harness commits only during a turn, so it misses only commits a person makes by hand between
-  turns.
-- **Branch and count describe the same work.** A harness can switch the checkout to a branch of
-  its own, and the count reads the checkout's `HEAD`. At turn end the flow hands the branch
-  `HEAD` is on to the workspace host, which updates the row (one writer, ER-5). The chip's branch,
-  count and `git log` then name one line of work (review, Codex).
+- **Branch and count are one snapshot on the row.** The count is a fact about the worktree's
+  checkout, not about one session: two sessions attached to one worktree see one `HEAD`. So at
+  turn end the flow reads `HEAD`'s branch and counts commits past the row's `baseCommit` with
+  `readRunCommits`, then hands both to the workspace host, which writes them to the row together
+  (one writer, ER-5). Whichever session's turn ended last, the chip's branch, count and `git log`
+  name one line of work (review, Codex, twice). A count git couldn't read, or a row with no
+  base, is `null`: unknown, never 0. It is read only at turn end because the harness commits
+  only during a turn, so it misses only commits a person makes by hand between turns. The row
+  gains `commits` beside `branch`; FIX-2439 owns the field.
 - **A session stored before this change** has no key, so it shows nothing until its next turn
   provisions or attaches, which writes the row and the key.
 - **Rejected: copies on session state until FIX-2439 lands.** They would show the chip sooner,
   but make the session a second owner that later needs migrating.
-- **Locks in:** `workspace: { worktree, commits }` on harness session state, and the session
-  flow as a reader of FIX-2439's rows, never a writer. A read action, if one is ever wanted,
+- **Locks in:** `workspace: { worktree }` on harness session state; the session flow reads
+  FIX-2439's rows and reports branch and count through the workspace host, never writing a row. A read action, if one is ever wanted,
   reads the same row.
 
 <a name="d2"></a>
@@ -84,7 +82,7 @@ FIX-2419, and reads the row from day one (review, amendment on this PR).
 ## D3 · One shape and one chip, apart
 
 - **`workPlace` in harness-manager's `./browser`** takes a task's output, or a session's
-  `workspace` with the worktree row it points at, and returns `{ name, branch, path, baseCommit,
+  worktree row, and returns `{ name, branch, path, baseCommit,
   state, attachedTo, commits }` and the commands. `commits` is `null` when unknown. Only
   harness-manager knows both sources' fields, so the shaping lives with them.
 - **The chip reads the row's facts.** It shows the worktree's descriptive name, branch, state,

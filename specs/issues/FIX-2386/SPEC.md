@@ -67,8 +67,8 @@ flowchart LR
     M1["board task: output<br/>branch, commits"] --> L1["one lab reads review only"]
   end
   subgraph after["After"]
-    P2["session: provision"] --> R2["worktrees row (FIX-2439)<br/>name, path, branch, baseCommit, state"]
-    P2 --> S2["state.workspace<br/>worktree key, commits"]
+    P2["session: provision"] --> R2["worktrees row (FIX-2439)<br/>name, path, branch, baseCommit, commits, state"]
+    P2 --> S2["state.workspace<br/>worktree key"]
     M2["board task: output<br/>branch, commits, baseCommit, path"] --> W2["workPlace · ./browser"]
     S2 --> W2
     R2 --> W2
@@ -80,10 +80,10 @@ The session gains a record of where it works; the task's output gains the two fi
 commands need; both are read through one shape and drawn by one chip.
 
 - **The session points at its worktree** ([D1](DECISIONS.md#d1)): a server-owned,
-  client-exposed `workspace` field on session state, `{ worktree, commits }`. `worktree` is the
-  key of FIX-2439's row, which owns path, branch, base and state. The count is the session's
-  own, read at turn end in the same `onFinished` handler that already checks the branch's pull
-  requests; the branch `HEAD` is on goes to the host, which updates the row.
+  client-exposed `workspace` field on session state, `{ worktree }`, the key of FIX-2439's
+  row, which owns path, branch, base, count and state. At turn end, in the same `onFinished`
+  handler that already checks the branch's pull requests, the flow reads `HEAD`'s branch and the
+  count, and the workspace host writes both to the row as one snapshot.
 - **The workspace interface names the row** ([D1](DECISIONS.md#d1)): `provision` returns
   `{ path, worktree }` on the one return shape FIX-2419 and FIX-2420 also extend. A bare path
   still compiles and records no pointer.
@@ -123,7 +123,7 @@ Kitchen Sink names a session's branch and where its worktrees live.
 | FIX-2379's task-row view | **Left alone**: it stays in orchestration and carries no harness-manager output field (the epic's call). Apps compose `workPlace` beside it |
 | The review stop's `branch`, `commits`, `subjects` (Claude Code-style `reviewStopOf`) | **Kept**. A review shows subjects for a person to judge; the chip is for finding the work. The lab's adoption reads the output, not the stop |
 
-**Adds:** one session state field (a key and a count), two output fields, one browser helper, one registry
+**Adds:** one session state field (a key), two output fields, one browser helper, one registry
 component. **Removes:** nothing in the package slice; each app's adoption deletes its own
 partial reads (Kitchen Sink's dropped `{path, branch}`). **Debt:** the count of a session is as of
 its last turn's end, not live. A commit made outside a turn shows on the next one. **Net:** small.
