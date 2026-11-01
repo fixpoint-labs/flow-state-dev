@@ -8,10 +8,10 @@ import { randomInt } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { createClient } from "@flow-state-dev/client";
-import { intentFreeEnv, refuseIfAnswering, repoPath, stopProcessGroup } from "../lib/index.mts";
+import { intentFreeEnv, refuseIfAnswering, repoPath, sleep, stopProcessGroup } from "../lib/index.mts";
 
 const LAB = repoPath("labs", "teammates");
-export { sleep } from "../lib/index.mts";
+export { sleep };
 export type Fsd = ReturnType<typeof createClient>;
 export type Item = { type: string; role?: string; requestId?: string; blockName?: string; content?: { text?: string }[] };
 

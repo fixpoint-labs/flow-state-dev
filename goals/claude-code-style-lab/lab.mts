@@ -6,10 +6,10 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { intentFreeEnv, onClosed, refuseIfAnswering, repoPath, REPO_ROOT, stopProcessGroup } from "../lib/index.mts";
+import { intentFreeEnv, onClosed, refuseIfAnswering, repoPath, REPO_ROOT, sleep, stopProcessGroup } from "../lib/index.mts";
 
 export const LAB = repoPath("labs", "claude-code-style");
-export { sleep } from "../lib/index.mts";
+export { sleep };
 export const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 /** The lab checkout's state outside the goal's own scratch: a run must leave it as it was. */
 export const labCheckout = () => git(REPO_ROOT, "status", "--porcelain", "--", "labs/claude-code-style");
