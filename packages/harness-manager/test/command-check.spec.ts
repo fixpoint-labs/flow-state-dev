@@ -25,7 +25,7 @@ import {
   type Task,
 } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { commandCheck, harnessDrainBudgetMs, harnessManager, harnessTaskInputSchema, runOwnerClaimOrder, runTopic, type HarnessFeeds, type HarnessJudgeVerdict, type PhaseSpec } from "../src";
+import { commandCheck, harnessDrainBudgetMs, harnessManager, harnessTaskInputSchema, resolveOwnership, runOwnerClaimOrder, runTopic, type HarnessFeeds, type HarnessJudgeVerdict, type PhaseSpec } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 import { CONVERSATIONS, claimHost, cleanUpHosts } from "./claim-host";
@@ -102,7 +102,7 @@ function scriptedJudge(verdict: HarnessJudgeVerdict) {
   };
 }
 
-function host(options: { script: Step[]; reviewChanges?: boolean; durable?: boolean; userDeadlineMs?: number; checks?: string[]; timeoutMs?: number }) {
+function host(options: { script: Step[]; reviewChanges?: boolean; durable?: boolean; userDeadlineMs?: number; checks?: string[]; timeoutMs?: number; slowBase?: { delayMs: number; doneTimeoutMs: number } }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-review-"));
   dirs.push(dir);
   const sourceRepo = join(dir, "repo");
@@ -117,6 +117,9 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
       `console.log("all good");\n`,
   );
   writeFileSync(join(sourceRepo, "hang.mjs"), "setInterval(() => {}, 1000);\n");
+  // Leaves a mark beside the checkout, so a command that ran at all is seen
+  // after the checkout is gone.
+  writeFileSync(join(sourceRepo, "mark.mjs"), `import { writeFileSync } from "node:fs";\nwriteFileSync(process.cwd() + ".marked", "ran");\n`);
   // Green only while the run holds its checkout: the lock sits beside it.
   writeFileSync(
     join(sourceRepo, "lock.mjs"),
@@ -128,7 +131,11 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
   const basePhase: PhaseSpec = {
     phase: PHASE,
     buildPrompt: async (run) => `Work on ${run.issue}, attempt ${run.attempt}.${run.feedback === undefined ? "" : `\nWhy the last attempt stopped: ${run.feedback}`}`,
-    isDone: async (run) => run.stopReport === "finished",
+    isDone: async (run) => {
+      if (options.slowBase !== undefined) await new Promise((resolve) => setTimeout(resolve, options.slowBase!.delayMs));
+      return run.stopReport === "finished";
+    },
+    ...(options.slowBase !== undefined ? { doneTimeoutMs: options.slowBase.doneTimeoutMs } : {}),
   };
 
   const ledger = defineTaskCollection({ id: BOARD_ID, scope: "org" as const, stateSchema: harnessTaskInputSchema });
@@ -261,10 +268,15 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
   return { act, row, until, review, waiting, answer, start, retry, seen, runRow, suspension, checkouts: join(dir, "checkouts"), dispose: () => state.dispose() };
 }
 
+/** Every file under `root` whose name ends with `suffix`. */
+function filesUnder(root: string, suffix: string): string[] {
+  if (!existsSync(root)) return [];
+  return (readdirSync(root, { recursive: true }) as string[]).filter((path) => path.endsWith(suffix));
+}
+
 /** Every checkout lock left under `root`. */
 function lockFilesUnder(root: string): string[] {
-  if (!existsSync(root)) return [];
-  return (readdirSync(root, { recursive: true }) as string[]).filter((path) => path.endsWith(".lock"));
+  return filesUnder(root, ".lock");
 }
 
 describe("a run is done only when its checks pass", () => {
@@ -346,6 +358,23 @@ describe("a run is done only when its checks pass", () => {
     }
   }, 90_000);
 
+  it("starts no command once the check's time is up", async () => {
+    // The phase's own check answers after the whole bound has passed. The
+    // manager has failed the attempt and is about to let the checkout go, so
+    // a command started now would write under a replacement attempt.
+    const h = host({ script: ["fixes", "fixes"], checks: ["node mark.mjs"], timeoutMs: 300, slowBase: { delayMs: 1_500, doneTimeoutMs: 300 } });
+    try {
+      await h.start();
+      const after = await h.until((t) => t.status === "pending" && typeof t.feedback === "string", "the first attempt to fail on time");
+      expect(after.feedback).toMatch(/did not answer within/);
+      // Long enough for the late check to have started its command, had it.
+      await new Promise((resolve) => setTimeout(resolve, 2_500));
+      expect(filesUnder(h.checkouts, ".marked")).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  }, 90_000);
+
   it("completes a run whose checks pass", async () => {
     const h = host({ script: ["fixes"] });
     try {
@@ -365,6 +394,17 @@ describe("the time a check gets", () => {
     expect(phase.doneTimeoutMs).toBe(60_000 + 600_000);
     const base = { runTimeoutMs: 60_000, ownershipWaitMs: 1_000 };
     expect(harnessDrainBudgetMs({ ...base, doneTimeoutMs: phase.doneTimeoutMs }) - harnessDrainBudgetMs(base)).toBe(Math.ceil((600_000 * 4) / 3));
+  });
+
+  it("keeps the checkout's lock from going stale while a long check holds it", () => {
+    // The check holds the lock fresh for up to its bound, so a stale window
+    // sized on the run alone would let a waiter take it mid-check.
+    const { maxLockHeldMs, ownership } = resolveOwnership({ runTimeoutMs: 60_000, provisionTimeoutMs: 10_000, doneTimeoutMs: 1_800_000 });
+    expect(maxLockHeldMs).toBeGreaterThanOrEqual(1_800_000);
+    expect(ownership.staleAfterMs).toBeGreaterThan(1_800_000);
+    expect(() =>
+      resolveOwnership({ runTimeoutMs: 60_000, provisionTimeoutMs: 10_000, doneTimeoutMs: 1_800_000, ownership: { staleAfterMs: 600_000, waitMs: 700_000 } }),
+    ).toThrow(/staleAfterMs/);
   });
 
   it("refuses a budget that isn't a positive whole number at construction", () => {

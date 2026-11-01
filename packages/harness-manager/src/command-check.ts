@@ -47,6 +47,9 @@ export type CommandCheckCommands<TContext> =
   | readonly string[]
   | ((context: TContext) => readonly string[] | Promise<readonly string[]>);
 
+/** The reason a check gives when its time was up before its commands could start. */
+const CHECK_TIME_UP = "The completion check ran out of time before its commands could run.";
+
 /** Options for {@link commandCheck} and `harnessSessionFlow`'s `verify`. */
 export interface CommandCheckOptions<TContext = CompletionRunContext> {
   /** The commands, in order. An empty list runs nothing and passes. */
@@ -110,6 +113,7 @@ export async function runCommandChecks<TContext>(
   options: CommandCheckOptions<TContext>,
   cwd: string,
   context: TContext,
+  signal?: AbortSignal,
 ): Promise<CommandCheckResult[]> {
   const commands = typeof options.commands === "function" ? await options.commands(context) : options.commands;
   if (commands.length === 0) return [];
@@ -118,6 +122,7 @@ export async function runCommandChecks<TContext>(
     commands,
     timeoutMs: options.timeoutMs,
     ...(options.env !== undefined ? { env: options.env } : {}),
+    ...(signal !== undefined ? { signal } : {}),
   });
 }
 
@@ -139,7 +144,11 @@ export function commandCheck(phase: PhaseSpec, options: CommandCheckOptions): Ph
     isDone: async (run: CompletionRunContext): Promise<PhaseDoneVerdict> => {
       const before = readVerdict(await phase.isDone(run));
       if (!before.done) return before;
-      const results = await runCommandChecks(options, run.workspacePath, run);
+      // The manager aborts the signal when the check's time is up, then lets
+      // the checkout go: a check that is late starts nothing, and a running
+      // command is stopped (skipped / timed out, so the run is not done).
+      if (run.signal?.aborted === true) return { done: false, reason: CHECK_TIME_UP };
+      const results = await runCommandChecks(options, run.workspacePath, run, run.signal);
       const checks = [...(before.checks ?? []), ...results];
       const failure = commandChecksFailure(results);
       return failure === undefined

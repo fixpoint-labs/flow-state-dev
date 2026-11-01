@@ -69,6 +69,7 @@ export {
 export {
   harnessManager,
   harnessDrainBudgetMs,
+  DONE_STOP_GRACE_MS,
   resolveOwnership,
   requestTenant,
   describeTenant,
