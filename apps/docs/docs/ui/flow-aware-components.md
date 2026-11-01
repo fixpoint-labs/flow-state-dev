@@ -88,7 +88,7 @@ const handle = client.flow(kind).request(lost.id);
 />
 ```
 
-The default text is "This turn was cut off before it finished." Pass `reason` to say something else. Each button is disabled while its call runs, and a refused call is shown on the line the same way a refused retry is. To find lost turns, poll `client.requests.interrupted()` every few seconds and group them by conversation with `interruptedBySession` from `@flow-state-dev/client`. A turn shows up there about a minute after the restart.
+The default text is "This turn was cut off before it finished." Pass `reason` to say something else, and `who` to name whose turn it was. Each button is disabled while its call runs, and a refused call is shown on the line the same way a refused retry is. To find lost turns, poll `client.requests.interrupted()` every few seconds and group them by conversation with `interruptedBySession` from `@flow-state-dev/client`. A turn shows up there about a minute after the restart.
 
 ## ModelBadge
 

@@ -122,6 +122,8 @@ describe("a turn a restart cut off", () => {
     const line = screen.getByRole("alert");
     expect(line.dataset.state).toBe("interrupted");
     expect(line.textContent).toContain(INTERRUPTED_REASON);
+    expect(line.textContent).toContain("researcher's turn was cut off");
+    expect(line.textContent).not.toContain("couldn't finish");
     expect(line.className).toContain("bg-attention");
     expect(line.className).not.toContain("destructive");
     expect(button(/continue/i)).toBeTruthy();
@@ -175,3 +177,12 @@ describe("a turn a restart cut off", () => {
     expect(button(/continue/i).disabled).toBe(false);
   });
 });
+
+/** A failed line needs its reason; an interrupted one takes no error code. Checked by `tsc`, not run. */
+function typeContract() {
+  // @ts-expect-error a failed turn without its reason would draw an empty body
+  void (<RequestRecovery code="E_MODEL" />);
+  // @ts-expect-error an interrupted line takes no error code: it is not a failure
+  void (<RequestRecovery code="E_MODEL" onDiscard={async () => {}} />);
+}
+void typeContract;

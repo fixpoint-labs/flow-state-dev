@@ -27,21 +27,44 @@ import { ErrorBody, type ErrorBodyProps } from "./error";
 /** What the interrupted line says when the app passes no reason of its own. */
 export const INTERRUPTED_REASON = "This turn was cut off before it finished.";
 
-export type RequestRecoveryProps = {
-  /** Why the turn failed: the error's message. On an interrupted line, optional: it replaces {@link INTERRUPTED_REASON}. */
-  reason?: string;
-  code?: ErrorBodyProps["code"];
-  details?: ErrorBodyProps["details"];
-  /** Who was working when it failed, shown before the reason (a worker's name, "Assistant"). */
+type Action = () => Promise<unknown>;
+
+type CommonProps = {
+  /** Who was working: a worker's name, "Assistant". Shown before the reason. */
   who?: string;
-  /** Start the request again. Omit it for a request the server won't retry. */
-  onRetry?: () => Promise<unknown>;
-  /** Carry an interrupted request on under its own id. Marks the line interrupted. */
-  onContinue?: () => Promise<unknown>;
-  /** End an interrupted request for good. Marks the line interrupted. */
-  onDiscard?: () => Promise<unknown>;
   className?: string;
 };
+
+/** A failed turn: its reason, and a Retry when the server will retry it. */
+export type FailedRequestProps = CommonProps & {
+  /** Why the turn failed: the error's message. */
+  reason: string;
+  code?: ErrorBodyProps["code"];
+  details?: ErrorBodyProps["details"];
+  /** Start the request again. Omit it for a request the server won't retry. */
+  onRetry?: Action;
+  onContinue?: undefined;
+  onDiscard?: undefined;
+};
+
+/** A turn a restart cut off: Continue, Discard, or both. Retry is not drawn on it. */
+export type InterruptedRequestProps = CommonProps & {
+  /** Replaces {@link INTERRUPTED_REASON}. */
+  reason?: string;
+  code?: undefined;
+  details?: undefined;
+  onRetry?: Action;
+} & (
+    | {
+        /** Carry an interrupted request on under its own id. */
+        onContinue: Action;
+        /** End an interrupted request for good. */
+        onDiscard?: Action;
+      }
+    | { onContinue?: undefined; onDiscard: Action }
+  );
+
+export type RequestRecoveryProps = FailedRequestProps | InterruptedRequestProps;
 
 export function RequestRecovery({
   reason,
@@ -59,7 +82,7 @@ export function RequestRecovery({
   const interrupted = onContinue !== undefined || onDiscard !== undefined;
 
   /** One action at a time: each button is disabled while any runs, and a refusal says which. */
-  const run = (label: string, action: () => Promise<unknown>) => async () => {
+  const run = (label: string, action: Action) => async () => {
     setBusy(label);
     setRefused(null);
     try {
@@ -72,7 +95,7 @@ export function RequestRecovery({
   };
 
   const buttons: ReactNode[] = [];
-  const button = (key: string, idle: string, working: string, icon: ReactNode, action: () => Promise<unknown>) => {
+  const button = (key: string, idle: string, working: string, icon: ReactNode, action: Action) => {
     buttons.push(
       <Button key={key} variant="outline" size="sm" disabled={busy !== null} onClick={run(idle, action)}>
         {icon}
@@ -106,7 +129,11 @@ export function RequestRecovery({
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
       )}
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        {who && <span className="font-medium">{who} couldn't finish this turn</span>}
+        {who && (
+          <span className="font-medium">
+            {interrupted ? `${who}'s turn was cut off` : `${who} couldn't finish this turn`}
+          </span>
+        )}
         {interrupted ? (
           <span>{reason ?? INTERRUPTED_REASON}</span>
         ) : (

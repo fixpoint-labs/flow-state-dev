@@ -82,7 +82,7 @@ export async function recordRequestStop(
   // Parked: `suspended`, or `interrupted` (the process died) while it is
   // parked (`parkedInterruptedIds`: a pending gate, or a logged gate owed a
   // re-drive). An interrupted request that is not is waiting on nothing, and
-  // answers as before.
+  // the stop ends it `aborted` (`endInterrupted`).
   if (
     !result.applied &&
     (result.status === "suspended" || result.status === "interrupted") &&
