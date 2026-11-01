@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useRef } from "react";
 import { act, renderHook } from "@testing-library/react";
 
-import { clearDraft, useDraft } from "../src/hooks/useDraft";
+import { clearDraft, readDraft, saveDraft, useDraft } from "../src/hooks/useDraft";
 
 /** Kitchen Sink's namespace: the key its own copy of this hook wrote, so drafts stored then still read. */
 const NS = "kitchen-sink:composer-draft";
@@ -223,6 +223,15 @@ describe("useDraft", () => {
     });
     expect(localStorage.getItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a")).toBe("sent, then closed, then revised");
     expect(third.result.current.draft).toBe("sent, then closed, then revised");
+  });
+
+  it("saveDraft stores a draft with no box open, and the box opened next reads it", () => {
+    saveDraft(NS, "sess-a", "stored while closed");
+    expect(readDraft(NS, "sess-a")).toBe("stored while closed");
+    const { result } = renderHook(() => useSessionDraft("sess-a"));
+    expect(result.current[0]).toBe("stored while closed");
+    saveDraft(NS, "sess-a", "");
+    expect(readDraft(NS, "sess-a")).toBe("");
   });
 
   it("clearDraft with the sent text drops the stored draft only while it is still that text", () => {

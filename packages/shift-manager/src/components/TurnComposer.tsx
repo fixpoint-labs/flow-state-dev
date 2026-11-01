@@ -24,7 +24,7 @@
  * 1.5px ink box with ⏎ beside it and the send state under it (v2:175-178).
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { clearDraft, useDraft } from "@flow-state-dev/react";
+import { clearDraft, readDraft, saveDraft, useDraft } from "@flow-state-dev/react";
 import { TurnNotDelivered, type TurnStop } from "../lib/send";
 
 /** Where a composer's unsent line is kept (`useDraft`), and beside it an *unconfirmed* send's warning. */
@@ -58,7 +58,14 @@ export function useTurnSend(initial: TurnSendState = { kind: "idle" }) {
     mounted.current = true;
     return () => void (mounted.current = false);
   }, []);
-  const run = useCallback(async (send: (held: () => void) => Promise<void | { stopped: TurnStop }>): Promise<boolean> => {
+  /**
+   * Send through `send`; resolves `true` once it is delivered and the composer is still open.
+   * `closed` hears how a send that fails after the composer closed ended, since no state is left to show it.
+   */
+  const run = useCallback(async (
+    send: (held: () => void) => Promise<void | { stopped: TurnStop }>,
+    closed?: (failed: Extract<TurnSendState, { reason: string }>) => void,
+  ): Promise<boolean> => {
     setState({ kind: "sending" });
     try {
       const sent = await send(() => {
@@ -67,12 +74,16 @@ export function useTurnSend(initial: TurnSendState = { kind: "idle" }) {
       if (mounted.current) setState({ kind: "delivered", stopped: sent?.stopped ?? null });
       return mounted.current;
     } catch (error) {
-      if (!mounted.current) return false;
       const reason = error instanceof Error ? error.message : String(error);
       // Anything else is a fault in Shift Manager, not an answer about the line,
       // which may have gone: say so, and offer no resend.
+      const failed = { kind: error instanceof TurnNotDelivered ? error.kind : "unconfirmed", reason } as const;
+      if (!mounted.current) {
+        closed?.(failed);
+        return false;
+      }
       if (!(error instanceof TurnNotDelivered)) console.error("Shift Manager: sending a line failed", error);
-      setState({ kind: error instanceof TurnNotDelivered ? error.kind : "unconfirmed", reason });
+      setState(failed);
       return false;
     }
   }, []);
@@ -313,6 +324,10 @@ export function TurnComposer({
       });
       delivered = true;
       return result;
+    }, (failed) => {
+      // It may have arrived, and the box that would say so is closed: keep the warning beside the
+      // draft, unless the draft is no longer this line (a newer send, or a newer line, owns it).
+      if (failed.kind === "unconfirmed" && readDraft(DRAFT, draftKey).trim() === submitted.trim()) saveDraft(UNCONFIRMED, draftKey, failed.reason);
     });
     if (sent) {
       leave();

@@ -408,6 +408,7 @@ Clear the draft only once the send has landed, so a failed send leaves the text 
 
 - `id` may be `undefined` while the box doesn't know where it writes yet. Text typed then is kept in memory and stored once `id` arrives.
 - `clearDraft(namespace, id, sent?)`: drop the stored copy without touching what any box shows, for a send the server took while the person kept typing. With `sent`, it drops the copy only if it still holds that text, surrounding whitespace aside.
+- `readDraft(namespace, id)` and `saveDraft(namespace, id, text)`: read or store the stored copy directly, for a send that settles after its box closed.
 - Storage that throws (quota, private mode) keeps the draft in memory only.
 
 ### `isSendKey(event, options?)`

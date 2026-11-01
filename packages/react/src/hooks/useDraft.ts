@@ -16,7 +16,8 @@ function storageKey(namespace: string, id: string): string {
   return `${namespace}:${id}`;
 }
 
-function readDraft(namespace: string, id: string | undefined): string {
+/** The stored draft for `id`, or `""`: for code that runs after its box closed. */
+export function readDraft(namespace: string, id: string | undefined): string {
   if (id === undefined || typeof window === "undefined") return "";
   try {
     return window.localStorage.getItem(storageKey(namespace, id)) ?? "";
@@ -25,7 +26,11 @@ function readDraft(namespace: string, id: string | undefined): string {
   }
 }
 
-function writeDraft(namespace: string, id: string | undefined, text: string): void {
+/**
+ * Store `text` as the draft for `id` (`""` drops it), whether or not a box for it is open: for a
+ * send that settles after its box closed. A box already open for `id` keeps what it shows.
+ */
+export function saveDraft(namespace: string, id: string | undefined, text: string): void {
   if (id === undefined || typeof window === "undefined") return;
   try {
     if (text === "") window.localStorage.removeItem(storageKey(namespace, id));
@@ -44,7 +49,7 @@ function writeDraft(namespace: string, id: string | undefined, text: string): vo
  */
 export function clearDraft(namespace: string, id: string | undefined, sent?: string): void {
   if (sent !== undefined && readDraft(namespace, id).trim() !== sent.trim()) return;
-  writeDraft(namespace, id, "");
+  saveDraft(namespace, id, "");
 }
 
 /**
@@ -62,7 +67,7 @@ export function useDraft(namespace: string, id: string | undefined): [string, (t
     let draft = readDraft(namespace, id);
     // Typed before the id was known: it belongs to the id that just arrived.
     if (id !== undefined && state.id === undefined && state.draft !== "") {
-      writeDraft(namespace, id, state.draft);
+      saveDraft(namespace, id, state.draft);
       draft = state.draft;
     }
     setState({ id, draft });
@@ -77,7 +82,7 @@ export function useDraft(namespace: string, id: string | undefined): [string, (t
   const setDraft = useCallback(
     (text: string) => {
       if (!mounted.current) return;
-      writeDraft(namespace, id, text);
+      saveDraft(namespace, id, text);
       setState((prev) => (prev.id === id ? { id, draft: text } : prev));
     },
     [namespace, id],

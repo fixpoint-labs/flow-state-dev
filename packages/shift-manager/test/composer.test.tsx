@@ -213,6 +213,20 @@ describe("a reload keeps what was typed, and what may already have been sent (SM
     expect(screen.getByTestId("t-status").getAttribute("data-state")).toBe("unconfirmed");
   });
 
+  it("keeps the warning for a line whose send ends unconfirmed after its composer closed", async () => {
+    let drop!: (error: Error) => void;
+    const first = render(composer("task:t-1", () => new Promise((_, reject) => (drop = reject))));
+    fireEvent.change(screen.getByTestId("t-input"), { target: { value: "ship it" } });
+    await act(async () => fireEvent.click(screen.getByTestId("t-send")));
+    first.unmount();
+    await act(async () => drop(new TurnNotDelivered("unconfirmed", "the status read failed")));
+
+    render(composer("task:t-1"));
+    expect((screen.getByTestId("t-input") as HTMLInputElement).value).toBe("ship it");
+    expect(screen.getByTestId("t-status").getAttribute("data-state")).toBe("unconfirmed");
+    expect(screen.getByTestId("t-error").textContent).toBe("the status read failed");
+  });
+
   it("forgets the warning once a send lands", async () => {
     const first = render(composer("conversation:w-1", () => Promise.reject(new Error("the connection dropped"))));
     fireEvent.change(screen.getByTestId("t-input"), { target: { value: "ship it" } });
