@@ -14,10 +14,10 @@
 import { useCallback, useState, useSyncExternalStore } from "react";
 
 /** The windows on which the right panel opens over the centre: narrower than v2's 1180px (v2:1121). */
-export const NARROW_QUERY = "(max-width: 1179px)";
+const NARROW_QUERY = "(max-width: 1179px)";
 
 /** What a user picked: `true` while that panel is collapsed. */
-export interface Collapsed {
+interface Collapsed {
   nav: boolean;
   panel: boolean;
 }
@@ -36,7 +36,7 @@ function storage(): Storage | undefined {
 }
 
 /** What `userId` picked last in this browser; both panels expanded when nothing was kept or it doesn't read. */
-export function readCollapsed(userId: string, store: Pick<Storage, "getItem"> | undefined = storage()): Collapsed {
+function readCollapsed(userId: string, store: Pick<Storage, "getItem"> | undefined = storage()): Collapsed {
   try {
     const kept = store?.getItem(keyFor(userId));
     if (kept == null) return EXPANDED;

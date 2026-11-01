@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { intentFreeEnv, onClosed, refuseIfAnswering, repoPath, REPO_ROOT, stopProcessGroup } from "../lib/index.mts";
 
 export const LAB = repoPath("labs", "claude-code-style");
-export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+export { sleep } from "../lib/index.mts";
 export const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 /** The lab checkout's state outside the goal's own scratch: a run must leave it as it was. */
 export const labCheckout = () => git(REPO_ROOT, "status", "--porcelain", "--", "labs/claude-code-style");

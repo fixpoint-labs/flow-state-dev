@@ -11,7 +11,7 @@ import type { createClient } from "@flow-state-dev/client";
 import { intentFreeEnv, refuseIfAnswering, repoPath, stopProcessGroup } from "../lib/index.mts";
 
 const LAB = repoPath("labs", "teammates");
-export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+export { sleep } from "../lib/index.mts";
 export type Fsd = ReturnType<typeof createClient>;
 export type Item = { type: string; role?: string; requestId?: string; blockName?: string; content?: { text?: string }[] };
 
