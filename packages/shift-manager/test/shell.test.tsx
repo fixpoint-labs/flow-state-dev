@@ -5,7 +5,7 @@
  */
 import type { Client } from "@flow-state-dev/client";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
@@ -456,7 +456,7 @@ describe("Shift Coordinator (FIX-1722)", () => {
   it("is where Shift Manager lands, at / and at a path it doesn't know, first in the sidebar and current (BR-1, BR-2)", async () => {
     await openShiftCoordinator("/");
     const nav = within(screen.getByTestId("sidebar"));
-    const entries = nav.getAllByRole("button").map((b) => b.getAttribute("data-testid")).filter((id) => id?.startsWith("nav-"));
+    const entries = nav.getAllByRole("link").map((b) => b.getAttribute("data-testid")).filter((id) => id?.startsWith("nav-"));
     expect(entries.slice(0, 3)).toEqual(["nav-shift-coordinator", "nav-inbox", "nav-tasks"]);
     expect(screen.getByTestId("nav-shift-coordinator").getAttribute("aria-current")).toBe("page");
     expect(screen.getByTestId("nav-inbox").getAttribute("aria-current")).toBeNull();
@@ -480,8 +480,9 @@ describe("Shift Coordinator (FIX-1722)", () => {
     act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
     act(() => fireEvent.change(screen.getByTestId("jump-input"), { target: { value: "coordinator" } }));
     const [result, ...rest] = await screen.findAllByTestId("jump-result");
-    expect(rest).toEqual([]);
+    // The screen leads; anything else found names the word in its label or its hint.
     expect(result!.textContent).toMatch(/^Shift Coordinator/);
+    for (const other of rest) expect(other.textContent).toMatch(/coordinator/i);
     act(() => fireEvent.click(result!));
     await screen.findByTestId("shift-coordinator");
     expect(window.location.pathname).toBe("/shift-coordinator");
@@ -866,15 +867,42 @@ describe("Jump to from the keyboard", () => {
     expect(active()).toBe(0);
     act(() => fireEvent.change(input, { target: { value: "" } }));
 
-    // Enter opens the highlighted result, not the first one: the ask Lab's
-    // first three results are Shift Coordinator, then its workers, ops.asker
-    // then ops.desk, each of which opens Roster.
+    // Enter opens the highlighted result, not the first one: the first three
+    // results are the screens Shift Coordinator, Inbox and Tasks.
     act(() => fireEvent.keyDown(input, { key: "ArrowDown" }));
     act(() => fireEvent.keyDown(input, { key: "ArrowDown" }));
-    expect(screen.getAllByTestId("jump-result")[2]!.textContent).toMatch(/^ops\.desk/);
+    expect(screen.getAllByTestId("jump-result")[2]!.textContent).toMatch(/^Tasks/);
     act(() => fireEvent.keyDown(input, { key: "Enter" }));
     expect(screen.queryByTestId("jump-dialog")).toBeNull();
-    expect(window.location.pathname).toBe("/roster");
+    expect(window.location.pathname).toBe("/tasks");
+  });
+
+  it("draws each result as a real link: a modified click is the browser's, a plain one goes there once", async () => {
+    await openApp("/inbox");
+    await screen.findByTestId("jump-tip");
+    act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
+    const tasks = (await screen.findAllByTestId("jump-result"))[2]!;
+    const link = tasks.querySelector("a")!;
+    expect(link.getAttribute("href")).toBe("/tasks");
+    // Cmd-click is left to the browser, which opens a tab: this page stays put and the palette stays open.
+    // Happy DOM would follow it in this window, so a stand-in records it and stops there.
+    let leftToBrowser: boolean | undefined;
+    const browser = (event: Event) => {
+      leftToBrowser = !event.defaultPrevented;
+      event.preventDefault();
+    };
+    document.addEventListener("click", browser);
+    onTestFinished(() => document.removeEventListener("click", browser));
+    act(() => void fireEvent.click(link, { metaKey: true }));
+    expect(leftToBrowser).toBe(true);
+    expect(window.location.pathname).toBe("/inbox");
+    expect(screen.getByTestId("jump-dialog")).toBeTruthy();
+    document.removeEventListener("click", browser);
+    const before = window.history.length;
+    act(() => void fireEvent.click(link));
+    expect(screen.queryByTestId("jump-dialog")).toBeNull();
+    expect(window.location.pathname).toBe("/tasks");
+    expect(window.history.length).toBe(before + 1);
   });
 
   it("the pointer highlights the result it is over", async () => {
@@ -882,7 +910,57 @@ describe("Jump to from the keyboard", () => {
     await screen.findByTestId("jump-tip");
     act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
     const results = await screen.findAllByTestId("jump-result");
-    act(() => fireEvent.mouseMove(results[2]!));
+    act(() => fireEvent.pointerMove(results[2]!));
     expect(results.map((r) => r.getAttribute("aria-selected"))).toEqual(results.map((_, i) => String(i === 2)));
+  });
+
+  it("is a combobox over its results: the input names the highlighted one", async () => {
+    await openApp("/inbox");
+    await screen.findByTestId("jump-tip");
+    act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
+    const input = screen.getByTestId("jump-input");
+    await screen.findAllByTestId("jump-result");
+    expect(input.getAttribute("role")).toBe("combobox");
+    const first = input.getAttribute("aria-activedescendant");
+    act(() => fireEvent.keyDown(input, { key: "ArrowDown" }));
+    expect(input.getAttribute("aria-activedescendant")).not.toBe(first);
+    expect(document.getElementById(input.getAttribute("aria-activedescendant")!)?.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("reaches every screen the sidebar does, by the name it shows there", async () => {
+    await openApp("/inbox");
+    await screen.findByTestId("jump-tip");
+    const screens: Array<[string, string]> = [["Usage", "/usage"], ["Scheduled work", "/schedules"], ["Messages", "/messages"], ["Settings", "/settings"]];
+    for (const [name, path] of screens) {
+      act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
+      act(() => fireEvent.change(screen.getByTestId("jump-input"), { target: { value: name } }));
+      act(() => fireEvent.keyDown(screen.getByTestId("jump-input"), { key: "Enter" }));
+      expect(window.location.pathname).toBe(path);
+    }
+  });
+
+  it("finds a worker by its id and lands on its row in its team's Roster", async () => {
+    await openApp("/inbox");
+    await screen.findByTestId("jump-tip");
+    act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
+    act(() => fireEvent.change(screen.getByTestId("jump-input"), { target: { value: "ops.desk" } }));
+    const worker = (await screen.findAllByTestId("jump-result")).find((r) => r.closest("[cmdk-group]")?.querySelector("[cmdk-group-heading]")?.textContent === "WORKERS");
+    act(() => fireEvent.click(worker!));
+    expect(window.location.pathname).toBe("/roster");
+    expect(new URLSearchParams(window.location.search).get("team")).toBe("ops");
+    await waitFor(() => expect((document.activeElement as HTMLElement | null)?.getAttribute("data-worker-id")).toBe("ops.desk"));
+  });
+
+  it("closes on Esc and puts focus back where it was", async () => {
+    await openApp("/inbox");
+    await screen.findByTestId("jump-tip");
+    const opener = screen.getByTestId("nav-tasks");
+    opener.focus();
+    act(() => void fireEvent.keyDown(opener, { key: "k", metaKey: true }));
+    const input = screen.getByTestId("jump-input");
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    act(() => fireEvent.keyDown(input, { key: "Escape" }));
+    expect(screen.queryByTestId("jump-dialog")).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(opener));
   });
 });

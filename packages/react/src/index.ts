@@ -95,6 +95,8 @@ export {
 export {
   useApproval,
   resolveApprovalOutcome,
+  approveOptionsOf,
+  type ApprovalOption,
   type UseApprovalOptions,
   type UseApprovalResult,
   type ApprovalOutcome
@@ -188,6 +190,7 @@ export {
 
 export {
   isSendKey,
+  isTypingTarget,
   type SendKeyEvent,
   type SendKeyOptions
 } from "./send-key";

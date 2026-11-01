@@ -7,7 +7,7 @@ import { StandingRules } from "../components/StandingRules";
 import { ScreenTitle } from "../components/ui";
 import { shiftCoordinatorOf, type LoadedSnapshot } from "../lib/derive";
 import { useRoster, withRoster } from "../lib/roster";
-import { navigate } from "../lib/routes";
+import { RouteLink } from "../components/RouteLink";
 
 /** What Shift Manager calls the `shift-coordinator` worker (FIX-1747). */
 const SHIFT_COORDINATOR_NAME = "Shift Coordinator";
@@ -22,9 +22,9 @@ export function WorkerSettingsView({ snapshot, workerId, devtoolUrl }: { snapsho
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="worker-settings" data-worker-id={workerId}>
       <header className="border-b px-5 py-3">
-        <button type="button" onClick={() => navigate({ level: "roster", team: null })} className="text-xs text-muted-foreground hover:text-foreground" data-testid="worker-settings-back">
+        <RouteLink to={{ level: "roster", team: null }} className="text-xs text-muted-foreground hover:text-foreground" data-testid="worker-settings-back">
           ‹ Roster
-        </button>
+        </RouteLink>
         <div className="mt-1 flex items-baseline gap-2">
           <ScreenTitle testId="worker-settings-title">{name}</ScreenTitle>
           <span className="border px-1 text-[10px] tracking-widest text-muted-foreground" data-testid="worker-settings-tag">

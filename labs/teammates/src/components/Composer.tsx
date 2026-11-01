@@ -8,7 +8,18 @@ import { useState, type FormEvent, type KeyboardEvent } from "react";
  * conversation's column (`--thread-width`), and the box grows with what you
  * type up to a cap, then scrolls.
  */
-export function Composer({ workerName, running, onSend }: { workerName: string; running: boolean; onSend: (text: string) => void }) {
+export function Composer({
+  sessionId,
+  workerName,
+  running,
+  onSend,
+}: {
+  /** The conversation it types to; `/` and a switch find its composer by it. */
+  sessionId: string;
+  workerName: string;
+  running: boolean;
+  onSend: (text: string) => void;
+}) {
   const [text, setText] = useState("");
   const send = () => {
     const line = text.trim();
@@ -32,6 +43,8 @@ export function Composer({ workerName, running, onSend }: { workerName: string; 
         <div className="flex items-end gap-2 rounded-3xl border border-border bg-card px-3 py-2 focus-within:border-ring">
           <textarea
             aria-label={`Message ${workerName}`}
+            data-composer
+            data-session-id={sessionId}
             rows={1}
             value={text}
             onChange={(event) => setText(event.target.value)}

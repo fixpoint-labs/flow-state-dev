@@ -330,7 +330,17 @@ function MyApproval({ item }) {
 }
 ```
 
-Returns `{ approve, reject, pendingAction, isResolving, error, resolved, resolvedStatus, outcome, canApprove, canReject }`. Resolution goes through `onApprove`/`onReject` if given, else the nearest `<SuspensionResolverProvider>` (streaming), else a non-streaming resume through the provider's client.
+Returns `{ approve, reject, approveWith, rejectWith, pendingAction, isResolving, error, resolved, resolvedStatus, outcome, canApprove, canReject }`. Resolution goes through `onApprove`/`onReject` if given, else the nearest `<SuspensionResolverProvider>` (streaming), else a non-streaming resume through the provider's client.
+
+`approve` and `reject` take no argument, so they wire straight to `onClick`. `approveWith(data)` and `rejectWith(data)` send `data` with the answer (handed to `onApprove`/`onReject` too). A stop that offers more than one yes lists them under `data.approveOptions`, each `{ label, data }`; `approveOptionsOf(item)` reads them, and a card draws one button per option:
+
+```tsx
+import { approveOptionsOf, useApproval } from "@flow-state-dev/react";
+
+{approveOptionsOf(item).map((option) => (
+  <button key={option.label} onClick={() => a.approveWith(option.data)}>{option.label}</button>
+))}
+```
 
 ### `<ApprovalRenderer>`
 
@@ -401,6 +411,19 @@ The send shortcut for a message box. Cmd+Enter on a Mac and Ctrl+Enter elsewhere
 
 - `enterSends` (default `false`): plain Enter sends too, as in a chat composer. Leave it off in a box for a longer answer, where Enter is a new line.
 - Shift+Enter never sends, and neither does an Enter that confirms an input method's composition (CJK and the like, including Safari's `keyCode` 229).
+
+### `isTypingTarget(target)`
+
+Whether a key landed in something the person types into: an input, a text area, a select, or editable text. A page-wide shortcut that is a printable key checks it first, so `/` or `?` typed into a message box stays text.
+
+```ts
+window.addEventListener("keydown", (event) => {
+  if (event.key === "/" && !isTypingTarget(event.target)) {
+    event.preventDefault();
+    composer.current?.focus();
+  }
+});
+```
 
 ## Voice playback
 

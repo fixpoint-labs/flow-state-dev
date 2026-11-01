@@ -160,6 +160,21 @@ describe("the teammates screen", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("a pick from ⌘K over a popup closes the popup, so the picked conversation takes the keys", async () => {
+    render(<App adapter={fast()} />);
+    await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
+    const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
+    line.focus();
+    fireEvent.click(line);
+    screen.getByRole("dialog", { name: "Messaged researcher" });
+    act(() => void fireEvent.keyDown(document.activeElement!, { key: "k", metaKey: true }));
+    const input = await screen.findByRole("combobox");
+    fireEvent.change(input, { target: { value: "drafts and tightens" } });
+    act(() => void fireEvent.keyDown(input, { key: "Enter" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Message writer")));
+  });
+
   it("holds researcher's reply as pending while Chief of Staff answers you, and lands it after that answer", async () => {
     render(<App adapter={fast()} />);
     await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
@@ -642,8 +657,20 @@ describe("the teammates screen", () => {
     await act(async () => fireEvent.click(within(edit).getByRole("button", { name: "Save instructions" })));
     await waitFor(() => expect(screen.queryByRole("form", { name: "Instructions for tester" })).toBeNull());
 
-    window.confirm = () => true;
-    await act(async () => fireEvent.click(within(conversation()).getByRole("button", { name: "Fire" })));
+    // Fire asks in a row under the header, with Keep focused; Keep leaves the teammate where it is.
+    window.confirm = () => {
+      throw new Error("Fire must not open a browser confirm");
+    };
+    fireEvent.click(within(conversation()).getByRole("button", { name: "Fire" }));
+    const ask = within(conversation()).getByRole("group", { name: "Fire tester?" });
+    await waitFor(() => expect(document.activeElement).toBe(within(ask).getByRole("button", { name: "Keep" })));
+    fireEvent.click(within(ask).getByRole("button", { name: "Keep" }));
+    expect(within(conversation()).queryByRole("group", { name: "Fire tester?" })).toBeNull();
+    // Keeping puts focus back on the header's Fire, so the next Tab goes on from where the person was.
+    expect(document.activeElement).toBe(within(conversation()).getByRole("button", { name: "Fire" }));
+    expect(workerRow("tester")).not.toBeNull();
+    fireEvent.click(within(conversation()).getByRole("button", { name: "Fire" }));
+    await act(async () => fireEvent.click(within(within(conversation()).getByRole("group", { name: "Fire tester?" })).getByRole("button", { name: "Fire" })));
     await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3));
     expect(workerRow("tester")).toBeNull();
   });
