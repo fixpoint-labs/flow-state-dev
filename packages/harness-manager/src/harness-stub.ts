@@ -23,6 +23,7 @@ import type {
   HarnessRunStatus,
 } from "@flow-state-dev/core/types";
 import type { HarnessFeeds } from "./manager";
+import { TOOL_NOT_ALLOWED } from "./tool-approval";
 
 /** One run the stub was asked to perform, exactly as it arrived. */
 export interface StubRun {
@@ -32,6 +33,35 @@ export interface StubRun {
   cwd: string;
   /** The session id the `resume` feed offered, or null on a cold attempt. */
   resume: string | null;
+  /** The session id this run named through `onSession`. */
+  session: string;
+}
+
+/**
+ * One tool call the scripted run makes (`toolCalls`). Handed
+ * `onToolApproval` (a manager with `approveTools`), the run asks about it
+ * first: allowed, it runs; denied, it doesn't, and the run goes on; held, the
+ * run stops there unrun and waits to be stopped, as Claude Code's does. A
+ * resumed run makes a held call again, as a model told to does. Without the
+ * feed every call runs unasked, as under blanket permissions.
+ */
+export interface StubToolCall {
+  toolName: string;
+  input: unknown;
+  /** What the call does when it runs: write a marker file, say. */
+  run?: (run: StubRun) => void | Promise<void>;
+}
+
+/** What became of one scripted tool call, in the order the run made them. */
+export interface StubToolCallRecord {
+  /** Which run made it, as an index into `runs`. */
+  run: number;
+  toolName: string;
+  input: unknown;
+  /** `unasked`: no approval feed was handed, and it ran. */
+  decision: "allow" | "deny" | "held" | "unasked";
+  /** When the run made it (epoch ms). */
+  at: number;
 }
 
 export interface HarnessStubOptions {
@@ -87,6 +117,12 @@ export interface HarnessStubOptions {
    * `projectMcpTools`.
    */
   mcpUses?: readonly CapabilityRef[];
+  /**
+   * Tool calls the run makes after its `steps` and before `duringRun` (see
+   * {@link StubToolCall}). Given, the stub declares `stopsOnAbort`: a held
+   * call waits for the step's stop, and the run ends with it.
+   */
+  toolCalls?: readonly StubToolCall[];
 }
 
 /** The part of a host's MCP relay the stub asks: which servers a run's project names. */
@@ -115,6 +151,8 @@ function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
 export interface HarnessStub {
   /** Every run, in order. Empty means the harness was never reached. */
   runs: StubRun[];
+  /** Every scripted tool call and what became of it, in order. */
+  toolCalls: StubToolCallRecord[];
   /** The factory to hand `harnessManager({ harness })`. */
   slot: (feeds: HarnessFeeds & { mcpTools?: HarnessStubMcpTools }) => HarnessBlock;
 }
@@ -127,12 +165,17 @@ export interface HarnessStub {
  */
 export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
   const runs: StubRun[] = [];
+  const toolCalls: StubToolCallRecord[] = [];
   let sessions = 0;
+  // The next scripted call to make: a held call is made again by the run that resumes.
+  let nextCall = 0;
+  let heldLast = false;
 
   return {
     runs,
-    slot: ({ cwd, resume, onSession, mcpTools }) =>
-      handler({
+    toolCalls,
+    slot: ({ cwd, resume, onSession, mcpTools, onToolApproval }) => {
+      const block = handler({
         name: "harness-stub",
         inputSchema: harnessRunInputSchema,
         outputSchema: harnessRunHandleSchema,
@@ -140,10 +183,12 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
         ...(mcpTools === undefined || options.mcpUses === undefined ? {} : { uses: [...options.mcpUses] }),
         execute: async (input: { prompt: string }, ctx) => {
           const context = ctx as unknown as HarnessCallbackContext;
+          sessions += 1;
           const run: StubRun = {
             prompt: input.prompt,
             cwd: await cwd(context),
             resume: await resume(context),
+            session: `sess_stub_${sessions}`,
           };
           runs.push(run);
 
@@ -152,8 +197,7 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
           // rather than skipping it: `onSession` is the write side of the
           // resume feed, and a stub that never called it would leave that half
           // of the contract unexercised in the one check that runs model-free.
-          sessions += 1;
-          await onSession(`sess_stub_${sessions}`, context);
+          await onSession(run.session, context);
 
           // The scripted run takes no relayed tools: a project that names MCP
           // servers runs without them here, and its session says so.
@@ -168,6 +212,28 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
           for (const step of options.steps ?? []) {
             if ((options.stepEveryMs ?? 0) > 0) await pause(options.stepEveryMs!, ctx.signal);
             ctx.emit.message(step);
+          }
+          // Told the call it stopped on was not allowed, the run goes on without it, as a model does.
+          if (heldLast && input.prompt.includes(TOOL_NOT_ALLOWED)) nextCall += 1;
+          heldLast = false;
+          for (; nextCall < (options.toolCalls ?? []).length; nextCall += 1) {
+            const call = options.toolCalls![nextCall]!;
+            const record = (decision: StubToolCallRecord["decision"]) =>
+              toolCalls.push({ run: runs.length - 1, toolName: call.toolName, input: call.input, decision, at: Date.now() });
+            if (onToolApproval === undefined) {
+              record("unasked");
+              await call.run?.(run);
+              continue;
+            }
+            const decision = await onToolApproval({ toolName: call.toolName, input: call.input, signal: ctx.signal }, context);
+            record(decision.decision);
+            if (decision.decision === "allow") await call.run?.(run);
+            if (decision.decision === "held") {
+              heldLast = true;
+              // Unrun, and the run waits for its stop, as Claude Code's turn does.
+              // The longest timer there is: the stop (or the run's deadline) ends it.
+              await pause(2 ** 31 - 1, ctx.signal);
+            }
           }
           await options.duringRun?.(run);
 
@@ -189,6 +255,9 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
             cost: null,
           };
         },
-      }) as unknown as HarnessBlock,
+      }) as unknown as HarnessBlock;
+      // A held call waits for the stop, and the run ends with it: the stop waits for nothing more.
+      return options.toolCalls === undefined ? block : (Object.assign(block, { stopsOnAbort: true as const }) as HarnessBlock);
+    },
   };
 }

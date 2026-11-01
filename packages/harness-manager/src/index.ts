@@ -140,7 +140,28 @@ export {
   type HarnessStubMcpTools,
   type HarnessStubOptions,
   type StubRun,
+  type StubToolCall,
+  type StubToolCallRecord,
 } from "./harness-stub";
+// ── A run's tool calls, approved by a person (`approveTools`) ───────────────
+// Exported for a flow other than the manager to compose the same wait.
+export {
+  ALLOW_FOR_RUN,
+  grantMatches,
+  heldToolCallOf,
+  heldToolCallSchema,
+  heldToolDecision,
+  toolApprovalOutcome,
+  toolApprovalStop,
+  toolApprovalYesSchema,
+  toolGrantSchema,
+  type HarnessToolApprovalDecision,
+  type HarnessToolApprovalHook,
+  type HarnessToolApprovalRequest,
+  type HeldToolCall,
+  type ToolApprovalOutcome,
+  type ToolGrant,
+} from "./tool-approval";
 // ── The upgrade's one-off step for lines the coding door kept ───────────────
 export { upgradeKeptTurns, type KeptTurnUpgradeOptions, type KeptTurnUpgradeStores } from "./upgrade-kept-turns";
 
