@@ -3719,6 +3719,7 @@ export async function createExecutionContext<
           const settled: Record<string, unknown> = { ...resumeState.restored };
           for (const key of getTransientKeys(node.parent.stateSchema)) {
             if (key in current) settled[key] = current[key];
+            else delete settled[key];
           }
           await stateRef.setState(settled);
           return;
