@@ -174,7 +174,8 @@ export const REQUEST_SPEND_SEAM: unique symbol = Symbol.for("@flow-state-dev/req
 export interface RequestSpendSeam {
   /**
    * Add one harness report to the request's spend. A report with a `runId`
-   * replaces that run's earlier report; one without is one settled run.
+   * replaces that run's earlier report; one without is one settled run. The
+   * engine's seam names that run before it counts it.
    */
   reportHarnessRun(run: HarnessRunSpend): void;
   /**
