@@ -39,7 +39,7 @@ flowchart LR
   R --> D["leg d · removeWorktree"]
   D --> D1["row kept, state removed"]
   R --> E["leg e · another session reads"]
-  E --> E1["same user: resource tool lists the row<br/>other user: nothing"]
+  E --> E1["same user: lists the row<br/>other user: nothing"]
   A -. "control no-row" .-> X1["a:row FAILS"]
   C -. "control no-checkout" .-> X2["c:snapshot FAILS"]
   D -. "control keep-ready" .-> X3["d:removed FAILS"]
@@ -50,8 +50,8 @@ flowchart LR
 - **Goal check (new): `goals/workspace/worktrees-resource`**. It is model-free. It uses the same
   set-up as FIX-2419's `session-worktree-lifecycle`: a `harnessSessionFlow` served over HTTP, a
   workspace from the local host over a scratch repository with a bare `origin`, and a stub harness
-  that commits. It reads the rows through the flow's HTTP resource routes, the way a page reads
-  them, and through core's resource tools, the way an agent reads them.
+  that commits. It reads the rows through the flow's HTTP resource route, the way a page reads
+  them.
   - Leg **a**: after the first turn, there is one row with `state: "ready"`, the session's path,
     the branch, `baseCommit` equal to `git merge-base`, `owner: { kind: "session", id }`, and a
     `name` matching `<slug>-<hex>`. The session's `state.workspace.worktree` is that row's key.
@@ -60,9 +60,11 @@ flowchart LR
   - Leg **c**: a turn commits twice and then switches to a new branch. The row's `branch` is the
     new branch, `commits` is 2, and `lastTurnAt` is from that turn.
   - Leg **d**: after `removeWorktree`, the row is still there with `state: "removed"`.
-  - Leg **e**: a session of the same user lists the row with the resource tools. A session of
-    another user lists nothing.
-- **Controls that must fail.** Each one reddens only its own legs.
+  - Leg **e**: a new session of the same user lists the row. A session of another user lists
+    nothing. An agent reads the same rows with core's resource tools, which serve `llmReadable`
+    collections (FIX-2436). The check doesn't drive a model.
+- **Controls that must fail.** Each one reddens only its own legs. `no-row` reddens every leg that
+  reads a row, because each of them depends on the first write.
   - `GOAL_CONTROL=no-row` provisions without the collection, so leg a fails **`a:row`**.
   - `GOAL_CONTROL=no-checkout` skips `recordCheckout`, so leg c fails **`c:snapshot`**.
   - `GOAL_CONTROL=keep-ready` removes with git directly, not through the host, so leg d fails
