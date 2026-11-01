@@ -106,7 +106,12 @@
     "apps/kitchen-sink/components/flow-state/run-checks.tsx",
     // Kitchen Sink's copy of the registry's spend, which the registry drift
     // test requires installed; its harness session imports it later.
-    "apps/kitchen-sink/components/flow-state/spend.tsx"
+    "apps/kitchen-sink/components/flow-state/spend.tsx",
+    // Kitchen Sink's and Shift Manager's byte copies of the registry's review card:
+    // their suspension cards import ReviewSuspension; the card's other exports are
+    // for apps that draw holds.
+    "apps/kitchen-sink/components/flow-state/review-hold.tsx",
+    "packages/shift-manager/src/components/flow-state/review-hold.tsx"
   ],
 
   // Dead code fails `fallow audit` at its default severity. Complexity reports

@@ -365,12 +365,26 @@
       "categories": ["ai", "framework"]
     },
     {
+      "name": "review-hold",
+      "title": "Review Hold",
+      "type": "registry:component",
+      "description": "A coding run's changes waiting on the user's review: its commits on the branch, the judge's verdict, and Accept or Ask for changes. Reads harness-manager's review stop data and sends the only two answers it takes. Drawn from a task's hold, or for a kind: review suspension (SuspensionCard routes those here).",
+      "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react", "lucide-react"],
+      "registryDependencies": ["tokens"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/review-hold.tsx",
+        "target": "components/flow-state/review-hold.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
       "name": "chat-assistant",
       "title": "Chat Assistant Renderers",
       "type": "registry:component",
       "description": "Pre-wired RendererRegistry mapping all Flow State item types to their default components.",
       "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react", "lucide-react", "react-markdown"],
-      "registryDependencies": ["message", "reasoning", "tool", "status", "error", "approval", "audit-annotation", "task-plan", "session-items-context", "shimmer", "tokens"],
+      "registryDependencies": ["message", "reasoning", "tool", "status", "error", "approval", "review-hold", "audit-annotation", "task-plan", "session-items-context", "shimmer", "tokens"],
       "files": [
         {
           "type": "registry:component",
