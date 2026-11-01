@@ -224,7 +224,7 @@ Only Claude Code asks per call. Codex and Cursor take their sandbox and approval
 
 ### In a coding chat
 
-`harnessSessionFlow`, the flow behind a chat with one harness session, takes the same `approveTools` option. A call the harness doesn't allow stops the turn, and the turn's request waits for the same approval, with the same prompt, data and three answers. Your screen answers it through the engine's answer route, as it answers any paused request, and the answer resumes the conversation. Allow for this run lasts until the turn ends.
+`harnessSessionFlow`, the flow behind a chat with one harness session, takes the same `approveTools` option. A call the harness doesn't allow stops the turn, and the turn's request waits for the same approval, with the same prompt, data and three answers. Your screen answers it through the engine's answer route, as it answers any paused request, and the answer resumes the conversation. Allow for this run lasts until the turn ends. While a turn waits for an answer, the session refuses any other turn sent to it. Answer or stop the waiting one first.
 
 ```ts
 harnessSessionFlow({

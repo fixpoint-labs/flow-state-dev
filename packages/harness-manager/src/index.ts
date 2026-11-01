@@ -144,6 +144,7 @@ export {
   HARNESS_SESSION_FAILED_OUTCOME,
   HARNESS_SESSION_MODEL_REQUIRED,
   HARNESS_SESSION_APPROVALS_NEED_DURABLE,
+  HARNESS_SESSION_TURN_WAITS_ON_APPROVAL,
   type HarnessSessionFeeds,
   type HarnessSessionFlowOptions,
   type HarnessSessionPlace,

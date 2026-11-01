@@ -149,6 +149,12 @@ export const harnessTurnRecordSchema = z.object({
   /** When the turn ended, in epoch millis: its duration is `endedAt - at`. */
   endedAt: z.number().nullable().default(null),
   /**
+   * Whether the turn is waiting now for a user's answer about a tool call
+   * (`approveTools`). No other turn of the session runs while it is. `null`
+   * on a turn that never waited, and on one recorded before this field (BP-030).
+   */
+  waitsOnApproval: z.boolean().nullable().default(null),
+  /**
    * The harness runs `spend` counts, as each last reported. Kept so a turn
    * continued in a later run of its request (after an interruption) counts
    * the runs before it too: a continued request's ledger holds only its own.
@@ -339,6 +345,7 @@ const BLANK_TURN: HarnessTurnRecord = {
   spend: null,
   endedAt: null,
   spentRuns: null,
+  waitsOnApproval: null,
 };
 
 /** `state` with the turn `requestId` changed by `change`, keeping only the latest {@link KEPT_TURNS}. */
@@ -628,7 +635,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       // Only a turn that can wait on an approval reaches its end unended this way.
       if (!approveTools || record === undefined || record.endedAt != null) return;
       await changeState(harnessCtx, (state) =>
-        withTurn(state, requestId, (turn) => ({ ...turn, stopped: true, ...turnEndOf(ctx, requestId, turn) })),
+        withTurn(state, requestId, (turn) => ({ ...turn, stopped: true, waitsOnApproval: null, ...turnEndOf(ctx, requestId, turn) })),
       );
       await writeTurnHead(harnessCtx).catch(() => undefined);
     },
@@ -775,6 +782,14 @@ export const HARNESS_SESSION_APPROVALS_NEED_DURABLE =
   "This session asks a user before the harness's tool calls (`approveTools`), and a call waits for them " +
   "as a durable stop. Run it on a host with durable execution on, or turn `approveTools` off.";
 
+/**
+ * The message a turn is refused with while another turn of its session waits
+ * on a tool approval. The wait gives back the session's turn slot, and a turn
+ * run then would work in the checkout and conversation the waiting one resumes.
+ */
+export const HARNESS_SESSION_TURN_WAITS_ON_APPROVAL =
+  "Another turn of this session is waiting for an answer about a tool call. Answer or stop that turn, then send this one.";
+
 /** The turn's approvals, as its sequencer state holds them. */
 function turnApprovalsOf(ctx: { sequencer?: { state?: unknown } | undefined }): TurnApprovals {
   const state = ctx.sequencer?.state as z.infer<typeof turnApprovalsSchema> | undefined;
@@ -857,6 +872,20 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
           }
         },
       });
+      // Refused while another turn waits on an approval: the wait gives back
+      // the session's turn slot, so `concurrency: "defer"` no longer holds this
+      // one back, and it would run in the checkout and conversation that turn resumes.
+      const oneTurnAtATime = handler({
+        name: `${kind}-one-turn-at-a-time`,
+        execute: async (_input: unknown, ctx) => {
+          const requestId = ctx.request.identity.id;
+          const turns = (ctx.session.state as HarnessSessionState).turns ?? {};
+          const waiting = Object.entries(turns).some(
+            ([id, turn]) => id !== requestId && turn.waitsOnApproval === true && turn.endedAt == null,
+          );
+          if (waiting) throw new Error(HARNESS_SESSION_TURN_WAITS_ON_APPROVAL);
+        },
+      });
       // The harness step, with its own stop: a step stopped for an approval
       // ends with a marker, not an error, so the turn goes on to the wait.
       // Any other failure is the turn's, recorded as without approvals.
@@ -909,7 +938,11 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
             // and a resume starts a ledger that no longer holds it: on the turn
             // now, so the turn's end counts it with the runs after.
             await changeState(ctx as unknown as HarnessCallbackContext, (state) =>
-              withTurn(state, requestId, (record) => ({ ...record, spentRuns: turnEndOf(ctx, requestId, record).spentRuns })),
+              withTurn(state, requestId, (record) => ({
+                ...record,
+                spentRuns: turnEndOf(ctx, requestId, record).spentRuns,
+                waitsOnApproval: true,
+              })),
             );
           }
           await ctx.sequencer!.patchState({ approvals: { ...approvals, grants, pending: held ?? null } });
@@ -951,6 +984,10 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
             );
           }
           const asked = await ctx.suspendForUser(toolApprovalStop(call));
+          // Answered (or cancelled), the turn holds the session's turn slot again.
+          await changeState(ctx as unknown as HarnessCallbackContext, (state) =>
+            withTurn(state, ctx.request.identity.id, (record) => ({ ...record, waitsOnApproval: null })),
+          );
           if (asked.cancelled) {
             await ctx.sequencer!.patchState({ approvals: { ...approvals, pending: null, steps } });
             return value;
@@ -973,6 +1010,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
         stateSchema: turnApprovalsSchema,
       })
         .tap(requireDurable)
+        .tap(oneTurnAtATime)
         .tap(titleFromPrompt)
         .step(harnessStep)
         .step(heldCallStep)

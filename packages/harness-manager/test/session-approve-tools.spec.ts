@@ -17,6 +17,9 @@
  *     failure record: the turn fails with no error, end or spend on its record.
  *   - drop the finished hook's end of an unended turn: a turn stopped while
  *     it waits ends `aborted` with no end, stop or spend on its record.
+ *   - drop the refusal of a turn sent while another waits: the second turn
+ *     runs, confirms its own conversation, and the first turn's Allow resumes
+ *     that one instead of its own.
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -28,6 +31,7 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import {
   ALLOW_FOR_RUN,
   HARNESS_SESSION_APPROVALS_NEED_DURABLE,
+  HARNESS_SESSION_TURN_WAITS_ON_APPROVAL,
   MAX_APPROVAL_STEPS,
   harnessSessionFlow,
   harnessStub,
@@ -309,6 +313,29 @@ describe("a harness session's tool call waits for the user", () => {
       expect(h.decisions()).toEqual(["0:held", "1:allow", "1:allow", "1:held"]);
       expect(h.ran("one") && h.ran("two")).toBe(true);
       expect(h.ran("three")).toBe(false);
+    } finally {
+      await h.dispose();
+    }
+  }, 30_000);
+
+  it("refuses a turn sent while another waits, and the waiting one resumes its own conversation", async () => {
+    const h = host({ calls: [marker("marker")] });
+    try {
+      const first = await h.turn("do the thing");
+      await h.pending(first.requestId!);
+      // The wait gives back the session's turn slot, so nothing else keeps a
+      // second turn out of the checkout and conversation the first one waits in.
+      const second = await h.turn("something else");
+      expect(JSON.stringify(second)).toContain(HARNESS_SESSION_TURN_WAITS_ON_APPROVAL);
+      expect(h.stub.runs).toHaveLength(1);
+      expect(await h.status(first.requestId!)).toBe("suspended");
+      expect((await h.answer(first.requestId!, "approve")).status).toBe(202);
+      expect(await h.ended(first.requestId!)).toBe("completed");
+      expect(h.stub.runs.map((run) => run.resume)).toEqual([null, h.stub.runs[0]!.session]);
+      expect(h.ran("marker")).toBe(true);
+      // Answered, the session takes turns again.
+      await h.turn("one more");
+      expect(h.stub.runs).toHaveLength(3);
     } finally {
       await h.dispose();
     }
