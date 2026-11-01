@@ -13,10 +13,9 @@
  *   - drop `onUsage` from the feeds: the usage query lists no window.
  *   - write the spend from the flow's `onFinished` instead: the request's
  *     terminal status is published before the spend lands.
- *   - keep a record's first end (skip a record that already ended), or count
- *     only the ledger's runs: a continued turn reads 10 tokens, not 20.
- *   - read model calls from the request's pending slice: a turn continued
- *     after a disconnect loses the calls its first run made.
+ *   - read the request's pending slice instead of its total: a turn resumed
+ *     after a suspension, or continued after a disconnect, loses what its
+ *     first run spent.
  */
 import { DEFAULT_ORG_ID, generator, handler, sequencer } from "@flow-state-dev/core";
 import { reportHarnessSpend, type HarnessBlock, type HarnessCallbackContext } from "@flow-state-dev/core/types";
@@ -36,10 +35,6 @@ interface Script {
   fail?: boolean;
   /** A window heard during the run. */
   window?: boolean;
-  /** An earlier run of this request already ended the turn with this run, as a turn continued after an interruption finds it. */
-  earlier?: { runId?: string; inputTokens: number; outputTokens: number; costUsd: number | null };
-  /** The run reports with no id, as a harness that settles each report does. */
-  anonymous?: boolean;
   /** The run writes its report twice, as a harness reports its running total. */
   reportTwice?: boolean;
 }
@@ -51,16 +46,6 @@ const stubAgent = (script: Script) => (feeds: HarnessSessionFeeds) =>
     execute: async (_input, ctx) => {
       const harnessCtx = ctx as unknown as HarnessCallbackContext;
       await feeds.resume(harnessCtx);
-      const earlier = script.earlier;
-      if (earlier !== undefined) {
-        const requestId = harnessCtx.request.identity.id;
-        await harnessCtx.session.atomicState((state) => {
-          const s = state as HarnessSessionState;
-          const turn = s.turns?.[requestId];
-          const run = { harness: "stub", model: "stub-model", ...earlier, billing: "api-key" as const };
-          return { ...s, turns: { ...s.turns, [requestId]: { ...turn!, endedAt: 1, spentRuns: [run] } } };
-        });
-      }
       if (script.window === true) {
         await feeds.onUsage(
           { harness: "stub", window: { id: "five_hour", label: "5h", minutes: 300, usedPercent: 42, level: "ok", resetsAt: null }, observedAt: Date.now(), runStartedAt: Date.now() - 10, accountId: "acct" },
@@ -73,7 +58,7 @@ const stubAgent = (script: Script) => (feeds: HarnessSessionFeeds) =>
       } finally {
         if (script.spend !== undefined) {
           if (script.reportTwice === true) reportHarnessSpend(ctx, { runId: "run-1", harness: "stub", model: "stub-model", ...script.spend, inputTokens: 1, outputTokens: 1 });
-          reportHarnessSpend(ctx, { ...(script.anonymous === true ? {} : { runId: "run-1" }), harness: "stub", model: "stub-model", ...script.spend });
+          reportHarnessSpend(ctx, { runId: "run-1", harness: "stub", model: "stub-model", ...script.spend });
         }
       }
     },
@@ -140,30 +125,66 @@ describe("a harness session turn's spend", () => {
     expect(turn.spend).toBeNull();
     expect(turn.endedAt).not.toBeNull();
   });
-  // A turn continued after an interruption runs again under the same request,
-  // whose ledger then holds only the new run: the turn still counts both.
-  it("counts the runs of an earlier run of its request too, once each", async () => {
+  it("counts a run once however often its harness reports it", async () => {
     const stores = createInMemoryStores();
-    await run(stores, "s-continued", {
-      earlier: { runId: "run-0", inputTokens: 10, outputTokens: 1, costUsd: 0.1 },
-      reportTwice: true,
-      spend: { inputTokens: 10, outputTokens: 1, costUsd: 0.1, billing: "api-key" },
-    });
-    const turn = await onlyTurn(stores, "s-continued");
-    expect(turn.spend).toMatchObject({ inputTokens: 20, outputTokens: 2 });
-    expect(turn.spend?.costUsd).toBeCloseTo(0.2);
-    expect(turn.endedAt).toBeGreaterThan(1);
+    await run(stores, "s-twice", { reportTwice: true, spend: { inputTokens: 10, outputTokens: 1, costUsd: 0.1, billing: "api-key" } });
+    const turn = await onlyTurn(stores, "s-twice");
+    expect(turn.spend).toMatchObject({ inputTokens: 10, outputTokens: 1, costUsd: 0.1 });
   });
 
-  it("keeps an earlier run with no id even when its totals match this one's", async () => {
+  // A suspension (an approval the harness waits on) ends the request's first
+  // run and hands its spend on; the resumed run never runs the harness's
+  // earlier work again, so the turn's spend is the request's whole count.
+  it("keeps a run the harness reported before it suspended, once the turn resumes", async () => {
     const stores = createInMemoryStores();
-    await run(stores, "s-anonymous", {
-      earlier: { inputTokens: 10, outputTokens: 1, costUsd: 0.1 },
-      anonymous: true,
-      spend: { inputTokens: 10, outputTokens: 1, costUsd: 0.1, billing: "api-key" },
-    });
-    const turn = await onlyTurn(stores, "s-anonymous");
-    expect(turn.spend).toMatchObject({ inputTokens: 20, outputTokens: 2 });
+    await born(stores, "s-suspended");
+    let runs = 0;
+    const agent = () =>
+      sequencer({ name: "stub-harness", durable: true, inputSchema: z.object({ prompt: z.string() }) })
+        .step(
+          handler({
+            name: "work",
+            inputSchema: z.any(),
+            execute: (value, ctx) => {
+              runs += 1;
+              reportHarnessSpend(ctx, { runId: "run-0", harness: "stub", model: "stub-model", inputTokens: 10, outputTokens: 2, costUsd: 0.1, billing: "api-key" });
+              return value;
+            },
+          }),
+        )
+        .step(
+          handler({
+            name: "approve",
+            inputSchema: z.any(),
+            execute: async (_value, ctx) => {
+              await ctx.suspend!({ reason: "approval", message: "Go?" });
+              return { outcome: "completed" };
+            },
+          }),
+        ) as unknown as HarnessBlock;
+    const flow = harnessSessionFlow({ kind: "stub-session", workspace, agent });
+    const provider = createCheckpointDurabilityProvider({ checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases });
+    const runtimeConfig = { durabilityProvider: provider };
+
+    await runAction({ flow, actionName: "turn", input: { prompt: "hello" }, userId: "u", orgId: DEFAULT_ORG_ID, sessionId: "s-suspended", requestId: "r-suspended", stores, runtimeConfig } as never);
+    expect((await stores.request.get("r-suspended"))?.status).toBe("suspended");
+    const [suspension] = (await provider.listSuspended({ status: "pending" })) as Array<{ suspensionId: string }>;
+    await provider.suspend({ ...(suspension as never as object), status: "approved", resolvedAt: Date.now(), resumeData: {} } as never);
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+    const { finished } = await continueRequest({
+      requestId: "r-suspended",
+      stores,
+      flowRegistry: registry,
+      resumeContext: { suspensionId: suspension!.suspensionId, action: "approve", data: {}, resumedBy: "u" },
+      runtimeConfig,
+    } as never);
+    await finished;
+
+    expect((await stores.request.get("r-suspended"))?.status).toBe("completed");
+    expect(runs).toBe(1);
+    const turn = await onlyTurn(stores, "s-suspended");
+    expect(turn.spend).toMatchObject({ harness: "stub", inputTokens: 10, outputTokens: 2, costUsd: 0.1 });
   });
 
   // A disconnect ends the request's first run, which hands its spend on; the

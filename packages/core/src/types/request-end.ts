@@ -184,6 +184,13 @@ export interface RequestSpendSeam {
    * on. Optional, so a seam built before it keeps compiling (BP-030).
    */
   pending?(): RequestSpend;
+  /**
+   * Everything the request has spent across all its runs: every model call,
+   * and every harness run, including those an earlier run's suspension or
+   * interruption already handed on. Reads, never takes. Optional, so a seam
+   * built before it keeps compiling (BP-030).
+   */
+  total?(): RequestSpend;
 }
 
 /**
@@ -202,6 +209,23 @@ export interface RequestSpendSeam {
 export function readRequestSpend(ctx: object): RequestSpend | undefined {
   const seam = (ctx as { readonly [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM];
   return seam?.pending?.();
+}
+
+/**
+ * What the running request has spent across all its runs: every model call,
+ * and every harness run, however often it suspended, was interrupted or was
+ * continued. Unlike {@link readRequestSpend}, this includes what earlier
+ * endings already handed on, so a record of the whole request (a turn) reads
+ * the same after a resume as before it.
+ *
+ * Framework-facing, like {@link readRequestSpend}.
+ *
+ * @returns `undefined` when the context carries no spend ledger, or one built
+ *   before it could read a total.
+ */
+export function readRequestTotalSpend(ctx: object): RequestSpend | undefined {
+  const seam = (ctx as { readonly [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM];
+  return seam?.total?.();
 }
 
 /**

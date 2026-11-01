@@ -3167,8 +3167,8 @@ export async function createExecutionContext<
   // that run's to hand on, so it is carried rather than recovered.
   const loggedSpend = loggedSpendOf(requestRecord.items ?? [], requestRecord.spentThroughItemIndex ?? -1);
   const requestSpendLedger = interruptedEndingLive
-    ? createRequestSpendLedger(sumSpend(requestRecord.spentByModel ?? {}, loggedSpend.byModel))
-    : createRequestSpendLedger(requestRecord.spentByModel, loggedSpend.byModel, loggedSpend.harnessRuns);
+    ? createRequestSpendLedger(sumSpend(requestRecord.spentByModel ?? {}, loggedSpend.byModel), {}, [], requestRecord.spentHarnessRuns)
+    : createRequestSpendLedger(requestRecord.spentByModel, loggedSpend.byModel, loggedSpend.harnessRuns, requestRecord.spentHarnessRuns);
   const requestEndRegistry = createRequestEndRegistry(() => requestSpendLedger.takeSinceLastEnding());
   // How this request resumed (FIX-2129), read when a block asks: the
   // resolution is filled in at the checkpoint read, after this context is built.
@@ -4204,7 +4204,8 @@ export async function createExecutionContext<
             if (at >= 0) harnessSpendOfBlock.splice(at, 1);
             harnessSpendOfBlock.push({ ...run });
           },
-          pending: () => requestSpendLedger.pending()
+          pending: () => requestSpendLedger.pending(),
+          total: () => requestSpendLedger.total()
         };
         (childContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
         // FIX-663: re-attach the background signal on every scope so nested

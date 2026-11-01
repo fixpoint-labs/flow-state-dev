@@ -48,21 +48,26 @@ export interface RequestSpendLedger {
  * already handed on, so {@link RequestSpendLedger.takeSinceLastEnding} never
  * hands it on again. `recovered` and `recoveredHarnessRuns` are what a run that
  * never ended (its process died) left in the log: counted, and handed on at
- * this run's first ending.
+ * this run's first ending. `carriedHarnessRuns` are the harness runs an
+ * earlier ending already handed on: in {@link RequestSpendLedger.total} like
+ * `carried`, never handed on again, and a later report under the same run id
+ * is handed on as its change since.
  */
 export function createRequestSpendLedger(
   carried: Readonly<Record<string, ModelUsageEntry>> = {},
   recovered: Readonly<Record<string, ModelUsageEntry>> = {},
-  recoveredHarnessRuns: readonly HarnessRunSpend[] = []
+  recoveredHarnessRuns: readonly HarnessRunSpend[] = [],
+  carriedHarnessRuns: readonly HarnessRunSpend[] = []
 ): RequestSpendLedger {
   const byModel: Record<string, ModelUsageEntry> = Object.assign(Object.create(null), copyOf(carried));
   for (const [model, entry] of Object.entries(recovered)) addEntry((byModel[model] ??= emptyEntry()), entry);
   // One entry per run, as last reported, in the order last reported. A report
   // with no run id is a run of its own, under a key nothing else reports to;
   // so is each run the log recovered.
-  const harnessRuns = new Map<string, HarnessRunSpend>(recoveredHarnessRuns.map((run, i) => [`recovered:${i}`, { ...run }]));
+  const carriedRuns = carriedHarnessRuns.map((run, i): [string, HarnessRunSpend] => [run.runId === undefined ? `carried:${i}` : `run:${run.runId}`, { ...run }]);
+  const harnessRuns = new Map<string, HarnessRunSpend>([...carriedRuns, ...recoveredHarnessRuns.map((run, i): [string, HarnessRunSpend] => [`recovered:${i}`, { ...run }])]);
   // Each run as the last ending handed it on.
-  let takenRuns = new Map<string, HarnessRunSpend>();
+  let takenRuns = new Map<string, HarnessRunSpend>(carriedRuns.map(([key, run]) => [key, { ...run }]));
   let takenByModel: Record<string, ModelUsageEntry> = copyOf(carried);
   let settledRuns = 0;
 
