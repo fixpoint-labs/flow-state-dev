@@ -79,6 +79,7 @@ flowchart TD
 | Step | Refused when | Forceable |
 |---|---|---|
 | Remove the worktree | Uncommitted or untracked changes; a provision of the place in flight; a run working in it (`in-use`) | No |
+| Remove a worktree on a detached HEAD | Its HEAD holds commits no branch, remote-tracking ref or tag holds (`unique-commits`) | Yes, `force` |
 | Delete the branch | It holds commits no other branch or remote-tracking ref holds | Yes, `force` |
 
 - **Because:** uncommitted changes exist only in that directory, and a person in a menu can
@@ -122,6 +123,8 @@ out elsewhere.
   tenant with the owner's id, never the caller's word for a tenant, so another tenant's session
   is never found. `createCheck` refuses (404) a session naming itself or a worktree that isn't
   there; a turn refuses the same if it has gone since (removed, or never provisioned).
+  A turn also refuses unless the owner's worktree is in the caller's own worktrees list
+  (FIX-2439's user-scoped rows), so a session id alone never reaches another user's checkout.
 - **Ownership.** The workspace record gains `owner` (a session id; `null` on older records,
   which are the session's own). The session action refuses removal from an attached session.
   The host's `remove` is keyed by place, which is the owner's, so nothing else can name an
