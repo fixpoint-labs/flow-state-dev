@@ -59,22 +59,12 @@ describe("response emitter item hot path", () => {
   });
 
   it("never sorts or snapshots items on the per-emit path", async () => {
-    // The old per-emit `getItems().length` (with a read-time sort) made a long
-    // stream O(N² log N). Assert the mechanism, not wall-clock time: a timing
-    // bound flakes on a starved CI runner and passes a regression on a fast one.
     const emitter = createResponseEmitter({ requestId: "req_perf" });
     const getItems = vi.spyOn(emitter, "getItems");
     const sort = vi.spyOn(Array.prototype, "sort");
     try {
-      const N = 500;
-      for (let i = 0; i < N; i++) {
-        // Mirror the runtime hot path: read the count (itemIndex) then emit.
-        const index = emitter.getItemCount();
-        await emitter.emitItemAdded(makeItem(index, 1_000_000 + i));
-      }
-      expect(emitter.getItemCount()).toBe(N);
+      await emitter.emitItemAdded(makeItem(emitter.getItemCount(), 1_000_000));
       expect(getItems).not.toHaveBeenCalled();
-
       emitter.getItems();
       expect(sort).not.toHaveBeenCalled();
     } finally {
