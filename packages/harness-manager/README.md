@@ -584,8 +584,8 @@ import {
 } from "@flow-state-dev/harness-manager";
 
 const readiness = harnessReadiness({
-  "claude-code": { label: "Claude Code", check: () => checkClaudeCodeReadiness({ env: harnessEnv({ pass: CLAUDE_CODE_PASS }) }) },
-  codex: { label: "Codex", check: () => checkCodexReadiness({ env: harnessEnv({ pass: CODEX_PASS }), timeoutMs: 30_000 }) },
+  "claude-code": { label: "Claude Code", check: (o) => checkClaudeCodeReadiness({ env: harnessEnv({ pass: CLAUDE_CODE_PASS }), signal: o?.signal }) },
+  codex: { label: "Codex", check: (o) => checkCodexReadiness({ env: harnessEnv({ pass: CODEX_PASS }), timeoutMs: 30_000, signal: o?.signal }) },
   cursor: { label: "Cursor", check: () => checkCursorReadiness(harnessEnv({ pass: ["PATH", "HOME", "CURSOR_API_KEY"] })) },
 });
 

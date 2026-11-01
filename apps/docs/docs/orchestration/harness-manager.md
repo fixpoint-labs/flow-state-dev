@@ -370,11 +370,11 @@ import { formatHarnessReadiness, harnessReadiness } from "@flow-state-dev/harnes
 const readiness = harnessReadiness({
   "claude-code": {
     label: "Claude Code",
-    check: () => checkClaudeCodeReadiness({ env: harnessEnv({ pass: CLAUDE_CODE_PASS }) }),
+    check: (o) => checkClaudeCodeReadiness({ env: harnessEnv({ pass: CLAUDE_CODE_PASS }), signal: o?.signal }),
   },
   codex: {
     label: "Codex",
-    check: () => checkCodexReadiness({ env: harnessEnv({ pass: CODEX_PASS }), timeoutMs: 30_000 }),
+    check: (o) => checkCodexReadiness({ env: harnessEnv({ pass: CODEX_PASS }), timeoutMs: 30_000, signal: o?.signal }),
   },
   cursor: {
     label: "Cursor",
@@ -388,6 +388,8 @@ void readiness.read().then((rows) => console.log(formatHarnessReadiness(rows)));
 // ✓ Cursor
 // ✗ Codex: Codex has no credential: Not logged in. Run `codex login`, or set CODEX_API_KEY.
 ```
+
+Pass the check's `signal` through, as above, so a check that runs past `timeoutMs` stops its Claude Code or Codex process. Cursor's sign-in read starts no process, so its check takes none.
 
 A check answers whether a credential is there, not whether it works. A key that
 is set but rejected reads as ready and fails on the run's first turn.
