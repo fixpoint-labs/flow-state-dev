@@ -16,6 +16,7 @@ import { columnFor } from "../lib/columns";
 import { asksOfTask, doorOf, rosterOf, workerFor, workerLabel, waited } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
+import { RouteLink } from "../components/RouteLink";
 import { sendTurn } from "../lib/send";
 import { useTask } from "../lib/task";
 import { distinctTitle } from "../lib/tasks";
@@ -65,9 +66,9 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
       <header className="px-4 pt-3">
         <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">
           TASK ·{" "}
-          <button type="button" className="hover:underline" onClick={() => navigate({ level: "tasks", by: "state" })}>
+          <RouteLink className="hover:underline" to={{ level: "tasks", by: "state" }}>
             {boardRef}
-          </button>
+          </RouteLink>
         </p>
         <ScreenTitle testId="task-title">{row?.title ?? taskId}</ScreenTitle>
         <p className="text-xs text-muted-foreground" data-testid="task-status">
@@ -83,7 +84,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
         )}
         <Actions gaps={gaps} />
       </header>
-      <Tabs label="Task" tabs={TASK_TABS} selected={tab} onSelect={(next) => navigate({ level: "task", boardRef, taskId, tab: next })} />
+      <Tabs label="Task" tabs={TASK_TABS} selected={tab} onSelect={(next) => /* in place: the task's tabs */ navigate({ level: "task", boardRef, taskId, tab: next })} />
       <div role="tabpanel" data-tabpanel={tab} data-testid="task-slot" className="flex min-h-0 flex-1 flex-col">
         {tab === "session" ? (
           <TaskSession />

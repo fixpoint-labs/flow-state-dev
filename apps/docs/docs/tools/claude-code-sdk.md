@@ -539,6 +539,14 @@ contribute resources, state and tools but never lifecycle hooks, so this is the
 only way to reach one. Releasing something the run was holding is what it is
 for.
 
+**`allowedTools` and `permissionMode` decide what a person is asked.** Under a
+[harness manager](../orchestration/harness-manager.md#approving-a-runs-tool-calls)
+built with `approveTools: true`, a call these already allow runs unasked, and
+only the rest wait for a person. Name in `allowedTools` what a run may always do
+(`["Read"]`, say) and use `permissionMode: "default"`. Under `acceptEdits` no
+file edit is asked about, and under `bypassPermissions` nothing is. Allow rules
+in a settings file that `settingSources` loads count too.
+
 ### The prompt the run starts from
 
 A system prompt is the standing instruction the agent reads before your request. Leave
@@ -760,7 +768,7 @@ Set `settingSources` or `sandbox` yourself and yours wins. The disallowed tools 
 
 By default the agent governs its own tools through the SDK's `permissionMode`. To
 gate a tool call from your flow, pass `onToolApproval`: it receives each request
-and returns allow or deny, and the decision surfaces as a status item.
+and returns allow, deny or held, and the decision surfaces as a status item.
 
 ```ts
 const agent = claudeCodeAgent({
@@ -772,9 +780,16 @@ const agent = claudeCodeAgent({
 });
 ```
 
-This is the interim story. Routing approvals through flow-state-dev's own
-human-in-the-loop suspend and resume is a follow-up; `onToolApproval` is the seam
-that work will plug into.
+A deny tells the model, and the turn goes on. A `held` decision is for a call a
+person decides later: the call doesn't run, the turn stops, and the run records
+it as waiting on approval rather than denied. You rarely return it yourself. A
+[harness manager](../orchestration/harness-manager.md#approving-a-runs-tool-calls)
+built with `approveTools: true` hands you an `onToolApproval` that does, then
+waits for the person and resumes the session with their answer.
+
+Calls the SDK already allows never reach `onToolApproval`. That covers every
+tool named in `allowedTools`, and whatever `permissionMode` approves on its own
+(`acceptEdits` approves file edits, `bypassPermissions` approves everything).
 
 ## Choosing the model
 
