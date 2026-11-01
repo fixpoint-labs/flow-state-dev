@@ -1,0 +1,81 @@
+<svg viewBox="0 0 940 340" role="img" aria-label="What changes, in two packages. Engine: the resource change seam and the scope-state wrapper each publish a notice for their scope beside the item they already emit, with or without a stream; the client's resource routes publish the session's topic. React: a live session view subscribes to its session, user and org topics, reads state without items on a state notice, and passes a resource notice to the resource hooks; Roster and BoardColumns gain live. From other issues: the bus, with the notice gaining the request that made it, and the socket with client.subscribe."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .pkg   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .ext   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .input { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="340"/>
+
+  <g id="engine">
+    <rect class="pkg" x="16" y="16" width="290" height="250" rx="6"/>
+    <text class="t-lbl" x="32" y="36">ENGINE · WHO PUBLISHES</text>
+    <rect class="ext" x="32" y="48" width="258" height="58" rx="5"/>
+    <text class="t-b" x="44" y="70">resource change seam</text>
+    <text class="t-s" x="44" y="88">+ publish beside the emit, stream or not</text>
+    <rect class="ext" x="32" y="118" width="258" height="58" rx="5"/>
+    <text class="t-b" x="44" y="140">scope-state wrapper</text>
+    <text class="t-s" x="44" y="158">+ publish for session, user and org state</text>
+    <rect class="ext" x="32" y="188" width="258" height="58" rx="5"/>
+    <text class="t-b" x="44" y="210">client resource routes</text>
+    <text class="t-s" x="44" y="228">+ publish the session's topic</text>
+  </g>
+
+  <g id="channel">
+    <rect class="pkg" x="325" y="16" width="290" height="250" rx="6"/>
+    <text class="t-lbl" x="341" y="36">THE CHANNEL · OTHER ISSUES</text>
+    <rect class="input" x="341" y="48" width="258" height="58" rx="5"/>
+    <text class="t-b" x="353" y="70">the bus · FIX-2426</text>
+    <text class="t-s" x="353" y="88">kinds state and resource; notice + origin</text>
+    <rect class="input" x="341" y="118" width="258" height="58" rx="5"/>
+    <text class="t-b" x="353" y="140">socket and mint · FIX-2428</text>
+    <text class="t-s" x="353" y="158">each topic checked on the server</text>
+    <rect class="input" x="341" y="188" width="258" height="58" rx="5"/>
+    <text class="t-b" x="353" y="210">client.subscribe · FIX-2428</text>
+    <text class="t-s" x="353" y="228">a timer where there is no push</text>
+  </g>
+
+  <g id="react">
+    <rect class="pkg" x="634" y="16" width="290" height="250" rx="6"/>
+    <text class="t-lbl" x="650" y="36">REACT · WHO LISTENS</text>
+    <rect class="ext" x="650" y="48" width="258" height="58" rx="5"/>
+    <text class="t-b" x="662" y="70">useSession({ live })</text>
+    <text class="t-s" x="662" y="88">+ hears its session, user and org topics</text>
+    <rect class="new" x="650" y="118" width="258" height="58" rx="5"/>
+    <text class="t-b" x="662" y="140">state notice: state read, no items</text>
+    <text class="t-s" x="662" y="158">resource notice: the hooks read again</text>
+    <rect class="ext" x="650" y="188" width="258" height="58" rx="5"/>
+    <text class="t-b" x="662" y="210">Roster, BoardColumns · live</text>
+    <text class="t-s" x="662" y="228">a notice driver beside BoardList's</text>
+  </g>
+
+  <g id="flow">
+    <path class="arrow" d="M306 141 L319 141"/>
+    <path class="head" d="M325 141 L318 137 L318 145 Z"/>
+    <path class="arrow" d="M615 141 L628 141"/>
+    <path class="head" d="M634 141 L627 137 L627 145 Z"/>
+  </g>
+
+  <g id="legend">
+    <rect class="new" x="16" y="296" width="14" height="14" rx="3"/>
+    <text class="t-s" x="36" y="307">new</text>
+    <rect class="ext" x="86" y="296" width="14" height="14" rx="3"/>
+    <text class="t-s" x="106" y="307">extended</text>
+    <rect class="input" x="176" y="296" width="14" height="14" rx="3"/>
+    <text class="t-s" x="196" y="307">from another issue</text>
+  </g>
+</svg>
