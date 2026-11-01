@@ -113,7 +113,9 @@ import {
   markWorktreeRemoved,
   recordWorktreeCheckout,
   worktreeKey,
+  type CheckoutSnapshot,
   type WorktreeCollection,
+  type WorktreeOwner,
   type WorktreeRecording,
 } from "./worktrees";
 import { WorkspaceRefusedError } from "./refused";
@@ -472,20 +474,25 @@ export interface WorkspaceHost {
    */
   remove?(target: RemoveTarget, options?: RemoveOptions): Promise<RemovedWorktree>;
   /**
-   * Record that `session` works in the place's worktree beside its owner
-   * (`start: { worktreeOf }`): added to the row's `attached`, once. The row's
-   * key, or `null` when the place has no row (made before rows were written,
-   * or with none asked for). Optional, as `remove` is.
+   * Record that `by` (a session or run) works in the place's worktree beside
+   * its owner (`start: { worktreeOf }`): added to the row's `attached`, once.
+   * The row's key, or `null` when the place has no row (made before rows were
+   * written, or with none asked for). Optional, as `remove` is.
    */
-  attach?(target: { place: readonly string[] }, options: { worktrees: WorktreeCollection; session: string }): Promise<string | null>;
+  attach?(target: { place: readonly string[] }, options: { worktrees: WorktreeCollection; by: WorktreeOwner }): Promise<string | null>;
   /**
    * Read the place's worktree at a turn's end and write it to its row: the
    * branch HEAD is on and the commits past the row's `baseCommit` (`null`
    * when there is no base or git can't count), with the time, in one write.
-   * A directory that is gone marks the row `lost`. Does nothing for a place
-   * with no row. Optional, as `remove` is.
+   * A directory that is gone marks the row `lost`. `by`, when attached, has
+   * its own last-turn time set. Answers what it read, so a caller that reports
+   * the branch or count uses this one read; `null` for a place with no row.
+   * Optional, as `remove` is.
    */
-  recordCheckout?(target: { place: readonly string[] }, options: { worktrees: WorktreeCollection }): Promise<void>;
+  recordCheckout?(
+    target: { place: readonly string[] },
+    options: { worktrees: WorktreeCollection; by?: WorktreeOwner },
+  ): Promise<CheckoutSnapshot | null>;
 }
 
 /** One worktree a host holds, as `WorkspaceHost.list` reports it. */
@@ -1960,21 +1967,25 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
 
   async function attach(
     target: { place: readonly string[] },
-    attachOptions: { worktrees: WorktreeCollection; session: string },
+    attachOptions: { worktrees: WorktreeCollection; by: WorktreeOwner },
   ): Promise<string | null> {
     const key = worktreeKey(hostId(), target.place);
-    return (await attachToWorktree(attachOptions.worktrees, key, attachOptions.session)) ? key : null;
+    return (await attachToWorktree(attachOptions.worktrees, key, attachOptions.by)) ? key : null;
   }
 
-  async function recordCheckout(target: { place: readonly string[] }, recordOptions: { worktrees: WorktreeCollection }): Promise<void> {
+  async function recordCheckout(
+    target: { place: readonly string[] },
+    recordOptions: { worktrees: WorktreeCollection; by?: WorktreeOwner },
+  ): Promise<CheckoutSnapshot | null> {
     const key = worktreeKey(hostId(), target.place);
     const row = (await recordOptions.worktrees.getOptional(key))?.state;
-    if (row === undefined) return;
+    if (row === undefined) return null;
     const at = now();
     const path = row.path;
     if (path === null || !existsSync(path)) {
-      await recordWorktreeCheckout(recordOptions.worktrees, key, { present: false, at });
-      return;
+      const gone: CheckoutSnapshot = { present: false, at };
+      await recordWorktreeCheckout(recordOptions.worktrees, key, gone, recordOptions.by);
+      return gone;
     }
     let branch: string | null = null;
     try {
@@ -1991,7 +2002,9 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         // Unknown, never 0.
       }
     }
-    await recordWorktreeCheckout(recordOptions.worktrees, key, { present: true, branch, commits, at });
+    const read: CheckoutSnapshot = { present: true, branch, commits, at };
+    await recordWorktreeCheckout(recordOptions.worktrees, key, read, recordOptions.by);
+    return read;
   }
 
   return {

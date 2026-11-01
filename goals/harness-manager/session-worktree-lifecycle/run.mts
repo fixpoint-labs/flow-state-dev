@@ -259,7 +259,7 @@ await runGoal(async (failures, tell) => {
   const onOwnerBranch = git(repo, "rev-parse", ownerBranch) !== ownerTip && git(repo, "log", "-1", "--format=%s", ownerBranch) === fixture.subject;
   check("d:on-owner-branch", onOwnerBranch && !branchExists(sessionBranch(sE)), `the follow-up's commit is not on ${ownerBranch}, or it cut a branch of its own`);
   const eRow = await rowOf(sE);
-  check("d:recorded", eRow?.path === bPath && eRow.owner?.id === sB && eRow.attached.includes(sE), `row ${JSON.stringify(eRow)}`);
+  check("d:recorded", eRow?.path === bPath && eRow.owner?.id === sB && eRow.attached.some((entry) => entry.id === sE), `row ${JSON.stringify(eRow)}`);
   const eRemove = await act(sE, "removeWorktree", {});
   check("d:remove-refused", eRemove.ended === "failed" && existsSync(bPath), `the attached session's removal ended ${eRemove.ended}`);
   // Both sessions' turns take the one worktree's in-use lock: the follow-up waits out the owner's turn.

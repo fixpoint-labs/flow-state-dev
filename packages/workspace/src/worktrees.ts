@@ -43,6 +43,23 @@ export const worktreeOwnerSchema = z.object({
 /** Who owns a worktree. */
 export type WorktreeOwner = z.infer<typeof worktreeOwnerSchema>;
 
+/**
+ * A session or run working in a worktree beside its owner, and when its last
+ * turn there ended. A bare string, which no released row holds, reads as a
+ * session never yet read at a turn's end.
+ */
+export const worktreeAttachedSchema = z.preprocess(
+  (value) => (typeof value === "string" ? { kind: "session", id: value } : value),
+  z.object({
+    kind: z.enum(["session", "run"]),
+    id: z.string(),
+    lastTurnAt: z.number().nullable().default(null),
+  }),
+);
+
+/** One entry of a row's `attached`. */
+export type WorktreeAttached = z.infer<typeof worktreeAttachedSchema>;
+
 /** A pull request on a worktree's branch, as last seen. The session's `observed-pull-requests` rows are the full record. */
 export const worktreePullRequestSchema = z.object({
   url: z.string(),
@@ -73,8 +90,8 @@ export const worktreeRowSchema = z.object({
   baseCommit: z.string().nullable().default(null),
   /** The session or run it was made for. Only the owner removes it. */
   owner: worktreeOwnerSchema.nullable().default(null),
-  /** The sessions working in it beside the owner (`start: { worktreeOf }`), each once. */
-  attached: z.array(z.string()).default([]),
+  /** The sessions and runs working in it beside the owner (`start: { worktreeOf }`), each once, with its last turn's end. */
+  attached: z.array(worktreeAttachedSchema).default([]),
   /** Where it is in its life. */
   state: worktreeStateSchema.nullable().default(null),
   /** Commits on `branch` past `baseCommit`, as last read. `null` is unknown, never 0. */
@@ -228,13 +245,15 @@ export async function markWorktreeReady(
   );
 }
 
-/** Add a session to the worktree's attached list, once. `false` when the key has no row. */
-export async function attachToWorktree(collection: WorktreeCollection, key: string, session: string): Promise<boolean> {
+const same = (a: WorktreeOwner | null | undefined, b: WorktreeOwner) => a != null && a.kind === b.kind && a.id === b.id;
+
+/** Add a session or run to the worktree's attached list, once; never its owner. `false` when the key has no row. */
+export async function attachToWorktree(collection: WorktreeCollection, key: string, by: WorktreeOwner): Promise<boolean> {
   const prior = await current(collection, key);
   if (prior === undefined) return false;
-  if (prior.owner?.kind === "session" && prior.owner.id === session) return true;
-  if ((prior.attached ?? []).includes(session)) return true;
-  await collection.upsert(key, { attached: [...(prior.attached ?? []), session] });
+  if (same(prior.owner, by)) return true;
+  if ((prior.attached ?? []).some((entry) => same(entry, by))) return true;
+  await collection.upsert(key, { attached: [...(prior.attached ?? []), { kind: by.kind, id: by.id, lastTurnAt: null }] });
   return true;
 }
 
@@ -246,16 +265,26 @@ export type CheckoutSnapshot =
 /**
  * Write the turn-end read: branch and count together, in one upsert, so the
  * row never shows one read's branch beside another's count. A directory that
- * is gone marks the row `lost`. A row already `removed` stays removed.
+ * is gone marks the row `lost`. A row already `removed` stays removed. `by`,
+ * when it is attached, has its own `lastTurnAt` set too.
  */
-export async function recordWorktreeCheckout(collection: WorktreeCollection, key: string, snapshot: CheckoutSnapshot): Promise<void> {
+export async function recordWorktreeCheckout(
+  collection: WorktreeCollection,
+  key: string,
+  snapshot: CheckoutSnapshot,
+  by?: WorktreeOwner,
+): Promise<void> {
   const prior = await current(collection, key);
   if (prior === undefined) return;
+  const attached =
+    by !== undefined && (prior.attached ?? []).some((entry) => same(entry, by))
+      ? { attached: prior.attached.map((entry) => (same(entry, by) ? { ...entry, lastTurnAt: snapshot.at } : entry)) }
+      : {};
   if (!snapshot.present) {
-    if (prior.state !== "removed") await collection.upsert(key, { state: "lost", lastTurnAt: snapshot.at });
+    if (prior.state !== "removed") await collection.upsert(key, { state: "lost", lastTurnAt: snapshot.at, ...attached });
     return;
   }
-  await collection.upsert(key, { branch: snapshot.branch, commits: snapshot.commits, lastTurnAt: snapshot.at });
+  await collection.upsert(key, { branch: snapshot.branch, commits: snapshot.commits, lastTurnAt: snapshot.at, ...attached });
 }
 
 /** Mark a worktree removed. Its row stays: it is the record of where the work was. */

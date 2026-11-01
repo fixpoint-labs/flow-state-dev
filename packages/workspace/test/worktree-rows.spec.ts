@@ -152,16 +152,38 @@ describe("recordCheckout", () => {
 });
 
 describe("attach and remove", () => {
-  it("lists an attached session once, never the owner, and answers null with no row", async () => {
+  it("lists an attached session or run once, never the owner, and answers null with no row", async () => {
     const h = host();
     const worktrees = rows();
     await h.provision({ kind: "repo", repo }, { place: ["s-1"], branch: "fsd/s-1", worktrees: { collection: worktrees, owner } });
     const key = worktreeKey(h.hostId(), ["s-1"]);
-    expect(await h.attach!({ place: ["s-1"] }, { worktrees, session: "s-2" })).toBe(key);
-    expect(await h.attach!({ place: ["s-1"] }, { worktrees, session: "s-2" })).toBe(key);
-    expect(await h.attach!({ place: ["s-1"] }, { worktrees, session: "s-1" })).toBe(key);
-    expect(worktrees.all.get(key)!.attached).toEqual(["s-2"]);
-    expect(await h.attach!({ place: ["nobody"] }, { worktrees, session: "s-2" })).toBeNull();
+    const s2 = { kind: "session" as const, id: "s-2" };
+    expect(await h.attach!({ place: ["s-1"] }, { worktrees, by: s2 })).toBe(key);
+    expect(await h.attach!({ place: ["s-1"] }, { worktrees, by: s2 })).toBe(key);
+    expect(await h.attach!({ place: ["s-1"] }, { worktrees, by: owner })).toBe(key);
+    expect(await h.attach!({ place: ["s-1"] }, { worktrees, by: { kind: "run", id: "follow-up" } })).toBe(key);
+    expect(worktrees.all.get(key)!.attached).toEqual([
+      { kind: "session", id: "s-2", lastTurnAt: null },
+      { kind: "run", id: "follow-up", lastTurnAt: null },
+    ]);
+    expect(await h.attach!({ place: ["nobody"] }, { worktrees, by: s2 })).toBeNull();
+  });
+
+  it("stamps an attached session's own last turn when its turn ends there", async () => {
+    const h = host();
+    const worktrees = rows();
+    await h.provision({ kind: "repo", repo }, { place: ["s-1"], branch: "fsd/s-1", worktrees: { collection: worktrees, owner } });
+    const s2 = { kind: "session" as const, id: "s-2" };
+    await h.attach!({ place: ["s-1"] }, { worktrees, by: s2 });
+    const read = await h.recordCheckout!({ place: ["s-1"] }, { worktrees, by: s2 });
+    const row = worktrees.all.get(worktreeKey(h.hostId(), ["s-1"]))!;
+    expect(read).toMatchObject({ present: true, branch: "fsd/s-1", commits: 0 });
+    expect(row.attached).toEqual([{ kind: "session", id: "s-2", lastTurnAt: row.lastTurnAt }]);
+    expect(row.lastTurnAt).toEqual(expect.any(Number));
+  });
+
+  it("reads a bare-string attached entry as a session", () => {
+    expect(worktreeRowSchema.parse({ attached: ["s-9"] }).attached).toEqual([{ kind: "session", id: "s-9", lastTurnAt: null }]);
   });
 
   it("keeps the row, marked removed, once the worktree is gone", async () => {

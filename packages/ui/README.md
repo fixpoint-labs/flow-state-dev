@@ -57,7 +57,7 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `selection` | Single (enum) or multi (array of enum) choice card for a `user_input` suspension |
 | `form` | Flat-object form card for a `user_input` suspension — one control per scalar/enum property |
 | `model-badge` | Small pill showing the `ModelIdentity` that answered. Renders nothing when the model is undefined |
-| `work-place` | Where a coding run's work went: "3 commits on …/branch", with copy buttons for `git switch`, `cd` and `git log base..branch`. Takes what `workPlace` from `@flow-state-dev/harness-manager/browser` returns; renders nothing for a run with no branch |
+| `work-place` | Where a coding run's work went: "3 commits on …/branch", with copy buttons for `git switch`, `cd` and `git log base..branch`. Takes what `workPlace` from `@flow-state-dev/harness-manager` returns; renders nothing for a run with no branch |
 | `audit-annotation` | Compact card for `responseAuditor` findings: severity indicators, per-analyzer scores, evidence. Fed by the `audit-annotation` component item |
 
 ## Framework Integration
