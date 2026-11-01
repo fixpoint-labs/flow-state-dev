@@ -112,3 +112,15 @@ combobox roles, every screen, Shift+Tab) and added three controls.
 - **Draft**, 2026-10-31: framed as the labs' missing keyboard paths plus Shift Manager's Jump to
   gaps, on the stock command component with one helper lifted to react; the Esc half left to
   FIX-2413 per the epic build order.
+
+## Notes from review
+
+For the implementer, recorded and not folded: none of these changes the approach.
+
+- Cursor (565b82a, approved). Overall verdict: "The chosen architecture is the simpler one." The inline notes:
+  - "**Clarify:** 'A small dialog on the same Radix dialog' sounds like one dialog node with nested content. For implementers, 'second `CommandDialog` (or alert dialog) listing keys for this app' avoids accidental nesting with the switcher palette." (E5: the key list is its own dialog, never nested in the switcher.)
+  - "E7 roving on the current hand-rolled tab buttons in `SessionsList.tsx` is doable but fiddly. Radix/shadcn **Tabs** (already used elsewhere in the repo) gives roving + `tabindex` behavior without a new dependency."
+  - "Six controls + three Playwright legs + expanded screen tests in four packages overlap... Worth stating explicitly that vitest covers only gaps the goal does not."
+  - "E8 is correct vs `useProjectRead` polling. When implementing, parallelize per-project `readProject`, show snapshot-backed Jump groups immediately, append workstreams in one batched update, and optionally dedupe reads already in flight from expanded sidebar projects."
+  - "Lab composers today only set `aria-label` on the textarea — no session id on the field. Either soften the leg... or call out an intentional `data-*` hook." (The implementation adds `data-composer` and `data-session-id`. `focusComposer` uses them to find the new session's composer and not the one being unmounted, so they are not there only for tests.)
+  - "If you keep one directory, document `GOAL_PART` and build-once semantics up front; otherwise consider `keyboard-first/{claude-code-style,teammates,shift-manager}` with a thin runner."
