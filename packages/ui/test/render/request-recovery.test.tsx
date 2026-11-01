@@ -14,7 +14,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ErrorItem } from "@flow-state-dev/core/items";
 import { ErrorDisplay } from "../../registry/components/error";
-import { RequestRecovery } from "../../registry/components/request-recovery";
+import { INTERRUPTED_REASON, RequestRecovery } from "../../registry/components/request-recovery";
 
 afterEach(cleanup);
 
@@ -107,3 +107,82 @@ describe("a failed turn's line", () => {
     expect(retryButton().disabled).toBe(false);
   });
 });
+
+/**
+ * A turn a restart cut off: the request is `interrupted`, nothing failed, and
+ * the work so far is in the durable log. Continue carries the same request on;
+ * Discard ends it. Without this line the user's message sits with no reply and
+ * no way to resume it.
+ */
+describe("a turn a restart cut off", () => {
+  const button = (name: RegExp) => screen.getByRole("button", { name }) as HTMLButtonElement;
+
+  it("reads as cut off, not as a failure, with Continue and Discard and no Retry", () => {
+    render(<RequestRecovery who="researcher" onContinue={async () => {}} onDiscard={async () => {}} onRetry={async () => {}} />);
+    const line = screen.getByRole("alert");
+    expect(line.dataset.state).toBe("interrupted");
+    expect(line.textContent).toContain(INTERRUPTED_REASON);
+    expect(line.textContent).toContain("researcher's turn was cut off");
+    expect(line.textContent).not.toContain("couldn't finish");
+    expect(line.className).toContain("bg-attention");
+    expect(line.className).not.toContain("destructive");
+    expect(button(/continue/i)).toBeTruthy();
+    expect(button(/discard/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
+  });
+
+  it("draws only the buttons the app passes", () => {
+    render(<RequestRecovery onDiscard={async () => {}} />);
+    expect(screen.queryByRole("button", { name: /continue/i })).toBeNull();
+    expect(button(/discard/i)).toBeTruthy();
+  });
+
+  it("continues once, and holds both buttons until it lands", async () => {
+    const going = deferred();
+    const onContinue = vi.fn(() => going.promise);
+    const onDiscard = vi.fn(async () => {});
+    render(<RequestRecovery onContinue={onContinue} onDiscard={onDiscard} />);
+
+    fireEvent.click(button(/continue/i));
+    expect(onContinue).toHaveBeenCalledTimes(1);
+    expect(button(/continuing/i).disabled).toBe(true);
+    expect(button(/discard/i).disabled).toBe(true);
+    fireEvent.click(button(/discard/i));
+    expect(onDiscard).not.toHaveBeenCalled();
+
+    await act(async () => going.resolve());
+    expect(button(/continue/i).disabled).toBe(false);
+  });
+
+  it("discards once, busy until it lands", async () => {
+    const ending = deferred();
+    const onDiscard = vi.fn(() => ending.promise);
+    render(<RequestRecovery onContinue={async () => {}} onDiscard={onDiscard} />);
+
+    fireEvent.click(button(/discard/i));
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+    expect(button(/discarding/i).disabled).toBe(true);
+    await act(async () => ending.resolve());
+    expect(button(/discard/i).disabled).toBe(false);
+  });
+
+  it("says when Continue is refused, and offers it again", async () => {
+    const going = deferred();
+    render(<RequestRecovery onContinue={() => going.promise} />);
+
+    fireEvent.click(button(/continue/i));
+    await act(async () => going.reject(new Error("409: only interrupted requests continue")));
+
+    expect(screen.getByRole("alert").textContent).toContain("Continue failed: 409: only interrupted requests continue");
+    expect(button(/continue/i).disabled).toBe(false);
+  });
+});
+
+/** A failed line needs its reason; an interrupted one takes no error code. Checked by `tsc`, not run. */
+function typeContract() {
+  // @ts-expect-error a failed turn without its reason would draw an empty body
+  void (<RequestRecovery code="E_MODEL" />);
+  // @ts-expect-error an interrupted line takes no error code: it is not a failure
+  void (<RequestRecovery code="E_MODEL" onDiscard={async () => {}} />);
+}
+void typeContract;

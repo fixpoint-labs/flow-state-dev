@@ -247,6 +247,8 @@ export type SessionMetadataInput = SessionMetadata & {
  * - `"stopped"`: the stop is recorded on the request. A request running in this
  *   process has its signal fired now; one running in another process is
  *   stopped on that process's next heartbeat, as an abort is.
+ *   A request a crash or restart left `interrupted`, behind no gate, is ended
+ *   `aborted` now, so nothing continues it.
  * - `"already-finished"`: the request had already ended; nothing was written.
  * - `"already-resolved"`: the request was parked, but what it waited on was
  *   resolved first (an answer won the race), so it is running again. Nothing

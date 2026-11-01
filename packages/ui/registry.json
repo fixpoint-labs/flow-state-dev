@@ -555,7 +555,7 @@
       "name": "request-recovery",
       "title": "Request Recovery",
       "type": "registry:component",
-      "description": "The line a failed turn leaves in a thread: who hit it, the reason, and a Retry with busy and refused states.",
+      "description": "The line a turn that didn't finish leaves in a thread: a failed turn's reason with Retry, or a turn a restart cut off with Continue and Discard, each with busy and refused states.",
       "dependencies": ["@flow-state-dev/core", "lucide-react"],
       "registryDependencies": ["error", "button", "tokens"],
       "files": [{
