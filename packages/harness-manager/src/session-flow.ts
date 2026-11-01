@@ -910,16 +910,24 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
           if (call === null) return value;
           const steps = approvals.steps + 1;
           if (steps > MAX_APPROVAL_STEPS) {
-            throw new Error(
-              `[harness-session] the turn has already been resumed for ${MAX_APPROVAL_STEPS} tool approvals, ` +
-                `the most one turn takes; it asked again for ${call.toolName}${call.touches === null ? "" : ` (${call.touches})`}.`,
+            // The turn fails on its record, as a harness failure does.
+            return recordTurnFailure(
+              new Error(
+                `[harness-session] the turn has already been resumed for ${MAX_APPROVAL_STEPS} tool approvals, ` +
+                  `the most one turn takes; it asked again for ${call.toolName}${call.touches === null ? "" : ` (${call.touches})`}.`,
+              ),
+              ctx as unknown as BlockContext,
             );
           }
           const confirmed = (ctx.session.state as HarnessSessionState).binding?.confirmed ?? null;
           if (confirmed === null) {
-            throw new Error(
-              `[harness-session] the turn asked to use ${call.toolName}, and its harness confirmed no ` +
-                `conversation to continue after an answer.`,
+            // The turn fails on its record, as a harness failure does.
+            return recordTurnFailure(
+              new Error(
+                `[harness-session] the turn asked to use ${call.toolName}, and its harness confirmed no ` +
+                  `conversation to continue after an answer.`,
+              ),
+              ctx as unknown as BlockContext,
             );
           }
           const asked = await ctx.suspendForUser(toolApprovalStop(call));

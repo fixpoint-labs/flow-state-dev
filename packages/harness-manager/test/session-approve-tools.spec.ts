@@ -13,6 +13,8 @@
  *   - save the turn's harness spend only when the turn ends, not before it
  *     waits: the run stopped for the approval is lost on resume, and "counts
  *     what each run spent" reads one run's tokens, not two.
+ *   - throw past the approval limit instead of failing through the turn's
+ *     failure record: the turn fails with no error, end or spend on its record.
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -24,6 +26,7 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import {
   ALLOW_FOR_RUN,
   HARNESS_SESSION_APPROVALS_NEED_DURABLE,
+  MAX_APPROVAL_STEPS,
   harnessSessionFlow,
   harnessStub,
   type HarnessSessionFeeds,
@@ -202,6 +205,37 @@ describe("a harness session's tool call waits for the user", () => {
       await h.dispose();
     }
   }, 30_000);
+
+  it("ends the turn on its record when it asks past the most approvals one turn takes", async () => {
+    const calls = Array.from({ length: MAX_APPROVAL_STEPS + 1 }, (_, at) => marker(`m${at}`));
+    const h = host({ calls, spend: { inputTokens: 1, outputTokens: 1, costUsd: null } });
+    try {
+      const { requestId } = await h.turn("do the thing");
+      for (let answered = 0; answered < MAX_APPROVAL_STEPS; answered += 1) {
+        const at = answered;
+        await h.answer(requestId!, "approve").then(async () => {
+          // The next call's approval, or the turn's end once it asks past the limit.
+          const deadline = Date.now() + 20_000;
+          for (;;) {
+            const gate = await h.pending(requestId!);
+            if (gate?.message?.includes(`touch m${at + 1}`)) return;
+            const now = await h.status(requestId!);
+            if (now === "failed" || now === "completed") return;
+            if (Date.now() > deadline) throw new Error(`timed out after answer ${at}`);
+            await new Promise((resolve) => setTimeout(resolve, 25));
+          }
+        });
+      }
+      expect(await h.ended(requestId!)).toBe("failed");
+      const record = (await h.sessionState()).turns?.[requestId!];
+      expect(record?.error).toContain(`${MAX_APPROVAL_STEPS} tool approvals`);
+      expect(record?.endedAt).not.toBeNull();
+      expect(record?.spentRuns).toHaveLength(MAX_APPROVAL_STEPS + 1);
+      expect(record?.spend).toMatchObject({ inputTokens: MAX_APPROVAL_STEPS + 1 });
+    } finally {
+      await h.dispose();
+    }
+  }, 120_000);
 
   it("never runs the call on Deny, tells the conversation with the user's note, and the turn goes on", async () => {
     const h = host({ calls: [marker("marker"), marker("second")] });
