@@ -235,13 +235,9 @@ function every<T>(read: () => Promise<T>, onChange: (value: T) => void, everyMs 
  * undefined before it makes one. The latest wins: a run sent back for changes
  * stops for review again.
  */
-function reviewStopOf(items: readonly Item[]): ReviewDetail | undefined {
-  for (const item of [...items].reverse()) {
-    if (item.type !== "suspension" || item.kind !== "review") continue;
-    const review = reviewDetail(item.data);
-    if (review !== null) return review;
-  }
-  return undefined;
+export function reviewStopOf(items: readonly Item[]): ReviewDetail | undefined {
+  const stop = [...items].reverse().find((item) => item.type === "suspension" && item.kind === "review");
+  return (stop && reviewDetail(stop.data)) ?? undefined;
 }
 
 const textOf = (item: Item) => (item.content ?? []).map((part) => part.text ?? "").join("");

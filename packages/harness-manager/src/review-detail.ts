@@ -34,15 +34,18 @@ function judgeOf(value: unknown): ReviewDetail["judge"] {
 
 /**
  * A review stop's `data` as {@link ReviewDetail}, or `null` when it isn't one
- * (not an object, or none of the review's fields). A field it can't read is
+ * (not an object, or none of the review's fields readable). A field it can't read is
  * `null` (or `[]` for the subjects); it never throws.
  */
 export function reviewDetail(data: unknown): ReviewDetail | null {
-  if (!isRecord(data) || !("branch" in data || "commits" in data || "subjects" in data || "judge" in data)) return null;
-  return {
+  if (!isRecord(data)) return null;
+  const detail: ReviewDetail = {
     branch: typeof data.branch === "string" ? data.branch : null,
     commits: typeof data.commits === "number" && Number.isInteger(data.commits) && data.commits >= 0 ? data.commits : null,
     subjects: Array.isArray(data.subjects) ? data.subjects.filter((s): s is string => typeof s === "string") : [],
     judge: judgeOf(data.judge),
   };
+  // Nothing readable is no review: the card then shows the stop's prompt instead.
+  const readable = detail.branch !== null || detail.commits !== null || detail.subjects.length > 0 || detail.judge !== null;
+  return readable ? detail : null;
 }

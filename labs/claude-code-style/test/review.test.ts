@@ -44,3 +44,15 @@ describe("the review's lines", () => {
     expect(judgeLine(review({ judge: null }))).toBe("No judge read this run");
   });
 });
+
+describe("reviewStopOf", () => {
+  // After a revise round the run stops for review again; the card must show that round, never
+  // fall back to an older round's commits and verdict when the latest stop's data is unreadable.
+  it("reads the latest review stop only", async () => {
+    const { reviewStopOf } = await import("../src/adapter");
+    const stop = (data: unknown) => ({ type: "suspension", kind: "review", data }) as Parameters<typeof reviewStopOf>[0][number];
+    const earlier = stop({ branch: "t-1--code", commits: 1, subjects: ["first round"], judge: null });
+    expect(reviewStopOf([earlier, stop({ question: "not a review's data" })])).toBeUndefined();
+    expect(reviewStopOf([earlier, stop({ branch: "t-1--code", commits: 2, subjects: ["second", "first round"], judge: null })])?.commits).toBe(2);
+  });
+});

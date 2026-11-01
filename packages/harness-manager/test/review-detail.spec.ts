@@ -22,6 +22,11 @@ describe("reviewDetail", () => {
     for (const data of [undefined, null, "x", 3, [], { question: "which?" }]) expect(reviewDetail(data)).toBeNull();
   });
 
+  it("is null when none of a review's fields is readable, so the card shows the stop's prompt", () => {
+    for (const data of [{ judge: null }, { commits: -1 }, { branch: null, commits: null, subjects: [], judge: null }])
+      expect(reviewDetail(data)).toBeNull();
+  });
+
   it("drops each field it can't read instead of guessing", () => {
     expect(reviewDetail({ branch: 4, commits: 1.5, subjects: ["ok", 7], judge: { verdict: "done" } })).toEqual({
       branch: null,
@@ -29,7 +34,7 @@ describe("reviewDetail", () => {
       subjects: ["ok"],
       judge: null,
     });
-    expect(reviewDetail({ commits: -1 })?.commits).toBeNull();
+    expect(reviewDetail({ branch: "b", commits: -1 })?.commits).toBeNull();
     expect(reviewDetail({ commits: null, judge: { verdict: "not_done", confidence: 0.4 } })).toEqual({
       branch: null,
       commits: null,
