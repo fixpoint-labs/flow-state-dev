@@ -36,7 +36,7 @@ export interface WorktreesCommandOptions {
 }
 
 /** The repositories hosts on `root` listed, as their pin files name them. */
-export function pinnedRepositories(root: string): string[] {
+function pinnedRepositories(root: string): string[] {
   const dir = join(root, FETCH_PINS_DIR);
   if (!existsSync(dir)) return [];
   const repos: string[] = [];
@@ -53,7 +53,7 @@ export function pinnedRepositories(root: string): string[] {
 }
 
 /** One line per worktree: dirty mark, branch, directory. */
-export function formatWorktrees(listed: readonly ListedWorktree[]): string {
+function formatWorktrees(listed: readonly ListedWorktree[]): string {
   if (listed.length === 0) return "No worktrees.";
   return listed
     .map((entry) => {

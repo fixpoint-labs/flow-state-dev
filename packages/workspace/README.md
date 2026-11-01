@@ -349,7 +349,7 @@ It rejects for a target that isn't a worktree `list` reports, and refuses with a
 | `uncommitted-work` | The worktree has uncommitted or untracked changes. Ignored files are removed with it |
 | `place-busy` | A provision of the place is running |
 | `in-use` | A run is working in the worktree: it holds the worktree's in-use lock, `<cwd>.lock` |
-| `unique-commits` | With `deleteBranch`, the branch holds commits no other branch or remote-tracking ref holds. `force: true` deletes it anyway |
+| `unique-commits` | With `deleteBranch`, the branch holds commits no other branch or remote-tracking ref holds. Or the worktree is on a detached HEAD holding commits no branch, tag or remote-tracking ref holds, which removing it would lose. `force: true` removes it anyway |
 
 A refusal removes nothing. Kept files and held work are left where they are, in their collection and store. `fsdev worktrees` runs the same `list` and `remove` from a terminal.
 

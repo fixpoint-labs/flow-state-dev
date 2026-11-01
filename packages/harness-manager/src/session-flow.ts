@@ -440,6 +440,10 @@ export const HARNESS_SESSION_START_INVALID =
 export const HARNESS_SESSION_ATTACH_MISSING =
   "The session this one attaches to (`start.worktreeOf`) has no worktree here: it is not this tenant's, was never provisioned, or was removed.";
 
+/** The message an attaching session is refused with when the worktree isn't in its user's own list. */
+export const HARNESS_SESSION_ATTACH_NOT_YOURS =
+  "The worktree this session attaches to (`start.worktreeOf`) is not in your list of worktrees: only your own sessions' worktrees can be attached to, on a host that keeps that list.";
+
 /** The message an attaching start is refused with when something asks a workspace to provision it. */
 export const HARNESS_SESSION_ATTACH_NOT_PROVISIONED =
   "An attaching start (`{ worktreeOf }`) provisions nothing: the session works in the owner's worktree.";
@@ -488,20 +492,29 @@ export function harnessSessionFeeds(
         // Attached: the owner's worktree as it stands, never made or cut here.
         const path = workspace.locate(workPlaceOf(kind, ctx));
         if (!existsSync(path)) throw new Error(HARNESS_SESSION_ATTACH_MISSING);
-        if (!inUse.has(requestId)) inUse.set(requestId, await occupyWorktree(path, { owner: requestId }));
+        // The owner's place names no user, so whose worktree it is comes from
+        // the user's own list: attaching succeeds only on a row in it. A host
+        // that keeps no rows can't say, and is refused.
+        const worktrees = worktreesOf(ctx);
+        const worktree =
+          worktrees === undefined || workspace.attach === undefined
+            ? null
+            : await workspace.attach(workPlaceOf(kind, ctx), { worktrees, by: { kind: "session", id: ctx.session.identity.id } });
+        if (worktree === null) throw new Error(HARNESS_SESSION_ATTACH_NOT_YOURS);
+        if (!inUse.has(requestId)) inUse.set(requestId, await occupyWorktree(path, { owner: requestId, signal: ctx.signal }));
         // Read once the owner's turn has let go, so it is the branch this turn starts on.
         const branch = await checkedOutBranch(path);
         if (!attachedHeads.has(requestId)) attachedHeads.set(requestId, branch);
-        const worktrees = worktreesOf(ctx);
-        let worktree = state.workspace?.worktree ?? null;
-        if (worktree === null && worktrees !== undefined && workspace.attach !== undefined) {
-          worktree = await workspace.attach(workPlaceOf(kind, ctx), { worktrees, by: { kind: "session", id: ctx.session.identity.id } });
-        }
         if (state.workspace == null || state.workspace.worktree !== worktree) {
           await changeState(ctx, (current) => ({ ...current, workspace: { worktree } }));
         }
         return path;
       }
+      // Held in use before provisioning, which can move the checkout back to
+      // this session's branch, and until the turn ends, so neither an attached
+      // session's running turn nor the host's `remove` has it moved under them.
+      const located = workspace.locate(workPlaceOf(kind, ctx));
+      if (!inUse.has(requestId)) inUse.set(requestId, await occupyWorktree(located, { owner: requestId, signal: ctx.signal }));
       const worktrees = worktreesOf(ctx);
       const title = ctx.session.metadata.title;
       const provisioned = await workspace.provision(placeOf(kind, ctx), {
@@ -517,9 +530,6 @@ export function harnessSessionFeeds(
           : {}),
       });
       const made: HarnessSessionProvisioned = typeof provisioned === "string" ? { path: provisioned } : provisioned;
-      // Held in use until the turn ends, so the host's `remove`, from any
-      // caller, refuses to take the tree from under the harness.
-      if (!inUse.has(requestId)) inUse.set(requestId, await occupyWorktree(made.path, { owner: requestId }));
       // Recorded on the first provision, and again once a row is first
       // written; any other hand-back changes nothing.
       const worktree = made.worktree ?? state.workspace?.worktree ?? null;
