@@ -50,7 +50,7 @@ export function SuspensionCard({ item }: { item: SuspensionItem }) {
   // the stop's prompt, never `item.data`: reading a coding run's review is
   // harness-manager's browser reader, called by the app, which passes it in.
   if (item.kind === "review" && takesReviewVerdict(item.resumeSchema)) {
-    return <ReviewSuspension item={item} isResolved={isResolved} />;
+    return <ReviewSuspension item={item} isResolved={isResolved} resolution={resolution} />;
   }
 
   switch (suspensionShape(item)) {

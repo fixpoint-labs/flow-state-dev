@@ -11,11 +11,12 @@
  * Renders registry source the way `tool-awaiting.test.tsx` does.
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { SuspensionItem } from "@flow-state-dev/core/items";
+import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import { SuspensionResolverProvider, type SuspensionResolver } from "@flow-state-dev/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ReviewHold, shortBranch, takesReviewVerdict, NO_RESOLVER_UNANSWERABLE, type ReviewDetail } from "../../registry/components/review-hold";
 import { SuspensionCard } from "../../registry/components/suspension-card";
+import { SessionItemsProvider } from "../../registry/components/session-items-context";
 
 afterEach(cleanup);
 
@@ -156,6 +157,21 @@ describe("SuspensionCard draws a review stop with the review card", () => {
     fireEvent.click(screen.getByRole("button", { name: "Accept" }));
     await waitFor(() => expect(resolve).toHaveBeenCalledTimes(1));
     expect(resolve).toHaveBeenCalledWith({ suspensionId: "susp-1", requestId: "req-1", action: "submit", data: { verdict: "accepted" } });
+  });
+
+  it("a review that ended unanswered says how it ended, not that it was reviewed", () => {
+    const endedAs = (resolution: string) =>
+      render(
+        <SessionItemsProvider value={[{ type: "suspension_resume", suspensionId: "susp-1", resolution } as unknown as OutputItem]}>
+          <SuspensionCard item={reviewItem("review")} />
+        </SessionItemsProvider>,
+      );
+    endedAs("expired");
+    expect(screen.getByText("Expired")).toBeTruthy();
+    expect(screen.queryByText("Reviewed")).toBeNull();
+    cleanup();
+    endedAs("submitted");
+    expect(screen.getByText("Reviewed")).toBeTruthy();
   });
 
   it("with no resolver it shows the review and says it can't be answered here", () => {

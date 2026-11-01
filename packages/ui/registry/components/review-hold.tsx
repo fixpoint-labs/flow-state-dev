@@ -2,7 +2,8 @@
 
 import { useState, type ReactNode } from "react";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
-import { useSuspensionResolver } from "@flow-state-dev/react";
+import type { SuspensionStatus } from "@flow-state-dev/core/types";
+import { resolveApprovalOutcome, useSuspensionResolver } from "@flow-state-dev/react";
 import { CheckIcon, MinusIcon } from "lucide-react";
 
 /**
@@ -243,11 +244,11 @@ export function ReviewHold({
   );
 }
 
-/** The card once answered: one line saying how. */
-function ReviewReceipt({ outcome }: { outcome: "accepted" | "revise" | "answered" }) {
+/** The card once answered, or ended unanswered: one line saying how. `label` overrides the answer's own. */
+function ReviewReceipt({ outcome, label: given }: { outcome: "accepted" | "revise" | "answered"; label?: string }) {
   const accepted = outcome === "accepted";
   const Icon = accepted ? CheckIcon : MinusIcon;
-  const label = accepted ? "Accepted" : outcome === "revise" ? "Changes asked for" : "Reviewed";
+  const label = given ?? (accepted ? "Accepted" : outcome === "revise" ? "Changes asked for" : "Reviewed");
   return (
     <div
       data-review-hold
@@ -270,19 +271,26 @@ export const NO_RESOLVER_UNANSWERABLE =
  * A `kind: "review"` suspension item as a review card. The answer resumes the
  * stop with `action: "submit"` and the answer as its data, through the nearest
  * `SuspensionResolverProvider`. With none mounted the card shows the review and
- * says it can't be answered here.
+ * says it can't be answered here. A stop that ended without an answer (expired,
+ * cancelled, stopped) says so instead of "Reviewed".
  */
 export function ReviewSuspension({
   item,
   review,
   isResolved,
+  resolution,
 }: {
   item: SuspensionItem;
   /** A coding run's review, when the app read one from the stop. Absent: the stop's prompt. */
   review?: ReviewDetail | null;
   isResolved?: boolean;
+  /** How the stop ended, once resolved. */
+  resolution?: SuspensionStatus;
 }) {
   const resolver = useSuspensionResolver();
+  if (isResolved === true && resolution !== undefined && resolution !== "submitted") {
+    return <ReviewReceipt outcome="answered" label={resolveApprovalOutcome(resolution).label} />;
+  }
   const answer =
     resolver === null
       ? undefined
