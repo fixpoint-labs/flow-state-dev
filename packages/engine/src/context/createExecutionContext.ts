@@ -4194,7 +4194,7 @@ export async function createExecutionContext<
         // A report with no run id is a settled run of its own, so it is given
         // an id here: the ledger and the trace then name it alike, and a reader
         // that recorded it can tell it from another run after a continuation
-        // recovers it from the trace (FIX-2398).
+        // recovers it from the trace.
         const harnessSpendOfBlock: HarnessRunSpend[] = [];
         (childContext as { [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM] = {
           reportHarnessRun(report) {
