@@ -490,6 +490,7 @@ async function legB(browser: Browser, pages: string) {
         throw new Error("Keep left the Fire row open");
       });
       expect((await page.locator(`nav[aria-label="Workers"] button[data-worker="${hired}"]`).count()) === 1, `Keep took ${hired} off the roster`);
+      await focusBecomes(page, (f) => f.tag === "button" && f.text === "Fire" && !f.inDialog, "Keep left focus off the header's Fire");
       await findFire();
       await row.waitFor({ timeout: 5_000 });
       await page.keyboard.press("Shift+Tab");

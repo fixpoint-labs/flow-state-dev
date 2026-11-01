@@ -651,6 +651,8 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(document.activeElement).toBe(within(ask).getByRole("button", { name: "Keep" })));
     fireEvent.click(within(ask).getByRole("button", { name: "Keep" }));
     expect(within(conversation()).queryByRole("group", { name: "Fire tester?" })).toBeNull();
+    // Keeping puts focus back on the header's Fire, so the next Tab goes on from where the person was.
+    expect(document.activeElement).toBe(within(conversation()).getByRole("button", { name: "Fire" }));
     expect(workerRow("tester")).not.toBeNull();
     fireEvent.click(within(conversation()).getByRole("button", { name: "Fire" }));
     await act(async () => fireEvent.click(within(within(conversation()).getByRole("group", { name: "Fire tester?" })).getByRole("button", { name: "Fire" })));

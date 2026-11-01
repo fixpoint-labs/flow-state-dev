@@ -20,7 +20,7 @@
   - *b1*: ⌘K, a teammate's name, Enter: its conversation is open and its composer (carrying its session id) is active. A role can name another teammate ("asks researcher…"), so the run arrows down to the asked-for one, as a person would.
   - *b2*: Alt+↓ opens the next teammate.
   - *b3*: ⌘K *Hire*, Enter puts focus in the hire form; name, role and instructions typed and Hire pressed by keys: the teammate joins the roster, opened.
-  - *b4*: the header's Fire (reached by Shift+Tab from the composer) shows the inline row with Keep focused; Keep keeps the teammate; Fire again, Shift+Tab to the row's Fire, Enter removes it. No browser box.
+  - *b4*: the header's Fire (reached by Shift+Tab from the composer) shows the inline row with Keep focused; Keep keeps the teammate and puts focus back on the header's Fire; Fire again, Shift+Tab to the row's Fire, Enter removes it. No browser box.
 - **c, Shift Manager:**
   - *c1*: ⌘K's input has `role="combobox"`, and ↓ changes its `aria-activedescendant`.
   - *c2*: each of the eight sidebar screens by name opens its path.

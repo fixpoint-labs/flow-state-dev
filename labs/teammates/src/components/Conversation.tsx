@@ -80,6 +80,12 @@ export function Conversation({
   const status = useStatusLine(adapter, worker, sessionId, nameOf, isCoding);
   const [panel, setPanel] = useState<"instructions" | "fire">();
   const keep = useRef<HTMLButtonElement>(null);
+  const fireButton = useRef<HTMLButtonElement>(null);
+  // Keep (or Esc) closes the row and puts focus back on the header's Fire, where the person was.
+  const keepWorker = () => {
+    setPanel(undefined);
+    fireButton.current?.focus();
+  };
   useEffect(() => {
     if (panel === "fire") keep.current?.focus();
   }, [panel]);
@@ -119,7 +125,7 @@ export function Conversation({
             <button type="button" onClick={() => setPanel((p) => (p === "instructions" ? undefined : "instructions"))} className={HEADER_BUTTON}>
               Instructions
             </button>
-            <button type="button" onClick={() => setPanel("fire")} aria-expanded={panel === "fire"} className={HEADER_BUTTON}>
+            <button ref={fireButton} type="button" onClick={() => setPanel("fire")} aria-expanded={panel === "fire"} className={HEADER_BUTTON}>
               Fire
             </button>
           </>
@@ -146,7 +152,7 @@ export function Conversation({
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.stopPropagation();
-              setPanel(undefined);
+              keepWorker();
             }
           }}
         >
@@ -154,7 +160,7 @@ export function Conversation({
           <button type="button" onClick={() => void onFire()} className={cn(HEADER_BUTTON, "text-destructive")}>
             Fire
           </button>
-          <button ref={keep} type="button" onClick={() => setPanel(undefined)} className={HEADER_BUTTON}>
+          <button ref={keep} type="button" onClick={keepWorker} className={HEADER_BUTTON}>
             Keep
           </button>
         </div>
