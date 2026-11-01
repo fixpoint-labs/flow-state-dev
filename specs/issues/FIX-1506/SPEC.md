@@ -30,7 +30,7 @@ poll and no remount, and the view that made the change reads it no more often th
 | **The real need** | The issue: *"Two sessions rendering the same org-scoped collection converge on the same rows without either one forcing a remount."* The epic widens it to plain state: *"a change to user or org state … reaches every client that is watching it and may see it"*, closure leg a patching both ([FIX-2367](../../epics/FIX-2367/SPEC.md#the-goal-and-how-well-know-its-met)) |
 | **Smaller, and rejected** | Org collections only, the issue's literal case. A plain `ctx.org` patch writes no resource, so the epic's leg a would fail. Or the publish alone: a notice no hook reads |
 | **Bigger, and not this issue's** | Across processes (FIX-2427), the wire and its access check (FIX-2428), board writes made outside a run (FIX-2429), push on serverless (FIX-380), a block in another session reacting (`reactTo` stays in-session) |
-| **Not done if** | A write from a run with no stream reaches no one · a `ctx.org` patch with no resource write never arrives · a state notice makes the view re-read its item history · the writer's own view reads twice · a view without `live` opens a socket or a timer · a hook re-reads for a change to a different collection · a user's change reaches another user |
+| **Not done if** | A write from a run with no stream reaches no one · a `ctx.org` patch with no resource write never arrives · a state notice makes the view re-read its item history · the writer's own view reads twice · a view without `live` opens a socket or a timer · a hook re-reads for a change to a different collection · a user's change reaches another user · an org `client.derived` value over a collection stays stale |
 
 ```mermaid
 flowchart LR
@@ -53,7 +53,7 @@ The check reads what each view renders and how many reads it makes, not whether 
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/realtime/scope-changes-reach-other-sessions/` · model `n/a` (handler actions write) · run by the implementer at completion · verdict in the implementation PR. Needs FIX-2426 and FIX-2428 merged |
-| **Signal** | (a) B's `useClientData` org value and B's `useResourceCollectionList` rows show both of A's changes within 1 s. (b) A's second tab shows the user change within 1 s; B's view makes no read. (c) As (a), from a run started with no stream. (d) A's own view makes the same number of reads per change as on `main` |
+| **Signal** | (a) B's `useClientData` org value, an org `client.derived` count over the collection, and B's `useResourceCollectionList` rows show both of A's changes within 1 s. (b) A's second tab shows the user change within 1 s; B's view makes no read. (c) As (a), from a run started with no stream. (d) A's own view makes the same number of reads per change as on `main` |
 | **Input** | A two-scope handler flow on `serve()`, two users in one org, three sessions. A different valid input: a change to a second collection must not re-read B's first |
 | **Anti-game** | Assert on rendered hook results and counted reads, not on `publish` calls or frames sent. Real WebSocket clients on a bound port |
 | **Control that must fail** | `GOAL_CONTROL=no-publish` (the publish beside each emit cut out): legs a, b and c FAIL. `GOAL_CONTROL=no-origin` (the writer's skip off): leg d FAILS. Today's `main`: legs a, b and c FAIL |
@@ -111,9 +111,9 @@ flowchart LR
 | The client's resource routes (`resource-routes.ts`), session-scope writes from a browser, outside any run | **Extends.** Publishes the session topic |
 | `useSession({ live })`, `session.resourceChanges`, the resource hooks' invalidation | **Extends.** One invalidation path, a second source ([epic seam](../../epics/FIX-2367/DECISIONS.md#coordination-seams)) |
 | `usePanelRows` and `BoardList`'s `live` (`components/panels/reads.ts`) | **Extends** with a notice driver for `Roster` and `BoardColumns` |
-| The state read without items (`GET …/state`, `include_items` off), which [FIX-2410](https://linear.app/fixpoint-labs/issue/FIX-2410) exposes as `refresh({ items: false })` | **Builds on.** One read; whichever issue lands first builds it |
+| The state read without items (`GET …/state`, `include_items` off), which [FIX-2410](https://linear.app/fixpoint-labs/issue/FIX-2410) exposes as `refresh({ items: false })` | **Builds on.** FIX-2410 owns it (epic); this reuses it |
 | FIX-1235 Watch (canceled with Relay) | **Not revived** (epic): Watch told a session; this tells a screen |
-| Epic [D2](../../epics/FIX-2367/DECISIONS.md#d2), [ER-1, ER-2, ER-3, ER-5](../../epics/FIX-2367/DECISIONS.md#who-owns-what); FIX-2426's topic shape | **Kept.** ER-1's notice gains `origin`, a request id, never rows ([D2](DECISIONS.md#d2)) |
+| Epic [D2](../../epics/FIX-2367/DECISIONS.md#d2), [ER-1, ER-2, ER-3, ER-5](../../epics/FIX-2367/DECISIONS.md#who-owns-what); FIX-2426's topic shape | **Kept.** FIX-2426 now carries this issue's seams (#4477): `origin`, a request id, never rows ([D2](DECISIONS.md#d2)); narrowed notices reach the scope's subscriber; the session stream filters by kind |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|

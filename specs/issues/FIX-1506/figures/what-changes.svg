@@ -57,7 +57,7 @@
     <text class="t-s" x="662" y="88">+ hears its session, user and org topics</text>
     <rect class="new" x="650" y="118" width="258" height="58" rx="5"/>
     <text class="t-b" x="662" y="140">state notice: state read, no items</text>
-    <text class="t-s" x="662" y="158">resource notice: the hooks read again</text>
+    <text class="t-s" x="662" y="158">resource notice: hooks, and derived state</text>
     <rect class="ext" x="650" y="188" width="258" height="58" rx="5"/>
     <text class="t-b" x="662" y="210">Roster, BoardColumns · live</text>
     <text class="t-s" x="662" y="228">a notice driver beside BoardList's</text>
