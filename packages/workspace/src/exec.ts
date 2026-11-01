@@ -206,12 +206,17 @@ export async function runToEnd(
       resolve(result);
     };
     child.once("error", (error) => finish({ exitCode: 127, timedOut: false, output: `${output}${error.message}`.slice(-options.keepChars) }));
-    child.once("close", (exitCode) => {
-      // The group, once the leader is gone: anything it left running goes with
-      // it, on a clean exit too, so nothing it started outlives the call (the
-      // caller may let the checkout go next).
+    // The group, once the leader exits: anything it left running goes with
+    // it, on a clean exit too, so nothing it started outlives the call (the
+    // caller may let the checkout go next). On `exit`, not `close`: a child
+    // still holding the pipes would hold `close` back until the clock ran out.
+    let exited: number | null | undefined;
+    child.once("exit", (exitCode) => {
+      exited = exitCode;
+      clearTimeout(timer);
       stopGroup();
-      finish({ exitCode, timedOut, output });
     });
+    // `close` only collects the last of the output.
+    child.once("close", (exitCode) => finish({ exitCode: exited !== undefined ? exited : exitCode, timedOut, output }));
   });
 }

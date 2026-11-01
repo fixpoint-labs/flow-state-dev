@@ -81,6 +81,21 @@ describe("runCheckoutCommands", () => {
     expect(existsSync(join(dir, "late.txt"))).toBe(false);
   });
 
+  it("reports a passing command as passed even when a child it left holds its output open", async () => {
+    // The child inherits the pipes and would keep them open for 20 s.
+    writeFileSync(
+      join(dir, "holds-pipes.mjs"),
+      `import { spawn } from "node:child_process";\n` +
+        `spawn(process.execPath, ["-e", "setTimeout(() => {}, 20000)"], { stdio: "inherit" }).unref();\n` +
+        `console.log("passed");\n`,
+    );
+    const started = Date.now();
+    const [result] = await runCheckoutCommands({ cwd: dir, commands: ["node holds-pipes.mjs"], timeoutMs: 5_000 });
+    expect(result).toMatchObject({ exitCode: 0, timedOut: false });
+    expect(result!.tail).toContain("passed");
+    expect(Date.now() - started).toBeLessThan(4_000);
+  });
+
   it("stops the running command when its signal aborts, and starts none after it", async () => {
     const stop = new AbortController();
     setTimeout(() => stop.abort(), 300);
