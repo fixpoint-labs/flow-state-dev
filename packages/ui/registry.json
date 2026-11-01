@@ -550,6 +550,20 @@
         "target": "components/flow-state/generative/link-card.tsx"
       }],
       "categories": ["ai", "generative"]
+    },
+    {
+      "name": "request-recovery",
+      "title": "Request Recovery",
+      "type": "registry:component",
+      "description": "The line a failed turn leaves in a thread: who hit it, the reason, and a Retry with busy and refused states.",
+      "dependencies": ["@flow-state-dev/core", "lucide-react"],
+      "registryDependencies": ["error", "button", "tokens"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/request-recovery.tsx",
+        "target": "components/flow-state/request-recovery.tsx"
+      }],
+      "categories": ["ai", "chat"]
     }
   ]
 }
