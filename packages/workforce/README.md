@@ -629,6 +629,7 @@ through `defineAgentWorkerFlow({ skills })`. It sees the earlier turns of the co
 in, up to the session's history window (the last 50 by default), and nothing from any other
 conversation. `workerFlows` is therefore optional. A `flow:` that is present but empty or whitespace-only
 refuses, because it names no flow — only an absent key means the built-in.
+
 A turn on `agent` has `maxSteps` model steps (default 8, the generator's own), and the last one offers no tools,
 so a worker still looking things up when its steps run out answers in text with what it found
 (every turn: user messages, worker messages, tasks).

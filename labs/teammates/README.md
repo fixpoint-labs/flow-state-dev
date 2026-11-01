@@ -7,7 +7,7 @@ package.
 
 Its theme is its own: a dark, chat-first look like Grok Bot's, in `src/lib/theme.css`, over the
 registry's `tokens` item. The other labs take theirs from the design system; this one keeps a local
-theme on purpose, so it reads as the app it copies.
+theme so it reads as the app it copies.
 
 - **Left:** the teammates, Chief of Staff, researcher and writer. Each row is a teammate with an
   ongoing role, never a list of sessions. A row shows the teammate's icon on its color, a line
@@ -16,33 +16,44 @@ theme on purpose, so it reads as the app it copies.
   marks the teammate in the conversation's header, on message lines and in popups; the header
   carries the same status line. Under them, *Background* lists the coding
   tasks they started; each opens its run in a popup, read only.
-- **Center:** the chosen worker's one conversation. It goes on for weeks. A divider marks where the
-  turns the worker reads word for word begin; it reads *summarized* only when the earlier turns were
-  summarized for the worker. New content settles in place: the list follows an answer as it is
-  written only while you are at the end, and offers *Jump to latest* when you have scrolled up; a
-  task's line is drawn the moment it is filed and fills in where it is. Enter sends; Cmd+Enter
-  (Ctrl+Enter) sends from every box, including a teammate's instructions, where plain Enter is a
-  new line.
+- **Center:** the chosen worker's one conversation. It goes on for weeks, past its history window
+  of 50 turns: before a turn leaves the window, it is folded into a running summary that the worker
+  reads with the turns it still has word for word. A divider marks where the word-for-word turns
+  begin, and reads *summarized* once earlier turns have been folded in.
+- **Typing and scrolling:** the list follows an answer as it is written only while you are at the
+  end, and offers *Jump to latest* when you have scrolled up; a task's line is drawn the moment it is
+  filed and fills in where it is. Enter sends; Cmd+Enter (Ctrl+Enter) sends from every box,
+  including a teammate's instructions, where plain Enter is a new line.
 - **Popup:** a message line or a task line in the conversation opens that piece of work in a popup
   over it: the other worker's session, read only and live. It closes with Esc, its close button, or
   a click outside it, and the conversation under it keeps its place.
 - **Right:** Talk, the worker's exchanges with the other workers, grouped by worker, from the
   message log. It closes.
 
+Scope is core messaging and session management. There are no group chats, no new-chat button and
+no session list. The design and the decisions behind it are in the
+[spec](../../specs/issues/FIX-2154/SPEC.md).
+
+## How the team works
+
+### Messages and tasks
+
 Workers message each other where you can see it. When Chief of Staff messages researcher, a line,
 *Messaged researcher*, shows in Chief of Staff's conversation and the message lands in researcher's.
-The line opens researcher's turn on it in a popup: what it read, what it did, and the reply it sent. The reply lands
-in Chief of Staff's conversation under researcher's name. A message never interrupts the turn you
-are in: while Chief of Staff is answering you, researcher's reply shows as a pending line, and Chief
-of Staff reads it right after.
+The line opens researcher's turn on it in a popup: what it read, what it did, and the reply it sent.
+The reply lands in Chief of Staff's conversation under researcher's name. A message never interrupts
+the turn you are in: while Chief of Staff is answering you, researcher's reply shows as a pending
+line, and Chief of Staff reads it right after.
 
 Each worker does real work. researcher reads the working folder's files and searches the web, writer
 drafts from the working folder's files and from pages it fetches, and Chief of Staff hands out the
 work. Chief of Staff sends a quick ask as a message, and real work as a task: a job that needs the
-folder's files read to researcher or writer, and a job in several parts as several tasks, in order.
-Every result lands back in Chief of Staff's conversation as one line, *researcher finished: Look up
-the launch date*, that opens the task in a popup, where the whole result is. Chief of Staff's own
-answer on it shows in full below.
+folder's files read goes to researcher or writer, and a job in several parts goes out as several
+tasks, in order. Every result lands back in Chief of Staff's conversation as one line, *researcher
+finished: Look up the launch date*, that opens the task in a popup, where the whole result is. Chief
+of Staff's own answer on it shows in full below.
+
+### Coding tasks
 
 A code change is a coding task, not a teammate's job. Coding runs in the background, the way a
 coding agent's job does: you watch it, you don't talk to it. Ask Chief of Staff for a code change
@@ -52,33 +63,34 @@ does, with no question first. Each agent is a worker of its own, off the list an
 messaged, whose `WORKER.md` names its `harness:`. A line in Chief of Staff's conversation and an
 item under *Background* show the task, tagged with the agent it runs on (and the model, once the
 run reports one), and open its run in a popup. The result lands in Chief of Staff's conversation as
-the coding task's line, *Coding task finished: …*. To change a coding task, tell Chief of Staff, who starts the next one.
+the coding task's line, *Coding task finished: …*. To change a coding task, tell Chief of Staff,
+who starts the next one.
 
 A coding task's popup says *Starting on Codex…* from the moment the task is filed. Once the run
 starts, its steps show as they happen, and once it ends, the result is at the top, above them. The
-steps are plain: what the agent wrote, as text, and what it did, such as *Read …/src/session-feed.ts*, *Edit README.md* or the command it ran.
-A run of steps folds into one line, *Ran 3 commands and edited a file*, that opens to each one.
-The steps read the same on all three agents, though each names its tools its own way. A Claude
-Code run loads the working folder's own Claude Code settings and `CLAUDE.md`, never this
-machine's, so an output style set there doesn't show in its steps.
+steps are plain: what the agent wrote, as text, and what it did, such as *Read
+…/src/session-feed.ts*, *Edit README.md* or the command it ran. A run of steps folds into one line,
+*Ran 3 commands and edited a file*, that opens to each one. The steps read the same on all three
+agents, though each names its tools its own way. A Claude Code run loads the working folder's own
+Claude Code settings and `CLAUDE.md`, not your user-level ones, so an output style set in yours
+doesn't show in its steps.
 
 Before a task starts, its agent's own sign-in check runs. An agent this machine isn't set up for
 fails the task at once, with a line that names it and what's missing, such as "Codex isn't set up on
 this machine: Not logged in. Sign in with `codex login`, then start the task again." It never runs
 on another agent instead.
 
-There is one working folder, a git checkout you name when you start the lab, and every job that
-needs files works in it. Nothing on the page picks a folder, and no worker can name another one.
+There is one working folder, a checkout you name when you start the lab (see [Run it](#run-it)),
+and every job that needs files works in it. Nothing on the page picks a folder, and no worker can
+name another one.
+
+### Your own teammates
 
 You can hire teammates of your own (*Hire a teammate*, under the list): a name, one line on what it
 does, and its instructions. It joins the list at once, you can talk to it, and Chief of Staff can
 hand it tasks. Your own teammates get an *Instructions* control, which replaces their instructions
 from the next turn on, and *Fire*, which takes them off the list; their conversation stays readable.
 The three teammates from the files can't be edited or fired.
-
-Scope is core messaging and session management. There are no group chats, no new-chat button and
-no session list. The design and the decisions behind it are in the
-[spec](../../specs/issues/FIX-2154/SPEC.md).
 
 ## Run it
 
@@ -88,10 +100,7 @@ The lab runs on a real model and a durable SQLite store, served by `fsdev dev`:
 pnpm --filter @flow-state-dev/teammates dev
 ```
 
-The team works in this repository's checkout. To point it at another one, set
-`TEAMMATES_WORKDIR=/path/to/checkout`. Then ask Chief of Staff to fix something in it.
-
-This builds the pages and serves them with the lab's server (`fsdev.config.mts`). It reads:
+The command builds the pages and serves them with the lab's server (`fsdev.config.mts`). It reads:
 
 | Variable | What it sets | Default |
 |---|---|---|
@@ -108,12 +117,14 @@ own sign-in: Claude Code signed in, or `ANTHROPIC_API_KEY`; Codex signed in (`co
 search needs one search provider's key (`TAVILY_API_KEY`, `EXA_API_KEY`, `BRAVE_API_KEY`, or another
 `@flow-state-dev/tools` takes); fetching a page needs none.
 
-With `TEAMMATES_WORKDIR` unset, the working folder is the root of this repository. Naming a folder
-that doesn't exist or isn't a git checkout stops the lab at start with an error that names the
-setting and the path; it never falls back to the current directory. Each coding run
-works in a worktree of the folder, under the lab's `.fsdev/teammates-runs/`, so the checkout's
-`.gitignore` must ignore `**/.fsdev/`, where a run keeps its own notes; a run refuses a checkout
-that doesn't. The checkout's own branch and working tree are never changed.
+The team works in this repository's checkout unless `TEAMMATES_WORKDIR` names another. Naming a
+folder that doesn't exist or isn't a git checkout stops the lab at start with an error that names
+the setting and the path; it never falls back to the current directory. Each coding run works in a
+worktree of the folder, under the lab's `.fsdev/teammates-runs/`, so the checkout's `.gitignore`
+must ignore `**/.fsdev/`, where a run keeps its own notes; a run refuses a checkout that doesn't.
+The checkout's own branch and working tree are never changed.
+
+### Try it
 
 With a working folder whose README says the launch date, ask Chief of Staff *"Ask researcher for our
 launch date, and help me outline the post."* Chief of Staff answers and messages researcher, which
@@ -121,10 +132,8 @@ reads the date from the README. Before researcher replies, send Chief of Staff a
 reply shows as pending, then lands after Chief of Staff's answer, and Chief of Staff uses it in its
 next line.
 
-A conversation outlasts its history window (50 turns). Before a turn leaves it, the turn is folded
-into a running summary that Chief of Staff reads with the turns it still has word for word. The
-divider sits where those begin, labelled *summarized*, so a fact you gave Chief of Staff a hundred
-lines ago is above it and Chief of Staff still knows it.
+Keep talking past 50 turns and the divider reads *summarized*: a fact you gave Chief of Staff a
+hundred lines ago is above it, and Chief of Staff still knows it.
 
 Then ask Chief of Staff *"Fix the typo in the README's first line."* Chief of Staff starts a coding
 task, the run shows its steps, and the result lands in Chief of Staff's conversation.
@@ -157,10 +166,6 @@ hire here, gets its initial on a palette color picked from its id.
 
 Not wired yet:
 
-- **Cursor under a long runs folder.** Cursor's SDK names a folder of its own after the run's whole
-  worktree path, and the worktree path `harness-manager` makes is long, so under the lab's default
-  runs folder a Cursor run fails with `ENAMETOOLONG` (FIX-2344). A short `runsRoot`, such as
-  `/tmp/r`, works today.
 - **Editing a worker from the files.** They are read-only on the roster; how a user changes one (a
   fork that stands in for it, or another way) waits on a product call.
 - **Saving writer's drafts.** No package tool writes files from a worker's turn yet, so writer
@@ -168,6 +173,3 @@ Not wired yet:
 - **The source tools' own descriptions say "project".** `projectSourceTools` describe what they read
   as "the project this session works in". Here that is the working folder; the lab doesn't rename
   package tools.
-- **A task whose input has an `issue` field** is refused by the coding run as half a feature payload
-  (FIX-2282). Chief of Staff's `WORKER.md` tells it to leave `input` empty, which only lowers the
-  odds.
