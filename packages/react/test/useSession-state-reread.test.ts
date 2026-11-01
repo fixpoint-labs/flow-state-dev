@@ -60,6 +60,11 @@
  *     no doubling: the same case fails on the read count; read again without
  *     `live` too: the "not live" case fails; only a request other than the
  *     latest read again: the "latest request shown" case fails.
+ *   - a first status read that failed counted as read: the "failed is tried
+ *     again" case fails (null); a suspension's stream status standing over
+ *     the record: the "suspended ... finished elsewhere" case fails.
+ *   - changes after a held state-only response treated like an unknown
+ *     boundary: the "after a state-only read held" case fails (count 0).
  *   - a dropped stream leaving its status in place: the "dropped stream" case
  *     fails (in progress over a completed record).
  *   - reading the followed request's status as soon as its stream ends,
@@ -301,6 +306,19 @@ describe("live changes a state read may already hold", () => {
     await flush();
     return { ...hook, stateOnly: stateCalls.length - 1 };
   }
+
+  it("a change after a state-only read held for the mount read is put back on it, an increment too", async () => {
+    const hook = renderHook(() => useSession("sess1", { flowKind: "demo", items: true }));
+    await flush();
+    act(() => void hook.result.current.followRequest("req_turn"));
+    act(() => void hook.result.current.refresh({ items: false }));
+    await flush();
+    await land(stateCalls.length - 1, counted(0));
+    // The held response was already in hand: this one can't be in it.
+    act(() => connections.at(-1)!.callbacks.onItemAdded?.(change("inc1", "increment", { count: 1 })));
+    await land(0, counted(0, [message("m1", "req_turn")]));
+    expect(hook.result.current.snapshot?.clientData.session).toEqual({ phase: "counting", count: 1 });
+  });
 
   it("an increment the read already holds is not counted twice", async () => {
     const { result, stateOnly } = await mountCounting();
@@ -751,6 +769,39 @@ describe("followedRequest", () => {
 
       await act(() => vi.advanceTimersByTimeAsync(120_000));
       expect(sessionsMock.requests.mock.calls.length).toBe(latestReads + 1);
+    });
+
+    it("live, a first status read that failed is tried again", async () => {
+      requestMock.status.mockRejectedValueOnce(new Error("offline"));
+      requestMock.status.mockResolvedValue({ id: "req_turn", status: "completed", startedAtMs: 10, completedAtMs: 20, ageMs: 1 });
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const { result } = await mount({ live: true });
+      await flush();
+      expect(result.current.followedRequest).toBeNull();
+
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      expect(result.current.followedRequest).toEqual({ id: "req_turn", status: "completed", startedAtMs: 10, completedAtMs: 20 });
+    });
+
+    it("live, a request suspended on this view's stream and finished elsewhere reads finished", async () => {
+      sessionsMock.requests.mockResolvedValue([]);
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const { result } = await mount({ live: true });
+      act(() => void result.current.followRequest("req_turn"));
+      sessionsMock.requests.mockResolvedValue([
+        { id: "req_turn", status: "suspended", startedAtMs: 10, flowKind: "demo", actionName: "turn", userId: "devuser", createdAt: 0, updatedAt: 0 },
+      ]);
+      act(() => connections.at(-1)!.callbacks.onRequestStatus?.({ type: "request.suspended", status: "suspended" }));
+      await flush();
+      expect(result.current.followedRequest?.status).toBe("suspended");
+
+      // Another client resumes it, and it completes there.
+      sessionsMock.requests.mockResolvedValue([
+        { id: "req_turn", status: "completed", startedAtMs: 10, completedAtMs: 20, flowKind: "demo", actionName: "turn", userId: "devuser", createdAt: 0, updatedAt: 0 },
+      ]);
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      await flush();
+      expect(result.current.followedRequest).toEqual({ id: "req_turn", status: "completed", startedAtMs: 10, completedAtMs: 20 });
     });
 
     it("not live, is read once: the view updates on interaction, as its items do", async () => {

@@ -1017,14 +1017,19 @@ export function useSession(
   const withLiveChanges = useCallback(
     (
       next: SessionStateSnapshotResponse,
-      after: number
+      after: number,
+      heldThrough = false
     ): Pick<SessionStateSnapshotResponse, "clientData" | "resources"> | null => {
       if (after < liveChangesDroppedThroughRef.current) return null;
       const since = liveChangesRef.current.filter(({ n }) => n > after);
+      // `heldThrough`: `next` is known to hold no change after `after` (a
+      // response already in hand then), so every one is put back.
       let from = 0;
-      since.forEach(({ item }, index) => {
-        if (!isRepeatable(item)) from = index + 1;
-      });
+      if (!heldThrough) {
+        since.forEach(({ item }, index) => {
+          if (!isRepeatable(item)) from = index + 1;
+        });
+      }
       let merged: SessionStateSnapshotResponse = next;
       for (const { item } of since.slice(from)) {
         const changed =
@@ -1117,7 +1122,7 @@ export function useSession(
       const superseded = read.state.sequence <= stateAppliedSequenceRef.current;
       const state =
         takeState(merged, read.state) ??
-        (heldState !== null ? withLiveChanges({ ...merged, ...heldState.state }, heldState.changesAt) : null);
+        (heldState !== null ? withLiveChanges({ ...merged, ...heldState.state }, heldState.changesAt, true) : null);
       if (!superseded) {
         if (nextDetail !== undefined) setDetail(nextDetail);
       } else if (heldState !== null) {
@@ -1533,7 +1538,10 @@ export function useSession(
           });
         },
         onRequestStatus: (event) => {
-          setStreamStatus({ id: requestId, status: event.status });
+          // A suspension closes the stream with the request not ended: its
+          // record says where it goes next (resumed elsewhere, say), so the
+          // stream's status does not stand over it.
+          setStreamStatus(event.status === "suspended" ? (current) => (current?.id === requestId ? null : current) : { id: requestId, status: event.status });
           if (
             event.status === "completed" ||
             event.status === "failed" ||
@@ -2292,8 +2300,12 @@ export function useSession(
     : readFollowed !== null && readFollowed.id === shownRequestId
       ? readFollowed.status
       : null;
+  // No record yet (its first read failed, say) counts as not yet ended.
   const runningReadId =
-    live && shownStreamStatus === null && shownRecordStatus !== null && !hasEnded(shownRecordStatus)
+    live &&
+    shownStreamStatus === null &&
+    (shownIsLatest || unfollowedShownId !== null) &&
+    (shownRecordStatus === null || !hasEnded(shownRecordStatus))
       ? shownRequestId
       : null;
   const runningRereadCount = runningRereads.id === runningReadId ? runningRereads.count : 0;
