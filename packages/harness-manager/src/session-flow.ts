@@ -884,6 +884,14 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
           const approvals = turnApprovalsOf(ctx as never);
           const grants = approvals.grants.filter((_, at) => spent?.has(at) !== true);
           if (held === undefined && grants.length === approvals.grants.length) return value;
+          if (held !== undefined) {
+            // The stopped run reported its spend into this run of the request,
+            // and a resume starts a ledger that no longer holds it: on the turn
+            // now, so the turn's end counts it with the runs after.
+            await changeState(ctx as unknown as HarnessCallbackContext, (state) =>
+              withTurn(state, requestId, (record) => ({ ...record, spentRuns: turnEndOf(ctx, requestId, record).spentRuns })),
+            );
+          }
           await ctx.sequencer!.patchState({ approvals: { ...approvals, grants, pending: held ?? null } });
           return value;
         },

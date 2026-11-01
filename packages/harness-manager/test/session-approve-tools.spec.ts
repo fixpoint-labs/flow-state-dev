@@ -10,6 +10,9 @@
  *     turn" fails on the marker.
  *   - drop the grant from the answer's outcome: the re-issued call is held
  *     again, and "resumes on Allow" fails on its decisions.
+ *   - save the turn's harness spend only when the turn ends, not before it
+ *     waits: the run stopped for the approval is lost on resume, and "counts
+ *     what each run spent" reads one run's tokens, not two.
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -42,12 +45,17 @@ function marker(name: string, command = `touch ${name}`): StubToolCall {
   return { toolName: "Bash", input: { command }, run: (run) => writeFileSync(join(run.cwd, name), "ran\n") };
 }
 
-function host(options: { calls: StubToolCall[]; approveTools?: boolean; durable?: boolean }) {
+function host(options: {
+  calls: StubToolCall[];
+  approveTools?: boolean;
+  durable?: boolean;
+  spend?: { inputTokens: number; outputTokens: number; costUsd: number | null };
+}) {
   const dir = mkdtempSync(join(tmpdir(), "harness-session-approve-"));
   dirs.push(dir);
   mkdirSync(join(dir, "work"), { recursive: true });
   const cwd = join(dir, "work");
-  const stub = harnessStub({ toolCalls: options.calls });
+  const stub = harnessStub({ toolCalls: options.calls, ...(options.spend === undefined ? {} : { spend: options.spend }) });
   const handed: string[] = [];
   const flow = harnessSessionFlow({
     kind: KIND,
@@ -173,6 +181,23 @@ describe("a harness session's tool call waits for the user", () => {
       const record = (await h.sessionState()).turns?.[requestId!];
       expect(record?.failure ?? null).toBeNull();
       expect(record?.endedAt).not.toBeNull();
+    } finally {
+      await h.dispose();
+    }
+  }, 30_000);
+
+  it("counts what each run spent, the one stopped for the approval too", async () => {
+    const h = host({ calls: [marker("marker")], spend: { inputTokens: 10, outputTokens: 1, costUsd: 0.1 } });
+    try {
+      const { requestId } = await h.turn("do the thing");
+      await h.pending(requestId!);
+      await h.answer(requestId!, "approve");
+      expect(await h.ended(requestId!)).toBe("completed");
+      expect(h.stub.runs).toHaveLength(2);
+      const record = (await h.sessionState()).turns?.[requestId!];
+      expect(record?.spentRuns?.map((run) => run.runId)).toEqual([h.stub.runs[0]!.session, h.stub.runs[1]!.session]);
+      expect(record?.spend).toMatchObject({ inputTokens: 20, outputTokens: 2 });
+      expect(record?.spend?.costUsd).toBeCloseTo(0.2);
     } finally {
       await h.dispose();
     }
