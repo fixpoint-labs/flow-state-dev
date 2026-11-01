@@ -11,7 +11,8 @@
  * Its slot takes the manager's {@link HarnessFeeds}, plus an optional
  * `mcpTools` feed a host relays MCP servers through. The stub takes no relayed
  * tools: handed one, it says in the run's session which servers it runs
- * without.
+ * without. Given `toolCalls`, it makes them as a coding run does, asking
+ * through `onToolApproval` when the manager hands it (`approveTools`).
  */
 
 import { handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
@@ -33,8 +34,11 @@ export interface StubRun {
   cwd: string;
   /** The session id the `resume` feed offered, or null on a cold attempt. */
   resume: string | null;
-  /** The session id this run named through `onSession`. */
-  session: string;
+  /**
+   * The session id this run named through `onSession`. Set on every run the
+   * stub makes; optional so a host's own `StubRun` (a fixture) needs none.
+   */
+  session?: string;
 }
 
 /**
@@ -184,11 +188,12 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
         execute: async (input: { prompt: string }, ctx) => {
           const context = ctx as unknown as HarnessCallbackContext;
           sessions += 1;
+          const session = `sess_stub_${sessions}`;
           const run: StubRun = {
             prompt: input.prompt,
             cwd: await cwd(context),
             resume: await resume(context),
-            session: `sess_stub_${sessions}`,
+            session,
           };
           runs.push(run);
 
@@ -197,7 +202,7 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
           // rather than skipping it: `onSession` is the write side of the
           // resume feed, and a stub that never called it would leave that half
           // of the contract unexercised in the one check that runs model-free.
-          await onSession(run.session, context);
+          await onSession(session, context);
 
           // The scripted run takes no relayed tools: a project that names MCP
           // servers runs without them here, and its session says so.

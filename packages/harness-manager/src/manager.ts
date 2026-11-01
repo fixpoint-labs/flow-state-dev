@@ -3410,8 +3410,20 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const grants = approvals.grants.filter((_, at) => spent?.has(at) !== true);
       if (held === undefined && grants.length === approvals.grants.length) return value;
       await ctx.sequencer!.patchState({ approvals: { ...approvals, grants, pending: held ?? null } });
+      if (held === undefined) return value;
       // The step's watch, kept by its rescue for the steer check, is the approval's to drop.
-      if (held !== undefined) steerWatches.delete(requestId);
+      steerWatches.delete(requestId);
+      // **A save point, as a turn's end is**: nothing stays live while it
+      // waits, so a restart loses none of it. The answer's step works in the
+      // place again, provisioned from what was saved.
+      const holdOk = await holdWork(ctx);
+      const saved = await saveKeptFiles(ctx);
+      if (!holdOk || !saved) {
+        throw new HarnessAttemptFailed(
+          `the run stopped to ask about ${held.toolName}, and its work could not be ${saved ? "held" : "saved"}, ` +
+            `so it does not wait on work that exists only on this machine`,
+        );
+      }
       return value;
     },
   });
