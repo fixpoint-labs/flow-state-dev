@@ -577,6 +577,12 @@ export interface OpenLabOptions {
    */
   reviewChanges?: boolean;
   /**
+   * Build the coder's managers asking the user before each tool call its
+   * harness hasn't pre-allowed (harness-manager's `approveTools`). Off by
+   * default: the Lab's coder doesn't turn it on.
+   */
+  approveTools?: boolean;
+  /**
    * More worker flows beside the Lab's own, built on its installation: a
    * goal's worker that stops for the user in code, on the same Lab and Inbox
    * as the coder. A flow name the Lab already builds is refused.
@@ -905,6 +911,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     answerPhase: defineAnswerPhase({ workerOf: coderWorkerOf }),
     ...(options.withoutJudge === true ? {} : { judge: defineCoderJudge() }),
     ...(options.reviewChanges === true ? { reviewChanges: true } : {}),
+    ...(options.approveTools === true ? { approveTools: true } : {}),
     // What a files run starts on, kept so its done-condition asks for a change.
     harness: (feeds) =>
       options.harness({

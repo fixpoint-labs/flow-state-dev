@@ -5,7 +5,7 @@ import type {
   SuspensionResumeItem,
 } from "@flow-state-dev/core/items";
 import type { SuspensionStatus } from "@flow-state-dev/core/types";
-import { useApproval } from "@flow-state-dev/react";
+import { approveOptionsOf, useApproval } from "@flow-state-dev/react";
 import { CheckIcon, MinusIcon, XIcon } from "lucide-react";
 import { useSessionItems } from "./session-items-context";
 
@@ -19,6 +19,10 @@ import { useSessionItems } from "./session-items-context";
  * `suspension: Approval`. Resolved state is derived from the session item stream
  * (via `useSessionItems`), so wrap your item list in `<SessionItemsProvider>` for
  * the card to collapse to a receipt on reload — the same requirement as `TaskPlan`.
+ *
+ * A stop that offers more than one yes lists them under `data.approveOptions`
+ * (`{ label, data }` each, read by `approveOptionsOf`): each is drawn as its own
+ * button beside Approve, and sends its data with the approve.
  */
 export function Approval({ item }: { item: SuspensionItem }) {
   // Find the matching resume in the stream to know if (and how) this resolved.
@@ -37,6 +41,10 @@ export function Approval({ item }: { item: SuspensionItem }) {
   }
 
   const approval = useApproval(item, { isResolved, resolution });
+  const options = approveOptionsOf(item);
+  // The options are the card's controls, not details to show.
+  const { approveOptions: _options, ...details } = item.data ?? {};
+  const hasDetails = item.data !== undefined && Object.keys(details).length > 0;
 
   if (approval.resolved) {
     const status = approval.resolvedStatus;
@@ -70,11 +78,11 @@ export function Approval({ item }: { item: SuspensionItem }) {
     >
       <p className="mb-2.5 text-sm font-semibold">{item.message}</p>
 
-      {item.data !== undefined ? (
+      {hasDetails ? (
         <details className="mb-2.5 text-xs">
           <summary className="cursor-pointer text-muted-foreground">Details</summary>
           <pre className="mt-1.5 overflow-x-auto rounded-md bg-muted p-2 text-[11px] whitespace-pre-wrap">
-            {JSON.stringify(item.data, null, 2)}
+            {JSON.stringify(details, null, 2)}
           </pre>
         </details>
       ) : null}
@@ -92,6 +100,17 @@ export function Approval({ item }: { item: SuspensionItem }) {
         >
           {approval.pendingAction === "approve" ? "Approving…" : "Approve"}
         </button>
+        {options.map((option) => (
+          <button
+            key={option.label}
+            type="button"
+            disabled={!approval.canApprove || approval.isResolving}
+            onClick={() => approval.approveWith(option.data)}
+            className="rounded-lg border border-success/40 px-4 py-1.5 text-sm font-semibold text-success transition-colors hover:bg-success/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {option.label}
+          </button>
+        ))}
         <button
           type="button"
           disabled={!approval.canReject || approval.isResolving}

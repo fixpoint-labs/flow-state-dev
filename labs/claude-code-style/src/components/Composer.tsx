@@ -1,11 +1,12 @@
-import { isSendKey } from "@flow-state-dev/react";
+import { interruptChordLabel, isSendKey } from "@flow-state-dev/react";
 import type { FormEvent, KeyboardEvent } from "react";
 import { useDraftSend } from "../lib/use-draft-send";
 
 /**
  * The only place you type to the main session. Enter or Cmd+Enter (Ctrl+Enter)
  * sends, Shift+Enter is a new line. While a
- * turn runs, Send becomes Stop; a line you send then waits for the turn.
+ * turn runs, Send becomes Stop; a line you send then waits for the turn. Esc
+ * here is the text box's: the stop keys are the thread's (Esc Esc, Cmd/Ctrl+.).
  *
  * A line stays in the box until its send lands ({@link useDraftSend}): a
  * failed one says why, with Retry. The draft is kept per session across a
@@ -14,11 +15,14 @@ import { useDraftSend } from "../lib/use-draft-send";
 export function Composer({
   sessionId,
   running,
+  armed = false,
   onSend,
   onStop,
 }: {
   sessionId: string;
   running: boolean;
+  /** A first Esc is waiting for its second: say so under the box. */
+  armed?: boolean;
   /** Resolves once the line has landed; rejects with why it didn't. */
   onSend: (text: string) => Promise<void>;
   onStop: () => void;
@@ -35,8 +39,6 @@ export function Composer({
     if (isSendKey(event, { enterSends: true })) {
       event.preventDefault();
       void send();
-    } else if (event.key === "Escape" && running) {
-      onStop();
     }
   };
   return (
@@ -78,7 +80,7 @@ export function Composer({
           </button>
         </p>
       ) : null}
-      <p className="mt-1 text-xs text-muted-foreground">You talk only to the main session{running ? " · Esc to stop the turn" : ""}</p>
+      <p className="mt-1 text-xs text-muted-foreground">You talk only to the main session{running ? (armed ? " · press Esc again to stop the turn" : ` · Esc Esc or ${interruptChordLabel()} to stop the turn`) : ""}</p>
     </form>
   );
 }
