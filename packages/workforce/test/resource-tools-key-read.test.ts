@@ -21,7 +21,7 @@ import { MCP_CREDENTIALS_RESOURCE, mcpCredentialsCapability } from "../src/proje
 
 const KEY = "lin_api_users_own_key";
 
-async function askForTheKey() {
+async function requestTheKey() {
   const { readResource } = resourceTools();
   const flow = defineAgentWorkerFlow({ uses: [mcpCredentialsCapability], catalog: { readResource } });
   const [worker] = mintWorkers([{ id: "desk.lead", declared: { tools: ["readResource"] }, body: "" }], {
@@ -56,7 +56,7 @@ async function askForTheKey() {
 
 describe("resourceTools beside a worker's MCP keys", () => {
   it("refuses the read, and the key reaches nothing the model sees", async () => {
-    const { items } = await askForTheKey();
+    const { items } = await requestTheKey();
     // The tool ran and answered as for a path no collection matches.
     expect(items).toContain("No resource collection found matching path: mcp-credentials/linear");
     expect(items).not.toContain(KEY);
