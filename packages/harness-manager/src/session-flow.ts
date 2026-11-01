@@ -668,9 +668,11 @@ function turnEndOf(
 ): { spend: TaskSpendView | null; spentRuns: HarnessRunSpend[] | null; endedAt: number } {
   const pending = readRequestSpend(ctx);
   const now = pending?.harnessRuns ?? [];
-  // A run with an id is the same run wherever it is written. One without is a
-  // settled run of its own (the `HarnessRunSpend` contract), so an earlier
-  // one is always kept: the turn writes once per run of its request.
+  // A run with an id is the same run wherever it is written, including one a
+  // continuation recovered from the log after this turn's earlier write (the
+  // engine names a run reported without an id, so that one has one too). One
+  // still without an id came from a seam that named none: a settled run of its
+  // own (the `HarnessRunSpend` contract), so an earlier one is always kept.
   const earlier = (record.spentRuns ?? []).filter((run) => run.runId === undefined || !now.some((other) => other.runId === run.runId));
   const harnessRuns = [...earlier, ...now];
   const spend = pending === undefined && harnessRuns.length === 0 ? null : requestSpendView({ byModel: pending?.byModel ?? {}, harnessRuns }, requestId);

@@ -140,7 +140,8 @@ describe("request spend ledger", () => {
     expect(endings).toHaveLength(1);
     expect(endings[0]!.spend).toEqual({
       byModel: { "openai/gpt-6-luna": { prompt: 8, completion: 8, total: 16, cacheReadTokens: 0, cacheCreationTokens: 0 } },
-      harnessRuns: [{ harness: "claude-code", inputTokens: 1000, outputTokens: 200, costUsd: 0.42, billing: "api-key" }]
+      // A report with no run id is named here, so whoever records it can tell it from another run.
+      harnessRuns: [{ runId: expect.stringMatching(/^settled_/), harness: "claude-code", inputTokens: 1000, outputTokens: 200, costUsd: 0.42, billing: "api-key" }]
     });
   });
 
@@ -687,12 +688,14 @@ describe("request spend ledger", () => {
       process.env.FSDEV_TRACE_OBSERVABILITY = observability;
       const endings: RequestEnding[] = [];
       let harnessRuns = 0;
+      let liveRunId: string | undefined;
       const harnessStep = handler({
         name: "harness-step",
         inputSchema: z.any(),
         execute: (value, ctx) => {
           harnessRuns += 1;
           reportHarnessSpend(ctx, { harness: "codex", inputTokens: 100, outputTokens: 20, costUsd: 0.5, billing: "api-key" });
+          liveRunId = readRequestSpend(ctx)?.harnessRuns[0]?.runId;
           return value;
         }
       });
@@ -735,8 +738,11 @@ describe("request spend ledger", () => {
       await deadRun.catch(() => undefined);
 
       expect(harnessRuns).toBe(1);
+      // The run the continuation recovers is the one the dead run read, by
+      // name: whoever wrote it down then can tell it is not a second run.
+      expect(liveRunId).toMatch(/^settled_/);
       expect(endingsBeforeTeardown).toEqual([
-        ["completed", [{ harness: "codex", inputTokens: 100, outputTokens: 20, costUsd: 0.5, billing: "api-key" }]]
+        ["completed", [{ runId: liveRunId, harness: "codex", inputTokens: 100, outputTokens: 20, costUsd: 0.5, billing: "api-key" }]]
       ]);
     }
   );
@@ -955,13 +961,16 @@ describe("request spend read mid-run", () => {
 
     await run(flow, {}, "runs");
 
-    // Run "a" was reported last, so it is last; the two id-less reports are two runs.
-    expect(endings[0]!.spend.harnessRuns.map((r) => [r.runId ?? "-", r.harness, r.inputTokens])).toEqual([
+    // Run "a" was reported last, so it is last; the two id-less reports are
+    // two runs, each named apart.
+    const runs = endings[0]!.spend.harnessRuns;
+    expect(runs.map((r) => [r.runId?.startsWith("settled_") ? "settled" : r.runId, r.harness, r.inputTokens])).toEqual([
       ["b", "codex", 2],
-      ["-", "cursor", 5],
-      ["-", "cursor", 5],
+      ["settled", "cursor", 5],
+      ["settled", "cursor", 5],
       ["a", "codex", 3]
     ]);
+    expect(runs[1]!.runId).not.toBe(runs[2]!.runId);
   });
 
   it("keys model calls in the order each model was last called, so a task names the model it called last", () => {
