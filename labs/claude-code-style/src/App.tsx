@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { LabAdapter, ProjectRow, SessionRow } from "./adapter";
 import { PaneResizer } from "./components/PaneResizer";
 import { ProjectPicker } from "./components/ProjectPicker";
@@ -7,6 +7,7 @@ import { SessionsList } from "./components/SessionsList";
 import { TasksPane } from "./components/TasksPane";
 import { ThreadsBoard } from "./components/ThreadsBoard";
 import { Thread } from "./components/Thread";
+import { readAddress, writeAddress, type Address, type AddressWrite } from "./lib/address";
 import { paneColumn, usePaneWidth } from "./lib/pane-width";
 import { useWatch } from "./lib/use-watch";
 import { modeOfWorker, type ModeId } from "./modes";
@@ -17,18 +18,36 @@ import { modeOfWorker, type ModeId } from "./modes";
  * the threads board in threads mode. A pane opens a task's work in a sheet
  * over the main thread (`SheetArea`). The right pane's width is yours to drag,
  * and stays across reloads (`usePaneWidth`). The app opens in the Sessions view on
- * *New session*, which asks for a project before the composer opens.
+ * *New session*, which asks for a project before the composer opens, unless
+ * the page's address names what was open (`lib/address`): a reload, a link and
+ * Back reopen the view, the session and the task open in its pane.
  */
 export function App({ adapter }: { adapter: LabAdapter }) {
-  const sessions = useWatch((emit: (rows: SessionRow[]) => void) => adapter.watchSessions(emit), [adapter]) ?? [];
-  const [view, setView] = useState<ModeId>("session");
+  const listed = useWatch((emit: (rows: SessionRow[]) => void) => adapter.watchSessions(emit), [adapter]);
+  const sessions = listed ?? [];
+  // What the page's address named when it loaded, or on Back, until the sessions are read.
+  const [start] = useState(readAddress);
+  const pending = useRef<Address | null>(start.session === undefined ? null : start);
+  // How the next address write lands: a pick adds a Back step, anything else replaces.
+  const how = useRef<AddressWrite>("replace");
+  const [view, setView] = useState<ModeId>(start.view ?? "session");
   // Each view keeps its own open session when you switch away and back.
   const [openByView, setOpenByView] = useState<Partial<Record<ModeId, string>>>({});
   const selectedId = openByView[view];
   // A view with no open session is on *New session*: the center asks for a project.
   const select = (mode: ModeId, id: string | undefined) => setOpenByView((open) => ({ ...open, [mode]: id }));
-  // The thread open in the board, by session: a card's *View thread* opens it there too.
-  const [openThread, setOpenThread] = useState<Partial<Record<string, string>>>({});
+  // The task open in each session's pane: a thread on the board, or a task's sheet.
+  const [openTask, setOpenTask] = useState<Partial<Record<string, string>>>({});
+  // The task the address opened. Only it is dropped when it is gone: a task
+  // filed a moment ago can be opened before its row arrives.
+  const addressedTask = useRef<string | undefined>(undefined);
+  const dropMissing = (sessionId: string) => {
+    if (openTask[sessionId] === addressedTask.current) openTaskOf(sessionId, undefined, "replace");
+  };
+  const openTaskOf = (sessionId: string, taskId: string | undefined, write: AddressWrite = "push") => {
+    how.current = write;
+    setOpenTask((open) => ({ ...open, [sessionId]: taskId }));
+  };
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [paneWidth, setPaneWidth] = usePaneWidth();
   useEffect(() => {
@@ -39,8 +58,65 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     };
   }, [adapter]);
 
+  // Open what the address names, once the sessions are read. A session that is gone leaves the default.
+  const rows = useRef(listed);
+  rows.current = listed;
+  const open = useCallback((address: Address, listing: SessionRow[]) => {
+    pending.current = null;
+    const row = listing.find((s) => s.id === address.session);
+    const mode = row ? modeOfWorker(row.worker)?.id : undefined;
+    if (row && mode) {
+      setView(mode);
+      setOpenByView((open) => ({ ...open, [mode]: row.id }));
+      addressedTask.current = address.task;
+      setOpenTask((open) => ({ ...open, [row.id]: address.task }));
+      return;
+    }
+    // A session that is gone: the default screen, as for an address that names none.
+    const fallback = address.view ?? "session";
+    setView(fallback);
+    setOpenByView((open) => ({ ...open, [fallback]: undefined }));
+  }, []);
+  useEffect(() => {
+    if (listed !== undefined && pending.current !== null) open(pending.current, listed);
+  }, [listed, open]);
+  // Back and Forward: draw what the address names now.
+  useEffect(() => {
+    const onPop = () => {
+      const address = readAddress();
+      how.current = "replace";
+      if (address.session === undefined) {
+        pending.current = null;
+        const mode = address.view ?? "session";
+        setView(mode);
+        setOpenByView((open) => ({ ...open, [mode]: undefined }));
+      } else if (rows.current === undefined) pending.current = address;
+      else open(address, rows.current);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [open]);
+  // Keep the address on what is open. Held while the address's own session is still being read.
+  const task = selectedId === undefined ? undefined : openTask[selectedId];
+  useEffect(() => {
+    if (pending.current !== null) return;
+    // A run that changes nothing (a list refresh) leaves a pending pick's push for the write it is waiting on.
+    if (writeAddress({ view, session: selectedId, task }, how.current)) how.current = "replace";
+  }, [view, selectedId, task, listed]);
+  // A user's pick: a step Back returns from, and it wins over an address still waiting on the session list.
+  const pick = (mode: ModeId, id: string | undefined) => {
+    how.current = "push";
+    pending.current = null;
+    select(mode, id);
+  };
+  const pickView = (mode: ModeId) => {
+    how.current = "push";
+    pending.current = null;
+    setView(mode);
+  };
+
   const openNew = (mode: ModeId, project: ProjectRow) => {
-    void adapter.openSession(mode, project.id).then((row) => select(mode, row.id));
+    void adapter.openSession(mode, project.id).then((row) => pick(mode, row.id));
   };
   const inView = sessions.filter((s) => modeOfWorker(s.worker)?.id === view);
 
@@ -57,9 +133,9 @@ export function App({ adapter }: { adapter: LabAdapter }) {
           modes={adapter.modes}
           sessions={inView}
           selectedId={selectedId}
-          onView={setView}
-          onSelect={(id) => select(view, id)}
-          onNew={() => select(view, undefined)}
+          onView={pickView}
+          onSelect={(id) => pick(view, id)}
+          onNew={() => pick(view, undefined)}
         />
         <SheetArea>
           {selected ? (
@@ -68,7 +144,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
               adapter={adapter}
               session={selected}
               project={projects.find((p) => p.id === selected.projectId)}
-              onOpenThread={(taskId) => setOpenThread((open) => ({ ...open, [selected.id]: taskId }))}
+              onOpenThread={(taskId) => openTaskOf(selected.id, taskId)}
             />
           ) : (
             <ProjectPicker
@@ -84,13 +160,24 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         <div className="relative min-h-0 min-w-0">
           <PaneResizer width={paneWidth} onResize={setPaneWidth} />
           {selected && pane === "tasks" ? (
-            <TasksPane adapter={adapter} sessionId={selected.id} />
-          ) : selected && pane === "board" ? (
-            <ThreadsBoard
+            <TasksPane
+              // Keyed by session: a switch never judges the open task against the last session's rows.
+              key={selected.id}
               adapter={adapter}
               sessionId={selected.id}
-              openId={openThread[selected.id]}
-              onOpen={(taskId) => setOpenThread((open) => ({ ...open, [selected.id]: taskId }))}
+              openId={openTask[selected.id]}
+              onOpen={(taskId) => openTaskOf(selected.id, taskId)}
+              onMissing={() => dropMissing(selected.id)}
+            />
+          ) : selected && pane === "board" ? (
+            <ThreadsBoard
+              // Keyed by session: a switch never judges the open task against the last session's rows.
+              key={selected.id}
+              adapter={adapter}
+              sessionId={selected.id}
+              openId={openTask[selected.id]}
+              onOpen={(taskId) => openTaskOf(selected.id, taskId)}
+              onMissing={() => dropMissing(selected.id)}
             />
           ) : (
             <aside className="h-full bg-inspector" />

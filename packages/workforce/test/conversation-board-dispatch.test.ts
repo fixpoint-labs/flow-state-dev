@@ -331,3 +331,82 @@ describe("starting work on a conversation's board (BR-8 to BR-11, BR-24)", () =>
     }
   });
 });
+
+describe("retryTask on a conversation's board (FIX-2383)", () => {
+  it("starts a cancelled task again as the same row, with no other touch of the board", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "pm");
+      const filing = await host.filingOf("alice", conv);
+      const filed = await act(host, conv, "createTask_tasks", { held: true, goal: "Audit licenses", assignee: "eng.tasker" });
+      await act(host, conv, "updateTask_tasks", { id: filed.taskId!, status: "cancelled" });
+      await host.settled();
+      expect(host.runs).toEqual([]);
+
+      expect(await act(host, conv, "retryTask_tasks", { id: filed.taskId! })).toEqual({ ok: true });
+      await host.settled();
+      expect(await host.row("alice", filing, filed.taskId!)).toMatchObject({ status: "completed", attempts: 1, assignee: "eng.tasker" });
+      expect(host.runs.map((run) => run.taskId)).toEqual([filed.taskId]);
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("lets the row running in the session recover after its worker died, ahead of a retried row waiting on it", async () => {
+    const host = bootBoardHost();
+    try {
+      const conv = await host.conversation("alice", "pm");
+      const filing = await host.filingOf("alice", conv);
+      const base = (id: string, createdAt: number) =>
+        ({ ...recorded(id, "eng.tasker", id), undispatched: undefined, session: "ongoing", attempts: 1, startedAt: createdAt, createdAt, updatedAt: createdAt }) as Task;
+      // A runs in the delegate's ongoing session; its worker died, so its lease lapsed.
+      await host.writeRow("alice", filing, { ...base("task_running", 1000), status: "in_progress", claimedBy: "conversation-tasks", leaseUntil: Date.now() - 1_000 } as Task);
+      // B ran once in the same session before, and was cancelled.
+      await host.writeRow("alice", filing, { ...base("task_retried", 2000), status: "cancelled", completedAt: 2000 } as Task);
+
+      expect(await act(host, conv, "retryTask_tasks", { id: "task_retried" })).toEqual({ ok: true });
+      await host.settled();
+      expect(host.runs.map((run) => /task_(running|retried)/.exec(run.message)?.[0])).toEqual(["task_running", "task_retried"]);
+      expect(await host.row("alice", filing, "task_running")).toMatchObject({ status: "completed" });
+      expect(await host.row("alice", filing, "task_retried")).toMatchObject({ status: "completed", attempts: 2 });
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("runs two retried tasks of one ongoing session in turn, neither waiting on the other forever", async () => {
+    let release!: () => void;
+    const busy = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const host = bootBoardHost({ holds: new Map([["busy", busy]]) });
+    try {
+      const conv = await host.conversation("alice", "pm");
+      const filing = await host.filingOf("alice", conv);
+      // Two rows that each ran once in the delegate's ongoing session, and were cancelled.
+      const ran = (id: string, createdAt: number): Task =>
+        ({ ...recorded(id, "eng.tasker", id), undispatched: undefined, session: "ongoing", status: "cancelled", attempts: 1, startedAt: createdAt, completedAt: createdAt, createdAt, updatedAt: createdAt }) as Task;
+      await host.writeRow("alice", filing, ran("task_first", 1000));
+      await host.writeRow("alice", filing, ran("task_second", 2000));
+      // A third row holds the session while both are retried.
+      const busyTask = await act(host, conv, "createTask_tasks", { goal: "[hold:busy] task_busy", assignee: "eng.tasker", session: "ongoing" });
+      for (let i = 0; i < 200 && (await host.row("alice", filing, busyTask.taskId!))?.status !== "in_progress"; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(await host.row("alice", filing, busyTask.taskId!)).toMatchObject({ status: "in_progress" });
+
+      expect(await act(host, conv, "retryTask_tasks", { id: "task_second" })).toEqual({ ok: true });
+      expect(await act(host, conv, "retryTask_tasks", { id: "task_first" })).toEqual({ ok: true });
+      release();
+      await host.settled();
+      // Both retried rows waited on the busy one like new rows, then ran in turn, one at a time.
+      const order = host.runs.map((run) => /task_(busy|first|second)/.exec(run.message)?.[0]);
+      expect(order[0]).toBe("task_busy");
+      expect([...order.slice(1)].sort()).toEqual(["task_first", "task_second"]);
+      expect(await host.row("alice", filing, "task_first")).toMatchObject({ status: "completed", attempts: 2 });
+      expect(await host.row("alice", filing, "task_second")).toMatchObject({ status: "completed", attempts: 2 });
+    } finally {
+      await host.dispose();
+    }
+  });
+});

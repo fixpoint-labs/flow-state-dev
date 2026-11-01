@@ -1,7 +1,7 @@
 /**
  * Test-mode model resolver for the kitchen-sink.
  *
- * Composed into `lib/flowstate.ts` only when `KITCHEN_SINK_TEST_MODE === "1"`
+ * Composed into `fsdev.config.ts` only when `KITCHEN_SINK_TEST_MODE === "1"`
  * (Playwright E2E). Mocks every generator on the chat-agent run path, and the
  * `agent` worker kind's answers, so the suite never calls a real model. `policy: "allow"` returns an empty no-op
  * result for any straggler generator (memory capture, bias analyzers, etc.)
@@ -10,8 +10,10 @@
  * A scenario that names a hold (`holdBeforeAnswer`) is held before its model
  * runs, so a page can be seen showing a worker as working before it answers.
  *
- * This is an app-local test seam, not deployment glue — it lives under
- * `test/` and is gated by an explicit env flag.
+ * This is an app-local test seam, not deployment glue, gated by an explicit
+ * env flag. It lives in `lib/` beside the script it plays (`e2e-mock-script.ts`)
+ * because the app's own config imports it: nothing under `test/` is shipped
+ * code.
  */
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import type { ModelResolver } from "@flow-state-dev/core";

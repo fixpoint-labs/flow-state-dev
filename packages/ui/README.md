@@ -52,7 +52,8 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `sandbox` | Source/preview tab wrapper for JSX artifacts using JSXPreview and CodeBlock |
 | `info-card` | Generative-UI info card: title, optional image, fact rows. Pairs with `emitInfoCard` |
 | `link-card` | Generative-UI link card: rich preview for an external URL. Pairs with `emitLinkCard` |
-| `approval` | Polished Approve / Reject card for a `user_approval` suspension. Collapses to a receipt on resolve |
+| `approval` | Polished Approve / Reject card for a `user_approval` suspension, with a button for each extra yes the stop offers (`data.approveOptions`). Collapses to a receipt on resolve |
+| `review-hold` | A review waiting on you: **Accept** or **Ask for changes**. Pass a coding run's review (`review`: its commits on the branch and the judge's verdict) and it draws that; without one it draws the stop's prompt. Draw `ReviewHold` from a task's hold with your own `answer`, or let `SuspensionCard` draw `ReviewSuspension` for a `kind: "review"` stop that takes the verdict. It sends only `{ verdict: "accepted" }` or `{ verdict: "revise", words }` |
 | `question` | Free-text answer card for a `user_input` suspension |
 | `selection` | Single (enum) or multi (array of enum) choice card for a `user_input` suspension |
 | `form` | Flat-object form card for a `user_input` suspension — one control per scalar/enum property |
@@ -80,7 +81,7 @@ import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 
 Sources are excluded from the renderer map (`source: false`) — render them grouped separately via `<SourcesGroup>` to display as a collapsed list after the message thread.
 
-`chatAssistantRenderers` maps the `suspension` slot to a `SuspensionCard` that picks the right card by the suspension's reason and `resumeSchema` shape: the `Approval` card for `user_approval`, and the `Question` / `Selection` / `Form` cards for `user_input` (free text, a choice from an enum, or a flat-object form). All four are thin views over `useSuspensionForm` / `useApproval`. Nested or union schemas fall outside the flat-form boundary — name your own component via the suspension's `render.component` hint for those.
+`chatAssistantRenderers` maps the `suspension` slot to a `SuspensionCard` that picks the right card by the suspension's reason and `resumeSchema` shape: the `Approval` card for `user_approval`, and the `Question` / `Selection` / `Form` cards for `user_input` (free text, a choice from an enum, or a flat-object form). A `kind: "review"` stop whose answer is the review verdict gets the `review-hold` card, answered through your `SuspensionResolverProvider`. All four are thin views over `useSuspensionForm` / `useApproval`. Nested or union schemas fall outside the flat-form boundary — name your own component via the suspension's `render.component` hint for those.
 
 When a `task-board-meta` item includes a `collectionId`, the default registry renders `TaskPlan` for that collection. `task-change` items are not rendered on their own. `planAndExecute` and `supervisor` emit `task-change` and `task-board-meta`.
 

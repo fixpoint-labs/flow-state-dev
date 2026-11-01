@@ -50,7 +50,7 @@ export { expect };
 
 /**
  * Create the test's own assistant session, open `/` on it with
- * `?e2eSession=`, and wait for FlowProvider readiness (message input enabled).
+ * `?session=`, and wait for FlowProvider readiness (message input enabled).
  * A reload keeps the parameter, so it comes back to the same session.
  */
 export async function openKitchenSink(page: Page, sessionId: string): Promise<void> {
@@ -58,6 +58,6 @@ export async function openKitchenSink(page: Page, sessionId: string): Promise<vo
     data: { sessionId },
   });
   expect(created.status(), await created.text()).toBe(201);
-  await page.goto(`/flow-state?e2eSession=${encodeURIComponent(sessionId)}`);
+  await page.goto(`/flow-state?session=${encodeURIComponent(sessionId)}`);
   await expect(byTestId(page, "message-input")).toBeEnabled();
 }

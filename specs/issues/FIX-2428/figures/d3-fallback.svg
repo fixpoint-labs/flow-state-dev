@@ -1,0 +1,95 @@
+<svg viewBox="0 0 940 418" role="img" aria-label="D3: when the hook reads on a timer. Chosen: while the server has no push, and while the socket is down. Instead of: only while the server has no push. It comes down to a socket that drops on a host with push: without the timer the screen stops changing with no sign. The price is a read per interval while the socket is down. Locks in pollIntervalMs as a public option. Flips if sockets on long-lived hosts never drop."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D3 · THE CALL</text>
+    <text class="t-q" x="32" y="52">When does the hook read on a timer?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">No push, or the socket is down</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">No push only</text>
+  </g>
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">A SOCKET</text>
+    <text class="t-lbl" x="32" y="169">THAT DROPS</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Keeps reading on the timer</text>
+    <text class="t-s" x="248" y="179">then reads once when it is back</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Stops changing</text>
+    <text class="t-s" x="612" y="179">with no sign on the screen</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="216">WHILE</text>
+    <text class="t-lbl" x="32" y="229">IT IS DOWN</text>
+    <text class="mark minus" x="228" y="218">−</text>
+    <text class="t-b" x="248" y="217">A read per interval</text>
+    <text class="t-s" x="248" y="235">per open screen</text>
+    <text class="mark plus" x="592" y="218">+</text>
+    <text class="t-b" x="612" y="217">No reads</text>
+    <text class="t-s" x="612" y="235">and no updates either</text>
+    <line class="row" x1="16" y1="252" x2="924" y2="252"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="274">A HOST WITH</text>
+    <text class="t-lbl" x="32" y="287">NO PUSH</text>
+    <text class="mark tie" x="228" y="276">=</text>
+    <text class="t-b" x="248" y="275">Reads on the timer</text>
+    <text class="t-s" x="248" y="293">no change to app code</text>
+    <text class="mark tie" x="592" y="276">=</text>
+    <text class="t-b" x="612" y="275">Reads on the timer</text>
+    <text class="t-s" x="612" y="293">the same</text>
+    <line class="row" x1="16" y1="310" x2="924" y2="310"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">pollIntervalMs on subscribe and the hook</text>
+    <text class="t-s" x="32" y="387">one fallback for every consumer</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">Sockets on long-lived hosts never drop</text>
+    <text class="t-s" x="494" y="387">then the timer is for serverless only</text>
+  </g>
+</svg>
