@@ -13,7 +13,11 @@
  * checking variables. Hand it the same environment the run gets, so the two
  * see one account. It checks where a credential would come from, not that the
  * credential works: a key that is set but rejected reads as `account`.
+ *
+ * `checkClaudeCodeReadiness()` gives the same answer as core's neutral
+ * `HarnessReadiness`, with the remedy the user follows.
  */
+import type { HarnessReadiness } from "@flow-state-dev/core/types";
 import { runIdleQuery } from "./idle-query";
 import type { SdkImporter } from "./sdk-client";
 
@@ -100,4 +104,27 @@ export async function probeClaudeAccount(options: ProbeClaudeAccountOptions): Pr
     ...(email === undefined ? {} : { email }),
     ...(subscriptionType === undefined ? {} : { subscriptionType }),
   };
+}
+
+/** What the user does when Claude Code has no credential. */
+export const CLAUDE_SIGN_IN_REMEDY = "Sign in with `claude`, or set ANTHROPIC_API_KEY";
+
+/**
+ * Whether Claude Code can run on this machine, as core's neutral readiness:
+ * the answer of {@link probeClaudeAccount}, with what to do when there is no
+ * credential. A cold start can miss the probe's window, so an unanswered
+ * probe is asked once more before it counts. Never throws.
+ */
+export async function checkClaudeCodeReadiness(options: ProbeClaudeAccountOptions): Promise<HarnessReadiness> {
+  let account = await probeClaudeAccount(options);
+  if (account.status === "none" && account.unanswered === true && options.signal?.aborted !== true) {
+    account = await probeClaudeAccount(options);
+  }
+  if (account.status === "account") return { ready: true };
+  if (account.status === "sdk-missing") {
+    return { ready: false, reason: `The Claude Code SDK is not installed: ${account.reason}`, remedy: "Install @anthropic-ai/claude-agent-sdk" };
+  }
+  return account.unanswered === true
+    ? { ready: false, reason: `${account.reason}, so Claude Code's sign-in is unknown`, unanswered: true }
+    : { ready: false, reason: `Claude Code has no credential: ${account.reason}`, remedy: CLAUDE_SIGN_IN_REMEDY };
 }

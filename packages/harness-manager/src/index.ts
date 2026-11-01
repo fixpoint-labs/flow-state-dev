@@ -42,6 +42,9 @@
  *   own shutdown needs the same numbers the manager enforces.
  * - The run record collection, so a host can build a status surface. A run's
  *   question holds its task on the board, so a host reads questions there.
+ * - `harnessReadiness`, which harnesses can run on this machine, read once
+ *   at start and again on request, with its action, its coordinator context
+ *   capability and its formatter.
  * - `harnessUsageAction`, the one query for how much of each harness's
  *   subscription a person has used, and the collection behind it.
  *
@@ -226,6 +229,22 @@ export {
   type HarnessUsageWindowRow,
   type UsageWrite,
 } from "./harness-usage";
+
+// ── Which harnesses can run on this machine ─────────────────────────────────
+export {
+  harnessReadiness,
+  harnessReadinessAction,
+  harnessReadinessCapability,
+  harnessReadinessRowSchema,
+  formatHarnessReadiness,
+  READINESS_CHECK_TIMEOUT_MS,
+  READINESS_GUIDANCE,
+  type HarnessReadinessOptions,
+  type HarnessReadinessRead,
+  type HarnessReadinessRow,
+  type HarnessReadinessSlot,
+  type ReadReadinessOptions,
+} from "./readiness";
 
 // ── The ask marker ──────────────────────────────────────────────────────────
 export { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE, askMarkerPath, readAskMarker } from "./ask";

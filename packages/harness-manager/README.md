@@ -567,9 +567,47 @@ const actions = {
 
 The record is `harnessUsageCollection` (`HARNESS_USAGE`, `harness-usage/**`, user scope, not client-readable, not writable by a model). On the server, `readHarnessUsage(ctx, now, expected?)` returns the query's rows without refreshing, and `recordHarnessUsage` is the one writer, in two forms: `recordHarnessUsage(ctx, report)` for one window a run reported (the manager's and session door's `onUsage` call it), and `recordHarnessUsage(ctx, harness, reading, checkedAt)` for a whole reading. It answers `"recorded"`, `"kept-stored"` or `"refused-older"`. Both throw when the calling block doesn't have the collection under `HARNESS_USAGE`.
 
+## Which harnesses can run here
+
+`harnessReadiness(slots, { timeoutMs? })` keeps which coding harnesses can run on this machine, and what to do about one that can't. `slots` holds one core `HarnessReadinessCheck` per harness, keyed by its name, with the `label` the user sees. Each integration ships one:
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS } from "@flow-state-dev/claude-code/sdk";
+import { checkCodexReadiness, CODEX_PASS } from "@flow-state-dev/codex";
+import { checkCursorReadiness } from "@flow-state-dev/cursor";
+import {
+  formatHarnessReadiness,
+  harnessReadiness,
+  harnessReadinessAction,
+  harnessReadinessCapability,
+} from "@flow-state-dev/harness-manager";
+
+const readiness = harnessReadiness({
+  "claude-code": { label: "Claude Code", check: (o) => checkClaudeCodeReadiness({ env: harnessEnv({ pass: CLAUDE_CODE_PASS }), signal: o?.signal }) },
+  codex: { label: "Codex", check: (o) => checkCodexReadiness({ env: harnessEnv({ pass: CODEX_PASS }), timeoutMs: 30_000, signal: o?.signal }) },
+  cursor: { label: "Cursor", check: () => checkCursorReadiness(harnessEnv({ pass: ["PATH", "HOME", "CURSOR_API_KEY"] })) },
+});
+
+// At start: never throws, so it never stops the server.
+void readiness.read().then((rows) => console.log(formatHarnessReadiness(rows)));
+// Coding harnesses on this machine:
+// ✓ Cursor
+// ✗ Codex: Codex has no credential: Not logged in. Run `codex login`, or set CODEX_API_KEY.
+```
+
+- **`read({ refresh? })`** returns one `HarnessReadinessRow` per harness, in the order given: `harness`, `label`, `ready`, `reason`, `remedy`, `unanswered` and `checkedAt`. The first read runs every check; later reads return the kept rows. `refresh: true` checks every harness again, and `refresh: "codex"` checks one. Concurrent checks of one harness share one call. Nothing polls.
+- **It never throws.** A check that throws, rejects or outlasts `timeoutMs` (default `READINESS_CHECK_TIMEOUT_MS`, 30 s) is a row with `ready: false`, `unanswered: true` and a plain `reason`.
+- **`refusal(harness)`** is for a coding flow's gate before a task starts. It returns `undefined` when the harness can run, giving a harness not marked ready one fresh check first so a sign-in made since the last read counts. Otherwise it returns a sentence that names the harness, says why, and says what to run; when the check got no answer, the sentence says it couldn't tell.
+- **`harnessReadinessAction(readiness)`** is a flow-level action: input `{ refresh?: boolean }`, output `{ harnesses: HarnessReadinessRow[] }`. A screen draws chips from it, and Re-check is `{ refresh: true }`. No model call.
+- **`harnessReadinessCapability(readiness)`** puts the rows in a generator's context, followed by `READINESS_GUIDANCE` (file coding work only on a ready harness, say what to run for one that isn't, and start the task when the user says they've just signed in, since a start checks again). A turn reads the kept rows and runs no check. Add it to your coordinator's `uses`.
+- **`formatHarnessReadiness(rows)`** is the text the start log and the context print: `✓` ready, `✗` not ready with its remedy, `?` no answer.
+
+Readiness is this machine's state, so it is kept in the process, not stored. Nothing here changes `harnessManager`: a host that installs none of it gets the run path it had.
+
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `harnessSessionFlow` with `harnessSessionFeeds`, `harnessSessionStateSchema` and their types for [a harness as a session](#a-harness-as-a-session), `harnessStub` for [checks that run no model](#a-scripted-harness-for-checks), `upgradeKeptTurns`, `STEER_POLL_MS`, `PROGRESS_NOTE_MS` and `progressNoteOf` for [progress notes](#how-a-running-task-is-doing), `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
+**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `harnessSessionFlow` with `harnessSessionFeeds`, `harnessSessionStateSchema` and their types for [a harness as a session](#a-harness-as-a-session), `harnessStub` for [checks that run no model](#a-scripted-harness-for-checks), `upgradeKeptTurns`, `STEER_POLL_MS`, `PROGRESS_NOTE_MS` and `progressNoteOf` for [progress notes](#how-a-running-task-is-doing), `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types, and [readiness](#which-harnesses-can-run-here): `harnessReadiness`, `harnessReadinessAction`, `harnessReadinessCapability`, `formatHarnessReadiness`, `harnessReadinessRowSchema`, their constants and types.
 
 **`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 

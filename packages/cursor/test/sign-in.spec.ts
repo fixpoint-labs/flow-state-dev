@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const authStatus = vi.fn<() => Promise<{ status: string }>>();
 vi.mock("@cursor/sdk", () => ({ Cursor: { auth: { status: authStatus } } }));
 
-import { cursorSignIn } from "../src/sign-in";
+import { checkCursorReadiness, cursorSignIn, CURSOR_SIGN_IN_REMEDY } from "../src/sign-in";
 
 describe("cursorSignIn", () => {
   beforeEach(() => {
@@ -40,5 +40,49 @@ describe("cursorSignIn", () => {
     authStatus.mockResolvedValue({ status: "logged-out" });
     expect(await cursorSignIn({ CURSOR_API_KEY: "" })).toMatchObject({ status: "none" });
     expect(authStatus).toHaveBeenCalledOnce();
+  });
+});
+
+describe("checkCursorReadiness", () => {
+  beforeEach(() => {
+    authStatus.mockReset();
+  });
+
+  it("is ready on a key or a stored login", async () => {
+    expect(await checkCursorReadiness({ CURSOR_API_KEY: "k" })).toEqual({ ready: true });
+    authStatus.mockResolvedValue({ status: "logged-in" });
+    expect(await checkCursorReadiness({})).toEqual({ ready: true });
+  });
+
+  it("is not ready with the reason and the sign-in remedy when there is neither", async () => {
+    authStatus.mockResolvedValue({ status: "logged-out" });
+    expect(await checkCursorReadiness({})).toEqual({
+      ready: false,
+      reason: "Cursor has no sign-in: no CURSOR_API_KEY in the run's environment and no stored login",
+      remedy: CURSOR_SIGN_IN_REMEDY,
+    });
+  });
+
+  it("is not ready, never a throw, when the SDK fails to answer", async () => {
+    authStatus.mockRejectedValue(new Error("native module missing"));
+    expect(await checkCursorReadiness({})).toEqual({
+      ready: false,
+      reason: "The Cursor SDK didn't load or answer: native module missing",
+      remedy: "Install @cursor/sdk",
+    });
+  });
+
+  it("is not ready on a key when the SDK can't be loaded: a run needs both", async () => {
+    vi.resetModules();
+    vi.doMock("@cursor/sdk", () => {
+      throw new Error("Cannot find package '@cursor/sdk'");
+    });
+    try {
+      const { checkCursorReadiness: withoutSdk } = await import("../src/sign-in");
+      expect(await withoutSdk({ CURSOR_API_KEY: "k" })).toMatchObject({ ready: false, remedy: "Install @cursor/sdk" });
+    } finally {
+      vi.doUnmock("@cursor/sdk");
+      vi.resetModules();
+    }
   });
 });

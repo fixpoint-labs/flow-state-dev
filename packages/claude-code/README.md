@@ -571,6 +571,8 @@ Pass the same `env` you give `claudeCodeAgent`, so the probe sees the credential
 
 It never throws for any of these. It checks where a credential would come from, not that it works: a key that is set but rejected still reads as `"account"`, and fails on the run's first turn.
 
+`checkClaudeCodeReadiness(options)` takes the same options and answers as core's `HarnessReadiness`, for harness-manager's `harnessReadiness`. It asks once more when the first probe got no answer, since a cold start can miss the window. It answers `{ ready: true }`, or `{ ready: false, reason, remedy }`: the remedy is `CLAUDE_SIGN_IN_REMEDY` ("Sign in with `claude`, or set ANTHROPIC_API_KEY") when there is no credential, `"Install @anthropic-ai/claude-agent-sdk"` when the SDK is missing. When neither probe got an answer it is `unanswered: true` with no remedy. It never throws.
+
 ### Reading usage left
 
 On a subscription, Claude Code reports its limit windows while it runs. `claudeCodeAgent({ onUsage })` hands each one to your `HarnessUsageHook` as a `HarnessUsageReport` (`harness: "claude-code"`, the `window`, `observedAt`, `runStartedAt`, `accountId`), at least once per run. The window names the limit that binds (`five_hour` is 300 minutes, the `seven_day` family 10 080; other ids have `minutes: null`), its `resetsAt` and a `level` (`ok`, `warning`, `reached`). `usedPercent` is set only near a limit and is otherwise `null`. An API-key run reports nothing. A throw from `onUsage` is logged and the run carries on. It works on in-session blocks too.
