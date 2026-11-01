@@ -253,6 +253,32 @@ describe("a removal and a provision of one place", () => {
   });
 });
 
+describe("a checkout made again after a removal", () => {
+  it("keeps the branch's base when the branch was kept, and takes a new one when it was deleted", async () => {
+    const h = host();
+    const worktrees = rows();
+    const key = worktreeKey(h.hostId(), ["s-1"]);
+    const request = { place: ["s-1"], branch: "fsd/s-1", worktrees: { collection: worktrees, owner } };
+    const first = await h.provision({ kind: "repo", repo }, request);
+    const base = worktrees.all.get(key)!.baseCommit;
+    expect(base).not.toBeNull();
+    writeFileSync(join(first.cwd, "one.txt"), "1");
+    git(first.cwd, "add", "-A");
+    git(first.cwd, "commit", "-q", "-m", "one");
+    // Removed, the branch kept: a new checkout of the same branch.
+    await h.remove!({ place: ["s-1"] }, { worktrees });
+    const again = await h.provision({ kind: "repo", repo }, request);
+    expect(worktrees.all.get(key)!.baseCommit).toBe(base);
+    expect((await h.recordCheckout!({ place: ["s-1"] }, { worktrees }))).toMatchObject({ present: true, commits: 1 });
+    // Removed with the branch: the next provision cuts it again, from now.
+    await h.remove!({ place: ["s-1"] }, { worktrees, deleteBranch: true, force: true });
+    git(repo, "commit", "-q", "--allow-empty", "-m", "main moved");
+    await h.provision({ kind: "repo", repo }, request);
+    expect(worktrees.all.get(key)!.baseCommit).toBe(git(repo, "rev-parse", "HEAD"));
+    expect(again.repo?.branchCut).toBe(false);
+  });
+});
+
 describe("a turn-end read racing a removal", () => {
   it("keeps the row removed when the removal commits while the read writes lost", async () => {
     const worktrees = rows();

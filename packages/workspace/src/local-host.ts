@@ -328,6 +328,12 @@ export interface WorkspacePlace {
     /** Whether this call cut the branch. `false` for a checkout handed back. */
     created: boolean;
     /**
+     * Whether this call cut the branch itself, not only made a new checkout
+     * of a branch that already existed (after a removal that kept the
+     * branch). Absent on places made before it existed.
+     */
+    branchCut?: boolean;
+    /**
      * The ref the run's branch was cut from, as asked (`"HEAD"` when none was
      * named). Only when `created`.
      */
@@ -906,6 +912,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         clone,
         branch,
         created: worktree.created,
+        branchCut: worktree.baseRef !== undefined,
         ...(started.baseRef !== undefined ? { baseRef: started.baseRef } : {}),
         ...(started.baseCommit !== undefined ? { baseCommit: started.baseCommit } : {}),
         ...(worktree.movedBack !== undefined ? { movedBack: worktree.movedBack } : {}),
@@ -956,6 +963,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       clone: repo,
       branch,
       created: worktree.created,
+      branchCut: worktree.baseRef !== undefined,
       ...(started.baseRef !== undefined ? { baseRef: started.baseRef } : {}),
       ...(started.baseCommit !== undefined ? { baseCommit: started.baseCommit } : {}),
       ...(worktree.movedBack !== undefined ? { movedBack: worktree.movedBack } : {}),
@@ -1315,7 +1323,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           branch: made.repo?.branch ?? null,
           repo: made.repo !== undefined ? redactRemote(made.repo.remote) : null,
           baseCommit: made.repo?.baseCommit ?? null,
-          fresh: made.repo?.created === true,
+          fresh: made.repo?.branchCut === true,
         }),
     });
     return { ...place, worktree: key };
