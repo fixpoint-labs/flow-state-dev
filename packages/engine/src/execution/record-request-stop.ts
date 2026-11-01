@@ -13,6 +13,7 @@ import type { RequestRecord, RequestStatus, RequestStore } from "../stores/types
 import { abortRequest } from "./abort-registry";
 import { parkedInterruptedIds, stopSuspendedRequest, type SuspendedStopDeps } from "../durability/stop-suspended";
 import { letOwedParkGo } from "../durability/park-owed";
+import { resumeRequestWaiters } from "../durability/wait-chain";
 import { settledRecordFields } from "./request-action-result";
 
 /**
@@ -101,14 +102,14 @@ export async function recordRequestStop(
       if (parked.stores.wakes !== undefined && (await letOwedParkGo(parked.provider, parked.stores.wakes, current)) === "busy") {
         return { kind: "already-resolved" };
       }
-      return endInterrupted(requests, record.id, incarnation);
+      return endInterrupted(requests, record.id, incarnation, parked);
     }
     const stopped = await stopSuspendedRequest(parked, current);
     return stopped === "stopped" ? { kind: "stopped-parked" } : { kind: "already-resolved" };
   }
   // Interrupted on a host without durable execution: no gate can hold it.
   if (!result.applied && result.status === "interrupted") {
-    return endInterrupted(requests, record.id, incarnation);
+    return endInterrupted(requests, record.id, incarnation, parked);
   }
   if (!result.applied) return { kind: "finished", status: result.status };
 
@@ -121,12 +122,15 @@ export async function recordRequestStop(
 /**
  * End a dead request no gate holds: `interrupted` becomes `aborted`, fenced on
  * its status and incarnation, so a continue that took it first keeps running
- * and a later request under the id is never written.
+ * and a later request under the id is never written. A request that waits on
+ * it (`dispatcher({ wait: true })`) is resumed, as every other ending resumes
+ * it, rather than left parked until its deadline.
  */
 async function endInterrupted(
   requests: RequestStore,
   id: string,
-  incarnation: string
+  incarnation: string,
+  parked: SuspendedStopDeps | undefined
 ): Promise<RequestStopResult> {
   // No run is left to stamp the ending, so this write does: `abortedAt` dates
   // it for checkpoint pruning, and `finalizedAtMs` says nothing still writes.
@@ -144,7 +148,19 @@ async function endInterrupted(
     now,
     incarnation
   );
-  if (ended.applied) return { kind: "ended" };
+  if (ended.applied) {
+    if (parked !== undefined) {
+      // Best-effort, as at a run's own ending: a resume this misses is caught
+      // by the deadline sweep.
+      try {
+        const settled = await requests.get(id);
+        if (settled !== undefined) await resumeRequestWaiters(parked, settled);
+      } catch {
+        // The stop itself landed; the waiter is left to the sweep.
+      }
+    }
+    return { kind: "ended" };
+  }
   if (ended.status === undefined) return { kind: "gone" };
   // A continue won the race: it runs again, and a stop now is a stop of that run.
   if (ended.status === "in_progress") return { kind: "already-resolved" };
