@@ -41,23 +41,38 @@ export const listedForCodingSchema = listProjectsOutputSchema.extend({ forCoding
  * for the one there is, or ask, naming them. A real model told the rule in
  * prose picked one of two, or offered instead of filing, about one turn in
  * three.
+ *
+ * Projects that share one repository reach the same code, so which of them a
+ * task names doesn't change what the coder works on: the turn files it for the
+ * one whose title or brief fits, and says which, instead of asking.
+ *
+ * @param listed The projects `listProjects` read.
+ * @returns The line `listProjects` hands back as `forCoding`.
  */
+export function forCodingOf(listed: z.infer<typeof listProjectsOutputSchema>): string {
+  const coded = listed.projects.filter((project) => project.repository != null);
+  const named = (project: (typeof coded)[number]) => `${project.title} (${JSON.stringify({ visibility: project.visibility, id: project.id })})`;
+  const [only] = coded;
+  if (only === undefined) return "No project has a repository. Ask which project the user means.";
+  if (coded.length === 1) {
+    return `One project has a repository: ${named(only)}. Hand a coder's task that names no project to it now, with createTask, without asking.`;
+  }
+  if (new Set(coded.map((project) => project.repository)).size === 1) {
+    return (
+      `${coded.length} projects share one repository: ${coded.map(named).join(", ")}. Any of them reaches the same code, so don't ask: ` +
+      `hand a coder's task that names no project, with createTask, to the one whose title or brief fits the ask, or to ${only.title} when none does, ` +
+      "and say in one line which one you picked."
+    );
+  }
+  return `${coded.length} projects have a repository: ${coded.map(named).join(", ")}. File nothing. Ask which one the user means, naming each.`;
+}
+
+/** {@link forCodingOf} as the step `listProjects` ends on. */
 const forCoding = handler({
   name: "list-projects-for-coding",
   inputSchema: listProjectsOutputSchema,
   outputSchema: listedForCodingSchema,
-  execute: (listed) => {
-    const coded = listed.projects.filter((project) => project.repository != null);
-    const named = (project: (typeof coded)[number]) => `${project.title} (${JSON.stringify({ visibility: project.visibility, id: project.id })})`;
-    const [only] = coded;
-    const next =
-      coded.length === 1 && only !== undefined
-        ? `One project has a repository: ${named(only)}. Hand a coder's task that names no project to it now, with createTask, without asking.`
-        : coded.length === 0
-          ? "No project has a repository. Ask which project the user means."
-          : `${coded.length} projects have a repository: ${coded.map(named).join(", ")}. File nothing. Ask which one the user means, naming each.`;
-    return { ...listed, forCoding: next };
-  }
+  execute: (listed) => ({ ...listed, forCoding: forCodingOf(listed) })
 });
 
 /** What a repository ask reads off a write's input. */
@@ -116,7 +131,7 @@ export function projectTools(blocks: ProjectBlocks) {
       name: "listProjects",
       description:
         "List the projects the user you are talking to is a member of: each one's address " +
-        "(`visibility` and `id`), its title, and its `repository` (null when it has none), and " +
+        "(`visibility` and `id`), its title, its `repository` (null when it has none), its `brief`, and " +
         "`forCoding`, what to do with a coder's task that names no project. Answer which projects " +
         "they have, and pick the project a task works in, from this, never from memory.",
       inputSchema: listProjectsInputSchema,

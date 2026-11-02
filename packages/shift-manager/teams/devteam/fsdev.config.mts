@@ -69,7 +69,7 @@ import { harnessEnv } from "@flow-state-dev/core";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "./ask.mts";
-import { claudeCodeEnv, errorReporterHarness, startHarness } from "./harness.mts";
+import { claudeCodeEnv, errorReporterHarness, harnessLabel, startHarness } from "./harness.mts";
 import { CHECKOUT } from "./fsd-checkouts.mts";
 import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
 import { createBareRemote } from "./scratch-repo.mts";
@@ -182,6 +182,7 @@ const lab = await openLab({
   stores: sqliteStores({ filename: STORE }),
   harness: harness.slot,
   runTimeoutMs: harness.runTimeoutMs,
+  coderHarness: harnessLabel(harness.name),
   // Runs' places and the host's clones, beside the store; only `file://` remotes are reached.
   workspace: { root: join(dirname(STORE), "devteam-runs"), remotes: { allow: ["file"] } },
   coderWorkerId,

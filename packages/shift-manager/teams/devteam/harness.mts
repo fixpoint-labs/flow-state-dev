@@ -316,3 +316,19 @@ function readStepMs(raw: string | undefined): number {
   }
   return Number(raw.trim());
 }
+
+/** What a user calls each coding agent a coder can run on. */
+const HARNESS_LABELS: Readonly<Record<string, string>> = {
+  stub: "the scripted coder (no model)",
+  "claude-code": "Claude Code",
+  codex: "Codex",
+  cursor: "Cursor",
+};
+
+/**
+ * The coding agent `name` is, as a user calls it ("Claude Code" for
+ * `claude-code`), for `openLab`'s `coderHarness`. An unknown name is returned as is.
+ */
+export function harnessLabel(name: string): string {
+  return HARNESS_LABELS[name] ?? name;
+}
