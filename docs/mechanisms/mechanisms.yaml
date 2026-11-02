@@ -294,6 +294,18 @@ mechanisms:
     status: canonical
     doc: packages/engine/README.md
 
+  - id: change-bus
+    job: Tell whoever watches a scope (session, user, org, optionally one resource) that something under it changed, never what. Request and session writes publish through one wrapper; the session stream wakes on it. The `bus` slot of a stores profile; in memory by default, Postgres as the first adapter that crosses processes.
+    package: "@flow-state-dev/engine"
+    anchor: createInMemoryBus
+    file: packages/engine/src/bus/in-memory-bus.ts
+    builtOn: [store]
+    overlaps:
+      - { id: streaming, relation: distinct-jobs, note: "streaming sends one request's item log and ends with it; a bus topic is a scope's and outlives every request." }
+      - { id: task-notice, relation: distinct-jobs, note: "task-notice turns a task's ending into a notice owed to the session that filed it; a change notice is a best-effort wake with no rows." }
+    status: canonical
+    doc: packages/engine/README.md
+
   # ── Transports and hosts ──────────────────────────────────────────────────
   - id: inbound-transport
     job: Turn an outside request into a run of an action. HTTP is the built-in adapter; the router mounts adapters.

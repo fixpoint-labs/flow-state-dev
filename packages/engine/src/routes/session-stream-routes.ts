@@ -10,9 +10,14 @@
  *
  * ## How it finds what is new
  *
- * No writer knows anyone is watching. Each open connection reads the store
- * about once a second, with filters every adapter already has, so a reply
- * written by another server reaches a view held by this one:
+ * Every request and session write publishes a notice on its session's topic
+ * (the change bus, FIX-2426), and a notice wakes the connection's read, at
+ * most once a second. On a bus that crosses processes that is the only read:
+ * a view of a session where nothing changes costs the store nothing. Where the
+ * bus can't cross (the in-memory bus, or one that stopped crossing), each
+ * connection also reads about once a second, so a reply written by another
+ * server reaches a view held by this one. A read finds what is new with
+ * filters every adapter already has:
  *
  * - **Items.** The session's unfinished requests (their items can change
  *   without moving the request's update time on most adapters), plus every
@@ -76,7 +81,8 @@ import type {
 } from "../stores/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { isSameRequest, isSameSession, toBareSessionId } from "../stores/scope-keys";
-import { abortableSleep } from "../stores/subscribe-helpers";
+import type { ChangeKind } from "@flow-state-dev/core";
+import type { BusTopic, ChangeBus } from "../bus/types";
 import { serializeSSEFrame } from "../streaming/sse";
 import { createSSEStream, type SSEStreamHandle } from "../streaming/sse-stream";
 import {
@@ -111,7 +117,13 @@ export const SESSION_STREAM_TIMINGS = {
   /** How far the first read reaches back when the client names no `since`. */
   firstReadWindowMs: 60_000,
   /** Longest gap between two events before a ping is sent. */
-  pingMs: 15_000
+  pingMs: 15_000,
+  /**
+   * How long a notice that ends a quiet interval waits before its read, so
+   * the few writes one change makes (a request accepted, its items, its
+   * status) land in one read rather than the first alone.
+   */
+  settleMs: 50
 };
 
 /** Requests whose items may change without their update time moving. */
@@ -305,6 +317,9 @@ async function followSession(opened: FollowOptions): Promise<void> {
   const sent = new Set<string>();
   const runs = new RunTracker(options);
   let lastSentAt = openedAt;
+  // Subscribed before the first read, so no change between the open and that
+  // read goes unheard.
+  const wake = new StreamWake(options.stores.bus, { scope: "session", id: sessionId, tenantId: options.tenantId ?? "" });
 
   const send = (event: SessionStreamEvent): void => {
     handle.writeRaw(serializeSSEFrame({ event: event.type, data: event }));
@@ -319,6 +334,9 @@ async function followSession(opened: FollowOptions): Promise<void> {
     while (isOpen()) {
       const start = Date.now();
       if (start - openedAt >= timings.maxAgeMs) break;
+      // A notice that lands from here on may name a change this read misses,
+      // so it wakes the next one.
+      wake.consume();
 
       const found = await readFinishedItems(options, floor);
       const runsChanged = await runs.refresh(floor);
@@ -344,7 +362,20 @@ async function followSession(opened: FollowOptions): Promise<void> {
       }
 
       floor = start - timings.marginMs;
-      await abortableSleep(Math.max(0, start + timings.intervalMs - Date.now()), request.signal);
+      // The next read: when a notice wakes it, never sooner than an interval
+      // after this one began; on the timer where the bus can't cross
+      // processes. A quiet view on a crossing bus only pings.
+      while (
+        (await wake.next({
+          readAt: start + timings.intervalMs,
+          settleMs: timings.settleMs,
+          pingAt: lastSentAt + timings.pingMs,
+          closeAt: openedAt + timings.maxAgeMs,
+          signal: request.signal
+        })) === "ping"
+      ) {
+        send({ stream: "session", sessionId, type: "ping", at: resumeAt });
+      }
     }
   } catch (error) {
     // A failed read ends the connection; the client reconnects with backoff
@@ -352,7 +383,110 @@ async function followSession(opened: FollowOptions): Promise<void> {
     // short by the connection ending is not a failure worth a line.
     if (isOpen() && !(error instanceof ConnectionEnded)) warnOnce(error);
   } finally {
+    wake.close();
     handle.close();
+  }
+}
+
+/** The notice kinds that wake the stream: what it sends, and a bus's resync. */
+const WAKING_KINDS: ReadonlySet<ChangeKind> = new Set<ChangeKind>(["items", "request", "run", "resync"]);
+
+/**
+ * When the stream reads next (FIX-2426, epic D6).
+ *
+ * On a bus that crosses processes, a read happens only after a notice for the
+ * session, at most once per interval: a notice after a quiet interval reads
+ * once the change's other writes have had `settleMs` to land, and later ones
+ * fold into one read at the interval's end. Where the
+ * bus can't cross (the in-memory bus, or a crossing bus that stopped
+ * crossing), the stream reads each interval as it always has, since a writer
+ * in another process is reached no other way. A change of the bus's answer
+ * wakes a waiting stream, so one that stops crossing is back on the timer
+ * within an interval. Notices of other kinds (state, resources, boards) never
+ * wake it.
+ */
+class StreamWake {
+  /** When the first waking notice since the last read began arrived, if one has. */
+  private noticedAt: number | undefined;
+  private crosses: boolean;
+  private poke: (() => void) | undefined;
+  private readonly stops: Array<() => void> = [];
+
+  constructor(bus: ChangeBus | undefined, topic: BusTopic) {
+    this.crosses = bus?.crossesProcesses === true;
+    if (bus === undefined) return;
+    this.stops.push(
+      bus.subscribe(topic, (notice) => {
+        if (!WAKING_KINDS.has(notice.kind)) return;
+        this.noticedAt ??= Date.now();
+        this.poke?.();
+      }),
+      bus.onCrossingChange((crosses) => {
+        this.crosses = crosses;
+        this.poke?.();
+      })
+    );
+  }
+
+  /** A read is starting: what it finds covers every notice so far. */
+  consume(): void {
+    this.noticedAt = undefined;
+  }
+
+  /**
+   * Wait until the next read is due, or a ping is. Returns `"ping"` when the
+   * view has been quiet until `pingAt` on a crossing bus (on the timer, the
+   * read loop pings itself), and `"read"` otherwise: a read is due, the
+   * connection reached `closeAt`, or it ended.
+   *
+   * @param when.readAt The earliest the next read may start: an interval after the last.
+   */
+  async next(when: {
+    readAt: number;
+    settleMs: number;
+    pingAt: number;
+    closeAt: number;
+    signal: AbortSignal;
+  }): Promise<"read" | "ping"> {
+    const { readAt, settleMs, pingAt, closeAt, signal } = when;
+    for (;;) {
+      if (signal.aborted) return "read";
+      const now = Date.now();
+      if (now >= closeAt) return "read";
+      const due = !this.crosses
+        ? readAt
+        : this.noticedAt !== undefined
+          ? Math.max(readAt, this.noticedAt + settleMs)
+          : Infinity;
+      if (now >= due) return "read";
+      const ping = this.crosses ? pingAt : Infinity;
+      if (now >= ping) return "ping";
+      await this.sleep(Math.min(due, ping, closeAt) - now, signal);
+    }
+  }
+
+  /**
+   * Sleep `ms`, or until a notice, a crossing change or the end of the
+   * connection, whichever is first. Clears its timer and listener either way,
+   * so a view woken often holds none of them over.
+   */
+  private sleep(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const done = (): void => {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", done);
+        this.poke = undefined;
+        resolve();
+      };
+      const timer = setTimeout(done, ms);
+      signal.addEventListener("abort", done, { once: true });
+      this.poke = done;
+    });
+  }
+
+  close(): void {
+    for (const stop of this.stops.splice(0)) stop();
+    this.poke?.();
   }
 }
 
