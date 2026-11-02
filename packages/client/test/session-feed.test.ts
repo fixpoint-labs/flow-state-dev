@@ -272,6 +272,32 @@ describe("sessionFeed", () => {
     expect(h.urls.filter((url) => url.includes("/stream")).at(-1)).toContain("session_created_at=2");
   });
 
+  it("rejects a failed earlier read and leaves the feed as it was, so Load earlier can be pressed again", async () => {
+    const all = Array.from({ length: 250 }, (_, i) => message("req_1", `m${i}`, `n${i}`, 10 + i));
+    let failNext = false;
+    const h = host((url) => {
+      const query = new URL(url, "http://x").searchParams;
+      const offset = Number(query.get("offset") ?? 0);
+      const limit = Number(query.get("limit") ?? 100);
+      if (offset === 0 && failNext) return json({ error: "down" }, 503);
+      const items = all.slice(offset, offset + limit);
+      const nextOffset = offset + items.length;
+      return json({ ...snapshot(items, 1_000), pagination: { offset, limit, total: all.length, hasMore: nextOffset < all.length, nextOffset } });
+    });
+    const feed = sessionFeed(h.client, "s1");
+    feeds.push(feed);
+    await until(() => h.streams.length === 1);
+    const before = feed.getSnapshot();
+
+    failNext = true;
+    await expect(feed.loadEarlier()).rejects.toThrow();
+    expect(feed.getSnapshot()).toBe(before);
+
+    failNext = false;
+    await feed.loadEarlier();
+    expect(texts(feed)[0]).toBe("n0");
+  });
+
   it("says nothing is earlier when the whole session fits in the first read", async () => {
     const h = host(() => json(snapshot([message("req_1", "m1", "only", 10)])));
     const feed = sessionFeed(h.client, "s1");
