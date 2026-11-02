@@ -60,6 +60,8 @@ function host(history: unknown[]) {
     client: createClient({ userId: "u", baseUrl: "", fetcher }),
     counts,
     push: (at: number, value: unknown) => send(item(at, value)),
+    /** The frame the stream sends once it is open, naming the session's unfinished runs. */
+    runs: (at: number) => send(`event: session.runs\ndata: ${JSON.stringify({ stream: "session", sessionId: "s1", at, type: "session.runs", runs: [] })}\n\n`),
     answer: (event: string, data: Record<string, unknown>) => answer(event, data),
   };
 }
@@ -104,5 +106,16 @@ describe("watchThread", () => {
     h.answer("item.added", { item: writing });
     h.answer("content.delta", { itemId: "a2", contentIndex: 0, delta: "Running the te" });
     await until(() => JSON.stringify(views.at(-1)!.entries).includes("Running the te"));
+  });
+
+  it("says the thread's feed is live once its stream is open, for the connection bar to read", async () => {
+    const h = host([message("u1", "user", "fix the build", 10)]);
+    const views: ThreadView[] = [];
+    stops.push(createWiredLab(h.client).watchThread("s1", (view) => views.push(view)));
+    await until(() => views.length > 0 && h.counts.stream === 1);
+    expect(views.at(-1)!.connection).not.toBe("live");
+
+    h.runs(101);
+    await until(() => views.at(-1)!.connection === "live");
   });
 });
