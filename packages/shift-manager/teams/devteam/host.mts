@@ -58,7 +58,7 @@ import {
   type HarnessUsageReader,
   type ModelResolver,
 } from "@flow-state-dev/core/types";
-import { harnessUsageAction, upgradeKeptTurns, type WorkspaceConfig } from "@flow-state-dev/harness-manager";
+import { harnessUsageAction, upgradeKeptTurns, type HarnessFeeds, type WorkspaceConfig } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, type WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import {
@@ -119,7 +119,7 @@ import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { DOCUMENT_KEY, INSPECT_ENTRY, WORKER_FACTS_COMPONENT, workerOf } from "./worker-config.mts";
 import { defineAnswerPhase, defineImplementPhase, noteStartingFiles } from "./phase.mts";
 import { defineCoderJudge } from "./judge.mts";
-import { CODER_FLOW, defineCoderWorkerFlow } from "./workforce/flows/workers/coder.mts";
+import { CODER_FLOW, coderHarnessNames, defineCoderWorkerFlow, HARNESS_SETTING } from "./workforce/flows/workers/coder.mts";
 import {
   DRAIN_ENTRY,
   EM_FLOW,
@@ -339,14 +339,21 @@ export function shiftCoordinatorProjectTools(blocks: ProjectBlocks, workstreams:
  * write runs, and nothing changes. Without durable execution the tool refuses
  * rather than firing unasked.
  */
-export function shiftCoordinatorRosterTools(installation: WorkerInstallation) {
+export function shiftCoordinatorRosterTools(installation: WorkerInstallation, harnesses: readonly string[] = []) {
   const blocks = createWorkerHireBlocks(installation);
+  // A coder's harness is a setting on the one `coder` flow, never a flow of its own.
+  const harnessLine =
+    harnesses.length === 0
+      ? ""
+      : ` A \`${CODER_FLOW}\` worker's coding harness is its \`settings.${HARNESS_SETTING}\`, one of: ${harnesses.join(", ")}; ` +
+        "there is no flow per harness.";
   return {
     hire: blocks.hire.as({
       name: "hire",
       description:
         "Hire a worker of the user's own: `id` is a short lowercase slug, `flow` the flow it runs on " +
-        "(`agent` when omitted), and `settings` the keys its file would declare. It lands at once.",
+        "(`agent` when omitted), and `settings` the keys its file would declare. It lands at once." +
+        harnessLine,
     }),
     fire: sequencer({
       name: "fire",
@@ -381,6 +388,15 @@ export interface OpenLabOptions {
   stores: unknown;
   /** The harness the `coder` worker flow runs. The one thing the two checks differ by. */
   harness: (feeds: LabHarnessFeeds) => HarnessBlock;
+  /** The name of the harness in {@link harness}, which a `coder` worker may name to run on it. */
+  harnessName?: string;
+  /**
+   * The other harnesses a `coder` worker may run on, by name: hired with
+   * `settings: { harness: "cursor" }`, its tasks run through that one, not
+   * {@link harness}. A name outside these and {@link harnessName} is refused
+   * at hire. Absent, every coder runs on {@link harness}.
+   */
+  harnesses?: Readonly<Record<string, { slot: (feeds: LabHarnessFeeds) => HarnessBlock; runTimeoutMs?: number }>>;
   /**
    * Where each coding run works.
    *
@@ -905,16 +921,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     throw new Error(`${RAISE_ASK_STEP}: wanted one "${EM_FLOW}" worker to ask from, found 0`);
   }
   const coderWorkerOf = workerOf(installation, CODER_FLOW);
-  const coderFlow = defineCoderWorkerFlow({
-    installation,
-    answerWorkspace: answerHost,
-    answerPhase: defineAnswerPhase({ workerOf: coderWorkerOf }),
-    ...(options.withoutJudge === true ? {} : { judge: defineCoderJudge() }),
-    ...(options.reviewChanges === true ? { reviewChanges: true } : {}),
-    ...(options.approveTools === true ? { approveTools: true } : {}),
-    // What a files run starts on, kept so its done-condition asks for a change.
-    harness: (feeds) =>
-      options.harness({
+  // Every harness a coder runs on is handed the Lab's MCP tools, and what a
+  // files run starts on, kept so its done-condition asks for a change.
+  const labSlot =
+    (slot: (feeds: LabHarnessFeeds) => HarnessBlock) =>
+    (feeds: HarnessFeeds): HarnessBlock =>
+      slot({
         ...feeds,
         ...(mcpTools === undefined ? {} : { mcpTools }),
         cwd: async (ctx) => {
@@ -922,7 +934,23 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
           noteStartingFiles(cwd);
           return cwd;
         },
-      }),
+      });
+  const coderFlow = defineCoderWorkerFlow({
+    installation,
+    answerWorkspace: answerHost,
+    answerPhase: defineAnswerPhase({ workerOf: coderWorkerOf }),
+    ...(options.withoutJudge === true ? {} : { judge: defineCoderJudge() }),
+    ...(options.reviewChanges === true ? { reviewChanges: true } : {}),
+    ...(options.approveTools === true ? { approveTools: true } : {}),
+    harness: labSlot(options.harness),
+    ...(options.harnessName === undefined ? {} : { harnessName: options.harnessName }),
+    ...(options.harnesses === undefined
+      ? {}
+      : {
+          harnesses: Object.fromEntries(
+            Object.entries(options.harnesses).map(([name, harness]) => [name, { ...harness, slot: labSlot(harness.slot) }]),
+          ),
+        }),
     workspace: workspaceHost ?? (options.workspace as WorkspaceConfig),
     phase: defineImplementPhase({
       workerOf: coderWorkerOf,
@@ -943,7 +971,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // runs on that user's turns only. A fire, and a project's repository, wait
   // for a user's Approve in Inbox, which needs durable execution (asked for
   // below).
-  const rosterTools = shiftCoordinatorRosterTools(installation);
+  const rosterTools = shiftCoordinatorRosterTools(installation, coderHarnessNames(options));
   // What the agent's turn is built with. The `agent` flow runs it behind its
   // door, and the `coordinator` flow, which the Shift Coordinator runs on, runs
   // the same turn for its judgment, with memory added (below).
@@ -979,7 +1007,13 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     [EM_FLOW]: { flow: emFlow as never, roles: ["contributor", "manager"] },
     // On a projects workspace a coding task needs a project, and one filed with none is refused at
     // filing (FIX-2333). A lab on one fixed repository always has somewhere to work.
-    [CODER_FLOW]: { flow: coderFlow as never, roles: ["contributor"], needsProject: workspaceHost !== undefined },
+    // Each coder's `harness` rides on its roster row, so Roster shows which one it runs; a Lab with none to pick declares no such setting.
+    [CODER_FLOW]: {
+      flow: coderFlow as never,
+      roles: ["contributor"],
+      showSettings: coderHarnessNames(options).length === 0 ? [] : [HARNESS_SETTING],
+      needsProject: workspaceHost !== undefined,
+    },
     [AGENT_FLOW]: agentFlow as never,
     // The Shift Coordinator's flow. A routed task reaches a delegate on any flow
     // that takes a conversation's tasks: here the Shift Coordinator hands feature

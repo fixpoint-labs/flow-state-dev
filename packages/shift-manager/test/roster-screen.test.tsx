@@ -15,7 +15,9 @@ import { GENERAL_TEAM, inboxSection, toBoardRow, toWorker, type Ask, type BoardR
 
 let fixture: LabSnapshot;
 /** What the user's roster read answers: their own workers and the standard ones. */
-let rosterRead: () => Promise<Array<{ id: string; flow: string; standard: boolean; description: string | null }>> = async () => [];
+let rosterRead: () => Promise<
+  Array<{ id: string; flow: string; standard: boolean; description: string | null; settings?: Record<string, unknown> }>
+> = async () => [];
 
 vi.mock("../src/lib/workforce", () => ({
   useWorkforce: () => ({ roster: () => rosterRead() }),
@@ -144,6 +146,26 @@ describe("Roster (V3)", () => {
     // The standard ones are the inventory's rows, drawn once each.
     expect(workers.filter((w) => w.getAttribute("data-worker-id") === "eng.coder")).toHaveLength(1);
     expect(workers).toHaveLength(6);
+  });
+
+  it("shows the harness a coder names in its settings, and the gap for one that names none (FIX-2486)", async () => {
+    rosterRead = async () => [
+      { id: "cursor", flow: "coder", standard: false, description: "An engineer on Cursor.", settings: { harness: "cursor" } },
+      { id: "eng.coder", flow: "coder", standard: true, description: null, settings: { harness: "codex" } },
+    ];
+    await open("/roster");
+    const page = await screen.findByTestId("roster");
+    await within(page).findByTestId("roster-worker-own");
+    const harnessOf = (id: string) =>
+      within(within(page).getAllByTestId("roster-worker").find((w) => w.getAttribute("data-worker-id") === id)!).getByTestId(
+        "roster-worker-harness",
+      );
+    expect(harnessOf("cursor").textContent).toBe("cursor");
+    expect(harnessOf("cursor").getAttribute("title")).toBeNull();
+    // A declared worker's harness comes off its roster entry too.
+    expect(harnessOf("eng.coder").textContent).toBe("codex");
+    expect(harnessOf("ops.idle").textContent).toBe("—");
+    expect(harnessOf("ops.idle").getAttribute("title")).toBe(GAPS.harness);
   });
 
   it("with the inventory unread, still draws the roster's workers, and says the inventory failed", async () => {

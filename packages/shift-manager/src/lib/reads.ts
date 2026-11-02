@@ -119,6 +119,12 @@ export type Worker = {
   name: string;
   /** What a user reads it by: its display name, or its id when it has none. */
   displayName: string;
+  /**
+   * The coding harness it names in its `harness` setting, off the user's
+   * roster (`showSettings`); absent when it names none, or before the roster
+   * is read.
+   */
+  harness?: string;
 };
 
 /** Where a project lives: the organization's, or the user's own. */

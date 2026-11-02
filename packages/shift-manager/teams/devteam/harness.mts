@@ -24,12 +24,18 @@
  *
  * An unknown value is refused at startup rather than read as the default.
  * Either way, a start that goes ahead prints one line naming the coder.
+ *
+ * That is the default coder. A `coder` worker that names a harness in its
+ * `harness` setting (`claude-code`, `codex` or `cursor`) runs on that one
+ * instead: {@link workerHarnesses} is the set a hire picks from.
  */
 
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CLAUDE_CODE_PASS, claudeCodeAgent, probeClaudeAccount, type ClaudeAccountProbe } from "@flow-state-dev/claude-code/sdk";
+import { CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
 import { harnessEnv } from "@flow-state-dev/core";
+import { CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
 import {
   mcpCredentialsCapability,
   projectWorkspaceCapability,
@@ -148,6 +154,57 @@ export function errorReporterHarness({ cwd, mcpTools }: ErrorReporterHarnessFeed
       "You investigate failures in the code in your working directory and write bug reports about them. " +
       "Read and search the code; never change a file. Do what the prompt asks, then answer as it says.",
   } as never) as unknown as HarnessBlock;
+}
+
+/** The model a Cursor run uses: Cursor's own pick ("Auto"), which every account's catalog has. */
+const CURSOR_MODEL = "default";
+
+/** Codex in the slot, through the Codex SDK, with only its package's pass list. */
+export function codexHarness(feeds: HarnessFeeds): HarnessBlock {
+  return codexAgent({
+    cwd: feeds.cwd,
+    resume: feeds.resume,
+    onSession: feeds.onSession,
+    onActivity: feeds.onActivity,
+    client: { env: harnessEnv({ pass: CODEX_PASS }) },
+    name: "codex",
+  }) as unknown as HarnessBlock;
+}
+
+/** Cursor in the slot, through the Cursor SDK's local runtime, with only its package's pass list. */
+export function cursorHarness(feeds: HarnessFeeds): HarnessBlock {
+  return cursorAgent({
+    cwd: feeds.cwd,
+    resume: feeds.resume,
+    onSession: feeds.onSession,
+    onActivity: feeds.onActivity,
+    env: harnessEnv({ pass: CURSOR_PASS }),
+    // Cursor's SDK refuses a local agent with no model.
+    model: CURSOR_MODEL,
+    name: "cursor",
+  } as never) as unknown as HarnessBlock;
+}
+
+/** How long one Codex or Cursor run may take: the same as a Claude Code run. */
+export const AGENT_RUN_TIMEOUT_MS = 10 * 60_000;
+
+/**
+ * The harnesses a `coder` worker picks at hire (`settings: { harness: "cursor" }`),
+ * by name, other than the one the profile starts on. Each is the real agent:
+ * a worker named onto one runs on it or its run fails, never on the default.
+ * Only the default's account is probed at start ({@link startHarness}); a
+ * worker on another harness that isn't signed in fails its run with that
+ * harness's own error.
+ *
+ * @param started The profile's coder, which the default slot already runs.
+ */
+export function workerHarnesses(started: HarnessChoice): Record<string, { slot: (feeds: HarnessFeeds) => HarnessBlock; runTimeoutMs: number }> {
+  const all = {
+    "claude-code": { slot: claudeCodeHarness, runTimeoutMs: CLAUDE_CODE_RUN_TIMEOUT_MS },
+    codex: { slot: codexHarness, runTimeoutMs: AGENT_RUN_TIMEOUT_MS },
+    cursor: { slot: cursorHarness, runTimeoutMs: AGENT_RUN_TIMEOUT_MS },
+  };
+  return Object.fromEntries(Object.entries(all).filter(([name]) => name !== started));
 }
 
 /** The row line the manager's prompt carries, `Row <id>, phase <p>, attempt <n>.` */
