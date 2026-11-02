@@ -31,6 +31,23 @@ import { TurnNotDelivered, type TurnStop } from "../lib/send";
 const DRAFT = "shift-manager:draft";
 const UNCONFIRMED = "shift-manager:unconfirmed";
 
+/**
+ * Move what `from` holds (the draft and its *unconfirmed* warning) to `to`,
+ * unless `to` already holds a draft, then drop `from`: a stored draft from
+ * before a key changed opens in one composer, once (BP-030).
+ */
+function adoptLegacyDraft(from: string | undefined, to: string | undefined): void {
+  if (from === undefined || to === undefined || from === to) return;
+  const draft = readDraft(DRAFT, from);
+  if (draft === "") return;
+  if (readDraft(DRAFT, to) === "") {
+    saveDraft(DRAFT, to, draft);
+    saveDraft(UNCONFIRMED, to, readDraft(UNCONFIRMED, from));
+  }
+  clearDraft(DRAFT, from);
+  clearDraft(UNCONFIRMED, from);
+}
+
 /** Where the last send stands. */
 export type TurnSendState =
   | { kind: "idle" }
@@ -246,6 +263,7 @@ export function TurnComposer({
   autoSend,
   onAutoSend,
   draftKey,
+  legacyDraftKey,
 }: {
   testId: string;
   label: string;
@@ -256,6 +274,12 @@ export function TurnComposer({
    * draft lives only as long as the composer.
    */
   draftKey?: string;
+  /**
+   * The key `draftKey` replaced. What it holds moves to `draftKey` the first
+   * time the composer opens on `draftKey` (unless `draftKey` already holds a
+   * line), and is then dropped, so only one composer adopts it.
+   */
+  legacyDraftKey?: string;
   /** Why nothing can be sent right now, or `null` when it can. */
   blocked: string | null;
   /**
@@ -277,6 +301,12 @@ export function TurnComposer({
   autoSend?: string | null;
   onAutoSend?: () => void;
 }) {
+  // Before the drafts are read, so they open on what the old key held.
+  const adopted = useRef<string | undefined>(undefined);
+  if (adopted.current !== draftKey) {
+    adopted.current = draftKey;
+    adoptLegacyDraft(legacyDraftKey, draftKey);
+  }
   const [draft, setDraftText] = useDraft(DRAFT, draftKey);
   // Kept beside the draft, so a reload doesn't offer to send twice a line that may have arrived.
   const [unconfirmed, setUnconfirmed] = useDraft(UNCONFIRMED, draftKey);
