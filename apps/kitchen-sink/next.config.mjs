@@ -14,12 +14,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // `/kitchen-sink`): `KITCHEN_SINK_BASE_PATH` sets Next's `basePath`, which is
 // read at build time, and `KITCHEN_SINK_DIST_DIR` keeps that build apart from
 // the root-served one in `.next`. Both unset, the app serves at `/` from `.next`.
+// Both are set after the literal, never spread into it: the plugin's install
+// detector reads this file as a plain object literal (its accepted-shapes test).
 const basePath = process.env.KITCHEN_SINK_BASE_PATH ?? "";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  ...(basePath === "" ? {} : { basePath }),
-  ...(process.env.KITCHEN_SINK_DIST_DIR ? { distDir: process.env.KITCHEN_SINK_DIST_DIR } : {}),
   // `lib/base-path.ts` reads it: a flow client's `baseUrl` takes the prefix itself.
   env: { NEXT_PUBLIC_BASE_PATH: basePath },
   outputFileTracingRoot: resolve(__dirname, "../../"),
@@ -46,5 +46,8 @@ const nextConfig = {
     return config;
   },
 };
+
+if (basePath !== "") nextConfig.basePath = basePath;
+if (process.env.KITCHEN_SINK_DIST_DIR) nextConfig.distDir = process.env.KITCHEN_SINK_DIST_DIR;
 
 export default nextConfig;
