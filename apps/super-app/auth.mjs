@@ -24,8 +24,34 @@ const FAILURE_DELAY_MS = 750;
 /** Consecutive failures from one address before it must wait; the wait doubles per further failure, up to the cap. */
 const FREE_FAILURES = 5;
 const MAX_LOCKOUT_MS = 15 * 60 * 1000;
-/** Sign-in attempts checked at once, across every address; more are turned away. */
-const MAX_PENDING = 4;
+/** Sign-in attempts being checked at once: per address, and across every address. More are turned away. */
+const MAX_PENDING_PER_ADDRESS = 2;
+const MAX_PENDING = 32;
+/** A sign-in form that hasn't fully arrived by then is dropped, freeing its slot. */
+const FORM_TIMEOUT_MS = 5000;
+/**
+ * Failed sign-ins allowed per minute across every address. Past it, every
+ * sign-in waits out the minute: a guesser spread over many addresses still
+ * can't go faster. Anyone already signed in is unaffected.
+ */
+const GLOBAL_FAILURES_PER_MINUTE = 60;
+/** Addresses remembered at most; the oldest is forgotten first. */
+const MAX_TRACKED = 10_000;
+
+/**
+ * Who a sign-in attempt counts against: an IPv4 address, or an IPv6 address's
+ * /64 network, since one IPv6 host is typically handed a whole /64 and could
+ * otherwise take a fresh address per guess.
+ */
+export function addressKey(ip) {
+  const address = String(ip ?? "").toLowerCase().replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/, "");
+  if (!address.includes(":")) return address;
+  const [head, tail = ""] = address.split("::");
+  const left = head === "" ? [] : head.split(":");
+  const right = tail === "" ? [] : tail.split(":");
+  const groups = address.includes("::") ? [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right] : left;
+  return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, "")).join(":")}::/64`;
+}
 
 /** Constant-time equality that leaks neither contents nor length: both sides are hashed to a fixed size first. */
 const equal = (a, b) => timingSafeEqual(createHash("sha256").update(a).digest(), createHash("sha256").update(b).digest());
@@ -66,12 +92,39 @@ export function createAuth({ username, password, secret = randomBytes(32).toStri
    * Behind a load balancer every attempt shares its address, so a guessing loop slows sign-in for everyone: by design.
    */
   const failures = new Map();
+  /** Attempts being checked, by address. */
+  const pendingBy = new Map();
   let pending = 0;
-  const lockedFor = (ip) => {
-    const record = failures.get(ip);
-    if (record === undefined || record.count < FREE_FAILURES) return 0;
+  /** When each failure of the last minute happened, across every address. */
+  let recentFailures = [];
+
+  const lockedFor = (key) => {
+    const now = Date.now();
+    recentFailures = recentFailures.filter((at) => now - at < 60_000);
+    const global = recentFailures.length >= GLOBAL_FAILURES_PER_MINUTE ? recentFailures[0] + 60_000 - now : 0;
+    const record = failures.get(key);
+    if (record === undefined || record.count < FREE_FAILURES) return global;
     const wait = Math.min(MAX_LOCKOUT_MS, 1000 * 2 ** (record.count - FREE_FAILURES));
-    return Math.max(0, record.at + wait - Date.now());
+    return Math.max(global, record.at + wait - now);
+  };
+
+  const recordFailure = (key) => {
+    const now = Date.now();
+    recentFailures.push(now);
+    const record = failures.get(key);
+    // An address quiet for longer than the longest lockout starts over.
+    const count = record !== undefined && now - record.at < MAX_LOCKOUT_MS ? record.count + 1 : 1;
+    failures.delete(key);
+    failures.set(key, { count, at: now });
+    // Map order is insertion order, so the first key is the one that failed longest ago.
+    while (failures.size > MAX_TRACKED) failures.delete(failures.keys().next().value);
+  };
+
+  const release = (key) => {
+    pending -= 1;
+    const left = (pendingBy.get(key) ?? 1) - 1;
+    if (left <= 0) pendingBy.delete(key);
+    else pendingBy.set(key, left);
   };
 
   const sign = (expiry) => createHmac("sha256", secret).update(`${username}\n${expiry}`).digest("base64url");
@@ -101,9 +154,9 @@ export function createAuth({ username, password, secret = randomBytes(32).toStri
       return page(res, 200, { next: safeNext(url.searchParams.get("next")) }), true;
     }
     if (url.pathname === "/login" && req.method === "POST") {
-      const ip = req.socket.remoteAddress ?? "";
-      const wait = lockedFor(ip);
-      if (wait > 0 || pending >= MAX_PENDING) {
+      const key = addressKey(req.socket.remoteAddress);
+      const wait = lockedFor(key);
+      if (wait > 0 || pending >= MAX_PENDING || (pendingBy.get(key) ?? 0) >= MAX_PENDING_PER_ADDRESS) {
         const seconds = Math.max(1, Math.ceil(wait / 1000));
         res.setHeader("retry-after", String(seconds));
         page(res, 429, { next: "/", error: `Too many attempts. Try again in ${seconds} second${seconds === 1 ? "" : "s"}.` });
@@ -111,22 +164,22 @@ export function createAuth({ username, password, secret = randomBytes(32).toStri
         return true;
       }
       pending += 1;
+      pendingBy.set(key, (pendingBy.get(key) ?? 0) + 1);
       readForm(req, (form) => {
         const next = safeNext(form.get("next"));
         // Both compared every time, so a wrong user name answers no faster than a wrong password.
         const userOk = equal(form.get("username") ?? "", username);
         const passOk = equal(form.get("password") ?? "", password);
         if (userOk && passOk) {
-          pending -= 1;
-          failures.delete(ip);
+          release(key);
+          failures.delete(key);
           const expiry = String(Math.floor(Date.now() / 1000) + MAX_AGE_SECONDS);
           res.setHeader("set-cookie", cookie(req, `${expiry}.${sign(expiry)}`, MAX_AGE_SECONDS));
           return redirect(res, next, 303);
         }
-        const record = failures.get(ip) ?? { count: 0, at: 0 };
-        failures.set(ip, { count: record.count + 1, at: Date.now() });
+        recordFailure(key);
         setTimeout(() => {
-          pending -= 1;
+          release(key);
           page(res, 401, { next, error: "That user name and password don't match." });
         }, FAILURE_DELAY_MS);
       });
@@ -165,7 +218,8 @@ function redirect(res, location, status = 302) {
 
 /**
  * Reads a small urlencoded form, calling `done` exactly once: with the form, or
- * with an empty one when the body is over 8 KiB or the upload breaks off.
+ * with an empty one when the body is over 8 KiB, the upload breaks off, or it
+ * hasn't arrived within FORM_TIMEOUT_MS.
  */
 function readForm(req, done) {
   let body = "";
@@ -185,6 +239,13 @@ function readForm(req, done) {
   req.on("end", () => finish(new URLSearchParams(body)));
   req.on("error", () => finish(new URLSearchParams()));
   req.on("close", () => finish(new URLSearchParams()));
+  // A form trickled in slowly would hold its slot for as long as the connection lasts.
+  const timer = setTimeout(() => {
+    finish(new URLSearchParams());
+    req.destroy();
+  }, FORM_TIMEOUT_MS);
+  req.on("close", () => clearTimeout(timer));
+  req.on("end", () => clearTimeout(timer));
 }
 
 const escape = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);

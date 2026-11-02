@@ -6,7 +6,7 @@
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { createAuth, safeNext } from "./auth.mjs";
+import { addressKey, createAuth, safeNext } from "./auth.mjs";
 import { createProxy, loopbackHost } from "./proxy.mjs";
 
 const seen = [];
@@ -169,5 +169,47 @@ describe("with no sign-in (loopback dev)", () => {
   it("knows the loopback names", () => {
     for (const ok of ["localhost", "localhost:80", "127.0.0.1:8080", "[::1]:3000"]) assert.ok(loopbackHost(ok), ok);
     for (const no of ["evil.example", "127.0.0.1.evil.example", "", undefined]) assert.ok(!loopbackHost(no), String(no));
+  });
+});
+
+describe("a sign-in form that never finishes arriving", () => {
+  it("holds only its own address's slots, and lets go of them after the form timeout", async () => {
+    const server = createProxy({ apps: [], auth: createAuth({ username: "ops", password: "s3cret" }), status: () => "running" });
+    await new Promise((r) => server.listen(0, "127.0.0.1", r));
+    const port = server.address().port;
+    const { connect } = await import("node:net");
+    const stall = () =>
+      new Promise((resolve) => {
+        const socket = connect(port, "127.0.0.1", () => {
+          socket.write("POST /login HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 1000\r\n\r\nuser");
+          resolve(socket);
+        });
+      });
+    const signIn = () =>
+      fetch(`http://127.0.0.1:${port}/login`, {
+        method: "POST",
+        redirect: "manual",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: "username=ops&password=s3cret",
+      });
+    const stalled = [await stall(), await stall()];
+    try {
+      await new Promise((r) => setTimeout(r, 100));
+      assert.equal((await signIn()).status, 429, "both of this address's slots are taken");
+      await new Promise((r) => setTimeout(r, 6500)); // the form timeout, then the failed attempt's answer delay
+      assert.equal((await signIn()).status, 303, "the timeout freed them");
+    } finally {
+      for (const socket of stalled) socket.destroy();
+      server.close();
+    }
+  });
+});
+
+describe("whose attempts count together", () => {
+  it("groups an IPv6 network's addresses and unwraps IPv4-mapped ones", () => {
+    assert.equal(addressKey("2001:db8:1:2:aaaa::1"), addressKey("2001:0db8:0001:0002:ffff:1:2:3"));
+    assert.notEqual(addressKey("2001:db8:1:2::1"), addressKey("2001:db8:1:3::1"));
+    assert.equal(addressKey("::ffff:203.0.113.9"), "203.0.113.9");
+    assert.notEqual(addressKey("203.0.113.9"), addressKey("203.0.113.10"));
   });
 });
