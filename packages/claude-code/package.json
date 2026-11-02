@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/claude-code",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Claude Code integration for flow-state-dev: run a Claude Code agent in-process as a block.",
   "keywords": [
     "ai",

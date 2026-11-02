@@ -1,5 +1,17 @@
 # @flow-state-dev/core
 
+## 0.4.0
+
+### Minor Changes
+
+- 824ce87: `resourceTools()`'s `readResource` now reads only from a collection that opted in with `llmReadable`, and leaves out the fields the collection names in `secret`. A path into a collection that didn't opt in answers as a path no collection matches. Mark a collection `llmReadable: true` if a model should read its state through this tool (FIX-2436).
+
+### Patch Changes
+
+- 387bee2: A durable sequencer saves its state at a suspension, and restores it before the resumed step runs. A `patchState` a step makes before `ctx.suspend()` or `ctx.suspendForUser()` is now kept across a restart, and the re-run of that step reads it. Sequencer-state writes the step made before the pause (including `incState` and `pushState`) apply once: when the re-run reaches the pause, the sequencer's state is set back to what was saved there, and writes after it apply as usual. A request that was already parked before this change resumes as it did before (FIX-2444).
+- Updated dependencies [387bee2]
+  - @flow-state-dev/contracts@0.2.1
+
 ## 0.3.0
 
 ### Minor Changes

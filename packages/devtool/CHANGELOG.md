@@ -1,5 +1,20 @@
 # @flow-state-dev/devtool
 
+## 0.3.1
+
+### Patch Changes
+
+- 70f09b5: `@flow-state-dev/devtool/react` exports `readDevtoolUrl()`, which reads the DevTool address `fsdev dev --app` writes into each page (the `fsdev-devtool-url` meta), and `traceHref(devtoolUrl, sessionId?)`, which builds the link that opens one session in the DevTool (FIX-2405).
+- Updated dependencies [b616e7c]
+- Updated dependencies [9a355b2]
+- Updated dependencies [824ce87]
+- Updated dependencies [0554e0b]
+- Updated dependencies [387bee2]
+- Updated dependencies [1fb64c9]
+  - @flow-state-dev/react@0.3.1
+  - @flow-state-dev/core@0.4.0
+  - @flow-state-dev/client@0.3.1
+
 ## 0.3.0
 
 ### Minor Changes
