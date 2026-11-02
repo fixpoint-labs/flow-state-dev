@@ -29,6 +29,7 @@ import {
   HARNESS_SESSION_ATTACHED_BRANCH_CHANGED,
   HARNESS_SESSION_REMOVE_NOT_OWNER,
   HARNESS_SESSION_REMOVE_UNSUPPORTED,
+  harnessSessionFeeds,
   harnessSessionFlow,
   harnessSessionStartSchema,
   harnessSessionStateSchema,
@@ -203,6 +204,23 @@ function act(
 }
 
 describe("where a session starts", () => {
+  it("takes no hold on the worktree through feeds used without the flow, which has no turn end to let it go", async () => {
+    const { workspace } = recordingWorkspace();
+    const feeds = harnessSessionFeeds("stub-session", workspace);
+    const cwd = join(places, "s-standalone");
+    mkdirSync(cwd, { recursive: true });
+    const ctx = (request: string) =>
+      ({
+        request: { identity: { id: request } },
+        session: { identity: { id: "s-standalone" }, metadata: {}, state: { model: "stub-model" }, atomicState: async () => undefined },
+      }) as unknown as HarnessCallbackContext;
+
+    await feeds.cwd(ctx("r1"));
+    expect(existsSync(worktreeLockPath(cwd))).toBe(false);
+    // A second turn's feed resolves rather than waiting on a hold nothing lets go of.
+    await expect(feeds.cwd(ctx("r2"))).resolves.toBe(cwd);
+  });
+
   it("holds the worktree through the pull-request check, so the next turn there can't open one this turn takes for its own", async () => {
     const stores = createInMemoryStores();
     const { workspace } = recordingWorkspace();

@@ -440,13 +440,18 @@ export const HARNESS_SESSION_MODEL_REQUIRED = "A new session must name the model
  * @param workspace Where its sessions work.
  * @param defaultModel What {@link HarnessSessionFlowOptions.defaultModel} says.
  * @param steering The flow's steering, which holds a running turn's offer for its `steer` action.
+ * @param inUse Where a turn's hold on its worktree (`occupyWorktree`) is kept
+ *   until the turn ends, by request. Only {@link harnessSessionFlow}, which lets
+ *   go of each when its turn finishes, passes one; feeds built without it take
+ *   no hold, since nothing would let go of it.
+ * @param attachedHeads The branch each attached turn started on, by request, for the flow's turn-end check.
  */
 export function harnessSessionFeeds(
   kind: string,
   workspace: HarnessSessionWorkspace,
   defaultModel?: string,
   steering: HarnessSteering = harnessSteering(),
-  inUse: Map<string, LockLease> = new Map(),
+  inUse?: Map<string, LockLease>,
   attachedHeads: Map<string, string | null> = new Map(),
 ): HarnessSessionFeeds {
   return {
@@ -469,7 +474,7 @@ export function harnessSessionFeeds(
             ? null
             : await workspace.attach(workPlaceOf(kind, ctx), { worktrees, by: { kind: "session", id: ctx.session.identity.id } });
         if (worktree === null) throw new Error(HARNESS_SESSION_ATTACH_NOT_YOURS);
-        if (!inUse.has(requestId)) inUse.set(requestId, await occupyWorktree(path, { owner: requestId, signal: ctx.signal }));
+        if (inUse !== undefined && !inUse.has(requestId)) inUse.set(requestId, await occupyWorktree(path, { owner: requestId, signal: ctx.signal }));
         // Read once the owner's turn has let go, so it is the branch this turn starts on.
         const branch = await checkedOutBranch(path);
         if (!attachedHeads.has(requestId)) attachedHeads.set(requestId, branch);
@@ -482,7 +487,7 @@ export function harnessSessionFeeds(
       // this session's branch, and until the turn ends, so neither an attached
       // session's running turn nor the host's `remove` has it moved under them.
       const located = workspace.locate(workPlaceOf(kind, ctx));
-      if (!inUse.has(requestId)) inUse.set(requestId, await occupyWorktree(located, { owner: requestId, signal: ctx.signal }));
+      if (inUse !== undefined && !inUse.has(requestId)) inUse.set(requestId, await occupyWorktree(located, { owner: requestId, signal: ctx.signal }));
       const worktrees = worktreesOf(ctx);
       const title = ctx.session.metadata.title;
       const provisioned = await workspace.provision(placeOf(kind, ctx), {
