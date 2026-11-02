@@ -30,18 +30,6 @@ export function readConnection(): Connection {
   return { userId: readUserId(), ...(bearerToken === undefined ? {} : { bearerToken }) };
 }
 
-/** The page meta `fsdev dev --app` writes the DevTool's address into. */
-const DEVTOOL_META = "fsdev-devtool-url";
-
-/**
- * The DevTool a task's trace link opens: the one served beside Shift Manager.
- * `undefined` when none is. Only an http(s) address is taken.
- */
-export function readDevtoolUrl(): string | undefined {
-  const value = document.querySelector<HTMLMetaElement>(`meta[name="${DEVTOOL_META}"]`)?.content.trim();
-  return value !== undefined && /^https?:\/\//.test(value) ? value : undefined;
-}
-
 /** The one client for a connection: its user, its origin, and its bearer token on every call and stream. */
 export function connect(connection: Connection): Client {
   return createClient({
