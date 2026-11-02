@@ -12,12 +12,11 @@
  * Three details the hook's contract forces, and they are the reason this is a
  * component rather than a `.map()` at the call site:
  *
- * - **The list does not update on its own.** It is re-read on mount, at the
- *   start of each action, and on `session.refresh()`. On its own that hides the
- *   *first* job until the user does something else, so a sibling component —
- *   {@link BackgroundWorkRefresh}, mounted once at the page level — re-reads
- *   when a turn stops streaming. It is not in this component on purpose; see
- *   its own doc for why a duplicated responsive tree makes that matter.
+ * - **The list is current because the page follows the session.** Its
+ *   `useSession` passes `live: true`, so the hook re-reads the list whenever a
+ *   run starts or finishes, and a job a turn just filed shows without another
+ *   message. Without `live` it is re-read only on mount, at the start of each
+ *   action, and on `session.refresh()`.
  * - **`childSessionsStale` means "this is the last list we could get".** The rows
  *   stay on screen and get marked, rather than disappearing. (The hook's field
  *   names follow the provenance route it reads.)
@@ -25,7 +24,7 @@
  *   *not finished*. Neither is rendered as "running".
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { ItemsRenderer, useSession } from "@flow-state-dev/react";
 import type { ChildSessionSummary } from "@flow-state-dev/client";
 import { Button } from "@/components/ui/button";
@@ -76,79 +75,6 @@ interface BackgroundWorkPanelProps {
 }
 
 /** The strip above the prompt input: one row per body of background work. */
-/**
- * The stream-end re-read, as a component so it is mounted EXACTLY ONCE.
- *
- * Deliberately separate from {@link BackgroundWorkPanel}. The page keeps a
- * mobile and a desktop `ChatPanel` tree alive at the same time and hides one
- * with responsive CSS, so anything rendered inside a `ChatPanel` is mounted
- * twice and every effect in it runs twice. With the effect living in the panel
- * that meant two reads per finished turn, not one — a cost that is invisible
- * from the panel's own source and contradicts what the comment below claims.
- * Rendering the panel twice is harmless (both read the same hook state); firing
- * its side effect twice is not. Mount this once, above those trees.
- *
- * Without it the job a turn just filed stays invisible until the user sends
- * another message, because the hook's own re-read happens at the START of an
- * action. Guarded on the actual true → false transition, so a re-render never
- * triggers a second read.
- *
- * **Demo debt — do not copy this into an application.** The dispatched-run axis has
- * a pinned read budget: ONE `listChildSessions` read per turn, taken by
- * `useSession` at action start. That budget is a contract
- * (`docs/architecture/server-and-client.md`), and it is why the DevTool's own
- * panel reads one page plus a sentinel instead of walking the index.
- *
- * What this actually costs, stated plainly because it was understated twice:
- * `session.refresh()` is a **full session snapshot plus** the dispatched-run read,
- * and with `items: true` the snapshot paginates the entire item history. It is
- * not one extra list read. The gate below at least confines that to
- * conversations which use background work at all.
- *
- * The intended fix is a framework opt-in rather than an app-level effect,
- * tracked as **FIX-1109**: `useSession` grows an explicit
- * `childSessions: { refreshOnTerminal: true }`, refreshing from the terminal
- * branch it already has (`onRequestStatus`), so the pinned budget stays the
- * default and the second read becomes a named choice. When FIX-1109 lands,
- * delete this component and pass that option instead.
- */
-export function BackgroundWorkRefresh({ session }: { session: BackgroundWorkPanelProps["session"] }) {
-  const { refresh, isStreaming, items, childSessions } = session;
-
-  // Only conversations that actually use background work pay for this. The
-  // gate matters because `session.refresh()` is NOT the cheap read this was
-  // originally documented as: it is `Promise.all([refreshSnapshot(),
-  // refreshChildSessions()])`, and with `items: true` the snapshot paginates the
-  // session's entire item history. Ungated, every finished turn in every
-  // conversation — the overwhelming majority of which never file a job — paid
-  // a full history refetch to update a panel with nothing in it.
-  //
-  // `useSession` exposes no dispatched-run-only refresh (`refreshChildSessions` is
-  // internal), which is exactly the gap FIX-1109 closes. Until it lands this
-  // gate is the whole of the mitigation available to an app.
-  //
-  // Detected from `task-board-meta`, and NOT from `task-change` — this board
-  // declares those invisible to the client on purpose (see
-  // `backgroundWorkLedger`).
-  const usesBackgroundWork =
-    childSessions.length > 0 ||
-    items.some(
-      (item) =>
-        item.type === "component" &&
-        (item as { component?: string }).component === "task-board-meta" &&
-        (item as { data?: { collectionId?: string } }).data?.collectionId ===
-          "background-work",
-    );
-
-  const wasStreaming = useRef(isStreaming);
-  useEffect(() => {
-    const finished = wasStreaming.current && !isStreaming;
-    wasStreaming.current = isStreaming;
-    if (finished && usesBackgroundWork) void refresh();
-  }, [isStreaming, refresh, usesBackgroundWork]);
-  return null;
-}
-
 export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelProps) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
