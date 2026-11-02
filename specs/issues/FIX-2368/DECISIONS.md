@@ -94,6 +94,12 @@ follows the guide's Ably row, whose config shape is D5's open push-seam call.
 - **"Polls off" is the product's default, not a switch the run sets.** On a bus that crosses,
   FIX-2426 turns the session stream's timed read off and the hooks keep no timer. The run counts
   reads instead, so a default left on is a FAIL, where a switch would hide it.
+- **Each "within 1 s" is 5 samples, all within 1 s, none retried.** Model `n/a` makes every
+  miss structural, and a structural miss on any attempt is a finding
+  ([FIX-2087 D1](../FIX-2087/DECISIONS.md#d1)). Each sample runs from A's action returning to the
+  change showing on B's page, and every latency is printed, so a miss reads as a slow tail or a
+  missing notice. The product claim stays 1 s; the count and where a sample starts are the
+  implementer's to tune.
 - **Reads are counted in the browser and in Postgres.** Read requests and socket frames from
   Playwright's request and WebSocket events; statements from `log_statement = all`, by each
   process's `application_name`. No counter inside the framework.
@@ -122,8 +128,8 @@ Nov 2, at `9fd46b6`. **Right approach, one fold.** Run in this dispatch by the a
 worker can't start a fresh sub-agent; the coordinator can dispatch a fresh `analysis` pass if it
 wants an independent one.
 
-- **Reuse:** every *Adds* item is the goal itself; browsers, Shift Manager copies and controls
-  reuse `goals/lib`. **Reuse X** on the crossing double was considered and refused (D1).
+- **Reuse:** every *Adds* item is the goal itself, apart from FIX-2427's Postgres bootstrap,
+  extended into `goals/lib`; browsers, Shift Manager copies and controls reuse `goals/lib`. **Reuse X** on the crossing double was considered and refused (D1).
 - **Others' shapes:** a closure is a release QA; the shape is FIX-2242's.
 - **Should it exist:** required by the closure rule.
 - **Major concern, folded:** leg b can't pass on the Labs as shipped, because FIX-2429 keeps their
@@ -136,7 +142,8 @@ wants an independent one.
   on Postgres (D2), and the epic's memory-bus control reads "never updates", which FIX-2428 D3 no
   longer makes true.
 - **Review (Nov 2)** — the epic's memory-bus control line amended to fail on the 1 s. j4 waits on
-  epic D5 and #4486. `a:same-source` moved to anti-game; it grades no team.
+  epic D5 and #4486. `a:same-source` moved to anti-game; it grades no team. FIX-2427's
+  bootstrap extended into `goals/lib`; the kept goal's scenes, runner and 1 s sampling named.
 
 ## Notes from review
 

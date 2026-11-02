@@ -44,9 +44,9 @@ named assertion.
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/realtime/a-change-reaches-every-screen/`, new · model `n/a` (handler actions write and settle) · run by the closure worker on one `main` commit · the report is the closure PR's body |
-| **Signal** | Every `<leg>:<assertion>` in [the signal table](#the-signal) passes |
-| **Input** | Two `serve()` processes (`child_process.fork`) over one Postgres the script starts (`initdb`, `pg_ctl`) or `FSD_DB_URL`, with `log_statement = all` and each process's `application_name` set; Chromium through `goals/lib/playwright.mts`, one browser context per user; users A and B in org 1, C in org 2 |
+| **Goal check** | `goals/realtime/a-change-reaches-every-screen/`, new · model `n/a` (handler actions write and settle) · run by the closure worker on one `main` commit · the report is the closure PR's body. Legs a to d and journeys j2 to j4 are its scenes (`GOAL_SCENES`); plan rows 3 and 4 are the closure worker's one-time procedure, reported in that body. Kept after the wrap as FIX-2242's is: run by hand, on demand, never a CI gate, one verdict-log row per run |
+| **Signal** | Every `<leg>:<assertion>` in [the signal table](#the-signal) passes. Each "within 1 s" is 5 samples, all within 1 s, none retried ([below](DECISIONS.md#decided-not-asked)) |
+| **Input** | Two `serve()` processes (`child_process.fork`) over one Postgres the script starts (`initdb`, `pg_ctl`) or `FSD_DB_URL`, through FIX-2427's bootstrap moved into `goals/lib`, with `log_statement = all` and each process's `application_name` set; Chromium through `goals/lib/playwright.mts`, one browser context per user; users A and B in org 1, C in org 2 |
 | **Anti-game** | Assert on what each page shows and on the read requests and WebSocket frames the page itself makes, never on `publish` calls. Two processes, not two registries. The real Postgres bus, never the crossing double. The run sets no poll, timer or timed-read switch: what is off is off by default. The fixture app's source hashes the same on today's `main` and on the pinned commit, printed |
 | **Control that must fail** | `memory-bus` (both processes on the in-memory bus): **`a:org-state`**, **`a:org-row`**, which miss the 1 s; B may still update at the hook's poll pace ([below](DECISIONS.md#decided-not-asked)) · `no-request-publish` (the bus child's write wrapper publishes nothing, FIX-2426's `no-publish` patch): **`d:plain-reply`**, while a passes · `skip-check` (FIX-2428's: the mint grants every topic): **`c:refused`** · today's `main` (the parent of FIX-2426's implementation merge; `9fd46b6` at drafting): every `a:` assertion and **`b:no-read-between`** |
 
@@ -113,6 +113,7 @@ SQLite setup, which FIX-2429 decided keeps its timer while a task is open.
 | The epic's legs a to d and its controls | **Builds on.** Walked together on one host; the memory-bus control's FAIL is graded on the 1 s signal ([below](DECISIONS.md#decided-not-asked)) |
 | The children's goals: `session-stream/wakes-on-a-change`, `session-stream/wakes-across-processes`, `realtime/websocket-delivery`, `realtime/scope-changes-reach-other-sessions`, `task-board/a-settled-task-reaches-the-board`, `realtime/ably`, and FIX-2466's | **Composed.** Re-run in row 3; three controls reused (`no-publish`, `skip-check`, `memory-bus`) |
 | `goals/lib/playwright.mts`, `goals/lib/shift-manager.mts` (`buildShiftManagerCopy`, `startShiftManager`), `goals/lib/module-patch.mjs`, `goals/lib/server.mts`, `goals/lib/verdict.mts`, `goals/lib/client-actions.mts` | **Reused** for the browsers, Shift Manager in scratch, the controls' patches, the forked `serve` processes, the tagged report and the handler writes. Row 3 runs each child's own `run.mts` with its controls, as FIX-2242's did |
+| FIX-2427's two-process Postgres bootstrap in `goals/session-stream/wakes-across-processes/` (Postgres started or `FSD_DB_URL`, two forked `createFlowState` processes), landing with FIX-2427 | **Extended.** Moved into `goals/lib` and shared by both goals, so row 1's processes, j3's worker and FIX-2427's goal start Postgres one way, not two |
 | `goals/lib/crossing-bus.mts` (FIX-2426) | **Not used.** It is what the closure exists to go past |
 | [FIX-2242](../FIX-2242/SPEC.md), the last closure | **Kept** its shape: tagged assertions, one run where the legs collide, the plan's four rows |
 | Anything else grading the set | **None.** Searched `goals/` for `useSubscription`, `client.subscribe`, `crosses`, `postgresStores` with `serve(` |
@@ -120,7 +121,7 @@ SQLite setup, which FIX-2429 decided keeps its timer while a task is open.
 | The debt | |
 |---|---|
 | **Removes** | Nothing |
-| **Adds** | One goal with its fixture app and a scratch Lab config. Permanent by design: it keeps running after the wrap |
+| **Adds** | One goal with its fixture app and a scratch Lab config, and FIX-2427's Postgres bootstrap moved into `goals/lib`. Kept after the wrap and run on demand, as FIX-2242's is |
 | **Leaves** | The Labs as shipped run on SQLite and keep their fallback timer while a task is open (FIX-2429's call, [D2](DECISIONS.md#d2)) |
 
 **Net: up, a little.** One goal, for a promise that crosses five packages.
