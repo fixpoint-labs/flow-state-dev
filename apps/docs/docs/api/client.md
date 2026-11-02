@@ -300,6 +300,29 @@ Reads the session's state snapshot: the `clientData` values the flow exposes and
 
 The snapshot's `at` is the server time the read began, and `sessionCreatedAt` identifies the session you read. Both feed [`sessions.stream`](#following-a-session).
 
+### `readSessionTail(source, sessionId, options?)`
+
+Reads a session from its newest end. A conversation that runs for days holds more items than one read should carry, and its items come back oldest first, so reading from the start shows its beginning and not the reply someone opened it for. `source` is any object with `state`, such as `fsd.sessions`.
+
+```ts
+import { readSessionEarlier, readSessionTail, refreshSessionWindow } from "@flow-state-dev/client";
+
+let window = await readSessionTail(fsd.sessions, sessionId, { itemTypes: ["message"] });
+if (window.hasEarlier) {
+  // A "Load earlier" button:
+  window = await readSessionEarlier(fsd.sessions, window);
+}
+```
+
+| Option | Type | Notes |
+|--------|------|-------|
+| `limit` | `number` | How many of the newest items to read. 200 by default (`SESSION_WINDOW_PAGE`). |
+| `itemTypes` | `string[]` | Only these item types. The window keeps them for its later reads. |
+
+The window holds `items` (oldest first), `start` (where the first one sits in the session), `total`, `hasEarlier`, and the read's `at` and `sessionCreatedAt` for [`sessions.stream`](#following-a-session).
+
+`readSessionEarlier(source, window, { limit? })` adds up to `limit` earlier items, 200 by default. `refreshSessionWindow(source, window)` reads the window again, for a view that doesn't follow the session's stream. Both read from the window's start to the session's end: a reply is stored while it's still being written and finishes in place, and an item can be stored behind ones you already hold, so reading only what came after the old end would miss both. If the session under the id was deleted and created again, the window starts over at the new session's end.
+
 ## `fsd.resources`
 
 Reads and writes a session's resources. Every method takes the session id and the resource ref.
