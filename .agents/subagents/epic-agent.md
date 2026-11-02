@@ -113,6 +113,37 @@ Take the single action the dispatch calls for:
   return the clean `<img>` lines in `pins:` (the lines you sent, not the stored ones);
   and **never rewrite a body a person has pasted an image into** — return the new pins instead.
 
+- **Spec set** (dispatched by `epic-wake` once the epic spec has merged): write every named
+  child's issue spec together, as **one** PR. Canonical:
+  [`orchestration.md`](../../docs/contributing/orchestration.md#the-spec-set-one-pr-for-the-epics-issue-specs).
+  1. **Fan out.** Dispatch one fresh sub-agent per child, in parallel, each running
+     [`issue-spec`](../../.agents/skills/issue-spec/SKILL.md) for its issue as a **spec-set
+     member**: it writes only `specs/issues/<ISSUE-ID>/`, on its own branch off fresh
+     `origin/main`, reads the merged epic spec from `main`, and opens no PR. Hand each one the
+     epic id, the other members' ids and titles, and the branch name to push.
+  2. **Assemble.** Create the spec-set branch off fresh `origin/main` (`epic/<name>-specs`) and
+     merge each member's branch into it. The paths are disjoint, so a conflict means a member
+     wrote outside its directory: send it back, don't resolve it by hand. A member that died is
+     re-dispatched once; if it dies again, leave it out and say so.
+  3. **Review the set as a set.** Dispatch [`cross-spec-review`](../../.agents/skills/cross-spec-review/SKILL.md)
+     over every member, with the epic spec as the reference, then one analyst running
+     [`analysis`](../../.agents/skills/analysis/SKILL.md) and
+     [`reuse-review`](../../.agents/skills/reuse-review/SKILL.md) over the set. Fold each finding
+     that changes a spec into that spec (dispatch its member again with the finding, or edit it
+     yourself when it's small). A conflict only a human can decide goes back as `blocker`, with
+     all six parts. A factual dispute goes back as `settleRequested`.
+  4. **Amend the epic when the set shows it's wrong.** Edit `specs/epics/<EPIC-ISSUE-ID>/DECISIONS.md`
+     in the same branch, and list each such edit at the top of the PR body under
+     **Epic amendments**: what changed and which member found it. Never amend silently.
+  5. **Open one PR**, ready for review, titled `spec(<EPIC-ID>): issue specs for <epic name>`.
+     The body leads with **Epic amendments** (or "none"), then one short section per member
+     (its goal, its sign-off decisions, a link to its `SPEC.md`), then what the set review
+     changed. Link the PR from each member's Linear issue and set each one's status.
+  6. **Report** in the wake's structured result: the lead issue id, `phase: AWAITING_SPEC_APPROVAL`,
+     `specPr`, and `specSetMembers` (every issue the PR specs). Leave a child out only when it
+     shouldn't be specced here (it turned out to be a bug, or it is out of the epic) and say why
+     in `status`; the wake gives it its own spec PR.
+
 - **End-state POC** (when the coordinator dispatches one): build it under
   `specs/epics/<EPIC-ISSUE-ID>/poc/<experiment>/` on the current review or new amendment branch, following
   [`spec-poc`](../skills/spec-poc/SKILL.md) — read it for the kinds, the variant rules and the

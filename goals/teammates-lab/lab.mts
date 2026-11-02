@@ -8,22 +8,24 @@ import { randomInt } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { createClient } from "@flow-state-dev/client";
-import { intentFreeEnv, refuseIfAnswering, repoPath, stopProcessGroup } from "../lib/index.mts";
+import { intentFreeEnv, refuseIfAnswering, repoPath, sleep, stopProcessGroup } from "../lib/index.mts";
 
 const LAB = repoPath("labs", "teammates");
-export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+export { sleep };
 export type Fsd = ReturnType<typeof createClient>;
 export type Item = { type: string; role?: string; requestId?: string; blockName?: string; content?: { text?: string }[] };
 
 /**
  * The Teammates lab for `user` on a fresh store under `dir`, its working
  * folder `workdir` (an empty git checkout is made there when none exists).
+ * `app` is what `--app` serves (default: the package's built pages).
  */
 export async function startTeammates(
   dir: string,
   user: string,
   env: Record<string, string>,
-  workdir = join(dir, "workdir")
+  workdir = join(dir, "workdir"),
+  app = "@flow-state-dev/teammates"
 ): Promise<{ child: ChildProcess; origin: string }> {
   if (!existsSync(workdir)) {
     mkdirSync(workdir, { recursive: true });
@@ -33,7 +35,7 @@ export async function startTeammates(
   const origin = `http://127.0.0.1:${port}`;
   await refuseIfAnswering(origin);
   let log = "";
-  const child = spawn("npx", ["tsx", "../../packages/cli/bin/fsdev.ts", "dev", "--app", "@flow-state-dev/teammates", "--port", String(port), "--no-open"], {
+  const child = spawn("npx", ["tsx", "../../packages/cli/bin/fsdev.ts", "dev", "--app", app, "--port", String(port), "--no-open"], {
     cwd: LAB,
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],

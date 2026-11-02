@@ -438,6 +438,19 @@ The send shortcut for a message box. Cmd+Enter on a Mac and Ctrl+Enter elsewhere
 - `enterSends` (default `false`): plain Enter sends too, as in a chat composer. Leave it off in a box for a longer answer, where Enter is a new line.
 - Shift+Enter never sends, and neither does an Enter that confirms an input method's composition (CJK and the like, including Safari's `keyCode` 229).
 
+### `isTypingTarget(target)`
+
+Whether a key landed in something the person types into: an input, a text area, a select, or editable text. A page-wide shortcut that is a printable key checks it first, so `/` or `?` typed into a message box stays text.
+
+```ts
+window.addEventListener("keydown", (event) => {
+  if (event.key === "/" && !isTypingTarget(event.target)) {
+    event.preventDefault();
+    composer.current?.focus();
+  }
+});
+```
+
 ### `useInterruptKeys(options)` and `createInterruptKeys(options?)`
 
 The keyboard stop for anything long-running, such as an agent's turn. Esc means "dismiss" everywhere, so one Esc never stops anything. Esc arms, and a second Esc within 1.5 seconds stops. Cmd+. on a Mac, or Ctrl+. elsewhere, stops at once.

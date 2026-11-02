@@ -1,5 +1,5 @@
 /**
- * The project writes: `createProject`, `setRepository`, `setMcpServers` and `setBrief`.
+ * The project writes: `createProject`, `setRepository`, `setMcpServers`, `setChecks` and `setBrief`.
  *
  * **Shared or private.** `createProject` takes a `visibility`, `"shared"` when
  * omitted. A shared project is a row of the organization's `projects`; a
@@ -25,6 +25,11 @@
  * bare names the host offers: `defineProjectBlocks({ mcpServers })` is that
  * list, and with none every name is refused (`mcp-server-name.ts`). The row
  * holds names only; the address is the host's and the key each user's own.
+ *
+ * **Checks.** A project names the commands that check its code (`checks`),
+ * each one program and its arguments; a line a shell would read as more than
+ * one is refused `invalid-check`. Nothing runs them until a host opts in with
+ * `projectChecks()`.
  */
 
 import { handler } from "@flow-state-dev/core";
@@ -50,6 +55,7 @@ import { projectOfWrite } from "./project-coordinator";
 import { ProjectRefusedError } from "./project-refusal";
 import { repositoryProblem } from "./repository-value";
 import { checkedMcpServers } from "./mcp-server-name";
+import { checkoutCommandProblem } from "@flow-state-dev/workspace";
 
 /** What creating a project takes. Closed: nothing in it names the owner. */
 export const createProjectInputSchema = z
@@ -75,7 +81,9 @@ export const createProjectInputSchema = z
      * The MCP servers the project's coding runs get, by the names the host
      * offers. Omitted: none. Checked like `setMcpServers`.
      */
-    mcpServers: z.array(z.unknown()).optional()
+    mcpServers: z.array(z.unknown()).optional(),
+    /** The commands that check the project's code. Omitted: none. Checked like `setChecks`. */
+    checks: z.array(z.string()).optional()
   })
   .strict();
 
@@ -121,6 +129,17 @@ export type SetMcpServersInput = z.infer<typeof setMcpServersInputSchema>;
 /** What setting a project's MCP servers returns: the row as written. */
 export const setMcpServersOutputSchema = z.object({ project: projectRowSchema });
 
+/** What `setChecks` takes: the address and the whole new list of commands; `[]` names none. No address: the linked project. */
+export const setChecksInputSchema = z
+  .object({ project: projectAddressSchema.optional(), checks: z.array(z.string()) })
+  .strict();
+
+/** @see setChecksInputSchema */
+export type SetChecksInput = z.infer<typeof setChecksInputSchema>;
+
+/** What setting a project's checks returns: the row as written. */
+export const setChecksOutputSchema = z.object({ project: projectRowSchema });
+
 /** Options for {@link defineProjectBlocks}. */
 export interface ProjectBlocksOptions {
   /**
@@ -147,6 +166,7 @@ export type ProjectBlocks = {
   createProject: ReturnType<typeof defineWriteProject>;
   setRepository: typeof setRepository;
   setMcpServers: ReturnType<typeof defineSetMcpServers>;
+  setChecks: typeof setChecks;
   setBrief: typeof setBrief;
   readProject: typeof readProject;
   listProjects: typeof listProjects;
@@ -155,6 +175,7 @@ export type ProjectBlocks = {
     createProject: ActionConfig;
     setRepository: ActionConfig;
     setMcpServers: ActionConfig;
+    setChecks: ActionConfig;
     setBrief: ActionConfig;
     readProject: ActionConfig;
     listProjects: ActionConfig;
@@ -180,6 +201,16 @@ function assertRepository(repository: string | null | undefined): void {
   if (problem !== undefined) throw new ProjectRefusedError("invalid-repository", `${problem}.`);
 }
 
+/** The commands, trimmed, or refused `invalid-check` naming the first a row may not record. */
+function checkedChecks(checks: readonly string[]): string[] {
+  const trimmed = checks.map((check) => check.trim());
+  for (const check of trimmed) {
+    const problem = checkoutCommandProblem(check);
+    if (problem !== undefined) throw new ProjectRefusedError("invalid-check", `${problem}.`);
+  }
+  return trimmed;
+}
+
 /** `createProject`, refusing an MCP server name outside `offered`. */
 function defineWriteProject(offered: readonly string[]) {
   return handler({
@@ -192,12 +223,13 @@ function defineWriteProject(offered: readonly string[]) {
       if (problem !== undefined) throw new ProjectRefusedError("invalid-project-id", `${problem}.`);
       assertRepository(input.repository);
       const mcpServers = checkedMcpServers(input.mcpServers ?? [], offered);
+      const checks = checkedChecks(input.checks ?? []);
       const owner = ctx.session.identity.userId;
       if (owner === undefined || owner.length === 0) {
         throw new Error("createProject needs a session with an owner: the owner is the session's user.");
       }
       const visibility: ProjectVisibility = input.visibility ?? "shared";
-      if (visibility === "private") return writePrivateProject(ctx, input, owner, mcpServers);
+      if (visibility === "private") return writePrivateProject(ctx, input, owner, mcpServers, checks);
       const { projects } = refsOf(ctx);
 
       const heldBy = (row: ProjectRow): CreateProjectOutput => {
@@ -218,7 +250,8 @@ function defineWriteProject(offered: readonly string[]) {
         ownerUserId: owner,
         members: unique([owner, ...(input.members ?? [])]),
         repository: input.repository ?? null,
-        mcpServers
+        mcpServers,
+        checks
       });
       try {
         await projects.create(input.id, row);
@@ -244,7 +277,8 @@ async function writePrivateProject(
   ctx: BlockContext,
   input: CreateProjectInput,
   owner: string,
-  mcpServers: string[]
+  mcpServers: string[],
+  checks: string[]
 ): Promise<CreateProjectOutput> {
   const others = unique(input.members ?? []).filter((member) => member !== owner);
   if (others.length > 0) {
@@ -269,7 +303,8 @@ async function writePrivateProject(
     ownerUserId: owner,
     members: [owner],
     repository: input.repository ?? null,
-    mcpServers
+    mcpServers,
+    checks
   });
   try {
     await projects.create(input.id, row);
@@ -323,6 +358,24 @@ function defineSetMcpServers(offered: readonly string[]) {
   });
 }
 
+/**
+ * `setChecks`: replace a project's check commands whole; `[]` names none.
+ * Members only. Rewritten like `setRepository`, so a concurrent write to
+ * another field keeps what it wrote.
+ */
+const setChecks = handler({
+  name: "project-set-checks",
+  inputSchema: setChecksInputSchema,
+  outputSchema: setChecksOutputSchema,
+  resources: WRITE_RESOURCES,
+  execute: async (input, ctx) => {
+    const row = await projectRowToChange(ctx, input.project, "checks");
+    const checks = checkedChecks(input.checks);
+    await retryOnConflict(() => row.updateState((state) => ({ ...state, checks })));
+    return { project: projectRowSchema.parse(row.state) };
+  }
+});
+
 /** Members only. Rewritten like `setRepository`, so a concurrent write keeps what it wrote. */
 const setBrief = handler({
   name: "project-set-brief",
@@ -364,6 +417,7 @@ export function defineProjectBlocks(options: ProjectBlocksOptions = {}): Project
     createProject,
     setRepository,
     setMcpServers,
+    setChecks,
     setBrief,
     readProject,
     listProjects,
@@ -382,6 +436,11 @@ export function defineProjectBlocks(options: ProjectBlocksOptions = {}): Project
         block: setMcpServers,
         description:
           "Replace the MCP servers a project's coding runs get, by the names the server offers; [] turns them off. Members only."
+      },
+      setChecks: {
+        block: setChecks,
+        description:
+          "Replace the commands that check a project's code (for example \"pnpm typecheck\"), each one program and its arguments with no shell operators; [] names none. Members only."
       },
       setBrief: {
         block: setBrief,

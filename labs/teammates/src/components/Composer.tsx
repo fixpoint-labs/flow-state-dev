@@ -20,6 +20,7 @@ export function Composer({
   running,
   onSend,
 }: {
+  /** The conversation it types to; `/` and a switch find its composer by it. */
   sessionId: string;
   workerName: string;
   running: boolean;
@@ -55,6 +56,8 @@ export function Composer({
         <div className="flex items-end gap-2 rounded-3xl border border-border bg-card px-3 py-2 focus-within:border-ring">
           <textarea
             aria-label={`Message ${workerName}`}
+            data-composer
+            data-session-id={sessionId}
             rows={1}
             value={text}
             onChange={(event) => setText(event.target.value)}
