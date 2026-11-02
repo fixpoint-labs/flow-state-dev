@@ -217,6 +217,30 @@ describe("refreshSessionWindow", () => {
     expect(live.source.state.mock.calls.length).toBeGreaterThan(2);
   });
 
+  it("starts at the end again when older turns are dropped from under the window, so the newest replies stay on screen", async () => {
+    const live = session(range(0, 500));
+    const window = await readSessionTail(live.source, "s1");
+    // A retention policy drops the oldest turns: the session is the same one,
+    // but fewer items than the window's start remain.
+    live.items.splice(0, 449);
+
+    const refreshed = await refreshSessionWindow(live.source, window);
+
+    expect(ids(refreshed.items)).toEqual(ids(range(449, 500)));
+    expect(refreshed).toMatchObject({ start: 0, total: 51, hasEarlier: false });
+  });
+
+  it("starts at the end again when older turns dropped shift the window's items before its start", async () => {
+    const live = session(range(0, 500));
+    const window = await readSessionTail(live.source, "s1");
+    live.items.splice(0, 50);
+
+    const refreshed = await refreshSessionWindow(live.source, window);
+
+    // A read from the old start would skip item_300..item_349.
+    expect(ids(refreshed.items)).toEqual(ids(range(300, 500)));
+  });
+
   it("starts at the end again when the session under the id is another one", async () => {
     const live = session(range(0, 500));
     const window = await readSessionTail(live.source, "s1");

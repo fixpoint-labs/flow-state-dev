@@ -14,6 +14,7 @@
  * behind items already there. A read of only the items past the old end
  * misses both; a read from the window's start cannot.
  */
+import { compareItemOrder } from "@flow-state-dev/contracts/items";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { SessionsApi } from "../client";
 import type { SessionStateSnapshotResponse } from "../types";
@@ -123,19 +124,31 @@ export async function refreshSessionWindow(source: SessionItemsSource, window: S
 
 /**
  * Read the window's session again from `start`, through the client's one
- * paging loop ({@link readSessionHistory}). A session deleted and created
- * again under the id since is another session: the window starts over at its
- * end.
+ * paging loop ({@link readSessionHistory}). The window starts over at the
+ * session's end when its positions no longer hold: the session was deleted
+ * and created again under the id, or older turns were dropped (a retention
+ * policy) so the read from `start` begins past the window's first item.
  */
 async function reread(source: SessionItemsSource, window: SessionItemsWindow, start: number): Promise<SessionItemsWindow> {
   const { sessionId, itemTypes } = window;
   // Pages of what the window expects plus one, so a read is one call unless the session grew by more.
   const pageLimit = window.total - start + SESSION_WINDOW_PAGE;
   const read = await readSessionHistory(source, sessionId, { itemTypes, offset: start, pageLimit });
-  if (window.sessionCreatedAt !== undefined && read.sessionCreatedAt !== window.sessionCreatedAt) {
+  const recreated = window.sessionCreatedAt !== undefined && read.sessionCreatedAt !== window.sessionCreatedAt;
+  if (recreated || !holdsFirstItem(window, read.items ?? [])) {
     return readSessionTail(source, sessionId, itemTypes === undefined ? {} : { itemTypes });
   }
   return windowOf(sessionId, itemTypes, start, read);
+}
+
+/**
+ * Whether the read still holds the window's first item. Items stored before
+ * the window only shift it, and the read still runs through it to the end; a
+ * read that lacks it started past it, because older items were dropped.
+ */
+function holdsFirstItem(window: SessionItemsWindow, items: readonly OutputItem[]): boolean {
+  const first = window.items[0];
+  return first === undefined || items.some((item) => compareItemOrder(item, first) === 0);
 }
 
 function windowOf(
