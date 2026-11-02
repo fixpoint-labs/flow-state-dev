@@ -68,14 +68,19 @@ export async function run(
   return { stdout: String(result.stdout), stderr: String(result.stderr) };
 }
 
-/** The most of a by-line run's standard error kept for its failure. */
+/** The most of a by-line run's standard error kept for its failure: the end of it, where the error is. */
 const STDERR_KEPT = 64 * 1024;
 
 /**
  * `run`, with standard output handed to `onLine` as it arrives. A failure
  * rejects the way `execFile`'s does: `code` is the exit code, `signal` the
  * signal that ended it, `killed` set when the wall clock did, and `stderr`
- * what it wrote there.
+ * the last of what it wrote there.
+ *
+ * The command runs in a process group of its own (outside Windows), and the
+ * wall clock kills that whole group: a command that starts children (a shell
+ * script, a package manager's lifecycle scripts) can't outlive its budget
+ * through them, or keep the run from settling by holding its output open.
  */
 async function runByLine(
   file: string,
@@ -83,18 +88,35 @@ async function runByLine(
   options: RunOptions,
   onLine: (line: string) => void,
 ): Promise<{ stdout: string; stderr: string }> {
+  const ownGroup = process.platform !== "win32";
   const child = spawn(file, args, {
     cwd: options.cwd,
-    timeout: options.timeoutMs,
     env: options.env === undefined ? process.env : { ...process.env, ...options.env },
     stdio: ["pipe", "pipe", "pipe"],
+    detached: ownGroup,
     ...(options.signal !== undefined ? { signal: options.signal } : {}),
   });
+  let timedOut = false;
+  const stop = (): void => {
+    try {
+      if (ownGroup && child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
+      else child.kill("SIGKILL");
+    } catch {
+      // Already gone.
+    }
+    // A descendant that left the group can still hold the pipes; let go of them.
+    child.stdout.destroy();
+    child.stderr.destroy();
+  };
+  const clock = setTimeout(() => {
+    timedOut = true;
+    stop();
+  }, options.timeoutMs);
   child.stdin.end(options.input);
   let stderr = "";
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", (chunk: string) => {
-    if (stderr.length < STDERR_KEPT) stderr += chunk.slice(0, STDERR_KEPT - stderr.length);
+    stderr = (stderr + chunk).slice(-STDERR_KEPT);
   });
   let failed: unknown;
   const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
@@ -104,20 +126,20 @@ async function runByLine(
       onLine(line);
     } catch (error) {
       failed = error;
-      child.kill();
+      stop();
     }
   });
   const [code, signal] = await new Promise<[number | null, NodeJS.Signals | null]>((resolve, reject) => {
     child.once("error", reject);
     // `close`, not `exit`: every line has been handed over by then.
     child.once("close", (exitCode, exitSignal) => resolve([exitCode, exitSignal]));
-  });
+  }).finally(() => clearTimeout(clock));
   if (failed !== undefined) throw failed;
-  if (code !== 0) {
+  if (code !== 0 || timedOut) {
     throw Object.assign(new Error(`Command failed: ${file} ${args.join(" ")}\n${stderr}`), {
       code,
       signal,
-      killed: child.killed || signal !== null,
+      killed: timedOut || signal !== null,
       stderr,
     });
   }

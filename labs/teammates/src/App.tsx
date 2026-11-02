@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LabAdapter, NewTeammate, WorkerRow } from "./adapter";
 import { Conversation } from "./components/Conversation";
+import { KeysSheet } from "./components/KeysSheet";
 import { PopupView, type Popup } from "./components/Popups";
+import { Switcher } from "./components/Switcher";
 import { TalkPanel } from "./components/TalkPanel";
 import { WorkersList } from "./components/WorkersList";
 import { readAddress, writeAddress, type Address, type AddressWrite } from "./lib/address";
 import { harnessName } from "./lib/harness";
+import { focusComposer, focusWhenDrawn, useLabKeys } from "./lib/keys";
 import { lookOf as lookOfRow } from "./lib/looks";
 
 /**
@@ -19,7 +22,22 @@ import { lookOf as lookOfRow } from "./lib/looks";
  * link and Back reopen the teammate and the task popup.
  *
  * The roster is read again after a hire or a fire made here.
+ *
+ * Keys (`useLabKeys`): ⌘K switches to any teammate or hires one, Alt+↑/↓
+ * steps through the teammates, `/` puts the cursor in the composer, `?` lists
+ * the keys. Opening a teammate, however it is opened, puts the cursor in its
+ * composer.
  */
+
+/** What `?` lists: every key the lab has. */
+const KEYS = [
+  ["⌘K / Ctrl+K", "Switch to any teammate, or hire one"],
+  ["Alt+↑ / Alt+↓", "The previous or next teammate"],
+  ["/", "Put the cursor in the composer"],
+  ["?", "This list"],
+  ["Enter", "Send, in the composer"],
+  ["Esc", "Close a dialog"],
+] as const;
 export function App({ adapter }: { adapter: LabAdapter }) {
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
   const [sessions, setSessions] = useState<Record<string, string>>({});
@@ -27,6 +45,9 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   // A task or a message, open in a popup over the thread.
   const [popup, setPopup] = useState<Popup>();
   const [talkOpen, setTalkOpen] = useState(true);
+  const [switching, setSwitching] = useState(false);
+  const [keysOpen, setKeysOpen] = useState(false);
+  const [hiring, setHiring] = useState(false);
   // What the address named when the page loaded, until the roster is read.
   const start = useRef<Address | null>(null);
   if (start.current === null) start.current = readAddress();
@@ -71,8 +92,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const hire = async (teammate: NewTeammate) => {
     const hired = await adapter.hire(teammate);
     await loadRoster();
-    how.current = "push";
-    setSelected(hired.id);
+    selectWorker(hired.id);
   };
   const fire = async (worker: string) => {
     await adapter.fire(worker);
@@ -93,10 +113,12 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const worker = teammates.find((w) => w.id === selected);
   // No worker chosen, no Talk column held for one.
   const talkShown = talkOpen && worker !== undefined;
-  // A user's pick: a step Back returns from.
+  // A user's pick: a step Back returns from, and the teammate opens with the cursor in its composer.
   const selectWorker = useCallback((id: string) => {
     how.current = "push";
     setSelected(id);
+    const sessionId = conversations.current[id];
+    if (sessionId !== undefined) focusComposer(sessionId);
   }, []);
   const openPopup = useCallback((next: Popup) => {
     how.current = "push";
@@ -137,6 +159,16 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
   const sessionId = selected ? sessions[selected] : undefined;
+  useLabKeys({
+    palette: () => setSwitching((open) => !open),
+    step: (by) => {
+      // The teammates in the order the list draws them; the ends hold.
+      const at = teammates.findIndex((w) => w.id === selected);
+      const next = teammates[at === -1 ? (by === 1 ? 0 : teammates.length - 1) : at + by];
+      if (next !== undefined) selectWorker(next.id);
+    },
+    help: () => setKeysOpen(true),
+  });
   return (
     <div
       className="grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
@@ -154,6 +186,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         onSelect={selectWorker}
         onOpen={openPopup}
         onHire={hire}
+        hiring={hiring}
+        onHiring={setHiring}
       />
       {worker && sessionId ? (
         <Conversation
@@ -175,6 +209,26 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         <main aria-label="Conversation" />
       )}
       {talkShown ? <TalkPanel adapter={adapter} worker={worker} nameOf={nameOf} onClose={() => setTalkOpen(false)} /> : null}
+      <Switcher
+        open={switching}
+        onOpenChange={setSwitching}
+        teammates={teammates}
+        onPick={(id) => {
+          // A pick goes somewhere: the key list or a popup, if one was open under the switcher, closes too.
+          setSwitching(false);
+          setKeysOpen(false);
+          setPopup(undefined);
+          selectWorker(id);
+        }}
+        onHire={() => {
+          setSwitching(false);
+          setKeysOpen(false);
+          setPopup(undefined);
+          setHiring(true);
+          focusWhenDrawn('input[aria-label="Teammate name"]');
+        }}
+      />
+      <KeysSheet open={keysOpen} onOpenChange={setKeysOpen} keys={KEYS} />
       {popup ? <PopupView adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} onClose={closePopup} onMissing={popup === addressed.current ? dropPopup : undefined} /> : null}
     </div>
   );

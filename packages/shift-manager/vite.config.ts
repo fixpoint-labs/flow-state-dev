@@ -21,6 +21,10 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), recordBuildInputs({ repoRoot: fileURLToPath(new URL("../..", import.meta.url)) })],
   // The registry copies import `@/components/…` and `@/lib/utils`, as `components.json` names them.
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
+  // Relative asset URLs, read against the page's `<base href>` (`index.html`): the
+  // same build serves at the root of its origin and under a proxy's sub-route
+  // (`apps/super-app`), which rewrites that `<base>` to its prefix.
+  base: "./",
   build: { outDir: "dist-client" },
   // `.fsdev/` holds the Lab's store and its runs' places, worktrees of the
   // whole checkout among them: nothing a page imports, and too many files to watch.
