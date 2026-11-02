@@ -1964,6 +1964,20 @@ check('SPEC SET: review on the shared PR is folded once, and the round is charge
   assert.equal(fix3.lastSeenActivityAt, 't1', 'and the advanced cursor, so it does not re-fold the batch')
   assert.equal(result.moreWorkNow, false, 'nothing is left owed this wake')
 
+  // A sibling whose work is not covered — here its review, behind a lead folding a POC verdict — waits one
+  // wake and runs on the very next: the lead consumes its verdict, so it is not picked again. Contrast the
+  // merge wait in the gate check, where the lead consumes nothing.
+  const behindVerdict = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: specSetEpic({ specSetPr: 50 }),
+      issues: [member('FIX-2', { verdicts: [{ claim: 'c', verdict: 'CONFIRMED', evidence: 'ran it' }] }), member('FIX-3')],
+    }),
+    respond: epicResponder({ fresh, worker: { 'FIX-2': { specPr: 50 } } }),
+  })
+  assert.deepEqual(workerLabels(behindVerdict.calls), ['apply-verdict:FIX-2'])
+  assert.deepEqual(behindVerdict.result.deferred, ['FIX-3'], 'a review fold is not covered by a verdict fold')
+  assert.equal(behindVerdict.result.moreWorkNow, true, 'nothing external stands between FIX-3 and its review')
+
   // If the fold died, nothing was handled: the sibling's cursor must not move either.
   const dead = await run('epic-wake.js', {
     args: epicArgs({ epic: specSetEpic({ specSetPr: 50 }), issues: [member('FIX-2'), member('FIX-3')] }),
@@ -2004,7 +2018,7 @@ check('SPEC SET: one approval gate and one merge gate for the shared PR, naming 
   assert.deepEqual(merges[0].issueIds, ['FIX-2', 'FIX-3'])
   assert.deepEqual(workerLabels(merging.calls), ['implement:FIX-2'], 'one dispatch on an unmerged shared PR')
   assert.deepEqual(merging.result.deferred, ['FIX-3'], 'the other waits a wake')
-  assert.equal(merging.result.moreWorkNow, true)
+  assert.equal(merging.result.moreWorkNow, false, 'the others wait on the merge itself, an external event, not on an immediate re-wake that re-dispatches the same lead')
   assert.equal(merging.result.crossSpecGate, undefined, 'members were reviewed together: no separate pass')
 
   // Merged: every member implements independently, each from main.

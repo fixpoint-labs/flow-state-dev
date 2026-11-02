@@ -1452,7 +1452,7 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
       if (openSetBusy.has(row.specPr)) {
         // Covered only by a lead that is itself folding the PR's review; any other lead leaves the batch unread.
         if (next.action === 'spec-review' && openSetBusy.get(row.specPr) === 'spec-review') coveredBySet.push({ row, ...next })
-        else serialized.push({ row, ...next })
+        else serialized.push({ row, ...next, behind: openSetBusy.get(row.specPr) })
         continue
       }
       openSetBusy.set(row.specPr, next.action)
@@ -3348,16 +3348,12 @@ const settlingClaimFor = (issueId) => {
  * set as a set before anyone else sees it. → orchestration.md § "The spec set".
  */
 const specSetPrompt = (item) =>
-  `SPEC-SET for epic ${epic.issueId}: write the issue specs for ${item.members.map((r) => r.id).join(', ')} together, as ONE PR. Follow .claude/agents/epic-agent.md → "Spec set".\n` +
-  `The epic spec is merged at specs/epics/${epic.issueId}/ (review PR #${epic.prNumber}); read it from fresh main. Every issue spec aligns to it.\n` +
-  `1. One sub-agent per issue, in parallel, each running issue-spec for its issue and writing ONLY specs/issues/<ISSUE-ID>/ on its own branch off fresh main. Each skips opening its own PR.\n` +
-  `2. Merge those branches into one spec-set branch off fresh main. The paths are disjoint, so a conflict means a sub-agent wrote outside its directory: fix that, do not resolve it by hand.\n` +
-  `3. Review the set as a set before opening: cross-spec-review over all of them (with the epic spec as the reference), then analysis and reuse-review over the set. Fold what changes a spec into that spec. Settle a disputed factual claim by returning settleRequested instead.\n` +
-  `4. When the set shows an epic decision is wrong, amend specs/epics/${epic.issueId}/DECISIONS.md in the same PR and list every such amendment at the TOP of the PR body under "Epic amendments". The owner approves them with the set.\n` +
-  `5. Open ONE PR, ready for review, titled "spec(${epic.issueId}): issue specs for <epic name>". Link it from each member's Linear issue and set each one's status per issue-lifecycle → "Linear status is a mirror you own".\n` +
+  `SPEC-SET for epic ${epic.issueId}: write the issue specs for ${item.members.map((r) => r.id).join(', ')} together, as ONE PR. ` +
+  `Follow .claude/agents/epic-agent.md → "Spec set" for the steps; this prompt carries only the inputs and the return.\n` +
+  `The epic spec is merged at specs/epics/${epic.issueId}/ (review PR #${epic.prNumber}); read it from fresh main.\n` +
   `Return issueId ${item.row.id}, phase AWAITING_SPEC_APPROVAL, specPr = the PR number, specSetMembers = every issue the PR specs, readyToMerge false, multiPrPending false. ` +
-  `Leave an issue out of specSetMembers only when it should not be specced here (it is really a bug, or it is out of the epic), and say which and why in status. ` +
-  `If no PR opened, return phase NEEDS_SPEC and specPr null, with a blocker if a human decision stands in the way.\n` +
+  `Leave an issue out of specSetMembers only when it should not be specced here, and say which and why in status. ` +
+  `If no PR opened, return phase NEEDS_SPEC and specPr null, with a blocker if a human decision stands in the way. A disputed factual claim goes back as settleRequested.\n` +
   `Do not prompt the user. Return the compact status object and exit.`
 
 phase('Advance')
@@ -4162,7 +4158,12 @@ return {
     (plan.heldForFold.length + plan.held.length > 0 &&
       epicApproved && epicSpecMerged &&
       !(epicOut.openQuestions.length || epicOut.unsettled.length || epicOut.answers.length)) ||
-    plan.deferred.length > 0 ||
+    // A row serialized behind an `implement` on the same unmerged spec-set PR is waiting for that PR to
+    // MERGE, which is external: the lead's merge backstop returns a checks or thread-policy wait without
+    // consuming anything, so an immediate re-wake picks the same lead and defers the same rows forever.
+    // The merge itself is a PR event and wakes the coordinator. Every other lead consumes its work (a
+    // review batch, a verdict, an answer), so a row behind one is runnable next wake.
+    plan.deferred.some((d) => !plan.serialized.includes(d) || d.behind !== 'implement') ||
     plan.queuedClaims.length + unsettled.length + newRequests.length > 0 ||
     (foldEpicWanted && !plan.foldEpic) ||
     // A row that is dispatchable AND whose trigger needs no external event. `pendingAction` alone was too
