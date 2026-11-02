@@ -184,8 +184,7 @@ const lab = await openLab({
   stores: sqliteStores({ filename: STORE }),
   harness: harness.slot,
   harnessName: harness.name,
-  // A coder hired with `settings: { harness: "cursor" }` runs on Cursor, not the coder above.
-  harnesses: workerHarnesses(harness.name),
+  harnesses: workerHarnesses,
   runTimeoutMs: harness.runTimeoutMs,
   // Runs' places and the host's clones, beside the store; only `file://` remotes are reached.
   workspace: { root: join(dirname(STORE), "devteam-runs"), remotes: { allow: ["file"] } },

@@ -189,27 +189,18 @@ export function cursorHarness(feeds: HarnessFeeds): HarnessBlock {
   } as never) as unknown as HarnessBlock;
 }
 
-/** How long one Codex or Cursor run may take: the same as a Claude Code run. */
-export const AGENT_RUN_TIMEOUT_MS = 10 * 60_000;
+/** How long one Claude Code, Codex, or Cursor run may take. */
+export const CLAUDE_CODE_RUN_TIMEOUT_MS = 10 * 60_000;
 
 /**
- * The harnesses a `coder` worker picks at hire (`settings: { harness: "cursor" }`),
- * by name, other than the one the profile starts on. Each is the real agent:
- * a worker named onto one runs on it or its run fails, never on the default.
- * Only the default's account is probed at start ({@link startHarness}); a
- * worker on another harness that isn't signed in fails its run with that
- * harness's own error.
- *
- * @param started The profile's coder, which the default slot already runs.
+ * Real agents a coder may name at hire. The coder flow skips the name the
+ * profile already started, so that slot is not built a second time.
  */
-export function workerHarnesses(started: HarnessChoice): Record<string, { slot: (feeds: HarnessFeeds) => HarnessBlock; runTimeoutMs: number }> {
-  const all = {
-    "claude-code": { slot: claudeCodeHarness, runTimeoutMs: CLAUDE_CODE_RUN_TIMEOUT_MS },
-    codex: { slot: codexHarness, runTimeoutMs: AGENT_RUN_TIMEOUT_MS },
-    cursor: { slot: cursorHarness, runTimeoutMs: AGENT_RUN_TIMEOUT_MS },
-  };
-  return Object.fromEntries(Object.entries(all).filter(([name]) => name !== started));
-}
+export const workerHarnesses: Record<string, { slot: (feeds: HarnessFeeds) => HarnessBlock; runTimeoutMs: number }> = {
+  "claude-code": { slot: claudeCodeHarness, runTimeoutMs: CLAUDE_CODE_RUN_TIMEOUT_MS },
+  codex: { slot: codexHarness, runTimeoutMs: CLAUDE_CODE_RUN_TIMEOUT_MS },
+  cursor: { slot: cursorHarness, runTimeoutMs: CLAUDE_CODE_RUN_TIMEOUT_MS },
+};
 
 /** The row line the manager's prompt carries, `Row <id>, phase <p>, attempt <n>.` */
 function rowLine(prompt: string): string {
@@ -249,9 +240,6 @@ export const STEP_MS_ENV = "DEVFORCE_LAB_STEP_MS";
 
 /** How long one scripted run may take: five paced steps and a commit. */
 export const SCRIPTED_RUN_TIMEOUT_MS = 60_000;
-
-/** How long one Claude Code run may take. */
-export const CLAUDE_CODE_RUN_TIMEOUT_MS = 10 * 60_000;
 
 /**
  * The scripted run a served Lab uses by default: narrates a step every

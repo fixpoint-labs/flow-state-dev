@@ -33,13 +33,6 @@
  * detached: the claim gate refuses an entry that authors session state
  * beneath it, and this flow refuses to build otherwise, naming the entry.
  *
- * **A worker can pick its harness** (FIX-2486). Beside the default slot, the
- * flow takes named harnesses (`harnesses`), and a worker naming one in its
- * `harness` setting (`harness: cursor`) has its tasks, steers and talk run
- * through managers built for that one. A worker naming none runs on the
- * default; a name the flow doesn't run is refused at hire, never run on
- * another harness.
- *
  * **One door** covers both managers: a user's line typed in a run's own
  * session, whose task is found on the board of the session it was filed
  * from. While the task is open the line steers it, and the run takes it at
@@ -240,14 +233,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     return filed === undefined ? undefined : { tasks: filed.tasks, runOf };
   };
 
-  /**
-   * Everything that drives a harness, built for one: the two managers, the
-   * router between them, the door a line typed in a run's session takes, and
-   * the talk turn another worker's message to a finished task takes. A
-   * manager's harness is fixed when it is built, so each harness a worker may
-   * name gets its own. The default's names are the ones runs were always
-   * recorded under; a named harness's carry its name.
-   */
+  /** The default's block names are the ones runs were recorded under. A named harness's blocks carry its name. */
   const buildFor = (harness: CoderHarness, suffix: string) => {
     const runTimeoutMs = harness.runTimeoutMs ?? options.runTimeoutMs;
     const stopsOnAbort = harness.stopsOnAbort ?? options.stopsOnAbort;
@@ -314,14 +300,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   );
   const harnessNames = coderHarnessNames(options);
 
-  /**
-   * What the session's worker names in its `harness:` setting, read from the
-   * worker this turn resolves (a declared one, or the user's own on the
-   * roster). A worker naming none, or the default's own name, runs on the
-   * default; the config schema refused every other name at hire, so a name
-   * built for nothing here is a worker written before its harness went away,
-   * and is refused rather than run on another.
-   */
+  /** A name hired when its harness still existed, and since removed, is refused. It does not run on another. */
   const builtFor = async (ctx: unknown): Promise<Built> => {
     const worker = await workerOf(installation, CODER_FLOW)(ctx as never);
     const name = worker.config.harness;

@@ -81,8 +81,7 @@ export const lab = await openLab({
   stores: sqliteStores({ filename: STORE }),
   harness: harness.slot,
   harnessName: harness.name,
-  // A coder hired with `settings: { harness: "cursor" }` runs on Cursor, not the coder above.
-  harnesses: workerHarnesses(harness.name),
+  harnesses: workerHarnesses,
   runTimeoutMs: harness.runTimeoutMs,
   // Runs' places beside the store, the two projects' worktrees of this checkout
   // among them. No remote is allowed: a run is never cloned from one.
