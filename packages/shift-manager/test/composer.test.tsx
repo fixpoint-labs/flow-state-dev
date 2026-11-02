@@ -342,7 +342,7 @@ describe("adopting an old task draft when storage is full", () => {
     Object.defineProperty(storage, "setItem", { value: realSet, configurable: true, writable: true });
     expect(setItem).toHaveBeenCalled();
 
-    // Room again: the next open adopts it.
+    // Space again: the next open adopts it.
     render(
       <TurnComposer testId="t" label="Message worker" placeholder="" blocked={null} draftKey={taskDraftKey("lead.tasks", "t-1")} legacyDraftKey={legacyTaskDraftKey("t-1")} send={() => new Promise(() => {})} />,
     );
