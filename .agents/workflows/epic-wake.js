@@ -216,6 +216,15 @@ function specSetPaused(rows) {
 }
 
 /**
+ * The unmerged spec-set PRs with an open human decision on any member. A worker that escalates parks only its
+ * own row, but every member shares the PR's branch and its merge: a sibling allowed to run would fold the PR
+ * or merge it around the question. So the whole PR waits — no dispatch, and no gate — until it is answered.
+ */
+function openSetsWithDecision(rows) {
+  return new Set(rows.filter((r) => onOpenSpecSet(r) && r.blocker && !r.linearTerminal).map((r) => r.specPr))
+}
+
+/**
  * Is this row's spec in a spec-set PR that has not merged? Every member shares that PR's branch, so at
  * most one dispatch per such PR runs in a wake (`allocate`): two workers folding into one branch is a
  * push race, and N implement backstops merging one PR is N merges of the same thing.
@@ -1437,6 +1446,7 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
   const serialized = []
   const openSetBusy = new Map() // spec-set PR → the action already dispatched on it this wake
   const setPaused = specSetPaused(rows)
+  const decidingSets = openSetsWithDecision(rows)
 
   for (const row of rows) {
     const next = pendingAction(row)
@@ -1463,6 +1473,10 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
         continue
       }
     } else if (next && onOpenSpecSet(row)) {
+      if (decidingSets.has(row.specPr)) {
+        waiting.push(row)
+        continue
+      }
       if (openSetBusy.has(row.specPr)) {
         // Covered only by a lead that is itself folding the PR's review; any other lead leaves the batch unread.
         if (next.action === 'spec-review' && openSetBusy.get(row.specPr) === 'spec-review') coveredBySet.push({ row, ...next })
@@ -3992,7 +4006,9 @@ const gates = [
 // ask waits until every open member is askable, since approving the PR approves all of them.
 {
   const isSetGate = (g) => (g.kind === 'spec-approval' || g.kind === 'spec-merge') && issues.some((r) => r.id === g.issueId && r.specSetMember && r.specPr === g.pr)
-  const setGates = gates.filter(isSetGate)
+  const deciding = openSetsWithDecision(issues)
+  for (const pr of deciding) log(`Spec-set PR #${pr}: a member has an open decision — no gate and no member dispatch until it is answered.`)
+  const setGates = gates.filter(isSetGate).filter((g) => !deciding.has(g.pr))
   const collapsed = []
   for (const g of setGates) {
     if (collapsed.some((c) => c.kind === g.kind && c.pr === g.pr)) continue

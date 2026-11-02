@@ -1951,6 +1951,25 @@ check('SPEC SET: a blocker from set authoring pauses the whole set, and its answ
   assert.deepEqual(answered.result.issues.find((r) => r.id === 'FIX-2').blockerResolutions || [], [], 'spent once the dispatch carried it')
 })
 
+check('SPEC SET: an open decision on one member parks the whole shared PR — no edits, no merge', async () => {
+  // A review fold that escalated parks only its own row. The siblings share the branch and the merge, so
+  // letting them run would edit or merge the very spec the decision is about.
+  const reviewing = { phase: 'AWAITING_SPEC_APPROVAL', specPr: 50, newSpecReviewEvents: true, latestActivityAt: 't2', headSha: 'h2' }
+  const parked = await run('epic-wake.js', {
+    args: epicArgs({ epic: specSetEpic({ specSetPr: 50 }), issues: [member('FIX-2', { blocker: 'which issue owns the seam?' }), member('FIX-3')] }),
+    respond: epicResponder({ fresh: { 'FIX-2': reviewing, 'FIX-3': reviewing } }),
+  })
+  assert.deepEqual(workerLabels(parked.calls), [], 'no sibling folds the PR around the open question')
+
+  const approvedUnmerged = { phase: 'AWAITING_SPEC_APPROVAL', specPr: 50, specApproved: true, specMerged: false }
+  const unmerged = await run('epic-wake.js', {
+    args: epicArgs({ epic: specSetEpic({ specSetPr: 50 }), issues: [member('FIX-2', { blocker: 'which issue owns the seam?' }), member('FIX-3')] }),
+    respond: epicResponder({ fresh: { 'FIX-2': approvedUnmerged, 'FIX-3': approvedUnmerged } }),
+  })
+  assert.deepEqual(workerLabels(unmerged.calls), [], 'no sibling runs the merge backstop')
+  assert.deepEqual(unmerged.result.gates.filter((g) => g.pr === 50), [], 'and the PR is offered no gate while the decision is open')
+})
+
 check('SPEC SET: issue specs wait for the epic spec to merge — two PRs, in order', async () => {
   const { result, calls } = await run('epic-wake.js', {
     args: epicArgs({ epic: specSetEpic(), issues: [row('FIX-2'), row('FIX-3')] }),

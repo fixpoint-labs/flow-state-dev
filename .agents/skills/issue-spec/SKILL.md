@@ -93,7 +93,8 @@ things change; everything else in the workflow below runs as written, in batch m
   you think is needed goes in your return, not in the epic's files: `epic-agent` decides it.
 - **Skip Step 4.5.** `epic-agent` runs `analysis` and `reuse-review` over the whole set, which is
   the point of writing them together. Still do Step 3.5.
-- **Stop after Step 6.1.** Commit and push the directory; open no PR and set no Linear status.
+- **Stop after Step 6.2.** Write the directory and draw, render and check its figures, then commit
+  and push. Open no PR and set no Linear status (6.3 onward belong to the shared PR).
   Return the branch, a one-line goal, the decisions on your sign-off, and anything you found
   that touches a sibling or the epic. Step 6.5 applies later, to the shared PR, when a worker
   folds its review.

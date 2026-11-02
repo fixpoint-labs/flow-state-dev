@@ -500,7 +500,8 @@ approving them too. This avoids an epic amendment PR that the spec set would hav
   (`specSetMode`) when it creates it.
 
 **A decision raised while writing the set pauses all of it.** The set isn't re-formed around the
-open question. Once the user answers, the next set dispatch carries the answer.
+open question. Once the user answers, the next set dispatch carries the answer. The same holds once
+the PR is open: a decision on any member parks every member, and the PR gets no gate until it's answered.
 
 **One weak spec holds the set.** Approval covers every member, so a spec that isn't ready
 delays all of them. The way out is to drop that issue from the set PR: it goes back to needing
