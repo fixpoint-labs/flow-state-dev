@@ -139,6 +139,8 @@ export interface ConversationView {
   entries: ConversationEntry[];
   /** The worker is answering in this conversation now. */
   running: boolean;
+  /** Present while the conversation holds turns older than its first entry: adds the page before them. */
+  loadEarlier?: () => Promise<void>;
 }
 
 /** One row of the message log: one message from one worker to another. */
@@ -591,10 +593,13 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       const reuse = stableList<ConversationEntry>((next) => {
         entries = next;
       });
+      const feed = feeds(sessionId);
+      const loadEarlier = () => feed.loadEarlier();
       const emit = () => {
         const running = answeringOf(items, inProgress, ended);
-        if (shown?.entries === entries && shown.running === running) return;
-        shown = { entries, running };
+        const earlier = feed.hasEarlier();
+        if (shown?.entries === entries && shown.running === running && (shown.loadEarlier !== undefined) === earlier) return;
+        shown = { entries, running, ...(earlier ? { loadEarlier } : {}) };
         onChange(shown);
       };
       const stopFeed = watchFeed(sessionId, (next) => next, (next) => {

@@ -168,6 +168,59 @@ describe("sessionFeed", () => {
     expect(h.urls[h.urls.length - 1]).toContain("since=1000");
   });
 
+  it("loads earlier pages back to the session's first item, with no gap or duplicate, while live items keep arriving", async () => {
+    // Over two pages: the thread opens on its newest 200, and *Load earlier* must reach the rest.
+    const all = Array.from({ length: 450 }, (_, i) => message("req_1", `m${i}`, `n${i}`, 10 + i));
+    let release: (() => void) | undefined;
+    const h = host(async (url) => {
+      const query = new URL(url, "http://x").searchParams;
+      const offset = Number(query.get("offset") ?? 0);
+      const limit = Number(query.get("limit") ?? 100);
+      // Hold the first earlier read open, so a live item lands while it is out.
+      if (offset === 50 && release === undefined) await new Promise<void>((resolve) => (release = resolve));
+      const items = all.slice(offset, offset + limit);
+      const nextOffset = offset + items.length;
+      return json({
+        ...snapshot(items, 1_000),
+        pagination: { offset, limit, total: all.length, hasMore: nextOffset < all.length, nextOffset }
+      });
+    });
+    const feed = sessionFeed(h.client, "s1");
+    feeds.push(feed);
+    await until(() => h.streams.length === 1);
+    expect(feed.getSnapshot()).toMatchObject({ hasEarlier: true });
+    expect(texts(feed)[0]).toBe("n250");
+
+    const first = feed.loadEarlier();
+    // A second press while the page is read shares the read rather than skipping a page.
+    expect(feed.loadEarlier()).toBe(first);
+    await until(() => release !== undefined);
+    h.streams[0].send(itemFrame(2_000, message("req_2", "live", "live", 2_000)));
+    await until(() => texts(feed).includes("live"));
+    release!();
+    await first;
+    expect(feed.getSnapshot().hasEarlier).toBe(true);
+    expect(texts(feed)[0]).toBe("n50");
+
+    await feed.loadEarlier();
+    const expected = [...all.map((_, i) => `n${i}`), "live"];
+    expect(texts(feed)).toEqual(expected);
+    expect(feed.getSnapshot().hasEarlier).toBe(false);
+
+    // Nothing earlier: no read.
+    const reads = h.urls.length;
+    await feed.loadEarlier();
+    expect(h.urls).toHaveLength(reads);
+  });
+
+  it("says nothing is earlier when the whole session fits in the first read", async () => {
+    const h = host(() => json(snapshot([message("req_1", "m1", "only", 10)])));
+    const feed = sessionFeed(h.client, "s1");
+    feeds.push(feed);
+    await until(() => h.streams.length === 1);
+    expect(feed.getSnapshot().hasEarlier).toBe(false);
+  });
+
   it("says reconnecting on an ordinary close, lapsed once a retry fails, and live again when a connection names the runs", async () => {
     const h = host(() => json(snapshot([])));
     const seen: string[] = [];

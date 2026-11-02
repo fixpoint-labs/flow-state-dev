@@ -13,9 +13,11 @@
  * | `send`          | the worker's door, `respond`, in that session                             |
  * | `interrupt`     | aborting the session's running request                                     |
  * | `watchThread`   | the session's items, followed through the client's `sessionFeed`          |
- * |                 | and that feed's connection state, for the connection bar                   |
+ * |                 | and that feed's connection state, for the connection bar; `loadEarlier`    |
+ * |                 | is the feed's, for a thread longer than its first read                     |
  * | `watchTasks`    | the conversation board's `listTasks_tasks` read, and the rows' open holds  |
- * | `watchTaskWork` | the items of a task's run session, followed through `sessionFeed`         |
+ * | `watchTaskWork` | the items of a task's run session, followed through `sessionFeed`, with   |
+ * |                 | its `loadEarlier` too                                                      |
  * | `sayInThread`   | the Inbox client's answer to the thread's open question, else `updateTask_tasks` with your line |
  * | `resolve`       | the Inbox client's answer to the thread's review: `{ verdict: "accepted" }` |
  * | `requestChanges`| the same answer with `{ verdict: "revise", words }`                        |
@@ -104,6 +106,8 @@ export interface ThreadView {
   turnStartedAt?: number;
   /** The running turn's request. */
   requestId?: string;
+  /** Present while the thread holds items older than its first entry: adds the page before them. */
+  loadEarlier?: () => Promise<void>;
 }
 
 /** A task's status, as the task tools name it. */
@@ -144,6 +148,8 @@ export interface TaskWork {
   entries: ThreadEntry[];
   /** Its run's latest review stop, when it made one. */
   review?: ReviewDetail;
+  /** Present while the run holds items older than its first entry: adds the page before them. */
+  loadEarlier?: () => Promise<void>;
 }
 
 /** Everything the screen reads and writes. */
@@ -324,7 +330,8 @@ export function createLabAdapter(): LabAdapter {
 
 /**
  * Follow one session's items of `types` through the client's `sessionFeed`,
- * calling `onItems` once the history lands and on every change after, and
+ * calling `onItems` once the history lands and on every change after, with
+ * the feed's `loadEarlier` while the session holds older items, and
  * `onState` on each change of the connection's state. The
  * feed holds one connection; `stop` closes it. The session stream sends an
  * item once it is finished, so an answer being written reaches the feed only
@@ -334,13 +341,14 @@ function followItems(
   fsd: Client,
   sessionId: string,
   types: readonly string[],
-  onItems: (items: Item[]) => void,
+  onItems: (items: Item[], loadEarlier: (() => Promise<void>) | undefined) => void,
   onState?: (state: ConnectionState) => void,
 ): { feed: SessionFeed; stop: Unsubscribe } {
   const feed = sessionFeed(fsd, sessionId, { itemTypes: [...types] });
+  const loadEarlier = () => feed.loadEarlier();
   let last: readonly unknown[] | undefined;
   let lastState: ConnectionState | undefined;
-  const stop = feed.subscribe(({ items, state }) => {
+  const stop = feed.subscribe(({ items, hasEarlier, state }) => {
     if (state !== lastState) {
       lastState = state;
       onState?.(state);
@@ -348,7 +356,7 @@ function followItems(
     // Nothing until the history lands, and nothing when only the connection state moved.
     if ((items.length === 0 && state === "connecting") || items === last) return;
     last = items;
-    onItems(items as unknown as Item[]);
+    onItems(items as unknown as Item[], hasEarlier ? loadEarlier : undefined);
   });
   return {
     feed,
@@ -671,6 +679,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
       // Items come from the session feed. The running turn is still read: the feed's runs are
       // child sessions, not this session's own turns.
       let items: Item[] | undefined;
+      let loadEarlier: (() => Promise<void>) | undefined;
       let connection: ConnectionState | undefined;
       let turnOf: { turn: Awaited<ReturnType<typeof runningTurns>>[number] | undefined; threads: boolean } | undefined;
       let last: string | undefined;
@@ -683,8 +692,10 @@ export function createWiredLab(fsd: Client): LabAdapter {
           ...(connection === undefined ? {} : { connection }),
           ...(turn?.startedAtMs === undefined ? {} : { turnStartedAt: turn.startedAtMs }),
           ...(turn === undefined ? {} : { requestId: turn.id }),
+          ...(loadEarlier === undefined ? {} : { loadEarlier }),
         };
-        const key = JSON.stringify(view);
+        // A function drops out of JSON: whether there is more before is said in the key.
+        const key = JSON.stringify({ ...view, earlier: loadEarlier !== undefined });
         if (key === last) return;
         last = key;
         onChange(view);
@@ -693,8 +704,9 @@ export function createWiredLab(fsd: Client): LabAdapter {
         fsd,
         sessionId,
         THREAD_ITEMS,
-        (next) => {
+        (next, earlier) => {
           items = next;
+          loadEarlier = earlier;
           tell();
         },
         (state) => {
@@ -735,9 +747,13 @@ export function createWiredLab(fsd: Client): LabAdapter {
             onChange({ entries: [] });
             return;
           }
-          stopItems = followItems(fsd, runSession, [...THREAD_ITEMS, "suspension"], (items) => {
+          stopItems = followItems(fsd, runSession, [...THREAD_ITEMS, "suspension"], (items, loadEarlier) => {
             const review = reviewStopOf(items);
-            onChange({ entries: entriesOf(items.filter((item) => item.type !== "suspension")), ...(review === undefined ? {} : { review }) });
+            onChange({
+              entries: entriesOf(items.filter((item) => item.type !== "suspension")),
+              ...(review === undefined ? {} : { review }),
+              ...(loadEarlier === undefined ? {} : { loadEarlier }),
+            });
           }).stop;
         },
         2000,
