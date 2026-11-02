@@ -38,6 +38,16 @@ export {
 
 export { sessionQueryFor } from "./session-client/session-query";
 export {
+  readSessionTail,
+  readSessionEarlier,
+  refreshSessionWindow,
+  SESSION_WINDOW_PAGE,
+  type ReadSessionEarlierOptions,
+  type ReadSessionTailOptions,
+  type SessionItemsSource,
+  type SessionItemsWindow
+} from "./session-client/session-window";
+export {
   harnessLines,
   sendHarnessLine,
   steerRunningTurn,

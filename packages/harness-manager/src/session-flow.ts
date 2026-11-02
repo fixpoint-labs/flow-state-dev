@@ -21,6 +21,13 @@
  * `steer` hands it the line and answers whether it took it. When it didn't,
  * the page sends the line as the next `turn`.
  *
+ * - **Which issue it is for** (`issue`, optional): a tracker key the person
+ *   named when the session was born, fixed like the model. The workspace is
+ *   handed it on the session's place, so a host can name the branch after it.
+ *   With `issueSpec` on, each turn until the harness confirms a conversation
+ *   opens with the issue's spec, read from the session's own checkout
+ *   (`./issue-spec`). Off, the prompt is the person's words alone.
+ *
  * Each turn also gets a record under its request id: what it asked for, what
  * the harness confirmed during it, and how it failed, read through core's
  * neutral `harnessFailureKind` and never a harness's message. A page derives
@@ -37,6 +44,25 @@
  * the session's branch has (`@flow-state-dev/workspace`'s
  * `recordBranchPullRequests`), and adds what the turn's tool calls did not
  * show: one opened by a raw API call, say.
+ *
+ * Each turn's record also keeps the commit the session's checkout was on when
+ * the turn first reached it (`base`) and the one it was on when the turn
+ * ended (`head`). The `changes` read answers what the turn's commits changed
+ * between the two, file by file or one file's patch (FIX-2384), so a page
+ * shows each turn's own changes, never a later turn's.
+ *
+ * With `verify`, a turn the harness finished also runs the host's checks in
+ * the session's working directory (`commandCheck`'s runner) and records them
+ * on the turn. A red check is reported, never a failed turn: the person is
+ * there, and the next turn is theirs.
+ *
+ * When the harness step ends, however it ended, the flow also records what
+ * the turn spent on its record, inside the turn so it lands before the
+ * request publishes its end: the request's own spend, as every harness reports it into the
+ * request (`reportHarnessSpend`), folded by orchestration's `requestSpendView`
+ * so a turn reads like a task. And a subscription window a harness hears
+ * about during a run (`onUsage`) lands in the person's usage record, read
+ * through the flow's `harnessUsage` query (FIX-2398).
  *
  * **Where a session starts** (`start`) is the person's pick at create, fixed
  * like the model: a ref to cut a new branch from, an existing branch, or a
@@ -68,6 +94,7 @@ import {
   sequencer,
   type HarnessSteering,
 } from "@flow-state-dev/core";
+import { requestSpendView, taskSpendViewSchema, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type {
   HarnessBlock,
@@ -76,13 +103,17 @@ import type {
   HarnessRunHandle,
   HarnessSessionHook,
   HarnessSteerHook,
+  HarnessUsageHook,
+  HarnessUsageReader,
 } from "@flow-state-dev/core/types";
+import { readRequestTotalSpend } from "@flow-state-dev/core/types";
 import {
   checkedOutBranch,
   occupyWorktree,
   pullRequestHead,
   recordBranchPullRequests,
   releaseLock,
+  run,
   WORKTREES,
   worktreesCollection,
   type LockLease,
@@ -91,7 +122,17 @@ import {
   type WorktreeOwner,
   type WorktreeRecording,
 } from "@flow-state-dev/workspace";
+import { readRunChanges, runChangesSchema } from "./commits";
 import { z } from "zod";
+import {
+  assertCommandCheckOptions,
+  commandCheckResultSchema,
+  runCommandChecks,
+  type CommandCheckOptions,
+} from "./command-check";
+import { harnessUsageAction, recordHarnessUsage } from "./harness-usage";
+
+import { isTrackerIssue, issueSpecOptions, readIssueSpecSection, TRACKER_ISSUE_REFUSED, type IssueSpecOption } from "./issue-spec";
 
 /** What one turn asked for and what came of it, recorded under its request id. */
 export const harnessTurnRecordSchema = z.object({
@@ -121,6 +162,25 @@ export const harnessTurnRecordSchema = z.object({
     })
     .nullable()
     .default(null),
+  /**
+   * The commit the session's checkout was on when the turn first reached it:
+   * where the turn's changes start. `null` when the checkout isn't a git
+   * repository, and on a turn recorded before this field (BP-030).
+   */
+  base: z.string().nullable().default(null),
+  /** The commit the checkout was on when the turn ended: where its changes end. `null` while it runs. */
+  head: z.string().nullable().default(null),
+  /** The checks `verify` ran when the turn ended, in order; `null` when none ran. */
+  checks: z.array(commandCheckResultSchema).nullable().default(null),
+  /**
+   * What the turn spent, as a task's spend reads (`taskSpendView`): the model,
+   * tokens, and the vendor's charge when it reported one. Written when the
+   * turn ends, however it ended; `null` before that, and on a turn that spent
+   * nothing.
+   */
+  spend: taskSpendViewSchema.nullable().default(null),
+  /** When the turn ended, in epoch millis: its duration is `endedAt - at`. */
+  endedAt: z.number().nullable().default(null),
 });
 
 /** One turn's record. */
@@ -178,6 +238,12 @@ export const harnessSessionStateSchema = z.object({
    */
   model: z.string().min(1).optional().readonly(),
   /**
+   * The tracker issue this session works on (`FIX-2165`), named at create and
+   * fixed for the session's life, like `model`. Absent for a session that
+   * names none, and on every session stored before issues could be named.
+   */
+  issue: z.string().min(1).optional().readonly(),
+  /**
    * Where the session starts. Set at create and fixed, like `model`. Absent:
    * wherever the host starts a session by default, as every session stored
    * before it could be picked does.
@@ -204,6 +270,12 @@ export interface HarnessSessionPlace {
   /** The authenticated tenant, when the host has one. */
   readonly tenantId?: string;
   readonly sessionId: string;
+  /**
+   * The issue the session was born with, when it names one. A host that
+   * names branches leads the session's branch with it, so the branch says
+   * what it is for and a tracker can link it.
+   */
+  readonly issue?: string;
 }
 
 /** What `HarnessSessionWorkspace.provision` is told beside the place. One object, so later fields join it. */
@@ -327,7 +399,21 @@ export interface HarnessSessionFeeds {
    * A harness that can't take a line in flight never calls it.
    */
   readonly onSteerable: HarnessSteerHook;
+  /**
+   * Records a subscription window the harness heard about during the run in
+   * the person's usage record, read through the flow's `harnessUsage` query.
+   * A harness whose vendor sends none never calls it.
+   */
+  readonly onUsage: HarnessUsageHook;
 }
+
+/** What the `changes` read takes: the turn, by its request id, and optionally one file. */
+export const harnessTurnChangesInputSchema = z.object({
+  /** The turn's request id, as its record is keyed in `state.turns`. */
+  turn: z.string().min(1),
+  /** A file the turn changed, by its path in the repository: answer its patch instead of the diff. */
+  path: z.string().min(1).optional(),
+});
 
 /** Options for {@link harnessSessionFlow}. */
 export interface HarnessSessionFlowOptions {
@@ -342,6 +428,30 @@ export interface HarnessSessionFlowOptions {
    * picked). Unset, the harness runs its own default.
    */
   readonly defaultModel?: string;
+  /**
+   * Checks to run when a turn the harness finished ends, in the session's
+   * working directory, recorded on the turn's `checks`. A red check does not
+   * fail the turn. Unset, nothing runs.
+   */
+  readonly verify?: CommandCheckOptions<HarnessSessionVerifyContext>;
+  /**
+   * One reader per harness for the flow's `harnessUsage` query, keyed by the
+   * harness's name, run only when a caller asks it to refresh. Unset, the
+   * query reads only what runs recorded.
+   */
+  readonly usageReaders?: Readonly<Record<string, HarnessUsageReader>>;
+  /**
+   * Open each turn of a session that names an issue with the issue's spec,
+   * until the harness confirms a conversation (`./issue-spec`). Off by
+   * default: a turn's prompt is the person's words alone.
+   */
+  readonly issueSpec?: IssueSpecOption;
+}
+
+/** What a `verify` resolver is handed: whose session, and where it works. */
+export interface HarnessSessionVerifyContext {
+  readonly place: HarnessSessionPlace;
+  readonly cwd: string;
 }
 
 /** How many turn records a session keeps. A notice reads only the latest. */
@@ -352,13 +462,15 @@ function requestOf(ctx: HarnessCallbackContext): string {
   return ctx.request.identity.id;
 }
 
-/** The session's place: its flow kind, tenant and id, as the framework names them. */
+/** The session's place: its flow kind, tenant, id and issue, as the framework and its create named them. */
 function placeOf(kind: string, ctx: HarnessCallbackContext): HarnessSessionPlace {
   const identity = ctx.session.identity;
+  const issue = (ctx.session.state as HarnessSessionState | undefined)?.issue;
   return {
     flowKind: kind,
     sessionId: identity.id,
     ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
+    ...(issue !== undefined ? { issue } : {}),
   };
 }
 
@@ -382,6 +494,11 @@ const BLANK_TURN: HarnessTurnRecord = {
   at: null,
   steered: null,
   setup: null,
+  base: null,
+  head: null,
+  checks: null,
+  spend: null,
+  endedAt: null,
 };
 
 /** `state` with the turn `requestId` changed by `change`, keeping only the latest {@link KEPT_TURNS}. */
@@ -410,6 +527,15 @@ export const HARNESS_SESSION_FAILED_OUTCOME = "The harness reported the run as f
 function failureWordsOf(handle: HarnessRunHandle): string {
   const words = (handle as { failureMessage?: unknown }).failureMessage;
   return typeof words === "string" && words.trim() !== "" ? words : HARNESS_SESSION_FAILED_OUTCOME;
+}
+
+/** The commit `cwd`'s checkout is on, or `null` when git can't read one there. */
+async function headCommit(cwd: string): Promise<string | null> {
+  try {
+    return (await run("git", ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"], { cwd, timeoutMs: 10_000 })).stdout.trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 /** Change the session's state atomically. */
@@ -459,6 +585,9 @@ export const HARNESS_SESSION_REMOVE_UNSUPPORTED = "This host's workspace does no
 /** The message a create without a model is refused with. */
 export const HARNESS_SESSION_MODEL_REQUIRED = "A new session must name the model it runs (`state.model`).";
 
+/** The message a create naming a malformed issue is refused with. */
+export const HARNESS_SESSION_ISSUE_REFUSED = `A session's \`state.issue\` is refused. ${TRACKER_ISSUE_REFUSED}`;
+
 /**
  * The feeds for one flow kind.
  *
@@ -482,11 +611,24 @@ export function harnessSessionFeeds(
 ): HarnessSessionFeeds {
   return {
     onSteerable: (steer, ctx) => steering.onSteerable(steer, ctx),
+    // The person running the turn is the principal, so the window lands in their row.
+    onUsage: async (report, ctx) => {
+      await recordHarnessUsage(ctx, report);
+    },
     model: (ctx) => (ctx.session.state as HarnessSessionState).model ?? defaultModel,
     cwd: async (ctx) => {
       const state = ctx.session.state as HarnessSessionState;
       const requestId = requestOf(ctx);
       const owner = harnessSessionAttachedTo(state.start);
+      // Where this turn's changes start: the first time the turn reaches its checkout.
+      const recordTurnBase = async (path: string): Promise<void> => {
+        if ((ctx.session.state as HarnessSessionState).turns?.[requestId]?.base != null) return;
+        const base = await headCommit(path);
+        if (base === null) return;
+        await changeState(ctx, (current) =>
+          withTurn(current, requestId, (turn) => (turn.base == null ? { ...turn, base } : turn)),
+        );
+      };
       if (owner !== null) {
         // Attached: the owner's worktree as it stands, never made or cut here.
         const path = workspace.locate(workPlaceOf(kind, ctx));
@@ -507,6 +649,7 @@ export function harnessSessionFeeds(
         if (state.workspace == null || state.workspace.worktree !== worktree) {
           await changeState(ctx, (current) => ({ ...current, workspace: { worktree } }));
         }
+        await recordTurnBase(path);
         return path;
       }
       // Held in use before provisioning, which can move the checkout back to
@@ -543,6 +686,7 @@ export function harnessSessionFeeds(
       if (state.workspace == null || state.workspace.worktree !== worktree) {
         await changeState(ctx, (current) => ({ ...current, workspace: { worktree } }));
       }
+      await recordTurnBase(made.path);
       return made.path;
     },
     worktree: (ctx) => workspace.locate(workPlaceOf(kind, ctx)),
@@ -588,14 +732,14 @@ export function harnessSessionFeeds(
  *   });
  */
 export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
+  if (options.verify !== undefined) assertCommandCheckOptions(options.verify as CommandCheckOptions<unknown>, "harnessSessionFlow's verify");
   const steering = harnessSteering();
   // Each running turn's in-use lease on its worktree, by request id; let go when the request ends.
   const inUse = new Map<string, LockLease>();
   // The branch each attached turn started on, by request id: it must end on it.
   const attachedHeads = new Map<string, string | null>();
-  const agent = options.agent(
-    harnessSessionFeeds(options.kind, options.workspace, options.defaultModel, steering, inUse, attachedHeads),
-  );
+  const feeds = harnessSessionFeeds(options.kind, options.workspace, options.defaultModel, steering, inUse, attachedHeads);
+  const agent = options.agent(feeds);
   // Core's steer action, allowed beside a running turn: it runs no harness, it
   // hands the running one a line. Recorded on the turn that took it.
   const steer = steering.action({
@@ -618,8 +762,12 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
           failure: harnessFailureKind(error),
           stopped: ctx.signal.aborted,
           error: error.message,
+          ...turnEndOf(ctx, requestId),
         })),
       );
+      // A stopped or failed turn still records where its changes end. Never in
+      // place of the harness's error: a head that can't be written is left unset.
+      await writeTurnHead(ctx as unknown as HarnessCallbackContext).catch(() => undefined);
       throw error;
     },
   });
@@ -744,6 +892,84 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       }
     },
   });
+  // The commit the turn's checkout is on, where its changes end. Written
+  // inside the turn, as it succeeds (a step after the harness) or as it throws
+  // (`recordFailure`): a page refreshes on the turn's terminal status, which
+  // the engine emits before `request.onFinished` runs. A checkout git can't
+  // read leaves it unset, and the read then ends at the checkout's HEAD.
+  async function writeTurnHead(ctx: HarnessCallbackContext): Promise<void> {
+    const requestId = requestOf(ctx);
+    // A turn that never reached a git checkout has no base, so nothing for an end to bound.
+    if ((ctx.session.state as HarnessSessionState).turns?.[requestId]?.base == null) return;
+    const cwd = options.workspace.locate(workPlaceOf(options.kind, ctx));
+    if (!existsSync(cwd)) return;
+    const head = await headCommit(cwd);
+    if (head === null) return;
+    await changeState(ctx, (state) => withTurn(state, requestId, (record) => ({ ...record, head })));
+  }
+  const recordTurnHead = handler({
+    name: "record-turn-head",
+    execute: async (_input: unknown, ctx): Promise<void> => writeTurnHead(ctx as unknown as HarnessCallbackContext),
+  });
+  // When the harness step returns: what the turn spent, on its record. The
+  // harness reported its run into the request before its block returned, so
+  // the request's spend is the whole turn. Written inside the turn,
+  // not at `onFinished`, so it lands before the request publishes its end and
+  // a page that refreshes on that end reads it. A turn that threw records it
+  // in `recordFailure`'s write instead. A failed write is a note, never a
+  // failed turn.
+  const turnSpend = handler({
+    name: "turn-spend",
+    execute: async (_handle: HarnessRunHandle, ctx): Promise<void> => {
+      const requestId = ctx.request.identity.id;
+      try {
+        await changeState(ctx, (state) => withTurn(state, requestId, (record) => ({ ...record, ...turnEndOf(ctx, requestId) })));
+      } catch (error) {
+        ctx.emit.status(`What the turn spent was not recorded: ${(error as Error).message}`, { transient: false });
+      }
+    },
+  });
+  // What one turn's commits changed, between the commits its record keeps. A
+  // read: answered in the response and stored nowhere, so an opened patch
+  // never lands in the session's log.
+  const changes = handler({
+    name: "turn-changes",
+    inputSchema: harnessTurnChangesInputSchema,
+    outputSchema: runChangesSchema,
+    execute: async (input, ctx) => {
+      const harnessCtx = ctx as unknown as HarnessCallbackContext;
+      const record = (harnessCtx.session.state as HarnessSessionState).turns?.[input.turn];
+      if (record === undefined) throw new Error(`This session keeps no turn "${input.turn}".`);
+      const cwd = options.workspace.locate(workPlaceOf(options.kind, harnessCtx));
+      // A turn that never reached a git checkout has no base: an unverified, empty answer.
+      // `== null`: a turn recorded before these fields has neither, and reads unverified (BP-030).
+      const base = record.base ?? null;
+      // With a base commit the read uses it alone; the ref only has to be non-null (`resolveBases`).
+      return readRunChanges(existsSync(cwd) ? cwd : "", base === null ? null : "HEAD", base, {
+        // From the commit the turn started on, exactly: a turn that amended the last one's commit is still only its own work.
+        exactBase: true,
+        ...(record.head != null ? { head: record.head } : {}),
+        ...(input.path !== undefined ? { path: input.path } : {}),
+      });
+    },
+  });
+  // When a turn the harness finished ends: the host's checks, on the turn's
+  // record. Reported, not a failure: a red check leaves the turn as it ended.
+  const verifyTurn = handler({
+    name: "verify-turn",
+    execute: async (handle: HarnessRunHandle, ctx): Promise<void> => {
+      const verify = options.verify;
+      if (verify === undefined || handle.outcome !== "finished" || ctx.signal.aborted) return;
+      const harnessCtx = ctx as unknown as HarnessCallbackContext;
+      const place = workPlaceOf(options.kind, harnessCtx);
+      const cwd = options.workspace.locate(place);
+      if (!existsSync(cwd)) return;
+      const checks = await runCommandChecks(verify, cwd, { place, cwd }, ctx.signal);
+      if (checks.length === 0) return;
+      const requestId = ctx.request.identity.id;
+      await changeState(ctx, (state) => withTurn(state, requestId, (record) => ({ ...record, checks })));
+    },
+  });
   // The session's worktree, removed through the host's one removal path. A
   // turn holds the session while it runs, so this is refused then (`reject`).
   const removeWorktree = handler({
@@ -769,14 +995,39 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       return { removed: true, branchDeleted };
     },
   });
-  const turn = sequencer({
+  // With `issueSpec` on, a session that names an issue opens each turn with
+  // its spec until the harness confirms a conversation, which then has it.
+  // Read from the session's own checkout, provisioned here the way the
+  // harness's `cwd` feed does (it hands the same directory back).
+  const specOptions = issueSpecOptions(options.issueSpec);
+  const withIssueSpec =
+    specOptions === undefined
+      ? undefined
+      : handler({
+          name: "issue-spec-brief",
+          inputSchema: z.object({ prompt: z.string().min(1) }),
+          execute: async (input, ctx): Promise<{ prompt: string }> => {
+            const harnessCtx = ctx as unknown as HarnessCallbackContext;
+            const state = harnessCtx.session.state as HarnessSessionState;
+            if (state.issue === undefined || state.binding?.confirmed != null) return { prompt: input.prompt };
+            const cwd = await feeds.cwd(harnessCtx);
+            const section = await readIssueSpecSection(cwd, state.issue, specOptions);
+            return { prompt: `${section}\n\n## The request\n\n${input.prompt}` };
+          },
+        });
+  const opened = sequencer({
     name: "turn",
     description: "One turn of a harness session: the prompt, run by the harness where the session works.",
     inputSchema: z.object({ prompt: z.string().min(1) }),
-  })
-    .tap(titleFromPrompt)
+  }).tap(titleFromPrompt);
+  // The brief provisions the checkout, so a failure there is the turn's
+  // failure too, recorded the way the harness's own is.
+  const turn = (withIssueSpec === undefined ? opened : opened.step(withIssueSpec.rescue([{ block: recordFailure }])))
     .step(agent.rescue([{ block: recordFailure }]))
-    .tap(recordFailedOutcome);
+    .tap(recordFailedOutcome)
+    .tap(turnSpend)
+    .tap(recordTurnHead)
+    .tap(verifyTurn);
 
   return defineFlow({
     kind: options.kind,
@@ -788,8 +1039,11 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
         concurrency: "defer",
       },
       steer,
+      // What each harness's subscription has used, as `onUsage` recorded it.
+      harnessUsage: harnessUsageAction({ readers: options.usageReaders ?? {} }),
       removeWorktree: { block: removeWorktree, concurrency: "reject" },
     },
+    reads: { changes: { block: changes, description: "What one turn's commits changed: its files and lines, or one file's patch." } },
     request: { onFinished: branchPullRequests },
     // The user's worktree rows: the host writes them through this flow's
     // workspace, and every session and agent of the user reads them.
@@ -799,18 +1053,22 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     resourceVisibility: (_ctx, resource) => (resource.name === WORKTREES ? "read-only" : "visible"),
     session: {
       stateSchema: harnessSessionStateSchema,
-      // The page reads the model, the binding and the turns. The model is the
-      // creator's to name, once; nothing a caller sends writes the other two.
-      client: { expose: ["model", "start", "binding", "turns", "workspace"] },
+      // The page reads the model, the issue, the start, the binding, the
+      // turns and the workspace. The model, issue and start are the creator's
+      // to name, once; nothing a caller sends writes the rest.
+      client: { expose: ["model", "issue", "start", "binding", "turns", "workspace"] },
       serverOwned: ["binding", "turns", "workspace"],
       // Every path that creates a session asks this: a new session runs a
-      // named model, and a start it names is one the flow can honour.
+      // named model, a start it names is one the flow can honour, and an
+      // issue it names is a tracker key (it becomes a path segment and a
+      // branch name).
       createCheck: ({ state, principal, sessionId }) => {
         if (typeof state.model !== "string" || state.model === "") return { ok: false, message: HARNESS_SESSION_MODEL_REQUIRED };
         const start = harnessSessionStartSchema.safeParse(state.start);
         if (state.start !== undefined && !start.success) {
           return { ok: false, message: HARNESS_SESSION_START_INVALID };
         }
+        if (state.issue !== undefined && !isTrackerIssue(state.issue)) return { ok: false, message: HARNESS_SESSION_ISSUE_REFUSED };
         // An attaching session names a worktree that is there now, in this tenant.
         const owner = harnessSessionAttachedTo(start.success ? start.data : undefined);
         if (owner !== null) {
@@ -828,3 +1086,16 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     },
   })();
 }
+
+/**
+ * What a turn's record gets when its harness step ends: what it spent, and
+ * when. The spend is the request's whole count, not what is left to hand on:
+ * a turn suspended, interrupted or continued spent what its earlier runs did
+ * too, and a replayed write reads the same number again.
+ */
+function turnEndOf(ctx: object, requestId: string): { spend: TaskSpendView | null; endedAt: number } {
+  const total = readRequestTotalSpend(ctx);
+  const spend = total === undefined ? null : requestSpendView(total, requestId);
+  return { spend, endedAt: Date.now() };
+}
+

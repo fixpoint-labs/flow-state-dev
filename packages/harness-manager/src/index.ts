@@ -44,6 +44,9 @@
  *   question holds its task on the board, so a host reads questions there.
  * - `harnessUsageAction`, the one query for how much of each harness's
  *   subscription a person has used, and the collection behind it.
+ * - `harnessRunChangesRead`, the read for what a run's commits changed: each
+ *   file and its lines, or one file's patch. A run review's data carries the
+ *   same files; `harnessSessionFlow` declares the same read per turn.
  *
  * **Checkout internals are NOT here.** They live behind
  * `@flow-state-dev/harness-manager/checkout`, a separate entry point, because
@@ -66,6 +69,7 @@ export {
 export {
   harnessManager,
   harnessDrainBudgetMs,
+  DONE_STOP_GRACE_MS,
   resolveOwnership,
   requestTenant,
   describeTenant,
@@ -74,6 +78,7 @@ export {
   HARNESS_FEATURE_KEY,
   namesHarnessFeature,
   harnessFeatureOf,
+  harnessFeatureSchema,
   harnessClaimSchema,
   harnessManagerInputSchema,
   harnessJudgeInputSchema,
@@ -97,10 +102,23 @@ export {
   type PhaseRunContext,
   type PromptRunContext,
   type CompletionRunContext,
+  type PhaseDoneVerdict,
   type AnsweredQuestion,
   type RequestIdentityContext,
 } from "./manager";
 export { PROGRESS_NOTE_MS, progressNoteOf } from "./progress-note";
+
+// ── Checks: the project's commands, before a run is done ────────────────────
+export {
+  commandCheck,
+  commandCheckResultSchema,
+  commandChecksFailure,
+  commandChecksPassed,
+  commandChecksSummary,
+  type CommandCheckCommands,
+  type CommandCheckOptions,
+  type CommandCheckResult,
+} from "./command-check";
 
 // ── A line typed in a run's session: a steer, or talk once finished ─────────
 export {
@@ -129,6 +147,7 @@ export {
   resolveHarnessSessionStart,
   HARNESS_SESSION_FAILED_OUTCOME,
   HARNESS_SESSION_MODEL_REQUIRED,
+  HARNESS_SESSION_ISSUE_REFUSED,
   HARNESS_SESSION_REMOVE_UNSUPPORTED,
   HARNESS_SESSION_REMOVE_NOT_OWNER,
   HARNESS_SESSION_ATTACH_MISSING,
@@ -148,7 +167,39 @@ export {
   type HarnessSessionWorkspaceRecord,
   type ResolvedHarnessSessionStart,
   type HarnessTurnRecord,
+  harnessTurnChangesInputSchema,
 } from "./session-flow";
+
+// ── What a run changed: its files and lines, or one file's patch ────────────
+export {
+  harnessRunChangesRead,
+  harnessRunChangesInputSchema,
+  harnessRunChangesOutputSchema,
+  HarnessRunChangesRefused,
+  type HarnessRunChangesReadOptions,
+} from "./run-changes";
+export {
+  MAX_DIFF_FILES,
+  MAX_PATCH_CHARS,
+  runChangesSchema,
+  runDiffSchema,
+  runFilePatchSchema,
+  type RunChanges,
+  type RunDiff,
+  type RunDiffFile,
+  type RunFilePatch,
+} from "./commits";
+
+// ── The issue a coding run is for, and its spec brief ───────────────────
+export {
+  defaultIssueSpecPath,
+  isTrackerIssue,
+  ISSUE_SPEC_MAX_BYTES,
+  readIssueSpecSection,
+  TRACKER_ISSUE_REFUSED,
+  type IssueSpecOption,
+  type IssueSpecOptions,
+} from "./issue-spec";
 // ── A scripted harness for model-free checks ────────────────────────────────
 export {
   harnessStub,

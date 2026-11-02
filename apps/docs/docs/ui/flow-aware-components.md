@@ -61,6 +61,23 @@ import { ModelBadge } from "@/components/flow-state/model-badge";
 <ModelBadge model={item.model} />
 ```
 
+## Spend
+
+One line for what a coding run spent: the model, the tokens, and the vendor's charge when it reported one, like `claude-sonnet-4-5 · 12.4k tokens · $0.42`. Hand it the `spend` a task row carries (from `listTasks`), or the `spend` on a harness session's turn record; both have the same shape. A count nobody reported reads as "no tokens reported yet", never 0. A run on a subscription isn't billed per run, so it shows tokens and no dollar figure.
+
+```bash
+fsdev ui add spend
+```
+
+```tsx
+import { Spend } from "@/components/flow-state/spend";
+
+<Spend spend={task.spend} attempts={task.attempts} />
+<Spend spend={turn.spend} durationMs={turn.endedAt - turn.at} split />
+```
+
+`split` shows input and output apart. `attempts` appears from the second attempt on. `harnessLabel` puts the harness's name first, for a view that doesn't already show it.
+
 ## WorkPlace
 
 Shows where a coding run left its work: the branch, how many commits it made, and copy buttons for the commands that get you there. That's `git switch` to the branch, `cd` into the run's checkout, and `git log` over just the run's commits. When the count can't be known, it says so instead of showing zero.
