@@ -52,6 +52,7 @@ vi.mock("@flow-state-dev/react", async (importOriginal) => ({
   useDraft: (await importOriginal<typeof import("@flow-state-dev/react")>()).useDraft,
   clearDraft: (await importOriginal<typeof import("@flow-state-dev/react")>()).clearDraft,
   FlowProvider: ({ children }: { children: ReactNode }) => children,
+  SuspensionResolverProvider: ({ children }: { children: ReactNode }) => children,
   useResourceManifest: () => ({ manifest: undefined, error: undefined }),
   useResourceCollectionList: () => ({ items: [], error: undefined }),
   useSession: () => {
