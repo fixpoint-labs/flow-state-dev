@@ -44,6 +44,7 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `shimmer` | Animated text shimmer for streaming/loading states |
 | `streaming-indicator` | In-flight status indicator with a "Working..." fallback (muted "Tidying up..." during background drain) |
 | `request-group` | Groups items by request ID with streaming and sources |
+| `request-recovery` | The line a turn that didn't finish leaves: a failed turn's error text with an optional Retry, or a turn a restart cut off with Continue and Discard. A refused call shows inline |
 | `session-items-context` | React context for passing session items to nested components |
 | `task-plan` | Section-grouped renderer for a TaskCollection. Subscribes to `task-change` and `task-board-meta` |
 | `artifact` | Composable artifact viewer shell with header, actions, and content areas |
@@ -63,6 +64,8 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `spend` | One line for what a run spent: model, tokens, the vendor's charge when it reported one, and optionally attempts and duration. Reads a task's or a harness turn's folded spend |
 | `work-place` | Where a coding run's work went: "3 commits on …/branch", with copy buttons for `git switch`, `cd` and `git log base..branch`. Takes what `workPlace` from `@flow-state-dev/harness-manager` returns; renders nothing for a run with no branch |
 | `audit-annotation` | Compact card for `responseAuditor` findings: severity indicators, per-analyzer scores, evidence. Fed by the `audit-annotation` component item |
+| `connection-banner` | Thin bar that says the server is gone, read from a session feed's `state` (`sessionFeed` in `@flow-state-dev/client`, or any read that reports the same states). Shows on `lapsed` and `stopped`, never on a first load or an ordinary reconnect. Exports `isFeedStale(state)` and `STALE_CLASS`, which greys an area and stops its pulsing dots and spinners while the bar shows |
+| `connection-screen` | Full-screen page for a failed first read. `refused` draws no retry; `unreachable` has Retry and retries on its own at 2, 4, 8 seconds, up to 30 |
 
 ## Framework Integration
 

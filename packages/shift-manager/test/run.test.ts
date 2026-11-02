@@ -15,7 +15,6 @@ import {
   followRequest,
   interruptRun,
   mergeItems,
-  readRecordedWork,
   readRunStatus,
   readSessionItems,
   resolveRunFlow,
@@ -23,6 +22,7 @@ import {
   taskItems,
 } from "../src/lib/run";
 import { ClientHttpError } from "@flow-state-dev/client";
+import { readRecordedWork } from "@flow-state-dev/harness-manager/browser";
 import { openRunLab, RUN_LAB_USER_ID } from "./fixtures/run-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 

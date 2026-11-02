@@ -13,9 +13,13 @@
  * discriminated result, a timeout, and no throw. It checks where a credential
  * would come from, not that it works: a key that is set but rejected reads as
  * `account`.
+ *
+ * `checkCodexReadiness()` gives the same answer as core's neutral
+ * `HarnessReadiness`, with the remedy the user follows.
  */
 import { execFile } from "node:child_process";
 import { delimiter } from "node:path";
+import type { HarnessReadiness } from "@flow-state-dev/core/types";
 import { findCodexProgram, type CodexProgram } from "./usage";
 
 /** What {@link probeCodexAccount} found. */
@@ -105,4 +109,32 @@ function lastLine(stdout: string, stderr: string): string | null {
     .map((line) => line.trim())
     .filter((line) => line !== "" && !line.startsWith("WARNING:"));
   return said.at(-1) ?? null;
+}
+
+/** What the user does when Codex has no credential. */
+export const CODEX_SIGN_IN_REMEDY = "Run `codex login`, or set CODEX_API_KEY";
+
+/**
+ * Whether Codex can run on this machine, as core's neutral readiness: the
+ * answer of {@link probeCodexAccount}, with what to do when there is no
+ * credential. A key counts only when the SDK also loads, since a run needs
+ * both. A host hands it to whatever keeps readiness (harness-manager's
+ * `harnessReadiness`). Never throws.
+ */
+export async function checkCodexReadiness(options: ProbeCodexAccountOptions): Promise<HarnessReadiness> {
+  let account = await probeCodexAccount(options);
+  if (account.status === "account" && account.source === "api-key" && options.program === undefined) {
+    // A key answers the probe without loading the SDK, and a run still needs the SDK.
+    account = await findCodexProgram(options.env).then(
+      (): CodexAccountProbe => account,
+      (error: unknown): CodexAccountProbe => ({ status: "sdk-missing", reason: error instanceof Error ? error.message : String(error) }),
+    );
+  }
+  if (account.status === "account") return { ready: true };
+  if (account.status === "sdk-missing") {
+    return { ready: false, reason: `The Codex SDK could not be loaded: ${account.reason}`, remedy: "Install @openai/codex-sdk" };
+  }
+  return account.unanswered === true
+    ? { ready: false, reason: `${account.reason}, so Codex's sign-in is unknown`, unanswered: true }
+    : { ready: false, reason: `Codex has no credential: ${account.reason}`, remedy: CODEX_SIGN_IN_REMEDY };
 }

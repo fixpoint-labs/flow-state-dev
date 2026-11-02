@@ -16,7 +16,7 @@ flowchart TD
   D1 -.->|"rejected · a paid service to run locally"| X1b["Ably only"]
   E --> D2["D2 · a notice, never rows · signed off"]
   D2 -.->|"rejected · a second access check"| X2["rows on the push"]
-  E --> D3["D3 · serverless polls until Ably · signed off"]
+  E --> D3["D3 · serverless polls today, in this epic · signed off"]
   E --> D4["D4 · one WebSocket per client · signed off"]
   D4 -.->|"rejected · a stream per topic"| X4["SSE per topic"]
   E --> D5["D5 · two seams, bus and delivery"]
@@ -71,17 +71,20 @@ own projection and access check, as FIX-2286 D3 already said.
 It comes down to the access check: rows on the push copy every scope's check onto it.
 
 <a name="d3"></a>
-## D3 · Serverless hosts poll until a managed adapter ships; Ably is the second adapter · signed off
+## D3 · Serverless hosts poll today, in this epic; push there is a later adapter · signed off
 
 | | |
 |---|---|
 | **Instead of** | A push of our own on Vercel and Next |
 | **Because** | A serverless function ends after its response and can't hold a connection open. A relay we hosted would be a service to run. Ably is one, and it fills both seams |
-| **Locks in** | Docs state push per host. Kitchen Sink, on Next, polls until FIX-380 ships |
+| **Locks in** | Docs state push per host. Kitchen Sink, on Next, polls today, in this epic |
 
-![D3: what a serverless app gets. Chosen: polling until the Ably adapter, beside a push of our own. Decides it: a connection that stays open, which a function can't hold. Price: up to one poll late. Flips if serverless functions can hold a connection open](figures/d3-serverless-polls.svg)
+![D3: what a serverless app gets. Chosen: polling today, in this epic, beside a push of our own. Decides it: a connection that stays open, which a function can't hold. Price: up to one poll late. Flips if serverless functions can hold a connection open](figures/d3-serverless-polls.svg)
 
 It comes down to the open connection: a serverless function can't hold one.
+
+A later adapter, not in this epic, can bring push there: Ably (FIX-380), or a native transport on
+[Vercel's WebSockets](https://vercel.com/docs/functions/websockets). Neither gates FIX-2367 ([the owner](https://github.com/fixpoint-labs/flow-state-dev/pull/4512#issuecomment-6567246620), Nov 2).
 
 <a name="d4"></a>
 ## D4 · One WebSocket per client is the delivery on long-lived hosts · signed off
@@ -206,6 +209,11 @@ reuse rows. Its one hold became [D6](#d6).
   polls wherever push can miss a change, a bus that can't cross included (FIX-2428 D3).
 - **Review (Nov 2)** — ER-7 and D4 admit delivery control frames such as `crossing`, never a
   notice kind. The server tick was weighed and dropped; the mint union lives once, in FIX-2428.
+- **Amended (Nov 2)** — the closure's memory-bus control fails leg a's 1 s, not "B never
+  updates": under ER-5, B may update at the poll pace (FIX-2368's review).
+- **Amended (Nov 2, owner)** — Ably is out of the epic: FIX-380 is a future transport behind the
+  bus seam and gates nothing, and the closure proves the Postgres bus and the polling fallback.
+  Serverless polls today, in this epic; a native Vercel WebSocket transport is a later adapter.
 
 <a name="open"></a>
 **Open: none.**

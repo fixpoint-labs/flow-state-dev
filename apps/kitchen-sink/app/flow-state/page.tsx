@@ -7,6 +7,8 @@ import {
   FlowNavigator,
   FlowProvider,
   SuspensionResolverProvider,
+  clearDraft,
+  useDraft,
   useFlow,
   useSession,
   useClientData,
@@ -53,7 +55,7 @@ import { PickedSessionPanel } from "@/components/picked-session-panel";
 import { ArtifactDialog } from "@/components/artifact-dialog";
 import { ResizeHandle } from "@/components/resize-handle";
 import { SuggestionRow } from "@/components/suggestion-row";
-import { BackgroundWorkPanel, BackgroundWorkRefresh } from "@/components/background-work-panel";
+import { BackgroundWorkPanel } from "@/components/background-work-panel";
 import { PullRequestsPanel } from "@/components/pull-requests-panel";
 import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -67,10 +69,11 @@ import { COORDINATOR_FLOWS, defaultConversation, isCoordinatorFlow, WORKER_FLOWS
 import { createWorkforceClient, type RosterEntry } from "@flow-state-dev/workforce/browser";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import { pageGoalControl } from "@/lib/goal-control";
-import { useSessionDraft } from "@/lib/use-session-draft";
+import { SESSION_DRAFT } from "@/lib/session-draft";
 import { useSessionControls, type RecordedSessionControls } from "@/lib/use-session-controls";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
+import { BASE_PATH } from "@/lib/base-path";
 
 const chatAgentRenderers: RendererRegistry = {
   ...chatAssistantRenderers,
@@ -152,7 +155,7 @@ function PageInner() {
   // session, so a goal check can be seen to fail without it.
   const pickedLive = pageGoalControl(searchParams) !== "no-live";
   return (
-    <FlowProvider flowKind="chat-agent" userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAgentRenderers}>
+    <FlowProvider flowKind="chat-agent" userId={KITCHEN_SINK_USER_ID} baseUrl={BASE_PATH} renderers={chatAgentRenderers}>
       <KitchenSinkApp namedSessionId={namedSessionId} pickedLive={pickedLive} />
     </FlowProvider>
   );
@@ -172,7 +175,7 @@ function writeSessionAddress(sessionId: string, how: AddressWrite): void {
 
 function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string | null; pickedLive: boolean }) {
   // The page's one client, as the app's user: the rail, the workforce panels and request statuses read through it.
-  const fsd = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "", fetcher: panelFetch }), []);
+  const fsd = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: BASE_PATH, fetcher: panelFetch }), []);
   // The assistant's own sessions, and which one the stream is on. The rail's
   // navigator reads the flow list once more for itself: one extra read per
   // page, never one per row.
@@ -249,9 +252,11 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
     writeSessionAddress(openSessionId, how.current);
     how.current = "replace";
   }, [resolving, openSessionId]);
-  const session = useSession(flow.activeSessionId, { items: true, autoResume: true });
+  // `live`: follow the whole session, so background work a turn files shows
+  // as its run starts and finishes, without another message.
+  const session = useSession(flow.activeSessionId, { items: true, autoResume: true, live: true });
 
-  const [message, setMessage] = useSessionDraft(flow.activeSessionId);
+  const [message, setMessage] = useDraft(SESSION_DRAFT, flow.activeSessionId);
   const messageRef = useRef(message);
   messageRef.current = message;
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
@@ -395,7 +400,8 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
       const text = msg.text.trim();
-      if (!flow.activeSessionId || text.length === 0) return;
+      const sessionId = flow.activeSessionId;
+      if (!sessionId || text.length === 0) return;
       try {
         await session.sendAction("run", {
           message: text,
@@ -403,6 +409,8 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
           thinkingStyle,
           features,
         }, { userMessage: text });
+        // The page may have moved to another session while it ran: the stored draft goes only if it is still this line.
+        clearDraft(SESSION_DRAFT, sessionId, text);
         if (messageRef.current.trim() === text) setMessage("");
       } catch {
         // Keep the persisted draft so a failed send can be retried.
@@ -509,10 +517,6 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
     [setMode],
   );
 
-  const handleSuggestionClick = useCallback((text: string) => {
-    setMessage(text);
-  }, []);
-
   const handleSaveArtifact = useCallback(
     async (artifact: { id: string; title: string; content: string }) => {
       if (!flow.activeSessionId) return;
@@ -547,7 +551,6 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
       onThinkingEnabledChange={handleThinkingEnabledChange}
       onSetFeatures={setFeatures}
       onSubmit={handleSubmit}
-      onSuggestionClick={handleSuggestionClick}
     />
   );
   const stream =
@@ -681,13 +684,6 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
           selectedModel={picked === null ? selectedModel : undefined}
           activeSkills={modeStatus?.activeSkills}
         />
-
-        {/* Mounted HERE, above both responsive trees, and exactly once. The
-            mobile and desktop `ChatPanel`s are both alive at the same time —
-            one is hidden with CSS, not unmounted — so a side effect placed
-            inside either of them runs twice per turn. The panel itself is fine
-            to render twice; its stream-end re-read is not. */}
-        <BackgroundWorkRefresh session={session} />
 
         <div className="flex min-h-0 flex-1 sm:hidden">
           {(mobilePanel === "chat" || picked !== null) && stream}
@@ -844,7 +840,6 @@ interface ChatPanelProps {
   onThinkingEnabledChange: (value: boolean) => void;
   onSetFeatures: (value: Features) => void;
   onSubmit: (msg: PromptInputMessage) => Promise<void>;
-  onSuggestionClick: (text: string) => void;
 }
 
 /** Memoized conversation body — only re-renders when items/streaming/error change, not on typing. */
@@ -967,7 +962,6 @@ function ChatPanel({
   onThinkingEnabledChange,
   onSetFeatures,
   onSubmit,
-  onSuggestionClick,
 }: ChatPanelProps) {
   return (
     // Bridge the session's streaming resume to the inline approval cards
@@ -989,7 +983,7 @@ function ChatPanel({
 
       <div className="border-t">
         {!conversationLoading && session.items.length === 0 && (
-          <SuggestionRow onSuggestionClick={onSuggestionClick} disabled={isDisabled} />
+          <SuggestionRow onSuggestionClick={onSetMessage} disabled={isDisabled} />
         )}
         <StuckRequestBanner session={session} />
         {/* Outside the conversation, deliberately: a child session's output is not

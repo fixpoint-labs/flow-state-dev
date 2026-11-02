@@ -12,20 +12,23 @@
  * | `openSession`   | a new session on the mode's main worker, then `setWorkProject`            |
  * | `send`          | the worker's door, `respond`, in that session                             |
  * | `interrupt`     | aborting the session's running request                                     |
- * | `watchThread`   | the session's items, read again while it is open                          |
+ * | `watchThread`   | the session's items, followed through the client's `sessionFeed`          |
+ * |                 | and that feed's connection state, for the connection bar                   |
  * | `watchTasks`    | the conversation board's `listTasks_tasks` read, and the rows' open holds  |
- * | `watchTaskWork` | the items of a task's run session, read only                               |
+ * | `watchTaskWork` | the items of a task's run session, followed through `sessionFeed`         |
  * | `sayInThread`   | the Inbox client's answer to the thread's open question, else `updateTask_tasks` with your line |
  * | `resolve`       | the Inbox client's answer to the thread's review: `{ verdict: "accepted" }` |
  * | `requestChanges`| the same answer with `{ verdict: "revise", words }`                        |
  * | `watchPins`, `pin`, `unpin` | the lab's `pins` flow, your own user state                    |
  */
-import { createClient, type Client, type SessionSummary } from "@flow-state-dev/client";
-import { readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
+import { createClient, sessionFeed, type Client, type SessionConnectionState, type SessionFeed, type SessionSummary } from "@flow-state-dev/client";
+import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import { createInboxClient, inboxItems, type InboxAnswer, type InboxHold, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
-import type { TaskSpendView } from "@flow-state-dev/orchestration/tasks";
+import { parseNotice, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
+import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import {
   createWorkforceClient,
+  delegateAnswerOf,
   parseProjectRef,
   projectRef,
   WORK_PROJECT_STATE_KEY,
@@ -89,10 +92,15 @@ export type ThreadEntry = (
   | { kind: "thread"; id: string; taskId: string }
 ) & { requestId?: string };
 
+/** A session feed's connection: `lapsed` once a retry has failed, `stopped` once it gives up. */
+export type ConnectionState = SessionConnectionState;
+
 /** What a thread shows now. */
 export interface ThreadView {
   entries: ThreadEntry[];
   running: boolean;
+  /** Whether the thread's feed still hears the server; none before the feed has said. */
+  connection?: ConnectionState;
   /** When the running turn started, in ms. */
   turnStartedAt?: number;
   /** The running turn's request. */
@@ -129,18 +137,8 @@ export interface TaskRow {
   spend?: TaskSpendView;
 }
 
-/**
- * What a coding run's review stop carries beside its prompt (harness-manager's
- * review `data`): the branch, how many commits and their subjects, and the
- * judge's verdict. `commits` is null when they couldn't be read; `judge`, when
- * no judge read the run.
- */
-export interface ReviewDetail {
-  branch: string | null;
-  commits: number | null;
-  subjects: string[];
-  judge: { verdict: string; confidence: number; reason: string } | null;
-}
+/** A coding run's review stop's data, as harness-manager's browser reader reads it. */
+export type { ReviewDetail };
 
 /** The read-only work of one task. */
 export interface TaskWork {
@@ -203,13 +201,10 @@ export interface Item {
   /** A `suspension` item's: what it waits on, and what it carries beside its prompt. */
   kind?: string;
   data?: Record<string, unknown>;
+  /** A message's data a client reads: a task's line names its task here (`parseNotice`, `delegateAnswerOf`). */
+  metadata?: Record<string, unknown>;
 }
 
-/**
- * How the settled notice the main session takes names a task and its ending: orchestration's
- * `noticeText` (`tasks/notice/task-notice.ts`), where a cancel may add "; it cancelled …".
- */
-const RESULT_LINE = /^Task "([\s\S]+?)" \(([^)\s]+)\) (completed by [^:]+|failed for good with [^:]+|was cancelled)(?:[:;] ([\s\S]*))?$/;
 
 /**
  * Read `read` now and every `everyMs`, reporting a value only when it
@@ -240,20 +235,13 @@ function every<T>(read: () => Promise<T>, onChange: (value: T) => void, everyMs 
 }
 
 /**
- * A run's latest review stop, as its `suspension` item carries it
- * (harness-manager's review `data`), or undefined before it makes one. The
- * latest wins: a run sent back for changes stops for review again.
+ * A run's latest review stop, read with harness-manager's browser reader, or
+ * undefined before it makes one. The latest wins: a run sent back for changes
+ * stops for review again.
  */
-function reviewStopOf(items: readonly Item[]): ReviewDetail | undefined {
-  const stop = [...items].reverse().find((item) => item.type === "suspension" && item.kind === "review" && item.data !== undefined);
-  if (stop === undefined) return undefined;
-  const data = stop.data as Partial<ReviewDetail>;
-  return {
-    branch: typeof data.branch === "string" ? data.branch : null,
-    commits: typeof data.commits === "number" ? data.commits : null,
-    subjects: Array.isArray(data.subjects) ? data.subjects.filter((s): s is string => typeof s === "string") : [],
-    judge: data.judge ?? null,
-  };
+export function reviewStopOf(items: readonly Item[]): ReviewDetail | undefined {
+  const stop = [...items].reverse().find((item) => item.type === "suspension" && item.kind === "review");
+  return (stop && reviewDetail(stop.data)) ?? undefined;
 }
 
 const textOf = (item: Item) => (item.content ?? []).map((part) => part.text ?? "").join("");
@@ -264,13 +252,6 @@ function filedTaskOf(item: Item): string | undefined {
   const output = item.output as { ok?: boolean; taskId?: unknown } | undefined;
   return output?.ok === true && typeof output.taskId === "string" ? output.taskId : undefined;
 }
-
-/**
- * A worker's id, `team.worker`: what a delegate's answer that landed in a conversation is written
- * under. It is the only way a delegate writes into the main session's thread; the session's own
- * text carries a block's name, which has no dot. Workforce marks the item no other way today.
- */
-const WORKER_ID = /^[a-z0-9-]+\.[a-z0-9-]+$/;
 
 /**
  * A thread's entries, from its items in order. A result is the line the main session took a task's ending as,
@@ -300,26 +281,26 @@ export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[
       entries.push({ kind: "user", id: item.id, text, requestId, ...(threads && filingTurns.has(requestId) ? { sentToThread: true } : {}) });
       continue;
     }
-    const result = RESULT_LINE.exec(text);
-    if (result !== null) {
-      const [, title, taskId, ending, summary] = result;
-      const status: TaskStatus = ending!.startsWith("completed") ? "completed" : ending!.startsWith("failed") ? "errored" : "cancelled";
+    // A failure that runs again is not an ending; the others are the thread's own task statuses.
+    const notice = parseNotice(item);
+    if (notice !== undefined && notice.ending !== "retried") {
       entries.push({
         kind: "result",
         id: item.id,
-        taskId: taskId!,
-        title: title!,
-        status,
-        summary: resultSummary(summary ?? text),
+        taskId: notice.taskId,
+        title: notice.title,
+        status: notice.ending,
+        summary: resultSummary(notice.detail ?? text),
         duringTurn: userTurns.has(requestId),
         requestId,
       });
       continue;
     }
-    if (text.length > 0 && item.role === "assistant" && WORKER_ID.test(item.agentName ?? "")) {
-      // The answer names no task; the line names who answered.
-      const worker = item.agentName!.split(".").pop()!;
-      entries.push({ kind: "result", id: item.id, taskId: "", title: `Answer from ${worker}`, status: "completed", summary: resultSummary(text), duringTurn: userTurns.has(requestId), requestId });
+    const answer = delegateAnswerOf(item);
+    if (answer !== undefined && text.length > 0) {
+      // The line names who answered, by the worker's own name.
+      const worker = answer.worker.split(".").pop()!;
+      entries.push({ kind: "result", id: item.id, taskId: answer.taskId, title: `Answer from ${worker}`, status: "completed", summary: resultSummary(text), duringTurn: userTurns.has(requestId), requestId });
       continue;
     }
     if (text.length > 0) entries.push({ kind: "assistant", id: item.id, text, requestId });
@@ -329,11 +310,48 @@ export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[
 
 /** The adapter the app runs on: the served lab, as the user the page was served for. */
 export function createLabAdapter(): LabAdapter {
-  return createWiredLab(createClient({ userId: readUserId(), baseUrl: "", fetcher: withBearerToken(readBearerToken()) }));
+  return createWiredLab(createClient({ userId: readUserId(), baseUrl: readBasePath(), fetcher: withBearerToken(readBearerToken()) }));
+}
+
+/**
+ * Follow one session's items of `types` through the client's `sessionFeed`,
+ * calling `onItems` once the history lands and on every change after, and
+ * `onState` on each change of the connection's state. The
+ * feed holds one connection; `stop` closes it. The session stream sends an
+ * item once it is finished, so an answer being written reaches the feed only
+ * through `feed.followResponse`.
+ */
+function followItems(
+  fsd: Client,
+  sessionId: string,
+  types: readonly string[],
+  onItems: (items: Item[]) => void,
+  onState?: (state: ConnectionState) => void,
+): { feed: SessionFeed; stop: Unsubscribe } {
+  const feed = sessionFeed(fsd, sessionId, { itemTypes: [...types] });
+  let last: readonly unknown[] | undefined;
+  let lastState: ConnectionState | undefined;
+  const stop = feed.subscribe(({ items, state }) => {
+    if (state !== lastState) {
+      lastState = state;
+      onState?.(state);
+    }
+    // Nothing until the history lands, and nothing when only the connection state moved.
+    if ((items.length === 0 && state === "connecting") || items === last) return;
+    last = items;
+    onItems(items as unknown as Item[]);
+  });
+  return {
+    feed,
+    stop: () => {
+      stop();
+      feed.close();
+    },
+  };
 }
 
 /** The adapter over one client. */
-function createWiredLab(fsd: Client): LabAdapter {
+export function createWiredLab(fsd: Client): LabAdapter {
   const workforce = createWorkforceClient(fsd);
   const inbox = createInboxClient(fsd);
   const modes = MODES;
@@ -466,6 +484,9 @@ function createWiredLab(fsd: Client): LabAdapter {
 
   /** Each listed task's run session, by task id, as the last list saw it. */
   const runSessionOf = new Map<string, string>();
+
+  /** The feed of each thread open on screen, by session id, so a send there can stream its answer into it. */
+  const threadFeeds = new Map<string, SessionFeed>();
 
   /** A session's tasks, as its board's `listTasks` read answers them: a read, so a list stores no request. */
   const tasksOf = async (sessionId: string): Promise<Listed[]> => {
@@ -620,7 +641,16 @@ function createWiredLab(fsd: Client): LabAdapter {
       return { id: created.id, title: "New session", worker, updatedAt: created.updatedAt, running: false, waiting: 0, projectId };
     },
     send: async (sessionId, text) => {
-      await fsd.flow(await flowOfSession(sessionId)).send("respond", { message: text }, { sessionId });
+      const flow = fsd.flow(await flowOfSession(sessionId));
+      const feed = threadFeeds.get(sessionId);
+      // With the thread open, stream the send so its answer shows as it is written.
+      if (feed === undefined) {
+        await flow.send("respond", { message: text }, { sessionId });
+        return;
+      }
+      const response = await flow.send("respond", { message: text }, { sessionId, stream: true });
+      if (!response.ok) throw new Error(`The send was refused (${response.status}).`);
+      if (response.headers.get("content-type")?.includes("text/event-stream")) feed.followResponse(response);
     },
     interrupt: async (sessionId) => {
       for (const turn of await runningTurns(sessionId)) {
@@ -628,28 +658,86 @@ function createWiredLab(fsd: Client): LabAdapter {
         await fsd.flow(turn.flowId ?? turn.flowKind).request(turn.id).abort().catch(() => undefined);
       }
     },
-    watchThread: (sessionId, onChange) =>
-      every(async () => {
-        const [items, turns, threads] = await Promise.all([itemsOf(sessionId), runningTurns(sessionId), isThreads(sessionId)]);
-        const turn = turns[0];
-        return {
+    watchThread: (sessionId, onChange) => {
+      // Items come from the session feed. The running turn is still read: the feed's runs are
+      // child sessions, not this session's own turns.
+      let items: Item[] | undefined;
+      let connection: ConnectionState | undefined;
+      let turnOf: { turn: Awaited<ReturnType<typeof runningTurns>>[number] | undefined; threads: boolean } | undefined;
+      let last: string | undefined;
+      const tell = () => {
+        if (items === undefined || turnOf === undefined) return;
+        const { turn, threads } = turnOf;
+        const view: ThreadView = {
           entries: entriesOf(items, threads),
           running: turn !== undefined,
+          ...(connection === undefined ? {} : { connection }),
           ...(turn?.startedAtMs === undefined ? {} : { turnStartedAt: turn.startedAtMs }),
           ...(turn === undefined ? {} : { requestId: turn.id }),
         };
-      }, onChange),
+        const key = JSON.stringify(view);
+        if (key === last) return;
+        last = key;
+        onChange(view);
+      };
+      const { feed, stop: stopItems } = followItems(
+        fsd,
+        sessionId,
+        THREAD_ITEMS,
+        (next) => {
+          items = next;
+          tell();
+        },
+        (state) => {
+          connection = state;
+          tell();
+        },
+      );
+      threadFeeds.set(sessionId, feed);
+      const stopTurns = every(
+        async () => {
+          const [turns, threads] = await Promise.all([runningTurns(sessionId), isThreads(sessionId)]);
+          return { turn: turns[0], threads };
+        },
+        (next) => {
+          turnOf = next;
+          tell();
+        },
+      );
+      return () => {
+        if (threadFeeds.get(sessionId) === feed) threadFeeds.delete(sessionId);
+        stopItems();
+        stopTurns();
+      };
+    },
     // The board is a read, so listing it every tick while the pane is open stores nothing.
     watchTasks: (sessionId, onChange) => every(() => boardOf(sessionId), onChange, 2000),
     // Shown only inside the tasks pane or the threads board, whose watch keeps `runSessionOf` current.
-    watchTaskWork: (_sessionId, taskId, onChange) =>
-      every(async () => {
-        const runSession = runSessionOf.get(taskId);
-        if (runSession === undefined) return { entries: [] };
-        const items = await itemsOf(runSession, [...THREAD_ITEMS, "suspension"]);
-        const review = reviewStopOf(items);
-        return { entries: entriesOf(items.filter((item) => item.type !== "suspension")), ...(review === undefined ? {} : { review }) };
-      }, onChange, 2000),
+    watchTaskWork: (_sessionId, taskId, onChange) => {
+      // The task's run session is known once the board has listed it, and a re-run moves it: follow
+      // whichever session the board names now, and show no work until it names one.
+      let stopItems: Unsubscribe | undefined;
+      const stopRunSession = every(
+        async () => runSessionOf.get(taskId) ?? null,
+        (runSession) => {
+          stopItems?.();
+          stopItems = undefined;
+          if (runSession === null) {
+            onChange({ entries: [] });
+            return;
+          }
+          stopItems = followItems(fsd, runSession, [...THREAD_ITEMS, "suspension"], (items) => {
+            const review = reviewStopOf(items);
+            onChange({ entries: entriesOf(items.filter((item) => item.type !== "suspension")), ...(review === undefined ? {} : { review }) });
+          }).stop;
+        },
+        2000,
+      );
+      return () => {
+        stopRunSession();
+        stopItems?.();
+      };
+    },
     sayInThread: async (sessionId, taskId, line) => {
       // A line answers the question the thread holds you on; with none open, it is a steer on its task.
       const question = await holdOn(sessionId, taskId, "question");

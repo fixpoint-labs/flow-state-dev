@@ -3,6 +3,7 @@ import {
   readUserId,
   writeUserId,
   readBearerToken,
+  readBasePath,
   hasInjectedUserId,
   readSessionHint,
   writeSessionHint,
@@ -155,5 +156,28 @@ describe("config — localStorage helpers", () => {
       localStorage.setItem("fsd.devtool.debugMode", "yes");
       expect(readDebugMode()).toBe(false);
     });
+  });
+});
+
+describe("readBasePath — the sub-route a proxy serves the page under", () => {
+  afterEach(() => document.head.querySelector("base")?.remove());
+  const base = (href: string) => {
+    const element = document.createElement("base");
+    element.setAttribute("href", href);
+    document.head.prepend(element);
+  };
+
+  it("is empty with no <base>, so a page that ships none keeps same-origin API calls", () => {
+    expect(readBasePath()).toBe("");
+  });
+
+  it("is empty for the root <base> a page ships with", () => {
+    base("/");
+    expect(readBasePath()).toBe("");
+  });
+
+  it("is the prefix, without its trailing slash, when a proxy rewrote the <base>", () => {
+    base("/teammates/");
+    expect(readBasePath()).toBe("/teammates");
   });
 });
