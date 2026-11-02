@@ -155,15 +155,20 @@ The manager calls `ledgers` on every checked write, not once per run, so keep it
 user's line into such a run, declare [`harnessSessionDoor`](#talking-to-a-run) on the flow.
 
 On such a board, feature work is named under one key, `HARNESS_FEATURE_KEY` (`"harnessFeature"`):
-`input: { harnessFeature: { issue, phase } }`. The rest of `input` is the filer's own, so a plain
-`issue` or `phase` there means nothing to the manager. A task that names no feature work runs as
-the manager's phase, with its task id in place of the issue, and one whose key names only one of
-the two is refused. `namesHarnessFeature(input)` and `harnessFeatureOf(input)` read the key as
-the manager does, for a flow that routes tasks between managers. A task naming both is
-feature work in that phase, and its run is keyed by its task id, not by the issue: the board
-mints its own task ids, so its id needn't be the one `{ issue, phase }` derives, and two tasks
-naming one issue still get a tree each. A fixed board runs feature rows only, and refuses a
-row whose id isn't the one its payload derives.
+`input: { harnessFeature: { issue, phase? } }` (`harnessFeatureSchema`). The rest of `input` is
+the filer's own, so a plain `issue` or `phase` there means nothing to the manager. A task that
+names no feature work runs as the manager's phase, with its task id in place of the issue. A task
+that names an issue and no phase runs in the manager's phase. A key with a phase and no issue,
+or with values that aren't strings, is refused. `namesHarnessFeature(input)` and
+`harnessFeatureOf(input)` (which returns `{ issue, phase? }`) read the key as the manager does,
+for a flow that routes tasks between managers.
+
+A task naming an issue is feature work, and its run is keyed by its task id, not by the issue:
+the board mints its own task ids, so two tasks naming one issue get a tree each. Its branch
+leads with the issue, `conductor/<scope>/<issue>--<task-id>--<phase>`, so the branch says what
+it is for. An issue that can't be a branch component is refused before anything runs. A run
+whose record already names a branch keeps that branch. A fixed board runs feature rows only, and
+refuses a row whose id isn't the one its payload derives.
 
 A completed run's output carries `answer`, the agent's last message (up to 8,000 characters),
 the run's `branch` (`null` for a run with only kept files), how many `commits` it made,
@@ -267,6 +272,7 @@ The flow handles the rest:
 
 - **Continuity.** `resume` hands the harness the conversation it last confirmed, and `onSession` is the only thing that records a new one. If the harness refuses to continue that conversation, the session stays bound to it, and each later turn fails the same way. To recover, start a new session.
 - **The model.** A session is created with the model it runs (`state.model`), which never changes after that. Creating one without a model is refused with `HARNESS_SESSION_MODEL_REQUIRED`. `defaultModel` is the model used for a stored session that has none recorded.
+- **The issue.** A session can be created with the tracker issue it works on (`state.issue`, such as `FIX-2165`), which also never changes. It is optional. One that isn't a tracker key (letters and digits joined by single `-` or `_`, at most 64 characters) is refused with `HARNESS_SESSION_ISSUE_REFUSED`. The workspace gets it as `place.issue`, so `provision` and `branch` can name the session's branch after it.
 - **Actions.** `turn` takes a prompt and waits for any running turn to finish first (`concurrency: "defer"`). `steer` hands a line to the running turn if its harness offered to take one, and answers `{ taken, live }`.
 - **A record per turn.** `state.turns` keeps the latest 20 turns, by request id. Each record holds the conversation the turn tried to resume, the one the harness confirmed, and how the turn failed: core's failure class, the harness's error text, and whether it was stopped. Read it to show a user why a turn failed. The schema is `harnessSessionStateSchema`.
 - **Where it starts.** `state.start` is set at create and fixed, like the model. It is exactly one of `{ base: "origin/main" }` (cut a new branch from that ref; a remote's branch is fetched first), `{ branch: "fix/login" }` (work on that existing branch), `{ pullRequest: 42 }` (work on the pull request's head branch) or `{ worktreeOf: "<session id>" }` (attach to another session's worktree, below). Without it, the session gets a fresh worktree of its own, wherever your workspace starts one by default. A malformed start is refused at create with `HARNESS_SESSION_START_INVALID`. The schema is `harnessSessionStartSchema`.
@@ -275,7 +281,7 @@ The flow handles the rest:
 - **The worktree's row.** The flow declares the user's `worktrees` collection (`worktreesCollection` from `@flow-state-dev/workspace`) and passes it to your workspace: on `provision(place, { start, worktrees })`, where `worktrees` is `{ collection, owner, label }` and `label` is the session's title, and on `remove`. It also uses two optional methods: `attach(owner, { worktrees, by })` for an attached session, and `recordCheckout(place, { worktrees, by })` at each turn's end, while the turn still holds the worktree. `by` is `{ kind: "session", id }`. The flow marks `worktrees` read-only in its `resourceVisibility`, so a model reads rows through the resource tools but never writes one. Hand all of these to the host's `provision`, `attach`, `recordCheckout` and `remove`. When `provision` returns `{ path, worktree }`, the flow stores the row's key as `state.workspace.worktree` and the pull-request check adds what it finds to the row. A workspace that writes no rows still works, and its sessions have `worktree: null`. The board manager writes a row for each run's checkout in the same way, with the run as owner.
 - **Removing the worktree.** The `removeWorktree` action takes `{ deleteBranch?, force? }` and answers `{ removed: true, branchDeleted }`. It calls `workspace.remove(place, { deleteBranch, force })`. A workspace without `remove` fails it with `HARNESS_SESSION_REMOVE_UNSUPPORTED`. It is refused with a 409 while a turn runs (`concurrency: "reject"`). A turn also holds its worktree in use from provision until the turn ends, so the host's `remove`, called from anywhere, refuses it with `in-use` meanwhile. Only the owner removes a worktree: an attached session's `removeWorktree` is refused with `HARNESS_SESSION_REMOVE_NOT_OWNER`. The host marks the row `removed`, and the next turn provisions again: from the kept branch if you kept it, otherwise from the session's start.
 - **A title.** The session takes its title from its first prompt (`harnessSessionTitle`).
-- **What the client reads.** `model`, `start`, `binding`, `turns` and `workspace` are exposed to the page. `binding`, `turns` and `workspace` are written only by the flow.
+- **What the client reads.** `model`, `issue`, `start`, `binding`, `turns` and `workspace` are exposed to the page. `binding`, `turns` and `workspace` are written only by the flow.
 
 `resolveHarnessSessionStart(start, { cwd, gh? })` turns a start into what a workspace host's `provision` takes: `{ baseRef }` for a base, `{ branch }` for a branch or a pull request, and `{}` with no start. It throws for `{ worktreeOf }`, which provisions nothing; the session flow handles an attached session itself. A pull request is asked of GitHub with `pullRequestHead` from `@flow-state-dev/workspace`, run in `cwd`, and its refusals (`pull-request-unreadable`, `pull-request-from-fork`) fail the turn. A workspace over `localWorkspaceHost` passes `baseRef` on the run source, and `branch` with `existing: true` on the place request:
 
@@ -330,6 +336,18 @@ import { WorkPlace } from "@/components/flow-state/work-place";
 <WorkPlace place={workPlace(worktreeRow, { session: sessionId })} />;
 ```
 
+## Briefing a run on its issue
+
+Pass `issueSpec: true` to `harnessManager` or `harnessSessionFlow`, and a run that names an issue opens its prompt with that issue's spec, read from the run's own checkout. A board task names its issue under `harnessFeature` (or in its payload, on a fixed board); a session names it in `state.issue`. The default file is `specs/issues/<ISSUE>/SPEC.md`. Point elsewhere with a function:
+
+```ts
+harnessManager({ /* ... */ issueSpec: { path: (issue) => `design/${issue}.md` } });
+```
+
+The section starts `## This work is for issue <ISSUE>` and is read fresh on every board attempt. A session gets it on each turn until the harness confirms a conversation. A spec longer than 64 KB (`ISSUE_SPEC_MAX_BYTES`) is cut, with a line saying so. A missing file becomes one line saying there is no spec, and the run goes ahead. A path that leaves the checkout, or a link that points out of it, is refused, and no file is read. Without `issueSpec`, the prompt is the phase's (or the user's) alone.
+
+`readIssueSpecSection(cwd, issue, options?)` builds the same section, for a phase that writes its own brief. `isTrackerIssue(value)` checks the key grammar, `TRACKER_ISSUE_REFUSED` is the message a bad key gets, and `defaultIssueSpecPath(issue)` is the default path.
+
 ## What a phase supplies
 
 ```ts
@@ -345,7 +363,7 @@ import { WorkPlace } from "@/components/flow-state/work-place";
 
 `buildPrompt` is rebuilt on every attempt from current state. `isDone` is consulted only after a successful verdict, which the manager reads from the handle's `status`. Completion is a conjunction, never an alternative route. `validate` runs once at construction and whatever it returns reaches the phase's own hooks, which is how a phase carries something it learned at startup into a run.
 
-`run.task` is the claimed row's brief: `goal`, plus `title`, `context`, `input`, `deps` and `priorWork` when present. Build the prompt from it rather than from `run.issue`, which is only the row's identity.
+`run.task` is the claimed row's brief: `goal`, plus `title`, `context`, `input`, `deps` and `priorWork` when present. Build the prompt from it rather than from `run.issue`, which is only the row's identity. `run.trackerIssue` is the issue the task names (`FIX-2165`), or `null` when it names none; on a fixed board it equals `run.issue`.
 
 `isDone` gets one fact `buildPrompt` does not: `run.stopReport`, how the run said it stopped, in the framework's own vocabulary (`"finished"`, `"stopped-at-limit"`, `"failed"`) and exactly as the harness reported it. A value this version of the framework doesn't define reaches `isDone` unchanged, and never as `"finished"`. `null` means no terminal result was reported at all. What "done" means is entirely the phase's call.
 

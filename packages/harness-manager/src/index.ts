@@ -74,6 +74,7 @@ export {
   HARNESS_FEATURE_KEY,
   namesHarnessFeature,
   harnessFeatureOf,
+  harnessFeatureSchema,
   harnessClaimSchema,
   harnessManagerInputSchema,
   harnessJudgeInputSchema,
@@ -129,6 +130,7 @@ export {
   resolveHarnessSessionStart,
   HARNESS_SESSION_FAILED_OUTCOME,
   HARNESS_SESSION_MODEL_REQUIRED,
+  HARNESS_SESSION_ISSUE_REFUSED,
   HARNESS_SESSION_REMOVE_UNSUPPORTED,
   HARNESS_SESSION_REMOVE_NOT_OWNER,
   HARNESS_SESSION_ATTACH_MISSING,
@@ -149,6 +151,17 @@ export {
   type ResolvedHarnessSessionStart,
   type HarnessTurnRecord,
 } from "./session-flow";
+
+// ── The issue a coding run is for, and its spec brief ───────────────────
+export {
+  defaultIssueSpecPath,
+  isTrackerIssue,
+  ISSUE_SPEC_MAX_BYTES,
+  readIssueSpecSection,
+  TRACKER_ISSUE_REFUSED,
+  type IssueSpecOption,
+  type IssueSpecOptions,
+} from "./issue-spec";
 // ── A scripted harness for model-free checks ────────────────────────────────
 export {
   harnessStub,
