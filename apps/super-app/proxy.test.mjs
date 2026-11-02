@@ -12,6 +12,18 @@ import { createProxy, loopbackHost, publicLocation } from "./proxy.mjs";
 const seen = [];
 const upstream = createServer((req, res) => {
   seen.push({ url: req.url, cookie: req.headers.cookie, headers: req.headers });
+  if (req.url === "/stream-dies") {
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    res.write("data: one\n\n");
+    setTimeout(() => res.socket.destroy(), 50);
+    return;
+  }
+  if (req.url === "/page-dies") {
+    res.writeHead(200, { "content-type": "text/html" });
+    res.write('<html><head><base href="/" />');
+    setTimeout(() => res.socket.destroy(), 50);
+    return;
+  }
   if (req.url === "/redirect-own-origin") {
     res.writeHead(302, { location: `http://127.0.0.1:${req.socket.localPort}/inbox` });
     return res.end();
@@ -39,6 +51,9 @@ before(async () => {
   base = `http://127.0.0.1:${proxy.address().port}`;
 });
 after(() => {
+  // A response a regression leaves open must not keep the test run alive.
+  proxy.closeAllConnections();
+  upstream.closeAllConnections();
   proxy.close();
   upstream.close();
 });
@@ -414,5 +429,32 @@ describe("the session cookie's lifetime", () => {
     } finally {
       server.close();
     }
+  });
+});
+
+describe("an app that dies mid-response", () => {
+  let cookie;
+  before(async () => {
+    cookie = (await signIn("ops", "s3cret")).headers.get("set-cookie").split(";")[0];
+  });
+
+  /** Reads the whole body; resolves "ended" when the proxy ends or breaks the response, "open" if it is still open after 3s. */
+  const outcome = async (path) => {
+    const res = await get(path, { headers: { cookie } });
+    const read = res.text().then(
+      () => "ended",
+      () => "ended",
+    );
+    return Promise.race([read, new Promise((r) => setTimeout(() => r("open"), 3000))]);
+  };
+
+  it("ends the browser's live stream, so its client reconnects", async () => {
+    assert.equal(await outcome("/lab/stream-dies"), "ended");
+  });
+
+  it("answers 502 for a page that dies while it is being buffered for the rewrite", async () => {
+    const res = await Promise.race([get("/lab/page-dies", { headers: { cookie } }), new Promise((r) => setTimeout(() => r(null), 3000))]);
+    assert.notEqual(res, null, "the browser got an answer");
+    assert.equal(res.status, 502);
   });
 });

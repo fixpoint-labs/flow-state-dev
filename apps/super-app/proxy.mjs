@@ -85,6 +85,18 @@ export function createProxy({ apps, auth, status }) {
     const upstream = httpRequest(
       { host: "127.0.0.1", port: app.port, method: req.method, path: upstreamPath, headers },
       (up) => {
+        // An app that dies or resets mid-response must end the browser's response too: a live
+        // stream's client only reconnects once its read fails, so a response left open freezes it.
+        up.on("close", () => {
+          if (up.complete) return;
+          // A page still being buffered for its rewrite has sent nothing yet: say why, rather than reset.
+          if (!res.headersSent) {
+            res.writeHead(502, { "content-type": "text/plain" });
+            res.end(`${app.title} stopped before it finished answering. Its log lines are prefixed [${app.id}].\n`);
+            return;
+          }
+          res.destroy();
+        });
         const out = withoutHopHeaders(up.headers);
         if (typeof out.location === "string") out.location = publicLocation(out.location, app);
         const html = app.kind === "spa" && String(out["content-type"] ?? "").includes("text/html");
