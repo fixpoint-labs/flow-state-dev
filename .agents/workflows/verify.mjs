@@ -1968,6 +1968,34 @@ check('SPEC SET: an open decision on one member parks the whole shared PR — no
   })
   assert.deepEqual(workerLabels(unmerged.calls), [], 'no sibling runs the merge backstop')
   assert.deepEqual(unmerged.result.gates.filter((g) => g.pr === 50), [], 'and the PR is offered no gate while the decision is open')
+
+  // A sibling with its own landed verdict is parked too, and nothing external but the answer can move it:
+  // the wake must not ask for an immediate re-wake that dispatches nothing, again and again.
+  const verdictBehind = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: specSetEpic({ specSetPr: 50 }),
+      issues: [member('FIX-2', { blocker: 'which issue owns the seam?' }), member('FIX-3', { verdicts: [{ claim: 'c', verdict: 'CONFIRMED', evidence: 'ran it' }] })],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 50 }, 'FIX-3': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 50 } } }),
+  })
+  assert.deepEqual(workerLabels(verdictBehind.calls), [])
+  assert.equal(verdictBehind.result.moreWorkNow, false, 'the set waits on the human, not on a re-wake')
+})
+
+check('SPEC SET: an answered decision on one member is folded before any member merges the shared PR', async () => {
+  // The implement backstop merges the WHOLE PR, and its worker carries only its own row's answers. A
+  // sibling's answer that has not reached the specs yet would be merged out from under it.
+  const approvedUnmerged = { phase: 'AWAITING_SPEC_APPROVAL', specPr: 50, specApproved: true, specMerged: false }
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: specSetEpic({ specSetPr: 50 }),
+      issues: [member('FIX-2'), member('FIX-3', { blockerResolutions: [{ answer: 'FIX-3 owns the seam' }] })],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': approvedUnmerged, 'FIX-3': approvedUnmerged }, worker: { 'FIX-3': { specPr: 50 } } }),
+  })
+  assert.deepEqual(workerLabels(calls), ['apply-decision:FIX-3'], 'the answer is folded first, nothing merges')
+  assert.deepEqual(result.gates.filter((g) => g.kind === 'spec-merge' && g.pr === 50), [], 'and no merge is offered over an unapplied answer')
+  assert.equal(result.moreWorkNow, true, 'the merge follows on the next wake')
 })
 
 check('SPEC SET: issue specs wait for the epic spec to merge — two PRs, in order', async () => {

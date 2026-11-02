@@ -225,6 +225,15 @@ function openSetsWithDecision(rows) {
 }
 
 /**
+ * Does this open spec-set member carry spec work that must land before the shared PR merges — a POC verdict
+ * or a human answer not yet folded in? The implement backstop merges the WHOLE PR and its worker carries only
+ * its own row's answers, so any member's unapplied work holds every member's merge.
+ */
+function hasUnfoldedSpecWork(row) {
+  return onOpenSpecSet(row) && !!((row.verdicts || []).length || (row.blockerResolutions || []).length)
+}
+
+/**
  * Is this row's spec in a spec-set PR that has not merged? Every member shares that PR's branch, so at
  * most one dispatch per such PR runs in a wake (`allocate`): two workers folding into one branch is a
  * push race, and N implement backstops merging one PR is N merges of the same thing.
@@ -1447,6 +1456,7 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
   const openSetBusy = new Map() // spec-set PR → the action already dispatched on it this wake
   const setPaused = specSetPaused(rows)
   const decidingSets = openSetsWithDecision(rows)
+  const unfoldedSets = new Set(rows.filter(hasUnfoldedSpecWork).map((r) => r.specPr))
 
   for (const row of rows) {
     const next = pendingAction(row)
@@ -1476,6 +1486,16 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
       if (decidingSets.has(row.specPr)) {
         waiting.push(row)
         continue
+      }
+      if (next.action === 'implement' && unfoldedSets.has(row.specPr)) {
+        if (hasUnfoldedSpecWork(row)) {
+          // An approved row's phase outranks its answer in `pendingAction`, so it would implement, and merge the
+          // shared PR, with the answer unapplied. On an open set the answer is folded into the spec first.
+          Object.assign(next, { action: 'apply-decision', why: 'fold the answered decision into the shared spec-set PR before it merges' })
+        } else {
+          serialized.push({ row, ...next, behind: 'spec-work' })
+          continue
+        }
       }
       if (openSetBusy.has(row.specPr)) {
         // Covered only by a lead that is itself folding the PR's review; any other lead leaves the batch unread.
@@ -4008,7 +4028,13 @@ const gates = [
   const isSetGate = (g) => (g.kind === 'spec-approval' || g.kind === 'spec-merge') && issues.some((r) => r.id === g.issueId && r.specSetMember && r.specPr === g.pr)
   const deciding = openSetsWithDecision(issues)
   for (const pr of deciding) log(`Spec-set PR #${pr}: a member has an open decision — no gate and no member dispatch until it is answered.`)
-  const setGates = gates.filter(isSetGate).filter((g) => !deciding.has(g.pr))
+  // Pending at the START of this wake counts too: a fold that ran this wake moved the PR's head, so the approval
+  // the gate would merge on no longer names it. The next scan re-reads approval on the new head.
+  const unfolded = new Set([...refreshed, ...issues].filter(hasUnfoldedSpecWork).map((r) => r.specPr))
+  const setGates = gates
+    .filter(isSetGate)
+    .filter((g) => !deciding.has(g.pr))
+    .filter((g) => !(g.kind === 'spec-merge' && unfolded.has(g.pr)))
   const collapsed = []
   for (const g of setGates) {
     if (collapsed.some((c) => c.kind === g.kind && c.pr === g.pr)) continue
@@ -4220,7 +4246,9 @@ return {
     // `pendingAction` is what keeps a parked or cancelled row out — that was the original defect.
     (epicReady && issues.some(
       (r) =>
-        (r.multiPrPending || (r.verdicts || []).length || (r.blockerResolutions || []).length) && pendingAction(r) !== null,
+        (r.multiPrPending || (r.verdicts || []).length || (r.blockerResolutions || []).length) && pendingAction(r) !== null &&
+        // A member of a spec-set PR parked on another member's open question waits for the human's answer.
+        !(onOpenSpecSet(r) && openSetsWithDecision(issues).has(r.specPr)),
     )) ||
     // A ROUTE PROMOTION is the fourth internal trigger. A direct worker that refused to build
     // returns `specRequired` and leaves the row at NEEDS_SPEC — spec authoring is runnable
