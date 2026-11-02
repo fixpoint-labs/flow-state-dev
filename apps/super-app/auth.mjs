@@ -15,18 +15,20 @@
  * - The cookie is removed from requests before they reach an app, so no app
  *   ever sees the session token.
  */
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 export const COOKIE = "fsd_super_app";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
-/** Slows a guessing loop: every failed sign-in answers after this long. */
+/** Every failed sign-in answers after at least this long. */
 const FAILURE_DELAY_MS = 750;
+/** Consecutive failures from one address before it must wait; the wait doubles per further failure, up to the cap. */
+const FREE_FAILURES = 5;
+const MAX_LOCKOUT_MS = 15 * 60 * 1000;
+/** Sign-in attempts checked at once, across every address; more are turned away. */
+const MAX_PENDING = 4;
 
-const equal = (a, b) => {
-  const x = Buffer.from(a);
-  const y = Buffer.from(b);
-  return x.length === y.length && timingSafeEqual(x, y);
-};
+/** Constant-time equality that leaks neither contents nor length: both sides are hashed to a fixed size first. */
+const equal = (a, b) => timingSafeEqual(createHash("sha256").update(a).digest(), createHash("sha256").update(b).digest());
 
 /** The cookies a request carries, by name. */
 function cookies(header) {
@@ -49,14 +51,29 @@ export function safeNext(value) {
   } catch {
     return "/";
   }
-  if (url.origin !== "http://local" || url.pathname.startsWith("/login")) return "/";
-  return url.pathname + url.search + url.hash;
+  // The parsed path is what the browser follows: `/a/..//evil.example` normalizes to `//evil.example`.
+  const result = url.pathname + url.search + url.hash;
+  if (url.origin !== "http://local" || url.pathname.startsWith("//") || url.pathname.startsWith("/login")) return "/";
+  return result;
 }
 
 /**
  * @param {{ username: string, password: string, secret?: string }} options
  */
 export function createAuth({ username, password, secret = randomBytes(32).toString("hex") }) {
+  /**
+   * Failures by the connecting address: the socket's, never a forwarded header a client could set.
+   * Behind a load balancer every attempt shares its address, so a guessing loop slows sign-in for everyone: by design.
+   */
+  const failures = new Map();
+  let pending = 0;
+  const lockedFor = (ip) => {
+    const record = failures.get(ip);
+    if (record === undefined || record.count < FREE_FAILURES) return 0;
+    const wait = Math.min(MAX_LOCKOUT_MS, 1000 * 2 ** (record.count - FREE_FAILURES));
+    return Math.max(0, record.at + wait - Date.now());
+  };
+
   const sign = (expiry) => createHmac("sha256", secret).update(`${username}\n${expiry}`).digest("base64url");
 
   /** Whether the request carries a session cookie this process signed and that hasn't expired. */
@@ -84,17 +101,34 @@ export function createAuth({ username, password, secret = randomBytes(32).toStri
       return page(res, 200, { next: safeNext(url.searchParams.get("next")) }), true;
     }
     if (url.pathname === "/login" && req.method === "POST") {
+      const ip = req.socket.remoteAddress ?? "";
+      const wait = lockedFor(ip);
+      if (wait > 0 || pending >= MAX_PENDING) {
+        const seconds = Math.max(1, Math.ceil(wait / 1000));
+        res.setHeader("retry-after", String(seconds));
+        page(res, 429, { next: "/", error: `Too many attempts. Try again in ${seconds} second${seconds === 1 ? "" : "s"}.` });
+        req.resume();
+        return true;
+      }
+      pending += 1;
       readForm(req, (form) => {
         const next = safeNext(form.get("next"));
         // Both compared every time, so a wrong user name answers no faster than a wrong password.
         const userOk = equal(form.get("username") ?? "", username);
         const passOk = equal(form.get("password") ?? "", password);
         if (userOk && passOk) {
+          pending -= 1;
+          failures.delete(ip);
           const expiry = String(Math.floor(Date.now() / 1000) + MAX_AGE_SECONDS);
           res.setHeader("set-cookie", cookie(req, `${expiry}.${sign(expiry)}`, MAX_AGE_SECONDS));
           return redirect(res, next, 303);
         }
-        setTimeout(() => page(res, 401, { next, error: "That user name and password don't match." }), FAILURE_DELAY_MS);
+        const record = failures.get(ip) ?? { count: 0, at: 0 };
+        failures.set(ip, { count: record.count + 1, at: Date.now() });
+        setTimeout(() => {
+          pending -= 1;
+          page(res, 401, { next, error: "That user name and password don't match." });
+        }, FAILURE_DELAY_MS);
       });
       return true;
     }
@@ -129,19 +163,28 @@ function redirect(res, location, status = 302) {
   res.end();
 }
 
-/** Reads a small urlencoded form; anything over 8 KiB is cut off and treated as empty. */
+/**
+ * Reads a small urlencoded form, calling `done` exactly once: with the form, or
+ * with an empty one when the body is over 8 KiB or the upload breaks off.
+ */
 function readForm(req, done) {
   let body = "";
-  let tooBig = false;
+  let finished = false;
+  const finish = (form) => {
+    if (finished) return;
+    finished = true;
+    done(form);
+  };
   req.on("data", (chunk) => {
     body += chunk;
     if (body.length > 8192) {
-      tooBig = true;
+      finish(new URLSearchParams());
       req.destroy();
     }
   });
-  req.on("end", () => done(new URLSearchParams(tooBig ? "" : body)));
-  req.on("error", () => done(new URLSearchParams()));
+  req.on("end", () => finish(new URLSearchParams(body)));
+  req.on("error", () => finish(new URLSearchParams()));
+  req.on("close", () => finish(new URLSearchParams()));
 }
 
 const escape = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);

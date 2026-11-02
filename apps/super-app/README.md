@@ -39,6 +39,13 @@ see its README. They load `.env.local` the way they do standalone.
   streams, WebSocket upgrades) gets `401`. The cookie is `HttpOnly`,
   `SameSite=Lax`, lasts seven days, and is signed with HMAC-SHA256, so nothing
   is stored server-side. It is stripped before a request reaches an app.
+  After five wrong passwords from one address, each further attempt waits
+  twice as long (up to 15 minutes), and at most four sign-ins are checked at
+  once. Behind a load balancer every attempt shares its address, so a guessing
+  loop slows sign-in for everyone rather than trusting a forwarded header.
+- **No sign-in** is allowed only for `pnpm dev` on loopback, and then the proxy
+  answers only requests addressed to `localhost`, `127.0.0.1` or `[::1]`, so a
+  web page can't reach the apps by rebinding its own domain to this machine.
 - **Kitchen Sink** is a Next app, and Next reads `basePath` at build time, so
   `pnpm build` builds it a second time into `.next-super-app` with
   `KITCHEN_SINK_BASE_PATH=/kitchen-sink`. Its root-served `.next` build is untouched.

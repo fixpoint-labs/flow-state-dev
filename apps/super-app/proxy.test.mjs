@@ -7,7 +7,7 @@ import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { createAuth, safeNext } from "./auth.mjs";
-import { createProxy } from "./proxy.mjs";
+import { createProxy, loopbackHost } from "./proxy.mjs";
 
 const seen = [];
 const upstream = createServer((req, res) => {
@@ -113,7 +113,61 @@ describe("where sign-in sends you", () => {
   it("only to a path on this server", () => {
     assert.equal(safeNext("/lab/inbox"), "/lab/inbox");
     assert.equal(safeNext("/lab/tasks?by=worker#top"), "/lab/tasks?by=worker#top");
-    const bad = ["https://evil.example", "//evil.example", "/\\evil.example", "/\t/evil.example", "/\n/evil.example", "/login?next=/x", undefined];
+    assert.equal(safeNext("/shift-manager/tasks/b%2F1/T-1/diff"), "/shift-manager/tasks/b%2F1/T-1/diff");
+    const bad = ["https://evil.example", "//evil.example", "/\\evil.example", "/\t/evil.example", "/\n/evil.example", "/a/..//evil.example", "/./%2e%2e//evil.example", "/login?next=/x", undefined];
     for (const value of bad) assert.equal(safeNext(value), "/", JSON.stringify(value));
+  });
+});
+
+describe("guessing the password", () => {
+  it("locks an address out after repeated failures, and still lets the right password in afterwards elsewhere", async () => {
+    const server = createProxy({ apps: [], auth: createAuth({ username: "ops", password: "s3cret" }), status: () => "running" });
+    await new Promise((r) => server.listen(0, "127.0.0.1", r));
+    const at = `http://127.0.0.1:${server.address().port}`;
+    const attempt = (password) =>
+      fetch(`${at}/login`, {
+        method: "POST",
+        redirect: "manual",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ username: "ops", password }).toString(),
+      });
+    try {
+      for (let i = 0; i < 5; i++) assert.equal((await attempt(`wrong-${i}`)).status, 401);
+      // Locked: even the right password is refused until the wait is over.
+      const locked = await attempt("s3cret");
+      assert.equal(locked.status, 429);
+      assert.ok(Number(locked.headers.get("retry-after")) >= 1);
+    } finally {
+      server.close();
+    }
+  });
+});
+
+describe("with no sign-in (loopback dev)", () => {
+  it("answers only requests addressed to a loopback name, so a rebound domain can't reach the apps", async () => {
+    const server = createProxy({ apps: [], status: () => "running" });
+    await new Promise((r) => server.listen(0, "127.0.0.1", r));
+    const port = server.address().port;
+    const { request } = await import("node:http");
+    const status = (host) =>
+      new Promise((resolve, reject) => {
+        request({ host: "127.0.0.1", port, path: "/", headers: { host } }, (res) => {
+          res.resume();
+          resolve(res.statusCode);
+        })
+          .on("error", reject)
+          .end();
+      });
+    try {
+      assert.equal(await status(`localhost:${port}`), 200);
+      assert.equal(await status("evil.example"), 421);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("knows the loopback names", () => {
+    for (const ok of ["localhost", "localhost:80", "127.0.0.1:8080", "[::1]:3000"]) assert.ok(loopbackHost(ok), ok);
+    for (const no of ["evil.example", "127.0.0.1.evil.example", "", undefined]) assert.ok(!loopbackHost(no), String(no));
   });
 });

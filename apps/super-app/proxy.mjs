@@ -9,6 +9,9 @@
  * - With `auth` (`auth.mjs`), nothing but the login routes gets through
  *   without a signed session cookie: pages, API calls, streams and upgrades
  *   alike. The cookie never reaches an app.
+ * - Without `auth` (loopback `dev` only), a request must be addressed to a
+ *   loopback name: a page on another site that rebinds its own domain to
+ *   127.0.0.1 is refused, so it can't drive the apps from the user's browser.
  */
 import { createServer, request as httpRequest } from "node:http";
 import { connect } from "node:net";
@@ -33,6 +36,11 @@ export function createProxy({ apps, auth, status }) {
   };
 
   const server = createServer((req, res) => {
+    if (auth === undefined && !loopbackHost(req.headers.host)) {
+      res.writeHead(421, { "content-type": "text/plain" });
+      res.end("Without a sign-in configured, this server only answers on localhost.\n");
+      return;
+    }
     if (auth?.handle(req, res)) return;
     const url = req.url ?? "/";
     if (url === "/" || url.startsWith("/?")) return landing(res, apps, status, auth !== undefined);
@@ -92,7 +100,8 @@ export function createProxy({ apps, auth, status }) {
   });
 
   server.on("upgrade", (req, socket, head) => {
-    const target = auth === undefined || auth.signedIn(req) ? route(req.url ?? "/") : undefined;
+    const allowed = auth === undefined ? loopbackHost(req.headers.host) : auth.signedIn(req);
+    const target = allowed ? route(req.url ?? "/") : undefined;
     if (target === undefined) {
       socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
       return;
@@ -113,6 +122,12 @@ export function createProxy({ apps, auth, status }) {
   // Live streams stay open for as long as a page reads them.
   server.requestTimeout = 0;
   return server;
+}
+
+/** Whether a `Host` header names this machine's loopback: `localhost`, `127.0.0.1` or `[::1]`, any port. */
+export function loopbackHost(host) {
+  const name = String(host ?? "").toLowerCase().replace(/:\d+$/, "");
+  return name === "localhost" || name === "127.0.0.1" || name === "[::1]";
 }
 
 /** The request's headers for the app's server: the session cookie out, where it was really addressed in. */
