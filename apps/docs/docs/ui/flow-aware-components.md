@@ -69,10 +69,10 @@ Shows where a coding run left its work: the branch, how many commits it made, an
 fsdev ui add work-place
 ```
 
-It takes plain props, which you get from `workPlace` in `@flow-state-dev/harness-manager`. Pass it a coding task's output, or the worktree row a harness session points at (`state.workspace.worktree` is the row's key in the user's `worktrees` list). From a row it also shows the worktree's name, its state when it isn't ready, and whose worktree it is when your session is attached to someone else's. For a run with no branch, it renders nothing.
+It takes plain props, which you get from `workPlace` in `@flow-state-dev/harness-manager/work-place`, an entry a page can bundle. Pass it a coding task's output, or the worktree row a harness session points at (`state.workspace.worktree` is the row's key in the user's `worktrees` list). From a row it also shows the worktree's name, its state when it isn't ready, and whose worktree it is when your session is attached to someone else's. For a run with no branch, it renders nothing.
 
 ```tsx
-import { workPlace } from "@flow-state-dev/harness-manager";
+import { workPlace } from "@flow-state-dev/harness-manager/work-place";
 import { WorkPlace } from "@/components/flow-state/work-place";
 
 <WorkPlace place={workPlace(task.output)} />

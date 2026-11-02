@@ -16,7 +16,7 @@ import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { worktreeLockPath } from "@flow-state-dev/workspace";
@@ -29,6 +29,7 @@ import {
   HARNESS_SESSION_ATTACHED_BRANCH_CHANGED,
   HARNESS_SESSION_REMOVE_NOT_OWNER,
   HARNESS_SESSION_REMOVE_UNSUPPORTED,
+  harnessSessionFeeds,
   harnessSessionFlow,
   harnessSessionStartSchema,
   harnessSessionStateSchema,
@@ -49,22 +50,29 @@ const stubAgent = (feeds: HarnessSessionFeeds) =>
     },
   }) as unknown as HarnessBlock;
 
-/** A host whose sessions work nowhere real, logging each place the turn-end check located. */
+/** A host whose sessions work in one empty directory, logging each place it is asked to locate. */
 function noWorkspace(branch: string | null = null): HarnessSessionWorkspace & { located: HarnessSessionPlace[] } {
   const located: HarnessSessionPlace[] = [];
+  const dir = mkdtempSync(join(tmpdir(), "session-flow-nowhere-"));
   return {
     located,
-    provision: async () => "/nowhere",
+    provision: async () => dir,
     locate: (place) => {
       located.push(place);
-      return "/nowhere";
+      return dir;
     },
     branch: () => branch,
   };
 }
 
 /** One turn of `sessionId`, born with a model the first time, as a create through the flow's routes would be. */
-async function turn(stores: ReturnType<typeof createInMemoryStores>, sessionId: string, prompt: string, workspace = noWorkspace()) {
+async function turn(
+  stores: ReturnType<typeof createInMemoryStores>,
+  sessionId: string,
+  prompt: string,
+  workspace = noWorkspace(),
+  agent: (feeds: HarnessSessionFeeds) => HarnessBlock = stubAgent,
+) {
   if ((await stores.session.get(sessionId)) === undefined) {
     const now = Date.now();
     await stores.session.set(
@@ -74,7 +82,7 @@ async function turn(stores: ReturnType<typeof createInMemoryStores>, sessionId: 
     );
   }
   return runAction({
-    flow: harnessSessionFlow({ kind: "stub-session", workspace, agent: stubAgent }),
+    flow: harnessSessionFlow({ kind: "stub-session", workspace, agent }),
     actionName: "turn",
     input: { prompt },
     userId: "u",
@@ -111,16 +119,26 @@ describe("a harness session's title", () => {
 });
 
 describe("the turn-end pull request check", () => {
+  // A harness that asks for its working directory takes the worktree's hold, which locates it once; the check locates it again.
   it("is left out when the host says the session has no branch, so it reads no directory the host didn't name", async () => {
     const workspace = noWorkspace(null);
-    await turn(createInMemoryStores(), "s-nobranch", "hello", workspace);
-    expect(workspace.located).toEqual([]);
+    await turn(createInMemoryStores(), "s-nobranch", "hello", workspace, provisioningAgent());
+    expect(workspace.located).toHaveLength(1);
   });
 
   it("looks for the session's working directory when the host names its branch", async () => {
     const workspace = noWorkspace("sessions/s-branch");
-    await turn(createInMemoryStores(), "s-branch", "hello", workspace);
-    expect(workspace.located).toEqual([{ flowKind: "stub-session", sessionId: "s-branch" }]);
+    await turn(createInMemoryStores(), "s-branch", "hello", workspace, provisioningAgent());
+    expect(workspace.located).toEqual([
+      { flowKind: "stub-session", sessionId: "s-branch" },
+      { flowKind: "stub-session", sessionId: "s-branch" },
+    ]);
+  });
+
+  it("is left out for a turn that never held the worktree, which has nothing of its own there to read", async () => {
+    const workspace = noWorkspace("sessions/s-never");
+    await turn(createInMemoryStores(), "s-never", "hello", workspace);
+    expect(workspace.located).toEqual([]);
   });
 });
 
@@ -142,7 +160,7 @@ const places = mkdtempSync(join(tmpdir(), "session-flow-places-"));
 
 /** A workspace that logs what it was asked, and writes each session's row with the branch it gives it, as a host does. */
 /** Owner sessions whose worktrees are another user's: not in this user's list of rows. */
-const othersWorktrees = new Set<string>(["s-owner-other"]);
+const othersWorktrees = new Set<string>(["s-owner-other", "s-owner-other-pr"]);
 
 function recordingWorkspace() {
   const provisioned: Array<{ place: HarnessSessionPlace; start: unknown }> = [];
@@ -203,6 +221,51 @@ function act(
 }
 
 describe("where a session starts", () => {
+  it("takes no hold on the worktree through feeds used without the flow, which has no turn end to let it go", async () => {
+    const { workspace } = recordingWorkspace();
+    const feeds = harnessSessionFeeds("stub-session", workspace);
+    const cwd = join(places, "s-standalone");
+    mkdirSync(cwd, { recursive: true });
+    const ctx = (request: string) =>
+      ({
+        request: { identity: { id: request } },
+        session: { identity: { id: "s-standalone" }, metadata: {}, state: { model: "stub-model" }, atomicState: async () => undefined },
+      }) as unknown as HarnessCallbackContext;
+
+    await feeds.cwd(ctx("r1"));
+    expect(existsSync(worktreeLockPath(cwd))).toBe(false);
+    // A second turn's feed resolves rather than waiting on a hold nothing lets go of.
+    await expect(feeds.cwd(ctx("r2"))).resolves.toBe(cwd);
+  });
+
+  it("holds the worktree through the pull-request check, so the next turn there can't open one this turn takes for its own", async () => {
+    const stores = createInMemoryStores();
+    const { workspace } = recordingWorkspace();
+    await seed(stores, "s-pr-lease", { model: "stub-model" });
+    const cwd = join(places, "s-pr-lease");
+    mkdirSync(cwd, { recursive: true });
+    execFileSync("git", ["init", "-q", "-b", "fix/review-notes"], { cwd, stdio: "pipe" });
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "base"], { cwd, stdio: "pipe" });
+    // A `gh` that says whether the turn's in-use lock is still there when it is asked.
+    const bin = mkdtempSync(join(tmpdir(), "session-flow-gh-"));
+    const seen = join(bin, "seen");
+    writeFileSync(
+      join(bin, "gh"),
+      `#!/bin/sh\nif [ -e '${worktreeLockPath(cwd)}' ]; then echo held > '${seen}'; else echo free > '${seen}'; fi\necho '[]'\n`,
+      { mode: 0o755 },
+    );
+    const path = process.env.PATH;
+    process.env.PATH = `${bin}:${path ?? ""}`;
+    try {
+      await act(stores, "s-pr-lease", workspace, "turn", { prompt: "go" });
+    } finally {
+      process.env.PATH = path;
+    }
+
+    expect(readFileSync(seen, "utf8").trim()).toBe("held");
+    expect(existsSync(worktreeLockPath(cwd))).toBe(false);
+  });
+
   it("is handed to the workspace on every provision, so the first one can honour it", async () => {
     const stores = createInMemoryStores();
     const { workspace, provisioned } = recordingWorkspace();
@@ -374,6 +437,27 @@ describe("attaching a session to another session's worktree", () => {
 
     expect(JSON.stringify(result.items)).toContain(HARNESS_SESSION_ATTACH_NOT_YOURS);
     expect((await stores.session.get("s-snooping"))?.state).not.toHaveProperty("workspace.path", path);
+  });
+
+  it("reads nothing in another user's worktree after refusing it: no checkout read, no pull requests asked of GitHub", async () => {
+    const stores = createInMemoryStores();
+    const { workspace } = recordingWorkspace();
+    ownerWorktree("s-owner-other-pr", "theirs");
+    await seed(stores, "s-snooping-pr", { model: "stub-model", start: { worktreeOf: "s-owner-other-pr" } });
+    // A `gh` that leaves a mark when anything asks it.
+    const bin = mkdtempSync(join(tmpdir(), "session-flow-gh-"));
+    const asked = join(bin, "asked");
+    writeFileSync(join(bin, "gh"), `#!/bin/sh\ntouch '${asked}'\necho '[]'\n`, { mode: 0o755 });
+    const path = process.env.PATH;
+    process.env.PATH = `${bin}:${path ?? ""}`;
+    try {
+      const result = (await act(stores, "s-snooping-pr", workspace, "turn", { prompt: "go" })) as { items: unknown[] };
+      expect(JSON.stringify(result.items)).toContain(HARNESS_SESSION_ATTACH_NOT_YOURS);
+    } finally {
+      process.env.PATH = path;
+    }
+
+    expect(existsSync(asked)).toBe(false);
   });
 
   it("is refused on a host that keeps no list of worktrees, since it can't say whose a worktree is", async () => {

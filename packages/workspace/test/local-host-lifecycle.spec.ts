@@ -9,7 +9,7 @@
  * moves on through another clone. Every assertion reads git, not what the
  * host reports.
  */
-import { existsSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { localWorkspaceHost, WorkspaceRefusedError } from "../src/local-host";
@@ -226,6 +226,33 @@ describe("list and remove", () => {
 
     await h.remove!({ place: ["run-1"] }, { force: true });
     expect(existsSync(place.cwd)).toBe(false);
+  });
+
+  it("refuses to drop a detached HEAD holding commits no ref holds when its directory has gone missing", async () => {
+    const { h, place } = await made();
+    git(place.cwd, "checkout", "-q", "--detach");
+    git(place.cwd, "commit", "-q", "--allow-empty", "-m", "only on the detached HEAD");
+    const moved = `${place.cwd}-moved`;
+    renameSync(place.cwd, moved);
+
+    const refusal = await h.remove!({ place: ["run-1"] }).catch((error: unknown) => error);
+    expect((refusal as WorkspaceRefusedError).reason).toBe("unique-commits");
+    expect(git(repo, "worktree", "list", "--porcelain")).toContain(place.cwd);
+  });
+
+  it("removes only the worktree it was asked for when others' directories are missing too", async () => {
+    const { h, place } = await made();
+    const other = await h.provision({ kind: "repo", repo }, { place: ["run-2"], branch: "fsd/run-2" });
+    git(other.cwd, "checkout", "-q", "--detach");
+    git(other.cwd, "commit", "-q", "--allow-empty", "-m", "only on run-2's detached HEAD");
+    renameSync(place.cwd, `${place.cwd}-moved`);
+    renameSync(other.cwd, `${other.cwd}-moved`);
+
+    await h.remove!({ place: ["run-1"] });
+
+    const listed = git(repo, "worktree", "list", "--porcelain");
+    expect(listed).not.toContain(place.cwd);
+    expect(listed).toContain(other.cwd);
   });
 
   it("removes a detached HEAD whose commits a branch already holds", async () => {

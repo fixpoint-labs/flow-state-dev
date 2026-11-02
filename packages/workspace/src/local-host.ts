@@ -154,6 +154,13 @@ const PROVISIONING_MARKER = ".checkout.provisioning";
  */
 const LOCAL_MARKER_SUFFIX = ".provisioning";
 const LOCAL_LOCK_SUFFIX = ".place.lock";
+/**
+ * Written in a local repository's worktree's own directory under git's
+ * (`.git/worktrees/<id>/`), which outlives the checkout: this worktree is its
+ * place's `checkout/`, beside kept files. `list` reads it to place a worktree
+ * whose directory has gone missing.
+ */
+const NESTED_LAYOUT_MARKER = "fsd-nested-place";
 /** This host's identity, in its root. Dot-prefixed, so no place is named over it. */
 const HOST_ID_FILE = ".host-id";
 /** Where a held snapshot is laid out for a person, beside the checkout. */
@@ -1405,6 +1412,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           deadline,
           request.existing === true,
         );
+        writeFileSync(join(await git(join(dir, CHECKOUT_DIR), ["rev-parse", "--absolute-git-dir"], remainingBudget(deadline, now)), NESTED_LAYOUT_MARKER), "");
         const filesDir = join(dir, PROJECT_DIR);
         await provisionFiles(dir, PROJECT_DIR, projectId, files);
         const place: WorkspacePlace = {
@@ -1892,6 +1900,20 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     return [...cloned, ...localRepositories];
   }
 
+  /** The worktrees of a local repository marked nested (`NESTED_LAYOUT_MARKER`), by the path git recorded. */
+  async function nestedWorktrees(repository: string, timeoutMs: number): Promise<Set<string>> {
+    const admin = join(await git(repository, ["rev-parse", "--path-format=absolute", "--git-common-dir"], timeoutMs), "worktrees");
+    const marked = new Set<string>();
+    if (!existsSync(admin)) return marked;
+    for (const entry of readdirSync(admin, { withFileTypes: true })) {
+      const own = join(admin, entry.name);
+      if (!entry.isDirectory() || !existsSync(join(own, NESTED_LAYOUT_MARKER)) || !existsSync(join(own, "gitdir"))) continue;
+      // `gitdir` holds the worktree's `.git` file's path.
+      marked.add(resolve(dirname(readFileSync(join(own, "gitdir"), "utf8").trim())));
+    }
+    return marked;
+  }
+
   async function list(): Promise<readonly ListedWorktree[]> {
     const deadline = now() + provisionTimeoutMs;
     const left = () => remainingBudget(deadline, now);
@@ -1900,6 +1922,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     for (const repository of repositories()) {
       if (!existsSync(repository)) continue;
       const porcelain = await git(repository, ["worktree", "list", "--porcelain"], left());
+      const marked = localRepositories.has(repository) ? await nestedWorktrees(repository, left()) : new Set<string>();
       for (const block of porcelain.split("\n\n")) {
         const lines = block.split("\n");
         const path = lines.find((line) => line.startsWith("worktree "))?.slice("worktree ".length);
@@ -1912,8 +1935,11 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         // A clone's worktree is always its place's `checkout/`. A listed repository's is the place
         // itself, unless kept files sit beside it (`locate`): then it is `checkout/` next to `project/`.
         // Read from the layout, never the name alone, so a place named "checkout" stays itself.
+        // The marker git keeps answers even when the place is gone; the kept files beside it
+        // answer for a worktree made before the marker was written.
         const nested =
           !localRepositories.has(repository) ||
+          marked.has(resolve(path)) ||
           (basename(cwd) === CHECKOUT_DIR && existsSync(join(dirname(cwd), PROJECT_DIR)));
         const dir = nested ? dirname(cwd) : cwd;
         const dirty = existsSync(cwd)
@@ -1951,9 +1977,10 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       throw new WorkspaceRefusedError("place-busy", `${entry.cwd} is being provisioned right now; nothing was removed. Try again once it is ready.`);
     }
     // A run working there holds its in-use lock (`occupyWorktree`) for as long
-    // as it works. Taken here, never judged stale, so a run can't start while
-    // the tree goes, and one that is running is never removed from under it.
-    const use = tryAcquireLock(worktreeLockPath(entry.cwd), { ...HOST_LOCK_BOUNDS, staleAfterMs: Number.MAX_SAFE_INTEGER, heartbeatMs: undefined }, { now });
+    // as it works. Taken here, a holder never judged stale, so one that is
+    // running is never removed from under it; and refreshed while held, so a
+    // run can't judge this one stale and start while the tree goes.
+    const use = tryAcquireLock(worktreeLockPath(entry.cwd), { ...HOST_LOCK_BOUNDS, staleAfterMs: Number.MAX_SAFE_INTEGER }, { now });
     if (use === undefined) {
       releaseLock(lease);
       throw new WorkspaceRefusedError(
@@ -1982,7 +2009,8 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       const head = present ? await git(entry.cwd, ["rev-parse", "HEAD"], left()) : entry.head;
       // A detached HEAD's commits live only in this worktree's HEAD and reflog,
       // which removal deletes: refused like a branch's, unless forced.
-      if (branch === null && head !== null && present && removeOptions.force !== true) {
+      // Checked even when the directory is gone: git still keeps that HEAD, and pruning drops it.
+      if (branch === null && head !== null && removeOptions.force !== true) {
         const only = Number(await git(entry.repository, ["rev-list", "--count", head, "--not", "--branches", "--remotes", "--tags"], left()));
         if (only > 0) {
           throw new WorkspaceRefusedError(
@@ -2008,8 +2036,9 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           );
         }
       }
-      if (existsSync(entry.cwd)) await git(entry.repository, ["worktree", "remove", entry.cwd], left());
-      else await git(entry.repository, ["worktree", "prune"], left());
+      // With its directory gone, `remove` drops only this worktree's metadata;
+      // `prune` would drop every missing worktree's, and any detached HEAD with it.
+      await git(entry.repository, ["worktree", "remove", entry.cwd], left());
       let branchDeleted = false;
       if (removeOptions.deleteBranch === true && branch !== null) {
         await git(entry.repository, ["branch", "-D", branch], left());

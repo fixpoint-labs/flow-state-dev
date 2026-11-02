@@ -472,13 +472,18 @@ export const HARNESS_SESSION_ISSUE_REFUSED = `A session's \`state.issue\` is ref
  * @param workspace Where its sessions work.
  * @param defaultModel What {@link HarnessSessionFlowOptions.defaultModel} says.
  * @param steering The flow's steering, which holds a running turn's offer for its `steer` action.
+ * @param inUse Where a turn's hold on its worktree (`occupyWorktree`) is kept
+ *   until the turn ends, by request. Only {@link harnessSessionFlow}, which lets
+ *   go of each when its turn finishes, passes one; feeds built without it take
+ *   no hold, since nothing would let go of it.
+ * @param attachedHeads The branch each attached turn started on, by request, for the flow's turn-end check.
  */
 export function harnessSessionFeeds(
   kind: string,
   workspace: HarnessSessionWorkspace,
   defaultModel?: string,
   steering: HarnessSteering = harnessSteering(),
-  inUse: Map<string, LockLease> = new Map(),
+  inUse?: Map<string, LockLease>,
   attachedHeads: Map<string, string | null> = new Map(),
 ): HarnessSessionFeeds {
   return {
@@ -501,7 +506,7 @@ export function harnessSessionFeeds(
             ? null
             : await workspace.attach(workPlaceOf(kind, ctx), { worktrees, by: { kind: "session", id: ctx.session.identity.id } });
         if (worktree === null) throw new Error(HARNESS_SESSION_ATTACH_NOT_YOURS);
-        if (!inUse.has(requestId)) inUse.set(requestId, await occupyWorktree(path, { owner: requestId, signal: ctx.signal }));
+        if (inUse !== undefined && !inUse.has(requestId)) inUse.set(requestId, await occupyWorktree(path, { owner: requestId, signal: ctx.signal }));
         // Read once the owner's turn has let go, so it is the branch this turn starts on.
         const branch = await checkedOutBranch(path);
         if (!attachedHeads.has(requestId)) attachedHeads.set(requestId, branch);
@@ -514,7 +519,7 @@ export function harnessSessionFeeds(
       // this session's branch, and until the turn ends, so neither an attached
       // session's running turn nor the host's `remove` has it moved under them.
       const located = workspace.locate(workPlaceOf(kind, ctx));
-      if (!inUse.has(requestId)) inUse.set(requestId, await occupyWorktree(located, { owner: requestId, signal: ctx.signal }));
+      if (inUse !== undefined && !inUse.has(requestId)) inUse.set(requestId, await occupyWorktree(located, { owner: requestId, signal: ctx.signal }));
       const worktrees = worktreesOf(ctx);
       const title = ctx.session.metadata.title;
       const provisioned = await workspace.provision(placeOf(kind, ctx), {
@@ -663,56 +668,76 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       const requestId = requestOf(harnessCtx);
       const state = harnessCtx.session.state as HarnessSessionState;
       const place = workPlaceOf(options.kind, harnessCtx);
-      // An attached turn ends on the branch it started on: checked before the
-      // worktree is let go, so the owner's next turn can't have moved it yet.
-      if (attachedHeads.has(requestId)) {
-        const started = attachedHeads.get(requestId) ?? null;
-        attachedHeads.delete(requestId);
-        const ended = await checkedOutBranch(options.workspace.locate(place));
-        if (ended !== started) {
-          const error = `${HARNESS_SESSION_ATTACHED_BRANCH_CHANGED} It started on ${started ?? "a detached HEAD"} and ended on ${ended ?? "a detached HEAD"}.`;
-          await changeState(harnessCtx, (current) => withTurn(current, requestId, (record) => ({ ...record, error })));
-          ctx.emit.status(error, { transient: false });
+      // Everything below runs while the turn still holds the worktree, the
+      // pull-request check included, so the next turn there (the owner's or an
+      // attached session's) can't move the checkout or open a pull request
+      // this turn would take for its own.
+      try {
+        // An attached turn ends on the branch it started on: checked before the
+        // worktree is let go, so the owner's next turn can't have moved it yet.
+        if (attachedHeads.has(requestId)) {
+          const started = attachedHeads.get(requestId) ?? null;
+          attachedHeads.delete(requestId);
+          const ended = await checkedOutBranch(options.workspace.locate(place));
+          if (ended !== started) {
+            const error = `${HARNESS_SESSION_ATTACHED_BRANCH_CHANGED} It started on ${started ?? "a detached HEAD"} and ended on ${ended ?? "a detached HEAD"}.`;
+            await changeState(harnessCtx, (current) => withTurn(current, requestId, (record) => ({ ...record, error })));
+            ctx.emit.status(error, { transient: false });
+          }
         }
-      }
-      // The row's branch and count, read while the turn still holds the
-      // worktree, so the owner's next turn can't have moved it yet. A failed
-      // read is a note, never a failed turn.
-      const worktrees = worktreesOf(ctx);
-      if (inUse.has(requestId) && worktrees !== undefined && options.workspace.recordCheckout !== undefined) {
-        try {
-          await options.workspace.recordCheckout(place, { worktrees, by: { kind: "session", id: harnessCtx.session.identity.id } });
-        } catch (error) {
-          ctx.emit.status(`The worktree's row was not updated: ${error instanceof Error ? error.message : String(error)}`, {
-            transient: false,
-          });
+        // The row's branch and count, read while the turn still holds the
+        // worktree, so the owner's next turn can't have moved it yet. A failed
+        // read is a note, never a failed turn.
+        const worktrees = worktreesOf(ctx);
+        if (inUse.has(requestId) && worktrees !== undefined && options.workspace.recordCheckout !== undefined) {
+          try {
+            await options.workspace.recordCheckout(place, { worktrees, by: { kind: "session", id: harnessCtx.session.identity.id } });
+          } catch (error) {
+            ctx.emit.status(`The worktree's row was not updated: ${error instanceof Error ? error.message : String(error)}`, {
+              transient: false,
+            });
+          }
         }
-      }
-      // The turn is done with its worktree, however it ended.
-      const lease = inUse.get(requestId);
-      if (lease !== undefined) {
-        inUse.delete(requestId);
-        releaseLock(lease);
-      }
-      // A turn has a record under its request; a `steer` request has none.
-      const turnRecord = state.turns?.[requestId];
-      if (turnRecord === undefined) return;
-      // The branch the row last read, else the host's name for it.
-      const key = (harnessCtx.session.state as HarnessSessionState).workspace?.worktree ?? null;
-      const row = key !== null && worktrees !== undefined ? await worktrees.getOptional(key) : undefined;
-      const branch = row?.state.branch ?? options.workspace.branch(place);
-      if (branch === null) return;
-      const cwd = options.workspace.locate(place);
-      if (!existsSync(cwd)) return;
-      // Only what was opened since the turn began: a branch the agent switched to may hold older pull requests.
-      const result = await recordBranchPullRequests(ctx, {
-        cwd,
-        branches: [branch],
-        openedSince: turnRecord.at ?? undefined,
-        ...(key !== null && worktrees !== undefined ? { worktree: { collection: worktrees, key } } : {}),
-      });
-      if (result.status === "unavailable") {
-        ctx.emit.status(`Pull requests on the session's branch were not checked: ${result.reason}`, { transient: false });
+        // A turn that never held the worktree reads nothing there: refused (not
+        // this user's to attach to), cancelled while it waited, or one that never
+        // asked for a working directory.
+        if (!inUse.has(requestId)) return;
+        // A turn has a record under its request; a `steer` request has none.
+        const turnRecord = state.turns?.[requestId];
+        if (turnRecord === undefined) return;
+        // The branch the row last read, else the host's name for it.
+        const key = (harnessCtx.session.state as HarnessSessionState).workspace?.worktree ?? null;
+        const row = key !== null && worktrees !== undefined ? await worktrees.getOptional(key) : undefined;
+        const branch = row?.state.branch ?? options.workspace.branch(place);
+        if (branch === null) return;
+        const cwd = options.workspace.locate(place);
+        if (!existsSync(cwd)) return;
+        // Only what was opened since the turn began: a branch the agent switched to may hold older pull requests.
+        const result = await recordBranchPullRequests(ctx, {
+          cwd,
+          branches: [branch],
+          openedSince: turnRecord.at ?? undefined,
+          ...(key !== null && worktrees !== undefined
+            ? {
+                worktree: {
+                  collection: worktrees,
+                  key,
+                  // The pull request the session started on predates every turn; the row lists it anyway.
+                  ...(state.start !== undefined && "pullRequest" in state.start ? { startedOn: state.start.pullRequest } : {}),
+                },
+              }
+            : {}),
+        });
+        if (result.status === "unavailable") {
+          ctx.emit.status(`Pull requests on the session's branch were not checked: ${result.reason}`, { transient: false });
+        }
+      } finally {
+        // The turn is done with its worktree, however it ended.
+        const lease = inUse.get(requestId);
+        if (lease !== undefined) {
+          inUse.delete(requestId);
+          releaseLock(lease);
+        }
       }
     },
   });
