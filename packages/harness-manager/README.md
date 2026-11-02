@@ -82,6 +82,8 @@ If the saved work doesn't match the run's record, the harness doesn't run. The t
 
 Without a held-work store, nothing is saved and the record gets no `place` or `held`. A run whose record says its work was saved, with no live checkout on this machine, asks its owner the same way rather than starting over.
 
+If the host has a [setup command](../workspace/README.md#setting-up-a-fresh-checkout), such as `pnpm install`, it runs in each new checkout before the harness starts, so the run waits for it. While it runs, the run's stream shows "Setting up the worktree…". If it fails, the stream keeps "Setup failed:" with the last lines of output, and the run goes on in the checkout anyway. With a `WorkspaceConfig`, pass the command as `setup`.
+
 A run its workspace refuses is not retried. That covers a source answering `refused` and a host that won't provision what the source named, such as a remote it doesn't allow. The row is cancelled on its first attempt, before the harness starts, with the refusal as its reason.
 
 ## Running a board kept per organization
@@ -268,13 +270,15 @@ export const claudeCodeSession = harnessSessionFlow({
 
 `agent` builds the harness block from the feeds the flow hands it: `cwd`, `resume`, `onSession`, `model`, `worktree`, `onSteerable` and `onUsage`, plus `onToolApproval` when the flow is built with `approveTools`. These are the session flow's own feeds. `onUsage` records a subscription window the harness hears about during a run in the user's [usage record](#subscription-usage), as the manager's does; the flow's `harnessUsage` action reads it, with the readers you pass as `usageReaders` (none by default). It has no `onActivity`, which feeds the manager's task records. `workspace` says where each session works: `provision` makes a session's directory on its first turn, `locate` finds it without making it, and `branch` names the branch whose pull requests the flow checks when a turn ends (`null` skips the check). `remove`, which is optional, removes the session's worktree. A session is keyed by its flow kind, tenant and id, never by anything the caller sent.
 
+`provision(place, request)` returns the directory's path, or `{ path, worktree?, setup? }`. `setup` reports the workspace host's setup command: pass `request.onSetup` to the host's place request as `onSetup`, and return the place's `setup`. The turn that waited on it then records `setup` as `running` while the command runs, then `done`, or `failed` with the tail of its output. A host that returns a bare path records nothing.
+
 The flow handles the rest:
 
 - **Continuity.** `resume` hands the harness the conversation it last confirmed, and `onSession` is the only thing that records a new one. If the harness refuses to continue that conversation, the session stays bound to it, and each later turn fails the same way. To recover, start a new session.
 - **The model.** A session is created with the model it runs (`state.model`), which never changes after that. Creating one without a model is refused with `HARNESS_SESSION_MODEL_REQUIRED`. `defaultModel` is the model used for a stored session that has none recorded.
 - **The issue.** A session can be created with the tracker issue it works on (`state.issue`, such as `FIX-2165`), which also never changes. It is optional. One that isn't a tracker key (letters and digits joined by single `-` or `_`, at most 64 characters) is refused with `HARNESS_SESSION_ISSUE_REFUSED`. The workspace gets it as `place.issue`, so `provision` and `branch` can name the session's branch after it.
 - **Actions.** `turn` takes a prompt and waits for any running turn to finish first (`concurrency: "defer"`). `steer` hands a line to the running turn if its harness offered to take one, and answers `{ taken, live }`.
-- **A record per turn.** `state.turns` keeps the latest 20 turns, by request id. Each record holds the conversation the turn tried to resume, the one the harness confirmed, and how the turn failed: core's failure class, the harness's error text, and whether it was stopped. Read it to show a user why a turn failed. When the turn ends, however it ended, its record also gets `spend`, what the turn spent as a task's spend reads (`taskSpendView`'s shape: model, tokens, and the vendor's charge when it reported one, `null` when the harness reported nothing), and `endedAt`, so the turn took `endedAt - at`. The schema is `harnessSessionStateSchema`.
+- **A record per turn.** `state.turns` keeps the latest 20 turns, by request id. Each record holds the conversation the turn tried to resume, the one the harness confirmed, and how the turn failed: core's failure class, the harness's error text, and whether it was stopped. It also holds the workspace's `setup` when the turn waited on one. Read it to show a user why a turn failed. When the turn ends, however it ended, its record also gets `spend`, what the turn spent as a task's spend reads (`taskSpendView`'s shape: model, tokens, and the vendor's charge when it reported one, `null` when the harness reported nothing), and `endedAt`, so the turn took `endedAt - at`. The schema is `harnessSessionStateSchema`.
 - **Where it starts.** `state.start` is set at create and fixed, like the model. It is exactly one of `{ base: "origin/main" }` (cut a new branch from that ref; a remote's branch is fetched first), `{ branch: "fix/login" }` (work on that existing branch), `{ pullRequest: 42 }` (work on the pull request's head branch) or `{ worktreeOf: "<session id>" }` (attach to another session's worktree, below). Without it, the session gets a fresh worktree of its own, wherever your workspace starts one by default. A malformed start is refused at create with `HARNESS_SESSION_START_INVALID`. The schema is `harnessSessionStartSchema`.
 - **Where it works.** `provision(place, { start })` returns the directory, or `{ path, worktree }`. The session keeps only a pointer: `state.workspace = { worktree }`, the key of the worktree's row (below), which owns its path, branch, base, commit count, owner and state. When a turn ends, the pull-request check reads the row's branch, and falls back to `workspace.branch(place)` when there is no row. A session stored with the older record, which copied the path, branch and owner, reads as `{ worktree: null }` until its next turn points it at the row.
 - **Attaching to another session's worktree.** A session created with `start: { worktreeOf: id }` works in session `id`'s worktree, on whatever branch is checked out there. Nothing is provisioned for it: no new worktree and no new branch. The owner is looked up in the creating caller's tenant and under the same flow kind. Attaching is the only way two sessions share a worktree. Creating the session is refused with a 404 (`HARNESS_SESSION_ATTACH_MISSING`) when that session has no worktree here (another tenant's, never provisioned, or removed) or when `id` is the new session's own. A turn fails with the same message if the worktree has gone since. The worktree must also be in the attaching user's own list of worktrees (`worktreesCollection`): the session's first turn attaches through the workspace's `attach`, and when that finds no row of the user's (another user's session, or a host that keeps no list) the turn fails with `HARNESS_SESSION_ATTACH_NOT_YOURS` before the harness gets the path. Every turn, the owner's and each attached session's, holds the worktree in use, so two harnesses never write there at once: a turn waits for the other's to finish. An attached session may not change the worktree's branch. A turn that ends on a different branch than it started on is recorded as failed with `HARNESS_SESSION_ATTACHED_BRANCH_CHANGED`, and its status is not transient. This is checked when the turn ends; nothing stops the agent from switching mid-turn, so the switch has already happened by then.
@@ -338,6 +342,19 @@ import { WorkPlace } from "@/components/flow-state/work-place";
 <WorkPlace place={workPlace(task.output)} />;
 <WorkPlace place={workPlace(worktreeRow, { session: sessionId })} />;
 ```
+
+### Reading what a run recorded, in a browser
+
+`readRecordedWork(client, { sessionId, requestId })` returns what a coding run recorded: its plan steps, the files its file tools touched, and the pull requests it opened. It reads the run session's recorded collections through the API client, so any page can show the same rows without re-parsing the run's steps. It returns only the rows of that request, even when the session holds earlier runs. A section is `null` when the harness records none of it, and `truncated` is `true` when the list filled a page. A read that fails throws the client's own error, for the page to word.
+
+```ts
+import { readRecordedWork, workPlace } from "@flow-state-dev/harness-manager/browser";
+
+const work = await readRecordedWork(client, { sessionId, requestId });
+work.files?.rows; // [{ path: "src/app.ts", kind: "edited" }, …]
+```
+
+`@flow-state-dev/harness-manager/browser` is the entry to import in a page. The package root reaches Node built-ins through `@flow-state-dev/workspace` and does not bundle for a browser. The browser entry carries `readRecordedWork`, its types, `workPlace` with `shellWord`, and `reviewDetail`, and a test keeps it free of Node built-ins.
 
 ## Briefing a run on its issue
 
@@ -469,6 +486,16 @@ await inbox.answer(item, { value: { verdict: "revise", words: "Keep the old endp
 That posts to the engine's answer route, `POST /api/flows/:flow/requests/:requestId/answer` with `{ suspensionId, action: "submit", data }`. Blank `words` are refused with a 400, and the review stays open.
 
 To draw the review in a browser, add the ui registry's `review-hold` component (`fsdev ui add review-hold`). It offers Accept and Ask for changes, and sends only these two answers. The registry's `SuspensionCard` draws it for this stop, with the stop's prompt.
+
+The stop's `data` names the run's branch, commit count, commit subjects and the judge's verdict. Read it in the browser with `reviewDetail` from `@flow-state-dev/harness-manager/browser`, an entry that imports no Node built-in, and hand the result to the card as `review`:
+
+```tsx
+import { reviewDetail } from "@flow-state-dev/harness-manager/browser";
+
+<ReviewSuspension item={item} review={reviewDetail(item.data)} />;
+```
+
+A field it can't read comes back `null` (or `[]` for the subjects), and data that isn't a review comes back `null`.
 
 - **Accepted**: the task completes with no further run, output `review: "accepted"`.
 - **Revise**: the words are written on the task as the user's steer, and one more run starts on the same attempt, continuing the same coding session with the words in its prompt, as any steer is taken. If it commits again it is reviewed again, over all the branch's commits. Each revision counts toward the task's steer limit; past it the attempt fails. If the harness confirmed no coding session, the revision fails the attempt instead, and the next attempt's brief carries the words.
@@ -719,9 +746,49 @@ const actions = {
 
 The record is `harnessUsageCollection` (`HARNESS_USAGE`, `harness-usage/**`, user scope, not client-readable, not writable by a model). On the server, `readHarnessUsage(ctx, now, expected?)` returns the query's rows without refreshing, and `recordHarnessUsage` is the one writer, in two forms: `recordHarnessUsage(ctx, report)` for one window a run reported (the manager's and session door's `onUsage` call it), and `recordHarnessUsage(ctx, harness, reading, checkedAt)` for a whole reading. It answers `"recorded"`, `"kept-stored"` or `"refused-older"`. Both throw when the calling block doesn't have the collection under `HARNESS_USAGE`.
 
+## Which harnesses can run here
+
+`harnessReadiness(slots, { timeoutMs? })` keeps which coding harnesses can run on this machine, and what to do about one that can't. `slots` holds one core `HarnessReadinessCheck` per harness, keyed by its name, with the `label` the user sees. Each integration ships one:
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS } from "@flow-state-dev/claude-code/sdk";
+import { checkCodexReadiness, CODEX_PASS } from "@flow-state-dev/codex";
+import { checkCursorReadiness } from "@flow-state-dev/cursor";
+import {
+  formatHarnessReadiness,
+  harnessReadiness,
+  harnessReadinessAction,
+  harnessReadinessCapability,
+} from "@flow-state-dev/harness-manager";
+
+const readiness = harnessReadiness({
+  "claude-code": { label: "Claude Code", check: (o) => checkClaudeCodeReadiness({ env: harnessEnv({ pass: CLAUDE_CODE_PASS }), signal: o?.signal }) },
+  codex: { label: "Codex", check: (o) => checkCodexReadiness({ env: harnessEnv({ pass: CODEX_PASS }), timeoutMs: 30_000, signal: o?.signal }) },
+  cursor: { label: "Cursor", check: () => checkCursorReadiness(harnessEnv({ pass: ["PATH", "HOME", "CURSOR_API_KEY"] })) },
+});
+
+// At start: never throws, so it never stops the server.
+void readiness.read().then((rows) => console.log(formatHarnessReadiness(rows)));
+// Coding harnesses on this machine:
+// ✓ Cursor
+// ✗ Codex: Codex has no credential: Not logged in. Run `codex login`, or set CODEX_API_KEY.
+```
+
+- **`read({ refresh? })`** returns one `HarnessReadinessRow` per harness, in the order given: `harness`, `label`, `ready`, `reason`, `remedy`, `unanswered` and `checkedAt`. The first read runs every check; later reads return the kept rows. `refresh: true` checks every harness again, and `refresh: "codex"` checks one. Concurrent checks of one harness share one call. Nothing polls.
+- **It never throws.** A check that throws, rejects or outlasts `timeoutMs` (default `READINESS_CHECK_TIMEOUT_MS`, 30 s) is a row with `ready: false`, `unanswered: true` and a plain `reason`.
+- **`refusal(harness)`** is for a coding flow's gate before a task starts. It returns `undefined` when the harness can run, giving a harness not marked ready one fresh check first so a sign-in made since the last read counts. Otherwise it returns a sentence that names the harness, says why, and says what to run; when the check got no answer, the sentence says it couldn't tell.
+- **`harnessReadinessAction(readiness)`** is a flow-level action: input `{ refresh?: boolean }`, output `{ harnesses: HarnessReadinessRow[] }`. A screen draws chips from it, and Re-check is `{ refresh: true }`. No model call.
+- **`harnessReadinessCapability(readiness)`** puts the rows in a generator's context, followed by `READINESS_GUIDANCE` (file coding work only on a ready harness, say what to run for one that isn't, and start the task when the user says they've just signed in, since a start checks again). A turn reads the kept rows and runs no check. Add it to your coordinator's `uses`.
+- **`formatHarnessReadiness(rows)`** is the text the start log and the context print: `✓` ready, `✗` not ready with its remedy, `?` no answer.
+
+Readiness is this machine's state, so it is kept in the process, not stored. Nothing here changes `harnessManager`: a host that installs none of it gets the run path it had.
+
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `harnessRunChangesRead` with `HarnessRunChangesReadOptions`, `HarnessRunChangesRefused`, `harnessRunChangesInputSchema`, `harnessRunChangesOutputSchema`, `runChangesSchema`, `runDiffSchema`, `runFilePatchSchema`, `RunChanges`, `RunDiff`, `RunDiffFile`, `RunFilePatch`, `MAX_DIFF_FILES` and `MAX_PATCH_CHARS` for [reading what a run changed](#reading-one-files-patch), `harnessSessionFlow` with `harnessSessionFeeds`, `harnessSessionStateSchema`, `harnessTurnChangesInputSchema`, `harnessSessionStartSchema`, `harnessSessionWorkspaceRecordSchema`, `resolveHarnessSessionStart`, the `HARNESS_SESSION_*` messages and their types for [a harness as a session](#a-harness-as-a-session), `harnessStub` for [checks that run no model](#a-scripted-harness-for-checks), `upgradeKeptTurns`, `STEER_POLL_MS`, `PROGRESS_NOTE_MS` and `progressNoteOf` for [progress notes](#how-a-running-task-is-doing), `PhaseSpec`, `PhaseDoneVerdict` and the run-context types, `commandCheck` with `CommandCheckOptions`, `CommandCheckCommands`, `CommandCheckResult`, `commandCheckResultSchema`, `commandChecksPassed`, `commandChecksSummary` and `commandChecksFailure` for [checking the work with commands](#checking-the-work-with-commands), `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
+**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `harnessRunChangesRead` with `HarnessRunChangesReadOptions`, `HarnessRunChangesRefused`, `harnessRunChangesInputSchema`, `harnessRunChangesOutputSchema`, `runChangesSchema`, `runDiffSchema`, `runFilePatchSchema`, `RunChanges`, `RunDiff`, `RunDiffFile`, `RunFilePatch`, `MAX_DIFF_FILES` and `MAX_PATCH_CHARS` for [reading what a run changed](#reading-one-files-patch), `harnessSessionFlow` with `harnessSessionFeeds`, `harnessSessionStateSchema`, `harnessTurnChangesInputSchema`, `harnessSessionStartSchema`, `harnessSessionWorkspaceRecordSchema`, `resolveHarnessSessionStart`, the `HARNESS_SESSION_*` messages and their types for [a harness as a session](#a-harness-as-a-session), `harnessStub` for [checks that run no model](#a-scripted-harness-for-checks), `upgradeKeptTurns`, `STEER_POLL_MS`, `PROGRESS_NOTE_MS` and `progressNoteOf` for [progress notes](#how-a-running-task-is-doing), `PhaseSpec`, `PhaseDoneVerdict` and the run-context types, `commandCheck` with `CommandCheckOptions`, `CommandCheckCommands`, `CommandCheckResult`, `commandCheckResultSchema`, `commandChecksPassed`, `commandChecksSummary` and `commandChecksFailure` for [checking the work with commands](#checking-the-work-with-commands), `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types, and [readiness](#which-harnesses-can-run-here): `harnessReadiness`, `harnessReadinessAction`, `harnessReadinessCapability`, `formatHarnessReadiness`, `harnessReadinessRowSchema`, their constants and types.
+
+**`@flow-state-dev/harness-manager/browser`** is what a page imports: [`readRecordedWork`](#reading-what-a-run-recorded-in-a-browser) and its types, plus `workPlace`, `shellWord` and `reviewDetail`. `@flow-state-dev/harness-manager/work-place` still carries `workPlace` on its own.
 
 **`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 

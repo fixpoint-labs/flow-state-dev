@@ -96,12 +96,18 @@
     // The Claude Code-style lab's copies, as `fsdev ui add message` installed them.
     "labs/claude-code-style/src/components/ui/**",
     "labs/claude-code-style/src/components/flow-state/message.tsx",
+    // and of the registry's review card, drawn for display only.
+    "labs/claude-code-style/src/components/flow-state/review-hold.tsx",
     // The stock shadcn copies the Teammates lab and Shift Manager palettes are built on.
     "labs/teammates/src/components/ui/**",
     "packages/shift-manager/src/components/ui/command.tsx",
     "packages/shift-manager/src/components/ui/dialog.tsx",
     // The Teammates lab's copy of the registry's tool grouping.
     "labs/teammates/src/components/flow-state/tool-grouping.ts",
+    // Kitchen Sink's and Shift Manager's byte-identical copies of the registry's
+    // error.tsx, whose `ErrorBody` export is for `request-recovery`, which neither draws yet.
+    "apps/kitchen-sink/components/flow-state/error.tsx",
+    "packages/shift-manager/src/components/flow-state/error.tsx",
     // Kitchen Sink's copy of the registry's run-changes, which the registry
     // drift test requires installed; its Changes section imports it later.
     "apps/kitchen-sink/components/flow-state/run-changes.tsx",
@@ -117,7 +123,10 @@
     // their suspension cards import ReviewSuspension; the card's other exports are
     // for apps that draw holds.
     "apps/kitchen-sink/components/flow-state/review-hold.tsx",
-    "packages/shift-manager/src/components/flow-state/review-hold.tsx"
+    "packages/shift-manager/src/components/flow-state/review-hold.tsx",
+    // Shift Manager's byte copy of the registry's spend: it draws the line and the
+    // charge; the copy's other formatters are for apps that show them apart.
+    "packages/shift-manager/src/components/flow-state/spend.tsx"
   ],
 
   // Dead code fails `fallow audit` at its default severity. Complexity reports

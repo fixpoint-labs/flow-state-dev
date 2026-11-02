@@ -25,9 +25,13 @@ const kitchenSinkTargetDir = join(testDir, "../components/flow-state");
 /**
  * Kitchen Sink follows sessions through `useSession`, so it draws neither the
  * connection bar nor the first-read screen. An installed copy nothing imports
- * is dead code.
+ * is dead code. `request-recovery` is not installed here either.
  */
-const NOT_INSTALLED_COMPONENTS = new Set(["connection-banner.tsx", "connection-screen.tsx"]);
+const NOT_INSTALLED_COMPONENTS = new Set([
+  "connection-banner.tsx",
+  "connection-screen.tsx",
+  "request-recovery.tsx",
+]);
 
 const drift = () =>
   compareRegistryCopies({
@@ -41,7 +45,7 @@ describe("kitchen-sink registry drift (FIX-1477 V8)", () => {
     const { compared, mismatches } = drift();
 
     // 42 of the registry's component-directory files (all non-`.stories.tsx`
-    // files outside `generative/`, less the two connection components) are
+    // files outside `generative/`, less the three uninstalled components) are
     // installed here. If that count moves,
     // this test's scope moved with it and needs re-reading before trusting a
     // green result.

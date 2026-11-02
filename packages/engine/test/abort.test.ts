@@ -22,6 +22,9 @@ import {
   tagAbortController
 } from "../src/execution/abort-registry";
 import { handleAbortRequest } from "../src/routes/abort-routes";
+import { handleContinueRequest } from "../src/routes/recovery-routes";
+import { terminalAtMs } from "../src/stores/request-ended-at";
+import { recordRequestStop } from "../src/execution/record-request-stop";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";
 import { createInitialRequestRecord } from "../src/context/initial-request-record";
 import { claimRequestRecord } from "../src/context/request-principal";
@@ -230,6 +233,108 @@ describe("handleAbortRequest", () => {
     const record = await stores.request.get("req_active");
     expect(record?.abortRequested).toBe(true);
     deregisterAbortController("req_active");
+  });
+
+  describe("a request a restart cut off (interrupted, no gate)", () => {
+    const cut = (incarnation = "inc_cut") =>
+      ({
+        orgId: DEFAULT_ORG_ID,
+        id: "req_cut",
+        flowKind: "chat",
+        actionName: "respond",
+        userId: "user_1",
+        sessionId: "s1",
+        status: "interrupted",
+        interruptedAt: Date.now(),
+        startedAtMs: Date.now(),
+        state: {},
+        version: 1,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        incarnation,
+        journal: []
+      }) as any;
+    const abortCut = () =>
+      handleAbortRequest(
+        new Request("http://localhost/api/flows/chat/requests/req_cut/abort", { method: "POST" }),
+        { kind: "abort_request", flowKind: "chat", requestId: "req_cut" },
+        { stores }
+      );
+    const interruptedIds = async () =>
+      (await stores.request.list({ userId: "user_1", status: "interrupted", tenantId: undefined, orderBy: "startedAtMs" })).map(
+        (r) => r.id
+      );
+
+    // Discard in the apps is this call. Before FIX-2377 it answered 409 and the
+    // turn stayed on the interrupted list for good, so a discarded turn came
+    // back on every read, and a resume-all would run it again.
+    it("is ended: 204, the record is aborted, and it leaves the interrupted list", async () => {
+      await stores.request.set("req_cut", cut(), "any");
+      expect(await interruptedIds()).toEqual(["req_cut"]);
+
+      expect((await abortCut()).status).toBe(204);
+
+      const record = await stores.request.get("req_cut");
+      expect(record?.status).toBe("aborted");
+      expect(record?.abortRequested).toBe(true);
+      expect(await interruptedIds()).toEqual([]);
+      // No run is left to stamp the ending: without these the record and its
+      // checkpoints are never pruned.
+      expect(terminalAtMs(record!)).toEqual(expect.any(Number));
+      expect(record?.finalizedAtMs).toEqual(expect.any(Number));
+    });
+
+    it("a second stop finds it terminal (409)", async () => {
+      await stores.request.set("req_cut", cut(), "any");
+      await abortCut();
+      expect((await abortCut()).status).toBe(409);
+    });
+
+    it("leaves a continue that took it first running: already resolved, never aborted", async () => {
+      await stores.request.set("req_cut", cut(), "any");
+      const checked = (await stores.request.get("req_cut"))!;
+      // The continue lands between the stop's first write (refused: not
+      // in_progress yet) and its end of the dead request.
+      const write = stores.request.setFieldsIfStatus.bind(stores.request);
+      let calls = 0;
+      vi.spyOn(stores.request, "setFieldsIfStatus").mockImplementation(async (...args) => {
+        calls += 1;
+        if (calls === 2) await stores.request.set("req_cut", { ...cut(), status: "in_progress" }, "any");
+        return write(...args);
+      });
+
+      expect(await recordRequestStop(stores.request, checked)).toEqual({ kind: "already-resolved" });
+      expect((await stores.request.get("req_cut"))?.status).toBe("in_progress");
+    });
+
+    it("once ended, cannot be continued: /continue answers 409", async () => {
+      const flow = defineFlow({
+        kind: "chat",
+        actions: { respond: { inputSchema: z.any(), block: handler({ name: "h", inputSchema: z.any(), outputSchema: z.any(), execute: async () => "x" }) } }
+      })();
+      const registry = createFlowRegistry();
+      registry.register(flow);
+      await stores.request.set("req_cut", { ...cut(), flowId: flow.id, source: "http" }, "any");
+      await abortCut();
+
+      const response = await handleContinueRequest(
+        new Request("http://localhost/continue", { method: "POST" }),
+        { kind: "continue_request", flowKind: "chat", sessionId: "s1", requestId: "req_cut" },
+        { registry, stores, runtimeConfig: {} } as never
+      );
+      expect(response.status).toBe(409);
+      expect((await response.json()).error).toContain('has status "aborted" and cannot be continued');
+      expect((await stores.request.get("req_cut"))?.status).toBe("aborted");
+    });
+
+    it("never writes a later request that took the id since the check", async () => {
+      await stores.request.set("req_cut", cut("inc_old"), "any");
+      const checked = (await stores.request.get("req_cut"))!;
+      await stores.request.set("req_cut", cut("inc_new"), "any");
+
+      expect(await recordRequestStop(stores.request, checked)).toEqual({ kind: "gone" });
+      expect((await stores.request.get("req_cut"))?.status).toBe("interrupted");
+    });
   });
 
   it("returns 202 when request is in-progress but on a different instance (no controller)", async () => {
@@ -831,7 +936,7 @@ describe("runAction — abort path", () => {
     expect(abortStatusItem?.transient).not.toBe(true);
   });
 
-  it("aborting a non-existent request returns 409 after terminal write (or 404 if no record)", async () => {
+  it("a second stop of a request ended by the first answers 409 (terminal)", async () => {
     const stores = createInMemoryStores();
     const abortController = new AbortController();
 
@@ -874,14 +979,21 @@ describe("runAction — abort path", () => {
     abortController.abort();
     await resultPromise;
 
-    // Second abort call on the same requestId — now terminal
-    const response = await handleAbortRequest(
-      new Request(`http://localhost/api/flows/double-abort-flow/requests/${requestId}/abort`, {
-        method: "POST"
-      }),
-      { kind: "abort_request", flowKind: "double-abort-flow", requestId },
-      { stores }
-    );
+    // The caller's signal cut it off without a stop: it files `interrupted`.
+    // A stop of that dead turn ends it `aborted` (FIX-2377); a stop after that
+    // finds it terminal.
+    const abortIt = () =>
+      handleAbortRequest(
+        new Request(`http://localhost/api/flows/double-abort-flow/requests/${requestId}/abort`, {
+          method: "POST"
+        }),
+        { kind: "abort_request", flowKind: "double-abort-flow", requestId },
+        { stores }
+      );
+    expect((await stores.request.get(requestId))?.status).toBe("interrupted");
+    expect((await abortIt()).status).toBe(204);
+    expect((await stores.request.get(requestId))?.status).toBe("aborted");
+    const response = await abortIt();
     expect(response.status).toBe(409);
     const body = await response.json();
     expect(body.error).toContain("terminal state");
