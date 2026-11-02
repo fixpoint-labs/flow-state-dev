@@ -36,9 +36,9 @@ export function statusLine(worker: string, { activity, entries, talk, tasks, now
   return activity.lastActiveAt > 0 ? `Idle · ${age(activity.lastActiveAt, now)}` : "Idle";
 }
 
-/** A teammate's status line, live. */
-export function useStatusLine(adapter: LabAdapter, worker: WorkerRow, sessionId: string | undefined, nameOf: (id: string) => string, isCoding: (id: string) => boolean): string {
-  const now = useNow();
+/** A teammate's status line, live. Its age holds while `stale`. */
+export function useStatusLine(adapter: LabAdapter, worker: WorkerRow, sessionId: string | undefined, nameOf: (id: string) => string, isCoding: (id: string) => boolean, stale = false): string {
+  const now = useNow(undefined, !stale);
   const activity = useWatch(adapter.watchActivity, worker.id);
   const talk = useWatch(adapter.watchTalk, worker.id) ?? [];
   const view = useWatch(adapter.watchConversation, sessionId);

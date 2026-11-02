@@ -9,6 +9,7 @@
  * | `openConversation`  | `ensureWorkerSession({ worker })`: the worker's default conversation         |
  * | `send`              | the worker's door, `respond`, streamed, so its answer shows as it is written  |
  * | `watchConversation` | the session's items, from its snapshot and then its stream                   |
+ * | `watchConnection`   | the same feed's connection state: `live`, `lapsed` once a retry has failed…  |
  * | `answerApproval`    | the request's `answer`: approve or reject a `user_approval` stop             |
  * | `watchTalk`         | the user's message log (`workforceMessages`), as `sendMessage` writes it     |
  * | `watchActivity`     | `listSessionRequests` on the worker's conversation                           |
@@ -175,6 +176,9 @@ export interface WindowMark {
   summarized: boolean;
 }
 
+/** A session feed's connection: `lapsed` once a retry has failed, `stopped` once it gives up. */
+export type ConnectionState = "connecting" | "live" | "reconnecting" | "lapsed" | "stopped";
+
 /** Everything the screen reads and writes. */
 export interface LabAdapter {
   listWorkers(): Promise<WorkerRow[]>;
@@ -182,6 +186,8 @@ export interface LabAdapter {
   openConversation(worker: string): Promise<string>;
   send(sessionId: string, text: string): Promise<void>;
   watchConversation(sessionId: string, onChange: (view: ConversationView) => void): Unsubscribe;
+  /** Whether the conversation's feed still hears the server, in the session feed's words. */
+  watchConnection(sessionId: string, onChange: (state: ConnectionState) => void): Unsubscribe;
   /** Say yes or no to what an approval entry asks; the worker's turn carries on. */
   answerApproval(sessionId: string, approval: { requestId: string; suspensionId: string }, approve: boolean): Promise<void>;
   /** Every message to or from `worker`, oldest first. */
@@ -580,6 +586,9 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       const flow = flowOfSession.get(sessionId);
       if (flow === undefined) throw new Error(`teammates: ${sessionId} is not an open conversation`);
       await client.flow(flow).request(approval.requestId).answer({ suspensionId: approval.suspensionId, action: approve ? "approve" : "reject" });
+    },
+    watchConnection(sessionId, onChange) {
+      return feeds(sessionId).watchState(onChange);
     },
     watchConversation(sessionId, onChange) {
       let entries: ConversationEntry[] = [];
