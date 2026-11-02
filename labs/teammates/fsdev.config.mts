@@ -11,13 +11,18 @@
  * - `TEAMMATES_STORE`: the SQLite file (default `.fsdev/teammates.sqlite` here).
  * - `TEAMMATES_USER`: who the page acts as (default `you`).
  * - `TEAMMATES_TREE`: the workers' tree (default `workforce/` here).
- * - `TEAMMATES_HARNESS`: the harness coding tasks run on, `claude-code` (the
- *   default) or `codex`.
+ * - `TEAMMATES_HARNESS`: the harness a coding worker whose file names none runs
+ *   on, `claude-code`, `codex` or `cursor` (the default).
+ * - `TEAMMATES_RUNS`: the folder coding runs' worktrees go in (default
+ *   `teammates-runs/` beside the store).
+ * - `TEAMMATES_RUN_TIMEOUT_MS`: the wall-clock budget for one coding run, in
+ *   milliseconds (default 20 minutes). A value that isn't a positive whole
+ *   number a timer can hold stops the lab at start.
  */
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defaultStore, openTeammates } from "./host.mts";
+import { defaultStore, openTeammates, runTimeout } from "./host.mts";
 
 /** The repository this lab lives in: the working folder when `TEAMMATES_WORKDIR` is unset. */
 const PROJECT_ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -30,7 +35,8 @@ export default await openTeammates({
   model: process.env.TEAMMATES_MODEL ?? "openai/gpt-6-luna",
   userId: process.env.TEAMMATES_USER ?? "you",
   workdir: process.env.TEAMMATES_WORKDIR ?? PROJECT_ROOT,
-  runsRoot: join(dirname(store), "teammates-runs"),
+  runsRoot: process.env.TEAMMATES_RUNS ?? join(dirname(store), "teammates-runs"),
+  runTimeoutMs: runTimeout(process.env.TEAMMATES_RUN_TIMEOUT_MS),
   ...(process.env.TEAMMATES_TREE === undefined ? {} : { tree: process.env.TEAMMATES_TREE }),
   ...(process.env.TEAMMATES_HARNESS === undefined ? {} : { harness: process.env.TEAMMATES_HARNESS }),
 });
