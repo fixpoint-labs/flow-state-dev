@@ -1962,6 +1962,7 @@ check('SPEC SET: review on the shared PR is folded once, and the round is charge
   assert.equal(fix3.specReviewRounds, 1, 'the sibling shares the spent round')
   assert.equal(fix3.specLevelFound, true)
   assert.equal(fix3.lastSeenActivityAt, 't1', 'and the advanced cursor, so it does not re-fold the batch')
+  assert.equal(fix3.newSpecReviewEvents, false, 'and the batch is consumed: a carried flag would re-fold it if the next scan died')
   assert.equal(result.moreWorkNow, false, 'nothing is left owed this wake')
 
   // A sibling whose work is not covered — here its review, behind a lead folding a POC verdict — waits one
@@ -2017,6 +2018,9 @@ check('SPEC SET: one approval gate and one merge gate for the shared PR, naming 
   assert.equal(merges.length, 1, 'one MERGE-ONLY for one PR')
   assert.deepEqual(merges[0].issueIds, ['FIX-2', 'FIX-3'])
   assert.deepEqual(workerLabels(merging.calls), ['implement:FIX-2'], 'one dispatch on an unmerged shared PR')
+  const implPrompt = merging.calls.find((c) => c.label === 'implement:FIX-2').prompt
+  assert.doesNotMatch(implPrompt, /Push only to that PR's branch/, 'implementation is never pushed to the spec-set branch')
+  assert.match(implPrompt, /own branch from fresh main/, 'it builds on its own branch once the merge is observed')
   assert.deepEqual(merging.result.deferred, ['FIX-3'], 'the other waits a wake')
   assert.equal(merging.result.moreWorkNow, false, 'the others wait on the merge itself, an external event, not on an immediate re-wake that re-dispatches the same lead')
   assert.equal(merging.result.crossSpecGate, undefined, 'members were reviewed together: no separate pass')

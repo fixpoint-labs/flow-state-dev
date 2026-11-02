@@ -3517,10 +3517,12 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
                 .filter((r) => r.specSetMember && r.specPr === item.row.specPr && r.id !== item.row.id)
                 .map((r) => r.id)
                 .join(', ') || 'no other issue'}. You are its only dispatch this wake. ` +
-              (item.action === 'spec-review'
-                ? `Fold the review feedback for EVERY spec in that PR, not only ${item.row.id}'s; the round you report is the whole PR's. `
-                : `Push only to that PR's branch, and touch only ${item.row.id}'s spec unless the work requires otherwise. `) +
-              `An epic-level change goes in specs/epics/${epic.issueId}/DECISIONS.md and is listed at the top of the PR body under "Epic amendments".\n`
+              (item.action === 'implement'
+                ? `Its merge covers every member. Once you have observed it merged, build ${item.row.id} on its own branch from fresh main; never push implementation to the spec-set branch.\n`
+                : (item.action === 'spec-review'
+                    ? `Fold the review feedback for EVERY spec in that PR, not only ${item.row.id}'s; the round you report is the whole PR's. `
+                    : `Push only to that PR's branch, and touch only ${item.row.id}'s spec unless the work requires otherwise. `) +
+                  `An epic-level change goes in specs/epics/${epic.issueId}/DECISIONS.md and is listed at the top of the PR body under "Epic amendments".\n`)
             : '') +
           `Do not prompt the user. Return the compact status object and exit.`,
         {
@@ -3767,6 +3769,9 @@ for (const item of plan.advance.filter((i) => i.action === 'spec-review' && i.ro
       specLevelFound: lead.specLevelFound,
       lastSeenActivityAt: lead.lastSeenActivityAt,
       lastSeenSha: lead.lastSeenSha,
+      // Consumed with the cursor, as `nextRow` does for the lead: a carried flag re-folds the batch when the
+      // next scan dies and the row falls back to its carried state.
+      newSpecReviewEvents: false,
     })
   }
 }
