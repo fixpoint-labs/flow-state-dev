@@ -255,7 +255,7 @@ function SessionBody({
         session={session}
         label={label}
         turn={turn}
-        ended={turn !== null && turn.status !== "running"}
+        ended={turn !== null && turn.status !== "running" && turn.status !== "waiting"}
         bound={bound}
         turnsByRequest={turnsByRequest}
         records={state.turns ?? null}
@@ -347,6 +347,8 @@ function Notice({ notice, label }: { notice: TurnNotice; label: string }) {
         return `This turn failed${notice.error === null ? "." : `: ${notice.error}`} ${notice.conversation === null ? "" : `The session stays on conversation ${notice.conversation}.`}`;
       case "stopped":
         return `Stopped. ${notice.conversation === null ? "" : `The session stays on conversation ${notice.conversation}, and your next turn continues it.`}`;
+      case "waiting":
+        return `Waiting on you. ${label} asked to use a tool; your answer on the card above goes back to ${notice.conversation === null ? "this conversation" : `conversation ${notice.conversation}`}.`;
     }
   })();
   const warn = notice.kind === "refused" || notice.kind === "error";
