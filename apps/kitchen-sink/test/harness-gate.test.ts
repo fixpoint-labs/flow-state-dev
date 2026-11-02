@@ -191,6 +191,7 @@ describe("V1 · decideAvailability", () => {
         },
       },
       gateOpen: false,
+      gatewayKey: "k",
     });
     expect(decided.codex).toEqual({ available: false, reason: "the SDK is not installed" });
     expect(decided["claude-code"]).toEqual({ available: true });
