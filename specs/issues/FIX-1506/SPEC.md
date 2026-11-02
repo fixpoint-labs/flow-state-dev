@@ -34,7 +34,7 @@ poll and no remount, and the view that made the change reads it no more often th
 
 ```mermaid
 flowchart LR
-  A["one serve process · in-memory bus · real sockets · polls off"] --> L1["leg a · user A patches org state and adds an org row · user B watches"]
+  A["one serve process · a bus that crosses · real sockets · polls off"] --> L1["leg a · user A patches org state and adds an org row · user B watches"]
   A --> L2["leg b · A patches user state · A's second tab and user B watch"]
   A --> L3["leg c · the same org write from a run with no stream"]
   A --> L4["leg d · A's own view counts its reads"]
@@ -54,7 +54,7 @@ The check reads what each view renders and how many reads it makes, not whether 
 |---|---|
 | **Goal check** | `goals/realtime/scope-changes-reach-other-sessions/` · model `n/a` (handler actions write) · run by the implementer at completion · verdict in the implementation PR. Needs FIX-2426 and FIX-2428 merged |
 | **Signal** | (a) B's `useClientData` org value, an org `client.derived` count over the collection, and B's `useResourceCollectionList` rows show both of A's changes within 1 s. (b) A's second tab shows the user change within 1 s; B's view makes no read. (c) As (a), from a run started with no stream. (d) A's own view makes the same number of reads per change as on `main` |
-| **Input** | A two-scope handler flow on `serve()`, two users in one org, three sessions. A different valid input: a change to a second collection must not re-read B's first |
+| **Input** | A two-scope handler flow on `serve()`, two users in one org, three sessions, on a bus that says it crosses (the in-memory bus reporting `crossesProcesses: true`, a test double), so no hook keeps its fallback timer ([FIX-2428 D3](../FIX-2428/DECISIONS.md#d3)). A different valid input: a change to a second collection must not re-read B's first |
 | **Anti-game** | Assert on rendered hook results and counted reads, not on `publish` calls or frames sent. Real WebSocket clients on a bound port |
 | **Control that must fail** | `GOAL_CONTROL=no-publish` (the publish beside each emit cut out): legs a, b and c FAIL. `GOAL_CONTROL=no-origin` (the writer's skip off): leg d FAILS. Today's `main`: legs a, b and c FAIL |
 

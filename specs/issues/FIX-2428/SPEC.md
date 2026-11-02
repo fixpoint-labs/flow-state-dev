@@ -6,12 +6,12 @@
 
 | Someone who… | Today | After |
 |---|---|---|
-| **builds a screen on the Node host that others change** | Writes a timer that reads every few seconds, or the screen goes stale. `client.stream()` exists, and the server answers it 501 | Calls one hook with the topics and the read. The read runs within a second of a change, and not between changes |
+| **builds a screen on the Node host that others change** | Writes a timer that reads every few seconds, or the screen goes stale. `client.stream()` exists, and the server answers it 501 | Calls one hook with the topics and the read. The read runs within a second of a change, and, on a bus that crosses processes, not between changes |
 | **deploys the same screen to Vercel or Next** | The same timer | The same hook, no code change. It reads on a timer, because the server says it has no push |
 | **subscribes to a session they may not read** | n/a | Refused before the socket hears anything, and again on every reconnect |
 | **loses access while their tab stays open** | n/a | Their reads are refused at once. The socket can still say "something changed", never what, until it reconnects, at most an hour later ([D2](DECISIONS.md#d2)) |
 | **runs Shift Manager, signed in with a bearer token** | Polls every 3 s | The hook works with no extra setup: the socket's proof of identity comes through the client's own fetcher ([D1](DECISIONS.md#d1)) |
-| **has a tab whose socket drops** (laptop sleep, a deploy) | n/a | Reads on a timer while the socket is down, then reads once when it is back ([D3](DECISIONS.md#d3)) |
+| **has a tab whose socket drops** (laptop sleep, a deploy), or lands on a process whose bus can't hear the others | n/a | Reads on a timer while the socket is down or its bus can't cross processes, then reads once when push covers it again ([D3](DECISIONS.md#d3)) |
 
 The epic ([FIX-2367](../../epics/FIX-2367/SPEC.md)) gives this issue the wire and the one client
 path. The bus ([FIX-2426](https://linear.app/fixpoint-labs/issue/FIX-2426)) says *when* a scope
@@ -30,21 +30,20 @@ timer, with no change to the app's code.**
 | **The real need** | The epic's goal: "an app gets that by using the framework's hooks, not by writing push code", with every subscribe "checked on the server at every connect and reconnect" (ER-4) |
 | **Smaller, and rejected** | A socket that only works with cookie sign-in. Shift Manager and the DevTool send a bearer header, which a browser socket can't carry, so the epic's own apps would keep polling |
 | **Bigger, and not this issue's** | Notices for user and org state (FIX-1506), task boards (FIX-2429), across processes (the Postgres bus), on serverless (FIX-380), all four together (FIX-2368) |
-| **Not done if** | A notice arrives but the screen shows nothing new · a refused topic is heard after a reconnect · the hook on a host with no push never reads again · a host with push reads on the timer while the socket is up · the guide implies push on Vercel |
+| **Not done if** | A notice arrives but the screen shows nothing new · a refused topic is heard after a reconnect · the hook on a host with no push never reads again · a host with push reads on the timer while the socket is up and its bus crosses processes · a socket whose bus can't cross processes stops the timer · the guide implies push on Vercel |
 
 ```mermaid
 flowchart LR
-  A["one Node serve process · in-memory bus · real WebSocket clients · polling off"] --> L1["leg a · tab 2 watches session S, tab 1 sends a reply in S"]
+  A["Node serve · real WebSocket clients · polling off"] --> L1["leg a · a bus that crosses · tab 2 watches session S, tab 1 replies in S"]
   A --> L2["leg b · user C subscribes to S, then B is revoked and reconnects"]
-  A --> L3["leg c · the same tab 2 code on a host with no push"]
+  A --> L3["leg c · the same tab 2 code with no push, and on a second process on the in-memory bus"]
   L1 --> T["what each client's read returns"]
   L2 --> T
   L3 --> T
   T -->|"a within 1 s · b never hears · c within one poll"| P["PASS · goal met"]
-  C1["control · no-socket"] -.-> L1
-  C2["control · skip-check"] -.-> L2
   L1 -.->|"under no-socket"| F["must FAIL"]
   L2 -.->|"under skip-check"| F
+  L3 -.->|"under ignore-crossing"| F
 ```
 
 The check reads what each client's read returns after it hears a change, not whether a notice
@@ -53,10 +52,10 @@ was sent.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/realtime/websocket-delivery/`, model `n/a` (a handler action writes the reply). The implementer runs it at completion; the verdict goes on the implementation PR. Needs FIX-2426 merged: its session-topic publish is the change heard |
-| **Signal** | Leg a: tab 2's read shows tab 1's reply within 1 s, and tab 2 makes no read between changes over 10 s. Leg b: C's subscribe is refused and C's handler never runs; after B's token is revoked and the socket drops, B's reconnect is refused and B hears nothing more. Leg c: tab 2's read shows the reply within one poll interval plus 1 s |
-| **Input** | A two-action handler flow on `serve()`. A different valid input: two sessions, with tab 2 watching only one; a reply in the other must not run its read |
+| **Signal** | Leg a: tab 2's read shows tab 1's reply within 1 s, and tab 2 makes no read between changes over 10 s. Leg b: C's subscribe is refused and C's handler never runs; after B's token is revoked and the socket drops, B's reconnect is refused and B hears nothing more. Leg c: tab 2's read shows the reply within one poll interval plus 1 s, both with no push and with tab 2's socket on a second process on the in-memory bus |
+| **Input** | A two-action handler flow on `serve()`. Legs a and b run on a bus that says it crosses (the in-memory bus reporting `crossesProcesses: true`, a test double, or the Postgres bus once FIX-2427 merges). A different valid input: two sessions, with tab 2 watching only one; a reply in the other must not run its read |
 | **Anti-game** | Assert on read results, not on calls to `publish` or on frames sent. Real WebSocket clients against a bound port, not an in-process fetch |
-| **Control that must fail** | `GOAL_CONTROL=no-socket` (capabilities says push, the upgrade is never served): leg a's 1 s signal must FAIL. `GOAL_CONTROL=skip-check` (the mint grants every topic): leg b's "C never hears" must FAIL. Today's `main`: all three legs FAIL |
+| **Control that must fail** | `GOAL_CONTROL=no-socket` (capabilities says push, the upgrade is never served): leg a's 1 s signal must FAIL. `GOAL_CONTROL=skip-check` (the mint grants every topic): leg b's "C never hears" must FAIL. `GOAL_CONTROL=ignore-crossing` (the client treats every open socket as covering): leg c's second-process signal must FAIL. Today's `main`: all three legs FAIL |
 
 ## What changes
 
@@ -163,8 +162,9 @@ and the same hook on every host. If wrong: a socket the epic's own bearer-token 
    to share, for a case cookies would have covered. **The one to weigh.**
 2. **[D2](DECISIONS.md#d2) · An open socket is not checked again; it ends after an hour.** If
    wrong: a revoked user hears "changed" with no data for up to an hour.
-3. **[D3](DECISIONS.md#d3) · The hook reads on a timer while the socket is down, too.** If wrong:
-   a brief double read on reconnect, which the coalesced read already folds.
+3. **[D3](DECISIONS.md#d3) · The hook reads on a timer wherever push can miss a change: no push,
+   the socket down, or a bus that can't cross processes.** If wrong: a read per interval on a
+   one-process app on the in-memory bus, the cost FIX-2426 D1 already accepts for the session stream.
 
 **Open: none.**
 

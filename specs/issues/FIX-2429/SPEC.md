@@ -28,19 +28,18 @@ between changes; where there is no push, the same views keep a timer and miss no
 | **The real need** | The issue: *"A task-board change publishes a notice on the conversation's session topic, from whichever process settles the task"*, and the two apps *"make no read between notices"* (closure leg b, [FIX-2367](../../epics/FIX-2367/SPEC.md#the-goal-and-how-well-know-its-met)) |
 | **Smaller, and rejected** | The publish alone, with the apps left polling: a notice no view hears. Or only the two views the issue names: the claude-code-style lab and `BoardList` read the same board and would keep a timer or stay stale |
 | **Bigger, and not this issue's** | The apps' other polls, on messages, requests and projects ([FIX-2466](https://linear.app/fixpoint-labs/issue/FIX-2466), [D1](DECISIONS.md#d1)). Board columns read as a resource collection (FIX-1506) |
-| **Not done if** | A task that settles in its task session never reaches the conversation's view · a run's link still needs a timer · a view reads while the conversation streams a reply that changes no task · a view hears another conversation's board · the session stream wakes on a board notice · a view on a host with no push never reads again · any of the five views keeps a timer while its socket is up |
+| **Not done if** | A task that settles in its task session never reaches the conversation's view · a run's link still needs a timer · a view reads while the conversation streams a reply that changes no task · a view of the `listTasks_tasks` read misses a plan step's change · a view hears another conversation's board · the session stream wakes on a board notice · a view on a host with no push never reads again · any of the five views keeps a timer while its socket is up on a bus that crosses |
 
 ```mermaid
 flowchart LR
-  A["serve · real sockets · in-memory bus · polls off"] --> L1["leg a · a conversation files a task · its task session settles it"]
+  A["serve · real sockets · a bus that crosses · polls off"] --> L1["leg a · a conversation files a task and a plan step · each settles"]
   A --> L2["leg b · the task runs on a second process · Postgres bus"]
   A --> L3["leg c · the same views on a host with no push"]
   L1 --> T["what each board view shows · and how often it reads"]
   L2 --> T
   L3 --> T
   T -->|"a and b within 1 s · 0 reads idle or during a reply · c within one poll"| P["PASS · goal met"]
-  C1["control · running-session"] -.-> L1
-  C2["control · whole-topic"] -.-> L1
+  C["controls · running-session · whole-topic · tasks-only"] -.-> L1
   L1 -.->|"under a control"| F["must FAIL"]
 ```
 
@@ -49,14 +48,14 @@ The check reads what each view shows and counts its reads, not calls to `publish
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/task-board/a-settled-task-reaches-the-board/` · model `n/a` (handler workers settle the task) · run by the implementer at completion · verdict on the implementation PR. Needs FIX-2426 and FIX-2428 merged; leg b needs FIX-2427 |
-| **Signal** | (a) The Teammates lab adapter's `watchTasks` and a live `BoardList` on the conversation show the task `completed`, and its run's link, within 1 s of each write. Over a 10 s window with a task open and a reply streaming in the conversation, each makes 0 board reads. (b) As (a), the task settled on a second process. (c) Within the poll interval plus 1 s |
-| **Input** | A conversation flow with a handler delegate, on `serve()`. A different valid input: two conversations of one user; a task settling on one must not read the other's board |
+| **Signal** | (a) The Teammates lab adapter's `watchTasks` and a live `BoardList` on the conversation show the task `completed`, and its run's link, within 1 s of each write; the adapter's view shows the worker's plan step settle within 1 s too. Over a 10 s window with a task open and a reply streaming in the conversation, each makes 0 board reads. (b) As (a), the task settled on a second process. (c) Within the poll interval plus 1 s |
+| **Input** | A conversation flow with a handler delegate and a planning worker, on `serve()`, on a bus that says it crosses (the in-memory bus reporting `crossesProcesses: true`, a test double; the Postgres bus in leg b). A different valid input: two conversations of one user; a task settling on one must not read the other's board |
 | **Anti-game** | Assert on rows shown and reads counted, not on `publish` calls or frames sent. Real WebSocket clients on a bound port; two registries for leg b, not two clients of one |
-| **Control that must fail** | `GOAL_CONTROL=running-session` (publish on the session that wrote, not the one that filed): leg a's 1 s signal must FAIL. `GOAL_CONTROL=whole-topic` (views subscribe the conversation's whole topic): leg a's 0-reads signal must FAIL. Today's `main`: leg a's 0-reads signal FAILS |
+| **Control that must fail** | `GOAL_CONTROL=running-session` (publish on the session that wrote, not the one that filed): leg a's 1 s signal must FAIL. `GOAL_CONTROL=whole-topic` (views subscribe the conversation's whole topic): leg a's 0-reads signal must FAIL. `GOAL_CONTROL=tasks-only` (views of the merged read subscribe `tasks` alone): leg a's plan-step signal must FAIL. Today's `main`: leg a's 0-reads signal FAILS |
 
 ## What changes
 
-![What changes. Orchestration: the task-change adapter, which every board change already passes, also publishes a board notice on the session that filed the row, narrowed to the board. Engine: a seam on the block context hands that publish to the one bus. Apps and react: five board views subscribe that topic through client.subscribe and read on a notice; four timers and BoardList's session-stream follow go](figures/what-changes.svg)
+![What changes. Orchestration: the task-change adapter, which every board change already passes, also publishes a board notice on the session that filed the row, narrowed to the board. Engine: a seam on the block context hands that publish to the one bus. Apps and react: five board views subscribe the topic of each ledger they read through client.subscribe and read on a notice; four timers and BoardList's session-stream follow go](figures/what-changes.svg)
 
 One publisher where every board change already passes; five views that listen instead of poll.
 
@@ -67,7 +66,11 @@ One publisher where every board change already passes; five views that listen in
 -  const timer = setTimeout(refresh, TASKS_POLL_MS); // while a task is open
 -  return () => clearTimeout(timer);
 -}, [refresh, polls]);
-+useSubscription([topic.session(conversationId, { resource: "tasks" })], refresh, { pollIntervalMs: 3000 });
++useSubscription(
++  [topic.session(conversationId, { resource: "tasks" }), topic.session(conversationId, { resource: "plan" })],
++  refresh, // listTasks_tasks merges the tasks and plan ledgers, so its views hear both
++  { pollIntervalMs: 3000 },
++);
 
  // a live BoardList now hears tasks that settle in their own sessions
  <BoardList sessionId={conversationId} boardRef="tasks" client={fsd} live />

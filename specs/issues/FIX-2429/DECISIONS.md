@@ -43,8 +43,14 @@ polls fold in here, and FIX-2466 closes as a duplicate.
   the request that made it as `origin` (FIX-2426's shapes). The filer is `Task.filer.sessionId`,
   server-written (BP-031); a row with no filer (a board that hands nothing out, or a row filed
   before FIX-2078) uses the ledger's declared `legacyFiler` where it has one, and otherwise the
-  running session. For the conversation board the board id is `tasks`, the `collectionId` its
-  `task-change` items already carry, so a view names the topic from what it already holds.
+  running session. The board id is the ledger's `collectionId`, which its `task-change` items
+  already carry: `tasks` for the conversation board, `plan` for a planning worker's self-steps
+  (`PLAN_LEDGER_ID`).
+- **A view subscribes every ledger its read returns.** `listTasks_tasks` reads the board merged
+  with the plan ledger (`withSteps` in `conversation-board/board.ts`), so the four views of that
+  read subscribe both `tasks` and `plan`; a flow with no planning worker never publishes on
+  `plan`, and the extra topic costs nothing. A `BoardList` reads one board and stays narrowed to
+  it.
 - **Narrowed, so a view hears only its board.** A view of the conversation's whole topic would
   hear every `items` notice of a streaming reply and read the board each time. The session
   stream, subscribed to the whole topic, ignores `board` by kind (FIX-2426).
@@ -117,14 +123,15 @@ coordinator may run a fresh `analysis` before the gate.
    task settled in its own session reaches no screen.
 6. **Ergonomics** — a board author writes nothing; an app view swaps a timer for one call.
 7. **Concerns** — on a host with push and a bus that can't cross processes, a task settled on
-   another process reaches no view until it reconnects: the socket is up, so `client.subscribe`
-   doesn't poll. Every `client.subscribe` consumer shares it; raised to the coordinator for
-   FIX-2428's delivery seam. Recorded, not solved here.
+   another process reached no view until it reconnected. Raised to FIX-2428, whose D3 now keeps
+   the timer while the socket reports a bus that doesn't cross.
 
 ## How it got here
 
 - **Draft** — framed as the epic's board publisher and the apps' board polls. Publish from the
   `onChange` adapter on the filing session's topic, narrowed to the board; five views move,
   three named by the issue and two found by the checker. The other polls split out (D1).
+- **Amended (Nov 2)** — the merged read's views subscribe the `plan` ledger too (Codex on #4488);
+  the goal check adds a plan step, a `tasks-only` control, and a bus that crosses.
 
 **Open: none.**

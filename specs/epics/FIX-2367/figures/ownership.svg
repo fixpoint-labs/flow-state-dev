@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 430" role="img" aria-label="Who owns what: seven rules every child obeys, by six issues. The bus issue decides ER-1, notices carry no rows; ER-2, topics come only from scopes; ER-3, every publisher uses the one bus; and ER-6, notices are at most once. The delivery issue builds ER-4, a subscribe is checked on the server on every connect and reconnect by the scope's read check, and ER-5, every hook goes through client.subscribe and polls without push, and decides ER-7, SSE streams don't change. Every other cell is consumes: the Postgres bus, the resource- and state-change publisher FIX-1506, the task-board publisher and the Ably adapter FIX-380 obey rules they do not decide. Each rule has exactly one owner."
+<svg viewBox="0 0 940 430" role="img" aria-label="Who owns what: seven rules every child obeys, by six issues. The bus issue FIX-2426 decides ER-1, notices carry no rows; ER-2, topics come only from scopes; ER-3, every publisher uses the one bus; and ER-6, notices are at most once. The delivery issue FIX-2428 builds ER-4, a subscribe is checked on the server on every connect and reconnect by the scope's read check, and ER-5, every hook goes through client.subscribe and polls wherever push can miss a change, and decides ER-7, SSE streams don't change. Every other cell is consumes: the Postgres bus FIX-2427, the resource- and state-change publisher FIX-1506, the task-board publisher FIX-2429 and the Ably adapter FIX-380 obey rules they do not decide. Each rule has exactly one owner."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -25,15 +25,15 @@
     <text class="t-lbl" x="32" y="40">RULE EVERY CHILD OBEYS</text>
     <text class="t-lbl" x="32" y="56">ROW · ONE OWNER · CONSUMERS</text>
     <text class="t-col" x="447" y="40" text-anchor="middle">BUS</text>
-    <text class="t-lbl" x="447" y="56" text-anchor="middle">FIX-XXX</text>
+    <text class="t-lbl" x="447" y="56" text-anchor="middle">FIX-2426</text>
     <text class="t-col" x="533" y="40" text-anchor="middle">PG BUS</text>
-    <text class="t-lbl" x="533" y="56" text-anchor="middle">FIX-XXX</text>
+    <text class="t-lbl" x="533" y="56" text-anchor="middle">FIX-2427</text>
     <text class="t-col" x="619" y="40" text-anchor="middle">DELIVERY</text>
-    <text class="t-lbl" x="619" y="56" text-anchor="middle">FIX-XXX</text>
+    <text class="t-lbl" x="619" y="56" text-anchor="middle">FIX-2428</text>
     <text class="t-col" x="705" y="40" text-anchor="middle">STATE</text>
     <text class="t-lbl" x="705" y="56" text-anchor="middle">FIX-1506</text>
     <text class="t-col" x="791" y="40" text-anchor="middle">TASK BOARD</text>
-    <text class="t-lbl" x="791" y="56" text-anchor="middle">FIX-XXX</text>
+    <text class="t-lbl" x="791" y="56" text-anchor="middle">FIX-2429</text>
     <text class="t-col" x="877" y="40" text-anchor="middle">ABLY</text>
     <text class="t-lbl" x="877" y="56" text-anchor="middle">FIX-380</text>
   </g>
@@ -101,7 +101,7 @@
   <g id="er-5">
     <text class="t-id" x="32" y="269">ER-5</text>
     <text class="t-r" x="80" y="269">Every hook goes through client.subscribe,</text>
-    <text class="t-r" x="80" y="284">and polls when there is no push</text>
+    <text class="t-r" x="80" y="284">and polls wherever push can miss a change</text>
     <rect class="own" x="581" y="258" width="76" height="28" rx="4"/>
     <text class="t-own" x="619" y="276" text-anchor="middle">builds</text>
     <rect class="use" x="667" y="258" width="76" height="28" rx="4"/>
