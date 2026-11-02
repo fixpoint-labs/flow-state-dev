@@ -13,6 +13,7 @@
  * | `send`          | the worker's door, `respond`, in that session                             |
  * | `interrupt`     | aborting the session's running request                                     |
  * | `watchThread`   | the session's items, followed through the client's `sessionFeed`          |
+ * |                 | and that feed's connection state, for the connection bar                   |
  * | `watchTasks`    | the conversation board's `listTasks_tasks` read, and the rows' open holds  |
  * | `watchTaskWork` | the items of a task's run session, followed through `sessionFeed`         |
  * | `sayInThread`   | the Inbox client's answer to the thread's open question, else `updateTask_tasks` with your line |
@@ -90,9 +91,14 @@ export type ThreadEntry = (
 ) & { requestId?: string };
 
 /** What a thread shows now. */
+/** A session feed's connection: `lapsed` once a retry has failed, `stopped` once it gives up. */
+export type ConnectionState = "connecting" | "live" | "reconnecting" | "lapsed" | "stopped";
+
 export interface ThreadView {
   entries: ThreadEntry[];
   running: boolean;
+  /** Whether the thread's feed still hears the server; none before the feed has said. */
+  connection?: ConnectionState;
   /** When the running turn started, in ms. */
   turnStartedAt?: number;
   /** The running turn's request. */
@@ -334,15 +340,27 @@ export function createLabAdapter(): LabAdapter {
 
 /**
  * Follow one session's items of `types` through the client's `sessionFeed`,
- * calling `onItems` once the history lands and on every change after. The
+ * calling `onItems` once the history lands and on every change after, and
+ * `onState` on each change of the connection's state. The
  * feed holds one connection; `stop` closes it. The session stream sends an
  * item once it is finished, so an answer being written reaches the feed only
  * through `feed.followResponse`.
  */
-function followItems(fsd: Client, sessionId: string, types: readonly string[], onItems: (items: Item[]) => void): { feed: SessionFeed; stop: Unsubscribe } {
+function followItems(
+  fsd: Client,
+  sessionId: string,
+  types: readonly string[],
+  onItems: (items: Item[]) => void,
+  onState?: (state: ConnectionState) => void,
+): { feed: SessionFeed; stop: Unsubscribe } {
   const feed = sessionFeed(fsd, sessionId, { itemTypes: [...types] });
   let last: readonly unknown[] | undefined;
+  let lastState: ConnectionState | undefined;
   const stop = feed.subscribe(({ items, state }) => {
+    if (state !== lastState) {
+      lastState = state;
+      onState?.(state);
+    }
     // Nothing until the history lands, and nothing when only the connection state moved.
     if ((items.length === 0 && state === "connecting") || items === last) return;
     last = items;
@@ -669,6 +687,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
       // Items come from the session feed. The running turn is still read: the feed's runs are
       // child sessions, not this session's own turns.
       let items: Item[] | undefined;
+      let connection: ConnectionState | undefined;
       let turnOf: { turn: Awaited<ReturnType<typeof runningTurns>>[number] | undefined; threads: boolean } | undefined;
       let last: string | undefined;
       const tell = () => {
@@ -677,6 +696,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
         const view: ThreadView = {
           entries: entriesOf(items, threads),
           running: turn !== undefined,
+          ...(connection === undefined ? {} : { connection }),
           ...(turn?.startedAtMs === undefined ? {} : { turnStartedAt: turn.startedAtMs }),
           ...(turn === undefined ? {} : { requestId: turn.id }),
         };
@@ -685,10 +705,19 @@ export function createWiredLab(fsd: Client): LabAdapter {
         last = key;
         onChange(view);
       };
-      const { feed, stop: stopItems } = followItems(fsd, sessionId, THREAD_ITEMS, (next) => {
-        items = next;
-        tell();
-      });
+      const { feed, stop: stopItems } = followItems(
+        fsd,
+        sessionId,
+        THREAD_ITEMS,
+        (next) => {
+          items = next;
+          tell();
+        },
+        (state) => {
+          connection = state;
+          tell();
+        },
+      );
       threadFeeds.set(sessionId, feed);
       const stopTurns = every(
         async () => {
