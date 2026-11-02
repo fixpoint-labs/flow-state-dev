@@ -47,6 +47,7 @@ describe("the fsd profile's coder (default claude-code)", () => {
   it.each([undefined, "", "  "])("BR-6: %j with an account is Claude Code, and the start line says so", async (value) => {
     const started = await start("claude-code", value, ACCOUNT);
     expect(started.harness?.name).toBe("claude-code");
+    expect(started.harness?.label).toBe("Claude Code");
     expect(started.probed).toBe(1);
     expect(started.lines).toEqual([`Coder: Claude Code, on the credential from claude.ai; each run may take 20 minutes (${RUN_MINUTES_ENV}).`]);
   });
@@ -76,6 +77,7 @@ describe("the fsd profile's coder (default claude-code)", () => {
   it("BR-9: stub is the scripted run with no credential check, and the start line names the script", async () => {
     const started = await start("claude-code", "stub");
     expect(started.harness?.name).toBe("stub");
+    expect(started.harness?.label).toBe("the scripted coder (no model)");
     expect(started.probed).toBe(0);
     expect(started.lines).toEqual([`Coder: the scripted run, no model (${HARNESS_ENV}=stub).`]);
   });
@@ -106,6 +108,7 @@ describe("DevTeam's coder (default stub)", () => {
   it("unset is the scripted run, as before, with no credential check", async () => {
     const started = await start("stub", undefined);
     expect(started.harness?.name).toBe("stub");
+    expect(started.harness?.label).toBe("the scripted coder (no model)");
     expect(started.probed).toBe(0);
   });
 
@@ -123,6 +126,7 @@ describe("Codex and Cursor as the coder", () => {
   ] as const)("%s starts without asking for a sign-in, and the start line says it wasn't checked", async (value, label) => {
     const started = await start("claude-code", value);
     expect(started.harness?.name).toBe(value);
+    expect(started.harness?.label).toBe(label);
     expect(started.probed).toBe(0);
     expect(started.lines).toEqual([`Coder: ${label}, not checked for a sign-in at start; each run may take 20 minutes (${RUN_MINUTES_ENV}).`]);
   });

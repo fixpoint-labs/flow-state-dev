@@ -73,6 +73,8 @@ export interface HarnessFeeds extends ManagerHarnessFeeds {
 /** A chosen harness: its name, the slot, and how long one run may take. */
 export interface SelectedHarness {
   name: HarnessChoice;
+  /** What a user calls this agent ("Claude Code", "the scripted coder (no model)"). */
+  label: string;
   slot: (feeds: HarnessFeeds) => HarnessBlock;
   runTimeoutMs: number;
 }
@@ -305,13 +307,13 @@ export function selectHarness(
   const real = budget ?? DEFAULT_RUN_MINUTES * 60_000;
   switch (choice) {
     case "stub":
-      return { name: "stub", slot: scriptedHarness(readStepMs(stepMs)).slot, runTimeoutMs: budget ?? SCRIPTED_RUN_TIMEOUT_MS };
+      return { name: "stub", label: "the scripted coder (no model)", slot: scriptedHarness(readStepMs(stepMs)).slot, runTimeoutMs: budget ?? SCRIPTED_RUN_TIMEOUT_MS };
     case "claude-code":
-      return { name: "claude-code", slot: claudeCodeHarness, runTimeoutMs: real };
+      return { name: "claude-code", label: "Claude Code", slot: claudeCodeHarness, runTimeoutMs: real };
     case "codex":
-      return { name: "codex", slot: codexHarness, runTimeoutMs: real };
+      return { name: "codex", label: "Codex", slot: codexHarness, runTimeoutMs: real };
     case "cursor":
-      return { name: "cursor", slot: cursorHarness, runTimeoutMs: real };
+      return { name: "cursor", label: "Cursor", slot: cursorHarness, runTimeoutMs: real };
     default:
       throw new Error(
         `${HARNESS_ENV}="${choice}" names no harness this Lab can run; use one of ${HARNESS_CHOICES.join(", ")}.`,
@@ -408,20 +410,4 @@ function readStepMs(raw: string | undefined): number {
     throw new Error(`${STEP_MS_ENV}="${raw}" is not a whole number of milliseconds.`);
   }
   return Number(raw.trim());
-}
-
-/** What a user calls each coding agent a coder can run on. */
-const HARNESS_LABELS: Readonly<Record<string, string>> = {
-  stub: "the scripted coder (no model)",
-  "claude-code": "Claude Code",
-  codex: "Codex",
-  cursor: "Cursor",
-};
-
-/**
- * The coding agent `name` is, as a user calls it ("Claude Code" for
- * `claude-code`), for `openLab`'s `coderHarness`. An unknown name is returned as is.
- */
-export function harnessLabel(name: string): string {
-  return HARNESS_LABELS[name] ?? name;
 }
