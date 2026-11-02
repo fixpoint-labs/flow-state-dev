@@ -13,6 +13,7 @@
 - **b** `b:ran-after`: the call didn't run while the turn waited or across the restart, and ran exactly once, no earlier than the click. The scripted call appends one timestamped line to its file per run.
 - **e** `e:one-at-a-time`: while the next call waits, a message sent from the composer is refused, the conversation says why, and the card stays.
 - **d** `d:never-ran`: Reject on that card ends the turn, and the call never ran.
+- **s** `s:stop`: while a third call waits, the page offers Stop. It ends the turn (the notice reads `stopped`), the call never ran, and the next turn runs on the same conversation.
 
 **Anti-game:** answers are clicks on the page's own card, never a store write. What ran is the file on disk, which only the scripted harness's allowed call writes. Leg **c** restarts the server process, and reads the turn's end off the page, not the store, so a page that stops following the turn fails it.
 
@@ -29,3 +30,4 @@
 |------|--------|-------|---------|-------|
 | 2026-11-02 | f176a85da + this change | n/a (scripted) | **PASS** | Container (root, test mode). a, c, b, d pass: the card named `touch <file>` and the worktree, the notice read waiting and the request was suspended; after a server restart and reload the card was still there, Approve resumed the same conversation, and the file was made ~51 s after the click (the stopped server's worktree hold going stale). Control `no-approval` failed **a** only: no card, the file made unasked |
 | 2026-11-02 | f176a85da + the run-count and refusal legs | n/a (scripted) | **PASS** | All five legs: **b** ran 0 times while waiting and across the restart, then once, ~50 s after the click; **e** the message sent while the next call waited was refused and the conversation said why. Controls: `no-approval` failed **a** only (no card, the call ran 0 times); taking the page's `SuspensionResolverProvider` out failed **c** only (the notice stayed `waiting` after Approve) |
+| 2026-11-02 | f176a85da + Stop while waiting | n/a (scripted) | **PASS** | All six legs, **s** included. Control: hiding Stop while the turn waits (the old condition, `isStreaming` only) failed **s** only: "while the turn waits, the page offers no Stop" |

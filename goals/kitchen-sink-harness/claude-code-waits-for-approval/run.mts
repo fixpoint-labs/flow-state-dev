@@ -14,6 +14,7 @@
  *   b   the call didn't run while the turn waited or across the restart, and ran exactly once, after the click.
  *   e   a message sent while the next call waits is refused, the page says why, and the card stays.
  *   d   that call is rejected on the card; its turn ends, and it never ran.
+ *   s   while a third call waits, the page offers Stop; it ends the turn, the call never ran, and the next turn runs.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-harness/claude-code-waits-for-approval/run.mts
  * Control:  GOAL_CONTROL=no-approval (must FAIL at a, and nothing else)
@@ -236,6 +237,37 @@ await runGoal(async (failures) => {
         .then(() => true, () => false);
       if (!ended) fail("d", "the rejected turn never ended");
       if (timesRan(worktree, denied) !== 0) fail("d", `${denied} ran ${timesRan(worktree, denied)} times after Reject`);
+    }
+
+    // ---- s: Stop ends a turn that waits, and the session takes the next one
+    const stopped = `stopped-${token}.txt`;
+    await send(page, `[touch:${stopped}] make a third`);
+    const third = await card(page, `touch ${stopped}`)
+      .waitFor({ timeout: WAIT_MS })
+      .then(() => true, () => false);
+    if (!third) {
+      fail("s", `no approval card for \`touch ${stopped}\` showed`);
+    } else {
+      const stop = page.getByTestId("turn-stop");
+      if (!(await stop.isVisible())) {
+        fail("s", "while the turn waits, the page offers no Stop");
+      } else {
+        await stop.click();
+        const ended = await page
+          .waitForFunction(() => document.querySelector('[data-testid="turn-notice"]')?.getAttribute("data-kind") === "stopped", undefined, {
+            timeout: WAIT_MS,
+          })
+          .then(() => true, () => false);
+        if (!ended) fail("s", `after Stop the notice reads ${JSON.stringify(await notice(page).getAttribute("data-kind").catch(() => null))} (want stopped)`);
+        await send(page, "carry on");
+        const next = await page
+          .waitForFunction(() => document.querySelector('[data-testid="turn-notice"]')?.getAttribute("data-kind") === "continued", undefined, {
+            timeout: WAIT_MS,
+          })
+          .then(() => true, () => false);
+        if (!next) fail("s", `after Stop the next turn reads ${JSON.stringify(await notice(page).getAttribute("data-kind").catch(() => null))} (want continued)`);
+      }
+      if (timesRan(worktree, stopped) !== 0) fail("s", `${stopped} ran after Stop`);
     }
   } finally {
     await browser.close();
