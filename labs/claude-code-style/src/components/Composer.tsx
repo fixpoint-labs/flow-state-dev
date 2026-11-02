@@ -8,11 +8,14 @@ import { useState, type FormEvent, type KeyboardEvent } from "react";
  * here is the text box's: the stop keys are the thread's (Esc Esc, Cmd/Ctrl+.).
  */
 export function Composer({
+  sessionId,
   running,
   armed = false,
   onSend,
   onStop,
 }: {
+  /** The session it types to; `/` and a session switch find its composer by it. */
+  sessionId: string;
   running: boolean;
   /** A first Esc is waiting for its second: say so under the box. */
   armed?: boolean;
@@ -43,6 +46,8 @@ export function Composer({
       <div className="border border-border bg-card focus-within:border-ring">
         <textarea
           aria-label="Message the main session"
+          data-composer
+          data-session-id={sessionId}
           rows={3}
           value={text}
           onChange={(event) => setText(event.target.value)}

@@ -15,6 +15,14 @@
  * is handed and nothing more: a command it starts as the same OS user can
  * still read the server's own environment (on Linux, from `/proc`).
  *
+ * What it loads from the repository depends on whether the operator trusts it
+ * (`lib/harness-trust.ts`). Untrusted, the default, it loads nothing: no
+ * `CLAUDE.md`, no skills, no settings. Trusted, it loads the repository's
+ * Claude Code project settings, `CLAUDE.md` and skills with every hook off
+ * (a turn can write a hook into `.claude/settings.json`, and it would run by
+ * itself on the next turn, in no transcript), and it is handed the keys the
+ * operator named.
+ *
  * Under `KITCHEN_SINK_TEST_MODE=1` the Agent SDK is replaced by the scripted
  * Claude Code (`lib/scripted-claude-code.ts`) and the check passes, unless
  * `KITCHEN_SINK_REAL_HARNESS=1` asks for the real one, which the goal check
@@ -33,6 +41,8 @@ import {
 } from "@flow-state-dev/claude-code/sdk";
 
 import { goalControl } from "./goal-control";
+import { harnessTrust, type RepoLine } from "./harness-trust";
+import type { HarnessTrust } from "./harness-workspace";
 import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { kitchenSinkHarnessFlow } from "./harness-session-flow";
@@ -47,11 +57,45 @@ export const CLAUDE_CODE_SESSION = flowKindOf(modeById("claude-code"));
 
 /**
  * The environment a Claude Code run gets, and the one its sign-in is probed
- * with: the Claude Code package's own pass-list (what a run starts with, not
- * what it could read: see the header).
+ * with: the Claude Code package's own pass-list, and the keys a trusting
+ * operator named (what a run starts with, not what it could read: see the
+ * header).
  */
-export function claudeCodeEnv(env: Record<string, string | undefined> = process.env): Record<string, string> {
-  return harnessEnv({ pass: CLAUDE_CODE_PASS, env });
+export function claudeCodeEnv(
+  env: Record<string, string | undefined> = process.env,
+  trust: HarnessTrust = harnessTrust(),
+): Record<string, string> {
+  return harnessEnv({ pass: [...CLAUDE_CODE_PASS, ...trust.pass], env });
+}
+
+/** What a Claude Code run loads from the repository: its setting sources and a settings layer above them. */
+export interface ClaudeCodeRepoOptions {
+  readonly settingSources: ["project"] | [];
+  readonly settings?: { readonly disableAllHooks: true };
+}
+
+/**
+ * What a Claude Code run loads from the repository. Untrusted: nothing, since
+ * a hook a turn added would run on the next turn. Trusted: the project's
+ * settings, `CLAUDE.md` and skills, with a settings layer above them that turns
+ * every hook off. Never the operator's own user settings.
+ *
+ * The goal control `hooks-on` drops the layer, so the goal leg that no hook
+ * runs can be seen to fail.
+ */
+export function claudeCodeRepoOptions(trust: HarnessTrust = harnessTrust()): ClaudeCodeRepoOptions {
+  if (!trust.trusted) return { settingSources: [] };
+  return goalControl() === "hooks-on"
+    ? { settingSources: ["project"] }
+    : { settingSources: ["project"], settings: { disableAllHooks: true } };
+}
+
+/** The header's line for a Claude Code session, read off the options its run gets. */
+export function claudeCodeRepoLine(trust: HarnessTrust = harnessTrust()): RepoLine {
+  const options = claudeCodeRepoOptions(trust);
+  const conventions =
+    options.settingSources.length === 0 ? "not loaded" : options.settings?.disableAllHooks === true ? "loaded, hooks off" : "loaded, hooks on";
+  return { conventions, keys: trust.pass };
 }
 
 /** Whether this server runs the scripted Claude Code instead of the SDK. */
@@ -74,6 +118,7 @@ export interface ClaudeCodeSeams {
  */
 export function claudeCodeBlock(feeds: HarnessSessionFeeds, seams: ClaudeCodeSeams = {}): HarnessBlock {
   const resolveClaudeAgent = seams.resolveClaudeAgent ?? (claudeCodeIsScripted() ? scriptedClaudeCode() : undefined);
+  const trust = harnessTrust();
   return claudeCodeAgent({
     cwd: feeds.cwd,
     resume: feeds.resume,
@@ -85,11 +130,10 @@ export function claudeCodeBlock(feeds: HarnessSessionFeeds, seams: ClaudeCodeSea
     // Records no pull request in the turn, so goal leg **r1** can be seen to fail.
     recordPullRequests: goalControl() !== "no-pr-record",
     permissionMode: "bypassPermissions",
-    // The run doesn't load the worktree's own Claude Code settings: a turn can
-    // edit `.claude/settings.json`, and a hook it added would run outside the
-    // sandbox on the next turn.
-    settingSources: [],
-    env: claudeCodeEnv(),
+    // Untrusted, nothing from the repository; trusted, its conventions with
+    // every hook off (see the header).
+    ...claudeCodeRepoOptions(trust),
+    env: claudeCodeEnv(process.env, trust),
     ...(resolveClaudeAgent !== undefined ? { resolveClaudeAgent } : {}),
     name: "claude-code",
     // Claude Code's handle is core's plus its own fields, and a block's hooks

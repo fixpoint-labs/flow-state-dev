@@ -102,6 +102,7 @@ export function Thread({
         </div>
       ) : (
         <Composer
+          sessionId={session.id}
           running={running}
           armed={keys.armed}
           onSend={(text) => {

@@ -20,6 +20,10 @@ needs is a gap filed against the package.
   answer", "Sent for review"). Enter sends; Cmd+Enter (Ctrl+Enter) sends from every box in the lab.
 - **Right:** the background tasks, read only. A row opens to show the task's work. To stop or steer
   a task, ask the main session.
+- **Keys:** ⌘K (Ctrl+K) finds any session by its title, in either view, or starts a new one.
+  Alt+↑ and Alt+↓ move to the previous or next session in the view. `/` puts the cursor in the
+  composer, and `?` lists every key. Opening a session puts the cursor in its composer. The view
+  switch is one Tab stop; ← and → change the view.
 
 ## Threads mode
 
