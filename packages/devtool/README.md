@@ -36,6 +36,20 @@ const dir = getAssetPath();
 // → "/path/to/node_modules/@flow-state-dev/devtool/dist-client"
 ```
 
+### `readDevtoolUrl(): string | undefined` and `traceHref(devtoolUrl, sessionId?): string`
+
+From `@flow-state-dev/devtool/react`. `readDevtoolUrl()` returns the address of the DevTool served beside the current page by `fsdev dev --app`, read from the page's `fsdev-devtool-url` meta. It returns `undefined` when no DevTool is served, during server-side rendering, or when the value isn't an http(s) address. `traceHref()` returns the DevTool address that opens one session (`?session=<id>`), or the address unchanged when no session id is given.
+
+```tsx
+import { readDevtoolUrl, traceHref } from "@flow-state-dev/devtool/react";
+
+function TraceLink({ sessionId }: { sessionId: string }) {
+  const devtoolUrl = readDevtoolUrl();
+  if (devtoolUrl === undefined) return null; // no DevTool served: hide the link
+  return <a href={traceHref(devtoolUrl, sessionId)} target="_blank" rel="noreferrer">Open trace</a>;
+}
+```
+
 ## Building Assets
 
 In the monorepo, build the DevTool app and copy its output:
