@@ -10,7 +10,7 @@
  * cost, acceptance and *review by* are named gaps from the gap registry.
  */
 import { useEffect, useState, type ReactNode } from "react";
-import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
+import { traceHref } from "@flow-state-dev/devtool/react";
 import { SectionFailure } from "../components/ui";
 import { asksOfTask, inboxItemIdOf, rosterOf, workerFor, workerLabel, waited, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
@@ -256,17 +256,4 @@ function Trace() {
       )}
     </div>
   );
-}
-
-/**
- * The devtool address that opens the run's session: `?session=<id>`, which the
- * devtool follows to the session and the flow that owns it. With no run yet,
- * the devtool itself. `devtoolUrl` parses: `readDevtoolUrl` takes only an
- * http(s) address.
- */
-function traceHref(devtoolUrl: string, sessionId: string | undefined): string {
-  if (sessionId === undefined) return devtoolUrl;
-  const url = new URL(devtoolUrl);
-  url.searchParams.set(SESSION_ADDRESS_PARAM, sessionId);
-  return url.toString();
 }

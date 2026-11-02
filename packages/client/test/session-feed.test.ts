@@ -145,6 +145,29 @@ describe("sessionFeed", () => {
     expect(texts(feed)).toEqual(["earlier", "from another tab"]);
   });
 
+  it("starts a long session from its newest items, so a transcript opens on the latest work rather than its first page", async () => {
+    const all = Array.from({ length: 250 }, (_, i) => message("req_1", `m${i}`, `n${i}`, 10 + i));
+    const h = host((url) => {
+      const query = new URL(url, "http://x").searchParams;
+      const offset = Number(query.get("offset") ?? 0);
+      const limit = Number(query.get("limit") ?? 100);
+      const items = all.slice(offset, offset + limit);
+      const nextOffset = offset + items.length;
+      return json({
+        ...snapshot(items, 1_000),
+        pagination: { offset, limit, total: all.length, hasMore: nextOffset < all.length, nextOffset }
+      });
+    });
+    const feed = sessionFeed(h.client, "s1");
+    feeds.push(feed);
+
+    await until(() => h.streams.length === 1);
+    const shown = texts(feed);
+    expect(shown[shown.length - 1]).toBe("n249");
+    expect(shown).not.toContain("n0");
+    expect(h.urls[h.urls.length - 1]).toContain("since=1000");
+  });
+
   it("says reconnecting on an ordinary close, lapsed once a retry fails, and live again when a connection names the runs", async () => {
     const h = host(() => json(snapshot([])));
     const seen: string[] = [];

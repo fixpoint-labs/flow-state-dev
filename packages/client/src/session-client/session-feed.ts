@@ -3,8 +3,8 @@
  * and how far the connection can be trusted. For an app that is not a
  * `useSession` chat view, such as a board of workers or a task's transcript.
  *
- * The feed reads the whole history first ({@link readSessionHistory}), then
- * follows the session stream from where that read began ({@link
+ * The feed reads the session's newest items first ({@link readSessionTail}),
+ * then follows the session stream from where that read began ({@link
  * followSession}), so nothing kept in between is missed. Copies of one item
  * are joined by {@link mayReplaceItem}: a partial copy never replaces a
  * finished one. The session stream sends an item once it is finished, so an
@@ -18,7 +18,8 @@ import { bindStoreToCallbacks } from "../stream-client/bind-store-to-callbacks";
 import { createRequestStreamStore } from "../stream-client/request-stream-store";
 import { createSSEClientFromResponse } from "../stream-client/streams";
 import { followSession, type SessionConnectionState } from "./follow-session";
-import { mayReplaceItem, readSessionHistory } from "./session-history";
+import { mayReplaceItem } from "./session-history";
+import { readSessionTail } from "./session-window";
 
 /** How long the first retry of a failed history read waits, by default; each later one waits twice as long. */
 const DEFAULT_RETRY_MS = 2_000;
@@ -39,7 +40,10 @@ export type SessionFeedOptions = {
 
 /** What a feed shows at one moment. A new, frozen object on every change. */
 export type SessionFeedSnapshot = {
-  /** Every item kept so far, in display order (`compareItemOrder`). */
+  /**
+   * The newest history items (`readSessionTail`'s window) and every item kept
+   * since, in display order (`compareItemOrder`).
+   */
   readonly items: readonly OutputItem[];
   /** The session's unfinished runs as the stream last named them; `null` until it has. */
   readonly runs: readonly SessionRun[] | null;
@@ -109,7 +113,7 @@ export function sessionFeed(
   const start = async (): Promise<void> => {
     let history;
     try {
-      history = await readSessionHistory(client.sessions, sessionId, { itemTypes: types });
+      history = await readSessionTail(client.sessions, sessionId, { itemTypes: types });
     } catch (cause) {
       if (closed) return;
       const error = cause instanceof Error ? cause : new Error(String(cause));

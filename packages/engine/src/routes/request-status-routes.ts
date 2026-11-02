@@ -12,6 +12,7 @@ import type { StoreRegistry } from "../stores/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { ResolvedPrincipal } from "../transports/types";
 import { ownsRecord } from "../context/record-owner";
+import { terminalAtMs } from "../stores/request-ended-at";
 import { callerReachesRequest, jsonResponse, unknownRequestResponse } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
@@ -59,14 +60,14 @@ export async function handleGetRequestStatus(
   const active = await ctx.stores.activeRequests.get(requestId);
   const now = Date.now();
 
+  const endedAtMs = terminalAtMs(record);
+
   const snapshot: RequestStatusSnapshot = {
     id: requestId,
     status: record.status,
     startedAtMs: record.startedAtMs,
     ageMs: Math.max(0, now - record.startedAtMs),
-    ...(record.completedAtMs !== undefined
-      ? { completedAtMs: record.completedAtMs }
-      : {}),
+    ...(endedAtMs !== undefined ? { completedAtMs: endedAtMs } : {}),
     ...(active?.lastHeartbeatAt !== undefined
       ? { lastHeartbeatAt: active.lastHeartbeatAt }
       : {}),

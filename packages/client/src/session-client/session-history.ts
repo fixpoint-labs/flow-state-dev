@@ -1,8 +1,8 @@
 /**
- * Reading a session's whole history in pages, and the one rule for which of
- * two copies of an item to keep. Shared by {@link sessionFeed} and
- * `useSession`, which join the same three sources: snapshots, a send's own
- * stream and the session stream.
+ * Reading a session's history in pages: the one paging loop in the client.
+ * `readSessionTail` and the other session-window reads start it part way in;
+ * `useSession` starts it at the beginning. Also the one rule for which of two
+ * copies of an item to keep, shared by {@link sessionFeed} and `useSession`.
  */
 import { compareItemOrder } from "@flow-state-dev/contracts/items";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -16,19 +16,23 @@ const SESSION_HISTORY_PAGE_LIMIT = 100;
  * How many times a paged read starts over because the session's history moved
  * under it, before it fails rather than show part of the history as all of it.
  */
-const SESSION_HISTORY_READ_ATTEMPTS = 5;
+export const SESSION_HISTORY_READ_ATTEMPTS = 5;
 
 export type ReadSessionHistoryOptions = {
-  readonly itemTypes?: string[];
+  readonly itemTypes?: readonly string[];
   /** Items per page. Default {@link SESSION_HISTORY_PAGE_LIMIT}. */
   readonly pageLimit?: number;
   /** Starts over at most this many times. Default {@link SESSION_HISTORY_READ_ATTEMPTS}. */
   readonly attempts?: number;
+  /** Where in the session's item list to start. Default 0, the whole history. */
+  readonly offset?: number;
 };
 
 /**
- * Every item of a session, as one snapshot: the first page's `at`,
- * `sessionCreatedAt`, state and resources, with every page's items.
+ * A session's items from `offset` to its end, as one snapshot: the first
+ * page's `at`, `sessionCreatedAt`, state and resources, with every page's
+ * items. `pagination.offset` is where the items start and `pagination.total`
+ * where they end.
  *
  * Pages are cut by offset from the history as it stands at each request. A
  * request removed from a page already read, or a keyed item emitted again,
@@ -47,21 +51,19 @@ export async function readSessionHistory(
   sessionId: string,
   options: ReadSessionHistoryOptions = {}
 ): Promise<SessionStateSnapshotResponse> {
-  const limit = options.pageLimit ?? SESSION_HISTORY_PAGE_LIMIT;
+  // A later page starts one item early, so a page of one could never move on.
+  const limit = Math.max(options.pageLimit ?? SESSION_HISTORY_PAGE_LIMIT, 2);
   const attempts = options.attempts ?? SESSION_HISTORY_READ_ATTEMPTS;
+  const start = options.offset ?? 0;
+  const itemTypes = options.itemTypes === undefined ? undefined : [...options.itemTypes];
 
   const readPages = async (): Promise<SessionStateSnapshotResponse | null> => {
-    let offset = 0;
+    let offset = start;
     let first: SessionStateSnapshotResponse | null = null;
     const items: OutputItem[] = [];
 
     while (true) {
-      const page = await sessions.state(sessionId, {
-        includeItems: true,
-        itemTypes: options.itemTypes,
-        offset,
-        limit
-      });
+      const page = await sessions.state(sessionId, { includeItems: true, itemTypes, offset, limit });
       let pageItems = page.items ?? [];
 
       if (first === null) {
@@ -77,14 +79,16 @@ export async function readSessionHistory(
       }
       items.push(...pageItems);
 
-      if (page.pagination?.hasMore !== true) break;
+      // A next page that would not move past this one ends the read.
+      if (page.pagination?.hasMore !== true || page.pagination.nextOffset - 1 <= offset) break;
       offset = page.pagination.nextOffset - 1;
     }
 
+    const end = start + items.length;
     return {
       ...first,
       items,
-      pagination: { offset: 0, limit: items.length, total: items.length, hasMore: false, nextOffset: items.length }
+      pagination: { offset: start, limit: items.length, total: end, hasMore: false, nextOffset: end }
     };
   };
 

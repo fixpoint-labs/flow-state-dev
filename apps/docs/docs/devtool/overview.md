@@ -94,6 +94,29 @@ Add `?session=<id>` to the DevTool's address to open one session directly, for e
 
 The DevTool reads the session, finds the flow copy that owns it, and opens both. If no listed copy owns it, it belongs to another user, or the server refuses the read, nothing opens and the header says why. The link only works against a DevTool that talks to the server holding that session, so a Lab with in-memory stores has to be served by the same process.
 
+### Linking to a session from your app
+
+When you [serve your app beside your flows](../api/cli.md#serving-an-app-beside-your-flows) with `fsdev dev --app`, each page can link to a session in the DevTool. Two helpers from `@flow-state-dev/devtool/react` build the link:
+
+- `readDevtoolUrl()` returns the DevTool's address, or `undefined` when no DevTool is served, during server-side rendering, or when the address isn't http(s).
+- `traceHref(devtoolUrl, sessionId)` adds `?session=<id>` to that address and keeps its existing path and query. Without a session id it returns the address unchanged.
+
+```tsx
+import { readDevtoolUrl, traceHref } from "@flow-state-dev/devtool/react";
+
+function TraceLink({ sessionId }: { sessionId: string }) {
+  const devtoolUrl = readDevtoolUrl();
+  if (devtoolUrl === undefined) return null;
+  return (
+    <a href={traceHref(devtoolUrl, sessionId)} target="_blank" rel="noreferrer">
+      Open trace
+    </a>
+  );
+}
+```
+
+Hide the link when `readDevtoolUrl()` returns `undefined`, as above, since there's no DevTool for it to open.
+
 ## Action dispatch
 
 Invoke actions directly from the DevTool. Select an action, paste or edit JSON input, and send. The response (request ID, status) appears immediately. Use this to trigger flows without wiring up a UI or writing curl commands.

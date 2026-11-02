@@ -167,7 +167,9 @@ row whose id isn't the one its payload derives.
 
 A completed run's output carries `answer`, the agent's last message (up to 8,000 characters),
 the run's `branch` (`null` for a run with only kept files), how many `commits` it made,
-`judged`, and `review`: `"accepted"` or `"deadline"` when the run's changes were
+`commitsVerified` (`false` when git couldn't read the count, so `commits` is a stand-in zero),
+`baseCommit` (the commit the branch was cut at) and `path` (the run's checkout), both `null` for
+a run with only kept files, `judged`, and `review`: `"accepted"` or `"deadline"` when the run's changes were
 [reviewed](#reviewing-a-runs-changes), `null` otherwise. A feature row's output gains the same fields.
 
 On a board read from the claim:
@@ -259,7 +261,7 @@ export const claudeCodeSession = harnessSessionFlow({
 });
 ```
 
-`agent` builds the harness block from the feeds the flow hands it: `cwd`, `resume`, `onSession`, `model`, `worktree` and `onSteerable`. These are the session flow's own feeds. It has no `onUsage` or `onActivity`, which feed the manager's task records. `workspace` says where each session works: `provision` makes a session's directory on its first turn, `locate` finds it without making it, and `branch` names the branch whose pull requests the flow checks when a turn ends (`null` skips the check). A session is keyed by its flow kind, tenant and id, never by anything the caller sent.
+`agent` builds the harness block from the feeds the flow hands it: `cwd`, `resume`, `onSession`, `model`, `worktree` and `onSteerable`. These are the session flow's own feeds. It has no `onUsage` or `onActivity`, which feed the manager's task records. `workspace` says where each session works: `provision` makes a session's directory on its first turn, `locate` finds it without making it, and `branch` names the branch whose pull requests the flow checks when a turn ends (`null` skips the check). `remove`, which is optional, removes the session's worktree. A session is keyed by its flow kind, tenant and id, never by anything the caller sent.
 
 The flow handles the rest:
 
@@ -267,7 +269,66 @@ The flow handles the rest:
 - **The model.** A session is created with the model it runs (`state.model`), which never changes after that. Creating one without a model is refused with `HARNESS_SESSION_MODEL_REQUIRED`. `defaultModel` is the model used for a stored session that has none recorded.
 - **Actions.** `turn` takes a prompt and waits for any running turn to finish first (`concurrency: "defer"`). `steer` hands a line to the running turn if its harness offered to take one, and answers `{ taken, live }`.
 - **A record per turn.** `state.turns` keeps the latest 20 turns, by request id. Each record holds the conversation the turn tried to resume, the one the harness confirmed, and how the turn failed: core's failure class, the harness's error text, and whether it was stopped. Read it to show a user why a turn failed. The schema is `harnessSessionStateSchema`.
+- **Where it starts.** `state.start` is set at create and fixed, like the model. It is exactly one of `{ base: "origin/main" }` (cut a new branch from that ref; a remote's branch is fetched first), `{ branch: "fix/login" }` (work on that existing branch), `{ pullRequest: 42 }` (work on the pull request's head branch) or `{ worktreeOf: "<session id>" }` (attach to another session's worktree, below). Without it, the session gets a fresh worktree of its own, wherever your workspace starts one by default. A malformed start is refused at create with `HARNESS_SESSION_START_INVALID`. The schema is `harnessSessionStartSchema`.
+- **Where it works.** `provision(place, { start })` returns the directory, or `{ path, worktree }`. The session keeps only a pointer: `state.workspace = { worktree }`, the key of the worktree's row (below), which owns its path, branch, base, commit count, owner and state. When a turn ends, the pull-request check reads the row's branch, and falls back to `workspace.branch(place)` when there is no row. A session stored with the older record, which copied the path, branch and owner, reads as `{ worktree: null }` until its next turn points it at the row.
+- **Attaching to another session's worktree.** A session created with `start: { worktreeOf: id }` works in session `id`'s worktree, on whatever branch is checked out there. Nothing is provisioned for it: no new worktree and no new branch. The owner is looked up in the creating caller's tenant and under the same flow kind. Attaching is the only way two sessions share a worktree. Creating the session is refused with a 404 (`HARNESS_SESSION_ATTACH_MISSING`) when that session has no worktree here (another tenant's, never provisioned, or removed) or when `id` is the new session's own. A turn fails with the same message if the worktree has gone since. The worktree must also be in the attaching user's own list of worktrees (`worktreesCollection`): the session's first turn attaches through the workspace's `attach`, and when that finds no row of the user's (another user's session, or a host that keeps no list) the turn fails with `HARNESS_SESSION_ATTACH_NOT_YOURS` before the harness gets the path. Every turn, the owner's and each attached session's, holds the worktree in use, so two harnesses never write there at once: a turn waits for the other's to finish. An attached session may not change the worktree's branch. A turn that ends on a different branch than it started on is recorded as failed with `HARNESS_SESSION_ATTACHED_BRANCH_CHANGED`, and its status is not transient. This is checked when the turn ends; nothing stops the agent from switching mid-turn, so the switch has already happened by then.
+- **The worktree's row.** The flow declares the user's `worktrees` collection (`worktreesCollection` from `@flow-state-dev/workspace`) and passes it to your workspace: on `provision(place, { start, worktrees })`, where `worktrees` is `{ collection, owner, label }` and `label` is the session's title, and on `remove`. It also uses two optional methods: `attach(owner, { worktrees, by })` for an attached session, and `recordCheckout(place, { worktrees, by })` at each turn's end, while the turn still holds the worktree. `by` is `{ kind: "session", id }`. The flow marks `worktrees` read-only in its `resourceVisibility`, so a model reads rows through the resource tools but never writes one. Hand all of these to the host's `provision`, `attach`, `recordCheckout` and `remove`. When `provision` returns `{ path, worktree }`, the flow stores the row's key as `state.workspace.worktree` and the pull-request check adds what it finds to the row. A workspace that writes no rows still works, and its sessions have `worktree: null`. The board manager writes a row for each run's checkout in the same way, with the run as owner.
+- **Removing the worktree.** The `removeWorktree` action takes `{ deleteBranch?, force? }` and answers `{ removed: true, branchDeleted }`. It calls `workspace.remove(place, { deleteBranch, force })`. A workspace without `remove` fails it with `HARNESS_SESSION_REMOVE_UNSUPPORTED`. It is refused with a 409 while a turn runs (`concurrency: "reject"`). A turn also holds its worktree in use from provision until the turn ends, so the host's `remove`, called from anywhere, refuses it with `in-use` meanwhile. Only the owner removes a worktree: an attached session's `removeWorktree` is refused with `HARNESS_SESSION_REMOVE_NOT_OWNER`. The host marks the row `removed`, and the next turn provisions again: from the kept branch if you kept it, otherwise from the session's start.
 - **A title.** The session takes its title from its first prompt (`harnessSessionTitle`).
+- **What the client reads.** `model`, `start`, `binding`, `turns` and `workspace` are exposed to the page. `binding`, `turns` and `workspace` are written only by the flow.
+
+`resolveHarnessSessionStart(start, { cwd, gh? })` turns a start into what a workspace host's `provision` takes: `{ baseRef }` for a base, `{ branch }` for a branch or a pull request, and `{}` with no start. It throws for `{ worktreeOf }`, which provisions nothing; the session flow handles an attached session itself. A pull request is asked of GitHub with `pullRequestHead` from `@flow-state-dev/workspace`, run in `cwd`, and its refusals (`pull-request-unreadable`, `pull-request-from-fork`) fail the turn. A workspace over `localWorkspaceHost` passes `baseRef` on the run source, and `branch` with `existing: true` on the place request:
+
+```ts
+import { localWorkspaceHost } from "@flow-state-dev/workspace";
+import {
+  resolveHarnessSessionStart,
+  type HarnessSessionPlace,
+  type HarnessSessionWorkspace,
+} from "@flow-state-dev/harness-manager";
+
+const repo = "/srv/storefront";
+const host = localWorkspaceHost({
+  root: "/var/fsd/sessions",
+  remotes: { allow: [] },
+  localRepositories: [repo],
+  source: () => ({ kind: "repo", repo }),
+});
+const segments = (place: HarnessSessionPlace) => [place.flowKind, place.tenantId ?? "local", place.sessionId];
+const ownBranch = (place: HarnessSessionPlace) => `fsd/${place.sessionId}`;
+
+const workspace: HarnessSessionWorkspace = {
+  async provision(place, request) {
+    const start = await resolveHarnessSessionStart(request?.start, { cwd: repo });
+    const branch = start.branch ?? ownBranch(place);
+    const made = await host.provision(
+      { kind: "repo", repo, ...(start.baseRef !== undefined ? { baseRef: start.baseRef } : {}) },
+      { place: segments(place), branch, existing: start.branch !== undefined },
+    );
+    return { path: made.cwd, branch };
+  },
+  locate: (place) => host.locate({ kind: "repo", repo }, { place: segments(place) }).cwd,
+  branch: ownBranch,
+  async remove(place, options) {
+    const { branchDeleted } = await host.remove!({ place: segments(place) }, options);
+    return { branchDeleted };
+  },
+};
+```
+
+`host.remove` refuses rather than lose work (uncommitted changes, a worktree a run is working in, a branch holding the only copy of its commits without `force`), and that refusal fails the action. See [listing and removing worktrees](../workspace/README.md#listing-and-removing-worktrees).
+
+### Showing where a run's work went
+
+`workPlace` reads a coding task's output, or the worktree row a session points at (`state.workspace.worktree` is its key in the user's `worktrees` list), and returns the branch, the commit count, and the commands that reach the work: `git switch`, `cd` into the checkout, and `git log <baseCommit>..<branch>`, each quoted for a shell. The count is `null` when it is unknown, never a guessed zero. From a row it also gives the worktree's `name` and `state`, and, with `{ session }` naming the viewing session, `attachedTo`: the owning session when the viewer is attached to someone else's worktree. It returns `null` for a run with no branch. It imports nothing, and its own entry (`@flow-state-dev/harness-manager/work-place`) carries none of the package's server code, so a page can bundle and call it. The UI registry's `work-place` component draws it.
+
+```tsx
+import { workPlace } from "@flow-state-dev/harness-manager/work-place";
+import { WorkPlace } from "@/components/flow-state/work-place";
+
+<WorkPlace place={workPlace(task.output)} />;
+<WorkPlace place={workPlace(worktreeRow, { session: sessionId })} />;
+```
 
 ## What a phase supplies
 
@@ -343,6 +404,8 @@ await inbox.answer(item, { value: { verdict: "revise", words: "Keep the old endp
 ```
 
 That posts to the engine's answer route, `POST /api/flows/:flow/requests/:requestId/answer` with `{ suspensionId, action: "submit", data }`. Blank `words` are refused with a 400, and the review stays open.
+
+To draw the review in a browser, add the ui registry's `review-hold` component (`fsdev ui add review-hold`). It offers Accept and Ask for changes, and sends only these two answers. The registry's `SuspensionCard` draws it for this stop, with the stop's prompt.
 
 - **Accepted**: the task completes with no further run, output `review: "accepted"`.
 - **Revise**: the words are written on the task as the user's steer, and one more run starts on the same attempt, continuing the same coding session with the words in its prompt, as any steer is taken. If it commits again it is reviewed again, over all the branch's commits. Each revision counts toward the task's steer limit; past it the attempt fails. If the harness confirmed no coding session, the revision fails the attempt instead, and the next attempt's brief carries the words.
@@ -569,7 +632,7 @@ The record is `harnessUsageCollection` (`HARNESS_USAGE`, `harness-usage/**`, use
 
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `harnessSessionFlow` with `harnessSessionFeeds`, `harnessSessionStateSchema` and their types for [a harness as a session](#a-harness-as-a-session), `harnessStub` for [checks that run no model](#a-scripted-harness-for-checks), `upgradeKeptTurns`, `STEER_POLL_MS`, `PROGRESS_NOTE_MS` and `progressNoteOf` for [progress notes](#how-a-running-task-is-doing), `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
+**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `harnessSessionFlow` with `harnessSessionFeeds`, `harnessSessionStateSchema`, `harnessSessionStartSchema`, `harnessSessionWorkspaceRecordSchema`, `resolveHarnessSessionStart`, the `HARNESS_SESSION_*` messages and their types for [a harness as a session](#a-harness-as-a-session), `harnessStub` for [checks that run no model](#a-scripted-harness-for-checks), `upgradeKeptTurns`, `STEER_POLL_MS`, `PROGRESS_NOTE_MS` and `progressNoteOf` for [progress notes](#how-a-running-task-is-doing), `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
 
 **`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 

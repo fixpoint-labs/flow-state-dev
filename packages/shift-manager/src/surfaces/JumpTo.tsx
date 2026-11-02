@@ -91,7 +91,11 @@ export function JumpTo({
             setSendFailure(null);
           }}
           onKeyDown={(e) => {
-            if (e.key === "Escape") onClose();
+            // Spent on closing, so it never counts toward a run's interrupt.
+            if (e.key === "Escape") {
+              e.preventDefault();
+              onClose();
+            }
             if (messaging) {
               if (e.key === "Enter") sendMessage();
               return;

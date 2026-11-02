@@ -9,7 +9,11 @@
  * What the screen reads is held by {@link TaskProvider}; this file only draws
  * it. The screen writes twice: the abort behind Interrupt, and the composer's
  * message, which goes through the one send path (`lib/send.ts`).
+ *
+ * The keyboard stop is deliberate: Esc twice within the window, or Cmd/Ctrl+.
+ * One Esc only dismisses, and an Esc in the composer is the composer's.
  */
+import { interruptChordLabel, useInterruptKeys } from "@flow-state-dev/react";
 import { useEffect, useState } from "react";
 import { EmptyState, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { columnFor } from "../lib/columns";
@@ -28,6 +32,8 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
   const task = useTask();
   const { snapshot } = useLab();
   const { row, boardRef, taskId } = task;
+  const stoppable = task.run.kind === "open" && task.status === "in_progress" && task.interrupt.kind !== "pending";
+  const keys = useInterruptKeys({ enabled: stoppable, onInterrupt: () => void task.requestInterrupt() });
 
   if (row === undefined && !task.waiting && task.rowFailure === undefined) {
     return (
@@ -48,20 +54,15 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
   const worker = row?.assignee == null ? null : workerLabel(found?.id ?? row.assignee);
 
   return (
-    // Esc interrupts from anywhere in the frame, on every tab and from the
-    // composer, the same as the activity line's hint says.
+    // Esc Esc or Cmd/Ctrl+. interrupts from anywhere in the frame, on every
+    // tab, as the activity line's hint says. A single Esc never does.
     <div
       className="flex h-full min-h-0 flex-col outline-none"
       data-testid="task-frame"
       data-board-ref={boardRef}
       data-task-id={taskId}
       tabIndex={-1}
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && task.run.kind === "open" && task.status === "in_progress") {
-          event.preventDefault();
-          void task.requestInterrupt();
-        }
-      }}
+      onKeyDown={keys.onKeyDown}
     >
       <header className="px-4 pt-3">
         <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">
@@ -100,7 +101,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
           <Brief gaps={gaps} />
         )}
       </div>
-      <Activity worker={worker} />
+      <Activity worker={worker} armed={keys.armed} />
       <Composer gaps={gaps} worker={worker} />
     </div>
   );
@@ -114,6 +115,11 @@ function Elapsed({ since }: { since: number }) {
     return () => clearInterval(timer);
   }, []);
   return <span data-testid="task-elapsed"> · running {waited(since, now)}</span>;
+}
+
+/** A record's time on the user's wall clock, HH:MM. */
+function clockTime(ms: number): string {
+  return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 /** What the run's request record says, in the screen's words. */
@@ -133,9 +139,10 @@ function runWord(status: string | undefined): string {
 /**
  * What the worker is doing, above the composer (v2:428-429): a mark (v2's
  * needs square while the run waits on the user, its run square while it
- * runs), the worker and the run's state, and Esc while it can be stopped.
+ * runs), the worker and the run's state, and the stop keys while it can be
+ * stopped. After an interrupt, the time the run's record says it stopped.
  */
-function Activity({ worker }: { worker: string | null }) {
+function Activity({ worker, armed }: { worker: string | null; armed: boolean }) {
   const task = useTask();
   const { snapshot } = useLab();
   const pending = task.interrupt.kind === "pending";
@@ -158,7 +165,14 @@ function Activity({ worker }: { worker: string | null }) {
             ? "stopping… (not stopped until the run says so)"
             : runWord(task.status)}
       </span>
-      {live && !pending ? <span className="ml-auto">esc to interrupt</span> : null}
+      {task.status === "aborted" && task.stoppedAt !== undefined ? (
+        <span data-testid="run-stopped-at">· run stopped at {clockTime(task.stoppedAt)}</span>
+      ) : null}
+      {live && !pending ? (
+        <span className="ml-auto" data-testid="interrupt-hint" data-armed={armed}>
+          {armed ? "press Esc again to interrupt" : `esc esc or ${interruptChordLabel()} to interrupt`}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -176,7 +190,7 @@ function Actions({ gaps }: { gaps: Gaps }) {
         onClick={() => void task.requestInterrupt()}
         data-testid="task-interrupt"
         className="border px-2.5 py-1 text-xs font-medium disabled:opacity-50"
-        title={running ? "Stop this run (Esc)" : "Nothing is running"}
+        title={running ? `Stop this run (Esc Esc or ${interruptChordLabel()})` : "Nothing is running"}
       >
         {pending ? "Interrupting…" : "Interrupt"}
       </button>

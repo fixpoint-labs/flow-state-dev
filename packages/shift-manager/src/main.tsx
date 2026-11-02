@@ -7,7 +7,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { bootTheme, readServedTheme } from "./lib/theme";
-import { readConnection, readDevtoolUrl } from "./lib/connection";
+import { readDevtoolUrl } from "@flow-state-dev/devtool/react";
+import { readConnection } from "./lib/connection";
 import "./styles.css";
 
 const look = bootTheme(readServedTheme());
