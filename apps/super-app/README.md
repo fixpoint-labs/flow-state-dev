@@ -5,8 +5,8 @@ port, one sub-route each, with a sign-in in front of all of them.
 
 ```bash
 pnpm build                       # builds everything, plus Kitchen Sink under /kitchen-sink
-SUPER_APP_USERNAME=ops SUPER_APP_PASSWORD=… pnpm serve   # port 80, all interfaces
-pnpm dev                         # loopback, Kitchen Sink on `next dev`
+SUPER_APP_USERNAME=ops SUPER_APP_PASSWORD=… SUPER_APP_SECURE_COOKIE=1 pnpm serve   # port 80, all interfaces, HTTPS in front
+pnpm dev                         # http://localhost:8080, Kitchen Sink on `next dev`
 ```
 
 | Route                 | App               | Behind it        |
@@ -22,11 +22,12 @@ pnpm dev                         # loopback, Kitchen Sink on `next dev`
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `PORT` | `80` | Where the proxy listens. Port 80 needs root on Linux; use `PORT=8080` behind a load balancer. |
+| `PORT` | `80` (`serve`), `8080` (`dev`) | Where the proxy listens. Port 80 needs root on Linux; set `PORT` to listen elsewhere behind a load balancer. |
 | `HOST` | `0.0.0.0` (`serve`), `127.0.0.1` (`dev`) | The interface the proxy binds. The apps always bind loopback. |
 | `SUPER_APP_USERNAME`, `SUPER_APP_PASSWORD` | — | The one sign-in. Required for `serve`, and for `dev` on anything but loopback. |
 | `SUPER_APP_SECRET` | random per process | Signs the session cookie. Set it so sign-ins survive a restart. |
-| `SUPER_APP_SECURE_COOKIE` | off | `1` marks the cookie `Secure`. It is set automatically when a TLS proxy in front sends `x-forwarded-proto: https`. |
+| `SUPER_APP_SECURE_COOKIE` | off | `1` says HTTPS is in front of this server: the cookie is marked `Secure`. Off loopback, this or `SUPER_APP_ALLOW_HTTP` is required. |
+| `SUPER_APP_ALLOW_HTTP` | off | `1` serves plain HTTP off loopback anyway. Use it only on a network you trust: the password and cookie cross it unencrypted. |
 | `SUPER_APP_ONLY` | all | Comma-separated app ids to start, e.g. `teammates,shift-manager`. |
 
 Each app also reads its own settings (models, data folders, harness sign-ins);

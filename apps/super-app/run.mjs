@@ -7,26 +7,29 @@
  *
  * Settings, from the environment:
  *
- * - `PORT` (default 80) and `HOST` (default `0.0.0.0` for `serve`, `127.0.0.1`
- *   for `dev`): where the proxy listens.
+ * - `PORT` (default 80 for `serve`, 8080 for `dev`) and `HOST` (default
+ *   `0.0.0.0` for `serve`, `127.0.0.1` for `dev`): where the proxy listens.
  * - `SUPER_APP_USERNAME` and `SUPER_APP_PASSWORD`: the one sign-in. With them
  *   set, nothing but `/login` gets through without the session cookie it sets
  *   (`auth.mjs`). `serve` refuses to start without them, and so does `dev` on
  *   any host but loopback: the labs run coding agents on this machine.
  * - `SUPER_APP_SECRET`: signs the session cookie, so sign-ins survive a
  *   restart. Unset, a random one per process.
- * - `SUPER_APP_SECURE_COOKIE=1`: mark the cookie `Secure` even when no proxy in
- *   front says the request came over HTTPS.
+ * - `SUPER_APP_SECURE_COOKIE=1`: HTTPS is in front of this server. The cookie
+ *   is marked `Secure`. Off loopback, this or `SUPER_APP_ALLOW_HTTP=1` must be
+ *   set, or the start is refused: the password would cross the network in the clear.
+ * - `SUPER_APP_ALLOW_HTTP=1`: serve plain HTTP off loopback anyway, on a
+ *   network you trust.
  * - `SUPER_APP_ONLY=kitchen-sink,teammates`: start only these apps.
  *
- * An app that stops leaves the others running; its route answers 502 and the
+ * The rules are `settings.mjs`. An app that stops leaves the others running; its route answers 502 and the
  * landing page marks it stopped. Ctrl-C stops everything.
  */
 import { spawn } from "node:child_process";
 import { connect } from "node:net";
-import { APPS } from "./apps.mjs";
 import { createAuth } from "./auth.mjs";
 import { createProxy } from "./proxy.mjs";
+import { resolveSettings } from "./settings.mjs";
 
 const mode = process.argv[2];
 if (mode !== "dev" && mode !== "serve") {
@@ -34,33 +37,16 @@ if (mode !== "dev" && mode !== "serve") {
   process.exit(2);
 }
 
-const only = process.env.SUPER_APP_ONLY?.split(",").map((s) => s.trim()).filter(Boolean);
-const apps = only === undefined ? APPS : APPS.filter((a) => only.includes(a.id));
-if (only !== undefined && apps.length !== only.length) {
-  process.stderr.write(`SUPER_APP_ONLY names an app that isn't hosted. Hosted: ${APPS.map((a) => a.id).join(", ")}\n`);
-  process.exit(2);
+const settings = resolveSettings(mode, process.env);
+if (settings.error !== undefined) {
+  process.stderr.write(`${settings.error}\n`);
+  process.exit(settings.exitCode);
 }
-
-const port = Number(process.env.PORT ?? 80);
-const host = process.env.HOST ?? (mode === "serve" ? "0.0.0.0" : "127.0.0.1");
-const username = process.env.SUPER_APP_USERNAME || undefined;
-const password = process.env.SUPER_APP_PASSWORD || undefined;
-if ((username === undefined) !== (password === undefined)) {
-  process.stderr.write("Set both SUPER_APP_USERNAME and SUPER_APP_PASSWORD, or neither.\n");
-  process.exit(3);
-}
-const loopback = host === "127.0.0.1" || host === "localhost" || host === "::1";
-if (username === undefined && (mode === "serve" || !loopback)) {
-  process.stderr.write(
-    `Refusing to ${mode === "serve" ? "serve" : `serve on ${host}`} with no sign-in: these apps run coding agents on this machine.\n` +
-      "Set SUPER_APP_USERNAME and SUPER_APP_PASSWORD.\n",
-  );
-  process.exit(3);
-}
+const { port, host, apps } = settings;
 const auth =
-  username === undefined
+  settings.credentials === undefined
     ? undefined
-    : createAuth({ username, password, ...(process.env.SUPER_APP_SECRET ? { secret: process.env.SUPER_APP_SECRET } : {}) });
+    : createAuth({ ...settings.credentials, ...(settings.secret === undefined ? {} : { secret: settings.secret }) });
 
 /** Every process started, so Ctrl-C reaches each one's whole group. */
 const children = new Set();
