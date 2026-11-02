@@ -25,7 +25,18 @@ const message = (id: string, role: string, text: string, ts: number) => ({
 function host(history: unknown[]) {
   const counts = { state: 0, stream: 0 };
   let send!: (frame: string) => void;
+  let answer!: (event: string, data: Record<string, unknown>) => void;
+  let seq = 0;
   const fetcher = (async (url: string, init?: RequestInit) => {
+    if (init?.method === "POST" && url.includes("respond")) {
+      // The send's own streamed response: the answer as it is written.
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          answer = (event, data) => controller.enqueue(new TextEncoder().encode(`id: ${++seq}\nevent: ${event}\ndata: ${JSON.stringify({ type: event, sequence_number: seq, ...data })}\n\n`));
+        },
+      });
+      return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+    }
     if (url.includes("/state")) {
       counts.state += 1;
       return json({ sessionId: "s1", flowKind: "f", at: 100, sessionCreatedAt: 1, clientData: {}, items: history, pagination: { offset: 0, limit: 200, total: history.length, hasMore: false, nextOffset: history.length } });
@@ -45,7 +56,12 @@ function host(history: unknown[]) {
   }) as ClientFetch;
   const item = (at: number, value: unknown) =>
     `event: session.item\ndata: ${JSON.stringify({ stream: "session", sessionId: "s1", at, type: "session.item", requestId: (value as { requestId: string }).requestId, item: value })}\n\n`;
-  return { client: createClient({ userId: "u", baseUrl: "", fetcher }), counts, push: (at: number, value: unknown) => send(item(at, value)) };
+  return {
+    client: createClient({ userId: "u", baseUrl: "", fetcher }),
+    counts,
+    push: (at: number, value: unknown) => send(item(at, value)),
+    answer: (event: string, data: Record<string, unknown>) => answer(event, data),
+  };
 }
 
 const until = async (check: () => boolean) => {
@@ -72,5 +88,21 @@ describe("watchThread", () => {
     await new Promise((r) => setTimeout(r, 1_700));
     expect(h.counts.state).toBe(1);
     expect(h.counts.stream).toBe(1);
+  });
+
+  it("shows the answer while it is written, from the send's streamed response", async () => {
+    // The session stream sends an item once it is finished; without the send's own stream the
+    // thread would sit on the question until the whole answer was done.
+    const h = host([message("u1", "user", "fix the build", 10)]);
+    const lab = createWiredLab(h.client);
+    const views: ThreadView[] = [];
+    stops.push(lab.watchThread("s1", (view) => views.push(view)));
+    await until(() => views.length > 0 && h.counts.stream === 1);
+
+    await lab.send("s1", "and the tests");
+    const writing = { id: "a2", requestId: "req_a2", type: "message", role: "assistant", ts: 30, itemIndex: 0, status: "in_progress", content: [{ type: "output_text", text: "" }] };
+    h.answer("item.added", { item: writing });
+    h.answer("content.delta", { itemId: "a2", contentIndex: 0, delta: "Running the te" });
+    await until(() => JSON.stringify(views.at(-1)!.entries).includes("Running the te"));
   });
 });

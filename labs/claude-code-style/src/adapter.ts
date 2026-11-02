@@ -20,7 +20,7 @@
  * | `requestChanges`| the same answer with `{ verdict: "revise", words }`                        |
  * | `watchPins`, `pin`, `unpin` | the lab's `pins` flow, your own user state                    |
  */
-import { createClient, sessionFeed, type Client, type SessionSummary } from "@flow-state-dev/client";
+import { createClient, sessionFeed, type Client, type SessionFeed, type SessionSummary } from "@flow-state-dev/client";
 import { readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import { createInboxClient, inboxItems, type InboxAnswer, type InboxHold, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
 import type { TaskSpendView } from "@flow-state-dev/orchestration/tasks";
@@ -335,9 +335,11 @@ export function createLabAdapter(): LabAdapter {
 /**
  * Follow one session's items of `types` through the client's `sessionFeed`,
  * calling `onItems` once the history lands and on every change after. The
- * feed holds one connection; the stop closes it.
+ * feed holds one connection; `stop` closes it. The session stream sends an
+ * item once it is finished, so an answer being written reaches the feed only
+ * through `feed.followResponse`.
  */
-function followItems(fsd: Client, sessionId: string, types: readonly string[], onItems: (items: Item[]) => void): Unsubscribe {
+function followItems(fsd: Client, sessionId: string, types: readonly string[], onItems: (items: Item[]) => void): { feed: SessionFeed; stop: Unsubscribe } {
   const feed = sessionFeed(fsd, sessionId, { itemTypes: [...types] });
   let last: readonly unknown[] | undefined;
   const stop = feed.subscribe(({ items, state }) => {
@@ -346,9 +348,12 @@ function followItems(fsd: Client, sessionId: string, types: readonly string[], o
     last = items;
     onItems(items as unknown as Item[]);
   });
-  return () => {
-    stop();
-    feed.close();
+  return {
+    feed,
+    stop: () => {
+      stop();
+      feed.close();
+    },
   };
 }
 
@@ -486,6 +491,9 @@ export function createWiredLab(fsd: Client): LabAdapter {
 
   /** Each listed task's run session, by task id, as the last list saw it. */
   const runSessionOf = new Map<string, string>();
+
+  /** The feed of each thread open on screen, by session id, so a send there can stream its answer into it. */
+  const threadFeeds = new Map<string, SessionFeed>();
 
   /** A session's tasks, as its board's `listTasks` read answers them: a read, so a list stores no request. */
   const tasksOf = async (sessionId: string): Promise<Listed[]> => {
@@ -640,7 +648,16 @@ export function createWiredLab(fsd: Client): LabAdapter {
       return { id: created.id, title: "New session", worker, updatedAt: created.updatedAt, running: false, waiting: 0, projectId };
     },
     send: async (sessionId, text) => {
-      await fsd.flow(await flowOfSession(sessionId)).send("respond", { message: text }, { sessionId });
+      const flow = fsd.flow(await flowOfSession(sessionId));
+      const feed = threadFeeds.get(sessionId);
+      // With the thread open, stream the send so its answer shows as it is written.
+      if (feed === undefined) {
+        await flow.send("respond", { message: text }, { sessionId });
+        return;
+      }
+      const response = await flow.send("respond", { message: text }, { sessionId, stream: true });
+      if (!response.ok) throw new Error(`The send was refused (${response.status}).`);
+      if (response.headers.get("content-type")?.includes("text/event-stream")) feed.followResponse(response);
     },
     interrupt: async (sessionId) => {
       for (const turn of await runningTurns(sessionId)) {
@@ -668,10 +685,11 @@ export function createWiredLab(fsd: Client): LabAdapter {
         last = key;
         onChange(view);
       };
-      const stopItems = followItems(fsd, sessionId, THREAD_ITEMS, (next) => {
+      const { feed, stop: stopItems } = followItems(fsd, sessionId, THREAD_ITEMS, (next) => {
         items = next;
         tell();
       });
+      threadFeeds.set(sessionId, feed);
       const stopTurns = every(
         async () => {
           const [turns, threads] = await Promise.all([runningTurns(sessionId), isThreads(sessionId)]);
@@ -683,6 +701,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
         },
       );
       return () => {
+        if (threadFeeds.get(sessionId) === feed) threadFeeds.delete(sessionId);
         stopItems();
         stopTurns();
       };
@@ -706,7 +725,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
           stopItems = followItems(fsd, runSession, [...THREAD_ITEMS, "suspension"], (items) => {
             const review = reviewStopOf(items);
             onChange({ entries: entriesOf(items.filter((item) => item.type !== "suspension")), ...(review === undefined ? {} : { review }) });
-          });
+          }).stop;
         },
         2000,
       );
