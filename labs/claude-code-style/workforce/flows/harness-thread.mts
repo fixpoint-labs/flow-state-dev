@@ -132,7 +132,7 @@ export const HARNESSES: Record<string, (feeds: HarnessFeeds) => HarnessBlock> = 
 };
 
 /** How long a run's project checks may take together. */
-export const CHECKS_TIMEOUT_MS = 10 * 60_000;
+const CHECKS_TIMEOUT_MS = 10 * 60_000;
 
 /**
  * The one phase: the task as the main session wrote it, a question or a change, done when the
