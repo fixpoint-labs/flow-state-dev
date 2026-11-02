@@ -71,7 +71,7 @@ import { readClaudeUsage } from "@flow-state-dev/claude-code/sdk";
 import { readCodexUsage } from "@flow-state-dev/codex";
 import { harnessEnv } from "@flow-state-dev/core";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { splitCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
+import { checkoutCommandProblem, splitCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "./ask.mts";
 import { claudeCodeEnv, errorReporterHarness, startHarness } from "./harness.mts";
@@ -94,12 +94,13 @@ const ASK_FEATURE = JSON.parse(readFileSync(fileURLToPath(new URL("./ask.json", 
  * The command `DEVTEAM_SETUP` names, run in each fresh checkout before a
  * feature run starts. Written like a project check: one command, no shell.
  *
- * @throws At start, when the command can't be split into words.
+ * @throws At start, when the command needs a shell or can't be split into words.
  */
 function setupFrom(value: string | undefined): WorkspaceSetup | undefined {
   if (value === undefined || value.trim() === "") return undefined;
+  const problem = checkoutCommandProblem(value);
+  if (problem !== undefined) throw new Error(`DEVTEAM_SETUP: ${problem}`);
   const words = splitCheckoutCommand(value);
-  if (typeof words === "string") throw new Error(`DEVTEAM_SETUP: ${words}`);
   return { command: words as [string, ...string[]] };
 }
 
