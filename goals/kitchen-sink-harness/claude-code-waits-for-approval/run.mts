@@ -13,12 +13,17 @@
  *   a:waits              the turn's request is suspended; the page shows the approval card naming the tool, the
  *                        command and the session's worktree, with Allow for this run, and the notice reads waiting.
  *   b:ran-after          the command had not run while the turn waited; after Allow it ran exactly once.
- *   c:same-conversation  after a restart and Allow through the client, the turn resumed the conversation that asked.
+ *   c:same-conversation  after a restart and a reload the card is still there; Approve on it resumes the conversation
+ *                        that asked, and the page follows the turn to its end without another reload.
  *   d:never-ran          in a second session, Reject on the page's card: the command never ran, and the turn ended.
  *   e:one-at-a-time      a message sent while a turn waits is refused, and the page says why.
+ *   s:stop               while a third call waits, the page offers Stop; it ends the turn, the call never ran, and the
+ *                        next turn continues the conversation.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-harness/claude-code-waits-for-approval/run.mts
- * Control:  GOAL_CONTROL=no-approval (the mode leaves `approveTools` off): must FAIL a, b, c, d and e, since nothing waits.
+ * Control:  GOAL_CONTROL=no-approval (the mode leaves `approveTools` off): must FAIL every leg, since nothing waits.
+ *           By hand: take `SuspensionResolverProvider` off the harness page and c fails (the page stays on waiting);
+ *           show Stop only while streaming and s fails.
  */
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -37,7 +42,9 @@ const PORT = 3053;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 const FLOW_KIND = "claude-code-session";
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const LEGS = ["a", "b", "c", "d", "e"];
+const LEGS = ["a", "b", "c", "d", "e", "s"];
+/** How long a resumed turn may take to start after a restart: the stopped server's worktree hold goes stale first. */
+const RESUME_MS = 150_000;
 
 /** The legs each control must redden. */
 const EXPECTED: Record<string, string[]> = { "no-approval": LEGS };
@@ -194,39 +201,45 @@ await runGoal(async (failures) => {
     // ---- b (first half): nothing ran while it waited
     if (timesRan(worktreeA, allowFile) !== 0) fail("b", `${allowFile} ran before anyone answered`);
 
-    // ---- restart the server, then answer through the client's answer route
+    // ---- restart the server, then answer on the page's own card
     await server.stop();
     server = await startDev(repo, stateHome);
     if (timesRan(worktreeA, allowFile) !== 0) fail("b", `${allowFile} ran across the restart, before anyone answered`);
+    // The new server compiles the page on its first load, which can abort the first navigation.
+    for (let attempt = 0; ; attempt += 1) {
+      const loaded = await page.reload().then(() => true, () => false);
+      if (loaded || attempt === 2) break;
+    }
+    const cardAfter = suspensionId === null ? null : await openCard(page);
     if (suspensionId === null || turnA === undefined) {
       fail("b", "nothing waited, so nothing could run after an answer");
       fail("c", "nothing waited, so no answer could resume the conversation");
+    } else if (cardAfter === null) {
+      fail("b", "the card was gone after the restart, so nothing could run after an answer");
+      fail("c", "after the restart and a reload, the approval card is gone");
     } else {
-      await client.flow(FLOW_KIND).request(turnA.id).answer({ suspensionId, action: "approve" });
-      const ended = (await until(() => requests(sessionA), (list) => ["completed", "failed"].includes(list.find((r) => r.id === turnA.id)?.status ?? ""), 60_000)).find(
-        (r) => r.id === turnA.id,
-      );
-      if (ended?.status !== "completed") fail("c", `after Allow the turn is ${ended?.status} (want completed)`);
+      await cardAfter.getByRole("button", { name: "Approve" }).click();
+      // Read off the page, with no reload: a page that stops following the turn stays on waiting.
+      const followed = await page
+        .waitForFunction(() => document.querySelector('[data-testid="turn-notice"]')?.getAttribute("data-kind") === "continued", undefined, {
+          timeout: RESUME_MS,
+        })
+        .then(() => true, () => false);
+      if (!followed) fail("c", `after Approve the notice reads ${JSON.stringify(await noticeKind(page))} (want continued)`);
+      const resumedReply = ((await page.getByTestId("conversation").textContent()) ?? "").includes(`of conversation ${boundA}`);
+      const ended = (await requests(sessionA)).find((r) => r.id === turnA.id);
+      if (ended?.status !== "completed") fail("c", `after Approve the turn is ${ended?.status} (want completed)`);
 
       // ---- b: it ran exactly once, after the answer
       const ran = timesRan(worktreeA, allowFile);
-      if (ran !== 1) fail("b", `after Allow ${allowFile} ran ${ran} times (want 1)`);
+      if (ran !== 1) fail("b", `after Approve ${allowFile} ran ${ran} times (want 1)`);
 
       // ---- c: the same conversation, as the page shows it
-      await page.reload();
-      await page.getByTestId("conversation").waitFor({ timeout: 30_000 });
-      const resumedReply = await page
-        .waitForFunction(
-          (id) => (document.querySelector('[data-testid="conversation"]')?.textContent ?? "").includes(`of conversation ${id}`),
-          boundA,
-          { timeout: 30_000 },
-        )
-        .then(() => true, () => false);
       const boundAfter = ((await page.getByTestId("bound-conversation").textContent()) ?? "").trim();
       if (!/^scripted-/.test(boundA)) fail("c", `the waiting turn showed no confirmed conversation (${JSON.stringify(boundA)})`);
-      if (boundAfter !== boundA) fail("c", `after the restart and Allow the session is on ${boundAfter} (want ${boundA})`);
-      if (!resumedReply) fail("c", `the resumed turn's reply does not continue conversation ${boundA}`);
-      evidence.push(`after restart + Allow: ${ended?.status}, ran ${ran}, bound ${boundAfter}`);
+      if (boundAfter !== boundA) fail("c", `after the restart and Approve the session is on ${boundAfter} (want ${boundA})`);
+      if (!resumedReply) fail("c", `the page shows no resumed reply continuing conversation ${boundA}`);
+      evidence.push(`after restart + Approve: ${ended?.status}, ran ${ran}, bound ${boundAfter}`);
     }
 
     // ---- d and e: a second session, a message while it waits, then Reject on the page's card
@@ -259,6 +272,37 @@ await runGoal(async (failures) => {
       const ranB = timesRan(worktreeB, denyFile);
       if (ranB !== 0) fail("d", `after Reject ${denyFile} ran ${ranB} times`);
       evidence.push(`after Reject: ${ended?.status}, ran ${ranB}`);
+    }
+
+    // ---- s: Stop ends a turn that waits, and the session takes the next one
+    const stopFile = `stop-${token}.txt`;
+    await send(page, `[ask:${stopFile}] touch a file`);
+    const cardS = await openCard(page);
+    if (cardS === null) {
+      fail("s", `no approval card for \`touch ${stopFile}\` showed`);
+    } else {
+      const stop = page.getByTestId("turn-stop");
+      if (!(await stop.isVisible())) {
+        fail("s", "while the turn waits, the page offers no Stop");
+      } else {
+        await stop.click();
+        const stopped = await page
+          .waitForFunction(() => document.querySelector('[data-testid="turn-notice"]')?.getAttribute("data-kind") === "stopped", undefined, {
+            timeout: 30_000,
+          })
+          .then(() => true, () => false);
+        if (!stopped) fail("s", `after Stop the notice reads ${JSON.stringify(await noticeKind(page))} (want stopped)`);
+        await send(page, "carry on");
+        const next = await page
+          .waitForFunction(() => document.querySelector('[data-testid="turn-notice"]')?.getAttribute("data-kind") === "continued", undefined, {
+            timeout: 30_000,
+          })
+          .then(() => true, () => false);
+        if (!next) fail("s", `after Stop the next turn's notice reads ${JSON.stringify(await noticeKind(page))} (want continued)`);
+      }
+      const ranS = timesRan(worktreeB, stopFile);
+      if (ranS !== 0) fail("s", `after Stop ${stopFile} ran ${ranS} times`);
+      evidence.push(`after Stop: ran ${ranS}`);
     }
   } finally {
     await browser.close();

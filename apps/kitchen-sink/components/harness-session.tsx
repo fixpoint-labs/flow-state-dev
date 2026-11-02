@@ -28,6 +28,7 @@ import {
   useDraft,
   useHarnessLines,
   useSession,
+  SuspensionResolverProvider,
   type SessionView,
 } from "@flow-state-dev/react";
 import {
@@ -168,6 +169,12 @@ function SessionBody({
     },
     [lines, refresh, setMessage, sessionId],
   );
+  // A turn waiting on an answer has no stream to close: the session stops it by request id.
+  const waiting = turn?.status === "waiting";
+  const stopTurn = useCallback(
+    () => (waiting && turn !== null ? session.dismissRequest(turn.requestId) : session.abortRequest()),
+    [waiting, turn, session],
+  );
   const steered = turn === null ? [] : (state.turns?.[turn.requestId]?.steered ?? []);
 
   return (
@@ -182,6 +189,8 @@ function SessionBody({
           </span>
         </div>
         <Conversation className="min-h-0 flex-1" data-testid="conversation">
+          {/* An answer to a card goes through the session, so the turn it resumes streams in here. */}
+          <SuspensionResolverProvider resolve={session.resumeSuspension}>
           <SessionItemsProvider value={session.items}>
             <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
               {session.isLoading ? (
@@ -204,6 +213,7 @@ function SessionBody({
               )}
             </ConversationContent>
           </SessionItemsProvider>
+          </SuspensionResolverProvider>
           <ConversationScrollButton />
         </Conversation>
         <div className="border-t">
@@ -218,8 +228,8 @@ function SessionBody({
                 onChange={(e) => setMessage(e.target.value)}
               />
               {/* While a turn runs, Stop and Send are two buttons: one that did both would stop the turn when a line was meant. */}
-              {session.isStreaming && (
-                <PromptInputButton aria-label="Stop" data-testid="turn-stop" onClick={() => void session.abortRequest()}>
+              {(session.isStreaming || waiting) && (
+                <PromptInputButton aria-label="Stop" data-testid="turn-stop" onClick={() => void stopTurn()}>
                   <SquareIcon className="size-4" />
                 </PromptInputButton>
               )}
