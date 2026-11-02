@@ -20,6 +20,9 @@
  *   raised in its own session (which also turns durable execution on), so
  *   Inbox has something to answer. Approve files the row and starts the coder
  *   worker; Deny files nothing.
+ * - **A coding run waits for your review.** A run that made commits holds its
+ *   task in Inbox until you Accept or Ask for changes (harness-manager's
+ *   `reviewChanges`).
  * - **The page's connection.** The lab's user and verified bearer go to the
  *   page through the `devtool` block, which the host injects on a loopback
  *   bind only. A request with no bearer is refused, as in the checks.
@@ -182,6 +185,8 @@ const lab = await openLab({
   // Runs' places and the host's clones, beside the store; only `file://` remotes are reached.
   workspace: { root: join(dirname(STORE), "devteam-runs"), remotes: { allow: ["file"] } },
   coderWorkerId,
+  // A coding run that committed waits in Inbox for the user's review before its task completes.
+  reviewChanges: true,
   inventory: true,
   ask: ASK_FEATURE,
   devtool: true,
