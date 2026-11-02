@@ -8,6 +8,9 @@
  *
  * `test/browser-subpath-safe.spec.ts` walks this entry's import graph, through
  * the workspace packages it reaches, and fails on any Node built-in.
+ *
+ * `workPlace` is re-exported from `./work-place`, its own import-free entry,
+ * which stays published and is also exported from the package root.
  */
 export {
   readRecordedWork,
@@ -18,3 +21,4 @@ export {
   type RecordedWork,
   type RecordedWorkClient,
 } from "./recorded-work";
+export { shellWord, workPlace, type WorkPlace, type WorkPlaceCommands, type WorkPlaceViewer } from "./work-place";
