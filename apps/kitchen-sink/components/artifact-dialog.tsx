@@ -69,6 +69,7 @@ import {
   CodeBlockContainer,
   CodeBlockContent,
 } from "@/components/flow-state/code-block";
+import { BASE_PATH } from "@/lib/base-path";
 
 const streamdownPlugins = { cjk, code, math, mermaid };
 
@@ -373,7 +374,7 @@ function ArtifactDialogBody({
       lastSelectionRef.current = null;
       setStreamState({ action: actionId, prefix, suffix, accumulated: "" });
 
-      const richText = createClient({ userId, baseUrl: baseUrl ?? "" }).flow("rich-text-component");
+      const richText = createClient({ userId, baseUrl: baseUrl ?? BASE_PATH }).flow("rich-text-component");
 
       const input = { text: targetText, ...extra };
 

@@ -189,6 +189,60 @@ const CANCELLED_LINEAR = /^(cancell?ed|duplicate|dropped|wo?n'?t ?do)$/i
 let crossSpecHold = false
 
 /**
+ * The epic's SPEC SET: every spec-route child specced together, in one PR, after the epic spec merges.
+ * → orchestration.md § "The spec set (one PR for the epic's issue specs)" (canonical).
+ *
+ * `mode` is the coordinator's opt-in (`epic.specSetMode`), set when the epic is created. An epic without
+ * it runs the per-issue spec PRs it was started under, so an epic in flight keeps the flow it began with.
+ * `pr` is the spec-set PR once opened (`epic.specSetPr`). After that, a child with no spec — one that
+ * joined the epic later, or one the set left out — is specced on its own PR, the per-issue route.
+ *
+ * Set by the wake from `args` before any rule reads it, like `crossSpecHold`.
+ */
+let specSet = { mode: false, pr: null }
+
+/** Does this row's spec wait for the spec set, rather than getting its own spec PR? */
+function awaitsSpecSet(row) {
+  return specSet.mode && !specSet.pr && !row.specPr && !row.specSetMember && !isDirectRoute(row)
+}
+
+/**
+ * Is spec-set authoring paused on a human decision? A set dispatch that escalates leaves its `blocker` on the
+ * lead's row only, and that row then has no action. Re-forming the set from the others would write a smaller
+ * set around the open question and leave the lead to be specced alone, so the whole set waits for the answer.
+ */
+function specSetPaused(rows) {
+  return specSet.mode && !specSet.pr && rows.some((r) => r.phase === 'NEEDS_SPEC' && r.blocker && !r.linearTerminal && awaitsSpecSet(r))
+}
+
+/**
+ * The unmerged spec-set PRs with an open human decision on any member. A worker that escalates parks only its
+ * own row, but every member shares the PR's branch and its merge: a sibling allowed to run would fold the PR
+ * or merge it around the question. So the whole PR waits — no dispatch, and no gate — until it is answered.
+ */
+function openSetsWithDecision(rows) {
+  return new Set(rows.filter((r) => onOpenSpecSet(r) && r.blocker && !r.linearTerminal).map((r) => r.specPr))
+}
+
+/**
+ * Does this open spec-set member carry spec work that must land before the shared PR merges — a POC verdict
+ * or a human answer not yet folded in? The implement backstop merges the WHOLE PR and its worker carries only
+ * its own row's answers, so any member's unapplied work holds every member's merge.
+ */
+function hasUnfoldedSpecWork(row) {
+  return onOpenSpecSet(row) && !!((row.verdicts || []).length || (row.blockerResolutions || []).length)
+}
+
+/**
+ * Is this row's spec in a spec-set PR that has not merged? Every member shares that PR's branch, so at
+ * most one dispatch per such PR runs in a wake (`allocate`): two workers folding into one branch is a
+ * push race, and N implement backstops merging one PR is N merges of the same thing.
+ */
+function onOpenSpecSet(row) {
+  return !!(row.specSetMember && row.specPr && !row.specMerged)
+}
+
+/**
  * Does this dispatch BUILD code? The one question an open blocked-by relation asks.
  *
  * A prerequisite is a landing-order constraint on CODE — a dependent must not be built concurrently with
@@ -264,7 +318,8 @@ function pendingAction(row) {
   // Spec work that cannot reach implementation (an unapproved spec's authoring, review, verdicts and
   // decisions) dispatches under both — the cross-spec pass waits on exactly that work.
   const implementationHeld = (next) =>
-    (prerequisiteOpen && buildsCode(row, next.action)) || (crossSpecHold && !isDirectRoute(row) && reachesImplementation(row))
+    (prerequisiteOpen && buildsCode(row, next.action)) ||
+    (crossSpecHold && !isDirectRoute(row) && !row.specSetMember && reachesImplementation(row))
   const unlessBuilding = (next) => (implementationHeld(next) ? null : next)
 
   // A worker that escalated a decision it could not make is WAITING ON A HUMAN. Re-dispatching
@@ -282,7 +337,12 @@ function pendingAction(row) {
   const phaseAction = (() => {
     switch (row.phase) {
     case 'NEEDS_SPEC':
-      return { action: 'spec', why: 'no spec yet' }
+      // In spec-set mode every child still waiting is specced by ONE dispatch; `allocate` folds these rows
+      // into it. A spec-set member was cross-reviewed with its siblings before the PR opened, which is
+      // also why the cross-spec hold skips it.
+      return awaitsSpecSet(row)
+        ? { action: 'spec-set', why: 'issue specs are written together in one spec-set PR' }
+        : { action: 'spec', why: 'no spec yet' }
 
     case 'AWAITING_SPEC_APPROVAL':
       // A satisfied gate is a release, not a stop: approval chains straight through to
@@ -423,7 +483,7 @@ function specReviewParkKind(row) {
   // row's spec review runs regardless (`buildsCode`).
   if (row.specApproved) {
     if (row.blockedBy && row.blockedBy.length) return 'blocked-by'
-    return crossSpecHold ? 'cross-spec-hold' : cursorUsable(row) ? null : 'cursor'
+    return crossSpecHold && !row.specSetMember ? 'cross-spec-hold' : cursorUsable(row) ? null : 'cursor'
   }
   if (!cursorUsable(row)) return 'cursor'
   if (atReviewBudget(row.specReviewRounds, row.specLevelFound)) return 'budget'
@@ -1384,8 +1444,19 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
   // of the three to get wrong. Deferring it one wake is safe in the way the others are: the epic fold
   // doesn't wait on a child spec review, so nothing deadlocks, and the row keeps its cursor so the
   // batch is genuinely re-derived rather than consumed.
-  const AUTHORS_AGAINST_OBJECTIVE = new Set(['spec', 'spec-review', 'implement'])
+  const AUTHORS_AGAINST_OBJECTIVE = new Set(['spec', 'spec-set', 'spec-review', 'implement'])
   const heldForFold = []
+  // The spec set's two collapses. Every row waiting on the set joins ONE `spec-set` dispatch (the first
+  // such row leads it and carries `members`). On an unmerged spec-set PR, one dispatch per PR per wake:
+  // a sibling's spec review is COVERED by the lead's (it folds the whole PR, and the wake syncs the
+  // shared cursor and budget onto the siblings afterwards); anything else waits a wake (`serialized`).
+  let setLead = null
+  const coveredBySet = []
+  const serialized = []
+  const openSetBusy = new Map() // spec-set PR → the action already dispatched on it this wake
+  const setPaused = specSetPaused(rows)
+  const decidingSets = openSetsWithDecision(rows)
+  const unfoldedSets = new Set(rows.filter(hasUnfoldedSpecWork).map((r) => r.specPr))
 
   for (const row of rows) {
     const next = pendingAction(row)
@@ -1401,7 +1472,43 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
       heldForFold.push({ row, ...next })
       continue
     }
-    if (next) actionable.push({ row, ...next })
+    if (next && next.action === 'spec-set') {
+      if (setPaused) {
+        waiting.push(row)
+        continue
+      }
+      if (setLead) {
+        setLead.members.push(row)
+        coveredBySet.push({ row, ...next })
+        continue
+      }
+    } else if (next && onOpenSpecSet(row)) {
+      if (decidingSets.has(row.specPr)) {
+        waiting.push(row)
+        continue
+      }
+      if (next.action === 'implement' && unfoldedSets.has(row.specPr)) {
+        if (hasUnfoldedSpecWork(row)) {
+          // An approved row's phase outranks its answer in `pendingAction`, so it would implement, and merge the
+          // shared PR, with the answer unapplied. On an open set the answer is folded into the spec first.
+          Object.assign(next, { action: 'apply-decision', why: 'fold the answered decision into the shared spec-set PR before it merges' })
+        } else {
+          serialized.push({ row, ...next, behind: 'spec-work' })
+          continue
+        }
+      }
+      if (openSetBusy.has(row.specPr)) {
+        // Covered only by a lead that is itself folding the PR's review; any other lead leaves the batch unread.
+        if (next.action === 'spec-review' && openSetBusy.get(row.specPr) === 'spec-review') coveredBySet.push({ row, ...next })
+        else serialized.push({ row, ...next, behind: openSetBusy.get(row.specPr) })
+        continue
+      }
+      openSetBusy.set(row.specPr, next.action)
+    }
+    if (next && next.action === 'spec-set') {
+      setLead = { row, ...next, members: [row] }
+      actionable.push(setLead)
+    } else if (next) actionable.push({ row, ...next })
     else if (row.phase === 'AWAITING_SPEC_APPROVAL' && row.newSpecReviewEvents) {
       // `pendingAction` returned null for this exact combination for more than one reason, and only
       // one of them — the budget — is a real convergence. WHICH reason is not re-derived here: this
@@ -1424,7 +1531,7 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
     } else waiting.push(row)
   }
 
-  const held = epicApproved ? [] : actionable
+  const held = epicApproved ? [] : [...actionable, ...coveredBySet, ...serialized]
   // Priority inverts while a fold is pending: the fold is what the held work is waiting for, so
   // starving it behind other dispatches would defer that work for nothing. It takes a slot INSIDE
   // the cap by displacing one advance, never by exceeding it — the cap is documented as shared
@@ -1433,13 +1540,17 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
   const foldReservesSlot = foldEpicWanted && heldForFold.length > 0
   const advanceCap = foldReservesSlot ? Math.max(0, cap - 1) : cap
   const advance = epicApproved ? actionable.slice(0, advanceCap) : []
-  const deferred = epicApproved ? actionable.slice(advanceCap) : []
+  const deferred = epicApproved ? [...actionable.slice(advanceCap), ...serialized] : []
 
   const foldEpic = foldEpicWanted && (foldReservesSlot || advance.length < cap)
   const settle = claims.slice(0, Math.max(0, cap - advance.length - (foldEpic ? 1 : 0)))
   const queuedClaims = claims.slice(settle.length)
 
-  return { advance, deferred, held, blocked, converged, withheldCursor, crossSpecHeld, waiting, foldEpic, settle, queuedClaims, heldForFold }
+  return {
+    advance, deferred, held, blocked, converged, withheldCursor, crossSpecHeld, waiting, foldEpic, settle, queuedClaims, heldForFold,
+    coveredBySet: epicApproved ? coveredBySet : [],
+    serialized: epicApproved ? serialized : [],
+  }
 }
 
 /**
@@ -2269,6 +2380,14 @@ const WORKER_SCHEMA = {
       description:
         'Set ONLY by a direct-route (bug) worker that refused to build: the issue has no reproduction and an ambiguous symptom, or it is not really a bug (the fix is a new capability or a contract change). One line saying which and why. A design decision found mid-diagnosis is NOT this — that ships with the fix and is surfaced on the PR.',
     },
+    // Only the `spec-set` dispatch (epic-agent) reports this: the issues the one spec-set PR actually
+    // specs. The wake moves exactly these onto that PR; a member left out keeps NEEDS_SPEC and is
+    // specced on its own PR by a later wake.
+    specSetMembers: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'spec-set dispatch only: the issue ids whose specs the spec-set PR (specPr) contains, the lead included. Omit for any other dispatch.',
+    },
     settleRequested: SETTLE_REQUESTED_SCHEMA,
     blocker: {
       type: ['string', 'null'],
@@ -2422,6 +2541,7 @@ const authorshipScan =
 // rather than silently becoming it.
 const cap = Number.isFinite(input.cap) && input.cap > 0 ? input.cap : 3
 const requests = input.settleRequests || []
+specSet = { mode: !!epic.specSetMode, pr: Number.isFinite(epic.specSetPr) ? epic.specSetPr : null }
 
 phase('Refresh')
 
@@ -3142,7 +3262,11 @@ const crossSpecComing = crossSpecRows.filter(
 // which is exactly the order the gate exists to prevent. What it takes is a SET: two specs that exist or
 // are still coming. One spec has nothing to be incoherent with, and holding for a pass that can never be
 // asked is the deadlock again by a different route.
-crossSpecHold = !input.crossSpecCleared && crossSpecSet.length + crossSpecComing.length > 1
+// Spec-set members were reviewed together before their PR opened (`cross-spec-review` runs inside that
+// authoring), so a set made only of members owes no separate pass. A late joiner with its own spec PR
+// still does, and it is checked against the members, which stay in the set for that.
+crossSpecHold =
+  !input.crossSpecCleared && crossSpecSet.length + crossSpecComing.length > 1 && crossSpecRows.some((r) => !r.specSetMember)
 // The ASK is narrower, and that is the skill's other precondition: the pass runs only once every spec is
 // individually approved, because aligning a good spec to an unvalidated one spreads the flaw.
 // No "and the set has two entries" clause: the hold already requires `set + coming > 1`, so with nothing
@@ -3223,8 +3347,19 @@ if (plan.heldForFold.length) {
     `Holding ${plan.heldForFold.map((h) => `${h.row.id}(${h.action})`).join(', ')} for one wake — the epic-spec is being folded, and these author against the objective it may change. The fold takes priority this wake; they dispatch next wake against the folded head with their approvals intact.`,
   )
 }
-if (plan.deferred.length) {
-  log(`Cap ${cap} reached — deferring ${plan.deferred.map((d) => d.row.id).join(', ')} to the next wake.`)
+if (plan.deferred.length > plan.serialized.length) {
+  const capDeferred = plan.deferred.filter((d) => !plan.serialized.includes(d))
+  log(`Cap ${cap} reached — deferring ${capDeferred.map((d) => d.row.id).join(', ')} to the next wake.`)
+}
+if (plan.serialized.length) {
+  log(
+    `Deferring ${plan.serialized.map((d) => `${d.row.id}(${d.action})`).join(', ')} one wake: another dispatch is already on the same unmerged spec-set PR, and its members share one branch.`,
+  )
+}
+if (plan.coveredBySet.length) {
+  log(
+    `${plan.coveredBySet.map((c) => c.row.id).join(', ')}: covered by ${plan.coveredBySet.some((c) => c.action === 'spec-set') ? 'the spec-set dispatch' : 'the spec-set review fold'} — one dispatch for the shared spec-set PR, not one per member.`,
+  )
 }
 if (foldEpicWanted && !plan.foldEpic) {
   log(`Cap ${cap} reached — epic-spec fold queued behind the issue workers.`)
@@ -3255,12 +3390,39 @@ const settlingClaimFor = (issueId) => {
   return hit ? hit.claim : null
 }
 
+/**
+ * The one dispatch that writes every waiting child's spec at once, as a single PR. `epic-agent` owns it
+ * because it is epic-level authoring: it fans the specs out to one sub-agent per issue, then reviews the
+ * set as a set before anyone else sees it. → orchestration.md § "The spec set".
+ */
+const specSetPrompt = (item) =>
+  `SPEC-SET for epic ${epic.issueId}: write the issue specs for ${item.members.map((r) => r.id).join(', ')} together, as ONE PR. ` +
+  `Follow .claude/agents/epic-agent.md → "Spec set" for the steps; this prompt carries only the inputs and the return.\n` +
+  `The epic spec is merged at specs/epics/${epic.issueId}/ (review PR #${epic.prNumber}); read it from fresh main.\n` +
+  // An earlier set dispatch escalated, and the human answered. This agent is fresh, so the answer travels here.
+  (item.members.some((r) => (r.blockerResolutions || []).length)
+    ? `Decisions an earlier spec-set dispatch escalated have been ANSWERED by the human. Write the set to them as given; do not re-open them:\n` +
+      item.members.flatMap((r) => (r.blockerResolutions || []).map((x) => `  - ${x.answer}`)).join('\n') + '\n'
+    : '') +
+  `Return issueId ${item.row.id}, phase AWAITING_SPEC_APPROVAL, specPr = the PR number, specSetMembers = every issue the PR specs, readyToMerge false, multiPrPending false. ` +
+  `Leave an issue out of specSetMembers only when it should not be specced here, and say which and why in status. ` +
+  `If no PR opened, return phase NEEDS_SPEC and specPr null, with a blocker if a human decision stands in the way. A disputed factual claim goes back as settleRequested.\n` +
+  `Do not prompt the user. Return the compact status object and exit.`
+
 phase('Advance')
 
 const [advanced, epicFold, epicNotes] = await Promise.all([
   parallel(
     plan.advance.map((item) => () =>
-      agent(
+      item.action === 'spec-set'
+        ? agent(specSetPrompt(item), {
+            label: `spec-set:${item.row.id}`,
+            phase: 'Advance',
+            schema: WORKER_SCHEMA,
+            agentType: 'epic-agent',
+            isolation: 'worktree',
+          })
+        : agent(
         `Advance ${item.row.id} to its next external wait, in your own worktree. Reason it is pending: ${item.why}.\n` +
           `Epic: ${epic.issueId}, retained at specs/epics/${epic.issueId}/ (review PR #${epic.prNumber}, approved source ${epicHead || 'fetch it'}). Read fresh main for merged specs; the original source branch may be deleted.\n` +
           `A satisfied gate is NOT a wait: spec-route implementation requires an observed merge of its approved spec. Only an authorized implement backstop below may merge under the canonical worker contract in docs/contributing/orchestration.md → "Merging and amending a spec". Otherwise return the actual merge wait without implementation edits. Never self-approve or merge an implementation PR.\n` +
@@ -3402,6 +3564,18 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
               // nothing and only a human can fix it, so it has to come back as a BLOCKER. Returned
               // as neither work nor blocker nor gate, the row simply sits in PR_FEEDBACK forever.
               `If it reports any sub-PR as invalid (duplicate id, dependency cycle, unknown dependency), return that as your \`blocker\` — it needs a human to fix the PR plan and nothing else can advance it.\n`
+            : '') +
+          (onOpenSpecSet(item.row)
+            ? `This issue's spec is in the SHARED spec-set PR #${item.row.specPr}, with ${refreshed
+                .filter((r) => r.specSetMember && r.specPr === item.row.specPr && r.id !== item.row.id)
+                .map((r) => r.id)
+                .join(', ') || 'no other issue'}. You are its only dispatch this wake. ` +
+              (item.action === 'implement'
+                ? `Its merge covers every member. Once you have observed it merged, build ${item.row.id} on its own branch from fresh main; never push implementation to the spec-set branch.\n`
+                : (item.action === 'spec-review'
+                    ? `Fold the review feedback for EVERY spec in that PR, not only ${item.row.id}'s; the round you report is the whole PR's. `
+                    : `Push only to that PR's branch, and touch only ${item.row.id}'s spec unless the work requires otherwise. `) +
+                  `An epic-level change goes in specs/epics/${epic.issueId}/DECISIONS.md and is listed at the top of the PR body under "Epic amendments".\n`)
             : '') +
           `Do not prompt the user. Return the compact status object and exit.`,
         {
@@ -3614,6 +3788,49 @@ const issues = refreshed.map((row) =>
   }),
 )
 
+// The spec set, applied across rows. A worker result binds to ONE row, and a spec-set PR is many rows'.
+// 1. A spec-set dispatch that opened its PR moves every member it names onto it. A member it left out
+//    goes back to NEEDS_SPEC with no handle, and a later wake specs it on its own PR.
+let specSetPrOut = specSet.pr
+let specSetLeftOut = 0
+for (const item of plan.advance.filter((i) => i.action === 'spec-set')) {
+  const w = workerById.get(item.row.id)
+  if (!w || w.blocker || !Number.isFinite(w.specPr)) continue
+  const named = new Set(w.specSetMembers || [])
+  specSetPrOut = w.specPr
+  for (const member of item.members) {
+    const out = issues.find((r) => r.id === member.id)
+    if (!out) continue
+    if (named.has(member.id)) Object.assign(out, { specPr: w.specPr, phase: 'AWAITING_SPEC_APPROVAL', specSetMember: true })
+    else {
+      Object.assign(out, { specPr: null, phase: 'NEEDS_SPEC' })
+      specSetLeftOut++
+      log(`${member.id}: left out of spec-set PR #${w.specPr} (${w.status || 'no reason given'}) — it gets its own spec PR.`)
+    }
+  }
+  log(`Spec-set PR #${w.specPr} opened for ${item.members.filter((m) => named.has(m.id)).map((m) => m.id).join(', ')}.`)
+}
+specSet.pr = specSetPrOut
+// 2. A finished review fold on a spec-set PR handled the whole PR, so its cursor and its round budget
+//    are every member's. Without this a sibling re-reads the same batch next wake and spends a second round.
+for (const item of plan.advance.filter((i) => i.action === 'spec-review' && i.row.specSetMember)) {
+  const w = workerById.get(item.row.id)
+  if (!w || w.blocker) continue
+  const lead = issues.find((r) => r.id === item.row.id)
+  for (const sib of issues) {
+    if (sib === lead || !sib.specSetMember || sib.specPr !== lead.specPr || !PRE_APPROVAL_PHASES.has(sib.phase)) continue
+    Object.assign(sib, {
+      specReviewRounds: lead.specReviewRounds,
+      specLevelFound: lead.specLevelFound,
+      lastSeenActivityAt: lead.lastSeenActivityAt,
+      lastSeenSha: lead.lastSeenSha,
+      // Consumed with the cursor, as `nextRow` does for the lead: a carried flag re-folds the batch when the
+      // next scan dies and the row falls back to its carried state.
+      newSpecReviewEvents: false,
+    })
+  }
+}
+
 // ---------------------------------------------------------------------------
 // The epic-spec's status refresh. The set table, the dependency graph and the
 // PR body's pins move when a row's phase changes, only BEFORE spec merge
@@ -3804,8 +4021,49 @@ const gates = [
 
 // Hoisted so the wrap predicate below reads the SAME epic state that goes out, rather than a second
 // copy of the conditions that would drift from it.
+// A spec-set PR is one sign-off and one merge, so it surfaces as ONE gate naming every member, never one
+// per member: N approval asks for the same PR, or N MERGE-ONLY dispatches racing to merge it. The approval
+// ask waits until every open member is askable, since approving the PR approves all of them.
+{
+  const isSetGate = (g) => (g.kind === 'spec-approval' || g.kind === 'spec-merge') && issues.some((r) => r.id === g.issueId && r.specSetMember && r.specPr === g.pr)
+  const deciding = openSetsWithDecision(issues)
+  for (const pr of deciding) log(`Spec-set PR #${pr}: a member has an open decision — no gate and no member dispatch until it is answered.`)
+  // Pending at the START of this wake counts too: a fold that ran this wake moved the PR's head, so the approval
+  // the gate would merge on no longer names it. The next scan re-reads approval on the new head.
+  const unfolded = new Set([...refreshed, ...issues].filter(hasUnfoldedSpecWork).map((r) => r.specPr))
+  const setGates = gates
+    .filter(isSetGate)
+    .filter((g) => !deciding.has(g.pr))
+    .filter((g) => !(g.kind === 'spec-merge' && unfolded.has(g.pr)))
+  const collapsed = []
+  for (const g of setGates) {
+    if (collapsed.some((c) => c.kind === g.kind && c.pr === g.pr)) continue
+    const same = setGates.filter((x) => x.kind === g.kind && x.pr === g.pr)
+    if (g.kind === 'spec-approval') {
+      const open = issues.filter(
+        (r) => r.specSetMember && r.specPr === g.pr && r.phase === 'AWAITING_SPEC_APPROVAL' && !r.specApproved && !r.linearTerminal,
+      )
+      if (same.length < open.length) {
+        log(`Spec-set PR #${g.pr}: approval not asked yet — ${open.filter((r) => !same.some((x) => x.issueId === r.id)).map((r) => r.id).join(', ')} still ${open.length - same.length === 1 ? 'has' : 'have'} work or a decision outstanding.`)
+        continue
+      }
+    }
+    const inFlight = same.map((x) => x.settlingInFlight).filter(Boolean)
+    collapsed.push({
+      ...g,
+      issueIds: same.map((x) => x.issueId),
+      specSet: true,
+      ...(g.kind === 'spec-approval' ? { settlingInFlight: inFlight.length ? inFlight.join(' · ') : null } : {}),
+    })
+  }
+  const rest = gates.filter((g) => !isSetGate(g))
+  gates.length = 0
+  gates.push(...rest, ...collapsed)
+}
+
 const epicOut = {
     ...epic,
+    ...(specSet.mode || specSetPrOut ? { specSetPr: specSetPrOut } : {}),
     // Advance the cursor only if the fold actually returned (or there was nothing new) — same
     // consumed-not-observed rule as the issue rows. The TIMESTAMP is the real cursor; the SHA
     // is carried alongside it but a comment never moves it.
@@ -3968,8 +4226,15 @@ return {
     (plan.heldForFold.length + plan.held.length > 0 &&
       epicApproved && epicSpecMerged &&
       !(epicOut.openQuestions.length || epicOut.unsettled.length || epicOut.answers.length)) ||
-    plan.deferred.length > 0 ||
+    // A row serialized behind an `implement` on the same unmerged spec-set PR is waiting for that PR to
+    // MERGE, which is external: the lead's merge backstop returns a checks or thread-policy wait without
+    // consuming anything, so an immediate re-wake picks the same lead and defers the same rows forever.
+    // The merge itself is a PR event and wakes the coordinator. Every other lead consumes its work (a
+    // review batch, a verdict, an answer), so a row behind one is runnable next wake.
+    plan.deferred.some((d) => !plan.serialized.includes(d) || d.behind !== 'implement') ||
     plan.queuedClaims.length + unsettled.length + newRequests.length > 0 ||
+    // A child the spec set left out now needs its own spec PR, and has no PR whose activity could wake it.
+    specSetLeftOut > 0 ||
     (foldEpicWanted && !plan.foldEpic) ||
     // A row that is dispatchable AND whose trigger needs no external event. `pendingAction` alone was too
     // broad: `consumedFlags` clears the activity flags but not `ciFailed`, so a row whose CI failure this
@@ -3981,7 +4246,9 @@ return {
     // `pendingAction` is what keeps a parked or cancelled row out — that was the original defect.
     (epicReady && issues.some(
       (r) =>
-        (r.multiPrPending || (r.verdicts || []).length || (r.blockerResolutions || []).length) && pendingAction(r) !== null,
+        (r.multiPrPending || (r.verdicts || []).length || (r.blockerResolutions || []).length) && pendingAction(r) !== null &&
+        // A member of a spec-set PR parked on another member's open question waits for the human's answer.
+        !(onOpenSpecSet(r) && openSetsWithDecision(issues).has(r.specPr)),
     )) ||
     // A ROUTE PROMOTION is the fourth internal trigger. A direct worker that refused to build
     // returns `specRequired` and leaves the row at NEEDS_SPEC — spec authoring is runnable

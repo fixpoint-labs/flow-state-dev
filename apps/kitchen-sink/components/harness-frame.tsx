@@ -21,6 +21,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createClient, type Client } from "@flow-state-dev/client";
+import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
 import { Plus } from "lucide-react";
 
 import { HarnessSessionList, type SessionRows } from "@/components/harness-session-list";
@@ -29,8 +30,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import type { ModelChoices } from "@/lib/harness-models";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
-
-const SESSION_PARAM = "session";
+import { BASE_PATH } from "@/lib/base-path";
 
 /** The slice of the one client the frame reads and writes: the session listing, and a flow's session create. */
 export type HarnessClient = Pick<Client, "flow"> & { readonly sessions: Pick<Client["sessions"], "list"> };
@@ -56,7 +56,7 @@ export interface HarnessFrameProps {
 /** A harness mode's rail and stream slot. */
 export function HarnessFrame({ label, flowKind, note, models, stream, client: hostClient }: HarnessFrameProps) {
   const client = useMemo<HarnessClient>(
-    () => hostClient ?? createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "" }),
+    () => hostClient ?? createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: BASE_PATH }),
     [hostClient],
   );
 
@@ -76,12 +76,12 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
   const open = useCallback((sessionId: string) => {
     setSelected(sessionId);
     const url = new URL(window.location.href);
-    url.searchParams.set(SESSION_PARAM, sessionId);
+    url.searchParams.set(SESSION_ADDRESS_PARAM, sessionId);
     window.history.replaceState(window.history.state, "", url);
   }, []);
 
   useEffect(() => {
-    named.current = new URLSearchParams(window.location.search).get(SESSION_PARAM);
+    named.current = new URLSearchParams(window.location.search).get(SESSION_ADDRESS_PARAM);
   }, []);
 
   useEffect(() => {

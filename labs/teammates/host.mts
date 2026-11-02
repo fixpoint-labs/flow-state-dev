@@ -37,6 +37,7 @@ import { harnessEnv } from "@flow-state-dev/core";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { CLAUDE_CODE_PASS, claudeCodeAgent, probeClaudeAccount } from "@flow-state-dev/claude-code/sdk";
 import { CURSOR_PASS, cursorAgent, cursorSignIn } from "@flow-state-dev/cursor";
+import { assertPositiveInt } from "@flow-state-dev/harness-manager";
 import { createFlowState } from "@flow-state-dev/engine";
 import { system } from "@flow-state-dev/memory";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
@@ -94,9 +95,12 @@ const HARNESSES: Record<string, Harness> = {
       recordWork: true,
       allowedTools: ["Read", "Write", "Edit", "Bash"],
       permissionMode: "acceptEdits",
-      // The working folder's own Claude Code settings and CLAUDE.md, never this machine's user
-      // settings: an output style there (Explanatory's "★ Insight" boxes) would show in the run's steps.
+      // The working folder's own Claude Code settings, CLAUDE.md and skills, never this machine's
+      // user settings: an output style there (Explanatory's "★ Insight" boxes) would show in the
+      // run's steps. Every hook is off: a turn can write one into `.claude/settings.json`, and it
+      // would run by itself on the next turn, in no transcript.
       settingSources: ["project"],
+      settings: { disableAllHooks: true },
     } as never) as unknown as HarnessBlock,
   codex: ({ cwd, resume, onSession, onActivity }) =>
     codexAgent({
@@ -164,6 +168,19 @@ export function workingFolder(workdir: string | undefined): string {
     throw new Error(`teammates: TEAMMATES_WORKDIR names ${folder}, which is not a git checkout.`);
   }
   return folder;
+}
+
+/**
+ * The coding-run budget, checked: `TEAMMATES_RUN_TIMEOUT_MS` as a whole number
+ * of milliseconds, or `undefined` (the host's default) when unset. The check is
+ * harness-manager's own `assertPositiveInt`, so a value no timer can hold fails
+ * here, at start, rather than on a claimed run.
+ *
+ * @throws When the setting is not a positive whole number a timer can hold.
+ */
+export function runTimeout(value: string | undefined): number | undefined {
+  if (value === undefined || value.trim() === "") return undefined;
+  return assertPositiveInt("TEAMMATES_RUN_TIMEOUT_MS", Number(value));
 }
 
 /**

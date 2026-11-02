@@ -42,8 +42,14 @@
  *   own shutdown needs the same numbers the manager enforces.
  * - The run record collection, so a host can build a status surface. A run's
  *   question holds its task on the board, so a host reads questions there.
+ * - `harnessReadiness`, which harnesses can run on this machine, read once
+ *   at start and again on request, with its action, its coordinator context
+ *   capability and its formatter.
  * - `harnessUsageAction`, the one query for how much of each harness's
  *   subscription a person has used, and the collection behind it.
+ * - `harnessRunChangesRead`, the read for what a run's commits changed: each
+ *   file and its lines, or one file's patch. A run review's data carries the
+ *   same files; `harnessSessionFlow` declares the same read per turn.
  *
  * **Checkout internals are NOT here.** They live behind
  * `@flow-state-dev/harness-manager/checkout`, a separate entry point, because
@@ -66,6 +72,7 @@ export {
 export {
   harnessManager,
   harnessDrainBudgetMs,
+  DONE_STOP_GRACE_MS,
   resolveOwnership,
   requestTenant,
   describeTenant,
@@ -74,6 +81,7 @@ export {
   HARNESS_FEATURE_KEY,
   namesHarnessFeature,
   harnessFeatureOf,
+  harnessFeatureSchema,
   harnessClaimSchema,
   harnessManagerInputSchema,
   harnessJudgeInputSchema,
@@ -97,10 +105,23 @@ export {
   type PhaseRunContext,
   type PromptRunContext,
   type CompletionRunContext,
+  type PhaseDoneVerdict,
   type AnsweredQuestion,
   type RequestIdentityContext,
 } from "./manager";
 export { PROGRESS_NOTE_MS, progressNoteOf } from "./progress-note";
+
+// ── Checks: the project's commands, before a run is done ────────────────────
+export {
+  commandCheck,
+  commandCheckResultSchema,
+  commandChecksFailure,
+  commandChecksPassed,
+  commandChecksSummary,
+  type CommandCheckCommands,
+  type CommandCheckOptions,
+  type CommandCheckResult,
+} from "./command-check";
 
 // ── A line typed in a run's session: a steer, or talk once finished ─────────
 export {
@@ -122,17 +143,68 @@ export {
   harnessSessionFlow,
   harnessSessionFeeds,
   harnessSessionTitle,
+  harnessSessionStartSchema,
   harnessSessionStateSchema,
+  harnessSessionWorkspaceRecordSchema,
   harnessTurnRecordSchema,
+  resolveHarnessSessionStart,
   HARNESS_SESSION_FAILED_OUTCOME,
   HARNESS_SESSION_MODEL_REQUIRED,
+  HARNESS_SESSION_APPROVALS_NEED_DURABLE,
+  HARNESS_SESSION_TURN_WAITS_ON_APPROVAL,
+  HARNESS_SESSION_ISSUE_REFUSED,
+  HARNESS_SESSION_REMOVE_UNSUPPORTED,
+  HARNESS_SESSION_REMOVE_NOT_OWNER,
+  HARNESS_SESSION_ATTACH_MISSING,
+  HARNESS_SESSION_ATTACH_NOT_YOURS,
+  HARNESS_SESSION_ATTACH_NOT_PROVISIONED,
+  HARNESS_SESSION_ATTACHED_BRANCH_CHANGED,
+  harnessSessionAttachedTo,
+  HARNESS_SESSION_START_INVALID,
   type HarnessSessionFeeds,
   type HarnessSessionFlowOptions,
   type HarnessSessionPlace,
+  type HarnessSessionProvisioned,
+  type HarnessSessionProvisionRequest,
+  type HarnessSessionStart,
   type HarnessSessionState,
   type HarnessSessionWorkspace,
+  type HarnessSessionWorkspaceRecord,
+  type ResolvedHarnessSessionStart,
   type HarnessTurnRecord,
+  harnessTurnChangesInputSchema,
 } from "./session-flow";
+
+// ── What a run changed: its files and lines, or one file's patch ────────────
+export {
+  harnessRunChangesRead,
+  harnessRunChangesInputSchema,
+  harnessRunChangesOutputSchema,
+  HarnessRunChangesRefused,
+  type HarnessRunChangesReadOptions,
+} from "./run-changes";
+export {
+  MAX_DIFF_FILES,
+  MAX_PATCH_CHARS,
+  runChangesSchema,
+  runDiffSchema,
+  runFilePatchSchema,
+  type RunChanges,
+  type RunDiff,
+  type RunDiffFile,
+  type RunFilePatch,
+} from "./commits";
+
+// ── The issue a coding run is for, and its spec brief ───────────────────
+export {
+  defaultIssueSpecPath,
+  isTrackerIssue,
+  ISSUE_SPEC_MAX_BYTES,
+  readIssueSpecSection,
+  TRACKER_ISSUE_REFUSED,
+  type IssueSpecOption,
+  type IssueSpecOptions,
+} from "./issue-spec";
 // ── A scripted harness for model-free checks ────────────────────────────────
 export {
   harnessStub,
@@ -227,6 +299,22 @@ export {
   type UsageWrite,
 } from "./harness-usage";
 
+// ── Which harnesses can run on this machine ─────────────────────────────────
+export {
+  harnessReadiness,
+  harnessReadinessAction,
+  harnessReadinessCapability,
+  harnessReadinessRowSchema,
+  formatHarnessReadiness,
+  READINESS_CHECK_TIMEOUT_MS,
+  READINESS_GUIDANCE,
+  type HarnessReadinessOptions,
+  type HarnessReadinessRead,
+  type HarnessReadinessRow,
+  type HarnessReadinessSlot,
+  type ReadReadinessOptions,
+} from "./readiness";
+
 // ── The ask marker ──────────────────────────────────────────────────────────
 export { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE, askMarkerPath, readAskMarker } from "./ask";
 
@@ -246,3 +334,6 @@ export {
 // that act on them are `@flow-state-dev/harness-manager/checkout` — see that
 // module for why the split is an entry point rather than a comment.
 export type { OwnershipBounds, WorkspaceConfig } from "./workspace";
+
+// Where a run's work went, from a task's output or a worktree row. Browser-safe; FIX-2385's `./browser` entry re-exports it.
+export { shellWord, workPlace, type WorkPlace, type WorkPlaceCommands, type WorkPlaceViewer } from "./work-place";

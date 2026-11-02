@@ -1,8 +1,10 @@
 /**
  * Host flow for the harness-manager goal checks. The conductor lab used to supply it.
  *
- * Only what `answered-run-continues-its-session` calls: `seed`, `status`, and the
- * board's `updateTask` action, which answers the question a run's task is held on.
+ * Only what `answered-run-continues-its-session` and `where-the-work-went` call:
+ * `seed`, `status` (each row with its task's output), and the board's
+ * `updateTask` action, which answers the question a run's task is held on. A
+ * goal that needs no real harness passes its own `slot` (`harnessStub`).
  * Not a conductor replacement: no tenant gate, no `wake`, no session door, and
  * `seed` does not interrogate a row it finds at its id. A third goal that needs
  * any of those should say so here rather than copy this host as if it had them.
@@ -32,9 +34,11 @@ import {
   runRecordStateSchema,
   RUNS,
   runTopic,
+  type HarnessFeeds,
   type PhaseSpec,
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
+import type { HarnessBlock } from "@flow-state-dev/core/types";
 import {
   assertSafeSegment,
   canonicalSegment,
@@ -60,6 +64,8 @@ export interface HarnessGoalFlowOptions {
     Parameters<typeof claudeCodeAgent>[0],
     "detached" | "recordWork" | "cwd" | "resume" | "onSession" | "onUsage"
   >;
+  /** The harness slot, in place of Claude Code: a model-free goal's `harnessStub().slot`. */
+  slot?: (feeds: HarnessFeeds) => HarnessBlock;
 }
 
 /** A positive whole number from the environment, or `fallback` when unset. */
@@ -103,6 +109,7 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
     runTimeoutMs = 1_800_000,
     phase: callerPhase,
     agent,
+    slot,
   } = options;
 
   const workspace: WorkspaceConfig = Object.freeze({ ...callerWorkspace });
@@ -143,13 +150,13 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
     runTimeoutMs,
     // The feeds are spread, so a feed the manager adds (onUsage was the last)
     // reaches the harness without an edit here.
-    harness: (feeds) =>
+    harness: slot ?? ((feeds) =>
       claudeCodeAgent({
         ...(agent ?? {}),
         ...feeds,
         detached: true,
         recordWork: true,
-      }),
+      })),
   });
 
   const board = taskBoard({
@@ -213,6 +220,8 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
           attempts: z.number(),
           feedback: z.string().nullable(),
           run: runRecordStateSchema.nullable(),
+          /** The task's output, once it settled: the manager's result. */
+          output: z.unknown(),
           /** The open questions the task is held on; `question` is what `updateTask` takes. */
           questions: z.array(
             z.object({
@@ -252,6 +261,7 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
           attempts: task.attempts,
           feedback: task.feedback ?? null,
           run: record ?? null,
+          output: task.output ?? null,
           questions: openRowHolds(task).map((hold) => ({
             question: hold.id,
             text: hold.ask.prompt,

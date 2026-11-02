@@ -1,20 +1,22 @@
 /** The environment pass-list a Cursor run needs: `CURSOR_PASS`. */
 
 /**
- * The only variables of the server's environment Cursor's runtime is handed,
- * for `env: harnessEnv({ pass: CURSOR_PASS })` with `harnessEnv` from
+ * The only variables of the server's environment a Cursor run needs, for
+ * `env: harnessEnv({ pass: CURSOR_PASS })` with `harnessEnv` from
  * `@flow-state-dev/core`. Without `env`, Cursor's runtime runs in the server's
- * process and every command it starts inherits the server's whole
- * `process.env`.
+ * own process and every command it starts copies the server's whole
+ * `process.env`, every key, token and connection string in it.
  *
  * `PATH` (its shell finds commands through it), `HOME` (Cursor keeps its
- * agents and its stored login there, so a resumed agent is found only with the
- * same `HOME`), `USER`, `SHELL` and `TMPDIR` (its shell), `CURSOR_API_KEY`, and
- * the proxy and CA settings a proxied network needs, in upper and lower case.
+ * agents and its stored login there, so a resumed agent is found only under
+ * the same home), `USER`, `SHELL` and `TMPDIR` (its shell), `CURSOR_API_KEY`,
+ * and the proxy and CA settings a proxied network needs, in upper and lower
+ * case.
  *
- * It filters what a run starts with, not what it can read: see
- * `CursorAgentOptions.env`. Pass the same environment to `cursorSignIn`, so it
- * sees the login the run sees. A host that needs more passes its own list.
+ * It filters what a run starts with, not what it can read: a command the run
+ * starts as the server's OS user can still read the server's own environment.
+ * Pass the same environment to `cursorSignIn`, so it checks the sign-in the
+ * run gets. A host that needs more passes its own list.
  */
 export const CURSOR_PASS = [
   "PATH",

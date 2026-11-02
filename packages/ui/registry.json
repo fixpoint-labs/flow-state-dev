@@ -337,6 +337,20 @@
       "categories": ["ai", "framework"]
     },
     {
+      "name": "spend",
+      "title": "Spend",
+      "type": "registry:component",
+      "description": "One line for what a run spent: model, tokens, the vendor's charge when it reported one, and optionally attempts and duration. Reads a task row's or a harness turn's folded spend; a count nobody reported reads as such, never as 0, and a subscription run shows no dollar figure.",
+      "dependencies": [],
+      "registryDependencies": [],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/spend.tsx",
+        "target": "components/flow-state/spend.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
       "name": "approval",
       "title": "Approval",
       "type": "registry:component",
@@ -351,12 +365,26 @@
       "categories": ["ai", "framework"]
     },
     {
+      "name": "review-hold",
+      "title": "Review Hold",
+      "type": "registry:component",
+      "description": "A coding run's changes waiting on the user's review: its commits on the branch, the judge's verdict, and Accept or Ask for changes. Reads harness-manager's review stop data and sends the only two answers it takes. Drawn from a task's hold, or for a kind: review suspension (SuspensionCard routes those here).",
+      "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react", "lucide-react"],
+      "registryDependencies": ["tokens"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/review-hold.tsx",
+        "target": "components/flow-state/review-hold.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
       "name": "chat-assistant",
       "title": "Chat Assistant Renderers",
       "type": "registry:component",
       "description": "Pre-wired RendererRegistry mapping all Flow State item types to their default components.",
       "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react", "lucide-react", "react-markdown"],
-      "registryDependencies": ["message", "reasoning", "tool", "status", "error", "approval", "audit-annotation", "task-plan", "session-items-context", "shimmer", "tokens"],
+      "registryDependencies": ["message", "reasoning", "tool", "status", "error", "approval", "review-hold", "audit-annotation", "task-plan", "session-items-context", "shimmer", "tokens"],
       "files": [
         {
           "type": "registry:component",
@@ -550,6 +578,62 @@
         "target": "components/flow-state/generative/link-card.tsx"
       }],
       "categories": ["ai", "generative"]
+    },
+    {
+      "name": "request-recovery",
+      "title": "Request Recovery",
+      "type": "registry:component",
+      "description": "The line a turn that didn't finish leaves in a thread: a failed turn's reason with Retry, or a turn a restart cut off with Continue and Discard, each with busy and refused states.",
+      "dependencies": ["@flow-state-dev/core", "lucide-react"],
+      "registryDependencies": ["error", "button", "tokens"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/request-recovery.tsx",
+        "target": "components/flow-state/request-recovery.tsx"
+      }],
+      "categories": ["ai", "chat"]
+    },
+    {
+      "name": "run-changes",
+      "title": "Run Changes",
+      "type": "registry:component",
+      "description": "What a coding run changed: \"Files changed (+a −d)\", opening into each file's lines and, a file at a time, its patch. Pairs with harness-manager's review data and its changes read.",
+      "dependencies": ["lucide-react"],
+      "registryDependencies": ["tokens"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/run-changes.tsx",
+        "target": "components/flow-state/run-changes.tsx"
+      }],
+      "categories": ["ai", "code"]
+    },
+    {
+      "name": "work-place",
+      "title": "Work Place",
+      "type": "registry:component",
+      "description": "Where a coding run's work went: '3 commits on …/branch', with copy buttons for git switch, cd and git log base..branch. Takes what workPlace in @flow-state-dev/harness-manager/work-place returns; renders nothing for a run with no branch.",
+      "dependencies": ["lucide-react"],
+      "registryDependencies": ["tokens"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/work-place.tsx",
+        "target": "components/flow-state/work-place.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
+      "name": "run-checks",
+      "title": "Run Checks",
+      "type": "registry:component",
+      "description": "A coding run's checks: \"Checks 2/2 passed\", red when any failed, opening into each command and the end of its output. Pairs with harness-manager's commandCheck results.",
+      "dependencies": ["lucide-react"],
+      "registryDependencies": ["tokens"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/run-checks.tsx",
+        "target": "components/flow-state/run-checks.tsx"
+      }],
+      "categories": ["ai", "code"]
     }
   ]
 }

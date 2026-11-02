@@ -1,7 +1,7 @@
 /**
  * Projects — the `projects` rows, and the collection a project's files live in.
  *
- *   projects/<id>                       one row per project: title, brief, owner, members, repository, MCP servers
+ *   projects/<id>                       one row per project: title, brief, owner, members, repository, MCP servers, checks
  *   project-files/<projectId>/<path>    one row per file the project keeps: notes, memory, a no-repository project's code
  *
  * A project is runtime data. It is created after the tree was read, so no
@@ -117,7 +117,17 @@ export const projectRowSchema = z.object({
    * through this schema; guard with `== null` when reading a stored row raw
    * (BP-030).
    */
-  mcpServers: z.array(z.string()).default([])
+  mcpServers: z.array(z.string()).default([]),
+  /**
+   * The commands that check the project's code (for example
+   * `["pnpm typecheck", "pnpm --filter web test"]`), run in a coding run's
+   * checkout before the run counts as done, on a host that opts in with
+   * `projectChecks()`. Each is one program and its arguments, run with no
+   * shell (`checkoutCommandProblem` in `@flow-state-dev/workspace`). `[]`
+   * names none. A row written before the field existed reads as `[]` through
+   * this schema; guard with `== null` when reading a stored row raw (BP-030).
+   */
+  checks: z.array(z.string()).default([])
 });
 
 /** One stored project. @see projectRowSchema */
@@ -137,7 +147,8 @@ const PROJECT_CLIENT_FIELDS = [
   "ownerUserId",
   "members",
   "repository",
-  "mcpServers"
+  "mcpServers",
+  "checks"
 ] as const;
 
 /** Shared across flows on purpose; see the module header. */

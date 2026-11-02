@@ -7,6 +7,9 @@
  * keeps what it was relayed, what its session was told and which key each
  * connection was opened with. The MCP client is scripted: no network.
  *
+ * The same turn asks `projectChecks()` for the run's project's checks, which
+ * come from that read too.
+ *
  * The project and the owner come from the same read the run's files come
  * from (the session's readonly fields and the held row), never the task's
  * payload: a task naming a server on a project that names none is relayed
@@ -27,6 +30,7 @@ import {
   defineSessionBoard,
   defineWorkstreamBlocks,
   mcpCredentialsCapability,
+  projectChecks,
   projectMcpTools,
   projectWorkspaceCapability,
   type ProjectMcpServers,
@@ -106,6 +110,10 @@ function scriptedClients(keys: Record<string, string>[], failGithub: () => boole
   };
 }
 
+/** The checks each run's `projectChecks()` answered, in run order. */
+const checksSeen: string[][] = [];
+const checksOf = projectChecks();
+
 /** A delegate whose turn asks for its run's MCP tools, as a coding harness would, and keeps what it got. */
 function takerFlow(installation: WorkerInstallation, runs: Relayed[], keys: Record<string, string>[], resolve: ReturnType<typeof projectMcpTools>) {
   const turn = handler({
@@ -117,6 +125,7 @@ function takerFlow(installation: WorkerInstallation, runs: Relayed[], keys: Reco
       await installation.resolveWorker(ctx, "taker");
       const run: Relayed = { servers: {}, notices: [], keys: {} };
       keys.push(run.keys);
+      checksSeen.push(await checksOf({ ctx }));
       // The real emit, with what the run's session was told kept beside it.
       const emit = new Proxy(ctx.emit, {
         get: (target, key, receiver) =>
@@ -380,5 +389,31 @@ describe("the host's config", () => {
     expect(() => projectMcpTools({ linear: { url: "https://user:SENTINEL@mcp.example" } })).not.toThrow(/SENTINEL/);
     expect(() => projectMcpTools({ linear: { url: "https://user:SENTINEL@mcp.example" } })).toThrow(/no user or password/);
     expect(() => projectMcpTools({ linear: { url: LINEAR_URL, seedEnv: "lower case" } })).toThrow(/seedEnv must be an environment variable's name/);
+  });
+});
+
+describe("the checks a coding run's project names (projectChecks)", () => {
+  it("answers the run's project's checks, read fresh, so a change applies to the next run", async () => {
+    const h = await boot();
+    await h.createProject("alice", { id: "storefront", title: "Storefront", checks: ["pnpm typecheck"] });
+    const conversation = await h.projectConversation("alice", "storefront");
+    await h.file("alice", conversation);
+    expect(checksSeen.at(-1)).toEqual(["pnpm typecheck"]);
+
+    await h.ok("alice", "lab", await h.openSession("alice", "lab"), "setChecks", {
+      project: { visibility: "shared", id: "storefront" },
+      checks: ["pnpm typecheck", "pnpm --filter web test"]
+    });
+    await h.file("alice", conversation);
+    expect(checksSeen.at(-1)).toEqual(["pnpm typecheck", "pnpm --filter web test"]);
+  });
+
+  it("answers none when the run's lookup refuses, whatever the task says", async () => {
+    const h = await boot();
+    await h.createProject("bob", { id: "storefront", title: "Storefront", checks: ["pnpm typecheck"] });
+    await h.file("alice", await h.plainConversation("alice"), {
+      input: { project: { visibility: "shared", id: "storefront" }, checks: ["rm -rf ."] }
+    });
+    expect(checksSeen.at(-1)).toEqual([]);
   });
 });
