@@ -376,6 +376,13 @@ describe("Tasks (BR-14)", () => {
     expect(cost("E-1").getAttribute("title")).toBeNull();
   });
 
+  it("reads no spend off a stored ledger it can't fold, rather than failing the board's read (FIX-2398)", () => {
+    // An older or damaged write: the row still reads, its COST as "—".
+    const unreadable = toBoardRow("s_eng.tasks", "s_eng", "E-7", { id: "E-7", title: "E-7", status: "completed", assignee: "eng.coder", spend: { requests: "not a list" } });
+    expect(unreadable.spend).toBeNull();
+    expect(unreadable.title).toBe("E-7");
+  });
+
   it("names a task the shift-coordinator worker holds as the Shift Coordinator's, in its row and its worker group", async () => {
     const snapshot = lab();
     const eng = snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.boards["s_eng"] : undefined;
