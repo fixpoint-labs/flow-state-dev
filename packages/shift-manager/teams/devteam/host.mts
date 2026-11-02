@@ -58,7 +58,7 @@ import {
   type HarnessUsageReader,
   type ModelResolver,
 } from "@flow-state-dev/core/types";
-import { commandCheck, harnessUsageAction, upgradeKeptTurns, type PhaseSpec, type WorkspaceConfig } from "@flow-state-dev/harness-manager";
+import { commandCheck, harnessUsageAction, upgradeKeptTurns, type WorkspaceConfig } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, type WorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import {
@@ -912,6 +912,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     throw new Error(`${RAISE_ASK_STEP}: wanted one "${EM_FLOW}" worker to ask from, found 0`);
   }
   const coderWorkerOf = workerOf(installation, CODER_FLOW);
+  const implementPhase = defineImplementPhase({
+    workerOf: coderWorkerOf,
+    requireAcceptance: options.requireAcceptance === true,
+    ...(options.dropTask === true ? { dropTask: true } : {}),
+  });
   const coderFlow = defineCoderWorkerFlow({
     installation,
     answerWorkspace: answerHost,
@@ -931,14 +936,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         },
       }),
     workspace: workspaceHost ?? (options.workspace as WorkspaceConfig),
-    phase: checkedByProject(
-      workspaceHost !== undefined,
-      defineImplementPhase({
-        workerOf: coderWorkerOf,
-        requireAcceptance: options.requireAcceptance === true,
-        ...(options.dropTask === true ? { dropTask: true } : {}),
-      }),
-    ),
+    phase:
+      workspaceHost === undefined
+        ? implementPhase
+        : commandCheck(implementPhase, { commands: projectChecks(), timeoutMs: 10 * 60_000 }),
     runTimeoutMs: options.runTimeoutMs ?? 60_000,
     ...(options.stopsOnAbort === undefined ? {} : { stopsOnAbort: options.stopsOnAbort }),
     resources,
@@ -1607,19 +1608,6 @@ function workspaceHostOf(
   });
   if (!saveNothing) return host;
   return { ...host, save: async () => ({ outcomes: [], conflicts: [], contested: [] }) };
-}
-
-/** How long a feature run's project checks may take together. */
-export const PROJECT_CHECKS_TIMEOUT_MS = 10 * 60_000;
-
-/**
- * The implement phase, done only when its project's checks pass too, on a
- * Lab whose runs work in their projects. The project row names the commands
- * (`checks`, set on create or with `setChecks`); a project that names none
- * runs nothing. A Lab on one fixed repository has no project to ask.
- */
-function checkedByProject(onProjects: boolean, phase: PhaseSpec): PhaseSpec {
-  return onProjects ? commandCheck(phase, { commands: projectChecks(), timeoutMs: PROJECT_CHECKS_TIMEOUT_MS }) : phase;
 }
 
 /**
