@@ -341,7 +341,7 @@ const work = await readRecordedWork(client, { sessionId, requestId });
 work.files?.rows; // [{ path: "src/app.ts", kind: "edited" }, …]
 ```
 
-`@flow-state-dev/harness-manager/browser` is the entry to import in a page. The package root reaches Node built-ins through `@flow-state-dev/workspace` and does not bundle for a browser. The browser entry carries `readRecordedWork`, its types, and `workPlace` with `shellWord`, and a test keeps it free of Node built-ins.
+`@flow-state-dev/harness-manager/browser` is the entry to import in a page. The package root reaches Node built-ins through `@flow-state-dev/workspace` and does not bundle for a browser. The browser entry carries `readRecordedWork`, its types, `workPlace` with `shellWord`, and `reviewDetail`, and a test keeps it free of Node built-ins.
 
 ## What a phase supplies
 
@@ -419,6 +419,16 @@ await inbox.answer(item, { value: { verdict: "revise", words: "Keep the old endp
 That posts to the engine's answer route, `POST /api/flows/:flow/requests/:requestId/answer` with `{ suspensionId, action: "submit", data }`. Blank `words` are refused with a 400, and the review stays open.
 
 To draw the review in a browser, add the ui registry's `review-hold` component (`fsdev ui add review-hold`). It offers Accept and Ask for changes, and sends only these two answers. The registry's `SuspensionCard` draws it for this stop, with the stop's prompt.
+
+The stop's `data` names the run's branch, commit count, commit subjects and the judge's verdict. Read it in the browser with `reviewDetail` from `@flow-state-dev/harness-manager/browser`, an entry that imports no Node built-in, and hand the result to the card as `review`:
+
+```tsx
+import { reviewDetail } from "@flow-state-dev/harness-manager/browser";
+
+<ReviewSuspension item={item} review={reviewDetail(item.data)} />;
+```
+
+A field it can't read comes back `null` (or `[]` for the subjects), and data that isn't a review comes back `null`.
 
 - **Accepted**: the task completes with no further run, output `review: "accepted"`.
 - **Revise**: the words are written on the task as the user's steer, and one more run starts on the same attempt, continuing the same coding session with the words in its prompt, as any steer is taken. If it commits again it is reviewed again, over all the branch's commits. Each revision counts toward the task's steer limit; past it the attempt fails. If the harness confirmed no coding session, the revision fails the attempt instead, and the next attempt's brief carries the words.
@@ -647,7 +657,7 @@ The record is `harnessUsageCollection` (`HARNESS_USAGE`, `harness-usage/**`, use
 
 **`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `harnessTalkTurn` with `harnessTalkInputSchema` and `harnessTalkOutputSchema`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer` for [answering a review](#reviewing-a-runs-changes), `harnessSessionFlow` with `harnessSessionFeeds`, `harnessSessionStateSchema`, `harnessSessionStartSchema`, `harnessSessionWorkspaceRecordSchema`, `resolveHarnessSessionStart`, the `HARNESS_SESSION_*` messages and their types for [a harness as a session](#a-harness-as-a-session), `harnessStub` for [checks that run no model](#a-scripted-harness-for-checks), `upgradeKeptTurns`, `STEER_POLL_MS`, `PROGRESS_NOTE_MS` and `progressNoteOf` for [progress notes](#how-a-running-task-is-doing), `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per organization, the run-record collection for building a status surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with `harnessUsageCollection`, `readHarnessUsage`, `recordHarnessUsage` and their constants and types.
 
-**`@flow-state-dev/harness-manager/browser`** is what a page imports: [`readRecordedWork`](#reading-what-a-run-recorded-in-a-browser) and its types, plus `workPlace` and `shellWord`. `@flow-state-dev/harness-manager/work-place` still carries `workPlace` on its own.
+**`@flow-state-dev/harness-manager/browser`** is what a page imports: [`readRecordedWork`](#reading-what-a-run-recorded-in-a-browser) and its types, plus `workPlace`, `shellWord` and `reviewDetail`. `@flow-state-dev/harness-manager/work-place` still carries `workPlace` on its own.
 
 **`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 

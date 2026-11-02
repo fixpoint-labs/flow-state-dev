@@ -28,6 +28,7 @@ import {
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds, type HarnessJudgeVerdict } from "../src";
 import { harnessTaskId } from "../src/workspace";
+import { reviewDetail } from "../src/browser";
 import { seedRepo } from "./fixtures";
 import { CONVERSATIONS, claimHost, cleanUpHosts } from "./claim-host";
 
@@ -198,6 +199,9 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
   /** The row's open review, as a screen reads it off `questions`. */
   const review = (task: Task): SuspensionHold | undefined =>
     task.holds?.find((hold): hold is SuspensionHold => hold.source.kind === "suspension" && hold.ask.kind === "review");
+  /** The engine's record of the open review: the stop's data, as a screen reads it from the run's session. */
+  const stop = async (hold: SuspensionHold) =>
+    (await runtime()).stores.suspensions.get(hold.source.requestId, hold.source.suspensionId) as Promise<{ data?: unknown } | null>;
   const waiting = (task: Task) => task.status === "in_progress" && review(task) !== undefined;
   /** Answer the open review through the engine's answer route, as a screen does. */
   const answer = async (data: unknown): Promise<Response> => {
@@ -224,7 +228,7 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
     await until((t) => t.status === "pending", "the failed try back on the board");
     await act("drain");
   };
-  return { act, row, until, review, waiting, answer, start, retry, seen, dispose: () => state.dispose() };
+  return { act, row, until, review, stop, waiting, answer, start, retry, seen, dispose: () => state.dispose() };
 }
 
 describe("a coding run that made changes waits for a person's review", () => {
@@ -238,6 +242,10 @@ describe("a coding run that made changes waits for a person's review", () => {
       expect(hold.ask.prompt).toContain("- Change 1");
       expect(hold.ask.prompt).toContain("No judge read this run.");
       expect(hold.ask.prompt).toContain("information, not approval");
+      // The browser reader takes the stop's own data as the review card's props, so its field names can't drift apart.
+      const detail = reviewDetail((await h.stop(hold))?.data);
+      expect(detail).toEqual({ branch: expect.any(String), commits: 1, subjects: ["Change 1"], judge: null });
+      expect(hold.ask.prompt).toContain(`1 commit on ${detail!.branch}`);
       expect(held.attempts).toBe(1);
       expect(h.seen).toHaveLength(1);
       expect(existsSync(`${h.seen[0]!.cwd}.lock`)).toBe(false);

@@ -126,6 +126,7 @@ import { askMarkerPath, readAskMarker } from "./ask";
 import { HeldOnQuestion, askStep } from "./ask-step";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
 import { readRunCommits, type RunCommits } from "./commits";
+import type { ReviewDetail } from "./review-detail";
 import { progressNoteOf, throttledNotes, type ProgressNotes } from "./progress-note";
 import {
   MAX_APPROVAL_STEPS,
@@ -3121,7 +3122,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             commits: changes?.verified === true ? changes.count : null,
             subjects: changes?.subjects ?? [],
             judge: read,
-          },
+          } satisfies ReviewDetail,
         });
       } catch (error) {
         if (!(error instanceof SuspensionTimeoutError)) throw error;
