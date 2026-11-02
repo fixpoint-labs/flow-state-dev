@@ -1871,6 +1871,188 @@ check('FIX-1418: the wake will not implement on an owner-looking GitHub approval
   assert.equal(accepted.result.epicApproved, true, 'the artifact check, not the scout boolean, accepts a non-owner human review')
 })
 
+// ---------------------------------------------------------------------------
+// The spec set: an epic's issue specs written together, as ONE PR, after the epic spec merges.
+// → orchestration.md § "The spec set". These pin the four things that make one shared PR safe:
+// one authoring dispatch, one review fold per PR, one gate per PR, and the cross-spec pass only
+// for a child that joined outside the set.
+// ---------------------------------------------------------------------------
+
+const specSetEpic = (over = {}) => ({ ...epicArgs().epic, specSetMode: true, ...over })
+const member = (id, over = {}) => row(id, { phase: 'AWAITING_SPEC_APPROVAL', specPr: 50, specSetMember: true, ...over })
+
+check('SPEC SET: every waiting child is specced by ONE epic-agent dispatch, not one spec PR each', async () => {
+  // The point of the set is that the specs are reviewed against each other before anyone signs off.
+  // Per-issue spec workers would open N PRs and the set review would have nothing to run over.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: specSetEpic(),
+      issues: [row('FIX-2'), row('FIX-3'), row('FIX-4'), row('FIX-5', { phase: 'NEEDS_IMPLEMENTATION', route: 'direct' })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': {}, 'FIX-3': {}, 'FIX-4': {}, 'FIX-5': { phase: 'NEEDS_IMPLEMENTATION' } },
+      linear: { 'FIX-5': { state: 'Todo', category: 'Bug' } },
+      worker: {
+        'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 50, specSetMembers: ['FIX-2', 'FIX-3'], status: 'FIX-4 is really a bug' },
+        'FIX-5': { phase: 'PR_FEEDBACK', implPr: 60 },
+      },
+    }),
+  })
+  const setCalls = calls.filter((c) => (c.label || '').startsWith('spec-set:'))
+  assert.equal(setCalls.length, 1, 'one dispatch for the whole set')
+  assert.equal(setCalls[0].agentType, 'epic-agent', 'the set is epic-level authoring')
+  assert.match(setCalls[0].prompt, /FIX-2, FIX-3, FIX-4/, 'and it names every waiting child')
+  assert.deepEqual(labels(calls, 'spec:'), [], 'no child gets its own spec PR')
+  assert.deepEqual(workerLabels(calls), ['implement:FIX-5'], 'a bug stays on the direct route, outside the set')
+
+  const byId = new Map(result.issues.map((r) => [r.id, r]))
+  for (const id of ['FIX-2', 'FIX-3']) {
+    assert.equal(byId.get(id).specPr, 50, `${id} points at the shared PR`)
+    assert.equal(byId.get(id).phase, 'AWAITING_SPEC_APPROVAL')
+    assert.equal(byId.get(id).specSetMember, true)
+  }
+  assert.equal(byId.get('FIX-4').phase, 'NEEDS_SPEC', 'a child the set left out still needs a spec')
+  assert.equal(byId.get('FIX-4').specPr, null)
+  assert.equal(result.epic.specSetPr, 50, 'the set PR is returned for the coordinator to persist')
+
+  // Next wake: the set PR exists, so the left-out child takes the per-issue route rather than a second set.
+  const next = await run('epic-wake.js', {
+    args: epicArgs({ epic: result.epic, issues: result.issues.filter((r) => r.id !== 'FIX-5') }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 50 }, 'FIX-3': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 50 }, 'FIX-4': {} },
+    }),
+  })
+  assert.deepEqual(labels(next.calls, 'spec-set:'), [])
+  assert.deepEqual(workerLabels(next.calls), ['spec:FIX-4'])
+})
+
+check('SPEC SET: issue specs wait for the epic spec to merge — two PRs, in order', async () => {
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ epic: specSetEpic(), issues: [row('FIX-2'), row('FIX-3')] }),
+    respond: epicResponder({ approved: false, fresh: { 'FIX-2': {}, 'FIX-3': {} } }),
+  })
+  assert.deepEqual(labels(calls, 'spec-set:'), [], 'nothing is specced against an unapproved epic')
+  assert.deepEqual(result.held.sort(), ['FIX-2', 'FIX-3'], 'and every child is reported held, the covered one included')
+})
+
+check('SPEC SET: an epic without specSetMode keeps per-issue spec PRs', async () => {
+  // An epic already running when the set shipped must finish on the flow it started with.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2'), row('FIX-3')] }),
+    respond: epicResponder({ fresh: { 'FIX-2': {}, 'FIX-3': {} } }),
+  })
+  assert.deepEqual(labels(calls, 'spec-set:'), [])
+  assert.deepEqual(workerLabels(calls).sort(), ['spec:FIX-2', 'spec:FIX-3'])
+})
+
+check('SPEC SET: review on the shared PR is folded once, and the round is charged to every member', async () => {
+  // Two members scan the same PR and both see the same new comments. Two folds would race on one branch
+  // and spend two rounds of a budget the PR has once.
+  const fresh = {
+    'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 50, newSpecReviewEvents: true, latestActivityAt: 't1', headSha: 'h1' },
+    'FIX-3': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 50, newSpecReviewEvents: true, latestActivityAt: 't1', headSha: 'h1' },
+  }
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ epic: specSetEpic({ specSetPr: 50 }), issues: [member('FIX-2'), member('FIX-3')] }),
+    respond: epicResponder({ fresh, worker: { 'FIX-2': { specPr: 50, specReviewRoundsSpent: 1, specLevelFound: true } } }),
+  })
+  assert.deepEqual(workerLabels(calls), ['spec-review:FIX-2'], 'one fold for the PR')
+  assert.match(calls.find((c) => c.label === 'spec-review:FIX-2').prompt, /EVERY spec in that PR/, 'told to fold the whole PR')
+  const fix3 = result.issues.find((r) => r.id === 'FIX-3')
+  assert.equal(fix3.specReviewRounds, 1, 'the sibling shares the spent round')
+  assert.equal(fix3.specLevelFound, true)
+  assert.equal(fix3.lastSeenActivityAt, 't1', 'and the advanced cursor, so it does not re-fold the batch')
+  assert.equal(result.moreWorkNow, false, 'nothing is left owed this wake')
+
+  // If the fold died, nothing was handled: the sibling's cursor must not move either.
+  const dead = await run('epic-wake.js', {
+    args: epicArgs({ epic: specSetEpic({ specSetPr: 50 }), issues: [member('FIX-2'), member('FIX-3')] }),
+    respond: epicResponder({ fresh, nulls: ['spec-review:FIX-2'] }),
+  })
+  assert.equal(dead.result.issues.find((r) => r.id === 'FIX-3').lastSeenActivityAt ?? null, null)
+})
+
+check('SPEC SET: one approval gate and one merge gate for the shared PR, naming every member', async () => {
+  const unapproved = await run('epic-wake.js', {
+    args: epicArgs({ epic: specSetEpic({ specSetPr: 50 }), issues: [member('FIX-2'), member('FIX-3')] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 50 }, 'FIX-3': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 50 } },
+    }),
+  })
+  const asks = unapproved.result.gates.filter((g) => g.kind === 'spec-approval')
+  assert.equal(asks.length, 1, 'one sign-off for one PR')
+  assert.deepEqual(asks[0].issueIds, ['FIX-2', 'FIX-3'])
+  assert.equal(asks[0].pr, 50)
+
+  // A member with an open decision holds the ask: approving the PR would approve its spec too.
+  const parked = await run('epic-wake.js', {
+    args: epicArgs({ epic: specSetEpic({ specSetPr: 50 }), issues: [member('FIX-2'), member('FIX-3', { blocker: 'which shape?' })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 50 }, 'FIX-3': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 50 } },
+    }),
+  })
+  assert.deepEqual(parked.result.gates.filter((g) => g.kind === 'spec-approval'), [])
+
+  // Approved, not merged: ONE merge gate, and only one implement backstop dispatch on the shared PR.
+  const approvedUnmerged = { phase: 'AWAITING_SPEC_APPROVAL', specPr: 50, specApproved: true, specMerged: false }
+  const merging = await run('epic-wake.js', {
+    args: epicArgs({ epic: specSetEpic({ specSetPr: 50 }), issues: [member('FIX-2'), member('FIX-3')] }),
+    respond: epicResponder({ fresh: { 'FIX-2': approvedUnmerged, 'FIX-3': approvedUnmerged } }),
+  })
+  const merges = merging.result.gates.filter((g) => g.kind === 'spec-merge' && g.pr === 50)
+  assert.equal(merges.length, 1, 'one MERGE-ONLY for one PR')
+  assert.deepEqual(merges[0].issueIds, ['FIX-2', 'FIX-3'])
+  assert.deepEqual(workerLabels(merging.calls), ['implement:FIX-2'], 'one dispatch on an unmerged shared PR')
+  assert.deepEqual(merging.result.deferred, ['FIX-3'], 'the other waits a wake')
+  assert.equal(merging.result.moreWorkNow, true)
+  assert.equal(merging.result.crossSpecGate, undefined, 'members were reviewed together: no separate pass')
+
+  // Merged: every member implements independently, each from main.
+  const merged = { phase: 'NEEDS_IMPLEMENTATION', specPr: 50, specApproved: true, specMerged: true }
+  const building = await run('epic-wake.js', {
+    args: epicArgs({ epic: specSetEpic({ specSetPr: 50 }), issues: [member('FIX-2'), member('FIX-3')] }),
+    respond: epicResponder({ fresh: { 'FIX-2': merged, 'FIX-3': merged }, worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 61 }, 'FIX-3': { phase: 'PR_FEEDBACK', implPr: 62 } } }),
+  })
+  assert.deepEqual(workerLabels(building.calls).sort(), ['implement:FIX-2', 'implement:FIX-3'])
+})
+
+check('SPEC SET: a child that joins later is specced alone and still gets the cross-spec pass', async () => {
+  // A late joiner missed the set review, so it is checked against the members before it is built.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: specSetEpic({ specSetPr: 50 }),
+      issues: [
+        member('FIX-2', { phase: 'PR_FEEDBACK', implPr: 61 }),
+        member('FIX-3', { phase: 'PR_FEEDBACK', implPr: 62 }),
+        row('FIX-9', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 70 }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': { phase: 'PR_FEEDBACK', specPr: 50, implPr: 61 },
+        'FIX-3': { phase: 'PR_FEEDBACK', specPr: 50, implPr: 62 },
+        'FIX-9': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 70, specApproved: true },
+      },
+    }),
+  })
+  assert.ok(!workerLabels(calls).includes('implement:FIX-9'), 'the late joiner waits for the pass')
+  assert.deepEqual(result.crossSpecGate.issueIds, ['FIX-2', 'FIX-3', 'FIX-9'], 'and is checked against the members')
+
+  // The members are not held by the late joiner's pass: they were already checked, as a set.
+  const merged = { phase: 'NEEDS_IMPLEMENTATION', specPr: 50, specApproved: true, specMerged: true }
+  const meanwhile = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: specSetEpic({ specSetPr: 50 }),
+      issues: [member('FIX-2', { phase: 'NEEDS_IMPLEMENTATION' }), row('FIX-9', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 70 })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': merged, 'FIX-9': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 70 } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 61 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(meanwhile.calls), ['implement:FIX-2'])
+})
+
 check('GATE: implementation waits for the cross-spec coherence pass', async () => {
   // An epic's specs are authored in isolation, so each can be locally excellent while the SET claims the
   // same surface twice. `epic-lifecycle` runs one coherence pass before any of it is built — and moving the

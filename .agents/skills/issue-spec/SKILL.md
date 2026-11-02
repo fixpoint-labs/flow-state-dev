@@ -81,6 +81,23 @@ The default is **batch**; `--interactive` opts into the hands-on mode.
 
 Either way the decisions land in `DECISIONS.md` as cards and on `SPEC.md`'s sign-off; the dial controls *when* the user is consulted, not whether the decisions are surfaced.
 
+## Spec-set member mode — one spec in an epic's set
+
+When `epic-agent` dispatches you as a **spec-set member**
+([`orchestration.md`](../../../docs/contributing/orchestration.md#the-spec-set-one-pr-for-the-epics-issue-specs)),
+your spec is one of several written at once and reviewed together in a single PR. Three
+things change; everything else in the workflow below runs as written, in batch mode:
+
+- **Write only `specs/issues/<ISSUE-ID>/`,** on the branch you were handed, off fresh
+  `origin/main`. Anything outside that directory collides with a sibling. An epic-level change
+  you think is needed goes in your return, not in the epic's files: `epic-agent` decides it.
+- **Skip Step 4.5.** `epic-agent` runs `analysis` and `reuse-review` over the whole set, which is
+  the point of writing them together. Still do Step 3.5.
+- **Stop after Step 6.1.** Commit and push the directory; open no PR and set no Linear status.
+  Return the branch, a one-line goal, the decisions on your sign-off, and anything you found
+  that touches a sibling or the epic. Step 6.5 applies later, to the shared PR, when a worker
+  folds its review.
+
 ## Workflow
 
 Run research (Steps 1–3), necessity/refinement (3.5), draft `SPEC.md` and `DECISIONS.md` with their artifacts (4), get the draft analysed by a fresh sub-agent (4.5), validate (5), then publish one ready spec PR and Linear links (6). Review, reframe the issue, and present (6.5–8). Record the initial draft in `DECISIONS.md → How it got here`.
