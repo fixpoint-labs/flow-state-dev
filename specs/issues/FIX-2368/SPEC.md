@@ -47,8 +47,8 @@ named assertion.
 | **Goal check** | `goals/realtime/a-change-reaches-every-screen/`, new · model `n/a` (handler actions write and settle) · run by the closure worker on one `main` commit · the report is the closure PR's body |
 | **Signal** | Every `<leg>:<assertion>` in [the signal table](#the-signal) passes |
 | **Input** | Two `serve()` processes (`child_process.fork`) over one Postgres the script starts (`initdb`, `pg_ctl`) or `FSD_DB_URL`, with `log_statement = all` and each process's `application_name` set; Chromium through `goals/lib/playwright.mts`, one browser context per user; users A and B in org 1, C in org 2 |
-| **Anti-game** | Assert on what each page shows and on the read requests and WebSocket frames the page itself makes, never on `publish` calls. Two processes, not two registries. The real Postgres bus, never the crossing double. The run sets no poll, timer or timed-read switch: what is off is off by default |
-| **Control that must fail** | `memory-bus` (both processes on the in-memory bus): **`a:org-state`**, **`a:org-row`** · `no-request-publish` (the bus child's write wrapper publishes nothing, FIX-2426's `no-publish` patch): **`d:plain-reply`**, while a passes · `skip-check` (FIX-2428's: the mint grants every topic): **`c:refused`** · today's `main` (the parent of FIX-2426's implementation merge; `9fd46b6` at drafting): every `a:` assertion and **`b:no-read-between`** |
+| **Anti-game** | Assert on what each page shows and on the read requests and WebSocket frames the page itself makes, never on `publish` calls. Two processes, not two registries. The real Postgres bus, never the crossing double. The run sets no poll, timer or timed-read switch: what is off is off by default. The fixture app's source hashes the same on today's `main` and on the pinned commit, printed |
+| **Control that must fail** | `memory-bus` (both processes on the in-memory bus): **`a:org-state`**, **`a:org-row`**, which miss the 1 s; B may still update at the hook's poll pace ([below](DECISIONS.md#decided-not-asked)) · `no-request-publish` (the bus child's write wrapper publishes nothing, FIX-2426's `no-publish` patch): **`d:plain-reply`**, while a passes · `skip-check` (FIX-2428's: the mint grants every topic): **`c:refused`** · today's `main` (the parent of FIX-2426's implementation merge; `9fd46b6` at drafting): every `a:` assertion and **`b:no-read-between`** |
 
 ### The signal
 
@@ -57,7 +57,6 @@ named assertion.
 | `a:org-state` | A, on process 1, patches `ctx.org` (a plain state field, no resource); B's page on process 2 shows the new value within 1 s |
 | `a:org-row` | A adds a row to an org-scoped collection; B's board shows it within 1 s |
 | `a:no-timer` | Over 10 s from B's first `crosses: true` frame, with nothing written, B's page sends 0 read requests; while A writes, every read B sends follows a notice frame or a connect |
-| `a:same-source` | The fixture app's source hashes the same on today's `main` and on the pinned commit, printed |
 | `d:plain-reply` | A's action writes only a reply and its status (no resource, state or task); B's session view on process 2 shows it within 1 s |
 | `d:no-timed-read` | Over the same 10 s, Postgres logs 0 statements from process 2's session stream |
 | `c:refused` | C asks to subscribe to A's session; the mint refuses it and C's page shows nothing of it |
@@ -113,7 +112,7 @@ SQLite setup, which FIX-2429 decided keeps its timer while a task is open.
 |---|---|
 | The epic's legs a to d and its controls | **Builds on.** Walked together on one host; the memory-bus control's FAIL is graded on the 1 s signal ([below](DECISIONS.md#decided-not-asked)) |
 | The children's goals: `session-stream/wakes-on-a-change`, `session-stream/wakes-across-processes`, `realtime/websocket-delivery`, `realtime/scope-changes-reach-other-sessions`, `task-board/a-settled-task-reaches-the-board`, `realtime/ably`, and FIX-2466's | **Composed.** Re-run in row 3; three controls reused (`no-publish`, `skip-check`, `memory-bus`) |
-| `goals/lib/playwright.mts`, `goals/lib/shift-manager.mts` (`buildShiftManagerCopy`, `startShiftManager`), `goals/lib/module-patch.mjs` | **Reused** for the browsers, Shift Manager in scratch, and the controls' patches |
+| `goals/lib/playwright.mts`, `goals/lib/shift-manager.mts` (`buildShiftManagerCopy`, `startShiftManager`), `goals/lib/module-patch.mjs`, `goals/lib/server.mts`, `goals/lib/verdict.mts`, `goals/lib/client-actions.mts` | **Reused** for the browsers, Shift Manager in scratch, the controls' patches, the forked `serve` processes, the tagged report and the handler writes. Row 3 runs each child's own `run.mts` with its controls, as FIX-2242's did |
 | `goals/lib/crossing-bus.mts` (FIX-2426) | **Not used.** It is what the closure exists to go past |
 | [FIX-2242](../FIX-2242/SPEC.md), the last closure | **Kept** its shape: tagged assertions, one run where the legs collide, the plan's four rows |
 | Anything else grading the set | **None.** Searched `goals/` for `useSubscription`, `client.subscribe`, `crosses`, `postgresStores` with `serve(` |
@@ -145,6 +144,8 @@ wrong: a slow goal nobody re-runs.
 
 **Open: none of its own.** D2 is the one to weigh. Before the run: FIX-380 and FIX-2466 have no
 approved spec yet, and no child's implementation has merged ([Must be green first](DECISIONS.md#the-plan-in-full)).
+j4 can't be written until [epic D5](../../epics/FIX-2367/DECISIONS.md#d5) is settled and FIX-380's
+spec (#4486, not yet approved) merges, since its Ably half follows the guide's Ably row.
 
 Improvement · closure (QA) · `goals/` only · large, repeats per finding · epic
 [FIX-2367](../../epics/FIX-2367/SPEC.md), closure · required · runs after every other child merges

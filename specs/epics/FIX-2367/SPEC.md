@@ -44,7 +44,7 @@ flowchart LR
   L4 --> T
   T -->|"a, b and d update within 1 s · c is refused"| P["PASS · the epic's goal is met"]
   C["control · in-memory bus, not Postgres"] -.-> L1
-  L1 -.->|"under the control"| F["must FAIL · B never updates"]
+  L1 -.->|"under the control"| F["must FAIL · B misses the 1 s"]
 ```
 
 Polling and the session stream's timed read are off, so neither can pass legs a, b and d. Leg d writes no resource, state or task, so only the request and run publish carries it. Leg c is there because a push that skips the
@@ -55,7 +55,7 @@ access check passes the other two.
 | **Goal check** | The closure issue's ([FIX-2368](https://linear.app/fixpoint-labs/issue/FIX-2368)), on one `main` commit after every other child merges. Its clean run is the wrap condition |
 | **Signal** | Leg a: B's browser shows both of A's changes within 1 s, the plain `ctx.org` state patch and the resource row. Leg b: the board updates within 1 s, with no read between notices. Leg c: the subscribe is refused, and no notice reaches that user. Leg d: B's session view shows A's reply within 1 s |
 | **Anti-game** | Assert on what each browser shows, not on calls to `publish`. Two real processes, not two clients of one |
-| **Control that must fail** | The in-memory bus on two processes: leg a must FAIL. Today's `main`: legs a and b must FAIL. The request and run publish cut out: leg d must FAIL |
+| **Control that must fail** | The in-memory bus on two processes: leg a must FAIL its 1 s; B may still update at the hook's poll pace, which ER-5 keeps where the bus can't cross ([FIX-2368](../../issues/FIX-2368/DECISIONS.md#decided-not-asked)). Today's `main`: legs a and b must FAIL. The request and run publish cut out: leg d must FAIL |
 
 ## What's in the box
 

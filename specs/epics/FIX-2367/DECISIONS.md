@@ -206,6 +206,8 @@ reuse rows. Its one hold became [D6](#d6).
   polls wherever push can miss a change, a bus that can't cross included (FIX-2428 D3).
 - **Review (Nov 2)** — ER-7 and D4 admit delivery control frames such as `crossing`, never a
   notice kind. The server tick was weighed and dropped; the mint union lives once, in FIX-2428.
+- **Amended (Nov 2)** — the closure's memory-bus control fails leg a's 1 s, not "B never
+  updates": under ER-5, B may update at the poll pace (FIX-2368's review).
 
 <a name="open"></a>
 **Open: none.**

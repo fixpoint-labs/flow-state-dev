@@ -74,21 +74,23 @@ It comes down to the Vercel promise: skipped, push with Ably is never seen worki
 | # | What runs | PASS means |
 |---|---|---|
 | 1 | Legs a to d ([the signal](SPEC.md#the-signal)) | Each green; each control red where named |
-| 2 | One journey per team whose *after* row 1 doesn't walk. *Builds a screen two people watch* is leg a. **j2** *runs the labs or Shift Manager*: Shift Manager and the Teammates and claude-code-style labs, each on D2's copy, a conversation open with a task open and its message, request, project and activity views mounted; over 10 s from the first `crosses: true` frame, 0 reads (`j2:no-poll`); a message sent from another session shows within 1 s (`j2:message`). **j3** *runs more than one process*: process 1 on BullMQ `dispatch-only`, a `worker-only` process runs A's action, B on process 2 shows the reply within 1 s (`j3:worker-reply`), with 0 session-stream statements from process 2 (`j3:no-timed-read`); `no-request-publish` must FAIL `j3:worker-reply`. **j4** *deploys to Vercel or Next*: the fixture behind `createNextHandler` with no Ably, `GET /capabilities` reports no push and B updates within the hook's poll interval plus 1 s (`j4:polls`); then with Ably set up as the realtime guide's Ably row says ([D3](#d3)), within 1 s and 0 reads between changes over 10 s (`j4:ably`); FIX-380's `memory-bus` must FAIL `j4:ably` | Each green |
+| 2 | One journey per team whose *after* row 1 doesn't walk. *Builds a screen two people watch* is leg a. **j2** *runs the labs or Shift Manager*: Shift Manager and the Teammates and claude-code-style labs, each on D2's copy, a conversation open with a task open and its message, request, project and activity views mounted; over 10 s from the first `crosses: true` frame, 0 reads (`j2:no-poll`); a message sent from another session shows within 1 s (`j2:message`). **j3** *runs more than one process*, on row 1's two processes plus one: process 1 on BullMQ `dispatch-only`, a `worker-only` process runs A's action, B on process 2 shows the reply within 1 s (`j3:worker-reply`), with 0 session-stream statements from process 2 (`j3:no-timed-read`); `no-request-publish` must FAIL `j3:worker-reply`. **j4** *deploys to Vercel or Next*, on FIX-380's goal's Next and Ably wiring: the fixture behind `createNextHandler` with no Ably, `GET /capabilities` reports no push and B updates within the hook's poll interval plus 1 s (`j4:polls`); then with Ably set up as the realtime guide's Ably row says ([D3](#d3)), within 1 s and 0 reads between changes over 10 s (`j4:ably`); FIX-380's `memory-bus` must FAIL `j4:ably` | Each green |
 | 3 | Every child's goal check with its controls, read from Linear at run time and printed: FIX-2426, FIX-2427, FIX-2428, FIX-1506, FIX-2429, FIX-380, FIX-2466, and any child that joins later. **None is skipped:** row 1 walks no child's signal as that child wrote it | Each PASS beside its documented FAIL |
 | 4 | The gap sweep: each [coordination seam](../../epics/FIX-2367/DECISIONS.md#coordination-seams) from both sides; the realtime guide, FIX-380's Ably row and the client, react, node, store-postgres and Ably READMEs followed as written; each epic *not done if* state absent, including an app with no push configured (`push: false`) still updating by polling, and the Vercel pages saying "polls" | Every seam two-sided |
 
 **Must be green first:** every other child merged with its goal's PASS and its controls' FAIL.
 At drafting none has: FIX-2426, FIX-2427, FIX-2428, FIX-1506 and FIX-2429 are spec approved,
-FIX-380 is in spec review (#4486), and FIX-2466 has no spec.
+FIX-380 is in spec review (#4486), and FIX-2466 has no spec. j4 also waits on
+[epic D5](../../epics/FIX-2367/DECISIONS.md#d5) being settled and #4486 merged: its Ably half
+follows the guide's Ably row, whose config shape is D5's open push-seam call.
 
 ## Decided, not asked
 
 - **The epic's memory-bus control fails on the 1 s signal, not on "B never updates".** Since
   [FIX-2428 D3](../FIX-2428/DECISIONS.md#d3) and the Nov 2 ER-5 amendment, a hook keeps its
   timer where the bus can't cross, so under the in-memory bus B may update at the poll pace. The
-  control grades `a:org-state` and `a:org-row`. The epic's leg a wording is the coordinator's to
-  amend.
+  control grades `a:org-state` and `a:org-row` on the 1 s. The epic's control line says the same,
+  amended in this PR.
 - **"Polls off" is the product's default, not a switch the run sets.** On a bus that crosses,
   FIX-2426 turns the session stream's timed read off and the hooks keep no timer. The run counts
   reads instead, so a default left on is a FAIL, where a switch would hide it.
@@ -133,5 +135,13 @@ wants an independent one.
   defaults, colliding on one conversation; FIX-2242's closure shape kept. Found: leg b needs a Lab
   on Postgres (D2), and the epic's memory-bus control reads "never updates", which FIX-2428 D3 no
   longer makes true.
+- **Review (Nov 2)** — the epic's memory-bus control line amended to fail on the 1 s. j4 waits on
+  epic D5 and #4486. `a:same-source` moved to anti-game; it grades no team.
+
+## Notes from review
+
+- "consider narrowing **j2** to labs-only (or one lab + message path)" — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/4512#discussion_r4438121672))
+- "Optional amend: name one invariant in DECISIONS and attach fewer redundant scenes, keeping Postgres logging only where the browser cannot observe the read path." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/4512#discussion_r4438121675))
+- "Prefer a **warm `FSD_DB_URL`** in the closure worker over `initdb` every attempt; narrow `log_statement` to what `d`/`j3` need (with `application_name`), if you can keep anti-game strength." — cursor ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/4512#pullrequestreview-5731142473))
 
 **Open: none of its own.**
