@@ -146,12 +146,14 @@ describe("a routing record (BR-29)", () => {
 
   // FIX-2488: a reply the coordinator answered itself was footed with
   // "routed · by the coordinator · the coordinator handed it to no delegate",
-  // which reads as routing that never happened. With no delegate on the record
-  // there is nothing to say, so no note is drawn. Read from the record's
-  // delegates, never from the `none` wording.
+  // which reads as routing that never happened. The record says so with
+  // `answeredItself`, so no note is drawn. Read from that flag, never from the
+  // `none` wording.
   it("draws nothing for a reply the coordinator answered itself", () => {
     const { container } = render(
-      <CoordinatorRoute item={record({ by: "judgment", delegates: [], none: "the coordinator handed it to no delegate" })} />,
+      <CoordinatorRoute
+        item={record({ by: "judgment", delegates: [], none: "the coordinator handed it to no delegate", answeredItself: true })}
+      />,
     );
     expect(screen.queryByTestId("coordinator-route")).toBeNull();
     expect(container.textContent).not.toContain("handed it to no delegate");
@@ -169,6 +171,11 @@ describe("a routing record (BR-29)", () => {
     );
     expect(screen.getByTestId("coordinator-route")).toBeTruthy();
     expect(screen.getByTestId("coordinator-route-missed").textContent).toContain("eng.coder failed: unreachable");
+  });
+
+  it("keeps the note on a round whose delegates never answered, which is why the conversation stopped", () => {
+    render(<CoordinatorRoute item={record({ by: "judgment", round: 1, delegates: [], none: "no delegate answered in round 0" })} />);
+    expect(screen.getByTestId("coordinator-route").textContent).toContain("routed · by the coordinator · no delegate answered in round 0");
   });
 
   it("keeps a fixed policy's no-delegate reason, which is the answer to where the post went", () => {
