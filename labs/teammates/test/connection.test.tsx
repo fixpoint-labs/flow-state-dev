@@ -74,6 +74,29 @@ describe("the server going away", () => {
     expect((await screen.findByTestId("unreachable-message")).textContent).toBe("502 · Bad Gateway");
   });
 
+  it("a slow read a Retry overtook doesn't put the failure back over a lab that came back", async () => {
+    const lab = createFixtureLab({ speed: 0.05 });
+    let rejectSlow: (error: Error) => void = () => {};
+    let call = 0;
+    const flaky = {
+      ...lab,
+      listWorkers: () => {
+        call += 1;
+        if (call === 1) return Promise.reject(new Error("fetch failed"));
+        if (call === 2) return new Promise<never>((_, reject) => (rejectSlow = reject));
+        return lab.listWorkers();
+      }
+    };
+    render(<App adapter={flaky} />);
+    await screen.findByTestId("unreachable-message");
+    await act(async () => fireEvent.click(screen.getByTestId("unreachable-retry")));
+    await act(async () => fireEvent.click(screen.getByTestId("unreachable-retry")));
+    expect(await screen.findByLabelText("Message Chief of Staff")).toBeTruthy();
+    await act(async () => rejectSlow(new Error("fetch failed")));
+    expect(screen.queryByTestId("unreachable")).toBeNull();
+    expect(screen.getByLabelText("Message Chief of Staff")).toBeTruthy();
+  });
+
   it("an age holds where it was while its feed is stale", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-11-02T12:00:00Z"));

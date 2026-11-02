@@ -61,6 +61,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   // The first roster read's failure, until a read lands: the page has nothing yet to keep on screen.
   const [unreachable, setUnreachable] = useState<ConnectionFailure>();
   const live = useRef(true);
+  // Bumped by each boot read; only the newest read's answer lands, so a slow read a Retry overtook can't redraw the failure.
+  const boots = useRef(0);
   // How the next address write lands: a pick adds a Back step, anything else replaces.
   const how = useRef<AddressWrite>("replace");
   const conversations = useRef<Record<string, string>>({});
@@ -85,16 +87,17 @@ export function App({ adapter }: { adapter: LabAdapter }) {
 
   // The first read: the roster, then the address's teammate and task, when they are still here; the first teammate otherwise.
   const boot = useCallback(async () => {
+    const mine = ++boots.current;
     try {
       const { talking } = await loadRoster();
-      if (!live.current) return;
+      if (!live.current || mine !== boots.current) return;
       setUnreachable(undefined);
       const named = start.current ?? {};
       setSelected((current) => current ?? (talking.some((w) => w.id === named.worker) ? named.worker : talking[0]?.id));
       setPopup((current) => current ?? fromAddress(named));
       setReady(true);
     } catch (error) {
-      if (live.current) setUnreachable(error instanceof ClientHttpError ? { httpStatus: error.status, message: error.message } : { message: error instanceof Error ? error.message : String(error) });
+      if (live.current && mine === boots.current) setUnreachable(error instanceof ClientHttpError ? { httpStatus: error.status, message: error.message } : { message: error instanceof Error ? error.message : String(error) });
     }
   }, [loadRoster]);
   useEffect(() => {
