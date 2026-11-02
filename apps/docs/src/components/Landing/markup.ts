@@ -29,7 +29,7 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 <div style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 24px;">
 <p style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; color: #a6a08f;">Open source · TypeScript · Any model · Local or cloud</p>
 
-<h1 id="hero-title" class="fs-h1" style="margin: 0; font-size: 58px; line-height: 1.12; letter-spacing: -0.04em; font-weight: 700; text-wrap: pretty; max-width: 680px; color: #f4f1e4; width: 654px">Harness an <span style="background: #e8f551; color: #1b1a15; padding: 0 .08em; box-decoration-break: clone; -webkit-box-decoration-break: clone;">AI workforce.</span></h1>
+<h1 id="hero-title" class="fs-h1" style="margin: 0; font-size: 58px; line-height: 1.12; letter-spacing: -0.04em; font-weight: 700; text-wrap: pretty; max-width: 654px; color: #f4f1e4;">Harness an <span style="background: #e8f551; color: #1b1a15; padding: 0 .08em; box-decoration-break: clone; -webkit-box-decoration-break: clone;">AI workforce.</span></h1>
 <p style="margin: 0; font-size: 16.5px; line-height: 1.6; color: #cbc5b5; max-width: 600px;">Claude Code, Codex and Grok Bot are someone else's harness. Flow State gives you the building blocks to build your own, from one agent to a whole workforce, fitted to your process, on any model, at a cost you control.</p>
 <div style="display: flex; flex-wrap: wrap; gap: 10px;">
 <a class="fs-btn fs-btn-bone fs-btn-mark" href="#starters">Pick a starter →</a>
