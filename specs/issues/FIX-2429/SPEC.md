@@ -6,7 +6,7 @@
 
 | Someone who… | Today | After |
 |---|---|---|
-| **watches a conversation's tasks in Shift Manager** | The panel and the board card each read the board every 3 s while a task is open, and for 30 s after one moves | The board shows a task that settles within a second, from any session on any process, and reads nothing between changes |
+| **watches a conversation's tasks in Shift Manager** | The panel and the board card each read the board every 3 s while a task is open, and for 30 s after one moves | The board shows a task that settles within a second, from any session on any process. On the Postgres bus it reads nothing between changes; on its SQLite store, whose bus doesn't cross, it reads every 3 s while a task is open, as today, and not at all with none open ([decided](DECISIONS.md#decided-not-asked)) |
 | **watches a task start in the Teammates lab** | A running row shows its run only after the lab reads the board every 1.5 s, because the run links itself in its own session | The run's link arrives as a board change; no timer |
 | **keeps the claude-code-style lab open** | Its task list reads the board every 2 s, all day, open task or not | Reads when the board changes |
 | **puts a live `BoardList` on a page** | Hears a task filed in the session it follows, never one that settles in a task session (the docs say so) | Hears both. Its `client` needs `subscribe` instead of `sessions.stream` |
@@ -21,7 +21,8 @@ the board polls. The bus ([FIX-2426](../FIX-2426/SPEC.md)) carries a notice; del
 
 **On a long-lived host, a change to a conversation's task board, written by any session on any
 process, shows on every open view of that board within a second, and a view reads nothing
-between changes; where there is no push, the same views keep a timer and miss nothing.**
+between changes; wherever push can miss a change ([epic ER-5](../../epics/FIX-2367/DECISIONS.md#who-owns-what)),
+the same views keep a timer and miss nothing.**
 
 | Is it the right goal? | |
 |---|---|
@@ -48,8 +49,8 @@ The check reads what each view shows and counts its reads, not calls to `publish
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/task-board/a-settled-task-reaches-the-board/` · model `n/a` (handler workers settle the task) · run by the implementer at completion · verdict on the implementation PR. Needs FIX-2426 and FIX-2428 merged; leg b needs FIX-2427 |
-| **Signal** | (a) The Teammates lab adapter's `watchTasks` and a live `BoardList` on the conversation show the task `completed`, and its run's link, within 1 s of each write; the adapter's view shows the worker's plan step settle within 1 s too. Over a 10 s window with a task open and a reply streaming in the conversation, each makes 0 board reads. (b) As (a), the task settled on a second process. (c) Within the poll interval plus 1 s |
-| **Input** | A conversation flow with a handler delegate and a planning worker, on `serve()`, on a bus that says it crosses (the in-memory bus reporting `crossesProcesses: true`, a test double; the Postgres bus in leg b). A different valid input: two conversations of one user; a task settling on one must not read the other's board |
+| **Signal** | (a) The Teammates lab adapter's `watchTasks` and a live `BoardList` on the conversation show the task `completed`, and its run's link, within 1 s of each write; the adapter's view shows the worker's plan step settle within 1 s too. Over a 10 s window with a task open and a reply streaming in the conversation, each makes 0 board reads. (b) As (a), the task settled on a second process; the 10 s window starts at each view's first `crosses: true` frame, which on the Postgres bus waits for its first ping. (c) Within the poll interval plus 1 s |
+| **Input** | A conversation flow with a handler delegate and a planning worker, on `serve()`, on a bus that says it crosses: FIX-2426's one test-only crossing double (`goals/lib/crossing-bus.mts`, [FIX-2426](../FIX-2426/DECISIONS.md#decided-not-asked)), and the Postgres bus in leg b. **PASS legs use a bus that reports crossing; default in-memory host behavior (timer on) is [FIX-2428 D3](../FIX-2428/DECISIONS.md#d3) / leg c.** A different valid input: two conversations of one user; a task settling on one must not read the other's board |
 | **Anti-game** | Assert on rows shown and reads counted, not on `publish` calls or frames sent. Real WebSocket clients on a bound port; two registries for leg b, not two clients of one |
 | **Control that must fail** | `GOAL_CONTROL=running-session` (publish on the session that wrote, not the one that filed): leg a's 1 s signal must FAIL. `GOAL_CONTROL=whole-topic` (views subscribe the conversation's whole topic): leg a's 0-reads signal must FAIL. `GOAL_CONTROL=tasks-only` (views of the merged read subscribe `tasks` alone): leg a's plan-step signal must FAIL. Today's `main`: leg a's 0-reads signal FAILS |
 

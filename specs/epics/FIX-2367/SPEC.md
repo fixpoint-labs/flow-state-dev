@@ -59,13 +59,13 @@ access check passes the other two.
 
 ## What's in the box
 
-![In the box: a notice that names a scope and carries no rows; topics from the session, user and org scopes; a bus with an in-memory default and a Postgres adapter; one WebSocket per client on the Node host; client.subscribe and hooks that read again on a notice; polling when there is no push; three publishers: request and run writes, scope changes, task boards. Composed in by the app: which views watch, its host, the Postgres bus. Replaced in one line: the Ably adapter. Not built, below a fence: rows on the push, replay, items on the socket, push on serverless without Ably, a topic per request, session-to-session messages](figures/end-state.svg)
+![In the box: a notice that names a scope and carries no rows; topics from the session, user and org scopes; a bus with an in-memory default and a Postgres adapter; one WebSocket per client on the Node host; client.subscribe and hooks that read again on a notice; polling wherever push can miss a change; three publishers: request and run writes, scope changes, task boards. Composed in by the app: which views watch, its host, the Postgres bus. Replaced in one line: the Ably adapter. Not built, below a fence: rows on the push, replay, items on the socket, push on serverless without Ably, a topic per request, session-to-session messages](figures/end-state.svg)
 
 Everything in the box is what an app gets for nothing. The fence is [D2](DECISIONS.md#d2): the
 push carries no rows, so it needs no access check and no replay of its own.
 
-**Docs:** one realtime guide: the push says when, a read says what, and a table of which host
-gets push. The WebSocket delivery child publishes it when delivery ships; FIX-380 adds the Ably
+**Docs:** one realtime guide: the push says when, a read says what, a table of which host
+gets push, and the cost of the fallback timer on the default in-memory bus. The WebSocket delivery child publishes it when delivery ships; FIX-380 adds the Ably
 row. Each child documents its own API with its implementation.
 
 ## The set · as of 2026-11-02
@@ -79,11 +79,11 @@ The reviewed snapshot. Live state is the epic's sub-issues in Linear.
 | [FIX-2428](https://linear.app/fixpoint-labs/issue/FIX-2428) · WebSocket delivery | The Node host serves the user-stream route as a WebSocket, a second way notices reach a client beside the session stream; per-topic subscribe, checked on the server at every connect; `GET /capabilities` reports push; `client.subscribe`; a hook on `followSession`'s pattern that reads again on a notice and polls wherever push can miss a change; the realtime guide | The wire, and the one client path | Spec approved |
 | [FIX-1506](https://linear.app/fixpoint-labs/issue/FIX-1506) · resource and scope-state changes reach other sessions | `onResourceChanged` publishes a notice for its scope, and so do scope-state writes (`ctx.user`, `ctx.org`, `ctx.session` patches, which emit `state_change` through `wrapStateOpsWithEmit`, not `onResourceChanged`); the resource and state hooks read again on one | The outcome FIX-1506 asked for, widened to plain user and org state, which the goal names | Spec approved · keeps parent FIX-2171, linked here · scope widened by this set |
 | [FIX-2429](https://linear.app/fixpoint-labs/issue/FIX-2429) · task board notices, polls off | A task-board change publishes a notice on the conversation's session topic, from whichever process settles the task; the board views in Shift Manager and the labs move their polls behind notices | Goal 1: the apps we run stop polling ([FIX-2286 D3](../../issues/FIX-2286/DECISIONS.md#d3)) | Spec approved |
-| [FIX-2466](https://linear.app/fixpoint-labs/issue/FIX-2466) · the apps' other polls | Shift Manager's and the labs' message, request, project and activity polls move behind notices; split from FIX-2429 ([its D1](../../issues/FIX-2429/DECISIONS.md#d1)) | Goal 1 again: those reads need FIX-1506's notices, which the board views don't | Backlog |
+| [FIX-2466](https://linear.app/fixpoint-labs/issue/FIX-2466) · the apps' other polls | Shift Manager's and the labs' message, request, project and activity polls move behind notices; split from FIX-2429 ([its D1](../../issues/FIX-2429/DECISIONS.md#d1)) | Goal 1 again: those reads need FIX-1506's notices, which the board views don't | Filed in Linear, spec to come · blocks the closure now |
 | [FIX-380](https://linear.app/fixpoint-labs/issue/FIX-380) · Ably adapter | Bus and delivery through Ably, with a server-minted token for the topics the caller may read | Serverless push, and the test that the two seams are the right two ([D5](DECISIONS.md#d5)) | In spec review · re-scoped from a spike |
 | [FIX-2368](https://linear.app/fixpoint-labs/issue/FIX-2368) · closure · **required** | The QA run on one `main` commit: the four legs, each team's journey (Vercel with Ably among them), every child's goal check | The only child that runs the whole set | Backlog · blocked by every other child |
 
-All 8 filed. Could the set be smaller? Not by cutting the Postgres bus: BullMQ hosts already
+All 8 filed in Linear; FIX-2466 has no spec yet. Could the set be smaller? Not by cutting the Postgres bus: BullMQ hosts already
 run two processes. A Redis bus on BullMQ's own connection is a possible follow-up, not filed.
 A bug the closure run finds joins as a row that blocks it.
 

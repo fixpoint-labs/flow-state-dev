@@ -90,7 +90,7 @@ It comes down to the open connection: a serverless function can't hold one.
 |---|---|
 | **Instead of** | An SSE stream per topic, or per user |
 | **Because** | A screen adds and drops topics as the person moves. On a socket that is a message; on SSE it is a new stream or a reconnect, and HTTP/1.1 browsers allow six connections per host |
-| **Locks in** | SSE request and item streams stay exactly as they are. The socket carries notices and subscribe messages, nothing else (ER-7). The route is the existing user-stream route, so its guard stays |
+| **Locks in** | SSE request and item streams stay exactly as they are. The socket carries notices, subscribe messages and delivery control frames (such as [FIX-2428's](../../issues/FIX-2428/DECISIONS.md#decided-not-asked) `crossing`), nothing else (ER-7). A control frame is about the socket, never a notice kind. The route is the existing user-stream route, so its guard stays |
 
 ![D4: which wire carries notices. Chosen: one WebSocket per client, beside an SSE stream per topic. Decides it: watching one more topic. Price: a second wire beside SSE. Flips if every screen watches one fixed topic](figures/d4-websocket-default.svg)
 
@@ -144,7 +144,7 @@ Every rule has one owner. A *consumes* cell is a place a child must not re-decid
 | ER-4 | A subscribe is checked on the server, from the caller's trusted identity, by the check the scope's read route already uses (BP-031), on every connect and reconnect, not only the first (FIX-1620). Never a claim the client sends; never a second check | delivery | Delivery's and FIX-380's spec review; closure leg c |
 | ER-5 | Every client hook goes through `client.subscribe`, and polls wherever push can miss a change: `GET /capabilities` says there is no push, the socket is down, or its bus can't cross processes ([FIX-2428 D3](../../issues/FIX-2428/DECISIONS.md#d3)). On Ably, an open connection counts as crossing, since its bus is the delivery; a dropped one polls. One obvious way per scope: a scope `live: true` already watches gets no second hook | delivery | FIX-1506's and the task board's spec review |
 | ER-6 | Notices are at most once: no replay, no acks, nothing stored. A client reads again on connect and reconnect | the bus | Each adapter's spec review |
-| ER-7 | SSE request and item streams don't change. Only notices and subscribe messages travel on the socket ([D4](#d4)) | delivery | Delivery's spec review |
+| ER-7 | SSE request and item streams don't change. Only notices, subscribe messages and delivery control frames travel on the socket ([D4](#d4)). A control frame, such as `crossing`, says something about the socket itself; it is never a notice kind and never carries rows or items | delivery | Delivery's spec review |
 
 ## Coordination seams
 
@@ -154,7 +154,7 @@ Every rule has one owner. A *consumes* cell is a place a child must not re-decid
 | The `bus` slot in `resolve-slots.ts` | the bus · Postgres bus · FIX-380 | The bus adds the slot and its default to the primary; an adapter declares it in its `capabilities` |
 | The session stream's wake | the bus · delivery · the task board child | The bus child owns it, and its one write wrapper, in `resolveStores` and at each raw-registry entry; the only timed read is its fallback where the bus can't cross processes ([D6](#d6)) |
 | The task board's topic | the task board child · the bus | The conversation's session topic, with a *board change* kind, published from whichever process settles the task. A scope's subscriber also hears the notices narrowed under it; the session stream filters by kind and wakes only on `items`, `request` and `run`, so a board is no second way to watch a session |
-| The user-stream route and `GET /capabilities` | delivery · FIX-380 | Delivery owns what capabilities reports and the mint's answer, one union keyed by transport. FIX-380 reports its own kind and mints its token through the ER-4 check, in that union |
+| The user-stream route and `GET /capabilities` | delivery · FIX-380 | Delivery owns what capabilities reports and the mint's answer, one union keyed by transport, defined once in FIX-2428 with both arms and the Ably arm's crossing rule. FIX-380 adopts it and owns only the Ably implementation, minting its token through the ER-4 check. The mint answer's `transport` is authoritative; `capabilities.push.transport` only advertises |
 | The resource and state hooks' invalidation | FIX-1506 · delivery | One invalidation path with two sources: the writer's own `resource_change` or `state_change` item and the notice. The writer's tab reads once, not twice: the notice names its request (`origin`), and that view skips it |
 | Shift Manager's and the labs' polls | the task board child · FIX-2466 | The task board child turns the board views into the fallback; FIX-2466 the rest |
 
@@ -172,6 +172,11 @@ Every rule has one owner. A *consumes* cell is a place a child must not re-decid
   emit in `createExecutionContext.ts`, read again by the same hooks. Closure leg a patches both.
 - **FIX-380 is re-scoped** from a spike that routed item streams through Ably to the Ably
   adapter for both seams. Item streams stay on SSE (ER-7).
+- **The socket reports crossing; the server doesn't tick.** A server that sent a synthetic
+  notice at the poll pace where its bus can't cross would drop FIX-2428's `crossing` frame, but
+  add a server timer per connection, while the client already keeps one for a dropped socket.
+  The frame reports a per-process fact that can change at runtime (FIX-2427's ping), so it rides
+  the socket as a control frame (ER-7). On Ably an open connection counts as crossing.
 
 ## What the end-state POC showed
 
@@ -199,6 +204,8 @@ reuse rows. Its one hold became [D6](#d6).
   D6 now flip in queries a second at 100 views. D6's publish also wraps raw-registry entries.
 - **Amended (Nov 2)** — FIX-2466 joins the set from FIX-2429's D1 and blocks the closure. ER-5
   polls wherever push can miss a change, a bus that can't cross included (FIX-2428 D3).
+- **Review (Nov 2)** — ER-7 and D4 admit delivery control frames such as `crossing`, never a
+  notice kind. The server tick was weighed and dropped; the mint union lives once, in FIX-2428.
 
 <a name="open"></a>
 **Open: none.**

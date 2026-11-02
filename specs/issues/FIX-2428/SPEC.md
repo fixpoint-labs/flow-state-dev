@@ -6,7 +6,7 @@
 
 | Someone who… | Today | After |
 |---|---|---|
-| **builds a screen on the Node host that others change** | Writes a timer that reads every few seconds, or the screen goes stale. `client.stream()` exists, and the server answers it 501 | Calls one hook with the topics and the read. The read runs within a second of a change, and, on a bus that crosses processes, not between changes |
+| **builds a screen on the Node host that others change** | Writes a timer that reads every few seconds, or the screen goes stale. `client.stream()` exists, and the server answers it 501 | Calls one hook with the topics and the read. The read runs within a second of a change, and, on a bus that crosses processes, not between changes. On the default in-memory bus, even a single-process `serve()` also reads on the timer between notices, because that bus never reports crossing ([D3](DECISIONS.md#d3)) |
 | **deploys the same screen to Vercel or Next** | The same timer | The same hook, no code change. It reads on a timer, because the server says it has no push |
 | **subscribes to a session they may not read** | n/a | Refused before the socket hears anything, and again on every reconnect |
 | **loses access while their tab stays open** | n/a | Their reads are refused at once. The socket can still say "something changed", never what, until it reconnects, at most an hour later ([D2](DECISIONS.md#d2)) |
@@ -22,8 +22,9 @@ changed; this issue carries that to a browser, and the read the browser already 
 
 **On the Node host, a screen built on the framework's hook reads a change someone else made
 within a second; a caller who may not read that scope never hears of it, on the first connect
-or any reconnect; and where the host has no push, the same hook keeps the screen current on a
-timer, with no change to the app's code.**
+or any reconnect; and wherever push can miss a change (no push, the socket down, or its bus
+doesn't cross processes), the same hook keeps the screen current on a timer, with no change to
+the app's code.**
 
 | Is it the right goal? | |
 |---|---|
@@ -52,14 +53,14 @@ was sent.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/realtime/websocket-delivery/`, model `n/a` (a handler action writes the reply). The implementer runs it at completion; the verdict goes on the implementation PR. Needs FIX-2426 merged: its session-topic publish is the change heard |
-| **Signal** | Leg a: tab 2's read shows tab 1's reply within 1 s, and tab 2 makes no read between changes over 10 s. Leg b: C's subscribe is refused and C's handler never runs; after B's token is revoked and the socket drops, B's reconnect is refused and B hears nothing more. Leg c: tab 2's read shows the reply within one poll interval plus 1 s, both with no push and with tab 2's socket on a second process on the in-memory bus |
-| **Input** | A two-action handler flow on `serve()`. Legs a and b run on a bus that says it crosses (the in-memory bus reporting `crossesProcesses: true`, a test double, or the Postgres bus once FIX-2427 merges). A different valid input: two sessions, with tab 2 watching only one; a reply in the other must not run its read |
+| **Signal** | Leg a: tab 2's read shows tab 1's reply within 1 s, and tab 2 makes no read between changes over 10 s, a window that starts at tab 2's first `crosses: true` frame (on the Postgres bus that waits for its first ping). Leg b: C's subscribe is refused and C's handler never runs; after B's token is revoked and the socket drops, B's reconnect is refused and B hears nothing more. Leg c: tab 2's read shows the reply within one poll interval plus 1 s, both with no push and with tab 2's socket on a second process on the in-memory bus |
+| **Input** | A two-action handler flow on `serve()`. Legs a and b run on a bus that says it crosses: FIX-2426's one test-only double, `goals/lib/crossing-bus.mts` ([FIX-2426](../FIX-2426/DECISIONS.md#decided-not-asked)), or the Postgres bus once FIX-2427 merges. These legs certify push, not the default host: on the in-memory bus the timer stays on, which leg c and [D3](DECISIONS.md#d3) cover. A different valid input: two sessions, with tab 2 watching only one; a reply in the other must not run its read |
 | **Anti-game** | Assert on read results, not on calls to `publish` or on frames sent. Real WebSocket clients against a bound port, not an in-process fetch |
 | **Control that must fail** | `GOAL_CONTROL=no-socket` (capabilities says push, the upgrade is never served): leg a's 1 s signal must FAIL. `GOAL_CONTROL=skip-check` (the mint grants every topic): leg b's "C never hears" must FAIL. `GOAL_CONTROL=ignore-crossing` (the client treats every open socket as covering): leg c's second-process signal must FAIL. Today's `main`: all three legs FAIL |
 
 ## What changes
 
-![What changes. The client gains client.subscribe, which opens one socket per client and reads on a timer without push, and useSubscription in react. The engine's user-stream route gains a POST that checks each topic and mints a ticket, and capabilities gains a push field. The Node host serves the socket on the user-stream route. Removed: client.stream and the 501 answer](figures/what-changes.svg)
+![What changes. The client gains client.subscribe, which opens one socket per client and reads on a timer wherever push can miss a change (no push, the socket down, or a bus that doesn't cross), and useSubscription in react. The engine's user-stream route gains a POST that checks each topic and mints a ticket, and capabilities gains a push field. The Node host serves the socket on the user-stream route. Removed: client.stream and the 501 answer](figures/what-changes.svg)
 
 Three packages gain one piece each, and the old user-stream reader that was never served goes.
 
@@ -76,7 +77,7 @@ Three packages gain one piece each, and the old user-stream reader that was neve
 -fsd.stream({ onResourceChanged }); // the server answered 501
 +const sub = fsd.subscribe([topic.session(sessionId), topic.org()], {
 +  onChange: () => void reload(), // a notice, a connect, or a poll
-+  pollIntervalMs: 3000,          // while there is no push, or the socket is down (D3)
++  pollIntervalMs: 3000,          // while there is no push, the socket is down, or its bus doesn't cross (D3)
 +});
 +sub.close();
 
@@ -88,7 +89,8 @@ Three packages gain one piece each, and the old user-stream reader that was neve
 ```
 
 **Docs:** create the realtime guide `apps/docs/guides/realtime.md` (the push says when, a read
-says what; the hook; which host gets push), in `sidebarsGuides.ts` after
+says what; the hook; which host gets push; and that on the default in-memory bus, one process
+included, every hook still reads on its timer between notices until a bus that crosses backs it), in `sidebarsGuides.ts` after
 `projects-on-org-scope`; update `client/overview.md`, `client/react.md`, `api/client.md`
 (`subscribe` added, `fsd.stream` removed), `api/react.md`, and `server/setup.md`'s route table;
 update the client, react and node READMEs. FIX-380 adds the Ably row to the guide.
@@ -101,6 +103,7 @@ flowchart LR
   S -->|"2 · upgrade, then the ticket as the first message"| N["Node host socket"]
   N --> V["engine · verify ticket · subscribe granted topics"]
   V --> B["bus · FIX-2426"]
+  N -->|"crossing · does the bus cross"| S
   B -->|"3 · notice"| N
   N -->|"notice"| S
   S -->|"onChange"| R["the app's read, checked as always"]
