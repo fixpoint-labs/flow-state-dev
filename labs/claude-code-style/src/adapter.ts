@@ -12,9 +12,9 @@
  * | `openSession`   | a new session on the mode's main worker, then `setWorkProject`            |
  * | `send`          | the worker's door, `respond`, in that session                             |
  * | `interrupt`     | aborting the session's running request                                     |
- * | `watchThread`   | the session's items, read again while it is open                          |
+ * | `watchThread`   | the session's items, followed through the client's `sessionFeed`          |
  * | `watchTasks`    | the conversation board's `listTasks_tasks` read, and the rows' open holds  |
- * | `watchTaskWork` | the items of a task's run session, read only                               |
+ * | `watchTaskWork` | the items of a task's run session, followed through `sessionFeed`         |
  * | `sayInThread`   | the Inbox client's answer to the thread's open question, else `updateTask_tasks` with your line |
  * | `resolve`       | the Inbox client's answer to the thread's review: `{ verdict: "accepted" }` |
  * | `requestChanges`| the same answer with `{ verdict: "revise", words }`                        |
@@ -691,28 +691,27 @@ export function createWiredLab(fsd: Client): LabAdapter {
     watchTasks: (sessionId, onChange) => every(() => boardOf(sessionId), onChange, 2000),
     // Shown only inside the tasks pane or the threads board, whose watch keeps `runSessionOf` current.
     watchTaskWork: (_sessionId, taskId, onChange) => {
-      // The task's run session is known once the board has listed it; until then the work is empty.
+      // The task's run session is known once the board has listed it, and a re-run moves it: follow
+      // whichever session the board names now, and show no work until it names one.
       let stopItems: Unsubscribe | undefined;
-      let live = true;
-      const open = () => {
-        const runSession = runSessionOf.get(taskId);
-        if (runSession === undefined) return false;
-        stopItems = followItems(fsd, runSession, [...THREAD_ITEMS, "suspension"], (items) => {
-          const review = reviewStopOf(items);
-          onChange({ entries: entriesOf(items.filter((item) => item.type !== "suspension")), ...(review === undefined ? {} : { review }) });
-        });
-        return true;
-      };
-      let timer: ReturnType<typeof setInterval> | undefined;
-      if (!open()) {
-        onChange({ entries: [] });
-        timer = setInterval(() => {
-          if (live && open()) clearInterval(timer);
-        }, 2000);
-      }
+      const stopRunSession = every(
+        async () => runSessionOf.get(taskId) ?? null,
+        (runSession) => {
+          stopItems?.();
+          stopItems = undefined;
+          if (runSession === null) {
+            onChange({ entries: [] });
+            return;
+          }
+          stopItems = followItems(fsd, runSession, [...THREAD_ITEMS, "suspension"], (items) => {
+            const review = reviewStopOf(items);
+            onChange({ entries: entriesOf(items.filter((item) => item.type !== "suspension")), ...(review === undefined ? {} : { review }) });
+          });
+        },
+        2000,
+      );
       return () => {
-        live = false;
-        clearInterval(timer);
+        stopRunSession();
         stopItems?.();
       };
     },
