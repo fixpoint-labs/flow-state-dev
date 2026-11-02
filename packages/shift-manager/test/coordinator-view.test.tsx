@@ -143,6 +143,38 @@ describe("a routing record (BR-29)", () => {
     expect(note.textContent).toContain("routed · by the coordinator → eng.em");
     expect(screen.getByTestId("coordinator-route-missed").textContent).toContain("eng.coder skipped");
   });
+
+  // FIX-2488: a reply the coordinator answered itself was footed with
+  // "routed · by the coordinator · the coordinator handed it to no delegate",
+  // which reads as routing that never happened. With no delegate on the record
+  // there is nothing to say, so no note is drawn. Read from the record's
+  // delegates, never from the `none` wording.
+  it("draws nothing for a reply the coordinator answered itself", () => {
+    const { container } = render(
+      <CoordinatorRoute item={record({ by: "judgment", delegates: [], none: "the coordinator handed it to no delegate" })} />,
+    );
+    expect(screen.queryByTestId("coordinator-route")).toBeNull();
+    expect(container.textContent).not.toContain("handed it to no delegate");
+  });
+
+  it("still names who missed when the coordinator tried a delegate and none took it", () => {
+    render(
+      <CoordinatorRoute
+        item={record({
+          by: "judgment",
+          delegates: [{ worker: "eng.coder", outcome: "failed", reason: "unreachable" }],
+          none: "the coordinator handed it to no delegate",
+        })}
+      />,
+    );
+    expect(screen.getByTestId("coordinator-route")).toBeTruthy();
+    expect(screen.getByTestId("coordinator-route-missed").textContent).toContain("eng.coder failed: unreachable");
+  });
+
+  it("keeps a fixed policy's no-delegate reason, which is the answer to where the post went", () => {
+    render(<CoordinatorRoute item={record({ by: "unplaced", delegates: [], none: "no delegate can take a task" })} />);
+    expect(screen.getByTestId("coordinator-route").textContent).toContain("routed · nobody · no delegate can take a task");
+  });
 });
 
 describe("a line from another worker, under that worker's name (BR-20, FIX-1989)", () => {

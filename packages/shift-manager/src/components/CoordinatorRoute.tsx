@@ -1,7 +1,9 @@
 /**
  * A coordinator's routing record (`coordinator-route`), drawn as a quiet mono
  * note under the line it routed, never as a line of its own: who the post went
- * to, how they were picked, and who was skipped and why.
+ * to, how they were picked, and who was skipped and why. A reply the
+ * coordinator answered itself (its own judgment, no delegate tried) routed
+ * nothing, so it gets no note.
  */
 import type { ComponentItem } from "@flow-state-dev/core/items";
 import { workerLabel } from "../lib/derive";
@@ -23,6 +25,7 @@ export function CoordinatorRoute({ item }: { item: ComponentItem }) {
   const delegates = data.delegates ?? [];
   const delivered = delegates.filter((d) => d.outcome === "delivered").map((d) => workerLabel(d.worker));
   const missed = delegates.filter((d) => d.outcome !== "delivered");
+  if (data.by === "judgment" && delegates.length === 0) return null;
   return (
     <div
       className="font-mono text-[11px] text-muted-foreground"
