@@ -8,7 +8,7 @@
  * is the goal check `goals/task-board/holds-a-task-waiting-on-a-person/`.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_ORG_ID, defineFlow, handler, sequencer, SuspensionTimeoutError } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, handler, sequencer, SuspensionTimeoutError, transientSlot } from "@flow-state-dev/core";
 import type { FlowInstance, SuspensionRecord, SuspendForUserOptions } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
@@ -423,6 +423,563 @@ describe("suspendForUser in a nested sequencer", () => {
     expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "ok" })).status).toBe(202);
     await h.drain();
     expect(seen).toEqual(["written before the wait"]);
+  });
+});
+
+describe("suspendForUser after a state write in the same step", () => {
+  // A step that records what it asks about and then waits for the user must
+  // find that record when the run comes back. The resume runs the waiting
+  // step's code again from the saved state, and what the step recorded from
+  // is often gone by then (an in-memory map a restart empties), so the
+  // state is the only place the record lives.
+  function recordThenWait(inbox: string[], seen: string[]): FlowInstance {
+    const recordAndWait = handler({
+      name: "record-and-wait",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        const fresh = inbox.shift();
+        if (fresh !== undefined) await ctx.sequencer!.patchState({ asking: fresh });
+        const asking = (ctx.sequencer!.state as { asking: string | null }).asking;
+        seen.push(`asking: ${String(asking)}`);
+        if (asking === null) return { asked: null };
+        const answer = await ctx.suspendForUser({ kind: "input", prompt: `About ${asking}?` } as never);
+        return { asked: asking, answer };
+      }
+    });
+    const read = handler({
+      name: "read",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (input: { asked: string | null; answer?: unknown }, ctx) => {
+        seen.push(`after: ${JSON.stringify(input)} with ${String((ctx.sequencer!.state as { asking: string | null }).asking)}`);
+        return input;
+      }
+    });
+    const block = sequencer({ name: "s", stateSchema: z.object({ asking: z.string().nullable().default(null) }) })
+      .step(recordAndWait)
+      .step(read);
+    return defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+  }
+
+  it("keeps the write through a restart: the resumed step asks about what it recorded and takes the answer", async () => {
+    const seen: string[] = [];
+    const first = recordThenWait(["deploy"], seen);
+    const before = harness(first);
+    const { requestId, gate } = await park(before, first, {});
+
+    // A restart: a new engine (flow instance, registry, provider) over the
+    // same durable stores. The new process starts with an empty map.
+    const after = harness(recordThenWait([], seen));
+    const provider = createCheckpointDurabilityProvider(before.stores);
+    after.runtimeConfig.durabilityProvider = provider;
+    const answered = await handleAnswerSuspension(
+      new Request(`https://x/api/flows/asking/requests/${requestId}/answer`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ suspensionId: gate.suspensionId, action: "submit", data: "yes" })
+      }),
+      { kind: "answer_suspension", flowKind: "asking", requestId },
+      {
+        host: {
+          continueRequest: async (options: Parameters<typeof continueRequest>[0]) => {
+            const result = await continueRequest({
+              ...options,
+              stores: before.stores,
+              flowRegistry: after.registry,
+              runtimeConfig: after.runtimeConfig
+            });
+            after.finished.push(result.finished);
+            return result;
+          }
+        } as never,
+        registry: after.registry,
+        stores: before.stores,
+        durabilityProvider: provider,
+        principal: { userId: USER, orgId: DEFAULT_ORG_ID } as never
+      }
+    );
+    expect(answered.status).toBe(202);
+    await after.drain();
+
+    expect((await before.stores.request.get(requestId))?.status).toBe("completed");
+    expect(seen).toEqual([
+      "asking: deploy",
+      "asking: deploy",
+      'after: {"asked":"deploy","answer":{"cancelled":false,"answer":"yes"}} with deploy'
+    ]);
+  });
+});
+
+describe("a state write before the wait applies once", () => {
+  // The resume runs the waiting step's code again, and the state it starts
+  // from already holds what that code wrote before it stopped. A write made
+  // again on top of it would count twice: a counter of how often the step
+  // asked would read 2 after one question.
+  it("an increment and a push made before the wait read once after the answer, through a restart", async () => {
+    const seen: string[] = [];
+    const flowFor = () => {
+      const countAndWait = handler({
+        name: "count-and-wait",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: async (_input, ctx) => {
+          await ctx.sequencer!.incState({ asked: 1 });
+          await ctx.sequencer!.pushState("log", "asked");
+          const answer = await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+          // After the answer, writes are live again.
+          await ctx.sequencer!.pushState("log", "answered");
+          return answer;
+        }
+      });
+      const read = handler({
+        name: "read",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: async (input, ctx) => {
+          seen.push(JSON.stringify(ctx.sequencer!.state));
+          return input;
+        }
+      });
+      const block = sequencer({
+        name: "s",
+        stateSchema: z.object({ asked: z.number().default(0), log: z.array(z.string()).default([]) })
+      })
+        .step(countAndWait)
+        .step(read);
+      return defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    };
+    const first = flowFor();
+    const h = harness(first);
+    const { requestId, gate } = await park(h, first, {});
+
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "ok" })).status).toBe(202);
+    await h.drain();
+    expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+    expect(seen).toEqual([JSON.stringify({ asked: 1, log: ["asked", "answered"] })]);
+  });
+});
+
+describe("a state write before the second wait in one step applies once", () => {
+  it("counts each wait once when one step waits twice", async () => {
+    const seen: string[] = [];
+    const twoWaits = handler({
+      name: "two-waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        await ctx.sequencer!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "first?" } as never);
+        await ctx.sequencer!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "second?" } as never);
+        seen.push(JSON.stringify(ctx.sequencer!.state));
+        return null;
+      }
+    });
+    const block = sequencer({ name: "s", stateSchema: z.object({ asked: z.number().default(0) }) }).step(twoWaits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "a" })).status).toBe(202);
+    await h.drain();
+    const [second] = (await h.provider.listSuspended({ status: "pending" })).filter((g) => g.requestId === requestId);
+    expect(second!.message).toBe("second?");
+    expect((await answerRoute(h, requestId, { suspensionId: second!.suspensionId, action: "submit", data: "b" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([JSON.stringify({ asked: 2 })]);
+  });
+});
+
+describe("a state write before the wait that no checkpoint holds", () => {
+  // Only the sequencer whose checkpoint the resume restores already holds
+  // the waiting block's earlier writes. Any other state (a handler's own
+  // container, rebuilt from its defaults) needs the re-run's writes.
+  it("a handler's own state, written before the wait, reads its write after the answer", async () => {
+    const seen: unknown[] = [];
+    const counted = handler({
+      name: "counted",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      stateSchema: z.object({ asked: z.number().default(0) }),
+      execute: async (_input, ctx) => {
+        await ctx.self!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        seen.push((ctx.self!.state as { asked: number }).asked);
+        return null;
+      }
+    });
+    const flow = defineFlow({ kind: "asking", actions: { run: { block: sequencer({ name: "s" }).step(counted) } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "a" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([1]);
+  });
+
+  it("a sequencer's own .map that writes and waits restores its checkpoint and counts once", async () => {
+    const seen: unknown[] = [];
+    const block = sequencer({ name: "s", stateSchema: z.object({ asked: z.number().default(0) }) })
+      .map(async (_input, ctx) => {
+        await ctx.sequencer!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        seen.push((ctx.sequencer!.state as { asked: number }).asked);
+        return null;
+      });
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "a" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([1]);
+  });
+});
+
+describe("a state write before the wait, from code around the waiting block", () => {
+  const counter = () =>
+    handler({
+      name: "wait",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => ctx.suspendForUser({ kind: "input", prompt: "?" } as never)
+    });
+
+  it("a connector's write before its block waits applies once", async () => {
+    const seen: unknown[] = [];
+    const block = sequencer({ name: "s", stateSchema: z.object({ asked: z.number().default(0) }) })
+      .step(async (input: unknown, ctx) => {
+        await ctx.sequencer!.incState({ asked: 1 });
+        return input;
+      }, counter())
+      .map((_input, ctx) => {
+        seen.push((ctx.sequencer!.state as { asked: number }).asked);
+        return null;
+      });
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "a" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([1]);
+  });
+
+  it("a transient field written before the wait is written again, since no checkpoint holds it", async () => {
+    const seen: unknown[] = [];
+    const waits = handler({
+      name: "waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        await ctx.sequencer!.patchState({ ephemeral: "rebuilt", asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        seen.push(ctx.sequencer!.state);
+        return null;
+      }
+    });
+    const block = sequencer({
+      name: "s",
+      stateSchema: z.object({ asked: z.number().default(0), ephemeral: transientSlot(z.string().default("empty")) })
+    }).step(waits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "a" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([{ asked: 1, ephemeral: "rebuilt" }]);
+  });
+
+  it("a crash after the answer was logged replays the step's increment once", async () => {
+    const seen: unknown[] = [];
+    const waits = handler({
+      name: "waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        await ctx.sequencer!.incState({ asked: 1 });
+        const answer = await ctx.suspendForUser({ kind: "approval", prompt: "Ship?" } as never);
+        seen.push([(ctx.sequencer!.state as { asked: number }).asked, answer]);
+        return null;
+      }
+    });
+    const block = sequencer({ name: "s", stateSchema: z.object({ asked: z.number().default(0) }) }).step(waits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    await crashAfterAudit(h, requestId, gate, { status: "approved", resolution: "approved", resolvedBy: USER } as never);
+    await h.deps.continueRequest({ requestId } as never);
+    await h.drain();
+    expect(seen).toEqual([[1, { cancelled: false, approved: true }]]);
+  });
+});
+
+describe("writes after the resume, on a restored sequencer, are live", () => {
+  // The resume settles the restored state once the re-run reaches the wait it
+  // stopped at. Every write after that point is new and must apply, whatever
+  // form it takes.
+  it("a keyed update after the answer applies", async () => {
+    const seen: unknown[] = [];
+    const waits = handler({
+      name: "waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        await ctx.sequencer!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        await ctx.sequencer!.patchState("count", (current: number) => current + 1);
+        seen.push(ctx.sequencer!.state);
+        return null;
+      }
+    });
+    const block = sequencer({
+      name: "s",
+      stateSchema: z.object({ asked: z.number().default(0), count: z.number().default(0) })
+    }).step(waits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "ok" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([{ asked: 1, count: 1 }]);
+  });
+
+  it("a step that reads the restored state and skips its wait still writes after it", async () => {
+    const seen: unknown[] = [];
+    const waitsOnce = handler({
+      name: "waits-once",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        const state = ctx.sequencer!.state as { prompted: boolean };
+        if (!state.prompted) {
+          await ctx.sequencer!.patchState({ prompted: true });
+          await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        }
+        await ctx.sequencer!.incState({ finished: 1 });
+        seen.push(ctx.sequencer!.state);
+        return null;
+      }
+    });
+    const block = sequencer({
+      name: "s",
+      stateSchema: z.object({ prompted: z.boolean().default(false), finished: z.number().default(0) })
+    }).step(waitsOnce);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "ok" })).status).toBe(202);
+    await h.drain();
+    expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+    expect(seen).toEqual([{ prompted: true, finished: 1 }]);
+  });
+
+  it("a field the re-run adds before the wait, which the saved state lacks, is gone after the answer", async () => {
+    const seen: unknown[] = [];
+    const waits = handler({
+      name: "waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        const state = ctx.sequencer!.state as { last?: string };
+        if (state.last !== undefined) await ctx.sequencer!.patchState({ previous: state.last });
+        await ctx.sequencer!.patchState({ last: "new" });
+        await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        seen.push(ctx.sequencer!.state);
+        return null;
+      }
+    });
+    const block = sequencer({
+      name: "s",
+      stateSchema: z.object({ last: z.string().optional(), previous: z.string().optional() })
+    }).step(waits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "ok" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([{ last: "new" }]);
+  });
+
+  it("a request parked before checkpoints were taken at the wait keeps the re-run's write", async () => {
+    // Such a request's checkpoint is the one written when the step before the
+    // wait ended: it lacks the waiting step's write, so the re-run's is the
+    // only copy and no reset may drop it.
+    const seen: unknown[] = [];
+    const waits = handler({
+      name: "waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        await ctx.sequencer!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        seen.push(ctx.sequencer!.state);
+        return null;
+      }
+    });
+    const block = sequencer({ name: "s", stateSchema: z.object({ asked: z.number().default(0) }) }).step(waits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    const saved = await h.stores.checkpoints.latest(requestId, gate.blockInstanceId);
+    expect(saved?.suspensionId).toBe(gate.suspensionId);
+    const { suspensionId: _taken, ...legacy } = saved!;
+    await h.stores.checkpoints.write({ ...legacy, stepIndex: -1, state: { asked: 0 } });
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "ok" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([{ asked: 1 }]);
+  });
+
+  it("a field removed before the wait stays removed though its schema has a default", async () => {
+    const seen: unknown[] = [];
+    const waits = handler({
+      name: "waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        await ctx.sequencer!.setState({ asked: 1 } as never);
+        await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        seen.push(ctx.sequencer!.state);
+        return null;
+      }
+    });
+    const block = sequencer({
+      name: "s",
+      stateSchema: z.object({ asked: z.number(), optional: z.string().optional() }).default({ asked: 0, optional: "empty" })
+    }).step(waits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "ok" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([{ asked: 1 }]);
+  });
+
+  it("saves the checkpoint taken at the wait only after the wait is in the log", async () => {
+    // Saved before it, a crash in between would leave a checkpoint holding
+    // the step's writes with no logged gate to settle them at, and the
+    // re-run would count them twice.
+    const order: string[] = [];
+    const waits = handler({
+      name: "waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        await ctx.sequencer!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        return null;
+      }
+    });
+    const block = sequencer({ name: "s", stateSchema: z.object({ asked: z.number().default(0) }) }).step(waits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const write = h.stores.checkpoints.write.bind(h.stores.checkpoints);
+    h.stores.checkpoints.write = async (checkpoint) => {
+      if (checkpoint.suspensionId !== undefined) order.push("checkpoint at the wait");
+      return write(checkpoint);
+    };
+    const flushItems = h.stores.request.flushItems.bind(h.stores.request);
+    h.stores.request.flushItems = async (id) => {
+      const record = await h.stores.request.get(id);
+      if (record?.items?.some((item) => item.type === "suspension") === true) order.push("wait logged");
+      return flushItems(id);
+    };
+    await park(h, flow, {});
+    expect(order[0]).toBe("wait logged");
+    expect(order).toContain("checkpoint at the wait");
+  });
+
+  it("a checkpoint taken at an earlier wait settles at that wait, not at the one the step stopped at last", async () => {
+    // A crash after the second wait is logged but before its checkpoint is
+    // saved leaves the first wait's checkpoint as the latest. Settling it at
+    // the second wait would drop the write made between the two.
+    const seen: unknown[] = [];
+    const waits = handler({
+      name: "waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        await ctx.sequencer!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "first?" } as never);
+        await ctx.sequencer!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "second?" } as never);
+        seen.push(ctx.sequencer!.state);
+        return null;
+      }
+    });
+    const block = sequencer({ name: "s", stateSchema: z.object({ asked: z.number().default(0) }) }).step(waits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    const first = (await h.stores.checkpoints.latest(requestId, gate.blockInstanceId))!;
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "a" })).status).toBe(202);
+    await h.drain();
+    const [second] = (await h.provider.listSuspended({ status: "pending" })).filter((s) => s.requestId === requestId);
+    const latest = (await h.stores.checkpoints.latest(requestId, gate.blockInstanceId))!;
+    await h.stores.checkpoints.write({ ...first, version: latest.version + 1 });
+    expect((await answerRoute(h, requestId, { suspensionId: second!.suspensionId, action: "submit", data: "b" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([{ asked: 2 }]);
+  });
+
+  it("replaying a completed step before the wait leaves the checkpoint taken at the wait in place", async () => {
+    // A crash between the replay of an earlier step and the gate restores
+    // from whatever checkpoint is latest. If the replay overwrote the one
+    // taken at the wait with an unmarked one, that restore would skip the
+    // reset and count the waiting step's write twice.
+    let h: ReturnType<typeof harness> | undefined;
+    let requestId = "";
+    let key = "";
+    let runs = 0;
+    const midReplay: unknown[] = [];
+    const done = handler({ name: "done", inputSchema: z.any(), outputSchema: z.any(), execute: (input) => input });
+    const waits = handler({
+      name: "waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        runs += 1;
+        if (runs === 2) {
+          await new Promise((settle) => setTimeout(settle, 20));
+          const latest = await h!.stores.checkpoints.latest(requestId, key);
+          midReplay.push({ suspensionId: latest?.suspensionId, state: latest?.state });
+        }
+        await ctx.sequencer!.incState({ asked: 1 });
+        await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        return null;
+      }
+    });
+    const block = sequencer({ name: "s", stateSchema: z.object({ asked: z.number().default(0) }) }).step(done).step(waits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    h = harness(flow);
+    const parked = await park(h, flow, {});
+    requestId = parked.requestId;
+    key = parked.gate.blockInstanceId;
+    expect((await answerRoute(h, requestId, { suspensionId: parked.gate.suspensionId, action: "submit", data: "ok" })).status).toBe(202);
+    await h.drain();
+    expect(midReplay).toEqual([{ suspensionId: parked.gate.suspensionId, state: { asked: 1 } }]);
+  });
+
+  it("a transient field the re-run removed before the wait stays removed", async () => {
+    const seen: unknown[] = [];
+    const waits = handler({
+      name: "waits",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_input, ctx) => {
+        await ctx.sequencer!.setState({ asked: 1 } as never);
+        await ctx.suspendForUser({ kind: "input", prompt: "?" } as never);
+        seen.push(ctx.sequencer!.state);
+        return null;
+      }
+    });
+    const block = sequencer({
+      name: "s",
+      stateSchema: z.object({ asked: z.number().default(0), ephemeral: transientSlot(z.string().default("empty")) })
+    }).step(waits);
+    const flow = defineFlow({ kind: "asking", actions: { run: { block } } })({ id: "asking" });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, {});
+    expect((await answerRoute(h, requestId, { suspensionId: gate.suspensionId, action: "submit", data: "ok" })).status).toBe(202);
+    await h.drain();
+    expect(seen).toEqual([{ asked: 1 }]);
   });
 });
 

@@ -259,6 +259,31 @@ const requests = await fsd.sessions.requests("sess_1", {
 
 A request whose history window had dropped earlier turns carries `historyStart: { requestId }`, the oldest earlier turn its history window still held. Draw a divider above that turn: the turns before it were out of the model's view, or in the summary on a flow with a [history summary](https://flow-state.dev/docs/advanced/generator-context#summarizing-turns-past-the-window). It's absent while every earlier turn was in the window. Guard with `== null`.
 
+### Reading a long session from its end
+
+A session's items come back oldest first, so a conversation that has run for
+days is best read from its end. `readSessionTail` reads the newest page,
+`readSessionEarlier` adds earlier items when someone asks for them (a *Load
+earlier* button), and `refreshSessionWindow` reads the window again for a view
+with no live feed.
+
+```ts
+import { readSessionEarlier, readSessionTail, refreshSessionWindow } from "@flow-state-dev/client";
+
+let window = await readSessionTail(fsd.sessions, "sess_1", { itemTypes: ["message"] });
+// window.items: the newest 200 items, oldest first. window.hasEarlier: show "Load earlier".
+window = await readSessionEarlier(fsd.sessions, window);
+// Later, with no stream to follow: new items, and any stored among the ones shown.
+window = await refreshSessionWindow(fsd.sessions, window);
+```
+
+Every read runs from the window's start to the session's end. A reply is stored
+while it is still being written and finishes in place, and an item can be
+stored behind ones already shown; a read of only what came after the old end
+would miss both. Pass
+`window.at` and `window.sessionCreatedAt` to `fsd.sessions.stream` to follow
+the session from there instead.
+
 ### Listing one flow's sessions
 
 Where a flow's sessions are filed depends on how the flow was declared, so `sessionQueryFor` reads the flow list and builds the right filter:

@@ -17,6 +17,7 @@ import {
   type FlowNavigatorSection,
 } from "@flow-state-dev/react";
 import { createClient, type ClientFetch } from "@flow-state-dev/client";
+import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
 import { Button } from "@/components/ui/button";
 import { Menu, MessageSquareText, Package, Plus, RotateCcw, Users, Wrench, X } from "lucide-react";
 
@@ -140,50 +141,96 @@ export default function Page() {
 }
 
 function PageInner() {
-  // Every caller of this app is the same user (`lib/kitchen-sink-principal.ts`),
-  // so parallel E2E scenarios cannot be kept apart by user. Under E2E test mode
-  // only, `?e2eSession=<id>` opens the assistant on that session instead of the
-  // user's most recent one, and each test brings its own. The env var is
-  // `NEXT_PUBLIC_*` so the gate evaluates on the client; production builds
-  // ignore the parameter.
+  // `?session=<id>` names the conversation the page opens on: the assistant's,
+  // or a coordinator's or a worker's from the rail. A reload or a link reopens
+  // it, and each E2E test opens its own this way, since every caller of this
+  // app is the same user (`lib/kitchen-sink-principal.ts`). Read once, at load;
+  // the page keeps the address on what is open from then on.
   const searchParams = useSearchParams();
-  const e2eSessionId =
-    process.env.NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE === "1"
-      ? searchParams.get("e2eSession")
-      : null;
+  const [namedSessionId] = useState(() => searchParams.get(SESSION_ADDRESS_PARAM)?.trim() || null);
   // The goal control `no-live` opens the rail's panels without following their
   // session, so a goal check can be seen to fail without it.
   const pickedLive = pageGoalControl(searchParams) !== "no-live";
   return (
     <FlowProvider flowKind="chat-agent" userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAgentRenderers}>
-      <KitchenSinkApp e2eSessionId={e2eSessionId} pickedLive={pickedLive} />
+      <KitchenSinkApp namedSessionId={namedSessionId} pickedLive={pickedLive} />
     </FlowProvider>
   );
 }
 
-function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | null; pickedLive: boolean }) {
+/** How an address write lands in history: a user's pick adds a Back step; a default or a fallback does not. */
+type AddressWrite = "push" | "replace";
+
+/** Put the open conversation in the page's address, leaving any other parameter alone. */
+function writeSessionAddress(sessionId: string, how: AddressWrite): void {
+  const url = new URL(window.location.href);
+  url.searchParams.set(SESSION_ADDRESS_PARAM, sessionId);
+  if (url.href === window.location.href) return;
+  if (how === "push") window.history.pushState(null, "", url);
+  else window.history.replaceState(window.history.state, "", url);
+}
+
+function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string | null; pickedLive: boolean }) {
   // The page's one client, as the app's user: the rail, the workforce panels and request statuses read through it.
   const fsd = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "", fetcher: panelFetch }), []);
   // The assistant's own sessions, and which one the stream is on. The rail's
   // navigator reads the flow list once more for itself: one extra read per
-  // page, never one per row. A test's own session, when one is named, is the
-  // only one selected: the hook neither picks the latest nor creates another.
+  // page, never one per row.
   const flow = useFlow({
-    autoCreateSession: e2eSessionId === null,
-    // Chosen below instead, so a test's own session is never replaced, and an
+    autoCreateSession: true,
+    // Chosen below instead, so the address's session is never replaced, and an
     // earlier page's hire session is never the one opened.
     autoSelectSession: false,
   });
   const { selectSession, createSession } = flow;
-  // The conversation the stream opens on: the test's own when one is named;
-  // otherwise the most recent that is not an earlier page's hire session, and a
-  // new one when there is none. An empty list is `useFlow`'s to fill.
+  const [picked, setPicked] = useState<PickedSession | null>(null);
+  // How the next address write lands: a pick adds a Back step, anything else replaces.
+  const how = useRef<AddressWrite>("replace");
+  // The session the address names, until its record says whose it is: the
+  // assistant's opens in the stream, any other flow's in the picked panel. One
+  // that is gone leaves the defaults below, and the address drops it.
+  const [resolving, setResolving] = useState<string | null>(namedSessionId);
+  useEffect(() => {
+    if (resolving === null) return;
+    let current = true;
+    fsd.sessions.get(resolving).then(
+      (detail) => {
+        if (!current) return;
+        if (detail.flowKind === SHELL_FLOW) {
+          selectSession(detail.id);
+          setPicked(null);
+        } else {
+          setPicked({ sessionId: detail.id, kind: detail.flowKind, address: detail.flowId ?? detail.flowKind });
+        }
+        setResolving(null);
+      },
+      () => {
+        // Gone: the assistant's conversation, not whichever was open before.
+        if (!current) return;
+        setPicked(null);
+        setResolving(null);
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [fsd, resolving, selectSession]);
+  // Back and Forward: open what the address names now.
+  useEffect(() => {
+    const onPop = () => {
+      how.current = "replace";
+      const named = new URLSearchParams(window.location.search).get(SESSION_ADDRESS_PARAM)?.trim();
+      if (named) setResolving(named);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  // The conversation the stream opens on, once the address's is placed: the
+  // most recent that is not an earlier page's hire session, and a new one when
+  // there is none. An empty list is `useFlow`'s to fill.
   const isCreatingSession = useRef(false);
   useEffect(() => {
-    if (e2eSessionId !== null) {
-      selectSession(e2eSessionId);
-      return;
-    }
+    if (resolving !== null) return;
     if (flow.activeSessionId !== undefined || flow.sessions.length === 0 || isCreatingSession.current) return;
     const latest = defaultConversation(flow.sessions);
     if (latest !== undefined) {
@@ -194,7 +241,14 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
     void createSession().finally(() => {
       isCreatingSession.current = false;
     });
-  }, [e2eSessionId, flow.activeSessionId, flow.sessions, selectSession, createSession]);
+  }, [resolving, flow.activeSessionId, flow.sessions, selectSession, createSession]);
+  // Keep the address on the open conversation: the picked one, or the assistant's.
+  const openSessionId = picked?.sessionId ?? flow.activeSessionId;
+  useEffect(() => {
+    if (resolving !== null || openSessionId === undefined) return;
+    writeSessionAddress(openSessionId, how.current);
+    how.current = "replace";
+  }, [resolving, openSessionId]);
   const session = useSession(flow.activeSessionId, { items: true, autoResume: true });
 
   const [message, setMessage] = useSessionDraft(flow.activeSessionId);
@@ -205,7 +259,6 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("chat");
   const [isRailDrawerOpen, setIsRailDrawerOpen] = useState(false);
   const [isTeamSheetOpen, setIsTeamSheetOpen] = useState(false);
-  const [picked, setPicked] = useState<PickedSession | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     if (typeof window === "undefined") return SIDEBAR_DEFAULT_WIDTH;
     const stored = sessionStorage.getItem(SIDEBAR_STORAGE_KEY);
@@ -360,7 +413,10 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
 
   const handleNewSession = useCallback(
     async (leaf: FlowNavigatorLeafState) => {
+      // Set before the await: the new session can be drawn before it returns.
+      how.current = "push";
       await flow.createSession();
+      setResolving(null);
       setPicked(null);
       leaf.refresh();
       setIsRailDrawerOpen(false);
@@ -374,6 +430,8 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
   const handleTalk = useCallback(
     async (worker: RosterEntry) => {
       const conversation = await workforce.ensureWorkerSession({ worker: worker.id });
+      how.current = "push";
+      setResolving(null);
       setPicked({ sessionId: conversation.id, kind: conversation.flowKind, address: conversation.flowKind });
       setMobilePanel("chat");
     },
@@ -382,6 +440,9 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
 
   const handleSelectSession = useCallback(
     (id: string, leaf: FlowNavigatorLeaf) => {
+      how.current = "push";
+      // A pick wins over an address still being read.
+      setResolving(null);
       if (leaf.kind === SHELL_FLOW) {
         flow.selectSession(id);
         setPicked(null);

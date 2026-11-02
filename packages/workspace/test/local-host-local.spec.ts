@@ -9,7 +9,7 @@
  * upstream, and one fetch of it (`local-host-upstream.spec.ts`); a retry
  * fetches nothing. Every git process is counted, as in the remote suite.
  */
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { run } from "../src/exec";
@@ -183,6 +183,22 @@ describe("a repository on this machine with kept files beside it", () => {
     expect(again.repo?.created).toBe(false);
     expect(readFileSync(join(again.cwd, "wip.txt"), "utf8")).toBe("half done");
     expect(readFileSync(join(again.filesDir!, "note.md"), "utf8")).toBe("kept");
+  });
+
+  it("lists and removes a place whose whole directory went missing as the place it was made, not its checkout/", async () => {
+    const { answer } = withFiles();
+    const h = host();
+    const place = await h.provision(answer, { place: ["owner"], branch: "fsd/owner" });
+    await h.release(place);
+    // Kept files gone with it: only git's own record says how the place was laid out.
+    renameSync(place.dir, `${place.dir}-moved`);
+
+    const listed = await h.list!();
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatchObject({ place: ["owner"], dir: place.dir, cwd: place.cwd });
+
+    await h.remove!({ place: ["owner"] });
+    expect(worktreesOf(repo)).not.toContain(place.cwd);
   });
 
   it("keeps a place with no kept files exactly as before: the place is the checkout (BR-12)", async () => {

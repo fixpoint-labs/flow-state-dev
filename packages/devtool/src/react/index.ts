@@ -15,4 +15,6 @@ export {
   hasInjectedUserId,
   readSessionAddress,
   SESSION_ADDRESS_PARAM,
+  readDevtoolUrl,
+  traceHref,
 } from "./config";

@@ -74,6 +74,7 @@ export {
   HARNESS_FEATURE_KEY,
   namesHarnessFeature,
   harnessFeatureOf,
+  harnessFeatureSchema,
   harnessClaimSchema,
   harnessManagerInputSchema,
   harnessJudgeInputSchema,
@@ -122,17 +123,45 @@ export {
   harnessSessionFlow,
   harnessSessionFeeds,
   harnessSessionTitle,
+  harnessSessionStartSchema,
   harnessSessionStateSchema,
+  harnessSessionWorkspaceRecordSchema,
   harnessTurnRecordSchema,
+  resolveHarnessSessionStart,
   HARNESS_SESSION_FAILED_OUTCOME,
   HARNESS_SESSION_MODEL_REQUIRED,
+  HARNESS_SESSION_ISSUE_REFUSED,
+  HARNESS_SESSION_REMOVE_UNSUPPORTED,
+  HARNESS_SESSION_REMOVE_NOT_OWNER,
+  HARNESS_SESSION_ATTACH_MISSING,
+  HARNESS_SESSION_ATTACH_NOT_YOURS,
+  HARNESS_SESSION_ATTACH_NOT_PROVISIONED,
+  HARNESS_SESSION_ATTACHED_BRANCH_CHANGED,
+  harnessSessionAttachedTo,
+  HARNESS_SESSION_START_INVALID,
   type HarnessSessionFeeds,
   type HarnessSessionFlowOptions,
   type HarnessSessionPlace,
+  type HarnessSessionProvisioned,
+  type HarnessSessionProvisionRequest,
+  type HarnessSessionStart,
   type HarnessSessionState,
   type HarnessSessionWorkspace,
+  type HarnessSessionWorkspaceRecord,
+  type ResolvedHarnessSessionStart,
   type HarnessTurnRecord,
 } from "./session-flow";
+
+// ── The issue a coding run is for, and its spec brief ───────────────────
+export {
+  defaultIssueSpecPath,
+  isTrackerIssue,
+  ISSUE_SPEC_MAX_BYTES,
+  readIssueSpecSection,
+  TRACKER_ISSUE_REFUSED,
+  type IssueSpecOption,
+  type IssueSpecOptions,
+} from "./issue-spec";
 // ── A scripted harness for model-free checks ────────────────────────────────
 export {
   harnessStub,
@@ -246,3 +275,6 @@ export {
 // that act on them are `@flow-state-dev/harness-manager/checkout` — see that
 // module for why the split is an entry point rather than a comment.
 export type { OwnershipBounds, WorkspaceConfig } from "./workspace";
+
+// Where a run's work went, from a task's output or a worktree row. Browser-safe; FIX-2385's `./browser` entry re-exports it.
+export { shellWord, workPlace, type WorkPlace, type WorkPlaceCommands, type WorkPlaceViewer } from "./work-place";
