@@ -17,7 +17,7 @@
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { SessionsApi } from "../client";
 import type { SessionStateSnapshotResponse } from "../types";
-import { readSessionHistory } from "./session-history";
+import { readSessionHistory, SESSION_HISTORY_READ_ATTEMPTS } from "./session-history";
 
 /** Items a window reads from the newest end, and adds per {@link readSessionEarlier}. */
 export const SESSION_WINDOW_PAGE = 200;
@@ -80,16 +80,21 @@ export async function readSessionTail(
 ): Promise<SessionItemsWindow> {
   const limit = options.limit ?? SESSION_WINDOW_PAGE;
   const { itemTypes } = options;
-  const first = await source.state(sessionId, {
-    includeItems: true,
-    offset: 0,
-    limit,
-    ...(itemTypes === undefined ? {} : { itemTypes: [...itemTypes] })
-  });
-  if (first.pagination?.hasMore !== true) return windowOf(sessionId, itemTypes, 0, first);
-  // Read on to wherever the end is by then: the session may have grown.
-  const start = Math.max(0, first.pagination.total - limit);
-  return windowOf(sessionId, itemTypes, start, await readSessionHistory(source, sessionId, { itemTypes, offset: start, pageLimit: limit }));
+  for (let attempt = 1; attempt <= SESSION_HISTORY_READ_ATTEMPTS; attempt += 1) {
+    const first = await source.state(sessionId, {
+      includeItems: true,
+      offset: 0,
+      limit,
+      ...(itemTypes === undefined ? {} : { itemTypes: [...itemTypes] })
+    });
+    if (first.pagination?.hasMore !== true) return windowOf(sessionId, itemTypes, 0, first);
+    // Read on to wherever the end is by then: the session may have grown.
+    const start = Math.max(0, first.pagination.total - limit);
+    const read = await readSessionHistory(source, sessionId, { itemTypes, offset: start, pageLimit: limit });
+    // A session deleted and created again between the two calls: its end is somewhere else.
+    if (read.sessionCreatedAt === first.sessionCreatedAt) return windowOf(sessionId, itemTypes, start, read);
+  }
+  throw new Error(`Session ${sessionId} was created again during each of ${SESSION_HISTORY_READ_ATTEMPTS} reads of its end; try again.`);
 }
 
 /**

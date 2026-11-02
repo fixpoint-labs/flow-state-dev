@@ -96,6 +96,40 @@ describe("readSessionTail", () => {
     expect(window).toMatchObject({ start: 200, total: 303 });
   });
 
+  it("reads the new session's end when the session is created again between its two calls", async () => {
+    const live = session(range(0, 500));
+    const state = live.source.state;
+    let created = 1;
+    // After the size call, the session is deleted and created again with three items.
+    live.source.state = vi.fn(async (...args: Parameters<typeof state>) => {
+      const answer = { ...(await state(...args)), sessionCreatedAt: created };
+      if (live.source.state.mock.calls.length === 1) {
+        live.items.splice(0, live.items.length, ...range(0, 3));
+        created = 2;
+      }
+      return answer;
+    });
+
+    const window = await readSessionTail(live.source, "s1");
+
+    expect(window).toMatchObject({ start: 0, total: 3, hasEarlier: false, sessionCreatedAt: 2 });
+    expect(ids(window.items)).toEqual(ids(range(0, 3)));
+  });
+
+  it("still reaches the newest item with a one-item limit when an item lands between its calls", async () => {
+    const live = session(range(0, 2));
+    const state = live.source.state;
+    live.source.state = vi.fn(async (...args: Parameters<typeof state>) => {
+      const answer = await state(...args);
+      if (live.source.state.mock.calls.length === 1) live.items.push(message(2));
+      return answer;
+    });
+
+    const window = await readSessionTail(live.source, "s1", { limit: 1 });
+
+    expect(window.items.at(-1)?.id).toBe("item_2");
+  });
+
   it("asks for the item types on every call, so positions count only those", async () => {
     const mixed = [...range(0, 5).map((item, i) => (i % 2 === 0 ? item : message(100 + i, "reasoning")))];
     const { source } = session(mixed);

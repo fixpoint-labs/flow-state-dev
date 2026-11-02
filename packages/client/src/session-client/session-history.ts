@@ -50,7 +50,8 @@ export async function readSessionHistory(
   sessionId: string,
   options: ReadSessionHistoryOptions = {}
 ): Promise<SessionStateSnapshotResponse> {
-  const limit = options.pageLimit ?? SESSION_HISTORY_PAGE_LIMIT;
+  // A later page starts one item early, so a page of one could never move on.
+  const limit = Math.max(options.pageLimit ?? SESSION_HISTORY_PAGE_LIMIT, 2);
   const attempts = options.attempts ?? SESSION_HISTORY_READ_ATTEMPTS;
   const start = options.offset ?? 0;
   const itemTypes = options.itemTypes === undefined ? undefined : [...options.itemTypes];
