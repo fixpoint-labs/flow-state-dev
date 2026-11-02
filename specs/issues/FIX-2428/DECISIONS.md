@@ -13,7 +13,7 @@ flowchart TD
   D1 -.->|"rejected · a bearer header can't ride a browser socket"| X1["the upgrade request signs in on its own"]
   I --> D2["D2 · no check while the socket is open · it ends after an hour"]
   D2 -.->|"rejected · a store read per notice per viewer"| X2["check again on every notice"]
-  I --> D3["D3 · read on a timer while there is no push, and while the socket is down"]
+  I --> D3["D3 · read on a timer wherever push can miss a change"]
   D3 -.->|"rejected · a dropped socket goes stale with no sign"| X3["read on a timer only when the server has no push"]
 ```
 
@@ -26,7 +26,7 @@ Solid edges are what you are signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | The upgrade request signing in on its own, through the app's principal resolver, as every other route does |
 | **Because** | A browser can't add a header to a WebSocket. Only cookies ride the upgrade, and Shift Manager and the DevTool sign in with a bearer header their client's fetcher adds. The client can't read that header back out of the fetcher, so the client can't move it onto the socket either. A `POST /users/:userId/stream` with the topics goes through that fetcher like any call. The server checks each topic with its scope's route check on that real request (ER-4), and answers with a ticket that names the caller and the granted topics and expires in 30 s. The socket accepts topics only from a ticket. A reconnect mints again, so the check runs on every connect (FIX-1620). FIX-380 answers the same call with its Ably token for the same topics |
-| **Locks in** | One extra request per connect and per added topic. The public route `POST /users/:userId/stream` and its answer shape, which FIX-380 shares. A signing secret: one random key per process by default, and `pushSecret` (or `FSD_PUSH_SECRET`) shared by every process behind one address. Without it a connect that lands on another process is refused, and the hook reads on its timer until a retry lands (D3) |
+| **Locks in** | One extra request per connect and per added topic. The public route `POST /users/:userId/stream` and its answer, one union FIX-380 shares ([below](#decided-not-asked)). A signing secret: one random key per process by default, and `pushSecret` (or `FSD_PUSH_SECRET`) shared by every process behind one address. Without it a connect that lands on another process is refused, and the hook reads on its timer until a retry lands (D3) |
 
 ![D1: how the socket proves who it is. Chosen: a short ticket from the client's fetcher, checked per topic, beside the upgrade signing in on its own. Decides it: an app that signs in with a bearer header. Price: one more request per connect, and a secret for several processes. Locks in the mint route FIX-380 shares; flips if every browser app signs in with cookies](figures/d1-ticket.svg)
 
@@ -52,17 +52,17 @@ It comes down to the cost of a notice: a check before each one is a store read p
 change is itself confidential. Then a check per notice is the price.
 
 <a name="d3"></a>
-## D3 · The hook reads on a timer while the server has no push, and while the socket is down
+## D3 · The hook reads on a timer wherever push can miss a change: no push, the socket down, or a bus that can't cross processes
 
 | | |
 |---|---|
-| **Instead of** | Reading on a timer only when `GET /capabilities` says there is no push |
-| **Because** | A socket on a host with push still drops: a proxy's idle timeout, a deploy, a laptop that sleeps, a ticket that lands on another process. With the timer tied to capabilities alone, the screen goes stale with no sign of it. So `client.subscribe` reads on its timer from the first failed reconnect, the pace `followSession` already treats as lapsed, until the socket is back. Each connect and reconnect calls `onChange` once. The timer lives in `client.subscribe`, not in each hook, so every consumer gets one fallback. This extends epic ER-5's "polls when `GET /capabilities` says there is no push" to a socket that is down; it doesn't replace it |
-| **Locks in** | `pollIntervalMs` on `client.subscribe` and `useSubscription`, a public name. A screen on a push host still costs a read per interval while its socket is down |
+| **Instead of** | Reading on a timer only when `GET /capabilities` says there is no push · a server that sends a synthetic notice at the poll pace where its bus can't cross, so the client needs no `crossing` frame. That adds a server timer per connection, while the client already keeps one for a dropped socket |
+| **Because** | A socket can be up and still miss a change made on another process, when its process's bus doesn't cross processes (the in-memory bus on two processes, a Postgres bus that stopped hearing its ping). FIX-2426 keeps the session stream's timer there; the hook keeps its own the same way. And a socket on a host with push still drops: a proxy's idle timeout, a deploy, a laptop that sleeps, a ticket that lands on another process. With the timer tied to capabilities alone, the screen goes stale with no sign of it. So `client.subscribe` reads on its timer from the first failed reconnect, the pace `followSession` already treats as lapsed, until the socket is back, and while the socket says its bus doesn't cross (an open Ably connection always crosses, [below](#decided-not-asked)). Each connect and reconnect calls `onChange` once. The timer lives in `client.subscribe`, not in each hook, so every consumer gets one fallback. Epic ER-5 says the same |
+| **Locks in** | `pollIntervalMs` on `client.subscribe` and `useSubscription`, a public name. A screen on a push host still costs a read per interval while its socket is down or its bus doesn't cross, which on the in-memory bus is always, even on one process (FIX-2426 D1) |
 
-![D3: when the hook reads on a timer. Chosen: no push, or the socket down, beside no push only. Decides it: a socket that drops on a push host. Price: a read per interval while it is down. Flips if sockets on long-lived hosts never drop](figures/d3-fallback.svg)
+![D3: when the hook reads on a timer. Chosen: wherever push can miss a change, beside no push only. Decides it: a socket that misses a change, dropped or on a bus that cannot cross. Price: a read per interval meanwhile. Flips if push on long-lived hosts never misses a change](figures/d3-fallback.svg)
 
-It comes down to a socket that drops: without the timer, the screen stops changing with no sign.
+It comes down to push that misses a change: without the timer, the screen stops changing with no sign.
 
 ## Decided, not asked
 
@@ -76,15 +76,35 @@ It comes down to a socket that drops: without the timer, the screen stops changi
   from the caller's identity (BP-031), so no one can name another user's or organization's
   scope. A session topic names its session and passes the check `session_stream` uses. A topic
   narrowed to one resource passes its scope's check.
-- **A refused topic looks like an unknown one.** A session the caller can't read gets the answer
-  a missing session gets (`hiddenSessionResponse`), so the mint tells no one which ids exist. The
-  POST joins the engine's user-route scoping table (`user-route-scoping.test.ts`).
+- **The mint answers one union, keyed by transport**, so FIX-380 shares it rather than defining
+  its own: `{ transport: "websocket", ticket, path } | { transport: "ably", tokenRequest, channels }`.
+  Both carry only the granted topics. The union, the Ably arm's shape and its crossing rule
+  (below) are defined here, once; FIX-380 adopts them and owns only the Ably implementation.
+- **A refused topic is absent from the answer**, as a topic for a missing session is: where a
+  route would answer `hiddenSessionResponse`, the mint drops the topic, so it tells no one which
+  ids exist. The client treats an absent topic as refused and tries it again at the poll pace
+  (below). The POST joins the engine's user-route scoping table (`user-route-scoping.test.ts`).
+- **The socket says whether its bus crosses processes.** After the ticket, and on each
+  `onCrossingChange` (FIX-2426), the server sends a `crossing` frame `{ crosses }`. Until the
+  first `crosses: true`, and while it is false, `client.subscribe` reads on its timer as if the
+  socket were down (D3), still running `onChange` on each notice; each change of the answer runs
+  it once, as a connect does. "Doesn't cross until the first frame" is the WebSocket arm's rule.
+  The frame is a delivery control frame, which epic ER-7 admits on the socket; it is never a
+  notice kind.
+  Not a `GET /capabilities` field: the client reads that once, the answer can change at runtime
+  (FIX-2427's ping), and it belongs to the process the socket landed on, not to the host.
+- **On the Ably arm, an open Ably connection counts as crossing.** Ably's bus is the delivery
+  itself, so no frame is sent or awaited: a mint answer with `transport: "ably"` means push
+  covers every process while that connection is up. A dropped Ably connection resumes the timer,
+  as a dropped socket does, and its return runs `onChange` once. FIX-380 builds that arm.
 - **One way to follow a session** (ER-5). `useSession({ live })` follows its own items; a session
   topic on `useSubscription` is for flow `reads`. FIX-2429 moves `liveBoardDriver` onto it.
-- **`GET /capabilities` answers `{ userStream, push }`**, with `push` either
-  `{ transport: "websocket" }` or `null`. A client that gets no `push` field, from an older
+- **`GET /capabilities` answers `{ userStream, push }`**, with `push` one of
+  `{ transport: "websocket" }`, `{ transport: "ably" }` (FIX-380) or `null`. A client that gets no `push` field, from an older
   server, treats it as `null` (BP-030). Both stay: on FIX-380's Ably host `push` is set and
-  `userStream` false. The client branches only on `push`.
+  `userStream` false. The client branches only on `push` to decide whether to mint. Once it
+  mints, the answer's `transport` is authoritative; `capabilities.push.transport` only advertises,
+  and a stale capabilities read that disagrees loses.
 - **`pushSecret` is `string | (() => string)`**, as the webhook verifiers take it. A ticket that
   fails its signature check is logged, not only met by the timer. Signing may use `jose` or a
   similar library; the format is the implementer's within D1.
@@ -94,12 +114,18 @@ It comes down to a socket that drops: without the timer, the screen stops changi
   counted so the last `close()` on a topic unsubscribes it and the last handle closes the socket.
 - **A refused topic is tried again at the poll pace**, not stopped for good, so access given back
   recovers with no remount (FIX-1620).
+- **`pollIntervalMs` omitted means no timer.** The hook then reads on a notice, a connect and a
+  reconnect only, and a refused topic is tried again on reconnect. A view that polls only part
+  of the time passes it then and omits it otherwise; FIX-2429's Shift Manager does, while a task
+  is open.
 - **The socket session lives in the engine; `serve()` only takes the upgrade and moves frames**
   (epic D5), so a later host reuses the check. The `ws` library handles frames in
   `@flow-state-dev/node`.
 - **`client.stream()` goes with no replacement under its name.** The server never served it and
   it carried rows. `UserStreamEvent` and the user-only event types it unions go from
-  `@flow-state-dev/contracts` with it; `StreamEvent` stays, now `RequestStreamEvent`. Changesets
+  `@flow-state-dev/contracts` with it; `StreamEvent` stays, now `RequestStreamEvent`. The new
+  wire types join contracts there: the `crossing` frame (`{ type: "crossing", crosses }`) and
+  the mint answer's union. Changesets
   (minor) for client, react, node, engine (the POST, `push`, no 501), and contracts and core,
   which re-exports its items. The client's
   says: "`fsd.stream()` never worked (501); use `fsd.subscribe()`".
@@ -149,5 +175,11 @@ run a fresh `analysis` before the gate.
   `useSubscription` over the coalesced read. `client.stream()` removed.
 - **Amended (Nov 1)** — a refused topic answers as a missing one; one way to follow a session;
   the contracts types and changesets named; `pushSecret`'s shape; D3 tied to epic ER-5.
+- **Amended (Nov 2)** — the mint's answer as a union FIX-380 shares, a refused topic absent; D3
+  widened to a bus that can't cross processes, which the socket reports in a `crossing` frame
+  (raised by FIX-2429's analysis).
+- **Review (Nov 2, #4511)** — D3 records the server tick it rejects; the `crossing` frame is a
+  control frame under ER-7 and a contracts type; the mint's `transport` is authoritative; the
+  goal check uses FIX-2426's one crossing double and starts its idle window at the first frame.
 
 **Open: none.**

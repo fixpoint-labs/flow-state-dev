@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 330" role="img" aria-label="What changes, in three packages. Browser side: client.subscribe is new and opens one socket per client, reading on a timer when there is no push; useSubscription is new in react; client.stream, the old user stream reader, is removed. Engine: the user-stream route gains a POST that checks each topic with its scope's route check and mints a ticket; the socket session that verifies the ticket and subscribes to the bus is new; capabilities gains a push field; the 501 answer is removed. Node host: serve takes the upgrade on the user-stream route. The bus comes from FIX-2426."
+<svg viewBox="0 0 940 330" role="img" aria-label="What changes, in three packages. Browser side: client.subscribe is new and opens one socket per client, reading on a timer wherever push can miss a change: no push, the socket down, or a bus that does not cross; useSubscription is new in react; client.stream, the old user stream reader, is removed. Engine: the user-stream route gains a POST that checks each topic with its scope's route check and mints a ticket; the socket session that verifies the ticket and subscribes to the bus is new; capabilities gains a push field; the 501 answer is removed. Node host: serve takes the upgrade on the user-stream route. The bus comes from FIX-2426."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -28,7 +28,7 @@
     <text class="t-lbl" x="32" y="36">CLIENT · REACT</text>
     <rect class="new" x="32" y="48" width="258" height="58" rx="5"/>
     <text class="t-b" x="44" y="70">client.subscribe(topics)</text>
-    <text class="t-s" x="44" y="88">one socket per client; a timer without push</text>
+    <text class="t-s" x="44" y="88">one socket; a timer where push can miss</text>
     <rect class="new" x="32" y="118" width="258" height="58" rx="5"/>
     <text class="t-b" x="44" y="140">useSubscription(topics, read)</text>
     <text class="t-s" x="44" y="158">one coalesced read per change</text>
