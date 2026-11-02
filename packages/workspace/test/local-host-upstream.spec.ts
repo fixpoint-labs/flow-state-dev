@@ -201,7 +201,6 @@ describe("a base with no upstream is cut as it is, with no fetch", () => {
     ["a commit id", () => git(repo, "rev-parse", "HEAD")],
     ["a branch that tracks nothing", () => (git(repo, "branch", "-q", "--no-track", "solo"), "solo")],
     ["a branch that tracks another local branch", () => (git(repo, "branch", "-q", "--track", "follows", "main"), "follows")],
-    ["a remote-tracking ref named directly", () => "origin/main"],
   ];
   for (const [what, makeBase] of cases) {
     it(`${what}`, async () => {
@@ -216,6 +215,16 @@ describe("a base with no upstream is cut as it is, with no fetch", () => {
       expect(git(repo, "rev-parse", "refs/heads/fsd/run-1")).toBe(expected);
     });
   }
+
+  it("except a remote-tracking ref named directly, which is the remote's branch as it is now: fetched", async () => {
+    const merged = upstream.commit("main", "merged.txt", "a teammate's merge");
+    spawned.mockClear();
+
+    await provision("origin/main");
+
+    expect(gitCommands()).toContain("fetch");
+    expect(git(repo, "rev-parse", "refs/heads/fsd/run-1")).toBe(merged);
+  });
 
   it("a detached HEAD", async () => {
     git(repo, "checkout", "-q", "--detach");

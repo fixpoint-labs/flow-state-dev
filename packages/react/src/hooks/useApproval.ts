@@ -61,6 +61,33 @@ export function resolveApprovalOutcome(
 }
 
 // ---------------------------------------------------------------------------
+// Extra yeses a stop offers
+// ---------------------------------------------------------------------------
+
+/**
+ * One more way to say yes that a stop offers beside the plain approve: the
+ * label a card shows, and the data the approve sends with it.
+ */
+export type ApprovalOption = {
+  label: string;
+  data?: unknown;
+};
+
+/**
+ * The extra yeses a suspension offers, read off its `data.approveOptions`
+ * (each `{ label, data? }`). Entries that aren't one are left out, and a stop
+ * that lists none offers only the plain approve.
+ */
+export function approveOptionsOf(item: Pick<SuspensionItem, "data">): ApprovalOption[] {
+  const listed = item.data?.approveOptions;
+  if (!Array.isArray(listed)) return [];
+  return listed.filter(
+    (option): option is ApprovalOption =>
+      option !== null && typeof option === "object" && typeof (option as { label?: unknown }).label === "string"
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
 
@@ -83,10 +110,20 @@ export type UseApprovalOptions = {
 
 /** Return value of {@link useApproval}. */
 export type UseApprovalResult = {
-  /** Approve the suspension. No-op while resolving or already resolved. */
+  /**
+   * Approve the suspension. No-op while resolving or already resolved. Takes
+   * no argument, so it can be a click handler as it is.
+   */
   approve: () => void;
   /** Reject the suspension. No-op while resolving or already resolved. */
   reject: () => void;
+  /**
+   * Approve, sending `data` with the yes (an {@link ApprovalOption}'s data,
+   * say). The same guards as {@link approve}.
+   */
+  approveWith: (data: unknown) => void;
+  /** Reject, sending `data` with the no (a note, say). The same guards as {@link reject}. */
+  rejectWith: (data: unknown) => void;
   /** The action currently in flight, or null. Each label can show its own progress. */
   pendingAction: "approve" | "reject" | null;
   /** True while a resume call is in flight. */
@@ -152,7 +189,7 @@ export function useApproval(
   }, []);
 
   const handleAction = useCallback(
-    async (action: "approve" | "reject") => {
+    async (action: "approve" | "reject", data?: unknown) => {
       // Guard re-entry directly, not just via a disabled attribute: between the
       // click and the re-render that flips `pendingAction`, a second click (or a
       // programmatic call) would otherwise fire a duplicate resume and 409.
@@ -167,14 +204,15 @@ export function useApproval(
       try {
         if (handler !== undefined) {
           // Override path: the caller owns the resume call and its in-flight state.
-          await handler();
+          await handler(data);
         } else if (streamingResolve !== null) {
           // Streaming path: resolve through the session that owns the live stream,
           // so the continuation renders into the chat view without a refresh.
           await streamingResolve({
             suspensionId: item.suspensionId,
             requestId: item.requestId,
-            action
+            action,
+            ...(data !== undefined ? { data } : {})
           });
         } else {
           // Self-contained fallback: non-streaming fire-and-forget resume.
@@ -182,6 +220,7 @@ export function useApproval(
           await fsd.flow(flowKind!).request(item.requestId).resume({
             suspensionId: item.suspensionId,
             action,
+            ...(data !== undefined ? { data } : {}),
             resumedBy: userId
           });
         }
@@ -199,6 +238,8 @@ export function useApproval(
 
   const approve = useCallback(() => { void handleAction("approve"); }, [handleAction]);
   const reject = useCallback(() => { void handleAction("reject"); }, [handleAction]);
+  const approveWith = useCallback((data: unknown) => { void handleAction("approve", data); }, [handleAction]);
+  const rejectWith = useCallback((data: unknown) => { void handleAction("reject", data); }, [handleAction]);
 
   // Prefer the action this hook took; otherwise the supplied resolution.
   const resolvedStatus: SuspensionStatus | undefined =
@@ -208,7 +249,9 @@ export function useApproval(
 
   return {
     approve,
+    approveWith,
     reject,
+    rejectWith,
     pendingAction,
     isResolving,
     error,

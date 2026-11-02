@@ -122,15 +122,31 @@ export {
   harnessSessionFlow,
   harnessSessionFeeds,
   harnessSessionTitle,
+  harnessSessionStartSchema,
   harnessSessionStateSchema,
+  harnessSessionWorkspaceRecordSchema,
   harnessTurnRecordSchema,
+  resolveHarnessSessionStart,
   HARNESS_SESSION_FAILED_OUTCOME,
   HARNESS_SESSION_MODEL_REQUIRED,
+  HARNESS_SESSION_REMOVE_UNSUPPORTED,
+  HARNESS_SESSION_REMOVE_NOT_OWNER,
+  HARNESS_SESSION_ATTACH_MISSING,
+  HARNESS_SESSION_ATTACH_NOT_YOURS,
+  HARNESS_SESSION_ATTACH_NOT_PROVISIONED,
+  HARNESS_SESSION_ATTACHED_BRANCH_CHANGED,
+  harnessSessionAttachedTo,
+  HARNESS_SESSION_START_INVALID,
   type HarnessSessionFeeds,
   type HarnessSessionFlowOptions,
   type HarnessSessionPlace,
+  type HarnessSessionProvisioned,
+  type HarnessSessionProvisionRequest,
+  type HarnessSessionStart,
   type HarnessSessionState,
   type HarnessSessionWorkspace,
+  type HarnessSessionWorkspaceRecord,
+  type ResolvedHarnessSessionStart,
   type HarnessTurnRecord,
 } from "./session-flow";
 // ── A scripted harness for model-free checks ────────────────────────────────
@@ -140,7 +156,29 @@ export {
   type HarnessStubMcpTools,
   type HarnessStubOptions,
   type StubRun,
+  type StubToolCall,
+  type StubToolCallRecord,
 } from "./harness-stub";
+// ── A run's tool calls, approved by a person (`approveTools`) ───────────────
+// Exported for a flow other than the manager to compose the same wait.
+export {
+  ALLOW_FOR_RUN,
+  MAX_APPROVAL_STEPS,
+  grantMatches,
+  heldToolCallOf,
+  heldToolCallSchema,
+  heldToolDecision,
+  toolApprovalOutcome,
+  toolApprovalStop,
+  toolApprovalYesSchema,
+  toolGrantSchema,
+  type HarnessToolApprovalDecision,
+  type HarnessToolApprovalHook,
+  type HarnessToolApprovalRequest,
+  type HeldToolCall,
+  type ToolApprovalOutcome,
+  type ToolGrant,
+} from "./tool-approval";
 // ── The upgrade's one-off step for lines the coding door kept ───────────────
 export { upgradeKeptTurns, type KeptTurnUpgradeOptions, type KeptTurnUpgradeStores } from "./upgrade-kept-turns";
 
@@ -224,3 +262,6 @@ export {
 // that act on them are `@flow-state-dev/harness-manager/checkout` — see that
 // module for why the split is an entry point rather than a comment.
 export type { OwnershipBounds, WorkspaceConfig } from "./workspace";
+
+// Where a run's work went, from a task's output or a worktree row. Browser-safe; FIX-2385's `./browser` entry re-exports it.
+export { shellWord, workPlace, type WorkPlace, type WorkPlaceCommands, type WorkPlaceViewer } from "./work-place";

@@ -72,15 +72,16 @@ describe("the environment a Claude Code run's process inherits", () => {
     expect(seen.HARNESS_ENV_SPEC_PASSED).toBe("for-the-run");
     // PATH is passed only because it was named; here the SDK finds `node` through it to start the fake.
     expect(seen.PATH).toBe(process.env.PATH);
-    // Nothing else is carried over. The SDK sets two markers of its own on
+    // Nothing else is carried over. The SDK sets three markers of its own on
     // every process it starts, and macOS adds `__CF_USER_TEXT_ENCODING` to
     // every process that links CoreFoundation — which Node does — whatever
-    // environment its parent handed it. Neither came from the server's
-    // environment, so neither is what this spec is measuring; everything
+    // environment its parent handed it. None came from the server's
+    // environment, so none is what this spec is measuring; everything
     // beyond them is what was named.
     const notFromTheServer = [
       "CLAUDE_AGENT_SDK_VERSION",
       "CLAUDE_CODE_ENTRYPOINT",
+      "CLAUDE_CODE_SDK_READS_SESSION_STATE",
       "__CF_USER_TEXT_ENCODING",
     ];
     expect(Object.keys(seen).filter((k) => !notFromTheServer.includes(k)).sort()).toEqual([

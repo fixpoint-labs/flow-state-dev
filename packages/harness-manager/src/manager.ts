@@ -86,7 +86,11 @@ import {
   HeldWorkMismatchError,
   WorkspaceRefusedError,
   recordBranchPullRequests,
+  WORKTREES,
+  worktreeKey,
+  worktreesCollection,
   type HeldWork,
+  type WorktreeCollection,
   type RecordedPlace,
   type RunSourceAnswer,
   type WorkspaceHost,
@@ -123,6 +127,18 @@ import { HeldOnQuestion, askStep } from "./ask-step";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
 import { readRunCommits, type RunCommits } from "./commits";
 import { progressNoteOf, throttledNotes, type ProgressNotes } from "./progress-note";
+import {
+  MAX_APPROVAL_STEPS,
+  grantMatches,
+  heldToolCallOf,
+  heldToolCallSchema,
+  heldToolDecision,
+  toolApprovalOutcome,
+  toolApprovalStop,
+  toolGrantSchema,
+  type HarnessToolApprovalHook,
+  type HeldToolCall,
+} from "./tool-approval";
 import {
   HARNESS_RUN_OWNER_KEY,
   foreignRunMessage,
@@ -481,6 +497,30 @@ export interface ManagerOptions {
    */
   reviewChanges?: boolean;
   /**
+   * Ask a person before each tool call the harness hasn't pre-allowed
+   * (FIX-2389). Off by default: the feed is absent, and the harness's own
+   * permission settings decide, as without it.
+   *
+   * On, the manager hands the harness an `onToolApproval` feed among its
+   * feeds. A call no grant of this try covers stops the run with the call
+   * unrun, and the run waits through `ctx.suspendForUser({ kind: "approval" })`,
+   * which the claim gate mirrors as the task's hold and the Inbox lists. Its
+   * prompt names the tool, the command or file it touches, and the folder.
+   * The answer resumes the same coding session: a yes grants the call once,
+   * or for the rest of the try with `{ scope: "run" }` (*Allow for this
+   * run*: the same tool with the same command or file); a no, with an
+   * optional `{ note }`, tells the session it may not, and the run goes on.
+   * At the host's deadline for a user's stop it reads as a no. A cancel
+   * resumes nothing.
+   *
+   * Only a harness that asks per call takes the feed (Claude Code); Codex and
+   * Cursor ignore it. What the harness pre-allows (`allowedTools`,
+   * `permissionMode`) never reaches it. Needs durable execution, and a
+   * harness whose stop waits for its process (`stopsOnAbort`): a host
+   * without durable execution is refused when the request starts.
+   */
+  approveTools?: boolean;
+  /**
    * The tenant this conductor serves — the same value that partitions the
    * board's collection identity. Every request must resolve to it.
    */
@@ -625,6 +665,16 @@ export interface HarnessFeeds {
    * own keeps compiling; the manager always hands one.
    */
   onActivity?: HarnessActivityHook;
+  /**
+   * Called by a harness that asks about each tool call before it runs
+   * (FIX-2389), with the call; it answers allow, deny or held. Handed only
+   * when the manager is built with `approveTools`; absent otherwise. A held
+   * call stops the run, waits for a person, and the session resumes with the
+   * answer. Shaped as `@flow-state-dev/claude-code`'s `onToolApproval`, so a
+   * slot that spreads `...feeds` passes it on. A harness that can't ask per
+   * call ignores it.
+   */
+  onToolApproval?: HarnessToolApprovalHook;
 }
 
 /**
@@ -719,6 +769,20 @@ const managerOutputSchema = z.object({
   branch: z.string().nullable(),
   /** How many commits the run's branch has that its base does not. */
   commits: z.number().int().nonnegative(),
+  /**
+   * Whether git read `commits` against the run's base. `false` when it
+   * couldn't, and `commits` is a fallback zero: show the count as unknown.
+   * `null` on an output kept before it existed (BP-030).
+   */
+  commitsVerified: z.boolean().nullable().default(null),
+  /**
+   * The commit the run's branch was cut at, so `git log <baseCommit>..<branch>`
+   * lists the run's commits. `null` for a run with no repository, or one whose
+   * record names no base. Defaulted so an output kept before it parses (BP-030).
+   */
+  baseCommit: z.string().nullable().default(null),
+  /** The run's checkout, where its branch is checked out. `null` for a run with no repository. Defaulted (BP-030). */
+  path: z.string().nullable().default(null),
   /** Whether the host's judge read the run before it settled. */
   judged: z.boolean(),
   /**
@@ -799,6 +863,20 @@ const managerStateSchema = z.object({
   goal: z.string().nullable().default(null),
   /** How many more harness steps this request ran for a steer (FIX-2086). Each names that read. */
   steerSteps: z.number().nullable().default(null),
+  /**
+   * This try's tool approvals (`approveTools`, FIX-2389): the call the run
+   * is stopped on, waiting for a person (`null` while none is), the grants
+   * the answers left (per try, never on the task row), and how many steps
+   * an answer resumed. `null` until the first call is held.
+   */
+  approvals: z
+    .object({
+      pending: heldToolCallSchema.nullable().default(null),
+      grants: z.array(toolGrantSchema).default([]),
+      steps: z.number().int().nonnegative().default(0),
+    })
+    .nullable()
+    .default(null),
   /**
    * What `decide` decided, for the step that settles it once a judge (if
    * any) has read the run: the output to return, and whether the task is held
@@ -1355,6 +1433,9 @@ function createManagerCapability(options: {
       // Where the branch check writes the pull requests on the run's branch.
       // The harness blocks declare the same definition object.
       [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection,
+      // The user's list of worktrees: the host writes the run's row when it
+      // provisions the checkout and reads it again when the run settles.
+      [WORKTREES]: worktreesCollection,
       // Declared so the fence can read the LIVE claim off the board row. The
       // board declares the same definition object, so this is one registration
       // rather than a second storage slot that looks like the first. A board
@@ -1373,20 +1454,28 @@ function createManagerCapability(options: {
  * other way. A run with no repository, or with no checkout yet, has no branch
  * to check. Never throws: a missing or signed-out `gh` is a status note.
  */
-async function checkBranchPullRequests(ctx: BlockContext): Promise<void> {
+async function checkBranchPullRequests(ctx: BlockContext, worktree?: string | null): Promise<void> {
   // Read raw, not through `managerState`: a run that failed before its checkout has none, and that is not an error here.
   const state = harnessCtxState(ctx);
   if (state?.workspacePath == null || state.branch == null || !existsSync(state.workspacePath)) return;
+  const worktrees = worktreesOf(ctx);
   const result = await recordBranchPullRequests(ctx, {
     cwd: state.workspacePath,
     branches: [state.branch],
     openedSince: state.openedAt ?? undefined,
     // The whole check, however many branches, inside the one network-call bound the drain budget reserves.
     timeoutMs: NETWORK_CALL_TIMEOUT_MS,
+    ...(worktree != null && worktrees !== undefined ? { worktree: { collection: worktrees, key: worktree } } : {}),
   });
   if (result.status === "unavailable") {
     ctx.emit.status(`Pull requests on the run's branch were not checked: ${result.reason}`, { transient: false });
   }
+}
+
+/** The user's worktree rows off a block's context, when the capability is installed. */
+function worktreesOf(ctx: BlockContext): WorktreeCollection | undefined {
+  const collection = (ctx.resources as Record<string, unknown> | undefined)?.[WORKTREES] as WorktreeCollection | undefined;
+  return typeof collection?.upsert === "function" ? collection : undefined;
 }
 
 /**
@@ -1402,6 +1491,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     ledgers,
     judge,
     reviewChanges = false,
+    approveTools = false,
     tenant,
     phase: callerPhase,
     workspace,
@@ -1867,8 +1957,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         : undefined;
     const before = recordedHost ?? (holding ? host.hostId() : null);
     if (holding) await recordPlace(ctx, before!, "provisioning");
+    const worktrees = worktreesOf(ctx);
     try {
       const place = await host.provision(answer, {
+        ...(worktrees !== undefined
+          ? { worktrees: { collection: worktrees, owner: { kind: "run" as const, id: state.taskId ?? placeFor(location).join("/") } } }
+          : {}),
         place: placeFor(location),
         branch: state.branch!,
         ignored: ASK_MARKER_IGNORED,
@@ -2039,6 +2133,15 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             `execution on, or turn \`reviewChanges\` off.`,
         );
       }
+      // **Nor can an approval** (FIX-2389): a held call waits for a person the same way.
+      if (approveTools && ctx.requestHost?.resumeWait === undefined) {
+        throw runRefused(
+          ctx,
+          `[harness-manager] this manager asks a person before a run's tool calls (\`approveTools\`), ` +
+            `which waits for them, and this host has no durable execution to hold that wait. Turn ` +
+            `durable execution on, or turn \`approveTools\` off.`,
+        );
+      }
 
       // **On a board kept per organization, the run is its starter's** (see
       // `./run-owner`). Checked before anything is derived from this request's
@@ -2188,6 +2291,32 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       );
     }
     return provisionPlace(ctx, answer, location);
+  };
+
+  /**
+   * The run's worktree row, read again as the run settles: its branch and
+   * commits, written by the host (`recordCheckout`). Its key, for the branch
+   * check to add pull requests to; `null` for a run with no checkout or no
+   * row. Never throws: a failed read is a status note.
+   */
+  const recordRunCheckout = async (ctx: BlockContext): Promise<string | null> => {
+    const raw = harnessCtxState(ctx);
+    const worktrees = worktreesOf(ctx);
+    if (raw?.workspacePath == null || raw.branch == null || worktrees === undefined || host.recordCheckout === undefined) return null;
+    try {
+      const state = managerState(raw);
+      const place = placeFor(
+        locationFor({ principal: runPrincipal(ctx), epic: state.epic!, issue: state.issue!, phase: state.phase! }, state.branch),
+      );
+      const read = await host.recordCheckout({ place }, { worktrees, by: { kind: "run", id: state.taskId ?? place.join("/") } });
+      // A null read means the place has no row.
+      return read === null ? null : worktreeKey(host.hostId(), place);
+    } catch (error) {
+      ctx.emit.status(`The run's worktree row was not updated: ${error instanceof Error ? error.message : String(error)}`, {
+        transient: false,
+      });
+      return null;
+    }
   };
 
   const prepare = handler({
@@ -2448,7 +2577,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const state = managerState(harnessCtxState(ctx));
       const identity = identityOf(ctx, harnessCtxState(ctx));
       const succeeded = handle.status === "completed";
-      await checkBranchPullRequests(ctx);
+      await checkBranchPullRequests(ctx, await recordRunCheckout(ctx));
 
       /**
        * What this attempt hands back, kept on state for `settle`: the run's
@@ -2467,6 +2596,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           answer: handle.finalMessage === null ? null : handle.finalMessage.slice(0, MAX_ANSWER_CHARS),
           branch: state.filesOnly === true ? null : state.branch!,
           commits: commits.count,
+          commitsVerified: commits.verified,
+          baseCommit: state.filesOnly === true ? null : state.baseCommit,
+          path: state.filesOnly === true ? null : state.workspacePath,
           judged: false,
           review: null,
         };
@@ -2654,6 +2786,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     execute: async (error: unknown, ctx): Promise<never> => {
       // A failed attempt's owed lines go with it: the next attempt's brief carries every steer.
       owedLines.delete(ctx.request.identity.id);
+      // And its held call and spent grants: a retry asks again.
+      heldCalls.delete(ctx.request.identity.id);
+      spentGrants.delete(ctx.request.identity.id);
       // **Release the tree on the way out, whatever failed.**
       //
       // The only other release is the agent step's `onSettled`, which never
@@ -2686,7 +2821,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       await holdWork(ctx as BlockContext).catch(() => undefined);
       await saveKeptFiles(ctx).catch(() => undefined);
       // A failed run's pull requests are still its own.
-      await checkBranchPullRequests(ctx as BlockContext);
+      await checkBranchPullRequests(ctx as BlockContext, await recordRunCheckout(ctx as BlockContext));
 
       const reason = error instanceof Error ? error.message : String(error);
       const state = ctx.sequencer?.state;
@@ -2712,6 +2847,54 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       throw error;
     },
   });
+
+  /**
+   * The calls each running step was stopped on for a person's approval
+   * (FIX-2389), by request, until the approval step moves it onto the
+   * sequencer's state; and the `once` grants a step spent, by their index in
+   * that state's grants, dropped there by the next approval step.
+   */
+  const heldCalls = new Map<string, HeldToolCall>();
+  const spentGrants = new Map<string, Set<number>>();
+
+  /**
+   * The `onToolApproval` feed. A call a grant of this try covers is allowed
+   * (a `once` grant is spent on it). Any other is held: recorded for the
+   * approval step, and the step stopped through its steer watch's stop, so
+   * the step's end, its rescue and its lease are a steer stop's. A harness
+   * whose stop doesn't wait for its process is never stopped for one: its
+   * call is denied instead, so nothing runs that nobody allowed.
+   */
+  const askAboutToolCall: HarnessToolApprovalHook = (request, ctx) => {
+    const requestId = ctx.request.identity.id;
+    const state = managerState(harnessCtxState(ctx));
+    const call = heldToolCallOf(request, state.workspacePath!);
+    const grants = state.approvals?.grants ?? [];
+    const spent = spentGrants.get(requestId) ?? new Set<number>();
+    const granted = grants.findIndex((grant, at) => !spent.has(at) && grantMatches(grant, call));
+    if (granted >= 0) {
+      if (grants[granted]!.scope === "once") {
+        spent.add(granted);
+        spentGrants.set(requestId, spent);
+      }
+      return { decision: "allow" };
+    }
+    const watch = steerWatches.get(requestId);
+    if (!stopsOnAbort || watch === undefined) {
+      return {
+        decision: "deny",
+        message:
+          `${call.toolName} needs a person's approval, and this run can't be stopped to wait for one ` +
+          `(its harness's stop doesn't wait for its process). Go on without it.`,
+      };
+    }
+    // The first held call of a step is the one asked about; a call made while the stop lands waits behind it.
+    if (!heldCalls.has(requestId)) {
+      heldCalls.set(requestId, call);
+      watch.stop();
+    }
+    return heldToolDecision(call);
+  };
 
   /**
    * **The slot, called once.**
@@ -2764,6 +2947,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const note = progressNoteOf(activity);
       if (note !== null) progressNotes.get(ctx.request.identity.id)?.report(note);
     },
+    // Each call the harness asks about (FIX-2389): one a grant of this try
+    // covers runs; any other is held, and the step is stopped for it.
+    ...(approveTools ? { onToolApproval: askAboutToolCall } : {}),
   });
   /** The host's word, else what the harness declares (FIX-2312). */
   const stopsOnAbort = options.stopsOnAbort ?? harnessBlock.stopsOnAbort === true;
@@ -2995,7 +3181,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   const watchForSteers = (ctx: BlockContext): AbortSignal => {
     const requestId = ctx.request.identity.id;
     const controller = new AbortController();
-    const watch: SteerWatch = { stopped: false, timer: undefined, steer: null, handed: 0, polling: false, kick: () => {} };
+    const watch: SteerWatch = { stopped: false, timer: undefined, steer: null, handed: 0, polling: false, kick: () => {}, stop: () => {} };
     // The step ended while a poll was mid-read: `stopWatching` dropped this
     // watch, so the poll stops rather than read the row for good.
     const live = () => steerWatches.get(requestId) === watch;
@@ -3073,6 +3259,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       }
     };
     watch.kick = schedule;
+    watch.stop = () => {
+      if (!controller.signal.aborted) stop();
+    };
     steerWatches.set(requestId, watch);
     schedule();
     return controller.signal;
@@ -3248,6 +3437,107 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     return { prompt: steers.length === 0 ? CONTINUE_AFTER_STOP : renderSteers(steers, lead), again: true };
   };
 
+  /**
+   * **A run's tool call, waiting for a person** (FIX-2389), after a harness
+   * step; a pass-through unless `approveTools` is on and the step was stopped
+   * on a held call. The call moves onto the sequencer's state, so a resume
+   * after a restart (which runs this step's code again up to the wait) reads
+   * it from there, and the run waits as its suspension, which the claim gate
+   * mirrors as the task's hold. The answer resumes the session this try
+   * confirmed, with the checkout taken again, as a steer's step does:
+   *
+   * - **a yes** leaves a grant (once, or for the try) the re-issued call passes on;
+   * - **a no**, or **the host's deadline**, tells the session it may not, and the run goes on;
+   * - **a cancel** resumes nothing: the try ends, recording nothing more.
+   *
+   * Approval steps go round the steer loop-back, with a bound of their own
+   * ({@link MAX_APPROVAL_STEPS}); they take no steer places on the row.
+   */
+  // Its own step, before the wait: a resume runs the waiting step's code
+  // again from the state its earlier steps left, so the held call must be on
+  // that state before the step that waits starts.
+  const heldCallStep = handler({
+    name: `${name}-tool-held`,
+    inputSchema: z.unknown(),
+    outputSchema: z.unknown(),
+    sequencerStateSchema: managerStateSchema,
+    uses: [managerCapability],
+    execute: async (value: unknown, ctx: BlockContext) => {
+      if (!approveTools) return value;
+      const requestId = ctx.request.identity.id;
+      const held = heldCalls.get(requestId);
+      const spent = spentGrants.get(requestId);
+      heldCalls.delete(requestId);
+      spentGrants.delete(requestId);
+      const approvals = managerState(harnessCtxState(ctx)).approvals ?? { pending: null, grants: [], steps: 0 };
+      const grants = approvals.grants.filter((_, at) => spent?.has(at) !== true);
+      if (held === undefined && grants.length === approvals.grants.length) return value;
+      await ctx.sequencer!.patchState({ approvals: { ...approvals, grants, pending: held ?? null } });
+      if (held === undefined) return value;
+      // The step's watch, kept by its rescue for the steer check, is the approval's to drop.
+      steerWatches.delete(requestId);
+      // **A save point, as a turn's end is**: nothing stays live while it
+      // waits, so a restart loses none of it. The answer's step works in the
+      // place again, provisioned from what was saved.
+      const holdOk = await holdWork(ctx);
+      const saved = await saveKeptFiles(ctx);
+      if (!holdOk || !saved) {
+        throw new HarnessAttemptFailed(
+          `the run stopped to ask about ${held.toolName}, and its work could not be ${saved ? "held" : "saved"}, ` +
+            `so it does not wait on work that exists only on this machine`,
+        );
+      }
+      return value;
+    },
+  });
+
+  const approvalStep = handler({
+    name: `${name}-tool-approval`,
+    inputSchema: z.unknown(),
+    outputSchema: z.unknown(),
+    sequencerStateSchema: managerStateSchema,
+    uses: [managerCapability],
+    execute: async (value: unknown, ctx: BlockContext) => {
+      if (!approveTools) return value;
+      let state = managerState(harnessCtxState(ctx));
+      const approvals = state.approvals;
+      const call = approvals?.pending ?? null;
+      if (approvals == null || call === null) return value;
+
+      const steps = approvals.steps + 1;
+      if (steps > MAX_APPROVAL_STEPS) {
+        throw new HarnessAttemptFailed(
+          `[harness-manager] the run has already been resumed for ${MAX_APPROVAL_STEPS} tool approvals, ` +
+            `the most one try takes; it asked again for ${call.toolName}${call.touches === null ? "" : ` (${call.touches})`}.`,
+        );
+      }
+      const session = await readConfirmedSession(ctx, state.topic!, state.attempt!);
+      if (session === null) {
+        throw new HarnessAttemptFailed(
+          `[harness-manager] the run asked to use ${call.toolName}, and its harness confirmed no coding ` +
+            `session to continue after an answer.`,
+        );
+      }
+
+      const asked = await ctx.suspendForUser(toolApprovalStop(call));
+      if (asked.cancelled) throw new HarnessAttemptSuperseded("the task was cancelled while its run waited for a tool approval");
+      const outcome = toolApprovalOutcome(asked, call);
+      await ctx.sequencer!.patchState({
+        approvals: {
+          pending: null,
+          steps,
+          grants: outcome.grant === null ? approvals.grants : [...approvals.grants, outcome.grant],
+        },
+      });
+
+      state = managerState(harnessCtxState(ctx));
+      const lease = await acquireCheckout(state.workspacePath!, `${state.taskId}#${state.attempt}`, ownership, Date.now, ctx.signal);
+      await ctx.sequencer!.patchState({ lockPath: lease.lockPath, leaseToken: lease.token, previousSessionId: session });
+      if (state.place == null) await ctx.sequencer!.patchState({ place: await provisionRunPlace(ctx) });
+      return { prompt: outcome.prompt, again: true };
+    },
+  });
+
   /** After a harness step: one more step for a steer, or the step's handle on to the verdict. */
   const steerNext = handler({
     name: `${name}-steer-next`,
@@ -3256,6 +3546,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     sequencerStateSchema: managerStateSchema,
     uses: [managerCapability],
     execute: async (value: unknown, ctx: BlockContext) => {
+      // An answered approval already resumes the session: its step goes round as it is.
+      if ((value as { again?: unknown } | null)?.again === true) return value;
       // A step that ended on its own after its watch stopped it leaves the watch: it goes here.
       steerWatches.delete(ctx.request.identity.id);
       return (await stepForSteer(ctx, value === STOPPED_FOR_STEER)) ?? value;
@@ -3282,10 +3574,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     },
   });
 
-  /** Back to the harness step when a steer step was granted. The steer cap fails the attempt first. */
+  /**
+   * Back to the harness step when a steer step, or an answered approval's
+   * step, was granted. Each has its own cap, which fails the attempt first.
+   */
   const steerLoop = {
     when: (value: unknown) => (value as { again?: unknown } | null)?.again === true,
-    maxIterations: MAX_STEERS + 1,
+    maxIterations: MAX_STEERS + MAX_APPROVAL_STEPS + 1,
   };
 
   const chain = sequencer({
@@ -3297,6 +3592,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     .tap(openRun)
     .step(prepare)
     .step(harnessStep)
+    .step(heldCallStep)
+    .step(approvalStep)
     .step(steerNext)
     .loopBack(harnessStep.name, steerLoop)
     .step(decide);
@@ -3509,6 +3806,8 @@ interface SteerWatch {
   polling: boolean;
   /** Schedule a poll now that the run offers a steer, unless one is due or running. */
   kick: () => void;
+  /** Stop the step, as for a steer: marks it `stopped` and aborts it. An approval stops it this way too. */
+  stop: () => void;
 }
 
 /** Lines taken together for a run, owed to its next step until the run takes them. */

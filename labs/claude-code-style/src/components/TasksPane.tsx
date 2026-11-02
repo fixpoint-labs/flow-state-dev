@@ -1,7 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import type { LabAdapter, TaskRow, TaskStatus } from "../adapter";
 import { TASK_STATUS } from "../lib/task-status";
-import { useWatch } from "../lib/use-watch";
+import { useMissing, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Entry } from "./Entry";
 import { Sheet } from "./Sheet";
@@ -20,14 +20,29 @@ const READ_ONLY_NOTE = "Read only. To stop or steer a task, ask the main session
  * steer it you ask the main session. Running and waiting tasks show as cards;
  * finished ones fold into a *Done* group, collapsed until you open it.
  */
-export function TasksPane({ adapter, sessionId }: { adapter: LabAdapter; sessionId: string }) {
-  const tasks = useWatch((emit: (rows: TaskRow[]) => void) => adapter.watchTasks(sessionId, emit), [adapter, sessionId]) ?? [];
-  const [openId, setOpenId] = useState<string>();
-  const close = useCallback(() => setOpenId(undefined), []);
+export function TasksPane({
+  adapter,
+  sessionId,
+  openId,
+  onOpen,
+  onMissing,
+}: {
+  adapter: LabAdapter;
+  sessionId: string;
+  /** The task whose sheet is open, kept by the app so the page's address can name it. */
+  openId: string | undefined;
+  onOpen: (taskId: string | undefined) => void;
+  /** `openId` names no task of this session's, once its tasks are read. */
+  onMissing: () => void;
+}) {
+  const listed = useWatch((emit: (rows: TaskRow[]) => void) => adapter.watchTasks(sessionId, emit), [adapter, sessionId]);
+  const tasks = listed ?? [];
+  const close = useCallback(() => onOpen(undefined), [onOpen]);
   const open = tasks.find((t) => t.id === openId);
+  useMissing(listed, openId, onMissing);
   const active = tasks.filter((t) => !FINISHED.has(t.status));
   const done = tasks.filter((t) => FINISHED.has(t.status));
-  const toggle = (id: string) => setOpenId((current) => (current === id ? undefined : id));
+  const toggle = (id: string) => onOpen(openId === id ? undefined : id);
 
   return (
     <aside aria-label="Background tasks" className="flex h-full min-h-0 flex-col bg-inspector">
