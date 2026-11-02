@@ -110,6 +110,39 @@ describe("a coding task's hold, while it runs", () => {
     expect(tasks[0]?.waiting).toEqual({ kind: "review", prompt: "1 commit on b", unanswerable: null });
   });
 
+  it("follows no run for a task that has ended, and lets go of a run once its task ends", async () => {
+    // The sidebar watches every worker's board: each ended task's run would otherwise hold a stream open for good.
+    const opened: string[] = [];
+    const closed: string[] = [];
+    const pushTo = new Map<string, (event: { item: unknown }) => void>();
+    const conversation = filed("in_progress");
+    const old = { ...conversation, id: "task-change:board/task_2", data: { ...conversation.data, taskId: "task_2", task: { id: "task_2", title: "Old task", status: "completed", assignee: "teammates.cursor", run: { sessionId: "dsx_old", requestId: "req_old", attempt: 1 } } } };
+    const running = { ...conversation, data: { ...conversation.data, task: { ...conversation.data.task, run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 }, updatedAt: 1 } } };
+    const ended = { ...running, id: "task-change:board/task_1@end", ts: 3, itemIndex: 2, data: { ...running.data, kind: "completed", task: { ...running.data.task, status: "completed", updatedAt: 3 } } };
+    const client = {
+      sessions: {
+        state: async (id: string) => ({ at: 1, sessionCreatedAt: 1, items: id === "wks_1" ? [old, running] : [running], pagination: { hasMore: false, nextOffset: 1 } }),
+        stream: (id: string, options: { onItem: (event: { item: unknown }) => void }) => {
+          opened.push(id);
+          pushTo.set(id, options.onItem);
+          return { close: () => closed.push(id) };
+        },
+        get: async (id: string) => ({ id, flowKind: "agent" }),
+      },
+      flow: () => ({ read: async () => ({ ok: true, tasks: [] }) }),
+    } as unknown as Client;
+    let tasks: BoardTask[] = [];
+    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
+    await until(() => opened.includes("dsx_run") && pushTo.has("wks_1"));
+    expect(opened).not.toContain("dsx_old");
+    expect(closed).not.toContain("dsx_run");
+    pushTo.get("wks_1")!({ item: ended });
+    await until(() => tasks.find((t) => t.id === "task_1")?.status === "done");
+    expect(tasks.find((t) => t.id === "task_1")?.status).toBe("done");
+    expect(closed).toContain("dsx_run");
+    stop();
+  });
+
   it("a second watch of the same board, once the run's feed has loaded, reads it too", async () => {
     // The popup opens while the conversation still watches: the run's feed answers the second watch at once.
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});

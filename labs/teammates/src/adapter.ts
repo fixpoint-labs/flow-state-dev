@@ -47,7 +47,7 @@ import {
   type RosterEntry,
   type WorkforceClient,
 } from "@flow-state-dev/workforce/browser";
-import { taskSpendView } from "@flow-state-dev/orchestration/tasks";
+import { isTerminalStatus, taskSpendView } from "@flow-state-dev/orchestration/tasks";
 import { createInboxClient, inboxItems, taskRowView, type InboxAnswer, type InboxHold, type InboxRow } from "@flow-state-dev/orchestration/inbox";
 import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import { CODER_FLOW } from "./lib/coder-flow";
@@ -800,7 +800,14 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       const followRuns = (current: readonly Record<string, any>[]) => {
         for (const row of current) {
           const runSession = row.run?.sessionId;
-          if (typeof runSession !== "string" || runFeeds.has(runSession)) continue;
+          if (typeof runSession !== "string") continue;
+          // An ended task's row already says all there is: its run is let go, or never followed.
+          if (isTerminalStatus(row.status)) {
+            runFeeds.get(runSession)?.();
+            runFeeds.set(runSession, () => {});
+            continue;
+          }
+          if (runFeeds.has(runSession)) continue;
           // Claimed before the watch starts: a feed already loaded calls back at once, and that publish follows runs again.
           runFeeds.set(runSession, () => {});
           const stop = watchFeed(runSession, boardRows, (read) => {
