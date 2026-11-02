@@ -44,6 +44,7 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `shimmer` | Animated text shimmer for streaming/loading states |
 | `streaming-indicator` | In-flight status indicator with a "Working..." fallback (muted "Tidying up..." during background drain) |
 | `request-group` | Groups items by request ID with streaming and sources |
+| `request-recovery` | Failed-turn line: who hit it, the error text, and an optional Retry that shows a failed retry inline |
 | `session-items-context` | React context for passing session items to nested components |
 | `task-plan` | Section-grouped renderer for a TaskCollection. Subscribes to `task-change` and `task-board-meta` |
 | `artifact` | Composable artifact viewer shell with header, actions, and content areas |
