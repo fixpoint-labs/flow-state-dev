@@ -12,6 +12,7 @@
  */
 export { cursorAgent, type CursorAgentOptions } from "./agent";
 export { createCursorAgentCapability } from "./capability";
+export { CURSOR_PASS } from "./env-pass";
 export {
   assertTestedSdkVersion,
   createDefaultResolveCursorClient,
@@ -20,7 +21,6 @@ export {
 } from "./cursor-client";
 export { probeCursorSandbox, type CursorSandboxProbeOptions, type CursorSandboxSupport } from "./sandbox-probe";
 export { checkCursorReadiness, cursorSignIn, CURSOR_SIGN_IN_REMEDY, type CursorSignIn } from "./sign-in";
-export { CURSOR_PASS } from "./env-pass";
 export { translateCursorMessage } from "./translate";
 export { estimateCursorCost } from "./cost";
 export {
