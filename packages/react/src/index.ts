@@ -17,6 +17,8 @@ export {
   useSession,
   type SessionItemsOptions,
   type SessionChildSessionsOptions,
+  type FollowedRequest,
+  type SessionRefreshOptions,
   type SessionView,
   type UseSessionHookOptions
 } from "./hooks/useSession";
