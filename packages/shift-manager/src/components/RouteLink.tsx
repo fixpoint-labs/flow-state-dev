@@ -5,7 +5,7 @@
  * plain click goes there in this tab, through `navigate`, without a reload.
  */
 import type { AnchorHTMLAttributes, MouseEvent } from "react";
-import { navigate, pathFor, type Route } from "../lib/routes";
+import { hrefFor, navigate, type Route } from "../lib/routes";
 
 /** Whether a click is one the page handles itself, rather than the browser: the main button, no modifier key, no other target. */
 export function isPlainClick(event: MouseEvent<Element>): boolean {
@@ -26,7 +26,7 @@ export function RouteLink({
   return (
     <a
       {...rest}
-      href={pathFor(to)}
+      href={hrefFor(to)}
       onClick={(event) => {
         onClick?.(event);
         if (event.defaultPrevented || !isPlainClick(event)) return;

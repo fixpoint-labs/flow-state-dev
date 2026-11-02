@@ -21,7 +21,7 @@
  * | `watchPins`, `pin`, `unpin` | the lab's `pins` flow, your own user state                    |
  */
 import { createClient, type Client, type SessionSummary } from "@flow-state-dev/client";
-import { readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
+import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import { createInboxClient, inboxItems, type InboxAnswer, type InboxHold, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
 import type { TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -329,7 +329,7 @@ export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[
 
 /** The adapter the app runs on: the served lab, as the user the page was served for. */
 export function createLabAdapter(): LabAdapter {
-  return createWiredLab(createClient({ userId: readUserId(), baseUrl: "", fetcher: withBearerToken(readBearerToken()) }));
+  return createWiredLab(createClient({ userId: readUserId(), baseUrl: readBasePath(), fetcher: withBearerToken(readBearerToken()) }));
 }
 
 /** The adapter over one client. */

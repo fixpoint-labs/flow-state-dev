@@ -8,11 +8,13 @@
  * stored; it rides on every request through the client's one fetcher, so a
  * read, a live stream and a resume all carry the same credential.
  *
- * `baseUrl` is empty in the browser: Shift Manager's pages and the Lab's API come
- * from the same origin. Tests pass the served Lab's origin.
+ * `baseUrl` is the page's base path in the browser (`""` at the root of its
+ * origin): Shift Manager's pages and the Lab's API come from the same origin,
+ * under the same prefix when a proxy serves them on a sub-route. Tests pass the
+ * served Lab's origin.
  */
 import { createClient, type Client } from "@flow-state-dev/client";
-import { readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
+import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 
 /** What a connection is made from. */
 export type Connection = {
@@ -27,7 +29,8 @@ export type Connection = {
 /** The connection this page was served with. */
 export function readConnection(): Connection {
   const bearerToken = readBearerToken();
-  return { userId: readUserId(), ...(bearerToken === undefined ? {} : { bearerToken }) };
+  const baseUrl = readBasePath();
+  return { userId: readUserId(), ...(bearerToken === undefined ? {} : { bearerToken }), ...(baseUrl === "" ? {} : { baseUrl }) };
 }
 
 /** The page meta `fsdev dev --app` writes the DevTool's address into. */

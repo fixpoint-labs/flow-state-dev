@@ -69,6 +69,7 @@ import { pageGoalControl } from "@/lib/goal-control";
 import { useSessionDraft } from "@/lib/use-session-draft";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
+import { BASE_PATH } from "@/lib/base-path";
 
 const chatAgentRenderers: RendererRegistry = {
   ...chatAssistantRenderers,
@@ -154,7 +155,7 @@ function PageInner() {
   // session, so a goal check can be seen to fail without it.
   const pickedLive = pageGoalControl(searchParams) !== "no-live";
   return (
-    <FlowProvider flowKind="chat-agent" userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAgentRenderers}>
+    <FlowProvider flowKind="chat-agent" userId={KITCHEN_SINK_USER_ID} baseUrl={BASE_PATH} renderers={chatAgentRenderers}>
       <KitchenSinkApp e2eSessionId={e2eSessionId} pickedLive={pickedLive} />
     </FlowProvider>
   );
@@ -162,7 +163,7 @@ function PageInner() {
 
 function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | null; pickedLive: boolean }) {
   // The page's one client, as the app's user: the rail, the workforce panels and request statuses read through it.
-  const fsd = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "", fetcher: panelFetch }), []);
+  const fsd = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: BASE_PATH, fetcher: panelFetch }), []);
   // The assistant's own sessions, and which one the stream is on. The rail's
   // navigator reads the flow list once more for itself: one extra read per
   // page, never one per row. A test's own session, when one is named, is the

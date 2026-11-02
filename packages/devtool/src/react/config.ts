@@ -71,6 +71,17 @@ export function readBearerToken(): string | undefined {
   return typeof injected === "string" && injected.trim() ? injected : undefined;
 }
 
+/**
+ * The path prefix the page is served under, from its `<base href>`: `""` at the
+ * root of its origin, `"/teammates"` when a proxy serves it at `/teammates/`.
+ * Prefix the API's `baseUrl` and the page's own addresses with it. `""` with no
+ * `window` or no `<base>` element.
+ */
+export function readBasePath(): string {
+  if (!hasWindow() || document.querySelector("base[href]") === null) return "";
+  return new URL(document.baseURI).pathname.replace(/\/+$/, "");
+}
+
 export function writeUserId(userId: string): void {
   if (!hasWindow()) return;
   window.localStorage.setItem(USER_ID_KEY, userId.trim());

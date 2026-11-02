@@ -74,6 +74,7 @@ import {
 } from "@/lib/harness-turn";
 import type { HarnessSessionState } from "@flow-state-dev/harness-manager";
 import { useSessionDraft } from "@/lib/use-session-draft";
+import { BASE_PATH } from "@/lib/base-path";
 
 export interface HarnessSessionViewProps {
   /** The mode's label, from the mode list. */
@@ -93,7 +94,7 @@ const sendLineOnce = (prompt: string, running: boolean, sender: LineSender) => s
 /** One harness session's conversation and plan. */
 export function HarnessSessionView({ label, flowKind, sessionId, models, onTitled }: HarnessSessionViewProps) {
   return (
-    <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAssistantRenderers}>
+    <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl={BASE_PATH} renderers={chatAssistantRenderers}>
       <SessionBody label={label} sessionId={sessionId} models={models} onTitled={onTitled} />
     </FlowProvider>
   );
@@ -135,7 +136,7 @@ function SessionBody({
   const bound = state.binding?.confirmed ?? null;
   const { items, isStreaming, latestRequest } = session;
   // Requests are listed beside the session hook, which reads only its latest.
-  const client = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "" }), []);
+  const client = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: BASE_PATH }), []);
   // The session's newest request can be a `steer` sent beside the turn, so the
   // turn's status is read off the turn's own request.
   const turnId = useMemo(() => latestTurn({ items, streaming: false, request: null })?.requestId ?? null, [items]);
