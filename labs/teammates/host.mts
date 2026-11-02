@@ -40,7 +40,7 @@ import { harnessEnv } from "@flow-state-dev/core";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { CLAUDE_CODE_PASS, claudeCodeAgent, probeClaudeAccount } from "@flow-state-dev/claude-code/sdk";
 import { CURSOR_PASS, cursorAgent, cursorSignIn } from "@flow-state-dev/cursor";
-import { assertPositiveInt } from "@flow-state-dev/harness-manager";
+import { assertPositiveInt, harnessDrainBudgetMs, resolveOwnership } from "@flow-state-dev/harness-manager";
 import { createFlowState } from "@flow-state-dev/engine";
 import { system } from "@flow-state-dev/memory";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
@@ -57,7 +57,7 @@ import {
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { z } from "zod";
 import { checkoutCommandProblem, localWorkspaceHost, parseCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
-import { CODER_FLOW, coderFlow, type Harness } from "./src/flows/coder.ts";
+import { CODER_FLOW, coderFlow, codingPhase, type Harness } from "./src/flows/coder.ts";
 
 /** The workers, beside this file. */
 const TEAMMATES_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
@@ -261,6 +261,16 @@ export async function openTeammates(options: TeammatesOptions) {
     source: () => ({ kind: "repo", repo: workdir }),
     ...(options.setup === undefined ? {} : { setup: options.setup }),
   });
+  const runTimeoutMs = options.runTimeoutMs ?? 20 * 60_000;
+  const checks = { commands: options.checks ?? [], timeoutMs: CHECKS_TIMEOUT_MS };
+  // A shutdown waits for a coding run still going, its checks included,
+  // rather than the engine's 30 s default, which would cancel it.
+  const { doneTimeoutMs } = codingPhase(checks);
+  const dispatchDrainTimeoutMs = harnessDrainBudgetMs({
+    runTimeoutMs,
+    ownershipWaitMs: resolveOwnership({ runTimeoutMs, doneTimeoutMs }).ownership.waitMs,
+    doneTimeoutMs,
+  });
   let flows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({ standardWorkers: roster.workers, workerFlows: () => flows as never });
   flows = {
@@ -293,8 +303,8 @@ export async function openTeammates(options: TeammatesOptions) {
       defaultHarness: options.harness ?? "cursor",
       ready: READY,
       workspace,
-      runTimeoutMs: options.runTimeoutMs ?? 20 * 60_000,
-      checks: { commands: options.checks ?? [], timeoutMs: CHECKS_TIMEOUT_MS },
+      runTimeoutMs,
+      checks,
     }),
   };
   const copies = hireWorkforce(installation) as Array<{ id: string }>;
@@ -303,6 +313,7 @@ export async function openTeammates(options: TeammatesOptions) {
     flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
     durable: true,
+    dispatchDrainTimeoutMs,
     devtool: { userId: options.userId },
     // A consult reads on `intent/utility`: a smaller model than the workers answer on.
     models: { default: options.model, intents: { utility: [UTILITY_MODEL] } },
