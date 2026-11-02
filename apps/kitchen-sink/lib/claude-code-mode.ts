@@ -171,7 +171,8 @@ export function claudeCodeSessionFlow(seams: ClaudeCodeSeams = {}) {
   // Claude Code's own default, as it did.
   return kitchenSinkHarnessFlow({
     kind: CLAUDE_CODE_SESSION,
-    // Leaves approvals off, so goal leg **a** can be seen to fail.
+    // On, unless a test without durable execution turns it off (the seam) or
+    // the `no-approval` goal control does, so goal leg **a** can be seen to fail.
     approveTools: seams.approveTools !== false && goalControl() !== "no-approval",
     agent: (feeds) => claudeCodeBlock(feeds, seams),
   });

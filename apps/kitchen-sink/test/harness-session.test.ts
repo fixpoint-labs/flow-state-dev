@@ -95,7 +95,7 @@ async function turn(
   extra: Record<string, unknown> = {},
 ) {
   return testFlow({
-    flow: claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve , approveTools: false }),
+    flow: claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve, approveTools: false }),
     action: "turn",
     userId: "u",
     sessionId,
@@ -400,7 +400,7 @@ describe("where a session works (V6)", () => {
     // Modes off at the next start.
     vi.stubEnv("VERCEL", "1");
     resetModeAvailabilityForTests();
-    const flows = await availableHarnessFlows({ "claude-code": () => claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve , approveTools: false }) });
+    const flows = await availableHarnessFlows({ "claude-code": () => claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve, approveTools: false }) });
     expect(flows["claude-code"]).toBeUndefined();
     expect((await stores.session.get("s-kept"))?.state).toMatchObject({ binding: { confirmed: expect.stringMatching(/^scripted-/) } });
   });
