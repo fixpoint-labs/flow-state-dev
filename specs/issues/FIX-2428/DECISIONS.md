@@ -182,6 +182,8 @@ run a fresh `analysis` before the gate.
 - **Review (Nov 2, #4511)** — D3 records the server tick it rejects; the `crossing` frame is a
   control frame under ER-7 and a contracts type; the mint's `transport` is authoritative; the
   goal check uses FIX-2426's one crossing double and starts its idle window at the first frame.
+- **Amended (Nov 2, #4513)** — `onChange` is passed the notice that woke it (`null` for a
+  connect, a reconnect or a poll), owned here; FIX-1506's panels and FIX-2466's views consume it.
 - **Amended (Nov 2)** — FIX-380 (Ably) is a later transport behind the same seam, outside
   FIX-2367 ([owner, #4512](https://github.com/fixpoint-labs/flow-state-dev/pull/4512#issuecomment-6567246620)). Wording only; the Ably arm stays what the seam supports.
 

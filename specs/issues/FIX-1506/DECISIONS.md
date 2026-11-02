@@ -101,7 +101,8 @@ scope. Then the writer reads twice.
   The timer's pace is `client.subscribe`'s; `useSession` adds no option.
 - **The panels.** `Roster` and `BoardColumns` take `live`; their driver subscribes the same three
   topics and reads again on a resource notice whose path matches their collection. `BoardList`
-  keeps its session-stream driver.
+  keeps its session-stream driver. Acting on a notice's kind and path reads the notice passed
+  to `client.subscribe`'s `onChange`, which FIX-2428 owns; this issue doesn't change that signature.
 - **Access is unchanged.** The mint checks each topic (ER-4); every read a notice triggers is
   checked by its route as today.
 - **A failed publish never fails the write** (ER-6).
