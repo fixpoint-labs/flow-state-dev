@@ -1,6 +1,6 @@
 /**
  * Static markup for the flow-state.dev landing page, ported from the
- * "Landing · own your intelligence OS" design canvas (headline: "Harness an AI
+ * "Landing · own your intelligence OS" design canvas (headline: "Harness your AI
  * workforce", hero motion: shape). The starters, "Underneath" and customize
  * sections and the footer keep the versions refined on this site rather than
  * the canvas copies. Rendered by `src/pages/index.tsx`; styles live in
@@ -27,9 +27,12 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 <div class="fs-rail" aria-hidden="true">00 — FLOW STATE</div>
 <div class="fs-body" style="display: flex; flex-wrap: wrap; gap: 40px; padding-top: 56px; padding-bottom: 56px;">
 <div style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 24px;">
-<p style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; color: #a6a08f;">Open source · TypeScript · Any model · Local or cloud</p>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;">
+<span style="display: inline-block; background: #e8f551; color: #1b1a15; padding: 4px 9px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;">Early preview</span>
+<p style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; color: #a6a08f;">Open source · TypeScript · Any model · Web-based</p>
+</div>
 
-<h1 id="hero-title" class="fs-h1" style="margin: 0; font-size: 58px; line-height: 1.12; letter-spacing: -0.04em; font-weight: 700; text-wrap: pretty; max-width: 654px; color: #f4f1e4;">Harness an <span style="background: #e8f551; color: #1b1a15; padding: 0 .08em; box-decoration-break: clone; -webkit-box-decoration-break: clone;">AI workforce.</span></h1>
+<h1 id="hero-title" class="fs-h1" style="margin: 0; font-size: 58px; line-height: 1.12; letter-spacing: -0.04em; font-weight: 700; text-wrap: pretty; max-width: 654px; color: #f4f1e4;">Harness your <span style="background: #e8f551; color: #1b1a15; padding: 0 .08em; box-decoration-break: clone; -webkit-box-decoration-break: clone;">AI workforce.</span></h1>
 <p style="margin: 0; font-size: 16.5px; line-height: 1.6; color: #cbc5b5; max-width: 600px;">Claude Code, Codex and Grok Bot are someone else's harness. Flow State gives you the building blocks to build your own, from one agent to a whole workforce, fitted to your process, on any model, at a cost you control.</p>
 <div style="display: flex; flex-wrap: wrap; gap: 10px;">
 <a class="fs-btn fs-btn-bone fs-btn-mark" href="#starters">Pick a starter →</a>
@@ -91,15 +94,15 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 <div style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 14px;">
 
 <h2 id="loop-title" style="margin: 0; font-size: 34px; line-height: 1.08; letter-spacing: -0.035em; font-weight: 700; text-wrap: pretty;">Today's harness is someone else's product.</h2>
-<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #3d3a32; max-width: 480px;">Claude Code, Codex and Grok Bot are impressive, sub-agents and all. But you work inside their UX, on their models, with their memory, and you wait for them to ship the feature you need. There's no deterministic step and no hybrid flow. Customizing them means skills, and skills mean more token spend.</p>
+<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #3d3a32; max-width: 480px;">Claude Code, Codex and Grok Bot are impressive, sub-agents and all. But you work inside their UX, on their models, with their memory, and you wait for them to ship the feature you need. There's no deterministic step and no hybrid flow. Customizing them means adding extensions like skills, and each one usually means more token spend.</p>
 </div>
-<div style="flex: 1 1 440px; min-width: 0;"><svg viewBox="0 0 460 300" role="img" aria-label="Your work goes into someone else's sealed harness: an agent with sub-agents inside, on their UX, models, memory and roadmap; the only way in is a skills file" style="display: block; width: 100%; height: auto;">
+<div style="flex: 1 1 440px; min-width: 0;"><svg viewBox="0 0 460 300" role="img" aria-label="Your work goes into someone else's sealed harness: an agent with sub-agents inside, on their UX, models, memory and roadmap; the only way in is their extensions, like skills" style="display: block; width: 100%; height: auto;">
 <text x="70" y="30" text-anchor="middle" fill="#57544a" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">THEIR UX</text><text x="390" y="30" text-anchor="middle" fill="#57544a" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">THEIR MODELS</text><text x="70" y="268" text-anchor="middle" fill="#57544a" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">THEIR MEMORY</text><text x="390" y="268" text-anchor="middle" fill="#57544a" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">THEIR ROADMAP</text>
 <rect x="90" y="50" width="280" height="200" fill="rgba(27,26,21,.05)" stroke="#1b1a15" stroke-width="1.6"></rect>
 <text x="102" y="68" fill="#1b1a15" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">THEIR HARNESS</text>
 <g transform="translate(346 56)"><rect x="0" y="6" width="14" height="10" fill="#1b1a15"></rect><path d="M3 6 V3 a4 4 0 0 1 8 0 V6" fill="none" stroke="#1b1a15" stroke-width="1.5"></path></g>
 <rect x="190" y="92" width="80" height="26" fill="#f8f6f0" stroke="#1b1a15" stroke-width="1.2"></rect><text x="230.0" y="108.5" text-anchor="middle" fill="#1b1a15" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">AGENT</text><path d="M230 118 C230 140 150 140 150 160" fill="none" stroke="#1b1a15" stroke-width="1.1" stroke-dasharray="5 4"><animate attributeName="stroke-dashoffset" from="0" to="-18" dur="0.9s" repeatCount="indefinite"></animate></path><path d="M230 118 V160" fill="none" stroke="#1b1a15" stroke-width="1.1" stroke-dasharray="5 4"><animate attributeName="stroke-dashoffset" from="0" to="-18" dur="0.9s" repeatCount="indefinite"></animate></path><path d="M230 118 C230 140 310 140 310 160" fill="none" stroke="#1b1a15" stroke-width="1.1" stroke-dasharray="5 4"><animate attributeName="stroke-dashoffset" from="0" to="-18" dur="0.9s" repeatCount="indefinite"></animate></path><rect x="115" y="160" width="70" height="24" fill="#f8f6f0" stroke="#1b1a15" stroke-width="1.2"></rect><text x="150.0" y="175.5" text-anchor="middle" fill="#1b1a15" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">SUB-AGENT</text><rect x="195" y="160" width="70" height="24" fill="#f8f6f0" stroke="#1b1a15" stroke-width="1.2"></rect><text x="230.0" y="175.5" text-anchor="middle" fill="#1b1a15" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">SUB-AGENT</text><rect x="275" y="160" width="70" height="24" fill="#f8f6f0" stroke="#1b1a15" stroke-width="1.2"></rect><text x="310.0" y="175.5" text-anchor="middle" fill="#1b1a15" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">SUB-AGENT</text>
-<rect x="150" y="214" width="160" height="24" fill="#e8f551" stroke="#1b1a15" stroke-width="1.2"></rect><text x="230.0" y="229.5" text-anchor="middle" fill="#1b1a15" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">SKILLS.MD</text>
+<rect x="150" y="214" width="160" height="24" fill="#e8f551" stroke="#1b1a15" stroke-width="1.2"></rect><text x="230.0" y="229.5" text-anchor="middle" fill="#1b1a15" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">EXTENSIONS</text>
 <path d="M10 226 H150" fill="none" stroke="#1b1a15" stroke-width="1.1" stroke-dasharray="5 4"><animate attributeName="stroke-dashoffset" from="0" to="-18" dur="0.9s" repeatCount="indefinite"></animate></path><text x="10" y="216" fill="#1b1a15" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">YOUR WORK</text>
 <circle r="5" fill="#1b1a15"><animateMotion dur="4s" repeatCount="indefinite" path="M10 226 H150 M230 214 V118"></animateMotion></circle>
 <text x="230" y="294" text-anchor="middle" fill="#6e6a5e" font-family="IBM Plex Mono, monospace" font-size="9" letter-spacing=".1em">EVERY CUSTOMIZATION IS MORE AGENT RUNS</text>
@@ -146,10 +149,22 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 <div class="fs-rail" aria-hidden="true">04 — UNDERNEATH</div>
 <div class="fs-body" style="display: flex; flex-direction: column; gap: 22px;">
 <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 24px; border-bottom: 1px solid #1b1a15; padding-bottom: 12px;">
-<h2 id="caps-title" style="margin: 0; font-size: 30px; line-height: 1.1; letter-spacing: -0.03em; font-weight: 700;">Underneath, everything a workforce needs.</h2>
-
+<h2 id="caps-title" style="margin: 0; font-size: 30px; line-height: 1.1; letter-spacing: -0.03em; font-weight: 700;">Underneath, a foundation you build on.</h2>
+<span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: #57544a;">SDK · runtime · client</span>
 </div>
-<p style="margin: 0; font-size: 14.5px; line-height: 1.6; color: #3d3a32; max-width: 660px;">Most new features are configuration, not plumbing. The SDK ships ready-made blocks and flows, and you set them up in your app.</p>
+<p style="margin: 0; font-size: 14.5px; line-height: 1.6; color: #3d3a32; max-width: 660px;">Everything above runs on one foundation: an SDK of blocks, state and a web runtime that you own. It is multi-user by design, so the same code serves one person or many. Use it to build your own app, or add it to a web app you already have. Most new features are configuration, not plumbing.</p>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px;">
+<article style="background: #1b1a15; color: #f4f1e4; padding: 18px; display: flex; flex-direction: column; gap: 8px;">
+<span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: #e8f551;">Build your own app</span>
+<h3 style="margin: 0; font-size: 18px; letter-spacing: -0.02em; font-weight: 700;">Start from a starter, or from nothing.</h3>
+<p style="margin: 0; font-size: 13.5px; line-height: 1.6; opacity: .85;">Define flows on the backend, then build the front end with typed React hooks and components. The foundation handles state, streaming and runs.</p>
+</article>
+<article style="background: #1b1a15; color: #f4f1e4; padding: 18px; display: flex; flex-direction: column; gap: 8px;">
+<span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: #e8f551;">Add to an existing web app</span>
+<h3 style="margin: 0; font-size: 18px; letter-spacing: -0.02em; font-weight: 700;">Mount it in the app you have.</h3>
+<p style="margin: 0; font-size: 13.5px; line-height: 1.6; opacity: .85;">Drop the runtime into Next.js or a Node server, point it at your own stores, and call it from your existing front end. No rewrite.</p>
+</article>
+</div>
 <div class="fs-features" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px;"><article style="background: #f8f6f0; border: 1px solid rgba(27,26,21,.25); padding: 16px; display: flex; flex-direction: column; gap: 10px;">
 <svg viewBox="0 0 160 64" aria-hidden="true" style="display: block; width: 100%; max-width: 200px; height: auto;"><rect x="4" y="22" width="36" height="20" fill="none" stroke="#1b1a15" stroke-width="1.4"></rect><path d="M40 32 H58" stroke="#1b1a15" stroke-width="1.2"></path><rect x="58" y="22" width="36" height="20" fill="rgba(27,26,21,.09)" stroke="#1b1a15" stroke-width="1.4"></rect><path d="M94 32 H112" stroke="#1b1a15" stroke-width="1.2"></path><rect x="112" y="22" width="36" height="20" fill="none" stroke="#1b1a15" stroke-width="1.2" stroke-dasharray="5 4"></rect></svg>
 <h3 style="margin: 0; font-size: 17px; letter-spacing: -0.02em; font-weight: 700;">Blocks</h3>
@@ -222,8 +237,30 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 </div>
 </section>
 
+<section class="fs-sheet" aria-labelledby="scale-title">
+<div class="fs-rail" aria-hidden="true">05 — SCALE</div>
+<div class="fs-body" style="display: flex; flex-wrap: wrap; gap: 32px 48px; align-items: center;">
+<div style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 14px;">
+
+<h2 id="scale-title" style="margin: 0; font-size: 34px; line-height: 1.08; letter-spacing: -0.035em; font-weight: 700; text-wrap: pretty;">Built for the web, from one user to many.</h2>
+<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #3d3a32; max-width: 480px;">Flow State is a web service, not a single process on one machine. Every run belongs to a user and streams to their browser as it happens. State is scoped to a session, user or org and lives in your own stores. When load grows, add servers.</p>
+</div>
+<div style="flex: 1 1 440px; min-width: 0;"><svg viewBox="0 0 470 300" role="img" aria-label="Many users in their browsers connect to a smaller pool of servers you run, each server hosting several users, and the servers read and write one set of stores holding session, user and org state; more users and more servers can be added" style="display: block; width: 100%; height: auto;">
+<text x="45" y="30" text-anchor="middle" fill="#57544a" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">PEOPLE</text><text x="235" y="30" text-anchor="middle" fill="#57544a" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">YOUR SERVERS</text><text x="415" y="30" text-anchor="middle" fill="#57544a" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">YOUR STORES</text>
+<rect x="170" y="50" width="130" height="190" fill="rgba(27,26,21,.05)" stroke="#1b1a15" stroke-width="1.6"></rect>
+<rect x="10" y="50" width="70" height="26" fill="#f8f6f0" stroke="#1b1a15" stroke-width="1.2"></rect><text x="45.0" y="66.5" text-anchor="middle" fill="#1b1a15" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">USER 1</text><rect x="10" y="92" width="70" height="26" fill="#f8f6f0" stroke="#1b1a15" stroke-width="1.2"></rect><text x="45.0" y="108.5" text-anchor="middle" fill="#1b1a15" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">USER 2</text><rect x="10" y="134" width="70" height="26" fill="#f8f6f0" stroke="#1b1a15" stroke-width="1.2"></rect><text x="45.0" y="150.5" text-anchor="middle" fill="#1b1a15" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">USER 3</text><rect x="10" y="176" width="70" height="26" fill="#f8f6f0" stroke="#1b1a15" stroke-width="1.2"></rect><text x="45.0" y="192.5" text-anchor="middle" fill="#1b1a15" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">USER 4</text><rect x="10" y="218" width="70" height="26" fill="#f8f6f0" stroke="#1b1a15" stroke-width="1.2" stroke-dasharray="5 4"></rect><text x="45.0" y="234.5" text-anchor="middle" fill="#1b1a15" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">+ MORE</text><rect x="185" y="70" width="100" height="44" fill="#f8f6f0" stroke="#1b1a15" stroke-width="1.2"></rect><text x="235.0" y="95.5" text-anchor="middle" fill="#1b1a15" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">SERVER</text><rect x="185" y="124" width="100" height="44" fill="#f8f6f0" stroke="#1b1a15" stroke-width="1.2"></rect><text x="235.0" y="149.5" text-anchor="middle" fill="#1b1a15" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">SERVER</text><rect x="185" y="178" width="100" height="44" fill="#f8f6f0" stroke="#1b1a15" stroke-width="1.2" stroke-dasharray="5 4"></rect><text x="235.0" y="203.5" text-anchor="middle" fill="#1b1a15" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">+ SERVER</text>
+<path d="M80 63 C135 63 130 92 185 92" fill="none" stroke="#1b1a15" stroke-width="1.1" stroke-dasharray="5 4"><animate attributeName="stroke-dashoffset" from="0" to="-18" dur="0.9s" repeatCount="indefinite"></animate></path><path d="M80 105 C135 105 130 92 185 92" fill="none" stroke="#1b1a15" stroke-width="1.1" stroke-dasharray="5 4"><animate attributeName="stroke-dashoffset" from="0" to="-18" dur="0.9s" repeatCount="indefinite"></animate></path><path d="M80 147 C135 147 130 92 185 92" fill="none" stroke="#1b1a15" stroke-width="1.1" stroke-dasharray="5 4"><animate attributeName="stroke-dashoffset" from="0" to="-18" dur="0.9s" repeatCount="indefinite"></animate></path><path d="M80 189 C135 189 130 146 185 146" fill="none" stroke="#1b1a15" stroke-width="1.1" stroke-dasharray="5 4"><animate attributeName="stroke-dashoffset" from="0" to="-18" dur="0.9s" repeatCount="indefinite"></animate></path><path d="M80 231 C135 231 130 146 185 146" fill="none" stroke="rgba(27,26,21,.45)" stroke-width="1.1" stroke-dasharray="5 4"><animate attributeName="stroke-dashoffset" from="0" to="-18" dur="0.9s" repeatCount="indefinite"></animate></path>
+<rect x="365" y="50" width="100" height="190" fill="#f8f6f0" stroke="#1b1a15" stroke-width="1.6"></rect>
+<path d="M365 100 H465 M365 150 H465" stroke="rgba(27,26,21,.35)"></path>
+<text x="415" y="80" text-anchor="middle" fill="#1b1a15" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">SESSION</text><text x="415" y="130" text-anchor="middle" fill="#1b1a15" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">USER</text><text x="415" y="180" text-anchor="middle" fill="#1b1a15" font-family="IBM Plex Mono, monospace" font-size="9.5" font-weight="600" letter-spacing=".08em">ORG</text>
+<path d="M300 145 H365" fill="none" stroke="#1b1a15" stroke-width="1.1" stroke-dasharray="5 4"><animate attributeName="stroke-dashoffset" from="0" to="-18" dur="0.9s" repeatCount="indefinite"></animate></path>
+<text x="235" y="278" text-anchor="middle" fill="#6e6a5e" font-family="IBM Plex Mono, monospace" font-size="9" letter-spacing=".1em">ADD USERS. ADD SERVERS. SAME CODE.</text>
+</svg></div>
+</div>
+</section>
+
 <section class="fs-sheet" aria-labelledby="uses-title" style="background: #e7e2d5;">
-<div class="fs-rail" aria-hidden="true" style="color: #57544a;">05 — USE CASES</div>
+<div class="fs-rail" aria-hidden="true" style="color: #57544a;">06 — USE CASES</div>
 <div class="fs-body" style="display: flex; flex-direction: column; gap: 22px;">
 <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px 40px;">
 <h2 id="uses-title" class="fs-loud" style="margin: 0; font-family: Archivo, 'Space Grotesk', sans-serif; font-size: 56px; line-height: .9; letter-spacing: -0.048em; font-weight: 900; text-transform: uppercase; max-width: 720px;">Why run your own <span style="background: #e8f551; padding: 0 .08em; box-decoration-break: clone; -webkit-box-decoration-break: clone;">AI workforce?</span></h2>
@@ -260,7 +297,7 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 </section>
 
 <section id="starters" class="fs-sheet" aria-labelledby="start-title">
-<div class="fs-rail" aria-hidden="true">06 — STARTERS</div>
+<div class="fs-rail" aria-hidden="true">07 — STARTERS</div>
 <div class="fs-body" style="display: flex; flex-direction: column; gap: 22px;">
 <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 24px; border-bottom: 1px solid #1b1a15; padding-bottom: 12px;">
 <h2 id="start-title" style="margin: 0; font-size: 30px; line-height: 1.1; letter-spacing: -0.03em; font-weight: 700;">Start from a working app, not a blank page.</h2>
@@ -328,13 +365,13 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 </section>
 
 <section class="fs-sheet" aria-labelledby="custom-title" style="background: #e7e2d5;">
-<div class="fs-rail" aria-hidden="true" style="color: #57544a;">07 — CUSTOMIZE</div>
+<div class="fs-rail" aria-hidden="true" style="color: #57544a;">08 — CUSTOMIZE</div>
 <div class="fs-body" style="display: flex; flex-direction: column; gap: 22px;">
 <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 24px; border-bottom: 1px solid #1b1a15; padding-bottom: 12px;">
 <h2 id="custom-title" style="margin: 0; font-size: 30px; line-height: 1.1; letter-spacing: -0.03em; font-weight: 700;">It runs out of the box. Change it when you need to.</h2>
 <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: #57544a;">Flows · blocks</span>
 </div>
-<p style="margin: 0; font-size: 14.5px; line-height: 1.6; color: #3d3a32; max-width: 660px;">Most of the time you won't touch the backend. When your product needs something different, configure a ready-made block, write a custom flow, or turn any flow into a worker. Nothing is a fixed slot.</p>
+<p style="margin: 0; font-size: 14.5px; line-height: 1.6; color: #3d3a32; max-width: 660px;">Most of the time you won't touch the backend. When your product needs something different, configure a ready-made block, write a custom flow, or turn any flow into a worker. Nothing is a fixed slot. And because it's all built on the same foundation, you can run it as its own app or add it to a web app you already have.</p>
 <div><a class="fs-btn fs-btn-line" href="/docs/intro">See how flows work →</a></div>
 </div>
 </section>
@@ -342,8 +379,8 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 <section class="fs-band" aria-labelledby="own-title" style="background: #141310; color: #f4f1e4; border-top: 1px solid #1b1a15;">
 <div style="padding: 64px 34px; display: flex; flex-direction: column; gap: 28px; max-width: 1040px;">
 <p style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: .18em; text-transform: uppercase;">Why Flow State</p>
-<h2 id="own-title" class="fs-loud" style="margin: 0; font-family: Archivo, 'Space Grotesk', sans-serif; font-size: 72px; line-height: 0.98; letter-spacing: -0.02em; font-weight: 900; text-transform: uppercase">Stop renting <span style="background: #e8f551; color: #1b1a15; padding: 0 .08em; box-decoration-break: clone; -webkit-box-decoration-break: clone;">your intelligence OS.</span></h2>
-<p style="margin: 0; font-size: 16.5px; line-height: 1.6; max-width: 640px;">Your harness is the OS your company's work runs on. Subscriptions hide what it really costs: at heavy use, an off-the-shelf harness doing your work its way can run into thousands a month. Fit the system to your process instead, on software you own, and control both the cost and the workflow.</p>
+<h2 id="own-title" class="fs-loud" style="margin: 0; font-family: Archivo, 'Space Grotesk', sans-serif; font-size: 72px; line-height: 0.98; letter-spacing: -0.02em; font-weight: 900; text-transform: uppercase">Stop renting <span style="background: #e8f551; color: #1b1a15; padding: 0 .08em; box-decoration-break: clone; -webkit-box-decoration-break: clone;">your AI harness.</span></h2>
+<p style="margin: 0; font-size: 16.5px; line-height: 1.6; max-width: 640px;">Your harness runs your company's work. Subscriptions hide what it really costs: at heavy use, an off-the-shelf harness doing your work its way can run into thousands a month. Fit the system to your process instead, on software you own, and control both the cost and the workflow.</p>
 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; border-top: 1px solid rgba(244,241,228,.3); padding-top: 22px;">
 <div style="display: flex; flex-direction: column; gap: 6px;">
 <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: .14em;">01</span>
@@ -365,7 +402,7 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 </section>
 
 <section class="fs-sheet" aria-labelledby="cta-title">
-<div class="fs-rail" aria-hidden="true">08 — START</div>
+<div class="fs-rail" aria-hidden="true">09 — START</div>
 <div class="fs-body" style="display: flex; flex-direction: column; gap: 22px; padding-top: 56px; padding-bottom: 56px;">
 <h2 id="cta-title" style="margin: 0; font-size: 46px; line-height: 1.02; letter-spacing: -0.04em; font-weight: 700; max-width: 720px; text-wrap: pretty;">Pick a starter. Make it yours.</h2>
 <div style="display: flex; flex-wrap: wrap; gap: 10px;">
