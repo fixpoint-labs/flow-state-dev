@@ -3167,8 +3167,8 @@ export async function createExecutionContext<
   // that run's to hand on, so it is carried rather than recovered.
   const loggedSpend = loggedSpendOf(requestRecord.items ?? [], requestRecord.spentThroughItemIndex ?? -1);
   const requestSpendLedger = interruptedEndingLive
-    ? createRequestSpendLedger(sumSpend(requestRecord.spentByModel ?? {}, loggedSpend.byModel))
-    : createRequestSpendLedger(requestRecord.spentByModel, loggedSpend.byModel, loggedSpend.harnessRuns);
+    ? createRequestSpendLedger(sumSpend(requestRecord.spentByModel ?? {}, loggedSpend.byModel), {}, [], [...(requestRecord.spentHarnessRuns ?? []), ...loggedSpend.harnessRuns])
+    : createRequestSpendLedger(requestRecord.spentByModel, loggedSpend.byModel, loggedSpend.harnessRuns, requestRecord.spentHarnessRuns);
   const requestEndRegistry = createRequestEndRegistry(() => requestSpendLedger.takeSinceLastEnding());
   // How this request resumed (FIX-2129), read when a block asks: the
   // resolution is filled in at the checkpoint read, after this context is built.
@@ -4239,15 +4239,21 @@ export async function createExecutionContext<
         // What this block's own harness runs spent also goes on its completed
         // trace, so a continuation after the process died can hand it on (FIX-2145).
         // A run that reports as it goes (FIX-2288) is listed once, at its latest report.
+        // A report with no run id is a settled run of its own, so it is given
+        // an id here: the ledger and the trace then name it alike, and a reader
+        // that recorded it can tell it from another run after a continuation
+        // recovers it from the trace.
         const harnessSpendOfBlock: HarnessRunSpend[] = [];
         (childContext as { [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM] = {
-          reportHarnessRun(run) {
+          reportHarnessRun(report) {
+            const run = report.runId === undefined ? { ...report, runId: generateId("settled") } : report;
             requestSpendLedger.reportHarnessRun(run);
-            const at = run.runId === undefined ? -1 : harnessSpendOfBlock.findIndex((reported) => reported.runId === run.runId);
+            const at = harnessSpendOfBlock.findIndex((reported) => reported.runId === run.runId);
             if (at >= 0) harnessSpendOfBlock.splice(at, 1);
             harnessSpendOfBlock.push({ ...run });
           },
-          pending: () => requestSpendLedger.pending()
+          pending: () => requestSpendLedger.pending(),
+          total: () => requestSpendLedger.total()
         };
         (childContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
         // FIX-663: re-attach the background signal on every scope so nested

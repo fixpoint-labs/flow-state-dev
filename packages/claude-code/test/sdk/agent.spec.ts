@@ -663,6 +663,53 @@ describe("claudeCodeAgent", () => {
       ).toBe("sess_seen_before_abort");
     });
 
+    // A host that waits for a person on a tool call (harness-manager's
+    // `approveTools`) holds the call and stops the run from inside its feed.
+    // That stop is the wait the approval card shows, not a failure: an error
+    // item would sit above the card as if the turn broke.
+    describe("a stop for a held call", () => {
+      /** Runs the block with a feed that answers `decision` and fires the run's stop from inside it. */
+      async function runStoppedFromTheFeed(decision: "held" | "deny") {
+        const controller = new AbortController();
+        const block = claudeCodeAgent({
+          resolveClaudeAgent: () => ({
+            query: async function* (args) {
+              yield { type: "system", subtype: "init", session_id: "sess_held" } as SdkMessageLike;
+              await args.options?.canUseTool?.("Bash", { command: "touch marker" }, {});
+              await new Promise(() => {}); // the vendor stream never closes on its own
+            },
+          }),
+          onToolApproval: () => {
+            controller.abort(new Error("[harness-session] stopped for a tool approval"));
+            return decision === "held" ? { decision: "held" } : { decision: "deny", message: "no" };
+          },
+        });
+        const runtime = await createTestContext({ declaredResources: block.declaredResources });
+        (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+        let caught: unknown = null;
+        await withRaceTimeout(
+          Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never)).catch((err) => {
+            caught = err;
+          }),
+          500,
+        );
+        return { caught, errors: runtime.getItems().filter((i) => i.type === "error") };
+      }
+
+      it("leaves no error item, and still throws the stop's reason for the host to read", async () => {
+        const { caught, errors } = await runStoppedFromTheFeed("held");
+        expect(errors).toEqual([]);
+        expect((caught as Error | null)?.message).toBe("[harness-session] stopped for a tool approval");
+      });
+
+      it("still shows the error item when the call stopped on was not held", async () => {
+        // The control: the same stop after a deny is a stop of a working run.
+        const { errors } = await runStoppedFromTheFeed("deny");
+        expect(errors).toHaveLength(1);
+        expect(errors[0]).toMatchObject({ code: "ABORT_ERR" });
+      });
+    });
+
     // A run stopped right after it starts is the run a host resumes next — and
     // the vendor's process keeps writing that session's transcript for a while
     // after it is told to stop. Settling before it has exited hands the host a

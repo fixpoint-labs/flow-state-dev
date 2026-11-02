@@ -9,8 +9,10 @@
  * behaviour instead of drifting apart with a copy each. The host
  * (`./local-host`) turns a run source's answer (`./run-source`) into that
  * place: a branch of a repository, or a set of kept files, and reads the
- * same files without making one (`./source-read`). Every git process
- * the package starts goes through `./exec`, and the git that cuts and hands
+ * same files without making one (`./source-read`), and can run the
+ * operator's setup command in each checkout it makes (`./setup`). Every git process
+ * the package starts goes through `./exec` (a project's check commands too,
+ * `./checkout-commands`), and the git that cuts and hands
  * back a run's worktree lives in `./worktree`.
  *
  * See `projection.ts` for why the baseline exists and what it costs to get
@@ -44,8 +46,18 @@ export { localWorkspaceHost, WorkspaceRefusedError } from "./local-host";
 export { fileHeldWorkStore, HeldWorkMismatchError } from "./held-work";
 export type { HeldWork, HeldWorkMismatchField, HeldWorkStore, RecordedHold, SkippedPath } from "./held-work";
 export type { IgnoredDirectory, MovedBack, OffBranch } from "./worktree";
+export type { PlaceSetup, WorkspaceSetup } from "./setup";
 export { isStrictlyInside } from "./worktree";
-export { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, run } from "./exec";
+export { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, run, runToEnd } from "./exec";
+export type { RunToEndResult } from "./exec";
+export {
+  CHECK_OUTPUT_TAIL_CHARS,
+  checkoutCommandPassed,
+  checkoutCommandProblem,
+  runCheckoutCommands,
+  splitCheckoutCommand,
+} from "./checkout-commands";
+export type { CheckoutCommandResult, RunCheckoutCommandsOptions } from "./checkout-commands";
 export { BRANCH_PULL_REQUESTS_TIMEOUT_MS, pullRequestHead, recordBranchPullRequests } from "./branch-pull-requests";
 export type {
   BranchPullRequestsContext,

@@ -118,6 +118,7 @@ export {
   addRequestSpendSource,
   onRequestEnded,
   readRequestSpend,
+  readRequestTotalSpend,
   requestSpendSources
 } from "./request-end";
 export type {
