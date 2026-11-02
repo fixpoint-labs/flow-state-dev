@@ -2338,8 +2338,10 @@ A browser reads its user's boards through the ordinary collection read: `tasks`,
 any of that user's sessions on a flow that carries the session board, answers every one of their
 conversations' rows in one listing, paged like any collection read, and none of another user's. Each row's key starts with the
 conversation it was filed in; `sessionIdOfFiling`, from `./browser`, reads that conversation's
-session id back out of it. Only the board's fields go out (goal, status, assignee, run, timestamps
-and the like), never a task's input, output or metadata. A row comes back as it was stored, so read
+session id back out of it. Only the board's fields go out (goal, status, assignee, run, spend, timestamps
+and the like), never a task's input, output or metadata. `spend` is the stored ledger of what the
+task's runs spent; fold it with `taskRowView` from `@flow-state-dev/orchestration/inbox` for its
+harness, model, tokens and cost. A row comes back as it was stored, so read
 each one through `withRetiredShapes` from `@flow-state-dev/orchestration/tasks`: a row stored before
 `holds` had its name keeps them under `questions`, and the map reads them as `holds`.
 
