@@ -153,6 +153,8 @@ fresh `analysis` before the gate.
 - **Review** — resources read through a scope's `client.derived` now publish, and a resource
   notice reads state for them, because a derived org count over a collection would stay stale.
   The bus seams are cited as decided in FIX-2426 (#4477).
+- **Amended (Nov 2)** — the goal check runs on a bus that says it crosses: on the in-memory bus
+  the hooks now keep their fallback timer (FIX-2428 D3), which leg b's and d's read counts forbid.
 
 ## Notes from review
 

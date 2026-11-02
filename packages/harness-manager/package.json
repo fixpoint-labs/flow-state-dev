@@ -34,6 +34,10 @@
     "./checkout": {
       "types": "./dist/checkout.d.ts",
       "default": "./src/checkout.ts"
+    },
+    "./work-place": {
+      "types": "./dist/work-place.d.ts",
+      "default": "./src/work-place.ts"
     }
   },
   "license": "MIT",
@@ -53,6 +57,10 @@
       "./checkout": {
         "types": "./dist/checkout.d.ts",
         "default": "./dist/checkout.js"
+      },
+      "./work-place": {
+        "types": "./dist/work-place.d.ts",
+        "default": "./dist/work-place.js"
       }
     }
   },
