@@ -89,7 +89,7 @@ function toolResult(id: string, result: Record<string, unknown>, content: string
 }
 
 /** The file an `[ask:<file>]` turn touches, or the one a resumed turn was told a person allowed. */
-function askedFile(prompt: string): string | null {
+function touchedFile(prompt: string): string | null {
   return /\[ask:([\w.-]+)\]/.exec(prompt)?.[1] ?? /allowed your call \(Bash: touch ([\w.-]+)\)/.exec(prompt)?.[1] ?? null;
 }
 
@@ -97,12 +97,12 @@ function askedFile(prompt: string): string | null {
  * One shell call, asked about first as Claude Code asks (see the header).
  * A deny that interrupts the run ends it with a throw, as the SDK's run ends.
  */
-async function* askedCall(
+async function* guardedCall(
   file: string,
   options: ClaudeAgentQueryOptions | undefined,
   signal: AbortSignal | undefined,
 ): AsyncGenerator<SdkMessageLike> {
-  const id = "toolu_ask_1";
+  const id = "toolu_touch_1";
   const input = { command: `touch ${file}`, description: `Touch ${file}` };
   yield toolUse(id, "Bash", input);
   const preAllowed = options?.permissionMode === "bypassPermissions" || options?.allowedTools?.includes("Bash") === true;
@@ -181,9 +181,9 @@ async function* scriptedTurn(
     await pause(step, signal);
   }
 
-  const file = askedFile(prompt);
+  const file = touchedFile(prompt);
   if (file !== null) {
-    yield* askedCall(file, options, signal);
+    yield* guardedCall(file, options, signal);
     await pause(step, signal);
   }
 
