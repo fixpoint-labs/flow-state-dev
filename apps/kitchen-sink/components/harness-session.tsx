@@ -160,10 +160,7 @@ function SessionBody({
       current = false;
     };
   }, [client, sessionId, turnId, latestRequest]);
-  // A waiting turn stopped from this page: the session hook follows no stream for it, so its status is read back here.
-  const [stoppedTurn, setStoppedTurn] = useState<SessionRequestSummary | null>(null);
-  const turnRequest =
-    stoppedTurn?.id === turnId ? stoppedTurn : latestRequest?.id === turnId ? latestRequest : listedTurn?.id === turnId ? listedTurn : null;
+  const turnRequest = latestRequest?.id === turnId ? latestRequest : listedTurn?.id === turnId ? listedTurn : null;
   const turn = useMemo(
     () => latestTurn({ items, streaming: isStreaming, request: turnRequest }),
     [items, isStreaming, turnRequest],
@@ -191,23 +188,12 @@ function SessionBody({
     },
     [lines, refresh, setMessage],
   );
-  // A turn waiting on an answer has no stream to close: it is stopped by its request id.
+  // A turn waiting on an answer has no stream to close: the session stops it by request id.
   const waiting = turn?.status === "waiting";
-  const stopTurn = useCallback(async () => {
-    if (!waiting || turn === null) return session.abortRequest();
-    await client.flow(session.flowKind).request(turn.requestId).abort().catch(() => undefined);
-    // The stop lands on the parked request shortly after it is asked for: read the list until it has.
-    for (let read = 0; read < 40; read += 1) {
-      const listed = await client.sessions.requests(sessionId, { limit: 20 }).catch(() => []);
-      const now = listed.find((request) => request.id === turn.requestId);
-      if (now !== undefined && now.status !== "suspended") {
-        setStoppedTurn(now);
-        break;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-    await refresh();
-  }, [waiting, turn, session, client, sessionId, refresh]);
+  const stopTurn = useCallback(
+    () => (waiting && turn !== null ? session.dismissRequest(turn.requestId) : session.abortRequest()),
+    [waiting, turn, session],
+  );
   const steered = turn === null ? [] : (state.turns?.[turn.requestId]?.steered ?? []);
 
   return (
