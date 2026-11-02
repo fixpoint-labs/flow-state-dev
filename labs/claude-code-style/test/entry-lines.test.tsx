@@ -5,7 +5,7 @@
  * whole reply is already in its own view: printed again in the main thread it
  * buried the conversation. The line opens to show the reply. A tool call reads
  * as plain words, never a tool's name, a task id or `null`, which mean nothing
- * to the person reading.
+ * to whoever reads it.
  */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
