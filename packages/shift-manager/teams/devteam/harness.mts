@@ -4,7 +4,7 @@
  *
  *     DEVFORCE_LAB_HARNESS=stub pnpm --filter @flow-state-dev/shift-manager start
  *
- * Two choices. Each profile names its default ({@link startHarness}); DevTeam's
+ * Four choices. Each profile names its default ({@link startHarness}); DevTeam's
  * is `stub`, `fsd`'s is `claude-code`. {@link HARNESS_ENV} overrides it:
  *
  * - **`stub`**: the lab's scripted run, no model. It says what it
@@ -21,13 +21,22 @@
  *   to the stub when it is not there: a run that quietly used the stub would be
  *   reported as a model's. At start, {@link startHarness} asks Claude Code for
  *   an account (`probeClaudeAccount`) and refuses to start without one.
+ * - **`codex`** / **`cursor`**: Codex or Cursor through its SDK, each handed
+ *   only its own environment pass-list (`CODEX_PASS`, `CURSOR_PASS`). Neither
+ *   is asked for a sign-in at start: a run with none fails, and says why, in
+ *   the run itself. Neither takes the project's MCP servers the Lab relays,
+ *   nor reports usage windows.
+ *
+ * That one is the default coder, for every worker naming no harness.
+ * Every real run may take {@link RUN_MINUTES_ENV} minutes,
+ * {@link DEFAULT_RUN_MINUTES} by default.
  *
  * An unknown value is refused at startup rather than read as the default.
  * Either way, a start that goes ahead prints one line naming the coder.
  *
- * That is the default coder. A `coder` worker that names a harness in its
- * `harness` setting (`claude-code`, `codex` or `cursor`) runs on that one
- * instead: {@link WORKER_HARNESSES} is the set a hire picks from.
+ * A `coder` worker that names a harness in its `harness` setting
+ * (`claude-code`, `codex` or `cursor`) runs on that one instead:
+ * {@link workerHarnesses} is the set a hire picks from.
  */
 
 import { existsSync, writeFileSync } from "node:fs";
@@ -51,7 +60,7 @@ import { commitAll, hasChanges } from "./scratch-repo.mts";
 export const HARNESS_ENV = "DEVFORCE_LAB_HARNESS";
 
 /** The harnesses a served Lab can run. */
-export const HARNESS_CHOICES = ["stub", "claude-code"] as const;
+export const HARNESS_CHOICES = ["stub", "claude-code", "codex", "cursor"] as const;
 export type HarnessChoice = (typeof HARNESS_CHOICES)[number];
 
 /**
@@ -81,6 +90,49 @@ export interface SelectedHarness {
  */
 export function claudeCodeEnv(): Record<string, string> {
   return harnessEnv({ pass: CLAUDE_CODE_PASS });
+}
+
+/** The environment a Codex run gets: only {@link CODEX_PASS}. */
+export function codexEnv(): Record<string, string> {
+  return harnessEnv({ pass: CODEX_PASS });
+}
+
+/** The environment a Cursor run gets: only {@link CURSOR_PASS}. */
+export function cursorEnv(): Record<string, string> {
+  return harnessEnv({ pass: CURSOR_PASS });
+}
+
+/**
+ * Codex in the slot. It works where the manager places it and continues the
+ * session the manager names, on {@link codexEnv} only. The Lab's relayed MCP
+ * servers are not handed to it: Codex takes no relayed tools. Its sandbox is
+ * `workspace-write`: Codex's own default is read-only, and a coder that can't
+ * write can't make the commit the phase waits for.
+ */
+export function codexHarness({ cwd, resume, onSession, onActivity }: HarnessFeeds): HarnessBlock {
+  return codexAgent({
+    cwd,
+    resume,
+    onSession,
+    onActivity,
+    client: { env: codexEnv() },
+    // A project with no repository runs in its files, outside git, which Codex refuses without `skipGitRepoCheck`.
+    thread: { sandboxMode: "workspace-write", skipGitRepoCheck: true },
+    name: "codex",
+  } as never) as unknown as HarnessBlock;
+}
+
+/** The model a Cursor run uses: Cursor's own pick ("Auto"), which every account's catalog has. */
+const CURSOR_MODEL = "default";
+
+/**
+ * Cursor in the slot, as {@link codexHarness} is, on {@link cursorEnv} only,
+ * which also runs Cursor's runtime in a process of its own. Cursor's SDK
+ * refuses a local agent with no model, so it names Cursor's own pick.
+ */
+export function cursorHarness({ cwd, resume, onSession, onActivity, onSteerable }: HarnessFeeds): HarnessBlock {
+  // `onSteerable`: a user's steer reaches the running turn, since Cursor's stop doesn't wait for its process.
+  return cursorAgent({ cwd, resume, onSession, onActivity, onSteerable, env: cursorEnv(), model: CURSOR_MODEL, name: "cursor" } as never) as unknown as HarnessBlock;
 }
 
 /**
@@ -156,39 +208,6 @@ export function errorReporterHarness({ cwd, mcpTools }: ErrorReporterHarnessFeed
   } as never) as unknown as HarnessBlock;
 }
 
-/** The model a Cursor run uses: Cursor's own pick ("Auto"), which every account's catalog has. */
-const CURSOR_MODEL = "default";
-
-/** Codex in the slot, through the Codex SDK, with only its package's pass list. */
-export function codexHarness(feeds: HarnessFeeds): HarnessBlock {
-  return codexAgent({
-    cwd: feeds.cwd,
-    resume: feeds.resume,
-    onSession: feeds.onSession,
-    onActivity: feeds.onActivity,
-    client: { env: harnessEnv({ pass: CODEX_PASS }) },
-    // A project with no repository runs in its files, outside git; Codex refuses that without this.
-    thread: { skipGitRepoCheck: true },
-    name: "codex",
-  }) as unknown as HarnessBlock;
-}
-
-/** Cursor in the slot, through the Cursor SDK's local runtime, with only its package's pass list. */
-export function cursorHarness(feeds: HarnessFeeds): HarnessBlock {
-  return cursorAgent({
-    cwd: feeds.cwd,
-    resume: feeds.resume,
-    onSession: feeds.onSession,
-    onActivity: feeds.onActivity,
-    // A user's steer reaches the running turn, since Cursor's stop doesn't wait for its process.
-    onSteerable: feeds.onSteerable,
-    env: harnessEnv({ pass: CURSOR_PASS }),
-    // Cursor's SDK refuses a local agent with no model.
-    model: CURSOR_MODEL,
-    name: "cursor",
-  } as never) as unknown as HarnessBlock;
-}
-
 /** The row line the manager's prompt carries, `Row <id>, phase <p>, attempt <n>.` */
 function rowLine(prompt: string): string {
   return prompt.split("\n").find((line) => line.startsWith("Row ")) ?? "a row";
@@ -228,8 +247,17 @@ export const STEP_MS_ENV = "DEVFORCE_LAB_STEP_MS";
 /** How long one scripted run may take: five paced steps and a commit. */
 export const SCRIPTED_RUN_TIMEOUT_MS = 60_000;
 
-/** How long one Claude Code run may take. */
-export const CLAUDE_CODE_RUN_TIMEOUT_MS = 10 * 60_000;
+/** How long one run on a real harness may take, in minutes, when {@link RUN_MINUTES_ENV} names none. */
+export const DEFAULT_RUN_MINUTES = 20;
+
+/**
+ * Overrides how long one run may take, in whole minutes, for any harness, the
+ * scripted run included. A real FSD issue can need more than the default.
+ */
+export const RUN_MINUTES_ENV = "DEVFORCE_LAB_RUN_MINUTES";
+
+/** How long one Claude Code run may take with no {@link RUN_MINUTES_ENV}: for checks that build a Lab by hand. */
+export const CLAUDE_CODE_RUN_TIMEOUT_MS = DEFAULT_RUN_MINUTES * 60_000;
 
 /**
  * The scripted run a served Lab uses by default: narrates a step every
@@ -263,22 +291,33 @@ export function scriptedHarness(stepEveryMs: number = SCRIPTED_STEP_MS) {
  * @param stepMs The stub's step pause, `process.env[STEP_MS_ENV]` by default.
  *   Empty or absent means {@link SCRIPTED_STEP_MS}.
  * @param defaultChoice The profile's coder when `value` names none; `stub` by default.
+ * @param runMinutes One run's budget in minutes, `process.env[RUN_MINUTES_ENV]`
+ *   by default. Empty or absent means {@link DEFAULT_RUN_MINUTES} on a real
+ *   harness and {@link SCRIPTED_RUN_TIMEOUT_MS} on the stub.
  * @returns The chosen harness. No credential is checked here: a served Lab
  *   starts through {@link startHarness}, which checks it.
- * @throws When the value names no harness this Lab can run, or `stepMs` is not
- *   a whole number of milliseconds.
+ * @throws When the value names no harness this Lab can run, `stepMs` is not
+ *   a whole number of milliseconds, or `runMinutes` is not a positive whole
+ *   number of minutes.
  */
 export function selectHarness(
   value: string | undefined = process.env[HARNESS_ENV],
   stepMs: string | undefined = process.env[STEP_MS_ENV],
   defaultChoice: HarnessChoice = "stub",
+  runMinutes: string | undefined = process.env[RUN_MINUTES_ENV],
 ): SelectedHarness {
   const choice = value === undefined || value.trim() === "" ? defaultChoice : value.trim();
+  const budget = readRunMinutes(runMinutes);
+  const real = budget ?? DEFAULT_RUN_MINUTES * 60_000;
   switch (choice) {
     case "stub":
-      return { name: "stub", slot: scriptedHarness(readStepMs(stepMs)).slot, runTimeoutMs: SCRIPTED_RUN_TIMEOUT_MS };
+      return { name: "stub", slot: scriptedHarness(readStepMs(stepMs)).slot, runTimeoutMs: budget ?? SCRIPTED_RUN_TIMEOUT_MS };
     case "claude-code":
-      return { name: "claude-code", slot: claudeCodeHarness, runTimeoutMs: CLAUDE_CODE_RUN_TIMEOUT_MS };
+      return { name: "claude-code", slot: claudeCodeHarness, runTimeoutMs: real };
+    case "codex":
+      return { name: "codex", slot: codexHarness, runTimeoutMs: real };
+    case "cursor":
+      return { name: "cursor", slot: cursorHarness, runTimeoutMs: real };
     default:
       throw new Error(
         `${HARNESS_ENV}="${choice}" names no harness this Lab can run; use one of ${HARNESS_CHOICES.join(", ")}.`,
@@ -292,6 +331,8 @@ export interface StartHarnessOptions {
   value?: string | undefined;
   /** The stub's step pause; `process.env[STEP_MS_ENV]` by default. */
   stepMs?: string | undefined;
+  /** One run's budget in minutes; `process.env[RUN_MINUTES_ENV]` by default. */
+  runMinutes?: string | undefined;
   /** Asks Claude Code for an account; `probeClaudeAccount` over the run's own environment by default. */
   probe?: () => Promise<ClaudeAccountProbe>;
   /** Where the start line goes; stderr by default. */
@@ -301,31 +342,41 @@ export interface StartHarnessOptions {
 /**
  * Pick a served Lab's coder at start: {@link selectHarness} with the profile's
  * default, then, on Claude Code, ask it for an account before the Lab listens.
+ * Codex and Cursor are not asked: their readiness is reported, not refused.
  *
- * Two outcomes, run or refuse. With no account, or no Agent SDK, this throws a
- * message naming what to set, and never hands back the scripted run instead.
- * A start that goes ahead logs one line naming the coder.
+ * On Claude Code, two outcomes, run or refuse. With no account, or no Agent
+ * SDK, this throws a message naming what to set, and never hands back the
+ * scripted run instead.
+ * A start that goes ahead logs one line naming the coder and, on a real
+ * harness, its run budget.
  *
  * @param defaultChoice The profile's coder when {@link HARNESS_ENV} names none.
  * @param options Seams for checks; a served Lab passes none.
  * @returns The chosen harness.
- * @throws When the choice is unknown, or Claude Code was chosen and has no
- *   account or no SDK.
+ * @throws When the choice or the budget is malformed, or Claude Code was
+ *   chosen and has no account or no SDK.
  */
 export async function startHarness(defaultChoice: HarnessChoice, options: StartHarnessOptions = {}): Promise<SelectedHarness> {
   const value = "value" in options ? options.value : process.env[HARNESS_ENV];
   const stepMs = "stepMs" in options ? options.stepMs : process.env[STEP_MS_ENV];
   const log = options.log ?? ((line: string) => process.stderr.write(`${line}\n`));
-  const harness = selectHarness(value, stepMs, defaultChoice);
+  const runMinutes = "runMinutes" in options ? options.runMinutes : process.env[RUN_MINUTES_ENV];
+  const harness = selectHarness(value, stepMs, defaultChoice, runMinutes);
   if (harness.name === "stub") {
     log(`Coder: the scripted run, no model (${HARNESS_ENV}=stub).`);
     return harness;
   }
+  const budget = `each run may take ${harness.runTimeoutMs / 60_000} minutes (${RUN_MINUTES_ENV})`;
+  if (harness.name === "codex" || harness.name === "cursor") {
+    log(`Coder: ${harness.name === "codex" ? "Codex" : "Cursor"}, not checked for a sign-in at start; ${budget}.`);
+    return harness;
+  }
   const account = await (options.probe ?? (() => probeClaudeAccount({ env: claudeCodeEnv() })))();
   if (account.status !== "account") throw new Error(refusalOf(account));
-  log(`Coder: Claude Code, on the credential from ${credentialOf(account)}.`);
+  log(`Coder: Claude Code, on the credential from ${credentialOf(account)}; ${budget}.`);
   return harness;
 }
+
 
 /**
  * Where an account's credential comes from, for the start line: the key or
@@ -347,6 +398,15 @@ function refusalOf(account: Exclude<ClaudeAccountProbe, { status: "account" }>):
   return `${account.reason}, so this Lab's coder can't run. Sign in to Claude Code, or set ANTHROPIC_API_KEY, and start again. ${stub}`;
 }
 
+/** The budget {@link RUN_MINUTES_ENV} asks for, in milliseconds, or none; refused rather than guessed when malformed. */
+function readRunMinutes(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim() === "") return undefined;
+  if (!/^\d+$/.test(raw.trim()) || Number(raw.trim()) === 0) {
+    throw new Error(`${RUN_MINUTES_ENV}="${raw}" is not a positive whole number of minutes.`);
+  }
+  return Number(raw.trim()) * 60_000;
+}
+
 /** The step pause {@link STEP_MS_ENV} asks for, refused rather than guessed when malformed. */
 function readStepMs(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === "") return SCRIPTED_STEP_MS;
@@ -363,9 +423,15 @@ function readStepMs(raw: string | undefined): number {
  * the one the profile starts on. Only that one's account is probed at start
  * ({@link startHarness}); a worker on another harness that isn't signed in
  * fails its run with that harness's own error.
+ *
+ * @param runMinutes One run's budget in minutes, `process.env[RUN_MINUTES_ENV]`
+ *   by default; {@link DEFAULT_RUN_MINUTES} when it names none.
  */
-export const WORKER_HARNESSES = {
-  "claude-code": { slot: claudeCodeHarness, runTimeoutMs: CLAUDE_CODE_RUN_TIMEOUT_MS },
-  codex: { slot: codexHarness, runTimeoutMs: CLAUDE_CODE_RUN_TIMEOUT_MS },
-  cursor: { slot: cursorHarness, runTimeoutMs: CLAUDE_CODE_RUN_TIMEOUT_MS },
-};
+export function workerHarnesses(runMinutes: string | undefined = process.env[RUN_MINUTES_ENV]) {
+  const runTimeoutMs = readRunMinutes(runMinutes) ?? DEFAULT_RUN_MINUTES * 60_000;
+  return {
+    "claude-code": { slot: claudeCodeHarness, runTimeoutMs },
+    codex: { slot: codexHarness, runTimeoutMs },
+    cursor: { slot: cursorHarness, runTimeoutMs },
+  };
+}

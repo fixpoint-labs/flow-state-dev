@@ -94,7 +94,8 @@ describe("the threads-mode screen", () => {
     // Cmd+Enter answers, the same as the button.
     fireEvent.keyDown(box, { key: "Enter", metaKey: true });
     await waitFor(() => expect(card("Vendor B · regions").dataset.column).toBe("working"));
-    expect((box as HTMLTextAreaElement).value).toBe("");
+    // The box clears once the send resolves, which can land after the card moves.
+    await waitFor(() => expect((box as HTMLTextAreaElement).value).toBe(""));
   });
 
   it("requests changes with Ctrl+Enter in the What should change box", async () => {
