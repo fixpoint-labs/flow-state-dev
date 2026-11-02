@@ -22,7 +22,10 @@
  * - **The working folder** is one git checkout the operator names. It is the
  *   host's constant run source, so every coding run and every read of the
  *   workers' source tools works in it. There are no projects: no worker has a
- *   project tool, and nothing a model writes can name another folder.
+ *   project tool, and nothing a model writes can name another folder. So the
+ *   operator also names its checks (`checks`), the commands a coding run's
+ *   worktree must pass before its task is done, and a `setup` command each
+ *   fresh worktree runs first so the checks find what they need.
  * - **Teammates** you hire from the page are rows of your own roster, written
  *   through the roster flow `hireWorkforce` registers; nothing restarts.
  *
@@ -53,7 +56,7 @@ import {
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { z } from "zod";
-import { localWorkspaceHost } from "@flow-state-dev/workspace";
+import { checkoutCommandProblem, localWorkspaceHost, splitCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { CODER_FLOW, coderFlow, type Harness } from "./src/flows/coder.ts";
 
 /** The workers, beside this file. */
@@ -83,6 +86,16 @@ export interface TeammatesOptions {
   runTimeoutMs?: number;
   /** The harness a coding worker runs on when its file names none. Defaults to `cursor`. */
   harness?: string;
+  /** A command each fresh worktree runs before its coding run starts (`pnpm install`). Absent: none. */
+  setup?: WorkspaceSetup;
+  /**
+   * The commands a coding run's worktree must pass before its task is done,
+   * run in order with no shell. Absent or empty: a run is done when its
+   * harness says it finished.
+   */
+  checks?: readonly string[];
+  /** How long the checks may take together. Defaults to 10 minutes. */
+  checksTimeoutMs?: number;
 }
 
 /** The harnesses a coding worker may name in `harness:`. Each run gets only the environment its harness needs. */
@@ -184,6 +197,38 @@ export function runTimeout(value: string | undefined): number | undefined {
 }
 
 /**
+ * The setup command `TEAMMATES_SETUP` names: one command, split into words as
+ * a check is, run with no shell. `undefined` when unset or blank.
+ *
+ * @throws When the command can't be split, or uses a shell operator.
+ */
+export function setupCommand(value: string | undefined): WorkspaceSetup | undefined {
+  const commands = checkCommands(value, "TEAMMATES_SETUP") ?? [];
+  if (commands.length > 1) throw new Error("TEAMMATES_SETUP: name one command; the setup step runs one.");
+  const [command] = commands;
+  if (command === undefined) return undefined;
+  const words = splitCheckoutCommand(command) as string[];
+  return { command: words as [string, ...string[]] };
+}
+
+/**
+ * The checks `TEAMMATES_CHECKS` names, `;`-separated: `pnpm typecheck; pnpm test`.
+ * Each is one command with no shell, so a `;` can only separate two of them.
+ * `undefined` when unset or blank.
+ *
+ * @throws When a command can't be split into words, or uses a shell operator.
+ */
+export function checkCommands(value: string | undefined, setting = "TEAMMATES_CHECKS"): string[] | undefined {
+  if (value === undefined || value.trim() === "") return undefined;
+  const commands = value.split(";").map((command) => command.trim()).filter((command) => command !== "");
+  for (const command of commands) {
+    const problem = checkoutCommandProblem(command);
+    if (problem !== undefined) throw new Error(`${setting}: ${problem}`);
+  }
+  return commands;
+}
+
+/**
  * Build the lab's server.
  *
  * @throws When the working folder is unset, missing or not a git checkout, or the workers' tree doesn't load.
@@ -215,6 +260,7 @@ export async function openTeammates(options: TeammatesOptions) {
     remotes: { allow: [] },
     localRepositories: [workdir],
     source: () => ({ kind: "repo", repo: workdir }),
+    ...(options.setup === undefined ? {} : { setup: options.setup }),
   });
   let flows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({ standardWorkers: roster.workers, workerFlows: () => flows as never });
@@ -249,6 +295,9 @@ export async function openTeammates(options: TeammatesOptions) {
       ready: READY,
       workspace,
       runTimeoutMs: options.runTimeoutMs ?? 20 * 60_000,
+      ...(options.checks === undefined || options.checks.length === 0
+        ? {}
+        : { checks: { commands: options.checks, timeoutMs: options.checksTimeoutMs ?? 10 * 60_000 } }),
     }),
   };
   const copies = hireWorkforce(installation) as Array<{ id: string }>;
