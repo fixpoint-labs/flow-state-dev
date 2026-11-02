@@ -54,6 +54,12 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("the harness-thread flow's coding runs", () => {
+  it("lets the Codex coder write its workspace while retaining its filtered environment", () => {
+    HARNESSES.codex!(feeds as never);
+    expect(seen.options[0]!.options.thread).toEqual({ sandboxMode: "workspace-write" });
+    expect(EXPECTED.codex!.envOf(seen.options[0]!.options)).toEqual(harnessEnv({ pass: CODEX_PASS }));
+  });
+
   it("builds a run for every harness this test checks, so a new one can't slip past it", () => {
     expect(Object.keys(HARNESSES).sort()).toEqual(Object.keys(EXPECTED).sort());
   });

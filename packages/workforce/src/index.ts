@@ -81,6 +81,12 @@ export {
   type FinishedTask,
   type FinishedTasksAnswerAgainOptions
 } from "./conversation-board/take-finished";
+// A delegate's answer, as its message item marks it (FIX-2378).
+export {
+  delegateAnswerMetadata,
+  delegateAnswerOf,
+  type DelegateAnswer
+} from "./conversation-board/delegate-answer";
 export { MAX_ANSWERS_AGAIN } from "./conversation-board/plan";
 export {
   backfillBoardWakes,

@@ -89,7 +89,7 @@ describe("the checkout's script", () => {
     const s = stores();
     const started = await run(["--assets", assets], s);
     expect(started.outcome, started.output).toBe("listening");
-    expect(started.output).toContain("Coder: Claude Code.");
+    expect(started.output).toContain("Coder: Claude Code; each run may take 20 minutes (DEVFORCE_LAB_RUN_MINUTES).");
     const row = started.output.split("\n").find((line) => line.includes("✗ Claude Code"));
     expect(row, started.output).toContain("ANTHROPIC_API_KEY");
     expect(existsSync(s.fsd)).toBe(true);
@@ -117,6 +117,6 @@ describe("the checkout's script", () => {
     const started = await run([...args], stores(), { DEVFORCE_LAB_HARNESS: "nope" }, 60_000);
     expect(started.outcome, started.output).toBe("exited");
     expect(started.code).toBe(3);
-    expect(started.output).toContain("use one of stub, claude-code");
+    expect(started.output).toContain("use one of stub, claude-code, codex, cursor");
   }, 90_000);
 });

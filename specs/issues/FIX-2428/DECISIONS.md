@@ -96,12 +96,13 @@ It comes down to push that misses a change: without the timer, the screen stops 
 - **On the Ably arm, an open Ably connection counts as crossing.** Ably's bus is the delivery
   itself, so no frame is sent or awaited: a mint answer with `transport: "ably"` means push
   covers every process while that connection is up. A dropped Ably connection resumes the timer,
-  as a dropped socket does, and its return runs `onChange` once. FIX-380 builds that arm.
+  as a dropped socket does, and its return runs `onChange` once. The seam supports that arm;
+  FIX-380 builds it later, outside FIX-2367.
 - **One way to follow a session** (ER-5). `useSession({ live })` follows its own items; a session
   topic on `useSubscription` is for flow `reads`. FIX-2429 moves `liveBoardDriver` onto it.
 - **`GET /capabilities` answers `{ userStream, push }`**, with `push` one of
   `{ transport: "websocket" }`, `{ transport: "ably" }` (FIX-380) or `null`. A client that gets no `push` field, from an older
-  server, treats it as `null` (BP-030). Both stay: on FIX-380's Ably host `push` is set and
+  server, treats it as `null` (BP-030). Both stay: on an Ably host (FIX-380, later, outside FIX-2367) `push` is set and
   `userStream` false. The client branches only on `push` to decide whether to mint. Once it
   mints, the answer's `transport` is authoritative; `capabilities.push.transport` only advertises,
   and a stale capabilities read that disagrees loses.
@@ -181,5 +182,9 @@ run a fresh `analysis` before the gate.
 - **Review (Nov 2, #4511)** — D3 records the server tick it rejects; the `crossing` frame is a
   control frame under ER-7 and a contracts type; the mint's `transport` is authoritative; the
   goal check uses FIX-2426's one crossing double and starts its idle window at the first frame.
+- **Amended (Nov 2, #4513)** — `onChange` is passed the notice that woke it (`null` for a
+  connect, a reconnect or a poll), owned here; FIX-1506's panels and FIX-2466's views consume it.
+- **Amended (Nov 2)** — FIX-380 (Ably) is a later transport behind the same seam, outside
+  FIX-2367 ([owner, #4512](https://github.com/fixpoint-labs/flow-state-dev/pull/4512#issuecomment-6567246620)). Wording only; the Ably arm stays what the seam supports.
 
 **Open: none.**
