@@ -24,15 +24,22 @@ const FAILURE_DELAY_MS = 750;
 /** Consecutive failures from one address before it must wait; the wait doubles per further failure, up to the cap. */
 const FREE_FAILURES = 5;
 const MAX_LOCKOUT_MS = 15 * 60 * 1000;
+/**
+ * How long an address's failures are remembered with no new one. Far longer
+ * than the longest lockout, so waiting a lockout out never earns fresh free
+ * attempts; only a correct sign-in clears the record sooner.
+ */
+const FORGET_AFTER_MS = 24 * 60 * 60 * 1000;
 /** Sign-in attempts being checked at once: per address, and across every address. More are turned away. */
 const MAX_PENDING_PER_ADDRESS = 2;
 const MAX_PENDING = 32;
 /** A sign-in form that hasn't fully arrived by then is dropped, freeing its slot. */
 const FORM_TIMEOUT_MS = 5000;
 /**
- * Failed sign-ins allowed per minute across every address. Past it, every
- * sign-in waits out the minute: a guesser spread over many addresses still
- * can't go faster. Anyone already signed in is unaffected.
+ * Failed sign-ins allowed per minute across every address. Past it, an address
+ * that has failed recently waits out the minute, so a guesser spread over many
+ * addresses can't keep each one busy. An address with no recent failure is not
+ * held back by it, so a guessing loop elsewhere can't lock a real user out.
  */
 const GLOBAL_FAILURES_PER_MINUTE = 60;
 /** Addresses remembered at most; the oldest is forgotten first. */
@@ -84,9 +91,20 @@ export function safeNext(value) {
 }
 
 /**
- * @param {{ username: string, password: string, secret?: string }} options
+ * @param {object} options
+ * @param {string} options.username
+ * @param {string} options.password
+ * @param {string} [options.secret]  Signs the session cookie; random per process when unset.
+ * @param {() => number} [options.now]  The clock, in ms. Tests pass their own.
+ * @param {number} [options.globalFailuresPerMinute]  Default {@link GLOBAL_FAILURES_PER_MINUTE}.
  */
-export function createAuth({ username, password, secret = randomBytes(32).toString("hex") }) {
+export function createAuth({
+  username,
+  password,
+  secret = randomBytes(32).toString("hex"),
+  now: clock = Date.now,
+  globalFailuresPerMinute = GLOBAL_FAILURES_PER_MINUTE,
+}) {
   /**
    * Failures by the connecting address: the socket's, never a forwarded header a client could set.
    * Behind a load balancer every attempt shares its address, so a guessing loop slows sign-in for everyone: by design.
@@ -99,21 +117,21 @@ export function createAuth({ username, password, secret = randomBytes(32).toStri
   let recentFailures = [];
 
   const lockedFor = (key) => {
-    const now = Date.now();
+    const now = clock();
     recentFailures = recentFailures.filter((at) => now - at < 60_000);
-    const global = recentFailures.length >= GLOBAL_FAILURES_PER_MINUTE ? recentFailures[0] + 60_000 - now : 0;
+    const global = recentFailures.length >= globalFailuresPerMinute ? recentFailures[0] + 60_000 - now : 0;
     const record = failures.get(key);
-    if (record === undefined || record.count < FREE_FAILURES) return global;
+    if (record === undefined || now - record.at >= FORGET_AFTER_MS) return 0;
+    if (record.count < FREE_FAILURES) return global;
     const wait = Math.min(MAX_LOCKOUT_MS, 1000 * 2 ** (record.count - FREE_FAILURES));
     return Math.max(global, record.at + wait - now);
   };
 
   const recordFailure = (key) => {
-    const now = Date.now();
+    const now = clock();
     recentFailures.push(now);
     const record = failures.get(key);
-    // An address quiet for longer than the longest lockout starts over.
-    const count = record !== undefined && now - record.at < MAX_LOCKOUT_MS ? record.count + 1 : 1;
+    const count = record !== undefined && now - record.at < FORGET_AFTER_MS ? record.count + 1 : 1;
     failures.delete(key);
     failures.set(key, { count, at: now });
     // Map order is insertion order, so the first key is the one that failed longest ago.

@@ -40,12 +40,14 @@ see its README. They load `.env.local` the way they do standalone.
   `SameSite=Lax`, lasts seven days, and is signed with HMAC-SHA256, so nothing
   is stored server-side. It is stripped before a request reaches an app.
   After five wrong passwords from one address (an IPv6 address counts as its
-  /64), each further attempt waits twice as long, up to 15 minutes. Past 60
-  failures a minute across all addresses, every sign-in waits out the minute.
-  An address may have two sign-ins in flight, and a form that hasn't arrived
-  within 5 seconds is dropped. Anyone already signed in is unaffected. Behind a
-  load balancer every attempt shares its address, so a guessing loop slows
-  sign-in for everyone rather than trusting a forwarded header.
+  /64), each further attempt waits twice as long, up to 15 minutes. Failures
+  are remembered for 24 hours, so waiting a lockout out doesn't earn fresh
+  tries; a correct sign-in clears them. Past 60 failures a minute across all
+  addresses, addresses that have been failing wait out the minute; one that
+  hasn't failed still signs in. An address may have two sign-ins in flight,
+  and a form that hasn't arrived within 5 seconds is dropped. Behind a load
+  balancer every attempt shares its address, so a guessing loop slows sign-in
+  for everyone rather than trusting a forwarded header.
 - **No sign-in** is allowed only for `pnpm dev` on loopback, and then the proxy
   answers only requests addressed to `localhost`, `127.0.0.1` or `[::1]`, so a
   web page can't reach the apps by rebinding its own domain to this machine.

@@ -213,3 +213,58 @@ describe("whose attempts count together", () => {
     assert.notEqual(addressKey("203.0.113.9"), addressKey("203.0.113.10"));
   });
 });
+
+describe("the lockout's memory", () => {
+  it("doesn't hand back free attempts to an address that waited out its lockout", async () => {
+    let clock = Date.now();
+    const server = createProxy({ apps: [], auth: createAuth({ username: "ops", password: "s3cret", now: () => clock }), status: () => "running" });
+    await new Promise((r) => server.listen(0, "127.0.0.1", r));
+    const attempt = (password) =>
+      fetch(`http://127.0.0.1:${server.address().port}/login`, {
+        method: "POST",
+        redirect: "manual",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ username: "ops", password }).toString(),
+      });
+    try {
+      for (let i = 0; i < 5; i++) assert.equal((await attempt("wrong")).status, 401);
+      // Longer than the longest lockout (15 minutes): this one is let through and fails...
+      clock += 16 * 60 * 1000;
+      assert.equal((await attempt("wrong")).status, 401);
+      // ...and it is the sixth failure, not a fresh first, so the next attempt waits.
+      assert.equal((await attempt("wrong")).status, 429);
+    } finally {
+      server.close();
+    }
+  });
+});
+
+describe("the limit across every address", () => {
+  it("holds back addresses that have been failing, not one that hasn't", async () => {
+    const server = createProxy({
+      apps: [],
+      auth: createAuth({ username: "ops", password: "s3cret", globalFailuresPerMinute: 2 }),
+      status: () => "running",
+    });
+    // Both stacks, so 127.0.0.1 and ::1 are two different addresses.
+    await new Promise((r) => server.listen(0, "::", r));
+    const port = server.address().port;
+    const attempt = (host, password) =>
+      fetch(`http://${host}:${port}/login`, {
+        method: "POST",
+        redirect: "manual",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ username: "ops", password }).toString(),
+      });
+    try {
+      assert.equal((await attempt("127.0.0.1", "wrong")).status, 401);
+      assert.equal((await attempt("127.0.0.1", "wrong")).status, 401);
+      // The minute's budget is spent: the address that spent it waits, even with the right password...
+      assert.equal((await attempt("127.0.0.1", "s3cret")).status, 429);
+      // ...while one that hasn't failed signs in.
+      assert.equal((await attempt("[::1]", "s3cret")).status, 303);
+    } finally {
+      server.close();
+    }
+  });
+});
