@@ -1,7 +1,8 @@
 /**
  * Reading a session's history in pages: the one paging loop in the client.
  * `readSessionTail` and the other session-window reads start it part way in;
- * FIX-2374's `sessionFeed` and `useSession` start it at the beginning.
+ * `useSession` starts it at the beginning. Also the one rule for which of two
+ * copies of an item to keep, shared by {@link sessionFeed} and `useSession`.
  */
 import { compareItemOrder } from "@flow-state-dev/contracts/items";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -96,4 +97,21 @@ export async function readSessionHistory(
     if (whole !== null) return whole;
   }
   throw new Error(`Session ${sessionId} changed during each of ${attempts} reads of its history; try again.`);
+}
+
+/** Whether a copy of an item is finished: anything but `in_progress`. */
+function isFinished(item: OutputItem): boolean {
+  return item.status !== "in_progress";
+}
+
+/**
+ * Whether `next` may replace `held`, two copies of one item (the same
+ * `requestId` and `id`). Never an unfinished copy over a finished one, and
+ * never a finished copy over one the server stamped later. A keyed item is
+ * sent again, finished, each time it is emitted, with a later time and index
+ * (`compareItemOrder`), and its copies can arrive in any order.
+ */
+export function mayReplaceItem(held: OutputItem | undefined, next: OutputItem): boolean {
+  if (held === undefined || !isFinished(held)) return true;
+  return isFinished(next) && compareItemOrder(next, held) >= 0;
 }

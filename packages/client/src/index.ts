@@ -37,6 +37,13 @@ export {
 } from "./client";
 
 export { sessionQueryFor } from "./session-client/session-query";
+export type { SessionConnectionState } from "./session-client/follow-session";
+export {
+  sessionFeed,
+  type SessionFeed,
+  type SessionFeedOptions,
+  type SessionFeedSnapshot
+} from "./session-client/session-feed";
 export {
   readSessionTail,
   readSessionEarlier,

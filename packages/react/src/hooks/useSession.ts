@@ -28,13 +28,13 @@ import type {
   SessionRun,
   StateChangeItem
 } from "@flow-state-dev/core/items";
+import { followSession, mayReplaceItem, readSessionHistory } from "@flow-state-dev/client/internal";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 // Canonical helper from the zero-dependency contracts layer (value-import).
 // Previously hand-mirrored here because react may only type-import core.
 import { resolveItemVisibility } from "@flow-state-dev/contracts";
 import { useFlowContext } from "../context/FlowContext";
 import { useClient } from "../internal/useClient";
-import { followSession } from "../internal/followSession";
 import {
   isReducibleStateChange,
   mergeStateChangeIntoSnapshot
@@ -43,15 +43,6 @@ import {
   isReducibleResourceChange,
   mergeResourceChangeIntoSnapshot
 } from "../internal/mergeResourceChangeIntoSnapshot";
-
-const DEFAULT_STATE_PAGE_LIMIT = 100;
-
-/**
- * How many times a paged snapshot read starts over because the session's
- * history moved under it, before it fails rather than show part of the
- * history as all of it.
- */
-const SNAPSHOT_READ_ATTEMPTS = 5;
 
 /**
  * Where one snapshot read stands, taken when it is requested: how many live
@@ -140,18 +131,6 @@ function keyOfItem(item: OutputItem): string {
  */
 function isFinished(item: OutputItem | undefined): boolean {
   return item !== undefined && item.status !== "in_progress";
-}
-
-/**
- * Whether `next` may replace `held`, two copies of one item. Never an
- * unfinished copy over a finished one, and never a finished copy over one the
- * server stamped later. A keyed item is sent again, finished, each time it is
- * emitted, with a later time and index (`compareItemOrder`), and its copies can
- * arrive in any order.
- */
-function mayReplace(held: OutputItem | undefined, next: OutputItem): boolean {
-  if (held === undefined || !isFinished(held)) return true;
-  return isFinished(next) && compareItemOrder(next, held) >= 0;
 }
 
 /** How many content parts a message or reasoning item holds. */
@@ -877,7 +856,7 @@ export function useSession(
     const key = keyOfItem(item);
     const held = store.getById(key);
     const repeat = held !== undefined && isFinished(held) && compareItemOrder(item, held) === 0;
-    if (!mayReplace(held, item) || (from === "session" && repeat)) return replacedOptimistic;
+    if (!mayReplaceItem(held, item) || (from === "session" && repeat)) return replacedOptimistic;
 
     if (isFinished(item)) store.discardDeltas(key);
     liveArrivalsRef.current += 1;
@@ -973,10 +952,10 @@ export function useSession(
         const loaded = storeRef.current.getById(key);
         const arrival = live.get(key);
         if (arrival !== undefined && arrival > arrivalsBefore) {
-          if (mayReplace(loaded, kept)) storeRef.current.upsert(kept);
+          if (mayReplaceItem(loaded, kept)) storeRef.current.upsert(kept);
         } else {
           live.delete(key);
-          if (loaded !== undefined && !mayReplace(kept, loaded)) storeRef.current.upsert(kept);
+          if (loaded !== undefined && !mayReplaceItem(kept, loaded)) storeRef.current.upsert(kept);
         }
       }
       // Put back the view's own stop record for each request the person
@@ -1018,67 +997,9 @@ export function useSession(
       });
     }
 
-    // Pages are cut by offset from the history as it stands at each request.
-    // A request removed from a page already read, or a keyed item emitted
-    // again, shifts the later pages, and an item that never changed would be
-    // skipped by a read that still passes for whole: the stream follows it
-    // from the first page's `at`, and never sends an item kept before that.
-    // So each later page starts one item early, on the last item the read
-    // holds. If that is not the item there, the history moved, and the read
-    // starts over. So does a page read from another session that took the id
-    // since the first page. Each page stays one bounded request, and any
-    // server that pages by offset answers it.
-    const readPages = async (): Promise<SessionStateSnapshotResponse | null> => {
-      let offset = 0;
-      let first: SessionStateSnapshotResponse | null = null;
-      const mergedItems: OutputItem[] = [];
-
-      while (true) {
-        const page = await sessionsApi.state(sessionId, {
-          includeItems: true,
-          itemTypes: itemConfig.itemTypes,
-          offset,
-          limit: DEFAULT_STATE_PAGE_LIMIT
-        });
-        let pageItems = page.items ?? [];
-
-        if (first === null) {
-          first = page;
-        } else {
-          if (page.sessionCreatedAt !== first.sessionCreatedAt) return null;
-          const last = mergedItems[mergedItems.length - 1];
-          const overlap = pageItems[0];
-          if (last === undefined || overlap === undefined || compareItemOrder(overlap, last) !== 0) {
-            return null;
-          }
-          pageItems = pageItems.slice(1);
-        }
-        mergedItems.push(...pageItems);
-
-        if (page.pagination?.hasMore !== true) break;
-        offset = page.pagination.nextOffset - 1;
-      }
-
-      return {
-        ...first,
-        items: mergedItems,
-        pagination: {
-          offset: 0,
-          limit: mergedItems.length,
-          total: mergedItems.length,
-          hasMore: false,
-          nextOffset: mergedItems.length
-        }
-      };
-    };
-
-    for (let attempt = 1; attempt <= SNAPSHOT_READ_ATTEMPTS; attempt += 1) {
-      const whole = await readPages();
-      if (whole !== null) return whole;
-    }
-    throw new Error(
-      `Session ${sessionId} changed during each of ${SNAPSHOT_READ_ATTEMPTS} reads of its history; try again.`
-    );
+    // The client's paged read: it starts over when the history moves under
+    // it, and fails rather than show part of the history as all of it.
+    return readSessionHistory(sessionsApi, sessionId, { itemTypes: itemConfig.itemTypes });
   }, [sessionId, sessionsApi, itemConfig.enabled, itemConfig.itemTypes]);
 
   const refreshSnapshot = useCallback(async () => {
@@ -1639,8 +1560,7 @@ export function useSession(
     const close = followSession({
       sessionId,
       client: fsd,
-      since: snapshotAtRef.current,
-      sessionCreatedAt: followedSessionCreatedAt,
+      after: { at: snapshotAtRef.current, sessionCreatedAt: followedSessionCreatedAt },
       itemTypes: itemConfig.itemTypes,
       onItem: acceptItem,
       onRuns: (event) => {
