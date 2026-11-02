@@ -317,6 +317,25 @@ describe("sessionFeed", () => {
     expect(feed.getSnapshot().items.map((item) => item.id)).toEqual(["su1", "re1", "p2"]);
   });
 
+  it("shows a resumed gate's prompt once under an item-type filter too, though the filter hides the resume markers", async () => {
+    const gate = "req_1:root/step[0]:0";
+    const owned = <T extends OutputItem>(item: T, itemIndex: number): T =>
+      ({ ...item, itemIndex, provenance: { blockName: "gate", blockInstanceId: gate, phase: "main" } }) as T;
+    const suspension = owned({ ...message("req_1", "su1", "", 11), type: "suspension", suspensionId: "s1", blockInstanceId: gate } as unknown as OutputItem, 1);
+    const resume = owned({ ...message("req_1", "re1", "", 12), type: "suspension_resume", suspensionId: "s1" } as unknown as OutputItem, 2);
+    const h = host(() => json(snapshot([owned(message("req_1", "p1", "approve?", 10), 0), suspension])));
+    const feed = sessionFeed(h.client, "s1", { itemTypes: ["message"] });
+    feeds.push(feed);
+    await until(() => h.streams.length === 1);
+    expect(feed.getSnapshot().items.map((item) => item.id)).toEqual(["p1"]);
+
+    h.streams[0].send(itemFrame(1_001, resume) + itemFrame(1_002, owned(message("req_1", "p2", "approve?", 13), 3)));
+    await until(() => feed.getSnapshot().items.some((item) => item.id === "p2"));
+    expect(feed.getSnapshot().items.map((item) => item.id)).toEqual(["p2"]);
+    // The markers are asked for, so the server's filter keeps them too.
+    expect(h.urls[0]).toContain("suspension_resume");
+  });
+
   it("keeps only the item types it was asked for, and no transient item", async () => {
     const transient = { ...message("req_1", "t1", "typing", 11), transient: true } as OutputItem;
     const status = { ...message("req_1", "st", "status", 12), type: "status" } as unknown as OutputItem;

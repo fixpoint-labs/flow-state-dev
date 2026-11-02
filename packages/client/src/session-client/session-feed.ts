@@ -25,6 +25,8 @@ import { readSessionTail } from "./session-window";
 const DEFAULT_RETRY_MS = 2_000;
 /** How many times a failed history read is tried again before the feed stops. */
 const HISTORY_RETRIES = 4;
+/** The item types `collapseToCanonicalLog` reads to drop a resumed gate's earlier copies. */
+const RESUME_MARKERS = ["suspension", "suspension_resume"];
 
 export type SessionFeedOptions = {
   /** Keep only these item types. Default: every type. */
@@ -82,7 +84,10 @@ export function sessionFeed(
   options: SessionFeedOptions = {}
 ): SessionFeed {
   const retryMs = options.retryMs ?? DEFAULT_RETRY_MS;
-  const types = options.itemTypes !== undefined && options.itemTypes.length > 0 ? options.itemTypes : undefined;
+  const shown = options.itemTypes !== undefined && options.itemTypes.length > 0 ? options.itemTypes : undefined;
+  // The resume markers are read too, though not shown: without them a filtered
+  // feed can't tell a resumed gate's earlier copies from its current ones.
+  const types = shown === undefined ? undefined : [...new Set([...shown, ...RESUME_MARKERS])];
   const passes = (item: OutputItem): boolean =>
     (options.includeTransient === true || item.transient !== true) && (types === undefined || types.includes(item.type));
 
@@ -108,7 +113,10 @@ export function sessionFeed(
   };
   // A resumed block's copies from before the resume drop out, as they do from
   // a fresh history read and from `useSession`.
-  const sortedItems = (): OutputItem[] => collapseToCanonicalLog([...byKey.values()].sort(compareItemOrder));
+  const sortedItems = (): OutputItem[] => {
+    const canonical = collapseToCanonicalLog([...byKey.values()].sort(compareItemOrder));
+    return shown === undefined ? canonical : canonical.filter((item) => shown.includes(item.type));
+  };
 
   const start = async (): Promise<void> => {
     let history;
@@ -178,7 +186,9 @@ export function sessionFeed(
             if (store.status !== "in_progress") end();
           }
         }),
-        onError: () => end()
+        onError: () => end(),
+        // A response can end without saying how the request ended; the session stream has the rest.
+        onClose: () => end()
       });
       responses.add(end);
     },
