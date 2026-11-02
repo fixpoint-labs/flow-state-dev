@@ -667,6 +667,10 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
             });
           }
         }
+        // A turn that never held the worktree reads nothing there: refused (not
+        // this user's to attach to), cancelled while it waited, or one that never
+        // asked for a working directory.
+        if (!inUse.has(requestId)) return;
         // A turn has a record under its request; a `steer` request has none.
         const turnRecord = state.turns?.[requestId];
         if (turnRecord === undefined) return;
