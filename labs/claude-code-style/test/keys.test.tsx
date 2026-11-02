@@ -10,7 +10,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/App";
 import { createFakeLab } from "./fake-lab";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // The app keeps what is open in the page's address; each test starts on a bare one.
+  window.history.replaceState(null, "", "/");
+});
 
 const list = () => screen.getByRole("navigation", { name: "Sessions" });
 const composer = () => screen.queryByLabelText("Message the main session") as HTMLTextAreaElement | null;

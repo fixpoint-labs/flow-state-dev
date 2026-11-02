@@ -67,6 +67,7 @@
  */
 
 import type { RequestRecord, StoreRegistry, WakeRecord } from "../stores/types";
+import { terminalAtMs } from "../stores/request-ended-at";
 import type { RequestStatus, SuspensionRecord, WaitOutcome } from "@flow-state-dev/core/types";
 import {
   DEFAULT_RUNTIME_LOGGER,
@@ -857,12 +858,7 @@ async function pruneOrphanCheckpoints(args: ResolvedTickArgs, now: number): Prom
   const sweepStatus = async (
     status: RequestStatus,
     isEligible: (cutoffSource: number | undefined) => boolean,
-    timestampOf: (rec: {
-      completedAtMs?: number;
-      failedAtMs?: number;
-      abortedAt?: number;
-      interruptedAt?: number;
-    }) => number | undefined
+    timestampOf: (rec: RequestRecord) => number | undefined
   ): Promise<void> => {
     try {
       // Page through every record of this status. `request.list` returns
@@ -896,7 +892,7 @@ async function pruneOrphanCheckpoints(args: ResolvedTickArgs, now: number): Prom
     await sweepStatus(
       status,
       (ts) => ts !== undefined && ts < terminalCutoff,
-      (rec) => rec.completedAtMs ?? rec.failedAtMs ?? rec.abortedAt
+      terminalAtMs
     );
   }
 

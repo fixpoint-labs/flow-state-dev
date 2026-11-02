@@ -10,7 +10,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/App";
 import { createFakeLab } from "./fake-lab";
 
-afterEach(cleanup);
+// The app keeps what is open in the page's address; each test starts on a bare one.
+afterEach(() => {
+  cleanup();
+  window.history.replaceState(null, "", "/");
+});
 
 const thread = () => screen.getByRole("main", { name: "Main thread" });
 const board = () => screen.getByRole("complementary", { name: "Tasks" });

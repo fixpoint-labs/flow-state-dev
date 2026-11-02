@@ -13,7 +13,11 @@ import { createFakeLab } from "./fake-lab";
 // The script runs at a hundredth of real time.
 const fast = () => createFakeLab({ speed: 0.01 });
 
-afterEach(cleanup);
+// The app keeps what is open in the page's address; each test starts on a bare one.
+afterEach(() => {
+  cleanup();
+  window.history.replaceState(null, "", "/");
+});
 
 async function ask(text: string) {
   const box = await screen.findByLabelText("Message the main session");
@@ -363,19 +367,46 @@ describe("the session-mode screen", () => {
     expect(within(thread()).queryByRole("status")).toBeNull();
   });
 
-  it("doesn't stop the turn when Escape only dismisses an IME composition", async () => {
+  it("never stops the turn on one Esc, in the composer or when it closes a sheet", async () => {
     render(<App adapter={createFakeLab({ speed: 0.2 })} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
     await within(thread()).findByRole("status");
     const box = screen.getByLabelText("Message the main session");
-    act(() => {
-      box.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", isComposing: true, bubbles: true }));
-    });
-    fireEvent.keyDown(box, { key: "Escape", keyCode: 229 });
-    expect(within(thread()).getByRole("status")).toBeTruthy();
-    // A plain Escape still stops it.
+    // Esc in the text box is the box's, however many times it is pressed.
     fireEvent.keyDown(box, { key: "Escape" });
+    fireEvent.keyDown(box, { key: "Escape" });
+    // An Esc that closes a sheet is spent, even with the second Esc right behind it.
+    await waitFor(() => expect(row("Research Globex")).toBeTruthy());
+    fireEvent.click(row("Research Globex"));
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Work: Research Globex" })).toBeNull();
+    expect(within(thread()).queryByText(/press Esc again/)).toBeNull();
+    // The next Esc only arms: the one that closed the sheet did not count as the first.
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(within(thread()).getByText(/press Esc again/)).toBeTruthy();
+    expect(within(thread()).getByRole("status")).toBeTruthy();
+    expect(within(thread()).queryByText(/Interrupted/)).toBeNull();
+  });
+
+  it("stops the turn on Esc twice, from outside the text box", async () => {
+    render(<App adapter={createFakeLab({ speed: 0.2 })} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await within(thread()).findByRole("status");
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(within(thread()).getByText(/press Esc again to stop the turn/)).toBeTruthy();
+    expect(within(thread()).queryByText(/Interrupted/)).toBeNull();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await within(thread()).findByText(/Interrupted/);
+  });
+
+  it("stops the turn on Cmd+. from the composer", async () => {
+    render(<App adapter={createFakeLab({ speed: 0.2 })} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await within(thread()).findByRole("status");
+    fireEvent.keyDown(screen.getByLabelText("Message the main session"), { key: ".", metaKey: true });
     await within(thread()).findByText(/Interrupted/);
   });
 

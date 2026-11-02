@@ -73,6 +73,11 @@ const claudeCode = (permissionMode: (typeof PERMISSION_MODES)[number]) => (feeds
     recordWork: true,
     allowedTools: ["Read", "Write", "Edit", "Bash"],
     permissionMode,
+    // The working folder's project settings, CLAUDE.md and skills, with every hook off and never
+    // this machine's own user settings: a turn can write a hook into `.claude/settings.json`, and it
+    // would run by itself on the next turn, in no transcript.
+    settingSources: ["project"],
+    settings: { disableAllHooks: true },
   } as never) as unknown as HarnessBlock;
 
 /** The model a Cursor run uses: Cursor's own pick ("Auto"), as Kitchen Sink's Cursor mode offers it. */

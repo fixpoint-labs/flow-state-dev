@@ -20,6 +20,8 @@ const fast = (options = {}) => createFixtureLab({ speed: 0.05, ...options });
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
+  // The app keeps what is open in the page's address; each test starts on a bare one.
+  window.history.replaceState(null, "", "/");
 });
 
 const workers = () => screen.getByRole("navigation", { name: "Workers" });

@@ -556,6 +556,10 @@ async function legC(browser: Browser, pages: string) {
       const jump = async (query: string) => {
         await sidebarEntry.focus();
         await palette(page, query);
+        // Workstreams are read when the palette opens; on a slow run they land after the typing.
+        await page
+          .waitForFunction((q) => [...document.querySelectorAll('[data-testid="jump-result"]')].some((r) => r.textContent?.includes(q)), query, { timeout: 5_000 })
+          .catch(() => undefined);
         await page.keyboard.press("Enter");
         await until(page, () => document.querySelector('[data-testid="jump-dialog"]') === null, `Enter on "${query}" left the palette open`, 5_000).catch(async (error: Error) => {
           // Closed again, so the next step starts from the page, not from this one's leftover palette.

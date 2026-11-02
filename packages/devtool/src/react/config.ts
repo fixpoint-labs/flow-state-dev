@@ -183,3 +183,32 @@ export function readSessionAddress(): string | undefined {
   const value = new URLSearchParams(window.location.search).get(SESSION_ADDRESS_PARAM)?.trim();
   return value === undefined || value.length === 0 ? undefined : value;
 }
+
+/** The page meta `fsdev dev --app` writes the DevTool's address into. */
+const DEVTOOL_URL_META = "fsdev-devtool-url";
+
+/**
+ * The DevTool served beside this page, read from the `fsdev-devtool-url` meta
+ * `fsdev dev --app` writes into every page it serves. `undefined` when no
+ * DevTool is served (the meta is absent), during a prerender, or when the meta
+ * holds anything but an http(s) address. Hide a trace link when it is undefined.
+ */
+export function readDevtoolUrl(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const value = document.querySelector<HTMLMetaElement>(`meta[name="${DEVTOOL_URL_META}"]`)?.content.trim();
+  return value !== undefined && /^https?:\/\//.test(value) ? value : undefined;
+}
+
+/**
+ * The DevTool address that opens one session: `devtoolUrl` with
+ * `?session=<id>` ({@link SESSION_ADDRESS_PARAM}), which the DevTool follows to
+ * the session and the flow copy that owns it. With no session, the DevTool
+ * itself. `devtoolUrl` must parse as a URL; {@link readDevtoolUrl} only returns
+ * one that does.
+ */
+export function traceHref(devtoolUrl: string, sessionId?: string): string {
+  if (sessionId === undefined) return devtoolUrl;
+  const url = new URL(devtoolUrl);
+  url.searchParams.set(SESSION_ADDRESS_PARAM, sessionId);
+  return url.toString();
+}

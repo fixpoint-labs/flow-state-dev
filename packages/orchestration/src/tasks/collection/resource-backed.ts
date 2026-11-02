@@ -125,6 +125,7 @@ import {
   DEFAULT_MAX_ABANDONMENTS,
   defaultOrder,
   grantRetry,
+  retryWrite,
   isClaimable,
   listTasks,
   routeFailure,
@@ -783,7 +784,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
    * took, and a throw from the updater skips the store's check of that
    * snapshot, so a row another request has moved on since (claimed,
    * dispatched, its wait slot released) could be refused on a stale read. A
-   * `terminal` decline needs no second look: an ending is final.
+   * `terminal` decline needs no second look: an ending is final unless a
+   * retry reopens it (FIX-2383), and a stale refusal then costs one more try.
    */
   async function confirmedDecline(id: string, write: () => Promise<TaskWriteOutcome>): Promise<TaskWriteOutcome> {
     const outcome = await write();
@@ -1270,6 +1272,21 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // New dependencies have the filing's window (`cancelIfDepEnded`).
       if (settings.deps !== undefined && outcome.outcome === "recorded") await cancelIfDepEnded(id);
       return outcome;
+    },
+
+    async retry(id) {
+      // Dependencies are read as stored now, so one another request ended is refused here (FIX-2383).
+      await refreshDeps([lookupRow(id) ?? { id }]);
+      // A request reads the row as the snapshot it first took: a refusal is
+      // confirmed against the committed row (`confirmedDecline`). The grant is
+      // counted, not capped: this backing enforces no `maxTotalRetries`.
+      return confirmedDecline(id, () =>
+        patchRef(id, "retry_requested", (task) => {
+          const decided = retryWrite(task as Task, lookupRow, () => false);
+          if ("decline" in decided) throw new WriteDeclined(decided.decline, task.status);
+          return decided.patch as Partial<Task<TInput, TOutput>>;
+        })
+      );
     },
 
     async steer(id, input) {
