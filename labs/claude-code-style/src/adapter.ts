@@ -21,7 +21,7 @@
  * | `requestChanges`| the same answer with `{ verdict: "revise", words }`                        |
  * | `watchPins`, `pin`, `unpin` | the lab's `pins` flow, your own user state                    |
  */
-import { createClient, sessionFeed, type Client, type SessionFeed, type SessionSummary } from "@flow-state-dev/client";
+import { createClient, sessionFeed, type Client, type SessionConnectionState, type SessionFeed, type SessionSummary } from "@flow-state-dev/client";
 import { readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import { createInboxClient, inboxItems, type InboxAnswer, type InboxHold, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
 import type { TaskSpendView } from "@flow-state-dev/orchestration/tasks";
@@ -90,10 +90,10 @@ export type ThreadEntry = (
   | { kind: "thread"; id: string; taskId: string }
 ) & { requestId?: string };
 
-/** What a thread shows now. */
 /** A session feed's connection: `lapsed` once a retry has failed, `stopped` once it gives up. */
-export type ConnectionState = "connecting" | "live" | "reconnecting" | "lapsed" | "stopped";
+export type ConnectionState = SessionConnectionState;
 
+/** What a thread shows now. */
 export interface ThreadView {
   entries: ThreadEntry[];
   running: boolean;
