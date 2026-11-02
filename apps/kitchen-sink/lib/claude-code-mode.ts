@@ -5,8 +5,15 @@
  * Server only. The block runs as background work (`detached`) with its work
  * recorded (`recordWork`), so its plan lands in the shared plan record.
  *
- * **Kitchen Sink confines no run.** It asks for no approval and runs with no
- * sandbox, so it writes, commits and runs commands wherever the server's OS
+ * **Each tool call that isn't read-only waits for the user.** The session
+ * flow runs with `approveTools`: a call outside `Read`, `Glob` and `Grep`
+ * stops the turn on an approval card, and the answer resumes the same
+ * conversation (`@flow-state-dev/harness-manager`). Under the goal control
+ * `no-approval` it asks nothing and runs with `bypassPermissions`, as it did
+ * before, so the goal leg that a call waits can be seen to fail.
+ *
+ * **Kitchen Sink confines no run.** It runs with no sandbox, so a call the
+ * user allows writes, commits and runs commands wherever the server's OS
  * user can — this checkout included, not just the session's worktree. Kitchen
  * Sink is a showcase meant to run on a machine where that is fine. Run the
  * server as a separate OS user, or in a container, when it is not.
@@ -103,10 +110,19 @@ export function claudeCodeIsScripted(env: Record<string, string | undefined> = p
   return env.KITCHEN_SINK_TEST_MODE === "1" && env.KITCHEN_SINK_REAL_HARNESS !== "1";
 }
 
+/** The tools a Claude Code run uses without asking: it reads and searches, and nothing else. */
+export const READ_ONLY_TOOLS = ["Read", "Glob", "Grep"] as const;
+
 /** Test seams for the block: a stand-in for the Agent SDK. */
 export interface ClaudeCodeSeams {
   /** Replaces the SDK (and the scripted one test mode picks). */
   readonly resolveClaudeAgent?: ResolveClaudeAgent;
+  /**
+   * Turns approvals off, for a test on a host without durable execution
+   * (which refuses a turn that could wait). On unless the goal control
+   * `no-approval` is in force.
+   */
+  readonly approveTools?: false;
 }
 
 /**
@@ -129,7 +145,11 @@ export function claudeCodeBlock(feeds: HarnessSessionFeeds, seams: ClaudeCodeSea
     recordWork: goalControl() !== "no-record",
     // Records no pull request in the turn, so goal leg **r1** can be seen to fail.
     recordPullRequests: goalControl() !== "no-pr-record",
-    permissionMode: "bypassPermissions",
+    // With approvals, every call outside the read-only tools asks the user
+    // through the feed; without, every call runs unasked.
+    ...(feeds.onToolApproval !== undefined
+      ? { onToolApproval: feeds.onToolApproval, permissionMode: "default" as const, allowedTools: [...READ_ONLY_TOOLS] }
+      : { permissionMode: "bypassPermissions" as const }),
     // Untrusted, nothing from the repository; trusted, its conventions with
     // every hook off (see the header).
     ...claudeCodeRepoOptions(trust),
@@ -147,7 +167,12 @@ export function claudeCodeBlock(feeds: HarnessSessionFeeds, seams: ClaudeCodeSea
 export function claudeCodeSessionFlow(seams: ClaudeCodeSeams = {}) {
   // No `defaultModel`: a session from before models could be picked runs on
   // Claude Code's own default, as it did.
-  return kitchenSinkHarnessFlow({ kind: CLAUDE_CODE_SESSION, agent: (feeds) => claudeCodeBlock(feeds, seams) });
+  return kitchenSinkHarnessFlow({
+    kind: CLAUDE_CODE_SESSION,
+    // Off under `no-approval`, so goal leg **a** can be seen to fail.
+    approveTools: seams.approveTools !== false && goalControl() !== "no-approval",
+    agent: (feeds) => claudeCodeBlock(feeds, seams),
+  });
 }
 
 /** The model the scripted Claude Code offers. It runs no model; the id only travels. */

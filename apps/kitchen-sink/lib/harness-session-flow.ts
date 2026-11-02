@@ -76,6 +76,12 @@ export interface KitchenSinkHarnessFlowOptions {
    * goal control hands the harness. Unset, the harness runs its own default.
    */
   readonly defaultModel?: string;
+  /**
+   * Whether a user approves each tool call the harness isn't told it may make
+   * (the session flow's `approveTools`). The feeds then carry `onToolApproval`
+   * for the block to pass on. Off when unset.
+   */
+  readonly approveTools?: boolean;
 }
 
 /** A harness mode's session flow. */
@@ -84,6 +90,7 @@ export function kitchenSinkHarnessFlow(options: KitchenSinkHarnessFlowOptions) {
     kind: options.kind,
     workspace,
     ...(options.defaultModel === undefined ? {} : { defaultModel: options.defaultModel }),
+    ...(options.approveTools === true ? { approveTools: true } : {}),
     agent: (feeds) => options.agent(withGoalControls(feeds, options.defaultModel)),
   });
 }

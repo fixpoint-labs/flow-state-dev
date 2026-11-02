@@ -20,6 +20,7 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => ({
 vi.mock("@flow-state-dev/react", async (importOriginal) => ({
   useHarnessLines: (await importOriginal<typeof import("@flow-state-dev/react")>()).useHarnessLines,
   FlowProvider: ({ children }: { children: ReactNode }) => children,
+  SuspensionResolverProvider: ({ children }: { children: ReactNode }) => children,
   useResourceManifest: () => ({ manifest: undefined, error: undefined }),
   useResourceCollectionList: () => ({ items: [], error: undefined }),
   useSession: () => ({

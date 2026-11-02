@@ -27,6 +27,7 @@ import {
   useResourceManifest,
   useHarnessLines,
   useSession,
+  SuspensionResolverProvider,
   type SessionView,
 } from "@flow-state-dev/react";
 import {
@@ -201,6 +202,8 @@ function SessionBody({
           </span>
         </div>
         <Conversation className="min-h-0 flex-1" data-testid="conversation">
+          {/* An answer to a card goes through the session, so the turn it resumes streams in here. */}
+          <SuspensionResolverProvider resolve={session.resumeSuspension}>
           <SessionItemsProvider value={session.items}>
             <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
               {session.isLoading ? (
@@ -223,6 +226,7 @@ function SessionBody({
               )}
             </ConversationContent>
           </SessionItemsProvider>
+          </SuspensionResolverProvider>
           <ConversationScrollButton />
         </Conversation>
         <div className="border-t">
@@ -251,7 +255,7 @@ function SessionBody({
         session={session}
         label={label}
         turn={turn}
-        ended={turn !== null && turn.status !== "running"}
+        ended={turn !== null && turn.status !== "running" && turn.status !== "waiting"}
         bound={bound}
         turnsByRequest={turnsByRequest}
         records={state.turns ?? null}
@@ -343,6 +347,8 @@ function Notice({ notice, label }: { notice: TurnNotice; label: string }) {
         return `This turn failed${notice.error === null ? "." : `: ${notice.error}`} ${notice.conversation === null ? "" : `The session stays on conversation ${notice.conversation}.`}`;
       case "stopped":
         return `Stopped. ${notice.conversation === null ? "" : `The session stays on conversation ${notice.conversation}, and your next turn continues it.`}`;
+      case "waiting":
+        return `Waiting on you. ${label} asked to use a tool: answer above, and ${notice.conversation === null ? "the turn" : `conversation ${notice.conversation}`} goes on.`;
     }
   })();
   const warn = notice.kind === "refused" || notice.kind === "error";

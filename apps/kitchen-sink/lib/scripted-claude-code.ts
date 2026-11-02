@@ -15,7 +15,8 @@
  * | (none) | names the conversation (the asked one, or a new one), streams a reply with a pause, succeeds |
  * | `[plan]` | also records two to-do items and moves the first to `in_progress`, when the run is offered the to-do tools (see below) |
  * | `[plan-next]` | moves on through that plan by id alone, the way a later turn does: the first item to `completed`, the second to `in_progress` |
- * | `[bash]` | also runs five shell commands, each with its `description` |
+ * | `[bash]` | also shows five shell commands, each with its `description`. They ask nothing and run nothing: a display of steps |
+ * | `[touch:<file>]` | also makes one shell call, `touch <file>`, which writes the time into `<file>` in the run's folder. Handed `canUseTool`, it asks first, as Claude Code does for a tool `allowedTools` doesn't name: allowed, the file is written; denied, it isn't and the reply goes on; held (`interrupt`), the run stops there with the call unrun |
  * | `[slow]` | after the reply and plan have shown, holds long enough for a stop to land |
  * | `[slow-start]` | pauses before naming the conversation, so a stop lands before it is confirmed |
  * | `[new]` | names a new conversation even when asked to continue one |
@@ -24,9 +25,14 @@
  * | `[fail-early]` | fails before naming any conversation |
  * | `[errored]` | names the conversation and streams its reply, then ends on a `result` Claude Code marks as an error (a result, not a throw) |
  *
+ * A prompt saying a person allowed `Bash: touch <file>` (the harness manager's
+ * resume after an approval) makes that call again, as Claude Code does.
+ *
  * The reply names how many turns the conversation has had, which is how a
  * test sees a second turn continue the first's conversation.
  */
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { ClaudeAgentQueryOptions, ResolveClaudeAgent, SdkMessageLike } from "@flow-state-dev/claude-code/sdk";
 
 import { scriptedReceived } from "./scripted-received";
@@ -74,6 +80,38 @@ function toolResult(id: string, result: Record<string, unknown>, content: string
     tool_use_result: result,
     message: { content: [{ type: "tool_result", tool_use_id: id, content }] },
   } as SdkMessageLike;
+}
+
+/** `[touch:<file>]`, a bare file name. */
+const TOUCH = /\[touch:([\w.-]+)\]/;
+/** The resume after a person allowed a held `touch`, in the harness manager's words. */
+const ALLOWED_TOUCH = /A person allowed your call \(Bash: touch ([\w.-]+)\)/;
+
+/**
+ * One `touch <file>` shell call: asked through `canUseTool` when the run has
+ * one and `allowedTools` doesn't name `Bash`, then run or refused as answered.
+ */
+async function* touchCall(file: string, options: ClaudeAgentQueryOptions | undefined): AsyncGenerator<SdkMessageLike> {
+  const signal = options?.abortController?.signal;
+  const input = { command: `touch ${file}`, description: `Create ${file}` };
+  const id = "toolu_touch_1";
+  yield toolUse(id, "Bash", input);
+  const ask = options?.canUseTool;
+  const decision =
+    ask !== undefined && options?.allowedTools?.includes("Bash") !== true
+      ? await ask("Bash", input, { signal })
+      : ({ behavior: "allow", updatedInput: input } as const);
+  if (decision.behavior === "allow") {
+    writeFileSync(join(options?.cwd ?? process.cwd(), file), `${Date.now()}\n`);
+    yield toolResult(id, { stdout: "", stderr: "", interrupted: false }, "");
+    return;
+  }
+  yield toolResult(id, { stdout: "", stderr: decision.message, interrupted: decision.interrupt === true }, decision.message);
+  if (decision.interrupt === true) {
+    // Claude Code stops the run here, with the call unrun.
+    await pause(scriptedPauses.stepMs, signal);
+    throw new Error(`Claude Code stopped the run: ${decision.message}`);
+  }
 }
 
 /** The scripted turn, as SDK messages. */
@@ -131,6 +169,12 @@ async function* scriptedTurn(
       yield toolUse(id, "Bash", { command, description: descriptions[i] });
       yield toolResult(id, { stdout: "ok", stderr: "", interrupted: false }, "ok");
     }
+    await pause(step, signal);
+  }
+
+  const touch = TOUCH.exec(prompt)?.[1] ?? ALLOWED_TOUCH.exec(prompt)?.[1];
+  if (touch !== undefined) {
+    yield* touchCall(touch, options);
     await pause(step, signal);
   }
 

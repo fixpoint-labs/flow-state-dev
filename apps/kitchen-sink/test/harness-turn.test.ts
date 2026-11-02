@@ -33,6 +33,13 @@ describe("turnNotice", () => {
     expect(turnNotice({ ...blank, asked: "c1" }, "running", "c1")).toBeNull();
   });
 
+  it("a turn suspended on a tool approval waits on the user, on the session's conversation (FIX-2432)", () => {
+    expect(turnNotice({ ...blank, asked: "c1", confirmed: "c1", waitsOnApproval: true }, "waiting", "c1")).toEqual({
+      kind: "waiting",
+      conversation: "c1",
+    });
+  });
+
   it("a stop is a stop, even before a confirmation and with a refusal-shaped failure (BR-9)", () => {
     const stopped = { ...blank, asked: "c1", stopped: true, failure: UNKNOWN_CONVERSATION };
     expect(turnNotice(stopped, "failed", "c1")).toEqual({ kind: "stopped", conversation: "c1" });
@@ -77,7 +84,7 @@ describe("latestTurn", () => {
   it("runs while streaming, or until the summary names the turn; then reads the summary", () => {
     expect(latestTurn({ items: [msg("r2")], streaming: true, request: { id: "r2", status: "completed" } })?.status).toBe("running");
     expect(latestTurn({ items: [msg("r2")], streaming: false, request: { id: "r1", status: "completed" } })?.status).toBe("running");
-    for (const [status, want] of [["incomplete", "completed"], ["failed", "failed"], ["interrupted", "failed"], ["aborted", "stopped"], ["suspended", "running"]] as const) {
+    for (const [status, want] of [["incomplete", "completed"], ["failed", "failed"], ["interrupted", "failed"], ["aborted", "stopped"], ["suspended", "waiting"]] as const) {
       expect(latestTurn({ items: [msg("r2")], streaming: false, request: { id: "r2", status } })?.status).toBe(want);
     }
   });

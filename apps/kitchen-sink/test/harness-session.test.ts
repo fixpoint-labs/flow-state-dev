@@ -6,7 +6,9 @@
  * The real flow and the real Claude Code block, with only the Agent SDK
  * replaced by the scripted Claude Code (`lib/scripted-claude-code.ts`) behind
  * a recorder. Worktrees are cut from a real temporary git repository: "the
- * main checkout is untouched" is a fact about the disk.
+ * main checkout is untouched" is a fact about the disk. `testFlow` runs
+ * without durable execution, so these build the flow with approvals off; the
+ * approval path is `claude-code-approvals.test.ts`'s.
  *
  * Red states produced before these were trusted:
  *   - clear the confirmed id on a refused resume: the BR-3 case fails.
@@ -95,7 +97,7 @@ async function turn(
   extra: Record<string, unknown> = {},
 ) {
   return testFlow({
-    flow: claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve }),
+    flow: claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve, approveTools: false }),
     action: "turn",
     userId: "u",
     sessionId,
@@ -400,7 +402,7 @@ describe("where a session works (V6)", () => {
     // Modes off at the next start.
     vi.stubEnv("VERCEL", "1");
     resetModeAvailabilityForTests();
-    const flows = await availableHarnessFlows({ "claude-code": () => claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve }) });
+    const flows = await availableHarnessFlows({ "claude-code": () => claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve, approveTools: false }) });
     expect(flows["claude-code"]).toBeUndefined();
     expect((await stores.session.get("s-kept"))?.state).toMatchObject({ binding: { confirmed: expect.stringMatching(/^scripted-/) } });
   });
