@@ -58,7 +58,7 @@ import {
   type HarnessUsageReader,
   type ModelResolver,
 } from "@flow-state-dev/core/types";
-import { commandCheck, harnessUsageAction, upgradeKeptTurns, type WorkspaceConfig } from "@flow-state-dev/harness-manager";
+import { commandCheck, harnessDrainBudgetMs, harnessUsageAction, resolveOwnership, upgradeKeptTurns, type WorkspaceConfig } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, type WorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import {
@@ -917,6 +917,20 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     requireAcceptance: options.requireAcceptance === true,
     ...(options.dropTask === true ? { dropTask: true } : {}),
   });
+  // On projects, done also means the project's checks (its row's `checks`) pass; a fixed repository has no project to ask.
+  const coderPhase =
+    workspaceHost === undefined
+      ? implementPhase
+      : commandCheck(implementPhase, { commands: projectChecks(), timeoutMs: 10 * 60_000 });
+  const runTimeoutMs = options.runTimeoutMs ?? 60_000;
+  // A shutdown waits for a coding run still going (its checks and judge too)
+  // rather than the engine's 30 s default, which would cancel it.
+  const dispatchDrainTimeoutMs = harnessDrainBudgetMs({
+    runTimeoutMs,
+    ownershipWaitMs: resolveOwnership({ runTimeoutMs, doneTimeoutMs: coderPhase.doneTimeoutMs }).ownership.waitMs,
+    judge: options.withoutJudge !== true,
+    doneTimeoutMs: coderPhase.doneTimeoutMs,
+  });
   const coderFlow = defineCoderWorkerFlow({
     installation,
     answerWorkspace: answerHost,
@@ -936,12 +950,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         },
       }),
     workspace: workspaceHost ?? (options.workspace as WorkspaceConfig),
-    // On projects, done also means the project's checks (its row's `checks`) pass; a fixed repository has no project to ask.
-    phase:
-      workspaceHost === undefined
-        ? implementPhase
-        : commandCheck(implementPhase, { commands: projectChecks(), timeoutMs: 10 * 60_000 }),
-    runTimeoutMs: options.runTimeoutMs ?? 60_000,
+    phase: coderPhase,
+    runTimeoutMs,
     ...(options.stopsOnAbort === undefined ? {} : { stopsOnAbort: options.stopsOnAbort }),
     resources,
   });
@@ -1122,6 +1132,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // in-memory stores a Lab may be opened with too. Over persisting stores it
     // is the default anyway (FIX-2063 D2's opt-in).
     durable: true,
+    dispatchDrainTimeoutMs,
     ...(options.userDeadlineMs === undefined ? {} : { userDeadlineMs: options.userDeadlineMs }),
     ...(options.sweepIntervalMs === undefined ? {} : { durabilityRetention: { sweepIntervalMs: options.sweepIntervalMs } }),
     ...(options.waitDeadlines === undefined ? {} : { waitDeadlines: options.waitDeadlines }),
