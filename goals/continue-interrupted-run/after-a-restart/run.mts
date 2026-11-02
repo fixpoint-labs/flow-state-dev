@@ -43,7 +43,7 @@ if (!["", "old-abort"].includes(CONTROL)) throw new Error(`unknown GOAL_CONTROL 
 const OLD_ABORT: ModulePatch[] = [
   {
     module: "packages/engine/src/execution/record-request-stop.ts",
-    from: "return endInterrupted\\(requests, record\\.id, incarnation\\);",
+    from: "return endInterrupted\\(requests, record\\.id, incarnation, parked\\);",
     to: 'return { kind: "finished", status: "interrupted" };',
   },
 ];
