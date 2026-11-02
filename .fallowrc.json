@@ -113,7 +113,10 @@
     // their suspension cards import ReviewSuspension; the card's other exports are
     // for apps that draw holds.
     "apps/kitchen-sink/components/flow-state/review-hold.tsx",
-    "packages/shift-manager/src/components/flow-state/review-hold.tsx"
+    "packages/shift-manager/src/components/flow-state/review-hold.tsx",
+    // Shift Manager's byte copy of the registry's spend: it draws the line and the
+    // charge; the copy's other formatters are for apps that show them apart.
+    "packages/shift-manager/src/components/flow-state/spend.tsx"
   ],
 
   // Dead code fails `fallow audit` at its default severity. Complexity reports
