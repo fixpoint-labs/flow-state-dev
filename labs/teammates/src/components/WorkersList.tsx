@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import type { LabAdapter, NewTeammate, WorkerRow } from "../adapter";
 import { runsOn, taskLabel, type Popup } from "./Popups";
 import type { Look } from "../lib/looks";
@@ -31,6 +31,8 @@ export function WorkersList({
   onSelect,
   onOpen,
   onHire,
+  hiring,
+  onHiring,
 }: {
   adapter: LabAdapter;
   /** The teammates: the workers you can talk to. */
@@ -45,9 +47,12 @@ export function WorkersList({
   onSelect: (worker: string) => void;
   onOpen: (popup: Popup) => void;
   onHire: (teammate: NewTeammate) => Promise<void>;
+  /** The hire form is open; the switcher's *Hire a teammate* opens it too. */
+  hiring: boolean;
+  onHiring: (open: boolean) => void;
 }) {
   const [seen, markSeen] = useSeen();
-  const [hiring, setHiring] = useState(false);
+  const setHiring = onHiring;
   return (
     <nav aria-label="Workers" className="flex h-full min-h-0 flex-col bg-sidebar">
       <div className="px-4 pt-4 pb-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">Teammates</div>
