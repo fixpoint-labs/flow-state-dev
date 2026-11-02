@@ -3,15 +3,15 @@
  * runs them in the run's worktree after the harness says it finished, and a
  * red one sends the run back with the command's output in the next brief.
  *
- * The flow hands the phase `projectChecks()`, the project row's `checks`;
- * here the phase is graded with fixed commands on a real folder, as the
+ * The flow wraps the phase in `commandCheck` with `projectChecks()`; here
+ * the same wrap is graded with fixed commands on a real folder, as the
  * manager calls it.
  */
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { CompletionRunContext, PhaseDoneVerdict, PromptRunContext } from "@flow-state-dev/harness-manager";
+import { commandCheck, type CompletionRunContext, type PhaseDoneVerdict, type PromptRunContext } from "@flow-state-dev/harness-manager";
 import { codePhase } from "../workforce/flows/harness-thread.mts";
 
 /** A worktree whose check is red until `state.txt` says "ok". */
@@ -30,8 +30,11 @@ const finished = (workspacePath: string) =>
 
 const verdictOf = (answer: boolean | PhaseDoneVerdict) => (typeof answer === "boolean" ? { done: answer } : answer);
 
+/** The flow's wrap, with fixed commands in place of `projectChecks()`. */
+const graded = (commands: readonly string[]) => commandCheck(codePhase, { commands, timeoutMs: 10 * 60_000 });
+
 describe("the lab's coding phase", () => {
-  const phase = codePhase(["node check.mjs"]);
+  const phase = graded(["node check.mjs"]);
 
   it("is not done while a check is red, and says which command and why", async () => {
     const verdict = verdictOf(await phase.isDone(finished(worktree("broken"))));
@@ -42,7 +45,7 @@ describe("the lab's coding phase", () => {
 
   it("is done when they pass, and when the project names none", async () => {
     expect(verdictOf(await phase.isDone(finished(worktree("ok")))).done).toBe(true);
-    expect(verdictOf(await codePhase([]).isDone(finished(worktree("broken")))).done).toBe(true);
+    expect(verdictOf(await graded([]).isDone(finished(worktree("broken")))).done).toBe(true);
   });
 
   it("puts why the last attempt stopped in the next brief", async () => {

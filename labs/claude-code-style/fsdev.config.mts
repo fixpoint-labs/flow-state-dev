@@ -93,7 +93,7 @@ const workspace = localWorkspaceHost({
     const local = answer.kind === "repo" ? listed(answer.repo) : undefined;
     return answer.kind === "repo" && local !== undefined ? { ...answer, repo: local } : answer;
   },
-  ...(setup === undefined ? {} : { setup }),
+  setup,
 });
 
 const tree = await readWorkforce(fileURLToPath(new URL("./workforce", import.meta.url)));
