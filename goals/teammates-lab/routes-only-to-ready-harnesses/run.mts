@@ -148,9 +148,10 @@ await runGoal(async (failures, tell) => {
       if (row === undefined || !row.includes(fixture.remedy)) fail(`start log: no Codex row naming \`${fixture.remedy}\`: ${JSON.stringify(row ?? log.slice(-600))}`);
 
       // *re-check*: not ready now, ready after a login and a refresh.
-      const first = (await readRows(me, false)).find((r) => r.harness === "codex");
+      const rows = await readRows(me, false);
+      const first = rows.find((r) => r.harness === "codex");
       if (first?.ready !== false || first.remedy === null) fail(`re-check: Codex should read not ready with a remedy, read ${JSON.stringify(first)}`);
-      const cursor = (await readRows(me, false)).find((r) => r.harness === "cursor");
+      const cursor = rows.find((r) => r.harness === "cursor");
       if (cursor?.ready !== true) throw new Error(`setup: Cursor should be ready on its key, read ${JSON.stringify(cursor)}`);
 
       // *routes*: before the login, so Codex is still not ready.

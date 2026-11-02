@@ -138,10 +138,10 @@ const HARNESSES: Record<string, Harness> = {
 };
 
 /** The flow whose `read` action returns the harnesses' readiness rows. */
-export const READINESS_FLOW = "harness-readiness";
+const READINESS_FLOW = "harness-readiness";
 
 /** Each harness's readiness check, over the environment its runs get. */
-export function teammatesReadiness(): HarnessReadinessRead {
+function teammatesReadiness(): HarnessReadinessRead {
   return harnessReadiness({
     "claude-code": {
       label: "Claude Code",
