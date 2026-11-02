@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 470" role="img" aria-label="What's in the box. In the box, what an app gets for nothing: a notice that names a scope and carries no rows; topics taken from the session, user and org scopes; a bus with an in-memory default and a Postgres adapter; one WebSocket per client on the Node host, subscribed per topic and checked on the server; client.subscribe and React hooks that read again on a notice; polling when no push is configured; and three publishers: request and run writes, resource and scope-state changes, and the task board. Composed in by the app: which views watch which scope, its host, and the Postgres bus in its stores profile. Replaced in one line: the Ably adapter fills both the bus and the delivery, for serverless hosts. Below a fence, not built: rows on the push, replay or acknowledgement of notices, items or interrupts over the socket, push on serverless without a managed service, and a topic per request."
+<svg viewBox="0 0 940 470" role="img" aria-label="What's in the box. In the box, what an app gets for nothing: a notice that names a scope and carries no rows; topics taken from the session, user and org scopes; a bus with an in-memory default and a Postgres adapter; one WebSocket per client on the Node host, subscribed per topic and checked on the server; client.subscribe and React hooks that read again on a notice; polling wherever push can miss a change: no push configured, the socket down, or a bus that cannot cross processes; and three publishers: request and run writes, resource and scope-state changes, and the task board. Composed in by the app: which views watch which scope, its host, and the Postgres bus in its stores profile. Replaced in one line: the Ably adapter fills both the bus and the delivery, for serverless hosts. Below a fence, not built: rows on the push, replay or acknowledgement of notices, items or interrupts over the socket, push on serverless without a managed service, and a topic per request."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -45,8 +45,8 @@
     <text class="t-b" x="336" y="192">client.subscribe and hooks</text>
     <text class="t-s" x="336" y="210">a notice makes the hook read again</text>
     <rect class="cell" x="32" y="232" width="276" height="50" rx="5"/>
-    <text class="t-b" x="44" y="252">Polling when there is no push</text>
-    <text class="t-s" x="44" y="270">the capabilities route says which</text>
+    <text class="t-b" x="44" y="252">Polling where push can miss a change</text>
+    <text class="t-s" x="44" y="270">no push · socket down · a bus that can't cross</text>
     <rect class="cell" x="324" y="232" width="276" height="50" rx="5"/>
     <text class="t-b" x="336" y="252">Three publishers</text>
     <text class="t-s" x="336" y="270">request writes · scope changes · task boards</text>

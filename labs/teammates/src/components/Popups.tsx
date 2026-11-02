@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import type { LabAdapter, TalkRow } from "../adapter";
 import type { Look } from "../lib/looks";
 import { useWatch } from "../lib/use-watch";
@@ -45,31 +45,40 @@ export const answerIn = (talk: readonly TalkRow[], messageId: string): AnswerSta
 };
 
 /** The open popup, live: it reads what it shows by itself, so it stays current while the work goes on. */
-export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, onClose }: {
+export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, onClose, onMissing }: {
   adapter: LabAdapter;
   popup: Popup;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
   onClose: () => void;
+  /** A task popup's conversation holds no such task, once its tasks are read: a link to a task that is gone. */
+  onMissing?: () => void;
 }) {
   return popup.kind === "task" ? (
-    <TaskPopup adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} onClose={onClose} />
+    // Keyed by conversation: a switch never judges the task against the last conversation's rows.
+    <TaskPopup key={popup.sessionId} adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} onClose={onClose} onMissing={onMissing} />
   ) : (
     <MessagePopup adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} onClose={onClose} />
   );
 }
 
 /** A task's run session and its result. */
-function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, onClose }: {
+function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, onClose, onMissing }: {
   adapter: LabAdapter;
   popup: Extract<Popup, { kind: "task" }>;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
   onClose: () => void;
+  onMissing?: () => void;
 }) {
-  const task = (useWatch(adapter.watchTasks, popup.sessionId) ?? []).find((t) => t.id === popup.taskId);
+  const tasks = useWatch(adapter.watchTasks, popup.sessionId);
+  const task = tasks?.find((t) => t.id === popup.taskId);
+  const missing = tasks !== undefined && task === undefined;
+  useEffect(() => {
+    if (missing) onMissing?.();
+  }, [missing, onMissing]);
   const steps = useWatch(adapter.watchRun, task?.runSessionId) ?? [];
   const line = task ? taskLine(task, isCoding(task.to), nameOf) : "Task";
   // A teammate's task carries its look; a coding task is nobody's.

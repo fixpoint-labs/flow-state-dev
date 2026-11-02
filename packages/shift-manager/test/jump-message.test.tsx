@@ -20,9 +20,10 @@ const withWorkers = (workers: unknown[]) =>
     sessions: [],
     boards: {},
     resources: { ok: true, value: [] },
+    projects: { ok: true, value: { rows: [] } },
     inventory: { ok: true, value: { workstreams: [], workers } },
   }) as unknown as LoadedSnapshot;
-const snapshot = withWorkers([{ id: "shift-coordinator", kind: "agent", door: "talk" }]);
+const snapshot = withWorkers([{ id: "shift-coordinator", displayName: "shift-coordinator", team: "general", teamName: "General", kind: "agent", door: "talk" }]);
 
 afterEach(() => {
   cleanup();

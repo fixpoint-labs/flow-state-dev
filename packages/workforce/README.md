@@ -1547,8 +1547,9 @@ Input `{ days?: number }`, 1 to 90, default 7: today and the days before it, in 
 
 ## Projects
 
-A project is a row with a title, a brief, an owner, its `members` and the git remote its code
-lives in (`repository`, or `null`). A **shared** project is a row of the organization's
+A project is a row with a title, a brief, an owner, its `members`, the git remote its code
+lives in (`repository`, or `null`), the MCP servers its coding runs get (`mcpServers`) and the
+commands that check its code (`checks`). A **shared** project is a row of the organization's
 `projects` collection, which everyone in the org lists and reads. A **private** project is the same
 row in its creator's own user scope, which nobody else lists or reads, with its creator alone in its
 `members`. A project's address is `{ visibility, id }`, and every read and write after the create takes
@@ -1568,7 +1569,7 @@ const workstreams = defineWorkstreamBlocks({ installation, leadFlows: [agent] })
 defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.actions } });
 ```
 
-- **`createProject { id, title, brief?, visibility?, members?, repository? }`** writes a
+- **`createProject { id, title, brief?, visibility?, members?, repository?, mcpServers?, checks? }`** writes a
   row with `create` and returns `{ project, visibility, created }`. `visibility` defaults to
   `"shared"`. The owner is the calling session's owner, and is always in `members`. An id another owner's
   shared project holds (`project-id-held`), `unassigned` (`invalid-project-id`) and a private project
@@ -1625,6 +1626,13 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   the host offers, `defineProjectBlocks({ mcpServers })`: refusals `unknown-mcp-server` (naming what
   it offers) and `invalid-mcp-server` (anything that isn't a bare lowercase name, never repeated).
   `createProject` takes the same `mcpServers`. A row stored before the field reads `[]`.
+- **`setChecks { project?: { visibility, id }, checks }`** replaces the commands that check the
+  project's code, such as `["pnpm typecheck", "pnpm --filter web test"]`, and returns `{ project }`;
+  `[]` clears them. Members only; nothing else on the row moves. Each entry is trimmed and must be one
+  program and its arguments: a line with `&&`, `||`, `|`, `;`, `&`, `<`, `>`, `$(` or a backtick, an
+  empty line or an unclosed quote is refused `invalid-check`, naming it, and nothing is written.
+  `createProject` takes the same `checks`, checked the same way. A row stored before the field reads
+  `[]`. Nothing runs the commands until a host passes `projectChecks()` to harness-manager.
 - **`setBrief { project?: { visibility, id }, brief }`** sets, changes or clears (`null`) the brief and
   returns `{ project }`. Members only; nothing else on the row moves.
 - **Leaving `project` out** of `setRepository` or `setBrief` changes the project the calling
@@ -1635,6 +1643,26 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   never the body, since the output is logged as the tool result), the files the project keeps at
   `project-files/<projectId>/<path>`, in the org's `project-files` collection for a shared project
   and in the owner's scope for a private one. Members only. Neither collection has a browser read.
+- **`projectChecks()`** is the resolver that runs a project's `checks` on a coding run. Pass it
+  as `commands` to harness-manager's `commandCheck`, and each attempt reads the checks of the
+  project the run works in, found the way `projectWorkspace()` finds it, fresh on every attempt. A
+  run with no project, or one that lookup refuses, gets `[]`. The manager needs
+  `projectWorkspaceCapability` on its `uses`. The commands are a project member's words, run on
+  your machine in the run's checkout, so turning this on is the host's call:
+
+  ```ts
+  import { commandCheck, harnessManager } from "@flow-state-dev/harness-manager";
+  import { localWorkspaceHost } from "@flow-state-dev/workspace";
+  import { projectChecks, projectWorkspace, projectWorkspaceCapability } from "@flow-state-dev/workforce";
+
+  harnessManager({
+    // ...the board and the rest, as usual
+    phase: commandCheck(codePhase, { commands: projectChecks(), timeoutMs: 10 * 60_000 }),
+    workspace: localWorkspaceHost({ root: "/var/fsd/runs", remotes: { allow: ["github.com"] }, source: projectWorkspace() }),
+    uses: [projectWorkspaceCapability],
+  });
+  ```
+
 - **`projectWorkspace()`** is a run source for a workspace host (`@flow-state-dev/workspace`):
   the repository of the project the run works for, with the project's files beside the checkout, or
   the project's files alone when it has no repository. A run in a workstream's session, or a task
@@ -1652,7 +1680,7 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   ```ts
   harnessManager({
     // ...the board and the rest, as usual
-    workspace: localWorkspaceHost({ root, remotes: { allow: ["github.com"] }, source: projectWorkspace() }),
+    workspace: localWorkspaceHost({ root: "/var/fsd/runs", remotes: { allow: ["github.com"] }, source: projectWorkspace() }),
     uses: [projectWorkspaceCapability],
   });
   ```
@@ -1718,7 +1746,7 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   each worker then names the ones it gets.
 
   ```ts
-  const workspace = localWorkspaceHost({ root, remotes: { allow: ["github.com"] }, source: projectWorkspace() });
+  const workspace = localWorkspaceHost({ root: "/var/fsd/runs", remotes: { allow: ["github.com"] }, source: projectWorkspace() });
   defineAgentWorkerFlow({ installation, model, uses: [projectSourceCapability({ workspace })] });
   // and the same `workspace` on the coding workers' harnessManager
   ```
@@ -2691,10 +2719,11 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `ResourceModuleExport` / `WorkerResourceModuleExport` | What a module in the organisation's or a team's `resources/` folder may be — a capability or a resource — and the narrower type a worker's own folder is held to: a resource, never a capability. |
 | `WorkerCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that worker wants. Read by the built-in `agent` worker flow; validated at the hire. |
 | `defineProjectsCollection()` / `definePrivateProjectsCollection()` | The shared projects (`projects/*` at org scope) and the private ones (the same keys at each user's scope), both shared across flows and browser-readable through `expose`. Every call returns the same declaration, so they never conflict. `defineProjectFilesCollection` and `definePrivateProjectFilesCollection` declare the files; neither has a browser read. |
-| `defineProjectBlocks({ mcpServers? })` | Returns `{ createProject, setRepository, setMcpServers, setBrief, readProject, listProjects, readProjectFiles, actions }`. `mcpServers` names the MCP servers a project may name; absent, none. See [Projects](#projects). |
+| `defineProjectBlocks({ mcpServers? })` | Returns `{ createProject, setRepository, setMcpServers, setChecks, setBrief, readProject, listProjects, readProjectFiles, actions }`. `mcpServers` names the MCP servers a project may name; absent, none. See [Projects](#projects). |
 | `projectMcpTools(servers, { operator?, env? })` / `ProjectMcpServers` / `ProjectMcpToolsResolver` | The resolver a coding harness calls once per run for its project's MCP tools, relayed through FSD's own connection with the run owner's key. See [Projects](#projects). |
 | `defineMcpCredentialsCollection()` / `mcpCredentialsCapability` / `mcpCredentialProblem(value)` / `MCP_CREDENTIALS_PREFIX` | Each user's MCP server keys, `mcp-credentials/*` at user scope (client read: `setAt` only), the capability the resolving block holds, and the check a key route runs on a value. |
 | `checkedMcpServers(names, offered)` / `isMcpServerName(value)` | The check both project writes run on `mcpServers`. |
+| `projectChecks()` / `ProjectChecksResolver` | The resolver harness-manager's `commandCheck` takes as `commands`: each run's project's `checks`, read fresh per attempt, `[]` for a run with no project. See [Projects](#projects). |
 | `defineWorkstreamBlocks({ installation, leadFlows, leadFit? })` | Returns `{ openWorkstream, openWorkstreamTool, updateWorkstream, updateWorkstreamTool, editWorkstreamTool, listLeadsTool, actions }`. `editWorkstreamTool` (input `editWorkstreamInputSchema`) is a project coordinator's change to one of the caller's own workstreams by id. `openWorkstreamTool` is the open for a worker; with `leadFit: { model }`, it asks best fit's one fit check about the lead and refuses with `lead-doesnt-fit` only when the check answers that none fits. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
 | `readProject` / `projectProgress(entries, now)` / `STALE_AFTER_MS` / `DONE_STATUS` | A project's row, entries and progress, and the progress function itself (also from `./browser`): counts by status, objectives met, the next due date, and the entries not done and unchanged for `STALE_AFTER_MS` (seven days). `"done"` is the one status with a meaning. |
 | `parseWorkstreamEntry(path, state)` | One entry read off its storage key and checked against `workstreamEntrySchema`, with its `project`, `owner` and `id`; `undefined` for a key that isn't an entry. Also from `./browser`, for a browser reading entries through the resource routes. |
