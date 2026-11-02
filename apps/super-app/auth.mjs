@@ -18,7 +18,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { escapeHtml, PAGE_STYLE } from "./page.mjs";
 
-export const COOKIE = "fsd_super_app";
+const COOKIE = "fsd_super_app";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 /** Every failed sign-in answers after at least this long. */
 const FAILURE_DELAY_MS = 750;

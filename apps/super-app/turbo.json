@@ -1,8 +1,13 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "extends": ["//"],
+  "extends": [
+    "//"
+  ],
   "tasks": {
     "build": {
+      "dependsOn": [
+        "@flow-state-dev/kitchen-sink#build"
+      ],
       "cache": false,
       "outputs": []
     }

@@ -411,20 +411,7 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@25.3.2)(happy-dom@20.8.3)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
 
-  apps/super-app:
-    devDependencies:
-      '@flow-state-dev/claude-code-style':
-        specifier: workspace:*
-        version: link:../../labs/claude-code-style
-      '@flow-state-dev/kitchen-sink':
-        specifier: workspace:*
-        version: link:../kitchen-sink
-      '@flow-state-dev/shift-manager':
-        specifier: workspace:*
-        version: link:../../packages/shift-manager
-      '@flow-state-dev/teammates':
-        specifier: workspace:*
-        version: link:../../labs/teammates
+  apps/super-app: {}
 
   examples/guides/board-lifecycle:
     dependencies:
