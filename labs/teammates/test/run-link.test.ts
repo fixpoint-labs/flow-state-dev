@@ -66,3 +66,47 @@ describe("a coding task's run, while it runs", () => {
     expect(reads).toEqual([]);
   });
 });
+
+describe("a coding task's hold, while it runs", () => {
+  /**
+   * The run writes its row on its own session: its link, and the review it stops for. The
+   * conversation's copy still says only that the task is running, so read alone, nothing waits
+   * on you and the popup has no review to answer.
+   */
+  function clientWithRunRow() {
+    const conversation = filed("in_progress");
+    const run = { sessionId: "dsx_run", requestId: "req_run", attempt: 1 };
+    const held = {
+      ...conversation,
+      id: "task-change:board/task_1@run",
+      requestId: "req_run",
+      ts: 2,
+      data: {
+        ...conversation.data,
+        kind: "asked",
+        task: {
+          ...conversation.data.task,
+          run,
+          updatedAt: 2,
+          holds: [{ id: "susp-1", actor: "user", openedAt: 2, source: { kind: "suspension", requestId: "req_run", suspensionId: "susp-1" }, ask: { kind: "review", prompt: "1 commit on b" } }],
+        },
+      },
+    };
+    return {
+      sessions: {
+        state: async (id: string) => ({ at: 1, sessionCreatedAt: 1, items: id === "dsx_run" ? [held] : [conversation], pagination: { hasMore: false, nextOffset: 1 } }),
+        stream: () => ({ close() {} }),
+        get: async (id: string) => (id === "dsx_run" ? { id, flowKind: "teammates-coder" } : { id, flowKind: "agent" }),
+      },
+      flow: () => ({ read: async () => ({ ok: true, tasks: [{ ...conversation.data.task, run }] }) }),
+    } as unknown as Client;
+  }
+
+  it("is read from the run's own session, where the run writes it", async () => {
+    let tasks: BoardTask[] = [];
+    const stop = createLabAdapter(clientWithRunRow()).watchTasks("wks_1", (next) => (tasks = next));
+    await until(() => tasks[0]?.waiting !== undefined);
+    stop();
+    expect(tasks[0]?.waiting).toEqual({ kind: "review", prompt: "1 commit on b", unanswerable: null });
+  });
+});

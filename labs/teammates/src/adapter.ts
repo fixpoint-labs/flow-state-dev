@@ -19,6 +19,7 @@
  * | `watchTasks`        | the board's rows, as the conversation's stream carries each one (`task-change`) |
  * |                     | and, while a running row names no run, the board's `listTasks` read for its run |
  * |                     | and `taskSpendView` on a row, for the harness and model its run reported      |
+ * |                     | and each linked run's session, where the run writes its row (its holds)      |
  * |                     | and `taskRowView` with the Inbox's holds (`inboxItems`), for what it waits on |
  * |                     | you for                                                                      |
  * | `answerTask`        | the Inbox client's `answerOne`, on the task's open question or review         |
@@ -785,13 +786,40 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       /** The run each running row's last board read named, by task id. */
       const runs = new Map<string, unknown>();
       let stopRead: Unsubscribe | undefined;
+      /**
+       * Each linked run's own copy of its row. A run writes its row on its own session (its link, its
+       * questions, its review), so the conversation hears of those only when the task ends: the run's
+       * session is followed too, and the newer of the two copies is the row.
+       */
+      const runRows = new Map<string, Record<string, any>>();
+      const runFeeds = new Map<string, Unsubscribe>();
+      const newer = (row: Record<string, any>) => {
+        const fromRun = runRows.get(row.id);
+        return fromRun !== undefined && (fromRun.updatedAt ?? 0) > (row.updatedAt ?? 0) ? fromRun : row;
+      };
+      const followRuns = (current: readonly Record<string, any>[]) => {
+        for (const row of current) {
+          const runSession = row.run?.sessionId;
+          if (typeof runSession !== "string" || runFeeds.has(runSession)) continue;
+          runFeeds.set(
+            runSession,
+            watchFeed(runSession, boardRows, (read) => {
+              const fromRun = read.get(row.id);
+              if (fromRun === undefined) return;
+              runRows.set(row.id, fromRun);
+              publish();
+            }),
+          );
+        }
+      };
       const publish = () => {
-        const current = [...rows.values()].map((row) => (row.run == null && runs.has(row.id) ? { ...row, run: runs.get(row.id) } : row));
+        const current = [...rows.values()].map((row) => newer(row.run == null && runs.has(row.id) ? { ...row, run: runs.get(row.id) } : row));
         const flowOf = (id: string) => (id === sessionId ? flowOfSession.get(sessionId) : runFlows.get(id));
         const holds = holdsOfRows(sessionId, current, flowOf);
         openHolds.set(sessionId, holds);
         show(current.map((row) => toBoardTask(row, (worker) => harnesses.get(worker), holds.get(row.id) ?? [])));
         learnFlows(current);
+        followRuns(current);
       };
       /** A hold's answer goes to the flow that owns its session: learn each one once, then read again. */
       const learnFlows = (current: readonly Record<string, any>[]) => {
@@ -840,6 +868,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       return () => {
         stopFeed();
         stopRead?.();
+        for (const stop of runFeeds.values()) stop();
       };
     },
     watchRun(runSessionId, onChange) {
