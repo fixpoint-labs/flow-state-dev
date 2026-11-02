@@ -64,8 +64,8 @@ import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
 import { ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import type { Client } from "@flow-state-dev/client";
-import { createInboxClient, inboxItems, taskHoldSchema, type InboxAnswer, type InboxHold, type InboxItem, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
-import { withRetiredShapes } from "@flow-state-dev/orchestration/tasks";
+import { createInboxClient, inboxItems, taskHoldSchema, taskRowView, type InboxAnswer, type InboxHold, type InboxItem, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
+import { withRetiredShapes, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 
 /** Why a read did not load. */
 export type Failure = { message: string; httpStatus?: number };
@@ -196,6 +196,12 @@ export type BoardRow = {
   holds: TaskHold[];
   /** Its steers as the Inbox reads them: which question each answers. A question is open while none does. */
   steers: Array<{ id: string; answers?: string }>;
+  /**
+   * What its runs spent, folded by orchestration's task-row view: harness,
+   * model, tokens and the vendor's charge. `null` before it runs, or from a
+   * board that publishes no spend.
+   */
+  spend: TaskSpendView | null;
   createdAt: number | null;
   updatedAt: number | null;
   startedAt: number | null;
@@ -515,11 +521,20 @@ export function toBoardRow(boardRef: string, ownerSessionId: string, topic: stri
     error: field(data, "error") == null ? null : String(field(data, "error")),
     holds: toHolds(field(data, "holds")),
     steers: toSteerAnswers(field(data, "steers")),
+    spend: spendOf(boardRef, data),
     createdAt: time(field(data, "createdAt")),
     updatedAt: time(field(data, "updatedAt")),
     startedAt: time(field(data, "startedAt")),
     completedAt: time(field(data, "completedAt")),
   };
+}
+
+/** A stored row's spend as the task-row view folds it; `null` when it has none. */
+function spendOf(boardRef: string, data: unknown): TaskSpendView | null {
+  const spend = field(data, "spend");
+  if (spend == null) return null;
+  const status = text(field(data, "status")) ?? "pending";
+  return taskRowView({ board: boardRef, id: text(field(data, "id")) ?? "", status, spend: spend as never }).spend;
 }
 
 /**

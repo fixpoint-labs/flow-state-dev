@@ -6,12 +6,13 @@
  * files the run recorded under its own request (read once per open, no
  * stream), the rows it waits on and the rows waiting on it from the same board
  * read, and a link that opens the run's session in the devtool served beside
- * Shift Manager. Harness, tokens,
- * cost, acceptance and *review by* are named gaps from the gap registry.
+ * Shift Manager. Harness, tokens and cost are the row's spend line (FIX-2398);
+ * acceptance and *review by* are named gaps from the gap registry.
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { traceHref } from "@flow-state-dev/devtool/react";
 import { SectionFailure } from "../components/ui";
+import { Spend } from "../components/flow-state/spend";
 import { asksOfTask, inboxItemIdOf, rosterOf, workerFor, workerLabel, waited, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, GENERAL_TEAM, type Failure } from "../lib/reads";
@@ -81,7 +82,16 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
           </div>
         )}
         <Section title="HARNESS · TOKENS · COST" testId="inspector-harness">
-          <Gap text={gaps.task.harness} testId="inspector-harness-gap" />
+          {row?.spend == null ? (
+            <p className="text-xs text-muted-foreground" data-testid="inspector-spend-none">
+              No run has reported what it spent yet.
+            </p>
+          ) : (
+            <div data-testid="inspector-spend" data-harness={row.spend.harness ?? ""}>
+              <p className="text-sm">{row.spend.harness ?? "No harness"}</p>
+              <Spend spend={row.spend} split className="text-[11px]" />
+            </div>
+          )}
         </Section>
         <Section title="ACCEPTANCE" testId="inspector-acceptance">
           <Gap text={gaps.task.acceptance} testId="inspector-acceptance-gap" />
