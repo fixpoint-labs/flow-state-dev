@@ -569,7 +569,7 @@
       "name": "work-place",
       "title": "Work Place",
       "type": "registry:component",
-      "description": "Where a coding run's work went: '3 commits on …/branch', with copy buttons for git switch, cd and git log base..branch. Takes what workPlace in @flow-state-dev/harness-manager returns; renders nothing for a run with no branch.",
+      "description": "Where a coding run's work went: '3 commits on …/branch', with copy buttons for git switch, cd and git log base..branch. Takes what workPlace in @flow-state-dev/harness-manager/work-place returns; renders nothing for a run with no branch.",
       "dependencies": ["lucide-react"],
       "registryDependencies": ["tokens"],
       "files": [{

@@ -320,10 +320,10 @@ const workspace: HarnessSessionWorkspace = {
 
 ### Showing where a run's work went
 
-`workPlace` reads a coding task's output, or the worktree row a session points at (`state.workspace.worktree` is its key in the user's `worktrees` list), and returns the branch, the commit count, and the commands that reach the work: `git switch`, `cd` into the checkout, and `git log <baseCommit>..<branch>`, each quoted for a shell. The count is `null` when it is unknown, never a guessed zero. From a row it also gives the worktree's `name` and `state`, and, with `{ session }` naming the viewing session, `attachedTo`: the owning session when the viewer is attached to someone else's worktree. It returns `null` for a run with no branch. It imports nothing, so a page can call it. The UI registry's `work-place` component draws it.
+`workPlace` reads a coding task's output, or the worktree row a session points at (`state.workspace.worktree` is its key in the user's `worktrees` list), and returns the branch, the commit count, and the commands that reach the work: `git switch`, `cd` into the checkout, and `git log <baseCommit>..<branch>`, each quoted for a shell. The count is `null` when it is unknown, never a guessed zero. From a row it also gives the worktree's `name` and `state`, and, with `{ session }` naming the viewing session, `attachedTo`: the owning session when the viewer is attached to someone else's worktree. It returns `null` for a run with no branch. It imports nothing, and its own entry (`@flow-state-dev/harness-manager/work-place`) carries none of the package's server code, so a page can bundle and call it. The UI registry's `work-place` component draws it.
 
 ```tsx
-import { workPlace } from "@flow-state-dev/harness-manager";
+import { workPlace } from "@flow-state-dev/harness-manager/work-place";
 import { WorkPlace } from "@/components/flow-state/work-place";
 
 <WorkPlace place={workPlace(task.output)} />;

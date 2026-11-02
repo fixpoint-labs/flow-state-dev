@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
  * copy buttons for the commands that take a person there.
  *
  * Takes plain props, so the registry depends on no server package. The shape
- * is what `workPlace` in `@flow-state-dev/harness-manager` returns, from a
+ * is what `workPlace` in `@flow-state-dev/harness-manager/work-place` returns, from a
  * coding task's output or the worktree row a harness session points at:
  * `<WorkPlace place={workPlace(task.output)} />`. A row adds the worktree's
  * name, its state when it is not ready, and whose it is for a session attached
