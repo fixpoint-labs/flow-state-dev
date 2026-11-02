@@ -199,9 +199,6 @@ export interface Item {
   metadata?: Record<string, unknown>;
 }
 
-/** How a task's line ends, as the thread draws it; a failure that runs again is not an ending. */
-const RESULT_STATUS: Partial<Record<string, TaskStatus>> = { completed: "completed", errored: "errored", cancelled: "cancelled" };
-
 /**
  * Read `read` now and every `everyMs`, reporting a value only when it
  * changed. A failed read is logged and tried again on the next tick.
@@ -278,14 +275,14 @@ export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[
       continue;
     }
     const notice = parseNotice(item);
-    const status = notice === undefined ? undefined : RESULT_STATUS[notice.ending];
-    if (notice !== undefined && status !== undefined) {
+    // A retried failure runs again, so the thread does not draw it as an ending.
+    if (notice !== undefined && notice.ending !== "retried") {
       entries.push({
         kind: "result",
         id: item.id,
         taskId: notice.taskId,
         title: notice.title,
-        status,
+        status: notice.ending,
         summary: resultSummary(notice.detail ?? text),
         duringTurn: userTurns.has(requestId),
         requestId,
