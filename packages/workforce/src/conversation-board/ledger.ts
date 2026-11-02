@@ -72,7 +72,8 @@ export function conversationPartition(view: TaskPartitionContext): Promise<strin
  * draws, and nothing a run keeps for itself (its input, output, metadata and
  * write log stay on the server, BP-015). What holds a row for the user is
  * `holds`, with the `steers` that answer its questions (FIX-2133): the one
- * thing that says what waits on the user.
+ * thing that says what waits on the user. `spend` is what its runs spent, so
+ * a task's tokens and cost read from the row.
  */
 export const CONVERSATION_BOARD_CLIENT_FIELDS = [
   "id",
@@ -94,6 +95,8 @@ export const CONVERSATION_BOARD_CLIENT_FIELDS = [
   // A row stored before FIX-2317 keeps its holds as `questions`; a reader maps it with `withRetiredShapes` (BP-030).
   "questions",
   "steers",
+  // What its runs spent (FIX-2398): the stored ledger, which a reader folds with `taskRowView`.
+  "spend",
   "createdAt",
   "updatedAt",
   "startedAt",

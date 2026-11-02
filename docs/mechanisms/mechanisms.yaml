@@ -685,6 +685,17 @@ mechanisms:
     status: canonical
     doc: packages/core/README.md
 
+  - id: harness-readiness
+    job: Say which coding harnesses can run on this machine and what to do about one that can't. Core owns the neutral check; Claude Code, Codex and Cursor each ship one; harness-manager keeps the rows and serves them as a read action, a coordinator context entry and a pre-start refusal.
+    package: "@flow-state-dev/harness-manager"
+    anchor: harnessReadiness
+    file: packages/harness-manager/src/readiness.ts
+    adapters: ["@flow-state-dev/claude-code", "@flow-state-dev/codex", "@flow-state-dev/cursor"]
+    builtOn: [coding-harness, capability]
+    overlaps: []
+    status: canonical
+    doc: packages/harness-manager/README.md
+
   - id: harness-steering
     job: Send a line typed into a harness session into the running turn when the harness takes it, or as the next turn.
     package: "@flow-state-dev/core"

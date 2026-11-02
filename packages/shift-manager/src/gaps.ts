@@ -7,7 +7,6 @@ export const GAPS = {
   inReview: "What counts as in review arrives with FIX-1651.",
   now: "What a task is doing now arrives with FIX-1651.",
   harness: "Which harness a worker runs arrives with FIX-1652.",
-  cost: "A task's cost arrives with FIX-1652.",
   /**
    * The task screen's gaps (FIX-1664's gap registry, BUSINESS-RULES.md): each
    * names what arrives and who ships it, or says it is not planned in the
@@ -26,7 +25,6 @@ export const GAPS = {
     },
     acceptance: "Acceptance criteria arrive with FIX-1651.",
     reviewBy: "Who reviews a task arrives with FIX-1651.",
-    harness: "Which harness ran, its tokens and its cost arrive with FIX-1652. Nothing a browser can read carries them yet.",
     recordsNoPlan: "This harness records no plan. Reading a run that records none arrives with FIX-1652.",
     recordsNoFiles: "This harness records no file operations. Reading a run that records none arrives with FIX-1652.",
     recordsNoPullRequests: "This harness records no pull requests. Reading a run that records none arrives with FIX-1652.",

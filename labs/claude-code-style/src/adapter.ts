@@ -22,9 +22,10 @@
  * | `watchPins`, `pin`, `unpin` | the lab's `pins` flow, your own user state                    |
  */
 import { createClient, sessionFeed, type Client, type SessionConnectionState, type SessionFeed, type SessionSummary } from "@flow-state-dev/client";
-import { readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
+import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import { createInboxClient, inboxItems, type InboxAnswer, type InboxHold, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
 import type { TaskSpendView } from "@flow-state-dev/orchestration/tasks";
+import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import {
   createWorkforceClient,
   parseProjectRef,
@@ -135,18 +136,8 @@ export interface TaskRow {
   spend?: TaskSpendView;
 }
 
-/**
- * What a coding run's review stop carries beside its prompt (harness-manager's
- * review `data`): the branch, how many commits and their subjects, and the
- * judge's verdict. `commits` is null when they couldn't be read; `judge`, when
- * no judge read the run.
- */
-export interface ReviewDetail {
-  branch: string | null;
-  commits: number | null;
-  subjects: string[];
-  judge: { verdict: string; confidence: number; reason: string } | null;
-}
+/** A coding run's review stop's data, as harness-manager's browser reader reads it. */
+export type { ReviewDetail };
 
 /** The read-only work of one task. */
 export interface TaskWork {
@@ -246,20 +237,13 @@ function every<T>(read: () => Promise<T>, onChange: (value: T) => void, everyMs 
 }
 
 /**
- * A run's latest review stop, as its `suspension` item carries it
- * (harness-manager's review `data`), or undefined before it makes one. The
- * latest wins: a run sent back for changes stops for review again.
+ * A run's latest review stop, read with harness-manager's browser reader, or
+ * undefined before it makes one. The latest wins: a run sent back for changes
+ * stops for review again.
  */
-function reviewStopOf(items: readonly Item[]): ReviewDetail | undefined {
-  const stop = [...items].reverse().find((item) => item.type === "suspension" && item.kind === "review" && item.data !== undefined);
-  if (stop === undefined) return undefined;
-  const data = stop.data as Partial<ReviewDetail>;
-  return {
-    branch: typeof data.branch === "string" ? data.branch : null,
-    commits: typeof data.commits === "number" ? data.commits : null,
-    subjects: Array.isArray(data.subjects) ? data.subjects.filter((s): s is string => typeof s === "string") : [],
-    judge: data.judge ?? null,
-  };
+export function reviewStopOf(items: readonly Item[]): ReviewDetail | undefined {
+  const stop = [...items].reverse().find((item) => item.type === "suspension" && item.kind === "review");
+  return (stop && reviewDetail(stop.data)) ?? undefined;
 }
 
 const textOf = (item: Item) => (item.content ?? []).map((part) => part.text ?? "").join("");
@@ -335,7 +319,7 @@ export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[
 
 /** The adapter the app runs on: the served lab, as the user the page was served for. */
 export function createLabAdapter(): LabAdapter {
-  return createWiredLab(createClient({ userId: readUserId(), baseUrl: "", fetcher: withBearerToken(readBearerToken()) }));
+  return createWiredLab(createClient({ userId: readUserId(), baseUrl: readBasePath(), fetcher: withBearerToken(readBearerToken()) }));
 }
 
 /**
