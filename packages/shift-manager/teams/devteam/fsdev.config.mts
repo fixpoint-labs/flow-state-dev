@@ -32,7 +32,7 @@
  * run's session and commits one file so the row settles; or `claude-code`, a
  * real coding agent. That is the coder a worker naming no harness runs on: a
  * coder hired with `settings: { harness: "cursor" }` (or `codex`, or
- * `claude-code`) runs its tasks on that one instead (`workerHarnesses`).
+ * `claude-code`) runs its tasks on that one instead (`WORKER_HARNESSES`).
  *
  * - **Each project's own code.** The coder runs on a workspace host whose
  *   source is the project of the workstream a task was filed from: Storefront
@@ -71,7 +71,7 @@ import { harnessEnv } from "@flow-state-dev/core";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "./ask.mts";
-import { claudeCodeEnv, errorReporterHarness, startHarness, workerHarnesses } from "./harness.mts";
+import { claudeCodeEnv, errorReporterHarness, startHarness, WORKER_HARNESSES } from "./harness.mts";
 import { CHECKOUT } from "./fsd-checkouts.mts";
 import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
 import { createBareRemote } from "./scratch-repo.mts";
@@ -185,7 +185,7 @@ const lab = await openLab({
   harness: harness.slot,
   harnessName: harness.name,
   // A coder hired with `settings: { harness: "cursor" }` runs on Cursor, not the coder above.
-  harnesses: workerHarnesses(harness.name),
+  harnesses: WORKER_HARNESSES,
   runTimeoutMs: harness.runTimeoutMs,
   // Runs' places and the host's clones, beside the store; only `file://` remotes are reached.
   workspace: { root: join(dirname(STORE), "devteam-runs"), remotes: { allow: ["file"] } },

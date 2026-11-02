@@ -159,7 +159,7 @@ A `Coder:` line at start names the coder it started with.
 
 That is the coder a worker naming no harness runs on. A `coder` worker hired with
 `settings: { harness: "cursor" }` (or `codex`, or `claude-code`) runs its tasks on that harness
-instead (`workerHarnesses` in `harness.mts`), and never falls back to the starting coder. Only the
+instead (`WORKER_HARNESSES` in `harness.mts`), and never falls back to the starting coder. Only the
 starting coder's account is checked at start. A name the Lab doesn't run is refused at hire, with
 the names it does.
 

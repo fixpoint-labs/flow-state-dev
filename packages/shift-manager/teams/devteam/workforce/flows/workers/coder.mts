@@ -335,7 +335,11 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     return found;
   };
   const all = [defaultBuilt, ...named.values()];
-  /** A router over one piece of every harness's build, picked by the session's worker. */
+  /**
+   * A router over one piece of every harness's build, picked by the session's
+   * worker. With no named harness there is nothing to pick, and the piece is
+   * used as it is: the block tree stays what it was before workers could pick.
+   */
   const byHarness = (name: string, inputSchema: unknown, pick: (built: Built) => unknown) =>
     named.size === 0
       ? (pick(defaultBuilt) as BlockDefinition<any, any>)

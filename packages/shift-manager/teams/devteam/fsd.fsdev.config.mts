@@ -55,7 +55,7 @@ import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { CHECKOUT, CHECKOUTS } from "./fsd-checkouts.mts";
 import { FSD_DOCUMENTS, FSD_MCP_SERVERS, FSD_PROJECTS, FSD_SKILLS } from "./fsd-projects.mts";
 import { readClaudeUsage } from "@flow-state-dev/claude-code/sdk";
-import { claudeCodeEnv, errorReporterHarness, startHarness, workerHarnesses } from "./harness.mts";
+import { claudeCodeEnv, errorReporterHarness, startHarness, WORKER_HARNESSES } from "./harness.mts";
 import { LAB_TREE, openLab } from "./host.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
 import { EM_FLOW } from "./workforce/flows/workers/em.mts";
@@ -82,7 +82,7 @@ export const lab = await openLab({
   harness: harness.slot,
   harnessName: harness.name,
   // A coder hired with `settings: { harness: "cursor" }` runs on Cursor, not the coder above.
-  harnesses: workerHarnesses(harness.name),
+  harnesses: WORKER_HARNESSES,
   runTimeoutMs: harness.runTimeoutMs,
   // Runs' places beside the store, the two projects' worktrees of this checkout
   // among them. No remote is allowed: a run is never cloned from one.

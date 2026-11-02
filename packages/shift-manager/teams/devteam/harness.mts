@@ -27,7 +27,7 @@
  *
  * That is the default coder. A `coder` worker that names a harness in its
  * `harness` setting (`claude-code`, `codex` or `cursor`) runs on that one
- * instead: {@link workerHarnesses} is the set a hire picks from.
+ * instead: {@link WORKER_HARNESSES} is the set a hire picks from.
  */
 
 import { existsSync, writeFileSync } from "node:fs";
@@ -187,28 +187,6 @@ export function cursorHarness(feeds: HarnessFeeds): HarnessBlock {
     model: CURSOR_MODEL,
     name: "cursor",
   } as never) as unknown as HarnessBlock;
-}
-
-/** How long one Codex or Cursor run may take: the same as a Claude Code run. */
-export const AGENT_RUN_TIMEOUT_MS = 10 * 60_000;
-
-/**
- * The harnesses a `coder` worker picks at hire (`settings: { harness: "cursor" }`),
- * by name, other than the one the profile starts on. Each is the real agent:
- * a worker named onto one runs on it or its run fails, never on the default.
- * Only the default's account is probed at start ({@link startHarness}); a
- * worker on another harness that isn't signed in fails its run with that
- * harness's own error.
- *
- * @param started The profile's coder, which the default slot already runs.
- */
-export function workerHarnesses(started: HarnessChoice): Record<string, { slot: (feeds: HarnessFeeds) => HarnessBlock; runTimeoutMs: number }> {
-  const all = {
-    "claude-code": { slot: claudeCodeHarness, runTimeoutMs: CLAUDE_CODE_RUN_TIMEOUT_MS },
-    codex: { slot: codexHarness, runTimeoutMs: AGENT_RUN_TIMEOUT_MS },
-    cursor: { slot: cursorHarness, runTimeoutMs: AGENT_RUN_TIMEOUT_MS },
-  };
-  return Object.fromEntries(Object.entries(all).filter(([name]) => name !== started));
 }
 
 /** The row line the manager's prompt carries, `Row <id>, phase <p>, attempt <n>.` */
@@ -377,3 +355,17 @@ function readStepMs(raw: string | undefined): number {
   }
   return Number(raw.trim());
 }
+
+/**
+ * The harnesses a `coder` worker picks at hire (`settings: { harness: "cursor" }`),
+ * by name. Each is the real agent: a worker named onto one runs on it or its
+ * run fails, never on the default. The coder flow builds no second slot for
+ * the one the profile starts on. Only that one's account is probed at start
+ * ({@link startHarness}); a worker on another harness that isn't signed in
+ * fails its run with that harness's own error.
+ */
+export const WORKER_HARNESSES = {
+  "claude-code": { slot: claudeCodeHarness, runTimeoutMs: CLAUDE_CODE_RUN_TIMEOUT_MS },
+  codex: { slot: codexHarness, runTimeoutMs: CLAUDE_CODE_RUN_TIMEOUT_MS },
+  cursor: { slot: cursorHarness, runTimeoutMs: CLAUDE_CODE_RUN_TIMEOUT_MS },
+};

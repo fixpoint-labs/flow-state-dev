@@ -971,7 +971,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // runs on that user's turns only. A fire, and a project's repository, wait
   // for a user's Approve in Inbox, which needs durable execution (asked for
   // below).
-  const rosterTools = shiftCoordinatorRosterTools(installation, coderHarnessNames(options));
+  const harnessNames = coderHarnessNames(options);
+  const rosterTools = shiftCoordinatorRosterTools(installation, harnessNames);
   // What the agent's turn is built with. The `agent` flow runs it behind its
   // door, and the `coordinator` flow, which the Shift Coordinator runs on, runs
   // the same turn for its judgment, with memory added (below).
@@ -1011,7 +1012,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     [CODER_FLOW]: {
       flow: coderFlow as never,
       roles: ["contributor"],
-      showSettings: coderHarnessNames(options).length === 0 ? [] : [HARNESS_SETTING],
+      showSettings: harnessNames.length === 0 ? [] : [HARNESS_SETTING],
       needsProject: workspaceHost !== undefined,
     },
     [AGENT_FLOW]: agentFlow as never,
