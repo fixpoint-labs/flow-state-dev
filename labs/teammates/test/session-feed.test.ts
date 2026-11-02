@@ -1,9 +1,9 @@
 /**
- * The session feed: a history that moves while it is paged (a keyed item
- * emitted again, later in display order) must not lose an item the stream
- * would never send again; an answer being written shows as it grows, from its
- * request's stream, since the session stream sends finished items only; and a
- * snapshot read that fails is read again.
+ * The session feeds the lab shares: two views of one session hold one
+ * connection, closed with the last view; an answer being written shows as it
+ * grows, from its request's stream, since the session stream sends finished
+ * items only; and a history read that fails is read again. Paging, merging and
+ * reconnecting are the client's `sessionFeed`, tested in its package.
  */
 import { describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
@@ -33,30 +33,42 @@ const until = async (check: () => boolean) => {
 };
 
 describe("the session feed", () => {
-  it("reads again when a keyed item moves while the history is paged, and loses no item", async () => {
-    const history = Array.from({ length: 502 }, (_, n) => item(n));
-    let moved = false;
-    const client = clientOver(history, (offset) => {
-      // Between the first page and the second, item 10 is emitted again, later than everything.
-      if (offset > 0 && !moved) {
-        moved = true;
-        const [again] = history.splice(10, 1);
-        history.push({ ...again!, ts: 10_000 } as OutputItem);
-      }
-    });
-    const seen = await new Promise<OutputItem[]>((resolve) => {
-      const stop = sessionFeeds(client)("s1").watch((items) => {
-        stop();
-        resolve(items);
-      });
-    });
-    expect(moved).toBe(true);
-    expect(new Set(seen.map((i) => i.id)).size).toBe(502);
+  it("shares one feed between watches of a session, and stops reading only when the last watch stops", async () => {
+    let streams = 0;
+    let closes = 0;
+    const client = {
+      sessions: {
+        state: async () => ({ at: 1, sessionCreatedAt: 1, items: [item(1)], pagination: { hasMore: false, nextOffset: 1 } }),
+        stream: () => {
+          streams += 1;
+          return { close: () => (closes += 1) };
+        },
+      },
+    } as unknown as Client;
+    const feeds = sessionFeeds(client);
+    const first: OutputItem[][] = [];
+    const stopFirst = feeds("s1").watch((items) => first.push([...items]));
+    await until(() => streams === 1);
+    // A second view of the same session joins the feed already open, and hears its items at once.
+    let second: readonly OutputItem[] = [];
+    const stopSecond = feeds("s1").watch((items) => (second = items));
+    expect(second.map((i) => i.id)).toEqual(["item_1"]);
+    expect(streams).toBe(1);
+
+    stopFirst();
+    expect(closes).toBe(0);
+    stopSecond();
+    expect(closes).toBe(1);
+    // A later view opens a fresh feed rather than a closed one.
+    const stopThird = feeds("s1").watch(() => {});
+    await until(() => streams === 2);
+    expect(streams).toBe(2);
+    stopThird();
   });
 
   it("shows an answer while it is written, from the send's streamed response", async () => {
     const client = clientOver([], () => {});
-    let seen: OutputItem[] = [];
+    let seen: readonly OutputItem[] = [];
     const feed = sessionFeeds(client)("s2");
     const stop = feed.watch((items) => (seen = items));
     await until(() => seen !== undefined);
@@ -83,7 +95,7 @@ describe("the session feed", () => {
 
   it("keeps a tool result from the send's own stream, so a card lands in order beside the text", async () => {
     const client = clientOver([], () => {});
-    let seen: OutputItem[] = [];
+    let seen: readonly OutputItem[] = [];
     const feed = sessionFeeds(client)("s4");
     const stop = feed.watch((items) => (seen = items));
     const encoder = new TextEncoder();
@@ -112,7 +124,7 @@ describe("the session feed", () => {
       reads += 1;
       if (reads === 1) throw new Error("network down");
     });
-    const seen = await new Promise<OutputItem[]>((resolve) => {
+    const seen = await new Promise<readonly OutputItem[]>((resolve) => {
       const stop = sessionFeeds(client)("s3").watch((items) => {
         stop();
         resolve(items);
