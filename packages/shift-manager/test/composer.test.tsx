@@ -5,7 +5,7 @@
  */
 import { StrictMode } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnComposer } from "../src/components/TurnComposer";
 import { TurnNotDelivered } from "../src/lib/send";
 import { legacyTaskDraftKey, taskDraftKey } from "../src/lib/tasks";
@@ -318,5 +318,34 @@ describe("a task's draft belongs to its board as well as its id", () => {
     other.unmount();
     render(taskComposer("lead.tasks", "t-1"));
     expect(input().value).toBe("written before the key named the board");
+  });
+});
+
+describe("adopting an old task draft when storage is full", () => {
+  it("keeps the draft under the old key when the copy can't be written", () => {
+    const old = render(
+      <TurnComposer testId="t" label="Message worker" placeholder="" blocked={null} draftKey={legacyTaskDraftKey("t-1")} send={() => new Promise(() => {})} />,
+    );
+    fireEvent.change(screen.getByTestId("t-input"), { target: { value: "kept through a full storage" } });
+    old.unmount();
+
+    const storage = window.localStorage;
+    const realSet = storage.setItem;
+    const setItem = vi.fn(() => {
+      throw new DOMException("quota", "QuotaExceededError");
+    });
+    Object.defineProperty(storage, "setItem", { value: setItem, configurable: true, writable: true });
+    const full = render(
+      <TurnComposer testId="t" label="Message worker" placeholder="" blocked={null} draftKey={taskDraftKey("lead.tasks", "t-1")} legacyDraftKey={legacyTaskDraftKey("t-1")} send={() => new Promise(() => {})} />,
+    );
+    full.unmount();
+    Object.defineProperty(storage, "setItem", { value: realSet, configurable: true, writable: true });
+    expect(setItem).toHaveBeenCalled();
+
+    // Room again: the next open adopts it.
+    render(
+      <TurnComposer testId="t" label="Message worker" placeholder="" blocked={null} draftKey={taskDraftKey("lead.tasks", "t-1")} legacyDraftKey={legacyTaskDraftKey("t-1")} send={() => new Promise(() => {})} />,
+    );
+    expect((screen.getByTestId("t-input") as HTMLInputElement).value).toBe("kept through a full storage");
   });
 });

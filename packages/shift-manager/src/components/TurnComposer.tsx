@@ -41,8 +41,11 @@ function adoptLegacyDraft(from: string | undefined, to: string | undefined): voi
   const draft = readDraft(DRAFT, from);
   if (draft === "") return;
   if (readDraft(DRAFT, to) === "") {
+    const warning = readDraft(UNCONFIRMED, from);
     saveDraft(DRAFT, to, draft);
-    saveDraft(UNCONFIRMED, to, readDraft(UNCONFIRMED, from));
+    saveDraft(UNCONFIRMED, to, warning);
+    // A full storage drops a write silently: keep the old key until both copies read back.
+    if (readDraft(DRAFT, to) !== draft || readDraft(UNCONFIRMED, to) !== warning) return;
   }
   clearDraft(DRAFT, from);
   clearDraft(UNCONFIRMED, from);
