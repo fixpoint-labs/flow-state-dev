@@ -38,10 +38,9 @@ import { mkdirSync } from "node:fs";
 import { harnessEnv } from "@flow-state-dev/core";
 import {
   CLAUDE_CODE_PASS,
+  checkClaudeCodeReadiness,
   claudeCodeAgent,
   listClaudeModels,
-  probeClaudeAccount,
-  type ClaudeAccountProbe,
   type ClaudeModelList,
   type ResolveClaudeAgent,
 } from "@flow-state-dev/claude-code/sdk";
@@ -50,11 +49,12 @@ import { goalControl } from "./goal-control";
 import { harnessTrust, type RepoLine } from "./harness-trust";
 import type { HarnessTrust } from "./harness-workspace";
 import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import type { HarnessBlock, HarnessReadiness } from "@flow-state-dev/core/types";
 import { kitchenSinkHarnessFlow } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import { flowKindOf, modeById } from "./modes";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
+import { fromReadiness } from "./mode-readiness";
 import type { ModelChoices } from "./harness-models";
 import { scriptedClaudeCode } from "./scripted-claude-code";
 
@@ -228,8 +228,8 @@ export async function claudeCodeModelChoices(
 export interface ClaudeCodeHostChecks {
   /** Whether the server runs as root, where Claude Code refuses to skip its prompts. */
   readonly isRoot: () => boolean;
-  /** Claude Code's answer about its sign-in, over the run's own environment. */
-  readonly probe: (env: Record<string, string>) => Promise<ClaudeAccountProbe>;
+  /** Whether Claude Code can run over the run's own environment: its SDK and sign-in, from the Claude Code package. */
+  readonly readiness: (env: Record<string, string>) => Promise<HarnessReadiness>;
   /** Make the worktree root, or throw why it can't be made. */
   readonly makeRoot: (repository: string) => void;
 }
@@ -237,7 +237,7 @@ export interface ClaudeCodeHostChecks {
 /** The host's own answers. */
 export const HOST_CHECKS: ClaudeCodeHostChecks = {
   isRoot: () => process.getuid?.() === 0 || process.geteuid?.() === 0,
-  probe: (env) => probeClaudeAccount({ env }),
+  readiness: (env) => checkClaudeCodeReadiness({ env }),
   makeRoot: (repository) => {
     mkdirSync(worktreeRoot(repository), { recursive: true });
   },
@@ -245,9 +245,10 @@ export const HOST_CHECKS: ClaudeCodeHostChecks = {
 
 /**
  * Claude Code mode's own check, for the gate's mode-check slot: the server
- * isn't root, the worktree root can be made, and Claude Code finds its SDK and
- * a sign-in over the environment the run gets. The first that fails is the
- * reason. Nothing is asked about a sandbox: Kitchen Sink runs Claude Code
+ * isn't root, the worktree root can be made, and Claude Code is ready over the
+ * environment the run gets (the Claude Code package's readiness check: its SDK
+ * and a sign-in, asked once more when Claude Code is slow to answer). The first
+ * that fails is the reason. Nothing is asked about a sandbox: Kitchen Sink runs Claude Code
  * without one (see the header).
  */
 export function claudeCodeModeCheck(checks: ClaudeCodeHostChecks = HOST_CHECKS): ModeCheck {
@@ -265,20 +266,6 @@ export function claudeCodeModeCheck(checks: ClaudeCodeHostChecks = HOST_CHECKS):
         reason: `The folder for session worktrees can't be made: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
-    // The gate keeps this answer until restart, so a start of Claude Code too
-    // slow to answer is asked once more before it counts against the person.
-    let account = await checks.probe(env);
-    if (account.status === "none" && account.unanswered === true) account = await checks.probe(env);
-    if (account.status === "sdk-missing") return { available: false, reason: `The Claude Code SDK is not installed. ${account.reason}` };
-    if (account.status === "none") {
-      return {
-        available: false,
-        reason:
-          account.unanswered === true
-            ? `${account.reason}, so its sign-in is unknown. Restart the server to ask again.`
-            : `Claude Code is not signed in on this host (${account.reason}). Sign in with \`claude\`, then restart.`,
-      };
-    }
-    return { available: true };
+    return fromReadiness(await checks.readiness(env));
   };
 }
