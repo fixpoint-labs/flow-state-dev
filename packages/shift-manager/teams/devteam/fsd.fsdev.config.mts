@@ -23,6 +23,9 @@
  * - **Claude Code as the coder by default** (`harness.mts`): at start the Lab
  *   asks Claude Code for an account and refuses to start without one, naming
  *   what to set. `DEVFORCE_LAB_HARNESS=stub` runs the scripted coder instead.
+ * - **A coding run waits for your review.** A run that made commits holds its
+ *   task in Inbox, *Ready for review* with the judge's line, until you Accept
+ *   or Ask for changes (harness-manager's `reviewChanges`).
  * - **Runs work in this checkout.** A coding run on FSD or Shift Manager gets
  *   a fresh worktree of the checkout this file sits in, on a branch of its
  *   own cut from the newer of local `main` and its upstream ({@link CHECKOUTS},
@@ -82,6 +85,8 @@ export const lab = await openLab({
   // among them. No remote is allowed: a run is never cloned from one.
   workspace: { root: join(dirname(STORE), "fsd-runs"), remotes: { allow: [] }, checkouts: CHECKOUTS },
   coderWorkerId,
+  // A coding run that committed waits in Inbox for the user's review before its task completes.
+  reviewChanges: true,
   inventory: true,
   devtool: true,
   projects: FSD_PROJECTS,

@@ -24,6 +24,8 @@
  *   - drop the refusal of a turn sent while another waits: the second turn
  *     runs, confirms its own conversation, and the first turn's Allow resumes
  *     that one instead of its own.
+ *   - build the approval turn without the issue-spec brief: the first run's
+ *     prompt is the person's words alone, and "opens with the issue's spec" fails.
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -63,11 +65,17 @@ function host(options: {
   approveTools?: boolean;
   durable?: boolean;
   spend?: { inputTokens: number; outputTokens: number; costUsd: number | null };
+  /** The tracker issue the session is born with, its spec in the checkout, and `issueSpec` on. */
+  issue?: string;
 }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-session-approve-"));
   dirs.push(dir);
   mkdirSync(join(dir, "work"), { recursive: true });
   const cwd = join(dir, "work");
+  if (options.issue !== undefined) {
+    mkdirSync(join(cwd, "specs/issues", options.issue), { recursive: true });
+    writeFileSync(join(cwd, "specs/issues", options.issue, "SPEC.md"), `# ${options.issue}\n\nOnly this spec says periwinkle-anchor.\n`);
+  }
   const stub = harnessStub({ toolCalls: options.calls, ...(options.spend === undefined ? {} : { spend: options.spend }) });
   const handed: string[] = [];
   const makeFlow = () =>
@@ -79,6 +87,7 @@ function host(options: {
         return stub.slot(feeds as never) as HarnessBlock;
       },
       ...(options.approveTools === false ? {} : { approveTools: true }),
+      ...(options.issue === undefined ? {} : { issueSpec: true }),
     });
   const stores = inMemoryStores();
   const makeState = (forFlow: ReturnType<typeof makeFlow>) =>
@@ -93,6 +102,9 @@ function host(options: {
   /** A host restart: this process's flow and runtime go, and new ones start on the same stores. */
   const restart = async () => {
     await state.dispose();
+    // The dead process's hold on the worktree goes stale and is taken over
+    // (a minute later, in a real restart); this process can't die, so it goes now.
+    rmSync(`${cwd}.lock`, { force: true });
     flow = makeFlow();
     state = makeState(flow);
   };
@@ -106,7 +118,7 @@ function host(options: {
       const now = Date.now();
       await rt.stores.session.set(
         SESSION,
-        { id: SESSION, flowKind: KIND, userId: USER, orgId: DEFAULT_ORG_ID, metadata: undefined, latestRequestId: undefined, state: { model: "stub-model" }, version: 0, createdAt: now, updatedAt: now, journal: [] } as never,
+        { id: SESSION, flowKind: KIND, userId: USER, orgId: DEFAULT_ORG_ID, metadata: undefined, latestRequestId: undefined, state: { model: "stub-model", ...(options.issue === undefined ? {} : { issue: options.issue }) }, version: 0, createdAt: now, updatedAt: now, journal: [] } as never,
         "any" as never,
       );
     }
@@ -211,6 +223,25 @@ describe("a harness session's tool call waits for the user", () => {
       const record = (await h.sessionState()).turns?.[requestId!];
       expect(record?.failure ?? null).toBeNull();
       expect(record?.endedAt).not.toBeNull();
+    } finally {
+      await h.dispose();
+    }
+  }, 30_000);
+
+  it("opens the turn's first run with the issue's spec, and the run resumed on Allow without it", async () => {
+    const h = host({ calls: [marker("marker")], issue: "FIX-9001" });
+    try {
+      const { requestId } = await h.turn("do the thing");
+      await h.pending(requestId!);
+      expect((await h.answer(requestId!, "approve")).status).toBe(202);
+      expect(await h.ended(requestId!)).toBe("completed");
+      expect(h.stub.runs).toHaveLength(2);
+      expect(h.stub.runs[0]!.prompt.startsWith("## This work is for issue FIX-9001")).toBe(true);
+      expect(h.stub.runs[0]!.prompt).toContain("periwinkle-anchor");
+      expect(h.stub.runs[0]!.prompt.endsWith("do the thing")).toBe(true);
+      // The resumed conversation already has the spec: the answer goes back alone.
+      expect(h.stub.runs[1]!.prompt).not.toContain("periwinkle-anchor");
+      expect(h.ran("marker")).toBe(true);
     } finally {
       await h.dispose();
     }

@@ -10,6 +10,7 @@ import { registerGenCommand } from "./commands/gen";
 import { registerRunCommand } from "./commands/run";
 import { registerServeCommand } from "./commands/serve";
 import { registerUiCommand } from "./commands/ui";
+import { registerWorktreesCommand } from "./commands/worktrees";
 
 export const program = new Command();
 
@@ -25,4 +26,5 @@ registerGenCommand(program);
 registerRunCommand(program);
 registerServeCommand(program);
 registerUiCommand(program);
+registerWorktreesCommand(program);
 registerBenchmarkCommand(program);
