@@ -19,6 +19,7 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => ({
 
 vi.mock("@flow-state-dev/react", async (importOriginal) => ({
   useHarnessLines: (await importOriginal<typeof import("@flow-state-dev/react")>()).useHarnessLines,
+  // The real draft hook: the session's prompt draft is local state, nothing to stub.
   useDraft: (await importOriginal<typeof import("@flow-state-dev/react")>()).useDraft,
   FlowProvider: ({ children }: { children: ReactNode }) => children,
   useResourceManifest: () => ({ manifest: undefined, error: undefined }),

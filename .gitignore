@@ -2,6 +2,7 @@ node_modules
 dist
 *.tsbuildinfo
 .next
+.next-super-app
 .env.local
 .docusaurus
 apps/docs/build

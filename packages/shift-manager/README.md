@@ -316,9 +316,10 @@ Other Labs build their own prompts from the same task fields. See [`run.task`](.
 | Hand off, reassign, Open PR | Disabled | The eng workstream kit |
 | Diff and Checks | An empty tab saying so | The eng workstream kit |
 | Acceptance criteria, who reviews | An empty section | The eng workstream kit |
-| Which harness, tokens and cost | An empty field saying so | Attention and inspect |
 | A harness that records no plan | A line saying so | Attention and inspect |
 | A task's context and input, on Brief | A line saying so | Not planned yet. The board doesn't publish them to a browser |
+
+The inspector's *Harness · tokens · cost* section shows what the task's runs spent, as the board records it: the harness, then the model, tokens in and out, and the vendor's charge when the run reported one. A run billed by subscription reports no charge and shows none. On Tasks, the COST column is that charge, with the whole line on hover, and "—" when no charge was reported. A task whose runs have reported nothing says so.
 
 A board that dispatches work keeps a running task on the worker it was given to, and moving a waiting one isn't wired into the view yet, which is why reassigning is off rather than refused.
 
@@ -344,7 +345,7 @@ Slots count what a worker holds now. Nothing in a Lab limits how many tasks a wo
 Each of these is drawn as a named empty state or a disabled control:
 
 - **Parts of the task screen.** Listed under [A task](#not-there-yet).
-- **Worker detail.** A worker's harness, and the NOW and COST columns on Tasks.
+- **Worker detail.** A worker's harness, and the NOW column on Tasks.
 - **IN REVIEW.** The column is drawn empty, because no row status means "in review" yet.
 - **A declared map from a task's assignee to its worker.** Shift Manager matches the assignee to a worker by id, then by a unique name. A task whose assignee matches no single worker counts for no one, so that worker can read off shift while it works.
 
@@ -354,7 +355,7 @@ Shift Manager's look comes from the [design-system](../design-system) package, t
 
 The page is on one of three themes, Day, Evening or Night, and fades between them. [Themes](#themes) covers how one is chosen. In a browser that blocks site data for the page, a pick lasts until you reload.
 
-The cards in a task's Session, and the ask cards in Inbox and in a workstream's Stream, are Shift Manager's copies of `@flow-state-dev/ui` registry components, kept unedited. The `ui:add` script in `package.json` names what was installed (`chat-assistant`, which brings the message, reasoning, tool, code block, task plan and ask cards with it). `chat-assistant` brings its whole dependency closure, so Shift Manager also holds copies it doesn't draw today (the debate, evented-actors, routed-specialists and audit-annotation containers) and the libraries they need, such as `shiki`, `streamdown` and `motion`. A test checks that the copies are exactly what that list ships, byte for byte.
+The cards in a task's Session, and the ask cards in Inbox and in a workstream's Stream, are Shift Manager's copies of `@flow-state-dev/ui` registry components, kept unedited. The `ui:add` script in `package.json` names what was installed (`chat-assistant`, which brings the message, reasoning, tool, code block, task plan and ask cards with it, and `spend`, the line a task's spend is drawn with). `chat-assistant` brings its whole dependency closure, so Shift Manager also holds copies it doesn't draw today (the debate, evented-actors, routed-specialists and audit-annotation containers) and the libraries they need, such as `shiki`, `streamdown` and `motion`. A test checks that the copies are exactly what that list ships, byte for byte.
 
 ## Tests
 

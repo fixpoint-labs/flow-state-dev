@@ -30,6 +30,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import type { ModelChoices } from "@/lib/harness-models";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
+import { BASE_PATH } from "@/lib/base-path";
 
 /** The slice of the one client the frame reads and writes: the session listing, and a flow's session create. */
 export type HarnessClient = Pick<Client, "flow"> & { readonly sessions: Pick<Client["sessions"], "list"> };
@@ -55,7 +56,7 @@ export interface HarnessFrameProps {
 /** A harness mode's rail and stream slot. */
 export function HarnessFrame({ label, flowKind, note, models, stream, client: hostClient }: HarnessFrameProps) {
   const client = useMemo<HarnessClient>(
-    () => hostClient ?? createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "" }),
+    () => hostClient ?? createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: BASE_PATH }),
     [hostClient],
   );
 
