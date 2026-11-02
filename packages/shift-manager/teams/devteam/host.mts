@@ -58,8 +58,8 @@ import {
   type HarnessUsageReader,
   type ModelResolver,
 } from "@flow-state-dev/core/types";
-import { harnessUsageAction, upgradeKeptTurns, type WorkspaceConfig } from "@flow-state-dev/harness-manager";
-import { localWorkspaceHost, type WorkspaceHost } from "@flow-state-dev/workspace";
+import { commandCheck, harnessUsageAction, upgradeKeptTurns, type PhaseSpec, type WorkspaceConfig } from "@flow-state-dev/harness-manager";
+import { localWorkspaceHost, type WorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import {
   AGENT_FLOW,
@@ -77,6 +77,7 @@ import {
   projectTools,
   defineWorkstreamBlocks,
   projectCoordinatorTools,
+  projectChecks,
   projectWorkspace,
   mergeWorkerFlows,
   openInventory,
@@ -627,6 +628,12 @@ export interface LabWorkspaceHost {
    * project is mapped, as before.
    */
   checkouts?: readonly ProjectCheckout[];
+  /**
+   * A command the host runs in each fresh checkout a feature run gets, before
+   * the run starts (`pnpm install`, say), so the project's checks find what
+   * they need. Answer runs change nothing and get none. Absent: nothing runs.
+   */
+  setup?: WorkspaceSetup;
 }
 
 /** One skill on a worker record, as the loader shapes it. */
@@ -772,7 +779,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const remotes = lab?.remotes.allow ?? [];
   const saveNothing = options.saveNothing === true;
   const workspaceHost: WorkspaceHost | undefined =
-    lab === undefined ? undefined : workspaceHostOf(lab.root, remotes, lab.checkouts, saveNothing);
+    lab === undefined ? undefined : workspaceHostOf(lab.root, remotes, lab.checkouts, saveNothing, lab.setup);
   // An answer task works in its project too, in places of its own. A lab on
   // one fixed repository reaches no remote here: only a project with no
   // repository can answer there.
@@ -924,11 +931,14 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         },
       }),
     workspace: workspaceHost ?? (options.workspace as WorkspaceConfig),
-    phase: defineImplementPhase({
-      workerOf: coderWorkerOf,
-      requireAcceptance: options.requireAcceptance === true,
-      ...(options.dropTask === true ? { dropTask: true } : {}),
-    }),
+    phase: checkedByProject(
+      workspaceHost !== undefined,
+      defineImplementPhase({
+        workerOf: coderWorkerOf,
+        requireAcceptance: options.requireAcceptance === true,
+        ...(options.dropTask === true ? { dropTask: true } : {}),
+      }),
+    ),
     runTimeoutMs: options.runTimeoutMs ?? 60_000,
     ...(options.stopsOnAbort === undefined ? {} : { stopsOnAbort: options.stopsOnAbort }),
     resources,
@@ -1587,10 +1597,29 @@ function workspaceHostOf(
   remotes: readonly string[],
   checkouts: LabWorkspaceHost["checkouts"],
   saveNothing: boolean,
+  setup?: WorkspaceSetup,
 ): WorkspaceHost {
-  const host = localWorkspaceHost({ root, remotes: { allow: [...remotes] }, ...checkoutSource(checkouts) });
+  const host = localWorkspaceHost({
+    root,
+    remotes: { allow: [...remotes] },
+    ...checkoutSource(checkouts),
+    ...(setup === undefined ? {} : { setup }),
+  });
   if (!saveNothing) return host;
   return { ...host, save: async () => ({ outcomes: [], conflicts: [], contested: [] }) };
+}
+
+/** How long a feature run's project checks may take together. */
+export const PROJECT_CHECKS_TIMEOUT_MS = 10 * 60_000;
+
+/**
+ * The implement phase, done only when its project's checks pass too, on a
+ * Lab whose runs work in their projects. The project row names the commands
+ * (`checks`, set on create or with `setChecks`); a project that names none
+ * runs nothing. A Lab on one fixed repository has no project to ask.
+ */
+function checkedByProject(onProjects: boolean, phase: PhaseSpec): PhaseSpec {
+  return onProjects ? commandCheck(phase, { commands: projectChecks(), timeoutMs: PROJECT_CHECKS_TIMEOUT_MS }) : phase;
 }
 
 /**

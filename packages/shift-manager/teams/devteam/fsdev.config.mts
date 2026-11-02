@@ -38,6 +38,10 @@
  *   which the host allows), so its runs are branches of it with the project's
  *   files in `project/` beside the checkout; Sandbox names none, so a run there
  *   works on the project's files alone. No folder is named for any of it.
+ *   A run is done only when its project's checks pass (the project row's
+ *   `checks`; none named runs nothing). `DEVTEAM_SETUP`, a command such as
+ *   `pnpm install --frozen-lockfile`, runs in each fresh checkout first, so
+ *   the checks find what they need; unset, nothing runs.
  *
  * - **The Error Reporter.** A request that stays failed, or a task that ends
  *   errored, becomes one report in Inbox, drafted by Claude Code from this
@@ -67,6 +71,7 @@ import { readClaudeUsage } from "@flow-state-dev/claude-code/sdk";
 import { readCodexUsage } from "@flow-state-dev/codex";
 import { harnessEnv } from "@flow-state-dev/core";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
+import { splitCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "./ask.mts";
 import { claudeCodeEnv, errorReporterHarness, startHarness } from "./harness.mts";
@@ -84,6 +89,21 @@ import { setAsideLegacyOrgStore } from "./legacy-org-store.mts";
  * `issue` keys the ask's claim in the store, so changing it raises a new ask.
  */
 const ASK_FEATURE = JSON.parse(readFileSync(fileURLToPath(new URL("./ask.json", import.meta.url)), "utf8")) as AskFeature;
+
+/**
+ * The command `DEVTEAM_SETUP` names, run in each fresh checkout before a
+ * feature run starts. Written like a project check: one command, no shell.
+ *
+ * @throws At start, when the command can't be split into words.
+ */
+function setupFrom(value: string | undefined): WorkspaceSetup | undefined {
+  if (value === undefined || value.trim() === "") return undefined;
+  const words = splitCheckoutCommand(value);
+  if (typeof words === "string") throw new Error(`DEVTEAM_SETUP: ${words}`);
+  return { command: words as [string, ...string[]] };
+}
+
+const setup = setupFrom(process.env.DEVTEAM_SETUP);
 
 /** Where this Lab keeps what it was told, across restarts. */
 const STORE = process.env.DEVTEAM_STORE ?? fileURLToPath(new URL("../../.fsdev/devteam.sqlite", import.meta.url));
@@ -183,7 +203,7 @@ const lab = await openLab({
   harness: harness.slot,
   runTimeoutMs: harness.runTimeoutMs,
   // Runs' places and the host's clones, beside the store; only `file://` remotes are reached.
-  workspace: { root: join(dirname(STORE), "devteam-runs"), remotes: { allow: ["file"] } },
+  workspace: { root: join(dirname(STORE), "devteam-runs"), remotes: { allow: ["file"] }, ...(setup === undefined ? {} : { setup }) },
   coderWorkerId,
   // A coding run that committed waits in Inbox for the user's review before its task completes.
   reviewChanges: true,
