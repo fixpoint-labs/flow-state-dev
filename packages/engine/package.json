@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/engine",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Execution runtime, stores, SSE streaming, and HTTP routes for flow-state-dev.",
   "keywords": [
     "ai",

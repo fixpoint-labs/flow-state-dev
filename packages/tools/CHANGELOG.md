@@ -1,5 +1,16 @@
 # @flow-state-dev/tools
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [824ce87]
+- Updated dependencies [cc0ab62]
+- Updated dependencies [387bee2]
+- Updated dependencies [cc0ab62]
+  - @flow-state-dev/core@0.4.0
+  - @flow-state-dev/workspace@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

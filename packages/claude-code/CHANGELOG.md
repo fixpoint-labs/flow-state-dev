@@ -1,5 +1,17 @@
 # @flow-state-dev/claude-code
 
+## 0.2.1
+
+### Patch Changes
+
+- 1fb64c9: `harnessManager({ approveTools: true })` makes a run's tool call that isn't pre-allowed wait for a person's approval as the task's hold, then resumes the same coding session on Allow, Allow for this run, or Deny; claude-code's `onToolApproval` gains a `held` decision, and react's `useApproval` gains `approveWith`, `rejectWith` and `approveOptionsOf` (FIX-2389).
+- Updated dependencies [824ce87]
+- Updated dependencies [cc0ab62]
+- Updated dependencies [387bee2]
+- Updated dependencies [cc0ab62]
+  - @flow-state-dev/core@0.4.0
+  - @flow-state-dev/workspace@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

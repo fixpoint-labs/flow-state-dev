@@ -1,5 +1,13 @@
 # @flow-state-dev/memory
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [824ce87]
+- Updated dependencies [387bee2]
+  - @flow-state-dev/core@0.4.0
+
 ## 0.2.0
 
 ### Minor Changes

@@ -1,5 +1,20 @@
 # @flow-state-dev/orchestration
 
+## 0.5.0
+
+### Minor Changes
+
+- 8be6d45: A failed or cancelled task can be retried as the same task (FIX-2383). `TaskCollectionRef.retry(id)` (optional, on both built-in backings) puts an `errored` or `cancelled` row back to `pending`, keeping its id, steers, output and spend, with the grant counted in `retryLedger`; it publishes a `retry_requested` change and declines `disallowed`, `settling`, `dependency-ended` or `retry-budget`. `taskToolActions` adds `retryTask_<suffix>`, an action only: a model's task tools are unchanged. Workforce's conversation board starts a retried row at once, as it does a released one.
+- 3aced5b: Add `taskRowView` to `@flow-state-dev/orchestration/inbox`: one task row as a screen draws it, with a display state that says when the task waits on the user, what it asks, and its spend, harness and times (FIX-2379).
+
+### Patch Changes
+
+- Updated dependencies [824ce87]
+- Updated dependencies [0554e0b]
+- Updated dependencies [387bee2]
+  - @flow-state-dev/core@0.4.0
+  - @flow-state-dev/client@0.3.1
+
 ## 0.4.0
 
 ### Minor Changes

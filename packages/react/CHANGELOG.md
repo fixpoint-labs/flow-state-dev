@@ -1,5 +1,24 @@
 # @flow-state-dev/react
 
+## 0.3.1
+
+### Patch Changes
+
+- b616e7c: `@flow-state-dev/react` exports `isSendKey(event, { enterSends? })`, the send shortcut for a message box: Cmd+Enter (Mac) or Ctrl+Enter (elsewhere) always sends, plain Enter sends only where `enterSends` is set, and Shift+Enter or an Enter that confirms an IME composition never sends (FIX-2365).
+- 9a355b2: `@flow-state-dev/react` exports `useInterruptKeys`, `createInterruptKeys` and `interruptChordLabel`, a keyboard stop for long-running work. One Esc never stops anything. A second Esc within 1.5 s does, and so does Cmd/Ctrl+. at once. An Esc typed in a text field, or one already used to close a dialog, never counts (FIX-2413).
+
+  `@flow-state-dev/engine`: the request status route's `completedAtMs` is now set for aborted and failed requests, from the time they stopped. It was set only for requests that completed. A replayed or resumed stream's terminal event for an aborted request is now dated when the request was aborted, not when its record was last written.
+
+  `@flow-state-dev/shift-manager`: one Esc on a task no longer interrupts its run. Press Esc twice or Cmd/Ctrl+. instead. Esc in the composer is the composer's. An interrupted run now says when it stopped.
+
+- 1fb64c9: `harnessManager({ approveTools: true })` makes a run's tool call that isn't pre-allowed wait for a person's approval as the task's hold, then resumes the same coding session on Allow, Allow for this run, or Deny; claude-code's `onToolApproval` gains a `held` decision, and react's `useApproval` gains `approveWith`, `rejectWith` and `approveOptionsOf` (FIX-2389).
+- Updated dependencies [824ce87]
+- Updated dependencies [0554e0b]
+- Updated dependencies [387bee2]
+  - @flow-state-dev/core@0.4.0
+  - @flow-state-dev/client@0.3.1
+  - @flow-state-dev/contracts@0.2.1
+
 ## 0.3.0
 
 ### Minor Changes

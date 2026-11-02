@@ -1,5 +1,13 @@
 # @flow-state-dev/next
 
+## 0.1.5
+
+### Patch Changes
+
+- Updated dependencies [9a355b2]
+- Updated dependencies [387bee2]
+  - @flow-state-dev/engine@0.3.1
+
 ## 0.1.4
 
 ### Patch Changes

@@ -1,5 +1,16 @@
 # @flow-state-dev/store-sqlite
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [9a355b2]
+- Updated dependencies [824ce87]
+- Updated dependencies [387bee2]
+  - @flow-state-dev/engine@0.3.1
+  - @flow-state-dev/core@0.4.0
+  - @flow-state-dev/scheduled@0.3.1
+
 ## 0.3.0
 
 ### Minor Changes

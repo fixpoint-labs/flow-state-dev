@@ -1,5 +1,15 @@
 # @flow-state-dev/client
 
+## 0.3.1
+
+### Patch Changes
+
+- 0554e0b: `@flow-state-dev/client` exports `readSessionTail`, `readSessionEarlier` and `refreshSessionWindow`: read a long session from its newest end, add earlier items on request, and read the window again, so a conversation past a few hundred items still shows its newest reply (FIX-2408).
+- Updated dependencies [824ce87]
+- Updated dependencies [387bee2]
+  - @flow-state-dev/core@0.4.0
+  - @flow-state-dev/contracts@0.2.1
+
 ## 0.3.0
 
 ### Minor Changes
