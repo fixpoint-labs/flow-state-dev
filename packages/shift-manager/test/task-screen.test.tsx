@@ -13,7 +13,7 @@ import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import { connect } from "../src/lib/connection";
 import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef, toBoardRow, type BoardRow } from "../src/lib/reads";
-import { openRunLab, RUN_LAB_ASK, RUN_LAB_USER_ID } from "./fixtures/run-lab/lab.mts";
+import { openRunLab, RUN_LAB_ASK, RUN_LAB_SPEND, RUN_LAB_USER_ID } from "./fixtures/run-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
 type Opened = Awaited<ReturnType<typeof openRunLab>>;
@@ -480,14 +480,19 @@ describe("a line sent from a task's composer", () => {
 });
 
 describe("the inspector (BR-18 to BR-23)", () => {
-  it("shows the worker, started, the harness gap, what a recording run recorded, and the trace link with the session beside it", async () => {
+  it("shows the worker, started, what the run spent, what a recording run recorded, and the trace link with the session beside it", async () => {
     const opened = await openLab();
-    const row = await heldRow(opened, true);
+    const held = await heldRow(opened, true);
+    // Once the board has written what the run reported onto the row.
+    const row = await eventually(async () => (await opened.rows()).find((r) => r.id === held.id && r.spend !== null), "the held run's spend");
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`, "http://127.0.0.1:4000");
     const inspector = await screen.findByTestId("task-inspector");
     expect(within(inspector).getByTestId("inspector-worker-id").getAttribute("data-worker-id")).toBe(opened.lab.ownWorker!.id);
     expect(within(inspector).getByTestId("inspector-started-at").getAttribute("data-started-at")).toBe(String(row.startedAt));
-    expect(within(inspector).getByTestId("inspector-harness-gap").textContent).toBe(GAPS.task.harness);
+    // The harness, tokens and charge the run reported, from the row the board wrote while it runs (FIX-2398).
+    const spend = within(inspector).getByTestId("inspector-spend");
+    expect(spend.getAttribute("data-harness")).toBe(RUN_LAB_SPEND.harness);
+    expect(spend.textContent).toContain("claude-sonnet-4-5 · 12.4k in · 2.3k out · $0.42");
     const files = await within(inspector).findAllByTestId("inspector-file", {}, { timeout: 10_000 });
     expect(files.map((f) => [f.getAttribute("data-path"), f.getAttribute("data-kind")])).toEqual([["notes/audit.md", "created"]]);
     expect(within(inspector).getAllByTestId("inspector-plan-step").map((s) => s.getAttribute("data-status"))).toEqual(["completed", "in_progress"]);
