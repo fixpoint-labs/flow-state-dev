@@ -22,7 +22,9 @@
  * **A run is done only when its project's checks pass** (`projectChecks()`:
  * the commands the project row names in `checks`, none by default). They run
  * in the run's worktree after the harness says it finished; a red one sends
- * the run back, and its next brief says which command failed and how.
+ * the run back, and its next brief says which command failed and how. A run
+ * that changed nothing (a question) skips them, so a project whose branch is
+ * already red can still be asked about.
  */
 import { defineFlow, handler, harnessEnv, router, sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition, HarnessBlock } from "@flow-state-dev/core/types";
@@ -61,7 +63,7 @@ import {
   type MessageReceived,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
-import type { WorkspaceHost } from "@flow-state-dev/workspace";
+import { GIT_TIMEOUT_MS, run as exec, type WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
 
 /** The flow name a coding worker's `WORKER.md` names. */
@@ -134,11 +136,36 @@ export const HARNESSES: Record<string, (feeds: HarnessFeeds) => HarnessBlock> = 
 /** How long a run's project checks may take together. */
 const CHECKS_TIMEOUT_MS = 10 * 60_000;
 
+async function git(cwd: string, args: string[]): Promise<string> {
+  return (await exec("git", args, { cwd, timeoutMs: GIT_TIMEOUT_MS })).stdout;
+}
+
+/**
+ * Whether the run changed its worktree: files left uncommitted, or commits since its branch was
+ * last cut (the newest `branch:` entry of the branch's reflog, which `git worktree add -B` writes).
+ * Anything git can't answer counts as changed, so the checks run.
+ */
+async function runChangedFiles(run: CompletionRunContext): Promise<boolean> {
+  try {
+    if ((await git(run.workspacePath, ["status", "--porcelain"])).trim() !== "") return true;
+    const reflog = await git(run.workspacePath, ["reflog", "show", "--format=%H %gs", `refs/heads/${run.branch}`]);
+    const cut = reflog.split("\n").find((line) => line.split(" ")[1] === "branch:");
+    if (cut === undefined) return true;
+    const count = (await git(run.workspacePath, ["rev-list", "--count", `${cut.split(" ")[0]}..HEAD`])).trim();
+    return count !== "0";
+  } catch {
+    return true;
+  }
+}
+
 /**
  * The one phase: the task as the main session wrote it, a question or a change, done when the
- * harness says it finished and `checks` pass in the run's worktree. The flow passes the project's.
+ * harness says it finished and, on a run that changed files, `checks` pass in the run's worktree.
+ * A question run changes nothing and skips them. The flow passes the project's.
  */
 export function codePhase(checks: CommandCheckCommands<CompletionRunContext>): PhaseSpec {
+  const onChange: CommandCheckCommands<CompletionRunContext> = async (run) =>
+    !(await runChangedFiles(run)) ? [] : typeof checks === "function" ? checks(run) : checks;
   return commandCheck(
     {
       phase: "code",
@@ -152,7 +179,7 @@ export function codePhase(checks: CommandCheckCommands<CompletionRunContext>): P
         ].join("\n\n"),
       isDone: ({ stopReport }) => stopReport === "finished",
     },
-    { commands: checks, timeoutMs: CHECKS_TIMEOUT_MS },
+    { commands: onChange, timeoutMs: CHECKS_TIMEOUT_MS },
   );
 }
 
