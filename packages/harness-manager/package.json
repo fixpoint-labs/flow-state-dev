@@ -38,6 +38,10 @@
     "./browser": {
       "types": "./dist/browser.d.ts",
       "default": "./src/browser.ts"
+    },
+    "./work-place": {
+      "types": "./dist/work-place.d.ts",
+      "default": "./src/work-place.ts"
     }
   },
   "license": "MIT",
@@ -61,6 +65,10 @@
       "./browser": {
         "types": "./dist/browser.d.ts",
         "default": "./dist/browser.js"
+      },
+      "./work-place": {
+        "types": "./dist/work-place.d.ts",
+        "default": "./dist/work-place.js"
       }
     }
   },

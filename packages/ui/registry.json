@@ -564,6 +564,20 @@
         "target": "components/flow-state/generative/link-card.tsx"
       }],
       "categories": ["ai", "generative"]
+    },
+    {
+      "name": "work-place",
+      "title": "Work Place",
+      "type": "registry:component",
+      "description": "Where a coding run's work went: '3 commits on …/branch', with copy buttons for git switch, cd and git log base..branch. Takes what workPlace in @flow-state-dev/harness-manager/work-place returns; renders nothing for a run with no branch.",
+      "dependencies": ["lucide-react"],
+      "registryDependencies": ["tokens"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/work-place.tsx",
+        "target": "components/flow-state/work-place.tsx"
+      }],
+      "categories": ["ai", "framework"]
     }
   ]
 }
