@@ -42,7 +42,11 @@ const FORM_TIMEOUT_MS = 5000;
  * held back by it, so a guessing loop elsewhere can't lock a real user out.
  */
 const GLOBAL_FAILURES_PER_MINUTE = 60;
-/** Addresses remembered at most; the oldest is forgotten first. */
+/**
+ * Addresses remembered at most. Only records past FORGET_AFTER_MS are ever
+ * dropped to make room: a full record of live ones means many addresses are
+ * failing at once, and every address not in it is held to the global limit.
+ */
 const MAX_TRACKED = 10_000;
 
 /**
@@ -97,6 +101,7 @@ export function safeNext(value) {
  * @param {string} [options.secret]  Signs the session cookie; random per process when unset.
  * @param {() => number} [options.now]  The clock, in ms. Tests pass their own.
  * @param {number} [options.globalFailuresPerMinute]  Default {@link GLOBAL_FAILURES_PER_MINUTE}.
+ * @param {number} [options.maxTracked]  Default {@link MAX_TRACKED}.
  */
 export function createAuth({
   username,
@@ -104,6 +109,7 @@ export function createAuth({
   secret = randomBytes(32).toString("hex"),
   now: clock = Date.now,
   globalFailuresPerMinute = GLOBAL_FAILURES_PER_MINUTE,
+  maxTracked = MAX_TRACKED,
 }) {
   /**
    * Failures by the connecting address: the socket's, never a forwarded header a client could set.
@@ -121,7 +127,7 @@ export function createAuth({
     recentFailures = recentFailures.filter((at) => now - at < 60_000);
     const global = recentFailures.length >= globalFailuresPerMinute ? recentFailures[0] + 60_000 - now : 0;
     const record = failures.get(key);
-    if (record === undefined || now - record.at >= FORGET_AFTER_MS) return 0;
+    if (record === undefined || now - record.at >= FORGET_AFTER_MS) return failures.size >= maxTracked ? global : 0;
     if (record.count < FREE_FAILURES) return global;
     const wait = Math.min(MAX_LOCKOUT_MS, 1000 * 2 ** (record.count - FREE_FAILURES));
     return Math.max(global, record.at + wait - now);
@@ -133,9 +139,13 @@ export function createAuth({
     const record = failures.get(key);
     const count = record !== undefined && now - record.at < FORGET_AFTER_MS ? record.count + 1 : 1;
     failures.delete(key);
+    // Map order is insertion order, so the first key is the one that failed longest ago: drop it only once it has expired.
+    if (failures.size >= maxTracked) {
+      const [oldest, last] = failures.entries().next().value;
+      if (now - last.at < FORGET_AFTER_MS) return;
+      failures.delete(oldest);
+    }
     failures.set(key, { count, at: now });
-    // Map order is insertion order, so the first key is the one that failed longest ago.
-    while (failures.size > MAX_TRACKED) failures.delete(failures.keys().next().value);
   };
 
   const release = (key) => {

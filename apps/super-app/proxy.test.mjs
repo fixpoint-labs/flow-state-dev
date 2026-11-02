@@ -268,3 +268,30 @@ describe("the limit across every address", () => {
     }
   });
 });
+
+describe("a full record of failing addresses", () => {
+  it("keeps the live ones and holds every unrecorded address to the global limit", async () => {
+    const server = createProxy({
+      apps: [],
+      auth: createAuth({ username: "ops", password: "s3cret", globalFailuresPerMinute: 1, maxTracked: 1 }),
+      status: () => "running",
+    });
+    await new Promise((r) => server.listen(0, "::", r));
+    const port = server.address().port;
+    const attempt = (host, password) =>
+      fetch(`http://${host}:${port}/login`, {
+        method: "POST",
+        redirect: "manual",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ username: "ops", password }).toString(),
+      });
+    try {
+      // One failing address fills the record and spends the minute's budget.
+      assert.equal((await attempt("127.0.0.1", "wrong")).status, 401);
+      // Many addresses failing at once: one with no record is held back too, rather than pushing the live record out.
+      assert.equal((await attempt("[::1]", "s3cret")).status, 429);
+    } finally {
+      server.close();
+    }
+  });
+});
