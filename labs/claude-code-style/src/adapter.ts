@@ -24,10 +24,11 @@
 import { createClient, sessionFeed, type Client, type SessionConnectionState, type SessionFeed, type SessionSummary } from "@flow-state-dev/client";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import { createInboxClient, inboxItems, type InboxAnswer, type InboxHold, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
-import type { TaskSpendView } from "@flow-state-dev/orchestration/tasks";
+import { parseNotice, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import {
   createWorkforceClient,
+  delegateAnswerOf,
   parseProjectRef,
   projectRef,
   WORK_PROJECT_STATE_KEY,
@@ -200,13 +201,10 @@ export interface Item {
   /** A `suspension` item's: what it waits on, and what it carries beside its prompt. */
   kind?: string;
   data?: Record<string, unknown>;
+  /** A message's data a client reads: a task's line names its task here (`parseNotice`, `delegateAnswerOf`). */
+  metadata?: Record<string, unknown>;
 }
 
-/**
- * How the settled notice the main session takes names a task and its ending: orchestration's
- * `noticeText` (`tasks/notice/task-notice.ts`), where a cancel may add "; it cancelled …".
- */
-const RESULT_LINE = /^Task "([\s\S]+?)" \(([^)\s]+)\) (completed by [^:]+|failed for good with [^:]+|was cancelled)(?:[:;] ([\s\S]*))?$/;
 
 /**
  * Read `read` now and every `everyMs`, reporting a value only when it
@@ -256,13 +254,6 @@ function filedTaskOf(item: Item): string | undefined {
 }
 
 /**
- * A worker's id, `team.worker`: what a delegate's answer that landed in a conversation is written
- * under. It is the only way a delegate writes into the main session's thread; the session's own
- * text carries a block's name, which has no dot. Workforce marks the item no other way today.
- */
-const WORKER_ID = /^[a-z0-9-]+\.[a-z0-9-]+$/;
-
-/**
  * A thread's entries, from its items in order. A result is the line the main session took a task's ending as,
  * and so is a delegate's answer that landed in the conversation as written (a task filed with `resultTo:
  * "conversation"`): either way the task's reply is one line, not the session's own words.
@@ -290,26 +281,26 @@ export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[
       entries.push({ kind: "user", id: item.id, text, requestId, ...(threads && filingTurns.has(requestId) ? { sentToThread: true } : {}) });
       continue;
     }
-    const result = RESULT_LINE.exec(text);
-    if (result !== null) {
-      const [, title, taskId, ending, summary] = result;
-      const status: TaskStatus = ending!.startsWith("completed") ? "completed" : ending!.startsWith("failed") ? "errored" : "cancelled";
+    // A failure that runs again is not an ending; the others are the thread's own task statuses.
+    const notice = parseNotice(item);
+    if (notice !== undefined && notice.ending !== "retried") {
       entries.push({
         kind: "result",
         id: item.id,
-        taskId: taskId!,
-        title: title!,
-        status,
-        summary: resultSummary(summary ?? text),
+        taskId: notice.taskId,
+        title: notice.title,
+        status: notice.ending,
+        summary: resultSummary(notice.detail ?? text),
         duringTurn: userTurns.has(requestId),
         requestId,
       });
       continue;
     }
-    if (text.length > 0 && item.role === "assistant" && WORKER_ID.test(item.agentName ?? "")) {
-      // The answer names no task; the line names who answered.
-      const worker = item.agentName!.split(".").pop()!;
-      entries.push({ kind: "result", id: item.id, taskId: "", title: `Answer from ${worker}`, status: "completed", summary: resultSummary(text), duringTurn: userTurns.has(requestId), requestId });
+    const answer = delegateAnswerOf(item);
+    if (answer !== undefined && text.length > 0) {
+      // The line names who answered, by the worker's own name.
+      const worker = answer.worker.split(".").pop()!;
+      entries.push({ kind: "result", id: item.id, taskId: answer.taskId, title: `Answer from ${worker}`, status: "completed", summary: resultSummary(text), duringTurn: userTurns.has(requestId), requestId });
       continue;
     }
     if (text.length > 0) entries.push({ kind: "assistant", id: item.id, text, requestId });

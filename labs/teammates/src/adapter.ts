@@ -35,6 +35,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   createWorkforceClient,
+  delegateAnswerOf,
   RECEIVED_MESSAGE_COMPONENT,
   SEND_MESSAGE_TOOL,
   WORKER_MESSAGES_RESOURCE,
@@ -42,7 +43,7 @@ import {
   type RosterEntry,
   type WorkforceClient,
 } from "@flow-state-dev/workforce/browser";
-import { taskSpendView } from "@flow-state-dev/orchestration/tasks";
+import { parseNotice, taskSpendView } from "@flow-state-dev/orchestration/tasks";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
 import { harnessName } from "./lib/harness";
@@ -383,13 +384,16 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
     if (item.type === "message" && item.role === "user") {
       entries.push({ kind: "user", id: item.id, text: textOf(item) });
     } else if (item.type === "message" && item.role === "assistant" && workers.has(item.agentName)) {
-      // A task it filed ended: the board's line under the worker that ran it.
-      const taskId = /\((task_[^)\s]+)\)/.exec(textOf(item))?.[1] ?? "";
+      // A task it filed ended: the board's line under the worker that ran it, which names its task
+      // in its data. A completed task's answer said as is (`resultTo: "conversation"`) names the
+      // task it answered; one stored before answers were marked names none.
+      const notice = parseNotice(item);
+      const taskId = notice?.taskId ?? delegateAnswerOf(item)?.taskId ?? "";
       const row = rows.get(taskId);
       const task = row === undefined ? undefined : toBoardTask(row);
-      // A line with no task id is a completed task's answer, said as is (`resultTo: "conversation"`).
+      // An answer is a finished task, never one drawn as failed.
       const cancelled = task?.status === "cancelled";
-      const failed = taskId !== "" && task?.status !== "done" && !cancelled;
+      const failed = notice !== undefined && task?.status !== "done" && !cancelled;
       entries.push({
         kind: "result",
         id: item.id,
