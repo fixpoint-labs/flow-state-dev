@@ -1,0 +1,13 @@
+{
+  "name": "@flow-state-dev/super-app",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Hosts Kitchen Sink, Shift Manager, Teammates and Claude Code Style behind one port, one sub-route each.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node run.mjs dev",
+    "serve": "node run.mjs serve",
+    "test": "node --test proxy.test.mjs settings.test.mjs"
+  }
+}

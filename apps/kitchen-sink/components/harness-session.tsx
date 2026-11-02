@@ -20,7 +20,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { SquareIcon } from "lucide-react";
-import { createClient, type SessionRequestSummary } from "@flow-state-dev/client";
 import {
   FlowProvider,
   useResourceCollectionList,
@@ -78,6 +77,7 @@ import {
 } from "@/lib/harness-turn";
 import type { HarnessSessionState } from "@flow-state-dev/harness-manager";
 import { SESSION_DRAFT } from "@/lib/session-draft";
+import { BASE_PATH } from "@/lib/base-path";
 
 export interface HarnessSessionViewProps {
   /** The mode's label, from the mode list. */
@@ -99,7 +99,7 @@ const sendLineOnce = (prompt: string, running: boolean, sender: LineSender) => s
 /** One harness session's conversation and plan. */
 export function HarnessSessionView({ label, flowKind, sessionId, models, repoLine, onTitled }: HarnessSessionViewProps) {
   return (
-    <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAssistantRenderers}>
+    <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl={BASE_PATH} renderers={chatAssistantRenderers}>
       <SessionBody label={label} sessionId={sessionId} models={models} repoLine={repoLine} onTitled={onTitled} />
     </FlowProvider>
   );
@@ -123,14 +123,7 @@ function SessionBody({
   const messageRef = useRef(message);
   messageRef.current = message;
 
-  // Session state is read from the snapshot, which a turn's end alone does
-  // not refresh: re-read it when a turn stops streaming.
-  const wasStreaming = useRef(false);
   const { refresh } = session;
-  useEffect(() => {
-    if (wasStreaming.current && !session.isStreaming) void refresh();
-    wasStreaming.current = session.isStreaming;
-  }, [session.isStreaming, refresh]);
 
   // The rail lists sessions by title. The flow sets it in a session's first
   // turn, so re-read the rail when it arrives.
@@ -141,28 +134,11 @@ function SessionBody({
 
   const state = (session.snapshot?.clientData.session ?? {}) as Partial<HarnessSessionState>;
   const bound = state.binding?.confirmed ?? null;
-  const { items, isStreaming, latestRequest } = session;
-  // Requests are listed beside the session hook, which reads only its latest.
-  const client = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "" }), []);
+  const { items, isStreaming, followedRequest } = session;
   // The session's newest request can be a `steer` sent beside the turn, so the
-  // turn's status is read off the turn's own request.
+  // turn's status is the hook's followed request: the one the turn's items are.
   const turnId = useMemo(() => latestTurn({ items, streaming: false, request: null })?.requestId ?? null, [items]);
-  const [listedTurn, setListedTurn] = useState<SessionRequestSummary | null>(null);
-  useEffect(() => {
-    if (turnId === null || latestRequest === null || latestRequest.id === turnId) return;
-    let current = true;
-    client.sessions.requests(sessionId, { limit: 20 }).then(
-      (requests) => {
-        if (current) setListedTurn(requests.find((request) => request.id === turnId) ?? null);
-      },
-      // Unread, the turn reads as running until the next read, as before a summary arrives.
-      () => undefined,
-    );
-    return () => {
-      current = false;
-    };
-  }, [client, sessionId, turnId, latestRequest]);
-  const turnRequest = latestRequest?.id === turnId ? latestRequest : listedTurn?.id === turnId ? listedTurn : null;
+  const turnRequest = followedRequest?.id === turnId ? followedRequest : null;
   const turn = useMemo(
     () => latestTurn({ items, streaming: isStreaming, request: turnRequest }),
     [items, isStreaming, turnRequest],
@@ -184,8 +160,9 @@ function SessionBody({
         clearDraft(SESSION_DRAFT, sessionId, prompt);
         if (messageRef.current.trim() === prompt) setMessage("");
         // The steer request records a taken line in session state, and this
-        // view follows only the turn's stream: re-read it so the line shows now.
-        if (outcome === "taken") void refresh();
+        // view follows only the turn's stream: re-read state (not the
+        // history) so the line shows now.
+        if (outcome === "taken") void refresh({ items: false });
       } catch {
         // Keep the persisted draft so a failed send can be retried.
       }

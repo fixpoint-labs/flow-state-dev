@@ -71,6 +71,7 @@ const row = (id: string, status: string, extra: Partial<BoardRow> = {}): BoardRo
   error: null,
   holds: [],
   steers: [],
+  spend: null,
   createdAt: null,
   updatedAt: null,
   startedAt: null,

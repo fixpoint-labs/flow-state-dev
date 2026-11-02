@@ -65,7 +65,7 @@
     "typecheck": "node ../../scripts/typecheck.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "ui:add": "fsdev ui add chat-assistant"
+    "ui:add": "fsdev ui add chat-assistant spend"
   },
   "dependencies": {
     "@flow-state-dev/devtool": "workspace:*",
