@@ -269,7 +269,7 @@ Coding agents switch branches, for example to split their work into several pull
 
 These cases are refused as `checkout-moved`: a merge, rebase, cherry-pick, revert or bisect is half done, another worktree now has the run's branch checked out, or checking out the run's branch would overwrite a file the other branch ignores. Nothing is changed in any of them. The message says what to run in the checkout. The one exception is a checkout whose `git worktree add` was killed before it finished: the host marks the place while that command runs, and when the mark is still there and the tree only has files missing, it rebuilds the checkout instead of handing a run a tree with half the repository gone. If the tree shows any other change, the host refuses it and keeps it.
 
-The host runs none of the repository's git hooks while it makes or hands back a checkout, whether they live in `.git/hooks` or in a `core.hooksPath` directory such as `.husky`. A `post-checkout` hook that builds or installs would fail in a fresh tree with no dependencies, and a run can write to the hooks directory its worktree shares with the repository. Run any setup the checkout needs as part of the run.
+The host runs none of the repository's git hooks while it makes or hands back a checkout, whether they live in `.git/hooks` or in a `core.hooksPath` directory such as `.husky`. A `post-checkout` hook that builds or installs would fail in a fresh tree with no dependencies, and a run can write to the hooks directory its worktree shares with the repository. To install dependencies or build in each new checkout, give the host a [setup command](#setting-up-a-fresh-checkout) instead.
 
 Several hosts, in one process or several, can share a `root`. Provisioning a place, and working on a clone, take a lock file under the root, so a second host waits for the first instead of racing it. A lock left by a process that died is taken over after a minute.
 
@@ -385,6 +385,30 @@ await host.remove!({ place: [sessionId] }, { worktrees });
 Rows are user-scoped, and a user's data is kept per organization, so an agent in one organization never reads another's rows. Through core's resource tools a model can read rows but should not write them: a flow that offers those tools marks `worktrees` read-only in its `resourceVisibility`, as the harness session flow does. Rows are never deleted: a removed worktree's row still says where the work was. A host given no collection writes nothing.
 
 Anything that runs work in a host's worktree holds it in use for as long as it works: `occupyWorktree(cwd)` waits for and takes the lock beside it, and `releaseLock(lease)` lets it go. A harness session's turn and a harness manager's run both do. The lease refreshes itself while held. `remove` never treats it as stale, so a lock left by a process that died has to be deleted by hand; the refusal names the file.
+
+### Setting up a fresh checkout
+
+A new worktree has no installed dependencies, so a run's first build or test fails, or spends its first turn installing. Give the host a `setup` command and it runs it in each checkout it makes, before handing the checkout over:
+
+```ts
+const host = localWorkspaceHost({
+  root: "/var/fsd/runs",
+  remotes: { allow: [] },
+  localRepositories: ["/srv/storefront"],
+  source: () => ({ kind: "repo", repo: "/srv/storefront", baseRef: "main" }),
+  setup: { command: ["pnpm", "install", "--frozen-lockfile", "--prefer-offline"] },
+  provisionTimeoutMs: 15 * 60_000,
+});
+```
+
+The command runs in the checkout itself, without a shell. Use `["sh", "-c", "…"]` for more than one step, and `env` for extra environment variables.
+
+- **Once per new checkout.** It runs when a provision makes the tree: a new branch, an existing branch checked out into a new tree, or a tree rebuilt from held work. A checkout handed back as it was doesn't run it again.
+- **Again until it works.** A marker beside the checkout says a setup is still owed. It's written before the command starts and removed when it exits 0, so a failed or interrupted setup runs again on the next provision.
+- **Inside the provision's budget.** Setup is the last step of a provision, under the same lock and the same `provisionTimeoutMs`. If your install takes a while, raise that budget, since a caller that holds a lease across provisioning sizes it from that number. When the budget runs out, the host kills the command and every process it started.
+- **A failure doesn't stop the run.** The checkout is handed over anyway, and `place.setup` says what happened: `{ status: "done" }`, or `{ status: "failed", tail }` with the command's last lines of output and how it ended. A caller that must not run without setup refuses on that. A run can often fix the cause itself, such as an out-of-date lockfile.
+
+Pass `onSetup` in the place request to hear when the command starts, so you can show that the run is waiting on it. A host without `setup` runs nothing, and `place.setup` is absent. So is a place with no repository.
 
 ### Keeping a directory out of git
 
@@ -587,7 +611,7 @@ Git itself runs with `GIT_ALLOW_PROTOCOL` set to the listed schemes, with `--` b
 | `principalFromContext(ctx)` | The scoping identity, read off a block's execution context. |
 | `collectionIdFor(collection, principal)` | A `Mount.collectionId` for a scoped door. |
 | `unscopedCollectionId(collection)` | A `Mount.collectionId` for a door with no principal. |
-| `localWorkspaceHost({ root, remotes, source, localRepositories?, provisionTimeoutMs?, heldWork? })` | A workspace host on this machine. Returns `{ root, source, provisionTimeoutMs, locate, provision, save, hostId, holds, list, remove, checkpoint, dropHeld, readSource, restore, release }`. `readSource(answer, request)` reads without a run; see [Reading without a run](#reading-without-a-run). `list()` and `remove(target, options?)` are covered in [Listing and removing worktrees](#listing-and-removing-worktrees). With a `heldWork` store, `checkpoint(place, previous?)` saves a repository run's work to it and returns a `HeldWork` (or `null` when holding doesn't apply), `dropHeld(place, key)` deletes one of the place's earlier keys, and `provision` takes `recorded` and rebuilds a lost checkout from it, reporting `origin`. |
+| `localWorkspaceHost({ root, remotes, source, localRepositories?, provisionTimeoutMs?, heldWork?, setup? })` | A workspace host on this machine. Returns `{ root, source, provisionTimeoutMs, locate, provision, save, hostId, holds, list, remove, checkpoint, dropHeld, readSource, restore, release }`. `readSource(answer, request)` reads without a run; see [Reading without a run](#reading-without-a-run). `list()` and `remove(target, options?)` are covered in [Listing and removing worktrees](#listing-and-removing-worktrees). With a `heldWork` store, `checkpoint(place, previous?)` saves a repository run's work to it and returns a `HeldWork` (or `null` when holding doesn't apply), `dropHeld(place, key)` deletes one of the place's earlier keys, and `provision` takes `recorded` and rebuilds a lost checkout from it, reporting `origin`. With `setup`, `provision` runs that command in each new checkout, calls the request's `onSetup` first, and reports the outcome on `place.setup`; see [Setting up a fresh checkout](#setting-up-a-fresh-checkout). |
 | `HeldWorkStore` | Where held work goes: `put(key, bytes)`, `get(key)`, `delete(key)`, `list(prefix)`. `put` must be atomic. |
 | `fileHeldWorkStore({ dir })` | A `HeldWorkStore` that keeps each key as a file under `dir`, written atomically. |
 | `HeldWorkMismatchError` | What `provision` rejects with when held work disagrees with the run's record, or this host has no store to rebuild from. `field` is one of `remote`, `branch`, `scope`, `base`, `pack`, `head`, `snapshot`, `tree`, `disabled`. |
@@ -604,6 +628,11 @@ Git itself runs with `GIT_ALLOW_PROTOCOL` set to the listed schemes, with `--` b
 | `resolvesToCommit(repo, ref)` | Whether `ref` names a commit in `repo`. |
 | `isStrictlyInside(candidate, root)` | Whether `candidate` is a path below `root`, never `root` itself. |
 | `run(cmd, args, options)`, `GIT_TIMEOUT_MS`, `CHECKOUT_CLEANUP_TIMEOUT_MS` | The bounded child-process runner the host runs git with, and its timeouts. |
+| `runToEnd(file, args, { cwd, timeoutMs, keepChars, env? })`, `RunToEndResult` | Runs a program to its end and resolves `{ exitCode, timedOut, output }` whatever the exit code. `output` is the last `keepChars` of standard output and standard error together, in arrival order. The program gets a process group of its own, and at `timeoutMs` the whole group is stopped and `timedOut` is `true`. A program that can't be started resolves with exit code `127` and the reason as its output. `env` is laid over the process's own. |
+| `runCheckoutCommands({ cwd, commands, timeoutMs, env?, signal? })`, `RunCheckoutCommandsOptions`, `CheckoutCommandResult` | Runs a project's check commands (`pnpm typecheck`, `pnpm --filter web test`) in order in `cwd`, inside one wall clock for all of them, and resolves one result per command: `{ command, exitCode, timedOut, skipped, durationMs, tail }`. A failing command doesn't stop the rest. The one running when the clock runs out is stopped with its process group and reported `timedOut`, and those after it are `skipped`. `tail` is the end of the command's output, colour codes removed. An aborted `signal` stops the running command and skips the rest, as the clock does. A refused command isn't started and reports `exitCode: null` with the reason as its `tail`. It never throws for a command. |
+| `checkoutCommandProblem(command)` | Why a line can't be a command, or `undefined` when it can. Commands run with no shell, so it refuses `&&`, `\|\|`, `\|`, `;`, `&`, `<`, `>`, `$(` and backticks, quoted or not, as well as an empty line and an unclosed quote. Two commands are two entries. |
+| `splitCheckoutCommand(command)` | A command's words, the program first, with single and double quotes grouping words; or a sentence saying why it can't be split. |
+| `checkoutCommandPassed(result)`, `CHECK_OUTPUT_TAIL_CHARS` | Whether a result passed (it ran and exited `0`), and how much of a command's output a result keeps (4,000 characters). |
 | `acquireLock`, `releaseLock`, `sleep` | The lock file the host takes on a place or a clone, for a caller that holds one of its own. |
 | `tryAcquireLock(path, bounds?)` | One try at the same lock: a lease, or `undefined` while a live holder has it. Never waits. A lock left by a holder that died counts as free. |
 | `SourceReadRequest`, `SourceReadResult`, `SourceReadAt`, `SourceReadCut`, `GrepDialect`, `SOURCE_READ_LIMITS`, `SOURCE_READ_FRESH_MS` | What `readSource` takes and answers, its caps, and how long a fetch serves reads. |

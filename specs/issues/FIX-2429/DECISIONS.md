@@ -43,8 +43,14 @@ polls fold in here, and FIX-2466 closes as a duplicate.
   the request that made it as `origin` (FIX-2426's shapes). The filer is `Task.filer.sessionId`,
   server-written (BP-031); a row with no filer (a board that hands nothing out, or a row filed
   before FIX-2078) uses the ledger's declared `legacyFiler` where it has one, and otherwise the
-  running session. For the conversation board the board id is `tasks`, the `collectionId` its
-  `task-change` items already carry, so a view names the topic from what it already holds.
+  running session. The board id is the ledger's `collectionId`, which its `task-change` items
+  already carry: `tasks` for the conversation board, `plan` for a planning worker's self-steps
+  (`PLAN_LEDGER_ID`).
+- **A view subscribes every ledger its read returns.** `listTasks_tasks` reads the board merged
+  with the plan ledger (`withSteps` in `conversation-board/board.ts`), so the four views of that
+  read subscribe both `tasks` and `plan`; a flow with no planning worker never publishes on
+  `plan`, and the extra topic costs nothing. A `BoardList` reads one board and stays narrowed to
+  it.
 - **Narrowed, so a view hears only its board.** A view of the conversation's whole topic would
   hear every `items` notice of a streaming reply and read the board each time. The session
   stream, subscribed to the whole topic, ignores `board` by kind (FIX-2426).
@@ -63,12 +69,21 @@ polls fold in here, and FIX-2466 closes as a duplicate.
 - **Views ignore `origin`.** FIX-1506's skip is for a view that already holds the change from
   its own stream; no board view reads its rows from a stream.
 - **Each view's fallback pace is today's**: Shift Manager 3 s, the Teammates lab 1.5 s, the
-  claude-code-style lab 2 s, `BoardList` its default. On a host with push a view reads on a
-  notice, on connect and on reconnect only. On a host with none, it reads at that pace whether
-  or not a task is open, where Shift Manager stops today with none open; Shift Manager always
-  runs on `serve()`, which has push, so no deployment we run pays it.
-- **Shift Manager's 30 s after-a-move window goes.** It kept reading so the coordinator turn a
-  task's ending woke would show; that turn's own board changes now publish.
+  claude-code-style lab 2 s, `BoardList` its default. Where push covers the view (a socket up on
+  a bus that crosses) it reads on a notice, on connect and on reconnect only. Wherever push can
+  miss a change ([epic ER-5](../../epics/FIX-2367/DECISIONS.md#who-owns-what)) it reads at that
+  pace. That includes Shift Manager as we run it: on `serve()` with SQLite, whose bus doesn't
+  cross, so under [FIX-2428 D3](../FIX-2428/DECISIONS.md#d3) its board would read every 3 s
+  even with no task open, where today it stops. So **Shift Manager passes `pollIntervalMs` only
+  while a task is open or within 30 s of a move**, as its timers gate today, and omits it otherwise: it still hears every
+  notice and reads on connect, but keeps no timer while idle. The other views keep the timer
+  unconditionally, as today. Epic Goal 1 ("the apps we run stop polling") fully holds only on
+  the Postgres bus; on SQLite, Shift Manager polls no more than it does today.
+- **Shift Manager's 30 s after-a-move window stays, for the timer only.** It keeps reading so
+  the coordinator turn a task's ending wakes shows up even while push can miss a change (a
+  socket down, or a bus that doesn't cross, as SQLite's): a fallback read can see the last open
+  task settle before that turn files its follow-up. Where push covers the view, the follow-up's
+  own notice delivers it and the window costs nothing extra.
 - **`BoardList`'s `live` takes a client with `subscribe`** in place of `sessions.stream`. A host
   that passes the whole client changes nothing; a hand-built slice changes one field. React
   changeset (minor), with orchestration (minor) and engine (minor).
@@ -86,6 +101,7 @@ polls fold in here, and FIX-2466 closes as a duplicate.
 | The whole session topic, with views filtering by kind | Every view needs the notice's kind on the client, and each still wakes on every streaming chunk until it filters |
 | Gate the subscription on an open task, as Shift Manager's timers do | Misses a task filed by another session, or by the turn an ending woke, while none is open |
 | A publish at each board write site | A dozen writers, and the next one forgets |
+| Publish plan-ledger notices on the conversation's `tasks` topic when the filer is the conversation, so the merged read's views subscribe one topic (Cursor on #4511) | A richer publish rule that maps one ledger's change onto another's topic; the two subscribes already follow ER-2 and cost one topic on a flow with no planning worker |
 
 <a name="settled"></a>
 ## Settled
@@ -117,14 +133,18 @@ coordinator may run a fresh `analysis` before the gate.
    task settled in its own session reaches no screen.
 6. **Ergonomics** — a board author writes nothing; an app view swaps a timer for one call.
 7. **Concerns** — on a host with push and a bus that can't cross processes, a task settled on
-   another process reaches no view until it reconnects: the socket is up, so `client.subscribe`
-   doesn't poll. Every `client.subscribe` consumer shares it; raised to the coordinator for
-   FIX-2428's delivery seam. Recorded, not solved here.
+   another process reached no view until it reconnected. Raised to FIX-2428, whose D3 now keeps
+   the timer while the socket reports a bus that doesn't cross.
 
 ## How it got here
 
 - **Draft** — framed as the epic's board publisher and the apps' board polls. Publish from the
   `onChange` adapter on the filing session's topic, narrowed to the board; five views move,
   three named by the issue and two found by the checker. The other polls split out (D1).
+- **Amended (Nov 2)** — the merged read's views subscribe the `plan` ledger too (Codex on #4488);
+  the goal check adds a plan step, a `tasks-only` control, and a bus that crosses.
+- **Review (Nov 2, #4511)** — Shift Manager keeps its timer only while a task is open, since its
+  SQLite bus doesn't cross; the goal check uses FIX-2426's one crossing double and starts leg b's
+  idle window at the first `crosses: true` frame. Publishing plan steps on `tasks` was dropped.
 
 **Open: none.**

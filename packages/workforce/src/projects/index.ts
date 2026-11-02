@@ -43,6 +43,8 @@ export {
   defineProjectBlocks,
   setBriefInputSchema,
   setBriefOutputSchema,
+  setChecksInputSchema,
+  setChecksOutputSchema,
   setMcpServersInputSchema,
   setMcpServersOutputSchema,
   setRepositoryInputSchema,
@@ -52,11 +54,14 @@ export {
   type ProjectBlocks,
   type ProjectBlocksOptions,
   type SetBriefInput,
+  type SetChecksInput,
   type SetMcpServersInput,
   type SetRepositoryInput
 } from "./project-writes";
 
 export { checkedMcpServers, isMcpServerName } from "./mcp-server-name";
+
+export { projectChecks, type ProjectChecksResolver } from "./project-checks";
 
 export {
   defineMcpCredentialsCollection,

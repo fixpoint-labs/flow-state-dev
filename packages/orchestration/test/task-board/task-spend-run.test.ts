@@ -106,7 +106,7 @@ describe("a task's run writes its spend onto the row", () => {
     const running = t.run();
 
     await t.reached[0]!.opened;
-    expect(await t.viewAfterTick()).toEqual({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: null, outputTokens: null, unreported: true, live: true });
+    expect(await t.viewAfterTick()).toEqual({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: null, outputTokens: null, costUsd: null, unreported: true, live: true });
     t.steps[0]!.open();
     await t.reached[1]!.opened;
     expect(await t.viewAfterTick()).toMatchObject({ inputTokens: 100, outputTokens: 20, live: true });
@@ -117,7 +117,7 @@ describe("a task's run writes its spend onto the row", () => {
     const result = await running;
 
     expect(result.error).toBeUndefined();
-    expect(await t.view()).toEqual({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 1000, outputTokens: 200, unreported: false, live: false });
+    expect(await t.view()).toEqual({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 1000, outputTokens: 200, costUsd: null, unreported: false, live: false });
   }, 20_000);
 
   it("keeps what a cancelled run spent, and stops reading it as live", async () => {

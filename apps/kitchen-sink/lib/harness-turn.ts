@@ -14,8 +14,11 @@ import type { RequestStatus } from "@flow-state-dev/core/types";
 /** The classification a harness sets when it doesn't know the conversation it was asked to continue. */
 export const UNKNOWN_CONVERSATION = "unknown-conversation";
 
-/** How a turn's request stands, from the session's request list. */
-export type TurnStatus = "running" | "completed" | "failed" | "stopped";
+/**
+ * How a turn's request stands, from the session's request list. `waiting`:
+ * the request is suspended on a stop the user answers, such as a tool approval.
+ */
+export type TurnStatus = "running" | "waiting" | "completed" | "failed" | "stopped";
 
 /** The code of the status item the framework writes when a request is stopped. */
 const STOP_CODE = "system.request_aborted";
@@ -45,6 +48,8 @@ function statusOf(status: RequestStatus): TurnStatus {
       return "failed";
     case "aborted":
       return "stopped";
+    case "suspended":
+      return "waiting";
     default:
       return "running";
   }
@@ -94,12 +99,14 @@ export type TurnNotice =
   | { readonly kind: "moved"; readonly conversation: string; readonly previous: string }
   | { readonly kind: "refused"; readonly conversation: string; readonly error: string | null }
   | { readonly kind: "error"; readonly error: string | null; readonly conversation: string | null }
-  | { readonly kind: "stopped"; readonly conversation: string | null };
+  | { readonly kind: "stopped"; readonly conversation: string | null }
+  | { readonly kind: "waiting"; readonly conversation: string | null };
 
 /**
  * The notice for one turn, from that turn's own record and how it ended.
  *
- * Read in this order, and the order is the rule: a stop is a stop, never a
+ * Read in this order, and the order is the rule: a turn suspended on a stop
+ * the user answers waits on them, whatever its record holds so far; a stop is a stop, never a
  * refusal, even before the harness confirmed anything; a refusal is only the
  * harness's own unknown-conversation classification, never a message read
  * here (a refusing harness may still have named the asked id first, so this is
@@ -114,6 +121,7 @@ export type TurnNotice =
  */
 export function turnNotice(turn: HarnessTurnRecord | null, status: TurnStatus, kept: string | null): TurnNotice | null {
   if (status === "running") return null;
+  if (status === "waiting") return { kind: "waiting", conversation: kept };
   if (status === "stopped" || turn?.stopped === true) return { kind: "stopped", conversation: kept };
   if (turn?.failure === UNKNOWN_CONVERSATION && turn.asked !== null) {
     return { kind: "refused", conversation: turn.asked, error: turn.error };
