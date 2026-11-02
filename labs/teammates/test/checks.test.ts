@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { CompletionRunContext, PhaseDoneVerdict, PromptRunContext } from "@flow-state-dev/harness-manager";
-import { codingPhase, PHASE } from "../src/flows/coder";
+import { codingPhase } from "../src/flows/coder";
 import { checkCommands, setupCommand } from "../host.mts";
 
 /** A worktree whose check is red until `state.txt` says "ok". */
@@ -48,7 +48,8 @@ describe("a coding run with the working folder's checks", () => {
 
   it("is done on the same red folder when the host names no checks", async () => {
     expect(verdictOf(await codingPhase(undefined).isDone(finished(worktree("broken")))).done).toBe(true);
-    expect(codingPhase({ commands: [], timeoutMs: 20_000 })).toBe(PHASE);
+    // The host always passes `checks`, with no commands when the operator named none.
+    expect(verdictOf(await codingPhase({ commands: [], timeoutMs: 20_000 }).isDone(finished(worktree("broken")))).done).toBe(true);
   });
 
   it("puts why the last attempt stopped in the next brief", async () => {
@@ -73,6 +74,6 @@ describe("the checks and setup settings", () => {
   it("refuse a command that needs a shell, naming the setting", () => {
     expect(() => checkCommands("pnpm build && pnpm test")).toThrow(/TEAMMATES_CHECKS: .*shell operator/);
     expect(() => setupCommand("pnpm install | tee log")).toThrow(/TEAMMATES_SETUP: .*shell operator/);
-    expect(() => setupCommand("pnpm install; pnpm build")).toThrow(/TEAMMATES_SETUP: name one command/);
+    expect(() => setupCommand("pnpm install; pnpm build")).toThrow(/TEAMMATES_SETUP: .*shell operator/);
   });
 });

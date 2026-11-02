@@ -56,7 +56,7 @@ import {
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { z } from "zod";
-import { checkoutCommandProblem, localWorkspaceHost, splitCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
+import { checkoutCommandProblem, localWorkspaceHost, parseCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { CODER_FLOW, coderFlow, type Harness } from "./src/flows/coder.ts";
 
 /** The workers, beside this file. */
@@ -94,9 +94,10 @@ export interface TeammatesOptions {
    * harness says it finished.
    */
   checks?: readonly string[];
-  /** How long the checks may take together. Defaults to 10 minutes. */
-  checksTimeoutMs?: number;
 }
+
+/** How long a coding run's checks may take together. */
+const CHECKS_TIMEOUT_MS = 10 * 60_000;
 
 /** The harnesses a coding worker may name in `harness:`. Each run gets only the environment its harness needs. */
 const HARNESSES: Record<string, Harness> = {
@@ -203,12 +204,10 @@ export function runTimeout(value: string | undefined): number | undefined {
  * @throws When the command can't be split, or uses a shell operator.
  */
 export function setupCommand(value: string | undefined): WorkspaceSetup | undefined {
-  const commands = checkCommands(value, "TEAMMATES_SETUP") ?? [];
-  if (commands.length > 1) throw new Error("TEAMMATES_SETUP: name one command; the setup step runs one.");
-  const [command] = commands;
-  if (command === undefined) return undefined;
-  const words = splitCheckoutCommand(command) as string[];
-  return { command: words as [string, ...string[]] };
+  if (value === undefined || value.trim() === "") return undefined;
+  const parsed = parseCheckoutCommand(value.trim());
+  if ("problem" in parsed) throw new Error(`TEAMMATES_SETUP: ${parsed.problem}`);
+  return { command: parsed.words };
 }
 
 /**
@@ -218,12 +217,12 @@ export function setupCommand(value: string | undefined): WorkspaceSetup | undefi
  *
  * @throws When a command can't be split into words, or uses a shell operator.
  */
-export function checkCommands(value: string | undefined, setting = "TEAMMATES_CHECKS"): string[] | undefined {
+export function checkCommands(value: string | undefined): string[] | undefined {
   if (value === undefined || value.trim() === "") return undefined;
   const commands = value.split(";").map((command) => command.trim()).filter((command) => command !== "");
   for (const command of commands) {
     const problem = checkoutCommandProblem(command);
-    if (problem !== undefined) throw new Error(`${setting}: ${problem}`);
+    if (problem !== undefined) throw new Error(`TEAMMATES_CHECKS: ${problem}`);
   }
   return commands;
 }
@@ -295,9 +294,7 @@ export async function openTeammates(options: TeammatesOptions) {
       ready: READY,
       workspace,
       runTimeoutMs: options.runTimeoutMs ?? 20 * 60_000,
-      ...(options.checks === undefined || options.checks.length === 0
-        ? {}
-        : { checks: { commands: options.checks, timeoutMs: options.checksTimeoutMs ?? 10 * 60_000 } }),
+      checks: { commands: options.checks ?? [], timeoutMs: CHECKS_TIMEOUT_MS },
     }),
   };
   const copies = hireWorkforce(installation) as Array<{ id: string }>;

@@ -67,14 +67,14 @@ export interface CoderFlowOptions {
   runTimeoutMs: number;
   /**
    * The working folder's checks: commands a run's worktree must pass before
-   * its task is done, and how long they may take together. Absent: a run is
-   * done when its harness says it finished.
+   * its task is done, and how long they may take together. Absent, or no
+   * commands: a run is done when its harness says it finished.
    */
   checks?: { commands: readonly string[]; timeoutMs: number };
 }
 
 /** A task's run: its goal and brief, done when the harness says it finished. */
-export const PHASE: PhaseSpec = {
+const PHASE: PhaseSpec = {
   phase: "change",
   buildPrompt: (run) =>
     [
