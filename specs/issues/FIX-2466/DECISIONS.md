@@ -107,9 +107,9 @@ topic seam, and this sidebar uses it too.
 <a name="settled"></a>
 ## Settled
 
-- **The views are twelve** — **CONFIRMED** by [`poc/app-polls/`](poc/app-polls/): 161 files
-  scanned, 36 timer sites under 32 owners, every owner classified: 12 views that move, 4 board
-  views (FIX-2429), 4 waits, 10 timers that read nothing, and the labs' 2 helpers. Control
+- **The views are twelve** — **CONFIRMED** by [`poc/app-polls/`](poc/app-polls/): 176 files
+  scanned, 41 timer sites under 34 owners, every owner classified: 12 views that move, 4 board
+  views (FIX-2429), 4 waits, 12 timers that read nothing, and the labs' 2 helpers. Control
   `FIX2466_CONTROL=plant` exits 1 on an unclassified owner. It found the task view's board wait,
   which FIX-2429's checker missed.
 - **No other lab polls.** The knowledge-hub, design-system and fsd-coding-skill labs have no timer
