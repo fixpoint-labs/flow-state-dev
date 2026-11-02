@@ -20,6 +20,10 @@ needs is a gap filed against the package.
   answer", "Sent for review"). Enter sends; Cmd+Enter (Ctrl+Enter) sends from every box in the lab.
 - **Right:** the background tasks, read only. A row opens to show the task's work. To stop or steer
   a task, ask the main session.
+- **Keys:** ⌘K (Ctrl+K) finds any session by its title, in either view, or starts a new one.
+  Alt+↑ and Alt+↓ move to the previous or next session in the view. `/` puts the cursor in the
+  composer, and `?` lists every key. Opening a session puts the cursor in its composer. The view
+  switch is one Tab stop; ← and → change the view.
 
 ## Threads mode
 
@@ -35,6 +39,9 @@ threads, each a task in a session of its own, and the right pane is the status b
   main session to retry it.
 - **The right pane** is as wide as you drag its left edge (or move it with the arrow keys once it
   has focus), and keeps that width across reloads.
+- **The page's address** names the view, the open session and the task open in its pane
+  (`?session=<id>&task=<id>`), so a reload or a link reopens them, and Back returns to what you
+  had open before. A link to a session or task that is gone opens *New session* instead.
 - **A thread's view** replaces the board, with a back arrow. You can talk in it: your line steers
   the thread's task and answers its open question. Cmd+Enter (Ctrl+Enter) answers, or requests
   changes when it is ready for review; plain Enter is a new line. You can pin it there.
@@ -74,7 +81,9 @@ only 404s.
 
 `desk.coder` and `desk.thread-coder` run through Claude Code, so the host also needs
 `ANTHROPIC_API_KEY`. A worker you give `harness: codex` or `harness: cursor` needs that harness signed
-in too (Cursor reads `CURSOR_API_KEY`). The host is durable: a thread's question and review wait on you across a
+in too (Cursor reads `CURSOR_API_KEY`). A coding run starts with only the variables its harness
+needs (`CLAUDE_CODE_PASS`, `CODEX_PASS` or `CURSOR_PASS` from its package), never the rest of the
+host's environment. That filters what a run starts with; it isn't a security boundary. The host is durable: a thread's question and review wait on you across a
 restart, and a coding run's review needs durable execution. Its settings
 are read from the environment, all optional:
 

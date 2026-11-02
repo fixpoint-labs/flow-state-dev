@@ -296,6 +296,31 @@ describe("what Kitchen Sink hands the Codex block (S1, BR-10, BR-12)", () => {
     ]);
   });
 
+  it("trusted, your MCP servers stay on, nothing is listed, and the run gets the named key (FIX-2421)", async () => {
+    vi.stubEnv("KITCHEN_SINK_HARNESS_TRUSTED", "1");
+    vi.stubEnv("KITCHEN_SINK_HARNESS_PASS", "KITCHEN_SINK_NAMED_KEY");
+    vi.stubEnv("KITCHEN_SINK_NAMED_KEY", "the-operator-named-this");
+    const options = codexClientOptions(process.env, [vercelMcp]);
+    expect(options.configOverrides).toBeUndefined();
+    // The tier stays standard: trust is about the repository, not the account's spend.
+    expect(options.config).toEqual({ service_tier: "default" });
+    expect(options.env!.KITCHEN_SINK_NAMED_KEY).toBe("the-operator-named-this");
+    let asked = 0;
+    const resolve = codexClient(async () => {
+      asked += 1;
+      return [vercelMcp];
+    });
+    const client = (await resolve({} as never)) as unknown as { exec: { rawConfigOverrides?: string[] } };
+    expect(asked).toBe(0);
+    expect(client.exec.rawConfigOverrides).toBeUndefined();
+  });
+
+  it("untrusted, a named key is not handed over", () => {
+    vi.stubEnv("KITCHEN_SINK_HARNESS_PASS", "KITCHEN_SINK_NAMED_KEY");
+    vi.stubEnv("KITCHEN_SINK_NAMED_KEY", "named-but-not-trusted");
+    expect(codexClientOptions().env!.KITCHEN_SINK_NAMED_KEY).toBeUndefined();
+  });
+
   it("the SDK's client is built with the servers Codex lists, asked once", async () => {
     const asked: Array<Record<string, string>> = [];
     const resolve = codexClient(async (env) => {

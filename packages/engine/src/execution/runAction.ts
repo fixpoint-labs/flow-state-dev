@@ -17,7 +17,7 @@ import { readDispatchStamp } from "./dispatch-metadata";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, blockPathObserver, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
-import { SESSION_REQUEST_END_HOOK, onRequestEnded, type BackgroundFailure, type RequestEnding, type TaskEntry } from "@flow-state-dev/core/types";
+import { REQUEST_SPEND_SEAM, SESSION_REQUEST_END_HOOK, onRequestEnded, type BackgroundFailure, type HarnessRunSpend, type RequestEnding, type RequestSpendSeam, type TaskEntry } from "@flow-state-dev/core/types";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
@@ -590,6 +590,12 @@ async function settleFreshRequestSetupFailure(options: {
 /** Record fields a patch may carry beside the status and the result. */
 type RequestRecordFields = Omit<Partial<RequestRecord>, "status" | "result">;
 
+/** Every harness run the request has spent so far, as its ledger holds them, for its record. */
+function spentHarnessRunsOf(ctx: object): HarnessRunSpend[] | undefined {
+  const runs = (ctx as { readonly [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM]?.total?.().harnessRuns;
+  return runs === undefined || runs.length === 0 ? undefined : runs.map((run) => ({ ...run }));
+}
+
 /**
  * Writes an interrupted request's settled spend once its ending has handed it
  * on (FIX-2145), only while the record is still `interrupted` under this
@@ -599,7 +605,7 @@ async function recordSettledSpend(
   stores: StoreRegistry,
   requestId: string,
   incarnation: string,
-  spend: { spentByModel: RequestRecord["spentByModel"]; spentThroughItemIndex: number }
+  spend: { spentByModel: RequestRecord["spentByModel"]; spentHarnessRuns: RequestRecord["spentHarnessRuns"]; spentThroughItemIndex: number }
 ): Promise<void> {
   const current = await stores.request.get(requestId);
   if (current?.status !== "interrupted" || (current.spentThroughItemIndex ?? -1) > spend.spentThroughItemIndex) return;
@@ -1594,6 +1600,17 @@ async function runActionAttempt<
     const next = prior.then(op, op);
     checkpointChains.set(k, next);
   }
+  // Checkpoints taken at a suspension (`suspensionId`), held until the
+  // suspension is in the log (FIX-2444). Saved before it, a crash in between
+  // leaves a checkpoint holding the waiting step's writes with no logged gate
+  // for the re-run to settle them at, so they would count twice. Dropped on
+  // any other ending: only a logged suspension resumes from one.
+  let heldSuspensionCheckpoints: Array<() => void> = [];
+  function releaseSuspensionCheckpoints(): void {
+    const held = heldSuspensionCheckpoints;
+    heldSuspensionCheckpoints = [];
+    for (const release of held) release();
+  }
   async function flushCheckpoints(): Promise<void> {
     if (checkpointChains.size === 0) return;
     await Promise.allSettled(checkpointChains.values());
@@ -1641,13 +1658,14 @@ async function runActionAttempt<
               );
             }
           } else {
-            chainCheckpoint(blockInstanceId, () =>
+            const save = () => chainCheckpoint(blockInstanceId, () =>
               options.stores.checkpoints.write({
                 requestId: requestIdForCheckpoint,
                 blockInstanceId,
                 parentBlockInstanceId,
                 stepIndex: item.stepIndex,
                 state: item.state,
+                ...(item.suspensionId !== undefined ? { suspensionId: item.suspensionId } : {}),
                 version: item.version,
                 createdAt: item.ts
               }).catch((err) => {
@@ -1658,6 +1676,8 @@ async function runActionAttempt<
                 });
               })
             );
+            if (item.suspensionId !== undefined) heldSuspensionCheckpoints.push(save);
+            else save();
           }
         }
         // state_snapshot items are transient by design — no items-log persist.
@@ -2108,6 +2128,7 @@ async function runActionAttempt<
           );
           (ctx as any)._resumeState = {
             state: checkpoint?.state as Record<string, unknown> | undefined,
+            suspensionId: checkpoint?.suspensionId,
             blockInstanceId: suspension.blockInstanceId
           };
         }
@@ -2130,7 +2151,8 @@ async function runActionAttempt<
         );
         if (checkpoint !== null) {
           (ctx as any)._resumeState = {
-            state: checkpoint.state as Record<string, unknown> | undefined
+            state: checkpoint.state as Record<string, unknown> | undefined,
+            suspensionId: checkpoint.suspensionId
           };
         }
       }
@@ -2475,6 +2497,7 @@ async function runActionAttempt<
         await response.emitItemDone(suspItem);
 
         await options.stores.request.flushItems(requestId);
+        releaseSuspensionCheckpoints();
         // The logged gate is what continues the request now: the park its wait
         // owed is paid. Not before the log: a gate the log doesn't name yet
         // can't be resumed, and the owe is what continues it then (FIX-2269).
@@ -2518,6 +2541,7 @@ async function runActionAttempt<
         await settleRequestRecord(options.stores, requestId, { status: "suspended" }, {
           items: suspendedItems,
           spentByModel: ctx.request.tokenUsage.byModel,
+          spentHarnessRuns: spentHarnessRunsOf(ctx),
           spentThroughItemIndex: lastItemIndexOf(suspendedItems)
         });
         ctx.requestRuntime.status = "suspended";
@@ -3255,6 +3279,7 @@ async function runActionAttempt<
       if (ending.status === "interrupted" && terminalRecordIncarnation !== undefined) {
         await recordSettledSpend(options.stores, requestId, terminalRecordIncarnation, {
           spentByModel: ctx.request.tokenUsage.byModel,
+          spentHarnessRuns: spentHarnessRunsOf(ctx),
           spentThroughItemIndex: lastItemIndexOf(itemsToPersist())
         });
       }

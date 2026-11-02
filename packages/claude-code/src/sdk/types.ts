@@ -443,7 +443,11 @@ export interface ClaudeAgentQueryOptions {
   mcpServers?: Record<string, unknown>;
   /** Use only `mcpServers`: no `.mcp.json`, settings-file or plugin servers. */
   strictMcpConfig?: boolean;
-  /** Extra settings for the run, forwarded verbatim; set only to keep claude.ai connectors out. */
+  /**
+   * Settings for the run, above every loaded source: the host's own
+   * (`ClaudeCodeAgentOptions.settings`), with `mcpTools`' connector switch
+   * merged in when it is set.
+   */
   settings?: Record<string, unknown>;
   /** Forwarded to the SDK so an aborted `ctx.signal` stops the run. */
   abortController?: AbortController;
