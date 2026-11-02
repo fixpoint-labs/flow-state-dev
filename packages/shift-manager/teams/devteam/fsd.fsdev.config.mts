@@ -55,7 +55,7 @@ import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { CHECKOUT, CHECKOUTS } from "./fsd-checkouts.mts";
 import { FSD_DOCUMENTS, FSD_MCP_SERVERS, FSD_PROJECTS, FSD_SKILLS } from "./fsd-projects.mts";
 import { readClaudeUsage } from "@flow-state-dev/claude-code/sdk";
-import { claudeCodeEnv, errorReporterHarness, harnessLabel, startHarness } from "./harness.mts";
+import { claudeCodeEnv, errorReporterHarness, startHarness } from "./harness.mts";
 import { LAB_TREE, openLab } from "./host.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
 import { EM_FLOW } from "./workforce/flows/workers/em.mts";
@@ -81,7 +81,7 @@ export const lab = await openLab({
   stores: sqliteStores({ filename: STORE }),
   harness: harness.slot,
   runTimeoutMs: harness.runTimeoutMs,
-  coderHarness: harnessLabel(harness.name),
+  coderHarness: harness.label,
   // Runs' places beside the store, the two projects' worktrees of this checkout
   // among them. No remote is allowed: a run is never cloned from one.
   workspace: { root: join(dirname(STORE), "fsd-runs"), remotes: { allow: [] }, checkouts: CHECKOUTS },

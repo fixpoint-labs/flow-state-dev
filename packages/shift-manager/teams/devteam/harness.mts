@@ -75,6 +75,8 @@ export interface SelectedHarness {
   name: HarnessChoice;
   slot: (feeds: HarnessFeeds) => HarnessBlock;
   runTimeoutMs: number;
+  /** What a user calls it ("Claude Code"), for `openLab`'s `coderHarness`. */
+  label: string;
 }
 
 /**
@@ -305,13 +307,13 @@ export function selectHarness(
   const real = budget ?? DEFAULT_RUN_MINUTES * 60_000;
   switch (choice) {
     case "stub":
-      return { name: "stub", slot: scriptedHarness(readStepMs(stepMs)).slot, runTimeoutMs: budget ?? SCRIPTED_RUN_TIMEOUT_MS };
+      return { name: "stub", slot: scriptedHarness(readStepMs(stepMs)).slot, runTimeoutMs: budget ?? SCRIPTED_RUN_TIMEOUT_MS, label: "the scripted coder (no model)" };
     case "claude-code":
-      return { name: "claude-code", slot: claudeCodeHarness, runTimeoutMs: real };
+      return { name: "claude-code", slot: claudeCodeHarness, runTimeoutMs: real, label: "Claude Code" };
     case "codex":
-      return { name: "codex", slot: codexHarness, runTimeoutMs: real };
+      return { name: "codex", slot: codexHarness, runTimeoutMs: real, label: "Codex" };
     case "cursor":
-      return { name: "cursor", slot: cursorHarness, runTimeoutMs: real };
+      return { name: "cursor", slot: cursorHarness, runTimeoutMs: real, label: "Cursor" };
     default:
       throw new Error(
         `${HARNESS_ENV}="${choice}" names no harness this Lab can run; use one of ${HARNESS_CHOICES.join(", ")}.`,
@@ -410,18 +412,3 @@ function readStepMs(raw: string | undefined): number {
   return Number(raw.trim());
 }
 
-/** What a user calls each coding agent a coder can run on. */
-const HARNESS_LABELS: Readonly<Record<string, string>> = {
-  stub: "the scripted coder (no model)",
-  "claude-code": "Claude Code",
-  codex: "Codex",
-  cursor: "Cursor",
-};
-
-/**
- * The coding agent `name` is, as a user calls it ("Claude Code" for
- * `claude-code`), for `openLab`'s `coderHarness`. An unknown name is returned as is.
- */
-export function harnessLabel(name: string): string {
-  return HARNESS_LABELS[name] ?? name;
-}
