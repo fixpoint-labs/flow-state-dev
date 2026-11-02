@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createResponseEmitter } from "../src";
 import type { OutputItem } from "@flow-state-dev/core/items";
 
@@ -58,21 +58,18 @@ describe("response emitter item hot path", () => {
     expect(emitter.getItemCount()).toBe(3);
   });
 
-  it("stays well under a quadratic blowup for a large item stream", async () => {
+  it("never sorts or snapshots items on the per-emit path", async () => {
     const emitter = createResponseEmitter({ requestId: "req_perf" });
-    const N = 5000;
-    const start = performance.now();
-    for (let i = 0; i < N; i++) {
-      // Mirror the runtime hot path: read the count (itemIndex) then emit.
-      const index = emitter.getItemCount();
-      await emitter.emitItemAdded(makeItem(index, 1_000_000 + i));
+    const getItems = vi.spyOn(emitter, "getItems");
+    const sort = vi.spyOn(Array.prototype, "sort");
+    try {
+      await emitter.emitItemAdded(makeItem(emitter.getItemCount(), 1_000_000));
+      expect(getItems).not.toHaveBeenCalled();
+      emitter.getItems();
+      expect(sort).not.toHaveBeenCalled();
+    } finally {
+      sort.mockRestore();
+      getItems.mockRestore();
     }
-    const elapsed = performance.now() - start;
-
-    expect(emitter.getItemCount()).toBe(N);
-    // The old per-emit sort made this path super-linear; with an O(1) count
-    // and no read-time sort it is comfortably linear. Generous bound to stay
-    // CI-stable while still catching a reintroduced sort.
-    expect(elapsed).toBeLessThan(1500);
   });
 });

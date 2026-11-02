@@ -8,7 +8,7 @@
  */
 import type { ComponentItem } from "@flow-state-dev/core/items";
 import { workerLabel } from "../lib/derive";
-import { navigate } from "../lib/routes";
+import { RouteLink } from "./RouteLink";
 import { clockTime } from "../lib/shell";
 
 type Received = { id?: string; from?: string; text?: string; inReplyTo?: string; replyRequested?: boolean };
@@ -35,14 +35,13 @@ export function ReceivedMessage({ item }: { item: ComponentItem }) {
             asks for a reply · the reply goes back
           </span>
         ) : null}
-        <button
-          type="button"
+        <RouteLink
           className="tracking-normal normal-case hover:text-foreground hover:underline"
-          onClick={() => navigate({ level: "messages" })}
+          to={{ level: "messages" }}
           data-testid="received-message-messages"
         >
           Messages ›
-        </button>
+        </RouteLink>
       </p>
       <p className="whitespace-pre-wrap text-sm" data-look="received-message-text">
         {data.text ?? ""}

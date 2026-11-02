@@ -174,6 +174,54 @@ const { patch } = await client.flow("coder").read("changes", { path: "src/api.ts
 
 For the screen, `fsdev ui add run-changes` adds a `RunChanges` component. Give it the review's `files`, `fileCount`, `added` and `removed`, and it shows "N files changed (+a −d)", opening into the list of changed files. Pass `loadPatch={async (path) => (await client.flow("coder").read("changes", { path }, { sessionId })).patch}` and each file opens into its patch, read the first time it's opened. With `files={null}` it draws nothing, so say in your own words that the changes couldn't be read.
 
+## Approving a run's tool calls
+
+Build the manager with `approveTools: true` and a user approves each tool call the harness hasn't been told it may make. It's off by default.
+
+```ts
+harnessManager({
+  ledgers: conversationLedgers,
+  approveTools: true,
+  harness: (feeds) =>
+    claudeCodeAgent({
+      ...feeds,
+      detached: true,
+      allowedTools: ["Read"],
+      permissionMode: "default",
+    }),
+  /* , … */
+});
+```
+
+With the option on, the manager hands the harness one more feed, `onToolApproval`, and `...feeds` passes it on. A call the harness already allows never reaches it: here `Read` runs unasked, and so would anything `permissionMode` lets through. Every other call stops the run before it runs.
+
+While it waits, the task stays `in_progress` on the same attempt, and nothing of the run is kept alive. The coding process has exited, its work is saved, and the checkout is released. The user's Inbox lists it as an approval titled, for example, "Allow Bash?". The prompt names the tool, what the call touches (the command, or the file) and the folder the run works in. On the task row it's an open hold with `source.kind: "suspension"` and `ask.kind: "approval"`, and its data carries `{ tool, touches, cwd, approveOptions }`.
+
+There are three answers. Through the Inbox client:
+
+```ts
+import { ALLOW_FOR_RUN } from "@flow-state-dev/harness-manager";
+
+// Allow: the call runs once
+await inbox.answer(item, { approved: true });
+
+// Allow for this run: the same call runs without asking again in this attempt
+await inbox.answer(item, { approved: true, data: ALLOW_FOR_RUN.data });
+
+// Deny, with an optional note the run is told
+await inbox.answer(item, { approved: false, data: { note: "Not on this branch." } });
+```
+
+Each answer resumes the coding session that asked, in the same checkout. On a yes the model is told to make the call again, and this time it runs. On a no it's told it may not, with your note if you gave one, and the run goes on without it.
+
+**Allow for this run is narrow.** It covers the same tool on the same command or the same file, never the tool as a whole, and the approval says so. Allowing `pnpm test` still asks about `pnpm test -- foo`, and allowing edits to one file still asks about the next file. Any other call, such as a search, is covered only with the same arguments, so the same search with another option asks again. A retry of the task starts with no allowances.
+
+**An approval has no deadline** unless the host sets `userDeadlineMs`. At the deadline it reads as a no, and the run goes on without the call. **A cancel while it waits** closes it and starts nothing.
+
+Each answer costs a few seconds: the harness starts again and resumes its session. A run that asks for more than 25 approvals in one attempt fails that attempt and says why.
+
+Only Claude Code asks per call. Codex and Cursor take their sandbox and approval settings for the whole run, so they ignore the feed. Approvals need a host with [durable execution](../advanced/durable-execution.md), and a host can restart while one waits.
+
 ## Running tasks from more than one board
 
 A manager built with `boardCollectionId` works one board. A worker that also takes tasks a coordinator files in a conversation needs more. Each conversation keeps its own board, the list of tasks filed from it, so there is no single board to name.
@@ -196,9 +244,15 @@ const answering = harnessManager({
 
 `conversationLedgers` comes from Workforce. It finds the board of the conversation the task came from, for the user the run belongs to, and nothing else. The manager reads the board and partition from the claim, never from the task. Each run's checkout, branch and run record are kept apart by board and partition, so two conversations that file the same task never share a tree. Pass `boardCollectionId` as well, and the manager also runs that board's rows.
 
-A task from a conversation usually carries a goal and no feature work. The manager then runs it in its own phase, with the task's id standing in for the issue. Feature work is named under one key, `HARNESS_FEATURE_KEY` (`"harnessFeature"`), as `input: { harnessFeature: { issue, phase } }`. The rest of `input` belongs to whoever filed the task, so a model that writes its own `issue` field, meaning "the problem", files an ordinary task. A task whose `harnessFeature` names only one of the two is refused. `namesHarnessFeature(input)` and `harnessFeatureOf(input)` read the key the same way the manager does, for a flow that routes tasks between managers. A completed run's output carries the agent's last message as `answer` (up to 8,000 characters), the run's `branch`, or `null` when it worked on files alone, and how many `commits` it made. With [`reviewChanges`](#reviewing-a-runs-changes) on, `review` says how the review ended.
+A task from a conversation usually carries a goal and no feature work. The manager then runs it in its own phase, with the task's id standing in for the issue. Feature work is named under one key, `HARNESS_FEATURE_KEY` (`"harnessFeature"`), as `input: { harnessFeature: { issue, phase? } }`. The rest of `input` belongs to whoever filed the task, so a model that writes its own `issue` field, meaning "the problem", files an ordinary task. Leave out `phase` and the task runs in the manager's own phase, so a lead filing "implement FIX-2165" only has to name the issue. A `harnessFeature` with a phase and no issue is refused. `namesHarnessFeature(input)` and `harnessFeatureOf(input)` read the key the same way the manager does, for a flow that routes tasks between managers. A completed run's output carries the agent's last message as `answer` (up to 8,000 characters), the run's `branch`, or `null` when it worked on files alone, and how many `commits` it made. With [`reviewChanges`](#reviewing-a-runs-changes) on, `review` says how the review ended.
 
 A run refused before it starts (no project, a remote the host doesn't allow) fails a conversation's task for good, so the conversation hears why; on a fixed board the row is cancelled. A question the run asks holds the task on it, the same on either kind of board (see [Asking and being answered](#asking-and-being-answered)).
+
+### Telling a run its issue
+
+A task that names an issue under `harnessFeature` gets a branch that leads with it: `conductor/<scope>/<issue>--<task-id>--<phase>`. Its checkout and run record are keyed by the task id, so two tasks for one issue never share a tree. A run whose record already names a branch keeps that branch. An issue that can't be a branch component is refused before anything runs. Phases see the issue as `run.trackerIssue`, or `null` when the task names none.
+
+Pass `issueSpec: true` and the run's prompt also opens with the issue's spec, read from its own checkout on every attempt. The default file is `specs/issues/<ISSUE>/SPEC.md`; pass `issueSpec: { path: (issue) => ... }` to point elsewhere. A spec over 64 KB is cut with a line saying so, a missing file is one line saying there is none and the run goes ahead, and a path outside the checkout is never read. `harnessSessionFlow`, the flow behind a coding chat, takes the same option for a session created with `state.issue`. The package README's [Briefing a run on its issue](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/harness-manager/README.md#briefing-a-run-on-its-issue) has the details.
 
 ### Checking the work with a judge
 
@@ -551,6 +605,7 @@ If the coding agent switches its checkout to another branch, the next attempt st
 - **No retention policy.** Run records grow without bound. Fine for a board driving a few tasks; a long-lived one needs pruning, which is not built.
 - **A harness that can't resume can't be talked to once finished.** Talk resumes the coding session the run confirmed, so a finished run whose harness never confirmed one is refused (`cannot-continue`). A steer to an open task needs no session to be kept, but the step that takes it resumes one: on a run with none confirmed, only the late-message turn (`STEER_TURN_ENTRY`) acts on it.
 - **Reviewing changes needs durable execution.** On a host without it, a manager built with `reviewChanges: true` refuses each run before the harness starts, and cancels the task with a message naming durable execution.
+- **Approving tool calls needs durable execution, and covers Claude Code only.** A manager built with `approveTools: true` refuses each run on a host without durable execution, as `reviewChanges` does. Codex and Cursor offer no per-call question, so their runs are governed by their own sandbox settings.
 - **Git worktrees for a repository.** A run on a repository works in a `git worktree` of it. Where the repository comes from is up to the workspace host you pass as `workspace`; see the package README's "Running a project's work". For a project's work, Workforce's `projectWorkspace` is that source: see [A project's code and files](../workforce/projects.md#coding-work-in-a-project).
 
 ## Related pages

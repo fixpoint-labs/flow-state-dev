@@ -1145,6 +1145,32 @@ describe("claudeCodeAgent", () => {
     expect(status).toBeDefined();
   });
 
+  it("records a held call as waiting on a person, not denied, and stops the turn without running it", async () => {
+    // A held call waits for a person's answer outside this run (a manager
+    // stops the run and resumes its session after the answer). The SDK must
+    // not run it, and the turn must stop rather than go on without it.
+    let decision: { behavior: string; message?: string; interrupt?: boolean } | undefined;
+    const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+      query: async function* (args) {
+        decision = await args.options?.canUseTool?.("Bash", { command: "touch marker" }, {});
+        yield RESULT_OK;
+      },
+    });
+
+    const block = claudeCodeAgent({
+      resolveClaudeAgent,
+      onToolApproval: () => ({ decision: "held" }),
+    });
+    const { items } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(decision).toMatchObject({ behavior: "deny", interrupt: true });
+    const statuses = items
+      .filter((i) => i.type === "status")
+      .map((i) => String((i as { message: string }).message));
+    expect(statuses.some((s) => s.includes("Waiting on approval: Bash"))).toBe(true);
+    expect(statuses.some((s) => s.includes("Denied tool"))).toBe(false);
+  });
+
   it("persists approval decisions durably and without dedupe-colliding on repeats", async () => {
     // The SDK calls canUseTool(toolName, input, extra). Approving the SAME tool
     // twice must yield TWO durable (non-transient) decision items — the audit

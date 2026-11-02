@@ -131,6 +131,8 @@ export interface CoderWorkerFlowOptions {
   judge?: HarnessJudge;
   /** Both managers hold a run with commits for the user's review (`reviewChanges`). Absent: off. */
   reviewChanges?: boolean;
+  /** Both managers ask the user before a run's tool calls (`approveTools`). Absent: off. */
+  approveTools?: boolean;
   /** Wall-clock budget for one harness run. */
   runTimeoutMs: number;
   /**
@@ -158,6 +160,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   const checks = {
     ...(options.judge === undefined ? {} : { judge: options.judge }),
     ...(options.reviewChanges === true ? { reviewChanges: true } : {}),
+    ...(options.approveTools === true ? { approveTools: true } : {}),
   };
 
   // Feature work: a task that names an issue and a phase under the feature key.
@@ -205,7 +208,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   /** How a task's run is keyed: its task id, in its payload's phase or the answer phase. */
   const runOf = (row: Task) => {
     const feature = harnessFeatureOf(row.input);
-    if (feature !== undefined) return { issue: taskIssueSegment(row.id), phase: feature.phase };
+    if (feature !== undefined) return { issue: taskIssueSegment(row.id), phase: feature.phase ?? options.phase.phase };
     // A malformed key is no run here, never an answer run: the router sends it to implement, which refuses it.
     return namesHarnessFeature(row.input) ? undefined : { issue: taskIssueSegment(row.id), phase: options.answerPhase.phase };
   };

@@ -32,7 +32,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(here, "..");
 
 /** Entry points this package publishes as safe to bundle for a browser. */
-const BROWSER_SAFE_ENTRIES = ["src/tasks/index.ts"];
+const BROWSER_SAFE_ENTRIES = ["src/tasks/index.ts", "src/inbox/index.ts"];
 
 const findNodeBuiltins = (entry: string): string[] =>
   findNodeBuiltinsFromEntry(path.join(pkgRoot, entry), { followWorkspacePackages: true });

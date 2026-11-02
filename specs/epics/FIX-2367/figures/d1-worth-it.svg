@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, decided by the owner: is a push channel worth six issues and a closure now. Chosen: one bus with an in-memory and a Postgres adapter, and WebSocket delivery. Instead of: widening the session stream, which reads the store about once a second per viewer, to user and org scopes; or an in-process fan-out inside the engine. It comes down to what an open view costs the store: the chosen set reads after a notice, the widened stream reads once a second per viewer and scope, and the fan-out reads after a change but is heard in one process only. A viewer on another process sees the change on the chosen set and the widened stream, never on the fan-out, and BullMQ workers are other processes. The price: six issues and a closure, against about two issues or one. Locks in one bus every publisher writes through. Flips if a store read each second per viewer is cheap at the viewer counts we target."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, decided by the owner: is a push channel worth six issues and a closure now. Chosen: one bus with an in-memory and a Postgres adapter, and WebSocket delivery. Instead of: widening the session stream, which reads the store about once a second per viewer, to user and org scopes; or an in-process fan-out inside the engine. It comes down to what an open view costs the store: the chosen set reads after a notice, the widened stream reads once a second per viewer and scope, and the fan-out reads after a change but is heard in one process only. A viewer on another process sees the change on the chosen set and the widened stream, never on the fan-out, and BullMQ workers are other processes. The price: six issues and a closure, against about two issues or one. Locks in one bus every publisher writes through. Flips if, widened to user and org, 100 idle views cost under 100 store queries a second; today one scope alone costs 400."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -107,8 +107,8 @@
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">A store read each second per viewer is cheap</text>
-    <text class="t-s" x="494" y="389">at the viewer counts we target: widen the stream</text>
+    <text class="t-b" x="494" y="371">Widened, 100 idle views cost under 100 queries/s</text>
+    <text class="t-s" x="494" y="389">today one scope alone costs 400: widen the stream</text>
   </g>
 
 </svg>

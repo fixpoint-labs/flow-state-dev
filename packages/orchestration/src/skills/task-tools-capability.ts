@@ -73,6 +73,7 @@ import {
   type TaskSettingsPatch,
   type TaskStatus,
   type TaskWriteOutcome,
+  type TaskWriteDeclineReason,
   withoutNoticeMarkers,
   cancelledDependents,
   MAX_STEERS,
@@ -2029,8 +2030,72 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     },
   });
 
-  // The filer's four.
-  return [createTask, getTask, listTasks, updateTask];
+  // The filer's four; an action gets a retry beside them.
+  if (!claimless) return [createTask, getTask, listTasks, updateTask];
+
+  /**
+   * Retry a failed or cancelled task (FIX-2383): the same task back to
+   * waiting, with its id, history and spend, and one more attempt counted in
+   * the board's retry ledger. A person's or an app's move, so only an action
+   * offers it: a model files a follow-up instead.
+   */
+  const retryTask = defineTool({
+    name: named("retryTask"),
+    description:
+      "Retry a task that failed or was cancelled: the same task goes back to waiting and runs again, " +
+      "keeping its id, its messages, its output so far and what it has spent, with one more try. " +
+      "A completed task isn't retried: file a follow-up. A refusal names the rule.",
+    inputSchema: z.object({ id: z.string() }),
+    outputSchema: z.union([
+      z.object({ ok: z.literal(true) }),
+      z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
+    ]),
+    execute: async (input, ctx) => {
+      const collection = await resolve(ctx);
+      if (!collection) return noBoardError;
+      const current = collection.get(input.id);
+      // A row the caller doesn't reach is answered as not found, with nothing written (BP-031).
+      if (current === undefined || !callerReaches(ctx, current)) return taskNotFoundError(input.id);
+      if (collection.retry === undefined) {
+        return { ok: false as const, taskId: input.id, error: `retry_not_supported: task "${input.id}"'s board takes no retry. Nothing was written.` };
+      }
+      let outcome: TaskWriteOutcome;
+      try {
+        outcome = await collection.retry(input.id);
+      } catch (err) {
+        if (err instanceof TaskWriteRefusedError) return refusedError(err);
+        throw err;
+      }
+      if (outcome.outcome !== "declined") return { ok: true as const };
+      const now = collection.get(input.id) ?? { ...current, status: outcome.status };
+      return retryDeclinedError(now, outcome.reason, (id) => collection.get(id));
+    },
+  });
+
+  return [createTask, getTask, listTasks, updateTask, retryTask];
+}
+
+/** A refused retry (FIX-2383): the rule, the task's state, and the next move. */
+function retryDeclinedError(task: Task, reason: TaskWriteDeclineReason, lookup: (id: string) => Task | undefined) {
+  const refuse = (code: string, rule: string) => ({ ok: false as const, taskId: task.id, error: `${code}: ${rule} Nothing was written.` });
+  switch (reason) {
+    case "settling":
+      return refuse("settling", `task "${task.id}"'s ${task.status === "errored" ? "failure" : "cancel"} is still being passed on. Try again in a moment.`);
+    case "dependency-ended": {
+      const ended = (task.deps ?? []).filter((dep) => {
+        const status = lookup(dep)?.status;
+        return status === "errored" || status === "cancelled";
+      });
+      return refuse("dependency_ended", `task "${task.id}" waits on ${ended.map((dep) => `"${dep}"`).join(", ")}, which failed or was cancelled, so it could never start. Retry ${ended.length === 1 ? "it" : "them"} first.`);
+    }
+    case "retry-budget":
+      return refuse("retry_budget_spent", `the board has spent its retry budget (maxTotalRetries), so task "${task.id}" stays ${task.status}.`);
+    default:
+      if (task.status === "completed") {
+        return refuse("task_finished", `task "${task.id}" completed, and a completed task's output never changes. File a follow-up with createTask({ followUpOf: "${task.id}" }) for more work.`);
+      }
+      return refuse("not_finished", `task "${task.id}" is ${task.status}: only a task that failed or was cancelled is retried. Cancel it, or send it a message, while it is open.`);
+  }
 }
 
 /**

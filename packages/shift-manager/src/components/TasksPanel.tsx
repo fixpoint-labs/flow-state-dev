@@ -22,7 +22,7 @@ import { workerLabel } from "../lib/derive";
 import { readConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
 import { useLab } from "../lib/lab-data";
 import { conversationBoardRef, describeFailure, type Worker } from "../lib/reads";
-import { navigate } from "../lib/routes";
+import { RouteLink } from "./RouteLink";
 import { STATE_OF_COLUMN, StateSquare } from "./ui";
 
 type Read = { tasks: ConversationTask[] } | { failure: string } | undefined;
@@ -167,17 +167,16 @@ function TaskList({ tasks, boardRef }: { tasks: readonly ConversationTask[]; boa
           data-status={task.status}
         >
           <StateSquare state={STATE_OF_COLUMN[columnFor(task.status)]} className="mt-1.5" />
-          <button
-            type="button"
+          <RouteLink
+            to={{ level: "task", boardRef, taskId: task.id, tab: "session" }}
             className="min-w-0 text-left hover:underline"
             data-testid="shift-coordinator-task-open"
-            onClick={() => navigate({ level: "task", boardRef, taskId: task.id, tab: "session" })}
           >
             <span className="line-clamp-2">{task.title || task.goal}</span>
             <span className="block text-xs text-muted-foreground">
               {task.status} · {task.assignee == null ? "unassigned" : workerLabel(task.assignee)}
             </span>
-          </button>
+          </RouteLink>
         </li>
       ))}
     </ul>

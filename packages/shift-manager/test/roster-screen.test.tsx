@@ -296,6 +296,36 @@ describe("Tasks (BR-14)", () => {
     expect(shown()).toEqual(["E-1", "E-2", "E-3"]);
   });
 
+  it("links each row's title to its task, reachable by Tab, and leaves a modified click to the browser (FIX-2414)", async () => {
+    await open("/tasks");
+    await screen.findByTestId("tasks-table");
+    const row = screen.getAllByTestId("task-row").find((r) => r.getAttribute("data-task-id") === "E-1")!;
+    const link = within(row).getByTestId("task-row-link");
+    const href = `/tasks/${encodeURIComponent(row.getAttribute("data-board-ref")!)}/E-1/session`;
+    // A real address: it opens in a new tab, and Tab reaches it.
+    expect(link.tagName).toBe("A");
+    expect(link.getAttribute("href")).toBe(href);
+    // Cmd-click is the browser's (a new tab): the row doesn't take this tab there too.
+    // Happy DOM would follow the link in this window, so the browser's part is stopped here.
+    const browser = (event: Event) => event.preventDefault();
+    document.addEventListener("click", browser);
+    act(() => void fireEvent.click(link, { metaKey: true }));
+    act(() => void fireEvent.click(within(row).getByTestId("task-row-worker"), { ctrlKey: true }));
+    document.removeEventListener("click", browser);
+    expect(window.location.pathname).toBe("/tasks");
+    // A plain click on the link, or anywhere on the row, goes there in this tab.
+    act(() => void fireEvent.click(link));
+    expect(window.location.pathname).toBe(href);
+  });
+
+  it("opens a row's task from a plain click outside its title", async () => {
+    await open("/tasks");
+    await screen.findByTestId("tasks-table");
+    const row = screen.getAllByTestId("task-row").find((r) => r.getAttribute("data-task-id") === "E-1")!;
+    act(() => void fireEvent.click(within(row).getByTestId("task-row-worker")));
+    expect(window.location.pathname).toBe(within(row).getByTestId("task-row-link").getAttribute("href"));
+  });
+
   it("with nothing queued the toggle says 0 and hides nothing", async () => {
     const snapshot = lab();
     const ops = snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.boards["s_ops"] : undefined;
@@ -374,7 +404,7 @@ describe("Tasks (BR-14)", () => {
 describe("the sidebar (V4)", () => {
   it("has Roster under Tasks with its on-shift count, and the footer says the same; nothing reads on call", async () => {
     await open("/inbox");
-    const nav = within(screen.getByTestId("sidebar")).getAllByRole("button").map((b) => b.getAttribute("data-testid"));
+    const nav = within(screen.getByTestId("sidebar")).getAllByRole("link").map((b) => b.getAttribute("data-testid"));
     expect(nav.indexOf("nav-roster")).toBe(nav.indexOf("nav-tasks") + 1);
     expect(screen.getByTestId("nav-roster-count").textContent).toBe("3");
     expect(screen.getByTestId("footer-on-shift").textContent).toBe("3 on shift");

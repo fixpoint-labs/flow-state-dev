@@ -1,0 +1,7 @@
+{
+  "sessionSubjects": ["Add the retry budget", "Log the budget when it runs out"],
+  "taskSubject": "Fix the flaky retry test",
+  "issue": "FIX-9001",
+  "phase": "implement",
+  "epic": "where-the-work-went"
+}

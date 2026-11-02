@@ -171,14 +171,15 @@ describe("Interrupt (V3; BR-11, BR-12, BR-14)", () => {
     const flowId = await resolveRunFlow(client, own.run!.sessionId);
     const before = (await rows()).find((r) => r.id === own.id)!;
     const outcome = await interruptRun(client, { flowId, requestId: own.run!.requestId }, { pollMs: 50 });
-    expect(outcome).toEqual({ kind: "aborted" });
+    // With the time the record says the run stopped, for the activity line.
+    expect(outcome).toEqual({ kind: "aborted", endedAtMs: expect.any(Number) });
     expect(await readRunStatus(client, { flowId, requestId: own.run!.requestId })).toBe("aborted");
     // The link still names the run that was stopped; whatever the board did next is the board's.
     const after = (await rows()).find((r) => r.id === own.id)!;
     expect(after.run).toEqual(before.run);
 
     // Again, on the finished request: already terminal, so it answers what the record says.
-    expect(await interruptRun(client, { flowId, requestId: own.run!.requestId })).toEqual({ kind: "aborted" });
+    expect(await interruptRun(client, { flowId, requestId: own.run!.requestId })).toEqual({ kind: "aborted", endedAtMs: outcome.kind === "aborted" ? outcome.endedAtMs : -1 });
   });
 
   it("an abort of a request that had already finished answers with the record's status (BR-12)", async () => {

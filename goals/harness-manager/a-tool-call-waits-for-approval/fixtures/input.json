@@ -1,0 +1,10 @@
+{
+  "goal": "Mark the checkout fix as tested.",
+  "marker": "TESTED",
+  "edit": "notes/checkout.md",
+  "note": "Not on this branch.",
+  "real": {
+    "goal": "Run this exact shell command with the Bash tool in your working directory: touch APPROVED-MARKER. If it is not allowed, say so and stop. Then answer DONE. Change nothing else, and do not commit.",
+    "marker": "APPROVED-MARKER"
+  }
+}
