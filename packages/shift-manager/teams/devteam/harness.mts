@@ -167,6 +167,8 @@ export function codexHarness(feeds: HarnessFeeds): HarnessBlock {
     onSession: feeds.onSession,
     onActivity: feeds.onActivity,
     client: { env: harnessEnv({ pass: CODEX_PASS }) },
+    // A project with no repository runs in its files, outside git; Codex refuses that without this.
+    thread: { skipGitRepoCheck: true },
     name: "codex",
   }) as unknown as HarnessBlock;
 }
@@ -178,6 +180,8 @@ export function cursorHarness(feeds: HarnessFeeds): HarnessBlock {
     resume: feeds.resume,
     onSession: feeds.onSession,
     onActivity: feeds.onActivity,
+    // A user's steer reaches the running turn, since Cursor's stop doesn't wait for its process.
+    onSteerable: feeds.onSteerable,
     env: harnessEnv({ pass: CURSOR_PASS }),
     // Cursor's SDK refuses a local agent with no model.
     model: CURSOR_MODEL,
