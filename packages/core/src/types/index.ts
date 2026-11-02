@@ -118,6 +118,7 @@ export {
   addRequestSpendSource,
   onRequestEnded,
   readRequestSpend,
+  readRequestTotalSpend,
   requestSpendSources
 } from "./request-end";
 export type {
@@ -511,6 +512,8 @@ export type {
   HarnessCallbackContext,
   HarnessCostBasis,
   HarnessFailureKind,
+  HarnessReadiness,
+  HarnessReadinessCheck,
   HarnessResolver,
   HarnessRunCost,
   HarnessRunEnvelope,

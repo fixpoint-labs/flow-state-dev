@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { ReviewDetail } from "../src/adapter";
-import { commitCount, judgeLine, shortBranch } from "../src/lib/review";
+import { commitCount, judgeLine, shortBranch } from "../src/components/flow-state/review-hold";
 
 const BRANCH = "conductor/t0/ha62422c9f1e0b7d4c2a8e5f3b1d6a9c0e4f7b2d-h0163a0cb8e2d4f6a1c3b5d7e9f0a2c4e6b8d0f1a/t-7f3c2e1a9b--code";
 const review = (patch: Partial<ReviewDetail> = {}): ReviewDetail => ({
@@ -42,5 +42,17 @@ describe("the review's lines", () => {
   it("puts the judge's verdict and confidence on one line, or says no judge read the run", () => {
     expect(judgeLine(review())).toBe("Judge: done, 0.91");
     expect(judgeLine(review({ judge: null }))).toBe("No judge read this run");
+  });
+});
+
+describe("reviewStopOf", () => {
+  // After a revise round the run stops for review again; the card must show that round, never
+  // fall back to an older round's commits and verdict when the latest stop's data is unreadable.
+  it("reads the latest review stop only", async () => {
+    const { reviewStopOf } = await import("../src/adapter");
+    const stop = (data: unknown) => ({ type: "suspension", kind: "review", data }) as Parameters<typeof reviewStopOf>[0][number];
+    const earlier = stop({ branch: "t-1--code", commits: 1, subjects: ["first round"], judge: null });
+    expect(reviewStopOf([earlier, stop({ question: "not a review's data" })])).toBeUndefined();
+    expect(reviewStopOf([earlier, stop({ branch: "t-1--code", commits: 2, subjects: ["second", "first round"], judge: null })])?.commits).toBe(2);
   });
 });

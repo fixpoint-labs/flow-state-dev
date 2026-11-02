@@ -145,6 +145,29 @@ describe("sessionFeed", () => {
     expect(texts(feed)).toEqual(["earlier", "from another tab"]);
   });
 
+  it("starts a long session from its newest items, so a transcript opens on the latest work rather than its first page", async () => {
+    const all = Array.from({ length: 250 }, (_, i) => message("req_1", `m${i}`, `n${i}`, 10 + i));
+    const h = host((url) => {
+      const query = new URL(url, "http://x").searchParams;
+      const offset = Number(query.get("offset") ?? 0);
+      const limit = Number(query.get("limit") ?? 100);
+      const items = all.slice(offset, offset + limit);
+      const nextOffset = offset + items.length;
+      return json({
+        ...snapshot(items, 1_000),
+        pagination: { offset, limit, total: all.length, hasMore: nextOffset < all.length, nextOffset }
+      });
+    });
+    const feed = sessionFeed(h.client, "s1");
+    feeds.push(feed);
+
+    await until(() => h.streams.length === 1);
+    const shown = texts(feed);
+    expect(shown[shown.length - 1]).toBe("n249");
+    expect(shown).not.toContain("n0");
+    expect(h.urls[h.urls.length - 1]).toContain("since=1000");
+  });
+
   it("says reconnecting on an ordinary close, lapsed once a retry fails, and live again when a connection names the runs", async () => {
     const h = host(() => json(snapshot([])));
     const seen: string[] = [];
@@ -260,6 +283,57 @@ describe("sessionFeed", () => {
     // The stream was aborted, so nothing it would have sent reaches the feed.
     expect(() => h.streams[0].send(itemFrame(1_002, message("req_9", "m9", "late", 1_002)))).toThrow();
     expect(feed.getSnapshot().items).toEqual([]);
+  });
+
+  it("opens no stream when a listener closes the feed on the first history it hears", async () => {
+    const h = host(() => json(snapshot([message("req_1", "m1", "earlier", 10)])));
+    const feed = sessionFeed(h.client, "s1");
+    feed.subscribe((s) => {
+      if (s.items.length > 0) feed.close();
+    });
+
+    await until(() => feed.getSnapshot().state === "stopped");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // A closed feed holds no connection the caller can no longer stop.
+    expect(h.urls.filter((url) => url.includes("/stream"))).toEqual([]);
+  });
+
+  it("shows a resumed gate's prompt once, as a fresh history read would, not the copy from before the resume", async () => {
+    // A gate shows a prompt, then suspends. On resume it runs again and shows
+    // the prompt under a new id. The person must see one prompt, not two.
+    const gate = "req_1:root/step[0]:0";
+    const owned = <T extends OutputItem>(item: T, itemIndex: number): T =>
+      ({ ...item, itemIndex, provenance: { blockName: "gate", blockInstanceId: gate, phase: "main" } }) as T;
+    const suspension = owned({ ...message("req_1", "su1", "", 11), type: "suspension", suspensionId: "s1", blockInstanceId: gate } as unknown as OutputItem, 1);
+    const resume = owned({ ...message("req_1", "re1", "", 12), type: "suspension_resume", suspensionId: "s1" } as unknown as OutputItem, 2);
+    const h = host(() => json(snapshot([owned(message("req_1", "p1", "approve?", 10), 0), suspension])));
+    const feed = sessionFeed(h.client, "s1");
+    feeds.push(feed);
+    await until(() => h.streams.length === 1);
+    expect(feed.getSnapshot().items.map((item) => item.id)).toEqual(["p1", "su1"]);
+
+    h.streams[0].send(itemFrame(1_001, resume) + itemFrame(1_002, owned(message("req_1", "p2", "approve?", 13), 3)));
+    await until(() => feed.getSnapshot().items.some((item) => item.id === "p2"));
+    expect(feed.getSnapshot().items.map((item) => item.id)).toEqual(["su1", "re1", "p2"]);
+  });
+
+  it("shows a resumed gate's prompt once under an item-type filter too, though the filter hides the resume markers", async () => {
+    const gate = "req_1:root/step[0]:0";
+    const owned = <T extends OutputItem>(item: T, itemIndex: number): T =>
+      ({ ...item, itemIndex, provenance: { blockName: "gate", blockInstanceId: gate, phase: "main" } }) as T;
+    const suspension = owned({ ...message("req_1", "su1", "", 11), type: "suspension", suspensionId: "s1", blockInstanceId: gate } as unknown as OutputItem, 1);
+    const resume = owned({ ...message("req_1", "re1", "", 12), type: "suspension_resume", suspensionId: "s1" } as unknown as OutputItem, 2);
+    const h = host(() => json(snapshot([owned(message("req_1", "p1", "approve?", 10), 0), suspension])));
+    const feed = sessionFeed(h.client, "s1", { itemTypes: ["message"] });
+    feeds.push(feed);
+    await until(() => h.streams.length === 1);
+    expect(feed.getSnapshot().items.map((item) => item.id)).toEqual(["p1"]);
+
+    h.streams[0].send(itemFrame(1_001, resume) + itemFrame(1_002, owned(message("req_1", "p2", "approve?", 13), 3)));
+    await until(() => feed.getSnapshot().items.some((item) => item.id === "p2"));
+    expect(feed.getSnapshot().items.map((item) => item.id)).toEqual(["p2"]);
+    // The markers are asked for, so the server's filter keeps them too.
+    expect(h.urls[0]).toContain("suspension_resume");
   });
 
   it("keeps only the item types it was asked for, and no transient item", async () => {

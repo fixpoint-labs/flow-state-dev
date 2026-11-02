@@ -34,7 +34,9 @@ type AbortRouteContext = {
  *
  * Returns 204 when the in-memory controller was fired here, 202 when the
  * intent was recorded for the running process to pick up, 404 if the request
- * doesn't exist or is not the caller's, 409 if it's already terminal.
+ * doesn't exist or is not the caller's, 409 if it's already terminal. An
+ * `interrupted` request no gate holds is ended `aborted` and answers 204: a
+ * dead turn nobody will continue is one the caller has stopped (FIX-2377).
  */
 export async function handleAbortRequest(
   _request: Request,
@@ -58,6 +60,7 @@ export async function handleAbortRequest(
       });
     case "fired":
     case "stopped-parked":
+    case "ended":
       return new Response(null, { status: 204 });
     case "already-resolved":
       return jsonResponse(409, {

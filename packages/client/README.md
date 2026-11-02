@@ -106,7 +106,7 @@ A request handle comes from `send`, from `flow(address).request(id)`, or from
 |--|--|
 | `status()` | The request's lifecycle state now. |
 | `wait({ pollMs?, timeoutMs? })` | Resolves once the request has settled: it is not `in_progress`, and the server holds no live run of it. A run that stops for a person settles at `suspended`. |
-| `abort()` | Ask the server to stop it. On a server with durable execution this also stops a `suspended` request, which ends `aborted`. A 409 means it already finished, or was resumed before the stop reached it. |
+| `abort()` | Ask the server to stop it. On a server with durable execution this also stops a `suspended` request, which ends `aborted`. An `interrupted` request nothing will carry on ends `aborted` too, and leaves the interrupted list. A 409 means it already finished, or was resumed before the stop reached it. |
 | `continue()` | Carry on a crash-interrupted request under its own id. Finished blocks replay from the durable log; the one in flight runs again. Resolves to the same handle. `{ stream: true }` returns the continuation's SSE `Response`. |
 | `retry({ input? })` | Run it again as a new request in the same session, with its original input or `input`. Resolves to the new request. Only an `interrupted` or `failed` request can be retried. |
 | `resume({ suspensionId, action, data? })` | Answer a pending suspension. The run carries on under the same id, and the server records the signed-in caller as who answered. `{ stream: true }` returns its SSE `Response`. |
@@ -144,7 +144,7 @@ stop got there first), `410` past its deadline, `400` for an answer its
 ### After a crash
 
 A host that crashed or restarted leaves its running requests behind.
-`fsd.requests.interrupted()` lists every interrupted request of the user's, including ones whose host stopped moments ago. A request stays in the list until it is continued or removed.
+`fsd.requests.interrupted()` lists every interrupted request of the user's, including ones whose host stopped moments ago. A request stays in the list until it is continued, aborted or removed.
 
 ```ts
 // Saved the id? Use it.
@@ -159,6 +159,25 @@ for (const lost of await fsd.requests.interrupted()) {
 Each entry is a request handle plus `sessionId`, `flowKind`, `actionName` and
 `interruptedAt`. `staleThresholdMs` can only widen the server's own threshold,
 never narrow it.
+
+A request is listed once its heartbeat is older than the server's stale
+threshold (a minute by default), so a turn cut off by a restart shows up
+within about a minute. Each call asks the server to sweep first, so poll it
+slowly and only while the page is visible.
+
+To show lost turns in a conversation list, group them by session with
+`interruptedBySession`, naming the actions that are your app's turns. A
+request of any other action, or with no session, is left out:
+
+```ts
+import { interruptedBySession } from "@flow-state-dev/client";
+
+const lost = interruptedBySession(await fsd.requests.interrupted(), { actions: ["respond"] });
+for (const [sessionId, requests] of lost) {
+  // Badge the conversation; offer Continue (`continue()`) or Discard (`abort()`)
+  // on each of `requests`, oldest first.
+}
+```
 
 ## Streaming
 
@@ -197,8 +216,9 @@ with no web server, and a credentialed one streams with its credentials.
 
 `sessionFeed(fsd, sessionId)` follows one session for a view that isn't a
 `useSession` chat, such as a board of workers or a task's transcript. It reads
-the whole history, then follows the session stream from where that read began,
-and joins every copy of an item so a partial copy never replaces a finished one.
+the session's newest items (`readSessionTail`, the last `SESSION_WINDOW_PAGE`
+of them), then follows the session stream from where that read began, and joins
+every copy of an item so a partial copy never replaces a finished one.
 
 ```ts
 import { sessionFeed } from "@flow-state-dev/client";
@@ -300,6 +320,31 @@ const requests = await fsd.sessions.requests("sess_1", {
 ```
 
 A request whose history window had dropped earlier turns carries `historyStart: { requestId }`, the oldest earlier turn its history window still held. Draw a divider above that turn: the turns before it were out of the model's view, or in the summary on a flow with a [history summary](https://flow-state.dev/docs/advanced/generator-context#summarizing-turns-past-the-window). It's absent while every earlier turn was in the window. Guard with `== null`.
+
+### Reading a long session from its end
+
+A session's items come back oldest first, so a conversation that has run for
+days is best read from its end. `readSessionTail` reads the newest page,
+`readSessionEarlier` adds earlier items when someone asks for them (a *Load
+earlier* button), and `refreshSessionWindow` reads the window again for a view
+with no live feed.
+
+```ts
+import { readSessionEarlier, readSessionTail, refreshSessionWindow } from "@flow-state-dev/client";
+
+let window = await readSessionTail(fsd.sessions, "sess_1", { itemTypes: ["message"] });
+// window.items: the newest 200 items, oldest first. window.hasEarlier: show "Load earlier".
+window = await readSessionEarlier(fsd.sessions, window);
+// Later, with no stream to follow: new items, and any stored among the ones shown.
+window = await refreshSessionWindow(fsd.sessions, window);
+```
+
+Every read runs from the window's start to the session's end. A reply is stored
+while it is still being written and finishes in place, and an item can be
+stored behind ones already shown; a read of only what came after the old end
+would miss both. Pass
+`window.at` and `window.sessionCreatedAt` to `fsd.sessions.stream` to follow
+the session from there instead.
 
 ### Listing one flow's sessions
 
@@ -408,6 +453,7 @@ the flow is wired up.
 - `createRequestStreamStore({ keyOf? })` — Headless request-stream accumulator (sorted items, streaming text, status/sequence)
 - `bindStoreToCallbacks(store, options?)` — Map SSE events onto a store (the shared reducer)
 - `compareItemOrder(a, b)` — Display order for items from many requests (`ts`, `itemIndex`, `requestId`, then `id`); a session snapshot's items come in this order, so sort merged items with it
+- `interruptedBySession(requests, { actions })` — Group what `requests.interrupted()` returned by session, oldest first, keeping only the named actions
 - `sessionFeed(client, sessionId, { itemTypes?, includeTransient?, retryMs? })` — Follow one session without React: `getSnapshot()` / `subscribe()` give `{ items, runs, state, error }`, where `state` is a `SessionConnectionState`; `followResponse(response)` keeps a send's answer as it is written; `close()`
 - `sessionQueryFor(address, flows)` — Build the `sessions.list` filter (`flowId` or `flowKind`) for one flow address
 - `sendHarnessLine(prompt, running, sender)` — Send a line typed into a harness session: into the running turn when its harness takes it (the flow's steer action, core's `harnessSteering`), else as the next turn. Answers `"taken"`, `"after-this-turn"` or `"turn"`

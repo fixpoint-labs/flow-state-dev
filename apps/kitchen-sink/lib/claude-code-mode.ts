@@ -5,15 +5,29 @@
  * Server only. The block runs as background work (`detached`) with its work
  * recorded (`recordWork`), so its plan lands in the shared plan record.
  *
- * **Kitchen Sink confines no run.** It asks for no approval and runs with no
- * sandbox, so it writes, commits and runs commands wherever the server's OS
- * user can — this checkout included, not just the session's worktree. Kitchen
- * Sink is a showcase meant to run on a machine where that is fine. Run the
- * server as a separate OS user, or in a container, when it is not.
+ * **A tool call waits on the user.** The read-only tools (`PRE_ALLOWED_TOOLS`)
+ * run unasked; any other call stops the turn, the conversation shows the
+ * approval card, and the user's Allow, Deny or Allow for this run resumes the
+ * same conversation (the session flow's `approveTools`, FIX-2432).
+ *
+ * **Kitchen Sink confines no run.** It runs with no sandbox, so a call the
+ * user allows writes, commits and runs commands wherever the server's OS user
+ * can — this checkout included, not just the session's worktree, and the
+ * read-only tools read anywhere it can. Kitchen Sink is a showcase meant to
+ * run on a machine where that is fine. Run the server as a separate OS user,
+ * or in a container, when it is not.
  *
  * The run still starts with an allowlisted environment. That filters what it
  * is handed and nothing more: a command it starts as the same OS user can
  * still read the server's own environment (on Linux, from `/proc`).
+ *
+ * What it loads from the repository depends on whether the operator trusts it
+ * (`lib/harness-trust.ts`). Untrusted, the default, it loads nothing: no
+ * `CLAUDE.md`, no skills, no settings. Trusted, it loads the repository's
+ * Claude Code project settings, `CLAUDE.md` and skills with every hook off
+ * (a turn can write a hook into `.claude/settings.json`, and it would run by
+ * itself on the next turn, in no transcript), and it is handed the keys the
+ * operator named.
  *
  * Under `KITCHEN_SINK_TEST_MODE=1` the Agent SDK is replaced by the scripted
  * Claude Code (`lib/scripted-claude-code.ts`) and the check passes, unless
@@ -33,6 +47,8 @@ import {
 } from "@flow-state-dev/claude-code/sdk";
 
 import { goalControl } from "./goal-control";
+import { harnessTrust, type RepoLine } from "./harness-trust";
+import type { HarnessTrust } from "./harness-workspace";
 import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { kitchenSinkHarnessFlow } from "./harness-session-flow";
@@ -47,11 +63,45 @@ export const CLAUDE_CODE_SESSION = flowKindOf(modeById("claude-code"));
 
 /**
  * The environment a Claude Code run gets, and the one its sign-in is probed
- * with: the Claude Code package's own pass-list (what a run starts with, not
- * what it could read: see the header).
+ * with: the Claude Code package's own pass-list, and the keys a trusting
+ * operator named (what a run starts with, not what it could read: see the
+ * header).
  */
-export function claudeCodeEnv(env: Record<string, string | undefined> = process.env): Record<string, string> {
-  return harnessEnv({ pass: CLAUDE_CODE_PASS, env });
+export function claudeCodeEnv(
+  env: Record<string, string | undefined> = process.env,
+  trust: HarnessTrust = harnessTrust(),
+): Record<string, string> {
+  return harnessEnv({ pass: [...CLAUDE_CODE_PASS, ...trust.pass], env });
+}
+
+/** What a Claude Code run loads from the repository: its setting sources and a settings layer above them. */
+export interface ClaudeCodeRepoOptions {
+  readonly settingSources: ["project"] | [];
+  readonly settings?: { readonly disableAllHooks: true };
+}
+
+/**
+ * What a Claude Code run loads from the repository. Untrusted: nothing, since
+ * a hook a turn added would run on the next turn. Trusted: the project's
+ * settings, `CLAUDE.md` and skills, with a settings layer above them that turns
+ * every hook off. Never the operator's own user settings.
+ *
+ * The goal control `hooks-on` drops the layer, so the goal leg that no hook
+ * runs can be seen to fail.
+ */
+export function claudeCodeRepoOptions(trust: HarnessTrust = harnessTrust()): ClaudeCodeRepoOptions {
+  if (!trust.trusted) return { settingSources: [] };
+  return goalControl() === "hooks-on"
+    ? { settingSources: ["project"] }
+    : { settingSources: ["project"], settings: { disableAllHooks: true } };
+}
+
+/** The header's line for a Claude Code session, read off the options its run gets. */
+export function claudeCodeRepoLine(trust: HarnessTrust = harnessTrust()): RepoLine {
+  const options = claudeCodeRepoOptions(trust);
+  const conventions =
+    options.settingSources.length === 0 ? "not loaded" : options.settings?.disableAllHooks === true ? "loaded, hooks off" : "loaded, hooks on";
+  return { conventions, keys: trust.pass };
 }
 
 /** Whether this server runs the scripted Claude Code instead of the SDK. */
@@ -59,10 +109,22 @@ export function claudeCodeIsScripted(env: Record<string, string | undefined> = p
   return env.KITCHEN_SINK_TEST_MODE === "1" && env.KITCHEN_SINK_REAL_HARNESS !== "1";
 }
 
+/**
+ * The tools a Claude Code run uses without asking: the read-only ones. Any
+ * other call waits on the user's answer (see the header). Widen it here.
+ */
+export const PRE_ALLOWED_TOOLS = ["Read", "Glob", "Grep"] as const;
+
 /** Test seams for the block: a stand-in for the Agent SDK. */
 export interface ClaudeCodeSeams {
   /** Replaces the SDK (and the scripted one test mode picks). */
   readonly resolveClaudeAgent?: ResolveClaudeAgent;
+  /**
+   * `false` builds the session flow without tool approvals, for a test of
+   * something else on a host without durable execution (a turn with approvals
+   * on is refused there). The shipped flow has them on.
+   */
+  readonly approveTools?: boolean;
 }
 
 /**
@@ -74,6 +136,7 @@ export interface ClaudeCodeSeams {
  */
 export function claudeCodeBlock(feeds: HarnessSessionFeeds, seams: ClaudeCodeSeams = {}): HarnessBlock {
   const resolveClaudeAgent = seams.resolveClaudeAgent ?? (claudeCodeIsScripted() ? scriptedClaudeCode() : undefined);
+  const trust = harnessTrust();
   return claudeCodeAgent({
     cwd: feeds.cwd,
     resume: feeds.resume,
@@ -84,12 +147,15 @@ export function claudeCodeBlock(feeds: HarnessSessionFeeds, seams: ClaudeCodeSea
     recordWork: goalControl() !== "no-record",
     // Records no pull request in the turn, so goal leg **r1** can be seen to fail.
     recordPullRequests: goalControl() !== "no-pr-record",
-    permissionMode: "bypassPermissions",
-    // The run doesn't load the worktree's own Claude Code settings: a turn can
-    // edit `.claude/settings.json`, and a hook it added would run outside the
-    // sandbox on the next turn.
-    settingSources: [],
-    env: claudeCodeEnv(),
+    // A call that isn't pre-allowed waits on the user (`approveTools` on the
+    // session flow): the read-only tools run unasked, everything else asks.
+    ...(feeds.onToolApproval !== undefined ? { onToolApproval: feeds.onToolApproval } : {}),
+    permissionMode: "default",
+    allowedTools: [...PRE_ALLOWED_TOOLS],
+    // Untrusted, nothing from the repository; trusted, its conventions with
+    // every hook off (see the header).
+    ...claudeCodeRepoOptions(trust),
+    env: claudeCodeEnv(process.env, trust),
     ...(resolveClaudeAgent !== undefined ? { resolveClaudeAgent } : {}),
     name: "claude-code",
     // Claude Code's handle is core's plus its own fields, and a block's hooks
@@ -103,7 +169,13 @@ export function claudeCodeBlock(feeds: HarnessSessionFeeds, seams: ClaudeCodeSea
 export function claudeCodeSessionFlow(seams: ClaudeCodeSeams = {}) {
   // No `defaultModel`: a session from before models could be picked runs on
   // Claude Code's own default, as it did.
-  return kitchenSinkHarnessFlow({ kind: CLAUDE_CODE_SESSION, agent: (feeds) => claudeCodeBlock(feeds, seams) });
+  return kitchenSinkHarnessFlow({
+    kind: CLAUDE_CODE_SESSION,
+    // On, unless a test without durable execution turns it off (the seam) or
+    // the `no-approval` goal control does, so goal leg **a** can be seen to fail.
+    approveTools: seams.approveTools !== false && goalControl() !== "no-approval",
+    agent: (feeds) => claudeCodeBlock(feeds, seams),
+  });
 }
 
 /** The model the scripted Claude Code offers. It runs no model; the id only travels. */

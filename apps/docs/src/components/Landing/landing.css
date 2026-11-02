@@ -1,5 +1,5 @@
 /**
- * Landing page styles for flow-state.dev, ported from the "Landing · agent backend"
+ * Landing page styles for flow-state.dev, ported from the flow-state.dev landing
  * design canvas. Every rule is scoped under `.fs-landing` so it can't leak into docs pages.
  */
 .fs-landing{margin:0;background:#f0ece1}
@@ -83,6 +83,11 @@ body:has(main.fs-landing) {
 }
 @media (max-width:760px){
 .fs-landing .fs-features,.fs-landing .fs-also{grid-template-columns:1fr !important}
+/* "Also included": icon beside a heading + one-line blurb, so eight items don't each stack three rows tall. */
+.fs-landing .fs-also{gap:0 !important}
+.fs-landing .fs-also li{display:grid !important;grid-template-columns:40px minmax(0,1fr);column-gap:14px;row-gap:2px !important;align-items:start;padding:10px 0 !important}
+.fs-landing .fs-also li svg{grid-row:1 / span 2;margin-top:2px}
+.fs-landing .fs-also li p{grid-column:2}
 }
 
 /* The two-door switch shared with flow-state.build: this page is the developers' door. */

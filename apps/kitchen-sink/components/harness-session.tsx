@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * A harness session, picked in a harness mode's rail: the model it runs and
- * the conversation it is bound to, the conversation with the harness's own items, a composer whose stop control stops the turn, the
+ * A harness session, picked in a harness mode's rail: the model it runs, what
+ * its harness loads from the repository, the conversation it is bound to, the conversation with the harness's own items, a composer whose stop control stops the turn, the
  * notice for the latest turn, and the plan panel beside it, which shows the
  * bound conversation's plan and the pull requests the session opened.
  *
@@ -24,6 +24,8 @@ import {
   FlowProvider,
   useResourceCollectionList,
   useResourceManifest,
+  clearDraft,
+  useDraft,
   useHarnessLines,
   useSession,
   type SessionView,
@@ -58,6 +60,7 @@ import { SessionConversationLoading } from "@/components/session-conversation-lo
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { sendLine, type LineOutcome, type LineSender } from "@/lib/harness-line";
 import type { ModelChoices } from "@/lib/harness-models";
+import type { RepoLine } from "@/lib/harness-trust";
 import { pageGoalControl } from "@/lib/goal-control";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import {
@@ -72,7 +75,8 @@ import {
   type TurnNotice,
 } from "@/lib/harness-turn";
 import type { HarnessSessionState } from "@flow-state-dev/harness-manager";
-import { useSessionDraft } from "@/lib/use-session-draft";
+import { SESSION_DRAFT } from "@/lib/session-draft";
+import { BASE_PATH } from "@/lib/base-path";
 
 export interface HarnessSessionViewProps {
   /** The mode's label, from the mode list. */
@@ -82,6 +86,8 @@ export interface HarnessSessionViewProps {
   readonly sessionId: string;
   /** The mode's models, for the name of the session's. */
   readonly models: ModelChoices;
+  /** What the session's harness loads from the repository, from the server. Unset, the header leaves the line out. */
+  readonly repoLine?: RepoLine;
   /** Called when the session's title arrives or changes, so the rail can pick it up. */
   readonly onTitled?: () => void;
 }
@@ -90,10 +96,10 @@ export interface HarnessSessionViewProps {
 const sendLineOnce = (prompt: string, running: boolean, sender: LineSender) => sendLine(prompt, running, sender);
 
 /** One harness session's conversation and plan. */
-export function HarnessSessionView({ label, flowKind, sessionId, models, onTitled }: HarnessSessionViewProps) {
+export function HarnessSessionView({ label, flowKind, sessionId, models, repoLine, onTitled }: HarnessSessionViewProps) {
   return (
-    <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAssistantRenderers}>
-      <SessionBody label={label} sessionId={sessionId} models={models} onTitled={onTitled} />
+    <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl={BASE_PATH} renderers={chatAssistantRenderers}>
+      <SessionBody label={label} sessionId={sessionId} models={models} repoLine={repoLine} onTitled={onTitled} />
     </FlowProvider>
   );
 }
@@ -102,15 +108,17 @@ function SessionBody({
   label,
   sessionId,
   models,
+  repoLine,
   onTitled,
 }: {
   label: string;
   sessionId: string;
   models: ModelChoices;
+  repoLine?: RepoLine;
   onTitled?: () => void;
 }) {
   const session = useSession(sessionId, { items: true, autoResume: true });
-  const [message, setMessage] = useSessionDraft(sessionId);
+  const [message, setMessage] = useDraft(SESSION_DRAFT, sessionId);
   const messageRef = useRef(message);
   messageRef.current = message;
 
@@ -147,6 +155,8 @@ function SessionBody({
       try {
         const outcome = await lines.send(prompt);
         setLastLine(outcome);
+        // The view may have closed (a session switch) while it ran: the stored draft goes only if it is still this line.
+        clearDraft(SESSION_DRAFT, sessionId, prompt);
         if (messageRef.current.trim() === prompt) setMessage("");
         // The steer request records a taken line in session state, and this
         // view follows only the turn's stream: re-read state (not the
@@ -156,7 +166,7 @@ function SessionBody({
         // Keep the persisted draft so a failed send can be retried.
       }
     },
-    [lines, refresh, setMessage],
+    [lines, refresh, setMessage, sessionId],
   );
   const steered = turn === null ? [] : (state.turns?.[turn.requestId]?.steered ?? []);
 
@@ -165,6 +175,7 @@ function SessionBody({
       <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="border-b px-4 py-2 text-xs text-muted-foreground">
           {session.snapshot !== null && <SessionModel model={state.model} models={models} label={label} />}
+          {repoLine !== undefined && <SessionRepoLine line={repoLine} />}
           Conversation:{" "}
           <span className="font-mono" data-testid="bound-conversation">
             {bound ?? "none yet"}
@@ -221,7 +232,7 @@ function SessionBody({
         session={session}
         label={label}
         turn={turn}
-        ended={turn !== null && turn.status !== "running"}
+        ended={turn !== null && turn.status !== "running" && turn.status !== "waiting"}
         bound={bound}
         turnsByRequest={turnsByRequest}
         records={state.turns ?? null}
@@ -243,6 +254,23 @@ function SessionModel({ model, models, label }: { model: string | undefined; mod
       <span className="font-mono" data-testid="session-model" data-model-id={model ?? ""}>
         {text}
       </span>
+    </p>
+  );
+}
+
+/** What the session's harness loads from the repository, and the names of the keys it is handed. */
+function SessionRepoLine({ line }: { line: RepoLine }) {
+  return (
+    <p className="mb-1">
+      Repo conventions: <span data-testid="repo-conventions">{line.conventions}</span>
+      {line.keys.length > 0 && (
+        <>
+          {" · Keys passed: "}
+          <span className="font-mono" data-testid="repo-keys">
+            {line.keys.join(", ")}
+          </span>
+        </>
+      )}
     </p>
   );
 }
@@ -296,6 +324,8 @@ function Notice({ notice, label }: { notice: TurnNotice; label: string }) {
         return `This turn failed${notice.error === null ? "." : `: ${notice.error}`} ${notice.conversation === null ? "" : `The session stays on conversation ${notice.conversation}.`}`;
       case "stopped":
         return `Stopped. ${notice.conversation === null ? "" : `The session stays on conversation ${notice.conversation}, and your next turn continues it.`}`;
+      case "waiting":
+        return `Waiting on you. ${label} asked to use a tool; your answer on the card above goes back to ${notice.conversation === null ? "this conversation" : `conversation ${notice.conversation}`}.`;
     }
   })();
   const warn = notice.kind === "refused" || notice.kind === "error";

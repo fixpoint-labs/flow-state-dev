@@ -3,27 +3,30 @@
  * and how far the connection can be trusted. For an app that is not a
  * `useSession` chat view, such as a board of workers or a task's transcript.
  *
- * The feed reads the whole history first ({@link readSessionHistory}), then
- * follows the session stream from where that read began ({@link
+ * The feed reads the session's newest items first ({@link readSessionTail}),
+ * then follows the session stream from where that read began ({@link
  * followSession}), so nothing kept in between is missed. Copies of one item
  * are joined by {@link mayReplaceItem}: a partial copy never replaces a
  * finished one. The session stream sends an item once it is finished, so an
  * answer being written comes from the send's own response, through
  * {@link SessionFeed.followResponse}.
  */
-import { compareItemOrder } from "@flow-state-dev/contracts/items";
+import { collapseToCanonicalLog, compareItemOrder } from "@flow-state-dev/contracts/items";
 import type { OutputItem, SessionRun } from "@flow-state-dev/core/items";
 import type { SessionsApi } from "../client";
 import { bindStoreToCallbacks } from "../stream-client/bind-store-to-callbacks";
 import { createRequestStreamStore } from "../stream-client/request-stream-store";
 import { createSSEClientFromResponse } from "../stream-client/streams";
 import { followSession, type SessionConnectionState } from "./follow-session";
-import { mayReplaceItem, readSessionHistory } from "./session-history";
+import { mayReplaceItem } from "./session-history";
+import { readSessionTail } from "./session-window";
 
 /** How long the first retry of a failed history read waits, by default; each later one waits twice as long. */
 const DEFAULT_RETRY_MS = 2_000;
 /** How many times a failed history read is tried again before the feed stops. */
 const HISTORY_RETRIES = 4;
+/** The item types `collapseToCanonicalLog` reads to drop a resumed gate's earlier copies. */
+const RESUME_MARKERS = ["suspension", "suspension_resume"];
 
 export type SessionFeedOptions = {
   /** Keep only these item types. Default: every type. */
@@ -39,7 +42,10 @@ export type SessionFeedOptions = {
 
 /** What a feed shows at one moment. A new, frozen object on every change. */
 export type SessionFeedSnapshot = {
-  /** Every item kept so far, in display order (`compareItemOrder`). */
+  /**
+   * The newest history items (`readSessionTail`'s window) and every item kept
+   * since, in display order (`compareItemOrder`).
+   */
   readonly items: readonly OutputItem[];
   /** The session's unfinished runs as the stream last named them; `null` until it has. */
   readonly runs: readonly SessionRun[] | null;
@@ -78,7 +84,10 @@ export function sessionFeed(
   options: SessionFeedOptions = {}
 ): SessionFeed {
   const retryMs = options.retryMs ?? DEFAULT_RETRY_MS;
-  const types = options.itemTypes !== undefined && options.itemTypes.length > 0 ? options.itemTypes : undefined;
+  const shown = options.itemTypes !== undefined && options.itemTypes.length > 0 ? options.itemTypes : undefined;
+  // The resume markers are read too, though not shown: without them a filtered
+  // feed can't tell a resumed gate's earlier copies from its current ones.
+  const types = shown === undefined ? undefined : [...new Set([...shown, ...RESUME_MARKERS])];
   const passes = (item: OutputItem): boolean =>
     (options.includeTransient === true || item.transient !== true) && (types === undefined || types.includes(item.type));
 
@@ -102,12 +111,17 @@ export function sessionFeed(
     snapshot = Object.freeze({ ...snapshot, ...next });
     for (const listener of [...listeners]) listener(snapshot);
   };
-  const sortedItems = (): OutputItem[] => [...byKey.values()].sort(compareItemOrder);
+  // A resumed block's copies from before the resume drop out, as they do from
+  // a fresh history read and from `useSession`.
+  const sortedItems = (): OutputItem[] => {
+    const canonical = collapseToCanonicalLog([...byKey.values()].sort(compareItemOrder));
+    return shown === undefined ? canonical : canonical.filter((item) => shown.includes(item.type));
+  };
 
   const start = async (): Promise<void> => {
     let history;
     try {
-      history = await readSessionHistory(client.sessions, sessionId, { itemTypes: types });
+      history = await readSessionTail(client.sessions, sessionId, { itemTypes: types });
     } catch (cause) {
       if (closed) return;
       const error = cause instanceof Error ? cause : new Error(String(cause));
@@ -124,6 +138,8 @@ export function sessionFeed(
     if (closed) return;
     for (const item of history.items ?? []) keep(item);
     publish({ items: sortedItems(), error: null });
+    // A listener may close the feed on the history it just heard.
+    if (closed) return;
 
     stopStream = followSession({
       sessionId,
@@ -170,7 +186,9 @@ export function sessionFeed(
             if (store.status !== "in_progress") end();
           }
         }),
-        onError: () => end()
+        onError: () => end(),
+        // A response can end without saying how the request ended; the session stream has the rest.
+        onClose: () => end()
       });
       responses.add(end);
     },
