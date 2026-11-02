@@ -60,7 +60,7 @@ export function forCodingOf(listed: z.infer<typeof listProjectsOutputSchema>): s
   if (new Set(coded.map((project) => project.repository)).size === 1) {
     return (
       `${coded.length} projects share one repository: ${coded.map(named).join(", ")}. Any of them reaches the same code, so don't ask: ` +
-      `hand a coder's task that names no project, with createTask, to the one whose title or brief fits the ask, or to ${only.title} when none does, ` +
+      `hand a coder's task that names no project, with createTask, to the one whose title or brief fits what the user asked for, or to ${only.title} when none does, ` +
       "and say in one line which one you picked."
     );
   }
