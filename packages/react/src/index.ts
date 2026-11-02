@@ -189,6 +189,11 @@ export {
 } from "./hooks/useJumpToLatest";
 
 export {
+  useSubmit,
+  type Submit
+} from "./hooks/useSubmit";
+
+export {
   isSendKey,
   type SendKeyEvent,
   type SendKeyOptions
