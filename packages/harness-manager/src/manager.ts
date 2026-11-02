@@ -128,6 +128,7 @@ import { HeldOnQuestion, askStep } from "./ask-step";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
 import { readRunCommits, readRunDiff, runDiffSchema, type RunCommits, type RunDiff } from "./commits";
 import { commandCheckResultSchema, commandChecksSummary, readVerdict, type CommandCheckResult } from "./command-check";
+import type { ReviewDetail } from "./review-detail";
 import { progressNoteOf, throttledNotes, type ProgressNotes } from "./progress-note";
 import {
   MAX_APPROVAL_STEPS,
@@ -3343,7 +3344,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             removed: decision.diff?.verified === true ? decision.diff.removed : null,
             judge: read,
             checks: decision.checks ?? null,
-          },
+            // The review card reads these fields through reviewDetail: the type keeps writer and reader in step.
+          } satisfies ReviewDetail & Record<string, unknown>,
         });
       } catch (error) {
         if (!(error instanceof SuspensionTimeoutError)) throw error;
