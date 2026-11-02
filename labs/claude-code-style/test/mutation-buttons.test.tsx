@@ -88,7 +88,7 @@ describe("buttons that change something", () => {
     expect(button(view, "Resolve").disabled).toBe(true);
 
     await requestChanges.settle(new Error("network down"));
-    expect(within(view).getByRole("alert").textContent).toBe("Not sent: network down");
+    expect(within(view).getByRole("alert").textContent).toBe("Not sent: network down · Retry");
     expect(box.value).toBe("Add the EU pricing.");
     expect(button(view, "Request changes").disabled).toBe(false);
   });
@@ -105,7 +105,7 @@ describe("buttons that change something", () => {
     fireEvent.click(sendButton());
     expect(sendButton().disabled).toBe(true);
     await sayInThread.settle(new Error("the task is gone"));
-    expect(within(view).getByRole("alert").textContent).toBe("Not sent: the task is gone");
+    expect(within(view).getByRole("alert").textContent).toBe("Not sent: the task is gone · Retry");
     expect(box.value).toBe("Check the annual plan too.");
 
     fireEvent.click(sendButton());

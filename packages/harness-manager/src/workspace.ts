@@ -439,6 +439,14 @@ export interface RunLocation {
    * organizations share one checkout.
    */
   orgless?: true;
+  /**
+   * The tracker issue the run's task names, on a board read from the claim,
+   * where {@link issue} is the row's own id. It leads the branch's leaf so the
+   * branch says what it is for; the checkout path and run topic never read
+   * it, so a record is found where it always was. {@link locationFor} leaves
+   * it off for a run whose record names the branch without it.
+   */
+  trackerIssue?: string;
 }
 
 /**
@@ -474,8 +482,13 @@ export function locationFor(
   location: Omit<RunLocation, "orgless">,
   recordedBranch: string | null | undefined,
 ): RunLocation {
-  const orgless: RunLocation = { ...location, orgless: true };
-  return recordedBranch != null && recordedBranch === branchFor(orgless) ? orgless : location;
+  if (recordedBranch == null) return location;
+  // A run recorded before its branch led with the task's issue keeps that branch.
+  const { trackerIssue: _issue, ...unlabelled } = location;
+  const orgless: RunLocation = { ...unlabelled, orgless: true };
+  if (recordedBranch === branchFor(orgless)) return orgless;
+  if (location.trackerIssue !== undefined && recordedBranch === branchFor(unlabelled)) return unlabelled;
+  return location;
 }
 
 /** The issue-phase leaf, shared by the path, the branch, and the board task id. */
@@ -577,7 +590,10 @@ export function branchFor(location: RunLocation): string {
   // here while the path used `--`, so the branch aliased on inputs the path
   // kept apart — the identity rule broken in one of the two places that had to
   // agree, which is the whole reason the leaf is now derived in one function.
-  return `conductor/${scope}/${issuePhaseSegment(location)}`;
+  const leaf = issuePhaseSegment(location);
+  return location.trackerIssue === undefined
+    ? `conductor/${scope}/${leaf}`
+    : `conductor/${scope}/${joinIdentity(assertSafeSegment("issue", location.trackerIssue), leaf)}`;
 }
 /**
  * The place segments of a run, under whatever root its host keeps: the same

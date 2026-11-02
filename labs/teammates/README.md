@@ -28,6 +28,10 @@ theme on purpose, so it reads as the app it copies.
   a click outside it, and the conversation under it keeps its place.
 - **Right:** Talk, the worker's exchanges with the other workers, grouped by worker, from the
   message log. It closes.
+- **Keys:** ⌘K (Ctrl+K) finds a teammate by its name or role, or opens *Hire a teammate*. Alt+↑
+  and Alt+↓ move to the previous or next teammate. `/` puts the cursor in the composer, and `?`
+  lists every key. Opening a teammate puts the cursor in its composer. Firing a teammate you hired
+  asks first in a row under the header, with *Keep* focused.
 - **The page's address** names the open teammate and an open task popup
   (`?worker=<id>&session=<id>&task=<id>`), so a reload or a link reopens them, and Back returns
   to what you had open before. A link to a teammate or task that is gone opens the first teammate.

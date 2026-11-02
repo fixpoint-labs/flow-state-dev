@@ -34,3 +34,13 @@ export function isSendKey(event: SendKeyEvent, options: SendKeyOptions = {}): bo
   if (event.metaKey || event.ctrlKey) return true;
   return options.enterSends === true;
 }
+
+/**
+ * Whether a key pressed on `target` is typing: in a text field, a text area, a
+ * select or editable text. A page-wide shortcut that is a printable key (`/`,
+ * `?`, `[`) leaves such a key to the field.
+ */
+export function isTypingTarget(target: EventTarget | null): boolean {
+  if (typeof HTMLElement === "undefined" || !(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
+}

@@ -1,7 +1,8 @@
 import { isSendKey, useJumpToLatest, useSubmit } from "@flow-state-dev/react";
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import type { FormEvent, KeyboardEvent } from "react";
 import type { LabAdapter, TaskRow } from "../adapter";
 import { useWatch } from "../lib/use-watch";
+import { useDraftSend } from "../lib/use-draft-send";
 import { Entry } from "./Entry";
 import { JumpToLatestButton } from "./JumpToLatest";
 import { ReviewCard } from "./ReviewCard";
@@ -16,8 +17,6 @@ import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus
  * A finished task's composer is off: you ask the main session to follow up.
  * Cmd+Enter (Ctrl+Enter) does what the box's main button does: answer or send,
  * or request changes when it is ready for review. Plain Enter is a new line.
- * While a call is on its way its buttons are held, and a refused call says so
- * inline and keeps your words in the box.
  */
 export function ThreadView({
   adapter,
@@ -36,31 +35,33 @@ export function ThreadView({
     (emit: Parameters<LabAdapter["watchTaskWork"]>[2]) => adapter.watchTaskWork(sessionId, task.id, emit),
     [adapter, sessionId, task.id],
   );
-  const [text, setText] = useState("");
+  const { text, setText, sending, failure, submit } = useDraftSend("claude-code-style:task-draft", task.id);
   const feed = useJumpToLatest({ resetKey: task.id });
   const column = statusColumn(task);
   const question = task.waitingOn && task.waitingOn.kind !== "review" ? task.waitingOn : undefined;
   const words = text.trim();
   const finished = task.status === "completed" || task.status === "cancelled" || task.status === "errored";
 
-  // The composer's calls share one hold: nothing else is sent while one is on its way.
-  // Your words leave the box only once they are taken, unless you have typed on since.
-  const send = useSubmit(async (kind: "say" | "change" | "resolve") => {
-    if (kind === "resolve") return adapter.resolve(sessionId, task.id);
-    feed.sent();
-    const line = words;
-    await (kind === "say" ? adapter.sayInThread(sessionId, task.id, line) : adapter.requestChanges(sessionId, task.id, line));
-    setText((now) => (now.trim() === line ? "" : now));
-  });
+  // Resolve and a send share the composer: nothing else goes while one is on its way.
+  const resolve = useSubmit(() => adapter.resolve(sessionId, task.id));
   const pin = useSubmit(() => (pinned ? adapter.unpin(task.id) : adapter.pin(task.id)));
+  const held = sending || resolve.busy;
+
+  // Your words stay in the box until they land; a failed send says why, with Retry.
   const say = (event?: FormEvent) => {
     event?.preventDefault();
-    if (!words || send.busy) return;
-    void send.submit(undefined, "say");
+    if (resolve.busy) return;
+    void submit((line) => {
+      feed.sent();
+      return adapter.sayInThread(sessionId, task.id, line);
+    });
   };
   const requestChanges = () => {
-    if (!words || send.busy) return;
-    void send.submit(undefined, "change");
+    if (resolve.busy) return;
+    void submit((line) => {
+      feed.sent();
+      return adapter.requestChanges(sessionId, task.id, line);
+    });
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (!isSendKey(event)) return;
@@ -121,32 +122,40 @@ export function ThreadView({
             placeholder={question ? "Answer the task…" : column === "review" ? "What should change…" : "Say something in this task…"}
             className="block w-full resize-none border border-border bg-card px-3 py-2 text-sm outline-none focus:border-ring"
           />
+          {failure !== undefined ? (
+            <p role="alert" className="mt-1 text-xs text-destructive">
+              Not sent: {failure} ·{" "}
+              <button type="button" className="underline" onClick={() => (column === "review" ? requestChanges() : say())}>
+                Retry
+              </button>
+            </p>
+          ) : null}
+          {resolve.error === undefined ? null : (
+            <p role="alert" className="mt-1 text-xs text-destructive">
+              Couldn't resolve: {resolve.error}
+            </p>
+          )}
           <div className="mt-2 flex justify-end gap-1.5">
             {column === "review" ? (
               <>
                 <button
                   type="button"
-                  disabled={send.busy}
-                  onClick={() => void send.submit(undefined, "resolve")}
+                  disabled={held}
+                  onClick={() => void resolve.submit(undefined)}
                   className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40"
                 >
-                  Resolve
+                  {resolve.busy ? "Resolving…" : "Resolve"}
                 </button>
-                <button type="button" disabled={!words || send.busy} onClick={requestChanges} className="border border-border px-2 py-1 text-xs disabled:opacity-40">
+                <button type="button" disabled={!words || held} onClick={requestChanges} className="border border-border px-2 py-1 text-xs disabled:opacity-40">
                   Request changes
                 </button>
               </>
             ) : (
-              <button type="submit" disabled={!words || send.busy} className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40">
+              <button type="submit" disabled={!words || held} className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40">
                 {question ? "Answer" : "Send"}
               </button>
             )}
           </div>
-          {send.error === undefined ? null : (
-            <p role="alert" className="mt-1 text-xs text-destructive">
-              Not sent: {send.error}
-            </p>
-          )}
         </form>
       )}
     </aside>

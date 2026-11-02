@@ -47,6 +47,32 @@ fsdev ui add approval
 
 The card is presentation over the `useApproval` hook from `@flow-state-dev/react`, which owns the resume call and resolved state. It reads the resolution from `SessionItemsProvider`, so wrap your item list in one for the receipt to show on reload. For the full server-to-UI walkthrough, see the [Human-in-the-Loop guide](/guides/human-in-the-loop).
 
+## RequestRecovery
+
+The line a failed turn leaves in a thread. It names who hit the failure, shows the reason, code and details in the same text the error item renderer uses, and draws a Retry button. While the retry's promise runs, the button is disabled and reads "Retrying…". If the promise rejects, the line adds "Retry failed:" and the error message.
+
+```bash
+fsdev ui add request-recovery
+```
+
+Pass it an `ErrorItem`'s fields and a retry callback:
+
+```tsx
+const { resumeLatestRequest } = useSession(/* ... */);
+
+<RequestRecovery
+  who="Assistant"
+  reason={item.message}
+  code={item.code}
+  details={item.details}
+  onRetry={resumeLatestRequest}
+/>
+```
+
+`onRetry` can also be `() => client.flow(kind).request(item.requestId).retry()`.
+
+The server retries only a session's latest failed or interrupted request, so pass `onRetry` for that one and leave it off older lines. Without `onRetry`, no button is drawn. The component isn't part of `chatAssistantRenderers`, so your app decides where it goes.
+
 ## ModelBadge
 
 A small pill that shows which model actually answered. It reads a `ModelIdentity` (the `{ actual, requested?, gateway? }` record stamped on every generator-emitted item), renders `actual` as the label, and lists the requested string and gateway in the hover tooltip. It renders nothing when the model is undefined, so passing `item.model` straight from any item is safe.
@@ -60,6 +86,23 @@ import { ModelBadge } from "@/components/flow-state/model-badge";
 
 <ModelBadge model={item.model} />
 ```
+
+## Spend
+
+One line for what a coding run spent: the model, the tokens, and the vendor's charge when it reported one, like `claude-sonnet-4-5 · 12.4k tokens · $0.42`. Hand it the `spend` a task row carries (from `listTasks`), or the `spend` on a harness session's turn record; both have the same shape. A count nobody reported reads as "no tokens reported yet", never 0. A run on a subscription isn't billed per run, so it shows tokens and no dollar figure.
+
+```bash
+fsdev ui add spend
+```
+
+```tsx
+import { Spend } from "@/components/flow-state/spend";
+
+<Spend spend={task.spend} attempts={task.attempts} />
+<Spend spend={turn.spend} durationMs={turn.endedAt - turn.at} split />
+```
+
+`split` shows input and output apart. `attempts` appears from the second attempt on. `harnessLabel` puts the harness's name first, for a view that doesn't already show it.
 
 ## WorkPlace
 

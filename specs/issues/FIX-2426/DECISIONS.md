@@ -80,6 +80,11 @@ in-memory bus turns the timer off too, with no option.
   value on each wait is an equivalent implementation. The ping and stale rule are FIX-2427's.
 - **A bus that reconnects tells its subscribers to read once.**
 - **A `bus` adapter that doesn't declare the slot fails at `ready()`.**
+- **One crossing double, for goal checks only.** `goals/lib/crossing-bus.mts` wraps the in-memory
+  bus and reports `crossesProcesses: true`, so a one-process goal check can assert "no read
+  between changes". It is not re-exported from `goals/lib/index.mts`, and no package exports it:
+  [D1](#d1)'s "no app option makes the in-memory bus cross" stands. FIX-2428's, FIX-1506's and
+  FIX-2429's goal checks import this one double rather than building their own.
 
 ## Considered and dropped
 
@@ -134,5 +139,7 @@ with no fresh analyst in this dispatch: weaker than the skill asks.
   as a transition event (for FIX-2427); pool timings dropped.
 - **Seams from FIX-1506 (#4478)** — `origin` on the notice; a scope subscriber hears its
   narrowed notices, the session stream filters by kind; lineage-shared resources a stated limit.
+- **Amended (Nov 2, #4511)** — one test-only crossing double named for the three goal checks
+  that need a bus that crosses on one process.
 
 **Open: none.**

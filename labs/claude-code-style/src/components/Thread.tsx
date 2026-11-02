@@ -102,12 +102,13 @@ export function Thread({
         </div>
       ) : (
         <Composer
+          sessionId={session.id}
           running={running}
           armed={keys.armed}
           onSend={(text) => {
             // Your own line brings you back to the end, wherever you had scrolled to.
             feed.sent();
-            void adapter.send(session.id, text);
+            return adapter.send(session.id, text);
           }}
           onStop={() => void adapter.interrupt(session.id)}
         />
