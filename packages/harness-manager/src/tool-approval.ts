@@ -18,8 +18,8 @@
  *   package importing the other;
  * - what a held call is ({@link heldToolCallOf}) and the decision that holds
  *   it ({@link heldToolDecision});
- * - the grant rule ({@link grantMatches}): the same tool, with the same
- *   command or file;
+ * - the grant rule ({@link grantMatches}): the same tool on the same file
+ *   or command, or with the same arguments for any other call;
  * - the stop a held call waits on ({@link toolApprovalStop}), and what its
  *   answer means for the run ({@link toolApprovalOutcome}).
  *
@@ -28,7 +28,7 @@
  */
 import type { ApprovalAnswer, HarnessCallbackContext, SuspendForUserOptions } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { toolCallTouches } from "./progress-note";
+import { toolCallDetail } from "./progress-note";
 
 /** One tool call the harness asks about, before it runs. */
 export interface HarnessToolApprovalRequest {
@@ -68,7 +68,12 @@ export const heldToolCallSchema = z.object({
   toolName: z.string(),
   /** The command, file or other thing the call touches (`progressNoteOf`'s keys), or `null`. */
   touches: z.string().nullable(),
-  /** What a grant matches beside the tool: `touches`, else the call's arguments as canonical JSON. */
+  /**
+   * What a grant matches beside the tool: `touches` when it is the call's file
+   * or command ({@link GRANT_REACH_KEYS}), the reach the stop's words state;
+   * else the call's whole arguments as canonical JSON, so a search or fetch
+   * with other options asks again.
+   */
   key: z.string(),
   /** The run's working folder. */
   cwd: z.string(),
@@ -97,6 +102,14 @@ export const toolApprovalYesSchema = z.object({ scope: z.literal("run").optional
  */
 export const ALLOW_FOR_RUN = { label: "Allow for this run", data: { scope: "run" } } as const;
 
+/**
+ * The argument keys a grant reaches by alone: a yes on a call to a file or a
+ * command covers that tool's every call on that file or command, as the stop
+ * says. Any other call (a query, a pattern, a URL, or none) is matched on its
+ * whole arguments.
+ */
+const GRANT_REACH_KEYS = ["file_path", "path", "command"] as const;
+
 /** Canonical JSON: object keys sorted, so the same arguments give the same key. */
 function canonicalJson(value: unknown): string {
   const seen = new WeakSet<object>();
@@ -120,8 +133,10 @@ function canonicalJson(value: unknown): string {
  * @param cwd The run's working folder.
  */
 export function heldToolCallOf(request: Pick<HarnessToolApprovalRequest, "toolName" | "input">, cwd: string): HeldToolCall {
-  const touches = toolCallTouches(request.input);
-  return { toolName: request.toolName, touches, key: touches ?? canonicalJson(request.input), cwd };
+  const detail = toolCallDetail(request.input);
+  const touches = detail?.value ?? null;
+  const reaches = detail !== null && (GRANT_REACH_KEYS as readonly string[]).includes(detail.key);
+  return { toolName: request.toolName, touches, key: reaches ? detail.value : canonicalJson(request.input), cwd };
 }
 
 /** The feed's answer for a call it holds: the call doesn't run, and the turn stops. */
@@ -133,10 +148,12 @@ export function heldToolDecision(call: HeldToolCall): HarnessToolApprovalDecisio
 }
 
 /**
- * Whether a grant lets a call through: the same tool with the same command or
- * file (or, for a call that names neither, the same arguments). Never the
- * tool alone, so allowing one command for the run doesn't let every other
- * command through.
+ * Whether a grant lets a call through: the same tool on the same file or
+ * command, or, for any other call, the same arguments. Never the tool alone,
+ * so allowing one command for the run doesn't let every other command
+ * through, and never a query alone, so the same search in another mode asks
+ * again. A grant written under an older key matches nothing, so that call
+ * asks again.
  */
 export function grantMatches(grant: Pick<ToolGrant, "toolName" | "key">, call: Pick<HeldToolCall, "toolName" | "key">): boolean {
   return grant.toolName === call.toolName && grant.key === call.key;
@@ -154,10 +171,14 @@ function describeCall(call: Pick<HeldToolCall, "toolName" | "touches">): string 
  * @param call The held call.
  */
 export function toolApprovalStop(call: HeldToolCall): SuspendForUserOptions<"approval"> {
+  const reach =
+    call.touches !== null && call.key === call.touches
+      ? `lets every **${call.toolName}** call on \`${call.touches}\` through`
+      : "lets this exact call through again";
   const lines = [
     `The run wants to use **${call.toolName}**${call.touches === null ? "" : ` on \`${call.touches}\``}, in \`${call.cwd}\`.`,
     "",
-    "Allow runs it once. Allow for this run lets the same call through for the rest of this run. Deny tells the run it may not.",
+    `Allow runs it once. Allow for this run ${reach} for the rest of this run. Deny tells the run it may not.`,
   ];
   return {
     kind: "approval",

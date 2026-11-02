@@ -1,6 +1,6 @@
 # Kitchen Sink
 
-Kitchen Sink is where you use each coding harness flow-state-dev supports, directly, and see whether its integration holds. It opens on a picker of modes. **Flow State** is the framework's own flows: the assistant, and the support desk with a coordinator and four specialists (see [The support team](#the-support-team-workforce)). The coding harness modes are listed beside it: [Claude Code](#claude-code-mode), [Cursor](#cursor-mode), and Codex, which says "not built yet" until it lands.
+Kitchen Sink is where you use each coding harness flow-state-dev supports, directly, and see whether its integration holds. It opens on a picker of modes. **Flow State** is the framework's own flows: the assistant, and the support desk with a coordinator and four specialists (see [The support team](#the-support-team-workforce)). The coding harness modes are listed beside it: [Claude Code](#claude-code-mode), [Cursor](#cursor-mode), and [Codex](#codex-mode).
 
 Kitchen Sink sets up a session and keeps it in step with the harness. It doesn't plan work for a harness or move work between harnesses; that is [Shift Manager](../../packages/shift-manager/README.md).
 
@@ -39,6 +39,16 @@ KITCHEN_SINK_HARNESS_WORKSPACE=/Users/me/code/flow-state-dev
 ```
 
 The path has to be the top level of an existing git checkout; anything else turns the modes off and says why. Each session gets its own worktree and branch of that repository, so it never edits your checkout or another session's work. A production server without the setting keeps the harness modes off, and so does Vercel, even with it, because Kitchen Sink has no sign-in and anyone who can reach it acts as the same user. Restart the server after changing the setting; the picker reads it once, at start.
+
+**Trusting the repository.** By default a session loads nothing from the repository: Claude Code sees no `CLAUDE.md`, no skills and no project settings, and Codex's MCP servers are off. That is the safe choice for a shared server, and it makes a session on your own repository a worse agent than the CLI in a terminal. If you run Kitchen Sink for yourself on a checkout you trust, turn trust on, and name any keys a session needs (a Linear key, a GitHub token):
+
+```bash
+# apps/kitchen-sink/.env.local
+KITCHEN_SINK_HARNESS_TRUSTED=1
+KITCHEN_SINK_HARNESS_PASS=LINEAR_API_KEY,GH_TOKEN
+```
+
+Trusted, Claude Code loads the repository's `CLAUDE.md`, skills and project settings with every hook off, and never your own user settings. Hooks stay off because one runs by itself, with nothing in the transcript, and a turn can write one into `.claude/settings.json` for the next turn. Codex keeps the MCP servers your Codex settings name. Cursor still loads nothing from the repository: its SDK can't load project settings without their hooks. Every harness is handed the variables `KITCHEN_SINK_HARNESS_PASS` names. The model can read a key you pass, and it can end up in a log or a commit, so name only keys you would hand the CLI yourself. Each session's header says what its harness loaded ("Repo conventions: loaded, hooks off", or "not loaded") and which keys it was passed. Only `1` turns trust on; only the server's environment sets it, never a request; and it is off on Vercel. Restart after changing either setting.
 
 The `pnpm fsdev` commands below run from `apps/kitchen-sink`, where `fsdev.config.ts` gives the CLI the same flows, models and stores the app has.
 
@@ -191,6 +201,7 @@ A hired worker doesn't show in the rail and doesn't join `support.help`'s routin
 - **Workers**: Open a specialist in the rail to see its kind and what it handles, under its row. The **+** on its row starts a conversation with it; your message and its reply stay in that conversation. See [Talking to one specialist](#talking-to-one-specialist).
 - **Roster**: The team panel's roster lists workers [hired while the app runs](#hiring-while-the-app-runs), not the four declared in files. Until you hire one, it says no workers have been hired in this organization yet, while the rail lists the four specialists.
 - **Session management**: Open the assistant in the rail and press the **+** on its row (New session) to start a session. Its sessions are listed under it; pick one to switch to it.
+- **The page's address** names the open conversation, the assistant's or one picked in the rail (`/flow-state?session=<id>`), so a reload or a link reopens it, and Back returns to the one you had open before. A link to a session that is gone opens the assistant's latest.
 - **AI Elements**: Conversation, Message (with Streamdown markdown), Reasoning, Tool, Suggestion, Shimmer, PromptInput
 - **Bridge components**: Map flow-state item types (`MessageItem`, `ReasoningItem`, `BlockOutputItem`, `StatusItem`, `ErrorItem`) to AI Element visuals
 - **Client data bar**: Live display of mode status, request count, user preferences
@@ -206,9 +217,13 @@ It runs on your machine, through the Claude Code Agent SDK, signed in the way Cl
 
 **Where it works.** Claude Code works on this repository. Each session gets its own git worktree, cut from your checkout's `HEAD` on a branch named `kitchen-sink/claude-code-session/<session>`, and every turn of that session works there. Worktrees live outside the repository, under `~/.local/state/flow-state-dev/kitchen-sink-harness/` (or `$XDG_STATE_HOME` if you set it), in a folder named for the repository. Your own checkout is never touched, and two sessions never share a worktree. Your checkout's git hooks don't run when a worktree is made, so a `post-checkout` hook that builds or installs won't stop a session.
 
-**Kitchen Sink confines no run.** Claude Code asks for no approval and runs with no sandbox, so it writes, commits and runs commands wherever the server's OS user can — this checkout included, not just the session's worktree. Kitchen Sink is a showcase meant to run on a machine where that is fine; run the server as a separate OS user, or in a container, when it is not. Nothing is merged or pushed. Worktrees and branches stay until you remove them (`git worktree remove`, then delete the branch).
+**It asks before it acts.** Claude Code reads and searches without asking (`Read`, `Glob`, `Grep`). Any other tool call stops the turn: the conversation shows a card naming the tool, the command or file, and the folder, and the turn reads *Waiting on you*. **Allow** runs the call and the same conversation goes on. **Deny** tells Claude Code it may not, and it goes on without it. **Allow for this run** also lets the same call through for the rest of the turn. The card survives a server restart, and your answer then resumes the conversation that asked. While a turn waits, a new message is refused until you answer or stop it.
 
-The run starts with a short list of the server's environment variables: what Claude Code needs to find its tools, sign in and reach the network. That filters what it's handed, and nothing more: a command it runs as the same OS user as the server can still read the server's environment. Run the server as a separate OS user, or in a container, when that matters.
+**Kitchen Sink confines no run.** Claude Code runs with no sandbox, so a call you allow writes, commits and runs commands wherever the server's OS user can — this checkout included, not just the session's worktree — and its reads and searches reach anywhere that user can. Kitchen Sink is a showcase meant to run on a machine where that is fine; run the server as a separate OS user, or in a container, when it is not. Nothing is merged or pushed. Worktrees and branches stay until you remove them (`git worktree remove`, then delete the branch).
+
+**What it loads from the repository.** Nothing, unless you trust the repository (see [Run it](#run-it)). Trusted, it loads the repository's `CLAUDE.md`, skills and project settings with every hook off, never your own Claude Code user settings. The session's header says which.
+
+The run starts with a short list of the server's environment variables: what Claude Code needs to find its tools, sign in and reach the network, and the keys you named if you trust the repository. That filters what it's handed, and nothing more: a command it runs as the same OS user as the server can still read the server's environment. Run the server as a separate OS user, or in a container, when that matters.
 
 **Picking a model.** New session offers the models Claude Code lists for your sign-in, with its default preselected. The session runs the model you picked on every turn, resumes included, and keeps it after Claude Code's default moves on: its header names the model. A model Claude Code won't run fails the turn in Claude Code's words; nothing runs on another model instead. If Claude Code can't list its models, New session says why and can't start a session until a reload finds the list. To try another model, start another session. A session from before the picker runs on Claude Code's default, and its header says so.
 
@@ -230,7 +245,7 @@ It runs on your machine through the Codex SDK, and needs the SDK version that `@
 
 **Picking a model.** New session offers the models Codex itself offers for how it is signed in, with Codex's own default preselected, so a model your account can't run isn't listed. If Codex can't list its models, New session says why and can't start a session; reload to try again. The session runs the model you picked on every turn, resumes included, and its header names it. If Codex can't run that model, the turn shows Codex's error without switching models. A session with no saved model runs Codex's own default, never the model your Codex settings name; if Codex can't list its models, that session's turn stops and says why, and the next turn tries again.
 
-**Codex settings.** Kitchen Sink supplies the session's model and the default service tier, and disables the MCP servers it discovers in your Codex inventory. It reads that inventory on the first turn and reuses it for the server process; restart Kitchen Sink after changing your MCP servers. If the inventory can't be read, the turn warns that your configured MCP servers may start, and the next turn retries discovery. Your personal `config.toml` is unchanged.
+**Codex settings.** Kitchen Sink supplies the session's model and the default service tier, and disables the MCP servers it discovers in your Codex inventory. It reads that inventory on the first turn and reuses it for the server process; restart Kitchen Sink after changing your MCP servers. If the inventory can't be read, the turn warns that your configured MCP servers may start, and the next turn retries discovery. Your personal `config.toml` is unchanged. When you trust the repository (see [Run it](#run-it)), your MCP servers stay on and nothing is disabled. Codex reads the repository's `AGENTS.md` either way.
 
 **Where it works.** Codex works in the session's own worktree and branch, on `kitchen-sink/codex-session/<session>`, the same way Claude Code mode does (see [Claude Code mode](#claude-code-mode) for where worktrees live and how to clear them). It runs without asking for approval and with its sandbox off (`danger-full-access`), so like every harness mode here it is not confined to that worktree — see [Claude Code mode](#claude-code-mode). It sees only the environment variables Kitchen Sink passes it, not the server's whole environment. That filters what it's handed and nothing more: a command it runs as the same OS user as the server can still read the server's environment. Run the server as a separate OS user, or in a container, when that matters.
 
@@ -247,6 +262,8 @@ Pick **Cursor** to work a Cursor session the way you would on its own. Each turn
 It runs on your machine through the Cursor SDK, which brings its own runtime, so the Cursor editor isn't needed. Sign in the way the SDK does: set `CURSOR_API_KEY`, or log in once with the SDK's login. A host without the SDK at the version the mode is tested against, or without a key or a login, shows the mode as unavailable, with the reason.
 
 **Where it works.** Like every harness mode, each session gets its own git worktree and branch of the repository `KITCHEN_SINK_HARNESS_WORKSPACE` names, on `kitchen-sink/cursor-session/<session>`, and every turn of that session works there (see [Claude Code mode](#claude-code-mode) for where worktrees live and how to clear them). Cursor runs with its sandbox off, so like every harness mode here it is not confined to that worktree — see [Claude Code mode](#claude-code-mode).
+
+Cursor loads nothing from the repository, even when you trust it: its SDK can't load project settings without their hooks. Trusted, it is still handed the keys you named.
 
 Its commands start with only the environment variables Kitchen Sink passes it, not the server's whole environment: Cursor's runtime runs in a separate process that is handed only those. That is not a security boundary; the process runs as the server's OS user, so a command that goes looking can still read the server's environment on Linux. Containing that takes a separate user or a container. A command Cursor started can keep running briefly after you stop a turn.
 
@@ -310,6 +327,8 @@ Most are optional. These are the ones you're likely to set:
 | `OPENAI_API_KEY` | Optional. Enables voice. |
 | `KITCHEN_SINK_TEST_MODE` | `1` runs every model as a script and needs no key. See [Without a model key](#without-a-model-key). |
 | `KITCHEN_SINK_HARNESS_WORKSPACE` | The top level of the git checkout the coding harness modes work on. Each session gets its own worktree and branch of it, kept outside the checkout under `~/.local/state/flow-state-dev/kitchen-sink-harness/`. Unset, they use the checkout the server runs from in local development, and are off otherwise. Ignored on Vercel, where they're always off. |
+| `KITCHEN_SINK_HARNESS_TRUSTED` | `1` trusts the repository the harness modes work on: Claude Code loads its `CLAUDE.md`, skills and project settings with hooks off, and Codex keeps your MCP servers. Unset, nothing is loaded from it. Off on Vercel. See [Run it](#run-it). |
+| `KITCHEN_SINK_HARNESS_PASS` | Comma-separated names of the server's variables every harness run is handed, such as `LINEAR_API_KEY,GH_TOKEN`. Read only when trusted. The model can read them. |
 | `PORT` | The port the server listens on. Defaults to `3000`. |
 | `STORE_TYPE` | The default keeps sessions and hired workers in a SQLite file, `.fsdev/data/flowstate.db`, across restarts. `memory` starts empty each time, and `filesystem` keeps JSON files in `.fsdev/data` instead. Ignored when a database URL is set. |
 | `FSD_DB_URL` | A Postgres connection string. When set, the app stores everything there. `DATABASE_URL` is read if `FSD_DB_URL` isn't set. |

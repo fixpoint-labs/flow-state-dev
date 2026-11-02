@@ -11,8 +11,8 @@
  * worker could see from before the turn. Under the goal checks' `no-history` control the scripted model is
  * handed only the system messages and the latest turn.
  * A scenario can hold its answer for a while first (`holdMs`), which
- * `test/mock-flowstate.ts` applies before the model runs.
- * `policy: "allow"` (set in `test/mock-flowstate.ts`) catches anything else
+ * `test-model-resolver.ts` applies before the model runs.
+ * `policy: "allow"` (set in `test-model-resolver.ts`) catches anything else
  * with a no-op model.
  *
  * A coordinator's best-fit evaluation, block name `coordinator-route`, is

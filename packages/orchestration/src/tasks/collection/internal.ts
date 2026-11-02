@@ -26,6 +26,7 @@ import { steersForAttempt, untakenSteers } from "../steers";
 import type { SuspensionHold } from "../schema/hold";
 import { answerOf, askedOnTicket, droppedMirror, hasOpenHold, holdWrite, isRowHold, keptOnEnding, newRowHolds, openRowHolds, owesTurn } from "./holds";
 import type { TaskChangeKind } from "./change-event";
+import { SKIPPED_LABEL } from "./cascade";
 import type {
   ClaimOptions,
   TaskHandle,
@@ -427,6 +428,72 @@ export function settingsChangeKind(prev: TaskStatus, next: TaskStatus): TaskChan
   if (prev === "pending" && next === "held") return "held";
   if (prev === "held" && next === "pending") return "released";
   return "settings_changed";
+}
+
+/**
+ * The one retry write (FIX-2383): a failed or cancelled row back to
+ * `pending`, keeping its id, history and spend, decided on the freshest
+ * committed row inside the write. Both backings run it.
+ *
+ * It is not an ending: `endingOf` reads `errored → pending` as none, so no
+ * cascade, notice or recorder runs. The grant goes into the row's
+ * `retryLedger`, the board's one retry count (FIX-948). `attempts` is left
+ * alone, so the next claim takes a new attempt and a notice keyed by attempt
+ * is a new one; `maxAttempts` is left alone too, so a row with tries left keeps
+ * them and one with none gets exactly this one.
+ *
+ * Refused, with nothing written: a row that hasn't ended or that completed
+ * (`disallowed`; the status tells which); a row whose last ending is still
+ * being delivered (`settling`: a cascade, a resume or a cancel owed, which a
+ * late payment would aim at the new attempt); a row a dependency of which
+ * ended (`dependency-ended`: it could never start); a spent budget
+ * (`retry-budget`), only where the backing enforces one.
+ *
+ * @param lookup The board's committed row by id, for the dependency check.
+ * @param budgetSpent Whether the board's `maxTotalRetries` is spent, read
+ *   against the committed ledger; `() => false` where none is enforced.
+ */
+export function retryWrite(
+  task: Task,
+  lookup: (id: string) => Task | undefined,
+  budgetSpent: () => boolean,
+): { patch: Partial<Task> } | { decline: TaskWriteDeclineReason } {
+  if (task.status !== "errored" && task.status !== "cancelled") return { decline: "disallowed" };
+  if (task.cascadeOwed != null || task.resumeOwed === true || task.cancelOwed === true) return { decline: "settling" };
+  for (const depId of task.deps ?? []) {
+    const dep = lookup(depId);
+    if (dep !== undefined && (dep.status === "errored" || dep.status === "cancelled")) return { decline: "dependency-ended" };
+  }
+  if (budgetSpent()) return { decline: "retry-budget" };
+  // A cascade's cancel labelled the row skipped and named its cause; the retry undoes both.
+  const labels = task.causedBy !== undefined ? task.labels?.filter((label) => label !== SKIPPED_LABEL) : task.labels;
+  return {
+    patch: {
+      status: "pending",
+      // The failure's words are the next attempt's feedback, as a soft retry's are; a cancel's reason is not.
+      ...(task.status === "errored" ? { feedback: task.error } : {}),
+      error: undefined,
+      completedAt: undefined,
+      cancelledVia: undefined,
+      causedBy: undefined,
+      leaseUntil: undefined,
+      claimedBy: undefined,
+      ...(labels !== task.labels ? { labels } : {}),
+      // The last attempt's live wait was resumed with its ending (no resume is
+      // owed, above): its gate is closed, and a new attempt's wait takes the
+      // slot afresh. A lapsed slot stays: the request it is lapsed for still
+      // runs, and its release delivers what it held.
+      ...(task.wait != null && task.wait.lapsed !== true ? { wait: undefined } : {}),
+      // The ended attempt's questions closed with it (`openHolds` reads none on
+      // an ended row); reopened, they would hold the new attempt. Answered ones
+      // stay, beside the steers that answer them.
+      ...(task.holds?.some((hold) => !isRowHold(hold) || answerOf(task, hold.id) === undefined)
+        ? { holds: task.holds.filter((hold) => isRowHold(hold) && answerOf(task, hold.id) !== undefined) }
+        : {}),
+      retryPending: true,
+      retryLedger: grantRetry(task),
+    },
+  };
 }
 
 function sameIds(a: readonly string[], b: readonly string[] | undefined): boolean {
@@ -1348,6 +1415,8 @@ export function applyClaimToTask<TInput, TOutput>(
     // Every claim advances the turn generation the claim ticket carries (D3).
     turn: (task.turn ?? 0) + 1,
     turnOwed: undefined,
+    // A retried row's reopening ends at its first claim (FIX-2383).
+    retryPending: undefined,
     ...(recovering ? { abandonments: readAbandonments(task as Task) + 1 } : {}),
     startedAt: task.startedAt ?? now,
     leaseUntil: now + leaseDurationMs,

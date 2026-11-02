@@ -1,0 +1,83 @@
+<svg viewBox="0 0 940 410" role="img" aria-label="What changes. Today, with the in-memory bus on two processes over one Postgres, a write on process 1 wakes only process 1's views; a view on process 2 finds it by reading the store every second, four statements a second when nothing changed. After: the Postgres bus sends each notice as a pg_notify through the pool the stores already use. Each process holds one listening connection, taken from the live-tail pool it already opens, and fans the notice out to its own views, which read once. The bus says it crosses processes only while it hears its own ping come back; with no tail pool, behind a pooler, or while the connection is down, it says it does not, and the views keep the once-a-second read."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .band  { fill:var(--surface-2); }
+    .cell  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .fall  { fill:var(--surface); stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:5 4; }
+    .ln    { stroke:var(--ink-2); stroke-width:1.4; fill:none; }
+    .ln-g  { stroke:var(--gone); stroke-width:1.4; fill:none; stroke-dasharray:4 3; }
+    .ln-c  { stroke:var(--code); stroke-width:1.6; fill:none; }
+    .hd    { fill:var(--ink-2); }
+    .hd-g  { fill:var(--gone); }
+    .hd-c  { fill:var(--code); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-e   { font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-g   { fill:var(--gone); } .c-c { fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="410"/>
+
+  <g id="today">
+    <rect class="band" x="16" y="14" width="908" height="22" rx="4"/>
+    <text class="t-lbl" x="28" y="29">TODAY · IN-MEMORY BUS ON TWO PROCESSES · PROCESS 2 READS EACH SECOND</text>
+    <rect class="cell" x="28" y="56" width="200" height="50" rx="5"/>
+    <text class="t-b" x="42" y="77">Process 1 writes a reply</text>
+    <text class="t-s" x="42" y="94">its own views wake at once</text>
+    <line class="ln" x1="228" y1="81" x2="350" y2="81"/>
+    <polygon class="hd" points="350,76 359,81 350,86"/>
+    <rect class="cell" x="362" y="56" width="200" height="50" rx="5"/>
+    <text class="t-b" x="376" y="77">Postgres</text>
+    <text class="t-s" x="376" y="94">the rows; no notice crosses</text>
+    <line class="ln-g" x1="680" y1="81" x2="572" y2="81"/>
+    <polygon class="hd-g" points="572,76 563,81 572,86"/>
+    <text class="t-e c-g" x="584" y="72">reads every 1 s</text>
+    <rect class="cell" x="680" y="56" width="230" height="50" rx="5"/>
+    <text class="t-b" x="694" y="77">Process 2, an open view</text>
+    <text class="t-s" x="694" y="94">4 statements a second, idle or not</text>
+  </g>
+
+  <g id="after">
+    <rect class="band" x="16" y="132" width="908" height="22" rx="4"/>
+    <text class="t-lbl" x="28" y="147">AFTER · THE POSTGRES BUS · A NOTICE CROSSES, THE VIEW READS ONCE</text>
+    <rect class="cell" x="28" y="174" width="200" height="56" rx="5"/>
+    <text class="t-b" x="42" y="195">Process 1 writes a reply</text>
+    <text class="t-s" x="42" y="212">the bus publishes after it lands</text>
+    <line class="ln-c" x1="228" y1="202" x2="350" y2="202"/>
+    <polygon class="hd-c" points="350,197 359,202 350,207"/>
+    <text class="t-e c-c" x="240" y="193">pg_notify, main pool</text>
+    <rect class="new" x="362" y="174" width="200" height="56" rx="5"/>
+    <text class="t-b" x="376" y="195">Postgres, one bus channel</text>
+    <text class="t-s" x="376" y="212">topic and kind, never rows</text>
+    <line class="ln-c" x1="562" y1="202" x2="668" y2="202"/>
+    <polygon class="hd-c" points="668,197 677,202 668,207"/>
+    <text class="t-e c-c" x="574" y="193">one LISTEN</text>
+    <rect class="new" x="680" y="174" width="230" height="56" rx="5"/>
+    <text class="t-b" x="694" y="195">Process 2, one listener</text>
+    <text class="t-s" x="694" y="212">from the tail pool, fanned out</text>
+    <line class="ln" x1="795" y1="230" x2="795" y2="262"/>
+    <polygon class="hd" points="790,262 795,271 800,262"/>
+    <rect class="cell" x="680" y="274" width="230" height="46" rx="5"/>
+    <text class="t-b" x="694" y="294">Its open views read once</text>
+    <text class="t-s" x="694" y="310">0 statements while idle</text>
+  </g>
+
+  <g id="fallback">
+    <rect class="fall" x="28" y="274" width="534" height="120" rx="5"/>
+    <text class="t-lbl" x="42" y="294">WHEN IT CAN'T HEAR ITS OWN PING · D1</text>
+    <text class="t-b" x="42" y="316">The bus says it does not cross, and views read each second</text>
+    <text class="t-s" x="42" y="336">no tail pool: the { pool } and { executor } shapes, Vercel</text>
+    <text class="t-s" x="42" y="353">a pooler that drops notices · the connection is down</text>
+    <text class="t-s" x="42" y="370">it says it crosses again once a ping comes back,</text>
+    <text class="t-s" x="42" y="387">and every view reads once</text>
+  </g>
+</svg>

@@ -47,6 +47,49 @@ fsdev ui add approval
 
 The card is presentation over the `useApproval` hook from `@flow-state-dev/react`, which owns the resume call and resolved state. It reads the resolution from `SessionItemsProvider`, so wrap your item list in one for the receipt to show on reload. For the full server-to-UI walkthrough, see the [Human-in-the-Loop guide](/guides/human-in-the-loop).
 
+## RequestRecovery
+
+The line a failed turn leaves in a thread. It names who hit the failure, shows the reason, code and details in the same text the error item renderer uses, and draws a Retry button. While the retry's promise runs, the button is disabled and reads "Retrying…". If the promise rejects, the line adds "Retry failed:" and the error message.
+
+```bash
+fsdev ui add request-recovery
+```
+
+Pass it an `ErrorItem`'s fields and a retry callback:
+
+```tsx
+const { resumeLatestRequest } = useSession(/* ... */);
+
+<RequestRecovery
+  who="Assistant"
+  reason={item.message}
+  code={item.code}
+  details={item.details}
+  onRetry={resumeLatestRequest}
+/>
+```
+
+`onRetry` can also be `() => client.flow(kind).request(item.requestId).retry()`.
+
+The server retries only a session's latest failed or interrupted request, so pass `onRetry` for that one and leave it off older lines. Without `onRetry`, no button is drawn. The component isn't part of `chatAssistantRenderers`, so your app decides where it goes.
+
+### A turn a restart cut off
+
+When the server restarts in the middle of a turn, the request is marked interrupted. Nothing failed, and the work done so far is kept, so the line offers two choices instead of Retry. **Continue** carries the same request on: finished steps are replayed, and the step that was running starts again. **Discard** ends the request for good, and it stops showing up as interrupted.
+
+Pass `onContinue`, `onDiscard`, or both, and the line switches to its interrupted look, with no Retry:
+
+```tsx
+const handle = client.flow(kind).request(lost.id);
+
+<RequestRecovery
+  onContinue={() => handle.continue()}
+  onDiscard={() => handle.abort()}
+/>
+```
+
+The default text is "This turn was cut off before it finished." Pass `reason` to say something else, and `who` to name whose turn it was. Each button is disabled while its call runs, and a refused call is shown on the line the same way a refused retry is. To find lost turns, poll `client.requests.interrupted()` every few seconds and group them by conversation with `interruptedBySession` from `@flow-state-dev/client`. A turn shows up there about a minute after the restart.
+
 ## ModelBadge
 
 A small pill that shows which model actually answered. It reads a `ModelIdentity` (the `{ actual, requested?, gateway? }` record stamped on every generator-emitted item), renders `actual` as the label, and lists the requested string and gateway in the hover tooltip. It renders nothing when the model is undefined, so passing `item.model` straight from any item is safe.
@@ -59,6 +102,41 @@ fsdev ui add model-badge
 import { ModelBadge } from "@/components/flow-state/model-badge";
 
 <ModelBadge model={item.model} />
+```
+
+## Spend
+
+One line for what a coding run spent: the model, the tokens, and the vendor's charge when it reported one, like `claude-sonnet-4-5 · 12.4k tokens · $0.42`. Hand it the `spend` a task row carries (from `listTasks`), or the `spend` on a harness session's turn record; both have the same shape. A count nobody reported reads as "no tokens reported yet", never 0. A run on a subscription isn't billed per run, so it shows tokens and no dollar figure.
+
+```bash
+fsdev ui add spend
+```
+
+```tsx
+import { Spend } from "@/components/flow-state/spend";
+
+<Spend spend={task.spend} attempts={task.attempts} />
+<Spend spend={turn.spend} durationMs={turn.endedAt - turn.at} split />
+```
+
+`split` shows input and output apart. `attempts` appears from the second attempt on. `harnessLabel` puts the harness's name first, for a view that doesn't already show it.
+
+## WorkPlace
+
+Shows where a coding run left its work: the branch, how many commits it made, and copy buttons for the commands that get you there. That's `git switch` to the branch, `cd` into the run's checkout, and `git log` over just the run's commits. When the count can't be known, it says so instead of showing zero.
+
+```bash
+fsdev ui add work-place
+```
+
+It takes plain props, which you get from `workPlace` in `@flow-state-dev/harness-manager/work-place`, an entry a page can bundle. Pass it a coding task's output, or the worktree row a harness session points at (`state.workspace.worktree` is the row's key in the user's `worktrees` list). From a row it also shows the worktree's name, its state when it isn't ready, and whose worktree it is when your session is attached to someone else's. For a run with no branch, it renders nothing.
+
+```tsx
+import { workPlace } from "@flow-state-dev/harness-manager/work-place";
+import { WorkPlace } from "@/components/flow-state/work-place";
+
+<WorkPlace place={workPlace(task.output)} />
+<WorkPlace place={workPlace(worktreeRow, { session: sessionId })} />
 ```
 
 ## AuditAnnotation

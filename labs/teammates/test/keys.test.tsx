@@ -10,7 +10,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/App";
 import { createFixtureLab } from "./fake-lab";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // The app keeps what is open in the page's address; each test starts on a bare one.
+  window.history.replaceState(null, "", "/");
+});
 
 const workers = () => screen.getByRole("navigation", { name: "Workers" });
 const composer = () => document.querySelector<HTMLTextAreaElement>("textarea[data-composer]");
