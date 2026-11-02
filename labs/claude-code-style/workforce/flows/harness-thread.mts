@@ -119,6 +119,8 @@ export const HARNESSES: Record<string, (feeds: HarnessFeeds) => HarnessBlock> = 
       resume: feeds.resume,
       onSession: feeds.onSession,
       onActivity: feeds.onActivity,
+      // Codex's own default sandbox is read-only; a coder has to edit and commit.
+      thread: { sandboxMode: "workspace-write" },
       client: { env: harnessEnv({ pass: CODEX_PASS }) },
       name: "codex",
     }) as unknown as HarnessBlock,

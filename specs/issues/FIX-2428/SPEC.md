@@ -30,8 +30,8 @@ the app's code.**
 |---|---|
 | **The real need** | The epic's goal: "an app gets that by using the framework's hooks, not by writing push code", with every subscribe "checked on the server at every connect and reconnect" (ER-4) |
 | **Smaller, and rejected** | A socket that only works with cookie sign-in. Shift Manager and the DevTool send a bearer header, which a browser socket can't carry, so the epic's own apps would keep polling |
-| **Bigger, and not this issue's** | Notices for user and org state (FIX-1506), task boards (FIX-2429), across processes (the Postgres bus), on serverless (FIX-380), all four together (FIX-2368) |
-| **Not done if** | A notice arrives but the screen shows nothing new · a refused topic is heard after a reconnect · the hook on a host with no push never reads again · a host with push reads on the timer while the socket is up and its bus crosses processes · a socket whose bus can't cross processes stops the timer · the guide implies push on Vercel |
+| **Bigger, and not this issue's** | Notices for user and org state (FIX-1506), task boards (FIX-2429), across processes (the Postgres bus), on serverless (Ably, FIX-380: a later transport behind the same seam, outside FIX-2367), all four together (FIX-2368) |
+| **Not done if** | A notice arrives but the screen shows nothing new · a refused topic is heard after a reconnect · the hook on a host with no push never reads again · a host with push reads on the timer while the socket is up and its bus crosses processes · a socket whose bus can't cross processes stops the timer · `onChange` isn't passed the notice that woke it (`null` for a connect, a reconnect or a poll), so a view can't act on its kind · the guide implies push on Vercel |
 
 ```mermaid
 flowchart LR
@@ -93,7 +93,8 @@ says what; the hook; which host gets push; and that on the default in-memory bus
 included, every hook still reads on its timer between notices until a bus that crosses backs it), in `sidebarsGuides.ts` after
 `projects-on-org-scope`; update `client/overview.md`, `client/react.md`, `api/client.md`
 (`subscribe` added, `fsd.stream` removed), `api/react.md`, and `server/setup.md`'s route table;
-update the client, react and node READMEs. FIX-380 adds the Ably row to the guide.
+update the client, react and node READMEs. An Ably row waits for FIX-380, a later transport
+behind the same seam, outside FIX-2367.
 
 ```mermaid
 flowchart LR
