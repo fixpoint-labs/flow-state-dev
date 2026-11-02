@@ -208,7 +208,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   /** How a task's run is keyed: its task id, in its payload's phase or the answer phase. */
   const runOf = (row: Task) => {
     const feature = harnessFeatureOf(row.input);
-    if (feature !== undefined) return { issue: taskIssueSegment(row.id), phase: feature.phase };
+    if (feature !== undefined) return { issue: taskIssueSegment(row.id), phase: feature.phase ?? options.phase.phase };
     // A malformed key is no run here, never an answer run: the router sends it to implement, which refuses it.
     return namesHarnessFeature(row.input) ? undefined : { issue: taskIssueSegment(row.id), phase: options.answerPhase.phase };
   };

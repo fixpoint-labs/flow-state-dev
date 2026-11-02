@@ -150,8 +150,10 @@ import {
 } from "./run-owner";
 
 export type { RequestIdentityContext } from "./run-owner";
+import { issueSpecOptions, readIssueSpecSection, type IssueSpecOption } from "./issue-spec";
 import {
   assertDerivedIdentity,
+  assertSafeSegment,
   harnessTaskId,
   sameSegment,
   ASK_MARKER_IGNORED,
@@ -179,6 +181,13 @@ export interface PhaseRunContext {
   epic: string;
   issue: string;
   phase: string;
+  /**
+   * The tracker issue the task names (`FIX-2165`), or `null` when it names
+   * none. On a fixed board it is {@link issue}. On a board read from the
+   * claim, `issue` is the row's own id and this is the issue its
+   * `harnessFeature` key names, so a prompt can say what the work is for.
+   */
+  trackerIssue: string | null;
   /** Which attempt this is, as the board counted it. */
   attempt: number;
   /** The run's own checkout. */
@@ -497,6 +506,12 @@ export interface ManagerOptions {
    */
   reviewChanges?: boolean;
   /**
+   * Open the brief of a task that names an issue with the issue's spec, read
+   * from the run's checkout once it is provisioned (`./issue-spec`). Off by
+   * default: the brief is the phase's prompt alone.
+   */
+  issueSpec?: IssueSpecOption;
+  /**
    * Ask a person before each tool call the harness hasn't pre-allowed
    * (FIX-2389). Off by default: the feed is absent, and the harness's own
    * permission settings decide, as without it.
@@ -694,8 +709,21 @@ export const harnessTaskInputSchema = z.object({
 });
 
 /**
+ * What a task names under {@link HARNESS_FEATURE_KEY} on a board read from the
+ * claim: the issue, and optionally the phase. A key naming only the issue runs
+ * as the manager's own phase, so a lead filing "implement FIX-2165" names the
+ * issue and nothing it would have to know about the manager.
+ */
+export const harnessFeatureSchema = z.object({
+  /** The tracker issue the task is for (`FIX-2165`). */
+  issue: z.string(),
+  /** Which phase of it. Absent: the manager's own. */
+  phase: z.string().optional(),
+});
+
+/**
  * The key a task's `input` names feature work under on a board read from the
- * claim: `{ [HARNESS_FEATURE_KEY]: { issue, phase } }`.
+ * claim: `{ [HARNESS_FEATURE_KEY]: { issue, phase? } }`.
  *
  * **Namespaced, because the rest of `input` is the filer's.** A model filing
  * from a conversation picks its own field names, and `issue` ("the problem")
@@ -714,12 +742,16 @@ export function namesHarnessFeature(input: unknown): boolean {
 /** The parse of the key's value, or `undefined` when `input` doesn't name it: one parse for both readers below. */
 function parseHarnessFeature(input: unknown) {
   return namesHarnessFeature(input)
-    ? harnessTaskInputSchema.safeParse((input as Record<string, unknown>)[HARNESS_FEATURE_KEY])
+    ? harnessFeatureSchema.safeParse((input as Record<string, unknown>)[HARNESS_FEATURE_KEY])
     : undefined;
 }
 
-/** The feature work a task's `input` names under {@link HARNESS_FEATURE_KEY}, or `undefined` for none or a malformed one. */
-export function harnessFeatureOf(input: unknown): { issue: string; phase: string } | undefined {
+/**
+ * The feature work a task's `input` names under {@link HARNESS_FEATURE_KEY}, or
+ * `undefined` for none or a malformed one. `phase` is absent when the task
+ * names only its issue.
+ */
+export function harnessFeatureOf(input: unknown): { issue: string; phase?: string } | undefined {
   const parsed = parseHarnessFeature(input);
   return parsed?.success === true ? parsed.data : undefined;
 }
@@ -827,6 +859,8 @@ const managerStateSchema = z.object({
   /** The board segment of the run's identity (`runBoardSegment`). */
   epic: z.string().nullable().default(null),
   issue: z.string().nullable().default(null),
+  /** The tracker issue the task names (`PhaseRunContext.trackerIssue`); `null` for none. */
+  trackerIssue: z.string().nullable().default(null),
   phase: z.string().nullable().default(null),
   topic: z.string().nullable().default(null),
   taskId: z.string().nullable().default(null),
@@ -1057,7 +1091,7 @@ export function describeTenant(tenantId: string | undefined): string {
 function taskPayload(
   input: { input?: unknown; taskId: string },
   fixedBoard: boolean,
-): { issue: string; phase: string } | undefined {
+): { issue: string; phase?: string } | undefined {
   if (fixedBoard) {
     const parsed = harnessTaskInputSchema.safeParse(input.input);
     if (parsed.success) return parsed.data;
@@ -1072,7 +1106,7 @@ function taskPayload(
   throw new HarnessRunRefused(
     `[harness-manager] task ${input.taskId} names only part of a feature payload: ` +
       `${parsed.error.issues.map((i) => `${HARNESS_FEATURE_KEY}.${i.path.join(".")} ${i.message}`).join("; ")}. ` +
-      `Feature work names both an issue and a phase.`,
+      `Feature work names an issue, and optionally a phase.`,
     { taskId: input.taskId, ending: "errored" },
   );
 }
@@ -1479,6 +1513,14 @@ function worktreesOf(ctx: BlockContext): WorktreeCollection | undefined {
 }
 
 /**
+ * The issue a run's branch leads with: a task's tracker issue, on a board read
+ * from the claim only. A fixed board's branch is already named for its issue.
+ */
+function branchIssue(claimBoard: boolean, trackerIssue: string | null | undefined): Pick<RunLocation, "trackerIssue"> {
+  return claimBoard && trackerIssue != null ? { trackerIssue } : {};
+}
+
+/**
  * Build the manager: one dispatched worker for one phase.
  *
  * A steer on the task is in the attempt's first prompt, and one that arrives
@@ -1491,6 +1533,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     ledgers,
     judge,
     reviewChanges = false,
+    issueSpec,
     approveTools = false,
     tenant,
     phase: callerPhase,
@@ -1500,6 +1543,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     uses: hostUses,
     name = "harness-manager",
   } = options;
+  const specOptions = issueSpecOptions(issueSpec);
 
   // **A removed option, refused by name** (BP-030). A host that still passes
   // it expects to be told of each question; dropping it silently would leave
@@ -2104,6 +2148,17 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       if (payload !== undefined) {
         assertFeatureRowIdentity(input.taskId, payload.issue, phaseName, phase.phase, claim === null);
       }
+      // The issue the task is for, when it names one. On a board read from
+      // the claim it also leads the branch (see `branchFor`), checked as an
+      // identity segment first since it lands in a ref.
+      const trackerIssue = payload?.issue ?? null;
+      if (trackerIssue !== null && claim !== null) {
+        try {
+          assertSafeSegment("issue", trackerIssue);
+        } catch (malformed) {
+          throw new HarnessRunRefused((malformed as Error).message, { taskId: input.taskId, ending: "errored" });
+        }
+      }
 
       // **A conductor serves one tenant, and refuses any other.**
       //
@@ -2176,6 +2231,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
 
       await ctx.sequencer!.patchState({
         issue,
+        trackerIssue,
         phase: phaseName,
         topic,
         taskId: input.taskId,
@@ -2196,7 +2252,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // The record is read first because a run it names an older branch for
       // keeps that branch and its tree (see `locationFor`).
       const location = locationFor(
-        { principal: runPrincipal(ctx), epic, issue, phase: phaseName },
+        { principal: runPrincipal(ctx), epic, issue, phase: phaseName, ...branchIssue(claim !== null, trackerIssue) },
         recorded?.branch,
       );
       const branch = branchFor(location);
@@ -2278,7 +2334,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   const provisionRunPlace = async (ctx: BlockContext): Promise<WorkspacePlace> => {
     const state = managerState(harnessCtxState(ctx));
     const location = locationFor(
-      { principal: runPrincipal(ctx), epic: state.epic!, issue: state.issue!, phase: state.phase! },
+      {
+        principal: runPrincipal(ctx),
+        epic: state.epic!,
+        issue: state.issue!,
+        phase: state.phase!,
+        ...branchIssue(state.claim !== null, state.trackerIssue),
+      },
       state.branch,
     );
     const answer = pinnedAnswer(await host.source(ctx), state);
@@ -2353,6 +2415,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const run: PromptRunContext = {
         epic: state.epic!,
         issue: state.issue!,
+        trackerIssue: state.trackerIssue ?? null,
         phase: state.phase!,
         attempt: input.attempts,
         workspacePath: state.workspacePath!,
@@ -2471,8 +2534,16 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         )?.steers ?? [];
       const restored = heldPromptSection(place, state.held);
       const withRestored = restored === undefined ? prompt : `${prompt}\n\n${restored}`;
+      // With `issueSpec` on, a task naming an issue opens its brief with the
+      // issue's spec, read from the checkout just provisioned: the prompt
+      // builder ran before it existed. Every attempt, since one may start cold.
+      const specSection =
+        specOptions === undefined || state.trackerIssue == null
+          ? undefined
+          : await readIssueSpecSection(place.cwd, state.trackerIssue, specOptions);
+      const briefed = specSection === undefined ? withRestored : `${specSection}\n\n${withRestored}`;
       return {
-        prompt: steers.length === 0 ? withRestored : `${withRestored}\n\n${renderSteers(steers, STEERS_IN_BRIEF)}`,
+        prompt: steers.length === 0 ? briefed : `${briefed}\n\n${renderSteers(steers, STEERS_IN_BRIEF)}`,
       };
     },
   });
@@ -2672,6 +2743,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             runPhase.isDone({
               epic: state.epic!,
               issue: state.issue!,
+              trackerIssue: state.trackerIssue ?? null,
               phase: state.phase!,
               attempt: identity.attempt,
               workspacePath: state.workspacePath!,

@@ -21,6 +21,13 @@
  * `steer` hands it the line and answers whether it took it. When it didn't,
  * the page sends the line as the next `turn`.
  *
+ * - **Which issue it is for** (`issue`, optional): a tracker key the person
+ *   named when the session was born, fixed like the model. The workspace is
+ *   handed it on the session's place, so a host can name the branch after it.
+ *   With `issueSpec` on, each turn until the harness confirms a conversation
+ *   opens with the issue's spec, read from the session's own checkout
+ *   (`./issue-spec`). Off, the prompt is the person's words alone.
+ *
  * Each turn also gets a record under its request id: what it asked for, what
  * the harness confirmed during it, and how it failed, read through core's
  * neutral `harnessFailureKind` and never a harness's message. A page derives
@@ -85,6 +92,8 @@ import {
   type WorktreeRecording,
 } from "@flow-state-dev/workspace";
 import { z } from "zod";
+
+import { isTrackerIssue, issueSpecOptions, readIssueSpecSection, TRACKER_ISSUE_REFUSED, type IssueSpecOption } from "./issue-spec";
 
 /** What one turn asked for and what came of it, recorded under its request id. */
 export const harnessTurnRecordSchema = z.object({
@@ -159,6 +168,12 @@ export const harnessSessionStateSchema = z.object({
    */
   model: z.string().min(1).optional().readonly(),
   /**
+   * The tracker issue this session works on (`FIX-2165`), named at create and
+   * fixed for the session's life, like `model`. Absent for a session that
+   * names none, and on every session stored before issues could be named.
+   */
+  issue: z.string().min(1).optional().readonly(),
+  /**
    * Where the session starts. Set at create and fixed, like `model`. Absent:
    * wherever the host starts a session by default, as every session stored
    * before it could be picked does.
@@ -185,6 +200,12 @@ export interface HarnessSessionPlace {
   /** The authenticated tenant, when the host has one. */
   readonly tenantId?: string;
   readonly sessionId: string;
+  /**
+   * The issue the session was born with, when it names one. A host that
+   * names branches leads the session's branch with it, so the branch says
+   * what it is for and a tracker can link it.
+   */
+  readonly issue?: string;
 }
 
 /** What `HarnessSessionWorkspace.provision` is told beside the place. */
@@ -317,6 +338,12 @@ export interface HarnessSessionFlowOptions {
    * picked). Unset, the harness runs its own default.
    */
   readonly defaultModel?: string;
+  /**
+   * Open each turn of a session that names an issue with the issue's spec,
+   * until the harness confirms a conversation (`./issue-spec`). Off by
+   * default: a turn's prompt is the person's words alone.
+   */
+  readonly issueSpec?: IssueSpecOption;
 }
 
 /** How many turn records a session keeps. A notice reads only the latest. */
@@ -327,13 +354,15 @@ function requestOf(ctx: HarnessCallbackContext): string {
   return ctx.request.identity.id;
 }
 
-/** The session's place: its flow kind, tenant and id, as the framework names them. */
+/** The session's place: its flow kind, tenant, id and issue, as the framework and its create named them. */
 function placeOf(kind: string, ctx: HarnessCallbackContext): HarnessSessionPlace {
   const identity = ctx.session.identity;
+  const issue = (ctx.session.state as HarnessSessionState | undefined)?.issue;
   return {
     flowKind: kind,
     sessionId: identity.id,
     ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
+    ...(issue !== undefined ? { issue } : {}),
   };
 }
 
@@ -432,6 +461,9 @@ export const HARNESS_SESSION_REMOVE_UNSUPPORTED = "This host's workspace does no
 
 /** The message a create without a model is refused with. */
 export const HARNESS_SESSION_MODEL_REQUIRED = "A new session must name the model it runs (`state.model`).";
+
+/** The message a create naming a malformed issue is refused with. */
+export const HARNESS_SESSION_ISSUE_REFUSED = `A session's \`state.issue\` is refused. ${TRACKER_ISSUE_REFUSED}`;
 
 /**
  * The feeds for one flow kind.
@@ -559,9 +591,8 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   const inUse = new Map<string, LockLease>();
   // The branch each attached turn started on, by request id: it must end on it.
   const attachedHeads = new Map<string, string | null>();
-  const agent = options.agent(
-    harnessSessionFeeds(options.kind, options.workspace, options.defaultModel, steering, inUse, attachedHeads),
-  );
+  const feeds = harnessSessionFeeds(options.kind, options.workspace, options.defaultModel, steering, inUse, attachedHeads);
+  const agent = options.agent(feeds);
   // Core's steer action, allowed beside a running turn: it runs no harness, it
   // hands the running one a line. Recorded on the turn that took it.
   const steer = steering.action({
@@ -735,12 +766,34 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       return { removed: true, branchDeleted };
     },
   });
-  const turn = sequencer({
+  // With `issueSpec` on, a session that names an issue opens each turn with
+  // its spec until the harness confirms a conversation, which then has it.
+  // Read from the session's own checkout, provisioned here the way the
+  // harness's `cwd` feed does (it hands the same directory back).
+  const specOptions = issueSpecOptions(options.issueSpec);
+  const withIssueSpec =
+    specOptions === undefined
+      ? undefined
+      : handler({
+          name: "issue-spec-brief",
+          inputSchema: z.object({ prompt: z.string().min(1) }),
+          execute: async (input, ctx): Promise<{ prompt: string }> => {
+            const harnessCtx = ctx as unknown as HarnessCallbackContext;
+            const state = harnessCtx.session.state as HarnessSessionState;
+            if (state.issue === undefined || state.binding?.confirmed != null) return { prompt: input.prompt };
+            const cwd = await feeds.cwd(harnessCtx);
+            const section = await readIssueSpecSection(cwd, state.issue, specOptions);
+            return { prompt: `${section}\n\n## The request\n\n${input.prompt}` };
+          },
+        });
+  const opened = sequencer({
     name: "turn",
     description: "One turn of a harness session: the prompt, run by the harness where the session works.",
     inputSchema: z.object({ prompt: z.string().min(1) }),
-  })
-    .tap(titleFromPrompt)
+  }).tap(titleFromPrompt);
+  // The brief provisions the checkout, so a failure there is the turn's
+  // failure too, recorded the way the harness's own is.
+  const turn = (withIssueSpec === undefined ? opened : opened.step(withIssueSpec.rescue([{ block: recordFailure }])))
     .step(agent.rescue([{ block: recordFailure }]))
     .tap(recordFailedOutcome);
 
@@ -765,18 +818,22 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     resourceVisibility: (_ctx, resource) => (resource.name === WORKTREES ? "read-only" : "visible"),
     session: {
       stateSchema: harnessSessionStateSchema,
-      // The page reads the model, the binding and the turns. The model is the
-      // creator's to name, once; nothing a caller sends writes the other two.
-      client: { expose: ["model", "start", "binding", "turns", "workspace"] },
+      // The page reads the model, the issue, the start, the binding, the
+      // turns and the workspace. The model, issue and start are the creator's
+      // to name, once; nothing a caller sends writes the rest.
+      client: { expose: ["model", "issue", "start", "binding", "turns", "workspace"] },
       serverOwned: ["binding", "turns", "workspace"],
       // Every path that creates a session asks this: a new session runs a
-      // named model, and a start it names is one the flow can honour.
+      // named model, a start it names is one the flow can honour, and an
+      // issue it names is a tracker key (it becomes a path segment and a
+      // branch name).
       createCheck: ({ state, principal, sessionId }) => {
         if (typeof state.model !== "string" || state.model === "") return { ok: false, message: HARNESS_SESSION_MODEL_REQUIRED };
         const start = harnessSessionStartSchema.safeParse(state.start);
         if (state.start !== undefined && !start.success) {
           return { ok: false, message: HARNESS_SESSION_START_INVALID };
         }
+        if (state.issue !== undefined && !isTrackerIssue(state.issue)) return { ok: false, message: HARNESS_SESSION_ISSUE_REFUSED };
         // An attaching session names a worktree that is there now, in this tenant.
         const owner = harnessSessionAttachedTo(start.success ? start.data : undefined);
         if (owner !== null) {
