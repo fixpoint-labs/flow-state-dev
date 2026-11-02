@@ -32,7 +32,7 @@
  */
 import { createClient, readEveryCollectionPage, type Client, type SessionRequestSummary } from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
+import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   createWorkforceClient,
   RECEIVED_MESSAGE_COMPONENT,
@@ -527,7 +527,7 @@ function activityOf(requests: readonly SessionRequestSummary[]): Activity {
 
 /** The connection `fsdev dev` served this page with. */
 function connect(): Client {
-  return createClient({ userId: readUserId(), baseUrl: "", fetcher: withBearerToken(readBearerToken()) });
+  return createClient({ userId: readUserId(), baseUrl: readBasePath(), fetcher: withBearerToken(readBearerToken()) });
 }
 
 /** The adapter the app runs on: the package, through one client. */
