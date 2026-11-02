@@ -1,5 +1,5 @@
 /**
- * Landing page styles for flow-state.dev, ported from the "Landing · agent backend"
+ * Landing page styles for flow-state.dev, ported from the flow-state.dev landing
  * design canvas. Every rule is scoped under `.fs-landing` so it can't leak into docs pages.
  */
 .fs-landing{margin:0;background:#f0ece1}

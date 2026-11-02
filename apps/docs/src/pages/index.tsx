@@ -1,5 +1,5 @@
 /**
- * flow-state.dev home page: "The open-source backend for your AI workforce."
+ * flow-state.dev home page: "Harness an AI workforce."
  *
  * The page is a static port of the landing design (see `src/components/Landing`).
  * It renders its own nav and footer, so it skips the docs `Layout`; `Head` still
@@ -11,9 +11,9 @@ import Head from "@docusaurus/Head";
 import { landingMarkup } from "../components/Landing/markup";
 import "../components/Landing/landing.css";
 
-const TITLE = "flow-state.dev · The open-source backend for your AI workforce";
+const TITLE = "flow-state.dev · Harness an AI workforce";
 const DESCRIPTION =
-  "Put hundreds of agents to work, on any model, in an app built your way. Flow State runs the flows, tasks, messages and memory underneath.";
+  "Claude Code, Codex and Grok Bot are someone else's harness. Flow State gives you the building blocks to build your own, from one agent to a whole workforce, on any model, at a cost you control.";
 
 /** The landing page. */
 export default function Home(): ReactNode {
