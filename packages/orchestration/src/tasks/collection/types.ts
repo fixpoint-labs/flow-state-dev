@@ -135,7 +135,17 @@ export type TaskWriteDeclineReason =
   /** An answer to a question already answered with other words, or by another sender (FIX-2133). */
   | "answered"
   /** An answer naming no question or confirm on the row (FIX-2133). */
-  | "no-such-question";
+  | "no-such-question"
+  /**
+   * A retry of a row whose last ending is still being delivered (FIX-2383): a
+   * cascade, a resume or a cancel it owes. Try again once the board's touch
+   * has paid it.
+   */
+  | "settling"
+  /** A retry of a row one of whose dependencies failed or was cancelled (FIX-2383): retry that one first. */
+  | "dependency-ended"
+  /** A retry on a board whose `maxTotalRetries` is spent (FIX-2383, FIX-948). */
+  | "retry-budget";
 
 /**
  * What a write actually did (FIX-976).
@@ -629,6 +639,26 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * `settings_changed`.
    */
   patchSettings(id: string, patch: TaskSettingsPatch): Promise<TaskWriteOutcome>;
+  /**
+   * Retry a failed or cancelled task (FIX-2383): `errored` or `cancelled` back
+   * to `pending`, keeping its id, its steers, its output and items window, and
+   * its spend. A failure's `error` becomes the next attempt's `feedback`. The
+   * grant is counted in the row's `retryLedger`, the board's one retry count
+   * (FIX-948), and the next claim takes a new attempt, whatever `maxAttempts`
+   * had left. Not an ending: no cascade, notice or recorder runs. Publishes
+   * `retry_requested`.
+   *
+   * Declines `disallowed` on a row that hasn't ended or that completed (a
+   * completed task's output never changes: file a follow-up), `settling` on
+   * one whose last ending is still owed, `dependency-ended` on one whose
+   * dependency failed or was cancelled, and `retry-budget` where the board's
+   * `maxTotalRetries` is enforced and spent.
+   *
+   * A person's or an app's move: the task tools offer it as an action only.
+   * Optional, so a ref written before it keeps compiling (BP-030); a retry is
+   * refused on a board without it.
+   */
+  retry?(id: string): Promise<TaskWriteOutcome>;
   /**
    * Steer an open task (FIX-2086): keep `steer` on the row (`Task.steers`),
    * for every later attempt to read. Changes nothing else: no status, no

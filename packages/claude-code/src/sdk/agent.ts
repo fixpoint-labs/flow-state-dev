@@ -203,6 +203,9 @@ export interface ClaudeCodeAgentOptions {
    * Optional approval seam. When set, it is adapted onto the SDK `canUseTool`
    * callback: each tool call routes through it, and the decision is noted via a
    * status item. When unset, HITL degrades to the SDK's own `permissionMode`.
+   * A tool in `allowedTools` is pre-allowed by the SDK and never reaches it.
+   * A `held` decision stops the turn with the call unrun, for a host that
+   * waits for a person outside the run (`approveTools` on a harness manager).
    */
   onToolApproval?: (
     req: ToolApprovalRequest,
@@ -1698,7 +1701,8 @@ function relayedToolNames(tools: ClaudeCodeMcpTools): string[] {
  * is recorded as a DURABLE, non-colliding status item (auditable: it replays on
  * history reload, and a per-decision sequence number defeats `ctx.emit.status`'s
  * same-string dedupe so repeated approvals of one tool aren't swallowed). A deny
- * continues the run (the SDK surfaces the denial to the model).
+ * continues the run (the SDK surfaces the denial to the model). A held call is
+ * recorded as waiting on a person, and stops the turn (`interrupt`) unrun.
  */
 function buildCanUseTool(
   onToolApproval: NonNullable<ClaudeCodeAgentOptions["onToolApproval"]>,
@@ -1718,6 +1722,18 @@ function buildCanUseTool(
       return {
         behavior: "allow",
         updatedInput: decision.updatedInput ?? toolInput,
+      };
+    }
+    if (decision.decision === "held") {
+      // Not a deny: the call waits on a person outside this run. It must not
+      // run, and the turn stops rather than going on without it.
+      ctx.emit.status(`Waiting on approval: ${toolName} (#${seq}).`, {
+        transient: false,
+      });
+      return {
+        behavior: "deny",
+        message: decision.message ?? `Tool ${toolName} is waiting for a person's approval.`,
+        interrupt: true,
       };
     }
     ctx.emit.status(`Denied tool: ${toolName} (#${seq}).`, {

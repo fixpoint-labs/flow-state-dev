@@ -456,7 +456,7 @@ describe("Shift Coordinator (FIX-1722)", () => {
   it("is where Shift Manager lands, at / and at a path it doesn't know, first in the sidebar and current (BR-1, BR-2)", async () => {
     await openShiftCoordinator("/");
     const nav = within(screen.getByTestId("sidebar"));
-    const entries = nav.getAllByRole("button").map((b) => b.getAttribute("data-testid")).filter((id) => id?.startsWith("nav-"));
+    const entries = nav.getAllByRole("link").map((b) => b.getAttribute("data-testid")).filter((id) => id?.startsWith("nav-"));
     expect(entries.slice(0, 3)).toEqual(["nav-shift-coordinator", "nav-inbox", "nav-tasks"]);
     expect(screen.getByTestId("nav-shift-coordinator").getAttribute("aria-current")).toBe("page");
     expect(screen.getByTestId("nav-inbox").getAttribute("aria-current")).toBeNull();

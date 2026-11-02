@@ -19,6 +19,12 @@ export type TaskChangeKind =
   | "completed"
   | "errored"
   | "retried"
+  /**
+   * A failed or cancelled task was put back to waiting by a person or an app
+   * (FIX-2383): not an ending, unlike `retried`. It starts again as any
+   * waiting task does.
+   */
+  | "retry_requested"
   /** A task that hadn't started was held: it won't start until released (FIX-2080). */
   | "held"
   /** A held task was released: it starts once its dependencies have finished (FIX-2080). */

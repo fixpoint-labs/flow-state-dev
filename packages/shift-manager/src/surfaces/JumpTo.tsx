@@ -15,6 +15,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { allRows, shiftCoordinatorOf, workerLabel, type LoadedSnapshot } from "../lib/derive";
 import { handToShiftCoordinator } from "../lib/outbox";
 import { navigate, type Route } from "../lib/routes";
+import { RouteLink } from "../components/RouteLink";
 import type { Gaps } from "../gaps";
 
 type Entry = { group: "Views" | "Workers" | "Tasks" | "Resources"; label: string; hint: string; to: Route };
@@ -74,12 +75,7 @@ export function JumpTo({
     if (shiftCoordinator.kind !== "one") return setSendFailure("There isn't exactly one Shift Coordinator to send this to.");
     if (shiftCoordinator.worker.door === null) return setSendFailure(`${workerLabel(shiftCoordinator.worker.id)} ${gaps.turn.noDoor}`);
     handToShiftCoordinator(message);
-    navigate({ level: "shift-coordinator" });
-    onClose();
-  };
-
-  const go = (entry: Entry) => {
-    navigate(entry.to);
+    navigate({ level: "shift-coordinator" }); // in place: after a line is sent to the Shift Coordinator
     onClose();
   };
 
@@ -95,7 +91,11 @@ export function JumpTo({
             setSendFailure(null);
           }}
           onKeyDown={(e) => {
-            if (e.key === "Escape") onClose();
+            // Spent on closing, so it never counts toward a run's interrupt.
+            if (e.key === "Escape") {
+              e.preventDefault();
+              onClose();
+            }
             if (messaging) {
               if (e.key === "Enter") sendMessage();
               return;
@@ -106,7 +106,8 @@ export function JumpTo({
               const step = e.key === "ArrowDown" ? 1 : -1;
               setActive(Math.max(0, Math.min(shown.length - 1, highlighted + step)));
             }
-            if (e.key === "Enter" && shown[highlighted] !== undefined) go(shown[highlighted]);
+            // Enter is a plain click on the highlighted result's link: one way to a result.
+            if (e.key === "Enter") list.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.click();
           }}
           placeholder="Jump to a worker or task… or > to message the Coordinator"
           className="w-full border-b bg-transparent px-4 py-3 text-sm outline-none"
@@ -131,19 +132,19 @@ export function JumpTo({
               {entries.map((entry) => {
                 const at = shown.indexOf(entry);
                 return (
-                  <button
+                  <RouteLink
                     key={`${entry.group}:${entry.label}:${entry.hint}`}
-                    type="button"
+                    to={entry.to}
                     role="option"
                     aria-selected={at === highlighted}
-                    onClick={() => go(entry)}
+                    onNavigate={onClose}
                     onMouseMove={() => setActive(at)}
                     data-testid="jump-result"
                     className={`flex w-full items-center justify-between px-2 py-1.5 text-left text-sm ${at === highlighted ? "bg-accent text-accent-foreground" : ""}`}
                   >
                     <span className="truncate">{entry.label}</span>
                     <span className="ml-2 truncate text-xs text-muted-foreground">{entry.hint}</span>
-                  </button>
+                  </RouteLink>
                 );
               })}
             </section>

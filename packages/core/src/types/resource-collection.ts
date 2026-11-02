@@ -132,8 +132,9 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
 
   /**
    * Expose this collection's instance content to the LLM via the generic content
-   * tools (`readResourceContentTool`) and content search (`grepResourceContent` /
-   * `searchResources`). Collection-wide — applies to every instance, the same way
+   * tools (`readResourceContentTool`), content search (`grepResourceContent` /
+   * `searchResources`), and instance state via `resourceTools()`'s
+   * `readResource`, which also leaves out `secret` fields. Collection-wide — applies to every instance, the same way
    * `client` is declared once at the collection level. Default `false`: a
    * collection that doesn't opt in stays invisible to those tools.
    */

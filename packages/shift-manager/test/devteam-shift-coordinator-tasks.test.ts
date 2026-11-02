@@ -457,13 +457,14 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect((await coderLines(lab, id, taskId)).map((m) => m.text).join("\n")).toContain("visibility and id");
   });
 
-  it("refuses a task naming only one of issue and phase after the claim, without running it as an answer", async () => {
+  // A phase with no issue says what kind of work but not which; an issue alone is enough (FIX-2388).
+  it("refuses a task naming a phase but no issue after the claim, without running it as an answer", async () => {
     const stub = readsMarker();
-    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("ship it", { project: STOREFRONT, harnessFeature: { issue: "greeting" } })]), stub);
+    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("ship it", { project: STOREFRONT, harnessFeature: { phase: "implement" } })]), stub);
     const { id, task, taskId } = await fileAndSettle(lab);
     expect(task).toMatchObject({ status: "errored", attempts: 1 });
     expect(stub.runs).toHaveLength(0);
-    expect((await coderLines(lab, id, taskId)).map((m) => m.text).join("\n")).toContain("Feature work names both");
+    expect((await coderLines(lab, id, taskId)).map((m) => m.text).join("\n")).toContain("Feature work names an issue");
   });
 
   it("runs a task whose own fields include a plain `issue` as an answer, never as half a feature", async () => {

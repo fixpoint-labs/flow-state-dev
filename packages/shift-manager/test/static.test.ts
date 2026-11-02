@@ -180,6 +180,34 @@ describe("V8", () => {
     expect(writes(`await client.flow(f).request(id).abort();`)).toHaveLength(1);
   });
 
+  it("goes to an address through a real link, so it opens in a new tab and can be copied (FIX-2414)", () => {
+    const code = sources.filter((f) => /\.tsx?$/.test(f) && !relative(src, f).startsWith("components/flow-state/"));
+    const read = (f: string) => readFileSync(f, "utf8");
+    // A link is a `RouteLink`. A `navigate(` call is a route change with no address the
+    // browser can open, so each one says on its line why it isn't a link
+    // (`// in place: <why>` or `/* in place: <why> */`). A hand-made link is never right.
+    const REASON = /(\/\/|\/\*) in place: \S/;
+    const unmarked = (files: string[], text: (f: string) => string) =>
+      files.flatMap((f) =>
+        relative(src, f) === "components/RouteLink.tsx" || relative(src, f) === "lib/routes.ts"
+          ? []
+          : text(f)
+              .split("\n")
+              .filter((line) => (/\bnavigate\(/.test(line) && !REASON.test(line)) || /href=\{pathFor\(/.test(line))
+              .map((line) => `${relative(src, f)}: ${line.trim()}`),
+      );
+    expect(unmarked(code, read)).toEqual([]);
+    // The marker is what lets a call stay: there are such calls, and each one carries it.
+    const marked = code.flatMap((f) => read(f).split("\n").filter((line) => /\bnavigate\(/.test(line) && REASON.test(line)));
+    expect(marked.length).toBeGreaterThan(5);
+    // Planted: a button that changes the route, and a hand-made link, are caught; a marked call is not.
+    const planted = join(src, "surfaces/Planted.tsx");
+    const caught = (line: string) => unmarked([planted], () => line);
+    expect(caught(`<button type="button" onClick={() => navigate({ level: "messages" })}>`)).toHaveLength(1);
+    expect(caught(`<a href={pathFor(task)} onClick={(e) => (e.preventDefault(), navigate(task))}>`)).toHaveLength(1);
+    expect(caught(`onSelect={(next) => /* in place: the tabs */ navigate(next)}`)).toEqual([]);
+  });
+
   it("keeps every registry copy byte-equal to its source, and holds exactly what its install list ships", () => {
     const shipped = installSet();
     expect(shipped.files.size).toBeGreaterThan(8);

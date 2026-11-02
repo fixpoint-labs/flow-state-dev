@@ -28,7 +28,7 @@
  */
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { themeLabel, type ThemeLook } from "../lib/theme";
-import { navigate, type Route } from "../lib/routes";
+import type { Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
 import { useRoster, withRoster } from "../lib/roster";
 import { openRows, projectsOf, workerLabel, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
@@ -38,6 +38,7 @@ import { initialsOf } from "../lib/shell";
 import { useShiftCoordinatorWorking } from "../lib/working";
 import { Meta, PartialMark, SectionFailure, ShiftMark } from "../components/ui";
 import { ShiftManagerMark } from "../components/ShiftManagerMark";
+import { RouteLink } from "../components/RouteLink";
 import type { Gaps } from "../gaps";
 
 function NavItem({
@@ -46,7 +47,7 @@ function NavItem({
   count,
   mark,
   active,
-  onClick,
+  to,
   testId,
 }: {
   label: string;
@@ -56,13 +57,12 @@ function NavItem({
   /** Drawn after the count. */
   mark?: ReactNode;
   active: boolean;
-  onClick: () => void;
+  to: Route;
   testId: string;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <RouteLink
+      to={to}
       aria-current={active ? "page" : undefined}
       data-testid={testId}
       className={`flex w-full items-center gap-[9px] px-[7px] py-1.5 text-left text-[13.5px] ${
@@ -79,7 +79,7 @@ function NavItem({
         </Meta>
       )}
       {mark}
-    </button>
+    </RouteLink>
   );
 }
 
@@ -116,9 +116,8 @@ function NavIcon({ name }: { name: keyof typeof ICON_PATHS }) {
 function ShiftCoordinatorEntry({ active }: { active: boolean }) {
   const working = useShiftCoordinatorWorking();
   return (
-    <button
-      type="button"
-      onClick={() => navigate({ level: "shift-coordinator" })}
+    <RouteLink
+      to={{ level: "shift-coordinator" }}
       aria-current={active ? "page" : undefined}
       data-testid="nav-shift-coordinator"
       className={`mb-[5px] flex w-full items-center gap-[9px] border p-[7px] text-left text-[13.5px] font-semibold ${
@@ -138,7 +137,7 @@ function ShiftCoordinatorEntry({ active }: { active: boolean }) {
         Shift Coordinator
       </span>
       <span className={`size-[7px] shrink-0 ${working ? "bg-info" : ""}`} data-look="working" data-working={working} aria-hidden />
-    </button>
+    </RouteLink>
   );
 }
 
@@ -186,33 +185,28 @@ function SidebarHeader({ look, onToggle }: { look: ThemeLook; onToggle: () => vo
   );
 }
 
-/** One icon on the collapsed rail: named on hover, and the current screen's tinted as its entry is. */
+/** One icon on the collapsed rail: named on hover, and the current screen's tinted as its entry is. A link to its entry's address, or, for Jump to, a button. */
 function RailItem({
   label,
   active = false,
-  onClick,
   testId,
   children,
+  ...action
 }: {
   label: string;
   active?: boolean;
-  onClick: () => void;
   testId: string;
   children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      aria-current={active ? "page" : undefined}
-      data-testid={testId}
-      className={`relative flex size-8 items-center justify-center ${active ? "bg-accent text-accent-foreground" : "hover:bg-foreground/6"}`}
-    >
-      {children}
-    </button>
-  );
+} & ({ to: Route } | { onClick: () => void })) {
+  const props = {
+    title: label,
+    "aria-label": label,
+    "aria-current": active ? ("page" as const) : undefined,
+    "data-testid": testId,
+    className: `relative flex size-8 items-center justify-center ${active ? "bg-accent text-accent-foreground" : "hover:bg-foreground/6"}`,
+    children,
+  };
+  return "to" in action ? <RouteLink to={action.to} {...props} /> : <button type="button" onClick={action.onClick} {...props} />;
 }
 
 /** The collapsed sidebar: the toggle, then the entries as icons. */
@@ -233,12 +227,12 @@ function SidebarRail({
     <div className="flex h-full w-12 flex-col items-center gap-1 py-3" data-testid="sidebar-rail">
       <SidebarToggle collapsed onToggle={onToggle} />
       <div className="mt-2 flex flex-col items-center gap-1">
-        <RailItem label="Shift Coordinator" active={route.level === "shift-coordinator"} onClick={() => navigate({ level: "shift-coordinator" })} testId="rail-shift-coordinator">
+        <RailItem label="Shift Coordinator" active={route.level === "shift-coordinator"} to={{ level: "shift-coordinator" }} testId="rail-shift-coordinator">
           <span className="flex size-[18px] items-center justify-center border border-primary bg-primary font-mono text-[7.5px] font-semibold text-primary-foreground" aria-hidden>
             SC
           </span>
         </RailItem>
-        <RailItem label="Inbox" active={route.level === "inbox"} onClick={() => navigate({ level: "inbox", item: null })} testId="rail-inbox">
+        <RailItem label="Inbox" active={route.level === "inbox"} to={{ level: "inbox", item: null }} testId="rail-inbox">
           <NavIcon name="inbox" />
           {waiting ? (
             <span className="absolute -top-0.5 -right-0.5 bg-attention px-[3px] font-mono text-[9px] font-semibold leading-tight text-attention-foreground tabular-nums" data-testid="rail-inbox-count">
@@ -246,19 +240,19 @@ function SidebarRail({
             </span>
           ) : null}
         </RailItem>
-        <RailItem label="Tasks" active={route.level === "tasks" || route.level === "task"} onClick={() => navigate({ level: "tasks", by: "state" })} testId="rail-tasks">
+        <RailItem label="Tasks" active={route.level === "tasks" || route.level === "task"} to={{ level: "tasks", by: "state" }} testId="rail-tasks">
           <NavIcon name="tasks" />
         </RailItem>
-        <RailItem label="Roster" active={route.level === "roster" || route.level === "worker-settings"} onClick={() => navigate({ level: "roster", team: null })} testId="rail-roster">
+        <RailItem label="Roster" active={route.level === "roster" || route.level === "worker-settings"} to={{ level: "roster", team: null }} testId="rail-roster">
           <NavIcon name="roster" />
         </RailItem>
-        <RailItem label="Messages" active={route.level === "messages" || route.level === "session"} onClick={() => navigate({ level: "messages" })} testId="rail-messages">
+        <RailItem label="Messages" active={route.level === "messages" || route.level === "session"} to={{ level: "messages" }} testId="rail-messages">
           <NavIcon name="messages" />
         </RailItem>
-        <RailItem label="Scheduled work" active={route.level === "schedules"} onClick={() => navigate({ level: "schedules" })} testId="rail-schedules">
+        <RailItem label="Scheduled work" active={route.level === "schedules"} to={{ level: "schedules" }} testId="rail-schedules">
           <NavIcon name="schedules" />
         </RailItem>
-        <RailItem label="Usage" active={route.level === "usage"} onClick={() => navigate({ level: "usage" })} testId="rail-usage">
+        <RailItem label="Usage" active={route.level === "usage"} to={{ level: "usage" }} testId="rail-usage">
           <NavIcon name="usage" />
         </RailItem>
         <RailItem label="Jump to (⌘K)" onClick={onJump} testId="rail-jump">
@@ -266,7 +260,7 @@ function SidebarRail({
         </RailItem>
       </div>
       <div className="mt-auto">
-        <RailItem label="Settings" active={route.level === "settings"} onClick={() => navigate({ level: "settings" })} testId="rail-settings">
+        <RailItem label="Settings" active={route.level === "settings"} to={{ level: "settings" }} testId="rail-settings">
           <NavIcon name="settings" />
         </RailItem>
       </div>
@@ -324,7 +318,7 @@ function ProjectGroup({
           <NavItem
             label={visibility === "private" ? `${title} · private` : title}
             active={here && route.entry === undefined}
-            onClick={() => navigate(to())}
+            to={to()}
             testId={testId}
           />
         </div>
@@ -348,7 +342,7 @@ function ProjectGroup({
                 key={`${entry.owner}/${entry.id}`}
                 entry={entry}
                 active={here && route.entry?.owner === entry.owner && route.entry.id === entry.id}
-                onClick={() => navigate(to({ owner: entry.owner, id: entry.id }))}
+                to={to({ owner: entry.owner, id: entry.id })}
               />
             ))
           )}
@@ -359,11 +353,10 @@ function ProjectGroup({
 }
 
 /** A workstream under its project (v2:88): a mono `#` and its title, opening on its own view. */
-function StreamItem({ entry, active, onClick }: { entry: WorkstreamEntry; active: boolean; onClick: () => void }) {
+function StreamItem({ entry, active, to }: { entry: WorkstreamEntry; active: boolean; to: Route }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <RouteLink
+      to={to}
       aria-current={active ? "page" : undefined}
       title={`${entry.title} · ${entry.owner} · ${entry.status}`}
       data-testid="nav-workstream"
@@ -377,7 +370,7 @@ function StreamItem({ entry, active, onClick }: { entry: WorkstreamEntry; active
       <span className="min-w-0 flex-1 truncate" data-look="nav-label">
         {entry.title}
       </span>
-    </button>
+    </RouteLink>
   );
 }
 
@@ -469,7 +462,7 @@ export function Sidebar({
                   </span>
                 }
                 active={route.level === "inbox"}
-                onClick={() => navigate({ level: "inbox", item: null })}
+                to={{ level: "inbox", item: null }}
                 testId="nav-inbox"
               />
               <NavItem
@@ -481,7 +474,7 @@ export function Sidebar({
                   </Meta>
                 }
                 active={route.level === "tasks" || route.level === "task"}
-                onClick={() => navigate({ level: "tasks", by: "state" })}
+                to={{ level: "tasks", by: "state" }}
                 testId="nav-tasks"
               />
               <NavItem
@@ -490,28 +483,28 @@ export function Sidebar({
                 count={counts?.["on shift"]}
                 mark={partial}
                 active={(route.level === "roster" && route.team === null) || route.level === "worker-settings"}
-                onClick={() => navigate({ level: "roster", team: null })}
+                to={{ level: "roster", team: null }}
                 testId="nav-roster"
               />
               <NavItem
                 label="Messages"
                 icon={<NavIcon name="messages" />}
                 active={route.level === "messages" || route.level === "session"}
-                onClick={() => navigate({ level: "messages" })}
+                to={{ level: "messages" }}
                 testId="nav-messages"
               />
               <NavItem
                 label="Scheduled work"
                 icon={<NavIcon name="schedules" />}
                 active={route.level === "schedules"}
-                onClick={() => navigate({ level: "schedules" })}
+                to={{ level: "schedules" }}
                 testId="nav-schedules"
               />
               <NavItem
                 label="Usage"
                 icon={<NavIcon name="usage" />}
                 active={route.level === "usage"}
-                onClick={() => navigate({ level: "usage" })}
+                to={{ level: "usage" }}
                 testId="nav-usage"
               />
             </div>
@@ -527,11 +520,10 @@ export function Sidebar({
             <div data-testid="teams">
               {drawn === undefined ? null : (
                 teamsOf(drawn.workers).map(({ team, name, workers }) => (
-                  <button
+                  <RouteLink
                     key={team}
-                    type="button"
+                    to={{ level: "roster", team }}
                     aria-current={route.level === "roster" && route.team === team ? "page" : undefined}
-                    onClick={() => navigate({ level: "roster", team })}
                     data-testid="team"
                     data-team={team}
                     className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-[13px] ${
@@ -552,7 +544,7 @@ export function Sidebar({
                     <Meta role="count" className="w-8 text-right tabular-nums text-muted-foreground" testId="team-on-shift">
                       {states === undefined ? 0 : shiftCounts(states, team)["on shift"]}/{workers.length}
                     </Meta>
-                  </button>
+                  </RouteLink>
                 ))
               )}
               {loaded === undefined || loaded.inventory.ok ? null : (
@@ -570,7 +562,7 @@ export function Sidebar({
               label="Settings"
               icon={<NavIcon name="settings" />}
               active={route.level === "settings"}
-              onClick={() => navigate({ level: "settings" })}
+              to={{ level: "settings" }}
               testId="nav-settings"
             />
           </div>

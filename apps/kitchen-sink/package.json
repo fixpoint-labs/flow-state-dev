@@ -20,7 +20,7 @@
     "@ai-sdk/gateway": "^4.0.108",
     "@ai-sdk/mcp": "^2.0.7",
     "@ai-sdk/openai": "^4.0.7",
-    "@anthropic-ai/claude-agent-sdk": "^0.3.234",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.316",
     "@bull-board/api": "^7.1.5",
     "@bull-board/express": "^7.1.5",
     "@cursor/sdk": "1.0.40",
