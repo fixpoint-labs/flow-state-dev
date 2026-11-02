@@ -1,3 +1,4 @@
+import { ClientHttpError } from "@flow-state-dev/client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LabAdapter, NewTeammate, WorkerRow } from "./adapter";
 import { Conversation } from "./components/Conversation";
@@ -93,7 +94,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
       setPopup((current) => current ?? fromAddress(named));
       setReady(true);
     } catch (error) {
-      if (live.current) setUnreachable({ message: error instanceof Error ? error.message : String(error) });
+      if (live.current) setUnreachable(error instanceof ClientHttpError ? { httpStatus: error.status, message: error.message } : { message: error instanceof Error ? error.message : String(error) });
     }
   }, [loadRoster]);
   useEffect(() => {

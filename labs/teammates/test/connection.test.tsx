@@ -10,6 +10,7 @@
  * A page opened while the server is down has nothing to keep on screen, so
  * it draws the connection screen and reads again until the roster lands.
  */
+import { ClientHttpError } from "@flow-state-dev/client";
 import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
@@ -64,6 +65,13 @@ describe("the server going away", () => {
     await act(async () => fireEvent.click(screen.getByTestId("unreachable-retry")));
     expect(await screen.findByLabelText("Message Chief of Staff")).toBeTruthy();
     expect(screen.queryByTestId("unreachable")).toBeNull();
+  });
+
+  it("a roster read the server answered with an error shows its status, so a 502 reads apart from a dead socket", async () => {
+    const lab = createFixtureLab({ speed: 0.05 });
+    const failing = { ...lab, listWorkers: () => Promise.reject(new ClientHttpError("Bad Gateway", { status: 502, body: undefined })) };
+    render(<App adapter={failing} />);
+    expect((await screen.findByTestId("unreachable-message")).textContent).toBe("502 · Bad Gateway");
   });
 
   it("an age holds where it was while its feed is stale", () => {

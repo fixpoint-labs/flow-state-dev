@@ -16,7 +16,8 @@
  * worker, waits while the worker is answering, and runs when it is done.
  * Chief of Staff's conversation starts past the 50-turn history window.
  */
-import { runSteps, type ConnectionState, type ConversationEntry, type LabAdapter, type SessionStep, type TalkRow, type BoardTask, type Unsubscribe, type WindowMark, type WorkerRow } from "../src/adapter";
+import type { SessionConnectionState } from "@flow-state-dev/client";
+import { runSteps, type ConversationEntry, type LabAdapter, type SessionStep, type TalkRow, type BoardTask, type Unsubscribe, type WindowMark, type WorkerRow } from "../src/adapter";
 
 /** How the double keeps time, and what it plays. */
 export interface FixtureOptions {
@@ -35,7 +36,7 @@ export interface FixtureOptions {
 /** The fixture, plus what a test does to its server. */
 export interface FixtureLab extends LabAdapter {
   /** Every conversation's feed reports `state` from now on. */
-  setConnection(state: ConnectionState): void;
+  setConnection(state: SessionConnectionState): void;
 }
 
 /** Each coding worker's harness, by name, and the model its run reports, if it reports one. */
@@ -136,7 +137,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
   const runs = new Map<string, Record<string, unknown>[]>();
   const notSetUp = new Set(options.notSetUp ?? []);
   let unreachable = options.unreachableReads ?? 0;
-  let connection: ConnectionState = "live";
+  let connection: SessionConnectionState = "live";
   /** The worker each open approval belongs to, by suspension id. */
   const approvals = new Map<string, FixtureWorker>();
 

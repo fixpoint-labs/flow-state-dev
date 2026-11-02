@@ -31,7 +31,7 @@
  * The page acts as the user `fsdev dev` hands it (the config's `devtool`
  * block), with the bearer token when there is one, on the server it came from.
  */
-import { createClient, readEveryCollectionPage, type Client, type SessionRequestSummary } from "@flow-state-dev/client";
+import { createClient, readEveryCollectionPage, type Client, type SessionConnectionState, type SessionRequestSummary } from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
@@ -176,9 +176,6 @@ export interface WindowMark {
   summarized: boolean;
 }
 
-/** A session feed's connection: `lapsed` once a retry has failed, `stopped` once it gives up. */
-export type ConnectionState = "connecting" | "live" | "reconnecting" | "lapsed" | "stopped";
-
 /** Everything the screen reads and writes. */
 export interface LabAdapter {
   listWorkers(): Promise<WorkerRow[]>;
@@ -187,7 +184,7 @@ export interface LabAdapter {
   send(sessionId: string, text: string): Promise<void>;
   watchConversation(sessionId: string, onChange: (view: ConversationView) => void): Unsubscribe;
   /** Whether the conversation's feed still hears the server, in the session feed's words. */
-  watchConnection(sessionId: string, onChange: (state: ConnectionState) => void): Unsubscribe;
+  watchConnection(sessionId: string, onChange: (state: SessionConnectionState) => void): Unsubscribe;
   /** Say yes or no to what an approval entry asks; the worker's turn carries on. */
   answerApproval(sessionId: string, approval: { requestId: string; suspensionId: string }, approve: boolean): Promise<void>;
   /** Every message to or from `worker`, oldest first. */
