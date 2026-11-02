@@ -45,7 +45,7 @@ const PAUSES = [scriptedPauses, scriptedCodexPauses, scriptedCursorPauses];
 
 /** Each mode's flow kind and flow, with its scripted SDK. Prompts make Claude Code and Cursor hold too. */
 const MODES = [
-  { mode: "claude-code", kind: CLAUDE_CODE_SESSION, prompt: "do some work", flow: () => claudeCodeSessionFlow({ resolveClaudeAgent: scriptedClaudeCode() }) },
+  { mode: "claude-code", kind: CLAUDE_CODE_SESSION, prompt: "do some work", flow: () => claudeCodeSessionFlow({ resolveClaudeAgent: scriptedClaudeCode() , approveTools: false }) },
   { mode: "codex", kind: CODEX_SESSION, prompt: "do some work", flow: () => codexSessionFlow({ resolveCodexClient: scriptedCodex() }) },
   { mode: "cursor", kind: CURSOR_SESSION, prompt: "do some work", flow: () => cursorSessionFlow({ resolveCursorClient: scriptedCursor() }) },
 ] as const;

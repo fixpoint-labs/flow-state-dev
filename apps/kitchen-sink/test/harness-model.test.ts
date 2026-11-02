@@ -81,7 +81,7 @@ function claudeCode(): Mode {
       },
     };
   };
-  return { name: "Claude Code", flow: () => claudeCodeSessionFlow({ resolveClaudeAgent: resolve }) as never, models, fallback: undefined };
+  return { name: "Claude Code", flow: () => claudeCodeSessionFlow({ resolveClaudeAgent: resolve , approveTools: false }) as never, models, fallback: undefined };
 }
 
 function codex(): Mode & { resolve: ResolveCodexClient } {

@@ -95,7 +95,7 @@ async function turn(
   extra: Record<string, unknown> = {},
 ) {
   return testFlow({
-    flow: claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve }),
+    flow: claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve , approveTools: false }),
     action: "turn",
     userId: "u",
     sessionId,
@@ -319,8 +319,8 @@ describe("where a session works (V6)", () => {
 
   it("asks for no sandbox: Kitchen Sink confines no run", async () => {
     // Kitchen Sink is a showcase meant for a machine that allows any edits, so
-    // it hands the SDK no sandbox at all. With `bypassPermissions` beside it,
-    // nothing confines the run — the worktree is where it works, not a fence.
+    // it hands the SDK no sandbox at all. A call the user allows is not
+    // confined — the worktree is where it works, not a fence.
     const stores = createInMemoryStores();
     const recorder = recorded();
     await turn(stores, recorder, "s-unfenced", "hello");
@@ -400,7 +400,7 @@ describe("where a session works (V6)", () => {
     // Modes off at the next start.
     vi.stubEnv("VERCEL", "1");
     resetModeAvailabilityForTests();
-    const flows = await availableHarnessFlows({ "claude-code": () => claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve }) });
+    const flows = await availableHarnessFlows({ "claude-code": () => claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve , approveTools: false }) });
     expect(flows["claude-code"]).toBeUndefined();
     expect((await stores.session.get("s-kept"))?.state).toMatchObject({ binding: { confirmed: expect.stringMatching(/^scripted-/) } });
   });
