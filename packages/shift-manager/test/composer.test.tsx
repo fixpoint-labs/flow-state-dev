@@ -5,9 +5,10 @@
  */
 import { StrictMode } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnComposer } from "../src/components/TurnComposer";
 import { TurnNotDelivered } from "../src/lib/send";
+import { legacyTaskDraftKey, taskDraftKey } from "../src/lib/tasks";
 
 afterEach(() => {
   cleanup();
@@ -257,5 +258,94 @@ describe("a reload keeps what was typed, and what may already have been sent (SM
     render(composer("conversation:w-1"));
     expect((screen.getByTestId("t-input") as HTMLInputElement).value).toBe("");
     expect(screen.getByTestId("t-status").getAttribute("data-state")).not.toBe("unconfirmed");
+  });
+});
+
+// FIX-2483: a task id is unique only on its board.
+describe("a task's draft belongs to its board as well as its id", () => {
+  const taskComposer = (
+    boardRef: string,
+    taskId: string,
+    send: (message: string, held: () => void) => Promise<void> = () => new Promise(() => {}),
+  ) => (
+    <TurnComposer
+      testId="t"
+      label="Message worker"
+      placeholder=""
+      blocked={null}
+      draftKey={taskDraftKey(boardRef, taskId)}
+      legacyDraftKey={legacyTaskDraftKey(taskId)}
+      send={send}
+    />
+  );
+  const input = () => screen.getByTestId("t-input") as HTMLInputElement;
+
+  it("two boards' tasks that share an id keep their own line and their own unconfirmed warning", async () => {
+    // Board A's send may have arrived: its line and warning are kept, so a second send isn't invited.
+    const a = render(taskComposer("lead.tasks", "t-1", () => Promise.reject(new Error("the connection dropped"))));
+    fireEvent.change(input(), { target: { value: "ship it" } });
+    await act(async () => fireEvent.click(screen.getByTestId("t-send")));
+    expect(screen.getByTestId("t-status").getAttribute("data-state")).toBe("unconfirmed");
+    a.unmount();
+
+    // Board B's task t-1 is a different task: it opens empty, free to send, with no warning.
+    const b = render(taskComposer("reviewer.tasks", "t-1"));
+    expect(input().value).toBe("");
+    expect(screen.getByTestId("t-status").getAttribute("data-state")).toBe("idle");
+    expect(screen.queryByTestId("t-error")).toBeNull();
+    fireEvent.change(input(), { target: { value: "a different instruction" } });
+    b.unmount();
+
+    // And board A's task still holds its own.
+    render(taskComposer("lead.tasks", "t-1"));
+    expect(input().value).toBe("ship it");
+    expect(screen.getByTestId("t-error").textContent).toBe("the connection dropped");
+  });
+
+  it("a draft stored under the old id-only key opens on the first board's task, once", () => {
+    const old = render(
+      <TurnComposer testId="t" label="Message worker" placeholder="" blocked={null} draftKey={legacyTaskDraftKey("t-1")} send={() => new Promise(() => {})} />,
+    );
+    fireEvent.change(input(), { target: { value: "written before the key named the board" } });
+    old.unmount();
+
+    const first = render(taskComposer("lead.tasks", "t-1"));
+    expect(input().value).toBe("written before the key named the board");
+    first.unmount();
+    // Adopted by one task only: the other board's t-1 doesn't inherit it too.
+    const other = render(taskComposer("reviewer.tasks", "t-1"));
+    expect(input().value).toBe("");
+    other.unmount();
+    render(taskComposer("lead.tasks", "t-1"));
+    expect(input().value).toBe("written before the key named the board");
+  });
+});
+
+describe("adopting an old task draft when storage is full", () => {
+  it("keeps the draft under the old key when the copy can't be written", () => {
+    const old = render(
+      <TurnComposer testId="t" label="Message worker" placeholder="" blocked={null} draftKey={legacyTaskDraftKey("t-1")} send={() => new Promise(() => {})} />,
+    );
+    fireEvent.change(screen.getByTestId("t-input"), { target: { value: "kept through a full storage" } });
+    old.unmount();
+
+    const storage = window.localStorage;
+    const realSet = storage.setItem;
+    const setItem = vi.fn(() => {
+      throw new DOMException("quota", "QuotaExceededError");
+    });
+    Object.defineProperty(storage, "setItem", { value: setItem, configurable: true, writable: true });
+    const full = render(
+      <TurnComposer testId="t" label="Message worker" placeholder="" blocked={null} draftKey={taskDraftKey("lead.tasks", "t-1")} legacyDraftKey={legacyTaskDraftKey("t-1")} send={() => new Promise(() => {})} />,
+    );
+    full.unmount();
+    Object.defineProperty(storage, "setItem", { value: realSet, configurable: true, writable: true });
+    expect(setItem).toHaveBeenCalled();
+
+    // Space again: the next open adopts it.
+    render(
+      <TurnComposer testId="t" label="Message worker" placeholder="" blocked={null} draftKey={taskDraftKey("lead.tasks", "t-1")} legacyDraftKey={legacyTaskDraftKey("t-1")} send={() => new Promise(() => {})} />,
+    );
+    expect((screen.getByTestId("t-input") as HTMLInputElement).value).toBe("kept through a full storage");
   });
 });

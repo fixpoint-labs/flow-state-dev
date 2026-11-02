@@ -116,6 +116,39 @@ describe("readSessionTail", () => {
     expect(ids(window.items)).toEqual(ids(range(0, 3)));
   });
 
+  it("reads the end again when older turns are dropped between its two calls, so the window is never empty past the start", async () => {
+    const live = session(range(0, 500));
+    const state = live.source.state;
+    // After the size call, a retention policy keeps only the newest 51 items:
+    // the same session, so its creation time does not change.
+    live.source.state = vi.fn(async (...args: Parameters<typeof state>) => {
+      const answer = await state(...args);
+      if (live.source.state.mock.calls.length === 1) live.items.splice(0, 449);
+      return answer;
+    });
+
+    const window = await readSessionTail(live.source, "s1");
+
+    expect(ids(window.items)).toEqual(ids(range(449, 500)));
+    expect(window).toMatchObject({ start: 0, total: 51, hasEarlier: false });
+  });
+
+  it("reads the end again when older turns dropped between its calls leave fewer than a page past its start", async () => {
+    const live = session(range(0, 500));
+    const state = live.source.state;
+    live.source.state = vi.fn(async (...args: Parameters<typeof state>) => {
+      const answer = await state(...args);
+      if (live.source.state.mock.calls.length === 1) live.items.splice(0, 100);
+      return answer;
+    });
+
+    const window = await readSessionTail(live.source, "s1");
+
+    // A read from the stale start (300) would hold only the newest 100.
+    expect(ids(window.items)).toEqual(ids(range(300, 500)));
+    expect(window).toMatchObject({ start: 200, total: 400, hasEarlier: true });
+  });
+
   it("still reaches the newest item with a one-item limit when an item lands between its calls", async () => {
     const live = session(range(0, 2));
     const state = live.source.state;
@@ -239,6 +272,18 @@ describe("refreshSessionWindow", () => {
 
     // A read from the old start would skip item_300..item_349.
     expect(ids(refreshed.items)).toEqual(ids(range(300, 500)));
+  });
+
+  it("starts at the end again from an empty window that starts past the beginning, rather than keep its offset", async () => {
+    const live = session(range(449, 500));
+    // An empty window at 300 holds no position worth keeping: the session has
+    // 51 items, so a read from 300 is empty every time.
+    const stale = { sessionId: "s1", items: [], start: 300, total: 300, hasEarlier: true } as const;
+
+    const refreshed = await refreshSessionWindow(live.source, stale);
+
+    expect(ids(refreshed.items)).toEqual(ids(range(449, 500)));
+    expect(refreshed).toMatchObject({ start: 0, total: 51, hasEarlier: false });
   });
 
   it("starts at the end again when the session under the id is another one", async () => {

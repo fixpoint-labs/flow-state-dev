@@ -109,7 +109,6 @@ export function RequestRecovery({
   } else if (onRetry) {
     button("retry", "Retry", "Retrying…", <RotateCcw className="h-3.5 w-3.5" />, onRetry);
   }
-
   return (
     <div
       role="alert"
@@ -145,4 +144,3 @@ export function RequestRecovery({
     </div>
   );
 }
-
