@@ -94,6 +94,7 @@ are read from the environment, all optional:
 | `CLAUDE_CODE_STYLE_REPOSITORIES` | the repository the lab starts in | The repositories coding runs work in a worktree of, as paths separated by `:` |
 | `CLAUDE_CODE_STYLE_USER` | `u_lab` | The person the pages are served for |
 | `CLAUDE_CODE_STYLE_ANSWER_AGAIN` | on | `off` leaves `answerAgain` off the main worker: the goal check's control |
+| `CLAUDE_CODE_STYLE_SETUP` | none | One command each fresh worktree runs before its coding run starts, such as `pnpm install --frozen-lockfile`, with no shell |
 
 *New session* lists your projects and has a *New project* form: a name and the repository its
 coding runs work on. The host allows `file://` repositories only, and the repository must ignore
@@ -102,7 +103,10 @@ the data folder, on a branch of its own that you'll find in the repository, so y
 branch and files don't change. A repository not in `CLAUDE_CODE_STYLE_REPOSITORIES` gets a clone
 under the data folder instead. Before a run settles, a judge (harness-manager's `goalJudge`) reads
 its answer and commits against the task's goal: it can send the run back, ask you a question, or
-let it through, and threads mode shows its verdict on the coding thread's card.
+let it through, and threads mode shows its verdict on the coding thread's card. A run is also done only when
+its project's checks pass: the commands the project names in `checks` (none by default) run in the
+run's worktree after the harness finishes, and a red one sends the run back with the command's
+output in its next brief.
 
 Every task card shows the model its run uses and a token count that rises while the run works,
 and the harness tag names the harness the run reported. Finished rows keep the final total, and a

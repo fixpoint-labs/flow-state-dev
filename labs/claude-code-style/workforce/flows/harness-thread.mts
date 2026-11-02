@@ -18,13 +18,29 @@
  * the task inherits its session's project through `filingProjectId`, and a
  * run with no project is refused `no-project` before any checkout (spec D3).
  * `fsdev.config.mts` builds it: a worktree of the project's repository.
+ *
+ * **A run is done only when its project's checks pass** (`projectChecks()`:
+ * the commands the project row names in `checks`, none by default). They run
+ * in the run's worktree after the harness says it finished; a red one sends
+ * the run back, and its next brief says which command failed and how.
  */
 import { defineFlow, handler, harnessEnv, router, sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition, HarnessBlock } from "@flow-state-dev/core/types";
 import { CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
 import { CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
-import { goalJudge, harnessManager, harnessSessionDoor, harnessTalkTurn, taskIssueSegment, type HarnessFeeds, type PhaseSpec } from "@flow-state-dev/harness-manager";
+import {
+  commandCheck,
+  goalJudge,
+  harnessManager,
+  harnessSessionDoor,
+  harnessTalkTurn,
+  taskIssueSegment,
+  type CommandCheckCommands,
+  type CompletionRunContext,
+  type HarnessFeeds,
+  type PhaseSpec,
+} from "@flow-state-dev/harness-manager";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -33,6 +49,7 @@ import {
   MESSAGE_RECEIVED_ENTRY,
   messageReceivedEntry,
   messageReceivedSchema,
+  projectChecks,
   projectWorkspaceCapability,
   startOwedSteerTurn,
   STEER_TURN_ENTRY,
@@ -114,18 +131,32 @@ export const HARNESSES: Record<string, (feeds: HarnessFeeds) => HarnessBlock> = 
     } as never) as unknown as HarnessBlock,
 };
 
-/** The one phase: the task as the main session wrote it, a question or a change, done when the harness says it finished. */
-const phase: PhaseSpec = {
-  phase: "code",
-  buildPrompt: ({ task, answers }) =>
-    [
-      task.title === undefined ? task.goal : `${task.title}\n\n${task.goal}`,
-      ...answers.map((answered) => `You asked: ${answered.question}\nThe answer: ${answered.answer}`),
-      "Work in this directory only. If the task asks a question, read what you need, answer it in full, and change nothing. " +
-        "If it asks for a change, commit what you change with git, then say in one line what you did.",
-    ].join("\n\n"),
-  isDone: ({ stopReport }) => stopReport === "finished",
-};
+/** How long a run's project checks may take together. */
+export const CHECKS_TIMEOUT_MS = 10 * 60_000;
+
+/**
+ * The one phase: the task as the main session wrote it, a question or a change, done when the
+ * harness says it finished and `checks` pass in the run's worktree. The flow passes the project's.
+ */
+export function codePhase(checks: CommandCheckCommands<CompletionRunContext>): PhaseSpec {
+  return commandCheck(
+    {
+      phase: "code",
+      buildPrompt: ({ task, answers, feedback }) =>
+        [
+          task.title === undefined ? task.goal : `${task.title}\n\n${task.goal}`,
+          ...answers.map((answered) => `You asked: ${answered.question}\nThe answer: ${answered.answer}`),
+          "Work in this directory only. If the task asks a question, read what you need, answer it in full, and change nothing. " +
+            "If it asks for a change, commit what you change with git, then say in one line what you did.",
+          ...(feedback === undefined ? [] : [`Why the last attempt stopped:\n\n${feedback}`]),
+        ].join("\n\n"),
+      isDone: ({ stopReport }) => stopReport === "finished",
+    },
+    { commands: checks, timeoutMs: CHECKS_TIMEOUT_MS },
+  );
+}
+
+const phase = codePhase(projectChecks());
 
 export interface HarnessThreadFlowOptions {
   installation: WorkerInstallation;
