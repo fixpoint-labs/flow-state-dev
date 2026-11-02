@@ -88,14 +88,8 @@ export interface TeammatesOptions {
   harness?: string;
   /** A command each fresh worktree runs before its coding run starts (`pnpm install`). Absent: none. */
   setup?: WorkspaceSetup;
-  /**
-   * The commands a coding run's worktree must pass before its task is done,
-   * run in order with no shell. Absent or empty: a run is done when its
-   * harness says it finished.
-   */
+  /** Commands a coding run's worktree must pass before its task is done, in order, with no shell. */
   checks?: readonly string[];
-  /** How long the checks may take together. Defaults to 10 minutes. */
-  checksTimeoutMs?: number;
 }
 
 /** The harnesses a coding worker may name in `harness:`. Each run gets only the environment its harness needs. */
@@ -295,9 +289,7 @@ export async function openTeammates(options: TeammatesOptions) {
       ready: READY,
       workspace,
       runTimeoutMs: options.runTimeoutMs ?? 20 * 60_000,
-      ...(options.checks === undefined || options.checks.length === 0
-        ? {}
-        : { checks: { commands: options.checks, timeoutMs: options.checksTimeoutMs ?? 10 * 60_000 } }),
+      checks: options.checks,
     }),
   };
   const copies = hireWorkforce(installation) as Array<{ id: string }>;

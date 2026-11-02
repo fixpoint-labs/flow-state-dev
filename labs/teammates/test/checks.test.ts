@@ -1,19 +1,13 @@
 /**
- * The working folder's checks: a coding run is done only when they pass in
- * its worktree, and a red one sends it back with the command's output in the
- * next brief. `fsdev.config.mts` reads them from `TEAMMATES_CHECKS` and the
- * setup command from `TEAMMATES_SETUP`; a command a shell would be needed for
- * stops the lab at start.
- *
- * The phase is graded on a real folder with real commands, as the manager
- * calls it after a run its harness says finished.
+ * Grades the coding phase on a real folder, and the `TEAMMATES_CHECKS` /
+ * `TEAMMATES_SETUP` parsers. A shell command is refused at start.
  */
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { CompletionRunContext, PhaseDoneVerdict, PromptRunContext } from "@flow-state-dev/harness-manager";
-import { codingPhase, PHASE } from "../src/flows/coder";
+import { codingPhase } from "../src/flows/coder";
 import { checkCommands, setupCommand } from "../host.mts";
 
 /** A worktree whose check is red until `state.txt` says "ok". */
@@ -33,7 +27,7 @@ const finished = (workspacePath: string) =>
 const verdictOf = (answer: boolean | PhaseDoneVerdict) => (typeof answer === "boolean" ? { done: answer } : answer);
 
 describe("a coding run with the working folder's checks", () => {
-  const phase = codingPhase({ commands: ["node check.mjs"], timeoutMs: 20_000 });
+  const phase = codingPhase(["node check.mjs"]);
 
   it("is not done while a check is red, and says which command and why", async () => {
     const verdict = verdictOf(await phase.isDone(finished(worktree("broken"))));
@@ -47,8 +41,9 @@ describe("a coding run with the working folder's checks", () => {
   });
 
   it("is done on the same red folder when the host names no checks", async () => {
-    expect(verdictOf(await codingPhase(undefined).isDone(finished(worktree("broken")))).done).toBe(true);
-    expect(codingPhase({ commands: [], timeoutMs: 20_000 })).toBe(PHASE);
+    const folder = worktree("broken");
+    expect(verdictOf(await codingPhase(undefined).isDone(finished(folder))).done).toBe(true);
+    expect(verdictOf(await codingPhase([]).isDone(finished(folder))).done).toBe(true);
   });
 
   it("puts why the last attempt stopped in the next brief", async () => {

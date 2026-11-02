@@ -66,15 +66,14 @@ export interface CoderFlowOptions {
   /** Wall-clock budget for one run. */
   runTimeoutMs: number;
   /**
-   * The working folder's checks: commands a run's worktree must pass before
-   * its task is done, and how long they may take together. Absent: a run is
-   * done when its harness says it finished.
+   * Commands a run's worktree must pass before its task is done. Absent or
+   * empty: a run is done when its harness says it finished.
    */
-  checks?: { commands: readonly string[]; timeoutMs: number };
+  checks?: readonly string[];
 }
 
 /** A task's run: its goal and brief, done when the harness says it finished. */
-export const PHASE: PhaseSpec = {
+const PHASE: PhaseSpec = {
   phase: "change",
   buildPrompt: (run) =>
     [
@@ -90,12 +89,13 @@ export const PHASE: PhaseSpec = {
 } as PhaseSpec;
 
 /**
- * The phase a coding run runs, with the working folder's checks when the host names any.
- *
- * @throws When `checks.timeoutMs` isn't a positive whole number.
+ * The phase a coding run runs. Named checks must pass within 10 minutes;
+ * none or an empty list leaves the harness's own finish.
  */
-export function codingPhase(checks?: CoderFlowOptions["checks"]): PhaseSpec {
-  return checks === undefined || checks.commands.length === 0 ? PHASE : commandCheck(PHASE, checks);
+export function codingPhase(checks?: readonly string[]): PhaseSpec {
+  return checks === undefined || checks.length === 0
+    ? PHASE
+    : commandCheck(PHASE, { commands: checks, timeoutMs: 10 * 60_000 });
 }
 
 /** What a user's line in one of a coding worker's sessions is answered with. */
