@@ -290,6 +290,29 @@ fsdev ui list
 
 Narrative: [UI](/docs/ui/overview).
 
+### `fsdev worktrees <root>`
+
+List the git worktrees a workspace host made under `<root>` (the `root` you passed to `localWorkspaceHost`), or remove one.
+
+```bash
+fsdev worktrees /var/fsd/runs
+fsdev worktrees /var/fsd/runs --remove /var/fsd/runs/acme/u1/run-7/checkout --delete-branch
+```
+
+The listing prints one line per worktree: `clean`, `dirty` or `gone` (its directory is missing), then the branch (`(detached)` for a detached HEAD), then the directory. It covers every clone under the root and every repository on this machine that a host on the root listed, found from the pin files in `<root>/.fetch-pins/`. Add others with `--repo`.
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--repo <path...>` | More repositories on this machine to look in |
+| `--remove <dir>` | Remove the worktree at this directory instead of listing |
+| `--delete-branch` | With `--remove`, delete its branch too |
+| `--force` | With `--delete-branch`, delete a branch that holds the only copy of some commits |
+| `--json` | Print the listing as JSON, one object per worktree: `{ place, dir, cwd, repository, branch, head, dirty }` |
+
+`--remove` refuses what the host's `remove` refuses: a worktree with uncommitted or untracked changes, one still being set up, one a run is working in (`in-use`), or, with `--delete-branch` and no `--force`, a branch holding commits no other branch or remote holds. A refusal removes nothing, prints `Refused (<reason>): <message>` and exits 1. A directory that isn't one of the listed worktrees also exits 1, and a `<root>` that doesn't exist exits 2. See [listing and removing worktrees](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/workspace/README.md#listing-and-removing-worktrees).
+
 ## Flow Discovery
 
 `fsdev run` discovers flows automatically from these directories (relative to cwd):

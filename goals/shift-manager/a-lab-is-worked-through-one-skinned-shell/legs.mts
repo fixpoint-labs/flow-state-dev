@@ -145,7 +145,12 @@ export async function walkSurfaces(
     ...(docs[0] === undefined ? [] : [{ group: "Resources", query: docs[0].split(/[/\\]/).at(-1)!.replace(/\.md$/, ""), lands: "[data-testid=resource]" }]),
   ];
   for (const target of targets) {
-    await page.getByTestId("jump-to").click();
+    // Jump to opens on ⌘K, as the sidebar footer's tip says (Ctrl+K off a Mac).
+    await page.keyboard.press("ControlOrMeta+K");
+    if (!(await page.getByTestId("jump-dialog").waitFor({ timeout: 5_000 }).then(() => true, () => false))) {
+      reach("⌘K does not open Jump to");
+      continue;
+    }
     await page.getByTestId("jump-input").fill(target.query);
     const hit = page.locator(`[data-testid=jump-dialog] section[aria-label="${target.group}"] [data-testid=jump-result]`).first();
     if (!(await hit.waitFor({ timeout: 10_000 }).then(() => true, () => false))) {

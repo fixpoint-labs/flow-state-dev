@@ -27,7 +27,7 @@ import type { RequestStatus } from "@flow-state-dev/core/types";
 import { allRows, type LoadedSnapshot } from "./derive";
 import { useLab } from "./lab-data";
 import { conversationBoardRef, describeFailure, type BoardRow, type Failure } from "./reads";
-import { interruptRun, readRunStatus, resolveRunFlow, RunReadError, type OpenRun } from "./run";
+import { interruptRun, readRunRecord, resolveRunFlow, RunReadError, type OpenRun } from "./run";
 
 /** How often, and how many times, a task screen re-reads its row. */
 export const REREAD_EVERY_MS = 2_000;
@@ -71,10 +71,12 @@ export type TaskView = {
   retryRun(): void;
   /** The run's request status, as its record last read. */
   status: RequestStatus | undefined;
-  /** The request record moved (from the live stream or a read). */
-  reportStatus(status: string): void;
+  /** The request record moved (from the live stream or a read), with when it ended once it has. */
+  reportStatus(status: string, endedAtMs?: number): void;
   interrupt: InterruptState;
   requestInterrupt(): Promise<void>;
+  /** When an aborted run stopped, by its request record; `undefined` when the record has no end time. */
+  stoppedAt: number | undefined;
   devtoolUrl: string | undefined;
   /** Request ids this composer started, newest last, for this open task only (FIX-2009). */
   sent: readonly string[];
@@ -176,7 +178,7 @@ export function TaskProvider({
     };
   }, [client, linkedSession, retries]);
 
-  const [status, setStatus] = useState<{ requestId: string; status: RequestStatus } | { requestId: string; failure: Failure } | undefined>();
+  const [status, setStatus] = useState<{ requestId: string; status: RequestStatus; endedAtMs?: number } | { requestId: string; failure: Failure } | undefined>();
   const flowId = flow !== undefined && "flowId" in flow && flow.sessionId === link?.sessionId ? flow.flowId : undefined;
   const linkedRequest = link?.requestId;
   const linkedAttempt = link?.attempt;
@@ -195,11 +197,11 @@ export function TaskProvider({
     if (openRun === undefined) return;
     let live = true;
     setStatus(undefined);
-    readRunStatus(client, openRun)
-      .then((s) => {
+    readRunRecord(client, openRun)
+      .then((read) => {
         if (!live) return;
-        setStatus({ requestId: openRun.requestId, status: s });
-        lastReported.current = { requestId: openRun.requestId, status: s };
+        setStatus({ requestId: openRun.requestId, ...read });
+        lastReported.current = { requestId: openRun.requestId, status: read.status };
       })
       .catch((error: unknown) => {
         if (live) setStatus({ requestId: openRun.requestId, failure: error instanceof RunReadError ? error.failure : describeFailure(error) });
@@ -239,7 +241,7 @@ export function TaskProvider({
 
   const settledOnce = useRef<string | null>(null);
   const reportStatus = useCallback(
-    (next: string) => {
+    (next: string, endedAtMs?: number) => {
       if (openRun === undefined) return;
       // A run that stops to ask a user: re-read the Lab, so its ask reaches
       // the Session, the activity line and the inspector with no reload.
@@ -247,9 +249,9 @@ export function TaskProvider({
       lastReported.current = { requestId: openRun.requestId, status: next };
       if (next === "suspended" && (before?.requestId !== openRun.requestId || before.status !== "suspended")) void refresh();
       setStatus((held) =>
-        held !== undefined && held.requestId === openRun.requestId && "status" in held && held.status === next
+        held !== undefined && held.requestId === openRun.requestId && "status" in held && held.status === next && (endedAtMs === undefined || held.endedAtMs !== undefined)
           ? held
-          : { requestId: openRun.requestId, status: next as RequestStatus },
+          : { requestId: openRun.requestId, status: next as RequestStatus, ...(endedAtMs === undefined ? {} : { endedAtMs }) },
       );
       if (next !== "in_progress" && settledOnce.current !== openRun.requestId) {
         settledOnce.current = openRun.requestId;
@@ -276,7 +278,8 @@ export function TaskProvider({
     setInterrupt({ kind: "pending" });
     try {
       const outcome = await interruptRun(client, openRun, signal === undefined ? {} : { signal });
-      reportStatus(outcome.kind === "aborted" ? "aborted" : outcome.status);
+      if (outcome.kind === "aborted") reportStatus("aborted", outcome.endedAtMs);
+      else reportStatus(outcome.status);
       setInterrupt({ kind: "idle" });
     } catch (error) {
       if (signal?.aborted === true) return;
@@ -307,6 +310,8 @@ export function TaskProvider({
     reportStatus,
     interrupt,
     requestInterrupt,
+    // For "run stopped at": the time the record or the stream gave with the aborted status.
+    stoppedAt: currentStatus === "aborted" && status !== undefined && "status" in status ? status.endedAtMs : undefined,
     devtoolUrl,
     sent,
     noteSent,

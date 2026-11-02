@@ -550,6 +550,14 @@ export const taskSchema = z.object({
   askedInTurn: z.number().int().nonnegative().optional(),
 
   /**
+   * Reopened by a user's retry (FIX-2383) and not claimed since: the row
+   * waits like a newly filed one, so it holds no session its last attempt ran
+   * in until a claim takes it again. Written by `retry`, cleared by the next
+   * claim. Server-written. **Absent** on every other row (BP-030).
+   */
+  retryPending: z.literal(true).optional(),
+
+  /**
    * The tenant and organization the filing request ran under, from its
    * verified identity (FIX-2133 D1), beside the user in `createdBy`. The board's
    * `updateTask` reaches a row's holds only for a caller in the same user,

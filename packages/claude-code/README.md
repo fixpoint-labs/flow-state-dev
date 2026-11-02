@@ -108,6 +108,12 @@ conversation. The wait lasts at most 5 seconds; past that the block rejects anyw
 
 The block declares `stopsOnAbort: true` (core's `HarnessBlock` field): when its abort signal fires, the block returns only after its agent process has exited. The process gets 5 seconds to exit on its own; if it is still running then, the block kills it with `SIGKILL` and waits for it to exit. A process the agent started, such as a `Bash` tool command, can outlive that kill and keep writing to the working directory while the next step runs there. If the agent can start long-lived commands, build the manager with `stopsOnAbort: false`, so a steer waits for the run to end instead. A harness manager reads the field, so a line typed into a running Claude Code task stops the run and the same request continues its session with the line. A block rebuilt from it, through `connectInput` or a wrapping sequencer, doesn't carry the field; build the manager with `stopsOnAbort: true` to keep the stop for a wrapped block.
 
+### Asking before a tool call
+
+`onToolApproval` is called with each tool call the SDK doesn't already allow, and answers `{ decision: "allow" }`, `{ decision: "deny", message? }` or `{ decision: "held", message? }`. A deny tells the model and the turn goes on. A held call doesn't run, the turn stops (the SDK's `interrupt`), and the run records it as waiting on approval, not as denied: it is for a call a person decides outside the run. A harness manager built with `approveTools: true` hands one among its feeds, so `...feeds` passes it on, and resumes the session with the person's answer.
+
+A tool in `allowedTools`, and whatever `permissionMode` approves on its own (`acceptEdits` for file edits, `bypassPermissions` for everything), never reaches it. Under a manager with approvals on, name what a run may always do in `allowedTools` and use `permissionMode: "default"`.
+
 ### Giving a run its own working directory
 
 By default a run works in whatever directory the server process is running in.
@@ -173,6 +179,9 @@ claudeCodeAgent({
   // Which filesystem settings the run loads. Omitted, it loads all of them,
   // exactly as the CLI does.
   settingSources: ["user"],
+  // Settings for this run, above every source it loads (Claude Code's
+  // `settings.json` shape). Here: none of the loaded sources' hooks run.
+  settings: { disableAllHooks: true },
   // The run's environment. Unset, the run inherits your server's whole
   // `process.env`. Set, it REPLACES that environment: here, only the named
   // variables reach the run (`harnessEnv` is from `@flow-state-dev/core`).
@@ -206,6 +215,27 @@ users can write — then those files are user input, and the run reading
 configuration out of them means your users configure your agent. Pass `[]` to
 load none, or list only the sources you control.
 
+**A repository you trust: its conventions, with its hooks off.** `"project"`
+loads the repository's `CLAUDE.md`, its skills and its `.claude/settings.json`,
+and that file can hold hooks: shell commands Claude Code runs by itself on events
+like a prompt or a stop, which show in no transcript. A run can write one into the
+file for the next run to execute. `settings` is a settings layer of your own, in
+`settings.json` shape, that sits above every source the run loads, so
+`settings: { disableAllHooks: true }` keeps the conventions and turns every hook
+off:
+
+```ts
+claudeCodeAgent({
+  cwd,
+  settingSources: ["project"],
+  settings: { disableAllHooks: true },
+  env: harnessEnv({ pass: CLAUDE_CODE_PASS }),
+});
+```
+
+`settings` is forwarded as given and unset by default. With `mcpTools` set, the
+run's settings also carry `disableClaudeAiConnectors: true`, whatever yours say.
+
 **`env` decides what the run can read.** Leave it unset and the Claude Code
 process starts with your server's entire `process.env`: every API key, token and
 connection string in it, readable by any shell command the model runs. Setting
@@ -219,7 +249,10 @@ your own: `PATH`, `HOME`, `USER`, `SHELL`, `TMPDIR`, `ANTHROPIC_API_KEY`,
 `CLAUDE_CODE_OAUTH_TOKEN`, and the proxy and CA settings a proxied network
 needs, in upper and lower case. `harnessEnv({ pass: CLAUDE_CODE_PASS })`
 builds the `env`; hand the same one to `probeClaudeAccount`, `listClaudeModels`
-and `readClaudeUsage` so they see the run's account.
+and `readClaudeUsage` so they see the run's account. To hand the run a key of your
+own as well, add its name: `harnessEnv({ pass: [...CLAUDE_CODE_PASS, "GH_TOKEN"] })`.
+A variable you pass is readable by every command the run starts, and the model can
+print it.
 
 Include lowercase proxy names too; curl reads only `http_proxy`.
 

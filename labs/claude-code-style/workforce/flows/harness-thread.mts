@@ -74,6 +74,11 @@ const claudeCode = (permissionMode: (typeof PERMISSION_MODES)[number]) => (feeds
     recordWork: true,
     allowedTools: ["Read", "Write", "Edit", "Bash"],
     permissionMode,
+    // The working folder's project settings, CLAUDE.md and skills, with every hook off and never
+    // this machine's own user settings: a turn can write a hook into `.claude/settings.json`, and it
+    // would run by itself on the next turn, in no transcript.
+    settingSources: ["project"],
+    settings: { disableAllHooks: true },
   } as never) as unknown as HarnessBlock;
 
 /** The model a Cursor run uses: Cursor's own pick ("Auto"), as Kitchen Sink's Cursor mode offers it. */
@@ -82,11 +87,7 @@ const CURSOR_MODEL = "default";
 /**
  * One builder per manager the flow builds. `claude-code-plan` is Claude Code in `plan` mode; it is
  * not a name a worker's `harness:` line may use.
- *
- * Each run starts with only the variables its harness's package names (`CLAUDE_CODE_PASS`,
- * `CODEX_PASS`, `CURSOR_PASS`), read when the run's block is built. With no `env`, a run would
- * start with the lab server's whole environment, every key and token in it, and its model has a
- * shell. This filters what a run starts with; it is not a boundary (FIX-1930).
+ * Each run starts with only its package's pass list (`harnessEnv` over `*_PASS`).
  */
 export const HARNESSES: Record<string, (feeds: HarnessFeeds) => HarnessBlock> = {
   "claude-code": claudeCode("acceptEdits"),

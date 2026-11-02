@@ -203,6 +203,9 @@ export interface ClaudeCodeAgentOptions {
    * Optional approval seam. When set, it is adapted onto the SDK `canUseTool`
    * callback: each tool call routes through it, and the decision is noted via a
    * status item. When unset, HITL degrades to the SDK's own `permissionMode`.
+   * A tool in `allowedTools` is pre-allowed by the SDK and never reaches it.
+   * A `held` decision stops the turn with the call unrun, for a host that
+   * waits for a person outside the run (`approveTools` on a harness manager).
    */
   onToolApproval?: (
     req: ToolApprovalRequest,
@@ -301,6 +304,22 @@ export interface ClaudeCodeAgentOptions {
    * policy. Nothing changes for a caller who does not set it.
    */
   settingSources?: ClaudeAgentSettingSource[];
+  /**
+   * Settings for this run, in Claude Code's `settings.json` shape, forwarded to
+   * the SDK as given. Default: unset, which hands the SDK no settings of its own.
+   *
+   * They sit above every source `settingSources` loads, so a key here beats
+   * the same key in the repository's `.claude/settings.json`. The case it is
+   * for: a host that trusts the repository a run works in sets
+   * `settingSources: ["project"]` to load its `CLAUDE.md` and skills, and
+   * `settings: { disableAllHooks: true }` so the repository's hooks, which run
+   * by themselves and show in no transcript, stay off.
+   *
+   * With `mcpTools` set, the run's settings also carry
+   * `disableClaudeAiConnectors: true`, whatever this says: `mcpTools` is the
+   * run's whole MCP set. The object is not modified.
+   */
+  settings?: Record<string, unknown>;
   /**
    * Environment variables for the run's own process. Default: unset, which
    * hands the run the server's **entire** `process.env` — every key, token and
@@ -827,6 +846,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     onUsage,
     onActivity,
     settingSources,
+    settings,
     env,
     sandbox,
     mcpTools,
@@ -1023,8 +1043,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         // Spread conditionally rather than passed as `undefined`. For
         // `settingSources` the two are different instructions — absent means
         // "load all of them", `[]` means "load none" — and the same care costs
-        // nothing for the other two.
+        // nothing for the others.
         ...(settingSources !== undefined ? { settingSources } : {}),
+        ...(settings !== undefined ? { settings } : {}),
         ...(env !== undefined ? { env } : {}),
         ...(sandboxSettings !== undefined ? { sandbox: sandboxSettings } : {}),
         // In-session, from the block's own conversation state; detached, from
@@ -1144,7 +1165,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         handedTools =
           typeof mcpTools === "function" ? await resolveMcpTools(mcpTools, ctx) : mcpTools;
         if (handedTools !== undefined) {
-          Object.assign(queryOptions, mcpQueryOptions(handedTools));
+          Object.assign(queryOptions, mcpQueryOptions(handedTools, settings));
           // With `mcpTools` set, the relayed tools are allowed without asking.
           queryOptions.allowedTools = [
             ...new Set([...(queryOptions.allowedTools ?? []), ...relayedToolNames(handedTools)]),
@@ -1666,10 +1687,13 @@ async function closeMcpTools(tools: ClaudeCodeMcpTools | undefined): Promise<voi
  *
  * `strictMcpConfig` keeps out `.mcp.json`, settings-file and plugin servers;
  * it does not keep out the signed-in account's claude.ai connectors, which
- * `disableClaudeAiConnectors` does, read from the run's settings.
+ * `disableClaudeAiConnectors` does, read from the run's settings. That switch
+ * is merged into the host's own `settings`, last, so no host value turns the
+ * connectors back on.
  */
 function mcpQueryOptions(
   tools: ClaudeCodeMcpTools,
+  hostSettings: Record<string, unknown> | undefined,
 ): Pick<ClaudeAgentQueryOptions, "mcpServers" | "strictMcpConfig" | "settings"> {
   return {
     mcpServers: Object.fromEntries(
@@ -1679,7 +1703,7 @@ function mcpQueryOptions(
       ]),
     ),
     strictMcpConfig: true,
-    settings: { disableClaudeAiConnectors: true },
+    settings: { ...hostSettings, disableClaudeAiConnectors: true },
   };
 }
 
@@ -1698,7 +1722,8 @@ function relayedToolNames(tools: ClaudeCodeMcpTools): string[] {
  * is recorded as a DURABLE, non-colliding status item (auditable: it replays on
  * history reload, and a per-decision sequence number defeats `ctx.emit.status`'s
  * same-string dedupe so repeated approvals of one tool aren't swallowed). A deny
- * continues the run (the SDK surfaces the denial to the model).
+ * continues the run (the SDK surfaces the denial to the model). A held call is
+ * recorded as waiting on a person, and stops the turn (`interrupt`) unrun.
  */
 function buildCanUseTool(
   onToolApproval: NonNullable<ClaudeCodeAgentOptions["onToolApproval"]>,
@@ -1718,6 +1743,18 @@ function buildCanUseTool(
       return {
         behavior: "allow",
         updatedInput: decision.updatedInput ?? toolInput,
+      };
+    }
+    if (decision.decision === "held") {
+      // Not a deny: the call waits on a person outside this run. It must not
+      // run, and the turn stops rather than going on without it.
+      ctx.emit.status(`Waiting on approval: ${toolName} (#${seq}).`, {
+        transient: false,
+      });
+      return {
+        behavior: "deny",
+        message: decision.message ?? `Tool ${toolName} is waiting for a person's approval.`,
+        interrupt: true,
       };
     }
     ctx.emit.status(`Denied tool: ${toolName} (#${seq}).`, {

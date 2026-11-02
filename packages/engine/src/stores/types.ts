@@ -5,7 +5,7 @@ import type {
   SuspensionFilter,
   SuspensionRecord
 } from "@flow-state-dev/core/types";
-import type { JsonObject, ModelUsageEntry } from "@flow-state-dev/core/types";
+import type { HarnessRunSpend, JsonObject, ModelUsageEntry } from "@flow-state-dev/core/types";
 import type { ExpectedVersion as SharedExpectedVersion } from "@flow-state-dev/core/helpers";
 import type {
   BlockTraceItem,
@@ -268,6 +268,14 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * no settlement counted any, so every trace in the log counts.
    */
   spentThroughItemIndex?: number;
+  /**
+   * The harness runs the request had spent when {@link RequestRecord.spentByModel}
+   * was written, as each was last reported. A resume or continuation starts
+   * its ledger's total from them, so a reader of the whole request's spend
+   * still counts a run an earlier ending handed on. Absent on a record written
+   * before it existed: no earlier harness run is carried (BP-030).
+   */
+  spentHarnessRuns?: HarnessRunSpend[];
 };
 
 /**

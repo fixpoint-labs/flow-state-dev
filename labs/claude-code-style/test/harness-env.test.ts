@@ -33,6 +33,7 @@ const { HARNESSES } = await import("../workforce/flows/harness-thread.mts");
 const { CLAUDE_CODE_PASS } = await import("@flow-state-dev/claude-code/sdk");
 const { CODEX_PASS } = await import("@flow-state-dev/codex");
 const { CURSOR_PASS } = await import("@flow-state-dev/cursor");
+const { harnessEnv } = await import("@flow-state-dev/core");
 
 const SECRET = "LAB_SERVER_ONLY_SECRET";
 const feeds = { cwd: () => "/tmp/run", resume: () => undefined, onSession: () => {}, onActivity: () => {} };
@@ -65,8 +66,7 @@ describe("the harness-thread flow's coding runs", () => {
     // Unset means the child inherits the server's whole environment.
     expect(env, `${name} run built with no env`).toBeDefined();
     expect(Object.keys(env!)).not.toContain(SECRET);
-    expect(Object.keys(env!).every((key) => EXPECTED[name]!.pass.includes(key))).toBe(true);
-    // The list is applied, not an empty stand-in: PATH is on every list and set here.
-    expect(env!.PATH).toBe(process.env.PATH);
+    // Exactly the package's list, applied to this process's environment.
+    expect(env).toEqual(harnessEnv({ pass: EXPECTED[name]!.pass }));
   });
 });

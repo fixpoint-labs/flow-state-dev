@@ -38,7 +38,7 @@ import { shiftCoordinatorOf, inboxItemIdOf, workerLabel, workerStates, shiftSumm
 import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
 import type { Worker } from "../lib/reads";
-import { navigate } from "../lib/routes";
+import { RouteLink } from "../components/RouteLink";
 import { startShiftCoordinatorWork, useShiftCoordinatorWorking } from "../lib/working";
 import type { Gaps } from "../gaps";
 
@@ -98,16 +98,15 @@ function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
         )}
       </div>
       {workerId === undefined ? null : (
-        <button
-          type="button"
-          onClick={() => navigate({ level: "worker-settings", worker: workerId })}
+        <RouteLink
+          to={{ level: "worker-settings", worker: workerId }}
           title={`${NAME} settings`}
           aria-label={`${NAME} settings`}
           className="ml-auto flex size-8 shrink-0 items-center justify-center text-muted-foreground hover:bg-foreground/6 hover:text-foreground"
           data-testid="shift-coordinator-settings"
         >
           <Settings className="size-4" aria-hidden />
-        </button>
+        </RouteLink>
       )}
     </header>
   );
@@ -178,14 +177,13 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
                 <NeedsYouTag />
                 <p className="min-w-0 font-mono text-[11px] font-medium text-muted-foreground" data-look="ask-meta">
                   {workerLabel(ask.workerId ?? "unknown worker")} asks{" · "}
-                  <button
-                    type="button"
+                  <RouteLink
+                    to={{ level: "inbox", item: inboxItemIdOf(snapshot, ask.item.suspensionId) }}
                     className="text-info hover:text-foreground"
-                    onClick={() => navigate({ level: "inbox", item: inboxItemIdOf(snapshot, ask.item.suspensionId) })}
                     data-testid="shift-coordinator-ask-open"
                   >
                     open in Inbox
-                  </button>
+                  </RouteLink>
                 </p>
               </div>
               <AskCard ask={ask} />
@@ -260,12 +258,12 @@ function AskLine({ item }: { item: OutputItem }) {
     );
   }
   return (
-    <button type="button" className="flex items-baseline gap-[9px] text-left" onClick={() => navigate({ level: "inbox", item: null })}>
+    <RouteLink to={{ level: "inbox", item: null }} className="flex items-baseline gap-[9px] text-left">
       <NeedsYouTag />
       <span className="font-mono text-[11px] font-medium text-info" data-look="ask-meta">
         Waiting on you: answer it in Inbox
       </span>
-    </button>
+    </RouteLink>
   );
 }
 

@@ -21,6 +21,7 @@ import { themeLabel, type ThemeLook } from "../lib/theme";
 import { useLab } from "../lib/lab-data";
 import { useRoster, withRoster } from "../lib/roster";
 import { navigate } from "../lib/routes";
+import { RouteLink } from "../components/RouteLink";
 import type { Gaps } from "../gaps";
 
 const NEVER = () => () => {};
@@ -69,6 +70,8 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
   return (
     <li
       className={`${COLUMNS_GRID} border-b px-2 py-2.5 text-sm`}
+      // Focusable by script, not by Tab: Jump to lands a worker's result on its row.
+      tabIndex={-1}
       data-testid="roster-worker"
       data-worker-id={worker.id}
       data-status={status}
@@ -91,14 +94,13 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
             —
           </span>
         </p>
-        <button
-          type="button"
-          onClick={() => navigate({ level: "worker-settings", worker: worker.id })}
-          className="mt-1 border px-1.5 py-0.5 text-xs hover:border-foreground"
+        <RouteLink
+          to={{ level: "worker-settings", worker: worker.id }}
+          className="mt-1 inline-block border px-1.5 py-0.5 text-xs hover:border-foreground"
           data-testid="roster-worker-settings"
         >
           Settings
-        </button>
+        </RouteLink>
       </div>
       <div className="space-y-1 pt-0.5">
         <span className="flex gap-0.5">
@@ -121,18 +123,17 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
           </span>
         ) : (
           held.map((row) => (
-            <button
+            <RouteLink
               key={`${row.boardRef}/${row.id}`}
-              type="button"
               title={row.title}
               className={`border px-1.5 py-0.5 text-xs hover:border-foreground ${onYou.has(row) ? "bg-attention text-attention-foreground" : ""}`}
-              onClick={() => navigate({ level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" })}
+              to={{ level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" }}
               data-testid="roster-holding"
               data-board-ref={row.boardRef}
               data-task-id={row.id}
             >
               {row.id}
-            </button>
+            </RouteLink>
           ))
         )}
       </div>
@@ -210,7 +211,7 @@ export function RosterView({
               key={option?.team ?? ""}
               type="button"
               aria-pressed={(option?.team ?? null) === team}
-              onClick={() => navigate({ level: "roster", team: option?.team ?? null })}
+              onClick={() => /* in place: the team toggle filters this screen */ navigate({ level: "roster", team: option?.team ?? null })}
               data-testid="roster-team-option"
               data-team={option?.team ?? ""}
               className={`px-3 py-1 ${i > 0 ? "border-l border-foreground" : ""} ${(option?.team ?? null) === team ? "bg-foreground text-background" : ""}`}

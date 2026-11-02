@@ -48,15 +48,20 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `task-plan` | Section-grouped renderer for a TaskCollection. Subscribes to `task-change` and `task-board-meta` |
 | `artifact` | Composable artifact viewer shell with header, actions, and content areas |
 | `file-tree` | Tree-structured file and folder display with expand/collapse and selection |
+| `run-changes` | What a coding run changed: "N files changed (+a −d)", opening into each file's added and removed lines and, through a `loadPatch` the app passes, one file's patch. Takes harness-manager's review data and its `changes` read as plain props |
+| `run-checks` | A coding run's checks: "Checks n/m passed", red and open when any failed, each command opening into the end of its output. Takes harness-manager's `commandCheck` results (review data, run record, session turn) as plain props |
 | `jsx-preview` | Live JSX/TSX renderer that treats its input as untrusted, with streaming support and error fallback. Renders only allowlisted HTML and static SVG tags (`div`, `table`, `img`, `svg`, ...), and drops `on*` handlers, `dangerouslySetInnerHTML`, `srcDoc`, `srcset`, the `form` attribute, and any URL that isn't http(s), mailto, tel or relative. `{...}` expressions are limited to a safe subset, and input over 100,000 characters is refused. Components passed in `components` are trusted and render as given; the JSX can read everything in `bindings` |
 | `sandbox` | Source/preview tab wrapper for JSX artifacts using JSXPreview and CodeBlock |
 | `info-card` | Generative-UI info card: title, optional image, fact rows. Pairs with `emitInfoCard` |
 | `link-card` | Generative-UI link card: rich preview for an external URL. Pairs with `emitLinkCard` |
-| `approval` | Polished Approve / Reject card for a `user_approval` suspension. Collapses to a receipt on resolve |
+| `approval` | Polished Approve / Reject card for a `user_approval` suspension, with a button for each extra yes the stop offers (`data.approveOptions`). Collapses to a receipt on resolve |
+| `review-hold` | A review waiting on you: **Accept** or **Ask for changes**. Pass a coding run's review (`review`: its commits on the branch and the judge's verdict) and it draws that; without one it draws the stop's prompt. Draw `ReviewHold` from a task's hold with your own `answer`, or let `SuspensionCard` draw `ReviewSuspension` for a `kind: "review"` stop that takes the verdict. It sends only `{ verdict: "accepted" }` or `{ verdict: "revise", words }` |
 | `question` | Free-text answer card for a `user_input` suspension |
 | `selection` | Single (enum) or multi (array of enum) choice card for a `user_input` suspension |
 | `form` | Flat-object form card for a `user_input` suspension — one control per scalar/enum property |
 | `model-badge` | Small pill showing the `ModelIdentity` that answered. Renders nothing when the model is undefined |
+| `spend` | One line for what a run spent: model, tokens, the vendor's charge when it reported one, and optionally attempts and duration. Reads a task's or a harness turn's folded spend |
+| `work-place` | Where a coding run's work went: "3 commits on …/branch", with copy buttons for `git switch`, `cd` and `git log base..branch`. Takes what `workPlace` from `@flow-state-dev/harness-manager` returns; renders nothing for a run with no branch |
 | `audit-annotation` | Compact card for `responseAuditor` findings: severity indicators, per-analyzer scores, evidence. Fed by the `audit-annotation` component item |
 
 ## Framework Integration
@@ -80,7 +85,7 @@ import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 
 Sources are excluded from the renderer map (`source: false`) — render them grouped separately via `<SourcesGroup>` to display as a collapsed list after the message thread.
 
-`chatAssistantRenderers` maps the `suspension` slot to a `SuspensionCard` that picks the right card by the suspension's reason and `resumeSchema` shape: the `Approval` card for `user_approval`, and the `Question` / `Selection` / `Form` cards for `user_input` (free text, a choice from an enum, or a flat-object form). All four are thin views over `useSuspensionForm` / `useApproval`. Nested or union schemas fall outside the flat-form boundary — name your own component via the suspension's `render.component` hint for those.
+`chatAssistantRenderers` maps the `suspension` slot to a `SuspensionCard` that picks the right card by the suspension's reason and `resumeSchema` shape: the `Approval` card for `user_approval`, and the `Question` / `Selection` / `Form` cards for `user_input` (free text, a choice from an enum, or a flat-object form). A `kind: "review"` stop whose answer is the review verdict gets the `review-hold` card, answered through your `SuspensionResolverProvider`. All four are thin views over `useSuspensionForm` / `useApproval`. Nested or union schemas fall outside the flat-form boundary — name your own component via the suspension's `render.component` hint for those.
 
 When a `task-board-meta` item includes a `collectionId`, the default registry renders `TaskPlan` for that collection. `task-change` items are not rendered on their own. `planAndExecute` and `supervisor` emit `task-change` and `task-board-meta`.
 
