@@ -57,7 +57,7 @@ change is itself confidential. Then a check per notice is the price.
 | | |
 |---|---|
 | **Instead of** | Reading on a timer only when `GET /capabilities` says there is no push |
-| **Because** | A socket can be up and still miss a change made on another process, when its process's bus doesn't cross processes (the in-memory bus on two processes, a Postgres bus that stopped hearing its ping). FIX-2426 keeps the session stream's timer there; the hook keeps its own the same way. And a socket on a host with push still drops: a proxy's idle timeout, a deploy, a laptop that sleeps, a ticket that lands on another process. With the timer tied to capabilities alone, the screen goes stale with no sign of it. So `client.subscribe` reads on its timer from the first failed reconnect, the pace `followSession` already treats as lapsed, until the socket is back, and while the socket says its bus doesn't cross. Each connect and reconnect calls `onChange` once. The timer lives in `client.subscribe`, not in each hook, so every consumer gets one fallback. Epic ER-5 says the same |
+| **Because** | A socket can be up and still miss a change made on another process, when its process's bus doesn't cross processes (the in-memory bus on two processes, a Postgres bus that stopped hearing its ping). FIX-2426 keeps the session stream's timer there; the hook keeps its own the same way. And a socket on a host with push still drops: a proxy's idle timeout, a deploy, a laptop that sleeps, a ticket that lands on another process. With the timer tied to capabilities alone, the screen goes stale with no sign of it. So `client.subscribe` reads on its timer from the first failed reconnect, the pace `followSession` already treats as lapsed, until the socket is back, and while the socket says its bus doesn't cross (an open Ably connection always crosses, [below](#decided-not-asked)). Each connect and reconnect calls `onChange` once. The timer lives in `client.subscribe`, not in each hook, so every consumer gets one fallback. Epic ER-5 says the same |
 | **Locks in** | `pollIntervalMs` on `client.subscribe` and `useSubscription`, a public name. A screen on a push host still costs a read per interval while its socket is down or its bus doesn't cross, which on the in-memory bus is always, even on one process (FIX-2426 D1) |
 
 ![D3: when the hook reads on a timer. Chosen: wherever push can miss a change, beside no push only. Decides it: a socket that misses a change, dropped or on a bus that cannot cross. Price: a read per interval meanwhile. Flips if push on long-lived hosts never misses a change](figures/d3-fallback.svg)
@@ -86,9 +86,13 @@ It comes down to push that misses a change: without the timer, the screen stops 
   `onCrossingChange` (FIX-2426), the server sends a `crossing` frame `{ crosses }`. Until the
   first `crosses: true`, and while it is false, `client.subscribe` reads on its timer as if the
   socket were down (D3), still running `onChange` on each notice; each change of the answer runs
-  it once, as a connect does. Not a `GET /capabilities` field: the client reads that once, the
-  answer can change at runtime (FIX-2427's ping), and it belongs to the process the socket landed
-  on, not to the host. FIX-380 says how its delivery reports the same.
+  it once, as a connect does. "Doesn't cross until the first frame" is the WebSocket arm's rule.
+  Not a `GET /capabilities` field: the client reads that once, the answer can change at runtime
+  (FIX-2427's ping), and it belongs to the process the socket landed on, not to the host.
+- **On the Ably arm, an open Ably connection counts as crossing.** Ably's bus is the delivery
+  itself, so no frame is sent or awaited: a mint answer with `transport: "ably"` means push
+  covers every process while that connection is up. A dropped Ably connection resumes the timer,
+  as a dropped socket does, and its return runs `onChange` once. FIX-380 builds that arm.
 - **One way to follow a session** (ER-5). `useSession({ live })` follows its own items; a session
   topic on `useSubscription` is for flow `reads`. FIX-2429 moves `liveBoardDriver` onto it.
 - **`GET /capabilities` answers `{ userStream, push }`**, with `push` one of
