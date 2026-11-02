@@ -7,6 +7,8 @@ import {
   FlowNavigator,
   FlowProvider,
   SuspensionResolverProvider,
+  clearDraft,
+  useDraft,
   useFlow,
   useSession,
   useClientData,
@@ -67,7 +69,7 @@ import { COORDINATOR_FLOWS, defaultConversation, isCoordinatorFlow, WORKER_FLOWS
 import { createWorkforceClient, type RosterEntry } from "@flow-state-dev/workforce/browser";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import { pageGoalControl } from "@/lib/goal-control";
-import { useSessionDraft } from "@/lib/use-session-draft";
+import { SESSION_DRAFT } from "@/lib/session-draft";
 import { useSessionControls, type RecordedSessionControls } from "@/lib/use-session-controls";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
@@ -251,7 +253,7 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
   }, [resolving, openSessionId]);
   const session = useSession(flow.activeSessionId, { items: true, autoResume: true });
 
-  const [message, setMessage] = useSessionDraft(flow.activeSessionId);
+  const [message, setMessage] = useDraft(SESSION_DRAFT, flow.activeSessionId);
   const messageRef = useRef(message);
   messageRef.current = message;
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
@@ -395,7 +397,8 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
       const text = msg.text.trim();
-      if (!flow.activeSessionId || text.length === 0) return;
+      const sessionId = flow.activeSessionId;
+      if (!sessionId || text.length === 0) return;
       try {
         await session.sendAction("run", {
           message: text,
@@ -403,6 +406,8 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
           thinkingStyle,
           features,
         }, { userMessage: text });
+        // The page may have moved to another session while it ran: the stored draft goes only if it is still this line.
+        clearDraft(SESSION_DRAFT, sessionId, text);
         if (messageRef.current.trim() === text) setMessage("");
       } catch {
         // Keep the persisted draft so a failed send can be retried.

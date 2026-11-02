@@ -232,7 +232,7 @@ export function Conversation({
       <Composer sessionId={sessionId} workerName={worker.name} running={running} onSend={(text) => {
           // Your own line takes you to the end, wherever you had scrolled to.
           feed.sent();
-          void adapter.send(sessionId, text);
+          return adapter.send(sessionId, text);
         }}
       />
     </main>
