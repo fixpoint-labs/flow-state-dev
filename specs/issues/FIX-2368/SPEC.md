@@ -58,7 +58,7 @@ named assertion.
 | `a:org-row` | A adds a row to an org-scoped collection; B's board shows it within 1 s |
 | `a:no-timer` | Over 10 s from B's first `crosses: true` frame, with nothing written, B's page sends 0 read requests; while A writes, every read B sends follows a notice frame or a connect |
 | `d:plain-reply` | A's action writes only a reply and its status (no resource, state or task); B's session view on process 2 shows it within 1 s |
-| `d:no-timed-read` | Over the same 10 s, Postgres logs 0 statements from process 2's session stream |
+| `d:no-timed-read` | Over the same idle 10 s, with nothing written, Postgres logs 0 statements from process 2's session stream; the read a notice wakes is outside it |
 | `c:refused` | C asks to subscribe to A's session; the mint refuses it and C's page shows nothing of it |
 | `c:other-org-silent` | C, on its own org's topic, sends 0 reads and shows no change when A patches org 1 |
 | `c:reconnect-refused` | Process 2 is restarted; C's socket reconnects, the re-mint refuses A's session again, and C hears nothing |
