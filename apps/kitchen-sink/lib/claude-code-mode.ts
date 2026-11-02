@@ -9,8 +9,8 @@
  * flow runs with `approveTools`: a call outside `Read`, `Glob` and `Grep`
  * stops the turn on an approval card, and the answer resumes the same
  * conversation (`@flow-state-dev/harness-manager`). Under the goal control
- * `no-approval` it asks nothing and runs with `bypassPermissions`, as it did
- * before, so the goal leg that a call waits can be seen to fail.
+ * `no-approval` nothing waits, so the goal leg that a call waits can be seen
+ * to fail: such a call is denied, never run unasked.
  *
  * **Kitchen Sink confines no run.** It runs with no sandbox, so a call the
  * user allows writes, commits and runs commands wherever the server's OS
@@ -145,11 +145,12 @@ export function claudeCodeBlock(feeds: HarnessSessionFeeds, seams: ClaudeCodeSea
     recordWork: goalControl() !== "no-record",
     // Records no pull request in the turn, so goal leg **r1** can be seen to fail.
     recordPullRequests: goalControl() !== "no-pr-record",
-    // With approvals, every call outside the read-only tools asks the user
-    // through the feed; without, every call runs unasked.
-    ...(feeds.onToolApproval !== undefined
-      ? { onToolApproval: feeds.onToolApproval, permissionMode: "default" as const, allowedTools: [...READ_ONLY_TOOLS] }
-      : { permissionMode: "bypassPermissions" as const }),
+    // Every call outside the read-only tools asks the user through the feed
+    // (`approveTools` on the session flow). Without the feed, under the goal
+    // control `no-approval`, such a call is denied rather than run.
+    ...(feeds.onToolApproval !== undefined ? { onToolApproval: feeds.onToolApproval } : {}),
+    permissionMode: "default",
+    allowedTools: [...READ_ONLY_TOOLS],
     // Untrusted, nothing from the repository; trusted, its conventions with
     // every hook off (see the header).
     ...claudeCodeRepoOptions(trust),

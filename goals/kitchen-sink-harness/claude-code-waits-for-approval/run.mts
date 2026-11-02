@@ -7,10 +7,13 @@
  *
  * Legs:
  *
- *   a   the turn waits on an approval card naming the command and the worktree; the notice says so; the file isn't made.
- *   c   after a server restart, the card is still there, and Allow resumes the conversation the turn started.
- *   b   after Allow the file exists, made no earlier than the click.
- *   d   a second call is rejected; its turn ends, and its file never exists.
+ *   a   the turn waits on an approval card naming the command and the worktree, with Allow for this run; the notice
+ *       says so; the request is suspended.
+ *   c   after a server restart and a reload, the card is still there; Approve on it resumes the conversation the turn
+ *       started, and the page follows it to the end.
+ *   b   the call didn't run while the turn waited or across the restart, and ran exactly once, after the click.
+ *   e   a message sent while the next call waits is refused, the page says why, and the card stays.
+ *   d   that call is rejected on the card; its turn ends, and it never ran.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-harness/claude-code-waits-for-approval/run.mts
  * Control:  GOAL_CONTROL=no-approval (must FAIL at a, and nothing else)
@@ -102,6 +105,15 @@ async function turnStatus(sessionId: string): Promise<string | null> {
   return requests[0]?.status ?? null;
 }
 
+/** When each run of the call on `file` happened: the lines the scripted Claude Code appended, one per run. */
+function runsOf(worktree: string, file: string): number[] {
+  const path = join(worktree, file);
+  return existsSync(path) ? readFileSync(path, "utf8").trim().split("\n").map(Number) : [];
+}
+
+/** How many times the call on `file` ran. */
+const timesRan = (worktree: string, file: string) => runsOf(worktree, file).length;
+
 /** A throwaway repository for the sessions' worktrees. */
 function scratchRepo(): { repo: string; dispose: () => void } {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "ks-goal-approval-")));
@@ -138,16 +150,19 @@ await runGoal(async (failures) => {
       .waitFor({ timeout: WAIT_MS })
       .then(() => true, () => false);
     if (!shown) {
-      fail("a", `no approval card for \`touch ${file}\` showed; the file ${existsSync(join(worktree, file)) ? "was made unasked" : "was not made"}`);
+      fail("a", `no approval card for \`touch ${file}\` showed; the call ran ${timesRan(worktree, file)} times`);
       return { failures, evidence: evidence.join("; ") };
     }
     const cardText = (await card(page, `touch ${file}`).textContent()) ?? "";
     if (!cardText.includes(worktree)) fail("a", `the card doesn't name the worktree ${worktree}: ${JSON.stringify(cardText)}`);
+    if ((await card(page, `touch ${file}`).getByRole("button", { name: "Allow for this run" }).count()) !== 1) {
+      fail("a", "the card offers no Allow for this run");
+    }
     const kind = await notice(page).getAttribute("data-kind", { timeout: WAIT_MS }).catch(() => null);
     if (kind !== "waiting") fail("a", `the notice reads ${JSON.stringify(kind)} (want waiting)`);
     const waitingStatus = await turnStatus(sessionId);
     if (waitingStatus !== "suspended") fail("a", `the turn's request is ${JSON.stringify(waitingStatus)} (want suspended)`);
-    if (existsSync(join(worktree, file))) fail("a", `${file} exists before any answer`);
+    if (timesRan(worktree, file) !== 0) fail("b", `${file} ran before any answer`);
     const conversation = await bound(page);
     evidence.push(`waiting on ${conversation}, notice ${kind}, request ${waitingStatus}`);
 
@@ -160,6 +175,7 @@ await runGoal(async (failures) => {
       const loaded = await page.goto(url, { timeout: WAIT_MS }).then(() => true, () => false);
       if (loaded || attempt === 2) break;
     }
+    if (timesRan(worktree, file) !== 0) fail("b", `${file} ran across the restart, before any answer`);
     const still = await card(page, `touch ${file}`)
       .waitFor({ timeout: WAIT_MS })
       .then(() => true, () => false);
@@ -179,24 +195,34 @@ await runGoal(async (failures) => {
       evidence.push(`resumed ${after}`);
 
       // ---- b: it ran once, after the answer
-      const path = join(worktree, file);
-      if (!existsSync(path)) {
-        fail("b", `${file} is not in the worktree after Allow`);
+      const runs = runsOf(worktree, file);
+      if (runs.length !== 1) {
+        fail("b", `after Allow ${file} ran ${runs.length} times (want 1)`);
       } else {
-        const madeAt = Number(readFileSync(path, "utf8"));
-        if (!(madeAt >= clickedAt)) fail("b", `${file} was made at ${madeAt}, before the click at ${clickedAt}`);
-        evidence.push(`made ${madeAt - clickedAt} ms after the click`);
+        if (!(runs[0]! >= clickedAt)) fail("b", `${file} ran at ${runs[0]}, before the click at ${clickedAt}`);
+        evidence.push(`ran once, ${runs[0]! - clickedAt} ms after the click`);
       }
     }
 
-    // ---- d: a rejected call never runs
+    // ---- e and d: a message while the next call waits is refused, then Reject
     await send(page, `[touch:${denied}] make another`);
     const asked = await card(page, `touch ${denied}`)
       .waitFor({ timeout: WAIT_MS })
       .then(() => true, () => false);
     if (!asked) {
       fail("d", `no approval card for \`touch ${denied}\` showed`);
+      fail("e", "nothing waited, so no message could be refused");
     } else {
+      await send(page, "are you there?");
+      const refused = await page
+        .getByTestId("conversation")
+        .getByText("Another turn of this session is waiting for an answer about a tool call")
+        .first()
+        .waitFor({ timeout: WAIT_MS })
+        .then(() => true, () => false);
+      if (!refused) fail("e", "the page never said why the message sent while the turn waits was refused");
+      const stillWaiting = await card(page, `touch ${denied}`).count();
+      if (stillWaiting !== 1) fail("e", "the refused message took the waiting card away");
       await card(page, `touch ${denied}`).getByRole("button", { name: "Reject" }).click();
       const ended = await page
         .waitForFunction(
@@ -209,7 +235,7 @@ await runGoal(async (failures) => {
         )
         .then(() => true, () => false);
       if (!ended) fail("d", "the rejected turn never ended");
-      if (existsSync(join(worktree, denied))) fail("d", `${denied} exists after Reject`);
+      if (timesRan(worktree, denied) !== 0) fail("d", `${denied} ran ${timesRan(worktree, denied)} times after Reject`);
     }
   } finally {
     await browser.close();

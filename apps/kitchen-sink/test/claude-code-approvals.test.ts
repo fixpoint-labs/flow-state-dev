@@ -11,7 +11,7 @@
  *
  * Red states produced before these were trusted:
  *   - build the flow with approvals off (`no-approval`): "stops the turn" fails, the file is written unasked.
- *   - pass the block no `onToolApproval`: the same, through `bypassPermissions`.
+ *   - pass the block no `onToolApproval`: the same three fail, nothing waits.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -182,8 +182,10 @@ describe("Claude Code mode asks before a tool call", () => {
       expect(h.runs).toHaveLength(2);
       expect(h.runs[1]!.resume).toBe(asked);
       expect((await h.sessionState()).binding?.confirmed).toBe(asked);
-      const madeAt = Number(readFileSync(join(h.worktree(), "marker.txt"), "utf8"));
-      expect(madeAt).toBeGreaterThanOrEqual(answeredAt);
+      // One line per run: it ran once, after the answer.
+      const runs = readFileSync(join(h.worktree(), "marker.txt"), "utf8").trim().split("\n").map(Number);
+      expect(runs).toHaveLength(1);
+      expect(runs[0]).toBeGreaterThanOrEqual(answeredAt);
     } finally {
       await h.dispose();
     }
@@ -202,15 +204,16 @@ describe("Claude Code mode asks before a tool call", () => {
     }
   }, 30_000);
 
-  it("under the goal control no-approval, asks nothing and the call runs unasked", async () => {
+  it("under the goal control no-approval, nothing waits and the call is denied, never run unasked", async () => {
     vi.stubEnv("GOAL_CONTROL", "no-approval");
     const h = host("s-control");
     try {
       const { requestId } = await h.turn("[touch:marker.txt] make it");
       expect(await h.ended(requestId!)).toBe("completed");
-      expect(h.runs[0]!.permissionMode).toBe("bypassPermissions");
+      expect(await h.pending(requestId!)).toBeUndefined();
+      expect(h.runs[0]!.permissionMode).toBe("default");
       expect(h.runs[0]!.canUseTool).toBeUndefined();
-      expect(existsSync(join(h.worktree(), "marker.txt"))).toBe(true);
+      expect(existsSync(join(h.worktree(), "marker.txt"))).toBe(false);
     } finally {
       await h.dispose();
     }

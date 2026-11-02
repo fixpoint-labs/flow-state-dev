@@ -16,7 +16,7 @@
  * | `[plan]` | also records two to-do items and moves the first to `in_progress`, when the run is offered the to-do tools (see below) |
  * | `[plan-next]` | moves on through that plan by id alone, the way a later turn does: the first item to `completed`, the second to `in_progress` |
  * | `[bash]` | also shows five shell commands, each with its `description`. They ask nothing and run nothing: a display of steps |
- * | `[touch:<file>]` | also makes one shell call, `touch <file>`, which writes the time into `<file>` in the run's folder. Handed `canUseTool`, it asks first, as Claude Code does for a tool `allowedTools` doesn't name: allowed, the file is written; denied, it isn't and the reply goes on; held (`interrupt`), the run stops there with the call unrun |
+ * | `[touch:<file>]` | also makes one shell call, `touch <file>`, which appends the time to `<file>` in the run's folder. It is asked about as Claude Code asks (see `touchCall`): allowed, the line is written; denied, it isn't and the reply goes on; held (`interrupt`), the run stops there with the call unrun |
  * | `[slow]` | after the reply and plan have shown, holds long enough for a stop to land |
  * | `[slow-start]` | pauses before naming the conversation, so a stop lands before it is confirmed |
  * | `[new]` | names a new conversation even when asked to continue one |
@@ -31,7 +31,7 @@
  * The reply names how many turns the conversation has had, which is how a
  * test sees a second turn continue the first's conversation.
  */
-import { writeFileSync } from "node:fs";
+import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ClaudeAgentQueryOptions, ResolveClaudeAgent, SdkMessageLike } from "@flow-state-dev/claude-code/sdk";
 
@@ -88,21 +88,26 @@ const TOUCH = /\[touch:([\w.-]+)\]/;
 const ALLOWED_TOUCH = /A person allowed your call \(Bash: touch ([\w.-]+)\)/;
 
 /**
- * One `touch <file>` shell call: asked through `canUseTool` when the run has
- * one and `allowedTools` doesn't name `Bash`, then run or refused as answered.
+ * One `touch <file>` shell call, asked about as Claude Code asks: it runs
+ * unasked under `bypassPermissions` or when `allowedTools` names `Bash`;
+ * otherwise it asks `canUseTool`, and with none it is denied, as Claude Code
+ * denies a call it can't ask about. A call that runs appends the time to the
+ * file, one line per run, so the file records how often and when it ran,
+ * also across a restart.
  */
 async function* touchCall(file: string, options: ClaudeAgentQueryOptions | undefined): AsyncGenerator<SdkMessageLike> {
   const signal = options?.abortController?.signal;
   const input = { command: `touch ${file}`, description: `Create ${file}` };
   const id = "toolu_touch_1";
   yield toolUse(id, "Bash", input);
-  const ask = options?.canUseTool;
-  const decision =
-    ask !== undefined && options?.allowedTools?.includes("Bash") !== true
-      ? await ask("Bash", input, { signal })
-      : ({ behavior: "allow", updatedInput: input } as const);
+  const preAllowed = options?.permissionMode === "bypassPermissions" || options?.allowedTools?.includes("Bash") === true;
+  const decision: Awaited<ReturnType<NonNullable<ClaudeAgentQueryOptions["canUseTool"]>>> = preAllowed
+    ? { behavior: "allow", updatedInput: input }
+    : options?.canUseTool !== undefined
+      ? await options.canUseTool("Bash", input, { signal })
+      : { behavior: "deny", message: "Claude Code had no way to ask about Bash, so it was not allowed." };
   if (decision.behavior === "allow") {
-    writeFileSync(join(options?.cwd ?? process.cwd(), file), `${Date.now()}\n`);
+    appendFileSync(join(options?.cwd ?? process.cwd(), file), `${Date.now()}\n`);
     yield toolResult(id, { stdout: "", stderr: "", interrupted: false }, "");
     return;
   }

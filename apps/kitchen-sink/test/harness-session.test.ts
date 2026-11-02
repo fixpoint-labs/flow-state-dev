@@ -321,8 +321,8 @@ describe("where a session works (V6)", () => {
 
   it("asks for no sandbox: Kitchen Sink confines no run", async () => {
     // Kitchen Sink is a showcase meant for a machine that allows any edits, so
-    // it hands the SDK no sandbox at all. With `bypassPermissions` beside it,
-    // nothing confines the run — the worktree is where it works, not a fence.
+    // it hands the SDK no sandbox at all. Nothing confines a call the run may
+    // make — the worktree is where it works, not a fence.
     const stores = createInMemoryStores();
     const recorder = recorded();
     await turn(stores, recorder, "s-unfenced", "hello");
