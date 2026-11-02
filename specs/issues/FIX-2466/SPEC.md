@@ -107,11 +107,11 @@ flowchart LR
 
 | Already here | What this does with it |
 |---|---|
-| **The job, "tell a screen that what it shows changed".** Searched `mechanisms.yaml` (FIX-2426's bus, FIX-2428's `push-delivery`), and `setTimeout`, `setInterval`, `poll(`, `every(`, `sessions.stream`, `subscribe` across the three apps and `packages/`. Found: the session stream, `client.subscribe` with `useSubscription`, and twelve timers ([checker](poc/app-polls/)). Closest: the session stream for items, `client.subscribe` for the rest | **Builds on** both. Nothing new: each view picks the one way its data already has (ER-5) |
+| **The job, "tell a screen that what it shows changed".** The [checker](poc/app-polls/) scans the three apps' `src` trees for `setTimeout`, `setInterval`, `requestAnimationFrame` and the labs' `poll(` and `every(` helpers, and classifies every owner: twelve views move ([settled](DECISIONS.md#settled)). The ways to follow a change are the ones the epic's specs name, not searched here: the session stream, and `client.subscribe` with `useSubscription` (FIX-2428). Closest: the session stream for items, `client.subscribe` for the rest | **Builds on** both. Nothing new: each view picks the one way its data already has (ER-5) |
 | The Teammates lab's `sessionFeeds`, which follows a session on `sessions.stream` | **Builds on.** The same shape for Shift Manager's conversation and the claude-code-style thread and task work |
 | FIX-1506's panel driver: subscribe the scope's topic, read on a resource notice whose path is in the collection | **Builds on.** The message log, the Talk panel and a project's entries read the same way |
 | FIX-2429's board notice on the filing session's topic, narrowed to the board | **Builds on.** The task view's run link is a board change |
-| [FIX-2429 D1](../FIX-2429/DECISIONS.md#d1), the epic's seam "Shift Manager's and the labs' polls", ER-2, ER-3, ER-5 | **Kept.** D1's flip, FIX-1506 merging first, did not fire |
+| [FIX-2429 D1](../FIX-2429/DECISIONS.md#d1), the epic's seam "Shift Manager's and the labs' polls", ER-2, ER-3, ER-5 | **Kept.** D1's flip, FIX-1506 merging first, is retired now this issue has its own spec; FIX-2429 D1 is amended in this PR to drop it, and names the task view's `readBoard` wait as this issue's |
 | [FIX-2455](https://linear.app/fixpoint-labs/issue/FIX-2455): one client call that waits on a request and returns its output, deleting the copies of that wait, Shift Manager's action wait among them | **Leaves to it.** The four waits are that job; the other three are handed to it |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |

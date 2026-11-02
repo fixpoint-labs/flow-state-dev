@@ -58,8 +58,12 @@ topic seam, and this sidebar uses it too.
   | claude-code-style pins | the user's topic | `state` |
 
   Path matching is FIX-1506's (`pathAffectsCollection`), as its panel driver does it. Acting on a
-  kind needs `onChange` to carry the notice, which FIX-1506's panel driver already needs; if
-  FIX-2428 ships `onChange` without it, the first of FIX-1506 and this issue to build adds it there.
+  kind reads the notice `client.subscribe` passes to `onChange`, which FIX-2428 owns and accepts
+  on; this issue and FIX-1506 consume it and neither changes the signature.
+- **Lab reads coalesce, and the fallback is the client's.** A lab's `onChange` read coalesces as
+  `useSubscription`'s does (one read in flight, one waiting), so a burst of notices is one read.
+  When `crosses: false`, the fallback is one timer per client, `client.subscribe`'s, not one per
+  view: no view keeps its own interval beside it.
 - **Request views never act on `items`.** A streaming reply sends an `items` notice for each
   stored update; a view that read its session's requests on each would read once per chunk. This
   is the `every-kind` control.
@@ -137,5 +141,8 @@ worker could not dispatch one. The coordinator may run a fresh `analysis` before
   the three apps found twelve views, one of them a board wait FIX-2429 missed; each moves to the
   one way its data already has. The waits stay FIX-2455's, and a new session in another tab joins
   the sidebar at reload (D1).
+- **Review (Nov 2, #4513)** — `onChange`'s notice argument is FIX-2428's, consumed here and by
+  FIX-1506; FIX-2429 D1's flip retired there; lab reads coalesce on the client's one fallback
+  timer; the debt row's search narrowed to what the checker proves.
 
 **Open: none.**
