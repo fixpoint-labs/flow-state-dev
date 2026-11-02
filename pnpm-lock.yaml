@@ -1135,6 +1135,9 @@ importers:
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../testing
+      '@flow-state-dev/workspace':
+        specifier: workspace:*
+        version: link:../workspace
       commander:
         specifier: ^13.1.0
         version: 13.1.0
@@ -1389,6 +1392,9 @@ importers:
 
   packages/harness-manager:
     dependencies:
+      '@flow-state-dev/client':
+        specifier: workspace:*
+        version: link:../client
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
@@ -1405,6 +1411,9 @@ importers:
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../engine
+      '@flow-state-dev/testing':
+        specifier: workspace:*
+        version: link:../testing
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.13
@@ -2149,6 +2158,9 @@ importers:
       picomatch:
         specifier: ^4.0.2
         version: 4.0.4
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^22.0.0

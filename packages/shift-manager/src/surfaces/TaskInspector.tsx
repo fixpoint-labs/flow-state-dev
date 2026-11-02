@@ -17,7 +17,8 @@ import { useLab } from "../lib/lab-data";
 import { describeFailure, GENERAL_TEAM, type Failure } from "../lib/reads";
 import type { Route } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
-import { readRecordedWork, RunReadError, type OpenRun, type RecordedWork } from "../lib/run";
+import { readRecordedWork, type RecordedWork } from "@flow-state-dev/harness-manager/browser";
+import type { OpenRun } from "../lib/run";
 import { useTask } from "../lib/task";
 import type { Gaps } from "../gaps";
 
@@ -147,7 +148,7 @@ function Recorded({ run, gaps }: { run: OpenRun; gaps: Gaps }) {
         if (live) setWork(read);
       })
       .catch((error: unknown) => {
-        if (live) setFailure(error instanceof RunReadError ? error.failure : describeFailure(error));
+        if (live) setFailure(describeFailure(error));
       });
     return () => {
       live = false;

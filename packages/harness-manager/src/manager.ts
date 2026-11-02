@@ -86,7 +86,11 @@ import {
   HeldWorkMismatchError,
   WorkspaceRefusedError,
   recordBranchPullRequests,
+  WORKTREES,
+  worktreeKey,
+  worktreesCollection,
   type HeldWork,
+  type WorktreeCollection,
   type RecordedPlace,
   type RunSourceAnswer,
   type WorkspaceHost,
@@ -765,6 +769,20 @@ const managerOutputSchema = z.object({
   branch: z.string().nullable(),
   /** How many commits the run's branch has that its base does not. */
   commits: z.number().int().nonnegative(),
+  /**
+   * Whether git read `commits` against the run's base. `false` when it
+   * couldn't, and `commits` is a fallback zero: show the count as unknown.
+   * `null` on an output kept before it existed (BP-030).
+   */
+  commitsVerified: z.boolean().nullable().default(null),
+  /**
+   * The commit the run's branch was cut at, so `git log <baseCommit>..<branch>`
+   * lists the run's commits. `null` for a run with no repository, or one whose
+   * record names no base. Defaulted so an output kept before it parses (BP-030).
+   */
+  baseCommit: z.string().nullable().default(null),
+  /** The run's checkout, where its branch is checked out. `null` for a run with no repository. Defaulted (BP-030). */
+  path: z.string().nullable().default(null),
   /** Whether the host's judge read the run before it settled. */
   judged: z.boolean(),
   /**
@@ -1415,6 +1433,9 @@ function createManagerCapability(options: {
       // Where the branch check writes the pull requests on the run's branch.
       // The harness blocks declare the same definition object.
       [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection,
+      // The user's list of worktrees: the host writes the run's row when it
+      // provisions the checkout and reads it again when the run settles.
+      [WORKTREES]: worktreesCollection,
       // Declared so the fence can read the LIVE claim off the board row. The
       // board declares the same definition object, so this is one registration
       // rather than a second storage slot that looks like the first. A board
@@ -1433,20 +1454,28 @@ function createManagerCapability(options: {
  * other way. A run with no repository, or with no checkout yet, has no branch
  * to check. Never throws: a missing or signed-out `gh` is a status note.
  */
-async function checkBranchPullRequests(ctx: BlockContext): Promise<void> {
+async function checkBranchPullRequests(ctx: BlockContext, worktree?: string | null): Promise<void> {
   // Read raw, not through `managerState`: a run that failed before its checkout has none, and that is not an error here.
   const state = harnessCtxState(ctx);
   if (state?.workspacePath == null || state.branch == null || !existsSync(state.workspacePath)) return;
+  const worktrees = worktreesOf(ctx);
   const result = await recordBranchPullRequests(ctx, {
     cwd: state.workspacePath,
     branches: [state.branch],
     openedSince: state.openedAt ?? undefined,
     // The whole check, however many branches, inside the one network-call bound the drain budget reserves.
     timeoutMs: NETWORK_CALL_TIMEOUT_MS,
+    ...(worktree != null && worktrees !== undefined ? { worktree: { collection: worktrees, key: worktree } } : {}),
   });
   if (result.status === "unavailable") {
     ctx.emit.status(`Pull requests on the run's branch were not checked: ${result.reason}`, { transient: false });
   }
+}
+
+/** The user's worktree rows off a block's context, when the capability is installed. */
+function worktreesOf(ctx: BlockContext): WorktreeCollection | undefined {
+  const collection = (ctx.resources as Record<string, unknown> | undefined)?.[WORKTREES] as WorktreeCollection | undefined;
+  return typeof collection?.upsert === "function" ? collection : undefined;
 }
 
 /**
@@ -1928,8 +1957,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         : undefined;
     const before = recordedHost ?? (holding ? host.hostId() : null);
     if (holding) await recordPlace(ctx, before!, "provisioning");
+    const worktrees = worktreesOf(ctx);
     try {
       const place = await host.provision(answer, {
+        ...(worktrees !== undefined
+          ? { worktrees: { collection: worktrees, owner: { kind: "run" as const, id: state.taskId ?? placeFor(location).join("/") } } }
+          : {}),
         place: placeFor(location),
         branch: state.branch!,
         ignored: ASK_MARKER_IGNORED,
@@ -2260,6 +2293,32 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     return provisionPlace(ctx, answer, location);
   };
 
+  /**
+   * The run's worktree row, read again as the run settles: its branch and
+   * commits, written by the host (`recordCheckout`). Its key, for the branch
+   * check to add pull requests to; `null` for a run with no checkout or no
+   * row. Never throws: a failed read is a status note.
+   */
+  const recordRunCheckout = async (ctx: BlockContext): Promise<string | null> => {
+    const raw = harnessCtxState(ctx);
+    const worktrees = worktreesOf(ctx);
+    if (raw?.workspacePath == null || raw.branch == null || worktrees === undefined || host.recordCheckout === undefined) return null;
+    try {
+      const state = managerState(raw);
+      const place = placeFor(
+        locationFor({ principal: runPrincipal(ctx), epic: state.epic!, issue: state.issue!, phase: state.phase! }, state.branch),
+      );
+      const read = await host.recordCheckout({ place }, { worktrees, by: { kind: "run", id: state.taskId ?? place.join("/") } });
+      // A null read means the place has no row.
+      return read === null ? null : worktreeKey(host.hostId(), place);
+    } catch (error) {
+      ctx.emit.status(`The run's worktree row was not updated: ${error instanceof Error ? error.message : String(error)}`, {
+        transient: false,
+      });
+      return null;
+    }
+  };
+
   const prepare = handler({
     name: "harness-manager-prepare",
     inputSchema: taskWorkerInputSchema,
@@ -2518,7 +2577,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const state = managerState(harnessCtxState(ctx));
       const identity = identityOf(ctx, harnessCtxState(ctx));
       const succeeded = handle.status === "completed";
-      await checkBranchPullRequests(ctx);
+      await checkBranchPullRequests(ctx, await recordRunCheckout(ctx));
 
       /**
        * What this attempt hands back, kept on state for `settle`: the run's
@@ -2537,6 +2596,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           answer: handle.finalMessage === null ? null : handle.finalMessage.slice(0, MAX_ANSWER_CHARS),
           branch: state.filesOnly === true ? null : state.branch!,
           commits: commits.count,
+          commitsVerified: commits.verified,
+          baseCommit: state.filesOnly === true ? null : state.baseCommit,
+          path: state.filesOnly === true ? null : state.workspacePath,
           judged: false,
           review: null,
         };
@@ -2759,7 +2821,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       await holdWork(ctx as BlockContext).catch(() => undefined);
       await saveKeptFiles(ctx).catch(() => undefined);
       // A failed run's pull requests are still its own.
-      await checkBranchPullRequests(ctx as BlockContext);
+      await checkBranchPullRequests(ctx as BlockContext, await recordRunCheckout(ctx as BlockContext));
 
       const reason = error instanceof Error ? error.message : String(error);
       const state = ctx.sequencer?.state;
