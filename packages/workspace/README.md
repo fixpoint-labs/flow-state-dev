@@ -300,11 +300,91 @@ Every run shares the repository's `.git/config`, so the host pins each remote's 
 - **A branch's upstream no longer matches its pin:** the host fetches the pinned upstream and logs a warning. A branch with no pinned upstream is used as it is.
 - **The base has no upstream, or the branch already exists:** nothing is fetched.
 
+A `baseRef` that names a pinned remote's branch, such as `origin/main` or `refs/remotes/origin/main`, is fetched from the pinned URL before the branch is cut, and the run starts at the commit that fetch brought. If the fetch fails, the provision is refused as `remote-unreadable`. The remote-tracking ref on disk is never used for it, because any run in the repository can move that ref. A local branch you named `origin/main` is the local branch when `baseRef` spells it that way, and follows the rules above.
+
 To accept a remote or upstream you changed on purpose, delete the pin file the warning names and restart the host. It pins the repository's config as it is at that start.
 
 A run in a listed repository acts with your trust, the way a coding agent you start in your own checkout does. Git shares branches, tags and remote-tracking refs between worktrees, so a run can create or move them. The host keeps a run from steering the fetch or your credentials, not from your refs. To keep a run apart from a repository's branches, have the host clone the repository instead of listing it.
 
 Runs in one repository don't share a lock. Each has its own place and branch, and git keeps concurrent worktrees apart. If git finds one of its own lock files held, that provision fails with git's message and isn't retried. A `baseRef` the repository doesn't have fails the provision, naming it, before anything is made.
+
+### Working on an existing branch
+
+To have a run pick up a branch that already exists, a pull request's head say, set `existing: true` in the place request. `branch` is then the branch to work on. It is never cut, and the source's `baseRef` is not read.
+
+```ts
+import { pullRequestHead } from "@flow-state-dev/workspace";
+
+const head = await pullRequestHead({ cwd: "/srv/storefront", number: 42 });
+const place = await host.provision(answer, { place: [tenant, user, runId], branch: head.branch, existing: true });
+// place.repo.baseCommit is the tip the branch was checked out at
+```
+
+If the repository lacks the branch, the host makes it from the remote's branch of that name, fetched first. In a listed repository that remote is `origin` when it is pinned, otherwise the only pinned remote, and the new branch is set to track it. For a cloned remote it comes from the clone's own fetch. With no copy of the branch anywhere, the provision is refused as `no-such-branch`. Git refuses a branch that is already checked out in another worktree, including your own checkout of a listed repository, so switch that checkout away first.
+
+`pullRequestHead({ cwd, number, gh?, timeoutMs? })` asks GitHub, through the host's signed-in `gh`, which branch a pull request's work is on. `cwd` is any checkout of the repository; `gh` reads the repository from its remote. It returns `{ branch, commit, url }`, with `commit` and `url` `null` when GitHub leaves them out. It throws a `WorkspaceRefusedError`: `pull-request-unreadable` when `gh` fails or `number` isn't a positive integer, and `pull-request-from-fork` when the pull request's head is in another repository, whose branch this repository's remote doesn't have.
+
+### Listing and removing worktrees
+
+A host's checkouts stay on disk after `release`, so a retry finds them. `host.list()` returns every worktree git knows in a clone under the root or a listed repository, kept to those strictly inside the root:
+
+```ts
+const worktrees = await host.list!();
+// [{ place, dir, cwd, repository, branch, head, dirty }]
+```
+
+`branch` is `null` for a detached HEAD, `head` is `null` when git can't say, and `dirty` is `null` when the directory is gone.
+
+`host.remove(target, options?)` is the way to remove one. `target` is `{ place }` or `{ cwd }`, and `options` is `{ deleteBranch?, force? }`:
+
+```ts
+const removed = await host.remove!({ place: [tenant, user, runId] }, { deleteBranch: true });
+// { cwd, branch, branchDeleted }
+```
+
+It rejects for a target that isn't a worktree `list` reports, and refuses with a `WorkspaceRefusedError` when removing would lose work:
+
+| `reason` | When |
+| --- | --- |
+| `uncommitted-work` | The worktree has uncommitted or untracked changes. Ignored files are removed with it |
+| `place-busy` | A provision of the place is running |
+| `in-use` | A run is working in the worktree: it holds the worktree's in-use lock, `<cwd>.lock` |
+| `unique-commits` | With `deleteBranch`, the branch holds commits no other branch or remote-tracking ref holds. Or the worktree is on a detached HEAD holding commits no branch, tag or remote-tracking ref holds, which removing it would lose. `force: true` removes it anyway |
+
+A refusal removes nothing. Kept files and held work are left where they are, in their collection and store. `fsdev worktrees` runs the same `list` and `remove` from a terminal.
+
+### The user's list of worktrees
+
+`worktreesCollection` holds one row for each worktree a host made, in a user-scoped collection named `worktrees`. Each session and agent of that user can read it. A page reads it through the flow's resource routes, and an agent reads it with core's resource tools because the collection is `llmReadable`. Neither can write it. Only the host writes rows. Give it the collection, which a block reads off `ctx.resources.worktrees` once its flow declares `worktreesCollection`, and it writes the row whenever it changes the worktree:
+
+```ts
+const place = await host.provision(answer, {
+  place: [sessionId],
+  branch,
+  worktrees: { collection: ctx.resources.worktrees, owner: { kind: "session", id: sessionId }, label: "Fix the export button" },
+});
+place.worktree; // the row's key
+
+await host.attach!({ place: [ownerId] }, { worktrees, by: { kind: "session", id: followUpId } }); // the key, or null with no row
+const read = await host.recordCheckout!({ place: [sessionId] }, { worktrees, by }); // at a turn's end: { present, branch, commits, at }
+await host.remove!({ place: [sessionId] }, { worktrees });
+```
+
+| Field | What it holds |
+| --- | --- |
+| `key` | The host's id and the place's segments. Opaque: read it back, don't build it |
+| `name` | `<slug of label>-<6 hex>`, such as `fix-the-export-button-13f1c6`. Written once and never recomputed. The directory keeps its own name |
+| `path`, `branch`, `repo`, `baseCommit` | Where the worktree is, the branch HEAD is on, the remote with any credentials removed, and the commit the branch was cut at |
+| `owner`, `attached` | `{ kind: "session" \| "run", id }`, and the sessions or runs working there beside it, each listed once as `{ kind, id, lastTurnAt }` |
+| `state` | `provisioning` before the worktree is made, `ready` after, `removed` once `remove` takes it, `lost` when `recordCheckout` finds the directory gone |
+| `commits`, `lastTurnAt` | Commits on HEAD past `baseCommit`, and when that was read. `commits` is `null` when it can't be counted. It is never 0 for "unknown" |
+| `pullRequests` | `{ url, number, state, title }` for each pull request `recordBranchPullRequests` found, when you pass it `worktree: { collection, key }` |
+
+`recordCheckout` reads the branch and the count in one pass, so a row never pairs one moment's branch with another moment's count. It returns what it read, so a caller that reports the branch or count (a run's output, say) uses the same read rather than counting again. Removing a worktree some other way than `host.remove` with the collection, `fsdev worktrees --remove` included, leaves its row `ready` until the next `recordCheckout` marks it `lost`.
+
+Rows are user-scoped, and a user's data is kept per organization, so an agent in one organization never reads another's rows. Through core's resource tools a model can read rows but should not write them: a flow that offers those tools marks `worktrees` read-only in its `resourceVisibility`, as the harness session flow does. Rows are never deleted: a removed worktree's row still says where the work was. A host given no collection writes nothing.
+
+Anything that runs work in a host's worktree holds it in use for as long as it works: `occupyWorktree(cwd)` waits for and takes the lock beside it, and `releaseLock(lease)` lets it go. A harness session's turn and a harness manager's run both do. The lease refreshes itself while held. `remove` never treats it as stale, so a lock left by a process that died has to be deleted by hand; the refusal names the file.
 
 ### Setting up a fresh checkout
 
@@ -509,7 +589,8 @@ interface HeldWorkStore {
 | --- | --- |
 | `invalid-remote` | The value starts with `-`, uses a transport helper like `ext::`, has a host starting with `-`, carries a password or an `https` login, or is a bare path rather than a URL |
 | `remote-not-allowed` | Its host isn't listed, it's `file://` and `"file"` isn't listed, or its scheme isn't `https`, `ssh` or `file` |
-| `remote-unreadable` | The host is allowed but git couldn't read it, or it has no branch to cut from |
+| `remote-unreadable` | The host is allowed but git couldn't read it, it has no branch to cut from, or a pinned remote's branch named as `baseRef` couldn't be fetched |
+| `no-such-branch` | With `existing: true`, neither the repository nor its remote has the branch |
 | `base-diverged` | A repository on this machine: the base and its upstream each have commits the other lacks. Nothing is made |
 | `checkout-moved` | A checkout handed back off the run's branch is mid-way through a git operation, its branch is checked out in another worktree, or switching back would overwrite an ignored file. Nothing is changed, and the message names what fixes it |
 | anything else | The source answered `refused`, with that reason |
@@ -530,7 +611,7 @@ Git itself runs with `GIT_ALLOW_PROTOCOL` set to the listed schemes, with `--` b
 | `principalFromContext(ctx)` | The scoping identity, read off a block's execution context. |
 | `collectionIdFor(collection, principal)` | A `Mount.collectionId` for a scoped door. |
 | `unscopedCollectionId(collection)` | A `Mount.collectionId` for a door with no principal. |
-| `localWorkspaceHost({ root, remotes, source, localRepositories?, provisionTimeoutMs?, heldWork?, setup? })` | A workspace host on this machine. Returns `{ root, source, provisionTimeoutMs, locate, provision, save, hostId, holds, checkpoint, dropHeld, readSource, restore, release }`. `readSource(answer, request)` reads without a run; see [Reading without a run](#reading-without-a-run). With a `heldWork` store, `checkpoint(place, previous?)` saves a repository run's work to it and returns a `HeldWork` (or `null` when holding doesn't apply), `dropHeld(place, key)` deletes one of the place's earlier keys, and `provision` takes `recorded` and rebuilds a lost checkout from it, reporting `origin`. With `setup`, `provision` runs that command in each new checkout, calls the request's `onSetup` first, and reports the outcome on `place.setup`; see [Setting up a fresh checkout](#setting-up-a-fresh-checkout). |
+| `localWorkspaceHost({ root, remotes, source, localRepositories?, provisionTimeoutMs?, heldWork?, setup? })` | A workspace host on this machine. Returns `{ root, source, provisionTimeoutMs, locate, provision, save, hostId, holds, list, remove, checkpoint, dropHeld, readSource, restore, release }`. `readSource(answer, request)` reads without a run; see [Reading without a run](#reading-without-a-run). `list()` and `remove(target, options?)` are covered in [Listing and removing worktrees](#listing-and-removing-worktrees). With a `heldWork` store, `checkpoint(place, previous?)` saves a repository run's work to it and returns a `HeldWork` (or `null` when holding doesn't apply), `dropHeld(place, key)` deletes one of the place's earlier keys, and `provision` takes `recorded` and rebuilds a lost checkout from it, reporting `origin`. With `setup`, `provision` runs that command in each new checkout, calls the request's `onSetup` first, and reports the outcome on `place.setup`; see [Setting up a fresh checkout](#setting-up-a-fresh-checkout). |
 | `HeldWorkStore` | Where held work goes: `put(key, bytes)`, `get(key)`, `delete(key)`, `list(prefix)`. `put` must be atomic. |
 | `fileHeldWorkStore({ dir })` | A `HeldWorkStore` that keeps each key as a file under `dir`, written atomically. |
 | `HeldWorkMismatchError` | What `provision` rejects with when held work disagrees with the run's record, or this host has no store to rebuild from. `field` is one of `remote`, `branch`, `scope`, `base`, `pack`, `head`, `snapshot`, `tree`, `disabled`. |
@@ -541,6 +622,8 @@ Git itself runs with `GIT_ALLOW_PROTOCOL` set to the listed schemes, with `--` b
 | `SkippedPath` | A path a snapshot left out: `{ path, why: "over-cap" \| "submodule" }`. |
 | `HeldWorkMismatchField` | The values of `HeldWorkMismatchError.field`. |
 | `IgnoredDirectory` | The `ignored` field of a place request: `{ dir, rule, why }`. |
+| `ListedWorktree` | One entry of `list()`: `{ place, dir, cwd, repository, branch, head, dirty }`. |
+| `RemoveTarget`, `RemoveOptions`, `RemovedWorktree` | What `remove` takes and returns: `{ place } \| { cwd }`, `{ deleteBranch?, force? }`, and `{ cwd, branch, branchDeleted }`. |
 | `repositoryIdentity(dir)`, `identityFromCommonDir(dir, commonDir)` | Which repository a directory belongs to, as the real path of its git common directory. Two worktrees of one repository answer the same. |
 | `resolvesToCommit(repo, ref)` | Whether `ref` names a commit in `repo`. |
 | `isStrictlyInside(candidate, root)` | Whether `candidate` is a path below `root`, never `root` itself. |
@@ -548,7 +631,10 @@ Git itself runs with `GIT_ALLOW_PROTOCOL` set to the listed schemes, with `--` b
 | `acquireLock`, `releaseLock`, `sleep` | The lock file the host takes on a place or a clone, for a caller that holds one of its own. |
 | `tryAcquireLock(path, bounds?)` | One try at the same lock: a lease, or `undefined` while a live holder has it. Never waits. A lock left by a holder that died counts as free. |
 | `SourceReadRequest`, `SourceReadResult`, `SourceReadAt`, `SourceReadCut`, `GrepDialect`, `SOURCE_READ_LIMITS`, `SOURCE_READ_FRESH_MS` | What `readSource` takes and answers, its caps, and how long a fetch serves reads. |
-| `WorkspaceRefusedError` | What `provision` rejects with when it won't make a place. Carries `reason`. |
+| `WorkspaceRefusedError` | What `provision`, `remove` and `pullRequestHead` reject with when they refuse. Carries `reason`. |
+| `occupyWorktree(cwd, { owner?, signal? })`, `worktreeLockPath(cwd)` | Hold a worktree in use while a run works there, so `remove` refuses it (`in-use`). Returns a lease for `releaseLock`. |
+| `checkedOutBranch(cwd)` | The branch checked out in the worktree at `cwd`, or `null` when HEAD is detached or git can't say. |
+| `pullRequestHead({ cwd, number, gh?, timeoutMs? })`, `PullRequestHead`, `PullRequestHeadOptions` | The branch a pull request's work is on, as `{ branch, commit, url }`, for a run that works on it with `existing: true`. See [Working on an existing branch](#working-on-an-existing-branch). |
 | `RunSource`, `RunSourceAnswer` | The run-source function type and its three answers. |
 | `recordBranchPullRequests(ctx, { cwd, branches?, openedSince?, requestId?, timeoutMs?, gh? })`, `BRANCH_PULL_REQUESTS_TIMEOUT_MS` | The branch check: asks GitHub, through the host's signed-in `gh`, which pull requests the checkout's branch (and any `branches`) has, and writes the ones created since `openedSince` into the session's pull-request record as `source: "branch"`. `timeoutMs` bounds the whole check. Returns `{ status: "recorded", branches, pullRequests }`, or `{ status: "unavailable", reason }` when `gh`, the remote or the store can't answer. It never throws. See [pull requests on a branch](https://flow-state.dev/docs/tools/workspace#pull-requests-on-a-branch). |
 

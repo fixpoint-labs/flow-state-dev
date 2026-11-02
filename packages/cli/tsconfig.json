@@ -12,6 +12,7 @@
     { "path": "../node" },
     { "path": "../engine" },
     { "path": "../store-sqlite" },
-    { "path": "../testing" }
+    { "path": "../testing" },
+    { "path": "../workspace" }
   ]
 }

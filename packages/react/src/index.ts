@@ -194,6 +194,17 @@ export {
   type SendKeyOptions
 } from "./send-key";
 
+export {
+  createInterruptKeys,
+  interruptChordLabel,
+  useInterruptKeys,
+  INTERRUPT_WINDOW_MS,
+  type InterruptKeyEvent,
+  type InterruptKeyResult,
+  type InterruptKeysOptions,
+  type UseInterruptKeysOptions
+} from "./interrupt-keys";
+
 export type {
   BlockComponentType,
   RendererRegistry

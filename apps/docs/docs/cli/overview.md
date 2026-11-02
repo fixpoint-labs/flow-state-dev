@@ -19,6 +19,7 @@ The CLI is how you run the engine from the terminal. The command is `fsdev`. Ins
 | `fsdev serve` | Production HTTP + MCP. No DevTool. |
 | `fsdev benchmark <file>` | Score a `defineBenchmark` file. |
 | `fsdev ui add <name>` | Install a component from the UI registry. |
+| `fsdev worktrees <root>` | List or remove the git worktrees a workspace host made for coding runs. |
 
 Flags, NDJSON events, and exit codes live in the [CLI API](/docs/api/cli).
 

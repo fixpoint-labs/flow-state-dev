@@ -42,14 +42,30 @@ pending ─┬─→ in_progress ─┬─→ completed
          ├─→ held ─┬─→ pending                  (release)
          │         └─→ cancelled
          └─→ cancelled
+
+errored ───→ pending                            (retry)
+cancelled ─→ pending                            (retry)
 ```
 
 `completed`, `errored`, and `cancelled` are terminal: every write treats them as
-final, and a finished task's output never changes. A follow-up (`followUpOf`) corrects
-or extends one.
+final, apart from `retry(id)`. A completed task never reopens and its output never
+changes; a follow-up (`followUpOf`) corrects or extends one.
 A move to the status a task already holds is on the table, so a repeat write doesn't throw. Anything else
 throws an `IllegalTaskTransitionError` carrying `taskId`, `from`, and `to`, and
 writes nothing.
+
+`retry(id)` on a `TaskCollectionRef` (optional; both built-in backings implement it) puts an
+`errored` or `cancelled` task back to `pending` as the same task, keeping its id, steers,
+output so far, items and spend. A failure's error becomes the next attempt's `feedback`; a
+cancel's reason doesn't. The retry adds one to `retryLedger.granted`, and the next claim is a
+new attempt. `maxAttempts` is unchanged, except that a task with no tries left gets one more.
+A retry isn't an ending, so it cancels no dependents and sends the filer no notice. A
+dependent a failure cancelled stays cancelled until it is retried itself. `retry` publishes a
+`retry_requested` change and returns a `TaskWriteOutcome`. It declines with `disallowed` (the
+task hasn't ended, or it completed), `settling` (its last ending is still being delivered; try
+again shortly), `dependency-ended` (retry the failed dependency first), or `retry-budget` (the
+state backing's `maxTotalRetries` is spent; the resource backing counts retries but doesn't
+cap them).
 
 **`retryLedger`** records the task's standing against the collection's
 `maxTotalRetries` budget:
@@ -206,7 +222,7 @@ a task until it resolves again.
 Every lifecycle transition — `complete`, `fail`, `cancel` — takes an optional
 trailing `TaskTransitionOptions` argument that makes the write advisory. `ifAllowed`
 skips the write when the task is already settled, or when the transition is one the
-state machine refuses. No write moves a task out of a finished status. `in_progress → pending` sits in the status table too,
+state machine refuses. No write but `retry` moves a task out of a finished status. `in_progress → pending` sits in the status table too,
 but it belongs to `reclaim()`. `claim` takes a
 `TaskClaimTicket` (mint one with `ticketForClaim(collectionId, claimedTask)`) and
 skips the write unless the task in front of it is the one that ticket was issued
@@ -408,8 +424,11 @@ positive integer or `null` (explicitly unbounded); `maxTotalRetries` takes a
 **nonnegative** integer or `null`, so `0` means "run every task once, never retry".
 
 `taskToolActions(board)` returns the filer's task tools over `board` as a flow `actions`
-map, each named `<tool>_<suffix>` where `taskToolSuffix(collectionId)` turns every
-character outside `[a-zA-Z0-9_-]` into `_` (`updateTask_todos`). Spread it into
+map, plus `retryTask`. Each is named `<tool>_<suffix>`, where `taskToolSuffix(collectionId)` turns every
+character outside `[a-zA-Z0-9_-]` into `_` (`updateTask_todos`, `retryTask_todos`). `retryTask` takes `{ id }`
+and calls the collection's `retry`, answering `{ ok: true }` or `{ ok: false, error, taskId }`
+(`task_finished`, `not_finished`, `dependency_ended`, `settling`, `retry_budget_spent`,
+`task_not_found`, `retry_not_supported`); it is an action only, not a model tool. Spread it into
 `defineFlow({ actions })`. Each action composes `board.capability`, so the flow need not
 declare the collection; none claims or drains; a transition the task cannot make returns
 `{ ok: false, error }` and writes nothing. It throws unless the board is on a
@@ -1327,6 +1346,22 @@ await createInboxClient(client).answer(items[0], { approved: true });
 - **Each question** says what it asks, where its answer goes, and whether the Inbox can answer it. An item is `answerable` when one of its questions is.
 - **One item per task, however many questions it has.** A task's questions and confirms, asked at filing or midway, list oldest first as its `holds`, beside a stop in its run.
 - **The answer is typed by what the question asks:** an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, a confirm `{ done, note? }` (a No cancels the task unless the confirm was filed with `onNo: "continue"`). `answer(item, value, questionId?)` answers the item's first question, or the one named; `answerOne(question, value)` answers one question directly. A task run's stop goes to the engine's answer route, which records who answered. A question or a confirm goes to its board's `updateTask` action, as the signed-in user, in the session that board lives in, and the call rejects with the board's refusal. A question on a board the reader can't reach says so in `unanswerable`.
+
+### A task row, as a person sees it
+
+`taskRowView(row, holds?)` turns one task row into what a task screen draws, so every screen uses the same words for the same row:
+
+```ts
+import { taskRowView } from "@flow-state-dev/orchestration/inbox";
+
+const view = taskRowView(row, item?.holds);
+view.state;     // "queued" | "held" | "running" | "waiting" | "failed" | "done" | "cancelled"
+view.hold;  // the oldest open hold on the user (its ask, where the answer goes), or null
+```
+
+- **`waiting` wins over the stored status.** Any open hold on the user makes a row that isn't finished read `waiting`, whether it's `in_progress`, `held` or `pending`. A finished row reads as its ending, whatever an old hold says.
+- **`holds` is optional.** Pass the row's Inbox item's holds when you have them: they also include a stop found in the task's run before the row records it, and they know where each answer goes. Without them, the view reads the row's own holds; those say they can't be answered from here.
+- **It also carries** the stored `status` (a stored `blocked` reads `held`), `spend` with its `harness` and `model` (a raw row's stored spend is folded with `taskSpendView`; the spend `listTasks` already folded is kept as it is), `error`, `statusNote`, and `times` (created, updated, started, completed; `null` where the row has none). A stored spend it can't read comes back `null` instead of throwing.
 
 ## Documentation
 
