@@ -23,10 +23,22 @@
  * | `[fail]` | names the conversation, then fails with another error |
  * | `[fail-early]` | fails before naming any conversation |
  * | `[errored]` | names the conversation and streams its reply, then ends on a `result` Claude Code marks as an error (a result, not a throw) |
+ * | `[ask:<file>]` | runs the shell command `touch <file>` in the run's folder, asking first the way Claude Code does (below) |
+ *
+ * **Asking.** A call runs unasked under `bypassPermissions` or when
+ * `allowedTools` names its tool. Otherwise the script asks `canUseTool`: an
+ * allow runs it, a deny with `interrupt` stops the run there, any other deny
+ * goes on without it. With no `canUseTool` the call is denied, as Claude Code
+ * denies a call it can't ask about. A call that runs appends a line to the
+ * file, so the file itself records how often it ran, also across a restart.
+ * A turn whose prompt says a person allowed `Bash: touch <file>` (the way a
+ * resumed session is told) makes that call again, as a model would.
  *
  * The reply names how many turns the conversation has had, which is how a
  * test sees a second turn continue the first's conversation.
  */
+import { appendFileSync } from "node:fs";
+import { join } from "node:path";
 import type { ClaudeAgentQueryOptions, ResolveClaudeAgent, SdkMessageLike } from "@flow-state-dev/claude-code/sdk";
 
 import { scriptedReceived } from "./scripted-received";
@@ -74,6 +86,41 @@ function toolResult(id: string, result: Record<string, unknown>, content: string
     tool_use_result: result,
     message: { content: [{ type: "tool_result", tool_use_id: id, content }] },
   } as SdkMessageLike;
+}
+
+/** The file an `[ask:<file>]` turn touches, or the one a resumed turn was told a person allowed. */
+function touchedFile(prompt: string): string | null {
+  return /\[ask:([\w.-]+)\]/.exec(prompt)?.[1] ?? /allowed your call \(Bash: touch ([\w.-]+)\)/.exec(prompt)?.[1] ?? null;
+}
+
+/**
+ * One shell call, asked about first as Claude Code asks (see the header).
+ * A deny that interrupts the run ends it with a throw, as the SDK's run ends.
+ */
+async function* guardedCall(
+  file: string,
+  options: ClaudeAgentQueryOptions | undefined,
+  signal: AbortSignal | undefined,
+): AsyncGenerator<SdkMessageLike> {
+  const id = "toolu_touch_1";
+  const input = { command: `touch ${file}`, description: `Touch ${file}` };
+  yield toolUse(id, "Bash", input);
+  const preAllowed = options?.permissionMode === "bypassPermissions" || options?.allowedTools?.includes("Bash") === true;
+  const decision = preAllowed
+    ? { behavior: "allow" as const }
+    : options?.canUseTool !== undefined
+      ? await options.canUseTool("Bash", input, { signal })
+      : { behavior: "deny" as const, message: "Claude Code had no way to ask about Bash, so it was not allowed." };
+  if (decision.behavior === "allow") {
+    appendFileSync(join(options?.cwd ?? process.cwd(), file), "ran\n");
+    yield toolResult(id, { stdout: "", stderr: "", interrupted: false }, "");
+    return;
+  }
+  yield toolResult(id, { error: decision.message }, decision.message);
+  if (decision.interrupt !== true) return;
+  // Interrupted: the run ends here, by its stop when the host stopped it.
+  if (signal?.aborted) throw signal.reason ?? new Error("The run was stopped.");
+  throw new Error(`scripted Claude Code stopped at a denied call: ${decision.message}`);
 }
 
 /** The scripted turn, as SDK messages. */
@@ -131,6 +178,12 @@ async function* scriptedTurn(
       yield toolUse(id, "Bash", { command, description: descriptions[i] });
       yield toolResult(id, { stdout: "ok", stderr: "", interrupted: false }, "ok");
     }
+    await pause(step, signal);
+  }
+
+  const file = touchedFile(prompt);
+  if (file !== null) {
+    yield* guardedCall(file, options, signal);
     await pause(step, signal);
   }
 

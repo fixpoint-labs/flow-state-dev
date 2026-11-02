@@ -2,7 +2,7 @@
 name: cross-spec-review
 context: fork
 agent: general-purpose
-description: Review a SET of specs against each other for mutual coherence — the coherence lens (audit-coherence) raised from one change to the set of specs an epic produced in parallel. Catches inter-spec conflicts before any of them is implemented: overlapping or duplicated scope, contradictory decisions, colliding API/naming surface, one spec assuming what another removes, and cross-issue dependency collisions. Read-only — returns a ranked conflict report to the caller (normally epic-lifecycle), which walks the user through the decisions and routes the alignment. Runs ONLY on specs the user has already approved as individually good, so it never aligns a good spec to an unvalidated one.
+description: Review a SET of specs against each other for mutual coherence — the coherence lens (audit-coherence) raised from one change to the set of specs an epic produced in parallel. Catches inter-spec conflicts before any of them is implemented: overlapping or duplicated scope, contradictory decisions, colliding API/naming surface, one spec assuming what another removes, and cross-issue dependency collisions. Read-only — returns a ranked conflict report to the caller (normally epic-lifecycle), which walks the user through the decisions and routes the alignment. Runs on specs the user has already approved as individually good, so it never aligns a good spec to an unvalidated one — except inside an epic's spec set, where epic-agent runs it on the drafts before the one spec-set PR is approved as a whole.
 argument-hint: "<the spec set — issue IDs or spec PR#s, e.g. FIX-1 FIX-2 FIX-3>"
 ---
 
@@ -38,6 +38,14 @@ finds the conflicts and hands them back.
 > where a set of specs genuinely has no epic above it.
 
 ## The gate — run only on validated specs
+
+**The exception is an epic's spec set**
+([`orchestration.md`](../../../docs/contributing/orchestration.md#the-spec-set-one-pr-for-the-epics-issue-specs)).
+There `epic-agent` runs this skill over the drafts *before* the spec-set PR opens, against the
+merged epic spec, and the human approves the aligned set in one gate. Nothing is aligned to an
+unvalidated spec there, because nothing is approved until the whole set is. Read the drafts on
+the spec-set branch, and return the report to `epic-agent`, which folds it. The gate below
+still governs every other run, including a child that joined the epic outside its set.
 
 **Do not run this until the user has approved the specs in the set as individually good.**
 Aligning specs to each other only helps if each is already sound; cross-aligning to a spec

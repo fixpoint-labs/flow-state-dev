@@ -1,9 +1,8 @@
 /**
  * A refused run on a board read from the claim fails the row for good.
  *
- * A refusal of where to work, or of a row that names only half a feature
- * payload, reads the same on every attempt, so it is never retried. On a
- * fixed board the row is cancelled, as it always was. On a conversation's
+ * A refusal of where to work, or of a row that names a phase and no issue,
+ * reads the same on every attempt, so it is never retried. On a fixed board the row is cancelled, as it always was. On a conversation's
  * board a cancelled row reaches nobody: the person who asked hears nothing.
  * So there the row ends `errored`, on its first attempt, with the refusal as
  * its error, which is what the conversation reports.
@@ -27,15 +26,15 @@ function refusingWorkspace(dir: string) {
 }
 
 describe("a refused run on a board read from the claim", () => {
-  it("ends a row naming only an issue errored after one attempt, and runs nothing", async () => {
+  it("ends a row naming a phase and no issue errored after one attempt, and runs nothing", async () => {
     const lab = claimHost({ mode: "claim" });
-    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "half a feature", input: { [HARNESS_FEATURE_KEY]: { issue: "FIX-1" } }, maxAttempts: 2 });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "half a feature", input: { [HARNESS_FEATURE_KEY]: { phase: PHASE } }, maxAttempts: 2 });
 
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
 
     const row = await lab.row(CONVERSATIONS, "t1", "conv-a");
     expect(row).toMatchObject({ status: "errored", attempts: 1 });
-    expect(row.error).toContain("names only part of a feature payload: harnessFeature.phase");
+    expect(row.error).toContain("names only part of a feature payload: harnessFeature.issue");
     expect(lab.seen).toHaveLength(0);
   }, 60_000);
 
@@ -54,7 +53,7 @@ describe("a refused run on a board read from the claim", () => {
 
   it("cancels a task that depends on the refused row, as any failed task's dependent is", async () => {
     const lab = claimHost({ mode: "claim" });
-    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "half a feature", input: { [HARNESS_FEATURE_KEY]: { issue: "FIX-1" } }, maxAttempts: 2 });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "half a feature", input: { [HARNESS_FEATURE_KEY]: { phase: PHASE } }, maxAttempts: 2 });
     await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t2", goal: "after it", input: {}, deps: ["t1"] });
 
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");

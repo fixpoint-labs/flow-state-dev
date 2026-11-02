@@ -138,6 +138,13 @@ server's included, through `/proc`. Use a separate user or a container when that
 Leave it out and the runtime runs in your process, as before. Guide:
 [Choosing the environment the run starts with](https://flow-state.dev/docs/tools/cursor#choosing-the-environment-the-run-starts-with).
 
+`CURSOR_PASS` is the list a run needs to work, if you'd rather not write your own: `PATH`,
+`HOME`, `USER`, `SHELL`, `TMPDIR`, `CURSOR_API_KEY`, and the proxy and CA settings a proxied
+network needs, in upper and lower case. `harnessEnv({ pass: CURSOR_PASS })` builds the `env`;
+hand the same one to `cursorSignIn` so it checks the sign-in the run gets. To hand the run a key
+of your own as well, add its name: `harnessEnv({ pass: [...CURSOR_PASS, "GH_TOKEN"] })`. A
+variable you pass is readable by every command the run starts, and the model can print it.
+
 `agent.local.sandboxOptions: { enabled: true }` asks Cursor to confine the run's writes to its
 `cwd`. Cursor fails a run whose sandbox can't start, rather than running without it. The sandbox
 needs a helper binary from Cursor's platform package (`@cursor/sdk-darwin-arm64` and the like).
@@ -189,6 +196,12 @@ accepts the key.
 Without a key, the SDK must be installed. If it can't be loaded, the call rejects with the
 import's own error, such as Node's `ERR_MODULE_NOT_FOUND`. A missing, unreadable or malformed
 `auth.json` is not an error: the SDK reports it as no stored login, so the result is `none`.
+
+`checkCursorReadiness(env)` answers as core's `HarnessReadiness`, for harness-manager's
+`harnessReadiness`: `{ ready: true }` for a key or a stored login, `{ ready: false, reason,
+remedy }` with `CURSOR_SIGN_IN_REMEDY` ("Set CURSOR_API_KEY, or sign in to Cursor") for neither,
+and not ready with `"Install @cursor/sdk"` when the SDK can't be loaded or answer, which it
+checks even when `CURSOR_API_KEY` is set. Unlike `cursorSignIn`, it never rejects.
 
 ## The handle
 

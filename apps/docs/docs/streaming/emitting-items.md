@@ -43,6 +43,21 @@ ctx.emit.message("Background audit complete.", {
 
 Without identity options, the item is client- and history-visible — the ergonomic default for handlers that speak directly to the user. See [Generator identity](items#generator-identity) for the full model.
 
+### Attaching data a client reads
+
+A message's text is for people and for the model. When a client also needs to know what the message is about, say which task it reports on, pass `metadata`. The item carries it as given, and the client reads the data rather than parsing the words, so rewording the message breaks nothing.
+
+```ts
+ctx.emit.message(`Report "${title}" is ready.`, {
+  metadata: { report: { id: reportId } },
+});
+
+// In the client
+const reportId = (item.metadata?.report as { id?: string } | undefined)?.id;
+```
+
+The model never sees `metadata`: conversation history holds the text alone. Pick a key that names your feature, and export a small reader beside the code that emits it, so the two change together.
+
 Handler-emitted messages do not carry the `model` field. The framework only stamps `ModelIdentity` on items produced by a generator block — see [Observable model identity](items#observable-model-identity).
 
 ## Status messages

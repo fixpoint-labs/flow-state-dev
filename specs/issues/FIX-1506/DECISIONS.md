@@ -156,6 +156,8 @@ fresh `analysis` before the gate.
   The bus seams are cited as decided in FIX-2426 (#4477).
 - **Amended (Nov 2)** — the goal check runs on a bus that says it crosses: on the in-memory bus
   the hooks now keep their fallback timer (FIX-2428 D3), which leg b's and d's read counts forbid.
+- **Amended (Nov 2)** — serverless push (Ably, FIX-380) is a later transport behind the same
+  seam, outside FIX-2367 ([owner, #4512](https://github.com/fixpoint-labs/flow-state-dev/pull/4512#issuecomment-6567246620)). Wording only.
 
 ## Notes from review
 

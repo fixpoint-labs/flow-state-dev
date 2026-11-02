@@ -18,7 +18,7 @@ vi.mock("../src/usage", async (importOriginal) => ({
   findCodexProgram,
 }));
 
-import { probeCodexAccount } from "../src/account-probe";
+import { checkCodexReadiness, CODEX_SIGN_IN_REMEDY, probeCodexAccount } from "../src/account-probe";
 
 const program = { path: "/sdk/bin/codex", pathDirs: ["/sdk/bin"] };
 type Callback = (error: (Error & Record<string, unknown>) | null, stdout: string, stderr: string) => void;
@@ -124,5 +124,53 @@ describe("probeCodexAccount", () => {
       reason: "Cannot find package '@openai/codex-sdk'",
     });
     expect(execFile).not.toHaveBeenCalled();
+  });
+});
+
+describe("checkCodexReadiness", () => {
+  it("is ready on a key, without starting Codex", async () => {
+    expect(await checkCodexReadiness({ env: { CODEX_API_KEY: "k" } })).toEqual({ ready: true });
+    expect(execFile).not.toHaveBeenCalled();
+  });
+
+  it("is not ready on a key when the SDK can't be loaded: a run needs both", async () => {
+    findCodexProgram.mockRejectedValue(new Error("Cannot find package '@openai/codex-sdk'"));
+    expect(await checkCodexReadiness({ env: { CODEX_API_KEY: "k" } })).toEqual({
+      ready: false,
+      reason: "The Codex SDK could not be loaded: Cannot find package '@openai/codex-sdk'",
+      remedy: "Install @openai/codex-sdk",
+    });
+  });
+
+  it("is ready on a login `codex login status` accepts", async () => {
+    codexAnswers(null, "Logged in using ChatGPT\n");
+    expect(await checkCodexReadiness({ env: {} })).toEqual({ ready: true });
+  });
+
+  it("is not ready with Codex's reason and the sign-in remedy when it says not logged in", async () => {
+    codexAnswers(failure({ code: 1 }), "Not logged in\n");
+    expect(await checkCodexReadiness({ env: {} })).toEqual({
+      ready: false,
+      reason: "Codex has no credential: Not logged in",
+      remedy: CODEX_SIGN_IN_REMEDY,
+    });
+  });
+
+  it("is unanswered, with no remedy to follow, when Codex never answered", async () => {
+    codexAnswers(failure({ killed: true, signal: "SIGTERM" }));
+    expect(await checkCodexReadiness({ env: {}, timeoutMs: 2_000 })).toEqual({
+      ready: false,
+      reason: "Codex did not answer within 2 s, so Codex's sign-in is unknown",
+      unanswered: true,
+    });
+  });
+
+  it("names the SDK to install when it can't be loaded", async () => {
+    findCodexProgram.mockRejectedValue(new Error("Cannot find package '@openai/codex-sdk'"));
+    expect(await checkCodexReadiness({ env: {} })).toEqual({
+      ready: false,
+      reason: "The Codex SDK could not be loaded: Cannot find package '@openai/codex-sdk'",
+      remedy: "Install @openai/codex-sdk",
+    });
   });
 });
