@@ -9,7 +9,7 @@ import type { SessionsApi } from "../client";
 import type { SessionStateSnapshotResponse } from "../types";
 
 /** Items per page when {@link readSessionHistory} is given none. */
-export const SESSION_HISTORY_PAGE_LIMIT = 100;
+const SESSION_HISTORY_PAGE_LIMIT = 100;
 
 /**
  * How many times a paged read starts over because the session's history moved
