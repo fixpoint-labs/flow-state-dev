@@ -123,6 +123,19 @@ export type ExecutionParent = {
   };
 };
 
+/** What `ctx.emit.message` takes beside the message's text or content. */
+export type EmitMessageOptions = {
+  itemVisibility?: ItemVisibility;
+  agentName?: string;
+  transient?: boolean;
+  /**
+   * Structured data the message item carries as `metadata`, for a client to
+   * read instead of parsing the text. Opaque to the engine and never sent to a
+   * model; the emitting package owns its keys and exports their reader.
+   */
+  metadata?: Record<string, unknown>;
+};
+
 export interface ResponseEmitterHandle {
   emit(event: unknown): void | Promise<void>;
   /**
@@ -449,11 +462,11 @@ export interface BlockContext<
     message: {
       (
         text: string,
-        options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
+        options?: EmitMessageOptions
       ): void;
       (
         content: Content[],
-        options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
+        options?: EmitMessageOptions
       ): void;
     };
     /**
@@ -775,7 +788,7 @@ export interface BlockContext<
    */
   _emitMessageAwaited?(
     text: string,
-    options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean; role?: "user" | "assistant" }
+    options?: EmitMessageOptions & { role?: "user" | "assistant" }
   ): Promise<void>;
 
   /**
