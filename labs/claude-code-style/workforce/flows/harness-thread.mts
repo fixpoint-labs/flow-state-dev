@@ -18,13 +18,33 @@
  * the task inherits its session's project through `filingProjectId`, and a
  * run with no project is refused `no-project` before any checkout (spec D3).
  * `fsdev.config.mts` builds it: a worktree of the project's repository.
+ *
+ * **A run is done only when its project's checks pass** (`projectChecks()`:
+ * the commands the project row names in `checks`, none by default). They run
+ * in the run's worktree after the harness says it finished; a red one sends
+ * the run back, and its next brief says which command failed and how. A run
+ * that changed nothing (a question) skips them, so a project whose branch is
+ * already red can still be asked about.
  */
 import { defineFlow, handler, harnessEnv, router, sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition, HarnessBlock } from "@flow-state-dev/core/types";
 import { CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
 import { CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
-import { goalJudge, harnessManager, harnessSessionDoor, harnessTalkTurn, taskIssueSegment, type HarnessFeeds, type PhaseSpec } from "@flow-state-dev/harness-manager";
+import {
+  commandCheck,
+  goalJudge,
+  harnessDrainBudgetMs,
+  harnessManager,
+  harnessSessionDoor,
+  harnessTalkTurn,
+  resolveOwnership,
+  taskIssueSegment,
+  type CommandCheckCommands,
+  type CompletionRunContext,
+  type HarnessFeeds,
+  type PhaseSpec,
+} from "@flow-state-dev/harness-manager";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -33,6 +53,7 @@ import {
   MESSAGE_RECEIVED_ENTRY,
   messageReceivedEntry,
   messageReceivedSchema,
+  projectChecks,
   projectWorkspaceCapability,
   startOwedSteerTurn,
   STEER_TURN_ENTRY,
@@ -44,7 +65,7 @@ import {
   type MessageReceived,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
-import type { WorkspaceHost } from "@flow-state-dev/workspace";
+import { GIT_TIMEOUT_MS, run as exec, type WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
 
 /** The flow name a coding worker's `WORKER.md` names. */
@@ -116,18 +137,71 @@ export const HARNESSES: Record<string, (feeds: HarnessFeeds) => HarnessBlock> = 
     } as never) as unknown as HarnessBlock,
 };
 
-/** The one phase: the task as the main session wrote it, a question or a change, done when the harness says it finished. */
-const phase: PhaseSpec = {
-  phase: "code",
-  buildPrompt: ({ task, answers }) =>
-    [
-      task.title === undefined ? task.goal : `${task.title}\n\n${task.goal}`,
-      ...answers.map((answered) => `You asked: ${answered.question}\nThe answer: ${answered.answer}`),
-      "Work in this directory only. If the task asks a question, read what you need, answer it in full, and change nothing. " +
-        "If it asks for a change, commit what you change with git, then say in one line what you did.",
-    ].join("\n\n"),
-  isDone: ({ stopReport }) => stopReport === "finished",
-};
+/** How long a run's project checks may take together. */
+const CHECKS_TIMEOUT_MS = 10 * 60_000;
+
+async function git(cwd: string, args: string[]): Promise<string> {
+  return (await exec("git", args, { cwd, timeoutMs: GIT_TIMEOUT_MS })).stdout;
+}
+
+/**
+ * Whether the run changed its worktree: files left uncommitted, or a tree that differs from the
+ * commit its branch was cut at (`baseCommit`, from the run's record). Trees are compared, not
+ * commits counted, so a run that moved its branch back still counts. No base, or anything git
+ * can't answer, counts as changed, so the checks run.
+ */
+async function runChangedFiles(run: CompletionRunContext): Promise<boolean> {
+  if (run.baseCommit == null) return true;
+  try {
+    if ((await git(run.workspacePath, ["status", "--porcelain"])).trim() !== "") return true;
+    const [base, head] = await Promise.all([
+      git(run.workspacePath, ["rev-parse", `${run.baseCommit}^{tree}`]),
+      git(run.workspacePath, ["rev-parse", "HEAD^{tree}"]),
+    ]);
+    return base.trim() !== head.trim();
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * The one phase: the task as the main session wrote it, a question or a change, done when the
+ * harness says it finished and, on a run that changed files, `checks` pass in the run's worktree.
+ * A question run changes nothing and skips them. The flow passes the project's.
+ */
+export function codePhase(checks: CommandCheckCommands<CompletionRunContext>): PhaseSpec {
+  const onChange: CommandCheckCommands<CompletionRunContext> = async (run) =>
+    !(await runChangedFiles(run)) ? [] : typeof checks === "function" ? checks(run) : checks;
+  return commandCheck(
+    {
+      phase: "code",
+      buildPrompt: ({ task, answers, feedback }) =>
+        [
+          task.title === undefined ? task.goal : `${task.title}\n\n${task.goal}`,
+          ...answers.map((answered) => `You asked: ${answered.question}\nThe answer: ${answered.answer}`),
+          "Work in this directory only. If the task asks a question, read what you need, answer it in full, and change nothing. " +
+            "If it asks for a change, commit what you change with git, then say in one line what you did.",
+          ...(feedback === undefined ? [] : [`Why the last attempt stopped:\n\n${feedback}`]),
+        ].join("\n\n"),
+      isDone: ({ stopReport }) => stopReport === "finished",
+    },
+    { commands: onChange, timeoutMs: CHECKS_TIMEOUT_MS },
+  );
+}
+
+const phase = codePhase(projectChecks());
+
+/**
+ * How long a shutdown waits for a coding run still going: its run, the ownership wait, the judge
+ * and the phase's checks. The host hands it to `createFlowState` as `dispatchDrainTimeoutMs`, in
+ * place of the engine's 30 s default, which would cancel the run.
+ */
+export const HARNESS_THREAD_DRAIN_MS = harnessDrainBudgetMs({
+  runTimeoutMs: RUN_TIMEOUT_MS,
+  ownershipWaitMs: resolveOwnership({ runTimeoutMs: RUN_TIMEOUT_MS, doneTimeoutMs: phase.doneTimeoutMs }).ownership.waitMs,
+  judge: true,
+  doneTimeoutMs: phase.doneTimeoutMs,
+});
 
 export interface HarnessThreadFlowOptions {
   installation: WorkerInstallation;

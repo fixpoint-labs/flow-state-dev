@@ -38,6 +38,12 @@
  * SQLite file and each coding run's worktree or clone), `CLAUDE_CODE_STYLE_USER` (default
  * `u_lab`). `CLAUDE_CODE_STYLE_ANSWER_AGAIN=off` leaves `answerAgain` off the
  * main worker's flow: the goal check's control.
+ *
+ * A coding run is done only when its project's checks pass (the project row's
+ * `checks`; none named runs nothing). `CLAUDE_CODE_STYLE_SETUP`, one command
+ * such as `pnpm install --frozen-lockfile`, runs in each fresh worktree before
+ * its run starts, so the checks find what they need; it runs with no shell,
+ * and a command that needs one stops the lab at start. Unset, nothing runs.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, realpathSync } from "node:fs";
@@ -52,8 +58,8 @@ import { formatHarnessReadiness, harnessReadiness, harnessReadinessAction } from
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { consultSessionsCapability, createWorkerInstallation, defineAgentWorkerFlow, defineCoordinatorFlow, hireWorkforce, projectSourceCapability, projectWorkspace } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { localWorkspaceHost } from "@flow-state-dev/workspace";
-import { defineHarnessThreadFlow, HARNESS_THREAD_FLOW } from "./workforce/flows/harness-thread.mts";
+import { checkoutCommandProblem, localWorkspaceHost, splitCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
+import { defineHarnessThreadFlow, HARNESS_THREAD_DRAIN_MS, HARNESS_THREAD_FLOW } from "./workforce/flows/harness-thread.mts";
 import { definePinsFlow, PINS_FLOW } from "./workforce/flows/pins.mts";
 import { defineProjectsFlow, PROJECTS_FLOW } from "./workforce/flows/projects.mts";
 
@@ -79,6 +85,13 @@ const listed = (repository: string) => {
   const real = isAbsolute(path) && existsSync(path) ? realpathSync(path) : undefined;
   return real !== undefined && repositories.includes(real) ? real : undefined;
 };
+/** The command `CLAUDE_CODE_STYLE_SETUP` names, split like a project check. */
+const setup = ((value: string | undefined): WorkspaceSetup | undefined => {
+  if (value === undefined || value.trim() === "") return undefined;
+  const problem = checkoutCommandProblem(value.trim());
+  if (problem !== undefined) throw new Error(`CLAUDE_CODE_STYLE_SETUP: ${problem}`);
+  return { command: splitCheckoutCommand(value.trim()) as [string, ...string[]] };
+})(process.env.CLAUDE_CODE_STYLE_SETUP);
 const source = projectWorkspace();
 const workspace = localWorkspaceHost({
   root: join(data, "runs"),
@@ -89,6 +102,7 @@ const workspace = localWorkspaceHost({
     const local = answer.kind === "repo" ? listed(answer.repo) : undefined;
     return answer.kind === "repo" && local !== undefined ? { ...answer, repo: local } : answer;
   },
+  ...(setup === undefined ? {} : { setup }),
 });
 
 const tree = await readWorkforce(fileURLToPath(new URL("./workforce", import.meta.url)));
@@ -123,6 +137,8 @@ export default createFlowState({
   stores: { default: { primary: sqliteStores({ filename: join(data, "lab.db") }) } },
   // A coding run's review and a thread's question wait on you across a restart.
   durable: true,
+  // A shutdown waits for a coding run still going, its checks and judge too (FIX-2484).
+  dispatchDrainTimeoutMs: HARNESS_THREAD_DRAIN_MS,
   devtool: { userId },
   // A consult of another conversation reads on `intent/utility`, a smaller model.
   models: { default: model, intents: { utility: [process.env.CLAUDE_CODE_STYLE_UTILITY_MODEL ?? "openai/gpt-6-luna"] } },
