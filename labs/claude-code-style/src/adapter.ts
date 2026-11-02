@@ -20,7 +20,7 @@
  * | `requestChanges`| the same answer with `{ verdict: "revise", words }`                        |
  * | `watchPins`, `pin`, `unpin` | the lab's `pins` flow, your own user state                    |
  */
-import { createClient, type Client, type SessionSummary } from "@flow-state-dev/client";
+import { createClient, sessionFeed, type Client, type SessionSummary } from "@flow-state-dev/client";
 import { readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import { createInboxClient, inboxItems, type InboxAnswer, type InboxHold, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
 import type { TaskSpendView } from "@flow-state-dev/orchestration/tasks";
@@ -332,8 +332,28 @@ export function createLabAdapter(): LabAdapter {
   return createWiredLab(createClient({ userId: readUserId(), baseUrl: "", fetcher: withBearerToken(readBearerToken()) }));
 }
 
+/**
+ * Follow one session's items of `types` through the client's `sessionFeed`,
+ * calling `onItems` once the history lands and on every change after. The
+ * feed holds one connection; the stop closes it.
+ */
+function followItems(fsd: Client, sessionId: string, types: readonly string[], onItems: (items: Item[]) => void): Unsubscribe {
+  const feed = sessionFeed(fsd, sessionId, { itemTypes: [...types] });
+  let last: readonly unknown[] | undefined;
+  const stop = feed.subscribe(({ items, state }) => {
+    // Nothing until the history lands, and nothing when only the connection state moved.
+    if ((items.length === 0 && state === "connecting") || items === last) return;
+    last = items;
+    onItems(items as unknown as Item[]);
+  });
+  return () => {
+    stop();
+    feed.close();
+  };
+}
+
 /** The adapter over one client. */
-function createWiredLab(fsd: Client): LabAdapter {
+export function createWiredLab(fsd: Client): LabAdapter {
   const workforce = createWorkforceClient(fsd);
   const inbox = createInboxClient(fsd);
   const modes = MODES;
@@ -628,28 +648,74 @@ function createWiredLab(fsd: Client): LabAdapter {
         await fsd.flow(turn.flowId ?? turn.flowKind).request(turn.id).abort().catch(() => undefined);
       }
     },
-    watchThread: (sessionId, onChange) =>
-      every(async () => {
-        const [items, turns, threads] = await Promise.all([itemsOf(sessionId), runningTurns(sessionId), isThreads(sessionId)]);
-        const turn = turns[0];
-        return {
+    watchThread: (sessionId, onChange) => {
+      // Items come from the session feed. The running turn is still read: the feed's runs are
+      // child sessions, not this session's own turns.
+      let items: Item[] | undefined;
+      let turnOf: { turn: Awaited<ReturnType<typeof runningTurns>>[number] | undefined; threads: boolean } | undefined;
+      let last: string | undefined;
+      const tell = () => {
+        if (items === undefined || turnOf === undefined) return;
+        const { turn, threads } = turnOf;
+        const view: ThreadView = {
           entries: entriesOf(items, threads),
           running: turn !== undefined,
           ...(turn?.startedAtMs === undefined ? {} : { turnStartedAt: turn.startedAtMs }),
           ...(turn === undefined ? {} : { requestId: turn.id }),
         };
-      }, onChange),
+        const key = JSON.stringify(view);
+        if (key === last) return;
+        last = key;
+        onChange(view);
+      };
+      const stopItems = followItems(fsd, sessionId, THREAD_ITEMS, (next) => {
+        items = next;
+        tell();
+      });
+      const stopTurns = every(
+        async () => {
+          const [turns, threads] = await Promise.all([runningTurns(sessionId), isThreads(sessionId)]);
+          return { turn: turns[0], threads };
+        },
+        (next) => {
+          turnOf = next;
+          tell();
+        },
+      );
+      return () => {
+        stopItems();
+        stopTurns();
+      };
+    },
     // The board is a read, so listing it every tick while the pane is open stores nothing.
     watchTasks: (sessionId, onChange) => every(() => boardOf(sessionId), onChange, 2000),
     // Shown only inside the tasks pane or the threads board, whose watch keeps `runSessionOf` current.
-    watchTaskWork: (_sessionId, taskId, onChange) =>
-      every(async () => {
+    watchTaskWork: (_sessionId, taskId, onChange) => {
+      // The task's run session is known once the board has listed it; until then the work is empty.
+      let stopItems: Unsubscribe | undefined;
+      let live = true;
+      const open = () => {
         const runSession = runSessionOf.get(taskId);
-        if (runSession === undefined) return { entries: [] };
-        const items = await itemsOf(runSession, [...THREAD_ITEMS, "suspension"]);
-        const review = reviewStopOf(items);
-        return { entries: entriesOf(items.filter((item) => item.type !== "suspension")), ...(review === undefined ? {} : { review }) };
-      }, onChange, 2000),
+        if (runSession === undefined) return false;
+        stopItems = followItems(fsd, runSession, [...THREAD_ITEMS, "suspension"], (items) => {
+          const review = reviewStopOf(items);
+          onChange({ entries: entriesOf(items.filter((item) => item.type !== "suspension")), ...(review === undefined ? {} : { review }) });
+        });
+        return true;
+      };
+      let timer: ReturnType<typeof setInterval> | undefined;
+      if (!open()) {
+        onChange({ entries: [] });
+        timer = setInterval(() => {
+          if (live && open()) clearInterval(timer);
+        }, 2000);
+      }
+      return () => {
+        live = false;
+        clearInterval(timer);
+        stopItems?.();
+      };
+    },
     sayInThread: async (sessionId, taskId, line) => {
       // A line answers the question the thread holds you on; with none open, it is a steer on its task.
       const question = await holdOn(sessionId, taskId, "question");
