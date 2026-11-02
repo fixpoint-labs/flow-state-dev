@@ -3,7 +3,13 @@ import { COLUMNS, columnOf } from "../lib/columns";
 import { cn } from "../lib/utils";
 
 /** A harness's name as a card and row tag it. */
-export const HARNESS_LABEL: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", cursor: "Cursor" };
+const HARNESS_LABEL: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", cursor: "Cursor" };
+
+/** The name of the harness a task's runs last reported, for a view with no harness tag; `undefined` when none did. */
+export function harnessLabelOf(task: TaskRow): string | undefined {
+  const harness = task.spend?.harness;
+  return harness == null ? undefined : (HARNESS_LABEL[harness] ?? harness);
+}
 
 /** The thread's column, ignoring pins: a pinned thread keeps its status icon and line. */
 export const statusColumn = (task: TaskRow) => columnOf(task, false);

@@ -96,6 +96,8 @@
     // The Claude Code-style lab's copies, as `fsdev ui add message` installed them.
     "labs/claude-code-style/src/components/ui/**",
     "labs/claude-code-style/src/components/flow-state/message.tsx",
+    // Its copy of the registry's spend, as `fsdev ui add spend` installed it.
+    "labs/claude-code-style/src/components/flow-state/spend.tsx",
     // The Teammates lab's copy of the registry's tool grouping.
     "labs/teammates/src/components/flow-state/tool-grouping.ts",
     // Kitchen Sink's copy of the registry's run-changes, which the registry
