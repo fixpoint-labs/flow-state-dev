@@ -5,7 +5,7 @@
  * every step at once. While a running row names no run, `watchTasks` reads the
  * board until it does.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import { createLabAdapter, type BoardTask } from "../src/adapter";
 
@@ -108,5 +108,23 @@ describe("a coding task's hold, while it runs", () => {
     await until(() => tasks[0]?.waiting !== undefined);
     stop();
     expect(tasks[0]?.waiting).toEqual({ kind: "review", prompt: "1 commit on b", unanswerable: null });
+  });
+
+  it("a second watch of the same board, once the run's feed has loaded, reads it too", async () => {
+    // The popup opens while the conversation still watches: the run's feed answers the second watch at once.
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const adapter = createLabAdapter(clientWithRunRow());
+    let first: BoardTask[] = [];
+    const stopFirst = adapter.watchTasks("wks_1", (next) => (first = next));
+    await until(() => first[0]?.waiting !== undefined);
+    let second: BoardTask[] = [];
+    const stopSecond = adapter.watchTasks("wks_1", (next) => (second = next));
+    await until(() => second[0]?.waiting !== undefined);
+    stopFirst();
+    stopSecond();
+    expect(second[0]?.waiting?.kind).toBe("review");
+    // Following the run once per watch, not again from inside its own first answer.
+    expect(errors.mock.calls.flat().some((e) => e instanceof RangeError)).toBe(false);
+    errors.mockRestore();
   });
 });

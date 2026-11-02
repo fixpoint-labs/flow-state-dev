@@ -801,15 +801,15 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         for (const row of current) {
           const runSession = row.run?.sessionId;
           if (typeof runSession !== "string" || runFeeds.has(runSession)) continue;
-          runFeeds.set(
-            runSession,
-            watchFeed(runSession, boardRows, (read) => {
-              const fromRun = read.get(row.id);
-              if (fromRun === undefined) return;
-              runRows.set(row.id, fromRun);
-              publish();
-            }),
-          );
+          // Claimed before the watch starts: a feed already loaded calls back at once, and that publish follows runs again.
+          runFeeds.set(runSession, () => {});
+          const stop = watchFeed(runSession, boardRows, (read) => {
+            const fromRun = read.get(row.id);
+            if (fromRun === undefined) return;
+            runRows.set(row.id, fromRun);
+            publish();
+          });
+          runFeeds.set(runSession, stop);
         }
       };
       const publish = () => {
