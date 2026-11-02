@@ -34,9 +34,11 @@ import { CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
 import {
   commandCheck,
   goalJudge,
+  harnessDrainBudgetMs,
   harnessManager,
   harnessSessionDoor,
   harnessTalkTurn,
+  resolveOwnership,
   taskIssueSegment,
   type CommandCheckCommands,
   type CompletionRunContext,
@@ -141,18 +143,20 @@ async function git(cwd: string, args: string[]): Promise<string> {
 }
 
 /**
- * Whether the run changed its worktree: files left uncommitted, or commits since its branch was
- * last cut (the newest `branch:` entry of the branch's reflog, which `git worktree add -B` writes).
- * Anything git can't answer counts as changed, so the checks run.
+ * Whether the run changed its worktree: files left uncommitted, or a tree that differs from the
+ * commit its branch was cut at (`baseCommit`, from the run's record). Trees are compared, not
+ * commits counted, so a run that moved its branch back still counts. No base, or anything git
+ * can't answer, counts as changed, so the checks run.
  */
 async function runChangedFiles(run: CompletionRunContext): Promise<boolean> {
+  if (run.baseCommit == null) return true;
   try {
     if ((await git(run.workspacePath, ["status", "--porcelain"])).trim() !== "") return true;
-    const reflog = await git(run.workspacePath, ["reflog", "show", "--format=%H %gs", `refs/heads/${run.branch}`]);
-    const cut = reflog.split("\n").find((line) => line.split(" ")[1] === "branch:");
-    if (cut === undefined) return true;
-    const count = (await git(run.workspacePath, ["rev-list", "--count", `${cut.split(" ")[0]}..HEAD`])).trim();
-    return count !== "0";
+    const [base, head] = await Promise.all([
+      git(run.workspacePath, ["rev-parse", `${run.baseCommit}^{tree}`]),
+      git(run.workspacePath, ["rev-parse", "HEAD^{tree}"]),
+    ]);
+    return base.trim() !== head.trim();
   } catch {
     return true;
   }
@@ -184,6 +188,18 @@ export function codePhase(checks: CommandCheckCommands<CompletionRunContext>): P
 }
 
 const phase = codePhase(projectChecks());
+
+/**
+ * How long a shutdown waits for a coding run still going: its run, the ownership wait, the judge
+ * and the phase's checks. The host hands it to `createFlowState` as `dispatchDrainTimeoutMs`, in
+ * place of the engine's 30 s default, which would cancel the run.
+ */
+export const HARNESS_THREAD_DRAIN_MS = harnessDrainBudgetMs({
+  runTimeoutMs: RUN_TIMEOUT_MS,
+  ownershipWaitMs: resolveOwnership({ runTimeoutMs: RUN_TIMEOUT_MS, doneTimeoutMs: phase.doneTimeoutMs }).ownership.waitMs,
+  judge: true,
+  doneTimeoutMs: phase.doneTimeoutMs,
+});
 
 export interface HarnessThreadFlowOptions {
   installation: WorkerInstallation;

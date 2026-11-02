@@ -50,7 +50,7 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { consultSessionsCapability, createWorkerInstallation, defineAgentWorkerFlow, defineCoordinatorFlow, hireWorkforce, projectSourceCapability, projectWorkspace } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { checkoutCommandProblem, localWorkspaceHost, splitCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
-import { defineHarnessThreadFlow, HARNESS_THREAD_FLOW } from "./workforce/flows/harness-thread.mts";
+import { defineHarnessThreadFlow, HARNESS_THREAD_DRAIN_MS, HARNESS_THREAD_FLOW } from "./workforce/flows/harness-thread.mts";
 import { definePinsFlow, PINS_FLOW } from "./workforce/flows/pins.mts";
 import { defineProjectsFlow, PROJECTS_FLOW } from "./workforce/flows/projects.mts";
 
@@ -116,6 +116,8 @@ export default createFlowState({
   stores: { default: { primary: sqliteStores({ filename: join(data, "lab.db") }) } },
   // A coding run's review and a thread's question wait on you across a restart.
   durable: true,
+  // A shutdown waits for a coding run still going, its checks and judge too (FIX-2484).
+  dispatchDrainTimeoutMs: HARNESS_THREAD_DRAIN_MS,
   devtool: { userId },
   // A consult of another conversation reads on `intent/utility`, a smaller model.
   models: { default: model, intents: { utility: [process.env.CLAUDE_CODE_STYLE_UTILITY_MODEL ?? "openai/gpt-6-luna"] } },
