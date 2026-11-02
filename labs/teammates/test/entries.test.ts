@@ -8,12 +8,20 @@
  * Its popup reads the session the log says it was delivered to.
  */
 import { describe, expect, it } from "vitest";
+import { noticeMetadata, noticeText, type TaskNotice } from "@flow-state-dev/orchestration/tasks";
+import { delegateAnswerMetadata } from "@flow-state-dev/workforce/browser";
 import { destinationOf, exchangeOf, toBoardTask, toEntries, toSteps } from "../src/adapter";
 import { answerIn } from "../src/components/Popups";
 
 const CODER = "teammates.claude-code";
-const line = (id: string, text: string) =>
-  ({ id, type: "message", role: "assistant", agentName: CODER, status: "completed", requestId: "r1", content: [{ type: "output_text", text }] });
+const line = (id: string, text: string, metadata?: Record<string, unknown>) =>
+  ({ id, type: "message", role: "assistant", agentName: CODER, status: "completed", requestId: "r1", content: [{ type: "output_text", text }], ...(metadata === undefined ? {} : { metadata }) });
+/** A task's ending as workforce emits it: orchestration's words and data on one line. */
+const ending = (id: string, taskId: string, patch: Partial<TaskNotice>) => {
+  const notice: TaskNotice = { boardId: "conversation", taskId, attempt: 1, ending: "completed", ...patch };
+  const task = { goal: taskId, title: taskId, assignee: CODER };
+  return line(id, noticeText(notice, task), noticeMetadata(notice, task));
+};
 const row = (id: string, status: string) =>
   ({ id: `c-${id}`, type: "component", component: "task-change", status: "completed", requestId: "r1", data: { task: { id, status, assignee: CODER, title: id } } });
 
@@ -25,19 +33,31 @@ describe("a task's ending in the conversation", () => {
   });
 
   it("names a filed task's ending by the task's title, read from its row", () => {
-    const [entry] = toEntries([row("task_y", "completed"), line("c", "Task \"task_y\" (task_y) completed by teammates.claude-code: Fixed.")], new Set([CODER]));
+    const [entry] = toEntries([row("task_y", "completed"), ending("c", "task_y", { output: "Fixed." })], new Set([CODER]));
     expect(entry).toMatchObject({ kind: "result", taskId: "task_y", title: "task_y" });
   });
 
   it("still draws a named task that errored as failed", () => {
-    const [entry] = toEntries([row("task_x", "errored"), line("b", "Claude Code's task (task_x) ended: errored")], new Set([CODER]));
+    const [entry] = toEntries([row("task_x", "errored"), ending("b", "task_x", { ending: "errored", error: "timed out" })], new Set([CODER]));
     expect(entry).toMatchObject({ kind: "result", taskId: "task_x", failed: true });
+  });
+
+  it("names its task from the line's data, so a line whose words changed still links to it", () => {
+    const [entry] = toEntries([row("task_y", "completed"), line("c", "Fixed it.", noticeMetadata({ boardId: "conversation", taskId: "task_y", attempt: 1, ending: "completed" }, { goal: "task_y" }))], new Set([CODER]));
+    expect(entry).toMatchObject({ kind: "result", taskId: "task_y", title: "task_y" });
+  });
+
+  it("links a marked answer to the task it answered, never drawn as failed, even when its words quote another task", () => {
+    const quoted = noticeText({ boardId: "conversation", taskId: "task_old", attempt: 1, ending: "errored", error: "x" }, { goal: "old" });
+    const [entry] = toEntries([row("task_a", "completed"), line("e", quoted, delegateAnswerMetadata({ worker: CODER, taskId: "task_a" }))], new Set([CODER]));
+    expect(entry).toMatchObject({ kind: "result", taskId: "task_a", from: CODER });
+    expect(entry).not.toHaveProperty("failed");
   });
 
   // FIX-2349: a task Chief of Staff cancelled read "failed" while its run was still going.
   it("draws a cancelled task as cancelled, never as failed", () => {
     expect(toBoardTask({ id: "task_c", status: "cancelled", assignee: CODER, title: "Misc bug fix" }).status).toBe("cancelled");
-    const [entry] = toEntries([row("task_c", "cancelled"), line("d", "Claude Code's task (task_c) ended: cancelled")], new Set([CODER]));
+    const [entry] = toEntries([row("task_c", "cancelled"), ending("d", "task_c", { ending: "cancelled" })], new Set([CODER]));
     expect(entry).toMatchObject({ kind: "result", taskId: "task_c", cancelled: true });
     expect(entry).not.toHaveProperty("failed");
   });
