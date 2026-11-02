@@ -16,6 +16,7 @@
  */
 
 import { handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
+import { reportHarnessSpend } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
 import type {
   HarnessBlock,
@@ -127,6 +128,12 @@ export interface HarnessStubOptions {
    * call waits for the step's stop, and the run ends with it.
    */
   toolCalls?: readonly StubToolCall[];
+  /**
+   * What each run reports it spent, from its `finally` as a harness does: a
+   * run stopped on a held call reports too. Its run id is the run's session.
+   * Absent, the run reports nothing.
+   */
+  spend?: { inputTokens: number; outputTokens: number; costUsd: number | null };
 }
 
 /** The part of a host's MCP relay the stub asks: which servers a run's project names. */
@@ -197,72 +204,78 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
             session,
           };
           runs.push(run);
+          try {
 
-          // A conforming harness names its session the moment it has one, so
-          // the manager can resume it after a kill. The stub does the same
-          // rather than skipping it: `onSession` is the write side of the
-          // resume feed, and a stub that never called it would leave that half
-          // of the contract unexercised in the one check that runs model-free.
-          await onSession(session, context);
+            // A conforming harness names its session the moment it has one, so
+            // the manager can resume it after a kill. The stub does the same
+            // rather than skipping it: `onSession` is the write side of the
+            // resume feed, and a stub that never called it would leave that half
+            // of the contract unexercised in the one check that runs model-free.
+            await onSession(session, context);
 
-          // The scripted run takes no relayed tools: a project that names MCP
-          // servers runs without them here, and its session says so.
-          const unrelayed = mcpTools === undefined ? [] : await mcpTools.named(context);
-          if (unrelayed.length > 0) {
-            ctx.emit.status(
-              `This run goes without MCP servers ${unrelayed.join(", ")}: the scripted coder takes no relayed tools.`,
-              { transient: false },
-            );
-          }
-
-          for (const step of options.steps ?? []) {
-            if ((options.stepEveryMs ?? 0) > 0) await pause(options.stepEveryMs!, ctx.signal);
-            ctx.emit.message(step);
-          }
-          // A cold run is a new coding session (another task, or a fresh attempt): it makes every scripted call from the top.
-          const progress = (run.resume === null ? undefined : progressBy.get(run.resume)) ?? { nextCall: 0, heldLast: false };
-          progressBy.set(session, progress);
-          // Told the call it stopped on was not allowed, the run goes on without it, as a model does.
-          if (progress.heldLast && input.prompt.includes(TOOL_NOT_ALLOWED)) progress.nextCall += 1;
-          progress.heldLast = false;
-          for (; progress.nextCall < (options.toolCalls ?? []).length; progress.nextCall += 1) {
-            const call = options.toolCalls![progress.nextCall]!;
-            const record = (decision: StubToolCallRecord["decision"]) =>
-              toolCalls.push({ run: runs.length - 1, toolName: call.toolName, input: call.input, decision, at: Date.now() });
-            if (onToolApproval === undefined) {
-              record("unasked");
-              await call.run?.(run);
-              continue;
+            // The scripted run takes no relayed tools: a project that names MCP
+            // servers runs without them here, and its session says so.
+            const unrelayed = mcpTools === undefined ? [] : await mcpTools.named(context);
+            if (unrelayed.length > 0) {
+              ctx.emit.status(
+                `This run goes without MCP servers ${unrelayed.join(", ")}: the scripted coder takes no relayed tools.`,
+                { transient: false },
+              );
             }
-            const decision = await onToolApproval({ toolName: call.toolName, input: call.input, signal: ctx.signal }, context);
-            record(decision.decision);
-            if (decision.decision === "allow") await call.run?.(run);
-            if (decision.decision === "held") {
-              progress.heldLast = true;
-              // Unrun, and the run waits for its stop, as Claude Code's turn does.
-              // The longest timer there is: the stop (or the run's deadline) ends it.
-              await pause(2 ** 31 - 1, ctx.signal);
+
+            for (const step of options.steps ?? []) {
+              if ((options.stepEveryMs ?? 0) > 0) await pause(options.stepEveryMs!, ctx.signal);
+              ctx.emit.message(step);
+            }
+            // A cold run is a new coding session (another task, or a fresh attempt): it makes every scripted call from the top.
+            const progress = (run.resume === null ? undefined : progressBy.get(run.resume)) ?? { nextCall: 0, heldLast: false };
+            progressBy.set(session, progress);
+            // Told the call it stopped on was not allowed, the run goes on without it, as a model does.
+            if (progress.heldLast && input.prompt.includes(TOOL_NOT_ALLOWED)) progress.nextCall += 1;
+            progress.heldLast = false;
+            for (; progress.nextCall < (options.toolCalls ?? []).length; progress.nextCall += 1) {
+              const call = options.toolCalls![progress.nextCall]!;
+              const record = (decision: StubToolCallRecord["decision"]) =>
+                toolCalls.push({ run: runs.length - 1, toolName: call.toolName, input: call.input, decision, at: Date.now() });
+              if (onToolApproval === undefined) {
+                record("unasked");
+                await call.run?.(run);
+                continue;
+              }
+              const decision = await onToolApproval({ toolName: call.toolName, input: call.input, signal: ctx.signal }, context);
+              record(decision.decision);
+              if (decision.decision === "allow") await call.run?.(run);
+              if (decision.decision === "held") {
+                progress.heldLast = true;
+                // Unrun, and the run waits for its stop, as Claude Code's turn does.
+                // The longest timer there is: the stop (or the run's deadline) ends it.
+                await pause(2 ** 31 - 1, ctx.signal);
+              }
+            }
+            await options.duringRun?.(run);
+
+            return {
+              source: "harness-manager/stub",
+              status: options.statusOf?.(run) ?? options.status ?? ("completed" as const),
+              sessionId: `sess_stub_${sessions}`,
+              url: null,
+              dispatchedAt: Date.now(),
+              outcome:
+                options.outcomeOf !== undefined
+                  ? options.outcomeOf(run)
+                  : options.outcome === undefined
+                    ? ("finished" as const)
+                    : options.outcome,
+              finalMessage:
+                typeof options.finalMessage === "function" ? options.finalMessage(run) : (options.finalMessage ?? null),
+              usage: null,
+              cost: null,
+            };
+          } finally {
+            if (options.spend !== undefined) {
+              reportHarnessSpend(ctx, { runId: session, harness: "stub", model: "stub-model", billing: "api-key", ...options.spend });
             }
           }
-          await options.duringRun?.(run);
-
-          return {
-            source: "harness-manager/stub",
-            status: options.statusOf?.(run) ?? options.status ?? ("completed" as const),
-            sessionId: `sess_stub_${sessions}`,
-            url: null,
-            dispatchedAt: Date.now(),
-            outcome:
-              options.outcomeOf !== undefined
-                ? options.outcomeOf(run)
-                : options.outcome === undefined
-                  ? ("finished" as const)
-                  : options.outcome,
-            finalMessage:
-              typeof options.finalMessage === "function" ? options.finalMessage(run) : (options.finalMessage ?? null),
-            usage: null,
-            cost: null,
-          };
         },
       }) as unknown as HarnessBlock;
       // A held call waits for the stop, and the run ends with it: the stop waits for nothing more.

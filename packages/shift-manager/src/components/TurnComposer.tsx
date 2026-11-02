@@ -13,7 +13,9 @@
  * (BR-5). A line that never got there keeps the draft and offers Retry. A line
  * that may have arrived keeps the draft and offers no Retry, so it isn't sent
  * twice. A line that failed after it left the draft is put back, unless the
- * user has started another.
+ * user has started another. Given a `draftKey`, the draft and an
+ * *unconfirmed* warning are kept across a reload (`useDraft`), so `--dev`'s
+ * reload on save neither loses a half-written line nor invites a second send.
  *
  * Every composer draws through {@link ComposerShell}, v2's composer: one line,
  * sent with ⏎ (Enter). Most composers are a
@@ -22,7 +24,12 @@
  * 1.5px ink box with ⏎ beside it and the send state under it (v2:175-178).
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { clearDraft, readDraft, saveDraft, useDraft } from "@flow-state-dev/react";
 import { TurnNotDelivered, type TurnStop } from "../lib/send";
+
+/** Where a composer's unsent line is kept (`useDraft`), and beside it an *unconfirmed* send's warning. */
+const DRAFT = "shift-manager:draft";
+const UNCONFIRMED = "shift-manager:unconfirmed";
 
 /** Where the last send stands. */
 export type TurnSendState =
@@ -38,19 +45,27 @@ export type TurnSendState =
 
 /**
  * The send state one composer keeps: run a send, and land on *delivered* or
- * on why not. `run` resolves `true` once the line is delivered. A send may
+ * on why not. `initial` is where it starts, such as an *unconfirmed* line kept
+ * across a reload. `run` resolves `true` once the line is delivered. A send may
  * resolve `{ stopped }`, as {@link sendTurn} does, to say what the worker stopped on,
  * and may call the `held` it is handed once the session holds the line.
  */
-export function useTurnSend() {
-  const [state, setState] = useState<TurnSendState>({ kind: "idle" });
+export function useTurnSend(initial: TurnSendState = { kind: "idle" }) {
+  const [state, setState] = useState<TurnSendState>(initial);
   const mounted = useRef(true);
   // Set on every mount, not just the first: StrictMode unmounts and remounts once in dev.
   useEffect(() => {
     mounted.current = true;
     return () => void (mounted.current = false);
   }, []);
-  const run = useCallback(async (send: (held: () => void) => Promise<void | { stopped: TurnStop }>): Promise<boolean> => {
+  /**
+   * Send through `send`; resolves `true` once it is delivered and the composer is still open.
+   * `closed` hears how a send that fails after the composer closed ended, since no state is left to show it.
+   */
+  const run = useCallback(async (
+    send: (held: () => void) => Promise<void | { stopped: TurnStop }>,
+    closed?: (failed: Extract<TurnSendState, { reason: string }>) => void,
+  ): Promise<boolean> => {
     setState({ kind: "sending" });
     try {
       const sent = await send(() => {
@@ -59,12 +74,16 @@ export function useTurnSend() {
       if (mounted.current) setState({ kind: "delivered", stopped: sent?.stopped ?? null });
       return mounted.current;
     } catch (error) {
-      if (!mounted.current) return false;
       const reason = error instanceof Error ? error.message : String(error);
       // Anything else is a fault in Shift Manager, not an answer about the line,
       // which may have gone: say so, and offer no resend.
+      const failed = { kind: error instanceof TurnNotDelivered ? error.kind : "unconfirmed", reason } as const;
+      if (!mounted.current) {
+        closed?.(failed);
+        return false;
+      }
       if (!(error instanceof TurnNotDelivered)) console.error("Shift Manager: sending a line failed", error);
-      setState({ kind: error instanceof TurnNotDelivered ? error.kind : "unconfirmed", reason });
+      setState(failed);
       return false;
     }
   }, []);
@@ -226,10 +245,17 @@ export function TurnComposer({
   scale = "default",
   autoSend,
   onAutoSend,
+  draftKey,
 }: {
   testId: string;
   label: string;
   placeholder: string;
+  /**
+   * What the line is written to (a conversation's worker, a task, an ask), so
+   * the draft and an *unconfirmed* warning survive a reload. Without one the
+   * draft lives only as long as the composer.
+   */
+  draftKey?: string;
   /** Why nothing can be sent right now, or `null` when it can. */
   blocked: string | null;
   /**
@@ -251,8 +277,25 @@ export function TurnComposer({
   autoSend?: string | null;
   onAutoSend?: () => void;
 }) {
-  const [draft, setDraft] = useState("");
-  const { state, run, reset } = useTurnSend();
+  const [draft, setDraftText] = useDraft(DRAFT, draftKey);
+  // Kept beside the draft, so a reload doesn't offer to send twice a line that may have arrived.
+  const [unconfirmed, setUnconfirmed] = useDraft(UNCONFIRMED, draftKey);
+  const { state, run, reset } = useTurnSend(unconfirmed === "" ? undefined : { kind: "unconfirmed", reason: unconfirmed });
+  useEffect(() => {
+    if (state.kind === "unconfirmed") setUnconfirmed(state.reason);
+    // Cleared only once the next send has ended: a reload mid-send still warns.
+    else if (state.kind !== "idle" && state.kind !== "sending" && state.kind !== "held" && unconfirmed !== "") setUnconfirmed("");
+  }, [state, unconfirmed, setUnconfirmed]);
+  // The draft as last drawn: a send that settles later decides against what is in the box now.
+  const current = useRef(draft);
+  current.current = draft;
+  const setDraft = useCallback(
+    (text: string) => {
+      current.current = text;
+      setDraftText(text);
+    },
+    [setDraftText],
+  );
 
   const sending = state.kind === "sending" || state.kind === "held";
   const canSend = blocked === null && draft.trim().length > 0 && !sending;
@@ -262,24 +305,45 @@ export function TurnComposer({
     if (blocked !== null || line.trim().length === 0 || sending) return;
     const submitted = line;
     const message = line.trim();
+    // The warning this line was sent under: a send that ends after the composer closed clears only that one.
+    const warned = readDraft(UNCONFIRMED, draftKey);
     let left = false;
     // The line leaves the draft once the session holds it: only the line that
     // was sent goes, and anything typed since stays.
     const leave = () => {
       if (left) return;
       left = true;
-      setDraft((current) => (current === submitted ? "" : current));
+      // The composer may have closed and reopened meanwhile: the stored draft goes only if it is still this line.
+      clearDraft(DRAFT, draftKey, submitted);
+      if (current.current === submitted) setDraft("");
       onHeld?.(message);
     };
-    if (await run((held) => send(message, () => {
-      held();
-      leave();
-    }))) {
+    let delivered = false;
+    const sent = await run(async (held) => {
+      const result = await send(message, () => {
+        held();
+        leave();
+      });
+      delivered = true;
+      return result;
+    }, (failed) => {
+      // It may have arrived, and the box that would say so is closed: keep the warning beside the
+      // draft, unless the draft is no longer this line (a newer send, or a newer line, owns it).
+      if (failed.kind !== "unconfirmed") clearDraft(UNCONFIRMED, draftKey, warned);
+      else if (readDraft(DRAFT, draftKey).trim() === submitted.trim()) saveDraft(UNCONFIRMED, draftKey, failed.reason);
+    });
+    if (sent) {
       leave();
       onDelivered?.(message);
+    } else if (delivered) {
+      // Delivered after the composer closed: only what is stored is left to clear, the draft and
+      // the warning it was sent under (a warning a newer send left is not that one).
+      clearDraft(DRAFT, draftKey, submitted);
+      clearDraft(UNCONFIRMED, draftKey, warned);
     } else if (left) {
       // It failed after it left: put it back, unless another line was started.
-      setDraft((current) => (current === "" ? submitted : current));
+      // A composer that has closed puts nothing back (its draft setter does nothing then).
+      if (current.current === "") setDraft(submitted);
     }
   };
 

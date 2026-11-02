@@ -17,7 +17,7 @@ import { readDispatchStamp } from "./dispatch-metadata";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, blockPathObserver, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
-import { SESSION_REQUEST_END_HOOK, onRequestEnded, type BackgroundFailure, type RequestEnding, type TaskEntry } from "@flow-state-dev/core/types";
+import { REQUEST_SPEND_SEAM, SESSION_REQUEST_END_HOOK, onRequestEnded, type BackgroundFailure, type HarnessRunSpend, type RequestEnding, type RequestSpendSeam, type TaskEntry } from "@flow-state-dev/core/types";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
@@ -590,19 +590,10 @@ async function settleFreshRequestSetupFailure(options: {
 /** Record fields a patch may carry beside the status and the result. */
 type RequestRecordFields = Omit<Partial<RequestRecord>, "status" | "result">;
 
-/**
- * Applies a partial request-record update that does not end the request.
- *
- * Typed so it cannot write a final status: ending a request goes through
- * {@link settleRequestRecord}, which writes the action's result in the same
- * write (FIX-1661).
- */
-async function patchRequestRecord(
-  stores: StoreRegistry,
-  requestId: string,
-  patch: RequestRecordFields & { status?: "in_progress" }
-): Promise<string | undefined> {
-  return writeRequestRecordPatch(stores, requestId, patch);
+/** Every harness run the request has spent so far, as its ledger holds them, for its record. */
+function spentHarnessRunsOf(ctx: object): HarnessRunSpend[] | undefined {
+  const runs = (ctx as { readonly [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM]?.total?.().harnessRuns;
+  return runs === undefined || runs.length === 0 ? undefined : runs.map((run) => ({ ...run }));
 }
 
 /**
@@ -614,7 +605,7 @@ async function recordSettledSpend(
   stores: StoreRegistry,
   requestId: string,
   incarnation: string,
-  spend: { spentByModel: RequestRecord["spentByModel"]; spentThroughItemIndex: number }
+  spend: { spentByModel: RequestRecord["spentByModel"]; spentHarnessRuns: RequestRecord["spentHarnessRuns"]; spentThroughItemIndex: number }
 ): Promise<void> {
   const current = await stores.request.get(requestId);
   if (current?.status !== "interrupted" || (current.spentThroughItemIndex ?? -1) > spend.spentThroughItemIndex) return;
@@ -643,7 +634,7 @@ async function settleRequestRecord(
  * Applies a partial request-record update when a record exists.
  * Strips ephemeral content from items before writing to the store.
  *
- * Internal: call {@link patchRequestRecord} or {@link settleRequestRecord},
+ * Internal: call {@link settleRequestRecord},
  * whose types keep a final status from landing without its result.
  *
  * @returns The incarnation of the record written, or `undefined` when there
@@ -2227,22 +2218,35 @@ async function runActionAttempt<
   // durable terminal `failed`. A suspension resume additionally emits the
   // `suspension_resume` audit item; crash recovery (no `resumeContext`) does
   // not — it just continues the interrupted run.
+  // Set when a stop ended the request between admission and the point of no
+  // return below: the run stops before its action block executes.
+  let endedBeforeRun = false;
   if (isReplayMode && replayLog !== undefined) {
     (ctx as any)._replayLog = replayLog;
 
     // Point of no return: suspended / interrupted → in_progress.
     // A run is writing under this id again, so an earlier run's finalization
-    // no longer holds.
-    await patchRequestRecord(options.stores, requestId, {
-      status: "in_progress",
-      finalizedAtMs: null,
-      heartbeatsUntilFinalized: false
-    });
-    ctx.requestRuntime.status = "in_progress";
-    await response.emitRequestStatus("in_progress");
+    // no longer holds. Fenced on the status and this run's incarnation: a stop
+    // that ended the request after admission (an interrupted request no gate
+    // holds is ended `aborted`, FIX-2377) leaves it ended, and this run is
+    // stopped before any block executes instead of running the discarded turn.
+    const took = await options.stores.request.setFieldsIfStatus(
+      requestId,
+      { status: "in_progress", result: undefined, finalizedAtMs: null, heartbeatsUntilFinalized: false },
+      ["suspended", "interrupted"],
+      Date.now(),
+      currentIncarnation
+    );
+    if (took.applied) {
+      ctx.requestRuntime.status = "in_progress";
+      await response.emitRequestStatus("in_progress");
+    } else {
+      endedBeforeRun = true;
+      if (abortRequest(requestId, currentIncarnation)) deliveredAbort = true;
+    }
   }
 
-  if (isReplayMode && replayLog !== undefined && resumeContext !== undefined) {
+  if (isReplayMode && replayLog !== undefined && resumeContext !== undefined && !endedBeforeRun) {
     // Audit item, positioned immediately after the `suspension` it resolves
     // (it is the first item appended to the re-entry emitter).
     const resumeItem: SuspensionResumeItem = {
@@ -2266,7 +2270,7 @@ async function runActionAttempt<
     };
     await response.emitItemAdded(resumeItem);
     await response.emitItemDone(resumeItem);
-  } else if (isReplayMode && replayLog !== undefined && resumeContext === undefined) {
+  } else if (isReplayMode && replayLog !== undefined && resumeContext === undefined && !endedBeforeRun) {
     // Crash-recovery continuation (FIX-865): audit item marking a `/continue`
     // re-entry. Mirrors the `suspension_resume` boundary item's shape and
     // placement (immediately after the point-of-no-return transition, before
@@ -2356,6 +2360,10 @@ async function runActionAttempt<
     // Re-throw deferred parse error now that we have ctx for error handling.
     if (parseError !== undefined) {
       throw parseError;
+    }
+    // Ended by a stop before the point of no return: the abort path settles it.
+    if (endedBeforeRun) {
+      throw abortController.signal.reason ?? new DOMException("Request stopped", "AbortError");
     }
 
     let result;
@@ -2533,6 +2541,7 @@ async function runActionAttempt<
         await settleRequestRecord(options.stores, requestId, { status: "suspended" }, {
           items: suspendedItems,
           spentByModel: ctx.request.tokenUsage.byModel,
+          spentHarnessRuns: spentHarnessRunsOf(ctx),
           spentThroughItemIndex: lastItemIndexOf(suspendedItems)
         });
         ctx.requestRuntime.status = "suspended";
@@ -3270,6 +3279,7 @@ async function runActionAttempt<
       if (ending.status === "interrupted" && terminalRecordIncarnation !== undefined) {
         await recordSettledSpend(options.stores, requestId, terminalRecordIncarnation, {
           spentByModel: ctx.request.tokenUsage.byModel,
+          spentHarnessRuns: spentHarnessRunsOf(ctx),
           spentThroughItemIndex: lastItemIndexOf(itemsToPersist())
         });
       }

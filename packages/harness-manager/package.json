@@ -35,6 +35,10 @@
       "types": "./dist/checkout.d.ts",
       "default": "./src/checkout.ts"
     },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "default": "./src/browser.ts"
+    },
     "./work-place": {
       "types": "./dist/work-place.d.ts",
       "default": "./src/work-place.ts"
@@ -58,6 +62,10 @@
         "types": "./dist/checkout.d.ts",
         "default": "./dist/checkout.js"
       },
+      "./browser": {
+        "types": "./dist/browser.d.ts",
+        "default": "./dist/browser.js"
+      },
       "./work-place": {
         "types": "./dist/work-place.d.ts",
         "default": "./dist/work-place.js"
@@ -69,6 +77,7 @@
   },
   "sideEffects": false,
   "dependencies": {
+    "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
     "@flow-state-dev/workspace": "workspace:*",
@@ -76,6 +85,7 @@
   },
   "devDependencies": {
     "@flow-state-dev/engine": "workspace:*",
+    "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "vitest": "^3.2.4"
   },

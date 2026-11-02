@@ -138,6 +138,13 @@ server's included, through `/proc`. Use a separate user or a container when that
 Leave it out and the runtime runs in your process, as before. Guide:
 [Choosing the environment the run starts with](https://flow-state.dev/docs/tools/cursor#choosing-the-environment-the-run-starts-with).
 
+`CURSOR_PASS` is the list a run needs to work, if you'd rather not write your own: `PATH`,
+`HOME`, `USER`, `SHELL`, `TMPDIR`, `CURSOR_API_KEY`, and the proxy and CA settings a proxied
+network needs, in upper and lower case. `harnessEnv({ pass: CURSOR_PASS })` builds the `env`;
+hand the same one to `cursorSignIn` so it checks the sign-in the run gets. To hand the run a key
+of your own as well, add its name: `harnessEnv({ pass: [...CURSOR_PASS, "GH_TOKEN"] })`. A
+variable you pass is readable by every command the run starts, and the model can print it.
+
 `agent.local.sandboxOptions: { enabled: true }` asks Cursor to confine the run's writes to its
 `cwd`. Cursor fails a run whose sandbox can't start, rather than running without it. The sandbox
 needs a helper binary from Cursor's platform package (`@cursor/sdk-darwin-arm64` and the like).
