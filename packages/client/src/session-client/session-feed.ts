@@ -127,6 +127,11 @@ export function sessionFeed(
     byKey.set(key, item);
     return true;
   };
+  // An earlier page is read through to the session's end, so its copy of an
+  // unfinished item can be older than the one already held (a send's own
+  // stream runs ahead of what is stored): it only fills in items not held.
+  const keepEarlier = (item: OutputItem): boolean =>
+    item.status === "in_progress" && byKey.has(`${item.requestId}\u0000${item.id}`) ? false : keep(item);
   const publish = (next: Partial<SessionFeedSnapshot>): void => {
     snapshot = Object.freeze({ ...snapshot, ...next });
     for (const listener of [...listeners]) listener(snapshot);
@@ -173,6 +178,17 @@ export function sessionFeed(
       onRuns: ({ runs }) => publish({ runs }),
       onConnection: (state) => publish({ state })
     });
+  };
+  /** Start over on the session now under the id: drop what the feed holds, read its newest items, follow it. */
+  const restart = (): void => {
+    stopStream?.();
+    stopStream = undefined;
+    for (const end of [...responses]) end();
+    byKey.clear();
+    historyWindow = undefined;
+    failures = 0;
+    publish({ items: [], hasEarlier: false, runs: null, state: "connecting", error: null });
+    void start();
   };
   void start();
 
@@ -221,9 +237,14 @@ export function sessionFeed(
         try {
           // Read from the earlier start to the session's end, so nothing stored meanwhile falls between pages.
           const read = await readSessionEarlier(client.sessions, from);
-          if (closed) return;
+          if (closed || historyWindow !== from) return;
+          // Another session took the id since: what the feed holds and follows is the old one's.
+          if (from.sessionCreatedAt !== undefined && read.sessionCreatedAt !== from.sessionCreatedAt) {
+            restart();
+            return;
+          }
           historyWindow = read;
-          for (const item of read.items) keep(item);
+          for (const item of read.items) keepEarlier(item);
           publish({ items: sortedItems(), hasEarlier: read.hasEarlier });
         } finally {
           loadingEarlier = undefined;

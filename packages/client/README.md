@@ -259,7 +259,8 @@ A session longer than the first read opens on its newest items, with
 `feed.loadEarlier()` from it: each call adds the page before the first item
 (up to `SESSION_WINDOW_PAGE`), with no gap or duplicate, while live items keep
 arriving. A second call while one is reading shares it. A failed read rejects
-and leaves the feed as it was, so the button can be pressed again.
+and leaves the feed as it was, so the button can be pressed again. If the session was deleted and
+created again under the id meanwhile, the feed starts over on the new one.
 
 ```ts
 if (feed.getSnapshot().hasEarlier) await feed.loadEarlier();

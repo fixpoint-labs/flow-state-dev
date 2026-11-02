@@ -213,6 +213,65 @@ describe("sessionFeed", () => {
     expect(h.urls).toHaveLength(reads);
   });
 
+  it("keeps an answer being written as it streams when an earlier page holds an older copy of it", async () => {
+    // The stored copy of an unfinished answer lags the send's own stream; loading earlier must not shrink it.
+    const old = Array.from({ length: 250 }, (_, i) => message("req_1", `m${i}`, `n${i}`, 10 + i));
+    const all = [...old, message("req_2", "a1", "Hel", 2_000, "in_progress")];
+    const h = host((url) => {
+      const query = new URL(url, "http://x").searchParams;
+      const offset = Number(query.get("offset") ?? 0);
+      const limit = Number(query.get("limit") ?? 100);
+      const items = all.slice(offset, offset + limit);
+      const nextOffset = offset + items.length;
+      return json({ ...snapshot(items, 1_000), pagination: { offset, limit, total: all.length, hasMore: nextOffset < all.length, nextOffset } });
+    });
+    const feed = sessionFeed(h.client, "s1");
+    feeds.push(feed);
+    await until(() => h.streams.length === 1);
+
+    const response = pipe();
+    feed.followResponse(response.response);
+    response.send(requestFrame("request.created", { status: "in_progress" }));
+    response.send(requestFrame("item.added", { item: message("req_2", "a1", "Hello live", 2_000, "in_progress") }));
+    await until(() => texts(feed).at(-1) === "Hello live");
+
+    await feed.loadEarlier();
+    expect(texts(feed)[0]).toBe("n0");
+    expect(texts(feed).at(-1)).toBe("Hello live");
+  });
+
+  it("starts over on the new session when the id was taken by another one before loading earlier", async () => {
+    // Loading earlier from the old session's window into the new one's would show both sessions mixed.
+    let created = 1;
+    const old = Array.from({ length: 250 }, (_, i) => message("req_1", `m${i}`, `old${i}`, 10 + i));
+    const fresh = [message("req_9", "f1", "new0", 5_000), message("req_9", "f2", "new1", 5_001)];
+    const h = host((url) => {
+      const all = created === 1 ? old : fresh;
+      const query = new URL(url, "http://x").searchParams;
+      const offset = Number(query.get("offset") ?? 0);
+      const limit = Number(query.get("limit") ?? 100);
+      const items = all.slice(offset, offset + limit);
+      const nextOffset = offset + items.length;
+      return json({
+        ...snapshot(items, 1_000),
+        sessionCreatedAt: created,
+        pagination: { offset, limit, total: all.length, hasMore: nextOffset < all.length, nextOffset }
+      });
+    });
+    const feed = sessionFeed(h.client, "s1");
+    feeds.push(feed);
+    await until(() => h.streams.length === 1);
+    expect(feed.getSnapshot().hasEarlier).toBe(true);
+
+    created = 2;
+    await feed.loadEarlier();
+    await until(() => h.streams.length === 2);
+    expect(texts(feed)).toEqual(["new0", "new1"]);
+    expect(feed.getSnapshot().hasEarlier).toBe(false);
+    // The new connection follows the session now under the id.
+    expect(h.urls.filter((url) => url.includes("/stream")).at(-1)).toContain("session_created_at=2");
+  });
+
   it("says nothing is earlier when the whole session fits in the first read", async () => {
     const h = host(() => json(snapshot([message("req_1", "m1", "only", 10)])));
     const feed = sessionFeed(h.client, "s1");
