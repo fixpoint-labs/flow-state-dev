@@ -30,7 +30,6 @@ export class RunReadError extends Error {
     super(failure.message);
   }
 }
-
 function fail(error: unknown): never {
   throw error instanceof RunReadError ? error : new RunReadError(describeFailure(error));
 }
@@ -205,4 +204,3 @@ export async function interruptRun(
     await new Promise((resolve) => setTimeout(resolve, options.pollMs ?? SETTLE_POLL_MS));
   }
 }
-

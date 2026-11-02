@@ -8,6 +8,20 @@ import { columnFor } from "./columns";
 import { openRows, workerStates, shiftCounts, type LoadedSnapshot } from "./derive";
 import type { BoardRow } from "./reads";
 
+/**
+ * Where a task's composer keeps its unsent line and *unconfirmed* warning. A
+ * task id is unique only on its board, so the key names both: two boards'
+ * tasks that share an id keep their drafts apart.
+ */
+export function taskDraftKey(boardRef: string, taskId: string): string {
+  return `task:${encodeURIComponent(boardRef)}/${encodeURIComponent(taskId)}`;
+}
+
+/** The key {@link taskDraftKey} replaced, which named the task id alone: read once, then dropped. */
+export function legacyTaskDraftKey(taskId: string): string {
+  return `task:${taskId}`;
+}
+
 /** Whether the Queued toggle hides the row: every row in the QUEUED column, blocked ones included. */
 export function isQueued(row: BoardRow): boolean {
   return columnFor(row.status) === "QUEUED";
