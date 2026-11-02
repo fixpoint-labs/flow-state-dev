@@ -29,7 +29,7 @@ poll and no remount, and the view that made the change reads it no more often th
 |---|---|
 | **The real need** | The issue: *"Two sessions rendering the same org-scoped collection converge on the same rows without either one forcing a remount."* The epic widens it to plain state: *"a change to user or org state … reaches every client that is watching it and may see it"*, closure leg a patching both ([FIX-2367](../../epics/FIX-2367/SPEC.md#the-goal-and-how-well-know-its-met)) |
 | **Smaller, and rejected** | Org collections only, the issue's literal case. A plain `ctx.org` patch writes no resource, so the epic's leg a would fail. Or the publish alone: a notice no hook reads |
-| **Bigger, and not this issue's** | Across processes (FIX-2427), the wire and its access check (FIX-2428), board writes made outside a run (FIX-2429), push on serverless (FIX-380), a block in another session reacting (`reactTo` stays in-session) |
+| **Bigger, and not this issue's** | Across processes (FIX-2427), the wire and its access check (FIX-2428), board writes made outside a run (FIX-2429), push on serverless (Ably, FIX-380: a later transport behind the same seam, outside FIX-2367), a block in another session reacting (`reactTo` stays in-session) |
 | **Not done if** | A write from a run with no stream reaches no one · a `ctx.org` patch with no resource write never arrives · a state notice makes the view re-read its item history · the writer's own view reads twice · a view without `live` opens a socket or a timer · a hook re-reads for a change to a different collection · a user's change reaches another user · an org `client.derived` value over a collection stays stale |
 
 ```mermaid
