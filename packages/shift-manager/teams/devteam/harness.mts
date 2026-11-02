@@ -300,6 +300,8 @@ export async function startHarness(defaultChoice: HarnessChoice, options: StartH
     options.check ?? ((o) => checkClaudeCodeReadiness({ env: claudeCodeEnv(), ...(o?.signal === undefined ? {} : { signal: o.signal }) }));
   const readiness = harnessReadiness({ "claude-code": { label: "Claude Code", check } });
   const table = readiness.read().then((rows) => log(formatHarnessReadiness(rows)));
+  // The scripted coder never runs Claude Code, so its start doesn't wait on the check:
+  // the table can land in the log after the Lab's own start lines.
   if (harness.name === "stub") {
     log(`Coder: the scripted run, no model (${HARNESS_ENV}=stub).`);
   } else {
