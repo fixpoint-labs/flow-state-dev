@@ -17,6 +17,10 @@
  *   `harness-thread`; only `desk.thread-coder` waits for your review.
  * - `projects` lists and creates the projects a session works in, and `pins`
  *   keeps the threads you pinned.
+ * - `harness-readiness` reads which coding harnesses can run on this machine
+ *   (harness-manager's `harnessReadiness`, one check per harness from its
+ *   integration): logged as a table at start, and returned by its `read`
+ *   action, which `{ refresh: true }` reads again.
  *
  * The host is durable: a thread's review or question waits on you, and a
  * coding run's review needs durable execution.
@@ -39,7 +43,12 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, realpathSync } from "node:fs";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS } from "@flow-state-dev/claude-code/sdk";
+import { checkCodexReadiness, CODEX_PASS } from "@flow-state-dev/codex";
+import { defineFlow, harnessEnv } from "@flow-state-dev/core";
+import { checkCursorReadiness, CURSOR_PASS } from "@flow-state-dev/cursor";
 import { createFlowState } from "@flow-state-dev/engine";
+import { formatHarnessReadiness, harnessReadiness, harnessReadinessAction } from "@flow-state-dev/harness-manager";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { consultSessionsCapability, createWorkerInstallation, defineAgentWorkerFlow, defineCoordinatorFlow, hireWorkforce, projectSourceCapability, projectWorkspace } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
@@ -97,8 +106,20 @@ const workers = hireWorkforce(installation) as { id: string }[];
 const projects = defineProjectsFlow()({ id: PROJECTS_FLOW }) as { id: string };
 const pins = definePinsFlow()({ id: PINS_FLOW }) as { id: string };
 
+/** Which harnesses a coding thread can run on here, over the environment each run gets. */
+const readiness = harnessReadiness({
+  "claude-code": { label: "Claude Code", check: (o) => checkClaudeCodeReadiness({ env: harnessEnv({ pass: CLAUDE_CODE_PASS }), signal: o?.signal }) },
+  codex: { label: "Codex", check: (o) => checkCodexReadiness({ env: harnessEnv({ pass: CODEX_PASS }), timeoutMs: 30_000, signal: o?.signal }) },
+  cursor: { label: "Cursor", check: () => checkCursorReadiness(harnessEnv({ pass: CURSOR_PASS })) },
+});
+// At start, never awaited: a missing sign-in never stops the server.
+void readiness.read().then((rows) => console.log(formatHarnessReadiness(rows)));
+const readinessFlow = defineFlow({ kind: "harness-readiness", actions: { read: harnessReadinessAction(readiness) } } as never)({
+  id: "harness-readiness",
+} as never) as { id: string };
+
 export default createFlowState({
-  flows: Object.fromEntries([...workers, projects, pins].map((copy) => [copy.id, copy])),
+  flows: Object.fromEntries([...workers, projects, pins, readinessFlow].map((copy) => [copy.id, copy])),
   stores: { default: { primary: sqliteStores({ filename: join(data, "lab.db") }) } },
   // A coding run's review and a thread's question wait on you across a restart.
   durable: true,
