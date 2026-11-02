@@ -75,12 +75,15 @@ polls fold in here, and FIX-2466 closes as a duplicate.
   pace. That includes Shift Manager as we run it: on `serve()` with SQLite, whose bus doesn't
   cross, so under [FIX-2428 D3](../FIX-2428/DECISIONS.md#d3) its board would read every 3 s
   even with no task open, where today it stops. So **Shift Manager passes `pollIntervalMs` only
-  while a task is open**, as its timers gate today, and omits it otherwise: it still hears every
+  while a task is open or within 30 s of a move**, as its timers gate today, and omits it otherwise: it still hears every
   notice and reads on connect, but keeps no timer while idle. The other views keep the timer
   unconditionally, as today. Epic Goal 1 ("the apps we run stop polling") fully holds only on
   the Postgres bus; on SQLite, Shift Manager polls no more than it does today.
-- **Shift Manager's 30 s after-a-move window goes.** It kept reading so the coordinator turn a
-  task's ending woke would show; that turn's own board changes now publish.
+- **Shift Manager's 30 s after-a-move window stays, for the timer only.** It keeps reading so
+  the coordinator turn a task's ending wakes shows up even while push can miss a change (a
+  socket down, or a bus that doesn't cross, as SQLite's): a fallback read can see the last open
+  task settle before that turn files its follow-up. Where push covers the view, the follow-up's
+  own notice delivers it and the window costs nothing extra.
 - **`BoardList`'s `live` takes a client with `subscribe`** in place of `sessions.stream`. A host
   that passes the whole client changes nothing; a hand-built slice changes one field. React
   changeset (minor), with orchestration (minor) and engine (minor).
