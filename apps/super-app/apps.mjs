@@ -96,7 +96,7 @@ export const APPS = [
   {
     id: "teammates",
     title: "Teammates",
-    blurb: "Chief of Staff, researcher, writer and the coding workers.",
+    blurb: "Teammates to talk to, and coding workers that take on their tasks.",
     prefix: "/teammates",
     port: 3130,
     kind: "spa",
