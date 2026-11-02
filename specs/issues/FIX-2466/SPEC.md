@@ -112,7 +112,7 @@ flowchart LR
 | FIX-1506's panel driver: subscribe the scope's topic, read on a resource notice whose path is in the collection | **Builds on.** The message log, the Talk panel and a project's entries read the same way |
 | FIX-2429's board notice on the filing session's topic, narrowed to the board | **Builds on.** The task view's run link is a board change |
 | [FIX-2429 D1](../FIX-2429/DECISIONS.md#d1), the epic's seam "Shift Manager's and the labs' polls", ER-2, ER-3, ER-5 | **Kept.** D1's flip, FIX-1506 merging first, did not fire |
-| [FIX-2455](https://linear.app/fixpoint-labs/issue/FIX-2455): one client call that waits on a request and returns its output, deleting the copies of that wait, Shift Manager's action wait among them | **Leaves to it.** The four waits are that job; a comment there names the other three |
+| [FIX-2455](https://linear.app/fixpoint-labs/issue/FIX-2455): one client call that waits on a request and returns its output, deleting the copies of that wait, Shift Manager's action wait among them | **Leaves to it.** The four waits are that job; the other three are handed to it |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|

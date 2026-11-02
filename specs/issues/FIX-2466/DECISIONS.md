@@ -85,8 +85,8 @@ topic seam, and this sidebar uses it too.
   each. Each waits on one request, which is the request's record's job, not a notice's: the epic
   recorded that a request's result is FIX-2043's, read by id, with no topic per request.
   FIX-2455 owns the client call that waits on a request and names the action wait among the
-  copies it deletes; the other three are the same job, and a comment on FIX-2455 names them. They
-  are waits, not views, and the closure run counts them as such.
+  copies it deletes; the other three (`sendTurn`, `interruptRun`, `settled`) are the same job and
+  are handed to it. They are waits, not views, and the closure run counts them as such.
 - **Shift Manager gets a changeset** (`patch`: its views update on a change). The labs are
   private and get none (BP-022).
 
