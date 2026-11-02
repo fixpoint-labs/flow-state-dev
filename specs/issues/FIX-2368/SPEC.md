@@ -10,7 +10,7 @@
 | **builds a screen two people watch** | B's tab never shows A's org patch or org row until it reads again | Shown within a second on another process, by an app whose source is the same file on today's `main` |
 | **runs the labs or Shift Manager** | The board reads every 3 s while a task is open; the other views read every 1.5 to 5 s | On the Postgres bus, the board shows a settled task within a second, and no view reads between notices |
 | **runs more than one process** (Postgres, or BullMQ workers) | A reply crosses by a store read each second per open view; org changes don't cross | A reply run on a BullMQ worker reaches a viewer on a third process within a second, with no timed read |
-| **deploys to Vercel or Next** | Polls, and nothing says so | Polls without Ably, as the guide says; with Ably, hears a change within a second |
+| **deploys to Vercel or Next** | Polls, and nothing says so | Polls today, in this epic, as the guide says, and hears a change within the hook's poll interval |
 
 ## The goal, and how we'll know it's met
 
@@ -81,7 +81,7 @@ flowchart LR
   BB["browser B · org 1"] --> P2
   BC["browser C · org 2"] --> P2
   SM["Shift Manager · Lab on Postgres"] --- PG
-  N["Next handler · no Ably, then Ably · j4"] --- PG
+  N["Next handler · polling fallback · j4"] --- PG
 ```
 
 Before, each child proved its piece on one process or a test-only bus; the closure runs the pieces
@@ -100,7 +100,7 @@ commit, which is how the run proves an app needs no push code:
 ```
 
 **Docs:** no documentation impact: no page is written or changed. Row 4 follows the realtime
-guide FIX-2428 publishes (`apps/docs/guides/realtime.md`), FIX-380's Ably row and each child's
+guide FIX-2428 publishes (`apps/docs/guides/realtime.md`) and each child's
 README as written; a page that doesn't hold when followed is a finding against its child.
 
 **Stays as it is:** all product code; every child's check as it is on `main`; the Labs' shipped
@@ -111,7 +111,7 @@ SQLite setup, which FIX-2429 decided keeps its timer while a task is open.
 | Already here | What this does with it |
 |---|---|
 | The epic's legs a to d and its controls | **Builds on.** Walked together on one host; the memory-bus control's FAIL is graded on the 1 s signal ([below](DECISIONS.md#decided-not-asked)) |
-| The children's goals: `session-stream/wakes-on-a-change`, `session-stream/wakes-across-processes`, `realtime/websocket-delivery`, `realtime/scope-changes-reach-other-sessions`, `task-board/a-settled-task-reaches-the-board`, `realtime/ably`, and FIX-2466's | **Composed.** Re-run in row 3; three controls reused (`no-publish`, `skip-check`, `memory-bus`) |
+| The children's goals: `session-stream/wakes-on-a-change`, `session-stream/wakes-across-processes`, `realtime/websocket-delivery`, `realtime/scope-changes-reach-other-sessions`, `task-board/a-settled-task-reaches-the-board`, and FIX-2466's | **Composed.** Re-run in row 3; three controls reused (`no-publish`, `skip-check`, `memory-bus`) |
 | `goals/lib/playwright.mts`, `goals/lib/shift-manager.mts` (`buildShiftManagerCopy`, `startShiftManager`), `goals/lib/module-patch.mjs`, `goals/lib/server.mts`, `goals/lib/verdict.mts`, `goals/lib/client-actions.mts` | **Reused** for the browsers, Shift Manager in scratch, the controls' patches, the forked `serve` processes, the tagged report and the handler writes. Row 3 runs each child's own `run.mts` with its controls, as FIX-2242's did |
 | FIX-2427's two-process Postgres bootstrap in `goals/session-stream/wakes-across-processes/` (Postgres started or `FSD_DB_URL`, two forked `createFlowState` processes), landing with FIX-2427 | **Extended.** Moved into `goals/lib` and shared by both goals, so row 1's processes, j3's worker and FIX-2427's goal start Postgres one way, not two |
 | `goals/lib/crossing-bus.mts` (FIX-2426) | **Not used.** It is what the closure exists to go past |
@@ -138,17 +138,14 @@ wrong: a slow goal nobody re-runs.
 1. **[D2](DECISIONS.md#d2) · Shift Manager and the labs are graded on a scratch copy with the
    store swapped to Postgres,** not as shipped on SQLite and not through a new Lab option. If
    wrong: the apps we run day to day still poll, and the run says they don't.
-2. **[D3](DECISIONS.md#d3) · The Vercel-with-Ably journey is required: Ably out of reach holds
-   the run, never skips it.** If wrong: the wrap waits on an Ably key.
-3. **[D1](DECISIONS.md#d1) · One run where the legs collide, on the real bus, not the children's
+2. **[D1](DECISIONS.md#d1) · One run where the legs collide, on the real bus, not the children's
    checks side by side.** If wrong: a longer run whose failures are harder to split.
 
-**Open: none of its own.** D2 is the one to weigh. Before the run: FIX-380 and FIX-2466 have no
-approved spec yet, and no child's implementation has merged ([Must be green first](DECISIONS.md#the-plan-in-full)).
-j4 can't be written until [epic D5](../../epics/FIX-2367/DECISIONS.md#d5) is settled and FIX-380's
-spec (#4486, not yet approved) merges, since its Ably half follows the guide's Ably row.
+**Open: none of its own.** D2 is the one to weigh. Before the run: FIX-2466 has no approved spec
+yet, and no child's implementation has merged ([Must be green first](DECISIONS.md#the-plan-in-full)).
+[D3](DECISIONS.md#d3), no Ably in the closure, is the owner's decision.
 
 Improvement · closure (QA) · `goals/` only · large, repeats per finding · epic
 [FIX-2367](../../epics/FIX-2367/SPEC.md), closure · required · runs after every other child merges
-(FIX-2426, FIX-2427, FIX-2428, FIX-1506, FIX-2429 spec approved; FIX-380 in spec review; FIX-2466
+(FIX-2426, FIX-2427, FIX-2428, FIX-1506, FIX-2429 spec approved; FIX-2466
 spec to come) · Linear [FIX-2368](https://linear.app/fixpoint-labs/issue/FIX-2368)

@@ -4,8 +4,8 @@
 
 The plan's four rows are the [closure rule's](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)
 and its legs are the [epic's](../../epics/FIX-2367/SPEC.md#the-goal-and-how-well-know-its-met).
-Three calls are this spec's: how the legs are put together, where Shift Manager and the labs are
-graded, and whether the Ably journey can be skipped.
+Two calls are this spec's: how the legs are put together, and where Shift Manager and the labs
+are graded. The owner made a third: no Ably in the closure (D3).
 
 ## The tree
 
@@ -16,8 +16,8 @@ flowchart TD
   I --> D2["D2 · Shift Manager and the labs on a scratch copy over Postgres"]
   D2 -.->|"rejected · its bus doesn't cross, so the board polls by design"| X2a["as shipped, on SQLite"]
   D2 -.->|"rejected · a product option nobody asked for"| X2b["a Postgres option on each Lab"]
-  I --> D3["D3 · the Ably journey is required"]
-  D3 -.->|"rejected · serverless push would wrap unproved"| X3["skipped when Ably is out of reach"]
+  I --> D3["D3 · no Ably in the closure · the owner's call"]
+  D3 -.->|"rejected · Ably gates nothing in this epic"| X3["an Ably half of j4, required or skipped"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -55,34 +55,26 @@ It comes down to the bus: on SQLite the board polls by an approved design, so le
 need a store option, filed under FIX-2466, and the closure configures it instead of patching.
 
 <a name="d3"></a>
-## D3 · The Vercel-with-Ably journey is required: Ably out of reach holds the run, never skips it
+## D3 · No Ably in the closure · decided by the owner
 
 | | |
 |---|---|
-| **Instead of** | Skipping journey j4's Ably half, with a note, when the run's machine has no `ABLY_API_KEY` and can't reach Ably's sandbox |
-| **Because** | The epic's Vercel row promises push with Ably, and [epic D5](../../epics/FIX-2367/DECISIONS.md#d5) names Ably as the test that the two seams are the right two. FIX-380's own check proves its adapter beside a fetch handler; only the closure follows the realtime guide's Ably row on `createNextHandler` with the rest of the set merged. A skipped half is the epic wrapping with its serverless promise unproved |
-| **Locks in** | A run without Ably access is a setup failure: the worker reports it as a blocker naming the key, and the run waits. The polling half of j4 needs no Ably and always runs |
-
-![D3: whether the Ably journey can be skipped. Chosen: required, so Ably out of reach holds the run, beside a skip with a note. Decides it: the epic's Vercel promise, push with Ably. Price: the wrap can wait on an Ably key](figures/d3-ably-required.svg)
-
-It comes down to the Vercel promise: skipped, push with Ably is never seen working with the set.
-
-**What would change my mind:** FIX-380 cut from the epic. Then j4 is its polling half alone.
+| **Instead of** | An Ably half of journey j4, whether required or skipped when Ably is out of reach |
+| **Because** | The owner's call ([owner, #4512](https://github.com/fixpoint-labs/flow-state-dev/pull/4512#issuecomment-6567236562), [follow-up](https://github.com/fixpoint-labs/flow-state-dev/pull/4512#issuecomment-6567246620)): FIX-2367 wants a bus design that could carry Ably later, not Ably itself. Where no push host is enabled the app has no push and falls back to polling, so the closure proves the Postgres bus and that fallback. Ably is a future transport behind the bus seam and gates nothing in FIX-2367 |
+| **Locks in** | j4 is the Next host's polling fallback only. The run never waits on an Ably key, FIX-380, or epic D5's Ably wording |
 
 ## The plan in full
 
 | # | What runs | PASS means |
 |---|---|---|
 | 1 | Legs a to d ([the signal](SPEC.md#the-signal)) | Each green; each control red where named |
-| 2 | One journey per team whose *after* row 1 doesn't walk. *Builds a screen two people watch* is leg a. **j2** *runs the labs or Shift Manager*: Shift Manager and the Teammates and claude-code-style labs, each on D2's copy, a conversation open with a task open and its message, request, project and activity views mounted; over 10 s from the first `crosses: true` frame, with nothing written, 0 reads (`j2:no-poll`); a message sent from another session shows within 1 s (`j2:message`). **j3** *runs more than one process*, on row 1's two processes plus one: process 1 on BullMQ `dispatch-only`, a `worker-only` process runs A's action, B on process 2 shows the reply within 1 s (`j3:worker-reply`); then over 10 s idle, with nothing written, 0 session-stream statements from process 2 (`j3:no-timed-read`), as in FIX-2427's signal, so the read the reply's notice wakes is not counted; `no-request-publish` must FAIL `j3:worker-reply`. **j4** *deploys to Vercel or Next*, on FIX-380's goal's Next and Ably wiring: the fixture behind `createNextHandler` with no Ably, `GET /capabilities` reports no push and B updates within the hook's poll interval plus 1 s (`j4:polls`); then with Ably set up as the realtime guide's Ably row says ([D3](#d3)), within 1 s and 0 reads between changes over 10 s (`j4:ably`); FIX-380's `memory-bus` must FAIL `j4:ably` | Each green |
-| 3 | Every child's goal check with its controls, read from Linear at run time and printed: FIX-2426, FIX-2427, FIX-2428, FIX-1506, FIX-2429, FIX-380, FIX-2466, and any child that joins later. **None is skipped:** row 1 walks no child's signal as that child wrote it | Each PASS beside its documented FAIL |
-| 4 | The gap sweep: each [coordination seam](../../epics/FIX-2367/DECISIONS.md#coordination-seams) from both sides; the realtime guide, FIX-380's Ably row and the client, react, node, store-postgres and Ably READMEs followed as written; each epic *not done if* state absent, including an app with no push configured (`push: false`) still updating by polling, and the Vercel pages saying "polls" | Every seam two-sided |
+| 2 | One journey per team whose *after* row 1 doesn't walk. *Builds a screen two people watch* is leg a. **j2** *runs the labs or Shift Manager*: Shift Manager and the Teammates and claude-code-style labs, each on D2's copy, a conversation open with a task open and its message, request, project and activity views mounted; over 10 s from the first `crosses: true` frame, with nothing written, 0 reads (`j2:no-poll`); a message sent from another session shows within 1 s (`j2:message`). **j3** *runs more than one process*, on row 1's two processes plus one: process 1 on BullMQ `dispatch-only`, a `worker-only` process runs A's action, B on process 2 shows the reply within 1 s (`j3:worker-reply`); then over 10 s idle, with nothing written, 0 session-stream statements from process 2 (`j3:no-timed-read`), as in FIX-2427's signal, so the read the reply's notice wakes is not counted; `no-request-publish` must FAIL `j3:worker-reply`. **j4** *deploys to Vercel or Next*, the polling fallback only ([D3](#d3)): the fixture behind `createNextHandler`, `GET /capabilities` reports no push and B updates within the hook's poll interval plus 1 s (`j4:polls`) | Each green |
+| 3 | Every child's goal check with its controls, read from Linear at run time and printed: FIX-2426, FIX-2427, FIX-2428, FIX-1506, FIX-2429, FIX-2466, and any child that joins later. **None is skipped:** row 1 walks no child's signal as that child wrote it | Each PASS beside its documented FAIL |
+| 4 | The gap sweep: each [coordination seam](../../epics/FIX-2367/DECISIONS.md#coordination-seams) from both sides; the realtime guide and the client, react, node and store-postgres READMEs followed as written; each epic *not done if* state absent, including an app with no push configured (`push: false`) still updating by polling, and the Vercel pages saying "polls" | Every seam two-sided |
 
 **Must be green first:** every other child merged with its goal's PASS and its controls' FAIL.
 At drafting none has: FIX-2426, FIX-2427, FIX-2428, FIX-1506 and FIX-2429 are spec approved,
-FIX-380 is in spec review (#4486), and FIX-2466 has no spec. j4 also waits on
-[epic D5](../../epics/FIX-2367/DECISIONS.md#d5) being settled and #4486 merged: its Ably half
-follows the guide's Ably row, whose config shape is D5's open push-seam call.
+and FIX-2466 has no spec. FIX-380 (Ably) is outside the epic and gates nothing ([D3](#d3)).
 
 ## Decided, not asked
 
@@ -120,7 +112,7 @@ follows the guide's Ably row, whose config shape is D5's open push-seam call.
 | Alternative | Why not |
 |---|---|
 | Re-run the children's checks and stop there | Most pass on the crossing double, on one process (D1); row 3 re-runs them anyway |
-| Kitchen Sink as the real app | It runs on Next, which polls until Ably ([epic D3](../../epics/FIX-2367/DECISIONS.md#d3)); a fixture host under `goals/` is the home for this |
+| Kitchen Sink as the real app | It runs on Next, which polls today, in this epic ([epic D3](../../epics/FIX-2367/DECISIONS.md#d3)); a fixture host under `goals/` is the home for this |
 | The crossing double for speed | It is what the closure exists to go past |
 | BullMQ inside leg b's Shift Manager | Shift Manager's command runs one host; j3 grades the worker on the fixture instead |
 
@@ -146,6 +138,8 @@ wants an independent one.
 - **Review (Nov 2)** — the epic's memory-bus control line amended to fail on the 1 s. j4 waits on
   epic D5 and #4486. `a:same-source` moved to anti-game; it grades no team. FIX-2427's
   bootstrap extended into `goals/lib`; the kept goal's scenes, runner and 1 s sampling named.
+- **Owner decision (Nov 2)** — D3 flipped to no Ably in the closure: j4 is the polling fallback,
+  and the wait on epic D5 and #4486 is gone. The epic amended to match.
 
 ## Notes from review
 
