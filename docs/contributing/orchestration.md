@@ -499,6 +499,9 @@ approving them too. This avoids an epic amendment PR that the spec set would hav
 - **Epics already running** finish on per-issue spec PRs. The coordinator opts an epic in
   (`specSetMode`) when it creates it.
 
+**A decision raised while writing the set pauses all of it.** The set isn't re-formed around the
+open question. Once the user answers, the next set dispatch carries the answer.
+
 **One weak spec holds the set.** Approval covers every member, so a spec that isn't ready
 delays all of them. The way out is to drop that issue from the set PR: it goes back to needing
 a spec and gets its own spec PR, and the rest can be approved.

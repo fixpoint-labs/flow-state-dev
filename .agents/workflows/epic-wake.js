@@ -207,6 +207,15 @@ function awaitsSpecSet(row) {
 }
 
 /**
+ * Is spec-set authoring paused on a human decision? A set dispatch that escalates leaves its `blocker` on the
+ * lead's row only, and that row then has no action. Re-forming the set from the others would write a smaller
+ * set around the open question and leave the lead to be specced alone, so the whole set waits for the answer.
+ */
+function specSetPaused(rows) {
+  return specSet.mode && !specSet.pr && rows.some((r) => r.phase === 'NEEDS_SPEC' && r.blocker && !r.linearTerminal && awaitsSpecSet(r))
+}
+
+/**
  * Is this row's spec in a spec-set PR that has not merged? Every member shares that PR's branch, so at
  * most one dispatch per such PR runs in a wake (`allocate`): two workers folding into one branch is a
  * push race, and N implement backstops merging one PR is N merges of the same thing.
@@ -1427,6 +1436,7 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
   const coveredBySet = []
   const serialized = []
   const openSetBusy = new Map() // spec-set PR → the action already dispatched on it this wake
+  const setPaused = specSetPaused(rows)
 
   for (const row of rows) {
     const next = pendingAction(row)
@@ -1443,6 +1453,10 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
       continue
     }
     if (next && next.action === 'spec-set') {
+      if (setPaused) {
+        waiting.push(row)
+        continue
+      }
       if (setLead) {
         setLead.members.push(row)
         coveredBySet.push({ row, ...next })
@@ -3351,6 +3365,11 @@ const specSetPrompt = (item) =>
   `SPEC-SET for epic ${epic.issueId}: write the issue specs for ${item.members.map((r) => r.id).join(', ')} together, as ONE PR. ` +
   `Follow .claude/agents/epic-agent.md → "Spec set" for the steps; this prompt carries only the inputs and the return.\n` +
   `The epic spec is merged at specs/epics/${epic.issueId}/ (review PR #${epic.prNumber}); read it from fresh main.\n` +
+  // An earlier set dispatch escalated, and the human answered. This agent is fresh, so the answer travels here.
+  (item.members.some((r) => (r.blockerResolutions || []).length)
+    ? `Decisions an earlier spec-set dispatch escalated have been ANSWERED by the human. Write the set to them as given; do not re-open them:\n` +
+      item.members.flatMap((r) => (r.blockerResolutions || []).map((x) => `  - ${x.answer}`)).join('\n') + '\n'
+    : '') +
   `Return issueId ${item.row.id}, phase AWAITING_SPEC_APPROVAL, specPr = the PR number, specSetMembers = every issue the PR specs, readyToMerge false, multiPrPending false. ` +
   `Leave an issue out of specSetMembers only when it should not be specced here, and say which and why in status. ` +
   `If no PR opened, return phase NEEDS_SPEC and specPr null, with a blocker if a human decision stands in the way. A disputed factual claim goes back as settleRequested.\n` +
@@ -3739,6 +3758,7 @@ const issues = refreshed.map((row) =>
 // 1. A spec-set dispatch that opened its PR moves every member it names onto it. A member it left out
 //    goes back to NEEDS_SPEC with no handle, and a later wake specs it on its own PR.
 let specSetPrOut = specSet.pr
+let specSetLeftOut = 0
 for (const item of plan.advance.filter((i) => i.action === 'spec-set')) {
   const w = workerById.get(item.row.id)
   if (!w || w.blocker || !Number.isFinite(w.specPr)) continue
@@ -3750,6 +3770,7 @@ for (const item of plan.advance.filter((i) => i.action === 'spec-set')) {
     if (named.has(member.id)) Object.assign(out, { specPr: w.specPr, phase: 'AWAITING_SPEC_APPROVAL', specSetMember: true })
     else {
       Object.assign(out, { specPr: null, phase: 'NEEDS_SPEC' })
+      specSetLeftOut++
       log(`${member.id}: left out of spec-set PR #${w.specPr} (${w.status || 'no reason given'}) — it gets its own spec PR.`)
     }
   }
@@ -4170,6 +4191,8 @@ return {
     // review batch, a verdict, an answer), so a row behind one is runnable next wake.
     plan.deferred.some((d) => !plan.serialized.includes(d) || d.behind !== 'implement') ||
     plan.queuedClaims.length + unsettled.length + newRequests.length > 0 ||
+    // A child the spec set left out now needs its own spec PR, and has no PR whose activity could wake it.
+    specSetLeftOut > 0 ||
     (foldEpicWanted && !plan.foldEpic) ||
     // A row that is dispatchable AND whose trigger needs no external event. `pendingAction` alone was too
     // broad: `consumedFlags` clears the activity flags but not `ciFailed`, so a row whose CI failure this

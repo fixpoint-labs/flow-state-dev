@@ -1914,6 +1914,7 @@ check('SPEC SET: every waiting child is specced by ONE epic-agent dispatch, not 
   assert.equal(byId.get('FIX-4').phase, 'NEEDS_SPEC', 'a child the set left out still needs a spec')
   assert.equal(byId.get('FIX-4').specPr, null)
   assert.equal(result.epic.specSetPr, 50, 'the set PR is returned for the coordinator to persist')
+  assert.equal(result.moreWorkNow, true, 'the left-out child has its own spec to write now, and no PR to wake on')
 
   // Next wake: the set PR exists, so the left-out child takes the per-issue route rather than a second set.
   const next = await run('epic-wake.js', {
@@ -1924,6 +1925,30 @@ check('SPEC SET: every waiting child is specced by ONE epic-agent dispatch, not 
   })
   assert.deepEqual(labels(next.calls, 'spec-set:'), [])
   assert.deepEqual(workerLabels(next.calls), ['spec:FIX-4'])
+})
+
+check('SPEC SET: a blocker from set authoring pauses the whole set, and its answer reaches the next set dispatch', async () => {
+  // The blocker lands on the lead's row only. If the siblings re-formed a set without it, the decision the
+  // set was waiting on would be skipped and the lead would end up specced alone.
+  const paused = await run('epic-wake.js', {
+    args: epicArgs({ epic: specSetEpic(), issues: [row('FIX-2', { blocker: 'which issue owns the shared surface?' }), row('FIX-3')] }),
+    respond: epicResponder({ fresh: { 'FIX-2': {}, 'FIX-3': {} } }),
+  })
+  assert.deepEqual(labels(paused.calls, 'spec-set:'), [], 'no smaller set is written around the open decision')
+  assert.deepEqual(workerLabels(paused.calls), [], 'and no sibling is specced alone')
+
+  const answered = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: specSetEpic(),
+      issues: [row('FIX-2', { blockerResolutions: [{ answer: 'FIX-3 owns it' }] }), row('FIX-3')],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': {}, 'FIX-3': {} }, worker: { 'FIX-2': { specPr: 50, specSetMembers: ['FIX-2', 'FIX-3'] } } }),
+  })
+  const setCall = answered.calls.find((c) => (c.label || '').startsWith('spec-set:'))
+  assert.ok(setCall, 'the set resumes once answered')
+  assert.match(setCall.prompt, /FIX-2, FIX-3/, 'with every member')
+  assert.match(setCall.prompt, /FIX-3 owns it/, 'and the answer, which the fresh epic-agent cannot otherwise see')
+  assert.deepEqual(answered.result.issues.find((r) => r.id === 'FIX-2').blockerResolutions || [], [], 'spent once the dispatch carried it')
 })
 
 check('SPEC SET: issue specs wait for the epic spec to merge — two PRs, in order', async () => {
