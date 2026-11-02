@@ -55,7 +55,7 @@ import {
   writePullRequests,
   type PullRequestCollection,
 } from "@flow-state-dev/core";
-import { harnessConversationNamespace, type BlockContext, type FlowInstance } from "@flow-state-dev/core/types";
+import { harnessConversationNamespace, reportHarnessSpend, type BlockContext, type FlowInstance } from "@flow-state-dev/core/types";
 import {
   OBSERVED_FILE_OPS,
   OBSERVED_PLAN,
@@ -180,6 +180,9 @@ async function emitHarnessOpening(ctx: BlockContext): Promise<void> {
   await ctx.response.emit({ type: "item.done", item: { ...tool, status: "completed", output: { lines: 0, note: "notes/audit.md is empty" } } });
 }
 
+/** What every scripted run reports it spent: an API-key Claude Code run with a vendor charge. */
+export const RUN_LAB_SPEND = { harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 12_400, outputTokens: 2_300, costUsd: 0.42, billing: "api-key" } as const;
+
 /**
  * The scripted run, a worker's turn for one task: narrate, record what a
  * recording harness records when the flow declares it, then one step per
@@ -194,6 +197,8 @@ const scriptedRun = handler({
     const script = scriptOf(input.message);
     ctx.emit.message(`Reading the task: ${input.message.split("\n")[0]}`);
     await emitHarnessOpening(ctx);
+    // What the run spent so far, as a harness reports it: the board writes it onto the task while the run goes.
+    reportHarnessSpend(ctx, { ...RUN_LAB_SPEND, runId: ctx.request.identity.id });
     if (script.holdAsk === true) {
       await Promise.race([
         askGate.opened,

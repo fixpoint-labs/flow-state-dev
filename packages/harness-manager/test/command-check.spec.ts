@@ -24,7 +24,7 @@ import {
   type Task,
 } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { commandCheck, harnessDrainBudgetMs, harnessManager, harnessTaskInputSchema, resolveOwnership, runOwnerClaimOrder, runTopic, type HarnessFeeds, type PhaseSpec } from "../src";
+import { commandCheck, harnessDrainBudgetMs, harnessManager, harnessTaskInputSchema, resolveOwnership, runOwnerClaimOrder, runTopic, type CompletionRunContext, type HarnessFeeds, type PhaseSpec } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 import { cleanUpHosts } from "./claim-host";
@@ -95,7 +95,7 @@ function stubHarness(script: Step[], seen: SeenStep[], afterStep?: (cwd: string)
     }) as unknown as HarnessBlock;
 }
 
-function host(options: { script: Step[]; reviewChanges?: boolean; durable?: boolean; userDeadlineMs?: number; checks?: string[]; timeoutMs?: number; slowBase?: { delayMs: number; doneTimeoutMs: number }; afterStep?: (cwd: string) => void }) {
+function host(options: { script: Step[]; reviewChanges?: boolean; durable?: boolean; userDeadlineMs?: number; checks?: string[]; timeoutMs?: number; slowBase?: { delayMs: number; doneTimeoutMs: number }; afterStep?: (cwd: string) => void; onDone?: (run: CompletionRunContext) => void }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-review-"));
   dirs.push(dir);
   const sourceRepo = join(dir, "repo");
@@ -125,6 +125,7 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
     phase: PHASE,
     buildPrompt: async (run) => `Work on ${run.issue}, attempt ${run.attempt}.${run.feedback === undefined ? "" : `\nWhy the last attempt stopped: ${run.feedback}`}`,
     isDone: async (run) => {
+      options.onDone?.(run);
       if (options.slowBase !== undefined) await new Promise((resolve) => setTimeout(resolve, options.slowBase!.delayMs));
       return run.stopReport === "finished";
     },
@@ -452,6 +453,21 @@ describe("a run is done only when its checks pass", () => {
       const done = await h.until((t) => t.status === "completed", "the run to complete");
       expect(done.attempts).toBe(1);
       expect((await h.runRow()).checks).toEqual([expect.objectContaining({ exitCode: 0 })]);
+    } finally {
+      await h.dispose();
+    }
+  }, 90_000);
+
+  it("hands the check the commit the run's branch was cut at, from the run's record", async () => {
+    // A phase asking "did this run change anything?" compares against it.
+    const seenBases: Array<string | null | undefined> = [];
+    const h = host({ script: ["fixes"], onDone: (run) => seenBases.push(run.baseCommit) });
+    try {
+      await h.start();
+      await h.until((t) => t.status === "completed", "the run to complete");
+      const recorded = (await h.runRow()).baseCommit as string;
+      expect(recorded).toMatch(/^[0-9a-f]{40}$/);
+      expect(seenBases).toEqual([recorded]);
     } finally {
       await h.dispose();
     }

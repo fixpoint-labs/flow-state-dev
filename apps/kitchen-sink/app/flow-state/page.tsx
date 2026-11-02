@@ -55,7 +55,7 @@ import { PickedSessionPanel } from "@/components/picked-session-panel";
 import { ArtifactDialog } from "@/components/artifact-dialog";
 import { ResizeHandle } from "@/components/resize-handle";
 import { SuggestionRow } from "@/components/suggestion-row";
-import { BackgroundWorkPanel, BackgroundWorkRefresh } from "@/components/background-work-panel";
+import { BackgroundWorkPanel } from "@/components/background-work-panel";
 import { PullRequestsPanel } from "@/components/pull-requests-panel";
 import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -73,6 +73,7 @@ import { SESSION_DRAFT } from "@/lib/session-draft";
 import { useSessionControls, type RecordedSessionControls } from "@/lib/use-session-controls";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
+import { BASE_PATH } from "@/lib/base-path";
 
 const chatAgentRenderers: RendererRegistry = {
   ...chatAssistantRenderers,
@@ -154,7 +155,7 @@ function PageInner() {
   // session, so a goal check can be seen to fail without it.
   const pickedLive = pageGoalControl(searchParams) !== "no-live";
   return (
-    <FlowProvider flowKind="chat-agent" userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAgentRenderers}>
+    <FlowProvider flowKind="chat-agent" userId={KITCHEN_SINK_USER_ID} baseUrl={BASE_PATH} renderers={chatAgentRenderers}>
       <KitchenSinkApp namedSessionId={namedSessionId} pickedLive={pickedLive} />
     </FlowProvider>
   );
@@ -174,7 +175,7 @@ function writeSessionAddress(sessionId: string, how: AddressWrite): void {
 
 function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string | null; pickedLive: boolean }) {
   // The page's one client, as the app's user: the rail, the workforce panels and request statuses read through it.
-  const fsd = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "", fetcher: panelFetch }), []);
+  const fsd = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: BASE_PATH, fetcher: panelFetch }), []);
   // The assistant's own sessions, and which one the stream is on. The rail's
   // navigator reads the flow list once more for itself: one extra read per
   // page, never one per row.
@@ -251,7 +252,9 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
     writeSessionAddress(openSessionId, how.current);
     how.current = "replace";
   }, [resolving, openSessionId]);
-  const session = useSession(flow.activeSessionId, { items: true, autoResume: true });
+  // `live`: follow the whole session, so background work a turn files shows
+  // as its run starts and finishes, without another message.
+  const session = useSession(flow.activeSessionId, { items: true, autoResume: true, live: true });
 
   const [message, setMessage] = useDraft(SESSION_DRAFT, flow.activeSessionId);
   const messageRef = useRef(message);
@@ -681,13 +684,6 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
           selectedModel={picked === null ? selectedModel : undefined}
           activeSkills={modeStatus?.activeSkills}
         />
-
-        {/* Mounted HERE, above both responsive trees, and exactly once. The
-            mobile and desktop `ChatPanel`s are both alive at the same time —
-            one is hidden with CSS, not unmounted — so a side effect placed
-            inside either of them runs twice per turn. The panel itself is fine
-            to render twice; its stream-end re-read is not. */}
-        <BackgroundWorkRefresh session={session} />
 
         <div className="flex min-h-0 flex-1 sm:hidden">
           {(mobilePanel === "chat" || picked !== null) && stream}

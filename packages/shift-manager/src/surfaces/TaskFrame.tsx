@@ -23,7 +23,7 @@ import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
 import { sendTurn } from "../lib/send";
 import { useTask } from "../lib/task";
-import { distinctTitle } from "../lib/tasks";
+import { distinctTitle, legacyTaskDraftKey, taskDraftKey } from "../lib/tasks";
 import { TurnComposer } from "../components/TurnComposer";
 import type { Gaps } from "../gaps";
 import { TaskSession } from "./TaskSession";
@@ -286,7 +286,8 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
   return (
     <TurnComposer
       testId="task-composer"
-      draftKey={`task:${task.taskId}`}
+      draftKey={taskDraftKey(task.boardRef, task.taskId)}
+      legacyDraftKey={legacyTaskDraftKey(task.taskId)}
       label={`Message ${worker ?? "this worker"}`}
       placeholder={`Message ${worker ?? "this worker"}…`}
       blocked={blocked}

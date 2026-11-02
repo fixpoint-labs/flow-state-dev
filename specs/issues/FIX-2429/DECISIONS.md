@@ -33,8 +33,8 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 It comes down to what it waits on: the board views need only the bus and delivery; the rest
 also need FIX-1506.
 
-**What would change my mind:** FIX-1506 merging before this issue is built. Then the other
-polls fold in here, and FIX-2466 closes as a duplicate.
+**What would change my mind:** retired (Nov 2). FIX-2466 now has its own spec (#4513), so the
+other polls stay there whichever of FIX-1506 and this issue builds first.
 
 ## Decided, not asked
 
@@ -146,5 +146,8 @@ coordinator may run a fresh `analysis` before the gate.
 - **Review (Nov 2, #4511)** — Shift Manager keeps its timer only while a task is open, since its
   SQLite bus doesn't cross; the goal check uses FIX-2426's one crossing double and starts leg b's
   idle window at the first `crosses: true` frame. Publishing plan steps on `tasks` was dropped.
+- **Amended (Nov 2, #4513)** — D1's flip retired, since FIX-2466 has its own spec. Shift
+  Manager's task-view board wait (`task.tsx`, through the reader's `readBoard`), which this
+  issue's checker did not list, is owned by FIX-2466.
 
 **Open: none.**

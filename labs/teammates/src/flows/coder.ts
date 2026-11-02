@@ -55,10 +55,11 @@ export interface CoderFlowOptions {
   defaultHarness: string;
   /**
    * Why a harness can't run on this machine, asked before each task starts:
-   * a plain sentence that names it, or `undefined` when it can. A task on a
-   * harness that can't run fails with that sentence and never moves to another.
+   * a plain sentence that names it, or `undefined` when it can (harness-manager's
+   * `readiness.refusal`). A task on a harness that can't run fails with that
+   * sentence and never moves to another.
    */
-  ready?: Readonly<Record<string, () => Promise<string | undefined>>>;
+  ready?: (harness: string) => Promise<string | undefined>;
   /** Where a run works: the host over the lab's working folder. */
   workspace: WorkspaceHost;
   /** Wall-clock budget for one run. */
@@ -120,7 +121,7 @@ export function coderFlow(options: CoderFlowOptions) {
         execute: async (_task: unknown, ctx: unknown) => {
           const { config } = await installation.resolveWorker(ctx as never, CODER_FLOW);
           const harness = (config as { harness?: string }).harness ?? options.defaultHarness;
-          const missing = await options.ready?.[harness]?.();
+          const missing = await options.ready?.(harness);
           if (missing !== undefined) throw new Error(missing);
           return managers[harness]!;
         },

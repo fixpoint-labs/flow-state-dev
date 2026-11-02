@@ -22,6 +22,7 @@
  *     /settings                      the user's own keys for the Lab's MCP servers (pinned, FIX-1905)
  */
 import { useSyncExternalStore } from "react";
+import { readBasePath } from "@flow-state-dev/devtool/react";
 
 export const PROJECT_TABS = ["stream", "board", "workstreams", "brief"] as const;
 export const TASK_TABS = ["session", "diff", "checks", "brief"] as const;
@@ -141,13 +142,27 @@ function subscribe(listener: () => void) {
     window.removeEventListener("popstate", listener);
   };
 }
-const snapshot = () => `${window.location.pathname}${window.location.search}`;
+/**
+ * The page's address under the prefix it is served at (`readBasePath()`), so a
+ * route reads the same at the root of its origin and on a proxy's sub-route.
+ */
+const snapshot = () => {
+  const base = readBasePath();
+  const { pathname, search } = window.location;
+  const path = base !== "" && (pathname === base || pathname.startsWith(`${base}/`)) ? pathname.slice(base.length) || "/" : pathname;
+  return `${path}${search}`;
+};
+
+/** The address to put in an `href` or the history for `route`: {@link pathFor} under the page's base path. */
+export function hrefFor(route: Route): string {
+  return `${readBasePath()}${pathFor(route)}`;
+}
 
 /** Go to `route`, adding a history entry. */
 export function navigate(route: Route): void {
   const path = pathFor(route);
   if (path === snapshot()) return;
-  window.history.pushState(null, "", path);
+  window.history.pushState(null, "", hrefFor(route));
   for (const listener of listeners) listener();
 }
 
