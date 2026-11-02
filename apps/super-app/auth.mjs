@@ -16,6 +16,7 @@
  *   ever sees the session token.
  */
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { escapeHtml, PAGE_STYLE } from "./page.mjs";
 
 export const COOKIE = "fsd_super_app";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
@@ -162,7 +163,7 @@ export function createAuth({
     const value = cookies(req.headers.cookie).get(COOKIE);
     if (value === undefined) return false;
     const [expiry, mac] = value.split(".");
-    return expiry !== undefined && mac !== undefined && Number(expiry) > Date.now() / 1000 && equal(mac, sign(expiry));
+    return expiry !== undefined && mac !== undefined && Number(expiry) > clock() / 1000 && equal(mac, sign(expiry));
   };
 
   const secure = (req) =>
@@ -176,7 +177,18 @@ export function createAuth({
    * @returns {boolean} `true` when the request was answered here and must not go on.
    */
   const handle = (req, res) => {
-    const url = new URL(req.url ?? "/", "http://local");
+    let url;
+    try {
+      url = new URL(req.url ?? "/", "http://local");
+    } catch {
+      url = null;
+    }
+    // The proxy turns away a target that doesn't parse before it gets here; this refuses one that slips by.
+    if (url === null) {
+      res.writeHead(400, { "content-type": "text/plain" });
+      res.end("Bad request target.\n");
+      return true;
+    }
     if (url.pathname === "/login" && req.method === "GET") {
       if (signedIn(req)) return redirect(res, safeNext(url.searchParams.get("next"))), true;
       return page(res, 200, { next: safeNext(url.searchParams.get("next")) }), true;
@@ -201,7 +213,7 @@ export function createAuth({
         if (userOk && passOk) {
           release(key);
           failures.delete(key);
-          const expiry = String(Math.floor(Date.now() / 1000) + MAX_AGE_SECONDS);
+          const expiry = String(Math.floor(clock() / 1000) + MAX_AGE_SECONDS);
           res.setHeader("set-cookie", cookie(req, `${expiry}.${sign(expiry)}`, MAX_AGE_SECONDS));
           return redirect(res, next, 303);
         }
@@ -276,12 +288,7 @@ function readForm(req, done) {
   req.on("end", () => clearTimeout(timer));
 }
 
-const escape = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-/** The shared look of the super app's own pages (landing and login). */
-export const PAGE_STYLE = `:root{color-scheme:light dark;--bg:#fafaf9;--fg:#1c1917;--muted:#78716c;--card:#fff;--line:#e7e5e4;--accent:#1c1917;--on-accent:#fafaf9;--bad:#dc2626}
-@media (prefers-color-scheme:dark){:root{--bg:#0c0a09;--fg:#f5f5f4;--muted:#a8a29e;--card:#1c1917;--line:#292524;--accent:#f5f5f4;--on-accent:#0c0a09;--bad:#f87171}}
-body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif}`;
 
 function page(res, status, { next, error }) {
   res.writeHead(status, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
@@ -294,8 +301,8 @@ input{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:6
 button{font:inherit;padding:9px;border:0;border-radius:6px;background:var(--accent);color:var(--on-accent);cursor:pointer}
 .error{color:var(--bad);font-size:13px;margin:0}
 </style></head><body><main><h1>flow-state-dev</h1><p class="sub">Sign in to reach the apps on this server.</p>
-<form method="post" action="/login">${error ? `<p class="error" role="alert">${escape(error)}</p>` : ""}
-<input type="hidden" name="next" value="${escape(next)}">
+<form method="post" action="/login">${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}
+<input type="hidden" name="next" value="${escapeHtml(next)}">
 <label>User name<input name="username" autocomplete="username" required autofocus></label>
 <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
 <button type="submit">Sign in</button></form></main></body></html>`);

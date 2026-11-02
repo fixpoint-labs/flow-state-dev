@@ -7,11 +7,15 @@ import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { addressKey, createAuth, safeNext } from "./auth.mjs";
-import { createProxy, loopbackHost } from "./proxy.mjs";
+import { createProxy, loopbackHost, publicLocation } from "./proxy.mjs";
 
 const seen = [];
 const upstream = createServer((req, res) => {
-  seen.push({ url: req.url, cookie: req.headers.cookie });
+  seen.push({ url: req.url, cookie: req.headers.cookie, headers: req.headers });
+  if (req.url === "/redirect-own-origin") {
+    res.writeHead(302, { location: `http://127.0.0.1:${req.socket.localPort}/inbox` });
+    return res.end();
+  }
   if (req.url === "/") {
     res.writeHead(200, { "content-type": "text/html" });
     return res.end('<html><head><base href="/" /></head></html>');
@@ -290,6 +294,123 @@ describe("a full record of failing addresses", () => {
       assert.equal((await attempt("127.0.0.1", "wrong")).status, 401);
       // Many addresses failing at once: one with no record is held back too, rather than pushing the live record out.
       assert.equal((await attempt("[::1]", "s3cret")).status, 429);
+    } finally {
+      server.close();
+    }
+  });
+});
+
+/** Sends `head` as the raw start of a request and resolves with the status line, or what closed the socket. */
+async function rawRequest(port, head) {
+  const { connect } = await import("node:net");
+  return new Promise((resolve) => {
+    const socket = connect(port, "127.0.0.1", () => socket.write(head));
+    let data = "";
+    socket.on("data", (c) => (data += c));
+    socket.on("close", () => resolve(data.split("\r\n")[0]));
+    socket.on("error", () => resolve("error"));
+    setTimeout(() => socket.destroy(), 2000);
+  });
+}
+
+describe("a request target that doesn't parse", () => {
+  for (const [name, auth] of [
+    ["with a sign-in", () => createAuth({ username: "ops", password: "s3cret" })],
+    ["without one", () => undefined],
+  ]) {
+    it(`gets 400 and leaves the server running, ${name}`, async () => {
+      const server = createProxy({ apps: [], auth: auth(), status: () => "running" });
+      await new Promise((r) => server.listen(0, "127.0.0.1", r));
+      const port = server.address().port;
+      try {
+        assert.match(await rawRequest(port, "GET //[ HTTP/1.1\r\nHost: localhost\r\n\r\n"), /^HTTP\/1\.1 400/);
+        // An upgrade with the same target is refused too.
+        const upgrade = "GET //[ HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n";
+        assert.match(await rawRequest(port, upgrade), /^HTTP\/1\.1 400/);
+        // Still serving.
+        assert.equal((await fetch(`http://127.0.0.1:${port}/login`)).status, auth() === undefined ? 404 : 200);
+      } finally {
+        server.close();
+      }
+    });
+  }
+});
+
+describe("what reaches the app, and what comes back", () => {
+  let cookie;
+  before(async () => {
+    const res = await signIn("ops", "s3cret");
+    cookie = res.headers.get("set-cookie").split(";")[0];
+  });
+
+  it("drops hop-by-hop headers and sets x-forwarded-host from the real Host", async () => {
+    // `fetch` won't send `Connection` or `Keep-Alive` itself, so this goes through node:http.
+    const { request } = await import("node:http");
+    await new Promise((resolve, reject) => {
+      const url = new URL(`${base}/lab/api/flows`);
+      request(
+        {
+          host: url.hostname,
+          port: url.port,
+          path: url.pathname,
+          headers: { cookie, "x-forwarded-host": "evil.example", "keep-alive": "timeout=5", "x-drop-me": "1", connection: "keep-alive, x-drop-me" },
+        },
+        (res) => res.resume().on("end", resolve),
+      )
+        .on("error", reject)
+        .end();
+    });
+    const { headers } = seen.at(-1);
+    assert.equal(headers["x-forwarded-host"], new URL(base).host);
+    assert.equal(headers["keep-alive"], undefined);
+    assert.equal(headers["x-drop-me"], undefined, "a header the Connection header names is hop-by-hop too");
+  });
+
+  it("puts an app's redirect to its own loopback address back under its prefix", async () => {
+    const res = await get("/lab/redirect-own-origin", { headers: { cookie } });
+    assert.equal(res.headers.get("location"), "/lab/inbox");
+  });
+});
+
+describe("publicLocation", () => {
+  const spa = { prefix: "/lab", kind: "spa", port: 3120 };
+  const next = { prefix: "/kitchen-sink", kind: "next", port: 3110 };
+  it("prefixes an SPA's root paths and its own loopback URLs", () => {
+    assert.equal(publicLocation("/inbox", spa), "/lab/inbox");
+    assert.equal(publicLocation("http://127.0.0.1:3120/inbox?x=1", spa), "/lab/inbox?x=1");
+    assert.equal(publicLocation("http://localhost:3120", spa), "/lab/");
+    assert.equal(publicLocation("/lab/inbox", spa), "/lab/inbox");
+  });
+  it("keeps a Next app's own basePath, removing only its loopback origin", () => {
+    assert.equal(publicLocation("http://127.0.0.1:3110/kitchen-sink/flow-state", next), "/kitchen-sink/flow-state");
+    assert.equal(publicLocation("/kitchen-sink/flow-state", next), "/kitchen-sink/flow-state");
+  });
+  it("leaves another origin and another app's port alone", () => {
+    assert.equal(publicLocation("https://example.com/x", spa), "https://example.com/x");
+    assert.equal(publicLocation("//example.com/x", spa), "//example.com/x");
+    assert.equal(publicLocation("http://127.0.0.1:9999/x", spa), "http://127.0.0.1:9999/x");
+  });
+});
+
+describe("the session cookie's lifetime", () => {
+  it("ends after seven days on the auth's own clock", async () => {
+    let clock = Date.now();
+    const auth = createAuth({ username: "ops", password: "s3cret", now: () => clock });
+    const server = createProxy({ apps: [], auth, status: () => "running" });
+    await new Promise((r) => server.listen(0, "127.0.0.1", r));
+    const at = `http://127.0.0.1:${server.address().port}`;
+    try {
+      const res = await fetch(`${at}/login`, {
+        method: "POST",
+        redirect: "manual",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: "username=ops&password=s3cret",
+      });
+      const session = res.headers.get("set-cookie").split(";")[0];
+      const landing = () => fetch(`${at}/`, { headers: { cookie: session } });
+      assert.equal((await landing()).status, 200);
+      clock += 7 * 24 * 60 * 60 * 1000 + 1000;
+      assert.equal((await landing()).status, 401);
     } finally {
       server.close();
     }

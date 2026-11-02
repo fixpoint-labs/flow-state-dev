@@ -72,3 +72,7 @@ see its README. They load `.env.local` the way they do standalone.
   Kitchen Sink keeps `next dev` HMR.
 - Kitchen Sink's Bull Board (`REDIS_URL` set) mounts at `/api/admin/queues`
   without the prefix and isn't reachable through the proxy.
+- A lab page's relative URLs resolve against its `<base href>`, so a
+  hash-only link (`href="#section"`) opens `/<prefix>/#section`, not the
+  current page's anchor. None of the labs has one today; write
+  `href={`${location.pathname}#section`}` (or scroll in code) if one is added.

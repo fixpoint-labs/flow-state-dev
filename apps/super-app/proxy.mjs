@@ -5,7 +5,10 @@
  * - Responses stream through untouched (SSE included), except an `spa` app's
  *   HTML, which is buffered to rewrite its `<base href="/">` to the app's prefix.
  * - WebSocket upgrades (Next's dev HMR) are piped through raw.
- * - An `spa` app's redirect to a root path is put back under its prefix.
+ * - An app's redirect to a root path, or to its own loopback address, is put
+ *   back under its prefix on this server.
+ * - A request target that isn't an origin-form path (`/…`) gets 400, before
+ *   anything parses it.
  * - With `auth` (`auth.mjs`), nothing but the login routes gets through
  *   without a signed session cookie: pages, API calls, streams and upgrades
  *   alike. The cookie never reaches an app.
@@ -15,7 +18,7 @@
  */
 import { createServer, request as httpRequest } from "node:http";
 import { connect } from "node:net";
-import { PAGE_STYLE } from "./auth.mjs";
+import { escapeHtml, PAGE_STYLE } from "./page.mjs";
 
 /**
  * @param {object} options
@@ -24,6 +27,16 @@ import { PAGE_STYLE } from "./auth.mjs";
  * @param {(id: string) => string} options.status  A word for an app's state on the landing page.
  */
 export function createProxy({ apps, auth, status }) {
+  /** Whether a request target is a path this server can parse; anything else is refused before it is read. */
+  const validTarget = (target) => {
+    if (typeof target !== "string" || !target.startsWith("/")) return false;
+    try {
+      new URL(target, "http://local");
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   /** The app a path belongs to, and the path its server is asked for. */
   const route = (url) => {
@@ -36,6 +49,11 @@ export function createProxy({ apps, auth, status }) {
   };
 
   const server = createServer((req, res) => {
+    if (!validTarget(req.url)) {
+      res.writeHead(400, { "content-type": "text/plain", connection: "close" });
+      res.end("Bad request target.\n");
+      return;
+    }
     if (auth === undefined && !loopbackHost(req.headers.host)) {
       res.writeHead(421, { "content-type": "text/plain" });
       res.end("Without a sign-in configured, this server only answers on localhost.\n");
@@ -60,16 +78,15 @@ export function createProxy({ apps, auth, status }) {
     }
 
     const headers = forwardedHeaders(req, auth);
-    // The HTML is rewritten as text; nothing compressed comes back to rewrite.
+    // An SPA's HTML is rewritten as text, and a response's type isn't known until it arrives, so no SPA
+    // request asks for compression. The hop it saves is loopback; the browser hop was never compressed here.
     if (app.kind === "spa") delete headers["accept-encoding"];
 
     const upstream = httpRequest(
       { host: "127.0.0.1", port: app.port, method: req.method, path: upstreamPath, headers },
       (up) => {
-        const out = { ...up.headers };
-        if (app.kind === "spa" && typeof out.location === "string" && out.location.startsWith("/") && !out.location.startsWith("//")) {
-          out.location = `${app.prefix}${out.location}`;
-        }
+        const out = withoutHopHeaders(up.headers);
+        if (typeof out.location === "string") out.location = publicLocation(out.location, app);
         const html = app.kind === "spa" && String(out["content-type"] ?? "").includes("text/html");
         if (!html) {
           res.writeHead(up.statusCode ?? 502, out);
@@ -90,7 +107,7 @@ export function createProxy({ apps, auth, status }) {
       },
     );
     upstream.on("error", () => {
-      if (res.headersSent) return res.destroy();
+      if (res.headersSent) return void res.destroy();
       res.writeHead(502, { "content-type": "text/plain" });
       res.end(`${app.title} isn't answering on port ${app.port}: it may still be starting, or it stopped. Its log lines are prefixed [${app.id}].\n`);
     });
@@ -100,6 +117,10 @@ export function createProxy({ apps, auth, status }) {
   });
 
   server.on("upgrade", (req, socket, head) => {
+    if (!validTarget(req.url)) {
+      socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+      return;
+    }
     const allowed = auth === undefined ? loopbackHost(req.headers.host) : auth.signedIn(req);
     const target = allowed ? route(req.url ?? "/") : undefined;
     if (target === undefined) {
@@ -108,7 +129,8 @@ export function createProxy({ apps, auth, status }) {
     }
     const up = connect(target.app.port, "127.0.0.1", () => {
       const lines = [`${req.method} ${target.upstreamPath} HTTP/${req.httpVersion}`];
-      for (const [name, value] of Object.entries(forwardedHeaders(req, auth))) {
+      // An upgrade keeps its `connection` and `upgrade` headers: they are what it asks for.
+      for (const [name, value] of Object.entries(forwardedHeaders(req, auth, { upgrade: true }))) {
         for (const v of Array.isArray(value) ? value : [value]) lines.push(`${name}: ${v}`);
       }
       up.write(`${lines.join("\r\n")}\r\n\r\n`);
@@ -130,24 +152,56 @@ export function loopbackHost(host) {
   return name === "localhost" || name === "127.0.0.1" || name === "[::1]";
 }
 
-/** The request's headers for the app's server: the session cookie out, where it was really addressed in. */
-function forwardedHeaders(req, auth) {
-  const headers = auth === undefined ? { ...req.headers } : auth.strip(req.headers);
+/** Headers that describe one connection, not the message (RFC 9110 §7.6.1): never passed on to the next hop. */
+const HOP_HEADERS = ["connection", "keep-alive", "proxy-connection", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade"];
+
+/** `headers` without the hop-by-hop ones, including any a `Connection` header names. */
+function withoutHopHeaders(headers, keep = []) {
+  const named = String(headers.connection ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);
+  const drop = new Set([...HOP_HEADERS, ...named].filter((h) => !keep.includes(h)));
+  return Object.fromEntries(Object.entries(headers).filter(([name]) => !drop.has(name)));
+}
+
+/**
+ * A redirect's `Location` as the browser must follow it on this server: a root
+ * path, or an absolute URL on the app's own loopback port, under the app's
+ * prefix. Any other absolute URL is left alone. A Next app already writes its
+ * `basePath`, so only its loopback origin is removed.
+ */
+export function publicLocation(location, app) {
+  let path = location;
+  const own = location.match(/^https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\]):(\d+)(\/.*)?$/i);
+  if (own !== null) {
+    if (Number(own[1]) !== app.port) return location;
+    path = own[2] ?? "/";
+  } else if (!location.startsWith("/") || location.startsWith("//")) {
+    return location;
+  }
+  if (app.kind === "next") return path;
+  return path === app.prefix || path.startsWith(`${app.prefix}/`) ? path : `${app.prefix}${path}`;
+}
+
+/**
+ * The request's headers for the app's server: the session cookie and hop-by-hop
+ * headers out, where it was really addressed in. `x-forwarded-host` is always
+ * this request's `Host`, never a value the client sent.
+ */
+function forwardedHeaders(req, auth, { upgrade = false } = {}) {
+  const base = auth === undefined ? { ...req.headers } : auth.strip(req.headers);
+  const headers = withoutHopHeaders(base, upgrade ? ["connection", "upgrade"] : []);
   const prior = headers["x-forwarded-for"];
   const ip = req.socket.remoteAddress ?? "";
   headers["x-forwarded-for"] = prior ? `${prior}, ${ip}` : ip;
-  headers["x-forwarded-host"] ??= req.headers.host ?? "";
+  headers["x-forwarded-host"] = req.headers.host ?? "";
   headers["x-forwarded-proto"] ??= "http";
   return headers;
 }
-
-const escape = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 function landing(res, apps, status, signOut) {
   const cards = apps
     .map((a) => {
       const state = status(a.id);
-      return `<a class="card" href="${a.prefix}/"><span class="state ${state}">${state}</span><h2>${escape(a.title)}</h2><p>${escape(a.blurb)}</p><code>${a.prefix}/</code></a>`;
+      return `<a class="card" href="${a.prefix}/"><span class="state ${state}">${state}</span><h2>${escapeHtml(a.title)}</h2><p>${escapeHtml(a.blurb)}</p><code>${a.prefix}/</code></a>`;
     })
     .join("");
   res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
