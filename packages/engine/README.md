@@ -676,6 +676,19 @@ publishes. A host that writes to the stores past those entries calls it too,
 and writes through the registry it returns. It is idempotent: every entry gets
 the same wrapped stores.
 
+**Push delivery** carries these notices to a browser (FIX-2428). A host that
+serves the socket calls `enablePushDelivery(router, { secret? })`: the router
+then reports `push: { transport: "websocket" }` in `GET /capabilities` and
+answers `POST /users/:userId/stream`, which runs each topic the caller asks for
+through the read check its scope uses and signs a 30-second ticket for the ones
+it grants. The host hands each socket that opens on `/users/:userId/stream` to
+`delivery.openSocket(userId, { send, close })` and moves text frames to the
+returned session's `receive`. The session accepts topics only from a ticket for
+that user, sends `{ type: "crossing", crosses }` after the first ticket and on
+each change of the bus's answer, and closes the socket after an hour.
+`serve()` in `@flow-state-dev/node` does all of this; `secret` defaults to a
+random key per router.
+
 ## Store list options
 
 `SessionListOptions` and `RequestListOptions` are part of the store contract.

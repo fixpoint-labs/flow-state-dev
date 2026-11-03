@@ -49,6 +49,27 @@ until the router's stores are ready, then `200`.
 connections, drains in-flight requests (force-closing after the grace window),
 then disposes the router and the `FlowState`.
 
+## Push
+
+`serve()` serves push: the WebSocket a client's `fsd.subscribe` (and React's
+`useSubscription`) hears change notices on, at `<basePath>/users/:userId/stream`.
+`GET /capabilities` reports `push: { transport: "websocket" }`, so a client on
+this host hears a change within about a second instead of reading on its timer.
+`push: false` turns it off. `createServerApp` alone serves no socket and reports
+`push: null`.
+
+Several processes behind one address need one signing key, so a connection
+that lands on any of them is accepted:
+
+```ts
+await serve(flowState, { pushSecret: process.env.FSD_PUSH_SECRET });
+```
+
+`serve()` reads `FSD_PUSH_SECRET` itself when `pushSecret` is not given, and
+otherwise uses a random key for the process. A notice reaches every process only
+when the stores profile's change bus carries changes between processes; on the
+default in-memory bus, clients keep reading on their timer between notices.
+
 ## Serving a built `FlowApiRouter` directly
 
 If you already hold a router (for example from `createFlowApiRouter`, or to manage
@@ -150,6 +171,8 @@ durable background work). See the deployment guides for the full topology:
 | `pageHandler` | — | A Connect-style `(req, res, next)` handler tried before `staticDir`'s SPA fallback for non-API GET requests, for a dev server's middleware. A real file in `staticDir` and a dedicated adapter route are served ahead of it. Calling `next()` passes the request on; `next(err)` returns a 500. |
 | `shutdownGraceMs` | `10000` | Grace window before lingering connections are force-closed. |
 | `disposeOnClose` | `true` | Whether `close()` disposes the `FlowState` after draining. Set `false` when several servers share one runtime, and dispose it yourself once they have all closed. |
+| `push` | `true` | Serve the change-notice WebSocket at `<basePath>/users/:userId/stream` (see [Push](#push)). `false` reports `push: null`. |
+| `pushSecret` | `process.env.FSD_PUSH_SECRET`, then a random key | `string \| (() => string)`. The key push tickets are signed with. Give every process behind one address the same one. |
 
 ### `createPageHtmlTransform(options)`
 

@@ -1,5 +1,5 @@
 /**
- * SSE stream readers for request, session and user streams.
+ * SSE stream readers for request and session streams.
  *
  * The openers here take a resolved URL and the fetcher of the client that
  * opens them: `createClient` is their only caller, so every stream goes
@@ -7,19 +7,13 @@
  * the pure reader for a stream a POST already returned (inline streaming).
  */
 import { toError } from "@flow-state-dev/contracts/helpers";
-import type {
-  RequestStreamEvent,
-  SessionStreamEvent,
-  UserStreamEvent
-} from "@flow-state-dev/core/items";
+import type { RequestStreamEvent, SessionStreamEvent } from "@flow-state-dev/core/items";
 import type {
   ClientFetch,
   RequestSSECallbacks,
   RequestStreamHandle,
   SessionSSECallbacks,
-  SessionStreamHandle,
-  UserSSECallbacks,
-  UserStreamHandle
+  SessionStreamHandle
 } from "../types";
 import { ClientHttpError } from "../types";
 
@@ -224,80 +218,6 @@ export function openRequestStream(
         }
 
         dispatchRequestEvent(parsed, options);
-      } catch (error) {
-        options.onError?.(toError(error, "Unknown SSE client error"));
-      }
-    },
-    onError: (error) => {
-      if (!closed) {
-        options.onError?.(error);
-      }
-    }
-  });
-
-  return {
-    close: () => {
-      if (closed) {
-        return;
-      }
-
-      closed = true;
-      deduper.clear();
-      controller.abort();
-    },
-    get lastEventId() {
-      return lastEventId;
-    }
-  };
-}
-
-/**
- * Opens the user stream for optional capability-gated updates.
- * Internal; `client.stream()` is the public way in.
- */
-export function openUserStream(
-  target: StreamTarget,
-  options: UserSSECallbacks & StreamResumeOptions
-): UserStreamHandle {
-  const { fetcher, url } = target;
-  const controller = new AbortController();
-  const deduper = createSlidingEventDeduper(
-    options.dedupWindowSize ?? DEFAULT_DEDUP_WINDOW_SIZE
-  );
-  let closed = false;
-  let lastEventId = options.lastEventId;
-
-  void consumeSSE({
-    fetcher,
-    url,
-    signal: controller.signal,
-    headers:
-      lastEventId === undefined || options.startingAfter !== undefined
-        ? undefined
-        : {
-            "last-event-id": lastEventId
-          },
-    onFrame: (frame) => {
-      if (closed) {
-        return;
-      }
-
-      if (frame.id !== undefined) {
-        lastEventId = frame.id;
-      }
-
-      if (frame.data === undefined) {
-        return;
-      }
-
-      try {
-        const parsed = JSON.parse(frame.data) as UserStreamEvent;
-        const key = userEventKey(parsed);
-        if (deduper.seen(key)) {
-          return;
-        }
-
-        dispatchUserEvent(parsed, options);
       } catch (error) {
         options.onError?.(toError(error, "Unknown SSE client error"));
       }
@@ -656,10 +576,6 @@ function requestEventKey(event: RequestStreamEvent): string {
   return `${event.stream}:${event.requestId}:${event.sequence_number}`;
 }
 
-function userEventKey(event: UserStreamEvent): string {
-  return `${event.stream}:${event.userId}:${event.sequence_number}`;
-}
-
 function dispatchRequestEvent(
   event: RequestStreamEvent,
   callbacks: RequestSSECallbacks
@@ -726,24 +642,6 @@ function dispatchRequestEvent(
 
   if (event.type === "session.metadata.changed") {
     callbacks.onSessionMetadataChanged?.(event);
-    return;
-  }
-
-  if (event.type === "debug") {
-    callbacks.onDebug?.(event);
-  }
-}
-
-function dispatchUserEvent(event: UserStreamEvent, callbacks: UserSSECallbacks): void {
-  callbacks.onEvent?.(event);
-
-  if (event.type === "resource.changed") {
-    callbacks.onResourceChanged?.(event);
-    return;
-  }
-
-  if (event.type === "scope.state.changed") {
-    callbacks.onScopeStateChanged?.(event);
     return;
   }
 

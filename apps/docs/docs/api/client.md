@@ -38,8 +38,8 @@ It returns a `Client`:
 | `resources` | Resource content and collections. See [`fsd.resources`](#fsdresources). |
 | `requests.interrupted(options?)` | The user's crash-interrupted requests. See [`fsd.requests.interrupted`](#fsdrequestsinterruptedoptions). |
 | `flows()` | The flows the server hosts, as `FlowListEntry[]`. |
-| `capabilities()` | What the server supports, as `FlowCapabilities`. |
-| `stream(options)` | Follow the user stream: resource and scope-state changes for this user. See [`fsd.stream`](#fsdstreamoptions). |
+| `capabilities()` | What the server supports, as `FlowCapabilities`: `{ userStream, push }`, with `push` `{ transport: "websocket" }` on a host that serves push and `null` elsewhere. |
+| `subscribe(topics, options)` | Run a read again when something under `topics` changes. See [`fsd.subscribe`](#fsdsubscribetopics-options). |
 | `transcribe({ audio, mediaType?, language? })` | Transcribe audio on the server. Resolves to `{ text, language? }`. `mediaType` defaults to `"audio/webm"`. |
 
 A different user or a different server is a different client.
@@ -456,9 +456,50 @@ async function readHistory() {
 }
 ```
 
-### `fsd.stream(options)`
+### `fsd.subscribe(topics, options)`
 
-Follows the user stream: resource changes and scope-state changes for the client's user, across sessions. Callbacks are `onResourceChanged`, `onResourceContentUpdated`, `onResourceContentCreated`, `onResourceContentDeleted`, `onScopeStateChanged`, `onDebug`, `onEvent` and `onError`. It takes the same `startingAfter`, `lastEventId` and `dedupWindowSize` as a request stream.
+Calls `onChange` when something under one of `topics` may have changed, so you can read it again. The call tells you when to read, never what changed: `onChange` makes the read your screen already makes, and that read is checked on the server as always.
+
+```ts
+import { createClient, topic } from "@flow-state-dev/client";
+
+const fsd = createClient({ userId, baseUrl: "" });
+
+const sub = fsd.subscribe([topic.session(sessionId), topic.org()], {
+  onChange: (notice) => void reload(),
+  pollIntervalMs: 3000,
+});
+
+// later
+sub.close();
+```
+
+| Option | Type | Notes |
+|--------|------|-------|
+| `onChange` | `(notice: WireNotice \| null) => void` | Required. Gets the notice that woke it, `{ topic, kind, origin? }`, or `null` for a connect, a reconnect, a timer tick, or a change in whether push reaches every server process. |
+| `pollIntervalMs` | `number` | Call `onChange(null)` at this pace wherever push can miss a change: the server has no push, the socket is down, or the server process the socket reached can't hear the others. Omitted, there is no timer. |
+
+It returns `{ close() }`.
+
+The topics come from `topic`, which `@flow-state-dev/client` and `@flow-state-dev/core` both export:
+
+| Topic | Covers |
+|-------|--------|
+| `topic.session(id)` | One session. |
+| `topic.user()` | The caller's own user scope. |
+| `topic.org()` | The caller's organization. |
+
+Each takes an optional `{ resource }` to watch one resource under the scope. A topic without one also hears changes narrowed to a resource under it. User and org topics name no id: the server fills them in from the signed-in caller, so a client can't ask for someone else's.
+
+A notice's `kind` is `"items"`, `"request"`, `"run"` or `"resync"`; `origin.requestId` names the request that made the change, when a request did.
+
+**On a host with push** (`serve()` from `@flow-state-dev/node`, `fsdev dev` and `fsdev serve`), the client opens one WebSocket, shared by every `subscribe` call on that client. It asks the server for each topic first, through the client's own `fetcher`, so a bearer token your fetcher adds is what proves who the socket is. A topic the caller may not read is left out, the same way a session that doesn't exist is: `onChange` never hears about it, and with `pollIntervalMs` the client asks for it again at each tick, so access given back recovers without a remount. Each connect and reconnect calls `onChange(null)` once. The server closes a socket after an hour and the client reconnects, which checks every topic again.
+
+**On a host with no push** (Vercel, Next.js, `createServerApp` alone), `onChange(null)` runs on the `pollIntervalMs` timer and nothing else. The same code works on both.
+
+**On several processes**, push reaches a socket only if the server's change bus carries changes between processes. The default in-memory bus doesn't, even with one process, so a subscription with `pollIntervalMs` keeps reading on its timer between notices there. Give every process behind one address the same `pushSecret` (see [server setup](/docs/server/setup)).
+
+See the [realtime guide](/guides/realtime) for the whole picture.
 
 ### `createSSEClientFromResponse(options)`
 

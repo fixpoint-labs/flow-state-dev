@@ -11,14 +11,7 @@ export type RequestEventBase = {
   ts: number;
 };
 
-export type UserEventBase = {
-  stream: "user";
-  userId: string;
-  sequence_number: number;
-  ts: number;
-};
-
-export type EventBase = RequestEventBase | UserEventBase;
+export type EventBase = RequestEventBase;
 
 export type RequestCreatedEvent = RequestEventBase & {
   type: "request.created";
@@ -115,54 +108,7 @@ export type RequestResourceChangedEvent = RequestEventBase & {
   changeType: "created" | "updated" | "deleted";
 };
 
-export type UserResourceChangedEvent = UserEventBase & {
-  type: "resource.changed";
-  scope: "session" | "user" | "org";
-  resourcePath: string;
-  changeType: "created" | "updated" | "deleted";
-};
-
-export type ResourceChangedEvent = RequestResourceChangedEvent | UserResourceChangedEvent;
-
-/**
- * Pushed to clients that have fetched a resource's content when its content is updated.
- * Only sent to clients with active content subscriptions (inferred from prior GET calls).
- */
-export type ResourceContentUpdatedEvent = UserEventBase & {
-  type: "resource.content.updated";
-  scope: "session" | "user" | "org";
-  ref: string;
-  topic?: string;
-  content: string;
-};
-
-/**
- * Pushed to subscribed clients when a new collection item is created.
- * Does not include content — the client fetches if interested.
- */
-export type ResourceContentCreatedEvent = UserEventBase & {
-  type: "resource.content.created";
-  scope: "session" | "user" | "org";
-  ref: string;
-  topic: string;
-};
-
-/**
- * Pushed to subscribed clients when a collection item is deleted.
- */
-export type ResourceContentDeletedEvent = UserEventBase & {
-  type: "resource.content.deleted";
-  scope: "session" | "user" | "org";
-  ref: string;
-  topic: string;
-};
-
-export type ScopeStateChangedEvent = UserEventBase & {
-  type: "scope.state.changed";
-  scope: "session" | "user" | "org";
-  scopeId: string;
-  changeType: "updated" | "deleted";
-};
+export type ResourceChangedEvent = RequestResourceChangedEvent;
 
 export type SessionMetadataChangedEvent = RequestEventBase & {
   type: "session.metadata.changed";
@@ -179,23 +125,13 @@ export type RequestDebugEvent = RequestEventBase & {
   data: unknown;
 };
 
-export type UserDebugEvent = UserEventBase & {
-  type: "debug";
-  name: string;
-  data: unknown;
-};
-
-export type DebugEvent = RequestDebugEvent | UserDebugEvent;
+export type DebugEvent = RequestDebugEvent;
 
 export type RequestPingEvent = RequestEventBase & {
   type: "ping";
 };
 
-export type UserPingEvent = UserEventBase & {
-  type: "ping";
-};
-
-export type PingEvent = RequestPingEvent | UserPingEvent;
+export type PingEvent = RequestPingEvent;
 
 export type RequestStreamEvent =
   | RequestCreatedEvent
@@ -212,16 +148,8 @@ export type RequestStreamEvent =
   | RequestDebugEvent
   | RequestPingEvent;
 
-export type UserStreamEvent =
-  | UserResourceChangedEvent
-  | ResourceContentUpdatedEvent
-  | ResourceContentCreatedEvent
-  | ResourceContentDeletedEvent
-  | ScopeStateChangedEvent
-  | UserDebugEvent
-  | UserPingEvent;
-
-export type StreamEvent = RequestStreamEvent | UserStreamEvent;
+/** Every event a request stream sends. */
+export type StreamEvent = RequestStreamEvent;
 
 /**
  * Fields every session-stream event carries.

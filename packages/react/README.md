@@ -249,6 +249,24 @@ Fetches the static manifest of public resources for the session's flow. Cached m
 
 Low-level hook for direct action execution without session management.
 
+### `useSubscription(topics, read, options?)`
+
+Runs `read` again when something under `topics` changes, through the provider's
+client and `fsd.subscribe`. One read runs at a time and at most one more waits,
+so a burst of changes is one more read. `read` gets the notice that woke it, or
+`null` for a connect, a reconnect, a timer tick, or a wait that stands for
+several different notices. It doesn't read on mount.
+
+```tsx
+import { topic } from "@flow-state-dev/client";
+
+useSubscription([topic.session(sessionId)], refresh, { pollIntervalMs: 3000 });
+```
+
+`pollIntervalMs` reads on a timer wherever push can miss a change (a host with
+no push, a socket that is down); omit it for no timer. `enabled: false`
+subscribes nothing. For a session's own items, use `useSession({ live: true })`.
+
 ### `useRequestStream(options)`
 
 Low-level hook for subscribing to a request's SSE stream with reactive item/status views. Message and reasoning text streams in token-by-token.
