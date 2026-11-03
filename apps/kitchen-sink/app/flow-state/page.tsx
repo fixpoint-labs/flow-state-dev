@@ -55,7 +55,7 @@ import { PickedSessionPanel } from "@/components/picked-session-panel";
 import { ArtifactDialog } from "@/components/artifact-dialog";
 import { ResizeHandle } from "@/components/resize-handle";
 import { SuggestionRow } from "@/components/suggestion-row";
-import { BackgroundWorkPanel } from "@/components/background-work-panel";
+import { BackgroundWorkPanel, BackgroundWorkRefresh } from "@/components/background-work-panel";
 import { PullRequestsPanel } from "@/components/pull-requests-panel";
 import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -252,9 +252,7 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
     writeSessionAddress(openSessionId, how.current);
     how.current = "replace";
   }, [resolving, openSessionId]);
-  // `live`: follow the whole session, so background work a turn files shows
-  // as its run starts and finishes, without another message.
-  const session = useSession(flow.activeSessionId, { items: true, autoResume: true, live: true });
+  const session = useSession(flow.activeSessionId, { items: true, autoResume: true });
 
   const [message, setMessage] = useDraft(SESSION_DRAFT, flow.activeSessionId);
   const messageRef = useRef(message);
@@ -684,6 +682,13 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
           selectedModel={picked === null ? selectedModel : undefined}
           activeSkills={modeStatus?.activeSkills}
         />
+
+        {/* Mounted HERE, above both responsive trees, and exactly once. The
+            mobile and desktop `ChatPanel`s are both alive at the same time —
+            one is hidden with CSS, not unmounted — so a side effect placed
+            inside either of them runs twice per turn. The panel itself is fine
+            to render twice; its stream-end re-read is not. */}
+        <BackgroundWorkRefresh session={session} />
 
         <div className="flex min-h-0 flex-1 sm:hidden">
           {(mobilePanel === "chat" || picked !== null) && stream}
