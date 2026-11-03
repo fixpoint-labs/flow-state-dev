@@ -28,7 +28,26 @@ const lab = {
 const workforce = { ensureWorkerSession };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
-vi.mock("../src/lib/run", async (original) => ({ ...(await original<typeof import("../src/lib/run")>()), readSessionItems: (...a: unknown[]) => read(...a) }));
+/**
+ * Each follow a mounted conversation opened: the session, where its items go, and whether it
+ * stopped. The follow's first answer is `read`'s; a case pushes what the session stream brings.
+ */
+type Follower = { onRead(read: { items: unknown[]; truncated: boolean }): void; onFailure(failure: { message: string }): void };
+const follows: Array<{ sessionId: string; to: Follower; closed: boolean }> = [];
+vi.mock("../src/lib/run", async (original) => ({
+  ...(await original<typeof import("../src/lib/run")>()),
+  followSessionItems: (client: unknown, sessionId: string, to: Follower) => {
+    const entry = { sessionId, to, closed: false };
+    follows.push(entry);
+    Promise.resolve(read(client, sessionId)).then(
+      (got) => !entry.closed && to.onRead(got),
+      (error: unknown) => !entry.closed && to.onFailure({ message: error instanceof Error ? error.message : String(error) }),
+    );
+    return () => void (entry.closed = true);
+  },
+}));
+/** What the session stream brings to the open follow. */
+const streamed = (items: unknown[]) => act(async () => follows.filter((f) => !f.closed).at(-1)!.to.onRead({ items, truncated: false }));
 vi.mock("../src/lib/send", async (original) => ({ ...(await original<typeof import("../src/lib/send")>()), sendTurn: (...a: unknown[]) => sendTurn(...a) }));
 // A page with no Web Crypto can't hash a derived address: this worker's derivation fails the way it would there.
 const UNHASHABLE = "eng.unhashable";
@@ -57,6 +76,7 @@ const delivered = { requestId: "q", suspended: false, stopped: null };
 
 beforeEach(() => {
   read.mockReset();
+  follows.length = 0;
   sendTurn.mockReset();
   ensureWorkerSession.mockReset();
   ensureWorkerSession.mockResolvedValue({ id: s1 });
@@ -218,37 +238,38 @@ describe("when a line may go", () => {
 describe("an open conversation", () => {
   afterEach(() => vi.useRealTimers());
 
-  it("is read again every 5 s, so another worker's message shows without a line sent (FIX-1989)", async () => {
+  it("follows the session's stream, so another worker's message shows as it lands, with no read on a clock (FIX-1989, FIX-2466)", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    read.mockResolvedValueOnce({ items: [], truncated: false });
-    read.mockResolvedValue({ items: [item("i1", "From eng.author: the build is green.")], truncated: false });
     drawn([session(s1)]);
     await act(async () => {});
-    expect(read).toHaveBeenCalledTimes(1);
+    expect(follows.map((f) => f.sessionId)).toEqual([s1]);
     expect(screen.queryByTestId("mine")).toBeNull();
+    // Nothing reads again while nothing changes, however long the view stays open.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(4_999);
+      await vi.advanceTimersByTimeAsync(30_000);
     });
     expect(read).toHaveBeenCalledTimes(1);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1);
-    });
-    expect(read).toHaveBeenCalledTimes(2);
+    await streamed([item("i1", "From eng.author: the build is green.")]);
     expect(screen.getByTestId("mine").textContent).toBe("From eng.author: the build is green.");
+    expect(read).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the last read on screen, and the composer open, when a later read fails", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  it("keeps the last read on screen, and the composer open, when the follow fails later", async () => {
     read.mockResolvedValueOnce({ items: [item("i1", "Shipped.")], truncated: false });
-    read.mockRejectedValue(new Error("down"));
     drawn([session(s1)]);
-    await act(async () => {});
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(5_000);
-    });
-    expect(read).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(screen.getByTestId("mine").textContent).toBe("Shipped."));
+    await act(async () => follows.at(-1)!.to.onFailure({ message: "down" }));
     expect(screen.getByTestId("mine").textContent).toBe("Shipped.");
     expect(screen.queryByTestId("rev-composer-blocked")).toBeNull();
+  });
+
+  it("follows again on Retry after a first read failed, and stops the follow it replaced", async () => {
+    read.mockRejectedValueOnce(new Error("down"));
+    drawn([session(s1)]);
+    fireEvent.click(await screen.findByRole("button", { name: /retry/i }));
+    await waitFor(() => expect(follows).toHaveLength(2));
+    expect(follows[0]!.closed).toBe(true);
+    await waitFor(() => expect(screen.queryByTestId("rev-conversation-failure")).toBeNull());
   });
 
   it("sends nothing into a session the view draws read-only, and says why, whatever the worker", async () => {
@@ -290,7 +311,7 @@ describe("sending", () => {
     expect(sendTurn.mock.calls[0]![2]).toBe("ship it?");
   });
 
-  it("reads the session back as soon as it holds the line, while the reply is still in flight", async () => {
+  it("shows the line once the session holds it, while the reply is still in flight, from the stream it already follows", async () => {
     let finish!: () => void;
     sendTurn.mockImplementation(async (_c, _t, _m, opts: { onHeld: () => void }) => {
       opts.onHeld();
@@ -300,10 +321,14 @@ describe("sending", () => {
     drawn([session(s1)]);
     await waitFor(() => expect(read).toHaveBeenCalledTimes(1));
     await send("one more");
-    // The read-back happened with the send still unresolved.
-    await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    await streamed([item("u1", "one more")]);
+    expect(screen.getByTestId("mine").textContent).toBe("one more");
     expect(screen.getByTestId("rev-composer-status").getAttribute("data-state")).not.toBe("delivered");
+    // One follow, opened once: a send reads nothing again.
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(follows).toHaveLength(1);
     await act(async () => finish());
+    expect(read).toHaveBeenCalledTimes(1);
   });
 
   it("reads the Lab again and shows the reason when the door refuses, keeping the line", async () => {

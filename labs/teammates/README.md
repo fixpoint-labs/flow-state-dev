@@ -182,6 +182,12 @@ names the package call it makes.
 | A run's steps in plain words | the UI registry's `tool-naming` and `tool-grouping`, installed in `src/components/flow-state/`, over each tool call's name and arguments |
 | The divider and its *summarized* label | the last request's `historyStart`, and the session's `historySummary` resource |
 
+The conversation follows its session's stream. Busy status, whether a conversation is answering,
+and the divider read the conversation's requests when one of them changes, and the divider reads the
+`historySummary` resource when it changes, through `client.subscribe`. A long reply costs them no
+more reads than a short one. On a host whose push can miss a change, such as the SQLite store the
+lab runs on, they also read every 1.5 seconds, as before.
+
 `color:` names one of the lab's palette, `blue`, `green`, `amber`, `rose`, `violet` or `teal`,
 each a `--teammate-*` token in the theme. A teammate whose file sets neither line, such as one you
 hire here, gets its initial on a palette color picked from its id.

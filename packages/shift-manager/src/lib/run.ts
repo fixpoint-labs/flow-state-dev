@@ -15,7 +15,7 @@
  * What the run recorded (its plan, files and pull requests) is the one read
  * that is not here: `readRecordedWork` from `@flow-state-dev/harness-manager/browser`.
  */
-import { compareItemOrder } from "@flow-state-dev/client";
+import { compareItemOrder, sessionFeed } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
 import type { RequestStatus } from "@flow-state-dev/core/types";
 import type { Client } from "@flow-state-dev/client";
@@ -97,6 +97,40 @@ export async function readSessionItems(client: Client, sessionId: string): Promi
     fail(error);
   }
   return { items: items.sort(compareItemOrder), truncated: true };
+}
+
+/** Where {@link followSessionItems} reports to. */
+export type SessionItemsFollower = {
+  /** The session's items now, oldest first: the first read, then again each time the stream brings one. */
+  onRead(read: SessionItems): void;
+  /** The first read failed. Said only until one succeeds: a lapse after that keeps what was read. */
+  onFailure(failure: Failure): void;
+};
+
+/**
+ * Follow a session's stored items, through the client's `sessionFeed`: its
+ * newest items once, then each finished item from the session stream, which
+ * the bus wakes on another process's write and which reads only what changed
+ * where the bus can't cross. Nothing is read on a clock, and a reply costs no
+ * more reads however long it is. `truncated` says the session holds items
+ * older than the first one read. Returns the stop.
+ */
+export function followSessionItems(client: Pick<Client, "sessions">, sessionId: string, to: SessionItemsFollower): () => void {
+  const feed = sessionFeed(client, sessionId);
+  let last: readonly OutputItem[] | undefined;
+  let read = false;
+  const stop = feed.subscribe(({ items, hasEarlier, state, error }) => {
+    if (!read && error !== null) to.onFailure(describeFailure(error));
+    // Nothing until the history lands, and a change of connection state alone moves nothing.
+    if ((items.length === 0 && state === "connecting") || items === last) return;
+    last = items;
+    read = true;
+    to.onRead({ items: [...items], truncated: hasEarlier });
+  });
+  return () => {
+    stop();
+    feed.close();
+  };
 }
 
 /** Where a live request stream reports to. */
