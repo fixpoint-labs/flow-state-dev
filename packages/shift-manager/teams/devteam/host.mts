@@ -422,6 +422,13 @@ export interface OpenLabOptions {
   /** Wall-clock budget for one harness run. Default 60s. */
   runTimeoutMs?: number;
   /**
+   * The coding agent {@link harness} runs, by the name a user calls it
+   * ("Claude Code", "Cursor"). Said in the description of each worker the tree
+   * declares on the `coder` flow, which is how the Shift Coordinator reads what
+   * "have Cursor do it" maps to. Absent, no description names one.
+   */
+  coderHarness?: string;
+  /**
    * Stop a running coding run for a user's steer and continue its session
    * with the line (the `coder` worker flow's `stopsOnAbort`). Only for a
    * harness whose abort waits for its process to exit. Default: what the
@@ -852,6 +859,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
           };
     const declared = { ...worker.declared };
     if (Object.hasOwn(overrides, worker.id)) declared.document = overrides[worker.id];
+    if (options.coderHarness !== undefined && declared.flow === CODER_FLOW) {
+      declared.description = `${String(declared.description ?? "").trim()} Runs on ${options.coderHarness}, as every worker on the coder flow here does.`.trim();
+    }
     if (options.withoutProjectTools === true && Array.isArray(declared.tools)) {
       declared.tools = (declared.tools as string[]).filter((name) => !PROJECT_TOOL_NAMES.includes(name));
     }

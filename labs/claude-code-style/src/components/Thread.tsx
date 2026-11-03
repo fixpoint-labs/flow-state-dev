@@ -6,6 +6,7 @@ import { cn } from "../lib/utils";
 import { Composer } from "./Composer";
 import { ConnectionBanner, isFeedStale, STALE_CLASS } from "./flow-state/connection-banner";
 import { JumpToLatestButton } from "./JumpToLatest";
+import { LoadEarlier } from "./LoadEarlier";
 import { Entry } from "./Entry";
 import { ThreadCard } from "./ThreadCard";
 
@@ -78,6 +79,7 @@ export function Thread({
           </div>
         ) : (
           <div className="mx-auto flex max-w-2xl flex-col gap-3">
+            <LoadEarlier load={view?.loadEarlier} />
             {view?.entries.map((entry) =>
               entry.kind === "thread" ? (
                 <ThreadCard

@@ -915,6 +915,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         ...(post.dispatches.some((dispatch) => dispatch.outcome === "delivered")
           ? {}
           : { none: "the coordinator handed it to no delegate" }),
+        ...(post.dispatches.length === 0 ? { answeredItself: true as const } : {}),
         ...(post.fit === undefined ? {} : { fit: post.fit })
       });
       return {};
