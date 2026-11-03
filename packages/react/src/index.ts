@@ -193,6 +193,11 @@ export {
 export { useDraft, clearDraft, readDraft, saveDraft } from "./hooks/useDraft";
 
 export {
+  useSubmit,
+  type Submit
+} from "./hooks/useSubmit";
+
+export {
   isSendKey,
   isTypingTarget,
   type SendKeyEvent,
