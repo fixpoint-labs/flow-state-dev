@@ -266,19 +266,23 @@ await runGoal(async (failures, tell) => {
       else evidence.push(`a: 0 reads over ${IDLE_MS / 1000} s idle in each of ${idle.length} views`);
     }
 
-    // b · a 200-item reply, then a 2-item one.
+    // b · a 200-item reply, then a 2-item one that takes as long, so the two differ only in items:
+    // how a request's own notices (created, settled) coalesce depends on how far apart they land.
     {
-      const during = async (count: number): Promise<Map<string, number>> => {
+      let longTook = 0;
+      const during = async (count: number, holdMs = 0): Promise<Map<string, number>> => {
         await quiet(views.all);
         const from = new Map(Object.entries(views.reads).map(([name, reads]) => [name, reads().length]));
-        const sent = await writer.flow("desk").send("respond", { message: `reply-${count}`, count }, { sessionId });
+        const startedAt = Date.now();
+        const sent = await writer.flow("desk").send("respond", { message: `reply-${count}`, count, holdMs }, { sessionId });
         await requestDone(on, sent.id);
+        if (holdMs === 0) longTook = Date.now() - startedAt;
         await firstAt(views.shown.smItems, (v) => v.items.some((i) => JSON.stringify(i).includes(`reply-${count} ${count - 1}`)), 0, 5_000);
         await quiet(views.all);
         return new Map(Object.entries(views.reads).map(([name, reads]) => [name, reads().length - from.get(name)!]));
       };
       const long = await during(200);
-      const short = await during(2);
+      const short = await during(2, longTook);
       const requestViews = ["claude-code-style thread (running turn)", "Teammates conversation (answering)", "Teammates divider"];
       tell.over("b:as-short · request views' reads, long reply", requestViews.map((name) => long.get(name)!));
       const off = requestViews.filter((name) => long.get(name) !== short.get(name));

@@ -6,7 +6,7 @@
 **Signal:**
 - `a:within-1s` — after another client sends a slow turn into the watched session, the claude-code-style thread and the Teammates conversation report it running, Shift Manager's conversation shows its reply, and after a pin the pins view shows it, each less than 1000 ms after the write.
 - `a:idle-0-reads` — over a 10 s idle window, each of the five views makes 0 reads.
-- `b:as-short` — during a 200-item reply each request view (thread running turn, Teammates answering, divider) makes the same number of reads as during a 2-item reply, and Shift Manager's conversation makes none.
+- `b:as-short` — during a 200-item reply each request view (thread running turn, Teammates answering, divider) makes the same number of reads as during a 2-item reply that takes as long, and Shift Manager's conversation makes none. The two replies last the same time so they differ only in items: how a request's own notices coalesce depends on how far apart they land.
 - `c:within-poll` — with no crossing bus, the pins view shows a pin within 3 s + 1 s, and the Teammates conversation a turn within 1.5 s + 1 s.
 
 **Anti-game:** Every assertion reads what a view reported or the reads its own fetcher made, never `publish` calls or frames sent. Real sockets on a bound port. Each graded list is floored with `tell.over`.
@@ -24,3 +24,4 @@ Not covered yet: Shift Manager's message log and project entries, the Teammates 
 | 2026-11-03 | fix/FIX-2466-app-polls (pre-push) | n/a | PASS | a: running turn 4 ms, answering 5 ms, Shift Manager reply 119 ms, pin 0 ms; 0 reads over 10 s idle in 5 views · b: request views 2/2/4 reads for 200 items, as for 2; Shift Manager 0 · c: no crossing bus, pins 0 ms, answering 6 ms |
 | 2026-11-03 | fix/FIX-2466-app-polls (pre-push) | n/a | FAIL (expected) | `timer`: `a:idle-0-reads` (7, 4, 7, 14 reads over 10 s idle) |
 | 2026-11-03 | fix/FIX-2466-app-polls (pre-push) | n/a | FAIL (expected) | `every-kind`: `b:as-short` (144, 143, 146 reads for 200 items against 4, 3, 6 for 2) |
+| 2026-11-03 | fix/FIX-2466-app-polls (round 2, pre-push) | n/a | PASS ×4 | Recovery wakes added. One earlier run failed `b:as-short` on timing (divider 6 against 4: the short reply's request notices coalesced); the 2-item reply now lasts as long as the 200-item one. b: 3/3/6 reads for both · controls: `timer` FAIL `a:idle-0-reads` (7, 4, 7, 14); `every-kind` FAIL `b:as-short` (184/184/186 against 5/5/8) |
