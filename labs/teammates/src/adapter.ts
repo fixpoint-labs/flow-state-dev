@@ -8,12 +8,14 @@
  * | `listWorkers`       | the workforce client's `roster()`                                            |
  * | `openConversation`  | `ensureWorkerSession({ worker })`: the worker's default conversation         |
  * | `send`              | the worker's door, `respond`, streamed, so its answer shows as it is written  |
- * | `watchConversation` | the session's items, from its snapshot and then its stream                   |
+ * | `watchConversation` | the session's items, from its snapshot and then its stream, and its        |
+ * |                     | requests (is it answering) on each request notice, via `client.subscribe` |
  * | `watchConnection`   | the same feed's connection state: `live`, `lapsed` once a retry has failed…  |
  * | `answerApproval`    | the request's `answer`: approve or reject a `user_approval` stop             |
  * | `watchTalk`         | the user's message log (`workforceMessages`), as `sendMessage` writes it     |
- * | `watchActivity`     | `listSessionRequests` on the worker's conversation                           |
+ * | `watchActivity`     | `listSessionRequests` on the worker's conversation, on each request notice   |
  * | `watchWindow`       | the last answering request's `historyStart`, and the session's `historySummary` |
+ * |                     | on each request notice and each notice of that resource                      |
  * | `hire`              | the workforce client's `hire`: a row on the user's roster                     |
  * | `editInstructions`  | the workforce client's `edit`, on one of the user's own workers               |
  * | `fire`              | the workforce client's `fire`, on one of the user's own workers               |
@@ -36,7 +38,16 @@
  * The page acts as the user `fsdev dev` hands it (the config's `devtool`
  * block), with the bearer token when there is one, on the server it came from.
  */
-import { createClient, readEveryCollectionPage, type Client, type SessionConnectionState, type SessionRequestSummary } from "@flow-state-dev/client";
+import {
+  createClient,
+  readEveryCollectionPage,
+  topic,
+  type Client,
+  type SessionConnectionState,
+  type SessionRequestSummary,
+  type WireNotice,
+  type WireTopic,
+} from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
@@ -364,6 +375,65 @@ function poll<T>(read: () => Promise<T>, onValue: (value: T) => void, everyMs = 
   };
 }
 
+/**
+ * Read `read` now, and again whenever a notice under `topics` passes `hears`
+ * (FIX-2466), reporting a value only when it changed, as {@link poll} does.
+ * A connect, a reconnect, a tick and a `resync` read too. One read at a time,
+ * and one waiting for any number of notices. Wherever push can miss a change,
+ * `client.subscribe` reads every `everyMs` instead, so the view keeps no timer
+ * of its own. A read still out when the watch stops reports nothing.
+ */
+function onNotice<T>(
+  client: Client,
+  topics: readonly WireTopic[],
+  hears: (notice: WireNotice) => boolean,
+  read: () => Promise<T>,
+  onValue: (value: T) => void,
+  everyMs = POLL_MS,
+): Unsubscribe {
+  let live = true;
+  let last = "";
+  let running = false;
+  let queued = false;
+  const run = async (): Promise<void> => {
+    if (!live) return;
+    if (running) {
+      queued = true;
+      return;
+    }
+    running = true;
+    try {
+      const value = await read();
+      const seen = JSON.stringify(value);
+      if (live && seen !== last) {
+        last = seen;
+        onValue(value);
+      }
+    } catch (error) {
+      console.error("teammates: a read failed", error);
+    }
+    running = false;
+    if (queued) {
+      queued = false;
+      void run();
+    }
+  };
+  const subscription = client.subscribe(topics, {
+    onChange: (notice) => {
+      if (notice === null || notice.kind === "resync" || hears(notice)) void run();
+    },
+    pollIntervalMs: everyMs,
+  });
+  void run();
+  return () => {
+    live = false;
+    subscription.close();
+  };
+}
+
+/** A request notice: one of the session's requests was created, moved or deleted. Never `items`, sent per stored chunk. */
+const isRequest = (notice: WireNotice): boolean => notice.kind === "request";
+
 /** The latest copy of each board row in a conversation's items, oldest filing first. */
 function boardRows(items: readonly Item[]): Map<string, Record<string, any>> {
   const rows = new Map<string, Record<string, any>>();
@@ -629,6 +699,8 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const feeds = sessionFeeds(client);
   /** Each worker's conversation, and the flow it runs on, once opened. */
   const conversations = new Map<string, { sessionId: string; flow: string }>();
+  /** Told each time a conversation opens, so a worker's activity is watched from then. */
+  const conversationOpened = new Set<() => void>();
   const flowOfSession = new Map<string, string>();
   /** The workers, by id, so a line under a worker's name reads as a task's ending. */
   let workerIds = new Set<string>();
@@ -642,6 +714,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     const opened = { sessionId: session.id, flow: session.flowKind };
     conversations.set(worker, opened);
     flowOfSession.set(session.id, session.flowKind);
+    for (const tell of [...conversationOpened]) tell();
     return opened;
   };
 
@@ -701,7 +774,10 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         reuse(toEntries(items, workerIds));
         emit();
       });
-      const stopPoll = poll(
+      const stopPoll = onNotice(
+        client,
+        [topic.session(sessionId)],
+        isRequest,
         () => client.sessions.requests(sessionId, { limit: 20 }),
         (requests) => {
           const answering = requests.filter((r) => !QUIET_ACTIONS.has(r.actionName));
@@ -741,12 +817,23 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       );
     },
     watchActivity(worker, onChange) {
-      return poll(async () => {
+      // A worker that takes tasks only has no conversation: it is idle here. One that has one is
+      // watched from the moment it opens, on its conversation's request notices.
+      let live = true;
+      let stopRead: Unsubscribe | undefined;
+      const follow = () => {
         const known = conversations.get(worker);
-        // A worker that takes tasks only has no conversation: it is busy while a run it was handed is.
-        if (known === undefined) return { running: false, lastActiveAt: 0 };
-        return activityOf(await client.sessions.requests(known.sessionId, { limit: 20 }));
-      }, onChange);
+        if (!live || known === undefined || stopRead !== undefined) return;
+        stopRead = onNotice(client, [topic.session(known.sessionId)], isRequest, async () => activityOf(await client.sessions.requests(known.sessionId, { limit: 20 })), onChange);
+      };
+      if (conversations.has(worker)) follow();
+      else onChange({ running: false, lastActiveAt: 0 });
+      conversationOpened.add(follow);
+      return () => {
+        live = false;
+        conversationOpened.delete(follow);
+        stopRead?.();
+      };
     },
     watchWindow(sessionId, onChange) {
       let items: Item[] = [];
@@ -763,7 +850,11 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         items = next;
         emit();
       });
-      const stopPoll = poll(
+      // The window moves with a turn (a request notice), and the summary's mark with its resource.
+      const stopPoll = onNotice(
+        client,
+        [topic.session(sessionId)],
+        (notice) => isRequest(notice) || (notice.kind === "resource" && notice.topic.resource === HISTORY_SUMMARY),
         async (): Promise<WindowRead> => {
           const requests = await client.sessions.requests(sessionId, { limit: 20 });
           const summary = (await client.sessions.state(sessionId, { includeItems: false })).resources?.session?.[HISTORY_SUMMARY] as
