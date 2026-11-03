@@ -21,8 +21,8 @@ FIX2466_CONTROL=plant node specs/issues/FIX-2466/poc/app-polls/check.mjs   # mus
 or function declaration above it. Every owner must be classified, and every classified owner must
 still be found.
 
-**Result, 2026-11-02** (`main` at 9fd46b6): 161 files scanned, 36 sites under 32 owners: 12 views
-that move, 4 board views (FIX-2429), 4 waits on one request, 10 timers that read nothing, and the
+**Result, 2026-11-02** (`main` at 3dc63e3): 176 files scanned, 41 sites under 34 owners: 12 views
+that move, 4 board views (FIX-2429), 4 waits on one request, 12 timers that read nothing, and the
 2 labs' helpers. The control plants an unclassified owner and exits 1.
 
 **What it found that wasn't known.** Shift Manager's task view re-reads its conversation's board

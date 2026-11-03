@@ -9,6 +9,7 @@ import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
 import { JumpToLatestButton } from "./JumpToLatest";
+import { LoadEarlier } from "./LoadEarlier";
 import { Entry } from "./Entry";
 import { answerIn, type Popup } from "./Popups";
 import { TaskCard } from "./TaskCard";
@@ -179,6 +180,7 @@ export function Conversation({
       ) : null}
       <div ref={feed.ref} data-scroller className="relative flex-1 overflow-y-auto px-6 pt-4 pb-10">
         <div data-column className="mx-auto flex max-w-(--thread-width) flex-col gap-3">
+          <LoadEarlier load={view?.loadEarlier} />
           {entries.length === 0 ? (
             <div className="mt-24 text-center text-sm text-muted-foreground">Say hello to {worker.name}. This is your one conversation with it.</div>
           ) : null}

@@ -1717,8 +1717,9 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   from its own turn. `projectTools` takes the host's `defineProjectBlocks()` and returns
   `listProjects`, `createProject`, `setRepository` and `setBrief` as tools, each under the name a
   `tools:` line spells. `listProjects` adds `forCoding`, a line saying what to do with a coder's
-  task that names no project: file it in the one project with a repository, or ask which one,
-  naming each. `createProject` with a `repository`, and `setRepository`, wait for the user's
+  task that names no project: file it in the one project with a repository, or in the one that
+  fits when every project with a repository shares one (they reach the same code), or else ask
+  which one, naming each. Each listed project carries its `brief`, which is what "fits" reads. `createProject` with a `repository`, and `setRepository`, wait for the user's
   approval (a stock `user_approval`) before the write; Deny writes nothing, and a host without
   durable execution refuses. `setWorkProjectTool` is the `setWorkProject` action's block as a
   tool: the worker puts its own conversation in a project, with the same refusals. Put them in the
