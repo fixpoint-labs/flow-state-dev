@@ -8,7 +8,7 @@
 |---|---|---|
 | **runs a long Claude Code, Codex or Cursor session in Kitchen Sink** | Every turn end and every steered line calls `session.refresh()`, which pages the session's **entire item history** plus the background-work list, only to pick up a few state keys. A completed turn pays the history read twice (the hook's own closing read, then the page's) | A steered line re-reads state only: one read, no items. A completed turn pays the history read once, the hook's closing read. That read is still O(history), so turns still get slower as a session grows until FIX-2408's tail-first reads land; this removes the duplicates, not the growth |
 | **watches a turn's notice while a steered line is the newest request** | `SessionBody` builds its own client and lists 20 requests to find the turn's status, because `latestRequest` names the steer | `session.followedRequest` is the turn's status, read by the hook |
-| **uses background work on the Flow State page** | `BackgroundWorkRefresh` ("Demo debt") pays a full history re-read per turn to see a job the turn filed | The page passes `live: true`, which already re-reads background work as runs start and finish. The component is deleted |
+| **uses background work on the Flow State page** | `BackgroundWorkRefresh` ("Demo debt") pays a full history re-read per turn to see a job the turn filed | **Unchanged in this issue.** The page was to pass `live: true` and drop the component; #4404 did, and #4582 put both back because live mode broke three Kitchen Sink E2E specs. Moving the page to live mode is FIX-2507 |
 | **calls `useSession` anywhere else** | — | `refresh()` is unchanged. A request that ends without completing, or is stopped, gets one state-only read (one that changed resources used to get a full read; it now gets the state read too). No new read on the completed path |
 
 ## The goal, and how we'll know it's met
@@ -38,12 +38,11 @@ flowchart LR
   end
   KS["Kitchen Sink harness-session.tsx"] -->|"steer taken"| R
   KS -->|"turn status"| F
-  P["Kitchen Sink flow-state page"] -->|"live: true"| L["background work re-read on run change (exists)"]
 ```
 
 **How we verify.**
 
-- **Hook unit tests (new), `packages/react/test/useSession-state-reread.test.tsx`**, against the
+- **Hook unit tests (new), `packages/react/test/useSession-state-reread.test.ts`**, against the
   scripted fetch the other `useSession` tests use:
   - `refresh({ items: false })` makes exactly one `GET .../state` with `include_items=false`,
     one detail read and one background-work read (the issue's "state and child sessions"; a
@@ -69,7 +68,8 @@ flowchart LR
 - **Real host (new), `packages/node/test/state-reread.test.ts`.** A plain `serve()` flow whose
   action writes state and then fails: the `include_items=false` read holds what it wrote and no
   items, and the status route says when it ended. Its red state: the route copying only
-  `completedAtMs` (a failed record holds `failedAtMs`), which this slice fixes in one line.
+  `completedAtMs` (a failed record holds `failedAtMs`). That one-line route fix shipped with
+  FIX-2413 (#4418) before this slice was built, so this test pins it rather than makes it.
   The Kitchen Sink page itself needs a coding harness for a real turn, so its check stays the
   page test against a stubbed hook.
 
@@ -80,16 +80,16 @@ flowchart LR
 | `useSession.refresh()` = `refreshSnapshot()` + `refreshChildSessions()`; the snapshot pages every item when `items` is on | **Extends:** takes `{ items?: boolean }`. `items: false` reads the state endpoint once with `includeItems: false` and merges state only. Default unchanged |
 | `applySnapshot`, one guard over state and items together (FIX-1618) | **Splits** it into a state half and an items half, each with one guard. A full read applies both; a state-only read applies the state half only, so it never touches the items or their stop records. The state half puts back the live state and resource changes that arrived while its read was out |
 | The terminal branch of the request stream: full snapshot on `completed`, and on any other end that changed resources | **Changes:** `completed` keeps the full read, because the view's own stream can run ahead of what is kept and the closing read settles those items. Every other end, resource changes included (the state read carries resources), and a stop, makes a state-only read |
-| `GET .../requests/:id/status` copies `completedAtMs` only; a failed record holds `failedAtMs` | **Fixes** in one line: it reports either as `completedAtMs` |
+| `GET .../requests/:id/status` copies `completedAtMs` only; a failed record holds `failedAtMs` | **Relies on** FIX-2413's fix (#4418), which reports any terminal time as `completedAtMs`. No engine change here |
 | `latestRequest` (one `requests({ limit: 1 })` read at mount and each end) | **Kept.** `followedRequest` reuses that read when the followed request is the newest |
 | `GET /:flowKind/requests/:requestId/status` and `flow.request(id).status()` | **Builds on** for a followed request that isn't the newest |
-| `useSession({ live: true })` re-reading background work on each run change | **Builds on:** the Flow State page opts in and drops `BackgroundWorkRefresh` |
+| `useSession({ live: true })` re-reading background work on each run change | **Not used here.** The Flow State page stays off live mode and keeps `BackgroundWorkRefresh` (#4582); FIX-2507 moves it |
 | FIX-2374 moving `readPages` and `followSession` into the client | **Stacks on it** (epic build order `2374 → 2410`): this edits the hook beside the code that moves. It does not use `sessionFeed`; the feed carries no session state (epic ER-4 holds: no second feed) |
 
 **Net, for users:** one option on `refresh`, one new field on the view, a state read instead of
-none (or a full read) at a non-completed end; Kitchen Sink loses two effects, its own client in
-`SessionBody`, and the `BackgroundWorkRefresh` component. **For the build:** the
+none (or a full read) at a non-completed end; Kitchen Sink loses its turn-end effect and its own
+client and request list in `SessionBody` (`BackgroundWorkRefresh` stays until FIX-2507). **For the build:** the
 `applySnapshot` split, a small kept list of live changes for reads in flight, and
 `followedRequest`'s three sources (stream, `latestRequest`, status route), read on a change of
-shown request or a stream's end, never per item. **Seam:** the Flow State page edit is two lines in a wave-0/2
-hot file (`flow-state/page.tsx`); it merges in order with that stack.
+shown request or a stream's end, never per item. **Shipped** in #4404 (hook, Kitchen Sink
+`harness-session.tsx`, docs) and #4582 (the Flow State page put back off live mode).
