@@ -1,5 +1,23 @@
 # @flow-state-dev/cursor
 
+## 0.2.0
+
+### Minor Changes
+
+- 151309c: Harness readiness: which coding harnesses can run on this machine, and what to do about one that can't. Core adds the neutral `HarnessReadiness` and `HarnessReadinessCheck`. Each integration ships a check: `checkClaudeCodeReadiness`, `checkCodexReadiness` and `checkCursorReadiness`, each with its sign-in remedy. `@flow-state-dev/harness-manager` adds `harnessReadiness(slots)`, which checks once and re-checks on request. It also adds `harnessReadinessAction` for a read with Re-check, `harnessReadinessCapability` for the coordinator's context, `formatHarnessReadiness` for the start log, and `refusal(harness)` for a coding flow's pre-start gate (FIX-2391).
+
+### Patch Changes
+
+- 05a8905: `@flow-state-dev/cursor` exports `CURSOR_PASS`, the environment pass-list a Cursor run needs, for `env: harnessEnv({ pass: CURSOR_PASS })`, as `CODEX_PASS` and `CLAUDE_CODE_PASS` do for their harnesses (FIX-2390).
+- 0a4bbf2: `claudeCodeAgent` takes `settings`, a settings layer in Claude Code's `settings.json` shape that sits above every source `settingSources` loads. `settingSources: ["project"]` with `settings: { disableAllHooks: true }` loads a trusted repository's `CLAUDE.md` and skills with its hooks off. With `mcpTools` set, `disableClaudeAiConnectors: true` is still merged in. `@flow-state-dev/cursor` exports `CURSOR_PASS`, the environment pass-list a Cursor run needs, for `harnessEnv({ pass: CURSOR_PASS })` (FIX-2421).
+- Updated dependencies [e0daf6e]
+- Updated dependencies [151309c]
+- Updated dependencies [824ce87]
+- Updated dependencies [7d92efe]
+- Updated dependencies [387bee2]
+- Updated dependencies [6c4a3b3]
+  - @flow-state-dev/core@0.4.0
+
 ## 0.1.0
 
 ### Minor Changes

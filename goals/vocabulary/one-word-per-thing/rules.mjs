@@ -6,6 +6,9 @@
  * reader, or FIX-1872's refusal of a worker file naming `handOff`) is not kept here: it carries
  * the `retired-name-refusal` marker on that line, so a reviewer sees it in the diff. It is the
  * marker FIX-1875's sweep uses, so the repository has one spelling for a deliberate old name.
+ *
+ * Collection data is an item, not a row. That rule is COLLECTION_ITEM, not a RETIRED
+ * entry: this sweep reads the whole tree, and the existing names are not swept.
  */
 
 /** The roots the sweep owns. Every tracked file under one is scanned or excluded by name. */
@@ -240,6 +243,39 @@ export const RETIRED = [
     pathName: new RegExp(`(^|/)(${SEAT_MAILBOX_GOAL_NAMES.join("|")})/`)
   }
 ];
+
+/**
+ * Stored collection data is an item, not a row. Not in RETIRED: the sweep reads
+ * every tracked file, and the existing names stay until someone next edits that
+ * file. `scripts/check-retired-terms.mjs` flags a line a change adds. A `type` or
+ * `interface` whose name ends in `Row` counts when the file is a collection
+ * module, the line mentions a collection, or the name contains `Collection`.
+ * Docs prose counts when it calls that data a "collection row", a "collection's
+ * row", or "the row of the collection".
+ *
+ * Say "collection item". The anchor is the public client API:
+ * `CreateCollectionItemOptions`, `CollectionItemHandle`.
+ *
+ * Record stays a verb (`recordHarnessUsage`, a run record). It is not the noun
+ * for collection data. Entry is already taken (inbox entries, flow entries,
+ * `CollectionSnapshotEntry`). It is not the noun for collection data either.
+ *
+ * Core's `OutputItem` and `getItems` are response items: what a run streams back
+ * (a message, a tool result, a status). A collection item is the value a
+ * collection stores. The two share the word "item" and nothing else.
+ *
+ * A real UI table row is exempt: a rendered table, a grid row, a DOM `<tr>`,
+ * a component such as BoardColumns.
+ *
+ * Scope is new code and new docs only.
+ */
+export const COLLECTION_ITEM = {
+  id: "collection-row",
+  say: "collection item",
+  anchor: ["CreateCollectionItemOptions", "CollectionItemHandle"],
+  scope: "added-lines",
+  enforcedBy: "scripts/check-retired-terms.mjs"
+};
 
 /** Tracked files under ROOTS that are deliberately not swept, each with its reason. */
 export const EXCLUDE = [

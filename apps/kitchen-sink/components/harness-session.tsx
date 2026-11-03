@@ -56,6 +56,7 @@ import {
 } from "@/components/flow-state/prompt-input";
 import { RequestGroupRenderer } from "@/components/flow-state/request-group";
 import { Spend } from "@/components/flow-state/spend";
+import { RunChecks } from "@/components/flow-state/run-checks";
 import { PlanRowLine } from "@/components/plan-row";
 import { PullRequestsPanel } from "@/components/pull-requests-panel";
 import { SessionConversationLoading } from "@/components/session-conversation-loading";
@@ -222,6 +223,7 @@ function SessionBody({
           <LineNotes steered={steered} last={lastLine} running={isStreaming} label={label} />
           {notice !== null && <Notice notice={notice} label={label} />}
           {turnRecord !== null && <TurnSpend record={turnRecord} />}
+          {turn !== null && <TurnWork record={state.turns?.[turn.requestId] ?? null} label={label} />}
           <div className="mx-auto max-w-3xl px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 sm:px-4 sm:pb-4">
             <PromptInput onSubmit={handleSubmit}>
               <PromptInputTextarea
@@ -371,6 +373,45 @@ function TurnSpend({ record }: { record: NonNullable<HarnessSessionState["turns"
     </div>
   );
 }
+
+/**
+ * What the host ran around the latest turn: its setup command in the session's
+ * fresh worktree, and its checks once the harness finished. A red check is
+ * information, not a failed turn: the person decides what to say next.
+ */
+function TurnWork({ record, label }: { record: HarnessTurnWork | null; label: string }) {
+  const setup = record?.setup ?? null;
+  const checks = record?.checks ?? null;
+  const shownSetup = setup !== null && setup.state !== "done";
+  if (!shownSetup && (checks === null || checks.length === 0)) return null;
+  return (
+    // Bounded and scrolled: a long failed check's output must never push the composer off the fixed-height page.
+    <div className="mx-auto max-h-[35dvh] max-w-3xl space-y-2 overflow-y-auto px-3 pt-2 sm:px-4" data-testid="turn-work">
+      {setup?.state === "running" && (
+        <p className="rounded-md border px-3 py-2 text-sm text-muted-foreground" data-testid="turn-setup" data-state="running" role="status">
+          Running the setup command in this session&apos;s worktree before {label} starts.
+        </p>
+      )}
+      {setup?.state === "failed" && (
+        <div
+          className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          data-testid="turn-setup"
+          data-state="failed"
+          role="alert"
+        >
+          <p>The setup command failed in this session&apos;s worktree. {label} worked without it, and the next turn runs it again.</p>
+          {setup.tail !== null && setup.tail.trim() !== "" && (
+            <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs">{setup.tail}</pre>
+          )}
+        </div>
+      )}
+      <RunChecks checks={checks} />
+    </div>
+  );
+}
+
+/** The parts of a turn's record {@link TurnWork} reads. */
+type HarnessTurnWork = Pick<NonNullable<HarnessSessionState["turns"]>[string], "setup" | "checks">;
 
 /** The patterns the plan record and its markers are declared under. */
 const PLAN_PATTERN = `${OBSERVED_PLAN}/**`;

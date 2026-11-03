@@ -147,6 +147,26 @@ A live view holds a connection open while it is mounted, and the server reads th
 
 Once the stream is open, a drop the first reconnect recovers from, such as the server's routine close, shows no change. If that reconnect fails, `session.childSessionsStale` turns `true`, and `session.items` stays as it is, with no error, missing what others write. A connection that gets through clears the flag and fills in what was missed. A reconnect is refused when the session is deleted while the view is open, when the reader's access is revoked, or when a new session takes its id. The flag then stays `true` and the view stops hearing other writers. If a new session has taken the id and the reader can open it, the next snapshot the view reads, from `refresh()` for example, moves the view onto that session and clears the flag. Otherwise `refresh()` sets `error` and the flag stays.
 
+### Reading again when something changes: `useSubscription`
+
+For a screen that shows a read other writers change, and that isn't a session's own items, hand the hook the topics it shows and the read it already makes:
+
+```tsx
+import { useSubscription } from "@flow-state-dev/react";
+import { topic } from "@flow-state-dev/client";
+
+const refresh = useCallback(
+  () => fsd.flow(flow).read("listTasks_tasks", {}, { sessionId }).then(setTasks),
+  [sessionId],
+);
+
+useSubscription([topic.session(sessionId)], refresh, { pollIntervalMs: 3000 });
+```
+
+On the Node host the read runs as soon as the change is saved, over a WebSocket; on a host with no push it runs every `pollIntervalMs`. A burst of changes runs it once more after the read in flight finishes, not once per change. The read gets the notice that woke it (`{ topic, kind, origin? }`), or `null` when the screen should read everything again: after a connect or a reconnect, on a timer tick, and when push starts or stops reaching every server process. Act on `kind` when the screen only cares about some changes, and read everything on `null`. Leave `pollIntervalMs` out for no timer. `enabled: false` subscribes nothing.
+
+The hook doesn't read on mount; keep the first read where the screen already makes it. It uses the provider's client, so the provider's `fetcher` signs the socket in. See [`fsd.subscribe`](/docs/api/client#fsdsubscribetopics-options) for which topics a caller hears.
+
 ### Background work
 
 Some flows dispatch a long job to run on its own. The conversation returns straight away and the job carries on in a session of its own, called a *dispatch run*. `session.childSessions` is how you show those runs, one `ChildSessionSummary` per run.
@@ -254,6 +274,19 @@ const { execute, loading, error } = useAction({
   userId: "devuser",
 });
 ```
+
+### `useSubmit` — Buttons That Change Something
+
+For a button whose call may be slow or refused (pin, resolve, create), `useSubmit` holds it while the call runs and keeps the refusal to show beside it:
+
+```tsx
+const resolve = useSubmit(() => api.resolve(taskId));
+
+<button disabled={resolve.busy} onClick={() => void resolve.submit(undefined)}>Resolve</button>;
+{resolve.error ? <p role="alert">Couldn't resolve: {resolve.error}</p> : null}
+```
+
+A second click while the first call runs does nothing, and a failed call never reads as done. It takes any async function; `useAction` is the one tied to a flow action.
 
 ### `useRequestStream` — Direct Stream Access
 

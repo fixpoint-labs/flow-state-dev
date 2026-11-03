@@ -192,6 +192,13 @@ export {
 
 export { useDraft, clearDraft, readDraft, saveDraft } from "./hooks/useDraft";
 
+export { useSubscription, type UseSubscriptionOptions } from "./hooks/useSubscription";
+
+export {
+  useSubmit,
+  type Submit
+} from "./hooks/useSubmit";
+
 export {
   isSendKey,
   isTypingTarget,

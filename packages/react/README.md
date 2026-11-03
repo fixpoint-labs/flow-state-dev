@@ -249,6 +249,26 @@ Fetches the static manifest of public resources for the session's flow. Cached m
 
 Low-level hook for direct action execution without session management.
 
+### `useSubscription(topics, read, options?)`
+
+Runs `read` again when something under `topics` changes, through the provider's
+client and `fsd.subscribe`. One read runs at a time and at most one more waits,
+so a burst of changes is one more read. `read` gets the notice that woke it, or
+`null` when the screen should read everything again: after a connect or a
+reconnect, on a timer tick, and when push starts or stops reaching every server
+process. It also gets `null` when several changes arrived during one read (one
+follow-up read covers them all). It doesn't read on mount.
+
+```tsx
+import { topic } from "@flow-state-dev/client";
+
+useSubscription([topic.session(sessionId)], refresh, { pollIntervalMs: 3000 });
+```
+
+`pollIntervalMs` reads on a timer wherever push can miss a change (a host with
+no push, a socket that is down); omit it for no timer. `enabled: false`
+subscribes nothing. For a session's own items, use `useSession({ live: true })`.
+
 ### `useRequestStream(options)`
 
 Low-level hook for subscribing to a request's SSE stream with reactive item/status views. Message and reasoning text streams in token-by-token.
@@ -421,6 +441,26 @@ Clear the draft only once the send has landed, so a failed send leaves the text 
 - `clearDraft(namespace, id, sent?)`: drop the stored copy without touching what any box shows, for a send the server took while the person kept typing. With `sent`, it drops the copy only if it still holds that text, surrounding whitespace aside.
 - `readDraft(namespace, id)` and `saveDraft(namespace, id, text)`: read or store the stored copy directly, for a send that settles after its box closed.
 - Storage that throws (quota, private mode) keeps the draft in memory only.
+
+### `useSubmit(action)`
+
+Holds a button or form while its call runs, and keeps the refusal to show. Use it for any call that changes something, so a double click sends it once and a failure never looks like it worked.
+
+```tsx
+const pin = useSubmit(() => adapter.pin(taskId));
+return (
+  <>
+    <button disabled={pin.busy} onClick={() => void pin.submit(undefined)}>Pin</button>
+    {pin.error ? <p role="alert">Couldn't pin: {pin.error}</p> : null}
+  </>
+);
+```
+
+- `submit(event?, ...args)`: runs `action(...args)`. Pass a form's submit event to prevent its default. It never throws.
+- `busy`: `true` while the action runs. A call made while one runs does nothing, even before `busy` re-renders.
+- `error`: the last refusal's message, cleared when the action runs again.
+
+It wraps any async call. To send one flow action, use `useAction`.
 
 ### `isSendKey(event, options?)`
 

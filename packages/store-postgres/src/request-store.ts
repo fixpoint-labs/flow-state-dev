@@ -38,8 +38,9 @@ import {
   type SetResult,
   type SubscribeToEventsOptions
 } from "@flow-state-dev/engine";
-import type { Pool, PoolClient } from "pg";
+import type { Pool } from "pg";
 import type { QueryExecutor } from "./types";
+import { openListen, reconnectDelay, type ListenConnection } from "./listen";
 import { createPgRecordStore, nullSafeEqualsClause, type PgCompanionWrite } from "./pg-store";
 
 const DEFAULT_LIVENESS_TIMEOUT_MS = 30_000;
@@ -750,7 +751,8 @@ export function createPostgresRequestStore(
 
 /**
  * `LISTEN flow_events` subscription on a dedicated checkout from
- * `liveTailPool`. Implements the Notifier Pattern: NOTIFYs are signals
+ * `liveTailPool`, opened through the listen helper the change bus shares.
+ * Implements the Notifier Pattern: NOTIFYs are signals
  * only; the dirty-bit promise is resolved on each notification, and the
  * drain loop reads `getEvents(id, lastSeen)` once per cycle so N
  * notifications collapse into one query.
@@ -779,35 +781,31 @@ async function* subscribeViaListen(
   let lastTickAt = Date.now();
 
   while (!options.signal?.aborted) {
-    let client: PoolClient | undefined;
+    let connection: ListenConnection | undefined;
     let dirty = false;
     let dirtyResolve: (() => void) | undefined;
     let connectionFailed = false;
 
-    const onNotification = (msg: { channel: string; payload?: string }): void => {
-      if (msg.channel !== NOTIFY_CHANNEL) return;
-      if (msg.payload === undefined) return;
-      const colon = msg.payload.indexOf(":");
-      const id = colon === -1 ? msg.payload : msg.payload.slice(0, colon);
-      if (id !== requestId) return;
-      dirty = true;
-      const resolve = dirtyResolve;
-      dirtyResolve = undefined;
-      resolve?.();
-    };
-
-    const onClientError = (): void => {
-      connectionFailed = true;
+    const wake = (): void => {
       const resolve = dirtyResolve;
       dirtyResolve = undefined;
       resolve?.();
     };
 
     try {
-      client = await pool.connect();
-      client.on("notification", onNotification);
-      client.on("error", onClientError);
-      await client.query(`LISTEN ${NOTIFY_CHANNEL}`);
+      connection = await openListen(pool, NOTIFY_CHANNEL, {
+        notification(payload) {
+          const colon = payload.indexOf(":");
+          const id = colon === -1 ? payload : payload.slice(0, colon);
+          if (id !== requestId) return;
+          dirty = true;
+          wake();
+        },
+        lost() {
+          connectionFailed = true;
+          wake();
+        }
+      });
       attempt = 0;
 
       // Drain anything persisted between the catch-up SELECT and LISTEN setup.
@@ -867,21 +865,8 @@ async function* subscribeViaListen(
     } catch {
       connectionFailed = true;
     } finally {
-      if (client !== undefined) {
-        try {
-          client.removeListener("notification", onNotification);
-          client.removeListener("error", onClientError);
-          if (!connectionFailed) {
-            await client.query(`UNLISTEN ${NOTIFY_CHANNEL}`).catch(() => {});
-          }
-        } catch {
-          // Best-effort cleanup. The release call below decides whether the
-          // client returns to the pool clean or is discarded.
-        }
-        // Pass `true` for a broken connection so `pg` discards it instead of
-        // returning a half-dead client to the pool.
-        client.release(connectionFailed ? true : undefined);
-      }
+      // A broken connection is discarded rather than returned to the pool.
+      await connection?.release(connectionFailed);
     }
 
     if (options.signal?.aborted) return;
@@ -894,10 +879,9 @@ async function* subscribeViaListen(
         `Postgres LISTEN connection unrecoverable after ${RECONNECT_BUDGET} attempts`
       );
     }
-    const backoff = Math.min(
-      RECONNECT_BACKOFF_MIN_MS * 2 ** (attempt - 1),
-      RECONNECT_BACKOFF_MAX_MS
+    await abortableSleep(
+      reconnectDelay(attempt, RECONNECT_BACKOFF_MIN_MS, RECONNECT_BACKOFF_MAX_MS),
+      options.signal
     );
-    await abortableSleep(backoff, options.signal);
   }
 }

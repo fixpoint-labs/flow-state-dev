@@ -1,5 +1,34 @@
 # @flow-state-dev/orchestration
 
+## 0.5.0
+
+### Minor Changes
+
+- 8be6d45: A failed or cancelled task can be retried as the same task (FIX-2383). `TaskCollectionRef.retry(id)` (optional, on both built-in backings) puts an `errored` or `cancelled` row back to `pending`, keeping its id, steers, output and spend, with the grant counted in `retryLedger`; it publishes a `retry_requested` change and declines `disallowed`, `settling`, `dependency-ended` or `retry-budget`. `taskToolActions` adds `retryTask_<suffix>`, an action only: a model's task tools are unchanged. Workforce's conversation board starts a retried row at once, as it does a released one.
+- 3aced5b: Add `taskRowView` to `@flow-state-dev/orchestration/inbox`: one task row as a screen draws it, with a display state that says when the task waits on the user, what it asks, and its spend, harness and times (FIX-2379).
+- ddf60c8: `taskSpendView` gains `costUsd`: the sum of the charges vendors reported for the task, or `null` when none did (a subscription run reports none). `requestSpendView` reads one request's spend the same way. `harnessSessionFlow` records what each turn spent on its turn record (`spend`, in `taskSpendView`'s shape, and `endedAt`), hands harnesses an `onUsage` feed that records subscription windows in the user's usage record, and carries a `harnessUsage` action that reads it, with optional `usageReaders` (FIX-2398).
+
+### Patch Changes
+
+- 6c4a3b3: A conversation's line about a task now says which task it is, as data, so an app reads it without parsing the words (FIX-2378).
+
+  - `ctx.emit.message(text, { metadata })` attaches `metadata` to the message item. Clients read it; the model never sees it. `EmitMessageOptions` is exported from core.
+  - Orchestration adds `noticeMetadata(notice, task)` and `parseNotice(item)` beside `noticeText`. `parseNotice` returns the task, its ending, title and what came back, and still reads lines stored before this from their words.
+  - Workforce marks every task line it emits, and a delegate's answer carries the worker and the task it answered. Read it with `delegateAnswerOf(item)`, from the root or `./browser`.
+
+- Updated dependencies [e0daf6e]
+- Updated dependencies [b9e6dd0]
+- Updated dependencies [151309c]
+- Updated dependencies [824ce87]
+- Updated dependencies [29579d4]
+- Updated dependencies [147d923]
+- Updated dependencies [0554e0b]
+- Updated dependencies [7d92efe]
+- Updated dependencies [387bee2]
+- Updated dependencies [6c4a3b3]
+  - @flow-state-dev/core@0.4.0
+  - @flow-state-dev/client@0.4.0
+
 ## 0.4.0
 
 ### Minor Changes

@@ -15,18 +15,12 @@ import type {
   RequestStatus,
   RequestStatusEvent,
   RequestStreamEvent,
-  ResourceContentCreatedEvent,
-  ResourceContentDeletedEvent,
-  ResourceContentUpdatedEvent,
-  ScopeStateChangedEvent,
   SessionItemEvent,
   SessionMetadataChangedEvent,
   SessionRunsChangedEvent,
-  SessionStreamEvent,
-  UserDebugEvent,
-  UserResourceChangedEvent,
-  UserStreamEvent
+  SessionStreamEvent
 } from "@flow-state-dev/core/items";
+import type { PushCapability } from "@flow-state-dev/contracts";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
   ActionInputSchema,
@@ -114,10 +108,17 @@ export type FlowListEntry = {
 export type { ActionInputSchema, ActionFieldSchema, ActionFieldType } from "@flow-state-dev/core/types";
 
 /**
- * Capability flags advertised by the server.
+ * What the server supports, from `GET /capabilities`.
  */
 export type FlowCapabilities = {
+  /** Always `false`: the server serves no user SSE stream. */
   userStream: boolean;
+  /**
+   * The push `client.subscribe` hears change notices on, or `null` when the
+   * server has none (a serverless host). Missing from an older server's
+   * answer, which means none. It only advertises: the mint's answer decides.
+   */
+  push?: PushCapability | null;
 };
 
 /**
@@ -495,14 +496,6 @@ export interface RequestStreamHandle {
 }
 
 /**
- * Handle returned by optional user-stream SSE connections.
- */
-export interface UserStreamHandle {
-  close(): void;
-  readonly lastEventId?: string;
-}
-
-/**
  * Callback set for request-stream SSE events.
  */
 export type RequestSSECallbacks = {
@@ -705,19 +698,5 @@ export type SessionSSECallbacks = {
    */
   onReconnecting?: (event: { attempt: number }) => void;
   /** An event the client could not parse. Connection drops are retried, not reported. */
-  onError?: (error: Error) => void;
-};
-
-/**
- * Callback set for optional user-stream SSE events.
- */
-export type UserSSECallbacks = {
-  onResourceChanged?: (event: UserResourceChangedEvent) => void;
-  onResourceContentUpdated?: (event: ResourceContentUpdatedEvent) => void;
-  onResourceContentCreated?: (event: ResourceContentCreatedEvent) => void;
-  onResourceContentDeleted?: (event: ResourceContentDeletedEvent) => void;
-  onScopeStateChanged?: (event: ScopeStateChangedEvent) => void;
-  onDebug?: (event: UserDebugEvent) => void;
-  onEvent?: (event: UserStreamEvent) => void;
   onError?: (error: Error) => void;
 };

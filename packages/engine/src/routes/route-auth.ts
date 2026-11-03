@@ -230,6 +230,9 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
     // (`test/user-route-scoping.test.ts`), which fails until it has one and
     // then probes it with cross-org, cross-tenant and anonymous callers.
     case "user_stream":
+    // The mint: the guard checks the path's user is the caller, and the
+    // handler checks each topic with its own scope's check (FIX-2428).
+    case "user_stream_mint":
     case "check_interrupted_requests":
     case "list_interrupted_requests":
       return { kind: "user", userId: route.userId };

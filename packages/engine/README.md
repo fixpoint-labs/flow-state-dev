@@ -81,7 +81,7 @@ Shutdown mostly does not write a terminal status on background work's behalf. It
 
 `stores` is a map of named profiles. A profile maps capability slots (typed containers for a category of storage) to adapters. The required slot is `primary` — the catch-all state store for sessions, requests, users, orgs, active requests, checkpoints, content, and traces. The `blobs`, `queue`, and `scheduler` slots are declared but forward-compatible; no backing store ships for them yet.
 
-The `bus` slot carries change notices: every request and session write publishes one on its session's topic, and the session stream wakes on it (see [Change bus](#change-bus)). Leave it out and the primary backs it when the primary's adapter declares `bus`; otherwise the bus is in memory and reaches this process only. An adapter named in the `bus` slot that doesn't declare it fails at `ready()`.
+The `bus` slot carries change notices: every request and session write publishes one on its session's topic, and the session stream wakes on it (see [Change bus](#change-bus)). Leave it out and the primary backs it when the primary's adapter declares `bus`, as `postgresStores` does (its bus crosses processes over `LISTEN`/`NOTIFY`); otherwise the bus is in memory and reaches this process only. An adapter named in the `bus` slot that doesn't declare it fails at `ready()`.
 
 ```ts
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
@@ -675,6 +675,23 @@ in-memory one) and wraps its request and session stores so every write
 publishes. A host that writes to the stores past those entries calls it too,
 and writes through the registry it returns. It is idempotent: every entry gets
 the same wrapped stores.
+
+**Push delivery** carries these notices to a browser. A host that
+serves the socket calls `enablePushDelivery(router, { secret? })`: the router
+then reports `push: { transport: "websocket" }` in `GET /capabilities` and
+answers `POST /users/:userId/stream`, which runs each topic the caller asks for
+through the read check its scope uses and signs a 30-second ticket for the ones
+it grants. The host hands each socket that opens on `/users/:userId/stream` to
+`delivery.openSocket(userId, { send, close })` and moves text frames to the
+returned session's `receive`. The session accepts topics only from a ticket for
+that user, and closes the socket after an hour. It answers each accepted ticket
+with `{ type: "subscribed" }` once the ticket's topics are heard, so a client reads
+after that point and misses nothing. After the first ticket, and each time the
+bus's `crossesProcesses` changes, it sends `{ type: "crossing", crosses }`:
+whether notices from other processes reach this socket. A client keeps reading on
+its timer until it hears `crosses: true`.
+`serve()` in `@flow-state-dev/node` does all of this; `secret` defaults to a
+random key per router.
 
 ## Store list options
 

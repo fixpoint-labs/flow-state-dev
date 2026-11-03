@@ -35,13 +35,15 @@
  *
  * A route that is not built yet is pinned: its owner's call must answer 501 and
  * name no row. Building it breaks the pin, and the pin must then be replaced by
- * a real entry.
+ * a real entry. A route a host serves as a WebSocket upgrade is pinned the same
+ * way to 426: the router itself serves it no rows, and the topics its socket
+ * hears come only from the mint, which has an entry of its own.
  */
 import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "../src";
-import type { StoreRegistry } from "../src";
+import { createFlowApiRouter, createFlowRegistry, createInMemoryStores, enablePushDelivery } from "../src";
+import type { FlowApiRouter, StoreRegistry } from "../src";
 import { listFlowRoutes, matchFlowRoute } from "../src/routes/router";
 import { routeSubject } from "../src/routes/route-auth";
 
@@ -68,12 +70,44 @@ type ProbeEntry = {
   /** Values for path params other than `:userId`, if the pattern has any. */
   params?: Record<string, string>;
   query?: string;
+  /** A JSON body to send, given the row's id. */
+  body?: (rowId: string) => unknown;
+  /** Set the app's router up before the call (turn a host feature on). */
+  prepare?: (router: FlowApiRouter) => void;
 };
 
 /** A route that is not built yet: it must answer 501 and serve nothing. */
 type NotBuiltYet = { notBuiltYet: 501 };
 
-type TableEntry = ProbeEntry | NotBuiltYet;
+/**
+ * A route a host serves as a WebSocket upgrade: through the router it must
+ * answer 426 and serve nothing.
+ */
+type UpgradeOnly = { upgradeOnly: 426 };
+
+type TableEntry = ProbeEntry | NotBuiltYet | UpgradeOnly;
+
+/** A session owned by exactly `owner`, as the push mint checks one. */
+async function seedSession(stores: StoreRegistry, rowId: string, owner: Identity): Promise<void> {
+  const at = Date.now() - 60_000;
+  await stores.session.set(
+    `${owner.tenantId}:${rowId}`,
+    {
+      id: rowId,
+      flowKind: owner.flowId,
+      flowId: owner.flowId,
+      userId: owner.userId,
+      orgId: owner.orgId,
+      tenantId: owner.tenantId,
+      state: {},
+      version: 0,
+      createdAt: at,
+      updatedAt: at,
+      journal: []
+    },
+    "any"
+  );
+}
 
 /**
  * An in-flight request whose heartbeat stopped long ago: a request record in
@@ -185,7 +219,20 @@ const USER_ROUTE_SCOPING: Record<string, TableEntry> = {
         (entry) => entry.requestId === rowId
       ) ?? false
   },
-  user_stream: { notBuiltYet: 501 }
+  user_stream: { upgradeOnly: 426 },
+  user_stream_mint: {
+    // The push mint (FIX-2428): a row is reached when the answer grants its
+    // session's topic, which the socket would then hear.
+    seed: seedSession,
+    body: (rowId) => ({ topics: [{ scope: "session", id: rowId }] }),
+    prepare: (router) => {
+      enablePushDelivery(router, { secret: "scoping-test" });
+    },
+    saw: async ({ body }, rowId) =>
+      (parseJson(body) as { topics?: Array<{ scope: string; id?: string }> } | undefined)?.topics?.some(
+        (topic) => topic.scope === "session" && topic.id === rowId
+      ) ?? false
+  }
 };
 
 // ─── The apps and callers the harness probes with ───────────────────────────
@@ -332,15 +379,22 @@ const userRoutes = classifiedRoutes().filter((route) => route.subject === "user"
 async function callRoute(
   app: App,
   route: { method: string; pattern: string },
-  entry: { params?: Record<string, string>; query?: string },
+  entry: Pick<ProbeEntry, "params" | "query" | "body" | "prepare">,
   userId: string,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  rowId = ""
 ): Promise<Observed> {
   const path = samplePath(route.pattern, { ...entry.params, userId }).split("/").filter(Boolean);
   const method = route.method as "GET" | "POST" | "PATCH" | "DELETE";
   const query = entry.query === undefined ? "" : `?${entry.query}`;
+  entry.prepare?.(app.router);
+  const body = entry.body?.(rowId);
   const response = await app.router[method](
-    new Request(`http://localhost/api/flows/${path.join("/")}${query}`, { method, headers }),
+    new Request(`http://localhost/api/flows/${path.join("/")}${query}`, {
+      method,
+      headers: body === undefined ? headers : { ...headers, "content-type": "application/json" },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) })
+    }),
     { params: { path } }
   );
   return { status: response.status, body: await response.text(), stores: app.stores };
@@ -399,6 +453,19 @@ describe("user-route scoping · stage 2: no caller reaches a row outside their s
       continue;
     }
 
+    if ("upgradeOnly" in entry) {
+      describe(label, () => {
+        it("is a WebSocket upgrade: through the router the owner's call answers 426 and names no row", async () => {
+          const app = hostResolverApp();
+          await seedStaleInFlight(app.stores, "owners-row", OWNER);
+          const observed = await callRoute(app, route, {}, OWNER.userId, OWNER_HEADERS);
+          expect(observed.status).toBe(426);
+          expect(observed.body).not.toContain("owners-row");
+        });
+      });
+      continue;
+    }
+
     describe(label, () => {
       // Runs first, and alone: an entry whose seed writes nothing, or whose
       // observer never reports a row, fails here instead of passing every axis
@@ -412,7 +479,7 @@ describe("user-route scoping · stage 2: no caller reaches a row outside their s
           await entry.saw({ status: 0, body: "", stores: app.stores }, "owners-row"),
           "the entry's observer reports the row as reached before the route was called"
         ).toBe(false);
-        const observed = await callRoute(app, route, entry, OWNER.userId, OWNER_HEADERS);
+        const observed = await callRoute(app, route, entry, OWNER.userId, OWNER_HEADERS, "owners-row");
         expect(observed.status).toBeLessThan(400);
         expect(
           await entry.saw(observed, "owners-row"),
@@ -428,7 +495,7 @@ describe("user-route scoping · stage 2: no caller reaches a row outside their s
         it(`reaches the caller's own row (positive control for: ${axis.name})`, async () => {
           const app = axis.app();
           await entry.seed(app.stores, "own-row", axis.own);
-          const observed = await callRoute(app, route, entry, axis.own.userId, axis.headers);
+          const observed = await callRoute(app, route, entry, axis.own.userId, axis.headers, "own-row");
           expect(
             await entry.saw(observed, "own-row"),
             "the caller's own row was not reached, so the probe beside this proves nothing"
@@ -442,7 +509,7 @@ describe("user-route scoping · stage 2: no caller reaches a row outside their s
         it(`serves nothing to ${axis.name}`, async () => {
           const app = axis.app();
           await entry.seed(app.stores, "foreign-row", axis.foreign);
-          const observed = await callRoute(app, route, entry, axis.own.userId, axis.headers);
+          const observed = await callRoute(app, route, entry, axis.own.userId, axis.headers, "foreign-row");
           expect(await entry.saw(observed, "foreign-row"), "a row outside the caller's scope was reached").toBe(
             false
           );
@@ -452,7 +519,7 @@ describe("user-route scoping · stage 2: no caller reaches a row outside their s
       it("refuses an anonymous caller when a host resolver is configured, before reading a row", async () => {
         const app = hostResolverApp();
         await entry.seed(app.stores, "owners-row", OWNER);
-        const observed = await callRoute(app, route, entry, OWNER.userId, { [TENANT_HEADER]: "t1" });
+        const observed = await callRoute(app, route, entry, OWNER.userId, { [TENANT_HEADER]: "t1" }, "owners-row");
         expect(observed.status).toBe(401);
         expect(await entry.saw(observed, "owners-row")).toBe(false);
       });

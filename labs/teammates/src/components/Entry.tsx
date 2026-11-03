@@ -3,7 +3,7 @@ import type { ConversationEntry } from "../adapter";
 import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
 import type { AnswerState } from "./Popups";
-import { useSubmit } from "../lib/use-submit";
+import { useSubmit } from "@flow-state-dev/react";
 import { AgentMarkdown } from "./flow-state/message-response";
 
 /**

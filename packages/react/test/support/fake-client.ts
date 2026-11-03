@@ -35,6 +35,7 @@ export type FakeClientParts = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- each test types its own capture
   requestStream?: (options: RequestStreamOptions & { url: string } & Record<string, any>) => RequestStreamHandle;
   sessionStream?: (options: SessionStreamOptions & { sessionId: string }) => SessionStreamHandle;
+  subscribe?: Client["subscribe"];
 };
 
 const closed = { close() {}, lastEventId: undefined } as RequestStreamHandle;
@@ -113,7 +114,7 @@ export function fakeClient(parts: FakeClientParts): Client {
         (parts.resources as Record<string, Fn> | undefined)?.[name] ?? (() => missing(`resources.${name}`))
     }),
     requests: { interrupted: async () => missing("requests.interrupted") },
-    stream: () => ({ close() {}, lastEventId: undefined }),
+    subscribe: (topics, options) => parts.subscribe?.(topics, options) ?? { close() {} },
     transcribe: async () => missing("transcribe")
   };
 }

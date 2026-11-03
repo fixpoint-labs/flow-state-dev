@@ -206,11 +206,35 @@ stream.close();
 `fsd.sessions.stream(sessionId, options)` follows a whole session: every
 finished item any request in it keeps, and a notice whenever its unfinished runs
 change. It reconnects with backoff; a 401, 403, 404, 409 or 501 stops it for
-good (`onStop`). `fsd.stream(callbacks)` follows the user stream, the user's
-resource and scope-state changes.
+good (`onStop`).
 
 Every stream goes through the client's fetcher, so an in-process client streams
 with no web server, and a credentialed one streams with its credentials.
+
+### Hearing changes others make
+
+`fsd.subscribe(topics, { onChange, pollIntervalMs? })` calls `onChange` when
+something under a topic may have changed, so the screen reads again. It says
+when, never what: `onChange` gets the notice (`{ topic, kind, origin? }`), or
+`null` when the screen should read everything again: after a connect or a
+reconnect, on a timer tick, and when push starts or stops reaching every server
+process.
+
+```ts
+import { topic } from "@flow-state-dev/client";
+
+const sub = fsd.subscribe([topic.session(sessionId), topic.org()], {
+  onChange: () => void reload(),
+  pollIntervalMs: 3000, // read on this timer wherever push can miss a change
+});
+sub.close();
+```
+
+On a host with push (`serve()` from `@flow-state-dev/node`), one WebSocket per
+client carries the notices, signed in through the client's fetcher; each topic
+is checked on the server, and one the caller may not read is never heard. On a
+host with no push, `onChange(null)` runs every `pollIntervalMs`. Omit
+`pollIntervalMs` for no timer.
 
 ### Following a session without React
 
@@ -459,7 +483,7 @@ the flow is wired up.
   - `sessions` — `list`, `get`, `requests`, `children`, `state`, `updateMetadata`, `delete`, `stream`, and `debug` (DevTool reads; the server must opt in)
   - `resources` — content, collection items and the manifest (below)
   - `requests.interrupted({ staleThresholdMs? })` — The user's interrupted requests, as request handles
-  - `stream(callbacks)` — The user stream
+  - `subscribe(topics, { onChange, pollIntervalMs? })` — Hear that something under `topics` changed; `close()` stops
   - `transcribe({ audio, mediaType?, language? })` — Transcribe audio on the server
 - `createSSEClientFromResponse({ response, ...callbacks })` — Read an SSE `Response` a `{ stream: true }` call returned
 - `createRequestStreamStore({ keyOf? })` — Headless request-stream accumulator (sorted items, streaming text, status/sequence)
@@ -471,6 +495,7 @@ the flow is wired up.
 - `sendHarnessLine(prompt, running, sender)` — Send a line typed into a harness session: into the running turn when its harness takes it (the flow's steer action, core's `harnessSteering`), else as the next turn. Answers `"taken"`, `"after-this-turn"` or `"turn"`
 - `harnessLines(sendOne?)` — Keep one page's lines in typed order: `send(prompt, running, sender)` waits for the line before, and once a line has gone to run after the running turn, later lines follow it until `turnChanged()`
 - `steerRunningTurn(client, { flowKind, sessionId, prompt, action? })` — Send the flow's steer action on its own, so a session hook's stream stays on the running turn, and read its `{ taken, live }` answer
+- `topic.session(id)`, `topic.user()`, `topic.org()` — The topics `subscribe` takes, each with an optional `{ resource }`
 - `ClientHttpError` — Every failure. `status` is the server's answer, or `0` when the client refused before sending (a missing argument, a request with no session to continue)
 
 ### Resources
@@ -489,7 +514,7 @@ The list/get-state methods require `client.state.read: true` on the collection. 
 
 - `userId` is required: it is the user every call acts as
 - Stream resume supports both `Last-Event-ID` header and `starting_after` query param
-- Request and user streams use a bounded sliding-window event dedup cache (`dedupWindowSize`, default `1000`)
+- Request streams use a bounded sliding-window event dedup cache (`dedupWindowSize`, default `1000`)
 - When both are supplied, `starting_after` takes precedence
 
 ## Scripts

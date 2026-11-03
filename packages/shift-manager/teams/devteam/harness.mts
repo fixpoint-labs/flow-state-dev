@@ -26,25 +26,29 @@
  *   the run itself. Neither takes the project's MCP servers the Lab relays,
  *   nor reports usage windows.
  *
- * One harness serves the whole process; a choice per task is a later change.
+ * That one is the default coder, for every worker naming no harness.
  * Every real run may take {@link RUN_MINUTES_ENV} minutes,
  * {@link DEFAULT_RUN_MINUTES} by default.
  *
  * An unknown value is refused at startup rather than read as the default.
+ * Either way, a start that goes ahead prints one line naming the coder.
+ *
  * Whether Claude Code can run here never stops a start: {@link startHarness}
- * logs it, with what to run when it can't (harness-manager's readiness read
- * over the Claude Code package's check), and the Lab serves the same rows on
- * the projects flow's `harnessReadiness` action. Claude Code is checked
- * whichever coder runs, since the Error Reporter runs on it too. A start
- * prints one line naming the coder.
+ * logs its readiness and what to do when it can't, and the Lab serves the
+ * same rows on the projects flow's `harnessReadiness` action. Claude Code is
+ * checked whichever coder runs, since the Error Reporter runs on it too.
+ *
+ * A `coder` worker that names a harness in its `harness` setting
+ * (`claude-code`, `codex` or `cursor`) runs on that one instead:
+ * {@link workerHarnesses} is the set a hire picks from.
  */
 
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CLAUDE_CODE_PASS, checkClaudeCodeReadiness, claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
-import { CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
 import { harnessEnv } from "@flow-state-dev/core";
+import { CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
 import {
   mcpCredentialsCapability,
   projectWorkspaceCapability,
@@ -124,7 +128,8 @@ export function codexHarness({ cwd, resume, onSession, onActivity }: HarnessFeed
     onSession,
     onActivity,
     client: { env: codexEnv() },
-    thread: { sandboxMode: "workspace-write" },
+    // A project with no repository runs in its files, outside git, which Codex refuses without `skipGitRepoCheck`.
+    thread: { sandboxMode: "workspace-write", skipGitRepoCheck: true },
     name: "codex",
   } as never) as unknown as HarnessBlock;
 }
@@ -137,8 +142,9 @@ const CURSOR_MODEL = "default";
  * which also runs Cursor's runtime in a process of its own. Cursor's SDK
  * refuses a local agent with no model, so it names Cursor's own pick.
  */
-export function cursorHarness({ cwd, resume, onSession, onActivity }: HarnessFeeds): HarnessBlock {
-  return cursorAgent({ cwd, resume, onSession, onActivity, env: cursorEnv(), model: CURSOR_MODEL, name: "cursor" } as never) as unknown as HarnessBlock;
+export function cursorHarness({ cwd, resume, onSession, onActivity, onSteerable }: HarnessFeeds): HarnessBlock {
+  // `onSteerable`: a user's steer reaches the running turn, since Cursor's stop doesn't wait for its process.
+  return cursorAgent({ cwd, resume, onSession, onActivity, onSteerable, env: cursorEnv(), model: CURSOR_MODEL, name: "cursor" } as never) as unknown as HarnessBlock;
 }
 
 /**
@@ -409,3 +415,22 @@ function readStepMs(raw: string | undefined): number {
   return Number(raw.trim());
 }
 
+/**
+ * The harnesses a `coder` worker picks at hire (`settings: { harness: "cursor" }`),
+ * by name. Each is the real agent: a worker named onto one runs on it or its
+ * run fails, never on the default. The coder flow builds no second slot for
+ * the one the profile starts on. Only that one's account is probed at start
+ * ({@link startHarness}); a worker on another harness that isn't signed in
+ * fails its run with that harness's own error.
+ *
+ * @param runMinutes One run's budget in minutes, `process.env[RUN_MINUTES_ENV]`
+ *   by default; {@link DEFAULT_RUN_MINUTES} when it names none.
+ */
+export function workerHarnesses(runMinutes: string | undefined = process.env[RUN_MINUTES_ENV]) {
+  const runTimeoutMs = readRunMinutes(runMinutes) ?? DEFAULT_RUN_MINUTES * 60_000;
+  return {
+    "claude-code": { slot: claudeCodeHarness, runTimeoutMs },
+    codex: { slot: codexHarness, runTimeoutMs },
+    cursor: { slot: cursorHarness, runTimeoutMs },
+  };
+}

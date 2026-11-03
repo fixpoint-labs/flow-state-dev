@@ -14,9 +14,10 @@
  * A store is wrapped once, and every entry that wraps it gets that same
  * wrapper back. The engine keys per-store bookkeeping by store identity (live
  * request attempts, interrupted endings), so two wrappers of one store, one
- * per entry, would split it in two. Wrapping a wrapper returns it; wrapping a
- * store for a second bus adds that bus to the ones its wrapper publishes to.
- * A write made on the raw store, past every entry, publishes nothing.
+ * per entry, would split it in two. Wrapping a wrapper returns it. A wrapped
+ * store publishes to one bus: an entry that brings a different bus for it is
+ * refused, since the views on one of the two would miss its writes. A write
+ * made on the raw store, past every entry, publishes nothing.
  *
  * ## What publishes what
  *
@@ -29,9 +30,12 @@
  * Not `persistEvents`, which feeds the request's own stream. A write that did
  * not land (a version conflict, a status predicate that failed) publishes
  * nothing. A failed publish never fails the write. Notices for one topic and
- * kind raised in the same microtask turn go out as one.
+ * kind raised in the same microtask turn go out as one, at the end of that
+ * turn: the one deferral between a write and the bus.
  */
 import { createInMemoryBus } from "./in-memory-bus";
+import { DEFAULT_RUNTIME_LOGGER } from "../execution/logging";
+import { FlowStateConfigError } from "../errors/flow-error";
 import type { BusTopic, ChangeBus, ChangeNotice } from "./types";
 import type { ChangeKind } from "@flow-state-dev/core";
 import type { RequestRecord, RequestStore, SessionRecord, SessionStore, StoreRegistry } from "../stores/types";
@@ -40,8 +44,8 @@ import { resolveSessionStorageKey, toBareSessionId } from "../stores/scope-keys"
 type Wrapping = {
   /** Raw store → its one wrapper. */
   wrappers: WeakMap<object, object>;
-  /** Wrapper → the buses it publishes to. */
-  buses: WeakMap<object, ChangeBus[]>;
+  /** Wrapper → the bus it publishes to. */
+  buses: WeakMap<object, ChangeBus>;
 };
 
 /**
@@ -70,8 +74,8 @@ export function storeIdentity(store: object): object {
   return RAW.get(store) ?? store;
 }
 
-/** The buses a store's wrapper publishes to: the store's own, or its wrapper's. */
-function busesOf(store: object): ChangeBus[] | undefined {
+/** The bus a store's wrapper publishes to: the store's own, or its wrapper's. */
+function busOf(store: object): ChangeBus | undefined {
   const wrapper = WRAPPING.wrappers.get(store) ?? store;
   return WRAPPING.buses.get(wrapper);
 }
@@ -82,15 +86,16 @@ function busesOf(store: object): ChangeBus[] | undefined {
  * publish to; else a new in-memory bus. Idempotent: a registry this returned
  * comes back unchanged.
  *
+ * @throws FlowStateConfigError when the registry's `bus` differs from the one
+ *   its stores already publish to.
  * @returns The registry with `bus` set and its `request` and `session` stores
  *   wrapped: `stores` itself when nothing changed, otherwise a copy.
  */
 export function withChangeBus<T extends StoreRegistry>(stores: T): T & { bus: ChangeBus } {
-  const bus =
-    stores.bus ?? busesOf(stores.request)?.[0] ?? busesOf(stores.session)?.[0] ?? createInMemoryBus();
+  const bus = stores.bus ?? busOf(stores.request) ?? busOf(stores.session) ?? createInMemoryBus();
   const identities = new Identities(stores.session, stores.request);
-  const session = wrap(stores.session, bus, (buses) => sessionWrites(stores.session, buses, identities));
-  const request = wrap(stores.request, bus, (buses) => requestWrites(stores.request, buses, identities));
+  const session = wrap(stores.session, bus, () => sessionWrites(stores.session, bus, identities));
+  const request = wrap(stores.request, bus, () => requestWrites(stores.request, bus, identities));
   if (stores.bus === bus && session === stores.session && request === stores.request) {
     return stores as T & { bus: ChangeBus };
   }
@@ -111,30 +116,44 @@ function noticeKey(notice: ChangeNotice): string {
   return `${scope}\u0000${tenantId}\u0000${id}\u0000${resource ?? ""}\u0000${notice.kind}`;
 }
 
-/** Queue `notices` for every bus in `buses`. Never throws. */
-function publish(buses: readonly ChangeBus[], notices: readonly ChangeNotice[]): void {
-  for (const bus of buses) {
-    let queued = pending.get(bus);
-    const first = queued === undefined;
-    if (queued === undefined) pending.set(bus, (queued = new Map()));
-    for (const notice of notices) queued.set(noticeKey(notice), notice);
-    if (!first) continue;
-    queueMicrotask(() => {
-      const batch = pending.get(bus);
-      pending.delete(bus);
-      for (const notice of batch?.values() ?? []) {
-        // Best effort (epic ER-6): a notice that fails to go out costs a view
-        // its wake, never the write its change.
-        void Promise.resolve()
-          .then(() => bus.publish(notice))
-          .catch((error: unknown) => {
-            if (warnedPublishFailure) return;
-            warnedPublishFailure = true;
-            console.warn("[flow-state] a change notice failed to publish; later failures are not logged.", error);
-          });
+/** Queue `notices` for `bus`, to go out at the end of this microtask turn. Never throws. */
+function publish(bus: ChangeBus, notices: readonly ChangeNotice[]): void {
+  let queued = pending.get(bus);
+  const first = queued === undefined;
+  if (queued === undefined) pending.set(bus, (queued = new Map()));
+  for (const notice of notices) queued.set(noticeKey(notice), notice);
+  if (!first) return;
+  queueMicrotask(() => {
+    const batch = pending.get(bus);
+    pending.delete(bus);
+    for (const notice of batch?.values() ?? []) {
+      // Best effort (epic ER-6): a notice that fails to go out costs a view
+      // its wake, never the write its change.
+      try {
+        bus.publish(notice).catch(warnPublishFailure);
+      } catch (error) {
+        warnPublishFailure(error);
       }
-    });
-  }
+    }
+  });
+}
+
+function warnPublishFailure(error: unknown): void {
+  if (warnedPublishFailure) return;
+  warnedPublishFailure = true;
+  console.warn("[flow-state] a change notice failed to publish; later failures are not logged.", error);
+}
+
+/**
+ * A notice that could not be put together (the read naming a write's session
+ * failed) costs a view its wake: not worth a warning, as a failed publish is,
+ * but not silent either.
+ */
+function debugUnassembled(error: unknown, write: { store: "request" | "session"; id: string }): void {
+  DEFAULT_RUNTIME_LOGGER.debug?.("[flow-state] a change notice could not be assembled; no view hears this write.", {
+    ...write,
+    error
+  });
 }
 
 /** A session's topic under its tenant. */
@@ -202,7 +221,10 @@ class Identities {
   async session(storageKey: string): Promise<SessionIdentity | undefined> {
     const cached = cacheOf(sessionIdentities, this.sessions).get(storageKey);
     if (cached !== undefined) return cached;
-    const record = await this.sessions.get(storageKey).catch(() => undefined);
+    const record = await this.sessions.get(storageKey).catch((error: unknown) => {
+      debugUnassembled(error, { store: "session", id: storageKey });
+      return undefined;
+    });
     return record === undefined ? undefined : this.rememberSession(storageKey, record);
   }
 
@@ -219,7 +241,10 @@ class Identities {
   async request(id: string): Promise<RequestIdentity | undefined> {
     const cached = cacheOf(requestIdentities, this.requests).get(id);
     if (cached !== undefined) return cached;
-    const record = await this.requests.get(id).catch(() => undefined);
+    const record = await this.requests.get(id).catch((error: unknown) => {
+      debugUnassembled(error, { store: "request", id });
+      return undefined;
+    });
     return record === undefined ? undefined : this.rememberRequest(id, record);
   }
 
@@ -258,19 +283,22 @@ type AnyMethod = (...args: any[]) => any;
 type Writes = Record<string, AnyMethod>;
 
 /**
- * `store`'s one wrapper, publishing to `bus` among others: made on the first
- * call from `writes`, the methods it replaces; every other property reads
- * through to the store.
+ * `store`'s one wrapper, publishing to `bus`: made on the first call from
+ * `writes`, the methods it replaces; every other property reads through to
+ * the store.
  */
-function wrap<S extends object>(store: S, bus: ChangeBus, writes: (buses: ChangeBus[]) => Writes): S {
+function wrap<S extends object>(store: S, bus: ChangeBus, writes: () => Writes): S {
   const known = WRAPPING.buses.has(store) ? store : (WRAPPING.wrappers.get(store) as S | undefined);
   if (known !== undefined) {
-    const buses = WRAPPING.buses.get(known)!;
-    if (!buses.includes(bus)) buses.push(bus);
+    if (WRAPPING.buses.get(known) !== bus) {
+      throw new FlowStateConfigError(
+        "These stores already publish their changes to another bus. A store publishes to one bus: " +
+          "resolve the stores once with the bus you want, and hand that registry to every entry."
+      );
+    }
     return known;
   }
-  const buses = [bus];
-  const replaced = writes(buses);
+  const replaced = writes();
   const isReplaced = (key: string | symbol): key is string =>
     typeof key === "string" && Object.prototype.hasOwnProperty.call(replaced, key);
   // A method assigned on the wrapper (an instrumented call, a test's race)
@@ -292,7 +320,7 @@ function wrap<S extends object>(store: S, bus: ChangeBus, writes: (buses: Change
     }
   });
   WRAPPING.wrappers.set(store, wrapper);
-  WRAPPING.buses.set(wrapper, buses);
+  WRAPPING.buses.set(wrapper, bus);
   RAW.set(wrapper, store);
   return wrapper;
 }
@@ -314,38 +342,38 @@ function present(store: object, writes: Record<string, (original: AnyMethod) => 
 
 const DELTA_METHODS = ["patchField", "incField", "pushToArray", "deleteField"] as const;
 
-function sessionWrites(store: SessionStore, buses: ChangeBus[], identities: Identities): Writes {
+function sessionWrites(store: SessionStore, bus: ChangeBus, identities: Identities): Writes {
   const delta = (original: AnyMethod) => async (id: string, ...rest: unknown[]) => {
     const result = await original(id, ...rest);
     if (result?.ok !== true) return result;
     const identity =
       result.record !== undefined ? identities.rememberSession(id, result.record) : await identities.session(id);
-    if (identity !== undefined) publish(buses, identities.sessionNotices(identity, "run"));
+    if (identity !== undefined) publish(bus, identities.sessionNotices(identity, "run"));
     return result;
   };
 
   return present(store, {
     set: (original) => async (id: string, value: SessionRecord, expected: unknown) => {
       const result = await original(id, value, expected);
-      if (result?.ok === true) publish(buses, identities.sessionNotices(identities.rememberSession(id, value), "run"));
+      if (result?.ok === true) publish(bus, identities.sessionNotices(identities.rememberSession(id, value), "run"));
       return result;
     },
     delete: (original) => async (id: string) => {
       const identity = await identities.session(id);
       await original(id);
       identities.forgetSession(id);
-      if (identity !== undefined) publish(buses, identities.sessionNotices(identity, "run"));
+      if (identity !== undefined) publish(bus, identities.sessionNotices(identity, "run"));
     },
     ...Object.fromEntries(DELTA_METHODS.map((name) => [name, delta]))
   });
 }
 
-function requestWrites(store: RequestStore, buses: ChangeBus[], identities: Identities): Writes {
+function requestWrites(store: RequestStore, bus: ChangeBus, identities: Identities): Writes {
   const after = (identity: RequestIdentity | undefined, kind: ChangeKind): void => {
     void identities
       .requestNotices(identity, kind)
-      .then((notices) => publish(buses, notices))
-      .catch(() => {});
+      .then((notices) => publish(bus, notices))
+      .catch((error: unknown) => debugUnassembled(error, { store: "session", id: identity?.sessionId ?? "" }));
   };
   const delta = (original: AnyMethod) => async (id: string, ...rest: unknown[]) => {
     const result = await original(id, ...rest);
@@ -409,7 +437,7 @@ function requestWrites(store: RequestStore, buses: ChangeBus[], identities: Iden
       void landed.then(async (ok) => {
         if (background.get(requestId) === landed) background.delete(requestId);
         if (ok) after(await identities.request(requestId), "items");
-      }).catch(() => {});
+      }).catch((error: unknown) => debugUnassembled(error, { store: "request", id: requestId }));
     },
     // A failed write rejects the flush a caller waits on, as the store's own
     // does, though the wrapper's background flush heard it first.

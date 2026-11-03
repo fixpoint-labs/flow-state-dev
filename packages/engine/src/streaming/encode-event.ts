@@ -34,11 +34,7 @@ export function createUserEventId(
  * Resolves the canonical stream event id for any stream event.
  */
 export function createStreamEventId(event: StreamEvent): string {
-  if (event.stream === "request") {
-    return createRequestEventId(event.requestId, event.sequence_number);
-  }
-
-  return createUserEventId(event.userId, event.sequence_number);
+  return createRequestEventId(event.requestId, event.sequence_number);
 }
 
 export type EncodeStreamEventInternalOptions = {

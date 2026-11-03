@@ -41,6 +41,16 @@ describe("Shift Coordinator tools presented with .as()", () => {
     expect(tool.inputSchema).toBe(block.inputSchema);
   });
 
+  it("hire's description names a coder's harness as a setting on coder, with the harnesses the Lab runs (FIX-2486)", () => {
+    const installation = createWorkerInstallation({ standardWorkers: [], workerFlows: () => ({}) });
+    // The coordinator once refused "hire Cursor" for want of a flow per harness.
+    expect(shiftCoordinatorRosterTools(installation, ["stub", "cursor"]).hire.description).toMatch(
+      /A `coder` worker's coding harness is its `settings\.harness`, one of: stub, cursor; there is no flow per harness\./,
+    );
+    // With no harness to pick, the description names none.
+    expect(shiftCoordinatorRosterTools(installation).hire.description).not.toMatch(/harness/);
+  });
+
   it("the tools that wait for an approval keep their sequencer", () => {
     const installation = createWorkerInstallation({ standardWorkers: [], workerFlows: () => ({}) });
     const project = projectTools().tools;

@@ -1,6 +1,5 @@
-import { clearDraft, isSendKey, useDraft } from "@flow-state-dev/react";
+import { clearDraft, isSendKey, useDraft, useSubmit } from "@flow-state-dev/react";
 import { useRef, type FormEvent, type KeyboardEvent } from "react";
-import { useSubmit } from "../lib/use-submit";
 
 /**
  * Where you type to the open worker. Enter or Cmd+Enter (Ctrl+Enter) sends,
