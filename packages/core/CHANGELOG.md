@@ -1,5 +1,28 @@
 # @flow-state-dev/core
 
+## 0.4.0
+
+### Minor Changes
+
+- e0daf6e: Stores profiles take a `bus` slot: a change bus that carries notices that something under a session, user or org changed (`ChangeBus`, `ChangeNotice`, `BusTopic`, `createInMemoryBus`). Every request and session write publishes on its session's topic, through `withChangeBus`, which `resolveStores`, `createFlowState`, `runAction`, BullMQ's job processor and `fsdev run` / `chat` apply. The session stream (`GET /sessions/:id/stream`) now reads when a notice wakes it, at most once a second; on a bus that crosses processes it reads nothing while the session is idle. The in-memory bus, the default and the only one that ships today, keeps the once-a-second read as well, so nothing changes for a deployment that sets no `bus`. A `bus` adapter declares `"bus"` in its capabilities and resolves `{ bus }`. `@flow-state-dev/contracts` (re-exported by core) adds `ChangeKind` and the wire topic constructors `topic.session(id)`, `topic.user()` and `topic.org()` (FIX-2426).
+- 151309c: Harness readiness: which coding harnesses can run on this machine, and what to do about one that can't. Core adds the neutral `HarnessReadiness` and `HarnessReadinessCheck`. Each integration ships a check: `checkClaudeCodeReadiness`, `checkCodexReadiness` and `checkCursorReadiness`, each with its sign-in remedy. `@flow-state-dev/harness-manager` adds `harnessReadiness(slots)`, which checks once and re-checks on request. It also adds `harnessReadinessAction` for a read with Re-check, `harnessReadinessCapability` for the coordinator's context, `formatHarnessReadiness` for the start log, and `refusal(harness)` for a coding flow's pre-start gate (FIX-2391).
+- 824ce87: `resourceTools()`'s `readResource` now reads only from a collection that opted in with `llmReadable`, and leaves out the fields the collection names in `secret`. A path into a collection that didn't opt in answers as a path no collection matches. Mark a collection `llmReadable: true` if a model should read its state through this tool (FIX-2436).
+- 7d92efe: A harness run reported without a `runId` gets a `settled_…` id when the request counts it. Request-end hooks, `readRequestSpend`, and a continuation that recovers the run from the log all see that same id. A request's record now carries its harness runs across a suspension or an interruption (`spentHarnessRuns`), as it already carried model calls. The new `readRequestTotalSpend(ctx)` reads everything the request has spent across all its runs, so a record of the whole request, such as a harness turn, reads the same after a resume (FIX-2398).
+
+### Patch Changes
+
+- 387bee2: A durable sequencer saves its state at a suspension, and restores it before the resumed step runs. A `patchState` a step makes before `ctx.suspend()` or `ctx.suspendForUser()` is now kept across a restart, and the re-run of that step reads it. Sequencer-state writes the step made before the pause (including `incState` and `pushState`) apply once: when the re-run reaches the pause, the sequencer's state is set back to what was saved there, and writes after it apply as usual. A request that was already parked before this change resumes as it did before (FIX-2444).
+- 6c4a3b3: A conversation's line about a task now says which task it is, as data, so an app reads it without parsing the words (FIX-2378).
+
+  - `ctx.emit.message(text, { metadata })` attaches `metadata` to the message item. Clients read it; the model never sees it. `EmitMessageOptions` is exported from core.
+  - Orchestration adds `noticeMetadata(notice, task)` and `parseNotice(item)` beside `noticeText`. `parseNotice` returns the task, its ending, title and what came back, and still reads lines stored before this from their words.
+  - Workforce marks every task line it emits, and a delegate's answer carries the worker and the task it answered. Read it with `delegateAnswerOf(item)`, from the root or `./browser`.
+
+- Updated dependencies [e0daf6e]
+- Updated dependencies [387bee2]
+- Updated dependencies [6c4a3b3]
+  - @flow-state-dev/contracts@0.3.0
+
 ## 0.3.0
 
 ### Minor Changes

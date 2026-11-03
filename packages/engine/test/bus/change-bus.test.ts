@@ -3,7 +3,7 @@
  * every request and session write publish on its session's topic once the
  * write can be read.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import {
   createInMemoryBus,
@@ -275,6 +275,46 @@ describe("withChangeBus · every request and session write publishes its session
     await tick();
   });
 
+  it("defers a write's notice once between write and bus, and the bus once per publish", async () => {
+    const { stores, bus } = wired();
+    const heard = hear(bus, sessionTopic("s1"));
+    hear(bus, sessionTopic("s1"));
+    hear(bus, sessionTopic("s1"));
+    await stores.session.set("s1", session("s1"), "any");
+    // The fold's microtask runs as the write resolves; then the in-memory
+    // bus's one, for all three subscribers.
+    let turns = 0;
+    while (heard.length === 0 && turns < 10) {
+      await Promise.resolve();
+      turns += 1;
+    }
+    expect(turns).toBe(1);
+    expect(heard.map((n) => n.kind)).toEqual(["run"]);
+  });
+
+  it("debug-logs a notice it could not name, rather than losing it unheard", async () => {
+    const raw = createInMemoryStores();
+    const stores = withChangeBus({ ...raw, bus: createInMemoryBus() });
+    await raw.request.set("r1", request("r1", "s1"), "any");
+    // The write names only an id; reading whose session it is fails.
+    raw.request.get = () => Promise.reject(new Error("read down"));
+    const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
+    const env = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+    try {
+      await stores.request.setFieldsIfStatus("r1", { abortRequested: true }, ["in_progress"], Date.now());
+      await tick();
+      await tick();
+      expect(debug).toHaveBeenCalledWith(
+        expect.stringContaining("change notice"),
+        expect.objectContaining({ error: expect.any(Error) })
+      );
+    } finally {
+      process.env.NODE_ENV = env;
+      debug.mockRestore();
+    }
+  });
+
   it("folds one topic's notices of a kind raised in one turn into one", async () => {
     const { stores, bus } = wired();
     await stores.request.set("r1", request("r1", "s1"), "any");
@@ -320,6 +360,13 @@ describe("withChangeBus · applied at every entry, once", () => {
     await tick();
     await tick();
     expect(heard.map((n) => n.kind)).toEqual(["request"]);
+  });
+
+  it("refuses a second bus for stores that already publish to one", () => {
+    const raw = createInMemoryStores();
+    withChangeBus({ ...raw, bus: createInMemoryBus() });
+    // One wrapped store publishes to one bus: a second would split who hears it.
+    expect(() => withChangeBus({ ...raw, bus: createInMemoryBus() })).toThrow(/already publish/);
   });
 
   it("makes a raw registry's writes reach the host's bus when they share stores", async () => {

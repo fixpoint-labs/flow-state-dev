@@ -1,7 +1,8 @@
 import type { TaskRow } from "../adapter";
 import { TASK_STATUS } from "../lib/task-status";
 import { cn } from "../lib/utils";
-import { Spend } from "./Spend";
+import { Spend } from "./flow-state/spend";
+import { harnessLabelOf } from "./ThreadStatus";
 
 /*
  * A background task as a list shows it: a full card while it runs or waits,
@@ -30,7 +31,7 @@ export function TaskCard({ task, selected, onOpen }: { task: TaskRow; selected: 
           {task.statusNote ? ` · "${task.statusNote}"` : ""}
         </span>
         {task.assignee ? <span className="block text-xs text-muted-foreground">{task.assignee}</span> : null}
-        <Spend task={task} harness />
+        <Spend spend={task.spend} harnessLabel={harnessLabelOf(task)} />
       </span>
     </button>
   );
@@ -53,7 +54,7 @@ export function TaskDoneRow({ task, selected, onOpen }: { task: TaskRow; selecte
         {task.title}
       </span>
       {task.assignee ? <span className="shrink-0 text-muted-foreground">{task.assignee}</span> : null}
-      <Spend task={task} className="shrink-0" />
+      <Spend spend={task.spend} className="shrink-0" />
     </button>
   );
 }

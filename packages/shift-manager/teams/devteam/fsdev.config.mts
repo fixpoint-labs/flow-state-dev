@@ -30,7 +30,9 @@
  * The harness is picked by `DEVFORCE_LAB_HARNESS` (see `harness.mts`): the
  * lab's scripted run by default (this profile's; the `fsd` profile's is Claude Code), no model, which says what it is doing in the
  * run's session and commits one file so the row settles; or `claude-code`, a
- * real coding agent.
+ * real coding agent. That is the coder a worker naming no harness runs on: a
+ * coder hired with `settings: { harness: "cursor" }` (or `codex`, or
+ * `claude-code`) runs its tasks on that one instead (`workerHarnesses`).
  *
  * - **Each project's own code.** The coder runs on a workspace host whose
  *   source is the project of the workstream a task was filed from: Storefront
@@ -71,10 +73,10 @@ import { readClaudeUsage } from "@flow-state-dev/claude-code/sdk";
 import { readCodexUsage } from "@flow-state-dev/codex";
 import { harnessEnv } from "@flow-state-dev/core";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { checkoutCommandProblem, splitCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
+import { parseCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "./ask.mts";
-import { claudeCodeEnv, errorReporterHarness, startHarness } from "./harness.mts";
+import { claudeCodeEnv, errorReporterHarness, startHarness, workerHarnesses } from "./harness.mts";
 import { CHECKOUT } from "./fsd-checkouts.mts";
 import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
 import { createBareRemote } from "./scratch-repo.mts";
@@ -98,10 +100,9 @@ const ASK_FEATURE = JSON.parse(readFileSync(fileURLToPath(new URL("./ask.json", 
  */
 function setupFrom(value: string | undefined): WorkspaceSetup | undefined {
   if (value === undefined || value.trim() === "") return undefined;
-  const problem = checkoutCommandProblem(value);
-  if (problem !== undefined) throw new Error(`DEVTEAM_SETUP: ${problem}`);
-  const words = splitCheckoutCommand(value);
-  return { command: words as [string, ...string[]] };
+  const parsed = parseCheckoutCommand(value);
+  if ("problem" in parsed) throw new Error(`DEVTEAM_SETUP: ${parsed.problem}`);
+  return { command: parsed.words };
 }
 
 const setup = setupFrom(process.env.DEVTEAM_SETUP);
@@ -202,6 +203,9 @@ const CODEX_USAGE_PASS = [
 const lab = await openLab({
   stores: sqliteStores({ filename: STORE }),
   harness: harness.slot,
+  harnessName: harness.name,
+  // A coder hired with `settings: { harness: "cursor" }` runs on Cursor, not the coder above.
+  harnesses: workerHarnesses(),
   runTimeoutMs: harness.runTimeoutMs,
   coderHarness: harness.label,
   // Runs' places and the host's clones, beside the store; only `file://` remotes are reached.

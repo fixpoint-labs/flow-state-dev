@@ -81,7 +81,7 @@ Shutdown mostly does not write a terminal status on background work's behalf. It
 
 `stores` is a map of named profiles. A profile maps capability slots (typed containers for a category of storage) to adapters. The required slot is `primary` — the catch-all state store for sessions, requests, users, orgs, active requests, checkpoints, content, and traces. The `blobs`, `queue`, and `scheduler` slots are declared but forward-compatible; no backing store ships for them yet.
 
-The `bus` slot carries change notices: every request and session write publishes one on its session's topic, and the session stream wakes on it (see [Change bus](#change-bus)). Leave it out and the primary backs it when the primary's adapter declares `bus`; otherwise the bus is in memory and reaches this process only. An adapter named in the `bus` slot that doesn't declare it fails at `ready()`.
+The `bus` slot carries change notices: every request and session write publishes one on its session's topic, and the session stream wakes on it (see [Change bus](#change-bus)). Leave it out and the primary backs it when the primary's adapter declares `bus`, as `postgresStores` does (its bus crosses processes over `LISTEN`/`NOTIFY`); otherwise the bus is in memory and reaches this process only. An adapter named in the `bus` slot that doesn't declare it fails at `ready()`.
 
 ```ts
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";

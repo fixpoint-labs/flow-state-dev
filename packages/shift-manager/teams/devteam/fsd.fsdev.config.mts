@@ -55,7 +55,7 @@ import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { CHECKOUT, CHECKOUTS } from "./fsd-checkouts.mts";
 import { FSD_DOCUMENTS, FSD_MCP_SERVERS, FSD_PROJECTS, FSD_SKILLS } from "./fsd-projects.mts";
 import { readClaudeUsage } from "@flow-state-dev/claude-code/sdk";
-import { claudeCodeEnv, errorReporterHarness, startHarness } from "./harness.mts";
+import { claudeCodeEnv, errorReporterHarness, startHarness, workerHarnesses } from "./harness.mts";
 import { LAB_TREE, openLab } from "./host.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
 import { EM_FLOW } from "./workforce/flows/workers/em.mts";
@@ -80,6 +80,9 @@ const harness = await startHarness("claude-code");
 export const lab = await openLab({
   stores: sqliteStores({ filename: STORE }),
   harness: harness.slot,
+  harnessName: harness.name,
+  // A coder hired with `settings: { harness: "cursor" }` runs on Cursor, not the coder above.
+  harnesses: workerHarnesses(),
   runTimeoutMs: harness.runTimeoutMs,
   coderHarness: harness.label,
   // Runs' places beside the store, the two projects' worktrees of this checkout

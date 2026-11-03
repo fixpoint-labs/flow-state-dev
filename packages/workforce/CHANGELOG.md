@@ -1,5 +1,43 @@
 # @flow-state-dev/workforce
 
+## 0.4.1
+
+### Patch Changes
+
+- 996332f: A conversation board's browser read now carries each row's `spend`, the stored ledger of what its runs spent. Fold it with `taskRowView` for the row's harness, model, tokens and cost. Shift Manager draws it: the task inspector's _Harness · tokens · cost_ section shows the spend line, and the Tasks COST column shows the vendor's charge, with no figure for a run billed by subscription (FIX-2398).
+- 5bf8332: `listProjects` lists each project's `brief`, and its `forCoding` line no longer makes a coordinator ask which project when every project with a repository shares one: they reach the same code, so it files the task in the one that fits and says which. Shift Manager's coordinator reads "have Cursor (Codex, Claude) do it" as the coding agent its coder runs on, which each coder's description now names, and finds unknown names like "the super app" through the coder instead of asking (FIX-2487).
+- 1a05796: A coordinator's routing record now carries `answeredItself: true` when its own turn answered the post and tried no delegate. Shift Manager draws no "routed" note for such a record, so a reply the coordinator answered itself no longer ends with "the coordinator handed it to no delegate". The note still shows when the post went to a worker, when a worker was tried and missed, and when a round's delegates never answered (FIX-2488).
+- 8be6d45: A failed or cancelled task can be retried as the same task (FIX-2383). `TaskCollectionRef.retry(id)` (optional, on both built-in backings) puts an `errored` or `cancelled` row back to `pending`, keeping its id, steers, output and spend, with the grant counted in `retryLedger`; it publishes a `retry_requested` change and declines `disallowed`, `settling`, `dependency-ended` or `retry-budget`. `taskToolActions` adds `retryTask_<suffix>`, an action only: a model's task tools are unchanged. Workforce's conversation board starts a retried row at once, as it does a released one.
+- 6c4a3b3: A conversation's line about a task now says which task it is, as data, so an app reads it without parsing the words (FIX-2378).
+
+  - `ctx.emit.message(text, { metadata })` attaches `metadata` to the message item. Clients read it; the model never sees it. `EmitMessageOptions` is exported from core.
+  - Orchestration adds `noticeMetadata(notice, task)` and `parseNotice(item)` beside `noticeText`. `parseNotice` returns the task, its ending, title and what came back, and still reads lines stored before this from their words.
+  - Workforce marks every task line it emits, and a delegate's answer carries the worker and the task it answered. Read it with `delegateAnswerOf(item)`, from the root or `./browser`.
+
+- Updated dependencies [e0daf6e]
+- Updated dependencies [b9e6dd0]
+- Updated dependencies [151309c]
+- Updated dependencies [488b203]
+- Updated dependencies [824ce87]
+- Updated dependencies [8be6d45]
+- Updated dependencies [29579d4]
+- Updated dependencies [147d923]
+- Updated dependencies [cc0ab62]
+- Updated dependencies [0554e0b]
+- Updated dependencies [7d92efe]
+- Updated dependencies [387bee2]
+- Updated dependencies [6c4a3b3]
+- Updated dependencies [3aced5b]
+- Updated dependencies [ddf60c8]
+- Updated dependencies [cb395b2]
+- Updated dependencies [cc0ab62]
+  - @flow-state-dev/core@0.4.0
+  - @flow-state-dev/client@0.4.0
+  - @flow-state-dev/workspace@0.3.0
+  - @flow-state-dev/orchestration@0.5.0
+  - @flow-state-dev/scheduled@0.3.1
+  - @flow-state-dev/tools@0.2.1
+
 ## 0.4.0
 
 ### Minor Changes

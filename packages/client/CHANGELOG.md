@@ -1,5 +1,25 @@
 # @flow-state-dev/client
 
+## 0.4.0
+
+### Minor Changes
+
+- 147d923: `@flow-state-dev/client` exports `sessionFeed(client, sessionId)`: one session followed without React, starting from its newest items (`readSessionTail`), with its items, its unfinished runs, and a connection `state` (`connecting`, `live`, `reconnecting`, `lapsed`, `stopped`) that recovers on its own after a dropped connection. `followResponse(response)` keeps a send's answer as it is written. `useSession` now follows sessions through the same code, with no change to what it shows (FIX-2374).
+
+### Patch Changes
+
+- b9e6dd0: Stopping an `interrupted` request that no gate holds now ends it `aborted`: `POST …/abort` answers 204 instead of 409, and the request leaves `requests.interrupted()`. `@flow-state-dev/client` exports `interruptedBySession(requests, { actions })`, which groups what `requests.interrupted()` returned by session, oldest first, keeping only the named actions (FIX-2377).
+- 29579d4: `sessionFeed` can reach a long session's older history. Its snapshot carries `hasEarlier`, true while the session holds items before the first one shown, and `feed.loadEarlier()` adds the page before them, with no gap or duplicate, while live items keep arriving. Draw a _Load earlier_ button from it (FIX-2505).
+- 0554e0b: `@flow-state-dev/client` exports `readSessionTail`, `readSessionEarlier` and `refreshSessionWindow`: read a long session from its newest end, add earlier items on request, and read the window again, so a conversation past a few hundred items still shows its newest reply (FIX-2408).
+- Updated dependencies [e0daf6e]
+- Updated dependencies [151309c]
+- Updated dependencies [824ce87]
+- Updated dependencies [7d92efe]
+- Updated dependencies [387bee2]
+- Updated dependencies [6c4a3b3]
+  - @flow-state-dev/contracts@0.3.0
+  - @flow-state-dev/core@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes

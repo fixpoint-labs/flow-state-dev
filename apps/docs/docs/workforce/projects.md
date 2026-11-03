@@ -831,6 +831,44 @@ claudeCodeAgent({
 
 Pass the same names to `defineProjectBlocks({ mcpServers: ["linear"] })`, so a project can name them. Each user's key is a record at `mcp-credentials/<server>` in their own user scope, `{ value, setAt }`. Write it from a route of your own rather than an action: an action's input is kept on its request record. A browser read of the collection shows `setAt` only. Shift Manager's [Settings](../shift-manager/settings.md) page is one such route.
 
+### The same tools in a conversation
+
+A chat worker can use the project's MCP servers too, in its own turn, without a coding run. When someone tells a project's coordinator "implement ENG-142", it can read that issue from the tracker before it plans anything.
+
+The app installs `projectMcpCapability` on the worker flow. It takes the same server map as `projectMcpTools`:
+
+```ts
+import { defineAgentWorkerFlow, defineCoordinatorFlow, projectMcpCapability } from "@flow-state-dev/workforce";
+
+const linear = projectMcpCapability(
+  { linear: { url: "https://mcp.linear.app/mcp" } },
+  { allow: (_server, tool) => /^(get|list|search)_/.test(tool) }, // read-only
+);
+
+defineCoordinatorFlow({ installation, agent: { uses: [linear] } });
+defineAgentWorkerFlow({ installation, model: "openai/gpt-6-luna", uses: [linear] });
+```
+
+Each worker opts in from its own `WORKER.md`. A worker whose file doesn't pick the preset gets none of the tools:
+
+```yaml
+---
+description: Leads the project's work.
+capabilities:
+  projectMcp: [tools]
+---
+```
+
+The tools are the servers' own, named `mcp__<server>__<tool>`, such as `mcp__linear__get_issue`. `allow(server, tool)` keeps the ones it returns `true` for; without it the worker gets them all. The other options are `operator`, the one user a server's `seedEnv` stands in for while that user has no key stored; `env`, where `seedEnv` is read (default `process.env`); and `idleMs`, how long an unused connection stays open (default five minutes).
+
+The project is the one the conversation works in: a project coordinator's conversation, a workstream's, or one [set to a project](#setting-the-project-a-conversation-works-in). It comes from what the server stored, never from anything the user or the model writes. A conversation with no project gets no tools, and nothing is said.
+
+The key is the stored key of the user the worker is talking to, the same one their coding runs use. Two members of a project each act in the tracker as themselves. A server that user has no key for, one the server no longer offers, or one that can't be reached is left out, and the conversation is told once which server and why. The message never includes an address or a key.
+
+The model never sees the key either. It goes in the connection's headers only, and a failed call's error has the address and key taken out. A connection opens once per project, user and set of keys, is reused across steps and turns, and closes after `idleMs` without use. A changed key or server list applies from the next turn; a turn already under way finishes on the connection it started with.
+
+The capability installs the keys collection on the worker's model block so it can read the key. The model's document tools don't list or read that collection, but core's `resourceTools()` reads any collection by path, so don't give it to the same worker.
+
 ### Checks a project's coding work runs
 
 A project can name the commands that check its code: a typecheck, a test suite, a lint. On a host that turns them on, a coding run on the project counts as done only when they pass in its checkout. A failed command sends the work back for another attempt, and that attempt is handed the command and the end of its output.
@@ -959,4 +997,3 @@ It lists paths and sizes, not file contents.
 It returns that project's files, never another project's. A non-member is refused with `not-a-member`, and an unknown address with `no-such-project`. Neither collection has a browser read: a request for one through the collection route gets a 403.
 
 In a project with a repository, a coding run finds the project's files in `project/`, next to its checkout and never inside it, so they don't show up in `git status`. Whatever the run leaves there is saved back to the project.
-

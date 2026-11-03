@@ -1,4 +1,4 @@
-import { isSendKey, useJumpToLatest } from "@flow-state-dev/react";
+import { isSendKey, useJumpToLatest, useSubmit } from "@flow-state-dev/react";
 import type { FormEvent, KeyboardEvent } from "react";
 import type { LabAdapter, TaskRow } from "../adapter";
 import { useWatch } from "../lib/use-watch";
@@ -7,7 +7,7 @@ import { Entry } from "./Entry";
 import { JumpToLatestButton } from "./JumpToLatest";
 import { LoadEarlier } from "./LoadEarlier";
 import { ReviewCard } from "./ReviewCard";
-import { Spend } from "./Spend";
+import { Spend } from "./flow-state/spend";
 import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus";
 
 /**
@@ -43,19 +43,27 @@ export function ThreadView({
   const words = text.trim();
   const finished = task.status === "completed" || task.status === "cancelled" || task.status === "errored";
 
+  // Resolve and a send share the composer: nothing else goes while one is on its way.
+  const resolve = useSubmit(() => adapter.resolve(sessionId, task.id));
+  const pin = useSubmit(() => (pinned ? adapter.unpin(task.id) : adapter.pin(task.id)));
+  const held = sending || resolve.busy;
+
   // Your words stay in the box until they land; a failed send says why, with Retry.
   const say = (event?: FormEvent) => {
     event?.preventDefault();
+    if (resolve.busy) return;
     void submit((line) => {
       feed.sent();
       return adapter.sayInThread(sessionId, task.id, line);
     });
   };
-  const requestChanges = () =>
+  const requestChanges = () => {
+    if (resolve.busy) return;
     void submit((line) => {
       feed.sent();
       return adapter.requestChanges(sessionId, task.id, line);
     });
+  };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (!isSendKey(event)) return;
     event.preventDefault();
@@ -75,15 +83,21 @@ export function ThreadView({
         <button
           type="button"
           aria-pressed={pinned}
-          onClick={() => void (pinned ? adapter.unpin(task.id) : adapter.pin(task.id))}
-          className="border border-border px-1.5 text-xs hover:bg-accent"
+          disabled={pin.busy}
+          onClick={() => void pin.submit(undefined)}
+          className="border border-border px-1.5 text-xs hover:bg-accent disabled:opacity-40"
         >
           {pinned ? "Unpin" : "Pin"}
         </button>
       </div>
+      {pin.error === undefined ? null : (
+        <p role="alert" className="px-4 pt-2 text-xs text-destructive">
+          Couldn't {pinned ? "unpin" : "pin"}: {pin.error}
+        </p>
+      )}
       {/* Ready for review is said once, by its card above the composer. */}
       {column === "review" ? null : <div className="px-4 pt-2 text-xs text-muted-foreground [overflow-wrap:anywhere]">{statusLine(task)}</div>}
-      <Spend task={task} split className="px-4" />
+      <Spend spend={task.spend} split className="px-4" />
       <div ref={feed.ref} className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pt-2 pb-8 [overflow-wrap:anywhere]">
         <LoadEarlier load={work?.loadEarlier} />
         {work?.entries.map((entry) => <Entry key={entry.id} entry={entry} />)}
@@ -118,18 +132,28 @@ export function ThreadView({
               </button>
             </p>
           ) : null}
+          {resolve.error === undefined ? null : (
+            <p role="alert" className="mt-1 text-xs text-destructive">
+              Couldn't resolve: {resolve.error}
+            </p>
+          )}
           <div className="mt-2 flex justify-end gap-1.5">
             {column === "review" ? (
               <>
-                <button type="button" onClick={() => void adapter.resolve(sessionId, task.id)} className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground">
-                  Resolve
+                <button
+                  type="button"
+                  disabled={held}
+                  onClick={() => void resolve.submit(undefined)}
+                  className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40"
+                >
+                  {resolve.busy ? "Resolving…" : "Resolve"}
                 </button>
-                <button type="button" disabled={!words || sending} onClick={requestChanges} className="border border-border px-2 py-1 text-xs disabled:opacity-40">
+                <button type="button" disabled={!words || held} onClick={requestChanges} className="border border-border px-2 py-1 text-xs disabled:opacity-40">
                   Request changes
                 </button>
               </>
             ) : (
-              <button type="submit" disabled={!words || sending} className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40">
+              <button type="submit" disabled={!words || held} className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40">
                 {question ? "Answer" : "Send"}
               </button>
             )}

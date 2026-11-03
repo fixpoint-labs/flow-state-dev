@@ -1,6 +1,7 @@
+import { useSubmit } from "@flow-state-dev/react";
 import type { LabAdapter, TaskRow } from "../adapter";
 import { cn } from "../lib/utils";
-import { Spend } from "./Spend";
+import { Spend } from "./flow-state/spend";
 import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus";
 
 /**
@@ -9,9 +10,19 @@ import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus
  * *View task*, plus *Answer* when the task waits on you and *Resolve* and
  * *Request changes* when it is ready for review. *Resolve* answers the review
  * from the card; *Answer* and *Request changes* open the task's view, where
- * you type the words.
+ * you type the words. *Resolve* is held while its answer is on its way, and
+ * says so inline when the answer is refused.
  */
-export function ThreadCard({
+export function ThreadCard(props: {
+  adapter: LabAdapter;
+  sessionId: string;
+  task: TaskRow | undefined;
+  onOpen: (taskId: string) => void;
+}) {
+  return props.task ? <LoadedThreadCard {...props} task={props.task} /> : null;
+}
+
+function LoadedThreadCard({
   adapter,
   sessionId,
   task,
@@ -19,10 +30,10 @@ export function ThreadCard({
 }: {
   adapter: LabAdapter;
   sessionId: string;
-  task: TaskRow | undefined;
+  task: TaskRow;
   onOpen: (taskId: string) => void;
 }) {
-  if (!task) return null;
+  const resolve = useSubmit(() => adapter.resolve(sessionId, task.id));
   const column = statusColumn(task);
   const button = "border border-border bg-muted px-2 py-0.5 text-xs hover:bg-accent";
   const primary = "bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground";
@@ -51,7 +62,7 @@ export function ThreadCard({
           <HarnessTag task={task} />
         </div>
         <div className="truncate text-xs text-muted-foreground">{statusLine(task)}</div>
-        <Spend task={task} />
+        <Spend spend={task.spend} />
         {column === "waiting" || column === "review" ? (
           <div className="mt-1.5 flex gap-1.5">
             {column === "waiting" && task.status !== "errored" ? (
@@ -61,8 +72,13 @@ export function ThreadCard({
             ) : null}
             {column === "review" ? (
               <>
-                <button type="button" className={primary} onClick={() => void adapter.resolve(sessionId, task.id)}>
-                  Resolve
+                <button
+                  type="button"
+                  className={cn(primary, "disabled:opacity-40")}
+                  disabled={resolve.busy}
+                  onClick={() => void resolve.submit(undefined)}
+                >
+                  {resolve.busy ? "Resolving…" : "Resolve"}
                 </button>
                 <button type="button" className={button} onClick={() => onOpen(task.id)}>
                   Request changes
@@ -72,6 +88,11 @@ export function ThreadCard({
             {viewThread}
           </div>
         ) : null}
+        {resolve.error === undefined ? null : (
+          <p role="alert" className="mt-1 text-xs text-destructive">
+            Couldn't resolve: {resolve.error}
+          </p>
+        )}
       </div>
       {column === "working" || column === "resolved" ? viewThread : null}
     </section>

@@ -66,6 +66,32 @@ describe("the session feed", () => {
     stopThird();
   });
 
+  it("keeps the feed open for a watch of its connection, and tells that watch once the feed is live", async () => {
+    let closes = 0;
+    const client = {
+      sessions: {
+        state: async () => ({ at: 1, sessionCreatedAt: 1, items: [item(1)], pagination: { hasMore: false, nextOffset: 1 } }),
+        // The stream names the session's runs once it is open: the feed is live from there.
+        stream: (_id: string, { onRuns }: { onRuns?: (event: unknown) => void }) => {
+          setTimeout(() => onRuns?.({ runs: [] }), 0);
+          return { close: () => (closes += 1) };
+        },
+      },
+    } as unknown as Client;
+    const feeds = sessionFeeds(client);
+    const states: string[] = [];
+    const stopState = feeds("s1").watchState((state) => states.push(state));
+    const stopItems = feeds("s1").watch(() => {});
+    await until(() => states.includes("live"));
+    expect(states[0]).toBe("connecting");
+    expect(states).toContain("live");
+    // The conversation closing doesn't close the feed the bar still reads.
+    stopItems();
+    expect(closes).toBe(0);
+    stopState();
+    expect(closes).toBe(1);
+  });
+
   it("shows an answer while it is written, from the send's streamed response", async () => {
     const client = clientOver([], () => {});
     let seen: readonly OutputItem[] = [];

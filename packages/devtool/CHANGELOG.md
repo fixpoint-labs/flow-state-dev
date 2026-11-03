@@ -1,5 +1,32 @@
 # @flow-state-dev/devtool
 
+## 0.3.1
+
+### Patch Changes
+
+- 70f09b5: `@flow-state-dev/devtool/react` exports `readDevtoolUrl()`, which reads the DevTool address `fsdev dev --app` writes into each page (the `fsdev-devtool-url` meta), and `traceHref(devtoolUrl, sessionId?)`, which builds the link that opens one session in the DevTool (FIX-2405).
+- 8469809: Pages served by `fsdev dev --app` can now run under a sub-route behind a proxy. `@flow-state-dev/devtool/react` exports `readBasePath()`, the prefix a page is served under, read from its `<base href>` (`""` at the root of its origin). Shift Manager's pages build with relative asset URLs and keep their links, history entries and API calls under that prefix, so the same build serves at `/` and at a proxy's `/shift-manager/` (FIX-2485).
+- Updated dependencies [e0daf6e]
+- Updated dependencies [b616e7c]
+- Updated dependencies [b9e6dd0]
+- Updated dependencies [1ec64ff]
+- Updated dependencies [151309c]
+- Updated dependencies [9a355b2]
+- Updated dependencies [d3a4d0f]
+- Updated dependencies [824ce87]
+- Updated dependencies [29579d4]
+- Updated dependencies [147d923]
+- Updated dependencies [0554e0b]
+- Updated dependencies [7d92efe]
+- Updated dependencies [387bee2]
+- Updated dependencies [6c4a3b3]
+- Updated dependencies [1fb64c9]
+- Updated dependencies [b340c79]
+- Updated dependencies [9d70b24]
+  - @flow-state-dev/core@0.4.0
+  - @flow-state-dev/react@0.4.0
+  - @flow-state-dev/client@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes

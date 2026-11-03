@@ -8,6 +8,7 @@ import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
+import { ConnectionBanner, isFeedStale, STALE_CLASS } from "./flow-state/connection-banner";
 import { JumpToLatestButton } from "./JumpToLatest";
 import { LoadEarlier } from "./LoadEarlier";
 import { Entry } from "./Entry";
@@ -72,13 +73,16 @@ export function Conversation({
   onToggleTalk: () => void;
 }) {
   const view = useWatch(adapter.watchConversation, sessionId);
+  // What the conversation's feed last heard from the server; a stale one greys the status and stops its clock.
+  const connection = useWatch(adapter.watchConnection, sessionId) ?? "connecting";
+  const stale = isFeedStale(connection);
   const mark = useWatch(adapter.watchWindow, sessionId);
   const talk = useWatch(adapter.watchTalk, worker.id) ?? [];
   const entries = view?.entries ?? [];
   const running = view?.running ?? false;
   const pending = pendingFor(worker.id, talk, entries);
   const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
-  const status = useStatusLine(adapter, worker, sessionId, nameOf, isCoding);
+  const status = useStatusLine(adapter, worker, sessionId, nameOf, isCoding, stale);
   const [panel, setPanel] = useState<"instructions" | "fire">();
   const keep = useRef<HTMLButtonElement>(null);
   const fireButton = useRef<HTMLButtonElement>(null);
@@ -116,7 +120,7 @@ export function Conversation({
         <Avatar look={lookOf(worker.id)} />
         <div className="min-w-0">
           <h1 className="text-sm font-semibold">{worker.name}</h1>
-          <p className="truncate text-xs text-muted-foreground" data-header-status>
+          <p className={cn("truncate text-xs text-muted-foreground", stale && STALE_CLASS)} data-header-status>
             {status}
           </p>
         </div>
@@ -132,7 +136,7 @@ export function Conversation({
           </>
         ) : null}
         {running ? (
-          <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-widest text-info uppercase">
+          <span className={cn("flex items-center gap-1.5 font-mono text-[10px] tracking-widest text-info uppercase", stale && STALE_CLASS)}>
             <span className="size-2 animate-pulse rounded-full bg-info" /> working
           </span>
         ) : null}
@@ -145,6 +149,8 @@ export function Conversation({
           Talk
         </button>
       </header>
+      {/* A stopped feed comes back with the page: every conversation's feed reopens on load. */}
+      <ConnectionBanner feed={{ state: connection }} onRetry={() => window.location.reload()} />
       {panel === "fire" ? (
         <div
           role="group"

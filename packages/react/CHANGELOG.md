@@ -1,5 +1,38 @@
 # @flow-state-dev/react
 
+## 0.4.0
+
+### Minor Changes
+
+- b340c79: `useSession` can re-read a session's state without its item history: `refresh({ items: false })` makes one state read and leaves `items` alone. The hook now also re-reads state when a request it follows ends without completing, and after `abortRequest()`. A new `followedRequest` field gives the status of the request the view shows last, even when a later request was sent beside it (FIX-2410).
+
+### Patch Changes
+
+- b616e7c: `@flow-state-dev/react` exports `isSendKey(event, { enterSends? })`, the send shortcut for a message box: Cmd+Enter (Mac) or Ctrl+Enter (elsewhere) always sends, plain Enter sends only where `enterSends` is set, and Shift+Enter or an Enter that confirms an IME composition never sends (FIX-2365).
+- 1ec64ff: `@flow-state-dev/react` exports `useDraft(namespace, id)`, `clearDraft(namespace, id, sent?)`, `readDraft` and `saveDraft`: a message box's unsent text kept in `localStorage` under `<namespace>:<id>`, so a reload or remount brings it back. Clear it once the send lands, so a failed send keeps the text (FIX-2371).
+- 9a355b2: `@flow-state-dev/react` exports `useInterruptKeys`, `createInterruptKeys` and `interruptChordLabel`, a keyboard stop for long-running work. One Esc never stops anything. A second Esc within 1.5 s does, and so does Cmd/Ctrl+. at once. An Esc typed in a text field, or one already used to close a dialog, never counts (FIX-2413).
+
+  `@flow-state-dev/engine`: the request status route's `completedAtMs` is now set for aborted and failed requests, from the time they stopped. It was set only for requests that completed. A replayed or resumed stream's terminal event for an aborted request is now dated when the request was aborted, not when its record was last written.
+
+  `@flow-state-dev/shift-manager`: one Esc on a task no longer interrupts its run. Press Esc twice or Cmd/Ctrl+. instead. Esc in the composer is the composer's. An interrupted run now says when it stopped.
+
+- d3a4d0f: `@flow-state-dev/react` exports `isTypingTarget(target)`: whether a key landed in an input, a text area, a select or editable text. A page-wide shortcut that is a printable key (`/`, `?`) checks it first, so the key stays text in a message box (FIX-2401).
+- 1fb64c9: `harnessManager({ approveTools: true })` makes a run's tool call that isn't pre-allowed wait for a person's approval as the task's hold, then resumes the same coding session on Allow, Allow for this run, or Deny; claude-code's `onToolApproval` gains a `held` decision, and react's `useApproval` gains `approveWith`, `rejectWith` and `approveOptionsOf` (FIX-2389).
+- 9d70b24: `@flow-state-dev/react` exports `useSubmit(action)`, which holds a button or form while its async call runs (`busy`) and keeps the refusal's message to show (`error`) instead of throwing, so a double click sends a call once and a failure never looks like it worked (FIX-2372).
+- Updated dependencies [e0daf6e]
+- Updated dependencies [b9e6dd0]
+- Updated dependencies [151309c]
+- Updated dependencies [824ce87]
+- Updated dependencies [29579d4]
+- Updated dependencies [147d923]
+- Updated dependencies [0554e0b]
+- Updated dependencies [7d92efe]
+- Updated dependencies [387bee2]
+- Updated dependencies [6c4a3b3]
+  - @flow-state-dev/contracts@0.3.0
+  - @flow-state-dev/core@0.4.0
+  - @flow-state-dev/client@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes

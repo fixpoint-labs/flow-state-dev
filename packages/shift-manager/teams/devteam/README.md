@@ -166,6 +166,12 @@ may take. That is 20 minutes unless `DEVFORCE_LAB_RUN_MINUTES` names another who
 minutes; it also sets the scripted coder's budget, which is otherwise one minute. A value that
 isn't a positive whole number is refused at start.
 
+That is the coder a worker naming no harness runs on. A `coder` worker hired with
+`settings: { harness: "cursor" }` (or `codex`, or `claude-code`) runs its tasks on that harness
+instead (`workerHarnesses` in `harness.mts`), and never falls back to the starting coder. Only the
+starting coder's account is checked at start. A name the Lab doesn't run is refused at hire, with
+the names it does.
+
 The scripted coder (`stub`) pauses 2 s before each of its five steps so you can watch them arrive.
 `DEVFORCE_LAB_STEP_MS` changes the pause; a test that only needs the row to settle sets it to `0`.
 
