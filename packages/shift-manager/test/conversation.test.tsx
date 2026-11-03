@@ -258,6 +258,27 @@ describe("an open conversation", () => {
   });
 });
 
+describe("a draft is kept per conversation", () => {
+  afterEach(() => window.localStorage.clear());
+  const box = async () => {
+    const input = screen.getByTestId("rev-composer-input") as HTMLInputElement;
+    await waitFor(() => expect(input.disabled).toBe(false));
+    return input;
+  };
+
+  it("keeps a session the view names apart from the same worker's other sessions (two projects, one coordinator)", async () => {
+    const a = drawn([session("sess-project-a"), session("sess-project-b")], { session: "sess-project-a" });
+    fireEvent.change(await box(), { target: { value: "for project a only" } });
+    a.unmount();
+
+    const b = drawn([session("sess-project-a"), session("sess-project-b")], { session: "sess-project-b" });
+    expect((await box()).value).toBe("");
+    b.unmount();
+    drawn([session("sess-project-a"), session("sess-project-b")], { session: "sess-project-a" });
+    expect((await box()).value).toBe("for project a only");
+  });
+});
+
 describe("sending", () => {
   it("goes through the one send path, to the worker's door, into the session read", async () => {
     sendTurn.mockResolvedValue(delivered);

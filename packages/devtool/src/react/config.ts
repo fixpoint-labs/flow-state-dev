@@ -71,6 +71,17 @@ export function readBearerToken(): string | undefined {
   return typeof injected === "string" && injected.trim() ? injected : undefined;
 }
 
+/**
+ * The path prefix the page is served under, from its `<base href>`: `""` at the
+ * root of its origin, `"/teammates"` when a proxy serves it at `/teammates/`.
+ * Prefix the API's `baseUrl` and the page's own addresses with it. `""` with no
+ * `window` or no `<base>` element.
+ */
+export function readBasePath(): string {
+  if (!hasWindow() || document.querySelector("base[href]") === null) return "";
+  return new URL(document.baseURI).pathname.replace(/\/+$/, "");
+}
+
 export function writeUserId(userId: string): void {
   if (!hasWindow()) return;
   window.localStorage.setItem(USER_ID_KEY, userId.trim());
@@ -182,4 +193,33 @@ export function readSessionAddress(): string | undefined {
   if (!hasWindow()) return undefined;
   const value = new URLSearchParams(window.location.search).get(SESSION_ADDRESS_PARAM)?.trim();
   return value === undefined || value.length === 0 ? undefined : value;
+}
+
+/** The page meta `fsdev dev --app` writes the DevTool's address into. */
+const DEVTOOL_URL_META = "fsdev-devtool-url";
+
+/**
+ * The DevTool served beside this page, read from the `fsdev-devtool-url` meta
+ * `fsdev dev --app` writes into every page it serves. `undefined` when no
+ * DevTool is served (the meta is absent), during a prerender, or when the meta
+ * holds anything but an http(s) address. Hide a trace link when it is undefined.
+ */
+export function readDevtoolUrl(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const value = document.querySelector<HTMLMetaElement>(`meta[name="${DEVTOOL_URL_META}"]`)?.content.trim();
+  return value !== undefined && /^https?:\/\//.test(value) ? value : undefined;
+}
+
+/**
+ * The DevTool address that opens one session: `devtoolUrl` with
+ * `?session=<id>` ({@link SESSION_ADDRESS_PARAM}), which the DevTool follows to
+ * the session and the flow copy that owns it. With no session, the DevTool
+ * itself. `devtoolUrl` must parse as a URL; {@link readDevtoolUrl} only returns
+ * one that does.
+ */
+export function traceHref(devtoolUrl: string, sessionId?: string): string {
+  if (sessionId === undefined) return devtoolUrl;
+  const url = new URL(devtoolUrl);
+  url.searchParams.set(SESSION_ADDRESS_PARAM, sessionId);
+  return url.toString();
 }

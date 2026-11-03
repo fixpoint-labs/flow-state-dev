@@ -110,6 +110,7 @@ Returns:
 - `detail` — Session metadata
 - `snapshot` — Current state snapshot with clientData
 - `latestRequest` — Most recent request on this session as a `SessionRequestSummary`, regardless of status. `null` until first fetch resolves. Refreshed on mount and on every terminal SSE event so consumers can render recovery affordances.
+- `followedRequest` — The request the view shows last, as `{ id, status, startedAtMs?, completedAtMs?, failedAtMs? }`: the one the newest item in `items` belongs to. A request sent beside it that adds no items, such as a steered line, doesn't replace it, so read a turn's status here when `latestRequest` may name something else. `status` comes from the stream while it runs; when it ends, or after a reload, the record comes from the `latestRequest` read if it is the newest request, else from one status read. `null` until `items` holds an item, and always with `items: false`.
 - `items`, `messages`, `blockOutputs`, `functionCalls` — Filtered item views
 - `isLoading`, `isStreaming`, `error` — Status flags. The hook reads a long history a page at a time and starts over when the pages shift under it, as when a keyed component is emitted again partway through the read; if they still shift after five tries, it sets `error` rather than show part of the history. A snapshot read started after the failure, such as `refresh()`, clears that error when it succeeds, as it clears any error a failed snapshot read left; it leaves an action's error alone.
 - `statusMessage` — Request-scoped status slot mirror. Latest `ctx.emit.status()` value from the in-flight request (empty string when unset; resets on request termination). Pair with a streaming indicator to show "what's happening right now" with a "Working..." fallback.
@@ -125,7 +126,7 @@ Returns:
 - `continueRequest(requestId)` — Continue a crash-interrupted request under its OWN id and stream the re-entry's items back into `session.items`. Unlike `resumeLatestRequest` (which re-dispatches the most recent request via `/retry` under a new id), this targets a specific `requestId` — the caller resolves which interrupted request to continue rather than assuming "latest". POSTs inline with `Accept: text/event-stream`; on a 202 fallback it reconnects via GET rather than re-POSTing.
 - `followRequest(requestId)` — Follow a request of this session that was sent without the hook: stream its items into `session.items` from the start, and make it the request `abortRequest` stops. Closes the stream followed now and sends nothing. Followed again after its stream dropped, it picks up after the last event the view had, so a state change is not applied twice. Returns `false` and follows nothing for a request the person stopped or dismissed, even while the server still lists it as running. For a request sent beside the one the page follows, such as a turn that waits for the running one: send it through the client, and follow it once the running turn ends. `useHarnessLines` does this for a harness session's lines.
 - `getOwnedItems(ownedBy)` — Items owned by a container scope (O(1) indexed lookup)
-- `refresh()` — Manually refetch
+- `refresh(options?)` — Re-read the view: the snapshot with its whole item history, and `childSessions`. `refresh({ items: false })` re-reads state, `detail` and `childSessions` with one state read and no item pages, and leaves `items` as they are. Use it when only state changed, such as after a request sent beside the one the view follows. A state read that lands late never rewinds state a newer read set. The hook re-reads state itself after `abortRequest()` and when a request it follows ends without completing; a completed request gets the full read, which settles its items.
 
 ### `useHarnessLines(session, options?)`
 
@@ -330,7 +331,17 @@ function MyApproval({ item }) {
 }
 ```
 
-Returns `{ approve, reject, pendingAction, isResolving, error, resolved, resolvedStatus, outcome, canApprove, canReject }`. Resolution goes through `onApprove`/`onReject` if given, else the nearest `<SuspensionResolverProvider>` (streaming), else a non-streaming resume through the provider's client.
+Returns `{ approve, reject, approveWith, rejectWith, pendingAction, isResolving, error, resolved, resolvedStatus, outcome, canApprove, canReject }`. Resolution goes through `onApprove`/`onReject` if given, else the nearest `<SuspensionResolverProvider>` (streaming), else a non-streaming resume through the provider's client.
+
+`approve` and `reject` take no argument, so they wire straight to `onClick`. `approveWith(data)` and `rejectWith(data)` send `data` with the answer (handed to `onApprove`/`onReject` too). A stop that offers more than one yes lists them under `data.approveOptions`, each `{ label, data }`; `approveOptionsOf(item)` reads them, and a card draws one button per option:
+
+```tsx
+import { approveOptionsOf, useApproval } from "@flow-state-dev/react";
+
+{approveOptionsOf(item).map((option) => (
+  <button key={option.label} onClick={() => a.approveWith(option.data)}>{option.label}</button>
+))}
+```
 
 ### `<ApprovalRenderer>`
 
@@ -385,6 +396,32 @@ A feed that opens is already at its end on the first frame: on mount, when `rese
 - `jump()`: to the end, smoothly.
 - `sent()`: call when the person sends a line. It jumps to the end and brings the next content that lands below into view, which is the line they sent. What arrives after that stays below.
 
+### `useDraft(namespace, id)`
+
+Keeps what someone has typed in a message box across a reload. The text is stored in `localStorage` under `<namespace>:<id>` and read back when the box opens.
+
+```tsx
+const [draft, setDraft] = useDraft("my-app:composer", sessionId);
+const latest = useRef(draft);
+latest.current = draft;
+const send = async () => {
+  const typed = draft;
+  await sendLine(typed.trim()); // throws when the send fails: the draft stays
+  // The box may have closed and reopened meanwhile: drop the stored copy only if it is still this text.
+  clearDraft("my-app:composer", sessionId, typed);
+  // Clear the box only if nothing was typed while the send ran.
+  if (latest.current === typed) setDraft("");
+};
+return <textarea value={draft} onChange={(e) => setDraft(e.target.value)} />;
+```
+
+Clear the draft only once the send has landed, so a failed send leaves the text where it was. `setDraft("")` drops the stored copy. A setter held from an earlier `id`, such as a slow send that settles after the person switched sessions, stores under that id and leaves the box they're looking at alone. A setter called after the box unmounted does nothing, since the box opened next owns the stored draft.
+
+- `id` may be `undefined` while the box doesn't know where it writes yet. Text typed then is kept in memory and stored once `id` arrives.
+- `clearDraft(namespace, id, sent?)`: drop the stored copy without touching what any box shows, for a send the server took while the person kept typing. With `sent`, it drops the copy only if it still holds that text, surrounding whitespace aside.
+- `readDraft(namespace, id)` and `saveDraft(namespace, id, text)`: read or store the stored copy directly, for a send that settles after its box closed.
+- Storage that throws (quota, private mode) keeps the draft in memory only.
+
 ### `isSendKey(event, options?)`
 
 The send shortcut for a message box. Cmd+Enter on a Mac and Ctrl+Enter elsewhere send from any box, so a person never has to reach for the button.
@@ -401,6 +438,51 @@ The send shortcut for a message box. Cmd+Enter on a Mac and Ctrl+Enter elsewhere
 
 - `enterSends` (default `false`): plain Enter sends too, as in a chat composer. Leave it off in a box for a longer answer, where Enter is a new line.
 - Shift+Enter never sends, and neither does an Enter that confirms an input method's composition (CJK and the like, including Safari's `keyCode` 229).
+
+### `isTypingTarget(target)`
+
+Whether a key landed in something the person types into: an input, a text area, a select, or editable text. A page-wide shortcut that is a printable key checks it first, so `/` or `?` typed into a message box stays text.
+
+```ts
+window.addEventListener("keydown", (event) => {
+  if (event.key === "/" && !isTypingTarget(event.target)) {
+    event.preventDefault();
+    composer.current?.focus();
+  }
+});
+```
+
+### `useInterruptKeys(options)` and `createInterruptKeys(options?)`
+
+The keyboard stop for anything long-running, such as an agent's turn. Esc means "dismiss" everywhere, so one Esc never stops anything. Esc arms, and a second Esc within 1.5 seconds stops. Cmd+. on a Mac, or Ctrl+. elsewhere, stops at once.
+
+```tsx
+const keys = useInterruptKeys({ enabled: running, onInterrupt: () => void stop() });
+
+<div tabIndex={-1} onKeyDown={keys.onKeyDown}>
+  …
+  {keys.armed ? "press Esc again to interrupt" : "esc esc to interrupt"}
+</div>
+```
+
+- `enabled`: whether there is anything to stop. While it is `false`, no key is handled and the gesture disarms.
+- `onInterrupt`: called once for each completed gesture.
+- `windowMs` (default `1500`): how long the first Esc waits for its second.
+- `armed`: `true` while a first Esc waits. Use it for a "press Esc again" hint. It clears itself when the window runs out.
+- `target: "document"`: the hook listens on the document itself, so the keys work wherever focus is. Leave it out and attach `onKeyDown` to the scope that can stop.
+- `onKeyDown`: accepts a React or a DOM keyboard event.
+- Unlike `isSendKey`, this rule has state (the armed first Esc), which is why it comes as a hook.
+
+Some Esc presses never count, and each one also clears an armed first press:
+
+- An Esc typed in a text field (textarea, input, select, contenteditable). The field owns that key. Cmd/Ctrl+. still works there.
+- An Esc whose default is already prevented. A dialog or sheet that closes on Esc should call `event.preventDefault()`, so the press that closed it can't become half of a stop. With `target: "document"`, a dismisser that listens on the document has to use the capture phase, so it runs first.
+- An Esc that ends an input method's composition.
+- An auto-repeat from a held Esc. Holding the key is one press.
+
+`interruptChordLabel()` returns the chord as the platform writes it (`⌘.` or `Ctrl+.`), for a hint or a button title.
+
+`createInterruptKeys` is the same rule without React. Its `press(event)` returns `"interrupt"`, `"armed"`, or `null`.
 
 ## Voice playback
 

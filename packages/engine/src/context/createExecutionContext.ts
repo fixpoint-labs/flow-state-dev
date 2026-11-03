@@ -46,7 +46,7 @@ import type {
 } from "@flow-state-dev/core/items";
 import type { BlockValueInternal, RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
-import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockOutputHint, EmitMessageOptions, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import {
   createScopePersist,
@@ -84,7 +84,7 @@ function waitedByStamp(source: string | undefined, metadata: unknown) {
 import { ensureSessionRecord, refuseReadonlyStateChange } from "./session-birth";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
-import { isTraceObservabilityEnabled, errorDetailsWithCause, estimateTokenCounter, isValidOrgId } from "@flow-state-dev/core";
+import { isTraceObservabilityEnabled, errorDetailsWithCause, estimateTokenCounter, isValidOrgId, buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
 import { cloneValue, getTransientKeys, getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
@@ -286,12 +286,12 @@ type EmissionContext = {
 function createEmitMessage(
   emCtx: EmissionContext
 ): {
-  (text: string, options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }): void;
-  (content: Content[], options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }): void;
+  (text: string, options?: EmitMessageOptions): void;
+  (content: Content[], options?: EmitMessageOptions): void;
 } {
   return function emitMessage(
     textOrContent: string | Content[],
-    options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
+    options?: EmitMessageOptions
   ): void {
     const content: Content[] =
       typeof textOrContent === "string"
@@ -313,7 +313,8 @@ function createEmitMessage(
       itemVisibility: options?.itemVisibility ?? emCtx.itemVisibility,
       agentName: options?.agentName ?? emCtx.agentName,
       role: "assistant",
-      content
+      content,
+      ...(options?.metadata !== undefined ? { metadata: options.metadata } : {})
     };
 
     void emCtx.response.emitItemAdded(item);
@@ -428,7 +429,7 @@ function createEmitMessageAwaited(
   emCtx: EmissionContext
 ): (
   text: string,
-  options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean; role?: "user" | "assistant" }
+  options?: EmitMessageOptions & { role?: "user" | "assistant" }
 ) => Promise<void> {
   return async function emitMessageAwaited(text, options): Promise<void> {
     const itemIndex = emCtx.nextItemIndex();
@@ -446,7 +447,8 @@ function createEmitMessageAwaited(
       itemVisibility: options?.itemVisibility ?? emCtx.itemVisibility,
       agentName: options?.agentName ?? emCtx.agentName,
       role: options?.role ?? "assistant",
-      content: [{ type: "output_text", text }]
+      content: [{ type: "output_text", text }],
+      ...(options?.metadata !== undefined ? { metadata: options.metadata } : {})
     };
     await emCtx.response.emitItemAdded(item);
     await emCtx.response.emitItemDone(item);
@@ -3167,8 +3169,8 @@ export async function createExecutionContext<
   // that run's to hand on, so it is carried rather than recovered.
   const loggedSpend = loggedSpendOf(requestRecord.items ?? [], requestRecord.spentThroughItemIndex ?? -1);
   const requestSpendLedger = interruptedEndingLive
-    ? createRequestSpendLedger(sumSpend(requestRecord.spentByModel ?? {}, loggedSpend.byModel))
-    : createRequestSpendLedger(requestRecord.spentByModel, loggedSpend.byModel, loggedSpend.harnessRuns);
+    ? createRequestSpendLedger(sumSpend(requestRecord.spentByModel ?? {}, loggedSpend.byModel), {}, [], [...(requestRecord.spentHarnessRuns ?? []), ...loggedSpend.harnessRuns])
+    : createRequestSpendLedger(requestRecord.spentByModel, loggedSpend.byModel, loggedSpend.harnessRuns, requestRecord.spentHarnessRuns);
   const requestEndRegistry = createRequestEndRegistry(() => requestSpendLedger.takeSinceLastEnding());
   // How this request resumed (FIX-2129), read when a block asks: the
   // resolution is filled in at the checkpoint read, after this context is built.
@@ -3684,6 +3686,52 @@ export async function createExecutionContext<
       ) as unknown as StateRef<TState>;
     };
 
+    // A state write made before the gate this continuation waits at applies
+    // once (FIX-2444). The resume runs the code up to that gate again (the
+    // waiting block, its connector, a sequencer's own `.map`) on top of the
+    // checkpoint the sequencer wrote at the suspension, which already holds
+    // every write that code made before it stopped. The checkpoint names the
+    // gate it was taken at, so when the re-run reaches that gate the restored
+    // sequencer's state is replaced by the checkpoint: what the re-run wrote
+    // again is dropped, and transient fields (which no checkpoint holds) keep
+    // what the re-run wrote. A checkpoint from an earlier gate (a crash before
+    // the later gate's was saved) settles at that earlier gate, so the writes
+    // between the two, which it lacks, are made once after it. Code that never
+    // reaches the gate (a branch the restored state skips) keeps its writes.
+    // Any other state, such as a handler's own `ctx.self`, is not in the
+    // checkpoint and is left alone.
+    const settleReplayedState = async (gateSuspensionId: string): Promise<void> => {
+      const resumeState = (rootContext as { _resumeState?: { state?: Record<string, unknown>; restored?: Record<string, unknown>; suspensionId?: string; blockInstanceId?: string } })._resumeState;
+      // A checkpoint from a step boundary (one written before checkpoints were
+      // taken at the wait) names no gate and lacks the waiting step's writes:
+      // the re-run's are the only copy, so they stay.
+      if (resumeState?.restored === undefined || resumeState.suspensionId !== gateSuspensionId) return;
+      const restoredId = resumeState.blockInstanceId ?? buildBlockInstanceId(requestRef.current.id, ROOT_BLOCK_PATH, 0);
+      for (let node = parentChain; node !== undefined; node = node.previous) {
+        if (node.parent.instanceId === restoredId && node.parentStateContainer !== undefined) {
+          // Replace, not merge, key by key: a field the checkpoint holds
+          // takes its value there; a field only the restore's schema defaults
+          // filled (one added to the schema later, or one the step removed
+          // before the wait) follows the re-run, present or removed; a field
+          // in neither is something the re-run added, and is dropped.
+          // Transient fields, which no checkpoint holds, follow the re-run.
+          const stateRef = buildStateRef(node);
+          const current = stateRef.state as Record<string, unknown>;
+          const saved = resumeState.state ?? {};
+          const settled: Record<string, unknown> = { ...saved };
+          for (const key of Object.keys(resumeState.restored)) {
+            if (!(key in saved) && key in current) settled[key] = current[key];
+          }
+          for (const key of getTransientKeys(node.parent.stateSchema)) {
+            if (key in current) settled[key] = current[key];
+            else delete settled[key];
+          }
+          await stateRef.setState(settled);
+          return;
+        }
+      }
+    };
+
     const context: ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState> = {
       flow,
       actionName: options.actionName,
@@ -3887,6 +3935,7 @@ export async function createExecutionContext<
           if (consumed < resolved.length) {
             resolvedResumeCursor.set(callerLogicalId, consumed + 1);
             const entry = resolved[consumed];
+            await settleReplayedState(entry.suspensionId);
             // A user's stop replays as the stop, never as an answer
             // (FIX-2129): a crash after its resolution was logged must not
             // read it as approved. The run ends here, as the live stop does.
@@ -3933,6 +3982,7 @@ export async function createExecutionContext<
 
           if (isResolvingGate) {
             resolvedResumeCursor.set(callerLogicalId, position + 1);
+            await settleReplayedState(resumeCtx.suspensionId);
             // A task's run stopped while it waited for a user ends here
             // (FIX-2129, `stopsAtItsGate`): the claim gate ahead of it has
             // read the stop, and no block runs past the gate. The stop is
@@ -4191,15 +4241,21 @@ export async function createExecutionContext<
         // What this block's own harness runs spent also goes on its completed
         // trace, so a continuation after the process died can hand it on (FIX-2145).
         // A run that reports as it goes (FIX-2288) is listed once, at its latest report.
+        // A report with no run id is a settled run of its own, so it is given
+        // an id here: the ledger and the trace then name it alike, and a reader
+        // that recorded it can tell it from another run after a continuation
+        // recovers it from the trace.
         const harnessSpendOfBlock: HarnessRunSpend[] = [];
         (childContext as { [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM] = {
-          reportHarnessRun(run) {
+          reportHarnessRun(report) {
+            const run = report.runId === undefined ? { ...report, runId: generateId("settled") } : report;
             requestSpendLedger.reportHarnessRun(run);
-            const at = run.runId === undefined ? -1 : harnessSpendOfBlock.findIndex((reported) => reported.runId === run.runId);
+            const at = harnessSpendOfBlock.findIndex((reported) => reported.runId === run.runId);
             if (at >= 0) harnessSpendOfBlock.splice(at, 1);
             harnessSpendOfBlock.push({ ...run });
           },
-          pending: () => requestSpendLedger.pending()
+          pending: () => requestSpendLedger.pending(),
+          total: () => requestSpendLedger.total()
         };
         (childContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
         // FIX-663: re-attach the background signal on every scope so nested

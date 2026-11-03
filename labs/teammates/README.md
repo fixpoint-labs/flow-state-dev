@@ -28,6 +28,13 @@ theme on purpose, so it reads as the app it copies.
   a click outside it, and the conversation under it keeps its place.
 - **Right:** Talk, the worker's exchanges with the other workers, grouped by worker, from the
   message log. It closes.
+- **Keys:** ⌘K (Ctrl+K) finds a teammate by its name or role, or opens *Hire a teammate*. Alt+↑
+  and Alt+↓ move to the previous or next teammate. `/` puts the cursor in the composer, and `?`
+  lists every key. Opening a teammate puts the cursor in its composer. Firing a teammate you hired
+  asks first in a row under the header, with *Keep* focused.
+- **The page's address** names the open teammate and an open task popup
+  (`?worker=<id>&session=<id>&task=<id>`), so a reload or a link reopens them, and Back returns
+  to what you had open before. A link to a teammate or task that is gone opens the first teammate.
 
 Workers message each other where you can see it. When Chief of Staff messages researcher, a line,
 *Messaged researcher*, shows in Chief of Staff's conversation and the message lands in researcher's.
@@ -62,10 +69,29 @@ The steps read the same on all three agents, though each names its tools its own
 Code run loads the working folder's own Claude Code settings and `CLAUDE.md`, never this
 machine's, so an output style set there doesn't show in its steps.
 
-Before a task starts, its agent's own sign-in check runs. An agent this machine isn't set up for
-fails the task at once, with a line that names it and what's missing, such as "Codex isn't set up on
-this machine: Not logged in. Sign in with `codex login`, then start the task again." It never runs
-on another agent instead.
+A coding task that committed waits for your review before it completes. Its popup shows *Ready for
+review*: the commits on its branch, and a judge's verdict on whether the run did what the task
+asked, which is information, not approval. **Accept** completes the task. **Ask for changes**, with
+your words, sends them to the same coding session for one more run, which you review again. A run
+that asks you something shows its question in the popup with a box for your answer, and goes on
+with it.
+
+When the lab starts, it checks which coding agents this machine can run and logs a table:
+
+```
+Coding harnesses on this machine:
+✓ Cursor
+✗ Codex: Codex has no credential: Not logged in. Run `codex login`, or set CODEX_API_KEY.
+? Claude Code: The check did not answer within 30 s.
+```
+
+Chief of Staff sees the same rows, so it starts coding tasks only on an agent marked ✓ and tells
+you what to run for one that isn't. The `harness-readiness` flow's `read` action returns the rows,
+and `{ refresh: true }` checks again. A task on an agent last read as not ready is checked once
+more before it starts, so signing in after the lab started works without a restart. If it still
+isn't ready, the task fails at once with a line that names the agent and what to run, such as
+"Codex isn't set up on this machine: Codex has no credential: Not logged in. Run `codex login`, or
+set CODEX_API_KEY. Then start the task again." It never runs on another agent instead.
 
 There is one working folder, a git checkout you name when you start the lab, and every job that
 needs files works in it. Nothing on the page picks a folder, and no worker can name another one.
@@ -101,6 +127,8 @@ This builds the pages and serves them with the lab's server (`fsdev.config.mts`)
 | `TEAMMATES_STORE` | the SQLite file | `.fsdev/teammates.sqlite` here |
 | `TEAMMATES_USER` | who the page acts as | `you` |
 | `TEAMMATES_TREE` | the workers' tree | `workforce/` here |
+| `TEAMMATES_RUNS` | the folder each coding run's worktree goes in | `.fsdev/teammates-runs/` here |
+| `TEAMMATES_RUN_TIMEOUT_MS` | the wall-clock budget for one coding run, in milliseconds | `1200000` (20 minutes) |
 
 The model needs a credential the gateway takes (`AI_GATEWAY_API_KEY`). Each coding agent needs its
 own sign-in: Claude Code signed in, or `ANTHROPIC_API_KEY`; Codex signed in (`codex login`), or
@@ -111,7 +139,7 @@ search needs one search provider's key (`TAVILY_API_KEY`, `EXA_API_KEY`, `BRAVE_
 With `TEAMMATES_WORKDIR` unset, the working folder is the root of this repository. Naming a folder
 that doesn't exist or isn't a git checkout stops the lab at start with an error that names the
 setting and the path; it never falls back to the current directory. Each coding run
-works in a worktree of the folder, under the lab's `.fsdev/teammates-runs/`, so the checkout's
+works in a worktree of the folder, under the lab's `.fsdev/teammates-runs/` (or `TEAMMATES_RUNS`), so the checkout's
 `.gitignore` must ignore `**/.fsdev/`, where a run keeps its own notes; a run refuses a checkout
 that doesn't. The checkout's own branch and working tree are never changed.
 
@@ -148,6 +176,7 @@ names the package call it makes.
 | A message's popup | the recipient's session items: the turn whose received-message item carries the message's id |
 | The working folder | `localWorkspaceHost` with a constant run source, `{ kind: "repo", repo }`, and the folder in `localRepositories`; `projectSourceTools` read it |
 | Coding tasks and their runs | the conversation board's rows assigned to the worker on the coding flow, which the list leaves out; the row's `run` link, read as the run session's items |
+| A task waiting on you, and your answer | the row's holds through the Inbox's `inboxItems` and `taskRowView`, answered with the Inbox client's `answerOne`; a review drawn by the UI registry's `review-hold`, installed in `src/components/flow-state/`, from the run's stop read by harness-manager's `reviewDetail` |
 | A run's steps in plain words | the UI registry's `tool-naming` and `tool-grouping`, installed in `src/components/flow-state/`, over each tool call's name and arguments |
 | The divider and its *summarized* label | the last request's `historyStart`, and the session's `historySummary` resource |
 
@@ -157,10 +186,6 @@ hire here, gets its initial on a palette color picked from its id.
 
 Not wired yet:
 
-- **Cursor under a long runs folder.** Cursor's SDK names a folder of its own after the run's whole
-  worktree path, and the worktree path `harness-manager` makes is long, so under the lab's default
-  runs folder a Cursor run fails with `ENAMETOOLONG` (FIX-2344). A short `runsRoot`, such as
-  `/tmp/r`, works today.
 - **Editing a worker from the files.** They are read-only on the roster; how a user changes one (a
   fork that stands in for it, or another way) waits on a product call.
 - **Saving writer's drafts.** No package tool writes files from a worker's turn yet, so writer

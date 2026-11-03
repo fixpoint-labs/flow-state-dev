@@ -17,6 +17,8 @@ export {
   useSession,
   type SessionItemsOptions,
   type SessionChildSessionsOptions,
+  type FollowedRequest,
+  type SessionRefreshOptions,
   type SessionView,
   type UseSessionHookOptions
 } from "./hooks/useSession";
@@ -95,6 +97,8 @@ export {
 export {
   useApproval,
   resolveApprovalOutcome,
+  approveOptionsOf,
+  type ApprovalOption,
   type UseApprovalOptions,
   type UseApprovalResult,
   type ApprovalOutcome
@@ -186,11 +190,25 @@ export {
   type JumpToLatestOptions
 } from "./hooks/useJumpToLatest";
 
+export { useDraft, clearDraft, readDraft, saveDraft } from "./hooks/useDraft";
+
 export {
   isSendKey,
+  isTypingTarget,
   type SendKeyEvent,
   type SendKeyOptions
 } from "./send-key";
+
+export {
+  createInterruptKeys,
+  interruptChordLabel,
+  useInterruptKeys,
+  INTERRUPT_WINDOW_MS,
+  type InterruptKeyEvent,
+  type InterruptKeyResult,
+  type InterruptKeysOptions,
+  type UseInterruptKeysOptions
+} from "./interrupt-keys";
 
 export type {
   BlockComponentType,

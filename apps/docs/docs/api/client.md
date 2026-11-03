@@ -300,6 +300,29 @@ Reads the session's state snapshot: the `clientData` values the flow exposes and
 
 The snapshot's `at` is the server time the read began, and `sessionCreatedAt` identifies the session you read. Both feed [`sessions.stream`](#following-a-session).
 
+### `readSessionTail(source, sessionId, options?)`
+
+Reads a session from its newest end. A conversation that runs for days holds more items than one read should carry, and its items come back oldest first, so reading from the start shows its beginning and not the reply someone opened it for. `source` is any object with `state`, such as `fsd.sessions`.
+
+```ts
+import { readSessionEarlier, readSessionTail, refreshSessionWindow } from "@flow-state-dev/client";
+
+let window = await readSessionTail(fsd.sessions, sessionId, { itemTypes: ["message"] });
+if (window.hasEarlier) {
+  // A "Load earlier" button:
+  window = await readSessionEarlier(fsd.sessions, window);
+}
+```
+
+| Option | Type | Notes |
+|--------|------|-------|
+| `limit` | `number` | How many of the newest items to read. 200 by default (`SESSION_WINDOW_PAGE`). |
+| `itemTypes` | `string[]` | Only these item types. The window keeps them for its later reads. |
+
+The window holds `items` (oldest first), `start` (where the first one sits in the session), `total`, `hasEarlier`, and the read's `at` and `sessionCreatedAt` for [`sessions.stream`](#following-a-session).
+
+`readSessionEarlier(source, window, { limit? })` adds up to `limit` earlier items, 200 by default. `refreshSessionWindow(source, window)` reads the window again, for a view that doesn't follow the session's stream. Both read from the window's start to the session's end: a reply is stored while it's still being written and finishes in place, and an item can be stored behind ones you already hold, so reading only what came after the old end would miss both. If the session under the id was deleted and created again, the window starts over at the new session's end.
+
 ## `fsd.resources`
 
 Reads and writes a session's resources. Every method takes the session id and the resource ref.
@@ -354,6 +377,8 @@ Besides the callbacks, it takes `startingAfter` (resume after a sequence number)
 ### Following a session
 
 `fsd.sessions.stream(sessionId, options)` opens one stream for a whole session. It delivers each finished item from any request in the session, with the id of the request that kept it, and a notice naming the session's unfinished background runs whenever that set changes. Items the session snapshot hides are never sent.
+
+The server sends a change once it is saved: each write to the session wakes the stream's read, at most once a second. How much an idle view costs depends on the server's stores. On a bus that carries changes between processes, a view of a quiet session reads nothing. On the in-memory bus, which every store uses today, the server also reads about once a second per open view, so a reply another server writes still arrives. Either way the client sees the same events and needs no option for it. See [Store adapters](../persistence/overview.md#store-adapters).
 
 To build a live view, read the whole session snapshot, then open the stream from its first page's `at`, the server time that read began. The pages hold everything saved before that time, and the stream picks up everything saved after. Pass the snapshot's `sessionCreatedAt` too, so the stream follows the session you read and not a later one that takes its id. The example calls `readHistory`, from [Reading a live session's history](#reading-a-live-sessions-history) below, to read every page without missing an item. `useSession` with `live: true` does all of this for you.
 

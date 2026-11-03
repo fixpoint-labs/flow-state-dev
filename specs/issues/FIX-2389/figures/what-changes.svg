@@ -1,0 +1,87 @@
+<svg viewBox="0 0 940 330" role="img" aria-label="What changes, from left to right. The Claude Code run asks about a tool call through canUseTool. The harness manager, with approveTools on, checks the run's grants: a call already granted runs. Otherwise the manager stops the step, records the call, and suspends for approval, the same stop its review uses. The claim gate mirrors it as the task's hold, kind approval, and the Inbox lists it under Waiting on you. The answer comes back through the engine's answer route: Allow, Deny or Allow for this run. The manager resumes the same coding session; the model asks for the call again and it passes on the grant. New pieces are the option and approval step, the feed, the grants and claude-code's held decision; everything else is already there."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.6; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .back  { stroke:var(--code); stroke-width:1.4; fill:none; stroke-dasharray:5 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-new { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .head  { fill:var(--ink-3); }
+    .head2 { fill:var(--code); }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+
+  <g id="run">
+    <rect class="n-box" x="16" y="40" width="190" height="96" rx="6"/>
+    <text class="t-lbl" x="30" y="60">CLAUDE CODE RUN</text>
+    <text class="t-b" x="30" y="82">Asks about a call</text>
+    <text class="t-s" x="30" y="100">canUseTool · Bash pnpm test</text>
+    <text class="t-new" x="30" y="122">NEW · HELD DECISION</text>
+  </g>
+
+  <g id="manager">
+    <rect class="n-new" x="244" y="40" width="220" height="96" rx="6"/>
+    <text class="t-lbl" x="258" y="60">HARNESS MANAGER</text>
+    <text class="t-b" x="258" y="82">Granted? Run it</text>
+    <text class="t-s" x="258" y="100">else stop the step, record the call,</text>
+    <text class="t-s" x="258" y="115">suspend for approval</text>
+    <text class="t-new" x="258" y="130">NEW · OPTION · FEED · GRANTS</text>
+  </g>
+
+  <g id="hold">
+    <rect class="n-box" x="502" y="40" width="200" height="96" rx="6"/>
+    <text class="t-lbl" x="516" y="60">THE TASK'S HOLD</text>
+    <text class="t-b" x="516" y="82">Waiting on you</text>
+    <text class="t-s" x="516" y="100">claim gate mirrors the stop</text>
+    <text class="t-s" x="516" y="115">kind approval · Inbox lists it</text>
+  </g>
+
+  <g id="person">
+    <rect class="n-box" x="740" y="40" width="184" height="96" rx="6"/>
+    <text class="t-lbl" x="754" y="60">A PERSON</text>
+    <text class="t-b" x="754" y="82">Allow · Deny</text>
+    <text class="t-s" x="754" y="100">or Allow for this run</text>
+    <text class="t-s" x="754" y="115">approval card · Inbox</text>
+  </g>
+
+  <path class="arrow" d="M206 88 L242 88"/>
+  <path class="arrow" d="M464 88 L500 88"/>
+  <path class="arrow" d="M702 88 L738 88"/>
+
+  <g id="answer">
+    <path class="back" d="M832 136 L832 210 L356 210 L356 140"/>
+    <text class="t-s" x="520" y="200">the engine's answer route · survives a restart</text>
+  </g>
+
+  <g id="resume">
+    <path class="back" d="M300 140 L300 250 L112 250 L112 140"/>
+    <text class="t-ok" x="124" y="242">same session resumes; the call asks again</text>
+    <text class="t-s" x="124" y="270">and passes on the grant</text>
+  </g>
+
+  <g id="heads">
+    <path class="head" d="M242 84 L250 88 L242 92 z"/>
+    <path class="head" d="M500 84 L508 88 L500 92 z"/>
+    <path class="head" d="M738 84 L746 88 L738 92 z"/>
+    <path class="head2" d="M352 144 L356 136 L360 144 z"/>
+    <path class="head2" d="M108 144 L112 136 L116 144 z"/>
+  </g>
+  <g id="legend">
+    <rect class="n-new" x="560" y="270" width="14" height="14" rx="2"/>
+    <text class="t-s" x="582" y="281">new in this slice</text>
+    <rect class="n-box" x="700" y="270" width="14" height="14" rx="2"/>
+    <text class="t-s" x="722" y="281">already there, reused</text>
+  </g>
+</svg>

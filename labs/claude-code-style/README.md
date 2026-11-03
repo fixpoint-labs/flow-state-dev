@@ -18,8 +18,17 @@ needs is a gap filed against the package.
   it, even while its turn is still running. Click it to read the task's reply; the main session
   adds only what's new rather than repeating it. Tool calls read as plain words ("Waiting for your
   answer", "Sent for review"). Enter sends; Cmd+Enter (Ctrl+Enter) sends from every box in the lab.
+- **The *Coder* chip** beside Send picks who makes a code change you ask for, in either mode:
+  *Auto* (Claude Code, as above), *Plan first* (Claude Code in plan mode, which reads, changes
+  nothing and answers with a plan), *Codex* or *Cursor*. Any choice but *Auto* adds one line to
+  what you send, such as `Coder: Codex`, and the main session hands the change to that coder. It
+  holds while the session is open. You can also say it in words ("plan it first", "use Cursor").
 - **Right:** the background tasks, read only. A row opens to show the task's work. To stop or steer
   a task, ask the main session.
+- **Keys:** ⌘K (Ctrl+K) finds any session by its title, in either view, or starts a new one.
+  Alt+↑ and Alt+↓ move to the previous or next session in the view. `/` puts the cursor in the
+  composer, and `?` lists every key. Opening a session puts the cursor in its composer. The view
+  switch is one Tab stop; ← and → change the view.
 
 ## Threads mode
 
@@ -35,6 +44,9 @@ threads, each a task in a session of its own, and the right pane is the status b
   main session to retry it.
 - **The right pane** is as wide as you drag its left edge (or move it with the arrow keys once it
   has focus), and keeps that width across reloads.
+- **The page's address** names the view, the open session and the task open in its pane
+  (`?session=<id>&task=<id>`), so a reload or a link reopens them, and Back returns to what you
+  had open before. A link to a session or task that is gone opens *New session* instead.
 - **A thread's view** replaces the board, with a back arrow. You can talk in it: your line steers
   the thread's task and answers its open question. Cmd+Enter (Ctrl+Enter) answers, or requests
   changes when it is ready for review; plain Enter is a new line. You can pin it there.
@@ -42,14 +54,15 @@ threads, each a task in a session of its own, and the right pane is the status b
   links and branches you named, where the work lives, and what done means. A thread starts at
   once and looks before it asks: it asks you only what depends on you, a choice only you can make
   or a check you asked it to make with you.
-- **A code change** goes to `desk.thread-coder`, which runs through Claude Code (its `harness` setting).
+- **A code change** goes to `desk.thread-coder`, which runs through Claude Code (its `harness` setting),
+  or to the plan, Codex or Cursor coder the *Coder* chip names.
   Its card and row are tagged, and a run that made changes waits for your review. The thread's
   view says so once, in a card: the commit count, the branch shown short (the full name on hover)
   and the judge's verdict on one line, as information. A run nobody reviews by the deadline lands in *Resolved*
   marked *Not reviewed*, so it never reads as approved.
 
 Scope is core messaging and session management. There are no file diffs, permission prompts,
-linked PRs or harness picker. The design and the decisions behind it are in the specs for
+linked PRs or harness readiness. The design and the decisions behind it are in the specs for
 [session mode](../../specs/issues/FIX-2153/SPEC.md) and
 [threads mode](../../specs/issues/FIX-2157/SPEC.md).
 
@@ -73,8 +86,14 @@ Open the address it prints as `App:`. The pages call the lab's API, so a plain V
 only 404s.
 
 `desk.coder` and `desk.thread-coder` run through Claude Code, so the host also needs
-`ANTHROPIC_API_KEY`. A worker you give `harness: codex` or `harness: cursor` needs that harness signed
-in too (Cursor reads `CURSOR_API_KEY`). The host is durable: a thread's question and review wait on you across a
+`ANTHROPIC_API_KEY`. The Codex and Cursor coders, and any worker you give `harness: codex` or
+`harness: cursor`, need that harness signed in too (Cursor reads `CURSOR_API_KEY`).
+A coding run starts with only the variables its harness
+needs (`CLAUDE_CODE_PASS`, `CODEX_PASS` or `CURSOR_PASS` from its package), never the rest of the
+host's environment. That filters what a run starts with; it isn't a security boundary. At start
+the lab logs which harnesses this machine can run, with what to run for one that can't
+(`✗ Codex: … Run \`codex login\`, or set CODEX_API_KEY.`), and the `harness-readiness` flow's
+`read` action returns the same rows; `{ refresh: true }` checks again. The host is durable: a thread's question and review wait on you across a
 restart, and a coding run's review needs durable execution. Its settings
 are read from the environment, all optional:
 
@@ -85,6 +104,7 @@ are read from the environment, all optional:
 | `CLAUDE_CODE_STYLE_REPOSITORIES` | the repository the lab starts in | The repositories coding runs work in a worktree of, as paths separated by `:` |
 | `CLAUDE_CODE_STYLE_USER` | `u_lab` | The person the pages are served for |
 | `CLAUDE_CODE_STYLE_ANSWER_AGAIN` | on | `off` leaves `answerAgain` off the main worker: the goal check's control |
+| `CLAUDE_CODE_STYLE_SETUP` | none | One command each fresh worktree runs before its coding run starts, such as `pnpm install --frozen-lockfile`, with no shell |
 
 *New session* lists your projects and has a *New project* form: a name and the repository its
 coding runs work on. The host allows `file://` repositories only, and the repository must ignore
@@ -93,7 +113,11 @@ the data folder, on a branch of its own that you'll find in the repository, so y
 branch and files don't change. A repository not in `CLAUDE_CODE_STYLE_REPOSITORIES` gets a clone
 under the data folder instead. Before a run settles, a judge (harness-manager's `goalJudge`) reads
 its answer and commits against the task's goal: it can send the run back, ask you a question, or
-let it through, and threads mode shows its verdict on the coding thread's card.
+let it through, and threads mode shows its verdict on the coding thread's card. A run is also done only when
+its project's checks pass: the commands the project names in `checks` (none by default) run in the
+run's worktree after the harness finishes, and a red one sends the run back with the command's
+output in its next brief. A run that changed no files, such as one that answers a question, skips
+them, so you can still ask about a project whose branch is already red.
 
 Every task card shows the model its run uses and a token count that rises while the run works,
 and the harness tag names the harness the run reported. Finished rows keep the final total, and a
@@ -129,12 +153,22 @@ a package call:
 | *Resolve* and *Request changes* | the Inbox client's `answerHold` on its review: `{ verdict: "accepted" }` or `{ verdict: "revise", words }` |
 | *Pin* and *Unpin* | the lab's `pins` flow (`workforce/flows/pins.mts`), your own user state |
 
-`desk.coder` and `desk.thread-coder` are on the lab's one coding flow,
+`desk.coder` and `desk.thread-coder`, and their plan, Codex and Cursor siblings, are on the lab's one coding flow,
 `workforce/flows/harness-thread.mts`: a `harnessManager` per harness, picked by the worker's
 `harness:` line, working in the session's project through `projectWorkspace()`. A worker with
 `review: true`, as threads mode's `desk.thread-coder` is, runs on the manager built with
 `reviewChanges: true`: a run that committed waits for your review before its task completes.
-Session mode's `desk.coder` has no review line, since that mode has no review to answer.
+Session mode's coders have no review line, since that mode has no review to answer.
+
+| Worker (session mode · threads mode) | Its `WORKER.md` | The chip |
+|---|---|---|
+| `desk.coder` · `desk.thread-coder` | `harness: claude-code` | *Auto* |
+| `desk.coder-plan` · `desk.thread-coder-plan` | `harness: claude-code`, `permissionMode: plan`, no review (it commits nothing) | *Plan first* |
+| `desk.coder-codex` · `desk.thread-coder-codex` | `harness: codex` | *Codex* |
+| `desk.coder-cursor` · `desk.thread-coder-cursor` | `harness: cursor` | *Cursor* |
+
+The threads-mode coders but the plan one carry `review: true`. `desk.main` and `desk.lead` name
+them all as delegates, and their files say which one a `Coder:` line or your words pick.
 
 The flow builds Claude Code, Codex and Cursor, so a coding worker on any of them is one more
 `WORKER.md` with that `harness:` line. A Claude Code worker can also name a `permissionMode:`:

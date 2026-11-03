@@ -151,3 +151,41 @@ describe("a user's keys read by a client", () => {
     expect(await h.listed("bob", await h.openSession("bob", "lab"), "mcpCredentials")).toEqual([]);
   });
 });
+
+describe("naming a project's checks", () => {
+  it("stores the commands a project is created with, and none when it names none", async () => {
+    const h = await boot();
+    const named = await h.ok("alice", "lab", await h.lab("alice"), "createProject", { id: "apollo", title: "Apollo", checks: [" pnpm typecheck "] });
+    const bare = await h.ok("alice", "lab", await h.lab("alice"), "createProject", { id: "sandbox", title: "Sandbox" });
+    expect(named.project.checks).toEqual(["pnpm typecheck"]);
+    expect(bare.project.checks).toEqual([]);
+  });
+
+  it("replaces the whole list for a member, and changes nothing else on the row", async () => {
+    const h = await boot();
+    await h.ok("alice", "lab", await h.lab("alice"), "createProject", { id: "apollo", title: "Apollo", members: ["bob"], checks: ["pnpm test"] });
+    const before = (await h.row("apollo"))!;
+    const set = await h.ok("bob", "lab", await h.lab("bob"), "setChecks", { project: apollo, checks: ["pnpm typecheck", "pnpm test"] });
+    expect(set.project).toEqual({ ...before, checks: ["pnpm typecheck", "pnpm test"] });
+  });
+
+  it("refuses a command a shell would read as more than one, and writes nothing", async () => {
+    const h = await boot();
+    const lab = await h.lab("alice");
+    const create = await h.act("alice", "lab", lab, "createProject", { id: "apollo", title: "Apollo", checks: ["pnpm i && pnpm test"] });
+    expect(refusal(create)).toContain("invalid-check");
+    expect(await h.row("apollo")).toBeUndefined();
+
+    await h.ok("alice", "lab", lab, "createProject", { id: "apollo", title: "Apollo", checks: ["pnpm test"] });
+    const set = await h.act("alice", "lab", lab, "setChecks", { project: apollo, checks: ["pnpm test | tee log"] });
+    expect(refusal(set)).toContain("invalid-check");
+    expect((await h.row("apollo"))!.checks).toEqual(["pnpm test"]);
+  });
+
+  it("refuses a non-member's change", async () => {
+    const h = await boot();
+    await h.ok("alice", "lab", await h.lab("alice"), "createProject", { id: "apollo", title: "Apollo" });
+    const set = await h.act("carol", "lab", await h.lab("carol"), "setChecks", { project: apollo, checks: ["pnpm test"] });
+    expect(refusal(set)).toContain("not-a-member");
+  });
+});

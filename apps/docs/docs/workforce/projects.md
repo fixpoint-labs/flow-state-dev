@@ -42,6 +42,7 @@ A project's address is its visibility and its id, `{ visibility: "shared", id: "
 | `members` | On a shared project, who may open workstreams in it. Always includes the owner. A private project has only its owner |
 | `repository` | The git remote the project's code lives in, such as `https://github.com/acme/storefront.git`, or `null` |
 | `mcpServers` | The MCP servers the project's coding runs get, by name, such as `["linear"]`. Empty by default. See [Tools a project's coding work gets](#tools-a-projects-coding-work-gets) |
+| `checks` | The commands that check the project's code, such as `["pnpm typecheck"]`. Empty by default. See [Checks a project's coding work runs](#checks-a-projects-coding-work-runs) |
 
 Each workstream is its own entry, not part of the row, so two owners can update their workstreams at the same time.
 
@@ -124,6 +125,7 @@ The write is a `create`, never an overwrite. If the same owner sends the same id
 | `invalid-project-id` | The id is empty, `unassigned`, or not one path segment |
 | `private-has-members` | A private project names anyone besides its owner |
 | `invalid-repository` | The repository isn't a remote. See [A project's code and files](#a-projects-code-and-files) |
+| `invalid-check` | One of the `checks` isn't a single command. See [Checks a project's coding work runs](#checks-a-projects-coding-work-runs) |
 
 ### Changing the brief
 
@@ -867,6 +869,43 @@ The model never sees the key either. It goes in the connection's headers only, a
 
 The capability installs the keys collection on the worker's model block so it can read the key. The model's document tools don't list or read that collection, but core's `resourceTools()` reads any collection by path, so don't give it to the same worker.
 
+### Checks a project's coding work runs
+
+A project can name the commands that check its code: a typecheck, a test suite, a lint. On a host that turns them on, a coding run on the project counts as done only when they pass in its checkout. A failed command sends the work back for another attempt, and that attempt is handed the command and the end of its output.
+
+A member writes them when creating the project, or later with `setChecks`:
+
+```ts
+// at create
+{ id: "storefront", title: "Storefront", repository: "https://github.com/acme/storefront.git", checks: ["pnpm typecheck", "pnpm --filter web test"] }
+
+// later, from a member's session; [] clears them
+await projects.send("setChecks", { project: { visibility: "shared", id: "storefront" }, checks: ["pnpm typecheck"] }, { sessionId });
+```
+
+`setChecks` replaces the list whole and returns `{ project }`. Only members can call it. Each command is one program and its arguments, run with no shell, and quotes group words. Both writes refuse a line with `&&`, `||`, `|`, `;`, `&`, `<`, `>`, `$(` or a backtick in it, an empty line, and an unclosed quote, with `invalid-check`, and write nothing. Write `pnpm build && pnpm test` as two entries.
+
+**Nothing runs them until the host opts in.** A project's checks are a member's words, run on the machine that runs your coding workers. Whether that machine runs them is the host's call. To turn them on, pass `projectChecks()` as the commands of harness-manager's [`commandCheck`](../orchestration/harness-manager.md#checking-the-work-with-commands):
+
+```ts
+import { commandCheck, harnessManager } from "@flow-state-dev/harness-manager";
+import { localWorkspaceHost } from "@flow-state-dev/workspace";
+import { projectChecks, projectWorkspace, projectWorkspaceCapability } from "@flow-state-dev/workforce";
+
+harnessManager({
+  // ...the board it works and its other options, as usual
+  phase: commandCheck(codePhase, { commands: projectChecks(), timeoutMs: 10 * 60_000 }),
+  workspace: localWorkspaceHost({
+    root: "/var/fsd/runs",
+    remotes: { allow: ["github.com"] },
+    source: projectWorkspace(),
+  }),
+  uses: [projectWorkspaceCapability],
+});
+```
+
+Each attempt reads the checks of the project the run works in, found the same way [`projectWorkspace`](#coding-work-in-a-project) finds it. A list changed between two attempts applies to the second. A run with no project gets no checks. `timeoutMs` bounds all of a run's checks together. [Checking the work with commands](../orchestration/harness-manager.md#checking-the-work-with-commands) covers what a run records and how a review shows the results.
+
 ### Working in a checkout you already have
 
 By default a coding run gets a fresh branch in the host's own clone of the project's repository. That clone lives under the host's root, so to see what a run did you fetch from it. When the server runs on the machine where you already have the repository checked out, you can have runs work in that checkout instead. Each run gets a worktree of your checkout on a branch of its own, and the branch shows up in `git branch` there.
@@ -910,6 +949,7 @@ A few cases go differently:
 - **Your branch and its upstream have each moved.** The run is refused with `base-diverged`, naming both commits, and nothing is made. Pull or rebase, or push, and the next run starts.
 - **The fetch fails**, because you're offline, a credential is refused, or it times out. The run starts from your local branch, and the server logs a warning naming the checkout and git's error. It doesn't fall back to the copy you last fetched.
 - **The remote or upstream changed since the server first saw it.** See [Changing your remote](#changing-your-remote).
+- **The base is a remote's branch**, such as `baseRef: "origin/main"`. It is fetched from the pinned URL first, and the run starts at what that fetch brought. If the fetch fails, the run is refused with `remote-unreadable`. The remote-tracking copy on disk isn't used, because any run can move it.
 - **The base has no upstream**, such as a tag, a commit, or a branch that tracks nothing. It is used as it is, with no fetch.
 - **The run already has its branch**, on a retry or a later turn. It's handed back as it was, and nothing is fetched.
 
@@ -927,7 +967,9 @@ If a remote's URL no longer matches its pin, the server fetches nothing at all. 
 
 A run in your checkout works with your trust, the way a coding agent you start in your own repository does. It can create and move branches, tags and remote-tracking refs, because git shares those between worktrees. Every worktree also shares your checkout's `.git/config`, so a run could repoint `origin`; the pins keep that from steering the next fetch or your credentials. It doesn't keep a run away from your refs. If you want a run kept apart from your branches, give its project a repository the host clones instead of a checkout.
 
-To review a run, open its worktree, or run `git log -p <branch> --not main main@{upstream}` from your checkout, with your base branch in place of `main`. For a base with no upstream, leave out `main@{upstream}`. That shows only the run's commits, whether it started from your base branch or from its upstream. Avoid `git diff main...<branch>`, which also shows upstream commits your `main` doesn't have. The branch stays checked out in the run's worktree, because a run can be continued later, after a question is answered or when you send it another turn, and it picks up in the same place. So git won't check that branch out a second time in your own tree. When you're done with a run, `git worktree remove <path>` frees the branch.
+To review a run, open its worktree, or run `git log -p <branch> --not main main@{upstream}` from your checkout, with your base branch in place of `main`. For a base with no upstream, leave out `main@{upstream}`. That shows only the run's commits, whether it started from your base branch or from its upstream. Avoid `git diff main...<branch>`, which also shows upstream commits your `main` doesn't have. The branch stays checked out in the run's worktree, because a run can be continued later, after a question is answered or when you send it another turn, and it picks up in the same place. So git won't check that branch out a second time in your own tree. When you're done with a run, `fsdev worktrees <root> --remove <path>` frees the branch. It refuses while the worktree has uncommitted changes or a run is still working in it. See [`fsdev worktrees`](/docs/api/cli#fsdev-worktrees-root).
+
+Each worktree the host makes also gets a row in your list of worktrees, a collection named `worktrees` that every session and agent of yours can read. A row has the worktree's name, path, branch, the commit it was cut from, which session or run owns it, which sessions are attached to it, and how many commits it has. It is updated at the end of each turn. When a worktree is removed, its row stays, marked `removed`, so you can still see where the work was. An agent asked "what else is in flight?" can answer from this list without looking at git.
 
 A fresh worktree has no `node_modules`. The coding agent installs them the way your repository tells it to. With pnpm that comes from the machine's shared store and takes seconds once the checkout has been installed.
 
@@ -955,4 +997,3 @@ It lists paths and sizes, not file contents.
 It returns that project's files, never another project's. A non-member is refused with `not-a-member`, and an unknown address with `no-such-project`. Neither collection has a browser read: a request for one through the collection route gets a 403.
 
 In a project with a repository, a coding run finds the project's files in `project/`, next to its checkout and never inside it, so they don't show up in `git status`. Whatever the run leaves there is saved back to the project.
-

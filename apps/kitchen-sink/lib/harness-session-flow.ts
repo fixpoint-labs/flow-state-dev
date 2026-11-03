@@ -76,6 +76,11 @@ export interface KitchenSinkHarnessFlowOptions {
    * goal control hands the harness. Unset, the harness runs its own default.
    */
   readonly defaultModel?: string;
+  /**
+   * The user approves each tool call the harness isn't pre-allowed: the turn
+   * waits on them (the package's `approveTools`). Off by default.
+   */
+  readonly approveTools?: boolean;
 }
 
 /** A harness mode's session flow. */
@@ -84,6 +89,7 @@ export function kitchenSinkHarnessFlow(options: KitchenSinkHarnessFlowOptions) {
     kind: options.kind,
     workspace,
     ...(options.defaultModel === undefined ? {} : { defaultModel: options.defaultModel }),
+    ...(options.approveTools === true ? { approveTools: true } : {}),
     agent: (feeds) => options.agent(withGoalControls(feeds, options.defaultModel)),
   });
 }
