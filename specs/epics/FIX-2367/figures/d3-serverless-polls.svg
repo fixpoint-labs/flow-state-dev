@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D3, signed off: what an app on a serverless host gets. Chosen: polling until the Ably adapter ships. Instead of: a push of our own on serverless. It comes down to a connection that stays open: polling doesn't need one, and a serverless function can't hold one. The price: a viewer sees a change up to one poll late, 1.5 to 3 seconds. The next adapter is Ably, a managed service, instead of a relay we would host. Locks in docs that state push per host. Flips if serverless functions can hold a connection open."
+<svg viewBox="0 0 940 420" role="img" aria-label="D3, signed off: what an app on a serverless host gets. Chosen: polling today, in this epic. Instead of: a push of our own on serverless. It comes down to a connection that stays open: polling doesn't need one, and a serverless function can't hold one. The price: a viewer sees a change up to one poll late, 1.5 to 3 seconds. A later adapter, not in this epic, is a managed service such as Ably, or Vercel's own WebSockets, instead of a relay we would host. Locks in docs that state push per host. Flips if serverless functions can hold a connection open."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -42,7 +42,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Polling, until the Ably adapter</text>
+    <text class="t-h c-code" x="228" y="112">Polling today, in this epic</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">A push of our own there</text>
@@ -74,10 +74,10 @@
   </g>
 
   <g id="row-3">
-    <text class="t-lbl" x="32" y="280">THE NEXT ADAPTER</text>
+    <text class="t-lbl" x="32" y="280">A LATER ADAPTER</text>
     <text class="mark plus" x="228" y="282">+</text>
-    <text class="t-b" x="248" y="281">Ably, a managed service</text>
-    <text class="t-s" x="248" y="299">FIX-380 fills both seams</text>
+    <text class="t-b" x="248" y="281">A managed service, later</text>
+    <text class="t-s" x="248" y="299">e.g. Ably; not in this epic</text>
     <text class="mark minus" x="592" y="282">−</text>
     <text class="t-b" x="612" y="281">A relay we would host</text>
     <text class="t-s" x="612" y="299">a service to run and pay for</text>
@@ -88,7 +88,7 @@
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
     <text class="t-b" x="32" y="371">Docs state push per host</text>
-    <text class="t-s" x="32" y="389">serverless reads 'polls' until FIX-380 ships</text>
+    <text class="t-s" x="32" y="389">serverless reads 'polls' today, in this epic</text>
   </g>
 
   <g id="flips-if">

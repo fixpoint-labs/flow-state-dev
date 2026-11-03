@@ -315,6 +315,13 @@ export interface CompletionRunContext extends PhaseRunContext {
    */
   answer: string | null;
   /**
+   * The commit the run's branch was cut at, from the run's record (never read
+   * off the checkout, whose refs the run can move). `null` when the run has no
+   * recorded base, or works on files rather than a repository. A phase that
+   * asks "did this run change anything?" compares the checkout against it.
+   */
+  baseCommit?: string | null;
+  /**
    * Aborted when the completion check's time is up, or the request is
    * cancelled. A check that starts work of its own (`commandCheck`'s
    * commands) stops it and starts no more, because the manager lets the
@@ -2881,6 +2888,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             // `null`: "reported nothing" is its own fact.
             stopReport: handle.outcome,
             answer: handle.finalMessage,
+            baseCommit: state.filesOnly === true ? null : (state.baseCommit ?? null),
             signal: AbortSignal.any([ctx.signal, stopCheck.signal]),
             ctx,
           }),

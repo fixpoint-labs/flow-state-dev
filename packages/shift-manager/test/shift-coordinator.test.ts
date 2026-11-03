@@ -94,6 +94,7 @@ const row = (ownerSessionId: string, id: string, status: string): BoardRow => ({
   error: null,
   holds: [],
   steers: [],
+  spend: null,
   createdAt: null,
   updatedAt: null,
   startedAt: null,

@@ -101,7 +101,8 @@ scope. Then the writer reads twice.
   The timer's pace is `client.subscribe`'s; `useSession` adds no option.
 - **The panels.** `Roster` and `BoardColumns` take `live`; their driver subscribes the same three
   topics and reads again on a resource notice whose path matches their collection. `BoardList`
-  keeps its session-stream driver.
+  keeps its session-stream driver. Acting on a notice's kind and path reads the notice passed
+  to `client.subscribe`'s `onChange`, which FIX-2428 owns; this issue doesn't change that signature.
 - **Access is unchanged.** The mint checks each topic (ER-4); every read a notice triggers is
   checked by its route as today.
 - **A failed publish never fails the write** (ER-6).
@@ -155,6 +156,8 @@ fresh `analysis` before the gate.
   The bus seams are cited as decided in FIX-2426 (#4477).
 - **Amended (Nov 2)** — the goal check runs on a bus that says it crosses: on the in-memory bus
   the hooks now keep their fallback timer (FIX-2428 D3), which leg b's and d's read counts forbid.
+- **Amended (Nov 2)** — serverless push (Ably, FIX-380) is a later transport behind the same
+  seam, outside FIX-2367 ([owner, #4512](https://github.com/fixpoint-labs/flow-state-dev/pull/4512#issuecomment-6567246620)). Wording only.
 
 ## Notes from review
 

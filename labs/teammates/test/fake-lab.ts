@@ -8,7 +8,8 @@
  * workers, one per harness (Claude Code, Codex, Cursor). Your first ask to Chief of Staff makes it message researcher;
  * researcher looks the fact up and replies. Ask Chief of Staff to fix something and Chief of Staff
  * starts a coding task on the agent you name, or on Claude Code, which runs in the working folder;
- * one on a harness the double is told isn't set up fails at once, saying so. A run reports
+ * one on a harness the double is told isn't set up fails at once, saying so. Told to, a run asks
+ * you a question before it edits, and waits for your review once it has committed. A run reports
  * items in its harness's own shape (its tool names and arguments), read into steps by the
  * adapter's own `runSteps`. Ask writer to
  * publish and it waits for your yes first. Each worker
@@ -16,7 +17,7 @@
  * worker, waits while the worker is answering, and runs when it is done.
  * Chief of Staff's conversation starts past the 50-turn history window.
  */
-import { runSteps, type ConversationEntry, type LabAdapter, type SessionStep, type TalkRow, type BoardTask, type Unsubscribe, type WindowMark, type WorkerRow } from "../src/adapter";
+import { runSteps, type ConversationEntry, type ReviewDetail, type TaskAnswer, type LabAdapter, type SessionStep, type TalkRow, type BoardTask, type Unsubscribe, type WindowMark, type WorkerRow } from "../src/adapter";
 
 /** How the double keeps time, and what it plays. */
 export interface FixtureOptions {
@@ -28,6 +29,10 @@ export interface FixtureOptions {
   summary?: boolean;
   /** Harnesses this machine isn't set up for: a task on one fails at once, saying so. */
   notSetUp?: string[];
+  /** A coding run asks which line has the typo before it edits, and waits for your answer. */
+  asks?: boolean;
+  /** A coding run that committed waits for your review: Accept completes it, Ask for changes runs it once more. */
+  review?: boolean;
 }
 
 /** Each coding worker's harness, by name, and the model its run reports, if it reports one. */
@@ -127,6 +132,10 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   /** Each task's run, as the items its harness reports. */
   const runs = new Map<string, Record<string, unknown>[]>();
   const notSetUp = new Set(options.notSetUp ?? []);
+  /** What each run waiting on you is waiting for: the answer it goes on with. */
+  const waits = new Map<string, (answer: TaskAnswer) => void>();
+  /** Each run's latest review, by its run session. */
+  const reviews = new Map<string, ReviewDetail>();
   /** The worker each open approval belongs to, by suspension id. */
   const approvals = new Map<string, FixtureWorker>();
 
@@ -213,21 +222,49 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     const model = HARNESS[harness]!.model;
     const calls = RUN_TOOLS[harness]!;
     const call = (which: "read" | "edit" | "check") => report(task.id, harness, tool(...calls[which]));
-    let at = 0;
-    for (const [delay, run] of [
+    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms * speed));
+    /** The task waits on you for `waiting`, until you answer. */
+    const waitOn = (waiting: NonNullable<BoardTask["waiting"]>) =>
+      new Promise<TaskAnswer>((resolve) => {
+        waits.set(task.id, (answer) => {
+          waits.delete(task.id);
+          updateTask(task.id, { waiting: undefined });
+          resolve(answer);
+        });
+        updateTask(task.id, { waiting });
+      });
+    void (async () => {
+      await sleep(600);
       // The run reports its model, if its harness reports one, once it starts.
-      [600, () => {
-        if (model !== undefined) updateTask(task.id, { model });
-        call("read")();
-      }],
-      [600, report(task.id, harness, said('The typo is on line 1: "Relay keps".'))],
-      [600, call("edit")],
-      [800, call("check")],
-      [400, end("done", "Fixed the typo in README.md, line 1.")],
-    ] as Step[]) {
-      at += delay;
-      setTimeout(run, at * speed);
-    }
+      if (model !== undefined) updateTask(task.id, { model });
+      call("read")();
+      await sleep(600);
+      report(task.id, harness, said('The typo is on line 1: "Relay keps".'))();
+      if (options.asks) {
+        const answer = await waitOn({ kind: "question", prompt: "Should I fix only line 1, or every typo?", unanswerable: null });
+        report(task.id, harness, { type: "message", role: "user", content: [{ type: "input_text", text: "text" in answer ? answer.text : "" }] })();
+      }
+      await sleep(600);
+      call("edit")();
+      await sleep(800);
+      call("check")();
+      for (let commits = 1; options.review; commits++) {
+        reviews.set(task.runSessionId!, {
+          branch: `teammates/${task.id}--change`,
+          commits,
+          subjects: Array.from({ length: commits }, (_, i) => (i === 0 ? "docs: fix the README typo" : "docs: keep the old wording")).reverse(),
+          judge: { verdict: "done", confidence: 0.91, reason: "The typo on line 1 is fixed." },
+        });
+        notify();
+        const answer = await waitOn({ kind: "review", prompt: `${commits} commit${commits === 1 ? "" : "s"} on teammates/${task.id}--change`, unanswerable: null });
+        if ("verdict" in answer && answer.verdict === "accepted") break;
+        report(task.id, harness, said(`Revising: ${"words" in answer ? answer.words : ""}`))();
+        await sleep(600);
+        call("edit")();
+      }
+      await sleep(400);
+      end("done", "Fixed the typo in README.md, line 1.")();
+    })();
   };
 
   const script = (w: FixtureWorker, job: Job): Step[] => {
@@ -437,6 +474,16 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
 
     watchTasks(sessionId, onChange) {
       return watch(() => onChange(tasks.filter((t) => t.sessionId === sessionId).map(({ sessionId: _, ...card }) => card)));
+    },
+
+    watchReview(runSessionId, onChange) {
+      return watch(() => onChange(reviews.get(runSessionId)));
+    },
+
+    async answerTask(_sessionId, taskId, answer) {
+      const go = waits.get(taskId);
+      if (go === undefined) throw new Error(`This task isn't waiting on you.`);
+      go(answer);
     },
 
     watchRun(runSessionId, onChange) {

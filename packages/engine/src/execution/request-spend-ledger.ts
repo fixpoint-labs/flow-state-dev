@@ -24,6 +24,7 @@ import { cacheTokensOf } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { GeneratorModelResultPayload, HarnessRunSpend, ModelUsageEntry, RequestSpend } from "@flow-state-dev/core/types";
+import { storeIdentity } from "../bus/publish-writes";
 
 /** One request's ledger. */
 export interface RequestSpendLedger {
@@ -216,8 +217,9 @@ const endingInterruptedRuns = new WeakMap<object, Map<string, number>>();
  *   recorded it.
  */
 export function holdInterruptedEnding(requestStore: object, requestId: string): () => void {
-  let runs = endingInterruptedRuns.get(requestStore);
-  if (runs === undefined) endingInterruptedRuns.set(requestStore, (runs = new Map()));
+  // The raw store and its change-bus wrapper are one store (FIX-2426).
+  let runs = endingInterruptedRuns.get(storeIdentity(requestStore));
+  if (runs === undefined) endingInterruptedRuns.set(storeIdentity(requestStore), (runs = new Map()));
   runs.set(requestId, (runs.get(requestId) ?? 0) + 1);
   let released = false;
   return () => {
@@ -231,7 +233,7 @@ export function holdInterruptedEnding(requestStore: object, requestId: string): 
 
 /** Whether an interrupted run of `requestId` is still ending in this process. */
 export function isInterruptedEndingHeld(requestStore: object, requestId: string): boolean {
-  return endingInterruptedRuns.get(requestStore)?.has(requestId) === true;
+  return endingInterruptedRuns.get(storeIdentity(requestStore))?.has(requestId) === true;
 }
 
 /** `a` and `b` added up by model, as a new map; neither is changed. */

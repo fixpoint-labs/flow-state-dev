@@ -88,6 +88,7 @@ import { WRITES_OUTLIVE_ABORT, requestEndRegistryOf, type WritesOutliveAbort } f
 import { holdInterruptedEnding } from "./request-spend-ledger";
 import { WAIT_DEADLINE_ENTRY, isUserSuspension, isWaitGate, continuesAtExpiry, waitGateDataOf } from "@flow-state-dev/core/types";
 import { clearParkOwed, parkOwedKey } from "../durability/park-owed";
+import { withChangeBus } from "../bus/publish-writes";
 
 type RunActionInternalOptions<
   TFlow extends FlowInstance = FlowInstance,
@@ -1007,8 +1008,11 @@ export async function runActionInternal<
   TFlow extends FlowInstance = FlowInstance,
   TActionName extends keyof TFlow["actions"] & string = keyof TFlow["actions"] & string
 >(
-  options: RunActionInternalOptions<TFlow, TActionName>
+  received: RunActionInternalOptions<TFlow, TActionName>
 ): Promise<ExecutionResult> {
+  // A caller may hand a raw registry (FIX-2426): its request and session
+  // writes publish on the bus all the same, so a view elsewhere hears them.
+  const options = { ...received, stores: withChangeBus(received.stores) };
   const requestId = options.requestId ?? generateId("req");
   // Caller metadata never carries a resume instruction (BP-031, FIX-1707):
   // drop `resumeContext` / `resumeOf` before anything reads or persists it. A
