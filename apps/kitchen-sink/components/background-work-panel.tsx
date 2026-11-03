@@ -99,11 +99,11 @@ interface BackgroundWorkPanelProps {
  * (`docs/architecture/server-and-client.md`), and it is why the DevTool's own
  * panel reads one page plus a sentinel instead of walking the index.
  *
- * What this actually costs, stated plainly because it was understated twice:
- * `session.refresh()` is a **full session snapshot plus** the dispatched-run read,
- * and with `items: true` the snapshot paginates the entire item history. It is
- * not one extra list read. The gate below at least confines that to
- * conversations which use background work at all.
+ * What this costs: `session.refresh({ items: false })` is one state read plus
+ * the dispatched-run read. It leaves out the item history, which a completed
+ * turn already re-reads in full on its own (`useSession`'s terminal branch).
+ * The gate below confines even that to conversations which use background
+ * work at all.
  *
  * The intended fix is a framework opt-in rather than an app-level effect,
  * tracked as **FIX-1109**: `useSession` grows an explicit
@@ -115,17 +115,10 @@ interface BackgroundWorkPanelProps {
 export function BackgroundWorkRefresh({ session }: { session: BackgroundWorkPanelProps["session"] }) {
   const { refresh, isStreaming, items, childSessions } = session;
 
-  // Only conversations that actually use background work pay for this. The
-  // gate matters because `session.refresh()` is NOT the cheap read this was
-  // originally documented as: it is `Promise.all([refreshSnapshot(),
-  // refreshChildSessions()])`, and with `items: true` the snapshot paginates the
-  // session's entire item history. Ungated, every finished turn in every
-  // conversation — the overwhelming majority of which never file a job — paid
-  // a full history refetch to update a panel with nothing in it.
-  //
-  // `useSession` exposes no dispatched-run-only refresh (`refreshChildSessions` is
-  // internal), which is exactly the gap FIX-1109 closes. Until it lands this
-  // gate is the whole of the mitigation available to an app.
+  // Only conversations that actually use background work pay for this.
+  // `useSession` exposes no dispatched-run-only refresh (`refreshChildSessions`
+  // is internal), which is exactly the gap FIX-1109 closes; until it lands,
+  // `items: false` plus this gate is the narrowest read available to an app.
   //
   // Detected from `task-board-meta`, and NOT from `task-change` — this board
   // declares those invisible to the client on purpose (see
@@ -144,7 +137,7 @@ export function BackgroundWorkRefresh({ session }: { session: BackgroundWorkPane
   useEffect(() => {
     const finished = wasStreaming.current && !isStreaming;
     wasStreaming.current = isStreaming;
-    if (finished && usesBackgroundWork) void refresh();
+    if (finished && usesBackgroundWork) void refresh({ items: false });
   }, [isStreaming, refresh, usesBackgroundWork]);
   return null;
 }
