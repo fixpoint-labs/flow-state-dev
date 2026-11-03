@@ -25,9 +25,8 @@ const kitchenSinkTargetDir = join(testDir, "../components/flow-state");
 
 /**
  * Kitchen Sink follows sessions through `useSession`, so it draws neither the
- * connection bar nor the first-read screen. The request-recovery line will be
- * installed by the Kitchen Sink slice that draws it. An installed copy nothing
- * imports is dead code.
+ * connection bar nor the first-read screen. The request-recovery line is not
+ * installed here either. An installed copy nothing imports is dead code.
  */
 const NOT_INSTALLED_COMPONENTS = new Set([
   "connection-banner.tsx",
