@@ -26,8 +26,9 @@ function deliver(listener: ChangeListener, notice: ChangeNotice): void {
 }
 
 /**
- * Create a bus that delivers each notice to this process's subscribers, in a
- * microtask after `publish`. `crossesProcesses` is always `false`.
+ * Create a bus that delivers each notice to this process's subscribers, in
+ * one microtask after `publish` (one per publish, however many subscribe).
+ * `crossesProcesses` is always `false`.
  */
 export function createInMemoryBus(): ChangeBus {
   const byScope = new Map<string, Set<{ resource?: string; listener: ChangeListener }>>();
@@ -38,14 +39,16 @@ export function createInMemoryBus(): ChangeBus {
     publish(notice) {
       const subscribers = byScope.get(scopeKey(notice.topic));
       if (subscribers === undefined) return Promise.resolve();
-      for (const subscriber of [...subscribers]) {
-        // Unnarrowed subscribers hear every notice under the scope; a narrowed
-        // one hears only its own resource.
-        if (subscriber.resource !== undefined && subscriber.resource !== notice.topic.resource) continue;
-        queueMicrotask(() => {
-          if (subscribers.has(subscriber)) deliver(subscriber.listener, notice);
-        });
-      }
+      // Unnarrowed subscribers hear every notice under the scope; a narrowed
+      // one hears only its own resource.
+      const hearing = [...subscribers].filter(
+        (subscriber) => subscriber.resource === undefined || subscriber.resource === notice.topic.resource
+      );
+      if (hearing.length === 0) return Promise.resolve();
+      queueMicrotask(() => {
+        // One that unsubscribed since the publish no longer hears it.
+        for (const subscriber of hearing) if (subscribers.has(subscriber)) deliver(subscriber.listener, notice);
+      });
       return Promise.resolve();
     },
 

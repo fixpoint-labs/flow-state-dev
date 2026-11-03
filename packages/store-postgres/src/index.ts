@@ -21,6 +21,7 @@ import { createPostgresSuspensionStore } from "./suspension-store";
 import { createPostgresLeaseStore } from "./lease-store";
 import { createPostgresWakeStore } from "./wake-store";
 import { createPgPoolTx } from "./tx";
+import { createPostgresBus, type PostgresBus } from "./bus";
 
 const DEFAULT_LIVE_TAIL_POOL_MAX = 10;
 
@@ -33,7 +34,12 @@ function resolveLiveTailPoolMax(): number {
 }
 
 export type PostgresStoreRegistry = StoreRegistry & {
-  /** Drain the connection pool and disconnect */
+  /**
+   * The Postgres change bus (FIX-2427). It crosses processes while it hears
+   * its own ping over the tail pool; without a tail pool it stays in process.
+   */
+  bus: PostgresBus;
+  /** Hand back the bus's listening connection, then drain the pools and disconnect. */
   close(): Promise<void>;
 };
 
@@ -194,6 +200,8 @@ export async function createPostgresStores(
       liveTailPool = null;
     }
 
+    // Every write's notice goes out over this server; the listener needs the tail pool.
+    const bus = createPostgresBus({ executor, liveTailPool: liveTailPool ?? null, notify: true });
     return {
       session: createPostgresSessionStore(executor),
       request: createPostgresRequestStore(executor, { liveTailPool }),
@@ -209,7 +217,10 @@ export async function createPostgresStores(
       suspensions: createPostgresSuspensionStore(executor),
       leases: createPostgresLeaseStore(executor),
       wakes: createPostgresWakeStore(executor),
+      bus,
       async close() {
+        // The listener goes back to the tail pool before the pools end.
+        await bus.close();
         await closePool();
       }
     };
@@ -218,6 +229,15 @@ export async function createPostgresStores(
   if (!skipSchemaInit) {
     await initializeSchema(executor);
   }
+
+  // `{ pool }` reaches a server every process shares, so its notices go out
+  // there even with no tail pool to hear them on. An `{ executor }` (PGlite)
+  // is this process's alone, unless a tail pool says otherwise.
+  const bus = createPostgresBus({
+    executor,
+    liveTailPool: liveTailPool ?? null,
+    notify: !("executor" in options) || (liveTailPool ?? null) !== null
+  });
 
   return {
     session: createPostgresSessionStore(executor),
@@ -234,21 +254,26 @@ export async function createPostgresStores(
     suspensions: createPostgresSuspensionStore(executor),
     leases: createPostgresLeaseStore(executor),
     wakes: createPostgresWakeStore(executor),
+    bus,
     async close() {
+      // The listener goes back to the tail pool before the pools end.
+      await bus.close();
       await closePool();
     }
   };
 }
 
 /**
- * Postgres store adapter for `createFlowState`. Backs the `primary`
- * capability slot. Wraps `createPostgresStores`, memoizing the registry so
- * lazy resolution opens the pool once, and disposes it via `close()`.
+ * Postgres store adapter for `createFlowState`. Backs the `primary` and `bus`
+ * capability slots: with no `bus` named in the profile, the Postgres bus
+ * carries change notices between processes. Wraps `createPostgresStores`,
+ * memoizing the registry so lazy resolution opens the pool once, and
+ * disposes it via `close()`.
  */
 export function postgresStores(options: PostgresStoreOptions): StoreAdapter {
   let registry: PostgresStoreRegistry | undefined;
   return {
-    capabilities: ["primary"],
+    capabilities: ["primary", "bus"],
     async resolve() {
       registry ??= await createPostgresStores(options);
       return registry;
@@ -277,3 +302,4 @@ export { initializeSchema } from "./schema";
 export { createPostgresScheduleIndex } from "./schedule-index";
 export { createPgPoolTx } from "./tx";
 export type { PostgresStoreOptions, PoolConfig, QueryExecutor, TxClient } from "./types";
+export type { PostgresBus } from "./bus";

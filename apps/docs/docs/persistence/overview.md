@@ -15,9 +15,9 @@ The `bus` slot carries change notices. Every request and session write sends one
 | Bus | What an open session view reads |
 |---|---|
 | Crosses processes | Only after a change, at most once a second. A view of a quiet session costs the store nothing |
-| In memory (the default today) | After a change, and also about once a second, so a reply written by another process still arrives |
+| In memory | After a change, and also about once a second, so a reply written by another process still arrives |
 
-None of the adapters below backs `bus` yet, so every profile runs the in-memory bus for now. Views keep the once-a-second read, as they always have.
+The Postgres adapter backs `bus` (see [Postgres](#postgres)). The in-memory, file and SQLite adapters don't, so their profiles run the in-memory bus, and views keep the once-a-second read.
 
 | Adapter | Persistence | When to use |
 |---------|------------|-------------|
@@ -75,6 +75,8 @@ const flowstate = createFlowState({
 ```
 
 On Vercel, use `vercelPostgresStores()` from `@flow-state-dev/vercel/store` instead — it bakes in the pool tuning and Neon client swap.
+
+With more than one process on one database (a web process and BullMQ workers, or several web processes), a session view open on one process sees a change saved on another as soon as it is saved, and a view of a quiet session costs the database nothing. You don't configure anything for this: the Postgres adapter backs the `bus` slot, and each process with an open view holds one listening connection and pings itself through it every 2 seconds. When the ping stops coming back, because a transaction pooler doesn't deliver `LISTEN` notifications or the connection dropped, views on that process go back to the once-a-second read until it recovers, and nothing is missed. `vercelPostgresStores()` doesn't back `bus`, so views there keep the once-a-second read. The [package README](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/store-postgres#cross-process-notices) covers the connection, the pooler warning and `liveTailPool: null`.
 
 Postgres provides the concurrency safety that compare-and-swap relies on. Compare-and-swap means a write carries the version it expects to find, and the store applies it only if that version is still current — so a write built on a stale read is refused instead of silently overwriting someone else's.
 
