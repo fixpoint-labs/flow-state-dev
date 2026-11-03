@@ -17,6 +17,7 @@
  */
 import type { ChangeKind, TopicScope } from "@flow-state-dev/core";
 import { publishNotices } from "./publish-writes";
+import { ownerKeyAdmits } from "../resources/owner-private";
 import type { ChangeBus } from "./types";
 
 /** Which scope changed, under which tenant, and which request changed it. */
@@ -31,6 +32,23 @@ export type ScopeChange = {
   /** The request that made the change, when one did. */
   requestId?: string;
 };
+
+/**
+ * The resource path a notice may name for the row at `storageKey` of
+ * `collection`, or `undefined` to publish on the bare scope topic.
+ *
+ * Everyone who may hear the scope's topic hears the path. So the path goes
+ * out only when the reads' own predicate ({@link ownerKeyAdmits}) admits the
+ * row to a reader with no identity, meaning any reader the scope serves. An
+ * owner-private row (`drafts/~alice/…`) is admitted only to its owner, so
+ * its notice names no path. Every view of the scope wakes and reads again
+ * through its own checks: the owner sees the change, and nobody else learns
+ * the key. A single resource (`collection` undefined) is the same for every
+ * caller, so its key is named.
+ */
+export function noticePathFor(collection: object | undefined, storageKey: string): string | undefined {
+  return collection === undefined || ownerKeyAdmits(collection, storageKey, undefined) ? storageKey : undefined;
+}
 
 /**
  * Publish `change` on its scope's topic. A missing bus publishes nothing;

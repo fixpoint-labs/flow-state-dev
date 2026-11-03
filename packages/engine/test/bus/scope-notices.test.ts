@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { DEFAULT_ORG_ID, defineFlow, defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, defineResource, defineResourceCollection, handler, ownerSegment } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
   handleCreateCollectionItem,
@@ -46,6 +46,17 @@ const licenses = defineResourceCollection({
 });
 
 /** An org collection with no `client` config, in a scope whose derived value may read it. */
+/** An org collection whose rows only their owner may read. */
+const drafts = defineResourceCollection({
+  pattern: "drafts/[owner]/[id]",
+  ownerPrivate: { param: "owner" },
+  scope: "org",
+  flowIsolation: false,
+  stateSchema: z.object({ title: z.string().default("") }),
+  // A write grant, and an org scope with a derived value: either makes it publish.
+  client: { content: { update: true } }
+});
+
 /** A user single resource a client can read, neither live nor reactive. */
 const profile = defineResource({
   scope: "user",
@@ -79,7 +90,7 @@ function app() {
     user: { stateSchema: z.object({ theme: z.string().default("light") }) },
     session: { stateSchema: z.object({ topic: z.string().default("") }) },
     request: { stateSchema: z.object({ step: z.string().default("") }) },
-    resources: { licenses, audit, ledger, profile },
+    resources: { licenses, audit, ledger, profile, drafts },
     actions: {
       orgPlan: { inputSchema: z.object({ value: z.string() }), block: write("org-plan", async ({ value }, ctx) => ctx.org.patchState({ plan: value })) },
       userTheme: { inputSchema: z.object({ value: z.string() }), block: write("user-theme", async ({ value }, ctx) => ctx.user.patchState({ theme: value })) },
@@ -89,6 +100,13 @@ function app() {
         inputSchema: z.object({ value: z.string() }),
         block: write("addLicense", async ({ value }, ctx) => {
           await ctx.resources.licenses.create(value, { name: value });
+          return {};
+        })
+      },
+      draft: {
+        inputSchema: z.object({ value: z.string() }),
+        block: write("draft", async ({ value }, ctx) => {
+          await ctx.resources.drafts.create({ owner: ownerSegment(ctx.session.identity.userId), id: value }, { title: value });
           return {};
         })
       },
@@ -184,6 +202,18 @@ describe("resource writes publish on their scope's topic, narrowed to the resour
     expect(ofKind(heard, "resource")).toEqual([
       { topic: { ...userTopic, resource: "profile" }, kind: "resource", origin: { requestId } }
     ]);
+  });
+
+  it("names no owner-private row on the org topic every member hears, and still wakes the scope", async () => {
+    const bus = createInMemoryBus();
+    const heard = hear(bus, orgTopic);
+    const requestId = await run(bus, "draft", "confidential-title");
+    const resources = ofKind(heard, "resource");
+    // An org member subscribed to the org topic learns nothing of Alice's key.
+    expect(JSON.stringify(heard)).not.toContain("~alice");
+    expect(JSON.stringify(heard)).not.toContain("confidential-title");
+    // Every view of the scope, Alice's included, still wakes and re-reads.
+    expect(resources).toEqual([{ topic: orgTopic, kind: "resource", origin: { requestId } }]);
   });
 
   it("publishes nothing for a resource no client can read", async () => {

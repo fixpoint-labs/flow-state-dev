@@ -157,7 +157,7 @@ import {
   LLM_AUDIENCE_TYPES,
 } from "./history";
 import { shouldPersistScopeChange, wrapStateOpsWithEmit } from "./scope-emit";
-import { publishScopeChange } from "../bus/scope-changes";
+import { noticePathFor, publishScopeChange } from "../bus/scope-changes";
 import {
   createScopeResourceRegistry,
   normalizeScopeResources,
@@ -2626,15 +2626,25 @@ export async function createExecutionContext<
     const scopeClient = scope === "session" ? flow.session?.client : scope === "user" ? flow.user?.client : flow.org?.client;
     const everyResourcePublishes = Object.keys(scopeClient?.derived ?? {}).length > 0;
     const publishedSingleKeys = new Set<string>();
-    const publishedPatterns: string[] = [];
+    const publishedCollections: ResourceCollectionConfig[] = [];
     for (const [accessor, cfg] of Object.entries(scopeConfigs)) {
       if (!everyResourcePublishes && cfg.client === undefined) continue;
-      if (isCollectionConfig(cfg)) publishedPatterns.push(cfg.pattern);
+      if (isCollectionConfig(cfg)) publishedCollections.push(cfg);
       else publishedSingleKeys.add(scopeStorageKeys[accessor] ?? accessor);
     }
-    const publishes = (resourcePath: string): boolean =>
-      publishedSingleKeys.has(resourcePath) || publishedPatterns.some((pattern) => matchesPattern(pattern, resourcePath));
-    const publishesAny = publishedSingleKeys.size > 0 || publishedPatterns.length > 0;
+    const publishesAny = publishedSingleKeys.size > 0 || publishedCollections.length > 0;
+    /**
+     * Publish a change at `resourcePath` when another view may read it: on
+     * the topic narrowed to the path, or on the bare scope topic when the
+     * path is a row only its owner may read (`noticePathFor`).
+     */
+    const publishChange = (resourcePath: string): void => {
+      if (publishedSingleKeys.has(resourcePath)) return publishScopeNotice(scope, "resource", resourcePath);
+      const holders = publishedCollections.filter((cfg) => matchesPattern(cfg.pattern, resourcePath));
+      if (holders.length === 0) return;
+      const named = holders.some((cfg) => noticePathFor(cfg, resourcePath) !== undefined);
+      publishScopeNotice(scope, "resource", named ? resourcePath : undefined);
+    };
 
     // Only wire a handler when there is something to do: a live emitter
     // (FIX-739 streaming), a `reactTo` binding (FIX-751), and/or a resource
@@ -2687,7 +2697,7 @@ export async function createExecutionContext<
         });
       }
       // FIX-1506: beside the emit, a notice for other sessions' views.
-      if (publishes(resourcePath)) publishScopeNotice(scope, "resource", resourcePath);
+      publishChange(resourcePath);
       // FIX-751 reactive dispatch is awaited inline — it runs the bound block
       // as part of the mutating turn, and a block failure propagates out.
       if (dispatchReactive !== undefined) {

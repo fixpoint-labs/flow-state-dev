@@ -654,7 +654,9 @@ const stop = stores.bus!.subscribe(topic, (notice: ChangeNotice) => readAgain(no
 - `state` and `resource` publish from any run, with or without a stream, and
   from the client's collection routes (with no `origin`). A resource
   publishes when it has a `client` config, or when its scope declares
-  `client.derived`. Request and block-instance state publish nothing.
+  `client.derived`. Request and block-instance state publish nothing. A row
+  only its owner may read (an `ownerPrivate` collection's) publishes on the
+  bare scope topic, naming no path.
 - A subscriber to a scope's topic hears every notice under it, narrowed to a
   resource or not, with the notice's own topic. A subscriber narrowed to a
   resource hears only that resource's.

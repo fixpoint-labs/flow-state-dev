@@ -252,6 +252,13 @@ describe("useSession live · other sessions' scope changes", () => {
     expect(stateOnlyReads()).toHaveLength(1);
   });
 
+  it("reads every resource it holds on a resource notice that names no path (a row only its owner may read)", async () => {
+    const { announced } = await mountLive();
+    await hear({ topic: topic.org(), kind: "resource", origin: { requestId: "req_elsewhere" } });
+    expect(announced()).toEqual(["licenses"]);
+    expect(stateOnlyReads()).toHaveLength(1);
+  });
+
   it("reads no state for a resource the scope's state read doesn't carry", async () => {
     const { announced } = await mountLive();
     sessionsMock.state.mockResolvedValue(snapshot({ clientData: {} }));
