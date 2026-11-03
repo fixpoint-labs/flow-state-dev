@@ -103,7 +103,7 @@ session.refresh({ items: false });  // state, detail and background work; no ite
 
 It is current as of the reader's last interaction: re-read on mount, at the start of each action, and on `refresh()`. With `live: true` it is also re-read when a run is dispatched, even one still waiting its turn, and again when the run finishes. Without `live`, nothing updates it while they wait. A row's `status` is absent until a run has been dispatched into its session, and `"active"` means only *not finished*. See [What `status` tells you](/docs/server/background-work#what-status-tells-you).
 
-`live` defaults to `false`. When `true`, the hook also hears requests it didn't send and keeps `childSessions` current as runs are dispatched and finish. See [Hearing requests you didn't send](/docs/client/react#hearing-requests-you-didnt-send).
+`live` defaults to `false`. When `true`, the hook also hears requests it didn't send and keeps `childSessions` current as runs are dispatched and finish. It also reads again when another session changes the state or a resource of the session, its user or its organization, so `useClientData` and the resource hooks show it. See [Hearing requests you didn't send](/docs/client/react#hearing-requests-you-didnt-send).
 
 The list holds 25 rows by default; pass `childSessions: { limit }` in the hook's options for a different page size. `childSessionsStale` turns `true` on a failed re-read, cleared by the next successful one, and on a `limit` above the server's cap, cleared only by asking for a page that fits. With `live: true` it also turns `true` when the session stream stops following the session after it opened: from the first failed reconnect until a connection gets through, and after a refused reconnect until a snapshot read, such as `refresh()`, finds a new session under the id that the reader can open. That read moves the view onto the new session. The rows already read stay in every case — the hook never empties the list. [Background work](/docs/client/react#background-work) walks through rendering the panel.
 
@@ -292,7 +292,7 @@ import { SuspensionResolverProvider } from "@flow-state-dev/react";
 
 ## Workforce components
 
-`FlowNavigator`, `Roster`, `BoardColumns`, `BoardList` and `WorkerDetail` draw a workforce: a sidebar over your flows, instances and sessions, the workers hired in an organization, a task board as columns or as a list, and one worker's details. [Workforce components](/docs/workforce/ui) covers the navigator, the roster and the boards: what each one reads, and how to style it. `WorkerDetail` is covered in the [package README](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/react/README.md#workerdetail).
+`FlowNavigator`, `Roster`, `BoardColumns`, `BoardList` and `WorkerDetail` draw a workforce: a sidebar over your flows, instances and sessions, the workers hired in an organization, a task board as columns or as a list, and one worker's details. [Workforce components](/docs/workforce/ui) covers the navigator, the roster and the boards: what each one reads, and how to style it. `Roster` and `BoardColumns` take `live`, to read again when another session changes their collection. `WorkerDetail` is covered in the [package README](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/react/README.md#workerdetail).
 
 ## Suspensions
 

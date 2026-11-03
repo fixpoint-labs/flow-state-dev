@@ -22,6 +22,8 @@ import {
 import type { SessionView } from "./useSession";
 import { useReadFence, type ReadFence } from "./useReadFence";
 import { useClient } from "../internal/useClient";
+import { mayBelongTo, storagePrefixOf } from "../internal/scopeNotices";
+import { useResourceManifest } from "./useResourceManifest";
 
 /**
  * Mutation actions available on the collection, shaped by declared permissions.
@@ -111,15 +113,6 @@ function cacheKey(options: CollectionListOptions | undefined): string {
 }
 
 /**
- * Returns `true` if a resource_change path likely affects items in `ref`.
- * Conservative: any path starting with `ref/` or exactly `ref` triggers
- * invalidation. False positives are tolerable; missed invalidations are not.
- */
-function pathAffectsCollection(path: string, ref: string): boolean {
-  return path === ref || path.startsWith(`${ref}/`);
-}
-
-/**
  * Locate the snapshot entry for `ref` across all scopes. None while the view
  * still holds the previous session's snapshot: `useSession` keeps it on a
  * switch until the new session's snapshot is read.
@@ -202,18 +195,26 @@ export function useResourceCollection<TClient = unknown>(
   // did not opt into transients. `session.resourceChanges` is the dedicated
   // side channel: surfaced regardless of the items filter, so every active
   // ref subscriber gets a chance to invalidate the moment the change lands.
+  //
+  // A change names the item's storage path, which the collection's key need
+  // not name (`roster` stores under `workforce/workers/…`), so the path is
+  // matched against the storage prefix the flow's manifest declares, through
+  // the one rule the live views share (`mayBelongTo`). Until the manifest is
+  // known, no path is ruled out: a read too many, never a stale list.
+  const { manifest } = useResourceManifest(session);
+  const prefix = useMemo(() => storagePrefixOf(manifest, ref), [manifest, ref]);
   const lastSeenResourceChangeIdxRef = useRef(0);
   useEffect(() => {
     const changes = session.resourceChanges;
     const start = lastSeenResourceChangeIdxRef.current;
     lastSeenResourceChangeIdxRef.current = changes.length;
     for (let i = start; i < changes.length; i++) {
-      if (pathAffectsCollection(changes[i]!.resourcePath, ref)) {
+      if (mayBelongTo(changes[i]!.resourcePath, ref, prefix)) {
         invalidate();
         break;
       }
     }
-  }, [session.resourceChanges, ref, invalidate]);
+  }, [session.resourceChanges, ref, prefix, invalidate]);
 
   const collectionEntry = useMemo(
     () => findCollectionEntry(session, ref),

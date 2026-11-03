@@ -114,22 +114,24 @@ let warnedPublishFailure = false;
 /** Notices waiting for the end of this microtask turn, per bus, folded by topic and kind. */
 const pending = new WeakMap<ChangeBus, Map<string, ChangeNotice>>();
 
+/**
+ * The fold key: topic, kind and origin. Two requests' notices stay two, so
+ * each writer's view skips only its own and hears the other's.
+ */
 function noticeKey(notice: ChangeNotice): string {
   const { scope, tenantId, id, resource } = notice.topic;
-  return `${scope}\u0000${tenantId}\u0000${id}\u0000${resource ?? ""}\u0000${notice.kind}`;
+  return `${scope}\u0000${tenantId}\u0000${id}\u0000${resource ?? ""}\u0000${notice.kind}\u0000${notice.origin?.requestId ?? ""}`;
 }
 
 /**
  * Queue `notices` for `bus`, to go out at the end of this microtask turn,
- * folded as the store writes' notices are. Never throws. The board-notice
- * seam (`board-notice.ts`) publishes through it.
+ * folded by topic, kind and origin. Never throws, and a failed publish never
+ * fails the write that raised it. Every publisher goes through this one:
+ * the request and session store wrappers here, and the run's resource and
+ * scope-state seams and the client's resource routes (FIX-1506), and the
+ * board-notice seam (FIX-2429).
  */
-export function queueNotices(bus: ChangeBus, notices: readonly ChangeNotice[]): void {
-  publish(bus, notices);
-}
-
-/** Queue `notices` for `bus`, to go out at the end of this microtask turn. Never throws. */
-function publish(bus: ChangeBus, notices: readonly ChangeNotice[]): void {
+export function publishNotices(bus: ChangeBus, notices: readonly ChangeNotice[]): void {
   let queued = pending.get(bus);
   const first = queued === undefined;
   if (queued === undefined) pending.set(bus, (queued = new Map()));
@@ -360,21 +362,21 @@ function sessionWrites(store: SessionStore, bus: ChangeBus, identities: Identiti
     if (result?.ok !== true) return result;
     const identity =
       result.record !== undefined ? identities.rememberSession(id, result.record) : await identities.session(id);
-    if (identity !== undefined) publish(bus, identities.sessionNotices(identity, "run"));
+    if (identity !== undefined) publishNotices(bus, identities.sessionNotices(identity, "run"));
     return result;
   };
 
   return present(store, {
     set: (original) => async (id: string, value: SessionRecord, expected: unknown) => {
       const result = await original(id, value, expected);
-      if (result?.ok === true) publish(bus, identities.sessionNotices(identities.rememberSession(id, value), "run"));
+      if (result?.ok === true) publishNotices(bus, identities.sessionNotices(identities.rememberSession(id, value), "run"));
       return result;
     },
     delete: (original) => async (id: string) => {
       const identity = await identities.session(id);
       await original(id);
       identities.forgetSession(id);
-      if (identity !== undefined) publish(bus, identities.sessionNotices(identity, "run"));
+      if (identity !== undefined) publishNotices(bus, identities.sessionNotices(identity, "run"));
     },
     ...Object.fromEntries(DELTA_METHODS.map((name) => [name, delta]))
   });
@@ -384,7 +386,7 @@ function requestWrites(store: RequestStore, bus: ChangeBus, identities: Identiti
   const after = (identity: RequestIdentity | undefined, kind: ChangeKind): void => {
     void identities
       .requestNotices(identity, kind)
-      .then((notices) => publish(bus, notices))
+      .then((notices) => publishNotices(bus, notices))
       .catch((error: unknown) => debugUnassembled(error, { store: "session", id: identity?.sessionId ?? "" }));
   };
   const delta = (original: AnyMethod) => async (id: string, ...rest: unknown[]) => {

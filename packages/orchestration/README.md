@@ -1372,6 +1372,28 @@ await createInboxClient(client).answer(items[0], { approved: true });
 - **One item per task, however many questions it has.** A task's questions and confirms, asked at filing or midway, list oldest first as its `holds`, beside a stop in its run.
 - **The answer is typed by what the question asks:** an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, a confirm `{ done, note? }` (a No cancels the task unless the confirm was filed with `onNo: "continue"`). `answer(item, value, questionId?)` answers the item's first question, or the one named; `answerOne(question, value)` answers one question directly. A task run's stop goes to the engine's answer route, which records who answered. A question or a confirm goes to its board's `updateTask` action, as the signed-in user, in the session that board lives in, and the call rejects with the board's refusal. A question on a board the reader can't reach says so in `unanswerable`.
 
+### Changing a task from a screen
+
+The same client changes a task on a board. Bind the board once, then call its actions:
+
+```ts
+import { createInboxClient } from "@flow-state-dev/orchestration/inbox";
+
+const tasks = createInboxClient(client).board({ flowId: "coordinator", sessionId, board: "tasks" });
+
+await tasks.release(id);                     // a held task goes back to pending
+await tasks.steer(id, "Skip the dev deps");  // words for an open task; they join its brief
+const alsoCancelled = await tasks.cancel(id); // the dependents the board cancelled with it
+await tasks.retry(id);                       // a failed or cancelled task, as the same task
+const newId = await tasks.refile(row, { assignee: "eng.writer" });
+```
+
+- **`at` names where the board lives:** the flow and the session that hold it, and the board's collection id (Workforce's `"tasks"`, not a row's `<sessionId>.tasks` ref). Each action runs there, as the signed-in user.
+- **Each call resolves when the board says yes and rejects with its words when it says no:** a finished task, a locked field, an action the flow doesn't have. A refusal writes nothing. One rejection can follow a write: the board finished the action but its answer couldn't be read, so check the board before trying again (before a `refile` especially, which would otherwise file a duplicate). The board's rules stay the board's.
+- **`retry` keeps the task:** its id, its history and its spend, with one more try. **`refile` files a new task** from the row's `goal`, `title`, `context`, `assignee`, `labels` and `priority`, with your overrides winning. An override of `null` is left out like an unset one, so it can't stop a field being copied. Use it for a task that should run again changed. It doesn't copy `input`, `metadata` or `deps`; an override can set them. The new task doesn't record which one it came from.
+- **Answering a question stays `answerOne`.** There is no second answer call on the board.
+- **`taskActionName(tool, board)`** gives a board action's name (`taskActionName("updateTask", "tasks")` is `"updateTask_tasks"`), for a reader that builds a row's `holder` or a test that calls the action directly. To change a task, call `board(at)`.
+
 ### A task row, as a person sees it
 
 `taskRowView(row, holds?)` turns one task row into what a task screen draws, so every screen uses the same words for the same row:

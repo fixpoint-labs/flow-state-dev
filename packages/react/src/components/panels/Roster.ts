@@ -19,7 +19,7 @@
  * fills its own affordances through slots.
  */
 import { createElement, useMemo, type ReactNode } from "react";
-import { usePanelRows, type PanelRowSource } from "./reads";
+import { usePanelRows, type PanelNoticeSource, type PanelRowSource } from "./reads";
 import { usePanelSource } from "./usePanelSource";
 import {
   bareList,
@@ -63,7 +63,7 @@ export type RosterSlots = {
   readonly empty?: () => ReactNode;
 };
 
-export type RosterProps = {
+type RosterCommonProps = {
   /** The session the read is addressed to. Its organization is the one read. */
   readonly sessionId: string;
   /**
@@ -81,17 +81,6 @@ export type RosterProps = {
    */
   readonly problems?: readonly string[];
   /**
-   * The host's own client, so the read carries the host's transport
-   * and its credential (BR-29).
-   *
-   * Pass a STABLE reference — one held in a context or a `useMemo`, not an
-   * object literal built during render. The read is fenced on the client it
-   * was made through, which is what makes a rebuilt client discard the
-   * previous backend's rows; a fresh object every render reads as a rebuilt
-   * client every render.
-   */
-  readonly client?: PanelRowSource;
-  /**
    * Workers to request per page: the size of each fetch, not a cap on what
    * renders. The panel follows the cursor for up to 1,000 pages; a collection
    * with pages left after that shows the error line and Retry, never the
@@ -100,6 +89,25 @@ export type RosterProps = {
   readonly limit?: number;
   readonly slots?: RosterSlots;
 };
+
+/**
+ * What reads the roster, and what hears its changes: one client.
+ *
+ * - `client`: the host's own client, so the read carries the host's transport
+ *   and its credential (BR-29). Pass a STABLE reference — one held in a
+ *   context or a `useMemo`, not an object literal built during render. The
+ *   read is fenced on the client it was made through, which is what makes a
+ *   rebuilt client discard the previous backend's rows; a fresh object every
+ *   render reads as a rebuilt client every render.
+ * - `live`: read the roster again whenever another session hires or changes
+ *   a worker, heard through the client's `subscribe`. A client that only
+ *   reads takes no `live`.
+ */
+type RosterTransportProps =
+  | { readonly client?: PanelNoticeSource & PanelRowSource; readonly live?: boolean }
+  | { readonly client: PanelRowSource; readonly live?: false };
+
+export type RosterProps = RosterCommonProps & RosterTransportProps;
 
 /**
  * The published prop names, as a value.
@@ -113,6 +121,7 @@ export const rosterPropNames = [
   "client",
   "collectionRef",
   "limit",
+  "live",
   "problems",
   "sessionId",
   "slots"
@@ -166,6 +175,7 @@ export function Roster(props: RosterProps): ReactNode {
     problems,
     client,
     limit,
+    live = false,
     slots = {}
   } = props;
 
@@ -176,7 +186,8 @@ export function Roster(props: RosterProps): ReactNode {
     sessionId,
     collectionRef,
     limit,
-    "Failed to load the roster"
+    "Failed to load the roster",
+    live ? { notices: source as PanelNoticeSource } : undefined
   );
 
   // A row whose shape the component cannot read is dropped rather than

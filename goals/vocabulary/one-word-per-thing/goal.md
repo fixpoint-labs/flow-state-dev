@@ -10,6 +10,20 @@
 **Output:** `run.mts` passes `--list`, so a local FAIL prints every open line; CI's step prints only the per-file summary. Both fail on the same lines.
 **Controls:** `--control` on `sweep.mjs`: the planted `parkOnAsk`, and FIX-2070's `messageWorker` and `replyTo` (FIX-2242 D2), must each be reported by its own rule.
 
+## Collection item
+
+Stored collection data is an **item**, not a row. In prose, say "collection item". The public client names are the anchor: `CreateCollectionItemOptions`, `CollectionItemHandle` (`rules.mjs` → `COLLECTION_ITEM`).
+
+**Record** stays a verb (`recordHarnessUsage`, a run record). It is not the noun for collection data.
+
+**Entry** is already taken (inbox entries, flow entries, `CollectionSnapshotEntry`). It is not the noun for collection data either.
+
+Core's `OutputItem` and `getItems` are response items: what a run streams back (a message, a tool result, a status). They are not collection items. A collection item is the value a collection stores. The two share the word "item" and nothing else.
+
+**Exempt:** a real UI table row. That is a rendered table, a grid row, a DOM `<tr>`, or a component such as BoardColumns.
+
+**Scope:** new code and new docs only. This sweep does not apply the rule. The existing names stay until someone next edits that file. `scripts/check-retired-terms.mjs` flags a line this change adds. A new `type` or `interface` whose name ends in `Row` counts when the file is a collection module, the line mentions a collection, or the name contains `Collection`. Docs prose counts when it says "collection row", "collection's row", or "the row of the collection". The guard's other areas apply: history, process, goals, and root config stay out.
+
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|

@@ -45,6 +45,9 @@
  * session: one session stream, for the conversation, and none for the
  * assistant). That one is read before any reload, on purpose: what it
  * checks is the page keeping up by itself.
+ *
+ * And by `specs/issues/FIX-2417/SPEC.md`: a picked panel's header names the
+ * session's worker and its kind, and Back closes it onto the assistant.
  */
 import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
@@ -243,6 +246,24 @@ test("a line posted to support.help shows as devuser, and is still there after a
   const kept = (await openHelpDesk(page)).getByTestId("coordinator-line").filter({ hasText: line });
   await expect(kept).toHaveCount(1);
   await expect(kept.getByTestId("coordinator-line-label")).toHaveText("devuser");
+});
+
+test("a picked panel names its worker and kind, and Back returns to the assistant", async ({
+  page,
+  consoleErrors: _consoleErrors,
+}) => {
+  const panel = await openHelpDesk(page);
+  await expect(panel.getByTestId("picked-header-worker")).toHaveText(COORDINATOR);
+  await expect(panel.getByTestId("picked-header-flow")).toHaveText("coordinator");
+
+  await panel.getByRole("button", { name: "Back to assistant" }).click();
+  await expect(picked(page)).toHaveCount(0);
+  await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
+
+  await rosterRow(page, "support.devices").getByTestId("roster-talk").click();
+  const worker = picked(page);
+  await expect(worker.getByTestId("picked-header-worker")).toHaveText("support.devices");
+  await expect(worker.getByTestId("picked-header-flow")).toHaveText("agent worker");
 });
 
 /**

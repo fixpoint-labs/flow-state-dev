@@ -14,7 +14,9 @@ import {
   type SessionDetail,
   type SessionRequestSummary,
   type SessionStateSnapshotResponse,
-  type ChildSessionSummary
+  type ChildSessionSummary,
+  type WireNotice,
+  topic
 } from "@flow-state-dev/client";
 import type {
   ContentAudioDeltaEvent,
@@ -35,6 +37,8 @@ import type { RequestStatus, ResumeAction } from "@flow-state-dev/core/types";
 import { resolveItemVisibility } from "@flow-state-dev/contracts";
 import { useFlowContext } from "../context/FlowContext";
 import { useClient } from "../internal/useClient";
+import { coalescedReads } from "../internal/coalescedReads";
+import { LIVE_POLL_MS, mayBelongTo } from "../internal/scopeNotices";
 import {
   isReducibleStateChange,
   isReplayableStateChange,
@@ -68,6 +72,7 @@ const KEPT_LIVE_CHANGES = 256;
  * again, first and at most: the wait doubles between the two.
  */
 const RUNNING_STATUS_REREAD_MS = 1_000;
+
 const RUNNING_STATUS_REREAD_MAX_MS = 30_000;
 
 /**
@@ -278,6 +283,14 @@ export type UseSessionHookOptions = {
    * leaves the view as it is without `live`, with no error. Once the stream
    * has named the runs, losing it (a reconnect that fails, a refusal, the
    * session gone) keeps the rows and raises `childSessionsStale`.
+   *
+   * A live view also hears changes other sessions make to the scopes it reads:
+   * its session's resources, and its user's and organization's state and
+   * resources. On a notice it reads state again without its item history,
+   * and passes a resource change to the resource hooks, which read again as
+   * they do for the view's own. A change this view's own request made is
+   * skipped: its own stream already carried it. On a host that can't push,
+   * the view reads its state every few seconds instead.
    * Default: false.
    */
   live?: boolean;
@@ -634,6 +647,14 @@ export function useSession(
   // `published`) without forcing the consumer to set `includeTransient: true`.
   const [resourceChanges, setResourceChanges] = useState<ResourceChangeNotice[]>([]);
   const resourceChangeSeqRef = useRef(0);
+  // `live: true` only. Which requests' changes this view's own stream will
+  // still deliver, so a notice one of them made is skipped (FIX-1506 D2): a
+  // send whose POST is still out, and the request the open stream follows.
+  // Once that stream closes, at the end, on a drop or when another replaces
+  // it, the request's notices are heard again: a write after the terminal
+  // status (`onFinished`, an error observer) reaches no stream.
+  const pendingOwnRef = useRef(new Set<string>());
+  const streamRequestIdRef = useRef<string | null>(null);
   // Background work running under this session. Read from the server, never
   // derived from the conversation's own items — a ChildSession is a separate
   // session, not a message.
@@ -1613,6 +1634,8 @@ export function useSession(
           });
 
       streamHandleRef.current = handle;
+      streamRequestIdRef.current = requestId;
+      pendingOwnRef.current.delete(requestId);
     },
     [
       itemConfig.includeTransient,
@@ -1918,6 +1941,97 @@ export function useSession(
     return missing.length === 0 ? childSessions : [...childSessions, ...missing];
   }, [childSessions, liveRuns]);
 
+  // `live: true`: hear other sessions' changes to the scopes this view reads
+  // (FIX-1506). After the first snapshot, one subscription to the session's,
+  // the user's and the org's topics. It acts on `state` and `resource` only;
+  // items, requests and runs are the session stream's. A notice this view's
+  // own request made is skipped. Reads go one in flight and one waiting.
+  const refreshStateRef = useRef(refreshState);
+  refreshStateRef.current = refreshState;
+  const snapshotNowRef = useRef(snapshot);
+  snapshotNowRef.current = snapshot;
+
+  useEffect(() => {
+    if (!live || sessionId === undefined || snapshotAppliedFor !== sessionId) return;
+
+    const stateReads = coalescedReads(async () => {
+      await refreshStateRef.current();
+    });
+
+    /** Hand resource changes to the resource hooks, as the view's own stream does. */
+    const announce = (paths: readonly string[]): void => {
+      if (paths.length === 0) return;
+      const notices = paths.map((resourcePath): ResourceChangeNotice => {
+        resourceChangeSeqRef.current++;
+        return { resourcePath, changeType: "updated", seq: resourceChangeSeqRef.current };
+      });
+      setResourceChanges((prev) => [...prev, ...notices]);
+    };
+
+    /** Every resource the snapshot holds, for a read of everything. */
+    const everyResource = (): string[] => {
+      const resources = snapshotNowRef.current?.resources;
+      if (resources === undefined) return [];
+      return (["session", "user", "org"] as const).flatMap((scope) => Object.keys(resources[scope] ?? {}));
+    };
+
+    /**
+     * Whether a resource change may move the scope's state read: the
+     * snapshot holds a resource the change may belong to (a single, or a
+     * collection's count), or the scope's client data may derive from it.
+     * The view doesn't know its resources' storage paths (`roster` stores
+     * under `workforce/workers/…`), so any held resource can't be ruled out.
+     */
+    const stateCarries = (scope: "session" | "user" | "org", path: string): boolean => {
+      const current = snapshotNowRef.current;
+      const held = current?.resources?.[scope] ?? {};
+      if (Object.keys(held).some((ref) => mayBelongTo(path, ref, undefined))) return true;
+      // Any client data: a derived value may read any of the scope's
+      // resources, so the cost is an extra read, never a stale view.
+      const clientData = current?.clientData?.[scope];
+      return clientData !== undefined && clientData !== null && Object.keys(clientData).length > 0;
+    };
+
+    /** Whether this view's own stream will still deliver the change `requestId` made. */
+    const carriedByOwnStream = (requestId: string): boolean =>
+      pendingOwnRef.current.has(requestId) ||
+      (streamHandleRef.current !== null && streamRequestIdRef.current === requestId);
+
+    const onChange = (notice: WireNotice | null): void => {
+      // A connect, a reconnect, a tick, or a bus that may have missed some:
+      // read everything this view reads from the scopes.
+      if (notice === null || notice.kind === "resync") {
+        announce(everyResource());
+        stateReads.request();
+        return;
+      }
+      if (notice.kind !== "state" && notice.kind !== "resource") return;
+      if (notice.origin !== undefined && carriedByOwnStream(notice.origin.requestId)) return;
+      if (notice.kind === "state") {
+        stateReads.request();
+        return;
+      }
+      const path = notice.topic.resource;
+      if (path === undefined) {
+        announce(everyResource());
+        stateReads.request();
+        return;
+      }
+      announce([path]);
+      if (stateCarries(notice.topic.scope, path)) stateReads.request();
+    };
+
+    const subscription = fsd.subscribe([topic.session(sessionId), topic.user(), topic.org()], {
+      onChange,
+      pollIntervalMs: LIVE_POLL_MS
+    });
+
+    return () => {
+      subscription.close();
+      stateReads.close();
+    };
+  }, [live, sessionId, snapshotAppliedFor, fsd]);
+
   // Stuck-request watchdog. Polls a clock against `lastEventAtRef`; if the
   // SSE stream has produced no event or heartbeat in `stuckThresholdMs`
   // while a request is (or just was) in flight, flip `isStuck` so the host
@@ -2071,6 +2185,11 @@ export function useSession(
 
       const requestId = `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
       activeRequestIdRef.current = requestId;
+      // Known before the POST, so a notice the run publishes before its
+      // stream opens is skipped too. Only when the view will follow the
+      // stream: without items, nothing else carries the change here. Once
+      // the send settles, only an attached stream covers it.
+      if (itemConfig.enabled) pendingOwnRef.current.add(requestId);
 
       // Optimistic user message: inject immediately so the user sees their own
       // message without waiting for the server round-trip. The server's own
@@ -2162,6 +2281,8 @@ export function useSession(
         setError(normalized);
         setIsStreaming(false);
         throw normalized;
+      } finally {
+        pendingOwnRef.current.delete(requestId);
       }
     },
     [
