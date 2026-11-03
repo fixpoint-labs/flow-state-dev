@@ -39,6 +39,7 @@ const ANSWER_TIMEOUT_MS = 30_000;
 const ANSWER_POLL_MS = 150;
 /** Requests listed per page while looking for the one that just ended, and how many pages. */
 const REQUEST_PAGE = 100;
+/** The listing is newest first, so the answer is almost always on page 0; the cap only bounds a miss in a long session (2,000 requests), which then rejects. */
 const REQUEST_PAGES = 20;
 
 /** The task tools a board takes from outside a run, each an action on the flow that holds the board. */
@@ -66,8 +67,8 @@ type BoardOutput = { ok?: boolean; error?: string } & Record<string, unknown>;
  * board action and every row answer goes through. Resolves to the action's
  * output when the board said `ok: true`. Rejects with the board's own words
  * on `ok: false`, with the request's error when it failed, with the reason on
- * a 4xx, and when the action ended but its answer isn't in the session's
- * requests (an answer not read is never a yes).
+ * a 4xx, and when the action finished but its answer couldn't be read (an
+ * answer not read is never a yes, though the board may have written).
  */
 async function sendBoardAction(client: Client, route: BoardRoute, input: Record<string, unknown>, what: string): Promise<BoardOutput> {
   const { flowId, sessionId, action } = route;
@@ -94,7 +95,7 @@ async function sendBoardAction(client: Client, route: BoardRoute, input: Record<
     if (listed.length < REQUEST_PAGE) break;
   }
   if (status !== "completed") throw new Error(found?.result?.error?.message ?? `The board's ${what} ended ${status}.`);
-  if (found === undefined) throw new Error(`The board finished the ${what}, and its answer isn't in the session's requests.`);
+  if (found === undefined) throw new Error(`The board finished the ${what}, but its answer couldn't be read, so check the board before trying again.`);
   const output = found.result?.output as BoardOutput | undefined;
   if (output?.ok === false) throw new Error(output.error ?? `The board refused the ${what}.`);
   return output ?? {};
@@ -144,7 +145,9 @@ export type RefileOverrides = Partial<RefileRow> & {
 /**
  * One board's actions, bound by {@link InboxClient.board}. Each resolves on
  * the board's `ok: true`, and rejects with the board's own words on a refusal
- * (a finished task, a locked field), with nothing written.
+ * (a finished task, a locked field), with nothing written. One rejection may
+ * follow a write: the board finished the action but its answer couldn't be
+ * read, so check the board before trying again.
  */
 export type BoardActions = {
   /** Cancel a task. Resolves to the ids of the dependents the board cancelled with it. */
@@ -212,7 +215,12 @@ export function createInboxClient(client: Client): InboxClient {
       return {
         async cancel(id) {
           const output = await send("updateTask", { id, status: "cancelled" }, "cancel");
-          return Array.isArray(output.cancelled) ? (output.cancelled as string[]) : [];
+          // The board leaves `cancelled` out when no dependent went with it; anything else there is a protocol bug, not a "none".
+          if (output.cancelled === undefined) return [];
+          if (!Array.isArray(output.cancelled) || !output.cancelled.every((id) => typeof id === "string")) {
+            throw new Error("The board cancelled the task, and its answer names its cancelled dependents in a shape it doesn't take.");
+          }
+          return output.cancelled as string[];
         },
         async steer(id, message) {
           await send("updateTask", { id, message }, "message");

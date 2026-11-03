@@ -422,8 +422,14 @@ describe("a board's task actions: inbox.board(at)", () => {
   const AT = { flowId: "desk", sessionId: "s_desk", board: "eng.work" };
 
   /** A client whose board answers `output`, the request listed on page `onPage` (from 0) of the session's requests. */
-  const boardClient = (output: unknown, { status = "completed", onPage = 0 }: { status?: string; onPage?: number } = {}) => {
-    const send = vi.fn(async () => ({ id: "req_act" }));
+  const boardClient = (
+    output: unknown,
+    { status = "completed", onPage = 0, sendError }: { status?: string; onPage?: number; sendError?: Error } = {},
+  ) => {
+    const send = vi.fn(async () => {
+      if (sendError !== undefined) throw sendError;
+      return { id: "req_act" };
+    });
     const wait = vi.fn(async () => ({ status }));
     const flow = vi.fn(() => ({ send, request: () => ({ wait }) }));
     const filler = (page: number) => Array.from({ length: 100 }, (_, i) => ({ id: `other_${page}_${i}` }));
@@ -452,7 +458,14 @@ describe("a board's task actions: inbox.board(at)", () => {
 
   it("cancel resolves to the dependents the board took along, and to none when it names none", async () => {
     expect(await boardClient({ ok: true, cancelled: ["t4", "t5"] }).actions.cancel("t1")).toEqual(["t4", "t5"]);
+    // The board's updateTask leaves `cancelled` out when no dependent went with the task.
     expect(await boardClient({ ok: true }).actions.cancel("t1")).toEqual([]);
+  });
+
+  it("cancel rejects a `cancelled` it can't read, rather than report no dependents cancelled", async () => {
+    // A mistyped list is a protocol bug; resolving [] would tell the screen nothing else was cancelled.
+    await expect(boardClient({ ok: true, cancelled: "t4" }).actions.cancel("t1")).rejects.toThrow(/cancelled dependents/);
+    await expect(boardClient({ ok: true, cancelled: ["t4", 5] }).actions.cancel("t1")).rejects.toThrow(/cancelled dependents/);
   });
 
   it("refile copies the row's brief, overrides winning, and leaves out what the row doesn't carry", async () => {
@@ -477,15 +490,11 @@ describe("a board's task actions: inbox.board(at)", () => {
     await expect(boardClient({ ok: false, error: finished }).actions.steer("t1", "more")).rejects.toThrow(/task_finished/);
     await expect(boardClient(undefined, { status: "failed" }).actions.cancel("t1")).rejects.toThrow("the action failed");
     // Every page full of other requests: the answer is never read, so it is never a yes.
-    await expect(boardClient({ ok: true }, { onPage: 99 }).actions.release("t1")).rejects.toThrow(/isn't in the session's requests/);
+    await expect(boardClient({ ok: true }, { onPage: 99 }).actions.release("t1")).rejects.toThrow(/couldn't be read, so check the board/);
   });
 
   it("rejects a 4xx with the route's reason", async () => {
-    const { flow, actions } = boardClient({ ok: true });
-    const send = vi.fn(async () => {
-      throw new ClientHttpError("Unknown action updateTask_eng_work", { status: 404, body: null });
-    });
-    flow.mockReturnValue({ send, request: () => ({ wait: vi.fn() }) } as never);
+    const { actions } = boardClient({ ok: true }, { sendError: new ClientHttpError("Unknown action updateTask_eng_work", { status: 404, body: null }) });
     await expect(actions.cancel("t1")).rejects.toThrow("Unknown action updateTask_eng_work");
   });
 });
