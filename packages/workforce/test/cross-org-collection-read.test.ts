@@ -44,7 +44,7 @@ import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/c
 import { z } from "zod";
 import { createFlowState, createInProcessFetch, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
-import { defineWorkerInventoryCollection, inventoryWriterActions, openInventory } from "../src/index";
+import { defineWorkerInventoryCollection, doorTask, inventoryWriterActions, openInventory } from "../src/index";
 
 type Harness = {
   post: (path: string[], body: unknown, headers?: Record<string, string>) => Promise<Answer>;
@@ -164,8 +164,10 @@ const noopAction = {
  *
  * @param options.fill Run `openInventory` for both orgs. Off for V2's
  *   manifest-only case.
+ * @param options.taskDoor A worker id whose flow's door is built with
+ *   `doorTask`; every other worker has no door.
  */
-async function buildInventoryHarness(options: { fill?: boolean } = {}): Promise<InventoryHarness> {
+async function buildInventoryHarness(options: { fill?: boolean; taskDoor?: string } = {}): Promise<InventoryHarness> {
   const writer = defineFlow({
     kind: WRITER_KIND,
     actions: { noop: noopAction },
@@ -206,7 +208,7 @@ async function buildInventoryHarness(options: { fill?: boolean } = {}): Promise<
     if (options.fill === false) continue;
 
     const binding = await openInventory(
-      { workers: INVENTORY_ORGS[org].workers.map((id) => ({ id, kind: "agent", actions: {} })) },
+      { workers: INVENTORY_ORGS[org].workers.map((id) => ({ id, kind: "agent", actions: id === options.taskDoor ? taskDoorActions : {} })) },
       {
         run: async (request) => {
           const result: any = await runAction({
@@ -238,6 +240,16 @@ async function buildInventoryHarness(options: { fill?: boolean } = {}): Promise<
   }
   return h;
 }
+
+/** A worker flow's actions whose `respond` door takes a task id, through `doorTask`. */
+const taskDoorMessage = z.object({ message: z.string() });
+const taskDoorActions = {
+  respond: {
+    ...doorTask(taskDoorMessage.strict()),
+    block: handler({ name: "task-door", inputSchema: taskDoorMessage, outputSchema: taskDoorMessage, execute: (i) => i }),
+    userMessage: (input: { message: string }) => input.message
+  }
+};
 
 /** The ref a session's manifest gives the worker collection, found by pattern, and the whole list. */
 async function inventoryRefs(h: Harness, sessionId: string, org: string) {
@@ -391,6 +403,20 @@ describe("FIX-1502 · the worker inventory's client read", () => {
       expect(row, `a workers row must not carry "secret"`).not.toHaveProperty("secret");
     }
     expect(read.raw, "workers payload").not.toContain("LEAKED-INVENTORY-KEY");
+  });
+
+  it("publishes whether a worker's door takes a task id to the browser", async () => {
+    // Shift Manager's browser knows a worker only through this read, so a
+    // flag left out of the named fields reads as absent there, and the task
+    // composer never sends the id to a door that takes it.
+    const org = "org-a";
+    const [taking, other] = INVENTORY_ORGS[org].workers;
+    const h = await buildInventoryHarness({ taskDoor: taking });
+    const refs = await inventoryRefs(h, readerSession(org), org);
+    const read = await listAll(h, readerSession(org), refs.workers, org);
+    expect(read.status, `workers read — ${read.raw}`).toBe(200);
+    const byId = Object.fromEntries(read.rows.map((r) => [r.id, r.doorTakesTask]));
+    expect(byId).toEqual({ [taking!]: true, [other!]: false });
   });
 
   it("V2 · the manifest lists the worker collection as readable on a flow with the writer, and none without it (BR-6)", async () => {

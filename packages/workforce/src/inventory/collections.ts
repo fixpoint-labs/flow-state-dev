@@ -148,7 +148,7 @@ const SHARED_ACROSS_FLOWS = false;
  * schema declares today, named rather than defaulted (BP-015). A key a later
  * change adds to a row stays server-side until it is added here too.
  */
-const WORKER_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "rules", "name", "teamName", "hired", "incarnation"] as const;
+const WORKER_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "rules", "doorTakesTask", "name", "teamName", "hired", "incarnation"] as const;
 
 /**
  * The worker inventory — one row per registered worker, at `inventory/workers/*`.
