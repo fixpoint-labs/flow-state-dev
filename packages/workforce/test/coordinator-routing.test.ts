@@ -291,6 +291,7 @@ describe("best fit's own choice and floor (FIX-1833 V3, V4)", () => {
         by: "judgment",
         delegates: [],
         none: "the coordinator handed it to no delegate",
+        answeredItself: true,
         fit: { reason: "coordinator", choice: "desk", confidence: 0.31, minConfidence: 0.7 }
       }
     ]);
@@ -614,7 +615,7 @@ describe("judgment (V7)", () => {
     const id = await host.conversation("alice", "chief");
     await post(host, id, "what day is it?");
     const [first] = (await host.items(id)).records;
-    expect(first).toMatchObject({ by: "judgment", delegates: [], none: "the coordinator handed it to no delegate" });
+    expect(first).toMatchObject({ by: "judgment", delegates: [], none: "the coordinator handed it to no delegate", answeredItself: true });
 
     await post(host, id, "plan the release");
     expect(judgment.calls).toHaveLength(2);

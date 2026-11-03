@@ -1,0 +1,9 @@
+{
+  "filer": "teammates.chief-of-staff",
+  "coder": "teammates.cursor",
+  "task": {
+    "title": "Add a welcome line to the README",
+    "goal": "Create README.md if it is missing, add the line \"Welcome to the team.\" to it, and commit the change with git."
+  },
+  "revise": "Also add a second line, \"Questions go to #team.\", and commit that as its own commit."
+}

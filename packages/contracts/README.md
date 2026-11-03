@@ -52,10 +52,16 @@ a no-non-relative-import scan over `src/`), so it cannot silently regress.
   depend on another to agree on the record. `ManifestSource` is generic over
   its context type, since this layer knows nothing of `BlockContext`; `core`
   binds it.
+- **Change notices** (`@flow-state-dev/contracts/types/change-notice`) — the
+  kinds a change notice names (`ChangeKind`: `items`, `request`, `run`,
+  `resync`) and the wire topic a client watches: `topic.session(id)`,
+  `topic.user()` and `topic.org()`, each with an optional `{ resource }`. A
+  wire topic names no user, org or tenant id; the server fills those from the
+  caller it verified. Client and engine share it, so it lives here.
 
 The package barrel (`@flow-state-dev/contracts`) re-exports the item taxonomy,
-the block-instance-id helpers, the suspension leaf types, and the manifest
-entry/source surface.
+the block-instance-id helpers, the suspension leaf types, the manifest
+entry/source surface, and the change-notice kinds and wire topics.
 
 ## Who depends on it
 

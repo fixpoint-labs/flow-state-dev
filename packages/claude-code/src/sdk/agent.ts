@@ -206,6 +206,8 @@ export interface ClaudeCodeAgentOptions {
    * A tool in `allowedTools` is pre-allowed by the SDK and never reaches it.
    * A `held` decision stops the turn with the call unrun, for a host that
    * waits for a person outside the run (`approveTools` on a harness manager).
+   * The run's stop after a held call is that wait, not a failure: the run
+   * still throws its signal's reason, but leaves no error item.
    */
   onToolApproval?: (
     req: ToolApprovalRequest,
@@ -1016,6 +1018,10 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // SDK's stream ends ~2s into its shutdown whether or not it has.
       const agentProcess = trackProcess();
 
+      // Set once the host held a call for a person's answer. The turn then stops
+      // for that wait, by the SDK's interrupt or the host's own stop, and a stop
+      // that lands after it is the wait, not a failure: no error item for it.
+      let heldACall = false;
       const queryOptions: ClaudeAgentQueryOptions = {
         model: runModel,
         // The one place the default is decided, so every path that reaches the
@@ -1054,7 +1060,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         ...(session.sdkSessionId ? { resume: session.sdkSessionId } : {}),
         ...(resumeSessionId ? { resume: resumeSessionId } : {}),
         ...(onToolApproval
-          ? { canUseTool: buildCanUseTool(onToolApproval, ctx) }
+          ? { canUseTool: buildCanUseTool(onToolApproval, ctx, () => (heldACall = true)) }
           : {}),
       };
 
@@ -1477,6 +1483,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
             // directly.
             const reason =
               ctx.signal.reason ?? new DOMException("This operation was aborted.", "AbortError");
+            // A turn stopped for a held call has its "Waiting on approval"
+            // status already; the stop is that wait, so it shows no error.
+            if (heldACall) throw reason;
             await emitTranslatedEvent(
               {
                 kind: "error",
@@ -1728,6 +1737,7 @@ function relayedToolNames(tools: ClaudeCodeMcpTools): string[] {
 function buildCanUseTool(
   onToolApproval: NonNullable<ClaudeCodeAgentOptions["onToolApproval"]>,
   ctx: BlockContext,
+  onHeld: () => void,
 ): SdkCanUseTool {
   let decisionSeq = 0;
   return async (toolName, toolInput, extra) => {
@@ -1748,6 +1758,7 @@ function buildCanUseTool(
     if (decision.decision === "held") {
       // Not a deny: the call waits on a person outside this run. It must not
       // run, and the turn stops rather than going on without it.
+      onHeld();
       ctx.emit.status(`Waiting on approval: ${toolName} (#${seq}).`, {
         transient: false,
       });

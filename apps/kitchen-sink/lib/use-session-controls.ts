@@ -9,7 +9,7 @@
  *
  * A session that never ran projects the defaults, so it opens on them.
  * Seeding happens once per session, and never over a choice the user made in
- * that session before its record arrived. Like `useSessionDraft`, the state is
+ * that session before its record arrived. Like `useDraft`, the state is
  * reset during render when `sessionId` changes, not in an effect, so a frame
  * never shows one session's controls on another.
  */

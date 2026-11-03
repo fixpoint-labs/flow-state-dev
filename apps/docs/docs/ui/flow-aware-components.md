@@ -47,6 +47,49 @@ fsdev ui add approval
 
 The card is presentation over the `useApproval` hook from `@flow-state-dev/react`, which owns the resume call and resolved state. It reads the resolution from `SessionItemsProvider`, so wrap your item list in one for the receipt to show on reload. For the full server-to-UI walkthrough, see the [Human-in-the-Loop guide](/guides/human-in-the-loop).
 
+## RequestRecovery
+
+The line a failed turn leaves in a thread. It names who hit the failure, shows the reason, code and details in the same text the error item renderer uses, and draws a Retry button. While the retry's promise runs, the button is disabled and reads "Retrying…". If the promise rejects, the line adds "Retry failed:" and the error message.
+
+```bash
+fsdev ui add request-recovery
+```
+
+Pass it an `ErrorItem`'s fields and a retry callback:
+
+```tsx
+const { resumeLatestRequest } = useSession(/* ... */);
+
+<RequestRecovery
+  who="Assistant"
+  reason={item.message}
+  code={item.code}
+  details={item.details}
+  onRetry={resumeLatestRequest}
+/>
+```
+
+`onRetry` can also be `() => client.flow(kind).request(item.requestId).retry()`.
+
+The server retries only a session's latest failed or interrupted request, so pass `onRetry` for that one and leave it off older lines. Without `onRetry`, no button is drawn. The component isn't part of `chatAssistantRenderers`, so your app decides where it goes.
+
+### A turn a restart cut off
+
+When the server restarts in the middle of a turn, the request is marked interrupted. Nothing failed, and the work done so far is kept, so the line offers two choices instead of Retry. **Continue** carries the same request on: finished steps are replayed, and the step that was running starts again. **Discard** ends the request for good, and it stops showing up as interrupted.
+
+Pass `onContinue`, `onDiscard`, or both, and the line switches to its interrupted look, with no Retry:
+
+```tsx
+const handle = client.flow(kind).request(lost.id);
+
+<RequestRecovery
+  onContinue={() => handle.continue()}
+  onDiscard={() => handle.abort()}
+/>
+```
+
+The default text is "This turn was cut off before it finished." Pass `reason` to say something else, and `who` to name whose turn it was. Each button is disabled while its call runs, and a refused call is shown on the line the same way a refused retry is. To find lost turns, poll `client.requests.interrupted()` every few seconds and group them by conversation with `interruptedBySession` from `@flow-state-dev/client`. A turn shows up there about a minute after the restart.
+
 ## ModelBadge
 
 A small pill that shows which model actually answered. It reads a `ModelIdentity` (the `{ actual, requested?, gateway? }` record stamped on every generator-emitted item), renders `actual` as the label, and lists the requested string and gateway in the hover tooltip. It renders nothing when the model is undefined, so passing `item.model` straight from any item is safe.
@@ -59,6 +102,33 @@ fsdev ui add model-badge
 import { ModelBadge } from "@/components/flow-state/model-badge";
 
 <ModelBadge model={item.model} />
+```
+
+## ConnectionBanner and ConnectionScreen
+
+Two ways to show that the server isn't answering. `ConnectionBanner` is a thin warning bar for a session that has already loaded. Pass it a `feed`, anything with a `state` of `connecting`, `live`, `reconnecting`, `lapsed` or `stopped`, such as a `sessionFeed` snapshot from `@flow-state-dev/client`. It draws nothing on a first load or an ordinary reconnect. On `lapsed` it reads "Lost the server 12s ago, retrying…", counting from when the feed stopped being live. On `stopped` it says the feed has ended, with a Retry button if you pass `onRetry`.
+
+While the bar shows, `isFeedStale(state)` returns true. Add `STALE_CLASS` to areas that draw status to grey them out and stop their pulsing dots and spinners, and pause any elapsed-time clocks of your own.
+
+`ConnectionScreen` is the full-screen page for when the first read fails. With `kind: "refused"` there is no retry. With `kind: "unreachable"` it shows a Retry button and retries on its own after 2, 4, 8… seconds, up to 30. If `onRetry` returns a promise, the next wait starts once it settles. Once a first read has landed, later failures belong to the banner.
+
+```bash
+fsdev ui add connection-banner
+fsdev ui add connection-screen
+```
+
+```tsx
+import { ConnectionBanner, STALE_CLASS, isFeedStale } from "@/components/flow-state/connection-banner";
+import { ConnectionScreen } from "@/components/flow-state/connection-screen";
+
+// Before the first read lands
+<ConnectionScreen kind="unreachable" title="Can't reach the server" failure={firstReadError} onRetry={load}>
+  Check that the dev server is running.
+</ConnectionScreen>
+
+// After it lands
+<ConnectionBanner feed={feed} onRetry={reopen} />
+<div className={isFeedStale(feed.state) ? STALE_CLASS : undefined}>{/* status lines */}</div>
 ```
 
 ## Spend

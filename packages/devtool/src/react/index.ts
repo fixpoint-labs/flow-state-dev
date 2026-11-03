@@ -12,6 +12,7 @@ export {
   readUserId,
   writeUserId,
   readBearerToken,
+  readBasePath,
   hasInjectedUserId,
   readSessionAddress,
   SESSION_ADDRESS_PARAM,

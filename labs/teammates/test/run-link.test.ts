@@ -5,7 +5,7 @@
  * every step at once. While a running row names no run, `watchTasks` reads the
  * board until it does.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import { createLabAdapter, type BoardTask } from "../src/adapter";
 
@@ -64,5 +64,100 @@ describe("a coding task's run, while it runs", () => {
     stop();
     expect(tasks[0]?.status).toBe("done");
     expect(reads).toEqual([]);
+  });
+});
+
+describe("a coding task's hold, while it runs", () => {
+  /**
+   * The run writes its row on its own session: its link, and the review it stops for. The
+   * conversation's copy still says only that the task is running, so read alone, nothing waits
+   * on you and the popup has no review to answer.
+   */
+  function clientWithRunRow() {
+    const conversation = filed("in_progress");
+    const run = { sessionId: "dsx_run", requestId: "req_run", attempt: 1 };
+    const held = {
+      ...conversation,
+      id: "task-change:board/task_1@run",
+      requestId: "req_run",
+      ts: 2,
+      data: {
+        ...conversation.data,
+        kind: "asked",
+        task: {
+          ...conversation.data.task,
+          run,
+          updatedAt: 2,
+          holds: [{ id: "susp-1", actor: "user", openedAt: 2, source: { kind: "suspension", requestId: "req_run", suspensionId: "susp-1" }, ask: { kind: "review", prompt: "1 commit on b" } }],
+        },
+      },
+    };
+    return {
+      sessions: {
+        state: async (id: string) => ({ at: 1, sessionCreatedAt: 1, items: id === "dsx_run" ? [held] : [conversation], pagination: { hasMore: false, nextOffset: 1 } }),
+        stream: () => ({ close() {} }),
+        get: async (id: string) => (id === "dsx_run" ? { id, flowKind: "teammates-coder" } : { id, flowKind: "agent" }),
+      },
+      flow: () => ({ read: async () => ({ ok: true, tasks: [{ ...conversation.data.task, run }] }) }),
+    } as unknown as Client;
+  }
+
+  it("is read from the run's own session, where the run writes it", async () => {
+    let tasks: BoardTask[] = [];
+    const stop = createLabAdapter(clientWithRunRow()).watchTasks("wks_1", (next) => (tasks = next));
+    await until(() => tasks[0]?.waiting !== undefined);
+    stop();
+    expect(tasks[0]?.waiting).toEqual({ kind: "review", prompt: "1 commit on b", unanswerable: null });
+  });
+
+  it("follows no run for a task that has ended, and lets go of a run once its task ends", async () => {
+    // The sidebar watches every worker's board: each ended task's run would otherwise hold a stream open for good.
+    const opened: string[] = [];
+    const closed: string[] = [];
+    const pushTo = new Map<string, (event: { item: unknown }) => void>();
+    const conversation = filed("in_progress");
+    const old = { ...conversation, id: "task-change:board/task_2", data: { ...conversation.data, taskId: "task_2", task: { id: "task_2", title: "Old task", status: "completed", assignee: "teammates.cursor", run: { sessionId: "dsx_old", requestId: "req_old", attempt: 1 } } } };
+    const running = { ...conversation, data: { ...conversation.data, task: { ...conversation.data.task, run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 }, updatedAt: 1 } } };
+    const ended = { ...running, id: "task-change:board/task_1@end", ts: 3, itemIndex: 2, data: { ...running.data, kind: "completed", task: { ...running.data.task, status: "completed", updatedAt: 3 } } };
+    const client = {
+      sessions: {
+        state: async (id: string) => ({ at: 1, sessionCreatedAt: 1, items: id === "wks_1" ? [old, running] : [running], pagination: { hasMore: false, nextOffset: 1 } }),
+        stream: (id: string, options: { onItem: (event: { item: unknown }) => void }) => {
+          opened.push(id);
+          pushTo.set(id, options.onItem);
+          return { close: () => closed.push(id) };
+        },
+        get: async (id: string) => ({ id, flowKind: "agent" }),
+      },
+      flow: () => ({ read: async () => ({ ok: true, tasks: [] }) }),
+    } as unknown as Client;
+    let tasks: BoardTask[] = [];
+    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
+    await until(() => opened.includes("dsx_run") && pushTo.has("wks_1"));
+    expect(opened).not.toContain("dsx_old");
+    expect(closed).not.toContain("dsx_run");
+    pushTo.get("wks_1")!({ item: ended });
+    await until(() => tasks.find((t) => t.id === "task_1")?.status === "done");
+    expect(tasks.find((t) => t.id === "task_1")?.status).toBe("done");
+    expect(closed).toContain("dsx_run");
+    stop();
+  });
+
+  it("a second watch of the same board, once the run's feed has loaded, reads it too", async () => {
+    // The popup opens while the conversation still watches: the run's feed answers the second watch at once.
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const adapter = createLabAdapter(clientWithRunRow());
+    let first: BoardTask[] = [];
+    const stopFirst = adapter.watchTasks("wks_1", (next) => (first = next));
+    await until(() => first[0]?.waiting !== undefined);
+    let second: BoardTask[] = [];
+    const stopSecond = adapter.watchTasks("wks_1", (next) => (second = next));
+    await until(() => second[0]?.waiting !== undefined);
+    stopFirst();
+    stopSecond();
+    expect(second[0]?.waiting?.kind).toBe("review");
+    // Following the run once per watch, not again from inside its own first answer.
+    expect(errors.mock.calls.flat().some((e) => e instanceof RangeError)).toBe(false);
+    errors.mockRestore();
   });
 });

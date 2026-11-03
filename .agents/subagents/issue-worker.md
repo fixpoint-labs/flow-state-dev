@@ -49,7 +49,10 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   `epic-wake` enforces it, so it holds only because you report it. Deliberate: a POC's trigger is
   judgment, not mechanism, and it isn't worth a workflow field until the practice has run.
 - spec PR open, **still awaiting approval**, with unhandled review events → run one
-  `issue-spec` Step 6.5 round and stop. Triage against the spec-review bar: fold only what
+  `issue-spec` Step 6.5 round and stop. **When it is a shared spec-set PR** (the dispatch says
+  so), the round covers every spec in it, not only yours: you are the PR's only dispatch this
+  wake, and the round you report is charged to every member. An epic-level change goes in the
+  epic's `DECISIONS.md`, listed at the top of the PR body under **Epic amendments**. Triage against the spec-review bar: fold only what
   changes the approach, record the rest verbatim in `DECISIONS.md → Notes from review`, escalate genuine
   direction forks. **Report the rounds you spent and whether anything was spec-level** — the
   coordinator budgets rounds off that (two by default; see `issue-lifecycle` → "The

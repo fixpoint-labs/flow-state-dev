@@ -4,6 +4,7 @@ import { TASK_STATUS } from "../lib/task-status";
 import { useMissing, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Entry } from "./Entry";
+import { LoadEarlier } from "./LoadEarlier";
 import { Sheet } from "./Sheet";
 import { Spend } from "./flow-state/spend";
 import { harnessLabelOf } from "./ThreadStatus";
@@ -117,6 +118,7 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
       footer={READ_ONLY_NOTE}
     >
       {work === undefined || work.entries.length === 0 ? <p className="text-sm text-muted-foreground">Nothing yet.</p> : null}
+      <LoadEarlier load={work?.loadEarlier} />
       {work?.entries.map((entry) => <Entry key={entry.id} entry={entry} />)}
     </Sheet>
   );

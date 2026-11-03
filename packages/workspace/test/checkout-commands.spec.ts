@@ -10,6 +10,7 @@ import {
   CHECK_OUTPUT_TAIL_CHARS,
   checkoutCommandPassed,
   checkoutCommandProblem,
+  parseCheckoutCommand,
   runCheckoutCommands,
   splitCheckoutCommand,
 } from "../src/index";
@@ -29,6 +30,13 @@ describe("what a command is", () => {
     expect(checkoutCommandProblem("   ")).toMatch(/empty/);
     expect(checkoutCommandProblem(`node "x`)).toMatch(/never closed/);
     expect(checkoutCommandProblem("pnpm typecheck")).toBeUndefined();
+  });
+
+  it("parses a line once into its words, or the same refusal as checkoutCommandProblem", () => {
+    expect(parseCheckoutCommand(`pnpm install --filter "a b"`)).toEqual({ words: ["pnpm", "install", "--filter", "a b"] });
+    for (const line of ["pnpm build && pnpm test", "   ", `node "x`]) {
+      expect(parseCheckoutCommand(line), line).toEqual({ problem: checkoutCommandProblem(line) });
+    }
   });
 });
 

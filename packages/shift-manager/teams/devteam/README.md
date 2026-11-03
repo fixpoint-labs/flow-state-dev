@@ -31,6 +31,7 @@ slot; the third adds the two ends of the path neither of them reaches:
 | [`goals/devforce-lab/it-codes-in-the-projects-repository/`](../../../../goals/devforce-lab/it-codes-in-the-projects-repository/) | The project check. The coder runs on a workspace host whose source is the project holding the board's workstream: a project with a repository gets a branch of it, one without runs on its files, a remote the host does not allow is refused by name, and what a run keeps is saved to the project. No model. |
 | [`goals/devforce-lab/it-answers-a-conversations-task/`](../../../../goals/devforce-lab/it-answers-a-conversations-task/) | The conversation check. A coordinator files a task for the coder from a conversation: the coder answers it from the right project's code in a checkout of its own, the conversation hears it once, and a task that can't be done is heard failing, with Jev judging the answer against the goal. Scripted legs, and a real-model leg when a key serves it. |
 | [`goals/devforce-lab/it-names-the-project-a-coders-task-works-in/`](../../../../goals/devforce-lab/it-names-the-project-a-coders-task-works-in/) | The project-list check. Asked to have the coder look at "our repo", the Shift Coordinator reads the user's projects and files the task for the one with a repository without asking; with two, it asks, naming both; a project the user isn't a member of never appears. Real model. |
+| [`goals/devforce-lab/it-works-out-the-coder-and-project-itself/`](../../../../goals/devforce-lab/it-works-out-the-coder-and-project-itself/) | The names check. Asked to "have Cursor review the super app", the Shift Coordinator reads Cursor as the coding agent the coder runs on (each coder's description names it), files the task in FSD because FSD and Shift Manager share one repository, and says what it picked. When the coder runs on another agent it files nothing and names both; when the projects have different repositories it asks, naming both. Real model. |
 
 It is **evidence, not an application**. Nobody opens it and clicks through it;
 you re-run it a year from now and compare against the verdict logs in the two
@@ -153,9 +154,17 @@ uses its own default: `stub` for DevTeam, `claude-code` for `fsd`.
 | Value | What runs |
 |---|---|
 | `stub` | The scripted coder, no model. It says what it's doing in the run's session and commits one file, so the row settles `completed`. |
-| `claude-code` | Claude Code through its Agent SDK, set up as the honesty check sets it up. At start the Lab asks Claude Code for an account (a sign-in or an Anthropic key) and refuses to start without one, naming what to set. Nothing falls back to the scripted coder (`stub`). |
+| `claude-code` | Claude Code through its Agent SDK. At start the Lab checks whether an account is set up (a sign-in or an Anthropic key) and whether the SDK itself loaded; if either is missing, it logs why and what to set, but still starts the Lab. Nothing falls back to the scripted coder (`stub`). |
+| `codex` | Codex through its SDK, handed only `CODEX_PASS` from the server's environment. It needs `codex login` or `CODEX_API_KEY`; the Lab doesn't check at start, so a run with neither fails and says why. |
+| `cursor` | Cursor through its SDK, in a process of its own handed only `CURSOR_PASS`. It needs a stored login or `CURSOR_API_KEY`; the Lab doesn't check at start, so a run with neither fails and says why. |
 
-A `Coder:` line at start names the coder it started with.
+Codex and Cursor don't take the project's MCP servers the Lab relays, and report no usage
+windows, so Usage shows Claude Code only. One coder serves the whole process.
+
+A `Coder:` line at start names the coder it started with and, on a real one, how long each run
+may take. That is 20 minutes unless `DEVFORCE_LAB_RUN_MINUTES` names another whole number of
+minutes; it also sets the scripted coder's budget, which is otherwise one minute. A value that
+isn't a positive whole number is refused at start.
 
 The scripted coder (`stub`) pauses 2 s before each of its five steps so you can watch them arrive.
 `DEVFORCE_LAB_STEP_MS` changes the pause; a test that only needs the row to settle sets it to `0`.

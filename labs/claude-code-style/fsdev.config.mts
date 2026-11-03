@@ -17,6 +17,10 @@
  *   `harness-thread`; only `desk.thread-coder` waits for your review.
  * - `projects` lists and creates the projects a session works in, and `pins`
  *   keeps the threads you pinned.
+ * - `harness-readiness` reads which coding harnesses can run on this machine
+ *   (harness-manager's `harnessReadiness`, one check per harness from its
+ *   integration): logged as a table at start, and returned by its `read`
+ *   action, which `{ refresh: true }` reads again.
  *
  * The host is durable: a thread's review or question waits on you, and a
  * coding run's review needs durable execution.
@@ -34,17 +38,28 @@
  * SQLite file and each coding run's worktree or clone), `CLAUDE_CODE_STYLE_USER` (default
  * `u_lab`). `CLAUDE_CODE_STYLE_ANSWER_AGAIN=off` leaves `answerAgain` off the
  * main worker's flow: the goal check's control.
+ *
+ * A coding run is done only when its project's checks pass (the project row's
+ * `checks`; none named runs nothing). `CLAUDE_CODE_STYLE_SETUP`, one command
+ * such as `pnpm install --frozen-lockfile`, runs in each fresh worktree before
+ * its run starts, so the checks find what they need; it runs with no shell,
+ * and a command that needs one stops the lab at start. Unset, nothing runs.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, realpathSync } from "node:fs";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS } from "@flow-state-dev/claude-code/sdk";
+import { checkCodexReadiness, CODEX_PASS } from "@flow-state-dev/codex";
+import { defineFlow, harnessEnv } from "@flow-state-dev/core";
+import { checkCursorReadiness, CURSOR_PASS } from "@flow-state-dev/cursor";
 import { createFlowState } from "@flow-state-dev/engine";
+import { formatHarnessReadiness, harnessReadiness, harnessReadinessAction } from "@flow-state-dev/harness-manager";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { consultSessionsCapability, createWorkerInstallation, defineAgentWorkerFlow, defineCoordinatorFlow, hireWorkforce, projectSourceCapability, projectWorkspace } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { localWorkspaceHost } from "@flow-state-dev/workspace";
-import { defineHarnessThreadFlow, HARNESS_THREAD_FLOW } from "./workforce/flows/harness-thread.mts";
+import { checkoutCommandProblem, localWorkspaceHost, splitCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
+import { defineHarnessThreadFlow, HARNESS_THREAD_DRAIN_MS, HARNESS_THREAD_FLOW } from "./workforce/flows/harness-thread.mts";
 import { definePinsFlow, PINS_FLOW } from "./workforce/flows/pins.mts";
 import { defineProjectsFlow, PROJECTS_FLOW } from "./workforce/flows/projects.mts";
 
@@ -70,6 +85,13 @@ const listed = (repository: string) => {
   const real = isAbsolute(path) && existsSync(path) ? realpathSync(path) : undefined;
   return real !== undefined && repositories.includes(real) ? real : undefined;
 };
+/** The command `CLAUDE_CODE_STYLE_SETUP` names, split like a project check. */
+const setup = ((value: string | undefined): WorkspaceSetup | undefined => {
+  if (value === undefined || value.trim() === "") return undefined;
+  const problem = checkoutCommandProblem(value.trim());
+  if (problem !== undefined) throw new Error(`CLAUDE_CODE_STYLE_SETUP: ${problem}`);
+  return { command: splitCheckoutCommand(value.trim()) as [string, ...string[]] };
+})(process.env.CLAUDE_CODE_STYLE_SETUP);
 const source = projectWorkspace();
 const workspace = localWorkspaceHost({
   root: join(data, "runs"),
@@ -80,6 +102,7 @@ const workspace = localWorkspaceHost({
     const local = answer.kind === "repo" ? listed(answer.repo) : undefined;
     return answer.kind === "repo" && local !== undefined ? { ...answer, repo: local } : answer;
   },
+  ...(setup === undefined ? {} : { setup }),
 });
 
 const tree = await readWorkforce(fileURLToPath(new URL("./workforce", import.meta.url)));
@@ -97,11 +120,25 @@ const workers = hireWorkforce(installation) as { id: string }[];
 const projects = defineProjectsFlow()({ id: PROJECTS_FLOW }) as { id: string };
 const pins = definePinsFlow()({ id: PINS_FLOW }) as { id: string };
 
+/** Which harnesses a coding thread can run on here, over the environment each run gets. */
+const readiness = harnessReadiness({
+  "claude-code": { label: "Claude Code", check: (o) => checkClaudeCodeReadiness({ env: harnessEnv({ pass: CLAUDE_CODE_PASS }), signal: o?.signal }) },
+  codex: { label: "Codex", check: (o) => checkCodexReadiness({ env: harnessEnv({ pass: CODEX_PASS }), timeoutMs: 30_000, signal: o?.signal }) },
+  cursor: { label: "Cursor", check: () => checkCursorReadiness(harnessEnv({ pass: CURSOR_PASS })) },
+});
+// At start, never awaited: a missing sign-in never stops the server.
+void readiness.read().then((rows) => console.log(formatHarnessReadiness(rows)));
+const readinessFlow = defineFlow({ kind: "harness-readiness", actions: { read: harnessReadinessAction(readiness) } } as never)({
+  id: "harness-readiness",
+} as never) as { id: string };
+
 export default createFlowState({
-  flows: Object.fromEntries([...workers, projects, pins].map((copy) => [copy.id, copy])),
+  flows: Object.fromEntries([...workers, projects, pins, readinessFlow].map((copy) => [copy.id, copy])),
   stores: { default: { primary: sqliteStores({ filename: join(data, "lab.db") }) } },
   // A coding run's review and a thread's question wait on you across a restart.
   durable: true,
+  // A shutdown waits for a coding run still going, its checks and judge too (FIX-2484).
+  dispatchDrainTimeoutMs: HARNESS_THREAD_DRAIN_MS,
   devtool: { userId },
   // A consult of another conversation reads on `intent/utility`, a smaller model.
   models: { default: model, intents: { utility: [process.env.CLAUDE_CODE_STYLE_UTILITY_MODEL ?? "openai/gpt-6-luna"] } },

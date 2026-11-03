@@ -23,9 +23,13 @@ import type { StoreRegistry } from "./types";
  *   no-op until a binary-aware blob store ships.
  * - `queue` — async work delivery. Forward-compatible.
  * - `scheduler` — wake-at-time-T scheduling. Forward-compatible.
+ * - `bus` — the change bus (FIX-2426): the adapter resolves `{ bus }`. When
+ *   the profile names none, the primary backs it if it declares `bus`;
+ *   otherwise the bus is in memory and reaches this process only.
  */
 export interface CapabilitySlotMap {
   primary: StoreAdapter;
+  bus?: StoreAdapter;
   blobs?: StoreAdapter;
   queue?: StoreAdapter;
   scheduler?: StoreAdapter;

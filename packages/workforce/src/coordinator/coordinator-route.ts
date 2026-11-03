@@ -88,6 +88,13 @@ export const coordinatorRouteRecordSchema = z.object({
   delegates: z.array(routedDelegateSchema),
   /** Why nobody was delivered to, when nobody was. */
   none: z.string().optional(),
+  /**
+   * On a `judgment` record: the coordinator's own turn answered the post and
+   * tried no delegate, so nothing was routed. A judgment record with no
+   * delegates but without this (a round whose delegates never answered) is
+   * not a self-answer.
+   */
+  answeredItself: z.literal(true).optional(),
   /** On a `fallback`, `judgment` or `unplaced` record from best fit: why best fit didn't deliver to its pick. */
   fit: bestFitWhySchema.optional(),
   /** From best fit, when its evaluator call failed and it asked once more as a language model: the evaluator's error. */

@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { defineProjectBlocks, projectTools, setWorkProjectInputSchema, setWorkProjectTool } from "../src";
+import { forCodingOf } from "../src/projects/project-tools";
 
 describe("projectTools", () => {
   it("names each tool for its key, so a `tools:` line reaches it", () => {
@@ -29,5 +30,31 @@ describe("projectTools", () => {
   it("setWorkProject is the work-project action's block, as a tool", () => {
     expect(setWorkProjectTool.name).toBe("setWorkProject");
     expect(setWorkProjectTool.inputSchema).toBe(setWorkProjectInputSchema);
+  });
+});
+
+describe("forCodingOf", () => {
+  const project = (id: string, repository: string | null) => ({ visibility: "shared" as const, id, title: id.toUpperCase(), repository });
+
+  // Two projects on one repository reach the same code: asking which one is a
+  // question the user can't usefully answer (FSD and Shift Manager both point
+  // at the framework's repository), so the turn is told to file, and say which.
+  it("files without asking when every project with a repository shares one", () => {
+    const line = forCodingOf({ projects: [project("fsd", "git@x:fsd.git"), project("shift-manager", "git@x:fsd.git"), project("notes", null)] });
+    expect(line).toMatch(/share one repository/);
+    expect(line).toMatch(/don't ask/);
+    expect(line).not.toMatch(/File nothing/);
+  });
+
+  it("still asks, naming each, when the repositories differ", () => {
+    const line = forCodingOf({ projects: [project("fsd", "git@x:fsd.git"), project("billing", "git@x:billing.git")] });
+    expect(line).toMatch(/File nothing/);
+    expect(line).toContain("FSD");
+    expect(line).toContain("BILLING");
+  });
+
+  it("files for the one project with a repository, and asks when none has one", () => {
+    expect(forCodingOf({ projects: [project("fsd", "git@x:fsd.git"), project("notes", null)] })).toMatch(/One project has a repository: FSD/);
+    expect(forCodingOf({ projects: [project("notes", null)] })).toMatch(/No project has a repository/);
   });
 });

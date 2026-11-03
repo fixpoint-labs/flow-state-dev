@@ -9,7 +9,8 @@
  * behaviour instead of drifting apart with a copy each. The host
  * (`./local-host`) turns a run source's answer (`./run-source`) into that
  * place: a branch of a repository, or a set of kept files, and reads the
- * same files without making one (`./source-read`). Every git process
+ * same files without making one (`./source-read`), and can run the
+ * operator's setup command in each checkout it makes (`./setup`). Every git process
  * the package starts goes through `./exec` (a project's check commands too,
  * `./checkout-commands`), and the git that cuts and hands
  * back a run's worktree lives in `./worktree`.
@@ -45,6 +46,7 @@ export { localWorkspaceHost, WorkspaceRefusedError } from "./local-host";
 export { fileHeldWorkStore, HeldWorkMismatchError } from "./held-work";
 export type { HeldWork, HeldWorkMismatchField, HeldWorkStore, RecordedHold, SkippedPath } from "./held-work";
 export type { IgnoredDirectory, MovedBack, OffBranch } from "./worktree";
+export type { PlaceSetup, WorkspaceSetup } from "./setup";
 export { isStrictlyInside } from "./worktree";
 export { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, run, runToEnd } from "./exec";
 export type { RunToEndResult } from "./exec";
@@ -52,6 +54,7 @@ export {
   CHECK_OUTPUT_TAIL_CHARS,
   checkoutCommandPassed,
   checkoutCommandProblem,
+  parseCheckoutCommand,
   runCheckoutCommands,
   splitCheckoutCommand,
 } from "./checkout-commands";

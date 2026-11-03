@@ -81,6 +81,8 @@ Shutdown mostly does not write a terminal status on background work's behalf. It
 
 `stores` is a map of named profiles. A profile maps capability slots (typed containers for a category of storage) to adapters. The required slot is `primary` — the catch-all state store for sessions, requests, users, orgs, active requests, checkpoints, content, and traces. The `blobs`, `queue`, and `scheduler` slots are declared but forward-compatible; no backing store ships for them yet.
 
+The `bus` slot carries change notices: every request and session write publishes one on its session's topic, and the session stream wakes on it (see [Change bus](#change-bus)). Leave it out and the primary backs it when the primary's adapter declares `bus`; otherwise the bus is in memory and reaches this process only. An adapter named in the `bus` slot that doesn't declare it fails at `ready()`.
+
 ```ts
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
@@ -577,6 +579,13 @@ Query parameters, all optional:
   or `403` if the app authenticates and another user or organization holds it.
 - `item_types`: comma-separated item types, applied as on the snapshot route.
 
+A connection reads the store when a change notice for the session wakes it, at
+most once a second. On a bus that crosses processes, that is its only read, so
+an open view of a session where nothing changes costs the store nothing. On a
+bus that can't cross (the in-memory default, or one that has stopped crossing)
+it also reads about once a second, so a reply written by another process still
+arrives. Pings and the 15-minute close keep their own timers.
+
 Each SSE frame's `event` is the event's `type`, and its `data` is the whole
 event as JSON. Every event carries `stream: "session"`, `sessionId`, and `at`,
 a server time (epoch ms) to resume from. Reconnecting with any event's `at` as
@@ -621,6 +630,51 @@ new session a new id.
 
 A store adapter shows it serves the stream with
 `createSessionStreamConformanceTests`, from `@flow-state-dev/engine/testing`.
+
+## Change bus
+
+A change notice says that something under a topic changed, never what. Whoever
+hears one reads again through the route it already reads with.
+
+```ts
+import type { ChangeBus, ChangeNotice, BusTopic } from "@flow-state-dev/engine";
+
+// A topic: a scope, its id, the tenant ("" when single-tenant), optionally one resource.
+const topic: BusTopic = { scope: "session", id: sessionId, tenantId: "" };
+const stop = stores.bus!.subscribe(topic, (notice: ChangeNotice) => readAgain(notice.kind));
+```
+
+- `ChangeNotice` is `{ topic, kind, origin? }`. Kinds: `items` (a request's
+  items landed), `request` (a request was written), `run` (a session record
+  was written: the topic's own session or a run under it) and `resync` (the
+  bus may have missed notices; read once). `origin` names the request that
+  made the change, when one did.
+- A subscriber to a scope's topic hears every notice under it, narrowed to a
+  resource or not, with the notice's own topic. A subscriber narrowed to a
+  resource hears only that resource's.
+- Notices are at most once: no replay, no acks, nothing stored.
+
+**Writing an adapter.** A `bus` adapter declares `"bus"` in its
+`capabilities` and resolves `{ bus }`, a `ChangeBus`:
+
+| Member | Contract |
+|---|---|
+| `publish(notice)` | Called only after the change can be read. A failure never fails the write that caused it |
+| `subscribe(topic, listener)` | Returns the unsubscribe |
+| `crossesProcesses` | Whether a notice published in another process reaches this one *now*. Only `true` turns the session stream's timed read off |
+| `onCrossingChange(listener)` | Each change of `crossesProcesses`. A change to `false` puts waiting streams back on the timed read |
+
+A bus that reconnects sends each subscriber one `resync` notice on its topic.
+`createInMemoryBus()` is the default, and the in-process fan-out an adapter can
+compose; it never says it crosses.
+
+**A registry you build yourself.** `resolveStores`, `createFlowState`,
+`runAction`, BullMQ's job processor and `fsdev` apply `withChangeBus(stores)`,
+which gives the registry its bus (the one you set on `stores.bus`, else an
+in-memory one) and wraps its request and session stores so every write
+publishes. A host that writes to the stores past those entries calls it too,
+and writes through the registry it returns. It is idempotent: every entry gets
+the same wrapped stores.
 
 ## Store list options
 
@@ -821,6 +875,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom lo
 - `createInMemoryResourceStateStore` / `createFilesystemResourceStateStore` — Resource state store adapters
 - `createInMemoryOrgStore` / `createFilesystemOrgStore` — Org scope store adapters, implementing `OrgStore`. The filesystem adapter keeps org records under `{rootDir}/projects/`.
 - Session, user, and request scope store factories, and CAS/state ops
+- `createInMemoryBus` / `withChangeBus` and the `ChangeBus`, `ChangeNotice`, `BusTopic` types — the change bus (see [Change bus](#change-bus))
 
 **Streaming:**
 - `createResponseEmitter` — Create an SSE emitter for a request

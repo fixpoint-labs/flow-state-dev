@@ -20,13 +20,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { SquareIcon } from "lucide-react";
-import { createClient, type SessionRequestSummary } from "@flow-state-dev/client";
 import {
   FlowProvider,
   useResourceCollectionList,
   useResourceManifest,
+  clearDraft,
+  useDraft,
   useHarnessLines,
   useSession,
+  SuspensionResolverProvider,
   type SessionView,
 } from "@flow-state-dev/react";
 import {
@@ -74,7 +76,8 @@ import {
   type TurnNotice,
 } from "@/lib/harness-turn";
 import type { HarnessSessionState } from "@flow-state-dev/harness-manager";
-import { useSessionDraft } from "@/lib/use-session-draft";
+import { SESSION_DRAFT } from "@/lib/session-draft";
+import { BASE_PATH } from "@/lib/base-path";
 
 export interface HarnessSessionViewProps {
   /** The mode's label, from the mode list. */
@@ -96,7 +99,7 @@ const sendLineOnce = (prompt: string, running: boolean, sender: LineSender) => s
 /** One harness session's conversation and plan. */
 export function HarnessSessionView({ label, flowKind, sessionId, models, repoLine, onTitled }: HarnessSessionViewProps) {
   return (
-    <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAssistantRenderers}>
+    <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl={BASE_PATH} renderers={chatAssistantRenderers}>
       <SessionBody label={label} sessionId={sessionId} models={models} repoLine={repoLine} onTitled={onTitled} />
     </FlowProvider>
   );
@@ -116,18 +119,11 @@ function SessionBody({
   onTitled?: () => void;
 }) {
   const session = useSession(sessionId, { items: true, autoResume: true });
-  const [message, setMessage] = useSessionDraft(sessionId);
+  const [message, setMessage] = useDraft(SESSION_DRAFT, sessionId);
   const messageRef = useRef(message);
   messageRef.current = message;
 
-  // Session state is read from the snapshot, which a turn's end alone does
-  // not refresh: re-read it when a turn stops streaming.
-  const wasStreaming = useRef(false);
   const { refresh } = session;
-  useEffect(() => {
-    if (wasStreaming.current && !session.isStreaming) void refresh();
-    wasStreaming.current = session.isStreaming;
-  }, [session.isStreaming, refresh]);
 
   // The rail lists sessions by title. The flow sets it in a session's first
   // turn, so re-read the rail when it arrives.
@@ -138,28 +134,11 @@ function SessionBody({
 
   const state = (session.snapshot?.clientData.session ?? {}) as Partial<HarnessSessionState>;
   const bound = state.binding?.confirmed ?? null;
-  const { items, isStreaming, latestRequest } = session;
-  // Requests are listed beside the session hook, which reads only its latest.
-  const client = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "" }), []);
+  const { items, isStreaming, followedRequest } = session;
   // The session's newest request can be a `steer` sent beside the turn, so the
-  // turn's status is read off the turn's own request.
+  // turn's status is the hook's followed request: the one the turn's items are.
   const turnId = useMemo(() => latestTurn({ items, streaming: false, request: null })?.requestId ?? null, [items]);
-  const [listedTurn, setListedTurn] = useState<SessionRequestSummary | null>(null);
-  useEffect(() => {
-    if (turnId === null || latestRequest === null || latestRequest.id === turnId) return;
-    let current = true;
-    client.sessions.requests(sessionId, { limit: 20 }).then(
-      (requests) => {
-        if (current) setListedTurn(requests.find((request) => request.id === turnId) ?? null);
-      },
-      // Unread, the turn reads as running until the next read, as before a summary arrives.
-      () => undefined,
-    );
-    return () => {
-      current = false;
-    };
-  }, [client, sessionId, turnId, latestRequest]);
-  const turnRequest = latestRequest?.id === turnId ? latestRequest : listedTurn?.id === turnId ? listedTurn : null;
+  const turnRequest = followedRequest?.id === turnId ? followedRequest : null;
   const turn = useMemo(
     () => latestTurn({ items, streaming: isStreaming, request: turnRequest }),
     [items, isStreaming, turnRequest],
@@ -177,15 +156,24 @@ function SessionBody({
       try {
         const outcome = await lines.send(prompt);
         setLastLine(outcome);
+        // The view may have closed (a session switch) while it ran: the stored draft goes only if it is still this line.
+        clearDraft(SESSION_DRAFT, sessionId, prompt);
         if (messageRef.current.trim() === prompt) setMessage("");
         // The steer request records a taken line in session state, and this
-        // view follows only the turn's stream: re-read it so the line shows now.
-        if (outcome === "taken") void refresh();
+        // view follows only the turn's stream: re-read state (not the
+        // history) so the line shows now.
+        if (outcome === "taken") void refresh({ items: false });
       } catch {
         // Keep the persisted draft so a failed send can be retried.
       }
     },
-    [lines, refresh, setMessage],
+    [lines, refresh, setMessage, sessionId],
+  );
+  // A turn waiting on an answer has no stream to close: the session stops it by request id.
+  const waiting = turn?.status === "waiting";
+  const stopTurn = useCallback(
+    () => (waiting && turn !== null ? session.dismissRequest(turn.requestId) : session.abortRequest()),
+    [waiting, turn, session],
   );
   const steered = turn === null ? [] : (state.turns?.[turn.requestId]?.steered ?? []);
 
@@ -201,6 +189,8 @@ function SessionBody({
           </span>
         </div>
         <Conversation className="min-h-0 flex-1" data-testid="conversation">
+          {/* An answer to a card goes through the session, so the turn it resumes streams in here. */}
+          <SuspensionResolverProvider resolve={session.resumeSuspension}>
           <SessionItemsProvider value={session.items}>
             <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
               {session.isLoading ? (
@@ -223,6 +213,7 @@ function SessionBody({
               )}
             </ConversationContent>
           </SessionItemsProvider>
+          </SuspensionResolverProvider>
           <ConversationScrollButton />
         </Conversation>
         <div className="border-t">
@@ -237,8 +228,8 @@ function SessionBody({
                 onChange={(e) => setMessage(e.target.value)}
               />
               {/* While a turn runs, Stop and Send are two buttons: one that did both would stop the turn when a line was meant. */}
-              {session.isStreaming && (
-                <PromptInputButton aria-label="Stop" data-testid="turn-stop" onClick={() => void session.abortRequest()}>
+              {(session.isStreaming || waiting) && (
+                <PromptInputButton aria-label="Stop" data-testid="turn-stop" onClick={() => void stopTurn()}>
                   <SquareIcon className="size-4" />
                 </PromptInputButton>
               )}
@@ -251,7 +242,7 @@ function SessionBody({
         session={session}
         label={label}
         turn={turn}
-        ended={turn !== null && turn.status !== "running"}
+        ended={turn !== null && turn.status !== "running" && turn.status !== "waiting"}
         bound={bound}
         turnsByRequest={turnsByRequest}
         records={state.turns ?? null}
@@ -343,6 +334,8 @@ function Notice({ notice, label }: { notice: TurnNotice; label: string }) {
         return `This turn failed${notice.error === null ? "." : `: ${notice.error}`} ${notice.conversation === null ? "" : `The session stays on conversation ${notice.conversation}.`}`;
       case "stopped":
         return `Stopped. ${notice.conversation === null ? "" : `The session stays on conversation ${notice.conversation}, and your next turn continues it.`}`;
+      case "waiting":
+        return `Waiting on you. ${label} asked to use a tool; your answer on the card above goes back to ${notice.conversation === null ? "this conversation" : `conversation ${notice.conversation}`}.`;
     }
   })();
   const warn = notice.kind === "refused" || notice.kind === "error";
