@@ -45,6 +45,7 @@ export const KITCHEN_SINK_ENV = {
  * @property {string} prefix     The proxy's sub-route, no trailing slash.
  * @property {number} port       The loopback port it listens on.
  * @property {"next"|"spa"} kind
+ * @property {string} [devtoolUserId]  The one user the app runs as, for the DevTool to open it as. An `spa` app declares its own in the pages it serves, which the DevTool reads; a Next app's pages carry none.
  * @property {{ dev: Step[], serve: Step[] }} run  Steps in order; the last one is the long-lived server.
  */
 
@@ -57,6 +58,8 @@ export const APPS = [
     prefix: "/kitchen-sink",
     port: 3110,
     kind: "next",
+    // `KITCHEN_SINK_USER_ID` in `apps/kitchen-sink/lib/kitchen-sink-principal.ts`: every caller of the app resolves to it.
+    devtoolUserId: "devuser",
     run: {
       dev: [
         {

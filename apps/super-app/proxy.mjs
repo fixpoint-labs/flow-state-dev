@@ -7,6 +7,10 @@
  * - WebSocket upgrades (Next's dev HMR) are piped through raw.
  * - An app's redirect to a root path, or to its own loopback address, is put
  *   back under its prefix on this server.
+ * - Every page an app serves gets a DevTool button at its bottom right
+ *   (`button.mjs`); the DevTool itself is one page at `/devtool/` (`devtoolDir`)
+ *   that switches between the apps, over the same sub-routes, so it needs nothing
+ *   from the apps but the flow API they already serve.
  * - A request target that isn't an origin-form path (`/…`) gets 400, before
  *   anything parses it.
  * - With `auth` (`auth.mjs`), nothing but the login routes gets through
@@ -16,17 +20,33 @@
  *   loopback name: a page on another site that rebinds its own domain to
  *   127.0.0.1 is refused, so it can't drive the apps from the user's browser.
  */
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
 import { createServer, request as httpRequest } from "node:http";
 import { connect } from "node:net";
+import { extname, join, sep } from "node:path";
+import { bodyCloseInjector, buttonScript, DEVTOOL_PATH, insertBeforeBodyClose } from "./button.mjs";
 import { escapeHtml, PAGE_STYLE } from "./page.mjs";
+
+/** What the DevTool page's files are served as. */
+const CONTENT_TYPES = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+};
 
 /**
  * @param {object} options
  * @param {import("./apps.mjs").HostedApp[]} options.apps
  * @param {ReturnType<import("./auth.mjs").createAuth>} [options.auth]  Unset, no sign-in is asked for.
  * @param {(id: string) => string} options.status  A word for an app's state on the landing page.
+ * @param {string} [options.devtoolDir]  The built DevTool page (`pnpm build:devtool`), served at `/devtool/`. Unset, that route answers 404.
  */
-export function createProxy({ apps, auth, status }) {
+export function createProxy({ apps, auth, status, devtoolDir }) {
   /** Whether a request target is a path this server can parse; anything else is refused before it is read. */
   const validTarget = (target) => {
     if (typeof target !== "string" || !target.startsWith("/")) return false;
@@ -48,6 +68,57 @@ export function createProxy({ apps, auth, status }) {
     return { app, upstreamPath: rest.startsWith("/") ? rest : `/${rest}` };
   };
 
+  /** The DevTool page's files, and the list of apps it switches between. */
+  const devtoolPage = async (req, res, url) => {
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      res.writeHead(405, { allow: "GET, HEAD", "content-type": "text/plain" });
+      return void res.end("Method not allowed.\n");
+    }
+    let path;
+    try {
+      path = decodeURIComponent(url.split("?")[0].slice(DEVTOOL_PATH.length));
+    } catch {
+      res.writeHead(400, { "content-type": "text/plain" });
+      return void res.end("Bad request target.\n");
+    }
+    if (path === "apps.json") {
+      const list = apps.map(({ id, title, prefix, devtoolUserId }) => ({
+        id,
+        title,
+        prefix,
+        status: status(id),
+        ...(devtoolUserId === undefined ? {} : { userId: devtoolUserId }),
+      }));
+      res.writeHead(200, { "content-type": CONTENT_TYPES[".json"], "cache-control": "no-store" });
+      return void res.end(JSON.stringify(list));
+    }
+    if (devtoolDir === undefined) {
+      res.writeHead(404, { "content-type": "text/plain" });
+      return void res.end("The DevTool page isn't served here.\n");
+    }
+    const file = join(devtoolDir, path === "" ? "index.html" : path);
+    // `join` has already folded any `..`, so a file outside the folder is a path that left it.
+    const inside = file.startsWith(devtoolDir.endsWith(sep) ? devtoolDir : devtoolDir + sep);
+    const found = inside ? await stat(file).catch(() => undefined) : undefined;
+    if (found === undefined || !found.isFile()) {
+      const built = await stat(join(devtoolDir, "index.html")).catch(() => undefined);
+      res.writeHead(built === undefined ? 503 : 404, { "content-type": "text/plain" });
+      return void res.end(
+        built === undefined
+          ? "The DevTool page isn't built. Run `pnpm build` (or `pnpm --filter @flow-state-dev/super-app build:devtool`).\n"
+          : "No such DevTool file.\n",
+      );
+    }
+    res.writeHead(200, {
+      "content-type": CONTENT_TYPES[extname(file)] ?? "application/octet-stream",
+      "content-length": found.size,
+      // Built files are named by their content, except the page that names them.
+      "cache-control": path.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-cache",
+    });
+    if (req.method === "HEAD") return void res.end();
+    createReadStream(file).on("error", () => res.destroy()).pipe(res);
+  };
+
   const server = createServer((req, res) => {
     if (!validTarget(req.url)) {
       res.writeHead(400, { "content-type": "text/plain", connection: "close" });
@@ -62,6 +133,12 @@ export function createProxy({ apps, auth, status }) {
     if (auth?.handle(req, res)) return;
     const url = req.url ?? "/";
     if (url === "/" || url.startsWith("/?")) return landing(res, apps, status, auth !== undefined);
+    if (url === "/devtool" || url.startsWith("/devtool?")) {
+      res.writeHead(308, { location: `${DEVTOOL_PATH}${url.slice("/devtool".length)}` });
+      res.end();
+      return;
+    }
+    if (url.startsWith(DEVTOOL_PATH)) return void devtoolPage(req, res, url).catch(() => res.destroy());
 
     const target = route(url);
     if (target === undefined) {
@@ -81,6 +158,9 @@ export function createProxy({ apps, auth, status }) {
     // An SPA's HTML is rewritten as text, and a response's type isn't known until it arrives, so no SPA
     // request asks for compression. The hop it saves is loopback; the browser hop was never compressed here.
     if (app.kind === "spa") delete headers["accept-encoding"];
+    // The same goes for a page load of a Next app, which gets the DevTool button written into its stream.
+    // Its other requests (assets, data, API) keep their compression.
+    if (app.kind === "next" && String(req.headers.accept ?? "").includes("text/html")) delete headers["accept-encoding"];
 
     const upstream = httpRequest(
       { host: "127.0.0.1", port: app.port, method: req.method, path: upstreamPath, headers },
@@ -99,8 +179,16 @@ export function createProxy({ apps, auth, status }) {
         });
         const out = withoutHopHeaders(up.headers);
         if (typeof out.location === "string") out.location = publicLocation(out.location, app);
-        const html = app.kind === "spa" && String(out["content-type"] ?? "").includes("text/html");
-        if (!html) {
+        const page = String(out["content-type"] ?? "").includes("text/html") && out["content-encoding"] === undefined;
+        const button = buttonScript(app);
+        if (app.kind === "next" && page) {
+          // A streamed page keeps arriving while the app renders it: write the button in as it passes.
+          delete out["content-length"];
+          res.writeHead(up.statusCode ?? 502, out);
+          up.pipe(bodyCloseInjector(button)).pipe(res);
+          return;
+        }
+        if (!(app.kind === "spa" && page)) {
           res.writeHead(up.statusCode ?? 502, out);
           up.pipe(res);
           return;
@@ -108,9 +196,8 @@ export function createProxy({ apps, auth, status }) {
         const chunks = [];
         up.on("data", (c) => chunks.push(c));
         up.on("end", () => {
-          const body = Buffer.from(
-            Buffer.concat(chunks).toString("utf8").replace(/<base href="\/"\s*\/?>/i, `<base href="${app.prefix}/">`),
-          );
+          const rebased = Buffer.concat(chunks).toString("utf8").replace(/<base href="\/"\s*\/?>/i, `<base href="${app.prefix}/">`);
+          const body = Buffer.from(insertBeforeBodyClose(rebased, button));
           delete out["content-length"];
           delete out["transfer-encoding"];
           res.writeHead(up.statusCode ?? 200, { ...out, "content-length": body.length });
@@ -220,12 +307,13 @@ function landing(res, apps, status, signOut) {
   res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>flow-state-dev apps</title><style>${PAGE_STYLE}
 header{display:flex;justify-content:space-between;align-items:start;gap:12px}
-.out button{font:inherit;font-size:13px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--muted);cursor:pointer}
+.out{display:flex;gap:8px;align-items:center}.out form{margin:0}
+.out button,.out a{font:inherit;font-size:13px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;text-decoration:none}
 main{max-width:880px;margin:0 auto;padding:48px 16px}h1{font-size:22px;margin:0 0 4px}.sub{color:var(--muted);margin:0 0 28px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
 .card{display:block;padding:18px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:inherit;text-decoration:none}
 .card:hover{border-color:var(--muted)}.card h2{font-size:16px;margin:8px 0 4px}.card p{margin:0 0 10px;color:var(--muted)}
 code{font-size:12px;color:var(--muted)}.state{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
 .state.running{color:#16a34a}.state.stopped{color:#dc2626}
-</style></head><body><main><header><div><h1>flow-state-dev</h1><p class="sub">Every app on this server, one route each.</p></div>${signOut ? '<form class="out" method="post" action="/logout"><button type="submit">Sign out</button></form>' : ""}</header><div class="grid">${cards}</div></main></body></html>`);
+</style></head><body><main><header><div><h1>flow-state-dev</h1><p class="sub">Every app on this server, one route each.</p></div><div class="out"><a href="/devtool/">DevTool</a>${signOut ? '<form method="post" action="/logout"><button type="submit">Sign out</button></form>' : ""}</div></header><div class="grid">${cards}</div></main></body></html>`);
 }

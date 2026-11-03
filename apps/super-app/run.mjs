@@ -22,11 +22,17 @@
  *   network you trust.
  * - `SUPER_APP_ONLY=kitchen-sink,teammates`: start only these apps.
  *
+ * The DevTool page at `/devtool/` is built into `dist/` (`pnpm build:devtool`):
+ * `dev` rebuilds it first, as it does the labs' pages; `serve` serves what
+ * `pnpm build` made.
+ *
  * The rules are `settings.mjs`. An app that stops leaves the others running; its route answers 502 and the
  * landing page marks it stopped. Ctrl-C stops everything.
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { connect } from "node:net";
+import { fileURLToPath } from "node:url";
 import { createAuth } from "./auth.mjs";
 import { createProxy } from "./proxy.mjs";
 import { resolveSettings } from "./settings.mjs";
@@ -146,7 +152,16 @@ process.on("exit", () => {
   }
 });
 
-const proxy = createProxy({ apps, auth, status: (id) => state.get(id) ?? "stopped" });
+const devtoolDir = fileURLToPath(new URL("./dist", import.meta.url));
+if (mode === "dev") {
+  process.stdout.write("[super-app] building the DevTool page\n");
+  const built = spawnSync("pnpm", ["run", "build:devtool"], { cwd: fileURLToPath(new URL(".", import.meta.url)), stdio: "inherit" });
+  if (built.status !== 0) process.stderr.write("[super-app] the DevTool page failed to build; /devtool/ won't load.\n");
+} else if (!existsSync(`${devtoolDir}/index.html`)) {
+  process.stderr.write("[super-app] the DevTool page isn't built (run `pnpm build`); /devtool/ won't load.\n");
+}
+
+const proxy = createProxy({ apps, auth, status: (id) => state.get(id) ?? "stopped", devtoolDir });
 proxy.on("error", (error) => {
   const hint = error.code === "EACCES" ? ` Port ${port} needs root here; run with PORT=8080, or grant node the bind capability.` : "";
   process.stderr.write(`[super-app] can't listen on ${host}:${port}: ${error.message}.${hint}\n`);
