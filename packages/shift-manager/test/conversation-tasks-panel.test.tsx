@@ -53,13 +53,21 @@ vi.mock("../src/lib/conversation-tasks", async (importOriginal) => ({
   readConversationTasks: async (_c: unknown, flow: string, sessionId: string) => {
     calls.push(`list ${flow} ${sessionId}`);
     if (refusal !== null) throw new Error(refusal);
-    return [...rows];
+    const answer = [...rows];
+    // A case holding reads open answers each when it releases it.
+    if (holdReads) return new Promise((resolve) => held.push(() => resolve(answer)));
+    return answer;
   },
 }));
+
+let holdReads = false;
+const held: Array<() => void> = [];
 
 const shiftCoordinator = toWorker({ id: "shift-coordinator", kind: "coordinator", door: "run" })!;
 
 beforeEach(() => {
+  holdReads = false;
+  held.length = 0;
   rows = [];
   refusal = null;
   calls.length = 0;
@@ -233,6 +241,23 @@ describe("the tasks panel (S11)", () => {
       rows = [...rows, { id: "t2", goal: "Write the release notes", status: "pending", attempts: 0 }];
       await hear({ topic: { scope: "session", id: "s1", resource: "tasks" }, kind: "board" });
       expect(shown().map((task) => task.id)).toEqual(["t1", "t2"]);
+    });
+
+    it("reloads nothing when it unmounts with a read still in flight", async () => {
+      rows = [{ id: "t1", goal: "Audit the licenses", status: "in_progress", assignee: "licenses", attempts: 1 }];
+      const view = render(<TasksPanel worker={shiftCoordinator} sessionId="s1" readAt={1} />);
+      await settle();
+      // A notice's read is in flight, and would show the task moved.
+      holdReads = true;
+      rows = [{ id: "t1", goal: "Audit the licenses", status: "completed", assignee: "licenses", attempts: 1 }];
+      await hear({ topic: { scope: "session", id: "s1", resource: "tasks" }, kind: "board" });
+      expect(held).toHaveLength(1);
+      view.unmount();
+      await act(async () => {
+        held.forEach((release) => release());
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(refreshes).toHaveLength(0);
     });
   });
 });

@@ -47,11 +47,19 @@ vi.mock("../src/lib/conversation-tasks", async (importOriginal) => ({
   readConversationTasks: async (_c: unknown, flow: string, sessionId: string) => {
     calls.push(`list ${flow} ${sessionId}`);
     if (failing) throw new Error("network");
-    return rows.map((row) => ({ ...row }));
+    const answer = rows.map((row) => ({ ...row }));
+    // A case holding reads open answers each when it releases it.
+    if (holdReads) return new Promise((resolve) => held.push(() => resolve(answer)));
+    return answer;
   },
 }));
 
+let holdReads = false;
+const held: Array<() => void> = [];
+
 beforeEach(() => {
+  holdReads = false;
+  held.length = 0;
   rows = [];
   failing = false;
   refreshes = 0;
@@ -189,6 +197,20 @@ describe("a delegated post's task in the feed", () => {
     rows = [{ ...rows[0]!, status: "errored" }];
     await hear(null);
     expect(cards()[0]!.status).toBe("errored");
+  });
+
+  it("reloads nothing when it unmounts with a read still in flight", async () => {
+    rows = [{ id: "t1", goal: "g", title: "Post for eng.pm", status: "in_progress", assignee: "eng.pm", attempts: 1 }];
+    const view = render(scope([filed("r1", "t1", "Post for eng.pm", "eng.pm")], ["r1"]));
+    await tick(0);
+    holdReads = true;
+    rows = [{ ...rows[0]!, status: "completed" }];
+    await hear(boardNotice);
+    expect(held).toHaveLength(1);
+    view.unmount();
+    held.forEach((release) => release());
+    await tick(0);
+    expect(refreshes).toBe(0);
   });
 
   it("reads one board for every card in the feed", async () => {

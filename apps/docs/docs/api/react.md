@@ -187,7 +187,8 @@ useSubscription([topic.session(sessionId, { resource: "tasks" })], refresh, { po
 | Argument | Type | Notes |
 |----------|------|-------|
 | `topics` | `WireTopic[]` | From `topic.session(id)`, `topic.user()`, `topic.org()`. A new array with the same topics keeps the subscription. |
-| `read` | `(notice: WireNotice \| null) => unknown` | The screen's read. One runs at a time, and at most one more waits. Gets the notice that woke it, or `null` when the screen should read everything again: after a connect or a reconnect, on a timer tick, and when push starts or stops reaching every server process. It also gets `null` when several changes arrived during one read (one follow-up read covers them all). |
+| `read` | `(notice: WireNotice \| null, signal: AbortSignal) => unknown` | The screen's read. One runs at a time, and at most one more waits. Gets the notice that woke it, or `null` when the screen should read everything again: after a connect or a reconnect, on a timer tick, and when push starts or stops reaching every server process. It also gets `null` when several changes arrived during one read (one follow-up read covers them all). |
+| `read`'s `signal` | `AbortSignal` | Aborted when the subscription ends: the screen unmounts, or its topics or options change. A read that awaits checks `signal.aborted` before it sets state or starts more work, since a read already running when the screen goes away still finishes. |
 | `options.pollIntervalMs` | `number` | Read at this pace wherever push can miss a change. Omitted, no timer. |
 | `options.enabled` | `boolean` | `false` subscribes nothing. Default `true`. |
 | `options.client` | `Pick<Client, "subscribe">` | Your own client, when you build one with its own `fetcher`, so the socket signs in the same way. Pass a stable reference. Default: the provider's client. |

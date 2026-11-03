@@ -13,6 +13,11 @@
  * or a timer tick. A waiting read that stands for several different notices
  * gets `null` too, so a read that acts on a notice's kind reads everything
  * then.
+ *
+ * `read` also gets an `AbortSignal`, aborted when the subscription ends (the
+ * screen unmounts, or its topics or options change). A read that awaits
+ * checks it before it sets state or starts more work: a read already running
+ * when the screen goes away still finishes, and its result is for nobody.
  */
 import { useEffect, useMemo, useRef } from "react";
 import type { Client, WireNotice, WireTopic } from "@flow-state-dev/client";
@@ -54,11 +59,12 @@ function sameNotice(a: WireNotice | null, b: WireNotice | null): boolean {
 
 /**
  * Run `read` when something under `topics` changes. `read` may return a
- * promise; the next read waits for it.
+ * promise; the next read waits for it. Its `signal` aborts when this
+ * subscription ends.
  */
 export function useSubscription(
   topics: readonly WireTopic[],
-  read: (notice: WireNotice | null) => unknown,
+  read: (notice: WireNotice | null, signal: AbortSignal) => unknown,
   options: UseSubscriptionOptions = {}
 ): void {
   const built = useClient();
@@ -74,10 +80,11 @@ export function useSubscription(
   useEffect(() => {
     if (!enabled || stable.length === 0) return;
     let next: { notice: WireNotice | null } | undefined;
+    const ended = new AbortController();
     const reads = coalescedReads(async () => {
       const notice = next?.notice ?? null;
       next = undefined;
-      await readRef.current(notice);
+      await readRef.current(notice, ended.signal);
     });
     const subscription = client.subscribe(stable, {
       onChange: (notice) => {
@@ -87,6 +94,7 @@ export function useSubscription(
       ...(pollIntervalMs !== undefined ? { pollIntervalMs } : {})
     });
     return () => {
+      ended.abort();
       subscription.close();
       reads.close();
     };

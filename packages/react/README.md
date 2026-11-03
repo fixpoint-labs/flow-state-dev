@@ -257,7 +257,10 @@ so a burst of changes is one more read. `read` gets the notice that woke it, or
 `null` when the screen should read everything again: after a connect or a
 reconnect, on a timer tick, and when push starts or stops reaching every server
 process. It also gets `null` when several changes arrived during one read (one
-follow-up read covers them all). It doesn't read on mount.
+follow-up read covers them all). It doesn't read on mount. Its second argument is an
+`AbortSignal`, aborted when the subscription ends (the screen unmounts, or its topics
+or options change): a read that awaits checks `signal.aborted` before it sets state or
+starts more work, since a read already running when the screen goes away still finishes.
 
 ```tsx
 import { topic } from "@flow-state-dev/client";

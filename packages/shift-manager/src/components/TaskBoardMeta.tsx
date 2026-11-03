@@ -85,11 +85,13 @@ function LiveBoard({ flow, sessionId, boardRef, children }: { flow: string; sess
     standing.current = undefined;
   }, [flow, sessionId]);
 
-  const readBoard = useCallback(async () => {
+  // `signal` aborts once the read's subscription or effect is gone: a read that lands after the
+  // board unmounted sets nothing and reloads nothing.
+  const readBoard = useCallback(async (_notice?: unknown, signal?: AbortSignal) => {
     const mine = ++latest.current;
     try {
       const tasks = await readConversationTasks(client, flow, sessionId);
-      if (mine !== latest.current) return;
+      if (mine !== latest.current || signal?.aborted === true) return;
       setRead({ sessionId, tasks: new Map(tasks.map((task) => [task.id, task])) });
       const now = tasks.map((task) => `${task.id}:${task.status}`).join(",");
       if (standing.current !== undefined && standing.current !== now) void refresh();
@@ -101,7 +103,9 @@ function LiveBoard({ flow, sessionId, boardRef, children }: { flow: string; sess
   }, [client, refresh, flow, sessionId]);
 
   useEffect(() => {
-    void readBoard();
+    const ended = new AbortController();
+    void readBoard(null, ended.signal);
+    return () => ended.abort();
   }, [readBoard, readAt]);
 
   const topics = useMemo(() => conversationBoardTopics(sessionId), [sessionId]);

@@ -70,12 +70,14 @@ export function TasksPanel({
     last.current = { movedAt: 0 };
   }, [worker.kind, sessionId]);
 
-  const readTasks = useCallback(async () => {
+  // `signal` aborts once the read's subscription or effect is gone: a read that lands after the
+  // panel unmounted, or moved to another conversation, sets nothing and reloads nothing.
+  const readTasks = useCallback(async (_notice?: unknown, signal?: AbortSignal) => {
     if (sessionId === null || worker.kind === null) return;
     const mine = ++latest.current;
     try {
       const tasks = await readConversationTasks(client, worker.kind, sessionId);
-      if (mine !== latest.current) return;
+      if (mine !== latest.current || signal?.aborted === true) return;
       setRead({ tasks });
       const now = standing(tasks);
       if (last.current.standing !== undefined && last.current.standing !== now) {
@@ -85,13 +87,15 @@ export function TasksPanel({
       last.current.standing = now;
       setTimed(tasks.some(isOpen) || Date.now() - last.current.movedAt < AFTER_A_MOVE_MS);
     } catch (error: unknown) {
-      if (mine === latest.current) setRead({ failure: describeFailure(error).message });
+      if (mine === latest.current && signal?.aborted !== true) setRead({ failure: describeFailure(error).message });
     }
   }, [client, refresh, worker.kind, sessionId]);
 
   // On open, and after each turn the user sends.
   useEffect(() => {
-    void readTasks();
+    const ended = new AbortController();
+    void readTasks(null, ended.signal);
+    return () => ended.abort();
   }, [readTasks, readAt]);
 
   const topics = useMemo(() => (sessionId === null || worker.kind === null ? [] : conversationBoardTopics(sessionId)), [sessionId, worker.kind]);
