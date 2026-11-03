@@ -50,6 +50,16 @@ KITCHEN_SINK_HARNESS_PASS=LINEAR_API_KEY,GH_TOKEN
 
 Trusted, Claude Code loads the repository's `CLAUDE.md`, skills and project settings with every hook off, and never your own user settings. Hooks stay off because one runs by itself, with nothing in the transcript, and a turn can write one into `.claude/settings.json` for the next turn. Codex keeps the MCP servers your Codex settings name. Cursor still loads nothing from the repository: its SDK can't load project settings without their hooks. Every harness is handed the variables `KITCHEN_SINK_HARNESS_PASS` names. The model can read a key you pass, and it can end up in a log or a commit, so name only keys you would hand the CLI yourself. Each session's header says what its harness loaded ("Repo conventions: loaded, hooks off", or "not loaded") and which keys it was passed. Only `1` turns trust on; only the server's environment sets it, never a request; and it is off on Vercel. Restart after changing either setting.
 
+**Setup and checks.** A fresh worktree has no installed dependencies, and a turn that ends says nothing about whether the code still builds. Name a setup command and the checks:
+
+```bash
+# apps/kitchen-sink/.env.local
+KITCHEN_SINK_HARNESS_SETUP=pnpm install --frozen-lockfile
+KITCHEN_SINK_HARNESS_CHECKS=pnpm typecheck; pnpm --filter @flow-state-dev/core test
+```
+
+The setup command runs once in each session's new worktree, before its first turn. If it fails, the session shows the end of its output, the turn goes ahead without it, and the next turn runs it again. After each turn the harness finished, the checks run in the worktree, in order, and the session shows "Checks 1/2 passed" with each command's output. A red check doesn't fail the turn: you read it and decide what to say next. Each command runs without a shell, so `&&`, pipes and redirects turn the harness modes off and say why; list separate checks with `;`. Restart after changing either setting.
+
 The `pnpm fsdev` commands below run from `apps/kitchen-sink`, where `fsdev.config.ts` gives the CLI the same flows, models and stores the app has.
 
 ### Without a model key
@@ -329,6 +339,8 @@ Most are optional. These are the ones you're likely to set:
 | `KITCHEN_SINK_HARNESS_WORKSPACE` | The top level of the git checkout the coding harness modes work on. Each session gets its own worktree and branch of it, kept outside the checkout under `~/.local/state/flow-state-dev/kitchen-sink-harness/`. Unset, they use the checkout the server runs from in local development, and are off otherwise. Ignored on Vercel, where they're always off. |
 | `KITCHEN_SINK_HARNESS_TRUSTED` | `1` trusts the repository the harness modes work on: Claude Code loads its `CLAUDE.md`, skills and project settings with hooks off, and Codex keeps your MCP servers. Unset, nothing is loaded from it. Off on Vercel. See [Run it](#run-it). |
 | `KITCHEN_SINK_HARNESS_PASS` | Comma-separated names of the server's variables every harness run is handed, such as `LINEAR_API_KEY,GH_TOKEN`. Read only when trusted. The model can read them. |
+| `KITCHEN_SINK_HARNESS_SETUP` | One command each harness session's new worktree runs before its first turn, such as `pnpm install --frozen-lockfile`. No shell. See [Run it](#run-it). |
+| `KITCHEN_SINK_HARNESS_CHECKS` | Checks each finished turn runs in the session's worktree, separated by `;`, such as `pnpm typecheck; pnpm test`. The session shows how they came out. No shell. |
 | `PORT` | The port the server listens on. Defaults to `3000`. |
 | `STORE_TYPE` | The default keeps sessions and hired workers in a SQLite file, `.fsdev/data/flowstate.db`, across restarts. `memory` starts empty each time, and `filesystem` keeps JSON files in `.fsdev/data` instead. Ignored when a database URL is set. |
 | `FSD_DB_URL` | A Postgres connection string. When set, the app stores everything there. `DATABASE_URL` is read if `FSD_DB_URL` isn't set. |
