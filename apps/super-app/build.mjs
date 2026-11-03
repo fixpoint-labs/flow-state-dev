@@ -7,14 +7,18 @@
  * `.next-super-app` with the prefix set (`KITCHEN_SINK_ENV`); `run.mjs serve`
  * starts it with the same env. The labs' pages need nothing extra: they build
  * with relative asset URLs, and turbo builds them before this (`^build`).
+ *
+ * It also builds the DevTool page (`pnpm build:devtool`) the proxy serves at `/devtool/`.
  */
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { KITCHEN_SINK_ENV, REPO } from "./apps.mjs";
 
-const result = spawnSync("pnpm", ["run", "build"], {
-  cwd: join(REPO, "apps/kitchen-sink"),
-  env: { ...process.env, ...KITCHEN_SINK_ENV },
-  stdio: "inherit",
-});
-process.exit(result.status ?? 1);
+const steps = [
+  { cwd: join(REPO, "apps/kitchen-sink"), args: ["run", "build"], env: KITCHEN_SINK_ENV },
+  { cwd: join(REPO, "apps/super-app"), args: ["run", "build:devtool"], env: {} },
+];
+for (const { cwd, args, env } of steps) {
+  const result = spawnSync("pnpm", args, { cwd, env: { ...process.env, ...env }, stdio: "inherit" });
+  if (result.status !== 0) process.exit(result.status ?? 1);
+}
