@@ -5,7 +5,7 @@
  * every 5 s; on the stream, another worker's message shows as it is stored,
  * and a long reply costs no more reads than a short one.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createClient, type ClientFetch } from "@flow-state-dev/client";
 import { followSessionItems, type SessionItems } from "../src/lib/run";
 import type { Failure } from "../src/lib/reads";
@@ -76,6 +76,23 @@ describe("followSessionItems", () => {
     await until(() => reads.length > 0);
     expect(reads.at(-1)!.truncated).toBe(true);
     expect(reads.at(-1)!.items.at(-1)!.id).toBe("m259");
+  });
+
+  it("keeps the failure once the feed gives up, never reporting a stopped feed as an empty read", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const h = host([], { failState: true });
+      const events: string[] = [];
+      stops.push(followSessionItems(h.client, "s1", { onRead: (read) => events.push(`read ${read.items.length}`), onFailure: () => events.push("failure") }));
+      // Every history try fails, backed off, until the feed stops.
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(h.counts.state).toBeGreaterThan(1);
+      expect(events.length).toBeGreaterThan(0);
+      expect(events.filter((event) => event.startsWith("read"))).toEqual([]);
+      expect(events.at(-1)).toBe("failure");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("says why when the first read fails", async () => {

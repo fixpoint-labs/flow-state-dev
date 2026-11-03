@@ -23,18 +23,23 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
 
 import { createLabAdapter, type Activity, type ConversationView, type Unsubscribe, type WindowMark } from "../src/adapter";
 
-const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 function host() {
   const calls: string[] = [];
   let requests: unknown[] = [];
   let summary: unknown;
   let holdRequests: Promise<void> | undefined;
+  let requestsFailing = 0;
   const fetcher = (async (url: string, init?: RequestInit) => {
     const path = new URL(url, "http://x").pathname;
     calls.push(`${init?.method ?? "GET"} ${path}`);
     if (path.endsWith("/requests")) {
       await holdRequests;
+      if (requestsFailing > 0) {
+        requestsFailing -= 1;
+        return json({ error: "down" }, 503);
+      }
       return json({ requests });
     }
     if (path.endsWith("/stream")) {
@@ -76,6 +81,7 @@ function host() {
       for (const s of subscriptions) if (!s.closed) s.options.onChange(notice);
     },
     requests: (next: unknown[]) => void (requests = next),
+    failRequestReads: (n: number) => void (requestsFailing = n),
     summary: (next: unknown) => void (summary = next),
     holdRequestReads: () => {
       let release!: () => void;
@@ -117,6 +123,20 @@ describe("watchConversation's answering state", () => {
     h.requests([{ id: "r2", actionName: "respond", status: "in_progress", startedAtMs: 2 }]);
     h.hear({ topic: { scope: "session", id: "s1" }, kind: "request" });
     await until(() => h.count("/sessions/s1/requests") === 2);
+  });
+});
+
+describe("a read that failed", () => {
+  it("is tried again on its own, with no notice to wake it", async () => {
+    const h = host();
+    h.failRequestReads(1);
+    h.requests([{ id: "r2", actionName: "respond", status: "in_progress", startedAtMs: 2 }]);
+    const views: ConversationView[] = [];
+    stops.push(createLabAdapter(h.client).watchConversation("s1", (view) => views.push(view)));
+    await until(() => h.count("/sessions/s1/requests") === 1);
+    // The retry backs off from 1 s, as the client's own reconnects do.
+    await until(() => h.count("/sessions/s1/requests") === 2);
+    await until(() => views.at(-1)?.running === true);
   });
 });
 

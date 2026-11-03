@@ -251,12 +251,38 @@ function every<T>(read: () => Promise<T>, onChange: (value: T) => void, everyMs 
 }
 
 /**
+ * A read again after a failed one, 1 s and doubling to 30 s, the shape of the
+ * client's own reconnects. A view that reads on a notice has no clock to try
+ * again on where push covers it, so a failed read would otherwise wait for a
+ * change that may never come. `succeeded` resets the delay; `stop` drops a
+ * waiting try.
+ */
+function retryAfterFailure(again: () => void): { failed(): void; succeeded(): void; stop(): void } {
+  let attempt = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return {
+    failed() {
+      clearTimeout(timer);
+      timer = setTimeout(again, Math.min(30_000, 1_000 * 2 ** attempt));
+      attempt += 1;
+    },
+    succeeded() {
+      attempt = 0;
+    },
+    stop() {
+      clearTimeout(timer);
+    },
+  };
+}
+
+/**
  * Read `read` now, and again whenever a notice under `topics` passes `hears`
  * (FIX-2466), reporting a value only when it changed, as {@link every} does.
  * A connect, a reconnect, a tick and a `resync` read too. One read at a time,
  * and one waiting for any number of notices. Wherever push can miss a change,
  * `client.subscribe` reads every `everyMs` instead, so the view keeps no
- * timer of its own. A read still out when the watch stops reports nothing.
+ * timer of its own. A failed read tries again on its own ({@link retryAfterFailure}).
+ * A read still out when the watch stops reports nothing.
  */
 function onNotice<T>(
   fsd: Client,
@@ -270,6 +296,7 @@ function onNotice<T>(
   let last: string | undefined;
   let running = false;
   let queued = false;
+  const retry = retryAfterFailure(() => void tick());
   const tick = async (): Promise<void> => {
     if (!live) return;
     if (running) {
@@ -279,6 +306,7 @@ function onNotice<T>(
     running = true;
     try {
       const value = await read();
+      retry.succeeded();
       const key = JSON.stringify(value);
       if (live && key !== last) {
         last = key;
@@ -286,6 +314,7 @@ function onNotice<T>(
       }
     } catch (error) {
       console.warn("[claude-code-style]", error);
+      if (live) retry.failed();
     }
     running = false;
     if (queued) {
@@ -302,6 +331,7 @@ function onNotice<T>(
   void tick();
   return () => {
     live = false;
+    retry.stop();
     subscription.close();
   };
 }
@@ -709,10 +739,17 @@ export function createWiredLab(fsd: Client): LabAdapter {
       let rows = new Map<string, SessionRow>();
       let last: string | undefined;
       let subscription: { close(): void } | undefined;
-      let subscribed = "";
+      // The listed ids the subscription hears; `null` before the first listing lands, so an empty
+      // listing still subscribes (no topics, and the fallback timer where push can miss a change).
+      let subscribed: string | null = null;
       let relist = true;
       const dirty = new Set<string>();
       let running = false;
+      // A failed listing or row read lists again on its own: with push up there may be no notice to wake it.
+      const retry = retryAfterFailure(() => {
+        relist = true;
+        void pump();
+      });
       const tell = () => {
         const list = [...rows.values()].sort((a, b) => b.updatedAt - a.updatedAt);
         const key = JSON.stringify(list);
@@ -761,10 +798,12 @@ export function createWiredLab(fsd: Client): LabAdapter {
               for (const row of read) if (rows.has(row.id)) rows.set(row.id, row);
             }
             if (!live) break;
+            retry.succeeded();
             tell();
             listen();
           } catch (error) {
             console.warn("[claude-code-style]", error);
+            if (live) retry.failed();
           }
         }
         running = false;
@@ -777,6 +816,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
       void pump();
       return () => {
         live = false;
+        retry.stop();
         sessionOpened.delete(opened);
         subscription?.close();
       };

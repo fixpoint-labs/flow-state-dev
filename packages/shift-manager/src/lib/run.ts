@@ -120,7 +120,12 @@ export function followSessionItems(client: Pick<Client, "sessions">, sessionId: 
   let last: readonly OutputItem[] | undefined;
   let read = false;
   const stop = feed.subscribe(({ items, hasEarlier, state, error }) => {
-    if (!read && error !== null) to.onFailure(describeFailure(error));
+    // Only a history read that landed counts: a feed that gave up (`stopped`, its items empty) is a
+    // failure, not an empty session. A landed read clears the error.
+    if (!read && error !== null) {
+      to.onFailure(describeFailure(error));
+      return;
+    }
     // Nothing until the history lands, and a change of connection state alone moves nothing.
     if ((items.length === 0 && state === "connecting") || items === last) return;
     last = items;

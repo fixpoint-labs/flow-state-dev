@@ -12,7 +12,7 @@ import { createClient, type Client, type ClientFetch, type SubscribeOptions, typ
 
 /** The sessions each mode's worker lists, by worker: the sidebar's listing, stood in for. */
 const listed = new Map<string, Array<{ id: string; updatedAt: number }>>();
-const listings = { count: 0 };
+const listings = { count: 0, failing: 0 };
 vi.mock("@flow-state-dev/workforce/browser", async (original) => {
   const real = await original<typeof import("@flow-state-dev/workforce/browser")>();
   return {
@@ -21,6 +21,10 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
       roster: async () => [...listed.keys()].map((id) => ({ id, flow: "f" })),
       listWorkerSessions: async (worker: string) => {
         listings.count += 1;
+        if (listings.failing > 0) {
+          listings.failing -= 1;
+          throw new Error("the roster is down");
+        }
         return (listed.get(worker) ?? []).map((session) => ({ session, isDefault: false }));
       },
       setWorkProject: async () => undefined,
@@ -30,7 +34,7 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
 
 import { createWiredLab, type SessionRow, type ThreadView, type Unsubscribe } from "../src/adapter";
 
-const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 /** A host that counts what each view reads, with `client.subscribe` stood in for so a case says which notice arrives. */
 function host() {
@@ -40,6 +44,7 @@ function host() {
   let board: unknown[] = [];
   /** Held reads of the pins, released by the case. */
   let holdPins: Promise<void> | undefined;
+  let pinsFailing = 0;
   const fetcher = (async (url: string, init?: RequestInit) => {
     const path = new URL(url, "http://x").pathname;
     const method = init?.method ?? "GET";
@@ -47,6 +52,10 @@ function host() {
     if (path === "/api/flows/sessions") return json({ sessions: [{ id: "pins_s", flowKind: "pins", updatedAt: 1 }] });
     if (path.endsWith("/reads/listPins")) {
       await holdPins;
+      if (pinsFailing > 0) {
+        pinsFailing -= 1;
+        return json({ error: "down" }, 503);
+      }
       return json({ output: { pinned } });
     }
     if (path.endsWith("/reads/listTasks_tasks")) return json({ output: { ok: true, tasks: board } });
@@ -84,6 +93,7 @@ function host() {
       for (const s of subscriptions) if (!s.closed) s.options.onChange(notice);
     },
     pin: (ids: string[]) => void (pinned = ids),
+    failPinReads: (n: number) => void (pinsFailing = n),
     run: (requests: unknown[]) => void (running = requests),
     list: (tasks: unknown[]) => void (board = tasks),
     holdPinReads: () => {
@@ -134,6 +144,37 @@ describe("watchSessions", () => {
   afterEach(() => {
     listed.clear();
     listings.count = 0;
+    listings.failing = 0;
+  });
+
+  it("subscribes even when the first listing holds no session, so the fallback timer still reads where push can miss one", async () => {
+    const h = host();
+    const seen: SessionRow[][] = [];
+    stops.push(createWiredLab(h.client).watchSessions((rows) => seen.push(rows)));
+    await until(() => seen.length === 1);
+    expect(seen[0]).toEqual([]);
+    const live = h.subscriptions.filter((s) => !s.closed);
+    expect(live).toHaveLength(1);
+    expect(live[0]!.topics).toEqual([]);
+    expect(live[0]!.options.pollIntervalMs).toBe(3_000);
+
+    // A tick lists again, and a session added since shows.
+    listed.set("desk.main", [{ id: "s1", updatedAt: 1 }]);
+    h.hear(null);
+    await until(() => seen.at(-1)!.length === 1);
+  });
+
+  it("lists again on its own after a first listing that failed, with no notice to wake it", async () => {
+    listed.set("desk.main", [{ id: "s1", updatedAt: 1 }]);
+    listings.failing = 1;
+    const h = host();
+    const seen: SessionRow[][] = [];
+    stops.push(createWiredLab(h.client).watchSessions((rows) => seen.push(rows)));
+    await until(() => listings.count >= 1);
+    expect(seen).toEqual([]);
+    // The retry backs off from 1 s, as the client's own reconnects do.
+    await until(() => seen.length === 1);
+    expect(seen[0]!.map((row) => row.id)).toEqual(["s1"]);
   });
 
   it("lists once, then reads a row again on its own session's request or resource notice, never on a streamed item", async () => {
@@ -223,6 +264,18 @@ describe("watchPins", () => {
     await until(() => seen.length === 2);
     expect(seen[1]).toEqual(["t1", "t2"]);
     expect(h.count("/reads/listPins")).toBe(2);
+  });
+
+  it("reads again on its own after a first read that failed, with no notice to wake it", async () => {
+    const h = host();
+    h.pin(["t1"]);
+    h.failPinReads(1);
+    const seen: string[][] = [];
+    stops.push(createWiredLab(h.client).watchPins((ids) => seen.push(ids)));
+    await until(() => h.count("/reads/listPins") === 1);
+    expect(seen).toEqual([]);
+    await until(() => seen.length === 1);
+    expect(seen[0]).toEqual(["t1"]);
   });
 
   it("shows nothing from a read still in flight when the watch stopped", async () => {

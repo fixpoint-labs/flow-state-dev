@@ -377,12 +377,38 @@ function poll<T>(read: () => Promise<T>, onValue: (value: T) => void, everyMs = 
 }
 
 /**
+ * A read again after a failed one, 1 s and doubling to 30 s, the shape of the
+ * client's own reconnects. A view that reads on a notice has no clock to try
+ * again on where push covers it, so a failed read would otherwise wait for a
+ * change that may never come. `succeeded` resets the delay; `stop` drops a
+ * waiting try.
+ */
+function retryAfterFailure(again: () => void): { failed(): void; succeeded(): void; stop(): void } {
+  let attempt = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return {
+    failed() {
+      clearTimeout(timer);
+      timer = setTimeout(again, Math.min(30_000, 1_000 * 2 ** attempt));
+      attempt += 1;
+    },
+    succeeded() {
+      attempt = 0;
+    },
+    stop() {
+      clearTimeout(timer);
+    },
+  };
+}
+
+/**
  * Read `read` now, and again whenever a notice under `topics` passes `hears`
  * (FIX-2466), reporting a value only when it changed, as {@link poll} does.
  * A connect, a reconnect, a tick and a `resync` read too. One read at a time,
  * and one waiting for any number of notices. Wherever push can miss a change,
  * `client.subscribe` reads every `everyMs` instead, so the view keeps no timer
- * of its own. A read still out when the watch stops reports nothing.
+ * of its own. A failed read tries again on its own ({@link retryAfterFailure}).
+ * A read still out when the watch stops reports nothing.
  */
 function onNotice<T>(
   client: Client,
@@ -396,6 +422,7 @@ function onNotice<T>(
   let last = "";
   let running = false;
   let queued = false;
+  const retry = retryAfterFailure(() => void run());
   const run = async (): Promise<void> => {
     if (!live) return;
     if (running) {
@@ -405,6 +432,7 @@ function onNotice<T>(
     running = true;
     try {
       const value = await read();
+      retry.succeeded();
       const seen = JSON.stringify(value);
       if (live && seen !== last) {
         last = seen;
@@ -412,6 +440,7 @@ function onNotice<T>(
       }
     } catch (error) {
       console.error("teammates: a read failed", error);
+      if (live) retry.failed();
     }
     running = false;
     if (queued) {
@@ -428,6 +457,7 @@ function onNotice<T>(
   void run();
   return () => {
     live = false;
+    retry.stop();
     subscription.close();
   };
 }
