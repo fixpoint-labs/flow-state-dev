@@ -5,7 +5,7 @@
 **Input:** Two servers (two routers, each over its own Postgres stores) over one Postgres database (PGlite), as two processes would hold it. Server A answers in session `s1` with a handler that writes only items and a status (a plain reply), and starts a background run through a dispatcher. Server B holds an open view (`GET /sessions/s1/stream`). Legs a and b share one bus that says it crosses processes (`goals/lib/crossing-bus.mts`); leg c gives each server its own in-memory bus. Held-out: any reply text and any run key must pass; nothing in the check keys on them beyond finding the reply.
 **Signal:**
 - `a:reply` — B's view receives A's reply less than 1000 ms after A saved it (polled off A's store every 5 ms).
-- `a:run` — B's view names A's background run in `session.runs` less than 1000 ms after the run's start is saved (a running request under a child of `s1` on A's store).
+- `a:run` — B's view names A's background run in `session.runs` less than 1000 ms after the run's start is saved (a running request under a child of `s1` on A's store). The run starts after a quiet interval: B reads at most once an interval, so a run started right after B's read of the reply would be timed against that cap.
 - `b:no-read-between` — over a 10 s idle window, B's open view makes 0 database statements, counted at B's executor.
 - `c:fallback` — with each server on its own in-memory bus, B's view receives A's reply less than 2000 ms after it was saved.
 
@@ -21,3 +21,5 @@
 |------|--------|-------|---------|-------|
 | 2026-11-02 | fix/FIX-2426-bus (pre-commit) | n/a | PASS ×4 | b: 0 statements in 10 s idle · a: reply 19–29 ms after saved · a: run 935–957 ms after it started · c: reply 470–485 ms after saved. The run leg sits near its bound by design: the read capped at one an interval takes the run's start at the interval's end |
 | 2026-11-02 | fix/FIX-2426-bus (pre-commit) | n/a | FAIL (expected) | `GOAL_CONTROL=no-publish`: `a:reply` and `a:run` never arrived within 3 s; CAN'T TELL lines for both reads |
+| 2026-11-03 | fix/FIX-2426-bus (after f851f1c) | n/a | PASS ×4 | The read now waits for a change's notices to go quiet (100 ms), and the run leg starts after a quiet interval. The run's ~950 ms above was the one-read-an-interval cap behind B's read of the reply, not the wake. b: 0 statements · a: reply 102–103 ms, run 94–103 ms after it started · c: reply 466–482 ms |
+| 2026-11-03 | fix/FIX-2426-bus (after f851f1c) | n/a | FAIL (expected) | `GOAL_CONTROL=no-publish`: `a:reply` and `a:run` never arrived within 3 s |

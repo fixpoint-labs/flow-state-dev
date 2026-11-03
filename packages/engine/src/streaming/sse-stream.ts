@@ -33,6 +33,12 @@ export interface SSEStreamHandle {
   writeComment(text: string): void;
   /** Close the writable side; idempotent. */
   close(): void;
+  /**
+   * Settles once the stream has closed: locally, by abort, by a failed write,
+   * or because the reader cancelled it, which is noticed at once rather than
+   * at the next write.
+   */
+  readonly whenClosed: Promise<void>;
 }
 
 export interface CreateSSEStreamOptions {
@@ -64,10 +70,13 @@ export function createSSEStream(opts: CreateSSEStreamOptions = {}): SSEStreamHan
 
   let closed = false;
   let timer: ReturnType<typeof setInterval> | undefined;
+  let settleClosed!: () => void;
+  const whenClosed = new Promise<void>((resolve) => (settleClosed = resolve));
 
   function cleanup(): void {
     if (closed) return;
     closed = true;
+    settleClosed();
     if (timer !== undefined) {
       clearInterval(timer);
       timer = undefined;
@@ -97,6 +106,10 @@ export function createSSEStream(opts: CreateSSEStreamOptions = {}): SSEStreamHan
     }, opts.pingIntervalMs);
   }
 
+  // A reader that cancels errors the writable side: close now, not at the
+  // next write, so a producer that only writes now and then lets go at once.
+  writer.closed.catch(() => cleanup());
+
   if (opts.signal !== undefined) {
     if (opts.signal.aborted) {
       cleanup();
@@ -110,6 +123,7 @@ export function createSSEStream(opts: CreateSSEStreamOptions = {}): SSEStreamHan
     get closed(): boolean {
       return closed;
     },
+    whenClosed,
     writeFrame(frame: SSEFrame): void {
       tryWrite(encoder.encode(serializeSSEFrame(frame)));
     },

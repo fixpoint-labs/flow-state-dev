@@ -55,6 +55,13 @@ export type CreateSessionStreamConformanceTestsOptions = {
 };
 
 const SHIPPED_TIMINGS = { ...SESSION_STREAM_TIMINGS };
+/**
+ * How soon a reply a notice woke must arrive, on the shipped clock. Below one
+ * interval, the soonest the read after a missed or spent wake can come, with
+ * room for a loaded machine (a reply measured from its POST takes the run's
+ * own time too).
+ */
+const WOKEN_WITHIN_MS = SHIPPED_TIMINGS.intervalMs * 0.75;
 const FAST_TIMINGS = {
   intervalMs: 40,
   maxAgeMs: 60_000,
@@ -1095,7 +1102,31 @@ export function createSessionStreamConformanceTests(
       const sentAt = Date.now();
       await finished(stores, await say(r, "s1", { text: "woken by the write" }));
       await live.waitFor(isItemWithText("woken by the write"), 2_000);
-      expect(Date.now() - sentAt).toBeLessThan(SHIPPED_TIMINGS.intervalMs / 2);
+      expect(Date.now() - sentAt).toBeLessThan(WOKEN_WITHIN_MS);
+    });
+
+    // The shape a loaded machine gives the case above: the reply's writes
+    // spread over tens of milliseconds, here 80 ms between its first write
+    // and its last. A read taken a fixed time after the first notice finds it
+    // unfinished, and the reply waits a whole interval for the next read; the
+    // read must wait for its notices to go quiet instead.
+    it("sends a reply whose writes spread out in one read, not an interval later (FIX-2426)", async () => {
+      Object.assign(SESSION_STREAM_TIMINGS, SHIPPED_TIMINGS);
+      const stores = { ...(await createStores()), bus: crossingBus() };
+      const r = router(stores);
+      await finished(stores, await say(r, "s1", { text: "opening" }));
+      const live = await stream(r, "s1");
+      await live.waitFor((e) => e.type === "session.runs");
+      await delay(1_500);
+
+      const release = hold("spread");
+      const sentAt = Date.now();
+      // Accepted now; its message is kept 80 ms later.
+      const requestId = await say(r, "s1", { text: "written slowly", before: "spread" });
+      setTimeout(release, 80);
+      await finished(stores, requestId);
+      await live.waitFor(isItemWithText("written slowly"), 2_000);
+      expect(Date.now() - sentAt).toBeLessThan(WOKEN_WITHIN_MS);
     });
 
     it("hears a reply written by another server through a shared bus that crosses (FIX-2426)", async () => {

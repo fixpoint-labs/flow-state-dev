@@ -354,6 +354,15 @@ function requestWrites(store: RequestStore, buses: ChangeBus[], identities: Iden
     return result;
   };
   const flushItems = (requestId: string): Promise<void> => store.flushItems(requestId);
+  // The wrapper's own flush, which only times the notice, must not use up a
+  // write failure the store reports once: an adapter that throws and clears
+  // it (the filesystem store) would otherwise hand the next explicit flush a
+  // success. The failure it hears is kept here and given to that flush.
+  const background = new Map<string, Promise<boolean>>();
+  const failures = new Map<string, unknown>();
+  const forget = (id: string): void => {
+    failures.delete(id);
+  };
 
   return present(store, {
     set: (original) => async (id: string, value: RequestRecord, expected: unknown) => {
@@ -365,6 +374,8 @@ function requestWrites(store: RequestStore, buses: ChangeBus[], identities: Iden
       const identity = await identities.request(id);
       await original(id);
       identities.forgetRequest(id);
+      // The store drops a failure it hasn't reported with the request; so does this.
+      forget(id);
       after(identity, "request");
     },
     deleteIfStatus: (original) => async (id: string, ...rest: unknown[]) => {
@@ -372,6 +383,7 @@ function requestWrites(store: RequestStore, buses: ChangeBus[], identities: Iden
       const result = await original(id, ...rest);
       if (result?.applied === true) {
         identities.forgetRequest(id);
+        forget(id);
         after(identity, "request");
       }
       return result;
@@ -386,10 +398,35 @@ function requestWrites(store: RequestStore, buses: ChangeBus[], identities: Iden
     // view it wakes reads them. A batch that fails to land publishes nothing.
     persistItems: (original) => (requestId: string, items: unknown[]) => {
       original(requestId, items);
-      void flushItems(requestId)
-        .then(() => identities.request(requestId))
-        .then((identity: RequestIdentity | undefined) => after(identity, "items"))
-        .catch(() => {});
+      const landed = flushItems(requestId).then(
+        () => true,
+        (error: unknown) => {
+          failures.set(requestId, error);
+          return false;
+        }
+      );
+      background.set(requestId, landed);
+      void landed.then(async (ok) => {
+        if (background.get(requestId) === landed) background.delete(requestId);
+        if (ok) after(await identities.request(requestId), "items");
+      }).catch(() => {});
+    },
+    // A failed write rejects the flush a caller waits on, as the store's own
+    // does, though the wrapper's background flush heard it first.
+    flushItems: (original) => async (requestId: string) => {
+      let failed: { error: unknown } | undefined;
+      try {
+        await original(requestId);
+      } catch (error) {
+        failed = { error };
+      }
+      await background.get(requestId);
+      if (failures.has(requestId)) {
+        const held = failures.get(requestId);
+        failures.delete(requestId);
+        failed ??= { error: held };
+      }
+      if (failed !== undefined) throw failed.error;
     }
   });
 }

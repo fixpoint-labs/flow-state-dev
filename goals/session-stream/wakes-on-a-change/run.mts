@@ -295,7 +295,11 @@ await runGoal(async (failures, tell) => {
 
       // a · a background run starting reaches B's view. Timed from when its
       // start is saved (a request of it running), as the reply is from its
-      // save: the engine may take a while to start a run it accepted.
+      // save: the engine may take a while to start a run it accepted. After a
+      // quiet interval, as the reply was: B just read the reply, and reads at
+      // most once an interval, so a run started at once would be timed
+      // against that cap, not against the wake.
+      await delay(1_500);
       const accepted = Date.now();
       await act(a, "spawn", { key: "bg" });
       const started = await runStartedAt(a);
