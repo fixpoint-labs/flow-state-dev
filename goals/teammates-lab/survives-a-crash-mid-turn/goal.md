@@ -27,3 +27,5 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-11-03 | 9f53530 on 1b5ce5a | openai/gpt-6-luna (the turn), scripted harness | control `fresh-store`: FAIL as required | `conversation`: the conversation is 404 on the fresh store (and so `cut-turn` lists nothing, `task` is 404) |
+| 2026-11-03 | same | same | PASS | Killed with the task on attempt 1, its run request `in_progress`. After the restart: conversation kept with both earlier requests; the run request listed interrupted and not running; the task re-claimed by itself onto attempt 2 about 2 min later |

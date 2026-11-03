@@ -26,3 +26,5 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-11-03 | 9f53530 on 1b5ce5a | scripted Claude Code | control `fresh-store`: FAIL as required | `conversation`: the session is 404 on the fresh store (and so `cut-turn` lists nothing) |
+| 2026-11-03 | same | scripted Claude Code | PASS | Killed with the `[slow]` turn `in_progress`. After the restart: the session keeps its first prompt and turn; the held turn listed by `requests.interrupted()` and not running. `apps/kitchen-sink/.fsdev/` was not written |
