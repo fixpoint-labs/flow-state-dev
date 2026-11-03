@@ -24,7 +24,7 @@ import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { defineCoordinatorFlow } from "../src/coordinator/coordinator-flow";
 import { createErrorReporter, defineErrorReporterFlow } from "../src/error-reporter";
 import { createWorkerInstallation } from "../src/workers/installation";
-import { doorTakesTask, doorTask, workerDoorOf } from "../src/worker-door";
+import { doorTask, workerDoorOf } from "../src/worker-door";
 import { workerConfigSchema } from "../src/worker-config";
 
 const USER_ID = "u_person";
@@ -98,7 +98,7 @@ describe("every built-in door takes a task", () => {
   };
   for (const [name, flow] of Object.entries(doors)) {
     it(`the ${name} door`, () => {
-      expect(doorTakesTask(flow.actions)).toBe(true);
+      expect(workerDoorOf({ ...flow, kind: name }).takesTask).toBe(true);
       // A strict door still refuses any other key.
       const schema = (flow.actions.respond as { inputSchema: z.ZodTypeAny }).inputSchema;
       expect(schema.safeParse({ message: "hi", taskId: "task_1" }).success).toBe(true);
@@ -155,6 +155,23 @@ describe("the inventory row says whether a worker's door takes a task", () => {
     expect(byId).toEqual({ "eng.lead": true, "eng.desk": false });
     // The door itself is unchanged: both are `respond`.
     expect(workers.map((w) => workerDoorOf(w).door)).toEqual(["respond", "respond"]);
+  });
+
+  it("is false for a custom door that declares taskOf without taking the key", () => {
+    // The flag is read off what the door accepts, not off `taskOf` alone: a
+    // strict door that never declared `taskId` refuses a turn that sends it,
+    // and a stripping one drops it before `taskOf` reads it. Either way an app
+    // trusting a `true` here would send the key and get no stamp, or a refusal.
+    const taskOf = (i: { taskId?: string }) => i.taskId;
+    const doorWith = (inputSchema: z.ZodTypeAny) =>
+      workerDoorOf({
+        id: "eng.desk",
+        kind: "desk",
+        actions: { respond: { inputSchema, block: echo, userMessage: (i: { message: string }) => i.message, taskOf } }
+      });
+    expect(doorWith(message.strict())).toEqual({ door: "respond", takesTask: false });
+    expect(doorWith(message)).toEqual({ door: "respond", takesTask: false });
+    expect(doorWith(doorTask(message.strict()).inputSchema)).toEqual({ door: "respond", takesTask: true });
   });
 
   it("reads false on a row written before the field (BP-030)", () => {

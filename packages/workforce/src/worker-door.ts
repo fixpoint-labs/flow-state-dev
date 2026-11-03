@@ -20,7 +20,7 @@
  * {@link doorProblem}, and the inventory {@link workerDoorOf}.
  *
  * A door may also take an optional `taskId`, the task a line is sent from,
- * through {@link doorTask}; the inventory says so with {@link doorTakesTask}.
+ * through {@link doorTask}; {@link workerDoorOf} says so as `takesTask`.
  */
 import type { FlowInstance } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -32,6 +32,11 @@ export const RESPOND_ACTION = "respond";
 export type WorkerDoor = {
   /** `respond` when the worker flow's door is in order, or `null` when it isn't. */
   door: string | null;
+  /**
+   * Whether the door takes an optional `taskId` and names it as the turn's
+   * task (see {@link doorTask}). `false` when the door isn't in order.
+   */
+  takesTask: boolean;
   /** Set when the door isn't in order: what to fix. */
   problem?: string;
 };
@@ -39,10 +44,13 @@ export type WorkerDoor = {
 /** The probe input a door must accept. */
 const PROBE = { message: "probe" };
 
+type SchemaLike = { safeParse?: (value: unknown) => { success: boolean; data?: unknown } };
+
 type ActionLike = {
-  block?: { inputSchema?: { safeParse?: (value: unknown) => { success: boolean } } };
-  inputSchema?: { safeParse?: (value: unknown) => { success: boolean } };
+  block?: { inputSchema?: SchemaLike };
+  inputSchema?: SchemaLike;
   userMessage?: unknown;
+  taskOf?: unknown;
 };
 
 /** Whether `action` declares `userMessage` and takes `{ message }`. */
@@ -95,7 +103,7 @@ export function doorProblem(name: string, actions: Readonly<Record<string, unkno
 const taskIdSchema = z.string().min(1).optional();
 
 /**
- * Lets a door take the task a line is sent from (FIX-2422). Spread into the
+ * Lets a door take the task a line is sent from. Spread into the
  * `respond` action: it returns the door's input extended with an optional,
  * non-empty `taskId` (a strict input stays strict), and the matching
  * `taskOf`, so the engine stamps the id on the user's line and on every item
@@ -117,25 +125,33 @@ export function doorTask<TShape extends z.ZodRawShape, TKeys extends z.UnknownKe
   };
 }
 
+/** The probe a door that takes a task must accept, keep, and name as the turn's task. */
+const TASK_PROBE = { ...PROBE, taskId: "probe-task" };
+
 /**
- * Whether a worker flow's door takes a task id: its `respond` declares
- * `taskOf` (see {@link doorTask}). An app sends `taskId` only to such a door,
- * since a strict door refuses a key it doesn't declare.
- *
- * @param actions The flow's public actions.
+ * Whether `action` takes a task id, probed the way {@link doorProblem} probes
+ * `{ message }`: its input accepts and keeps `taskId` (a strict door that never
+ * declared it refuses the probe, a stripping one drops it), and its `taskOf`
+ * names it as the turn's task. An app sends `taskId` only to such a door.
  */
-export function doorTakesTask(actions: Readonly<Record<string, unknown>>): boolean {
-  const respond = (actions as Readonly<Record<string, { taskOf?: unknown } | undefined>>)[RESPOND_ACTION];
-  return typeof respond?.taskOf === "function";
+function takesTask(action: ActionLike | undefined): boolean {
+  if (typeof action?.taskOf !== "function") return false;
+  const schema = action.inputSchema ?? action.block?.inputSchema;
+  if (typeof schema?.safeParse !== "function") return false;
+  const parsed = schema.safeParse(TASK_PROBE);
+  return parsed.success && (action.taskOf as (input: unknown) => unknown)(parsed.data) === TASK_PROBE.taskId;
 }
 
 /**
  * The door of a hired worker, read off its flow's public actions.
  *
  * @param worker A worker `hireWorkforce` returned (or any registered flow).
- * @returns `respond`, or `null` with the problem when the flow's door isn't in order.
+ * @returns `respond` and whether it takes a task id, or `null` with the
+ *   problem when the flow's door isn't in order.
  */
 export function workerDoorOf(worker: Pick<FlowInstance, "id" | "kind"> & { actions: Readonly<Record<string, unknown>> }): WorkerDoor {
   const problem = doorProblem(worker.kind, worker.actions);
-  return problem === undefined ? { door: RESPOND_ACTION } : { door: null, problem };
+  if (problem !== undefined) return { door: null, takesTask: false, problem };
+  const respond = (worker.actions as Readonly<Record<string, ActionLike>>)[RESPOND_ACTION];
+  return { door: RESPOND_ACTION, takesTask: takesTask(respond) };
 }

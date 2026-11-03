@@ -22,7 +22,7 @@
  */
 
 import { STANDING_RULES_ACTION } from "../standing-rules/keys";
-import { doorTakesTask, workerDoorOf } from "../worker-door";
+import { workerDoorOf } from "../worker-door";
 import { INVENTORY_REGISTER_WORKERS } from "./worker-writer";
 
 /**
@@ -261,17 +261,20 @@ export async function openInventory(
         // inventory knows about it, and everything else on a record is the
         // declared layer's to answer.
         input: {
-          workers: workers.map((worker) => ({
-            id: worker.id,
-            kind: worker.kind,
-            door: workerDoorOf(worker).door,
-            doorTakesTask: doorTakesTask(worker.actions),
-            rules: Object.hasOwn(worker.actions, STANDING_RULES_ACTION),
-            name: worker.name ?? null,
-            teamName: worker.teamName ?? null,
-            hired: false,
-            incarnation: null,
-          })),
+          workers: workers.map((worker) => {
+            const { door, takesTask } = workerDoorOf(worker);
+            return {
+              id: worker.id,
+              kind: worker.kind,
+              door,
+              doorTakesTask: takesTask,
+              rules: Object.hasOwn(worker.actions, STANDING_RULES_ACTION),
+              name: worker.name ?? null,
+              teamName: worker.teamName ?? null,
+              hired: false,
+              incarnation: null,
+            };
+          }),
         },
         userId: options.userId,
         orgId,

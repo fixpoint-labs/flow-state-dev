@@ -99,6 +99,42 @@ describe("ActionCore.taskOf", () => {
     expect(items.every((i) => i.taskId === undefined)).toBe(true);
   });
 
+  it("stamps the request's task on the error item of a request that fails", async () => {
+    // The failure explanation is built by the runtime, not a block: without
+    // the stamp a task's view shows the user's line and no reason it failed.
+    const failing = defineFlow({
+      kind: "task-of-failing",
+      actions: {
+        respond: {
+          block: handler({
+            name: "boom",
+            inputSchema: input,
+            outputSchema: z.object({}),
+            execute: async () => {
+              throw new Error("boom");
+            }
+          }),
+          userMessage: (i: Input) => i.message,
+          taskOf: (i: Input) => i.taskId
+        }
+      }
+    })({ id: "task-of-failing" });
+    const stores = createInMemoryStores();
+    const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow: failing,
+      actionName: "respond",
+      input: { message: "hello", taskId: "task_7" },
+      userId: "u1",
+      sessionId: "s1",
+      stores,
+      runtimeConfig: {}
+    });
+    const errors = (await itemsOf(stores, result.requestId!)).filter((i) => i.type === "error");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.taskId).toBe("task_7");
+  });
+
   it("lets an inner scope marked with another task keep its own mark", async () => {
     const mark = (id: string | null) =>
       handler({
@@ -189,7 +225,14 @@ describe("ActionCore.taskOf", () => {
     await finished;
     expect((await stores.request.get(requestId))?.status).toBe("completed");
 
-    const messages = contentItems(await itemsOf(stores, requestId));
+    const all = await itemsOf(stores, requestId);
+    // The approval prompt and its resolution are the runtime's own items; a
+    // task's view that dropped them would lose the gate after a reload.
+    const gateItems = all.filter((i) => i.type === "suspension" || i.type === "suspension_resume");
+    expect(gateItems.map((i) => i.type).sort()).toEqual(["suspension", "suspension_resume"]);
+    expect(gateItems.every((i) => i.taskId === "task_7")).toBe(true);
+
+    const messages = contentItems(all);
     const reply = messages.find((m) => JSON.stringify(m).includes("resumed reply"));
     expect(reply?.taskId).toBe("task_7");
     expect(messages.filter((m) => (m as { role?: string }).role === "user").map((m) => m.taskId)).toEqual(["task_7"]);

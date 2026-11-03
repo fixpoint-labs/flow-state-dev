@@ -1438,8 +1438,6 @@ function defineAgentFlowAround(
     actions: {
       // A reply: its notice waits for it to end. In a task session whose task
       // is open, the line steers the task instead (FIX-2086).
-      // `doorTask`: a line sent from a task carries its id, stamped on the
-      // line and the reply (FIX-2422).
       [RESPOND_ACTION]: {
         ...doorTask(installation !== undefined ? inputSchema.strict() : inputSchema),
         block: steerOrTalk(userTurn),
