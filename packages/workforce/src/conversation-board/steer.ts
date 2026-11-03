@@ -154,6 +154,22 @@ export type SteerTurnEntryOptions = {
  */
 export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concurrency?: ConcurrencyConfig }) {
   const { name } = options;
+  // The turn is the task's (FIX-2530): mark the entry's scope with the admitted
+  // task, so the steers it shows and the reply it runs are stored under it and
+  // the task's view reads them after a reload. A steer sent through the board
+  // never passes the door, so the door's `taskOf` stamp doesn't reach it. Its
+  // own step, after the admission and before the take: a scope reads the mark
+  // when it opens, so the take's own lines need it in place first.
+  const markTask = handler({
+    name: `${name}-mark-task`,
+    transient: true,
+    inputSchema: z.unknown(),
+    resources: { ...conversationLedgerResources },
+    execute: async (_input, ctx) => {
+      const running = await runningTaskOf(sessionLedger, ctx as never);
+      if (running !== undefined) ctx._markTaskScope?.(running.row.id);
+    }
+  });
   const take = handler({
     name: `${name}-take-steers`,
     inputSchema: z.unknown(),
@@ -226,6 +242,7 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
       // wake. That request's end checks the task, and owes this turn again for
       // a steer it didn't take.
       .tap(admitOwnTask(`${name}-admission`, true, { unlessAnotherTurnWaits: true }))
+      .tap(markTask)
       .step(take as BlockDefinition<any, any>)
       .stepIf((taken: unknown) => !skipped(taken), run as BlockDefinition<any, any>)
       .tapIf((answer: unknown) => !skipped(answer), noteTaskAnswer)
