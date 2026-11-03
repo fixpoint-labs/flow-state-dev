@@ -33,8 +33,10 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { connect } from "node:net";
 import { fileURLToPath } from "node:url";
+import { REPO } from "./apps.mjs";
 import { createAuth } from "./auth.mjs";
 import { createProxy } from "./proxy.mjs";
+import { reclaimPort } from "./reclaim.mjs";
 import { resolveSettings } from "./settings.mjs";
 
 const mode = process.argv[2];
@@ -157,6 +159,8 @@ function stopAll() {
 }
 process.on("SIGINT", stopAll);
 process.on("SIGTERM", stopAll);
+// A closed terminal: without this the apps are left running with nothing to stop them.
+process.on("SIGHUP", stopAll);
 process.on("exit", () => {
   for (const child of children) {
     try {
@@ -164,6 +168,26 @@ process.on("exit", () => {
     } catch {}
   }
 });
+
+/**
+ * A run that was quit badly (terminal closed, process killed) can leave its
+ * proxy or apps listening. Take those ports back when they belong to this
+ * checkout; leave a stranger's alone and say so. An app that can't have its
+ * port is marked stopped rather than started into a conflict.
+ */
+const blocked = new Set();
+for (const [what, wanted, id] of [["the proxy", port, undefined], ...apps.map((a) => [a.title, a.port, a.id])]) {
+  const result = await reclaimPort(wanted, { repo: REPO });
+  if (result.status === "reclaimed") {
+    process.stdout.write(`[super-app] took :${wanted} back from a stale instance (${result.commands.join("; ")})\n`);
+  } else if (result.status === "foreign" || result.status === "stuck") {
+    const why = result.status === "foreign" ? `a process from outside this checkout${result.cwd ? ` (${result.cwd})` : ""}, left alone` : "a stale instance that wouldn't stop";
+    process.stderr.write(`[super-app] :${wanted} (${what}) is held by ${why}: ${result.command} (pid ${result.pid})\n`);
+    if (id === undefined) process.exit(1);
+    blocked.add(id);
+    state.set(id, "stopped");
+  }
+}
 
 const devtoolDir = fileURLToPath(new URL("./dist", import.meta.url));
 if (mode === "dev") {
@@ -188,6 +212,7 @@ proxy.listen(port, host, () => {
 });
 
 apps.forEach((app, i) => {
+  if (blocked.has(app.id)) return;
   watchPort(app, i);
   void startApp(app, i);
 });
