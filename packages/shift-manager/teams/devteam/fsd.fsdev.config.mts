@@ -81,6 +81,7 @@ export const lab = await openLab({
   stores: sqliteStores({ filename: STORE }),
   harness: harness.slot,
   runTimeoutMs: harness.runTimeoutMs,
+  coderHarness: harness.label,
   // Runs' places beside the store, the two projects' worktrees of this checkout
   // among them. No remote is allowed: a run is never cloned from one.
   workspace: { root: join(dirname(STORE), "fsd-runs"), remotes: { allow: [] }, checkouts: CHECKOUTS },

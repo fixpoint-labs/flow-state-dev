@@ -83,6 +83,10 @@ const EXPECTED: Record<string, Record<string, Expect>> = {
   "goals/devforce-lab/it-names-the-project-a-coders-task-works-in": {
     "no-project-list": { legs: [/^\[control no-project-list\] one:read-the-projects/] },
   },
+  // `cursor:files-for-the-coder-in-fsd`: no coder's description names its agent, so nothing is filed.
+  "goals/devforce-lab/it-works-out-the-coder-and-project-itself": {
+    "no-harness-label": { legs: [/^\[control no-harness-label\] cursor:files-for-the-coder-in-fsd/] },
+  },
   "goals/devforce-lab/it-codes-in-the-projects-repository": {
     // `a:marker` (and every leg that needs a project's source)
     "fixed-source": { legs: [/^\[control fixed-source\] a:marker — /] },

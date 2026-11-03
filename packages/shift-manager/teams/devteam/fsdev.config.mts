@@ -203,6 +203,7 @@ const lab = await openLab({
   stores: sqliteStores({ filename: STORE }),
   harness: harness.slot,
   runTimeoutMs: harness.runTimeoutMs,
+  coderHarness: harness.label,
   // Runs' places and the host's clones, beside the store; only `file://` remotes are reached.
   workspace: { root: join(dirname(STORE), "devteam-runs"), remotes: { allow: ["file"] }, ...(setup === undefined ? {} : { setup }) },
   coderWorkerId,

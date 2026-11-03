@@ -254,6 +254,18 @@ that reads `stopped` with the error. Pass `itemTypes` to keep only some item
 types, and `includeTransient: true` to keep transient ones. Each change is a new
 frozen snapshot, also available from `feed.getSnapshot()`.
 
+A session longer than the first read opens on its newest items, with
+`hasEarlier: true`. Draw a *Load earlier* button while it is, and call
+`feed.loadEarlier()` from it: each call adds the page before the first item
+(up to `SESSION_WINDOW_PAGE`), with no gap or duplicate, while live items keep
+arriving. A second call while one is reading shares it. A failed read rejects
+and leaves the feed as it was, so the button can be pressed again. If the session was deleted and
+created again under the id meanwhile, the feed starts over on the new one.
+
+```ts
+if (feed.getSnapshot().hasEarlier) await feed.loadEarlier();
+```
+
 One feed holds one history read and one connection. Views of the same session
 should share one feed: two feeds, or a feed beside `useSession({ live: true })`,
 read and stream the session twice.
@@ -454,7 +466,7 @@ the flow is wired up.
 - `bindStoreToCallbacks(store, options?)` — Map SSE events onto a store (the shared reducer)
 - `compareItemOrder(a, b)` — Display order for items from many requests (`ts`, `itemIndex`, `requestId`, then `id`); a session snapshot's items come in this order, so sort merged items with it
 - `interruptedBySession(requests, { actions })` — Group what `requests.interrupted()` returned by session, oldest first, keeping only the named actions
-- `sessionFeed(client, sessionId, { itemTypes?, includeTransient?, retryMs? })` — Follow one session without React: `getSnapshot()` / `subscribe()` give `{ items, runs, state, error }`, where `state` is a `SessionConnectionState`; `followResponse(response)` keeps a send's answer as it is written; `close()`
+- `sessionFeed(client, sessionId, { itemTypes?, includeTransient?, retryMs? })` — Follow one session without React: `getSnapshot()` / `subscribe()` give `{ items, hasEarlier, runs, state, error }`, where `state` is a `SessionConnectionState`; `loadEarlier()` adds the page before the first item; `followResponse(response)` keeps a send's answer as it is written; `close()`
 - `sessionQueryFor(address, flows)` — Build the `sessions.list` filter (`flowId` or `flowKind`) for one flow address
 - `sendHarnessLine(prompt, running, sender)` — Send a line typed into a harness session: into the running turn when its harness takes it (the flow's steer action, core's `harnessSteering`), else as the next turn. Answers `"taken"`, `"after-this-turn"` or `"turn"`
 - `harnessLines(sendOne?)` — Keep one page's lines in typed order: `send(prompt, running, sender)` waits for the line before, and once a line has gone to run after the running turn, later lines follow it until `turnChanged()`

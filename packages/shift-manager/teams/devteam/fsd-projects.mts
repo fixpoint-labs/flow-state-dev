@@ -54,7 +54,7 @@ export const FSD_PROJECTS: readonly CreateProjectInput[] = [
   {
     id: "fsd",
     title: "FSD",
-    brief: "The framework: the packages under packages/ other than Shift Manager, their docs and their goal checks.",
+    brief: "The framework: the packages under packages/ other than Shift Manager, the apps under apps/, their docs and their goal checks.",
     members: OTHER_USERS,
     repository: REPOSITORY,
     mcpServers: ["linear"],
