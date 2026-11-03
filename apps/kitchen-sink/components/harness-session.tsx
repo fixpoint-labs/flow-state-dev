@@ -55,6 +55,7 @@ import {
   type PromptInputMessage,
 } from "@/components/flow-state/prompt-input";
 import { RequestGroupRenderer } from "@/components/flow-state/request-group";
+import { Spend } from "@/components/flow-state/spend";
 import { RunChecks } from "@/components/flow-state/run-checks";
 import { PlanRowLine } from "@/components/plan-row";
 import { PullRequestsPanel } from "@/components/pull-requests-panel";
@@ -177,6 +178,7 @@ function SessionBody({
     [waiting, turn, session],
   );
   const steered = turn === null ? [] : (state.turns?.[turn.requestId]?.steered ?? []);
+  const turnRecord = turn === null ? null : (state.turns?.[turn.requestId] ?? null);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col lg:flex-row" data-testid="harness-session">
@@ -220,6 +222,7 @@ function SessionBody({
         <div className="border-t">
           <LineNotes steered={steered} last={lastLine} running={isStreaming} label={label} />
           {notice !== null && <Notice notice={notice} label={label} />}
+          {turnRecord !== null && <TurnSpend record={turnRecord} />}
           {turn !== null && <TurnWork record={state.turns?.[turn.requestId] ?? null} label={label} />}
           <div className="mx-auto max-w-3xl px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 sm:px-4 sm:pb-4">
             <PromptInput onSubmit={handleSubmit}>
@@ -351,6 +354,22 @@ function Notice({ notice, label }: { notice: TurnNotice; label: string }) {
       >
         {text.trim()}
       </p>
+    </div>
+  );
+}
+
+/**
+ * What the latest turn spent, as the session flow recorded it when the turn
+ * ended (FIX-2398): model, tokens, the vendor's charge when it reported one,
+ * and how long the turn took. Nothing while the turn runs or when it spent
+ * nothing.
+ */
+function TurnSpend({ record }: { record: NonNullable<HarnessSessionState["turns"]>[string] }) {
+  if (record.spend == null) return null;
+  const durationMs = record.endedAt == null || record.at == null ? null : record.endedAt - record.at;
+  return (
+    <div className="mx-auto max-w-3xl px-3 pt-2 sm:px-4" data-testid="turn-spend">
+      <Spend spend={record.spend} split durationMs={durationMs} className="text-[11px]" />
     </div>
   );
 }
