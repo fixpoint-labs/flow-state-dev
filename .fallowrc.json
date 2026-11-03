@@ -136,6 +136,14 @@
     "packages/shift-manager/src/components/flow-state/spend.tsx"
   ],
 
+  // One named export, not a whole file. Kitchen Sink's byte copy of the registry's
+  // tool-grouping carries `toolRunOpen`, the open-while-running rule the labs follow
+  // (specs/issues/FIX-2393/SPEC.md, "One step-run state"); the registry's own
+  // ToolGroup keeps its `defaultOpen` prop, so nothing in Kitchen Sink calls it.
+  "ignoreExports": [
+    { "file": "apps/kitchen-sink/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen"] }
+  ],
+
   // Dead code fails `fallow audit` at its default severity. Complexity reports
   // but doesn't fail: existing hot spots are common enough that a new-only gate
   // would still fire on ordinary PRs. Duplication also reports without failing

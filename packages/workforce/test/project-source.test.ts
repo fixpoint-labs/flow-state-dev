@@ -343,7 +343,7 @@ describe("each call's line says what it acted on and whether it worked", () => {
 });
 
 describe("the capability", () => {
-  const stub =(reads: { count: number }): WorkspaceHost =>
+  const stub = (reads: { count: number }): WorkspaceHost =>
     ({
       source: () => ({ kind: "refused", reason: "no-project", message: "none" }),
       readSource: async () => {
