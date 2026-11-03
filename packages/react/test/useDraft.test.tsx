@@ -3,7 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useRef } from "react";
 import { act, renderHook } from "@testing-library/react";
 
-import { SESSION_DRAFT_STORAGE_PREFIX, useSessionDraft } from "../lib/use-session-draft";
+import { clearDraft, readDraft, saveDraft, useDraft } from "../src/hooks/useDraft";
+
+/** Kitchen Sink's namespace: the key its own copy of this hook wrote, so drafts stored then still read. */
+const NS = "kitchen-sink:composer-draft";
+const SESSION_DRAFT_STORAGE_PREFIX = `${NS}:`;
+const useSessionDraft = (id: string | undefined) => useDraft(NS, id);
 
 afterEach(() => {
   localStorage.clear();
@@ -19,6 +24,8 @@ function useSendOnSuccess(sessionId: string | undefined, send: () => Promise<voi
     const sent = text.trim();
     try {
       await send();
+      // The box may have closed (a session switch) while it ran: storage goes only if it still holds this line.
+      clearDraft(NS, sessionId, sent);
       if (draftRef.current.trim() === sent) setDraft("");
     } catch {
       // keep draft
@@ -27,7 +34,20 @@ function useSendOnSuccess(sessionId: string | undefined, send: () => Promise<voi
   return { draft, setDraft, submit };
 }
 
-describe("useSessionDraft", () => {
+describe("useDraft", () => {
+  it("reads a draft Kitchen Sink stored before the hook moved here", () => {
+    localStorage.setItem("kitchen-sink:composer-draft:sess-old", "typed last week");
+    const { result } = renderHook(() => useDraft("kitchen-sink:composer-draft", "sess-old"));
+    expect(result.current[0]).toBe("typed last week");
+  });
+
+  it("keeps namespaces apart: one app's draft for an id is not another's", () => {
+    const a = renderHook(() => useDraft("app-a:draft", "s1"));
+    act(() => a.result.current[1]("for app a"));
+    const b = renderHook(() => useDraft("app-b:draft", "s1"));
+    expect(b.result.current[0]).toBe("");
+  });
+
   it("restores text saved for a session", () => {
     localStorage.setItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a", "half written");
 
@@ -156,5 +176,69 @@ describe("useSessionDraft", () => {
 
     expect(result.current.draft).toBe("revised while waiting");
     expect(localStorage.getItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a")).toBe("revised while waiting");
+  });
+
+  it("ignores a setter called after the box closed, so a late send can't wipe the draft of the box opened since", () => {
+    const first = renderHook(() => useSessionDraft("sess-a"));
+    act(() => first.result.current[1]("sent line"));
+    const lateSetter = first.result.current[1];
+    first.unmount();
+    const again = renderHook(() => useSessionDraft("sess-a"));
+    act(() => again.result.current[1]("revised after reopening"));
+
+    act(() => lateSetter(""));
+
+    expect(again.result.current[0]).toBe("revised after reopening");
+    expect(localStorage.getItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a")).toBe("revised after reopening");
+  });
+
+  it("drops the stored line when its send lands after the box closed, and keeps one typed in the box opened since", async () => {
+    const gates: Array<() => void> = [];
+    const send = () => new Promise<void>((resolve) => gates.push(resolve));
+
+    const first = renderHook(() => useSendOnSuccess("sess-a", send));
+    act(() => first.result.current.setDraft("landed later"));
+    let done!: Promise<void>;
+    act(() => {
+      done = first.result.current.submit("landed later");
+    });
+    first.unmount();
+    await act(async () => {
+      gates[0]();
+      await done;
+    });
+    expect(localStorage.getItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a")).toBeNull();
+
+    const second = renderHook(() => useSendOnSuccess("sess-a", send));
+    act(() => second.result.current.setDraft("sent, then closed"));
+    act(() => {
+      done = second.result.current.submit("sent, then closed");
+    });
+    second.unmount();
+    const third = renderHook(() => useSendOnSuccess("sess-a", send));
+    act(() => third.result.current.setDraft("sent, then closed, then revised"));
+    await act(async () => {
+      gates[1]();
+      await done;
+    });
+    expect(localStorage.getItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a")).toBe("sent, then closed, then revised");
+    expect(third.result.current.draft).toBe("sent, then closed, then revised");
+  });
+
+  it("saveDraft stores a draft with no box open, and the box opened next reads it", () => {
+    saveDraft(NS, "sess-a", "stored while closed");
+    expect(readDraft(NS, "sess-a")).toBe("stored while closed");
+    const { result } = renderHook(() => useSessionDraft("sess-a"));
+    expect(result.current[0]).toBe("stored while closed");
+    saveDraft(NS, "sess-a", "");
+    expect(readDraft(NS, "sess-a")).toBe("");
+  });
+
+  it("clearDraft with the sent text drops the stored draft only while it is still that text", () => {
+    localStorage.setItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a", "revised");
+    clearDraft(NS, "sess-a", "sent line");
+    expect(localStorage.getItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a")).toBe("revised");
+    clearDraft(NS, "sess-a", "revised");
+    expect(localStorage.getItem(SESSION_DRAFT_STORAGE_PREFIX + "sess-a")).toBeNull();
   });
 });

@@ -92,10 +92,13 @@ export async function readSessionTail(
     // Read on to wherever the end is by then: the session may have grown.
     const start = Math.max(0, first.pagination.total - limit);
     const read = await readSessionHistory(source, sessionId, { itemTypes, offset: start, pageLimit: limit });
-    // A session deleted and created again between the two calls: its end is somewhere else.
-    if (read.sessionCreatedAt === first.sessionCreatedAt) return windowOf(sessionId, itemTypes, start, read);
+    // Its end is somewhere else when the session was deleted and created again
+    // between the two calls, or older turns were dropped (a retention policy):
+    // a read from `start` of a session that only grew holds at least `limit`.
+    const shrank = (read.items ?? []).length < limit;
+    if (read.sessionCreatedAt === first.sessionCreatedAt && !shrank) return windowOf(sessionId, itemTypes, start, read);
   }
-  throw new Error(`Session ${sessionId} was created again during each of ${SESSION_HISTORY_READ_ATTEMPTS} reads of its end; try again.`);
+  throw new Error(`Session ${sessionId} was created again or trimmed during each of ${SESSION_HISTORY_READ_ATTEMPTS} reads of its end; try again.`);
 }
 
 /**
@@ -144,11 +147,13 @@ async function reread(source: SessionItemsSource, window: SessionItemsWindow, st
 /**
  * Whether the read still holds the window's first item. Items stored before
  * the window only shift it, and the read still runs through it to the end; a
- * read that lacks it started past it, because older items were dropped.
+ * read that lacks it started past it, because older items were dropped. An
+ * empty window holds a position only at the session's start.
  */
 function holdsFirstItem(window: SessionItemsWindow, items: readonly OutputItem[]): boolean {
   const first = window.items[0];
-  return first === undefined || items.some((item) => compareItemOrder(item, first) === 0);
+  if (first === undefined) return window.start === 0;
+  return items.some((item) => compareItemOrder(item, first) === 0);
 }
 
 function windowOf(

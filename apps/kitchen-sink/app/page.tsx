@@ -3,13 +3,18 @@
  * can run on this host, and an available one opens at its own address.
  *
  * A server component, rendered on every request rather than at build: the
- * answer comes from `modeAvailability()`, decided once when the server starts,
- * so one build shows the right answer on a laptop and on a deployed copy. The
- * picker remembers nothing; `/` always shows every mode.
+ * answer comes from `openableAvailability()`, decided when the server starts,
+ * so one build shows the right answer on a laptop and on a deployed copy. An
+ * unavailable mode shows its reason and what to do about it. On a development
+ * server, Re-check decides again, so a sign-in made after start shows without
+ * a restart; a mode that turned ready still needs one to open, since its flow
+ * was registered at start. The picker remembers nothing; `/` always shows
+ * every mode.
  */
 import Link from "next/link";
+import { revalidatePath } from "next/cache";
 
-import { modeAvailability, type ModeAvailability } from "@/lib/harness-gate";
+import { openableAvailability, recheckModeAvailability, type ModeAvailability } from "@/lib/harness-gate";
 import { MODES, type KitchenSinkMode } from "@/lib/modes";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -23,8 +28,16 @@ const BLURBS: Record<KitchenSinkMode["id"], string> = {
   cursor: "Cursor's agent, run as a coding harness on a repository.",
 };
 
+/** Re-check: decide every mode's availability again. Development servers only. */
+async function recheck() {
+  "use server";
+  await recheckModeAvailability();
+  revalidatePath("/");
+}
+
 export default async function PickerPage() {
-  const availability = await modeAvailability();
+  const availability = await openableAvailability();
+  const canRecheck = process.env.NODE_ENV !== "production";
   return (
     <main className="min-h-[100dvh] bg-background px-4 py-10 sm:px-6">
       <div className="mx-auto max-w-3xl">
@@ -32,7 +45,16 @@ export default async function PickerPage() {
           <h1 className="text-2xl font-semibold">Kitchen Sink</h1>
           <ThemeToggle />
         </div>
-        <p className="mt-1 text-sm text-muted-foreground">Pick a mode.</p>
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <p className="text-sm text-muted-foreground">Pick a mode.</p>
+          {canRecheck && (
+            <form action={recheck}>
+              <button type="submit" className="rounded border px-2 py-1 text-xs hover:bg-accent/50" data-testid="mode-recheck">
+                Re-check
+              </button>
+            </form>
+          )}
+        </div>
         <ul className="mt-6 grid gap-3 sm:grid-cols-2" data-testid="mode-picker">
           {MODES.map((mode) => (
             <ModeCard key={mode.id} mode={mode} availability={availability[mode.id]} />
@@ -62,6 +84,11 @@ function ModeCard({ mode, availability }: { mode: KitchenSinkMode; availability:
       {!availability.available && (
         <span className="mt-2 block break-words text-sm" data-testid="mode-reason">
           {availability.reason}
+        </span>
+      )}
+      {!availability.available && availability.remedy !== undefined && (
+        <span className="mt-1 block break-words text-sm text-muted-foreground" data-testid="mode-remedy">
+          {availability.remedy}
         </span>
       )}
       {availability.available && availability.note !== undefined && (

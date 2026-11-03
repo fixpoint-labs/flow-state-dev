@@ -2,14 +2,19 @@ import { useInterruptKeys, useJumpToLatest } from "@flow-state-dev/react";
 import type { LabAdapter, ProjectRow, SessionRow, TaskRow } from "../adapter";
 import { elapsed, useNow, useWatch } from "../lib/use-watch";
 import { modeOfWorker } from "../modes";
+import { cn } from "../lib/utils";
 import { Composer } from "./Composer";
+import { ConnectionBanner, isFeedStale, STALE_CLASS } from "./flow-state/connection-banner";
 import { JumpToLatestButton } from "./JumpToLatest";
+import { LoadEarlier } from "./LoadEarlier";
 import { Entry } from "./Entry";
 import { ThreadCard } from "./ThreadCard";
 
 /**
  * The center: the open session's thread, its working indicator, and the
- * composer. The header names the session's project; a session with none gets
+ * composer. A thread whose feed has failed a retry draws the registry's
+ * `connection-banner` and greys its working line, whose clock stops there.
+ * The header names the session's project; a session with none gets
  * no composer, so nothing runs until it has one (spec D3). In threads mode a
  * thread the lead filed is a card here, read from its task row.
  *
@@ -37,7 +42,10 @@ export function Thread({
       [adapter, session.id, board],
     ) ?? [];
   const running = view?.running ?? false;
-  const now = useNow(running);
+  // What the thread's feed last heard from the server; a stale one greys the working line and stops its clock.
+  const connection = view?.connection ?? "connecting";
+  const stale = isFeedStale(connection);
+  const now = useNow(running && !stale);
   const count = view?.entries.length ?? 0;
   const feed = useJumpToLatest({ resetKey: session.id });
   // On the document, so the keys work wherever focus is; a sheet's Esc arrives already spent.
@@ -60,6 +68,8 @@ export function Thread({
           {mode?.label ?? session.worker}
         </span>
       </header>
+      {/* A stopped feed comes back with the page: the thread's feed reopens on load. */}
+      <ConnectionBanner feed={{ state: connection }} onRetry={() => window.location.reload()} />
       <div ref={feed.ref} className="flex-1 overflow-y-auto px-6 pt-4 pb-10">
         {count === 0 ? (
           <div className="mx-auto mt-24 max-w-sm text-center text-sm text-muted-foreground">
@@ -69,6 +79,7 @@ export function Thread({
           </div>
         ) : (
           <div className="mx-auto flex max-w-2xl flex-col gap-3">
+            <LoadEarlier load={view?.loadEarlier} />
             {view?.entries.map((entry) =>
               entry.kind === "thread" ? (
                 <ThreadCard
@@ -86,7 +97,7 @@ export function Thread({
               ),
             )}
             {running && view?.turnStartedAt !== undefined ? (
-              <div role="status" className="flex items-center gap-2 text-xs text-info" data-request-id={view.requestId}>
+              <div role="status" className={cn("flex items-center gap-2 text-xs text-info", stale && STALE_CLASS)} data-request-id={view.requestId}>
                 <span className="size-2 animate-pulse rounded-full bg-info" />
                 working · {elapsed(view.turnStartedAt, now)}
               </div>
@@ -108,7 +119,7 @@ export function Thread({
           onSend={(text) => {
             // Your own line brings you back to the end, wherever you had scrolled to.
             feed.sent();
-            void adapter.send(session.id, text);
+            return adapter.send(session.id, text);
           }}
           onStop={() => void adapter.interrupt(session.id)}
         />

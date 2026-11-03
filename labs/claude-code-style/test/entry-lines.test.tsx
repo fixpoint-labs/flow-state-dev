@@ -5,10 +5,11 @@
  * whole reply is already in its own view: printed again in the main thread it
  * buried the conversation. The line opens to show the reply. A tool call reads
  * as plain words, never a tool's name, a task id or `null`, which mean nothing
- * to the person reading.
+ * to whoever reads it.
  */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { delegateAnswerMetadata } from "@flow-state-dev/workforce/browser";
 import { Entry } from "../src/components/Entry";
 
 afterEach(cleanup);
@@ -61,7 +62,7 @@ describe("a delegate's answer that landed in the conversation as written", () =>
     const entries = entriesOf([
       { id: "i1", type: "message", role: "user", requestId: "r1", content: [{ type: "output_text", text: "Review PR #4272" }] },
       { id: "i2", type: "message", role: "assistant", requestId: "r1", agentName: "coordinator-judgment", content: [{ type: "output_text", text: "Started a review thread." }] },
-      { id: "i3", type: "message", role: "assistant", requestId: "r2", agentName: "desk.thread", content: [{ type: "output_text", text: reply }] },
+      { id: "i3", type: "message", role: "assistant", requestId: "r2", agentName: "desk.thread", content: [{ type: "output_text", text: reply }], metadata: delegateAnswerMetadata({ worker: "desk.thread", taskId: "task_1" }) },
     ]);
     expect(entries.map((e) => e.kind)).toEqual(["user", "assistant", "result"]);
     expect(entries[2]).toMatchObject({ kind: "result", title: "Answer from thread", status: "completed", summary: reply });

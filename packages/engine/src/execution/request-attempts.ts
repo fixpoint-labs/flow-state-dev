@@ -17,6 +17,8 @@
  * process (tests, multiple engines) never hold each other's requests open.
  */
 
+import { storeIdentity } from "../bus/publish-writes";
+
 type LiveRequest = {
   count: number;
   /**
@@ -56,10 +58,11 @@ export type RequestAttempt = {
 
 /** Record the start of a run attempt of `requestId` against `store`. */
 export function beginRequestAttempt(store: object, requestId: string): RequestAttempt {
-  let requests = liveAttempts.get(store);
+  // The raw store and its change-bus wrapper are one store (FIX-2426).
+  let requests = liveAttempts.get(storeIdentity(store));
   if (requests === undefined) {
     requests = new Map();
-    liveAttempts.set(store, requests);
+    liveAttempts.set(storeIdentity(store), requests);
   }
   const map = requests;
   let live = map.get(requestId);
@@ -96,5 +99,5 @@ export function beginRequestAttempt(store: object, requestId: string): RequestAt
 
 /** Whether any attempt of `requestId` against `store` is still live in this process. */
 export function hasLiveRequestAttempt(store: object, requestId: string): boolean {
-  return (liveAttempts.get(store)?.get(requestId)?.count ?? 0) > 0;
+  return (liveAttempts.get(storeIdentity(store))?.get(requestId)?.count ?? 0) > 0;
 }

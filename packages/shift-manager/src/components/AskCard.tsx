@@ -9,12 +9,18 @@
  * successful answer refreshes the snapshot so the ask leaves every surface
  * together (BR-26). An ask the Lab won't reopen from outside gets no resolver,
  * so the card offers no answer, and says why.
+ *
+ * A coding run's review is drawn with the registry's review card directly, so
+ * it can be handed what the run committed and the judge's verdict, read from
+ * the stop's data by harness-manager's browser reader.
  */
 import { useMemo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { SuspensionResolverProvider, type SuspensionResolver } from "@flow-state-dev/react";
+import { reviewDetail } from "@flow-state-dev/harness-manager/browser";
 import { SessionItemsProvider } from "./flow-state/session-items-context";
 import { SuspensionCard } from "./flow-state/suspension-card";
+import { ReviewSuspension, takesReviewVerdict } from "./flow-state/review-hold";
 import { useLab } from "../lib/lab-data";
 import type { Ask } from "../lib/reads";
 
@@ -42,7 +48,11 @@ export function AskCard({ ask, titled = false }: { ask: Ask; titled?: boolean })
   const item = useMemo(() => (titled ? { ...ask.item, message: "" } : ask.item), [ask.item, titled]);
   const card = (
     <SessionItemsProvider value={NO_ITEMS}>
-      <SuspensionCard item={item} />
+      {item.kind === "review" && takesReviewVerdict(item.resumeSchema) ? (
+        <ReviewSuspension item={item} review={reviewDetail(item.data)} />
+      ) : (
+        <SuspensionCard item={item} />
+      )}
     </SessionItemsProvider>
   );
   return (

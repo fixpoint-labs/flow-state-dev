@@ -13,7 +13,7 @@ const blocks = defineProjectBlocks();
 const boot = () => bootProjectsHost({ lab: () => ({ ...blocks.actions }) });
 
 describe("listProjects", () => {
-  it("lists the caller's shared projects and their own private ones, with each one's repository, and nobody else's", async () => {
+  it("lists the caller's shared projects and their own private ones, with each one's repository and brief, and nobody else's", async () => {
     const h = await boot();
     const as = async (user: string, org?: string) => ({ user, org, session: await h.openSession(user, "lab", undefined, org) });
     const alice = await as("alice");
@@ -35,17 +35,17 @@ describe("listProjects", () => {
       ((await h.ok(who.user, "lab", who.session, "listProjects", {}, who.org)) as { projects: unknown[] }).projects;
 
     expect(await list(alice)).toEqual([
-      { visibility: "shared", id: "apollo", title: "Apollo", repository: "git@github.com:acme/apollo.git" },
-      { visibility: "shared", id: "zeus", title: "Zeus", repository: null },
-      { visibility: "private", id: "notes", title: "Notes", repository: null }
+      { visibility: "shared", id: "apollo", title: "Apollo", repository: "git@github.com:acme/apollo.git", brief: null },
+      { visibility: "shared", id: "zeus", title: "Zeus", repository: null, brief: null },
+      { visibility: "private", id: "notes", title: "Notes", repository: null, brief: null }
     ]);
     // A member Alice named lists her project, and not the one she kept to herself.
     expect(await list(bob)).toEqual([
-      { visibility: "shared", id: "apollo", title: "Apollo", repository: "git@github.com:acme/apollo.git" },
-      { visibility: "private", id: "bobs", title: "Bob's", repository: null }
+      { visibility: "shared", id: "apollo", title: "Apollo", repository: "git@github.com:acme/apollo.git", brief: null },
+      { visibility: "private", id: "bobs", title: "Bob's", repository: null, brief: null }
     ]);
     expect(await list(carol)).toEqual([
-      { visibility: "shared", id: "ledger", title: "Ledger", repository: "git@github.com:acme/ledger.git" }
+      { visibility: "shared", id: "ledger", title: "Ledger", repository: "git@github.com:acme/ledger.git", brief: null }
     ]);
   });
 });

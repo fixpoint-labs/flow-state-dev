@@ -106,7 +106,7 @@ A request handle comes from `send`, from `flow(address).request(id)`, or from
 |--|--|
 | `status()` | The request's lifecycle state now. |
 | `wait({ pollMs?, timeoutMs? })` | Resolves once the request has settled: it is not `in_progress`, and the server holds no live run of it. A run that stops for a person settles at `suspended`. |
-| `abort()` | Ask the server to stop it. On a server with durable execution this also stops a `suspended` request, which ends `aborted`. A 409 means it already finished, or was resumed before the stop reached it. |
+| `abort()` | Ask the server to stop it. On a server with durable execution this also stops a `suspended` request, which ends `aborted`. An `interrupted` request nothing will carry on ends `aborted` too, and leaves the interrupted list. A 409 means it already finished, or was resumed before the stop reached it. |
 | `continue()` | Carry on a crash-interrupted request under its own id. Finished blocks replay from the durable log; the one in flight runs again. Resolves to the same handle. `{ stream: true }` returns the continuation's SSE `Response`. |
 | `retry({ input? })` | Run it again as a new request in the same session, with its original input or `input`. Resolves to the new request. Only an `interrupted` or `failed` request can be retried. |
 | `resume({ suspensionId, action, data? })` | Answer a pending suspension. The run carries on under the same id, and the server records the signed-in caller as who answered. `{ stream: true }` returns its SSE `Response`. |
@@ -144,7 +144,7 @@ stop got there first), `410` past its deadline, `400` for an answer its
 ### After a crash
 
 A host that crashed or restarted leaves its running requests behind.
-`fsd.requests.interrupted()` lists every interrupted request of the user's, including ones whose host stopped moments ago. A request stays in the list until it is continued or removed.
+`fsd.requests.interrupted()` lists every interrupted request of the user's, including ones whose host stopped moments ago. A request stays in the list until it is continued, aborted or removed.
 
 ```ts
 // Saved the id? Use it.
@@ -159,6 +159,25 @@ for (const lost of await fsd.requests.interrupted()) {
 Each entry is a request handle plus `sessionId`, `flowKind`, `actionName` and
 `interruptedAt`. `staleThresholdMs` can only widen the server's own threshold,
 never narrow it.
+
+A request is listed once its heartbeat is older than the server's stale
+threshold (a minute by default), so a turn cut off by a restart shows up
+within about a minute. Each call asks the server to sweep first, so poll it
+slowly and only while the page is visible.
+
+To show lost turns in a conversation list, group them by session with
+`interruptedBySession`, naming the actions that are your app's turns. A
+request of any other action, or with no session, is left out:
+
+```ts
+import { interruptedBySession } from "@flow-state-dev/client";
+
+const lost = interruptedBySession(await fsd.requests.interrupted(), { actions: ["respond"] });
+for (const [sessionId, requests] of lost) {
+  // Badge the conversation; offer Continue (`continue()`) or Discard (`abort()`)
+  // on each of `requests`, oldest first.
+}
+```
 
 ## Streaming
 
@@ -234,6 +253,18 @@ seconds, then four, eight and sixteen (`retryMs` sets the first wait), and after
 that reads `stopped` with the error. Pass `itemTypes` to keep only some item
 types, and `includeTransient: true` to keep transient ones. Each change is a new
 frozen snapshot, also available from `feed.getSnapshot()`.
+
+A session longer than the first read opens on its newest items, with
+`hasEarlier: true`. Draw a *Load earlier* button while it is, and call
+`feed.loadEarlier()` from it: each call adds the page before the first item
+(up to `SESSION_WINDOW_PAGE`), with no gap or duplicate, while live items keep
+arriving. A second call while one is reading shares it. A failed read rejects
+and leaves the feed as it was, so the button can be pressed again. If the session was deleted and
+created again under the id meanwhile, the feed starts over on the new one.
+
+```ts
+if (feed.getSnapshot().hasEarlier) await feed.loadEarlier();
+```
 
 One feed holds one history read and one connection. Views of the same session
 should share one feed: two feeds, or a feed beside `useSession({ live: true })`,
@@ -434,7 +465,8 @@ the flow is wired up.
 - `createRequestStreamStore({ keyOf? })` — Headless request-stream accumulator (sorted items, streaming text, status/sequence)
 - `bindStoreToCallbacks(store, options?)` — Map SSE events onto a store (the shared reducer)
 - `compareItemOrder(a, b)` — Display order for items from many requests (`ts`, `itemIndex`, `requestId`, then `id`); a session snapshot's items come in this order, so sort merged items with it
-- `sessionFeed(client, sessionId, { itemTypes?, includeTransient?, retryMs? })` — Follow one session without React: `getSnapshot()` / `subscribe()` give `{ items, runs, state, error }`, where `state` is a `SessionConnectionState`; `followResponse(response)` keeps a send's answer as it is written; `close()`
+- `interruptedBySession(requests, { actions })` — Group what `requests.interrupted()` returned by session, oldest first, keeping only the named actions
+- `sessionFeed(client, sessionId, { itemTypes?, includeTransient?, retryMs? })` — Follow one session without React: `getSnapshot()` / `subscribe()` give `{ items, hasEarlier, runs, state, error }`, where `state` is a `SessionConnectionState`; `loadEarlier()` adds the page before the first item; `followResponse(response)` keeps a send's answer as it is written; `close()`
 - `sessionQueryFor(address, flows)` — Build the `sessions.list` filter (`flowId` or `flowKind`) for one flow address
 - `sendHarnessLine(prompt, running, sender)` — Send a line typed into a harness session: into the running turn when its harness takes it (the flow's steer action, core's `harnessSteering`), else as the next turn. Answers `"taken"`, `"after-this-turn"` or `"turn"`
 - `harnessLines(sendOne?)` — Keep one page's lines in typed order: `send(prompt, running, sender)` waits for the line before, and once a line has gone to run after the running turn, later lines follow it until `turnChanged()`

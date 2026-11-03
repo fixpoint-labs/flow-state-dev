@@ -2,7 +2,8 @@
  * One feed per session, shared by every watch on it and closed when the last
  * watch stops. The feed itself is the client's `sessionFeed`: the session's
  * newest items, then the session stream, with a send's own streamed response
- * kept as it is written ({@link SessionFeed.followResponse}).
+ * kept as it is written ({@link SessionFeed.followResponse}). A session
+ * longer than the first read reaches back through {@link SessionFeed.loadEarlier}.
  */
 import { sessionFeed, type Client, type SessionConnectionState } from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -16,6 +17,10 @@ export interface SessionFeed {
   watchState(onChange: (state: SessionConnectionState) => void): () => void;
   /** Keep a send's streamed response, its messages as they are written, until it ends. */
   followResponse(response: Response): void;
+  /** The session holds items older than the first one shown. */
+  hasEarlier(): boolean;
+  /** Add the page before the first item shown; every watch hears the new items. */
+  loadEarlier(): Promise<void>;
 }
 
 /** The feeds of one client, by session id. */
@@ -56,6 +61,8 @@ function shared(client: Client, sessionId: string, onClosed: () => void): Sessio
   return {
     items: () => feed.getSnapshot().items,
     followResponse: (response) => feed.followResponse(response),
+    hasEarlier: () => feed.getSnapshot().hasEarlier,
+    loadEarlier: () => feed.loadEarlier(),
     watch(onChange) {
       let last: readonly OutputItem[] | undefined;
       const tell = (items: readonly OutputItem[]) => {

@@ -22,7 +22,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { staleBuildInputs } from "../../../scripts/build-inputs.mjs";
 import { EXIT_CONFIG_ERROR } from "@flow-state-dev/fsdev";
-import { startHarness, type HarnessChoice } from "../teams/devteam/harness.mts";
+import { selectHarness, type HarnessChoice } from "../teams/devteam/harness.mts";
 
 const PACKAGE = fileURLToPath(new URL("..", import.meta.url));
 const REPO = join(PACKAGE, "../..");
@@ -63,15 +63,16 @@ if (!has("--dev") && !has("--assets")) {
 }
 
 // `--dev` serves the Lab under a supervisor that waits for a file change when
-// the Lab fails to load, so a profile's refusal of a missing Claude credential
-// would never end the command. Asked here first, before the supervisor starts,
-// with the coder the profile being opened would pick, the refusal exits. Only
-// in the parent: the watched child's profile asks again when the Lab opens.
-// Another Lab's config picks its own coder, so it isn't asked here.
+// the Lab fails to load, so a profile's refusal of a coder it can't run (an
+// unknown DEVFORCE_LAB_HARNESS) would never end the command. Asked here first,
+// before the supervisor starts, with the coder the profile being opened would
+// pick, the refusal exits. Only in the parent: the watched child's profile
+// asks again when the Lab opens. Another Lab's config picks its own coder, so
+// it isn't asked here.
 const coder = PROFILE_CODER.get(config);
 if (has("--dev") && process.env[WATCH_CHILD_ENV] === undefined && coder !== undefined) {
   try {
-    await startHarness(coder, { log: () => {} });
+    selectHarness(undefined, undefined, coder);
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exit(EXIT_CONFIG_ERROR);

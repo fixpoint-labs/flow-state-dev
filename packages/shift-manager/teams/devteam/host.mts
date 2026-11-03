@@ -58,8 +58,17 @@ import {
   type HarnessUsageReader,
   type ModelResolver,
 } from "@flow-state-dev/core/types";
-import { harnessUsageAction, upgradeKeptTurns, type WorkspaceConfig } from "@flow-state-dev/harness-manager";
-import { localWorkspaceHost, type WorkspaceHost } from "@flow-state-dev/workspace";
+import {
+  commandCheck,
+  harnessDrainBudgetMs,
+  harnessReadinessAction,
+  harnessUsageAction,
+  resolveOwnership,
+  upgradeKeptTurns,
+  type HarnessReadinessRead,
+  type WorkspaceConfig,
+} from "@flow-state-dev/harness-manager";
+import { localWorkspaceHost, type WorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import {
   AGENT_FLOW,
@@ -77,6 +86,7 @@ import {
   projectTools,
   defineWorkstreamBlocks,
   projectCoordinatorTools,
+  projectChecks,
   projectWorkspace,
   mergeWorkerFlows,
   openInventory,
@@ -279,6 +289,13 @@ export const PROJECT_SETUP_ACTION = "projectSetup";
 export const HARNESS_USAGE_ACTION = "harnessUsage";
 
 /**
+ * The projects flow's action that answers which coding harnesses can run on
+ * this machine, each with what to run when it can't; `{ refresh: true }`
+ * checks again.
+ */
+export const HARNESS_READINESS_ACTION = "harnessReadiness";
+
+/**
  * The project setup as the projects flow answers it: the installation's
  * project coordinator, or `null` when the tree doesn't declare one.
  */
@@ -405,6 +422,13 @@ export interface OpenLabOptions {
   /** Wall-clock budget for one harness run. Default 60s. */
   runTimeoutMs?: number;
   /**
+   * The coding agent {@link harness} runs, by the name a user calls it
+   * ("Claude Code", "Cursor"). Said in the description of each worker the tree
+   * declares on the `coder` flow, which is how the Shift Coordinator reads what
+   * "have Cursor do it" maps to. Absent, no description names one.
+   */
+  coderHarness?: string;
+  /**
    * Stop a running coding run for a user's steer and continue its session
    * with the line (the `coder` worker flow's `stopsOnAbort`). Only for a
    * harness whose abort waits for its process to exit. Default: what the
@@ -511,6 +535,11 @@ export interface OpenLabOptions {
    * the query lists only what a harness recorded during its runs.
    */
   usage?: Readonly<Record<string, HarnessUsageReader>>;
+  /**
+   * Which coding harnesses can run on this machine (`startHarness`'s read),
+   * served as `harnessReadiness` on the projects flow. Absent: no such action.
+   */
+  readiness?: HarnessReadinessRead;
 
   // ---- controls, each the red state of one claim -------------------------
 
@@ -627,6 +656,12 @@ export interface LabWorkspaceHost {
    * project is mapped, as before.
    */
   checkouts?: readonly ProjectCheckout[];
+  /**
+   * A command the host runs in each fresh checkout a feature run gets, before
+   * the run starts (`pnpm install`, say), so the project's checks find what
+   * they need. Answer runs change nothing and get none. Absent: nothing runs.
+   */
+  setup?: WorkspaceSetup;
 }
 
 /** One skill on a worker record, as the loader shapes it. */
@@ -772,7 +807,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const remotes = lab?.remotes.allow ?? [];
   const saveNothing = options.saveNothing === true;
   const workspaceHost: WorkspaceHost | undefined =
-    lab === undefined ? undefined : workspaceHostOf(lab.root, remotes, lab.checkouts, saveNothing);
+    lab === undefined ? undefined : workspaceHostOf(lab.root, remotes, lab.checkouts, saveNothing, lab.setup);
   // An answer task works in its project too, in places of its own. A lab on
   // one fixed repository reaches no remote here: only a project with no
   // repository can answer there.
@@ -824,6 +859,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
           };
     const declared = { ...worker.declared };
     if (Object.hasOwn(overrides, worker.id)) declared.document = overrides[worker.id];
+    if (options.coderHarness !== undefined && declared.flow === CODER_FLOW) {
+      declared.description = `${String(declared.description ?? "").trim()} Runs on ${options.coderHarness}, as every worker on the coder flow here does.`.trim();
+    }
     if (options.withoutProjectTools === true && Array.isArray(declared.tools)) {
       declared.tools = (declared.tools as string[]).filter((name) => !PROJECT_TOOL_NAMES.includes(name));
     }
@@ -905,6 +943,25 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     throw new Error(`${RAISE_ASK_STEP}: wanted one "${EM_FLOW}" worker to ask from, found 0`);
   }
   const coderWorkerOf = workerOf(installation, CODER_FLOW);
+  const implementPhase = defineImplementPhase({
+    workerOf: coderWorkerOf,
+    requireAcceptance: options.requireAcceptance === true,
+    ...(options.dropTask === true ? { dropTask: true } : {}),
+  });
+  // On projects, done also means the project's checks (its row's `checks`) pass; a fixed repository has no project to ask.
+  const coderPhase =
+    workspaceHost === undefined
+      ? implementPhase
+      : commandCheck(implementPhase, { commands: projectChecks(), timeoutMs: 10 * 60_000 });
+  const runTimeoutMs = options.runTimeoutMs ?? 60_000;
+  // A shutdown waits for a coding run still going (its checks and judge too)
+  // rather than the engine's 30 s default, which would cancel it.
+  const dispatchDrainTimeoutMs = harnessDrainBudgetMs({
+    runTimeoutMs,
+    ownershipWaitMs: resolveOwnership({ runTimeoutMs, doneTimeoutMs: coderPhase.doneTimeoutMs }).ownership.waitMs,
+    judge: options.withoutJudge !== true,
+    doneTimeoutMs: coderPhase.doneTimeoutMs,
+  });
   const coderFlow = defineCoderWorkerFlow({
     installation,
     answerWorkspace: answerHost,
@@ -924,12 +981,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         },
       }),
     workspace: workspaceHost ?? (options.workspace as WorkspaceConfig),
-    phase: defineImplementPhase({
-      workerOf: coderWorkerOf,
-      requireAcceptance: options.requireAcceptance === true,
-      ...(options.dropTask === true ? { dropTask: true } : {}),
-    }),
-    runTimeoutMs: options.runTimeoutMs ?? 60_000,
+    phase: coderPhase,
+    runTimeoutMs,
     ...(options.stopsOnAbort === undefined ? {} : { stopsOnAbort: options.stopsOnAbort }),
     resources,
   });
@@ -1066,6 +1119,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       // because Shift Manager reads this flow first, so the Usage view and a
       // worker call one address.
       [HARNESS_USAGE_ACTION]: harnessUsageAction({ readers: options.usage ?? {} }),
+      // Which harnesses can run here, beside it: what the start logged, read again on request.
+      ...(options.readiness === undefined ? {} : { [HARNESS_READINESS_ACTION]: harnessReadinessAction(options.readiness) }),
       // How many tokens each of the caller's workers used, beside it (FIX-2145).
       [WORKER_USAGE_ACTION]: workerUsageAction(installation),
     },
@@ -1110,6 +1165,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // in-memory stores a Lab may be opened with too. Over persisting stores it
     // is the default anyway (FIX-2063 D2's opt-in).
     durable: true,
+    dispatchDrainTimeoutMs,
     ...(options.userDeadlineMs === undefined ? {} : { userDeadlineMs: options.userDeadlineMs }),
     ...(options.sweepIntervalMs === undefined ? {} : { durabilityRetention: { sweepIntervalMs: options.sweepIntervalMs } }),
     ...(options.waitDeadlines === undefined ? {} : { waitDeadlines: options.waitDeadlines }),
@@ -1587,8 +1643,14 @@ function workspaceHostOf(
   remotes: readonly string[],
   checkouts: LabWorkspaceHost["checkouts"],
   saveNothing: boolean,
+  setup?: WorkspaceSetup,
 ): WorkspaceHost {
-  const host = localWorkspaceHost({ root, remotes: { allow: [...remotes] }, ...checkoutSource(checkouts) });
+  const host = localWorkspaceHost({
+    root,
+    remotes: { allow: [...remotes] },
+    ...checkoutSource(checkouts),
+    ...(setup === undefined ? {} : { setup }),
+  });
   if (!saveNothing) return host;
   return { ...host, save: async () => ({ outcomes: [], conflicts: [], contested: [] }) };
 }

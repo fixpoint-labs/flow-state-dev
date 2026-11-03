@@ -67,6 +67,7 @@ const session = useSession(sessionId, {
 session.detail;          // SessionDetail | null
 session.snapshot;        // SessionStateSnapshotResponse | null
 session.latestRequest;   // SessionRequestSummary | null — most recent request (any status)
+session.followedRequest; // { id, status, startedAtMs?, completedAtMs? } | null — the request the view shows last
 session.items;           // OutputItem[]  — includes sub-agent items
 session.messages;        // MessageItem[]
 session.blockOutputs;    // BlockTraceItem[]
@@ -94,7 +95,8 @@ await session.resumeSuspension({     // approve/reject a suspension, stream the 
   requestId: "req_1",
   action: "approve",
 });
-session.refresh();
+session.refresh();                  // snapshot with its whole history, and background work
+session.refresh({ items: false });  // state, detail and background work; no item pages
 ```
 
 `childSessions` lists the dispatch runs started from this session: work that outlives the turn and runs in a session of its own. Each entry is a `ChildSessionSummary`. The list sits apart from `items`, and nothing a run produces is folded into the conversation.

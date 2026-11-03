@@ -128,6 +128,7 @@ import { HeldOnQuestion, askStep } from "./ask-step";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
 import { readRunCommits, readRunDiff, runDiffSchema, type RunCommits, type RunDiff } from "./commits";
 import { commandCheckResultSchema, commandChecksSummary, readVerdict, type CommandCheckResult } from "./command-check";
+import type { ReviewDetail } from "./review-detail";
 import { progressNoteOf, throttledNotes, type ProgressNotes } from "./progress-note";
 import {
   MAX_APPROVAL_STEPS,
@@ -313,6 +314,13 @@ export interface CompletionRunContext extends PhaseRunContext {
    * run that ended with nothing to say has not answered.
    */
   answer: string | null;
+  /**
+   * The commit the run's branch was cut at, from the run's record (never read
+   * off the checkout, whose refs the run can move). `null` when the run has no
+   * recorded base, or works on files rather than a repository. A phase that
+   * asks "did this run change anything?" compares the checkout against it.
+   */
+  baseCommit?: string | null;
   /**
    * Aborted when the completion check's time is up, or the request is
    * cancelled. A check that starts work of its own (`commandCheck`'s
@@ -2051,7 +2059,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    *
    * A refusal settles the row as before. Held work that disagrees with the
    * record holds the task on a question for the run's owner, before any
-   * harness runs.
+   * harness runs. The host's setup command, when it runs, is said on the
+   * stream; a failed one is said with its tail and the run goes on.
    */
   const provisionPlace = async (
     ctx: BlockContext,
@@ -2080,7 +2089,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         ignored: ASK_MARKER_IGNORED,
         ...(recorded !== undefined ? { recorded } : {}),
         ...(holding ? { progress: (reported: "lost" | "restoring") => recordPlace(ctx, before!, reported) } : {}),
+        // The host's setup command in a fresh checkout: the run waits on it,
+        // and the stream says so, then says what broke if it failed.
+        onSetup: () => ctx.emit.status("Setting up the worktree…"),
       });
+      if (place.setup?.status === "failed") {
+        ctx.emit.status(`Setup failed: ${place.setup.tail}`, { transient: false });
+      }
       // A checkout left on another branch with uncommitted changes is the
       // run's to sort out; running on it would commit to the wrong branch.
       if (place.repo?.offBranch !== undefined) {
@@ -2873,6 +2888,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             // `null`: "reported nothing" is its own fact.
             stopReport: handle.outcome,
             answer: handle.finalMessage,
+            baseCommit: state.filesOnly === true ? null : (state.baseCommit ?? null),
             signal: AbortSignal.any([ctx.signal, stopCheck.signal]),
             ctx,
           }),
@@ -3336,7 +3352,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             removed: decision.diff?.verified === true ? decision.diff.removed : null,
             judge: read,
             checks: decision.checks ?? null,
-          },
+            // The review card reads these fields through reviewDetail: the type keeps writer and reader in step.
+          } satisfies ReviewDetail & Record<string, unknown>,
         });
       } catch (error) {
         if (!(error instanceof SuspensionTimeoutError)) throw error;

@@ -17,6 +17,8 @@ export {
   useSession,
   type SessionItemsOptions,
   type SessionChildSessionsOptions,
+  type FollowedRequest,
+  type SessionRefreshOptions,
   type SessionView,
   type UseSessionHookOptions
 } from "./hooks/useSession";
@@ -187,6 +189,8 @@ export {
   type JumpToLatest,
   type JumpToLatestOptions
 } from "./hooks/useJumpToLatest";
+
+export { useDraft, clearDraft, readDraft, saveDraft } from "./hooks/useDraft";
 
 export {
   isSendKey,

@@ -10,6 +10,15 @@ flow-state.dev stores three categories of data: **scope state** (session, user, 
 
 You declare stores on `createFlowState` as a map of named profiles. A profile maps capability slots (typed containers for a category of storage) to adapters. Every adapter below backs the required `primary` slot — the catch-all state store for sessions, requests, users, orgs, checkpoints, content, traces, and [wakes](../advanced/durable-execution.md#wakes). The `blobs`, `queue`, and `scheduler` slots exist in the type but are forward-compatible: no backing store ships for them in Phase 1, so declaring them is a no-op.
 
+The `bus` slot carries change notices. Every request and session write sends one, and an open session stream (`GET /sessions/:id/stream`) reads the store when one arrives. Leave the slot out and the primary backs it if its adapter can; otherwise the bus is in memory and reaches only the process that wrote. That decides what an open view costs:
+
+| Bus | What an open session view reads |
+|---|---|
+| Crosses processes | Only after a change, at most once a second. A view of a quiet session costs the store nothing |
+| In memory (the default today) | After a change, and also about once a second, so a reply written by another process still arrives |
+
+None of the adapters below backs `bus` yet, so every profile runs the in-memory bus for now. Views keep the once-a-second read, as they always have.
+
 | Adapter | Persistence | When to use |
 |---------|------------|-------------|
 | **In-memory** (default) | None — data is lost on restart | Development, testing, demos |
@@ -311,6 +320,21 @@ async function* subscribeToEvents(requestId, options) {
   }
 }
 ```
+
+### Bus
+
+A store that can carry notices between processes backs the `bus` slot: it declares `"bus"` in its adapter's `capabilities` and resolves `{ bus }`, an object with four members.
+
+| Member | What it must do |
+|---|---|
+| `publish(notice)` | Send `{ topic, kind, origin? }` to every process's subscribers of that topic. The engine calls it only once the write can be read. A failure must not fail the write |
+| `subscribe(topic, listener)` | Hear the notices under `topic`, and return the unsubscribe. A subscriber to a scope's topic hears every notice under the scope; one narrowed to a resource hears only that resource's |
+| `crossesProcesses` | `true` only while a notice published in another process reaches this one. While it is `true`, the session stream stops its once-a-second read, so a wrong `true` is a view that stops updating |
+| `onCrossingChange(listener)` | Called on each change of `crossesProcesses`. A change to `false` puts waiting views back on the once-a-second read |
+
+A topic is `{ scope, id, tenantId, resource? }`, with `tenantId` always present (`""` for a single-tenant app), so derive channel names from all of it and no tenant hears another's notices. A notice never carries rows. Notices are at most once: a bus that loses its connection and gets it back sends each subscriber one `resync` notice, and the subscriber reads again. `createInMemoryBus()` from `@flow-state-dev/engine` does the in-process fan-out, so an adapter can deliver what it hears through it.
+
+If you pass a `StoreRegistry` you built yourself, set `bus` on it to use your own; the engine wraps the request and session stores so every write publishes.
 
 ### Incremental items storage
 
