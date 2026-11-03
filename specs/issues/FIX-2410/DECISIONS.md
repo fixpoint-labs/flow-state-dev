@@ -37,7 +37,10 @@ is followed, but Kitchen Sink still needs the last turn's status while a steer i
   `latestRequest` read the hook already makes when it is the newest request, else one
   `GET .../requests/:id/status`, made after that read lands, so a plain turn costs no extra read.
 - **Shape:** `{ id, status, startedAtMs?, completedAtMs?, failedAtMs? } | null`, a pick of
-  `SessionRequestSummary`, so it drops into code that takes `latestRequest`.
+  `SessionRequestSummary`, so it drops into code that takes `latestRequest`. Read from the
+  `latestRequest` summary it carries `failedAtMs` as that summary does; read from the status
+  route, a failed or aborted request's end time arrives as `completedAtMs` (FIX-2413's route
+  fix). Either way `completedAtMs ?? failedAtMs` is the end time, which is what Kitchen Sink reads.
 - **Why the hook and not the page:** is `status` needed beyond running or not? Yes: the turn
   notice and "worked for" read `completed`, `failed` or `interrupted` and the end time, which the
   turn record doesn't carry (a turn that completed has no record field for it). The page could
@@ -58,12 +61,15 @@ is followed, but Kitchen Sink still needs the last turn's status while a steer i
   the item history the live follow resumes from.
 - **E4 · A stop's state read** is made after the stop is sent, whether or not the server refused
   it.
-- **E5 · Kitchen Sink's Flow State page passes `live: true`.** That is the framework's documented
-  way to keep background work current between interactions; `BackgroundWorkRefresh` said it was
-  waiting for this.
-- **E6 · Changesets:** a `minor` for `@flow-state-dev/react` (new option and field), a `patch` for
-  `@flow-state-dev/engine` (the status route's end time). README and the `useSession` docs pages
-  gain both.
+- **E5 · Kitchen Sink's Flow State page passes `live: true`.** *Superseded at build.* #4404 did
+  this and deleted `BackgroundWorkRefresh`; live mode then broke three Kitchen Sink E2E specs
+  (the background-work row never appears, the page opens a session stream `talk-from-page`
+  forbids, and the open stream keeps `networkidle` from settling). #4582 put the page back off
+  live mode with the component restored. The hook changes are unaffected. Moving the page is
+  FIX-2507, which has to reconcile with the `talk-from-page` assertion.
+- **E6 · Changesets:** a `minor` for `@flow-state-dev/react` (new option and field). No engine
+  changeset: the status route's end-time fix shipped with FIX-2413 (#4418) first. README and the
+  `useSession` docs pages gain both.
 - **E7 · Review round 1** (Jake's review, Cursor, Codex): split `applySnapshot` rather than add a
   parallel counter; D2 to one rule and justified; the "After" column says the history read
   remains once per completed turn; non-completed ends with resource changes go state-only; the
@@ -73,3 +79,6 @@ is followed, but Kitchen Sink still needs the last turn's status while a steer i
 
 - Drafted 2026-10-31 from the epic spec (FIX-2369, #4358), FIX-2374's spec (branch `spec/FIX-2374`) and
   the code on `main` at `675f614`.
+- Approved and merged as #4378. Built in #4404 and #4582; this record was reconciled to what
+  they shipped afterwards (E5, E6, the status-route row and the test path), with no change of
+  direction.
