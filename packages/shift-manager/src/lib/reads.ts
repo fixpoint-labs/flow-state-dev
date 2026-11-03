@@ -64,7 +64,7 @@ import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
 import { ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import type { Client } from "@flow-state-dev/client";
-import { createInboxClient, inboxItems, taskHoldSchema, taskRowView, type InboxAnswer, type TaskViewRow, type InboxHold, type InboxItem, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, inboxItems, taskActionName, taskHoldSchema, taskRowView, type BoardActions, type InboxAnswer, type TaskViewRow, type InboxHold, type InboxItem, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
 import { withRetiredShapes, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 
 /** Why a read did not load. */
@@ -181,6 +181,8 @@ export type BoardRow = {
   title: string;
   /** The row's goal, as filed. */
   goal: string | null;
+  /** The rest of the brief beside the goal, as filed, or `null` when it has none. */
+  context: string | null;
   /** The status as stored (see `columns.ts` for how it is read). */
   status: string;
   assignee: string | null;
@@ -518,6 +520,7 @@ export function toBoardRow(boardRef: string, ownerSessionId: string, topic: stri
     id: text(field(data, "id")) ?? topic,
     title: text(field(data, "title")) ?? text(field(data, "goal")) ?? topic,
     goal: text(field(data, "goal")),
+    context: text(field(data, "context")),
     status: text(field(data, "status")) ?? "pending",
     assignee: text(field(data, "assignee")),
     priority: field(data, "priority") == null ? null : String(field(data, "priority")),
@@ -624,20 +627,16 @@ export function inboxSection(
 
 /**
  * Where a row's questions are answered (FIX-2133): the board's `updateTask`
- * action on the conversation that holds it, as the signed-in user. A board
- * that isn't a conversation's has no action Shift Manager names: `null`,
- * and its questions read as unanswerable here.
+ * action on the conversation that holds it, as the signed-in user, named by
+ * orchestration's `taskActionName`. A board that isn't a conversation's has
+ * no action Shift Manager names: `null`, and its questions read as
+ * unanswerable here.
  */
 function boardOwnerOf(row: BoardRow): InboxRow["holder"] {
-  return row.boardRef === conversationBoardRef(row.ownerSessionId) ? { sessionId: row.ownerSessionId, action: UPDATE_TASK_ACTION } : null;
+  return row.boardRef === conversationBoardRef(row.ownerSessionId)
+    ? { sessionId: row.ownerSessionId, action: taskActionName("updateTask", CONVERSATION_BOARD_COLLECTION) }
+    : null;
 }
-
-/**
- * The action a conversation answers a task's question through: the task
- * tools' `updateTask`, named for the conversation board's id (`tasks`) by the
- * task tools' action rule.
- */
-export const UPDATE_TASK_ACTION = "updateTask_tasks";
 
 /** Run `task` over `inputs`, `size` at a time, keeping order. */
 async function inBatches<T, R>(inputs: readonly T[], size: number, task: (input: T) => Promise<R>): Promise<R[]> {
@@ -666,6 +665,14 @@ export type LabReader = {
    * refusal.
    */
   answerOne(hold: InboxHold<unknown>, answer: InboxAnswer): Promise<void>;
+  /**
+   * The task actions of `conversation`'s board (FIX-2381): cancel, steer,
+   * release, retry and re-file, orchestration's `inbox.board(...)` bound to
+   * the conversation's session and the flow that owns it, as the signed-in
+   * user. Each rejects with the board's refusal. A conversation whose session
+   * names no owning flow has no board to act on, so it can't be passed here.
+   */
+  taskActions(conversation: { id: string; flowId: string }): BoardActions;
 };
 
 /**
@@ -1078,5 +1085,8 @@ export function createLabReader(client: Client): LabReader {
 
   const answerOne: LabReader["answerOne"] = (hold, answer) => inbox.answerOne(hold, answer);
 
-  return { read, readBoard, resume, answerOne };
+  const taskActions: LabReader["taskActions"] = (conversation) =>
+    inbox.board({ flowId: conversation.flowId, sessionId: conversation.id, board: CONVERSATION_BOARD_COLLECTION });
+
+  return { read, readBoard, resume, answerOne, taskActions };
 }
