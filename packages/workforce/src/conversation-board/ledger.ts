@@ -79,6 +79,8 @@ export const CONVERSATION_BOARD_CLIENT_FIELDS = [
   "id",
   "title",
   "goal",
+  // The rest of the brief, beside the goal: a re-file from a browser's row copies it (FIX-2381 D3).
+  "context",
   "status",
   "assignee",
   "run",
