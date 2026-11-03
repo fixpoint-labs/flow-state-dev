@@ -374,16 +374,16 @@ The adapter backs the engine's `bus` slot: a change saved on one process reaches
 
 ### How it works
 
-Every request and session write publishes a notice (a topic and a kind, never rows). The writing process's own views hear it at once, in process. It also goes out as `pg_notify('fsd_bus', …)` on the stores' pool, outside any transaction; the request tail's `flow_events` channel is not used. A notice too large for `NOTIFY` (8,000 bytes) is sent for its whole scope instead of one resource, which wakes more views than needed and never fewer. The first time that happens, a warning is logged.
+Every request and session write publishes a notice (a topic and a kind, never rows). The writing process's own views hear it at once, in process. It also goes out as `pg_notify('fsd_bus', …)` on the stores' pool, and only once the write has landed: a write that fails, or is refused by a version or status check, sends no notice. A notice is best effort: if it fails to go out, the write still succeeds, and the view picks the change up at its next read. A notice too large for `NOTIFY` (8,000 bytes) is sent for its whole scope instead of one resource, which wakes more views than needed and never fewer. The first time that happens, a warning is logged.
 
 A process listens only while it has a view open. Its first subscriber checks one connection out of `liveTailPool`, issues `LISTEN fsd_bus`, and fans every notice out to that process's views; the last subscriber to leave hands it back. A process with no open view, such as a BullMQ worker or a migration script, publishes and holds no listening connection. With the default tail pool (`max: 10`), that leaves nine connections for request tails.
 
-### When it says it crosses processes
+### Detecting a pooler or a dropped connection
 
-A `LISTEN` that succeeds proves nothing on its own. A transaction-mode pooler (PgBouncer, or Supabase's or Neon's pooled endpoint) accepts it and never delivers a notification, and a connection a load balancer drops can go quiet without an error. So the bus pings itself through Postgres every 2 seconds and reports `crossesProcesses: true` only while it hears its own ping come back:
+The bus's `crossesProcesses` flag says whether a notice sent by another process reaches this one right now; while it is `true`, session views stop their once-a-second read (see the engine's [Change bus](../engine/README.md#change-bus)). A transaction-mode pooler (PgBouncer, or Supabase's or Neon's pooled endpoint) accepts it and never delivers a notification, and a connection a load balancer drops can go quiet without an error. So the bus pings itself through Postgres every 2 seconds and reports `crossesProcesses: true` only while it hears its own ping come back:
 
 - Until the first ping is heard, a new view uses the once-a-second read, and switches within one ping.
-- If no ping comes back for 3 seconds, or the connection fails, the bus reports `false` and waiting views go back to the once-a-second read, within about 5 seconds of a silent drop. It reconnects with a capped backoff, never giving up, sends each view one `resync` notice so it reads once, and reports `true` again on the next ping it hears.
+- If no ping comes back for 3 seconds, or the connection fails, the bus reports `false` and waiting views go back to the once-a-second read. After a silent drop, the bus reports `false` within 4 seconds of the last ping it heard, and a waiting view reads within a second after that, so about 5 seconds in all. It reconnects with a capped backoff, never giving up, sends each view one `resync` notice so it reads once, and reports `true` again on the next ping it hears.
 - If the first ping never comes back, the process logs one warning naming the likely cause. Pass `liveTailPool` a `pg.Pool` on a direct (session-mode) connection string. There is no other option for it: the auto-created tail pool uses the same connection string as the main pool.
 
 ```ts
@@ -399,7 +399,7 @@ const stores = postgresStores({
 
 ### With no tail pool
 
-`liveTailPool: null`, the `{ pool }` shape without a `liveTailPool`, and the `{ executor }` shape (PGlite) never listen, so the bus reports `crossesProcesses: false` and views keep the once-a-second read. The `{ pool }` shape still sends its notices, so views on processes that do listen hear its writes. `vercelPostgresStores` from `@flow-state-dev/vercel/store` passes `liveTailPool: null` and doesn't back the `bus` slot.
+`liveTailPool: null`, the `{ pool }` shape without a `liveTailPool`, and the `{ executor }` shape (PGlite) never listen, so the bus reports `crossesProcesses: false` and views use the once-a-second read. The `{ pool }` shape still sends its notices, so views on processes that do listen hear its writes. `vercelPostgresStores` from `@flow-state-dev/vercel/store` passes `liveTailPool: null` and doesn't back the `bus` slot.
 
 `close()` stops the ping and hands the listening connection back before it ends the pools.
 
