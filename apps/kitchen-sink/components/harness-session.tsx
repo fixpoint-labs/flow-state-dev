@@ -366,7 +366,8 @@ function TurnWork({ record, label }: { record: HarnessTurnWork | null; label: st
   const shownSetup = setup !== null && setup.state !== "done";
   if (!shownSetup && (checks === null || checks.length === 0)) return null;
   return (
-    <div className="mx-auto max-w-3xl space-y-2 px-3 pt-2 sm:px-4">
+    // Bounded and scrolled: a long failed check's output must never push the composer off the fixed-height page.
+    <div className="mx-auto max-h-[35dvh] max-w-3xl space-y-2 overflow-y-auto px-3 pt-2 sm:px-4" data-testid="turn-work">
       {setup?.state === "running" && (
         <p className="rounded-md border px-3 py-2 text-sm text-muted-foreground" data-testid="turn-setup" data-state="running" role="status">
           Running the setup command in this session&apos;s worktree before {label} starts.

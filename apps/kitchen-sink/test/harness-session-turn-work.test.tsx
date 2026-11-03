@@ -65,6 +65,15 @@ describe("what the host ran around the latest turn", () => {
     expect(screen.getByTestId("turn-notice").getAttribute("data-kind")).toBe("started");
   });
 
+  it("keeps a long failed check's output in a bounded, scrolling area, so the composer stays on screen", () => {
+    turn = { asked: null, confirmed: "c1", checks: [check("pnpm test", 1, "x\n".repeat(400))] };
+    page();
+    const work = screen.getByTestId("turn-work");
+    expect(work.className).toMatch(/\bmax-h-\[/);
+    expect(work.className).toMatch(/\boverflow-y-auto\b/);
+    expect(work.textContent).toContain("Checks 0/1 passed");
+  });
+
   it("says when the setup command failed, with the end of its output", () => {
     turn = { asked: null, confirmed: "c1", setup: { state: "failed", tail: "SETUP-MARKER: npm ERR" } };
     page();
