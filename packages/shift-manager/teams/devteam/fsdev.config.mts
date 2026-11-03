@@ -71,7 +71,7 @@ import { readClaudeUsage } from "@flow-state-dev/claude-code/sdk";
 import { readCodexUsage } from "@flow-state-dev/codex";
 import { harnessEnv } from "@flow-state-dev/core";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { checkoutCommandProblem, splitCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
+import { parseCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "./ask.mts";
 import { claudeCodeEnv, errorReporterHarness, startHarness } from "./harness.mts";
@@ -98,10 +98,9 @@ const ASK_FEATURE = JSON.parse(readFileSync(fileURLToPath(new URL("./ask.json", 
  */
 function setupFrom(value: string | undefined): WorkspaceSetup | undefined {
   if (value === undefined || value.trim() === "") return undefined;
-  const problem = checkoutCommandProblem(value);
-  if (problem !== undefined) throw new Error(`DEVTEAM_SETUP: ${problem}`);
-  const words = splitCheckoutCommand(value);
-  return { command: words as [string, ...string[]] };
+  const parsed = parseCheckoutCommand(value);
+  if ("problem" in parsed) throw new Error(`DEVTEAM_SETUP: ${parsed.problem}`);
+  return { command: parsed.words };
 }
 
 const setup = setupFrom(process.env.DEVTEAM_SETUP);

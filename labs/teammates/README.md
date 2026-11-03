@@ -69,6 +69,13 @@ The steps read the same on all three agents, though each names its tools its own
 Code run loads the working folder's own Claude Code settings and `CLAUDE.md`, never this
 machine's, so an output style set there doesn't show in its steps.
 
+A coding task that committed waits for your review before it completes. Its popup shows *Ready for
+review*: the commits on its branch, and a judge's verdict on whether the run did what the task
+asked, which is information, not approval. **Accept** completes the task. **Ask for changes**, with
+your words, sends them to the same coding session for one more run, which you review again. A run
+that asks you something shows its question in the popup with a box for your answer, and goes on
+with it.
+
 When the lab starts, it checks which coding agents this machine can run and logs a table:
 
 ```
@@ -122,6 +129,8 @@ This builds the pages and serves them with the lab's server (`fsdev.config.mts`)
 | `TEAMMATES_TREE` | the workers' tree | `workforce/` here |
 | `TEAMMATES_RUNS` | the folder each coding run's worktree goes in | `.fsdev/teammates-runs/` here |
 | `TEAMMATES_RUN_TIMEOUT_MS` | the wall-clock budget for one coding run, in milliseconds | `1200000` (20 minutes) |
+| `TEAMMATES_SETUP` | a command each fresh worktree runs before its coding run starts, such as `pnpm install --frozen-lockfile`; no shell | none |
+| `TEAMMATES_CHECKS` | the commands a coding run's worktree must pass before its task is done, `;`-separated, such as `pnpm typecheck; pnpm test`; no shell, so a `;` inside one command, even quoted, isn't supported. A red one sends the run back with the command's output | none |
 
 The model needs a credential the gateway takes (`AI_GATEWAY_API_KEY`). Each coding agent needs its
 own sign-in: Claude Code signed in, or `ANTHROPIC_API_KEY`; Codex signed in (`codex login`), or
@@ -169,6 +178,7 @@ names the package call it makes.
 | A message's popup | the recipient's session items: the turn whose received-message item carries the message's id |
 | The working folder | `localWorkspaceHost` with a constant run source, `{ kind: "repo", repo }`, and the folder in `localRepositories`; `projectSourceTools` read it |
 | Coding tasks and their runs | the conversation board's rows assigned to the worker on the coding flow, which the list leaves out; the row's `run` link, read as the run session's items |
+| A task waiting on you, and your answer | the row's holds through the Inbox's `inboxItems` and `taskRowView`, answered with the Inbox client's `answerOne`; a review drawn by the UI registry's `review-hold`, installed in `src/components/flow-state/`, from the run's stop read by harness-manager's `reviewDetail` |
 | A run's steps in plain words | the UI registry's `tool-naming` and `tool-grouping`, installed in `src/components/flow-state/`, over each tool call's name and arguments |
 | The divider and its *summarized* label | the last request's `historyStart`, and the session's `historySummary` resource |
 
