@@ -70,7 +70,7 @@ function withGoalControls(feeds: HarnessSessionFeeds, defaultModel: string | und
 }
 
 /** How long a turn's checks may take together. */
-export const HARNESS_CHECKS_TIMEOUT_MS = 10 * 60_000;
+const HARNESS_CHECKS_TIMEOUT_MS = 10 * 60_000;
 
 /** The feeds a mode's block gets, for a test that reads the block's options. */
 export function kitchenSinkHarnessFeeds(kind: string, defaultModel?: string): HarnessSessionFeeds {
