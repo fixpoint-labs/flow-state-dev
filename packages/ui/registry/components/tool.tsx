@@ -7,6 +7,7 @@
  * each call's stated intent, or the name-based phrase when none stated one.
  * Running ends in "…", waiting says "(waiting)", failure says "(failed)" in
  * words and stays muted: a failed call is routine, not an alarm on the run.
+ * A call fails when it throws or when its result says it was refused.
  * No status badge on the line.
  *
  * An agent's working, the tool calls and the thinking between the things it
@@ -35,7 +36,7 @@ import {
 } from "lucide-react";
 
 import { CodeBlock } from "./code-block";
-import { composeToolCallsLabel } from "./tool-grouping";
+import { composeToolCallsLabel, toolRunState, toolStepState, withToolState, type ToolStepState } from "./tool-grouping";
 import { toolIntent, toolSubject } from "./tool-naming";
 
 export {
@@ -220,35 +221,28 @@ function getToolErrorText(item: ToolItem): string | undefined {
   return raw === undefined ? undefined : String(raw);
 }
 
-type LineState = "running" | "waiting" | "completed" | "error";
-
-function lineState(item: ToolItem): LineState {
+/** A call's state is its status, then whether its result reports a failure (a refused read). */
+function lineState(item: ToolItem): ToolStepState {
   // A thought that ended unfinished (a stream that dropped mid-thought) is over, not still going.
   if (isThought(item)) return item.status === "in_progress" ? "running" : "completed";
   const state = mapToolStatus(item);
-  if (state === "error") return "error";
-  if (state === "awaiting") return "waiting";
-  if (state === "completed") return "completed";
-  return "running";
+  const status = state === "error" ? "failed" : state === "awaiting" ? "waiting" : state === "completed" ? "done" : "running";
+  return toolStepState(status, getToolName(item), getToolOutput(item));
 }
 
-function runState(items: readonly ToolItem[]): LineState {
-  const states = items.map(lineState);
-  if (states.includes("error")) return "error";
-  if (states.includes("waiting")) return "waiting";
-  if (states.includes("running")) return "running";
-  return "completed";
+function runState(items: readonly ToolItem[]): ToolStepState {
+  return toolRunState(items.map(lineState));
 }
 
 function labelInput(item: Exclude<ToolItem, ReasoningItem>) {
   const name = getToolName(item);
   const args = getToolArgs(item);
-  const subject = toolSubject(name, args);
+  const subject = toolSubject(name, args, getToolOutput(item));
   return { name, intent: toolIntent(name, args), subject };
 }
 
 /** "Thinking" while it goes on, "Thought" once it has. */
-const thoughtWord = (state: LineState) => (state === "running" ? "Thinking" : "Thought");
+const thoughtWord = (state: ToolStepState) => (state === "running" ? "Thinking" : "Thought");
 
 function ToolCallDetails({ item }: { item: ToolItem }) {
   if (isThought(item)) {
@@ -286,7 +280,7 @@ function ToolCallDetails({ item }: { item: ToolItem }) {
 
 type ToolLineProps = {
   label: string;
-  state: LineState;
+  state: ToolStepState;
   nested?: boolean;
   mono?: boolean;
   defaultOpen?: boolean;
@@ -317,15 +311,6 @@ function ToolLine({ label, state, nested = false, mono = false, defaultOpen = fa
       <CollapsibleContent className="mt-1.5 ml-1 border-l pl-3 outline-none">{children}</CollapsibleContent>
     </Collapsible>
   );
-}
-
-function withState(label: string, state: LineState, count = 1, total = 1): string {
-  if (state === "running") return `${label}…`;
-  if (state === "error" || state === "waiting") {
-    const word = state === "error" ? "failed" : "waiting";
-    return total > 1 ? `${label} (${count} ${word})` : `${label} (${word})`;
-  }
-  return label;
 }
 
 /** One call. A missing tool call renders nothing. */
@@ -389,13 +374,13 @@ export function ToolGroup({ items, defaultOpen = false, live = false, className 
     const nowState = now === undefined ? state : lineState(now);
     label =
       now === undefined
-        ? withState(summary, state)
+        ? withToolState(summary, state)
         : isThought(now)
-          ? withState(thoughtLine(now) ?? thoughtWord(nowState), nowState)
-          : withState(nowLabel(labelInput(now)), nowState);
+          ? withToolState(thoughtLine(now) ?? thoughtWord(nowState), nowState)
+          : withToolState(nowLabel(labelInput(now)), nowState);
   } else {
     const count = one ? 1 : items.filter((item) => lineState(item) === state).length;
-    label = withState(summary, state, count, items.length);
+    label = withToolState(summary, state, count, items.length);
   }
 
   return (
@@ -429,7 +414,7 @@ export function ToolRow({ item, defaultOpen = false, className }: ToolRowProps) 
     : labelInput(item);
   return (
     <ToolLine
-      label={withState(intent ?? subject?.text ?? name, state)}
+      label={withToolState(intent ?? subject?.text ?? name, state)}
       state={state}
       nested
       mono={intent === undefined && (subject?.code ?? !isThought(item))}

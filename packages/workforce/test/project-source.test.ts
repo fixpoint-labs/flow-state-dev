@@ -47,6 +47,8 @@ import { PROJECT_ROW_RESOURCES, projectRowsAt } from "../src/projects/project-ad
 import { projectSourceTools, readProjectSourceFor } from "../src/projects/project-source";
 import type { WorkerInstallation } from "../src/workers/installation";
 import { bootProjectsHost } from "./projects-harness";
+// The registry's naming, by path: the user reads these tools' lines through it.
+import { toolOutcome, toolSubject } from "../../ui/registry/components/tool-naming";
 
 const VALUE = "LC-4242-HELD-OUT";
 const scratch = mkdtempSync(join(tmpdir(), "project-source-"));
@@ -304,8 +306,44 @@ describe("a delegate's task session finds its project the way a coding run does"
   });
 });
 
+/**
+ * What the user watching the worker reads for each call: the registry's
+ * naming over what these tools really return, so a change to a tool's output
+ * or to the vocabulary fails here. Exact lines, so the generic fallback (the
+ * tool's name title-cased before its path) fails too.
+ */
+describe("each call's line says what it acted on and whether it worked", () => {
+  type Case = { tool: "read" | "grep" | "glob"; name: string; user?: string; project?: "member" | "none" | "taken-off"; args: Record<string, unknown> };
+  const lineOf = async (c: Case) => {
+    const h = await boot();
+    const user = c.user ?? "alice";
+    const project = c.project ?? "member";
+    if (project !== "none") await h.createProject("alice", { id: "storefront", title: "Storefront", repository: REPO, members: ["bob"] });
+    const session = await h.readerIn(user, project === "none" ? undefined : storefront);
+    if (project === "taken-off") await h.ok("alice", "lab", await h.lab("alice"), "takeOffProject", { id: "storefront", user });
+    const output = await h.ok(user, "reader", session, c.tool, c.args);
+    return { line: toolSubject(c.name, c.args, output)?.text, outcome: toolOutcome(c.name, output) };
+  };
+  const cases: Array<[string, Case, { line: string; outcome: "ok" | "failed" }]> = [
+    ["a read names its path", { tool: "read", name: "readProjectSource", args: { path: "src/billing/ledger/codes.ts" } }, { line: "Read …/billing/ledger/codes.ts", outcome: "ok" }],
+    ["a ranged read names its lines", { tool: "read", name: "readProjectSource", args: { path: "README.md", startLine: 1, endLine: 1 } }, { line: "Read README.md, line 1", outcome: "ok" }],
+    ["a search names its pattern and match count", { tool: "grep", name: "grepProjectSource", args: { pattern: "LEDGER_CODE =" } }, { line: 'Search "LEDGER_CODE =" · 1 match', outcome: "ok" }],
+    ["a search that found nothing says so, and worked", { tool: "grep", name: "grepProjectSource", args: { pattern: "NOT_IN_THE_PROJECT" } }, { line: 'Search "NOT_IN_THE_PROJECT" · no matches', outcome: "ok" }],
+    ["a listing names its pattern and count", { tool: "glob", name: "globProjectSource", args: { pattern: "src/**" } }, { line: "List src/** · 1 file", outcome: "ok" }],
+    ["a listing with no pattern names the project's files", { tool: "glob", name: "globProjectSource", args: {} }, { line: "List the project's files · 2 files", outcome: "ok" }],
+    ["a read of a missing file failed", { tool: "read", name: "readProjectSource", args: { path: "src/gone.ts" } }, { line: "Read src/gone.ts", outcome: "failed" }],
+    ["a read by a session with no project failed", { tool: "read", name: "readProjectSource", project: "none", args: { path: "README.md" } }, { line: "Read README.md", outcome: "failed" }],
+    ["a search by a user taken off the project failed", { tool: "grep", name: "grepProjectSource", user: "bob", project: "taken-off", args: { pattern: "LEDGER" } }, { line: 'Search "LEDGER"', outcome: "failed" }],
+  ];
+  for (const [title, c, expected] of cases) {
+    it(title, async () => {
+      expect(await lineOf(c)).toEqual(expected);
+    });
+  }
+});
+
 describe("the capability", () => {
-  const stub = (reads: { count: number }): WorkspaceHost =>
+  const stub =(reads: { count: number }): WorkspaceHost =>
     ({
       source: () => ({ kind: "refused", reason: "no-project", message: "none" }),
       readSource: async () => {

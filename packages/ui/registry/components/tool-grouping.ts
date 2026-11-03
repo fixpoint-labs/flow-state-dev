@@ -5,8 +5,12 @@
  * and reused from any UI layer. The grouping walk itself lives in
  * `@flow-state-dev/react`'s ItemsRenderer so framework filters (dedup,
  * sub-agent, container-owner suppression) run before grouping. This file
- * is responsible for the verb-phrase vocabulary and label composition.
+ * is responsible for the verb-phrase vocabulary and label composition, and
+ * for where a run of steps stands: each step's state, the run's, the words
+ * that say it, and whether the run is open.
  */
+
+import { toolBaseName, toolOutcome } from "./tool-naming";
 
 /**
  * Verb-phrase entry for a tool. Two forms: a singular phrase used when a
@@ -58,11 +62,26 @@ export const TOOL_VERB_MAP: Record<string, ToolVerbs> = {
   grep:       { singular: "searched the code", plural: (n) => `searched the code ${n} times` },
   glob:       { singular: "looked for files", plural: (n) => `looked for files ${n} times` },
   load_tools: { singular: "loaded tools", plural: () => "loaded tools" },
+  // Workforce's project reads, which merge with any other read, search or listing.
+  readProjectSource: { singular: "read a file", plural: (n) => `read ${n} files` },
+  grepProjectSource: { singular: "searched the code", plural: (n) => `searched the code ${n} times` },
+  globProjectSource: { singular: "looked for files", plural: (n) => `looked for files ${n} times` },
+  // The task board's tools and a worker's own.
+  createTask: { singular: "started a task", plural: (n) => `started ${n} tasks` },
+  getTask: { singular: "checked on a task", plural: (n) => `checked on tasks ${n} times` },
+  updateTask: { singular: "updated a task", plural: (n) => `updated tasks ${n} times` },
+  listTasks: { singular: "looked over the tasks", plural: (n) => `looked over the tasks ${n} times` },
+  holdTaskForUser: { singular: "asked you a question", plural: (n) => `asked you ${n} questions` },
+  suspendForUser: { singular: "asked for your answer", plural: (n) => `asked for your answer ${n} times` },
+  sendMessage: { singular: "sent a message", plural: (n) => `sent ${n} messages` },
+  reportProgress: { singular: "noted progress", plural: (n) => `noted progress ${n} times` },
+  consultSessionHistory: { singular: "read a conversation", plural: (n) => `read ${n} conversations` },
 };
 
 /** Look up verbs for a tool name, in any case (Claude Code says `Bash`), falling back to a generic phrase. */
 function verbsFor(toolName: string): ToolVerbs {
-  const entry = TOOL_VERB_MAP[toolName] ?? TOOL_VERB_MAP[toolName.toLowerCase()];
+  const base = toolBaseName(toolName);
+  const entry = TOOL_VERB_MAP[base] ?? TOOL_VERB_MAP[base.toLowerCase()];
   if (entry !== undefined) return entry;
   return {
     singular: `ran \`${toolName}\``,
@@ -154,4 +173,48 @@ export function composeToolCallsLabel(calls: ToolCallLabelInput[]): string {
   if (phrases.length <= TOOL_GROUP_INTENT_CAP) return phrases.join(" · ");
   const shown = phrases.slice(0, TOOL_GROUP_INTENT_CAP).join(" · ");
   return `${shown} · +${phrases.length - TOOL_GROUP_INTENT_CAP} more`;
+}
+
+/** Where one step, or a run of steps, stands. A state, never a colour: each app draws its own. */
+export type ToolStepState = "running" | "waiting" | "completed" | "error";
+
+/** A call's own status, as a host reads it off its item, before its result is read. */
+export type ToolCallStatus = "running" | "waiting" | "failed" | "done";
+
+/**
+ * One call's state: its status, and, once it is done, whether its result
+ * reports a failure ({@link toolOutcome}). A refused read is as failed as a
+ * thrown one.
+ */
+export function toolStepState(status: ToolCallStatus, toolName: string, output?: unknown): ToolStepState {
+  if (status === "failed") return "error";
+  if (status === "waiting") return "waiting";
+  if (status === "running") return "running";
+  return toolOutcome(toolName, output) === "failed" ? "error" : "completed";
+}
+
+/** A run's state from its steps': failed over waiting over running over done. */
+export function toolRunState(states: readonly ToolStepState[]): ToolStepState {
+  if (states.includes("error")) return "error";
+  if (states.includes("waiting")) return "waiting";
+  if (states.includes("running")) return "running";
+  return "completed";
+}
+
+/**
+ * A line with its state in words: "…" while running, "(failed)" or
+ * "(waiting)" after it, "(2 failed)" for `count` of a run of `total` steps.
+ */
+export function withToolState(label: string, state: ToolStepState, count = 1, total = 1): string {
+  if (state === "running") return `${label}…`;
+  if (state === "error" || state === "waiting") {
+    const word = state === "error" ? "failed" : "waiting";
+    return total > 1 ? `${label} (${count} ${word})` : `${label} (${word})`;
+  }
+  return label;
+}
+
+/** A run of steps shows open while it is running and folds once it isn't. */
+export function toolRunOpen(state: ToolStepState): boolean {
+  return state === "running";
 }
