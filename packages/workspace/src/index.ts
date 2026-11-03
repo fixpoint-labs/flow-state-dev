@@ -54,6 +54,7 @@ export {
   CHECK_OUTPUT_TAIL_CHARS,
   checkoutCommandPassed,
   checkoutCommandProblem,
+  parseCheckoutCommand,
   runCheckoutCommands,
   splitCheckoutCommand,
 } from "./checkout-commands";
