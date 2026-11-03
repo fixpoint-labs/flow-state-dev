@@ -90,11 +90,25 @@ export function splitCheckoutCommand(command: string): string[] | string {
  * not do what it says.
  */
 export function checkoutCommandProblem(command: string): string | undefined {
+  const parsed = parseCheckoutCommand(command);
+  return "problem" in parsed ? parsed.problem : undefined;
+}
+
+/**
+ * A command's words, checked once: the refusals of {@link checkoutCommandProblem}
+ * and the split of {@link splitCheckoutCommand} together.
+ *
+ * @returns The words (the program first), or why the line can't be a command.
+ */
+export function parseCheckoutCommand(command: string): { words: [string, ...string[]] } | { problem: string } {
   if (SHELL_OPERATOR.test(command)) {
-    return `the command "${command}" uses a shell operator; commands run with no shell, so write each command as its own entry`;
+    return { problem: `the command "${command}" uses a shell operator; commands run with no shell, so write each command as its own entry` };
   }
   const split = splitCheckoutCommand(command);
-  return typeof split === "string" ? split : undefined;
+  if (typeof split === "string") return { problem: split };
+  const [program, ...args] = split;
+  // `splitCheckoutCommand` answers an empty line with a sentence, so a program is always here.
+  return { words: [program!, ...args] };
 }
 
 // eslint-disable-next-line no-control-regex
@@ -134,14 +148,14 @@ export async function runCheckoutCommands(options: RunCheckoutCommandsOptions): 
       results.push({ command, exitCode: null, timedOut: false, skipped: true, durationMs: 0, tail: "" });
       continue;
     }
-    const problem = checkoutCommandProblem(command);
-    const words = splitCheckoutCommand(command);
-    if (problem !== undefined || typeof words === "string") {
-      results.push({ command, exitCode: null, timedOut: false, skipped: false, durationMs: 0, tail: problem ?? String(words) });
+    const parsed = parseCheckoutCommand(command);
+    if ("problem" in parsed) {
+      results.push({ command, exitCode: null, timedOut: false, skipped: false, durationMs: 0, tail: parsed.problem });
       continue;
     }
+    const [program, ...args] = parsed.words;
     const started = Date.now();
-    const ended = await runToEnd(words[0]!, words.slice(1), {
+    const ended = await runToEnd(program, args, {
       cwd: options.cwd,
       timeoutMs: left,
       keepChars: CHECK_OUTPUT_TAIL_CHARS * 2,

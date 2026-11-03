@@ -9,7 +9,10 @@
  * are joined by {@link mayReplaceItem}: a partial copy never replaces a
  * finished one. The session stream sends an item once it is finished, so an
  * answer being written comes from the send's own response, through
- * {@link SessionFeed.followResponse}.
+ * {@link SessionFeed.followResponse}. A session longer than that first read
+ * says so ({@link SessionFeedSnapshot.hasEarlier}), and
+ * {@link SessionFeed.loadEarlier} reaches back a page at a time
+ * ({@link readSessionEarlier}).
  */
 import { collapseToCanonicalLog, compareItemOrder } from "@flow-state-dev/contracts/items";
 import type { OutputItem, SessionRun } from "@flow-state-dev/core/items";
@@ -19,7 +22,7 @@ import { createRequestStreamStore } from "../stream-client/request-stream-store"
 import { createSSEClientFromResponse } from "../stream-client/streams";
 import { followSession, type SessionConnectionState } from "./follow-session";
 import { mayReplaceItem } from "./session-history";
-import { readSessionTail } from "./session-window";
+import { readSessionEarlier, readSessionTail, type SessionItemsWindow } from "./session-window";
 
 /** How long the first retry of a failed history read waits, by default; each later one waits twice as long. */
 const DEFAULT_RETRY_MS = 2_000;
@@ -43,10 +46,16 @@ export type SessionFeedOptions = {
 /** What a feed shows at one moment. A new, frozen object on every change. */
 export type SessionFeedSnapshot = {
   /**
-   * The newest history items (`readSessionTail`'s window) and every item kept
-   * since, in display order (`compareItemOrder`).
+   * The newest history items (`readSessionTail`'s window), the earlier pages
+   * {@link SessionFeed.loadEarlier} added, and every item kept since, in
+   * display order (`compareItemOrder`).
    */
   readonly items: readonly OutputItem[];
+  /**
+   * The session holds items older than `items[0]`: show *Load earlier*.
+   * `false` until the history read lands.
+   */
+  readonly hasEarlier: boolean;
   /** The session's unfinished runs as the stream last named them; `null` until it has. */
   readonly runs: readonly SessionRun[] | null;
   /** How far `items` and `runs` can be trusted. See {@link SessionConnectionState}. */
@@ -69,6 +78,14 @@ export interface SessionFeed {
    * session stream carries the finished copies from there.
    */
   followResponse(response: Response): void;
+  /**
+   * Add the page of history before `items[0]` (up to 200 items), and say
+   * whether there is more (`hasEarlier`). Live items keep arriving meanwhile.
+   * Resolves at once when there is nothing earlier, before the history read
+   * lands, or once the feed is closed; a call while one is reading shares it.
+   * Rejects when the read fails, and leaves the feed as it was.
+   */
+  loadEarlier(): Promise<void>;
   /** Stop following: closes the stream and every followed response. The state becomes `stopped`. */
   close(): void;
 }
@@ -94,11 +111,14 @@ export function sessionFeed(
   const byKey = new Map<string, OutputItem>();
   const listeners = new Set<(snapshot: SessionFeedSnapshot) => void>();
   const responses = new Set<() => void>();
-  let snapshot: SessionFeedSnapshot = Object.freeze({ items: [], runs: null, state: "connecting", error: null });
+  let snapshot: SessionFeedSnapshot = Object.freeze({ items: [], hasEarlier: false, runs: null, state: "connecting", error: null });
   let closed = false;
   let stopStream: (() => void) | undefined;
   let retry: ReturnType<typeof setTimeout> | undefined;
   let failures = 0;
+  /** The history read so far: where it starts in the session, for {@link readSessionEarlier}. */
+  let historyWindow: SessionItemsWindow | undefined;
+  let loadingEarlier: Promise<void> | undefined;
 
   const keep = (item: OutputItem): boolean => {
     if (!passes(item)) return false;
@@ -107,6 +127,11 @@ export function sessionFeed(
     byKey.set(key, item);
     return true;
   };
+  // An earlier page is read through to the session's end, so its copy of an
+  // unfinished item can be older than the one already held (a send's own
+  // stream runs ahead of what is stored): it only fills in items not held.
+  const keepEarlier = (item: OutputItem): boolean =>
+    item.status === "in_progress" && byKey.has(`${item.requestId}\u0000${item.id}`) ? false : keep(item);
   const publish = (next: Partial<SessionFeedSnapshot>): void => {
     snapshot = Object.freeze({ ...snapshot, ...next });
     for (const listener of [...listeners]) listener(snapshot);
@@ -136,8 +161,9 @@ export function sessionFeed(
       return;
     }
     if (closed) return;
+    historyWindow = history;
     for (const item of history.items ?? []) keep(item);
-    publish({ items: sortedItems(), error: null });
+    publish({ items: sortedItems(), hasEarlier: history.hasEarlier, error: null });
     // A listener may close the feed on the history it just heard.
     if (closed) return;
 
@@ -152,6 +178,17 @@ export function sessionFeed(
       onRuns: ({ runs }) => publish({ runs }),
       onConnection: (state) => publish({ state })
     });
+  };
+  /** Start over on the session now under the id: drop what the feed holds, read its newest items, follow it. */
+  const restart = (): void => {
+    stopStream?.();
+    stopStream = undefined;
+    for (const end of [...responses]) end();
+    byKey.clear();
+    historyWindow = undefined;
+    failures = 0;
+    publish({ items: [], hasEarlier: false, runs: null, state: "connecting", error: null });
+    void start();
   };
   void start();
 
@@ -191,6 +228,29 @@ export function sessionFeed(
         onClose: () => end()
       });
       responses.add(end);
+    },
+    loadEarlier() {
+      if (loadingEarlier !== undefined) return loadingEarlier;
+      const from = historyWindow;
+      if (closed || from === undefined || !from.hasEarlier) return Promise.resolve();
+      loadingEarlier = (async () => {
+        try {
+          // Read from the earlier start to the session's end, so nothing stored meanwhile falls between pages.
+          const read = await readSessionEarlier(client.sessions, from);
+          if (closed || historyWindow !== from) return;
+          // Another session took the id since: what the feed holds and follows is the old one's.
+          if (from.sessionCreatedAt !== undefined && read.sessionCreatedAt !== from.sessionCreatedAt) {
+            restart();
+            return;
+          }
+          historyWindow = read;
+          for (const item of read.items) keepEarlier(item);
+          publish({ items: sortedItems(), hasEarlier: read.hasEarlier });
+        } finally {
+          loadingEarlier = undefined;
+        }
+      })();
+      return loadingEarlier;
     },
     close() {
       if (closed) return;

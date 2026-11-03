@@ -104,6 +104,11 @@
     "packages/shift-manager/src/components/ui/dialog.tsx",
     // The Teammates lab's copy of the registry's tool grouping.
     "labs/teammates/src/components/flow-state/tool-grouping.ts",
+    // and of the registry's review card, which the task popup draws.
+    "labs/teammates/src/components/flow-state/review-hold.tsx",
+    // The Teammates lab's byte copy of the registry's connection screen; its
+    // backoff export is for apps that time their own retries.
+    "labs/teammates/src/components/flow-state/connection-screen.tsx",
     // Kitchen Sink's and Shift Manager's byte-identical copies of the registry's
     // error.tsx, whose `ErrorBody` export is for `request-recovery`, which neither draws yet.
     "apps/kitchen-sink/components/flow-state/error.tsx",

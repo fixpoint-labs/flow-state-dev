@@ -1,3 +1,4 @@
+import { ClientHttpError } from "@flow-state-dev/client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LabAdapter, NewTeammate, WorkerRow } from "./adapter";
 import { Conversation } from "./components/Conversation";
@@ -6,6 +7,7 @@ import { PopupView, type Popup } from "./components/Popups";
 import { Switcher } from "./components/Switcher";
 import { TalkPanel } from "./components/TalkPanel";
 import { WorkersList } from "./components/WorkersList";
+import { ConnectionScreen, type ConnectionFailure } from "./components/flow-state/connection-screen";
 import { readAddress, writeAddress, type Address, type AddressWrite } from "./lib/address";
 import { harnessName } from "./lib/harness";
 import { focusComposer, focusWhenDrawn, useLabKeys } from "./lib/keys";
@@ -21,7 +23,11 @@ import { lookOf as lookOfRow } from "./lib/looks";
  * unless the page's address names what was open (`lib/address`): a reload, a
  * link and Back reopen the teammate and the task popup.
  *
- * The roster is read again after a hire or a fire made here.
+ * The roster is read again after a hire or a fire made here. A first read
+ * that fails draws the registry's `connection-screen`, which reads again on
+ * its own until one lands. Once the screen is up, a conversation's feed that
+ * loses the server draws `connection-banner` over it and greys the status
+ * lines drawn from that feed.
  *
  * Keys (`useLabKeys`): ⌘K switches to any teammate or hires one, Alt+↑/↓
  * steps through the teammates, `/` puts the cursor in the composer, `?` lists
@@ -52,6 +58,11 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const start = useRef<Address | null>(null);
   if (start.current === null) start.current = readAddress();
   const [ready, setReady] = useState(false);
+  // The first roster read's failure, until a read lands: the page has nothing yet to keep on screen.
+  const [unreachable, setUnreachable] = useState<ConnectionFailure>();
+  const live = useRef(true);
+  // Bumped by each boot read; only the newest read's answer lands, so a slow read a Retry overtook can't redraw the failure.
+  const boots = useRef(0);
   // How the next address write lands: a pick adds a Back step, anything else replaces.
   const how = useRef<AddressWrite>("replace");
   const conversations = useRef<Record<string, string>>({});
@@ -74,20 +85,28 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     return { roster, talking };
   }, [adapter]);
 
-  useEffect(() => {
-    let live = true;
-    void loadRoster().then(({ talking }) => {
-      if (!live) return;
-      // The address's teammate and task, when they are still here; the first teammate otherwise.
+  // The first read: the roster, then the address's teammate and task, when they are still here; the first teammate otherwise.
+  const boot = useCallback(async () => {
+    const mine = ++boots.current;
+    try {
+      const { talking } = await loadRoster();
+      if (!live.current || mine !== boots.current) return;
+      setUnreachable(undefined);
       const named = start.current ?? {};
       setSelected((current) => current ?? (talking.some((w) => w.id === named.worker) ? named.worker : talking[0]?.id));
       setPopup((current) => current ?? fromAddress(named));
       setReady(true);
-    });
+    } catch (error) {
+      if (live.current && mine === boots.current) setUnreachable(error instanceof ClientHttpError ? { httpStatus: error.status, message: error.message } : { message: error instanceof Error ? error.message : String(error) });
+    }
+  }, [loadRoster]);
+  useEffect(() => {
+    live.current = true;
+    void boot();
     return () => {
-      live = false;
+      live.current = false;
     };
-  }, [adapter, loadRoster]);
+  }, [boot]);
 
   const hire = async (teammate: NewTeammate) => {
     const hired = await adapter.hire(teammate);
@@ -169,6 +188,14 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     },
     help: () => setKeysOpen(true),
   });
+
+  if (unreachable !== undefined) {
+    return (
+      <ConnectionScreen kind="unreachable" title="Can't reach the lab" failure={unreachable} onRetry={boot}>
+        The roster read failed. Check that the lab's server is running; this page tries again on its own.
+      </ConnectionScreen>
+    );
+  }
   return (
     <div
       className="grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden"

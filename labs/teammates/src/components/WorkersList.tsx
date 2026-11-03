@@ -7,6 +7,7 @@ import { useSeen } from "../lib/unread";
 import { useNow, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
+import { isFeedStale, STALE_CLASS } from "./flow-state/connection-banner";
 import { HireForm } from "./TeammateForms";
 
 /** The entries that count toward unread: everything but your own lines. */
@@ -127,7 +128,9 @@ function WorkerItem({
   onSelect: () => void;
   onSeen: (count: number) => void;
 }) {
-  const now = useNow();
+  // A row whose conversation's feed lost the server greys its status, and its age stops.
+  const stale = useStale(adapter, sessionId);
+  const now = useNow(undefined, !stale);
   const activity = useWatch(adapter.watchActivity, worker.id);
   const talk = useWatch(adapter.watchTalk, worker.id) ?? [];
   const view = useWatch(adapter.watchConversation, sessionId);
@@ -151,11 +154,11 @@ function WorkerItem({
       <Avatar look={look} />
       <span className="min-w-0 flex-1">
         <span className={cn("block truncate text-sm", (selected || unread > 0) && "font-semibold")}>{worker.name}</span>
-        <span className="block truncate text-xs text-muted-foreground" data-status>
+        <span className={cn("block truncate text-xs text-muted-foreground", stale && STALE_CLASS)} data-status>
           {status}
         </span>
       </span>
-      <span className="flex flex-col items-end gap-1">
+      <span className={cn("flex flex-col items-end gap-1", stale && STALE_CLASS)}>
         <span aria-label={activity?.running ? "answering" : undefined} className={cn("size-2 rounded-full", activity?.running ? "animate-pulse bg-info" : "bg-transparent")} />
         {unread > 0 ? (
           <span aria-label={`${unread} unread`} className="min-w-5 rounded-full bg-primary px-1.5 text-center font-mono text-[10px] font-bold text-primary-foreground">
@@ -182,6 +185,7 @@ function BackgroundItems({
   onOpen: (popup: Popup) => void;
 }) {
   const tasks = (useWatch(adapter.watchTasks, sessionId) ?? []).filter((t) => isCoding(t.to));
+  const stale = useStale(adapter, sessionId);
   return tasks.map((t) => (
     <li key={t.id}>
       <button
@@ -193,10 +197,16 @@ function BackgroundItems({
         className={cn("flex w-full flex-col border-l-2 border-transparent px-4 py-1.5 text-left hover:bg-accent", t.id === openTask && "border-primary bg-accent")}
       >
         <span className="block truncate font-mono text-xs">⚙ {t.title}</span>
-        <span className="block truncate text-xs text-muted-foreground" data-status>
+        <span className={cn("block truncate text-xs text-muted-foreground", stale && STALE_CLASS)} data-status>
           {[t.status, runsOn(t)].filter(Boolean).join(" · ")}
         </span>
       </button>
     </li>
   ));
+}
+
+/** Whether a conversation's feed has lost the server, so what it last said may be out of date. */
+function useStale(adapter: LabAdapter, sessionId: string | undefined): boolean {
+  const connection = useWatch(adapter.watchConnection, sessionId);
+  return connection !== undefined && isFeedStale(connection);
 }

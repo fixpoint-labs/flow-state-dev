@@ -39,7 +39,12 @@ function host(history: unknown[]) {
     }
     if (url.includes("/state")) {
       counts.state += 1;
-      return json({ sessionId: "s1", flowKind: "f", at: 100, sessionCreatedAt: 1, clientData: {}, items: history, pagination: { offset: 0, limit: 200, total: history.length, hasMore: false, nextOffset: history.length } });
+      const query = new URL(url, "http://x").searchParams;
+      const offset = Number(query.get("offset") ?? 0);
+      const limit = Number(query.get("limit") ?? 200);
+      const page = history.slice(offset, offset + limit);
+      const nextOffset = offset + page.length;
+      return json({ sessionId: "s1", flowKind: "f", at: 100, sessionCreatedAt: 1, clientData: {}, items: page, pagination: { offset, limit, total: history.length, hasMore: nextOffset < history.length, nextOffset } });
     }
     if (url.includes("/stream")) {
       counts.stream += 1;
@@ -106,6 +111,26 @@ describe("watchThread", () => {
     h.answer("item.added", { item: writing });
     h.answer("content.delta", { itemId: "a2", contentIndex: 0, delta: "Running the te" });
     await until(() => JSON.stringify(views.at(-1)!.entries).includes("Running the te"));
+  });
+
+  it("offers Load earlier on a thread longer than its first read, and reaches its first line with it", async () => {
+    // 260 lines: the thread opens on the newest 200, and the person's first ask is among the rest.
+    const history = Array.from({ length: 260 }, (_, i) => message(`m${i}`, i % 2 === 0 ? "user" : "assistant", `line ${i}`, 10 + i));
+    const h = host(history);
+    const views: ThreadView[] = [];
+    stops.push(createWiredLab(h.client).watchThread("s1", (view) => views.push(view)));
+    await until(() => views.length > 0 && h.counts.stream === 1);
+    const opened = views.at(-1)!;
+    expect(opened.entries).toHaveLength(200);
+    expect(opened.loadEarlier).toBeTypeOf("function");
+
+    await opened.loadEarlier!();
+    await until(() => views.at(-1)!.entries.length === 260);
+    const last = views.at(-1)!;
+    expect(last.entries[0]).toMatchObject({ kind: "user", text: "line 0" });
+    expect(new Set(last.entries.map((entry) => entry.id)).size).toBe(260);
+    // All of it is there: nothing more to load.
+    expect(last.loadEarlier).toBeUndefined();
   });
 
   it("says the thread's feed is live once its stream is open, for the connection bar to read", async () => {
