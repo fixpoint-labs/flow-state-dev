@@ -2,127 +2,227 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-The owner decided D1–D4 on 2026-11-01. On 2026-11-02 the owner decided D5, D9, D11, D7 in
-principle, the poll cadence in D10, and the closure's 5× bar. D6, D8 and the retirement half of
-D10 are proposals. Two questions are [open](#open).
+Three calls are the sign-off surface: D1, and D5 and D9 as the EM amended them on 2026-11-03.
+Four forks are [open](#open). The rest were decided earlier and sit in the collapsed block, so no
+child reopens them.
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  E["FIX-2471"] --> D1["D1 · one service flow per provider routes · decided"]
-  D1 -.->|"rejected · tokens per event per agent"| X1["an LLM router sees every event (DeepSeek)"]
-  E --> D2["D2 · code first, Jev only when needed · decided"]
-  E --> D3["D3 · sessions subscribe, the flow keeps the list · decided"]
-  E --> D4["D4 · push and poll are only ingestion · decided"]
-  E --> D5["D5 · user-scoped, tool-written, task-tied, PR auto-subscribe · decided"]
-  E --> D6["D6 · a structured filter, then the screen · proposed"]
-  E --> D7["D7 · each subscription screens · decided in principle"]
-  E --> D8["D8 · unmatched → coordinator or drop · proposed"]
-  E --> D9["D9 · delivery is sendMessage with a service sender · decided"]
-  D9 -.->|"rejected · a second identity to manage"| X9["a system worker on the roster"]
-  E --> D10["D10 · 5-minute tick, ≥ 5-minute frequency; sessionId retires"]
-  D10 -.->|"rejected · two ways to route"| X10["keep sessionId beside subscriptions"]
-  E --> D11["D11 · off / observe / auto, in this epic · decided"]
+  E["FIX-2471"] --> D1["D1 · one service flow per provider routes, in code"]
+  D1 -.->|"rejected · tokens per event per agent"| X1["an LLM router reads every event"]
+  E --> D5["D5 · a subscription is its user's; a user hears only what they can read"]
+  D5 -.->|"rejected · content crosses users"| X5["one app token at org scope"]
+  E --> D9["D9 · delivery is sendMessage's exempt path, labelled"]
+  D9 -.->|"rejected · two sets of recipient rules"| X9["a new sender kind"]
+  E --> O["open · Q1 screening default · Q3 what observe writes · Q4 Slack · Q5 sessionId's scope"]
+  E --> G["decided earlier · D2–D4, D6–D8, D10, D11"]
 ```
 
 <a name="d1"></a>
-## D1 · One webhook flow per service is the single routing point · decided 2026-11-01
+## D1 · One service flow per provider is the single routing point, and it routes in code · owner, 2026-11-01
 
 | | |
 |---|---|
-| **Instead of** | DeepSeek's long-lived LLM router that sees every event · a binding per app that names a session |
-| **Because** | It's a custom flow, not a token-driven agent, and most deliveries are a lookup. DeepSeek spends tokens per event per agent: without pass-through, their run used 31.8M cache-read tokens against 23.2M with it |
+| **Instead of** | DeepSeek's LLM router that sees every event · a binding per app that names a session |
+| **Because** | Most deliveries are a lookup. DeepSeek spends tokens per event per agent: without pass-through, 31.8M cache-read tokens against 23.2M with it |
 | **Locks in** | The flow routes and never decides new work ([D8](#d8)). One per provider, mounted by the app |
 
-<a name="d2"></a>
-## D2 · Deterministic, pluggable checks first; the evaluator is the only model use · decided 2026-11-01
+**What would change my mind:** the kill line. If config screens decide under half the deliveries, a
+coordinator with a filter is cheaper, and the epic stops.
 
-| | |
-|---|---|
-| **Because** | The fast path runs in code; the slow path runs on Jev only when a subscription's screen gets that far. No generator runs anywhere in routing |
-| **Locks in** | The closure counts 0 generator calls in routing |
+![D1: a service flow in code, chosen, beside an LLM router; decided by cost as sessions multiply](figures/d1-code-routes.svg)
 
-<a name="d3"></a>
-## D3 · Sessions subscribe and say what they care about; the service flow manages subscriptions · decided 2026-11-01
-
-| | |
-|---|---|
-| **Locks in** | A session hears only events that pass its subscription. Fan-out is many-to-many: several sessions can follow one PR |
-
-<a name="d4"></a>
-## D4 · Where webhooks are hard, the same flow polls; push and poll are only ingestion · decided 2026-11-01
-
-| | |
-|---|---|
-| **Because** | Localhost has no public URL. Polling what subscriptions name gives the same normalized event to the same screens |
-| **Locks in** | One dedupe key shared by push and poll, on the provider's object id and version (comment id plus `updated_at`, check-run id plus status). `X-GitHub-Delivery` exists only on push, so it can't be the shared key. It's a second key on the same mechanism as [FIX-2199](https://linear.app/fixpoint-labs/issue/FIX-2199) (webhook delivery dedupe and resume, under FIX-2171), which dedupes a repeated delivery id to its original run, and FIX-402 (idempotency). It isn't a second store. Cadence is [D10](#d10) |
+It comes down to cost as sessions multiply: the router's spend grows with every event.
 
 <a name="d5"></a>
-## D5 · Subscriptions are a user-scoped resource the service flow owns · decided 2026-11-02
+## D5 · A subscription is a user-scoped resource, and a user hears only what they can read · owner, 2026-11-02; credentials rule, EM, 2026-11-03
 
 | | |
 |---|---|
-| **Instead of** | Org scope · session state on each subscriber, which the flow can't query |
-| **Because** | A subscription runs with its user's credentials (the user's GitHub or Slack token for polling and for what the delivery may show), so it has to belong to that user (owner, 2026-11-02). The flow looks up "who follows repo#123" in one read. Writes go through tools only, so there's one door |
-| **Locks in** | `subscribe` and `unsubscribe` are the service flow's tools, not task tools, so FIX-2056's five-tool bar holds. A subscription tied to a FIX-2056 task ends when the task ends (the claim gate or the drain). A standing subscription, such as a coordinator's, lasts until it's removed. **The GitHub flow subscribes a coding task to its PR automatically when the PR opens** (owner, 2026-11-02). It finds the task from the record the task writes when it opens the PR |
+| **Instead of** | Org scope on one app token · session state on each subscriber, which the flow can't query |
+| **Because** | It runs on its user's credentials (owner). So it names only a thread its user can read, checked with their credentials at subscribe; an event fans out only to users who can read its thread; a poll runs under one subscriber's token and reaches only users who can read the thread. Still one Jev call per event, and no verdict or interest sentence reaches another user ([ER-4](#who-owns-what)) |
+| **Locks in** | `subscribe` and `unsubscribe`, the service flow's tools, are the only writers, so FIX-2056's five-tool bar holds. A task's subscription ends with it. A coding task is subscribed to its PR when it opens (owner) |
 
-<a name="d6"></a>
-## D6 · A structured filter selects; the screen decides · proposed
+![D5: the user's credentials, chosen, beside one app token; decided by a private repo](figures/d5-user-scoped.svg)
 
-| | |
-|---|---|
-| **Because** | A subscription names at least a provider and a thread or channel, and optionally kinds. That's an index lookup at zero tokens, so the screen ([D7](#d7)) never sees the firehose. A sentence ("review feedback") is compiled into config screens at subscribe time when it can be, with one Jev call then and none per event |
-| **Locks in** | A subscription with only a sentence is refused |
-
-<a name="d7"></a>
-## D7 · Each subscription screens what reaches it · decided in principle 2026-11-02; the mechanism is a lean
-
-| | |
-|---|---|
-| **Because** | Fan-out puts outside text into a session's context. DeepSeek admits prompt injection is unsolved, and their fan-out checks no sender. The owner wants each subscription to screen activity |
-| **The lean (owner, 2026-11-02)** | A **router block** runs each subscription's screens in order. First **config screens**: deterministic, zero tokens, the **sender check** among them. Then any **custom screen blocks** the app provides. If neither decides, a basic **Jev check**: "is this noise, or does it carry useful content" (or the subscription's stated interest). Across all subscriptions an event reaches, the Jev questions go in **one evaluator call** |
-| **Locks in** | A delivered message carries its sender and an "outside content" mark. A config screen's refusal is final, so no model sees a refused sender's text. **The default policy (who passes, and public-repo outsiders) is [Q1](#open)** |
-
-<a name="d8"></a>
-## D8 · An unmatched event goes to the coordinator or is dropped · proposed
-
-| | |
-|---|---|
-| **Because** | Deciding new work is the coordinator's job ([FIX-1786 D2](../FIX-1786/DECISIONS.md#d2)). The flow forwards an unmatched event only for the kinds the app's config lists (for example, a mention of the bot) |
-| **Locks in** | The service flow never calls `createTask`. Dropped events are counted, not stored. What the coordinator does with them is [D11](#d11) |
+It comes down to a private repo: on one app token, its content reaches a user who can't read it.
 
 <a name="d9"></a>
-## D9 · Delivery is `sendMessage`, which accepts a service-flow sender · decided 2026-11-02
+## D9 · Delivery is `sendMessage`'s exempt path, with a server-set source label · owner, 2026-11-02; mechanism, EM, 2026-11-03
 
 | | |
 |---|---|
-| **Instead of** | A system worker on the roster · a second delivery path |
-| **Because** | `sendMessage` already does owed delivery, the log row and the crash-safe `id` (`packages/workforce/src/messages/send-message.ts`), so there's still one public messaging API |
-| **The minimal change** | Today a sender must be a worker session (`not_a_worker`), and each send spends FIX-1989's budget of one per message a user types (`hop.ts`). Add a server-only sender kind, `service: <flowKind>`, that never comes from a model's input. It doesn't touch the hop budget; it has its own cap per subscription per window. It uses the D4 dedupe key as the message `id`, so a redelivery is one message. It never asks for a reply. Recipient checks (the roster, `task_sessions_only`) apply as they do today, read as "the recipient's session belongs to the subscription's user" |
-| **Locks in** | No roster worker for the flow. The Messages view shows the service as the sender |
+| **Instead of** | A new sender kind, `service:<flowKind>`, with its own budget · a system worker on the roster |
+| **Because** | The `exempt` path (`send-message.ts` ~249) already skips the hop budget and takes a crash-safe `id`. New: a server-set source label where the worker id sits, so no `not_a_worker` refusal (~289); a check that the session is the subscription's user's; a cap per subscription per window, distinct from `hop.ts`. The id is `<object>@<version>:<session>` ([D4](#d4)) |
+| **Locks in** | The owner's intent: no roster worker, one messaging API, its own budget, the service shown as sender. FIX-2070 edits the same function ([seam](#coordination-seams)) |
 
-<a name="d10"></a>
-## D10 · Polling: a 5-minute tick polls what's due; `sessionId` retires
+![D9: the exempt path, chosen, beside a new sender kind; decided by where recipient rules live](figures/d9-exempt-sender.svg)
 
-| | |
-|---|---|
-| **Cadence · decided 2026-11-02** | Every 5 minutes, a tick reads the subscriptions and polls the ones due by their own frequency. A subscription's frequency is 5 minutes or longer, never shorter. Each keeps a persisted cursor (last-seen id or `updated_at`). Polls batch by repository or channel |
-| **`sessionId` · proposed** | It retires, so there's one public way to route. Today only the guides and `goals/webhook-transport/` use it; no app on `main` declares `webhooks:`. Migration: a binding that sets `sessionId` becomes a subscription the app creates at startup for that thread key. It's deprecated for one minor version, then removed. Existing sessions keep their ids |
-
-<a name="d11"></a>
-## D11 · Explicit vs inferred work: off, observe, auto, in this epic · decided 2026-11-02
-
-| | |
-|---|---|
-| **Instead of** | Leaving it for a later epic |
-| **Because** | So the epic delivers something complete and well built (owner, 2026-11-02). This follows the shape of DeepSeek's prototype: explicit requests are accepted in every mode, and inferred work is accepted only in `auto` |
-| **Locks in** | A setting on the coordinator, not the service flow, defaulting to `observe`. `observe` writes a "would accept" item to the FIX-2058 Inbox and files nothing. `auto` files the task. Explicit means the event addresses the agent and passes the config screens' sender rule. It's child 6 |
+It comes down to where recipient rules live: a second sender kind keeps a second copy in step.
 
 <a name="open"></a>
-## Open for the owner
+## Open
 
-- **Q1.** The default screening policy: who passes by default (org members and listed bots?),
-  and what about outsiders on public repos?
-- **Q2.** The screen mechanism's contract: the config screens' schema and the custom screen
-  block's input and output. D7 records the lean; child 5 drafts the contract for approval.
+Q2, the screen contract, is drafted in child 1, which ships config screens and the seam, and is
+approved at its spec gate.
+
+<a name="q1"></a>
+### Q1 · Fail closed or fail open: who gets through a screen by default?
+
+- **In plain terms:** does a coding task hear an outsider's comment on a public repo? Child 1
+  ships the sender check, so it is decided here.
+- **The trade-off:** fail open puts unscreened outside text into a coding task's context.
+- **My recommendation: fail closed.** Org members, repo collaborators and the app's listed bots
+  pass; outsiders are refused unless the subscription opts in.
+- **What would change my mind:** an app whose core job is triaging outsiders' issues. Its answer
+  is one line, the opt-in.
+- **If wrong:** that app hears nothing until it opts in.
+
+![Q1: fail closed, recommended, beside fail open; decided by an outsider's comment](figures/open-screening-default.svg)
+
+<a name="q3"></a>
+### Q3 · In `observe`, a held task or an Inbox item with no task?
+
+- **In plain terms:** the Inbox lists only task-row holds and suspensions
+  (`orchestration/src/inbox/check.ts`; the inbox row of `docs/mechanisms/mechanisms.yaml`), so a
+  "would accept" item with no task is a new source.
+- **The trade-off:** A, the Inbox gains that source and `observe` files nothing (the owner's
+  wording). B files the task held on a confirm: nothing runs until a person says yes.
+- **My recommendation: B.** The Inbox stays as it is, and accepting is one click. "Files nothing"
+  becomes "runs nothing"; the Not-done-if line and leg d are written to B.
+- **What would change my mind:** held rows cluttering the board for people who never accept them.
+- **If wrong:** rows nobody accepts, or under A, a second Inbox source.
+
+![Q3: a held task, recommended, beside an Inbox item with no task; decided by the Inbox as it is](figures/open-observe-writes.svg)
+
+<a name="q4"></a>
+### Q4 · Build the Slack flow now, or prove the event shape without it?
+
+- **In plain terms:** the Slack child was there to prove the event isn't GitHub-shaped. Child 1
+  can check the shape against Slack's payload, and the closure keeps Slack-shaped fixture events.
+- **The trade-off:** that proof with no second flow, against Slack routing at wrap.
+- **My recommendation: Not doing.** The #support journey becomes a GitHub one.
+- **What would change my mind:** a committed user needing Slack routing this quarter. Restoring
+  it adds one child after the GitHub one, a Slack token, and live Slack events at closure.
+- **If wrong:** that user waits for its own epic.
+
+![Q4: no Slack flow, recommended, beside building it; decided by proving the event's shape](figures/open-slack.svg)
+
+<a name="q5"></a>
+### Q5 · Retire `sessionId` for every provider, or only where a service flow routes? · found 2026-11-03
+
+- **In plain terms:** besides GitHub, the Stripe and Slack guides and `keeping-a-flow-running.md`
+  set `sessionId`, and with Slack out no service flow replaces them.
+- **The trade-off:** a Stripe customer keeps one session, against one way to route.
+- **My recommendation: only where a service flow routes.** The GitHub binding loses it; Stripe,
+  Slack and custom bindings keep it. The Not-done-if line is written to this.
+- **What would change my mind:** every provider in the guides getting a flow.
+- **If wrong:** two ways to route, or each Stripe event in a fresh session.
+
+![Q5: retire only where a flow routes, recommended, beside everywhere; decided by a Stripe customer's events](figures/open-sessionid-scope.svg)
+
+<details>
+<summary><b>Decided earlier, not on the sign-off</b> · D2–D4, D6–D8, D10, D11</summary>
+
+<a name="d2"></a>
+**D2 · Deterministic checks first; the evaluator is the only model use** (owner, 2026-11-01). No
+generator runs anywhere in routing. The closure counts 0 generator calls.
+
+<a name="d3"></a>
+**D3 · Sessions subscribe; the service flow keeps the list** (owner, 2026-11-01). Fan-out is
+many-to-many.
+
+<a name="d4"></a>
+**D4 · Push and poll are only ingestion; two dedupe questions** (owner, 2026-11-01; EM,
+2026-11-03). Ingestion: has this subscription seen this object and version? Its last-seen version
+on the subscription row, which D10's cursor already persists. Delivery: has this recipient got it?
+A `sendMessage` id of `<object>@<version>:<session>` on the user-scoped log's `getOrCreate`
+(~298, ~394). No new store. `runOnce` doesn't reach across requests, and FIX-2199 is related, not
+a prerequisite.
+
+<a name="d6"></a>
+**D6 · A structured filter selects; the screen decides.** A subscription names a provider and a
+thread, and optionally kinds: a zero-token lookup. A sentence compiles to config screens at
+subscribe where it can. A subscription with only a sentence is refused.
+
+<a name="d7"></a>
+**D7 · The screen chain is a sequencer, not a router** (order, owner, 2026-11-02; block kind, EM,
+2026-11-03). A router picks one branch; a screen stops at the first refusal. `.stepIf` over config
+screens, then custom screen blocks, then one evaluator on Jev across the event's readers, with a
+verdict per subscription. A config refusal is final. A delivered message carries its sender and an
+"outside content" mark. `fit-check.ts`'s generator fallback is fenced off.
+
+<a name="d8"></a>
+**D8 · An unmatched event goes to the coordinator, or is dropped.** Only kinds the app lists are
+forwarded. Dropped events are counted, not stored. The service flow never calls `createTask`.
+
+<a name="d10"></a>
+**D10 · Polling runs on per-user schedule rows; `sessionId` retires** (cadence, owner, 2026-11-02;
+rows, EM, 2026-11-03). A static schedule runs as a system principal and can't read user-scoped
+subscriptions. Each subscription is a schedule-collection row (`defineScheduleCollection`,
+`createResourceCollectionScheduleResolver`, `onOverlap: "skip"`), and the 5-minute floor is a cron
+check at subscribe. `sessionId` retires from GitHub in the GitHub child; its scope elsewhere is
+[Q5](#q5). Implementer notes: conditional requests and batching per repo against
+rate limits; check runs delivered on terminal state, comment edits once per object.
+
+<a name="d11"></a>
+**D11 · Explicit vs inferred work, in this epic** (owner, 2026-11-02). `off`, `observe`, `auto`:
+one key beside `routing`, default `observe`. Explicit means the event addresses the agent and
+passes the sender rule, and runs in every mode. Inferred runs only in `auto`. What `observe`
+writes is [Q3](#q3).
+
+</details>
+
+## Who owns what
+
+![Who owns what: eight rules by six children, each with one owner; child 1 owns six](figures/ownership.svg)
+
+Child 1 owns six of eight rules because it is the seam; a *uses* cell is a place a child must not
+re-decide.
+
+| # | Rule every child obeys | Owner | Checked at |
+|---|---|---|---|
+| ER-1 | No generator in routing; Jev is one evaluator call per event | Child 4 (D2, D7) | Every spec review; the closure ledger |
+| ER-2 | The service flow never files a task; the coordinator decides new work | Child 5 (D8) | The closure, leg d |
+| ER-3 | One messaging API: delivery is `sendMessage`, no roster worker | Child 1 (D9) | Each child's spec review |
+| ER-4 | A user subscribes to, and hears, only threads they can read; no verdict or interest sentence reaches another user | Child 1 (D5) | Child 3's and 4's spec review; the closure's two users |
+| ER-5 | Subscriptions are written only by `subscribe` and `unsubscribe` | Child 1 (D5) | Child 2's and 5's spec review |
+| ER-6 | One normalized event: the service action's input over `WebhookInboundEvent` | Child 1 (D4) | Child 2's and 3's spec review |
+| ER-7 | A task's subscription ends with the task | Child 1 (D5) | The closure |
+| ER-8 | Seen once per subscription (last-seen version), sent once per session (`<object>@<version>:<session>`) | Child 1 (D4) | The closure, leg c |
+
+## Coordination seams
+
+| Seam | Between | Rule |
+|---|---|---|
+| `sendMessage` | Child 1 and [FIX-2070](https://linear.app/fixpoint-labs/issue/FIX-2070) (In Development) | Whichever lands second rebases onto the other's `exempt` path |
+| The subscription row | Child 1 and child 3 | Child 1 owns it; child 3 adds the schedule fields and the last-seen version |
+| The event shape | Child 1, children 2 and 3 | Child 1 fixes it; push and poll both map into it |
+| Coordinator config | Child 5 and FIX-1786's `routing` | One key beside it, no new policy |
+
+## Decided in review, recorded so no child reopens them
+
+All EM calls, 2026-11-03.
+
+- **Two dedupe questions, no new store:** [D4](#d4).
+- **Credentials:** [D5](#d5), ER-4.
+- **The 5× bar** counts context tokens with a fixed tokenizer and overhead.
+- **Retiring `sessionId` folds into the GitHub child.**
+- **Screens are a sequencer**; Q2 moves to child 1's spec gate: [D7](#d7).
+- **The exempt path, not a new sender kind:** [D9](#d9).
+- **Per-user schedule rows:** [D10](#d10).
+- **Reuse:** the event is an action schema; subscriptions follow the message log, the tools
+  standing rules; the work mode is one key.
+
+## What the end-state POC showed
+
+None built.
+
+## How it got here
+
+- **Drafted (Nov 1).** D1–D4 decided by the owner.
+- **Owner (Nov 2).** D5, D7's order, D9, D10's cadence, D11, the 5× bar.
+- **Second look and review (Nov 2–3).** Eight EM calls above. Seven children became five; Q1, Q3,
+  Q4 opened, and Q5 when the guides showed Stripe and Slack also set `sessionId`.

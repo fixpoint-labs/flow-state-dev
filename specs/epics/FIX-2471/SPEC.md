@@ -2,137 +2,173 @@
 
 **Spec** · [Decisions](DECISIONS.md)
 
-> Proposal for [FIX-2471](https://linear.app/fixpoint-labs/issue/FIX-2471). The owner decided D1–D4 on
-> 2026-11-01, and D5, D7, D9, D10's poll cadence, D11 and the closure bar on 2026-11-02.
-> D6, D8 and D10 are the architect's shaping. Two questions stay open ([Open](DECISIONS.md#open)).
+> The owner decided D1–D4 (2026-11-01) and D5, D7's order, D9, D10's cadence, D11 and the 5× bar
+> (2026-11-02). The EM made eight engineering calls on 2026-11-03 ([in review](DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)).
+> Four forks are live: [Q1](DECISIONS.md#q1), [Q3](DECISIONS.md#q3), [Q4](DECISIONS.md#q4), [Q5](DECISIONS.md#q5).
 
 ## Five teams, before and after
 
 | A team that… | Today | After this epic |
 |---|---|---|
-| **has a coding task with a PR open** | A GitHub webhook runs one binding in the one session that `sessionId(event)` names (`packages/core/src/types/webhooks.ts`; the guide's `` `${repo}#${number}` ``). The task's own session hears nothing unless that string happens to be its id | When the PR opens, the GitHub flow subscribes the task to it. A review comment that passes the subscription's screen lands in the task's session as a message, with no generator involved |
-| **runs Shift Manager on a laptop** | No public URL, so no webhook ever arrives | The same GitHub flow polls the subscriptions that are due, on a 5-minute tick, and delivers the same events through the same screens |
-| **has a session that cares about something fuzzy** ("tell me if anyone reports a crash in #support") | Writes its own binding, plus a generator that reads every message | Subscribes with a structured filter (Slack, #support) plus that sentence. Jev checks only the messages the filter and config screens pass, in one evaluator call per event |
-| **wants the coordinator to notice work nobody asked for** | Only work someone asks for gets done | An unmatched event reaches the coordinator. In `observe` mode it records "would accept" in the Inbox; in `auto` it files the task |
-| **maintains the framework** | Routing is a per-binding function that returns a session id. Nothing dedupes (`docs/architecture/webhook-transport.md`: "it does not dedup itself") and nothing fans out | One service flow per provider routes, subscriptions are its resource, one dedupe key covers push and poll, `sessionId` retires, and `sendMessage` is still the one messaging API |
+| **has a coding task with a PR open** | A webhook reaches the one session `sessionId(event)` names, not the task's | The task follows its PR from when it opens; a review that passes the screen lands in its session |
+| **runs Shift Manager on a laptop** | No public URL, so no webhook arrives | The same flow polls, at most every 5 minutes, through the same screens |
+| **cares about something fuzzy** ("tell me if anyone reports a crash in issues on repo X") | Writes a binding and a generator that reads every issue | Subscribes with that sentence. Jev reads only what config screens pass, one call per event |
+| **wants the coordinator to notice unasked work** | Only asked-for work gets done | An unmatched event reaches it. `observe` files it held for a yes ([pending](DECISIONS.md#q3)); `auto` runs it |
+| **maintains the framework** | A per-binding function returns a session id. Nothing dedupes or fans out | A flow per provider routes, `sessionId` leaves GitHub ([Q5](DECISIONS.md#q5)), `sendMessage` stays the one messaging API |
 
-**Why now.** On Nov 1 the DeepSeek Harness "Super-agent" write-up made the case for routing
-outside events to the sessions working on them. It routes with a model: an LLM router sees every
-event. Its own ablation shows that passing follow-ups straight to subscribed workers cuts tokens
-by 27% at the same latency. Our coordinator (FIX-1786), tasks (FIX-2056) and messages (FIX-1989,
-FIX-2070) are on `main`. What's missing is the code path that decides who hears an outside event,
-without a generator.
+**Why now.** On Nov 1 DeepSeek's "Super-agent" write-up routed outside events with an LLM router
+that sees every event, and its own ablation found passing follow-ups straight to subscribers cut
+tokens by 27%. Our coordinator, tasks and messages are on `main`; the code path that decides who
+hears an event is not.
 
 ## The goal, and how we'll know it's met
 
-**An outside event, pushed or polled, reaches every session subscribed to it, only if it passes
-that subscription's screen, and only once. Config screens cost no model calls. Jev, when a
-subscription needs it, costs at most one evaluator call per event. No generator routes anything.
-Unmatched work goes to the coordinator, which accepts inferred work only in `auto`.**
+**Outcome: a coding task, a coordinator or a lab hears about a PR review, a CI result or a message
+it follows, with nobody relaying it and no model reading every event.**
 
 | Is it the right goal? | |
 |---|---|
-| **The real need** | Coding tasks, coordinators and labs act on PR reviews, CI and chat without a person relaying them, and cost stays flat as sessions multiply |
-| **Smaller, and rejected** | Keep `sessionId` and let the app derive the task's session id. Then one event still reaches one session, nothing dedupes, and nothing works on localhost |
-| **Bigger, and not this epic's** | Long-term memory, a watchdog, speculative background work, mapping identities across providers |
-| **Not done if** | A config-screened match calls any model · a generator runs in routing · an event reaches a session twice (push plus poll, or a provider redelivery) · an event a subscription's screen refuses reaches its session · a subscription outlives its closed task · a subscription polls more often than every 5 minutes · two public ways to route a webhook remain (`sessionId` beside subscriptions) · two messaging APIs exist · the service flow files a task · inferred work is accepted outside `auto` · a closure bug is open |
+| **The real need** | Sessions act on reviews, CI and chat with no one relaying, and cost stays flat as sessions multiply |
+| **Smaller, and rejected** | Keep `sessionId` and derive the task's session. One event still reaches one session, nothing dedupes, nothing works on localhost |
+| **Bigger, and not this epic's** | The Not doing list below |
+| **Not done if** | A config-screened delivery calls a model · a generator routes · a session gets one event twice · two sessions on one PR don't each get it · a user gets a thread they can't read · a refused event is delivered · a subscription outlives its task or polls under 5 minutes · a GitHub event routes by `sessionId` ([pending](DECISIONS.md#q5)) · the service flow files a task · `observe` runs inferred work ([pending](DECISIONS.md#q3)) · a closure bug is open |
 
 ```mermaid
 flowchart LR
-  S["synthetic stream · ~300 GitHub + Slack events · 20 subscriptions · recorded fixtures"] --> L1["leg a · pushed by webhook"]
-  S --> L2["leg b · the same stream, polled · webhook off"]
-  S --> L3["leg c · both at once, plus provider redeliveries"]
-  S --> L4["leg d · unmatched events, coordinator in observe then auto"]
-  L1 --> T["what each session received · Inbox · model-call ledger"]
-  L2 --> T
-  L3 --> T
-  L4 --> T
-  T -->|"exact set per session · 0 generator calls in routing · Jev ≤ 1 per event · observe files nothing"| P["PASS"]
-  C["control · every event through the coordinator"] -.-> T
-  C -.->|"tokens ≥ 5× this epic's"| F["the gap must show"]
+  S["recorded fixtures · ~300 GitHub events and some Slack-shaped ones · 20 subscriptions · 2 users"] --> L1["leg a · pushed by webhook"]
+  S --> L2["leg b · polled · webhook off"]
+  S --> L3["leg c · both, with redeliveries · two sessions on one PR"]
+  S --> L4["leg d · unmatched · observe, then auto"]
+  L1 -->|"exact set per session · 0 generator calls · Jev at most 1 per event"| P["PASS"]
+  L2 --> P
+  L3 --> P
+  L4 -->|"observe runs nothing · auto runs it"| P
+  C["control · every event through the coordinator · same tokenizer"] -.->|"tokens at least 5× this epic's"| F["the gap must show"]
 ```
+
+Leg c is the one a single dedupe key fails: the second session on a PR hears nothing. The control
+is counted exactly as the epic is, so the gap can't be tuned.
 
 | How we verify | |
 |---|---|
-| **Goal check** | The closure child runs model-free, with a mock evaluation model (`packages/testing/src/mocks/mockEvaluationModel.ts`), on one `main` commit after every other child merges |
-| **Signal** | In legs a–c, each session's received set equals the fixture's expected set. The spend ledger (`docs/architecture/blocks.md`, "spend ledger") shows 0 generator calls in routing and evaluator calls ≤ the events that reached a Jev screen. Leg d: `observe` writes "would accept" Inbox items and no tasks; `auto` files exactly the accepted ones; explicit requests are filed in both modes |
-| **Anti-game** | Assert on the messages each session's store holds and the rows the Inbox shows, not on calls to `deliver`. Leg c redelivers with the same `X-GitHub-Delivery` and polls the same objects |
-| **Control that must fail** | `sessionId` routing on today's `main`: leg a must FAIL, because one session hears the event and the task doesn't. With every event sent through the coordinator, routing must cost **at least 5×** this epic's tokens (owner, 2026-11-02) |
+| **Goal check** | The closure child, model-free (`mockEvaluationModel`), on one `main` commit after every other child merges |
+| **Signal** | Legs a–c: each session's received set equals the fixture's; user B gets nothing from user A's private repo. The spend ledger: 0 generator calls, at most one evaluator call per event. Leg d ([pending](DECISIONS.md#q3)): `observe` files the task held on a confirm and runs nothing; `auto` runs it; explicit requests run in both |
+| **The 5× bar** | Both paths count the context tokens they would put before a model: core's `createTiktokenCounter` on `cl100k_base` over delivered messages and Jev prompts, plus one per-call overhead for the control. Both are fixture inputs; the mock's usage is never read |
+| **Anti-game** | Assert on each session's stored messages and the board's rows, not on `deliver` calls. Leg c reuses `X-GitHub-Delivery` and polls the same objects |
+| **Control that must fail** | `sessionId` on today's `main`: leg a FAILS. Every event through the coordinator: at least 5× the tokens |
+
+**Lead measure:** the set's goal-proven children, named. None today, of children 1–5 (not filed).
+
+**Not doing:** a generator in routing · the service flow filing a task · a second messaging API or
+a roster worker · push to screens (FIX-2367) · identity across providers · a Slack service flow
+([pending](DECISIONS.md#q4)) · long-term memory or a watchdog.
+
+**Kill line:** if the control comes in under 5× counted the same way, or config screens decide
+under half the fixture's deliveries, a coordinator with a filter is the cheaper build and we stop.
+Child 1's goal check reports that share before child 4 starts.
 
 ## What's in the box
 
-- **A service flow per provider** (GitHub first, then Slack). The app mounts it once. It owns
-  ingestion (push and poll), normalization, subscriptions, screening and delivery ([D1](DECISIONS.md#d1)).
-- **One normalized event**: provider, kind, thread (repo#PR, channel plus thread ts), object id
-  and version, sender, payload. Push and poll both produce it ([D4](DECISIONS.md#d4)).
-- **A user-scoped subscriptions resource**, run with the user's credentials. Sessions change it
-  only through `subscribe` and `unsubscribe`. A subscription tied to a task ends when the task ends.
-  The GitHub flow subscribes a coding task to its PR when the PR opens ([D5](DECISIONS.md#d5)).
-- **A screen per subscription**, run by a router block: config screens first (sender included),
-  then the app's custom screen blocks, then a Jev check for noise or for the subscription's
-  stated interest ([D6](DECISIONS.md#d6), [D7](DECISIONS.md#d7)).
-- **Delivery through `sendMessage`**, which gains a service-flow sender with its own budget
-  ([D9](DECISIONS.md#d9)). Unmatched events go to the coordinator or are dropped ([D8](DECISIONS.md#d8)).
-- **Polling** on a 5-minute tick that polls the subscriptions that are due. No subscription
-  polls more often than every 5 minutes. Each keeps a cursor, and a dedupe key is shared with
-  push ([D10](DECISIONS.md#d10)).
-- **Explicit vs inferred work** on the coordinator: `off`, `observe` and `auto`, with "would
-  accept" in the FIX-2058 Inbox ([D11](DECISIONS.md#d11)).
+![In the box: the GitHub flow, subscriptions, the screen chain, delivery, work modes. Composed in: the app's screens and settings. Replaced: GitHub's sessionId. Below a fence: the Not doing list](figures/end-state.svg)
 
-**Not built, below a fence:** a generator in routing; the service flow filing tasks; a second
-message API or a roster system worker; push to screens (FIX-2367's job); cross-provider identity.
+```mermaid
+flowchart LR
+  A["composed in · custom screens · unmatched kinds · work mode · outsider opt-in"] --> B["in the box · service flow · subscriptions · screen chain · delivery · work modes"]
+  R["replaced · GitHub's sessionId and routing code become a subscription"] --> B
+  B -.->|"the fence"| N["not built · the Not doing list"]
+```
 
-**Docs:** `apps/docs/guides/webhooks-github.md` and `webhooks-slack-events.md` are rewritten
-around subscribe. `docs/architecture/webhook-transport.md` drops `sessionId` and gains the dedupe key.
+Inside the box is what an app gets by mounting one flow per provider; the fence is the Not doing list.
 
-## The set · proposed
+**Docs:** the GitHub webhook guide teaches subscribe, and `webhook-transport.md` drops `sessionId`.
+Child 2 publishes both; each child documents its own specifics.
 
-| Child | What it delivers | Why the set needs it |
-|---|---|---|
-| **1 · subscriptions, config screens, direct delivery** | The normalized event; the user-scoped resource; `subscribe` and `unsubscribe`; the screen router block with config screens (sender included); `sendMessage`'s service-flow sender; ending with the task; the routing dedupe key, on FIX-2199's mechanism | The seam every other child is written against |
-| **2 · GitHub service flow (push)** | The webhook binding; normalization for PR reviews, comments, CI and pushes; thread keys; auto-subscribing a coding task to its PR when the PR opens | The first real provider. Shift Manager's coder needs it |
-| **3 · polling ingestion** | The 5-minute tick (`packages/core/src/types/schedules.ts`), per-subscription frequency of 5 minutes or more, cursors | Localhost and hosts with no public URL |
-| **4 · Slack service flow** | The same flow for Slack, push and poll | Proves the contract isn't GitHub-shaped |
-| **5 · custom screens and the Jev screen** | The custom screen block contract; the Jev fallback (noise, or the stated interest), one evaluator call per event; a sentence compiled into a config screen at subscribe time where possible | Fuzzy interests, priced |
-| **6 · explicit vs inferred work** | `off`, `observe` and `auto` on the coordinator for unmatched events; "would accept" items in the Inbox; `auto` files the task | So the epic delivers proactive work, not only routing |
-| **7 · retire `sessionId`** | Removes the binding field, moves the guides and `goals/webhook-transport/`, adds a migration note | One way to route |
-| **8 · closure · required** | The four legs and each team's journey | The only child that runs the whole set |
+## The set · as of 2026-11-03
 
-Child 1 goes first. 2 and 3 run in parallel, then 4, 5 and 6. Child 7 lands after 2 and 3. Every child blocks 8.
+Children are filed after this gate; live state will be in Linear.
+
+| Child | What it delivers | Why the set needs it | Status |
+|---|---|---|---|
+| FIX-XXX · subscriptions, config screens, delivery | Event shape, collection, tools, the screen chain with the sender check ([Q1](DECISIONS.md#q1)) and screen contract (Q2, at its spec gate), delivery, task endings, both dedupe answers | The seam every child is written against | Not filed |
+| FIX-XXX · GitHub flow, retire `sessionId` | The binding, normalization, thread keys, a version policy per kind, PR-open subscribe; `sessionId` removed from GitHub ([Q5](DECISIONS.md#q5)) | The first provider; one way to route it | Not filed |
+| FIX-XXX · polling | Per-user schedule rows, the 5-minute floor | Localhost | Not filed |
+| FIX-XXX · custom and Jev screens | Custom screen blocks; one evaluator call per event | Fuzzy interests, priced | Not filed |
+| FIX-XXX · explicit vs inferred work | `off`, `observe`, `auto` on forwarded unmatched kinds | The one child routing doesn't need; the owner kept it | Not filed |
+| FIX-XXX · closure · **required** | The four legs and each team's journey | The only child that runs the set | Not filed |
+
+Five and a closure, down from seven: `sessionId`'s retirement folded into the GitHub child, and
+Slack is in Not doing ([pending](DECISIONS.md#q4)). If five is four, child 5 is the one to cut.
+
+## How the issues flow into each other
+
+```mermaid
+flowchart LR
+  M["FIX-2070 · Messages epic · sendMessage"] -.->|"edits the same function"| A
+  A["FIX-XXX · subscriptions, config screens, delivery"] -->|"the event shape, the collection, the tools"| B["FIX-XXX · GitHub flow, retire sessionId"]
+  A -->|"the subscription row"| C["FIX-XXX · polling"]
+  A -->|"the screen chain and its contract"| D["FIX-XXX · custom and Jev screens"]
+  A -->|"forwarded unmatched kinds"| E["FIX-XXX · explicit vs inferred work"]
+  B --> P["FIX-XXX · closure · required"]
+  C --> P
+  D --> P
+  E --> P
+  classDef proposed stroke-dasharray:4 3
+  class A,B,C,D,E,P proposed
+```
+
+An edge is what one child hands the next; a dashed node isn't filed yet, and FIX-2070 is another
+epic's input. Child 1 goes first, then 2 to 5 in parallel.
+
+## What stays as it is
+
+- `when` on a binding, the signature check, and the Stripe and Slack guides (under [Q5](DECISIONS.md#q5)'s recommendation).
+- The coordinator's `routing` policies (FIX-1786), and the Inbox (FIX-2058) under the recommended fork.
+- The realtime bus (FIX-2367): it tells screens to read again; this tells sessions what happened.
 
 ## What's already here, and the debt
 
 | Already here | What the set does with it |
 |---|---|
-| Webhook transport: the signature check, `eventType`, `deliveryId`, `when`, `sessionId` (`packages/engine/src/transports/webhook/routes.ts`, `createWebhookTransportAdapter.ts`) | **Builds on** the check, the extractors and `when`. **Retires** `sessionId` |
-| `deliveryId` is surfaced but nothing dedupes (`webhook-transport.md`: "composes later with FIX-402"). [FIX-2199](https://linear.app/fixpoint-labs/issue/FIX-2199) (Backlog, under FIX-2171) dedupes a repeated delivery id to its original run and makes a crashed webhook run continuable; it may share a mechanism with FIX-2172 | **Aligned, not duplicated.** One dedupe mechanism, FIX-2199's, holding two keys: the delivery id for a redelivered run, and this epic's object id and version ([D4](DECISIONS.md#d4)) for routing, since a polled object has no delivery id. FIX-2199 lands first or child 1 builds the mechanism to its spec |
-| Schedules (`types/schedules.ts`, `@flow-state-dev/scheduled`) and recurring work (`packages/workforce/src/schedules/`) | **Builds on** for the tick: one tick runs one action that walks the due subscriptions |
-| The router block kind and the evaluator block on Jev, one `experimental_evaluate` call (`docs/architecture/blocks.md`). Best fit already routes on Jev (`packages/shift-manager/teams/devteam/host.mts:986`) | **Builds on** for the screen step and its fallback |
-| `sendMessage` (`packages/workforce/src/messages/send-message.ts`): owed delivery, the log row, the crash-safe `id`, `exempt` server messages. It refuses a non-worker sender (`not_a_worker`) and charges the per-user-message budget (`hop.ts`) | **Extended** with a service-flow sender and its own budget ([D9](DECISIONS.md#d9)) |
-| The coordinator flow with `routing:` (`packages/workforce/src/coordinator/`, [FIX-1786 D2](../FIX-1786/DECISIONS.md#d2)) | **Extended** with the work modes ([D11](DECISIONS.md#d11)) |
-| Task endings, which only the claim gate or the drain records (FIX-2056) | **Builds on**: an ending removes the task's subscriptions |
-| The FIX-2058 Inbox | **Builds on** for "would accept". Waiting on a person stays there |
-| The realtime bus (FIX-2367, FIX-2426) | **Not used.** It tells screens to read again; this tells sessions what happened. It follows the same pattern: push when possible, poll as the fallback |
+| Webhook transport (`engine/src/transports/webhook/`) | **Builds on** the signature check, `deliveryId` and `when`; `sessionId` **retires** from GitHub, and elsewhere per [Q5](DECISIONS.md#q5) |
+| `runOnce`, keyed by `(requestId, key)`, cross-request out of scope (`core/src/types/block.ts` ~530); [FIX-2199](https://linear.app/fixpoint-labs/issue/FIX-2199) (Backlog) | **Not used:** a push and a poll are different requests. FIX-2199 is related, not a prerequisite ([D4](DECISIONS.md#d4)) |
+| `workforce/src/fit-check.ts`, which falls back to a generator | **Fenced off**; the evaluator alone is used |
+| Task endings (FIX-2056); the Inbox, reading task-row holds (`orchestration/src/inbox/check.ts`) | **Builds on** both |
+
+| Adds | Existing piece considered | How composed |
+|---|---|---|
+| The normalized event | `WebhookInboundEvent` (`core/src/types/webhooks.ts`) | **Extends:** the action's input schema over it |
+| Subscriptions | The message log (`workforce/src/messages/message-log.ts`) | **Reuses** a user-scoped `defineResourceCollection` |
+| `subscribe`, `unsubscribe` | `workforce/src/standing-rules/rules-capability.ts`; `matchTopic` (`patterns/src/eventActors/`) | **Reuses** the tool shape, and the matcher where it fits |
+| The screen chain | The router kind (`docs/architecture/blocks.md` ~392) | **Reuses** a sequencer: a screen stops at the first refusal ([D7](DECISIONS.md#d7)) |
+| Delivery | `sendMessage`'s `exempt` path (`send-message.ts` ~249) | **Extends** ([D9](DECISIONS.md#d9)) |
+| Polling | Static schedules, which run as a system principal (`core/src/types/schedules.ts`) | **Reuses** per-user schedule rows (`workforce/src/schedules/scheduled-work.ts`, [D10](DECISIONS.md#d10)) |
+| The work mode | `routing` (`workforce/src/coordinator/coordinator-config.ts`) | **Extends:** one key beside it |
+| The GitHub service flow | A per-app binding | **New** |
 
 | The debt | |
 |---|---|
-| **Adds** | One normalized event, one resource, two tools, one screen router, one dedupe store, two provider flows, one poll tick, one sender kind on `sendMessage`, one mode setting on the coordinator |
-| **Removes** | `sessionId` on bindings, the per-app routing code in two guides, the "dedupe later" gap |
-| **Leaves** | `when` on bindings, as the cheapest pre-filter before normalization |
+| **Adds** | One service flow, one collection, two tools, a screen chain, a label and cap on the exempt send, one coordinator key |
+| **Removes** | `sessionId` on GitHub bindings, the GitHub guide's routing code, the "dedupe later" gap |
+| **Leaves** | `when` on bindings; `sessionId` for providers with no flow, pending [Q5](DECISIONS.md#q5) |
 
-**Net: up**, by one routing layer. It replaces a per-binding function and fills two gaps, fan-out and dedupe.
+**Net: up, by one routing layer.** No new store, sender kind or event type.
 
 ## Sign off
 
-**The goal:** config-screened matches at zero tokens, dedupe across push and poll, one way to
-route, one messaging API, and a routing cost at least 5× below the coordinator control. If this is
-wrong, we've built a router that saves nothing over a coordinator.
+**[The goal](#the-goal-and-how-well-know-its-met):** no one relays, no model reads every event.
+If wrong: a router that saves nothing over a coordinator. **[The debt](#whats-already-here-and-the-debt):**
+up one layer. If wrong: a store or sender kind creeps back in a child.
 
-**The debt: up** by one layer, and it removes `sessionId`.
+1. **[D1](DECISIONS.md#d1) · One service flow per provider routes, in code.** If wrong: the kill
+   line fires, and a filtered coordinator was the build.
+2. **[D5](DECISIONS.md#d5) · A subscription is its user's, and a user hears only what they can read.**
+   If wrong: one user's private repo reaches another's session.
+3. **[D9](DECISIONS.md#d9) · Delivery is `sendMessage`'s exempt path with a source label.** If wrong:
+   recipient rules drift between two senders.
 
-Decided by the owner: [D1](DECISIONS.md#d1)–[D4](DECISIONS.md#d4) on 2026-11-01; [D5](DECISIONS.md#d5),
-[D7](DECISIONS.md#d7) (in principle), [D9](DECISIONS.md#d9), [D10](DECISIONS.md#d10)'s cadence,
-[D11](DECISIONS.md#d11) and the 5× bar on 2026-11-02. Proposed: [D6](DECISIONS.md#d6),
-[D8](DECISIONS.md#d8), [D10](DECISIONS.md#d10)'s retirement half. **Open:** [two questions](DECISIONS.md#open).
+**Open:** [Q1 · who passes a screen](DECISIONS.md#q1) (recommend fail closed) ·
+[Q3 · what `observe` writes](DECISIONS.md#q3) (recommend a held task) ·
+[Q4 · Slack](DECISIONS.md#q4) (recommend Not doing) ·
+[Q5 · `sessionId`'s scope](DECISIONS.md#q5) (recommend GitHub only).
 
-Epic · 7 issues and a closure · Webhooks / Workforce
+Epic · 5 children and a closure · Inbound Transports & Reactive Flows · Webhooks / Workforce
