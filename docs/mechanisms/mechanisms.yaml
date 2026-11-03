@@ -698,6 +698,17 @@ mechanisms:
     status: unconfirmed
     doc: packages/workforce/README.md
 
+  - id: worker-door
+    job: A worker's door, `respond`, the one public action a user's line enters any worker by, and whether it takes the task the line is sent from (doorTask). The hire's contract check and the inventory row both read it.
+    package: "@flow-state-dev/workforce"
+    anchor: workerDoorOf
+    file: packages/workforce/src/worker-door.ts
+    builtOn: [flow, workforce]
+    overlaps:
+      - { id: worker-messages, relation: distinct-jobs, note: "The door takes a user's line into a worker's session; worker messages are one worker talking to another." }
+    status: unconfirmed
+    doc: packages/workforce/README.md
+
   # ── Coding harnesses ──────────────────────────────────────────────────────
   - id: coding-harness
     job: Drive a coding agent as a block. Core owns the neutral handle and what a harness declares about its abort (`stopsOnAbort`, read by harness-manager); Claude Code, Codex and Cursor are adapters. Each adapter still keeps its own copy of the event-to-item emit helper.

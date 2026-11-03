@@ -908,6 +908,24 @@ const sent = await fsd.flow(session.flowKind).send("respond", { message }, { ses
 A message that names a worker is refused. So is a turn on a session whose worker was fired, or
 moved to another flow since the session was created.
 
+A line sent from a task's screen can say which task it is for:
+
+```ts
+await fsd.flow(session.flowKind).send("respond", { message, taskId }, { sessionId: session.id })
+```
+
+The line and the worker's reply are then stored with that `taskId`, so a view of the task finds
+them again after a reload. Pass it only to a worker whose [inventory row](./inventory.md#what-each-row-holds)
+says `doorTakesTask: true`. The built-in flows all take it. A worker flow of your own takes it when
+its door spreads `doorTask(inputSchema)` from `@flow-state-dev/workforce` into `respond`:
+
+```ts
+actions: { respond: { ...doorTask(inputSchema), block: runTurn(installation), userMessage: (input) => input.message } },
+```
+
+The id only labels the turn. It doesn't pick which task a steer goes to, and a task this session
+never ran shows nothing for it.
+
 In React, build the client once per user with `useMemo`. `useFlow` creates sessions with no
 starting state, so a worker's flow refuses them: find or start the session with the client, then
 make it the hook's active session.

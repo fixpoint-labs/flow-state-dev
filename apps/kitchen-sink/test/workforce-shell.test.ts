@@ -65,7 +65,8 @@ async function oneStringActions(flow: string): Promise<Record<string, string>> {
   for (const [name, action] of Object.entries(factory.actions)) {
     const schema = action.inputSchema ?? action.block.inputSchema;
     if (!(schema instanceof z.ZodObject)) continue;
-    const fields = Object.entries(schema.shape as Record<string, ZodTypeAny>);
+    // Optional fields (a door's `taskId`) don't change what a user answers with.
+    const fields = Object.entries(schema.shape as Record<string, ZodTypeAny>).filter(([, field]) => !field.isOptional());
     if (fields.length === 1 && fields[0]![1] instanceof z.ZodString) found[name] = fields[0]![0];
   }
   return found;
