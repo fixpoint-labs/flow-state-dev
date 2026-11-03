@@ -36,10 +36,12 @@
     "@flow-state-dev/workspace": "workspace:*",
     "@openai/codex-sdk": "0.164.0",
     "bullmq": "^5.0.0",
+    "pg": "^8.13.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
+    "@types/pg": "^8.11.0",
     "esbuild": "0.27.3",
     "playwright": "^1.49.0",
     "tsx": "^4.19.4",

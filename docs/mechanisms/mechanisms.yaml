@@ -299,6 +299,7 @@ mechanisms:
     package: "@flow-state-dev/engine"
     anchor: createInMemoryBus
     file: packages/engine/src/bus/in-memory-bus.ts
+    adapters: ["@flow-state-dev/store-postgres"]
     builtOn: [store]
     overlaps:
       - { id: streaming, relation: distinct-jobs, note: "streaming sends one request's item log and ends with it; a bus topic is a scope's and outlives every request." }
