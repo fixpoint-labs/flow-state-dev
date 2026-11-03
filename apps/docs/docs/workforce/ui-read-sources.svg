@@ -45,7 +45,7 @@
 <text class="t" x="342" y="372">Read on mount; with live, on a change.</text>
 <line class="hi" x1="330" y1="436" x2="610" y2="436"/>
 <text class="lb" x="342" y="458">TO READ AGAIN</text>
-<text class="t" x="342" y="478">With live, any session&#8217;s change;</text>
+<text class="t" x="342" y="478">With live, any session’s change;</text>
 <text class="t" x="342" y="494">without, a new React key.</text>
 <rect class="solid" x="636" y="56" width="280" height="88"/>
 <text class="lb" x="648" y="88">SOURCE 03</text>

@@ -15,7 +15,7 @@ import { claudeCodeRepoLine, claudeCodeRepoOptions } from "@/lib/claude-code-mod
 import { codexRepoLine } from "@/lib/codex-mode";
 import { cursorRepoLine } from "@/lib/cursor-mode";
 import { harnessTrust } from "@/lib/harness-trust";
-import { readHarnessTrust, readHarnessWorkspace } from "@/lib/harness-workspace";
+import { readHarnessCommands, readHarnessTrust, readHarnessWorkspace } from "@/lib/harness-workspace";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -60,6 +60,37 @@ describe("reading the trust settings", () => {
     expect(harnessTrust()).toEqual({ trusted: true, pass: ["GH_TOKEN"] });
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
     expect(harnessTrust()).toEqual(UNTRUSTED);
+  });
+});
+
+describe("reading the command settings", () => {
+  it("splits the checks on ; and the setup command into words", () => {
+    const read = readHarnessCommands({
+      KITCHEN_SINK_HARNESS_SETUP: "pnpm install --frozen-lockfile",
+      KITCHEN_SINK_HARNESS_CHECKS: "pnpm typecheck; pnpm test ",
+    });
+    expect(read.reason).toBeUndefined();
+    expect(read.setup?.command).toEqual(["pnpm", "install", "--frozen-lockfile"]);
+    expect(read.checks).toEqual(["pnpm typecheck", "pnpm test"]);
+  });
+
+  it("names nothing when both are unset", () => {
+    expect(readHarnessCommands({})).toEqual({ checks: [] });
+  });
+
+  it("turns the harness modes off on a command that needs a shell, naming the setting", () => {
+    const setup = { KITCHEN_SINK_HARNESS_SETUP: "pnpm install && pnpm build" };
+    expect(readHarnessCommands(setup).reason).toMatch(/^KITCHEN_SINK_HARNESS_SETUP: .*shell operator/);
+    expect(readHarnessWorkspace({ ...setup, NODE_ENV: "development" }, process.cwd())).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("KITCHEN_SINK_HARNESS_SETUP"),
+    });
+    const checks = { KITCHEN_SINK_HARNESS_CHECKS: "pnpm test | tee out" };
+    expect(readHarnessCommands(checks).reason).toMatch(/KITCHEN_SINK_HARNESS_CHECKS/);
+    expect(readHarnessWorkspace({ ...checks, NODE_ENV: "development" }, process.cwd())).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("KITCHEN_SINK_HARNESS_CHECKS"),
+    });
   });
 });
 

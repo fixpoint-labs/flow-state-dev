@@ -4,7 +4,7 @@ Hosts Kitchen Sink, Shift Manager, Teammates and Claude Code Style behind one
 port, one sub-route each, with a sign-in in front of all of them.
 
 ```bash
-pnpm build                       # builds everything, plus Kitchen Sink under /kitchen-sink
+pnpm build                       # builds everything, plus Kitchen Sink under /kitchen-sink and the DevTool page
 SUPER_APP_USERNAME=ops SUPER_APP_PASSWORD=… SUPER_APP_SECURE_COOKIE=1 pnpm serve   # port 80, all interfaces, HTTPS in front
 pnpm dev                         # http://localhost:8080, Kitchen Sink on `next dev`
 ```
@@ -17,6 +17,25 @@ pnpm dev                         # http://localhost:8080, Kitchen Sink on `next 
 | `/shift-manager/`     | Shift Manager     | `127.0.0.1:3120` |
 | `/teammates/`         | Teammates         | `127.0.0.1:3130` |
 | `/claude-code-style/` | Claude Code Style | `127.0.0.1:3140` |
+| `/devtool/`           | DevTool           | the proxy        |
+
+## DevTool
+
+Every app's pages carry a round button at the bottom right. It opens the DevTool
+on that app in a new tab (`/devtool/?app=<id>`). The DevTool is one page with a
+switcher across the top: pick another app and the same panel reconnects to it,
+with that app's sessions, traces and state. The address holds the choice, so a
+link opens straight on an app.
+
+The page talks to each app through the flow API the proxy already serves at
+`/<app>/api/flows`, so it needs nothing from the apps themselves. It opens an
+app as the user that app declares: Kitchen Sink's one user, and for a lab the
+`userId` (and token, if any) its pages carry. With none declared, the panel's own
+user editor decides. It sits behind the same sign-in as everything else.
+
+The page is a small Vite build (`pnpm build:devtool`, into `dist/`). `pnpm dev`
+rebuilds it at start and again as its source changes; `pnpm serve` serves what `pnpm build` made, and warns when
+there is none.
 
 ## Settings
 
@@ -60,17 +79,39 @@ see its README. They load `.env.local` the way they do standalone.
   the app's prefix; the pages read their API's base from it
   (`readBasePath()` in `@flow-state-dev/devtool/react`). The same build works
   standalone and here.
+- **The button** is written in by the proxy: a labs' page as it is rewritten, and
+  a Next page as it streams past (the page is asked for uncompressed, on the
+  loopback hop, so there is text to write into). The script adds the link after
+  the page's `load`, to `<html>` rather than `<body>`, so a framework hydrating the
+  body never meets a node it didn't render.
 - An app that stops leaves the rest running: its route answers `502` and the
   landing page marks it stopped. Log lines carry the app's id.
 
+## Restarting
+
+Quitting with Ctrl-C (or closing the terminal) stops the proxy and every app. If
+a run was killed instead and left something listening, the next start takes the
+port back: anything on the proxy's or an app's port that is running from this
+checkout is stopped, along with what it started, and the start says so. A
+process from anywhere else is left alone: that app is marked stopped (or, for the
+proxy's own port, the start refuses) with a message naming the holder. Finding
+the holder needs `lsof`; without it the start behaves as before and fails on the
+port.
+
 ## Limits
 
-- The labs run as `fsdev dev --app`, the way they run standalone. Each one's
-  DevTool listens on its own random loopback port and isn't proxied, so their
-  "Open trace" links only work on the machine itself.
-- `pnpm dev` serves the labs' built pages (rebuilt at start), not Vite HMR:
-  Vite's dev client loads from absolute paths that can't live under a prefix.
-  Kitchen Sink keeps `next dev` HMR.
+- The labs run as `fsdev dev --app`, the way they run standalone. Each one still
+  starts its own DevTool on a random loopback port, which isn't proxied and which
+  nothing here uses; use `/devtool/` instead. Their in-app "Open trace" links point
+  at that port, so they only work on the machine itself.
+- `pnpm dev` picks up client changes, but without HMR: each lab's pages (and the
+  DevTool page) are rebuilt with `vite build --watch` once the app is up, and a
+  browser refresh loads the new build. Vite's dev client loads from absolute
+  paths that can't live under a prefix. Kitchen Sink keeps `next dev` HMR. A
+  lab's server side (its flows and config) isn't watched: that needs a restart.
+- The button is an inline script, so a `Content-Security-Policy` an app sets
+  that forbids inline scripts would stop it showing, with no error on the page.
+  None of the hosted apps sets one.
 - Kitchen Sink's Bull Board (`REDIS_URL` set) mounts at `/api/admin/queues`
   without the prefix and isn't reachable through the proxy.
 - A lab page's relative URLs resolve against its `<base href>`, so a

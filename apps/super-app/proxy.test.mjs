@@ -5,7 +5,12 @@
  */
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { request as httpRequest } from "node:http";
+import { gzipSync } from "node:zlib";
 import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { addressKey, createAuth, safeNext } from "./auth.mjs";
 import { createProxy, loopbackHost, publicLocation } from "./proxy.mjs";
 
@@ -456,5 +461,186 @@ describe("an app that dies mid-response", () => {
     const res = await Promise.race([get("/lab/page-dies", { headers: { cookie } }), new Promise((r) => setTimeout(() => r(null), 3000))]);
     assert.notEqual(res, null, "the browser got an answer");
     assert.equal(res.status, 502);
+  });
+});
+
+describe("the DevTool button and page", () => {
+  /** A Next-style app behind the proxy: a page streamed in pieces, one that is compressed, and a record of what it was asked. */
+  const nextSeen = [];
+  const next = createServer((req, res) => {
+    nextSeen.push(req.headers);
+    if (req.url === "/kitchen-sink/") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.write("<html><body><p>hi</p></bo");
+      setTimeout(() => res.end("dy></html>"), 20);
+      return;
+    }
+    if (req.url === "/kitchen-sink/static") {
+      const body = "<html><body>static</body></html>";
+      res.writeHead(200, { "content-type": "text/html", "content-length": Buffer.byteLength(body) });
+      return res.end(body);
+    }
+    if (req.url === "/kitchen-sink/zipped") {
+      res.writeHead(200, { "content-type": "text/html", "content-encoding": "gzip" });
+      return res.end(gzipSync("<html><body>zipped</body></html>"));
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end("{}");
+  });
+  const lab = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end('<html><head><base href="/" /></head><body><div id="root"></div></body></html>');
+  });
+
+  const dir = mkdtempSync(join(tmpdir(), "super-app-devtool-"));
+  const outside = mkdtempSync(join(tmpdir(), "super-app-outside-"));
+  mkdirSync(join(dir, "assets"));
+  writeFileSync(join(dir, "index.html"), "<!doctype html><title>devtool</title>");
+  writeFileSync(join(dir, "assets", "index-abc.js"), "console.log(1)");
+  writeFileSync(join(outside, "secret.txt"), "TOP-SECRET-CONTENT");
+
+  const apps = [
+    { id: "kitchen-sink", title: "Kitchen Sink", blurb: "", prefix: "/kitchen-sink", kind: "next", port: 0, devtoolUserId: "devuser", run: { dev: [], serve: [] } },
+    { id: "lab", title: "Lab", blurb: "", prefix: "/lab", kind: "spa", port: 0, run: { dev: [], serve: [] } },
+  ];
+  const states = { "kitchen-sink": "running", lab: "starting" };
+  const mk = (devtoolDir) => createProxy({ apps, status: (id) => states[id], ...(devtoolDir === undefined ? {} : { devtoolDir }) });
+  const signedIn = createProxy({ apps, auth: createAuth({ username: "ops", password: "s3cret" }), status: (id) => states[id], devtoolDir: dir });
+  const open = mk(dir);
+  const unbuilt = mk(join(outside, "not-built"));
+  const noPage = mk();
+  const servers = [open, signedIn, unbuilt, noPage];
+  const at = (server, path, init) => fetch(`http://127.0.0.1:${server.address().port}${path}`, { redirect: "manual", ...init });
+
+  before(async () => {
+    await Promise.all([next, lab].map((s) => new Promise((r) => s.listen(0, "127.0.0.1", r))));
+    apps[0].port = next.address().port;
+    apps[1].port = lab.address().port;
+    await Promise.all(servers.map((s) => new Promise((r) => s.listen(0, "127.0.0.1", r))));
+  });
+  after(() => {
+    for (const s of [...servers, next, lab]) {
+      s.closeAllConnections();
+      s.close();
+    }
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  });
+
+  it("writes the button into a streamed Next page, inside the body even when the closing tag arrives in two pieces", async () => {
+    const res = await at(open, "/kitchen-sink/", { headers: { accept: "text/html" } });
+    const html = await res.text();
+    assert.match(html, /<p>hi<\/p><script>.*\/devtool\/\?app=kitchen-sink.*<\/script><\/body><\/html>$/s);
+    assert.equal(html.split("fsd-super-devtool").length - 1, 2 /* the id appears in the check and in the creation */);
+  });
+
+  it("drops a page's length, which the button made wrong, and still sends all of it", async () => {
+    const res = await at(open, "/kitchen-sink/static", { headers: { accept: "text/html" } });
+    assert.equal(res.headers.get("content-length"), null);
+    assert.match(await res.text(), /^<html><body>static<script>.*<\/script><\/body><\/html>$/s);
+  });
+
+  it("asks a Next app for an uncompressed page, and only for a page", async () => {
+    nextSeen.length = 0;
+    await (await at(open, "/kitchen-sink/", { headers: { accept: "text/html", "accept-encoding": "gzip" } })).text();
+    await (await at(open, "/kitchen-sink/api/flows", { headers: { accept: "*/*", "accept-encoding": "gzip" } })).text();
+    assert.equal(nextSeen[0]["accept-encoding"], undefined, "a page load is uncompressed, so the button can be written in");
+    assert.equal(nextSeen[1]["accept-encoding"], "gzip", "an API call keeps its compression");
+  });
+
+  it("leaves a page the app already compressed untouched rather than corrupting it", async () => {
+    const res = await at(open, "/kitchen-sink/zipped", { headers: { accept: "text/html" } });
+    assert.equal(res.headers.get("content-encoding"), "gzip");
+    assert.equal(await res.text(), "<html><body>zipped</body></html>", "no button, and still readable");
+  });
+
+  it("passes compressed HTML through byte for byte when the request didn't ask for a page", async () => {
+    // Without `Accept: text/html` the request keeps its `accept-encoding`, so the app may compress the page.
+    // The injector can't edit that, and must not touch it either.
+    const raw = await new Promise((resolve, reject) => {
+      const req = httpRequest(
+        { host: "127.0.0.1", port: open.address().port, path: "/kitchen-sink/zipped", headers: { accept: "*/*", "accept-encoding": "gzip" } },
+        (res) => {
+          const parts = [];
+          res.on("data", (c) => parts.push(c));
+          res.on("end", () => resolve({ body: Buffer.concat(parts), encoding: res.headers["content-encoding"] }));
+        },
+      );
+      req.on("error", reject);
+      req.end();
+    });
+    assert.equal(raw.encoding, "gzip");
+    assert.deepEqual(raw.body, gzipSync("<html><body>zipped</body></html>"));
+  });
+
+  it("writes the button into an SPA's page, after its <base> is moved under the prefix", async () => {
+    const html = await (await at(open, "/lab/")).text();
+    assert.match(html, /<base href="\/lab\/">/);
+    assert.match(html, /<div id="root"><\/div><script>.*\/devtool\/\?app=lab.*<\/script><\/body>/s);
+  });
+
+  it("serves the DevTool page, and its built files with a long cache only for the content-named ones", async () => {
+    const page = await at(open, "/devtool/");
+    assert.equal(page.status, 200);
+    assert.match(page.headers.get("content-type"), /text\/html/);
+    assert.equal(page.headers.get("cache-control"), "no-cache");
+    assert.match(await page.text(), /<title>devtool<\/title>/);
+    const asset = await at(open, "/devtool/assets/index-abc.js");
+    assert.match(asset.headers.get("content-type"), /javascript/);
+    assert.match(asset.headers.get("cache-control"), /immutable/);
+    assert.equal(await asset.text(), "console.log(1)");
+  });
+
+  it("moves the bare /devtool onto the page's address, keeping a query", async () => {
+    const res = await at(open, "/devtool?app=lab");
+    assert.equal(res.status, 308);
+    assert.equal(res.headers.get("location"), "/devtool/?app=lab");
+  });
+
+  it("lists the apps with their state, and the user a Next app runs as", async () => {
+    const res = await at(open, "/devtool/apps.json");
+    assert.equal(res.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await res.json(), [
+      { id: "kitchen-sink", title: "Kitchen Sink", prefix: "/kitchen-sink", status: "running", userId: "devuser" },
+      { id: "lab", title: "Lab", prefix: "/lab", status: "starting" },
+    ]);
+  });
+
+  it("never serves a file outside the page's folder", async () => {
+    for (const path of ["/devtool/..%2f" + outside.split("/").pop() + "%2fsecret.txt", "/devtool/%2e%2e/%2e%2e/etc/passwd", "/devtool/assets/..%2f..%2fsecret.txt"]) {
+      const res = await at(open, path);
+      assert.equal(res.status, 404, path);
+      assert.doesNotMatch(await res.text(), /TOP-SECRET-CONTENT|root:/, path);
+    }
+  });
+
+  it("refuses a malformed escape and anything that isn't a read", async () => {
+    assert.equal((await at(open, "/devtool/%E0%A4%A")).status, 400);
+    assert.equal((await at(open, "/devtool/", { method: "POST" })).status, 405);
+  });
+
+  it("says to build the page when it isn't built, rather than answering 404", async () => {
+    const res = await at(unbuilt, "/devtool/");
+    assert.equal(res.status, 503);
+    assert.match(await res.text(), /build/);
+  });
+
+  it("serves no page when none is configured, but still lists the apps", async () => {
+    assert.equal((await at(noPage, "/devtool/")).status, 404);
+    assert.equal((await at(noPage, "/devtool/apps.json")).status, 200);
+  });
+
+  it("is behind the sign-in like everything else: no page, and no list of apps, without the cookie", async () => {
+    for (const path of ["/devtool/", "/devtool/apps.json", "/devtool/assets/index-abc.js"]) {
+      assert.equal((await at(signedIn, path)).status, 401, path);
+    }
+    const login = await at(signedIn, "/login", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ username: "ops", password: "s3cret", next: "/devtool/" }).toString(),
+    });
+    assert.equal(login.headers.get("location"), "/devtool/");
+    const cookie = login.headers.get("set-cookie").split(";")[0];
+    assert.equal((await at(signedIn, "/devtool/", { headers: { cookie } })).status, 200);
   });
 });

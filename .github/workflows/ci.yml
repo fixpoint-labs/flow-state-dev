@@ -83,6 +83,15 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      # The lint-gate test runs the pre-push hook, and the hook's retired-term
+      # guard diffs against `origin/<base>` to find added lines. This job's
+      # checkout fetches only the merge commit, so fetch the base tip. Depth 1
+      # is enough: the guard diffs the tree against that commit, not a merge base.
+      - name: Fetch the base branch for the retired-term guard
+        env:
+          BASE: ${{ github.base_ref || 'main' }}
+        run: git fetch --no-tags --depth=1 origin "+refs/heads/${BASE}:refs/remotes/origin/${BASE}"
+
       - name: The lint gate can fail
         run: node --test scripts/lint-gate.test.mjs
 

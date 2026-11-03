@@ -557,9 +557,10 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
     ) : (
       <PickedSessionPanel
         session={pickedSession}
-        kind={picked.kind}
+        flow={picked.kind}
         user={KITCHEN_SINK_USER_ID}
         requestStatus={pickedRequestStatus}
+        onBack={() => setPicked(null)}
         conversation={
           isCoordinatorFlow(picked.kind) ? null : (
           <Conversation className="min-h-0 flex-1" data-testid="conversation">
