@@ -63,6 +63,9 @@ export async function createPostgresStores(
   options: PostgresStoreOptions
 ): Promise<PostgresStoreRegistry> {
   const skipSchemaInit = options.skipSchemaInit === true;
+  // A connection string initializes on a dedicated client, then uses the same
+  // registry as the other shapes. This keeps that path from initializing twice.
+  let schemaInitialized = skipSchemaInit;
   let executor: QueryExecutor;
   let closePool: () => Promise<void>;
   // `null` = explicitly disabled (caller passed `liveTailPool: null`).
@@ -177,6 +180,7 @@ export async function createPostgresStores(
     // run on the same pg connection. Use a dedicated client, not the pool.
     if (!skipSchemaInit) {
       await initializeSchemaWithDedicatedClient(pool);
+      schemaInitialized = true;
     }
 
     if (liveTailPool === undefined && poolConfig.connectionString) {
@@ -199,40 +203,16 @@ export async function createPostgresStores(
       // (caller used `host` etc. without a URL). Fall back to polling.
       liveTailPool = null;
     }
-
-    // Every write's notice goes out over this server; the listener needs the tail pool.
-    const bus = createPostgresBus({ executor, liveTailPool: liveTailPool ?? null, notify: true });
-    return {
-      session: createPostgresSessionStore(executor),
-      request: createPostgresRequestStore(executor, { liveTailPool }),
-      user: createPostgresUserStore(executor),
-      org: createPostgresOrgStore(executor),
-      activeRequests: createPostgresActiveRequestRegistry(executor, {
-        sharedAcrossProcesses: registrySharedAcrossProcesses
-      }),
-      content: createPostgresContentStore(executor),
-      resourceState: createPostgresResourceStateStore(executor),
-      checkpoints: createPostgresCheckpointStore(executor),
-      traces: createInMemoryTraceStore(),
-      suspensions: createPostgresSuspensionStore(executor),
-      leases: createPostgresLeaseStore(executor),
-      wakes: createPostgresWakeStore(executor),
-      bus,
-      async close() {
-        // The listener goes back to the tail pool before the pools end.
-        await bus.close();
-        await closePool();
-      }
-    };
   }
 
-  if (!skipSchemaInit) {
+  if (!schemaInitialized) {
     await initializeSchema(executor);
   }
 
-  // `{ pool }` reaches a server every process shares, so its notices go out
-  // there even with no tail pool to hear them on. An `{ executor }` (PGlite)
-  // is this process's alone, unless a tail pool says otherwise.
+  // `{ pool }` and a connection string reach a server every process shares, so
+  // their notices go out even with no tail pool to hear them on. An
+  // `{ executor }` (PGlite) is this process's alone, unless a tail pool says
+  // otherwise.
   const bus = createPostgresBus({
     executor,
     liveTailPool: liveTailPool ?? null,
