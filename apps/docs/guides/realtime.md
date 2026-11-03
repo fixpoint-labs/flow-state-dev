@@ -6,7 +6,7 @@ sidebar_label: Realtime screens
 
 Some screens show data other people or agents change: a task board a team works, a list of runs, a project's files. Without help, the screen goes stale until it reads again. This guide shows how to have the screen read again when the data changes, with code that works the same on every host.
 
-The idea is small. The server tells your screen *when* something under a topic changed. Your screen then makes the read it already makes, which says *what*. Nothing about the data travels with the notice, and every read is checked on the server as usual.
+The idea is small. The server tells your screen *when* something under a topic changed. Your screen then makes the read it already makes, which says *what*. Nothing about the data travels with the notice, and every read is checked on the server like any other.
 
 ## The hook
 
@@ -24,7 +24,7 @@ type Task = { id: string; title: string };
 function TaskList({ sessionId }: { sessionId: string }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const refresh = useCallback(
-    () => fsd.flow("support").read<Task[]>("listTasks", {}, { sessionId }).then(setTasks),
+    () => fsd.flow("support").read<Task[]>("listTasks_tasks", {}, { sessionId }).then(setTasks),
     [sessionId],
   );
 
@@ -35,9 +35,7 @@ function TaskList({ sessionId }: { sessionId: string }) {
 }
 ```
 
-On the Node host, `refresh` runs within about a second of someone else's change. A burst of changes runs it once more after the read in flight finishes, not once per change. The hook doesn't read on mount, so keep the first read where your screen already makes it.
-
-There are three topics:
+On the Node host, `refresh` runs as soon as the change is saved: the server sends the notice once the change can be read, and no timer is involved, so the delay is the network and your read. A burst of changes runs it once more after the read in flight finishes, not once per change. The hook doesn't read on mount, so keep the first read where your screen already makes it.
 
 | Topic | What changes it covers |
 |-------|------------------------|
@@ -49,7 +47,7 @@ Each takes `{ resource }` to narrow it to one resource, such as `topic.session(i
 
 ## Acting on what changed
 
-`refresh` gets the notice that woke it, `{ topic, kind, origin? }`, or `null` for a connect, a reconnect or a timer tick. A screen that only cares about some changes can skip the others:
+`refresh` gets the notice that woke it, `{ topic, kind, origin? }`, or `null` when the screen should read everything again: after a connect or a reconnect, on a timer tick, and when push starts or stops reaching every server process. A screen that only cares about some changes can skip the others:
 
 ```ts
 useSubscription([topic.session(sessionId)], (notice) => {
@@ -58,7 +56,7 @@ useSubscription([topic.session(sessionId)], (notice) => {
 });
 ```
 
-`kind` is `"items"`, `"request"`, `"run"` or `"resync"`. Read everything on `null`: it means the screen may have missed something.
+`kind` is `"items"`, `"request"`, `"run"` or `"resync"`. Read everything on `null` and on `"resync"`: the screen may have missed something.
 
 ## Outside React
 
@@ -85,11 +83,11 @@ Every `subscribe` call on one client shares one connection.
 
 You don't write different code for either. The client asks the server what it supports and picks.
 
-`pollIntervalMs` is also the fallback on a push host. The read runs on that timer while the socket is down, and while the server process the socket reached can't hear changes made in other processes. Leave it out and there is no timer at all: the read runs on a notice, a connect and a reconnect only.
+`pollIntervalMs` is also the fallback on a push host. The read runs on that timer while the socket is down, and while the server process the socket reached can't hear changes made in other processes (see below). Leave it out and there is no timer at all: the read runs on a notice, a connect and a reconnect only.
 
 ## One process, several processes
 
-Whether a notice reaches every server process depends on the change bus in your stores profile. The default bus lives in memory and reaches only its own process. On it, a subscription with `pollIntervalMs` keeps reading on its timer between notices, even when you run a single process. A bus that carries changes between processes turns that timer off while the socket is up.
+Each server keeps a *change bus*, the `bus` slot of its stores profile (the stores you hand `createFlowState`; see [Store adapters](/docs/persistence/overview#store-adapters)). A bus that *crosses processes* hands a change made in one server process to every other one. The default bus lives in memory and reaches only its own process, so it doesn't cross processes. On it, a subscription with `pollIntervalMs` keeps reading on its timer between notices, even when you run a single process. On a bus that crosses processes, the timer stays off while the socket is up.
 
 When several processes serve one address, give them all the same signing key, so a connection that lands on any of them is accepted:
 

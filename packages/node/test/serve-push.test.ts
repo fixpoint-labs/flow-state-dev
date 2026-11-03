@@ -162,6 +162,28 @@ describe("serve() push delivery", () => {
     expect(await onC.closed).toBe(4401);
   });
 
+  it("accepts tickets on either of two hosts that serve one router, with no pushSecret", async () => {
+    const flowState = createFlowState({ flows: { chat }, stores: { default: { primary: inMemoryStores() } } });
+    const router = await flowState.getRouter();
+    const options = { port: 0, host: "127.0.0.1", handleSignals: false, shutdownGraceMs: 200, disposeOnClose: false };
+    const first = await serve(router, options);
+    const second = await serve(router, options);
+    handles.push(first, second);
+    const bases = [first, second].map((handle) => `http://127.0.0.1:${handle.port}`);
+    for (const mintOn of bases) {
+      const answer = await mint(mintOn, [topic.user()]);
+      if (answer.transport !== "websocket") throw new Error("expected websocket");
+      for (const openOn of bases) {
+        const ws = open(openOn, `/api/flows${answer.path}`);
+        await ws.opened;
+        ws.socket.send(JSON.stringify({ type: "subscribe", ticket: answer.ticket }));
+        await until(() => ws.frames.length > 0 || ws.closeCode() !== undefined);
+        expect(ws.closeCode()).toBeUndefined();
+        expect(ws.frames[0]).toEqual({ type: "crossing", crosses: false });
+      }
+    }
+  });
+
   it("takes the shared secret from FSD_PUSH_SECRET when pushSecret is not given", async () => {
     vi.stubEnv("FSD_PUSH_SECRET", "from-env");
     const a = await start();

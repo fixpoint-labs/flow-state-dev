@@ -54,7 +54,7 @@ then disposes the router and the `FlowState`.
 `serve()` serves push: the WebSocket a client's `fsd.subscribe` (and React's
 `useSubscription`) hears change notices on, at `<basePath>/users/:userId/stream`.
 `GET /capabilities` reports `push: { transport: "websocket" }`, so a client on
-this host hears a change within about a second instead of reading on its timer.
+this host hears a change as soon as it is saved instead of on its timer.
 `push: false` turns it off. `createServerApp` alone serves no socket and reports
 `push: null`.
 
@@ -67,8 +67,10 @@ await serve(flowState, { pushSecret: process.env.FSD_PUSH_SECRET });
 
 `serve()` reads `FSD_PUSH_SECRET` itself when `pushSecret` is not given, and
 otherwise uses a random key for the process. A notice reaches every process only
-when the stores profile's change bus carries changes between processes; on the
-default in-memory bus, clients keep reading on their timer between notices.
+when the change bus crosses processes: the `bus` slot of the stores profile you
+hand `createFlowState` must hold a bus that hands a change made in one process to
+the others (see the engine README's *Change bus* section). On the default
+in-memory bus, clients keep reading on their timer between notices.
 
 ## Serving a built `FlowApiRouter` directly
 

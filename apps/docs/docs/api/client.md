@@ -458,7 +458,7 @@ async function readHistory() {
 
 ### `fsd.subscribe(topics, options)`
 
-Calls `onChange` when something under one of `topics` may have changed, so you can read it again. The call tells you when to read, never what changed: `onChange` makes the read your screen already makes, and that read is checked on the server as always.
+Calls `onChange` when something under one of `topics` may have changed, so you can read it again. The call tells you when to read, never what changed: `onChange` makes the read your screen already makes, and that read is checked on the server like any other.
 
 ```ts
 import { createClient, topic } from "@flow-state-dev/client";
@@ -476,7 +476,7 @@ sub.close();
 
 | Option | Type | Notes |
 |--------|------|-------|
-| `onChange` | `(notice: WireNotice \| null) => void` | Required. Gets the notice that woke it, `{ topic, kind, origin? }`, or `null` for a connect, a reconnect, a timer tick, or a change in whether push reaches every server process. |
+| `onChange` | `(notice: WireNotice \| null) => void` | Required. Gets the notice that woke it, `{ topic, kind, origin? }`, or `null` when the screen should read everything again: after a connect or a reconnect, on a timer tick, and when push starts or stops reaching every server process. |
 | `pollIntervalMs` | `number` | Call `onChange(null)` at this pace wherever push can miss a change: the server has no push, the socket is down, or the server process the socket reached can't hear the others. Omitted, there is no timer. |
 
 It returns `{ close() }`.
@@ -497,7 +497,7 @@ A notice's `kind` is `"items"`, `"request"`, `"run"` or `"resync"`; `origin.requ
 
 **On a host with no push** (Vercel, Next.js, `createServerApp` alone), `onChange(null)` runs on the `pollIntervalMs` timer and nothing else. The same code works on both.
 
-**On several processes**, push reaches a socket only if the server's change bus carries changes between processes. The default in-memory bus doesn't, even with one process, so a subscription with `pollIntervalMs` keeps reading on its timer between notices there. Give every process behind one address the same `pushSecret` (see [server setup](/docs/server/setup)).
+**On several processes**: Each server keeps a *change bus*, the `bus` slot of its stores profile (the stores you hand `createFlowState`; see [Store adapters](/docs/persistence/overview#store-adapters)). A bus that *crosses processes* hands a change made in one server process to every other one. Push reaches every socket only on such a bus. The default in-memory bus doesn't cross processes, even when you run one, so a subscription with `pollIntervalMs` keeps reading on its timer between notices there. Give every process behind one address the same `pushSecret` (see [server setup](/docs/server/setup)).
 
 See the [realtime guide](/guides/realtime) for the whole picture.
 

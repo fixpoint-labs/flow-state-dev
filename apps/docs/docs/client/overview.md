@@ -316,7 +316,7 @@ const sub = fsd.subscribe([topic.session(sessionId)], {
 });
 ```
 
-`onChange` is told when to read, never what changed. On the Node host it runs within a second of a change, over a WebSocket. On a host with no push, such as Vercel, it runs every `pollIntervalMs`. The code is the same on both. To follow a session's own items, use `fsd.sessions.stream` (or `useSession({ live: true })`) instead. See [`fsd.subscribe`](/docs/api/client#fsdsubscribetopics-options) and the [realtime guide](/guides/realtime).
+`onChange` is told when to read, never what changed. On the Node host it runs as soon as the change is saved: the server sends the notice once the change can be read, and no timer is involved, so the delay is the network and your read, over a WebSocket. On a host with no push, such as Vercel, it runs every `pollIntervalMs`. The code is the same on both. To follow a session's own items, use `fsd.sessions.stream` (or `useSession({ live: true })`) instead. See [`fsd.subscribe`](/docs/api/client#fsdsubscribetopics-options) and the [realtime guide](/guides/realtime).
 
 ## Transcription
 

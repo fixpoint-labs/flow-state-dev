@@ -16,7 +16,7 @@ import type { ResolvedPrincipal } from "../transports/types";
 import type { ChangeBus } from "../bus/types";
 import type { FlowApiRouter } from "../routes/createFlowApiRouter";
 import { authorizeManagementRoute, type RouteAuthContext } from "../routes/route-auth";
-import { jsonResponse, loadTenantSession } from "../routes/route-utils";
+import { jsonResponse, loadCheckedSession } from "../routes/route-utils";
 import { isWireTopic, openPushSocket, type PushSocket, type PushSocketIO } from "./socket-session";
 import { PUSH_TICKET_TTL_MS, signPushTicket, type GrantedTopic } from "./ticket";
 
@@ -52,7 +52,10 @@ const PUSH_STATE = Symbol.for("@flow-state-dev/engine/pushState");
  */
 export type PushState = {
   bus: ChangeBus;
+  /** The key tickets are signed and checked with, read on each use. Unset until push is on. */
   secret?: () => string;
+  /** This router's random key, made once, so every host that turns push on shares it. */
+  generated?: string;
 };
 
 /** Create a router's push state over its bus. */
@@ -79,12 +82,15 @@ export function enablePushDelivery(router: FlowApiRouter, options: EnablePushDel
     throw new Error("enablePushDelivery takes a router built by createFlowApiRouter");
   }
   const given = options.secret;
-  const generated = given === undefined ? randomBytes(32).toString("base64url") : undefined;
-  const secret = (): string => (typeof given === "function" ? given() : given ?? generated!);
-  state.secret = secret;
+  if (given === undefined) state.generated ??= randomBytes(32).toString("base64url");
+  const generated = state.generated;
+  state.secret = (): string => (typeof given === "function" ? given() : given ?? generated!);
+  // Every socket checks with the router's current key, the one the mint signs
+  // with, so two hosts in front of one router accept each other's tickets.
+  const current = (): string => state.secret!();
   return {
     transport: "websocket",
-    openSocket: (userId, io) => openPushSocket({ bus: state.bus, secret, userId, io })
+    openSocket: (userId, io) => openPushSocket({ bus: state.bus, secret: current, userId, io })
   };
 }
 
@@ -134,9 +140,10 @@ export async function handleMintPush(request: Request, userId: string, ctx: Mint
       // the caller may not read is dropped exactly as one that doesn't exist.
       const checked = await authorizeManagementRoute(request, { kind: "session_stream", sessionId: wire.id }, ctx);
       if (checked.denied !== undefined || checked.session === null) continue;
-      if (checked.session === undefined && (await loadTenantSession(ctx.stores.session, wire.id, ctx.tenantId)) === undefined) {
-        continue;
-      }
+      // The session as it is now must be the one the check read, as on every
+      // session route: one deleted and created again for someone else while
+      // the caller was being signed in is dropped like a missing one.
+      if ((await loadCheckedSession(ctx.stores.session, wire.id, ctx.tenantId, checked.session)) === undefined) continue;
       granted.push({ wire, bus: { scope: "session", id: wire.id, tenantId, ...resource } });
       continue;
     }

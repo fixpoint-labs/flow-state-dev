@@ -82,6 +82,21 @@ const FAILED_CONNECT_CODES = new Set<number>([
 let warnedTransport = false;
 let warnedHandler = false;
 
+/** The websocket arm of a mint answer. */
+type WebSocketAnswer = Extract<PushMintAnswer, { transport: "websocket" }>;
+
+/** A mint answer this client can use, a transport it doesn't build, or nothing usable. */
+function readMintAnswer(value: unknown): WebSocketAnswer | { transport: "other"; name: string } | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const answer = value as Record<string, unknown>;
+  if (answer.transport === "websocket") {
+    const usable =
+      typeof answer.ticket === "string" && typeof answer.path === "string" && Array.isArray(answer.topics);
+    return usable ? (answer as WebSocketAnswer) : undefined;
+  }
+  return typeof answer.transport === "string" ? { transport: "other", name: answer.transport } : undefined;
+}
+
 /** Whether `subscribed` covers a notice under `heard`. */
 function covers(subscribed: WireTopic, heard: WireTopic): boolean {
   if (subscribed.scope !== heard.scope) return false;
@@ -155,12 +170,18 @@ export function createPushHub(deps: {
 
   const allTopics = (): WireTopic[] => [...counts.values()].map((entry) => entry.topic);
 
-  const mint = (topics: WireTopic[]): Promise<PushMintAnswer> =>
-    deps.transport.json<PushMintAnswer>(`/api/flows/users/${encodeURIComponent(deps.userId)}/stream`, {
+  /**
+   * Ask the server for `topics`. Resolves to the answer, or `undefined` when
+   * what came back is not a mint answer this client can use (no body, a page
+   * from a proxy, an answer missing its ticket). Rejects only when the call
+   * itself failed (a network error, a non-2xx status), which is retried.
+   */
+  const mint = async (topics: WireTopic[]): Promise<WebSocketAnswer | { transport: "other"; name: string } | undefined> =>
+    readMintAnswer(await deps.transport.json<unknown>(`/api/flows/users/${encodeURIComponent(deps.userId)}/stream`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ topics })
-    });
+    }));
 
   /** Record which of `asked` the answer granted; returns the newly granted keys. */
   const record = (asked: readonly string[], answer: { topics: WireTopic[] }): Set<string> => {
@@ -190,7 +211,7 @@ export function createPushHub(deps: {
     if (asking.length === 0) return;
     for (const key of asking) minting.add(key);
     const at = generation;
-    let answer: PushMintAnswer | undefined;
+    let answer: Awaited<ReturnType<typeof mint>>;
     try {
       answer = await mint(asking.map((key) => counts.get(key)!.topic));
     } catch {
@@ -247,7 +268,7 @@ export function createPushHub(deps: {
     const at = ++generation;
     const asked = allTopics();
     updateTimers();
-    let answer: PushMintAnswer;
+    let answer: Awaited<ReturnType<typeof mint>>;
     try {
       answer = await mint(asked);
     } catch {
@@ -257,16 +278,20 @@ export function createPushHub(deps: {
       return;
     }
     if (at !== generation) return;
-    if (answer.transport !== "websocket") {
+    // An answer this client can't use (another transport, or not a mint
+    // answer at all) means no push here: read on the timer, never reject.
+    if (answer === undefined || answer.transport !== "websocket") {
       if (!warnedTransport) {
         warnedTransport = true;
-        console.warn(`[flow-state] client.subscribe: this client has no "${answer.transport}" push; reading on its timer.`);
+        const what = answer === undefined ? "an answer it can't read" : `"${answer.name}" push`;
+        console.warn(`[flow-state] client.subscribe: the server sent ${what}; reading on the timer.`);
       }
       noPush();
       return;
     }
+    const ready = answer;
     const WebSocketImpl = (globalThis as { WebSocket?: typeof WebSocket }).WebSocket;
-    const url = socketUrl(answer.path);
+    const url = socketUrl(ready.path);
     if (WebSocketImpl === undefined || url === undefined) {
       noPush();
       return;
@@ -309,14 +334,13 @@ export function createPushHub(deps: {
       opened = true;
       state = "open";
       lapsed = false;
-      failures = 0;
       crosses = false;
       firstCrossingFrame = true;
       granted.clear();
-      ws.send(JSON.stringify({ type: "subscribe", ticket: answer.ticket }));
+      ws.send(JSON.stringify({ type: "subscribe", ticket: ready.ticket }));
       const added = record(
         asked.map(wireTopicKey),
-        answer
+        ready
       );
       updateTimers();
       // Each connect reads once (ER-6): it may have missed changes.
@@ -333,6 +357,9 @@ export function createPushHub(deps: {
         return;
       }
       if (frame.type === "crossing") {
+        // The server sends this only once it accepted the ticket: the connect
+        // has succeeded, so the backoff starts over.
+        failures = 0;
         const first = firstCrossingFrame;
         firstCrossingFrame = false;
         const changed = frame.crosses !== crosses;

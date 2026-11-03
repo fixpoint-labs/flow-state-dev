@@ -254,8 +254,10 @@ Low-level hook for direct action execution without session management.
 Runs `read` again when something under `topics` changes, through the provider's
 client and `fsd.subscribe`. One read runs at a time and at most one more waits,
 so a burst of changes is one more read. `read` gets the notice that woke it, or
-`null` for a connect, a reconnect, a timer tick, or a wait that stands for
-several different notices. It doesn't read on mount.
+`null` when the screen should read everything again: after a connect or a
+reconnect, on a timer tick, and when push starts or stops reaching every server
+process. It also gets `null` when several changes arrived during one read (one
+follow-up read covers them all). It doesn't read on mount.
 
 ```tsx
 import { topic } from "@flow-state-dev/client";

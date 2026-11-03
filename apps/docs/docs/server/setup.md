@@ -225,7 +225,7 @@ The same holds after a restart, whichever instances are registered afterwards an
 |--------|------|---------|
 | GET | `/api/flows` | List registered flows |
 | GET | `/api/flows/capabilities` | What the server supports: `{ userStream, push }`, `push` `{ transport: "websocket" }` under `serve()`, else `null` |
-| POST | `/api/flows/users/:userId/stream` | Checks each topic the caller asks to hear and answers a short ticket for the ones it may (push hosts only) |
+| POST | `/api/flows/users/:userId/stream` | Checks which requested topics the caller may hear and returns a short-lived token for opening the WebSocket (push hosts only) |
 | GET | `/api/flows/users/:userId/stream` | The change-notice WebSocket, as an upgrade (`serve()` only); a plain GET answers 426 |
 | POST | `/api/flows/:flowId/actions/:action` | Execute action (new session) |
 | POST | `/api/flows/:flowId/:sessionId/actions/:action` | Execute action (existing session) |

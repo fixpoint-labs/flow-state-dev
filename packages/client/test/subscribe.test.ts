@@ -56,7 +56,16 @@ class FakeSocket {
 type MintCall = { topics: WireTopic[]; authorization: string | null };
 
 /** A server double: capabilities, and a mint that grants what `grant` allows. */
-function server(options: { push?: unknown; grant?: (topic: WireTopic) => boolean; transport?: string; mintStatus?: () => number } = {}) {
+function server(
+  options: {
+    push?: unknown;
+    grant?: (topic: WireTopic) => boolean;
+    transport?: string;
+    mintStatus?: () => number;
+    /** A raw 200 body for the mint, in place of a real answer. */
+    mintBody?: string;
+  } = {}
+) {
   const mints: MintCall[] = [];
   let ticket = 0;
   const fetcher: ClientFetch = async (input, init) => {
@@ -71,6 +80,7 @@ function server(options: { push?: unknown; grant?: (topic: WireTopic) => boolean
       mints.push({ topics, authorization: headers.get("authorization") });
       const status = options.mintStatus?.() ?? 200;
       if (status !== 200) return Response.json({ error: "no" }, { status });
+      if (options.mintBody !== undefined) return new Response(options.mintBody, { status: 200 });
       const granted = topics.filter(options.grant ?? (() => true));
       if (options.transport === "ably") {
         return Response.json({ transport: "ably", tokenRequest: {}, channels: [], topics: granted });
@@ -303,6 +313,27 @@ describe("client.subscribe on a host with push", () => {
     expect(mints.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("backs off 1, 2, 4, 8, 16 s across sockets that open and then have their ticket refused", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { fetcher } = server({ push: { transport: "websocket" } });
+    client(fetcher).subscribe([S1], { onChange: () => {}, pollIntervalMs: 60_000 });
+    await settle();
+    const gaps: number[] = [];
+    for (let i = 0; i < 6; i += 1) {
+      const socket = FakeSocket.all.at(-1)!;
+      socket.open();
+      socket.drop(4401);
+      const count = FakeSocket.all.length;
+      let waited = 0;
+      while (FakeSocket.all.length === count && waited < 60_000) {
+        await vi.advanceTimersByTimeAsync(500);
+        waited += 500;
+      }
+      gaps.push(waited);
+    }
+    expect(gaps.slice(0, 5)).toEqual([1000, 2000, 4000, 8000, 16000]);
+  });
+
   it("reconnects at once when the server ends the socket at its age limit", async () => {
     const { fetcher, mints } = server({ push: { transport: "websocket" } });
     const { socket } = await connected(client(fetcher), [S1], 1000, true);
@@ -375,6 +406,22 @@ describe("client.subscribe on a host with push", () => {
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
   });
+
+  for (const [name, body] of [
+    ["no body", ""],
+    ["a page that isn't JSON", "<html>bad gateway</html>"],
+    ["JSON that isn't a mint answer", JSON.stringify({ transport: "websocket" })],
+    ["JSON null", "null"]
+  ] as const) {
+    it(`reads on its timer, and never rejects, when the mint answers ${name}`, async () => {
+      const { fetcher } = server({ push: { transport: "websocket" }, mintBody: body });
+      const onChange = vi.fn();
+      client(fetcher).subscribe([S1], { onChange, pollIntervalMs: 1000 });
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(FakeSocket.all).toEqual([]);
+      expect(onChange.mock.calls).toEqual([[null], [null]]);
+    });
+  }
 
   it("keeps calling the other subscriptions when one onChange throws", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});

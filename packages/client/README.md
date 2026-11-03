@@ -216,14 +216,16 @@ with no web server, and a credentialed one streams with its credentials.
 `fsd.subscribe(topics, { onChange, pollIntervalMs? })` calls `onChange` when
 something under a topic may have changed, so the screen reads again. It says
 when, never what: `onChange` gets the notice (`{ topic, kind, origin? }`), or
-`null` for a connect, a reconnect or a timer tick.
+`null` when the screen should read everything again: after a connect or a
+reconnect, on a timer tick, and when push starts or stops reaching every server
+process.
 
 ```ts
 import { topic } from "@flow-state-dev/client";
 
 const sub = fsd.subscribe([topic.session(sessionId), topic.org()], {
   onChange: () => void reload(),
-  pollIntervalMs: 3000, // while there is no push, the socket is down, or its bus can't cross processes
+  pollIntervalMs: 3000, // read on this timer wherever push can miss a change
 });
 sub.close();
 ```

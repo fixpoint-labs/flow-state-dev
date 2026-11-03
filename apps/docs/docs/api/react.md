@@ -170,7 +170,7 @@ useSubscription([topic.session(sessionId)], refresh, { pollIntervalMs: 3000 });
 | Argument | Type | Notes |
 |----------|------|-------|
 | `topics` | `WireTopic[]` | From `topic.session(id)`, `topic.user()`, `topic.org()`. A new array with the same topics keeps the subscription. |
-| `read` | `(notice: WireNotice \| null) => unknown` | The screen's read. One runs at a time, and at most one more waits. Gets the notice that woke it, or `null` for a connect, a reconnect, a timer tick, or a wait that stands for several different notices. |
+| `read` | `(notice: WireNotice \| null) => unknown` | The screen's read. One runs at a time, and at most one more waits. Gets the notice that woke it, or `null` when the screen should read everything again: after a connect or a reconnect, on a timer tick, and when push starts or stops reaching every server process. It also gets `null` when several changes arrived during one read (one follow-up read covers them all). |
 | `options.pollIntervalMs` | `number` | Read at this pace wherever push can miss a change. Omitted, no timer. |
 | `options.enabled` | `boolean` | `false` subscribes nothing. Default `true`. |
 

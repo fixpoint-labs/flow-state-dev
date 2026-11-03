@@ -226,6 +226,38 @@ describe("POST /users/:userId/stream (the mint)", () => {
     expect(notArray.status).toBe(400);
   });
 
+  it("drops a session deleted and created again for another user while the caller is being signed in", async () => {
+    const registry = createFlowRegistry();
+    registry.register(demoFlow());
+    const stores = createInMemoryStores();
+    let swap: (() => Promise<void>) | undefined;
+    const router = createFlowApiRouter({
+      registry,
+      stores,
+      resolvePrincipal: async (context) => {
+        const user = context.request?.headers.get("x-user");
+        // The session check signs the caller in after reading the session:
+        // that is the window in which the id changes hands.
+        if (swap !== undefined && context.envelope.sessionId === "s1") {
+          const run = swap;
+          swap = undefined;
+          await run();
+        }
+        return user == null ? null : { userId: user, orgId: "acme" };
+      }
+    });
+    enablePushDelivery(router, { secret: SECRET });
+    await seedSession(stores, "s1", { userId: "alice" });
+    swap = async () => {
+      await stores.session.delete("s1");
+      await seedSession(stores, "s1", { userId: "bob" });
+    };
+    const { status, answer } = await mint(router, [topic.session("s1")]);
+    expect(swap).toBeUndefined();
+    expect(status).toBe(200);
+    expect(answer.topics).toEqual([]);
+  });
+
   it("in a mixed app, gives an anonymous caller no user or org topic", async () => {
     const registry = createFlowRegistry();
     registry.register(demoFlow("open"));
@@ -445,6 +477,22 @@ describe("enablePushDelivery", () => {
     const ws = socket(delivery);
     ws.send({ type: "subscribe", ticket: answer.ticket });
     expect(ws.closed()?.code).toBe(4401);
+  });
+
+  it("keeps one key when two hosts turn push on for the same router", async () => {
+    const registry = createFlowRegistry();
+    registry.register(demoFlow());
+    const router = createFlowApiRouter({ registry, stores: createInMemoryStores() });
+    const first = enablePushDelivery(router);
+    const second = enablePushDelivery(router);
+    const { answer } = await mint(router, [topic.user()], {}, "alice");
+    if (answer.transport !== "websocket") throw new Error("expected websocket");
+    for (const delivery of [first, second]) {
+      const ws = socket(delivery);
+      ws.send({ type: "subscribe", ticket: answer.ticket });
+      expect(ws.closed()).toBeUndefined();
+      expect(ws.frames).toEqual([{ type: "crossing", crosses: false }]);
+    }
   });
 
   it("uses one random secret per router when none is given", async () => {
