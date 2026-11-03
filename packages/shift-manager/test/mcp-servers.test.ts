@@ -104,7 +104,7 @@ function recordingHarness(runs: Relayed[]) {
           await Promise.all([...new Set(Object.values(relayed).map((server) => server.close))].map((close) => close()));
         }
         runs.push(run);
-        commitScriptedWork({ prompt: input.prompt, cwd: dir, resume: null });
+        await commitScriptedWork({ prompt: input.prompt, cwd: dir, resume: null });
         return {
           source: "recording-harness",
           status: "completed" as const,

@@ -7,11 +7,10 @@
  * DevTeam, the Teammates lab) runs the same one.
  */
 
-import { execFileSync } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CapabilityRef } from "@flow-state-dev/core";
-import { GIT_TIMEOUT_MS } from "./checkout";
+import { GIT_TIMEOUT_MS, run as spawnRun } from "@flow-state-dev/workspace";
 import { harnessStub, type HarnessStub, type StubRun } from "./harness-stub";
 
 /** Options for {@link scriptedHarness}. */
@@ -27,9 +26,9 @@ function rowLine(prompt: string): string {
   return prompt.split("\n").find((line) => line.startsWith("Row ")) ?? "a row";
 }
 
-/** Run git in `cwd`, bounded by {@link GIT_TIMEOUT_MS}, returning stdout. */
-function git(cwd: string, ...args: string[]): string {
-  return execFileSync("git", args, { cwd, stdio: "pipe", encoding: "utf8", timeout: GIT_TIMEOUT_MS });
+/** Run git in `cwd` through the workspace host's runner, bounded by {@link GIT_TIMEOUT_MS}, returning stdout. */
+async function git(cwd: string, ...args: string[]): Promise<string> {
+  return (await spawnRun("git", args, { cwd, timeoutMs: GIT_TIMEOUT_MS })).stdout;
 }
 
 /**
@@ -45,11 +44,11 @@ function git(cwd: string, ...args: string[]): string {
  *
  * @param run The attempt, as the stub hands it to `duringRun`.
  */
-export function commitScriptedWork(run: StubRun): void {
+export async function commitScriptedWork(run: StubRun): Promise<void> {
   writeFileSync(join(run.cwd, "SCRIPTED-RUN.md"), `A scripted run, no model.\n\n${rowLine(run.prompt)}\n`);
-  if (!existsSync(join(run.cwd, ".git")) || git(run.cwd, "status", "--porcelain").trim() === "") return;
-  git(run.cwd, "add", "-A");
-  git(run.cwd, "-c", "user.email=devforce-lab@example.test", "-c", "user.name=DevForce Lab", "commit", "-m", "scripted run: note the row");
+  if (!existsSync(join(run.cwd, ".git")) || (await git(run.cwd, "status", "--porcelain")).trim() === "") return;
+  await git(run.cwd, "add", "-A");
+  await git(run.cwd, "-c", "user.email=devforce-lab@example.test", "-c", "user.name=DevForce Lab", "commit", "-m", "scripted run: note the row");
 }
 
 /**

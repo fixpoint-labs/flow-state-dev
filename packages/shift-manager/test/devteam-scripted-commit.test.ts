@@ -57,15 +57,15 @@ describe("devteam: the scripted run's commit", () => {
     }
   });
 
-  it("a retry in the checkout its first attempt committed in finishes, and adds no commit", () => {
+  it("a retry in the checkout its first attempt committed in finishes, and adds no commit", async () => {
     const { first } = twoCheckouts();
     const run = { prompt: "Write a note.", cwd: first, resume: null };
 
-    commitScriptedWork(run);
+    await commitScriptedWork(run);
     expect(git(first, "rev-list", "--count", "main..run-1")).toBe("1");
 
     // The judge sent the first attempt back; the retry is handed the same checkout.
-    expect(() => commitScriptedWork(run)).not.toThrow();
+    await expect(commitScriptedWork(run)).resolves.toBeUndefined();
     expect(git(first, "rev-list", "--count", "main..run-1")).toBe("1");
     expect(git(first, "status", "--porcelain")).toBe("");
   });
