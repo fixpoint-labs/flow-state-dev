@@ -4,8 +4,8 @@
  * task's session. That turn shows the steer as a line and runs the worker's
  * reply, and both are stamped with the steered task's id, so a task view that
  * reads the session's stored items after a reload (`itemsForTask`) still finds
- * them. The board path never goes through the door, so the door's `taskOf`
- * stamp (`door-task-stamp.test.ts`) doesn't reach it.
+ * them. The board path never goes through the worker door, so the door's
+ * `taskOf` stamp doesn't reach it.
  *
  * Red state produced before this was trusted: without the steer turn's mark,
  * the line and the reply are stored with no `taskId`.
@@ -22,8 +22,6 @@ const workers = (): WorkerManifest[] => [
   ...boardWorkers(),
   { id: "chief", declared: { flow: "coordinator", delegates: ["otto"] }, body: "Hand the work to otto.", skills: [] }
 ];
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const STEER = "Mention the new flag too.";
 const REPLY = "Added the new flag.";

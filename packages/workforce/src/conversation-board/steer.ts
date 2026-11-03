@@ -154,12 +154,9 @@ export type SteerTurnEntryOptions = {
  */
 export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concurrency?: ConcurrencyConfig }) {
   const { name } = options;
-  // The turn is the task's (FIX-2530): mark the entry's scope with the admitted
-  // task, so the steers it shows and the reply it runs are stored under it and
-  // the task's view reads them after a reload. A steer sent through the board
-  // never passes the door, so the door's `taskOf` stamp doesn't reach it. Its
-  // own step, after the admission and before the take: a scope reads the mark
-  // when it opens, so the take's own lines need it in place first.
+  // Mark the scope with the admitted task, so the steer lines and the reply are
+  // stored under it (a board steer never passes the door's stamp). Its own step
+  // before the take: a scope reads the mark when it opens.
   const markTask = handler({
     name: `${name}-mark-task`,
     transient: true,
