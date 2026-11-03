@@ -22,7 +22,13 @@ import type { ChangeKind, WireTopic } from "./change-notice";
  */
 export type PushCapability = { transport: "websocket" } | { transport: "ably" };
 
-/** The body of `POST /users/:userId/stream`: the topics to hear. */
+/**
+ * The most topics one mint takes. A longer list is refused whole, so a client
+ * with more topics mints them in chunks of this size.
+ */
+export const PUSH_MINT_MAX_TOPICS = 100;
+
+/** The body of `POST /users/:userId/stream`: the topics to hear, at most {@link PUSH_MINT_MAX_TOPICS}. */
 export type PushMintRequest = { topics: WireTopic[] };
 
 /**

@@ -11,7 +11,7 @@
  * the check.
  */
 import { randomBytes } from "node:crypto";
-import { DEFAULT_ORG_ID, type PushCapability, type PushMintAnswer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, PUSH_MINT_MAX_TOPICS, type PushCapability, type PushMintAnswer } from "@flow-state-dev/core";
 import type { ResolvedPrincipal } from "../transports/types";
 import type { ChangeBus } from "../bus/types";
 import type { FlowApiRouter } from "../routes/createFlowApiRouter";
@@ -40,8 +40,6 @@ export type PushDelivery = {
   openSocket(userId: string, io: PushSocketIO): PushSocket;
 };
 
-/** The most topics one mint takes. */
-const MAX_MINT_TOPICS = 100;
 
 /** Where a router keeps its push state, read across engine copies. */
 const PUSH_STATE = Symbol.for("@flow-state-dev/engine/pushState");
@@ -127,8 +125,8 @@ export async function handleMintPush(request: Request, userId: string, ctx: Mint
     return jsonResponse(400, { error: "Expected a JSON body { topics }" });
   }
   const topics = (body as { topics?: unknown } | null)?.topics;
-  if (!Array.isArray(topics) || topics.length > MAX_MINT_TOPICS || !topics.every(isWireTopic)) {
-    return jsonResponse(400, { error: `Expected { topics }: at most ${MAX_MINT_TOPICS} wire topics` });
+  if (!Array.isArray(topics) || topics.length > PUSH_MINT_MAX_TOPICS || !topics.every(isWireTopic)) {
+    return jsonResponse(400, { error: `Expected { topics }: at most ${PUSH_MINT_MAX_TOPICS} wire topics` });
   }
 
   const tenantId = ctx.tenantId ?? "";

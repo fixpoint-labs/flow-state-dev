@@ -334,7 +334,7 @@ export { topic } from "@flow-state-dev/contracts";
 export type { ChangeKind, TopicOptions, TopicScope, WireTopic } from "@flow-state-dev/contracts";
 // Push delivery (FIX-2428): the mint's answer, the socket's frames and the
 // push a server advertises.
-export { PUSH_CLOSE_CODES, wireTopicKey } from "@flow-state-dev/contracts";
+export { PUSH_CLOSE_CODES, PUSH_MINT_MAX_TOPICS, wireTopicKey } from "@flow-state-dev/contracts";
 export type {
   PushCapability,
   PushClientFrame,

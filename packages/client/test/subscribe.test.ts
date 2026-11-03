@@ -7,6 +7,7 @@
  * reconnect, a change of the crossing answer, or a poll.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PUSH_MINT_MAX_TOPICS } from "@flow-state-dev/contracts";
 import { createClient, topic, type ClientFetch, type WireNotice, type WireTopic } from "../src";
 
 /** A WebSocket double the test drives: open, deliver a frame, drop. */
@@ -89,7 +90,8 @@ function server(
       const { topics } = JSON.parse(String(init.body)) as { topics: WireTopic[] };
       mints.push({ topics, authorization: headers.get("authorization") });
       await options.holdMint?.(topics);
-      const status = options.mintStatus?.() ?? 200;
+      // The server's own limit: a longer list is refused whole.
+      const status = topics.length > PUSH_MINT_MAX_TOPICS ? 400 : (options.mintStatus?.() ?? 200);
       if (status !== 200) return Response.json({ error: "no" }, { status });
       if (options.mintBody !== undefined) return new Response(options.mintBody, { status: 200 });
       const granted = topics.filter(options.grant ?? (() => true));
@@ -414,6 +416,22 @@ describe("client.subscribe on a host with push", () => {
     expect(mints.filter((call) => call.topics.some((t) => t.scope === "org"))).toHaveLength(2);
     expect(second.socket.sent.filter((frame) => (frame as { type: string }).type === "subscribe")).toHaveLength(2);
     expect(onChange.mock.calls).toEqual([[null]]);
+  });
+
+  it("mints more topics than one mint takes in chunks, over the one socket", async () => {
+    const { fetcher, mints } = server({ push: { transport: "websocket" } });
+    const fsd = client(fetcher);
+    const many = Array.from({ length: 2 * PUSH_MINT_MAX_TOPICS + 5 }, (_, i) => topic.session(`s${i}`));
+    const { socket, onChange } = await connected(fsd, many, 1000, true);
+    await settle();
+    expect(FakeSocket.all).toHaveLength(1);
+    expect(mints.every((call) => call.topics.length <= PUSH_MINT_MAX_TOPICS)).toBe(true);
+    expect(new Set(mints.flatMap((call) => call.topics.map((t) => (t as { id: string }).id))).size).toBe(many.length);
+    expect(socket.sent.filter((frame) => (frame as { type: string }).type === "subscribe")).toHaveLength(3);
+    // Every topic is heard: push covers the subscription and its timer stops.
+    onChange.mockClear();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("drops a frame that isn't one the server sends", async () => {

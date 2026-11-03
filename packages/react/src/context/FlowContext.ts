@@ -8,9 +8,10 @@ import {
   createElement,
   useContext,
   useMemo,
+  useRef,
   type ReactNode
 } from "react";
-import type { ClientFetch } from "@flow-state-dev/client";
+import type { Client, ClientFetch } from "@flow-state-dev/client";
 import type { RendererRegistry } from "../registry/block-renderers";
 
 /**
@@ -24,7 +25,16 @@ export type FlowContextValue = {
   apiPath?: string;
   fetcher?: ClientFetch;
   renderers?: RendererRegistry;
+  /**
+   * The clients this provider's hooks share, by transport, so hooks with the
+   * same user and transport hold one client (and so one push socket). Owned
+   * by the provider; absent outside one.
+   */
+  clients?: ClientCache;
 };
+
+/** A provider's clients: by fetcher, then by user, base URL and API path. */
+export type ClientCache = Map<ClientFetch | undefined, Map<string, Client>>;
 
 /**
  * Props for the canonical FlowProvider component.
@@ -92,6 +102,10 @@ function mergeRenderers(
  */
 export function FlowProvider(props: FlowProviderProps): ReactNode {
   const parent = useContext(FlowCtx);
+  // This provider's own client cache: never shared with another provider.
+  const clients = useRef<ClientCache | undefined>(undefined);
+  clients.current ??= new Map();
+  const cache = clients.current;
 
   const contextValue = useMemo<FlowContextValue>(() => {
     return {
@@ -101,9 +115,11 @@ export function FlowProvider(props: FlowProviderProps): ReactNode {
       baseUrl: props.baseUrl ?? parent.baseUrl,
       apiPath: props.apiPath ?? parent.apiPath,
       fetcher: props.fetcher ?? parent.fetcher,
-      renderers: mergeRenderers(parent.renderers, props.renderers)
+      renderers: mergeRenderers(parent.renderers, props.renderers),
+      clients: cache
     };
   }, [
+    cache,
     parent.baseUrl,
     parent.apiPath,
     parent.fetcher,

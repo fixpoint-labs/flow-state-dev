@@ -15,8 +15,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 import type { SubscribeOptions, WireNotice, WireTopic } from "@flow-state-dev/client";
 
-const { subscriptions } = vi.hoisted(() => ({
-  subscriptions: [] as Array<{ topics: readonly WireTopic[]; options: SubscribeOptions; closed: boolean }>
+const { subscriptions, built } = vi.hoisted(() => ({
+  subscriptions: [] as Array<{ topics: readonly WireTopic[]; options: SubscribeOptions; closed: boolean }>,
+  built: { clients: 0 }
 }));
 
 vi.mock("@flow-state-dev/client", async (importOriginal) => {
@@ -24,8 +25,9 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
   const { fakeClient } = await import("./support/fake-client");
   return {
     ...actual,
-    createClient: () =>
-      fakeClient({
+    createClient: () => {
+      built.clients += 1;
+      return fakeClient({
         subscribe: (topics, options) => {
           const entry = { topics, options, closed: false };
           subscriptions.push(entry);
@@ -35,15 +37,18 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
             }
           };
         }
-      })
+      });
+    }
   };
 });
 
-const { useSubscription } = await import("../src");
+const { FlowProvider, useSubscription } = await import("../src");
+const { createElement } = await import("react");
 const { topic } = await import("@flow-state-dev/client");
 
 afterEach(() => {
   subscriptions.length = 0;
+  built.clients = 0;
 });
 
 const S1 = topic.session("s1");
@@ -126,6 +131,42 @@ describe("useSubscription", () => {
     });
     await gate.settle();
     expect(gate.calls).toEqual([notice("items"), null]);
+  });
+
+  it("gives a waiting read null when its notices came from different requests", async () => {
+    const gate = gatedRead();
+    renderHook(() => useSubscription([S1], gate.read));
+    const { onChange } = subscriptions[0]!.options;
+    const from = (requestId: string): WireNotice => ({ topic: S1, kind: "request", origin: { requestId } });
+    act(() => {
+      onChange(from("r1"));
+      onChange(from("r2"));
+      onChange(from("r3"));
+    });
+    await gate.settle();
+    expect(gate.calls).toEqual([from("r1"), null]);
+  });
+
+  it("shares one client, and so one socket, across hooks under one provider", () => {
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      createElement(FlowProvider, { userId: "u1", baseUrl: "http://host", children });
+    renderHook(
+      () => {
+        useSubscription([S1], () => {});
+        useSubscription([topic.org()], () => {});
+      },
+      { wrapper }
+    );
+    expect(subscriptions).toHaveLength(2);
+    expect(built.clients).toBe(1);
+  });
+
+  it("gives each provider its own clients", () => {
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      createElement(FlowProvider, { userId: "u1", baseUrl: "http://host", children });
+    renderHook(() => useSubscription([S1], () => {}), { wrapper });
+    renderHook(() => useSubscription([S1], () => {}), { wrapper });
+    expect(built.clients).toBe(2);
   });
 
   it("keeps one subscription across renders with an equal topic list, and calls the latest read", async () => {

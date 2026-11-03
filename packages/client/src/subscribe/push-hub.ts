@@ -26,6 +26,7 @@
  */
 import {
   PUSH_CLOSE_CODES,
+  PUSH_MINT_MAX_TOPICS,
   wireTopicKey,
   type PushMintAnswer,
   type PushServerFrame,
@@ -257,6 +258,14 @@ export function createPushHub(deps: {
       (key) => counts.has(key) && !granted.has(key) && !minting.has(key) && !unacknowledged.some((set) => set.has(key))
     );
     if (asking.length === 0) return;
+    // One mint takes at most PUSH_MINT_MAX_TOPICS; more go as several tickets
+    // over the same socket.
+    if (asking.length > PUSH_MINT_MAX_TOPICS) {
+      for (let i = 0; i < asking.length; i += PUSH_MINT_MAX_TOPICS) {
+        void mintMore(asking.slice(i, i + PUSH_MINT_MAX_TOPICS));
+      }
+      return;
+    }
     const at = generation;
     for (const key of asking) minting.set(key, at);
     let answer: Awaited<ReturnType<typeof mint>>;
@@ -315,7 +324,9 @@ export function createPushHub(deps: {
     clearTimeout(retryTimer);
     state = "connecting";
     const at = ++generation;
-    const asked = allTopics();
+    // The connect's own ticket carries the first chunk; the rest are minted
+    // once the socket is open.
+    const asked = allTopics().slice(0, PUSH_MINT_MAX_TOPICS);
     updateTimers();
     let answer: Awaited<ReturnType<typeof mint>>;
     try {

@@ -38,7 +38,11 @@ function topicsKey(topics: readonly WireTopic[]): string {
 
 function sameNotice(a: WireNotice | null, b: WireNotice | null): boolean {
   if (a === null || b === null) return a === b;
-  return a.kind === b.kind && wireTopicKey(a.topic) === wireTopicKey(b.topic);
+  return (
+    a.kind === b.kind &&
+    wireTopicKey(a.topic) === wireTopicKey(b.topic) &&
+    a.origin?.requestId === b.origin?.requestId
+  );
 }
 
 /**
