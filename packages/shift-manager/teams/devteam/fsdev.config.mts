@@ -208,6 +208,7 @@ const lab = await openLab({
   // A coder hired with `settings: { harness: "cursor" }` runs on Cursor, not the coder above.
   harnesses: workerHarnesses(),
   runTimeoutMs: harness.runTimeoutMs,
+  coderHarness: harness.label,
   // Runs' places and the host's clones, beside the store; only `file://` remotes are reached.
   workspace: { root: join(dirname(STORE), "devteam-runs"), remotes: { allow: ["file"] }, ...(setup === undefined ? {} : { setup }) },
   coderWorkerId,

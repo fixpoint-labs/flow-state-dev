@@ -163,3 +163,17 @@ describe("one run's budget", () => {
     expect(started.checked()).toBe(0);
   });
 });
+
+// The label is what the Shift Coordinator reads a coder runs on ("have Cursor do it"), so it must
+// be the name a user types, one per choice (FIX-2487).
+describe("each coder's label", () => {
+  it.each([
+    ["stub", "the scripted coder (no model)"],
+    ["claude-code", "Claude Code"],
+    ["codex", "Codex"],
+    ["cursor", "Cursor"],
+  ] as const)("%s is called %s", async (value, label) => {
+    const started = await start("stub", value, [READY]);
+    expect(started.harness?.label).toBe(label);
+  });
+});

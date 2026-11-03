@@ -30,6 +30,17 @@ const notesFlow = defineFlow({
         },
       }),
     },
+    burst: {
+      inputSchema: z.object({ count: z.number() }),
+      block: handler({
+        name: "burst",
+        inputSchema: z.object({ count: z.number() }),
+        execute: async (input, ctx) => {
+          for (let i = 0; i < input.count; i += 1) await ctx.emit.message(`n${i}`);
+          return {};
+        },
+      }),
+    },
   },
 })();
 
@@ -111,5 +122,33 @@ describe("a session feed on a real host", () => {
     await host(flowState, first.port);
     await until(() => feed.getSnapshot().state === "live", 20_000);
     expect(states).toEqual(["connecting", "live", "reconnecting", "lapsed", "live"]);
+  }, 40_000);
+
+  it("opens a long session on its newest items and loads earlier ones back to the first, while the session goes on", async () => {
+    const flowState = createFlowState({
+      flows: { notes: notesFlow },
+      modelResolver: createMockModelResolver({}),
+      stores: { default: { primary: inMemoryStores() } },
+    });
+    const handle = await host(flowState);
+    await flowState.ready();
+    const client = createClient({ userId: "alice", baseUrl: `http://127.0.0.1:${handle.port}` });
+    await client.flow("notes").createSession({ sessionId: "s_long" });
+    await client.flow("notes").send("burst", { count: 450 }, { sessionId: "s_long" });
+    // Older than the stream's first read reaches back (5s), as a long thread's history is, so only the feed's reads can show it.
+    await new Promise((resolve) => setTimeout(resolve, 5_500));
+
+    const feed = sessionFeed(client, "s_long", { itemTypes: ["message"] });
+    feeds.push(feed);
+    await until(() => feed.getSnapshot().state === "live");
+    expect(texts(feed)).toHaveLength(200);
+    expect(texts(feed).at(-1)).toBe("n449");
+    expect(feed.getSnapshot().hasEarlier).toBe(true);
+
+    await client.flow("notes").send("say", { text: "while reading back" }, { sessionId: "s_long" });
+    while (feed.getSnapshot().hasEarlier) await feed.loadEarlier();
+    await until(() => texts(feed).includes("while reading back"));
+
+    expect(texts(feed)).toEqual([...Array.from({ length: 450 }, (_, i) => `n${i}`), "while reading back"]);
   }, 40_000);
 });

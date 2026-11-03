@@ -5,6 +5,7 @@ import { useWatch } from "../lib/use-watch";
 import { useDraftSend } from "../lib/use-draft-send";
 import { Entry } from "./Entry";
 import { JumpToLatestButton } from "./JumpToLatest";
+import { LoadEarlier } from "./LoadEarlier";
 import { ReviewCard } from "./ReviewCard";
 import { Spend } from "./Spend";
 import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus";
@@ -84,6 +85,7 @@ export function ThreadView({
       {column === "review" ? null : <div className="px-4 pt-2 text-xs text-muted-foreground [overflow-wrap:anywhere]">{statusLine(task)}</div>}
       <Spend task={task} split className="px-4" />
       <div ref={feed.ref} className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pt-2 pb-8 [overflow-wrap:anywhere]">
+        <LoadEarlier load={work?.loadEarlier} />
         {work?.entries.map((entry) => <Entry key={entry.id} entry={entry} />)}
         <JumpToLatestButton feed={feed} />
       </div>
