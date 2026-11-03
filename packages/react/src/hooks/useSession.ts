@@ -38,6 +38,7 @@ import { resolveItemVisibility } from "@flow-state-dev/contracts";
 import { useFlowContext } from "../context/FlowContext";
 import { useClient } from "../internal/useClient";
 import { coalescedReads } from "../internal/coalescedReads";
+import { LIVE_POLL_MS, mayBelongTo } from "../internal/scopeNotices";
 import {
   isReducibleStateChange,
   isReplayableStateChange,
@@ -71,13 +72,6 @@ const KEPT_LIVE_CHANGES = 256;
  * again, first and at most: the wait doubles between the two.
  */
 const RUNNING_STATUS_REREAD_MS = 1_000;
-
-/**
- * In live mode, the pace a view reads its scopes again wherever push can miss
- * a change: a host with no push, a socket that is down, or a bus that doesn't
- * cross processes (`client.subscribe`'s timer, FIX-1506).
- */
-const LIVE_SCOPE_POLL_MS = 3_000;
 
 /** How many finished own requests a view remembers, to skip their late notices. */
 const OWN_REQUESTS_KEPT = 200;
@@ -1997,13 +1991,17 @@ export function useSession(
 
     /**
      * Whether a resource change may move the scope's state read: the
-     * snapshot holds the resource (a single, or a collection's count), or
-     * the scope's client data may derive from it.
+     * snapshot holds a resource the change may belong to (a single, or a
+     * collection's count), or the scope's client data may derive from it.
+     * The view doesn't know its resources' storage paths (`roster` stores
+     * under `workforce/workers/…`), so any held resource can't be ruled out.
      */
     const stateCarries = (scope: "session" | "user" | "org", path: string): boolean => {
       const current = snapshotNowRef.current;
       const held = current?.resources?.[scope] ?? {};
-      if (Object.keys(held).some((ref) => path === ref || path.startsWith(`${ref}/`))) return true;
+      if (Object.keys(held).some((ref) => mayBelongTo(path, ref, undefined))) return true;
+      // Any client data: a derived value may read any of the scope's
+      // resources, so the cost is an extra read, never a stale view.
       const clientData = current?.clientData?.[scope];
       return clientData !== undefined && clientData !== null && Object.keys(clientData).length > 0;
     };
@@ -2040,7 +2038,7 @@ export function useSession(
 
     const subscription = fsd.subscribe([topic.session(sessionId), topic.user(), topic.org()], {
       onChange,
-      pollIntervalMs: LIVE_SCOPE_POLL_MS
+      pollIntervalMs: LIVE_POLL_MS
     });
 
     return () => {

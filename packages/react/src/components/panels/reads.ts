@@ -24,6 +24,7 @@ import { getPatternPrefix } from "@flow-state-dev/contracts/helpers";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { followSession } from "@flow-state-dev/client/internal";
 import { coalescedReads } from "../../internal/coalescedReads";
+import { LIVE_POLL_MS, mayBelongTo } from "../../internal/scopeNotices";
 import { useFencedRead, type ReadDriver } from "../../internal/useFencedRead";
 
 /**
@@ -59,9 +60,6 @@ export type PanelNoticeSource = {
 
 /** How a live panel hears its changes: the session stream (`BoardList`) or notices. */
 export type PanelLive = { readonly stream: PanelLiveSource } | { readonly notices: PanelNoticeSource };
-
-/** The pace a live panel reads wherever push can miss a change (`client.subscribe`'s timer). */
-const LIVE_PANEL_POLL_MS = 3_000;
 
 /** One row as a panel receives it: its topic, and the collection's projection of its state. */
 export type PanelRow<TClient = unknown> = {
@@ -162,20 +160,16 @@ function liveScopeDriver(sessionId: string, ref: string, client: PanelNoticeSour
         prefix = undefined;
       }
     );
-    const under = (path: string, root: string): boolean => path === root || path.startsWith(`${root}/`);
-    // A pattern with no static prefix (`**`, `[topic]/observations`) can
-    // rule no path out, so every resource notice reads again.
-    const names = (path: string | undefined): boolean => {
-      if (path === undefined || prefix === undefined || prefix === "") return true;
-      return under(path, ref) || (prefix !== null && under(path, prefix));
-    };
+    // Before the manifest lands, or if it fails, and for a pattern with no
+    // static prefix (`**`, `[topic]/observations`), no path is ruled out.
+    const names = (path: string | undefined): boolean => path === undefined || mayBelongTo(path, ref, prefix);
 
     const subscription = client.subscribe([topic.session(sessionId), topic.user(), topic.org()], {
       onChange: (notice: WireNotice | null) => {
         if (notice === null || notice.kind === "resync") return reads.request();
         if (notice.kind === "resource" && names(notice.topic.resource)) reads.request();
       },
-      pollIntervalMs: LIVE_PANEL_POLL_MS
+      pollIntervalMs: LIVE_POLL_MS
     });
     reads.request();
 

@@ -232,6 +232,15 @@ describe("useSession live · other sessions' scope changes", () => {
     expect(stateOnlyReads()).toHaveLength(1);
   });
 
+  it("reads state for a resource stored under a path its snapshot key doesn't name", async () => {
+    // `roster` is stored under `workforce/workers/*`: the notice's path can't
+    // be ruled out of the held collection, so its count may have moved.
+    sessionsMock.state.mockResolvedValue(snapshot({ clientData: {}, resources: { org: { roster: { count: 1 } } } }));
+    await mountLive();
+    await hear({ topic: topic.org({ resource: "workforce/workers/ada" }), kind: "resource" });
+    expect(stateOnlyReads()).toHaveLength(1);
+  });
+
   it("reads no state for a resource the scope's state read doesn't carry", async () => {
     const { announced } = await mountLive();
     sessionsMock.state.mockResolvedValue(snapshot({ clientData: {} }));
