@@ -15,6 +15,7 @@ import type {
 } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { Lease, LeaseOptions } from "../durability/types";
+import type { ChangeBus } from "../bus/types";
 
 export type { RequestStatus };
 
@@ -1700,6 +1701,14 @@ export type StoreRegistry = {
    * start, and without it keeps the fast paths only.
    */
   wakes?: WakeStore;
+  /**
+   * The change bus (FIX-2426): request and session writes publish a notice
+   * on their session's topic, and the session stream wakes on it. Optional
+   * on a registry you build yourself; every entry that takes one
+   * (`resolveStores`, `runAction`, BullMQ's job processor, `fsdev`) fills an
+   * in-memory bus when it has none (`withChangeBus`).
+   */
+  bus?: ChangeBus;
 };
 
 /**

@@ -378,6 +378,8 @@ Besides the callbacks, it takes `startingAfter` (resume after a sequence number)
 
 `fsd.sessions.stream(sessionId, options)` opens one stream for a whole session. It delivers each finished item from any request in the session, with the id of the request that kept it, and a notice naming the session's unfinished background runs whenever that set changes. Items the session snapshot hides are never sent.
 
+The server sends a change once it is saved: each write to the session wakes the stream's read, at most once a second. How much an idle view costs depends on the server's stores. On a bus that carries changes between processes, a view of a quiet session reads nothing. On the in-memory bus, which every store uses today, the server also reads about once a second per open view, so a reply another server writes still arrives. Either way the client sees the same events and needs no option for it. See [Store adapters](../persistence/overview.md#store-adapters).
+
 To build a live view, read the whole session snapshot, then open the stream from its first page's `at`, the server time that read began. The pages hold everything saved before that time, and the stream picks up everything saved after. Pass the snapshot's `sessionCreatedAt` too, so the stream follows the session you read and not a later one that takes its id. The example calls `readHistory`, from [Reading a live session's history](#reading-a-live-sessions-history) below, to read every page without missing an item. `useSession` with `live: true` does all of this for you.
 
 ```ts

@@ -10,6 +10,7 @@ import {
   ownsRecord,
   resolveDurabilityProvider,
   resolveInProcessPrincipal,
+  withChangeBus,
   type FlowRegistry,
   type RequestRecord,
   type RuntimeConfig,
@@ -213,6 +214,9 @@ export async function executeChatCommand(
     }
     runtimeSnapshot = { source: "discovery", store: ".fsdev/data/fsdev.db (SQLite)" };
   }
+  // The session and request writes chat makes beside runAction publish on the
+  // bus too (FIX-2426), so a view elsewhere on these stores hears them.
+  stores = withChangeBus(stores);
 
   try {
     const targets = listTargets(registry);
