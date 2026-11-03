@@ -2,11 +2,13 @@
  * Kitchen Sink's wiring of `@flow-state-dev/harness-manager`'s harness
  * session flow, which every coding harness mode uses.
  *
- * Server only. Kitchen Sink supplies two things and the package does the rest:
+ * Server only. Kitchen Sink supplies three things and the package does the rest:
  *
  * - **Where a session works**: its own git worktree of the repository
  *   (`lib/harness-worktree.ts`), from the one reader of the host setting
  *   (`lib/harness-workspace.ts`).
+ * - **The host's commands** (`readHarnessCommands`): the setup command a fresh
+ *   worktree runs, and the checks a finished turn runs (the package's `verify`).
  * - **Its goal controls** (`lib/goal-control.ts`): each swaps one feed for a
  *   broken stand-in, so a goal leg can be seen to fail. Read only in a
  *   test-mode build.
@@ -22,7 +24,7 @@ import {
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 
 import { goalControl } from "./goal-control";
-import { readHarnessWorkspace } from "./harness-workspace";
+import { readHarnessCommands, readHarnessWorkspace } from "./harness-workspace";
 import { locateSessionWorktree, provisionSessionWorktree, sessionBranch } from "./harness-worktree";
 
 /** The repository harness sessions work on. The flow is registered only while there is one. */
@@ -32,9 +34,16 @@ function repository(): string {
   return workspace.repository;
 }
 
-/** Each session's own worktree of the repository, on its own branch. */
+/** Each session's own worktree of the repository, on its own branch, set up by the host's setup command. */
 const workspace: HarnessSessionWorkspace = {
-  provision: async (place) => (await provisionSessionWorktree(repository(), place)).path,
+  provision: async (place, request) => {
+    const { setup } = readHarnessCommands();
+    const made = await provisionSessionWorktree(repository(), place, process.env, {
+      ...(setup === undefined ? {} : { setup }),
+      ...(request?.onSetup === undefined ? {} : { onSetup: request.onSetup }),
+    });
+    return { path: made.path, ...(made.setup === undefined ? {} : { setup: made.setup }) };
+  },
   locate: (place) => locateSessionWorktree(repository(), place),
   // No branch leaves the turn-end check out, so goal leg **b** can be seen to fail.
   branch: (place) => (goalControl() === "no-backstop" || !readHarnessWorkspace().ok ? null : sessionBranch(place)),
@@ -59,6 +68,9 @@ function withGoalControls(feeds: HarnessSessionFeeds, defaultModel: string | und
     },
   };
 }
+
+/** How long a turn's checks may take together. */
+export const HARNESS_CHECKS_TIMEOUT_MS = 10 * 60_000;
 
 /** The feeds a mode's block gets, for a test that reads the block's options. */
 export function kitchenSinkHarnessFeeds(kind: string, defaultModel?: string): HarnessSessionFeeds {
@@ -85,11 +97,14 @@ export interface KitchenSinkHarnessFlowOptions {
 
 /** A harness mode's session flow. */
 export function kitchenSinkHarnessFlow(options: KitchenSinkHarnessFlowOptions) {
+  const { checks } = readHarnessCommands();
   return harnessSessionFlow({
     kind: options.kind,
     workspace,
     ...(options.defaultModel === undefined ? {} : { defaultModel: options.defaultModel }),
     ...(options.approveTools === true ? { approveTools: true } : {}),
+    // The host's checks, after a turn the harness finished; the turn notice shows them.
+    ...(checks.length === 0 ? {} : { verify: { commands: [...checks], timeoutMs: HARNESS_CHECKS_TIMEOUT_MS } }),
     agent: (feeds) => options.agent(withGoalControls(feeds, options.defaultModel)),
   });
 }

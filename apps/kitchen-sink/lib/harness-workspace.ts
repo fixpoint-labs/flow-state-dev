@@ -25,9 +25,15 @@
  * is not a variable name turns the harness modes off here, with the reason.
  * Trust comes only from the server's environment: no request, session input or
  * session state sets it.
+ *
+ * {@link readHarnessCommands} reads the two command settings: the setup command
+ * a session's fresh worktree runs first (`KITCHEN_SINK_HARNESS_SETUP`) and the
+ * checks a finished turn runs (`KITCHEN_SINK_HARNESS_CHECKS`). A command that
+ * needs a shell turns the harness modes off here too, with the reason.
  */
 import { existsSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { checkoutCommandProblem, splitCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
 
 /** The host setting that names the repository. */
 export const HARNESS_WORKSPACE_SETTING = "KITCHEN_SINK_HARNESS_WORKSPACE";
@@ -84,6 +90,42 @@ export function readHarnessTrust(env: HarnessWorkspaceEnv = process.env): Harnes
   return { trusted: true, pass: [...new Set(names)] };
 }
 
+/** The host setting that names the command a session's fresh worktree runs before its first turn. */
+const HARNESS_SETUP_SETTING = "KITCHEN_SINK_HARNESS_SETUP";
+
+/** The host setting that names, `;`-separated, the checks a finished turn runs in the worktree. */
+const HARNESS_CHECKS_SETTING = "KITCHEN_SINK_HARNESS_CHECKS";
+
+/** The commands harness sessions run besides the harness: none when both settings are unset. */
+export interface HarnessCommands {
+  /** Run once in each session's fresh worktree, before the turn reaches it. */
+  readonly setup?: WorkspaceSetup;
+  /** Run in the worktree, in order, after a turn the harness finished. */
+  readonly checks: readonly string[];
+}
+
+/**
+ * Read the command settings. Each command runs with no shell, so one that
+ * needs a shell (`&&`, a pipe) is a mistake to say: it comes back as `reason`,
+ * with no commands, and {@link readHarnessWorkspace} turns the harness modes
+ * off with it.
+ *
+ * @param env The environment to read; the process's own by default.
+ */
+export function readHarnessCommands(env: HarnessWorkspaceEnv = process.env): HarnessCommands & { readonly reason?: string } {
+  const setupLine = (env[HARNESS_SETUP_SETTING] ?? "").trim();
+  const checks = (env[HARNESS_CHECKS_SETTING] ?? "").split(";").map((command) => command.trim()).filter((command) => command !== "");
+  for (const [setting, command] of [
+    ...(setupLine === "" ? [] : [[HARNESS_SETUP_SETTING, setupLine] as const]),
+    ...checks.map((command) => [HARNESS_CHECKS_SETTING, command] as const),
+  ]) {
+    const problem = checkoutCommandProblem(command);
+    if (problem !== undefined) return { checks: [], reason: `${setting}: ${problem}.` };
+  }
+  if (setupLine === "") return { checks };
+  return { setup: { command: splitCheckoutCommand(setupLine) as [string, ...string[]] }, checks };
+}
+
 /** The top level of the git checkout `dir` is in, or `undefined` when it is in none. */
 function checkoutTop(dir: string): string | undefined {
   for (let current = dir; ; current = dirname(current)) {
@@ -107,6 +149,8 @@ export function readHarnessWorkspace(
   }
   const trust = readHarnessTrust(env);
   if (trust.reason !== undefined) return { ok: false, reason: trust.reason };
+  const commands = readHarnessCommands(env);
+  if (commands.reason !== undefined) return { ok: false, reason: commands.reason };
   const named = env[HARNESS_WORKSPACE_SETTING];
   if (named === undefined || named === "") {
     if (env.NODE_ENV === "production") {
