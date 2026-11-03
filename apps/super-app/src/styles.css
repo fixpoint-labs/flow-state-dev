@@ -1,0 +1,94 @@
+/*
+ * The switcher bar and the page behind the panel. The panel's own stylesheet
+ * (imported in `main.tsx`) carries Tailwind and the Flow State tokens; this
+ * paints in the Night ground, the panel's default theme.
+ */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #1c1b15;
+  color: #e7e5e4;
+  font: 13px/1.4 system-ui, sans-serif;
+}
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid rgba(231, 229, 228, 0.14);
+  overflow-x: auto;
+}
+
+.bar a.home {
+  margin-right: 8px;
+  color: #a8a29e;
+  text-decoration: none;
+}
+
+.bar a.home:hover {
+  color: #e7e5e4;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #a8a29e;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: #e7e5e4;
+}
+
+.tab[aria-selected="true"] {
+  border-color: rgba(231, 229, 228, 0.25);
+  background: rgba(231, 229, 228, 0.08);
+  color: #e7e5e4;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a8a29e;
+}
+
+.dot.running {
+  background: #16a34a;
+}
+
+.dot.stopped {
+  background: #dc2626;
+}
+
+.stage {
+  flex: 1;
+  min-height: 0;
+}
+
+.notice {
+  padding: 32px 16px;
+  color: #a8a29e;
+  text-align: center;
+}
