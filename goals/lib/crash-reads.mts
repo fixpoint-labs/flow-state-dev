@@ -25,7 +25,7 @@ const ENDED = new Set(["completed", "errored", "failed", "cancelled"]);
 type Item = { type?: string; role?: string; requestId?: string; content?: unknown };
 
 /** Every item of a session, read a page at a time. */
-export async function sessionItems(client: Client, sessionId: string): Promise<Item[]> {
+async function sessionItems(client: Client, sessionId: string): Promise<Item[]> {
   const items: Item[] = [];
   for (let offset = 0; ; ) {
     const page = (await client.sessions.state(sessionId, { includeItems: true, offset, limit: 100 })) as {

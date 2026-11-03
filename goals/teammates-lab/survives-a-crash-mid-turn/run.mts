@@ -46,7 +46,7 @@ await runGoal(async (failures) => {
   git("init", "-q", "-b", "main");
   git("add", ".");
   git("commit", "-q", "-m", "Start the README");
-  const env = { GOAL_HARNESS: "stub", GOAL_HARNESS_STEP_MS: String(STEP_MS), TEAMMATES_HARNESS: "claude-code" };
+  const env = { GOAL_HARNESS: "stub", GOAL_HARNESS_STEP_MS: String(STEP_MS) };
   const serve = (store?: string): Promise<{ child: ChildProcess; origin: string }> =>
     startTeammates(dir, USER, store === undefined ? env : { ...env, TEAMMATES_STORE: store }, workdir);
 

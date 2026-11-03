@@ -9,9 +9,6 @@
  * `[slow]` directive, and the host is killed while it runs. Its worktrees go
  * under a scratch `XDG_STATE_HOME`, cut from a scratch checkout.
  *
- * Kitchen Sink keeps no task row for a harness turn: the coding work is the
- * turn itself, so the cut turn is also what the task signal reads (goal.md).
- *
  * Run:      pnpm tsx goals/kitchen-sink-harness/survives-a-crash-mid-turn/run.mts
  *           (GOAL_SKIP_BUILD=1 serves the build already in apps/kitchen-sink/.next)
  * Controls: GOAL_CONTROL=fresh-store (the second serve gets a new store; `conversation` must FAIL)

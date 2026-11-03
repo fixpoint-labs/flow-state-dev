@@ -13,11 +13,12 @@
  * Controls: GOAL_CONTROL=fresh-store (the second serve gets a new store; `conversation` must FAIL)
  */
 import { join } from "node:path";
-import { createClient, type Client } from "@flow-state-dev/client";
+import type { Client } from "@flow-state-dev/client";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { crashAndRestart, goalTmpDir, runGoal, sleep, stopProcessGroup } from "../../lib/index.mts";
 import { readConversation, readCutTurn, readTaskAfterCrash, type CrashedRow } from "../../lib/crash-reads.mts";
 import { buildShiftManagerPages, startShiftManager, SHIFT_MANAGER, type ServedShiftManager } from "../../lib/shift-manager.mts";
+import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
 import { LAB_USERS } from "../../../packages/shift-manager/teams/devteam/host.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -37,15 +38,7 @@ const say = (s: string) => console.error(`[sm-crash ${new Date().toISOString().s
 
 /** Alice, the Lab's owner, on her verified bearer. */
 function alice(origin: string): Client {
-  return createClient({
-    userId: LAB_USERS.owner.userId,
-    baseUrl: origin,
-    fetcher: (input, init) => {
-      const headers = new Headers(init?.headers);
-      headers.set("authorization", `Bearer ${LAB_USERS.owner.bearer}`);
-      return fetch(input, { ...init, headers });
-    },
-  });
+  return connect({ userId: LAB_USERS.owner.userId, baseUrl: origin, bearerToken: LAB_USERS.owner.bearer });
 }
 
 await runGoal(async (failures) => {
