@@ -109,6 +109,7 @@ import {
   type RequestSpendSeam,
   type SuspendForUser
 } from "@flow-state-dev/core/types";
+import { matchesPattern } from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
 import {
   resolveUserStorageKey,
@@ -156,6 +157,7 @@ import {
   LLM_AUDIENCE_TYPES,
 } from "./history";
 import { shouldPersistScopeChange, wrapStateOpsWithEmit } from "./scope-emit";
+import { publishScopeChange } from "../bus/scope-changes";
 import {
   createScopeResourceRegistry,
   normalizeScopeResources,
@@ -2596,15 +2598,49 @@ export async function createExecutionContext<
   const cascadeController = createCascadeController();
   const reactiveCtxRef: { current: ExecutionContext | undefined } = { current: undefined };
 
+  /**
+   * Publish that `scope` changed, naming this request (FIX-1506). The topic's
+   * id is the bare session id, the user id or the org id, under the tenant.
+   */
+  function publishScopeNotice(scope: "session" | "user" | "org", kind: "state" | "resource", resource?: string): void {
+    publishScopeChange(stores.bus, {
+      scope,
+      id: scope === "session" ? sessionId : scope === "user" ? userId : orgRef.current?.orgId ?? resolvedOrgId,
+      tenantId: options.tenantId,
+      kind,
+      ...(resource !== undefined ? { resource } : {}),
+      requestId: requestRef.current.id
+    });
+  }
+
   function makeResourceChangeHandler(scope: "session" | "user" | "org") {
     const scopeConfigs =
       scope === "session" ? sessionResourceConfigs : scope === "user" ? userResourceConfigs : orgResourceConfigs;
     const hasReactive = Object.values(scopeConfigs).some((c) => c.reactTo !== undefined);
+    const scopeStorageKeys = resourceStorageKeys(scopeConfigs);
+
+    // FIX-1506: the resources whose change another session's view may read —
+    // every resource with a `client` config, and every resource of a scope
+    // that declares `client.derived` (a derived value may read any of them).
+    // Their changes publish on the scope's topic, stream or not.
+    const scopeClient = scope === "session" ? flow.session?.client : scope === "user" ? flow.user?.client : flow.org?.client;
+    const everyResourcePublishes = Object.keys(scopeClient?.derived ?? {}).length > 0;
+    const publishedSingleKeys = new Set<string>();
+    const publishedPatterns: string[] = [];
+    for (const [accessor, cfg] of Object.entries(scopeConfigs)) {
+      if (!everyResourcePublishes && cfg.client === undefined) continue;
+      if (isCollectionConfig(cfg)) publishedPatterns.push(cfg.pattern);
+      else publishedSingleKeys.add(scopeStorageKeys[accessor] ?? accessor);
+    }
+    const publishes = (resourcePath: string): boolean =>
+      publishedSingleKeys.has(resourcePath) || publishedPatterns.some((pattern) => matchesPattern(pattern, resourcePath));
+    const publishesAny = publishedSingleKeys.size > 0 || publishedPatterns.length > 0;
 
     // Only wire a handler when there is something to do: a live emitter
-    // (FIX-739 streaming) and/or a `reactTo` binding (FIX-751). Reactive-only
-    // resources still dispatch even with no emitter present.
-    if (!emitter && !hasReactive) return undefined;
+    // (FIX-739 streaming), a `reactTo` binding (FIX-751), and/or a resource
+    // to publish on a bus (FIX-1506). Reactive-only resources still dispatch
+    // even with no emitter present.
+    if (!emitter && !hasReactive && !(stores.bus !== undefined && publishesAny)) return undefined;
 
     const dispatchReactive = hasReactive
       ? createReactiveDispatcher({
@@ -2624,7 +2660,6 @@ export async function createExecutionContext<
     // fires the seam only because it declares `reactTo` (FIX-751, non-live) must
     // NOT emit — that would leak a client item for a resource with no client
     // projection. Precompute those storage keys once and skip the emit for them.
-    const scopeStorageKeys = resourceStorageKeys(scopeConfigs);
     const nonStreamingSingleKeys = new Set<string>();
     for (const [accessor, cfg] of Object.entries(scopeConfigs)) {
       if (!isCollectionConfig(cfg) && cfg.client?.live !== true) {
@@ -2651,6 +2686,8 @@ export async function createExecutionContext<
           delta: projection?.delta
         });
       }
+      // FIX-1506: beside the emit, a notice for other sessions' views.
+      if (publishes(resourcePath)) publishScopeNotice(scope, "resource", resourcePath);
       // FIX-751 reactive dispatch is awaited inline — it runs the bound block
       // as part of the mutating turn, and a block failure propagates out.
       if (dispatchReactive !== undefined) {
@@ -2840,7 +2877,10 @@ export async function createExecutionContext<
         blockInstanceId: "runtime",
         phase: "main" as const
       }),
-      transient: transientStateChanges
+      transient: transientStateChanges,
+      // FIX-1506: session, user and org writes publish on their scope's topic,
+      // stream or not; request state publishes nothing.
+      ...(scope === "request" ? {} : { onCommitted: () => publishScopeNotice(scope, "state") })
     });
   }
 

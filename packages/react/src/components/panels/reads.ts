@@ -5,16 +5,22 @@
  * reads one item. All go through the package's internal `useFencedRead`
  * (`internal/useFencedRead.ts`), which the flow navigator's reads share, so the
  * fence protocol lives there, once. A live `BoardList` reads its board again on
- * the session's changes (`liveBoardDriver`). Internal on purpose — exporting a
- * read would let a host mount it twice.
+ * the session's changes (`liveBoardDriver`); a live `Roster` or `BoardColumns`
+ * reads its collection again on another session's change to it, heard through
+ * `client.subscribe` (`liveScopeDriver`, FIX-1506). Internal on purpose —
+ * exporting a read would let a host mount it twice.
  */
 import { useMemo } from "react";
 import {
   compareItemOrder,
   readEveryCollectionPage,
+  topic,
+  type Client,
   type ResourcesApi,
-  type SessionsApi
+  type SessionsApi,
+  type WireNotice
 } from "@flow-state-dev/client";
+import { getPatternPrefix } from "@flow-state-dev/contracts/helpers";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { followSession } from "@flow-state-dev/client/internal";
 import { coalescedReads } from "../../internal/coalescedReads";
@@ -39,6 +45,23 @@ export type PanelItemSource = { readonly resources: Pick<ResourcesApi, "getColle
  * carries the read's credential.
  */
 export type PanelLiveSource = PanelRowSource & { readonly sessions: Pick<SessionsApi, "stream"> };
+
+/**
+ * A live `Roster`'s or `BoardColumns`' slice: the collection read, the
+ * manifest that names the collection's storage path, and `subscribe`, which
+ * says when to read again. All through the one client, so every read and the
+ * subscription carry the host's credential.
+ */
+export type PanelNoticeSource = {
+  readonly resources: Pick<ResourcesApi, "listCollectionItems" | "getResourceManifest">;
+  readonly subscribe: Client["subscribe"];
+};
+
+/** How a live panel hears its changes: the session stream (`BoardList`) or notices. */
+export type PanelLive = { readonly stream: PanelLiveSource } | { readonly notices: PanelNoticeSource };
+
+/** The pace a live panel reads wherever push can miss a change (`client.subscribe`'s timer). */
+const LIVE_PANEL_POLL_MS = 3_000;
 
 /** One row as a panel receives it: its topic, and the collection's projection of its state. */
 export type PanelRow<TClient = unknown> = {
@@ -114,6 +137,53 @@ function liveBoardDriver(sessionId: string, boardRef: string, client: PanelLiveS
 }
 
 /**
+ * Read a collection, and read it again whenever another session changes it.
+ *
+ * Subscribes the session's, the user's and the org's topics through the
+ * client's `subscribe` (one socket per client, a timer wherever push can miss
+ * a change), and reads again on a `resource` notice whose path is under the
+ * collection, and on a connect, a reconnect, a tick or a `resync`. The
+ * collection's storage path comes from the manifest, read once: a key such as
+ * `roster` stores under `workforce/workers/…`. If the manifest can't be read,
+ * every resource notice reads again: a read too many, never one missed.
+ * Reads are coalesced: one in flight, one queued.
+ */
+function liveScopeDriver(sessionId: string, ref: string, client: PanelNoticeSource): ReadDriver {
+  return (read) => {
+    const reads = coalescedReads(read);
+    let prefix: string | null | undefined;
+    void client.resources.getResourceManifest(sessionId).then(
+      (manifest) => {
+        const pattern = manifest.resources.find((entry) => entry.ref === ref)?.pattern;
+        prefix = pattern === undefined ? null : getPatternPrefix(pattern);
+      },
+      () => {
+        prefix = undefined;
+      }
+    );
+    const under = (path: string, root: string): boolean => path === root || path.startsWith(`${root}/`);
+    const names = (path: string | undefined): boolean => {
+      if (path === undefined || prefix === undefined) return true;
+      return under(path, ref) || (prefix !== null && prefix !== "" && under(path, prefix));
+    };
+
+    const subscription = client.subscribe([topic.session(sessionId), topic.user(), topic.org()], {
+      onChange: (notice: WireNotice | null) => {
+        if (notice === null || notice.kind === "resync") return reads.request();
+        if (notice.kind === "resource" && names(notice.topic.resource)) reads.request();
+      },
+      pollIntervalMs: LIVE_PANEL_POLL_MS
+    });
+    reads.request();
+
+    return () => {
+      reads.close();
+      subscription.close();
+    };
+  };
+}
+
+/**
  * Every row of a collection, for one session — traversing `nextCursor` until
  * the route stops returning one, through the client's shared
  * `readEveryCollectionPage` (up to `COLLECTION_READ_MAX_PAGES`, 1,000 pages).
@@ -129,9 +199,11 @@ function liveBoardDriver(sessionId: string, boardRef: string, client: PanelLiveS
  * cursor, is an error (the panel's error line and Retry), never the rows read
  * so far (BR-19, BR-21).
  *
- * With `live`, `ref` is a task board, and the rows are read again whenever
- * the session keeps a change to it (see `liveBoardDriver`). Without it they
- * are read once, on mount.
+ * With `live.stream`, `ref` is a task board, and the rows are read again
+ * whenever the session keeps a change to it (see `liveBoardDriver`). With
+ * `live.notices`, they are read again on another session's change to the
+ * collection (see `liveScopeDriver`). Without either they are read once, on
+ * mount.
  */
 export function usePanelRows<TClient = unknown>(
   source: PanelRowSource,
@@ -139,11 +211,18 @@ export function usePanelRows<TClient = unknown>(
   ref: string,
   limit: number | undefined,
   failureMessage: string,
-  live?: PanelLiveSource
+  live?: PanelLive
 ): PanelRows<TClient> {
+  const liveSource = live === undefined ? undefined : "stream" in live ? live.stream : live.notices;
+  const byStream = live !== undefined && "stream" in live;
   const driver = useMemo(
-    () => (live === undefined ? undefined : liveBoardDriver(sessionId, ref, live)),
-    [live, sessionId, ref]
+    () =>
+      liveSource === undefined
+        ? undefined
+        : byStream
+          ? liveBoardDriver(sessionId, ref, liveSource as PanelLiveSource)
+          : liveScopeDriver(sessionId, ref, liveSource as PanelNoticeSource),
+    [liveSource, byStream, sessionId, ref]
   );
   const { data, isLoading, error, refresh } = useFencedRead<readonly PanelRow<TClient>[]>(
     [source, sessionId, ref, limit],

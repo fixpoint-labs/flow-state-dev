@@ -14,7 +14,9 @@ import {
   type SessionDetail,
   type SessionRequestSummary,
   type SessionStateSnapshotResponse,
-  type ChildSessionSummary
+  type ChildSessionSummary,
+  type WireNotice,
+  topic
 } from "@flow-state-dev/client";
 import type {
   ContentAudioDeltaEvent,
@@ -35,6 +37,7 @@ import type { RequestStatus, ResumeAction } from "@flow-state-dev/core/types";
 import { resolveItemVisibility } from "@flow-state-dev/contracts";
 import { useFlowContext } from "../context/FlowContext";
 import { useClient } from "../internal/useClient";
+import { coalescedReads } from "../internal/coalescedReads";
 import {
   isReducibleStateChange,
   isReplayableStateChange,
@@ -68,6 +71,16 @@ const KEPT_LIVE_CHANGES = 256;
  * again, first and at most: the wait doubles between the two.
  */
 const RUNNING_STATUS_REREAD_MS = 1_000;
+
+/**
+ * In live mode, the pace a view reads its scopes again wherever push can miss
+ * a change: a host with no push, a socket that is down, or a bus that doesn't
+ * cross processes (`client.subscribe`'s timer, FIX-1506).
+ */
+const LIVE_SCOPE_POLL_MS = 3_000;
+
+/** How many request ids a view remembers sending, to skip their notices. */
+const OWN_REQUESTS_KEPT = 200;
 const RUNNING_STATUS_REREAD_MAX_MS = 30_000;
 
 /**
@@ -278,6 +291,14 @@ export type UseSessionHookOptions = {
    * leaves the view as it is without `live`, with no error. Once the stream
    * has named the runs, losing it (a reconnect that fails, a refusal, the
    * session gone) keeps the rows and raises `childSessionsStale`.
+   *
+   * A live view also hears changes other sessions make to the scopes it reads:
+   * its session's resources, and its user's and organization's state and
+   * resources. On a notice it reads state again without its item history,
+   * and passes a resource change to the resource hooks, which read again as
+   * they do for the view's own. A change this view's own request made is
+   * skipped: its own stream already carried it. On a host that can't push,
+   * the view reads its state every few seconds instead.
    * Default: false.
    */
   live?: boolean;
@@ -634,6 +655,15 @@ export function useSession(
   // `published`) without forcing the consumer to set `includeTransient: true`.
   const [resourceChanges, setResourceChanges] = useState<ResourceChangeNotice[]>([]);
   const resourceChangeSeqRef = useRef(0);
+  // `live: true` only. The requests this view sent and follows on its own
+  // stream: a notice one of them made is already on screen (FIX-1506 D2).
+  const ownRequestIdsRef = useRef(new Set<string>());
+  const claimOwnRequest = useCallback((requestId: string): void => {
+    const own = ownRequestIdsRef.current;
+    own.delete(requestId);
+    own.add(requestId);
+    if (own.size > OWN_REQUESTS_KEPT) own.delete(own.values().next().value as string);
+  }, []);
   // Background work running under this session. Read from the server, never
   // derived from the conversation's own items — a ChildSession is a separate
   // session, not a message.
@@ -1321,6 +1351,7 @@ export function useSession(
    */
   const attachToStream = useCallback(
     (requestId: string, startingAfter?: string, inlineResponse?: Response) => {
+      claimOwnRequest(requestId);
       if (streamHandleRef.current !== null) {
         streamHandleRef.current.close();
         streamHandleRef.current = null;
@@ -1624,7 +1655,8 @@ export function useSession(
       keepLiveChange,
       scheduleContentFlush,
       flushContentDeltas,
-      takeLiveItem
+      takeLiveItem,
+      claimOwnRequest
     ]
   );
 
@@ -1918,6 +1950,88 @@ export function useSession(
     return missing.length === 0 ? childSessions : [...childSessions, ...missing];
   }, [childSessions, liveRuns]);
 
+  // `live: true`: hear other sessions' changes to the scopes this view reads
+  // (FIX-1506). After the first snapshot, one subscription to the session's,
+  // the user's and the org's topics. It acts on `state` and `resource` only;
+  // items, requests and runs are the session stream's. A notice this view's
+  // own request made is skipped. Reads go one in flight and one waiting.
+  const refreshStateRef = useRef(refreshState);
+  refreshStateRef.current = refreshState;
+  const snapshotNowRef = useRef(snapshot);
+  snapshotNowRef.current = snapshot;
+
+  useEffect(() => {
+    if (!live || sessionId === undefined || snapshotAppliedFor !== sessionId) return;
+
+    const stateReads = coalescedReads(async () => {
+      await refreshStateRef.current();
+    });
+
+    /** Hand resource changes to the resource hooks, as the view's own stream does. */
+    const announce = (paths: readonly string[]): void => {
+      if (paths.length === 0) return;
+      const notices = paths.map((resourcePath): ResourceChangeNotice => {
+        resourceChangeSeqRef.current++;
+        return { resourcePath, changeType: "updated", seq: resourceChangeSeqRef.current };
+      });
+      setResourceChanges((prev) => [...prev, ...notices]);
+    };
+
+    /** Every resource the snapshot holds, for a read of everything. */
+    const everyResource = (): string[] => {
+      const resources = snapshotNowRef.current?.resources;
+      if (resources === undefined) return [];
+      return (["session", "user", "org"] as const).flatMap((scope) => Object.keys(resources[scope] ?? {}));
+    };
+
+    /**
+     * Whether a resource change may move the scope's state read: the
+     * snapshot holds the resource (a single, or a collection's count), or
+     * the scope's client data may derive from it.
+     */
+    const stateCarries = (scope: "session" | "user" | "org", path: string): boolean => {
+      const current = snapshotNowRef.current;
+      const held = current?.resources?.[scope] ?? {};
+      if (Object.keys(held).some((ref) => path === ref || path.startsWith(`${ref}/`))) return true;
+      const clientData = current?.clientData?.[scope];
+      return clientData !== undefined && clientData !== null && Object.keys(clientData).length > 0;
+    };
+
+    const onChange = (notice: WireNotice | null): void => {
+      // A connect, a reconnect, a tick, or a bus that may have missed some:
+      // read everything this view reads from the scopes.
+      if (notice === null || notice.kind === "resync") {
+        announce(everyResource());
+        stateReads.request();
+        return;
+      }
+      if (notice.kind !== "state" && notice.kind !== "resource") return;
+      if (notice.origin !== undefined && ownRequestIdsRef.current.has(notice.origin.requestId)) return;
+      if (notice.kind === "state") {
+        stateReads.request();
+        return;
+      }
+      const path = notice.topic.resource;
+      if (path === undefined) {
+        announce(everyResource());
+        stateReads.request();
+        return;
+      }
+      announce([path]);
+      if (stateCarries(notice.topic.scope, path)) stateReads.request();
+    };
+
+    const subscription = fsd.subscribe([topic.session(sessionId), topic.user(), topic.org()], {
+      onChange,
+      pollIntervalMs: LIVE_SCOPE_POLL_MS
+    });
+
+    return () => {
+      subscription.close();
+      stateReads.close();
+    };
+  }, [live, sessionId, snapshotAppliedFor, fsd]);
+
   // Stuck-request watchdog. Polls a clock against `lastEventAtRef`; if the
   // SSE stream has produced no event or heartbeat in `stuckThresholdMs`
   // while a request is (or just was) in flight, flip `isStuck` so the host
@@ -2071,6 +2185,10 @@ export function useSession(
 
       const requestId = `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
       activeRequestIdRef.current = requestId;
+      // Known before the POST, so a notice the run publishes before its
+      // stream opens is skipped too. Only when the view will follow the
+      // stream: without items, nothing else carries the change here.
+      if (itemConfig.enabled) claimOwnRequest(requestId);
 
       // Optimistic user message: inject immediately so the user sees their own
       // message without waiting for the server round-trip. The server's own
@@ -2172,7 +2290,8 @@ export function useSession(
       attachToStream,
       refreshSnapshot,
       refreshChildSessions,
-      dismissRequest
+      dismissRequest,
+      claimOwnRequest
     ]
   );
 

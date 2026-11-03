@@ -577,6 +577,17 @@ That batched-at-completion default is the right call for most resources. It avoi
 - **Single resources** announce only when `live: true`. State writes carry the projected delta; content writes don't (content has no state projection), so a content write falls back to the batched refetch even on a live resource.
 - **Non-live single resources** don't stream change events at all — their state and content still load through snapshots and the content endpoint.
 
+### Changes made in other sessions
+
+The `resource_change` event travels on the stream of the request that made the change, so it reaches only the view that sent that request. Another view of the same organization's collection, or of the same user's, hears about it when it asks to: give its `useSession` the `live` option.
+
+```tsx
+const session = useSession(sessionId, { flowKind: "desk", live: true });
+const seats = useResourceCollectionList(session, "seats");
+```
+
+A live view then reads the collection again when any other session writes, creates or deletes one of its items, a worker or schedule with no browser attached included. The same goes for a single resource, and for a scope whose `client.derived` values read its resources. Only a resource a client can read announces its changes this way: one with a `client` config, or any resource of a scope that declares `client.derived`. Collection writes made through the routes on this page reach the session's other live views the same way. Nothing about the change travels with the announcement: the view reads through the same endpoints, with the same checks, as on mount.
+
 A server-side content write can also run a `reactTo.contentUpdated` reaction. That's the in-flow reactive path — a block that runs as part of the mutating turn — separate from the client projection described here. See [Reacting to content changes](/docs/resources/reactive-blocks#reacting-to-content-changes).
 
 ### Opt-in mid-stream updates with `live: true`

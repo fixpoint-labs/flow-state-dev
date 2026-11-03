@@ -130,7 +130,7 @@ export function BoardList(props: BoardListProps): ReactNode {
     boardRef,
     limit,
     "Failed to load this board",
-    live ? (source as PanelLiveSource) : undefined
+    live ? { stream: source as PanelLiveSource } : undefined
   );
   const rows = useMemo(() => newestFirst(cardRows(state.rows)), [state.rows]);
 

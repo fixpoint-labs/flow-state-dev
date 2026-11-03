@@ -54,7 +54,7 @@ a no-non-relative-import scan over `src/`), so it cannot silently regress.
   binds it.
 - **Change notices** (`@flow-state-dev/contracts/types/change-notice`) — the
   kinds a change notice names (`ChangeKind`: `items`, `request`, `run`,
-  `resync`) and the wire topic a client watches: `topic.session(id)`,
+  `state`, `resource`, `resync`) and the wire topic a client watches: `topic.session(id)`,
   `topic.user()` and `topic.org()`, each with an optional `{ resource }`. A
   wire topic names no user, org or tenant id; the server fills those from the
   caller it verified. Client and engine share it, so it lives here.

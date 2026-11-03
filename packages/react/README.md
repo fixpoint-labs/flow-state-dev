@@ -106,6 +106,8 @@ const session = useSession(sessionId, {
 
 `live: true` makes the view hear requests it didn't send, for a session with more than one writer (a conversation other participants answer in, the same conversation in two tabs). The hook opens one session stream after its first snapshot: each finished item from any request joins `items` about a second after the server saves it, and `childSessions` is re-read when a run is dispatched, even one still waiting its turn, and again when the run finishes. Items are keyed by request and id together, so two requests that each save an item with the same id both appear in `items`. An item one request emits more than once under the same id, such as a keyed component, shows its latest copy, whatever order the copies arrive in. Default `false`; a server without the stream, or one that refuses it when the view first connects, leaves the view as it would be without `live`, with no error. Once the stream is open, a drop the first reconnect recovers from, such as the server's routine close, shows no change. If that reconnect fails, `childSessionsStale` is raised and `items` stays as it is, with no error, until a connection gets through. A reconnect is refused when the session is deleted while the view is open, when the reader's access is revoked, or when a new session takes its id. The flag then stays raised until a snapshot read, such as `refresh()`, finds a new session under the id that the reader can open, and moves the view onto it.
 
+A live view also hears what other sessions change in the scopes it reads. After its first snapshot it subscribes its session's, user's and organization's topics through `client.subscribe`. A state change reads state again without the item history, so `useClientData` shows it, `client.derived` values included; a resource change joins `resourceChanges`, so the resource hooks read again, and reads state too when the snapshot holds that resource or the scope has client data. A change this view's own request made is skipped: its own stream already carried it. A connect, a reconnect, and on a host that can't push a timer tick every few seconds, read once.
+
 Returns:
 - `detail` — Session metadata
 - `snapshot` — Current state snapshot with clientData
@@ -680,6 +682,8 @@ import { BoardList } from "@flow-state-dev/react";
 ```
 
 It reads the same rows `BoardColumns` does, through the same `sessionId`, `boardRef`, `client` and `limit`, and labels a row the same way, with the assignee beside it when there is one. Nothing is hidden: a finished or cancelled task stays in the list, and a status the component does not recognise shows as its own word. A row without a `createdAt` follows the dated ones, in read order.
+
+`Roster` and `BoardColumns` take `live` too: the panel reads its collection again whenever any session changes it, heard through `client.subscribe` (the collection's storage path comes from the session's resource manifest, read once). A client that can only read takes no `live`.
 
 `live` re-reads the board whenever the session named by `sessionId` records a change to it. Pass the id of the session whose runs write to the board. A change made in a different session shows after the list remounts, or the next time this session changes the board. With `live` off, the default, it reads on mount like the other panels. If the server doesn't offer the session stream, or refuses it, the list reads once and shows no error.
 

@@ -458,6 +458,8 @@ During streaming, `state_change` and `resource_change` events signal that the cl
 
 Mutations to session, user, org, and request state all emit `state_change` items on the wire, in the same shape block-instance and sequencer target state emit, so React's `useClientData` can reflect mid-stream patches without waiting for terminal status. See [`useClientData`](/docs/client/react#useclientdata--client-data). Resources have the same option: one declaring `client: { live: true }` streams its projected delta the same way (see [Resources: client access — Live updates](/docs/resources/client-access#live-updates)), so apps don't need to mirror resource status onto session state.
 
+A `state_change` item reaches only the view that sent the request. User and org state are shared beyond it: the same person in another tab, or everyone in the organization. A view created with `useSession(id, { live: true })` hears those changes too, from any session or from a run with no browser attached, and reads its state again without its item history. A user's state reaches only that user's views. See [Hearing requests you didn't send](/docs/client/react#hearing-requests-you-didnt-send).
+
 This mirrors how resources work: a resource without a `client` config is invisible to clients (see [Resources: client access](/docs/resources/client-access)). One mental model — `client` everywhere — instead of two.
 
 ## The other three scopes

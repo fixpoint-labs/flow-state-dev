@@ -646,9 +646,15 @@ const stop = stores.bus!.subscribe(topic, (notice: ChangeNotice) => readAgain(no
 
 - `ChangeNotice` is `{ topic, kind, origin? }`. Kinds: `items` (a request's
   items landed), `request` (a request was written), `run` (a session record
-  was written: the topic's own session or a run under it) and `resync` (the
-  bus may have missed notices; read once). `origin` names the request that
-  made the change, when one did.
+  was written: the topic's own session or a run under it), `state` (the
+  session's, user's or org's state was written), `resource` (a resource a
+  client can read was written, created or deleted; the topic names it in
+  `resource`) and `resync` (the bus may have missed notices; read once).
+  `origin` names the request that made the change, when one did.
+- `state` and `resource` publish from any run, with or without a stream, and
+  from the client's collection routes (with no `origin`). A resource
+  publishes when it has a `client` config, or when its scope declares
+  `client.derived`. Request and block-instance state publish nothing.
 - A subscriber to a scope's topic hears every notice under it, narrowed to a
   resource or not, with the notice's own topic. A subscriber narrowed to a
   resource hears only that resource's.

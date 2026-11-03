@@ -18,10 +18,13 @@
  *   status moved, or deleted.
  * - `run` — a session record was written: the topic's own session, or a run
  *   (a child session) under it.
+ * - `state` — the scope's state was written: a session, user or org patch.
+ * - `resource` — a resource under the scope was written, created or deleted.
+ *   The topic names it in `resource`.
  * - `resync` — the bus may have missed notices (it reconnected). Every
  *   subscriber reads once, whatever kinds it otherwise listens for.
  */
-export type ChangeKind = "items" | "request" | "run" | "resync";
+export type ChangeKind = "items" | "request" | "run" | "state" | "resource" | "resync";
 
 /** The scopes a topic can name. No other topic exists. */
 export type TopicScope = "session" | "user" | "org";

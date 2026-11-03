@@ -99,6 +99,15 @@ Pass the same `client` to both, built once. Leave it out and each panel reads th
 
 A board column is grouped by task status. An empty board says so, and names the usual reason: no worker drains it.
 
+Both panels take `live`, to read again when someone else changes what they show:
+
+```tsx
+<Roster sessionId={sessionId} client={client} live />
+<BoardColumns sessionId={conversationId} boardRef="tasks" client={client} live />
+```
+
+A live roster shows a worker hired in another session, and live columns show a task another session files or moves, a worker's own task session included, within about a second on a host that pushes and within a few seconds elsewhere. The panel reads its collection again only for a change to that collection. The `client` you pass needs `subscribe`, which a client from `createClient` has; a client that can only read takes no `live`, and TypeScript rejects that pair.
+
 ### A board as a list
 
 `BoardList` draws the same board as one list, newest first, with each task's status beside it. Reach for it when people scan a board rather than work it, such as a queue of cases waiting for a user. It takes the same `sessionId`, `boardRef` and `client` as `BoardColumns`, plus `live`. This example assumes a `client` built the way `ShellPanels` builds it above, once and shared:
@@ -136,7 +145,7 @@ No component draws the [messages your workers send each other](./messaging-worke
 
 <Figure svg={UiReadSourcesDrawing} caption="Three places a component reads" description={"Three columns. One session's items, read by messages, task plans and approval cards: they arrive live and are still there after a reload. An organization's collection, read by the roster, board columns and board list: everyone sees the same rows, read once on mount. Your server's flow list, read by the navigator: read once, with a leaf's sessions read only when that leaf opens. A footer says how each reads again: items keep arriving, a panel reads again when its React key changes, and the navigator's leafToolbar slot is handed a refresh function"} />
 
-What a component reads decides when it updates. Messages, task plans and approval cards from the [component registry](../ui/flow-aware-components) follow one session's items as they arrive. The roster and board panels read a standing collection once, when they mount; a `BoardList` with `live` is the exception ([A board as a list](#a-board-as-a-list)). The navigator reads the flow list once, and a leaf's sessions only when that leaf opens. A leaf is a singleton flow kind, or one instance of a collection flow kind, so opening a collection flow kind's own row reads nothing and a roster of two hundred workers costs one request to draw.
+What a component reads decides when it updates. Messages, task plans and approval cards from the [component registry](../ui/flow-aware-components) follow one session's items as they arrive. The roster and board panels read a standing collection once, when they mount, unless you pass `live`: a live `Roster` or `BoardColumns` reads again when any session changes its collection, and a live `BoardList` when the session it follows does ([A board as a list](#a-board-as-a-list)). The navigator reads the flow list once, and a leaf's sessions only when that leaf opens. A leaf is a singleton flow kind, or one instance of a collection flow kind, so opening a collection flow kind's own row reads nothing and a roster of two hundred workers costs one request to draw.
 
 To read again on demand, change a panel's React `key`, or use the `refresh` function the navigator's `leafToolbar` slot is handed. What that slot returns sits on the open leaf's own row, after any `rowTrailing` content.
 

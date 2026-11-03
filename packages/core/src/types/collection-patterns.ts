@@ -3,6 +3,8 @@
 // Pure functions — no side effects, no dependencies beyond string ops.
 // ---------------------------------------------------------------------------
 
+import { getPatternPrefix } from "@flow-state-dev/contracts/helpers/pattern-prefix";
+
 const VALID_PATTERN = /^(?:[a-zA-Z0-9_\-.*[\]]+)(?:\/[a-zA-Z0-9_\-.*[\]]+)*$/;
 
 /**
@@ -71,22 +73,9 @@ export function isSingleWildcard(pattern: string): boolean {
   return pattern.includes("*") && !pattern.includes("**");
 }
 
-/**
- * Get the static prefix of a pattern (everything before the first wildcard or param).
- */
-export function getPatternPrefix(pattern: string): string {
-  const segments = pattern.split("/");
-  const prefixSegments: string[] = [];
-
-  for (const seg of segments) {
-    if (seg === "*" || seg === "**" || /\[.+\]/.test(seg)) {
-      break;
-    }
-    prefixSegments.push(seg);
-  }
-
-  return prefixSegments.join("/");
-}
+// The static prefix of a pattern lives in `@flow-state-dev/contracts`, so
+// browser packages can value-import it; re-exported here with its siblings.
+export { getPatternPrefix } from "@flow-state-dev/contracts/helpers/pattern-prefix";
 
 /**
  * Strip the static pattern prefix from a full storage key, leaving the
