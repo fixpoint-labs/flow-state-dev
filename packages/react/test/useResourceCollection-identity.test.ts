@@ -57,6 +57,11 @@ function stubListFetch(options: { hold?: boolean } = {}) {
     "fetch",
     vi.fn((input: RequestInfo | URL) => {
       const url = new URL(String(input));
+      // The collection hook reads its flow's manifest once per flow kind, to
+      // match a change's storage path to its key; these cases count list reads.
+      if (url.pathname.endsWith("/manifest")) {
+        return Promise.resolve(new Response(JSON.stringify({ flowKind: "", resources: [] }), { status: 200, headers: { "content-type": "application/json" } }));
+      }
       requests.push(url);
       const respond = (page: CollectionListPage) =>
         new Response(JSON.stringify(page), { status: 200, headers: { "content-type": "application/json" } });

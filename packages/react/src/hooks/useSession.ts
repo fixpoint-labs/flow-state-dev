@@ -73,11 +73,6 @@ const KEPT_LIVE_CHANGES = 256;
  */
 const RUNNING_STATUS_REREAD_MS = 1_000;
 
-/** How many finished own requests a view remembers, to skip their late notices. */
-const OWN_REQUESTS_KEPT = 200;
-
-/** A request that ends in one of these is finished for good: its stream carried every change. */
-const SETTLED_STATUSES: ReadonlySet<string> = new Set(["completed", "failed", "aborted"]);
 const RUNNING_STATUS_REREAD_MAX_MS = 30_000;
 
 /**
@@ -652,21 +647,14 @@ export function useSession(
   // `published`) without forcing the consumer to set `includeTransient: true`.
   const [resourceChanges, setResourceChanges] = useState<ResourceChangeNotice[]>([]);
   const resourceChangeSeqRef = useRef(0);
-  // `live: true` only. Which requests' changes this view's own stream carries,
-  // so a notice one of them made is already on screen (FIX-1506 D2): a send
-  // whose POST is still out, the request the open stream follows, and the
-  // requests that stream saw finish for good. Coverage ends when the stream
-  // drops, is replaced or closes before the end, and their notices are heard
-  // again from then on.
+  // `live: true` only. Which requests' changes this view's own stream will
+  // still deliver, so a notice one of them made is skipped (FIX-1506 D2): a
+  // send whose POST is still out, and the request the open stream follows.
+  // Once that stream closes, at the end, on a drop or when another replaces
+  // it, the request's notices are heard again: a write after the terminal
+  // status (`onFinished`, an error observer) reaches no stream.
   const pendingOwnRef = useRef(new Set<string>());
   const streamRequestIdRef = useRef<string | null>(null);
-  const settledOwnRef = useRef(new Set<string>());
-  const settleOwnRequest = useCallback((requestId: string): void => {
-    const settled = settledOwnRef.current;
-    settled.delete(requestId);
-    settled.add(requestId);
-    if (settled.size > OWN_REQUESTS_KEPT) settled.delete(settled.values().next().value as string);
-  }, []);
   // Background work running under this session. Read from the server, never
   // derived from the conversation's own items — a ChildSession is a separate
   // session, not a message.
@@ -1583,7 +1571,6 @@ export function useSession(
             event.status === "aborted" ||
             event.status === "suspended"
           ) {
-            if (SETTLED_STATUSES.has(event.status)) settleOwnRequest(requestId);
             flushContentDeltas();
             setIsStreaming(false);
             setIsFinishing(false);
@@ -1660,8 +1647,7 @@ export function useSession(
       keepLiveChange,
       scheduleContentFlush,
       flushContentDeltas,
-      takeLiveItem,
-      settleOwnRequest
+      takeLiveItem
     ]
   );
 
@@ -2006,10 +1992,9 @@ export function useSession(
       return clientData !== undefined && clientData !== null && Object.keys(clientData).length > 0;
     };
 
-    /** Whether this view's own stream carries (or carried) the change `requestId` made. */
+    /** Whether this view's own stream will still deliver the change `requestId` made. */
     const carriedByOwnStream = (requestId: string): boolean =>
       pendingOwnRef.current.has(requestId) ||
-      settledOwnRef.current.has(requestId) ||
       (streamHandleRef.current !== null && streamRequestIdRef.current === requestId);
 
     const onChange = (notice: WireNotice | null): void => {

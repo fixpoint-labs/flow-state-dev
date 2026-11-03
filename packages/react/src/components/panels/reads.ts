@@ -20,11 +20,10 @@ import {
   type SessionsApi,
   type WireNotice
 } from "@flow-state-dev/client";
-import { getPatternPrefix } from "@flow-state-dev/contracts/helpers";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { followSession } from "@flow-state-dev/client/internal";
 import { coalescedReads } from "../../internal/coalescedReads";
-import { LIVE_POLL_MS, mayBelongTo } from "../../internal/scopeNotices";
+import { LIVE_POLL_MS, mayBelongTo, storagePrefixOf } from "../../internal/scopeNotices";
 import { useFencedRead, type ReadDriver } from "../../internal/useFencedRead";
 
 /**
@@ -153,8 +152,7 @@ function liveScopeDriver(sessionId: string, ref: string, client: PanelNoticeSour
     let prefix: string | null | undefined;
     void client.resources.getResourceManifest(sessionId).then(
       (manifest) => {
-        const pattern = manifest.resources.find((entry) => entry.ref === ref)?.pattern;
-        prefix = pattern === undefined ? null : getPatternPrefix(pattern);
+        prefix = storagePrefixOf(manifest, ref);
       },
       () => {
         prefix = undefined;

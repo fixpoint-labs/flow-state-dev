@@ -18,8 +18,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { SubscribeOptions, WireNotice, WireTopic } from "@flow-state-dev/client";
 
-const { sessionsMock, flowMock, subscriptions, ownStreams } = vi.hoisted(() => ({
+const { sessionsMock, flowMock, subscriptions, ownStreams, resourcesMock } = vi.hoisted(() => ({
   sessionsMock: { get: vi.fn(), state: vi.fn(), requests: vi.fn(), children: vi.fn() },
+  resourcesMock: { listCollectionItems: vi.fn(), getResourceManifest: vi.fn() },
   flowMock: { send: vi.fn(), abort: vi.fn() },
   subscriptions: [] as Array<{ topics: readonly WireTopic[]; options: SubscribeOptions; closed: boolean }>,
   // The view's own request streams, read from a send's response.
@@ -39,6 +40,7 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
     createClient: () =>
       fakeClient({
         sessions: { ...sessionsMock },
+        resources: resourcesMock as never,
         flow: flowMock,
         requestStream: () => noopSSE(),
         sessionStream: () => ({ close() {}, lastAt: undefined, stopped: false }),
@@ -57,6 +59,7 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
 
 import { topic } from "@flow-state-dev/client";
 import { useSession } from "../src/hooks/useSession";
+import { useResourceCollectionList } from "../src/hooks/useResourceCollectionList";
 
 function snapshot(extra: Record<string, unknown> = {}) {
   return {
@@ -121,6 +124,14 @@ describe("useSession live · other sessions' scope changes", () => {
     sessionsMock.state.mockResolvedValue(snapshot());
     sessionsMock.requests.mockResolvedValue([]);
     sessionsMock.children.mockResolvedValue([]);
+    resourcesMock.listCollectionItems.mockResolvedValue({ items: [] });
+    resourcesMock.getResourceManifest.mockResolvedValue({
+      flowKind: "demo",
+      resources: [
+        { ref: "roster", kind: "collection", scope: "org", pattern: "workforce/workers/*", hasClientData: false, client: {} },
+        { ref: "desks", kind: "collection", scope: "org", pattern: "desks/*", hasClientData: false, client: {} }
+      ]
+    });
   });
 
   afterEach(() => {
@@ -213,7 +224,7 @@ describe("useSession live · other sessions' scope changes", () => {
     expect(stateOnlyReads()).toHaveLength(1);
   });
 
-  it("keeps skipping its own request's notices after the stream saw it end", async () => {
+  it("hears its own request's notices once its stream has closed at the end (onFinished may still write)", async () => {
     const { result } = await mountLive();
     const sent = await sendOwn(result);
     await act(async () => {
@@ -222,7 +233,7 @@ describe("useSession live · other sessions' scope changes", () => {
     await flush();
     sessionsMock.state.mockClear();
     await hear({ topic: topic.org(), kind: "state", origin: { requestId: sent } });
-    expect(stateOnlyReads()).toHaveLength(0);
+    expect(stateOnlyReads()).toHaveLength(1);
   });
 
   it("passes a resource notice to the resource hooks, and reads state when the snapshot holds it", async () => {
@@ -286,5 +297,28 @@ describe("useSession live · other sessions' scope changes", () => {
     const view = await mountLive();
     view.unmount();
     expect(subscriptions.every((s) => s.closed)).toBe(true);
+  });
+
+  it("re-reads a collection list whose storage path its key doesn't name, and not another collection", async () => {
+    sessionsMock.state.mockResolvedValue(
+      snapshot({ clientData: {}, resources: { org: { roster: { count: 1 }, desks: { count: 0 } } } })
+    );
+    const view = renderHook(() => {
+      const session = useSession("sess1", { flowKind: "demo", live: true });
+      const roster = useResourceCollectionList(session, "roster");
+      return { session, roster };
+    });
+    await waitFor(() => expect(view.result.current.session.isLoading).toBe(false));
+    await waitFor(() => expect(subscriptions.filter((s) => !s.closed)).toHaveLength(1));
+    await hear(null);
+    await flush();
+    const rosterReads = () => resourcesMock.listCollectionItems.mock.calls.filter(([, ref]) => ref === "roster").length;
+    const before = rosterReads();
+    await hear({ topic: topic.org({ resource: "desks/d1" }), kind: "resource" });
+    await flush();
+    expect(rosterReads()).toBe(before);
+    await hear({ topic: topic.org({ resource: "workforce/workers/ada" }), kind: "resource" });
+    await flush();
+    expect(rosterReads()).toBe(before + 1);
   });
 });
