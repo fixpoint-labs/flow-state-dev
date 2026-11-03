@@ -120,7 +120,6 @@ if (PATCHES[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefine
 const legs = new Set((process.env.GOAL_LEGS ?? "a,b,c").split(",").map((s) => s.trim()).filter(Boolean));
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const say = (s: string) => console.error(`[board-notices ${new Date().toISOString().slice(11, 19)}] ${s}`);
 
 // ---------------------------------------------------------------------------
 // Observing the sockets (taps only: nothing here changes what a client does)
