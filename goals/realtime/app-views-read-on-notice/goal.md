@@ -21,3 +21,6 @@ Not covered yet: Shift Manager's message log and project entries, the Teammates 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-11-03 | fix/FIX-2466-app-polls (pre-push) | n/a | PASS | a: running turn 4 ms, answering 5 ms, Shift Manager reply 119 ms, pin 0 ms; 0 reads over 10 s idle in 5 views · b: request views 2/2/4 reads for 200 items, as for 2; Shift Manager 0 · c: no crossing bus, pins 0 ms, answering 6 ms |
+| 2026-11-03 | fix/FIX-2466-app-polls (pre-push) | n/a | FAIL (expected) | `timer`: `a:idle-0-reads` (7, 4, 7, 14 reads over 10 s idle) |
+| 2026-11-03 | fix/FIX-2466-app-polls (pre-push) | n/a | FAIL (expected) | `every-kind`: `b:as-short` (144, 143, 146 reads for 200 items against 4, 3, 6 for 2) |
