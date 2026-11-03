@@ -6,14 +6,14 @@
  * process (react-dom over a happy-dom document; Node's own `fetch` and
  * `WebSocket`). Each view is `useSession(id, { live: true })` with the hooks
  * an app already uses: `useClientData` for org and user state (an org
- * `client.derived` seat count among them) and `useResourceCollectionList`
- * for the org's seats. Every assertion reads what a view rendered, or the
+ * `client.derived` license count among them) and `useResourceCollectionList`
+ * for the org's licenses. Every assertion reads what a view rendered, or the
  * reads its own fetcher made.
  *
- *   a  — user A patches org state and adds an org seat; user B's view of
+ *   a  — user A patches org state and adds an org license; user B's view of
  *        another session shows the plan, the derived count and the row
  *        within 1 s. A desk added to a second collection runs no read of
- *        B's seats.
+ *        B's licenses.
  *   b  — A patches user state; A's second tab, on another session, shows it
  *        within 1 s, and B's view makes no read.
  *   c  — as a, from a run started with `runAction` and no stream.
@@ -110,12 +110,12 @@ const happy = new Window();
 Object.assign(globalThis, { window: happy, document: happy.document, IS_REACT_ACT_ENVIRONMENT: false });
 
 // ---------------------------------------------------------------------------
-// The app: org and user state, an org seat collection with a derived count,
+// The app: org and user state, an org license collection with a derived count,
 // and a second org collection
 // ---------------------------------------------------------------------------
 
-const seats = defineResourceCollection({
-  pattern: "seats/*",
+const licenses = defineResourceCollection({
+  pattern: "licenses/*",
   scope: "org",
   stateSchema: z.object({ name: z.string().default("") }),
   client: { state: { read: true } }
@@ -133,12 +133,12 @@ function deskFlow(): FlowInstance {
     handler({ name, inputSchema: z.object({ value: z.string() }), outputSchema: z.object({}).passthrough(), execute });
   return defineFlow({
     kind: "desk",
-    resources: { seats, desks },
+    resources: { licenses, desks },
     org: {
       stateSchema: z.object({ plan: z.string().default("free") }),
       client: {
         expose: ["plan"],
-        derived: { seatCount: async ({ resources }) => (resources.seats as { count(): Promise<number> }).count() }
+        derived: { licenseCount: async ({ resources }) => (resources.licenses as { count(): Promise<number> }).count() }
       }
     },
     user: {
@@ -147,7 +147,7 @@ function deskFlow(): FlowInstance {
     },
     actions: {
       setPlan: { inputSchema: z.object({ value: z.string() }), block: act("set-plan", async ({ value }, ctx) => (await ctx.org.patchState({ plan: value }), {})) },
-      hire: { inputSchema: z.object({ value: z.string() }), block: act("hire", async ({ value }, ctx) => (await ctx.resources.seats.create(value, { name: value }), {})) },
+      addLicense: { inputSchema: z.object({ value: z.string() }), block: act("addLicense", async ({ value }, ctx) => (await ctx.resources.licenses.create(value, { name: value }), {})) },
       addDesk: { inputSchema: z.object({ value: z.string() }), block: act("add-desk", async ({ value }, ctx) => (await ctx.resources.desks.create(value, { name: value }), {})) },
       setTheme: { inputSchema: z.object({ value: z.string() }), block: act("set-theme", async ({ value }, ctx) => (await ctx.user.patchState({ theme: value }), {})) }
     }
@@ -184,8 +184,8 @@ async function host(): Promise<Host> {
 // A view: one React root, a fetcher that adds the token and counts reads
 // ---------------------------------------------------------------------------
 
-type Read = { at: number; kind: "state" | "state-only" | "seats" | "desks" | "other" };
-type Shown = { at: number; plan: unknown; seatCount: unknown; theme: unknown; seats: string[] };
+type Read = { at: number; kind: "state" | "state-only" | "licenses" | "desks" | "other" };
+type Shown = { at: number; plan: unknown; licenseCount: unknown; theme: unknown; licenses: string[] };
 
 type View = {
   name: string;
@@ -197,7 +197,7 @@ type View = {
 
 function readKind(url: string): Read["kind"] {
   if (/\/sessions\/[^/]+\/state/.test(url)) return url.includes("include_items=false") ? "state-only" : "state";
-  if (/\/resources\/seats(\?|$)/.test(url)) return "seats";
+  if (/\/resources\/licenses(\?|$)/.test(url)) return "licenses";
   if (/\/resources\/desks(\?|$)/.test(url)) return "desks";
   return "other";
 }
@@ -214,14 +214,14 @@ function mountView(name: string, on: Host, userId: string, token: string, sessio
 
   function Screen() {
     const session = useSession(sessionId, { flowKind: "desk", live });
-    const { org, user } = useClientData(session, { org: ["plan", "seatCount"], user: ["theme"] });
-    const list = useResourceCollectionList<{ name: string }>(session, "seats");
+    const { org, user } = useClientData(session, { org: ["plan", "licenseCount"], user: ["theme"] });
+    const list = useResourceCollectionList<{ name: string }>(session, "licenses");
     current = session;
     const row: Omit<Shown, "at"> = {
       plan: org.plan,
-      seatCount: org.seatCount,
+      licenseCount: org.licenseCount,
       theme: user.theme,
-      seats: list.items.map((item) => item.topic).sort()
+      licenses: list.items.map((item) => item.topic).sort()
     };
     const key = JSON.stringify(row);
     useEffect(() => {
@@ -320,22 +320,22 @@ await runGoal(async (failures, tell) => {
     views.push(viewA2, viewB);
     // The derived count renders once the first snapshot lands; org and user
     // state read as unset until someone writes them.
-    const ready = await until(() => viewB.shown.some((r) => r.seatCount === 0) && viewA2.shown.some((r) => r.seatCount === 0), 5_000);
+    const ready = await until(() => viewB.shown.some((r) => r.licenseCount === 0) && viewA2.shown.some((r) => r.licenseCount === 0), 5_000);
     if (!ready) failures.push("setup: the views never rendered their first snapshot");
     await settled(viewB);
     await settled(viewA2);
 
-    // a · A patches org state and adds an org seat; B shows both within 1 s.
+    // a · A patches org state and adds an org license; B shows both within 1 s.
     {
       const planSaved = await write(on, "tok-alice", "alice", sA1, "setPlan", "pro");
       const planShown = await shownAt(viewB, (r) => r.plan === "pro", 3_000);
-      const seatSaved = await write(on, "tok-alice", "alice", sA1, "hire", "ada");
-      const rowShown = await shownAt(viewB, (r) => r.seats.includes("ada"), 3_000);
-      const countShown = await shownAt(viewB, (r) => r.seatCount === 1, 3_000);
+      const licenseSaved = await write(on, "tok-alice", "alice", sA1, "addLicense", "ada");
+      const rowShown = await shownAt(viewB, (r) => r.licenses.includes("ada"), 3_000);
+      const countShown = await shownAt(viewB, (r) => r.licenseCount === 1, 3_000);
       const lat = {
         plan: planShown === undefined ? undefined : planShown - planSaved,
-        row: rowShown === undefined ? undefined : rowShown - seatSaved,
-        count: countShown === undefined ? undefined : countShown - seatSaved
+        row: rowShown === undefined ? undefined : rowShown - licenseSaved,
+        count: countShown === undefined ? undefined : countShown - licenseSaved
       };
       const graded = tell.over("a:within-1s · B's renders showing A's changes", Object.values(lat).filter((v): v is number => v !== undefined));
       for (const [what, ms] of Object.entries(lat)) {
@@ -343,18 +343,18 @@ await runGoal(async (failures, tell) => {
         else if (ms >= BOUND_MS) failures.push(`a:within-1s: B's view showed A's ${what} change ${ms} ms after saved (bound ${BOUND_MS})`);
       }
       if (graded.length === 3 && graded.every((ms) => ms < BOUND_MS)) {
-        evidence.push(`a: B shows plan ${lat.plan} ms, seat row ${lat.row} ms, derived count ${lat.count} ms after saved`);
+        evidence.push(`a: B shows plan ${lat.plan} ms, license row ${lat.row} ms, derived count ${lat.count} ms after saved`);
       }
 
-      // A change to a second collection runs no read of B's seats.
+      // A change to a second collection runs no read of B's licenses.
       await settled(viewB);
       const before = viewB.reads.length;
       await write(on, "tok-alice", "alice", sA1, "addDesk", "d1");
       await delay(800);
-      const seatReads = readsSince(viewB, before, "seats");
+      const licenseReads = readsSince(viewB, before, "licenses");
       tell.over("a:other-collection · B's reads after the desk", readsSince(viewB, before), { emptyIs: "B may read nothing at all for a desk" });
-      if (seatReads.length !== 0) failures.push(`a:other-collection: a desk added ran ${seatReads.length} reads of B's seats`);
-      else evidence.push("a: a desk added ran 0 reads of B's seats");
+      if (licenseReads.length !== 0) failures.push(`a:other-collection: a desk added ran ${licenseReads.length} reads of B's licenses`);
+      else evidence.push("a: a desk added ran 0 reads of B's licenses");
     }
 
     // b · A patches user state; A's second tab shows it, B reads nothing.
@@ -391,7 +391,7 @@ await runGoal(async (failures, tell) => {
       const hired = await runAction({
         orgId: ORG,
         flow: on.flow,
-        actionName: "hire" as never,
+        actionName: "addLicense" as never,
         input: { value: "grace" } as never,
         userId: "alice",
         sessionId: sWorker,
@@ -401,7 +401,7 @@ await runGoal(async (failures, tell) => {
       const hiredAt = Date.now();
       if (hired.error !== undefined) failures.push(`c: setup: the hire failed: ${String(hired.error)}`);
       const planShown = await shownAt(viewB, (r) => r.plan === "enterprise", 3_000);
-      const rowShown = await shownAt(viewB, (r) => r.seats.includes("grace"), 3_000);
+      const rowShown = await shownAt(viewB, (r) => r.licenses.includes("grace"), 3_000);
       const lat = [planShown === undefined ? undefined : planShown - saved, rowShown === undefined ? undefined : rowShown - hiredAt];
       const graded = tell.over("c:within-1s · B's renders showing the worker's changes", lat.filter((v): v is number => v !== undefined));
       if (graded.length < 2) failures.push("c:within-1s: B's view never showed a change from a run with no stream within 3 s");
@@ -418,7 +418,7 @@ await runGoal(async (failures, tell) => {
         await until(() => own.session()?.isLoading === false && own.shown.length > 0, 5_000);
         await settled(own, 1_000);
         const counts: number[] = [];
-        for (const [action, value] of [["setPlan", `plan-${suffix}`], ["hire", `seat-${suffix}`]] as const) {
+        for (const [action, value] of [["setPlan", `plan-${suffix}`], ["addLicense", `license-${suffix}`]] as const) {
           const before = own.reads.length;
           await own.session()!.sendAction(action, { value });
           await until(() => own.session()?.isStreaming === false, 5_000);
@@ -434,7 +434,7 @@ await runGoal(async (failures, tell) => {
       tell.over("d:reads-as-plain · A's reads per change, live", live);
       if (JSON.stringify(plain) !== JSON.stringify(live)) {
         failures.push(`d:reads-as-plain: A's live view read ${live.join(", ")} times per change; without live, ${plain.join(", ")}`);
-      } else evidence.push(`d: A's own view reads ${live.join(", ")} per change (plan, seat), as without live`);
+      } else evidence.push(`d: A's own view reads ${live.join(", ")} per change (plan, license), as without live`);
     }
   } finally {
     for (const view of views) view.close();

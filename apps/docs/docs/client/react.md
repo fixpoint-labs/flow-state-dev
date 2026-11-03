@@ -150,7 +150,7 @@ A live view also hears what other sessions change in the scopes it reads: the us
 ```tsx
 const session = useSession(sessionId, { flowKind: "desk", live: true });
 const { org } = useClientData(session, { org: ["plan"] });  // updates when anyone changes the plan
-const seats = useResourceCollectionList(session, "seats");  // and when anyone adds a seat
+const licenses = useResourceCollectionList(session, "licenses");  // and when anyone adds a license
 ```
 
 On a state change the view reads its state again without its item history, so the cost doesn't grow with the conversation. A change this view made itself is already on screen from its own request, and costs no extra read. A user's own state reaches only that user's views. On a host that pushes, such as `serve()` from `@flow-state-dev/node`, the change shows within about a second of being saved. On a host that can't push, such as Vercel or Next.js, the view reads its state every few seconds instead. [Keeping a screen current](/guides/realtime) has the details per host.

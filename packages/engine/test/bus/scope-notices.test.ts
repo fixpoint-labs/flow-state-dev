@@ -38,8 +38,8 @@ const orgTopic: BusTopic = { scope: "org", id: ORG, tenantId: "" };
 const userTopic: BusTopic = { scope: "user", id: "alice", tenantId: "" };
 const sessionTopic = (id: string): BusTopic => ({ scope: "session", id, tenantId: "" });
 
-const seats = defineResourceCollection({
-  pattern: "seats/*",
+const licenses = defineResourceCollection({
+  pattern: "licenses/*",
   scope: "org",
   stateSchema: z.object({ name: z.string().default("") }),
   client: { state: { read: true } }
@@ -71,16 +71,16 @@ function app() {
     user: { stateSchema: z.object({ theme: z.string().default("light") }) },
     session: { stateSchema: z.object({ topic: z.string().default("") }) },
     request: { stateSchema: z.object({ step: z.string().default("") }) },
-    resources: { seats, audit, ledger },
+    resources: { licenses, audit, ledger },
     actions: {
       orgPlan: { inputSchema: z.object({ value: z.string() }), block: write("org-plan", async ({ value }, ctx) => ctx.org.patchState({ plan: value })) },
       userTheme: { inputSchema: z.object({ value: z.string() }), block: write("user-theme", async ({ value }, ctx) => ctx.user.patchState({ theme: value })) },
       sessionTopic: { inputSchema: z.object({ value: z.string() }), block: write("session-topic", async ({ value }, ctx) => ctx.session.patchState({ topic: value })) },
       requestStep: { inputSchema: z.object({ value: z.string() }), block: write("request-step", async ({ value }, ctx) => ctx.request.patchState({ step: value })) },
-      hire: {
+      addLicense: {
         inputSchema: z.object({ value: z.string() }),
-        block: write("hire", async ({ value }, ctx) => {
-          await ctx.resources.seats.create(value, { name: value });
+        block: write("addLicense", async ({ value }, ctx) => {
+          await ctx.resources.licenses.create(value, { name: value });
           return {};
         })
       },
@@ -149,9 +149,9 @@ describe("resource writes publish on their scope's topic, narrowed to the resour
   it("publishes an org collection create from a run with no stream", async () => {
     const bus = createInMemoryBus();
     const heard = hear(bus, orgTopic);
-    const requestId = await run(bus, "hire", "ada");
+    const requestId = await run(bus, "addLicense", "ada");
     expect(ofKind(heard, "resource")).toEqual([
-      { topic: { ...orgTopic, resource: "seats/ada" }, kind: "resource", origin: { requestId } }
+      { topic: { ...orgTopic, resource: "licenses/ada" }, kind: "resource", origin: { requestId } }
     ]);
   });
 

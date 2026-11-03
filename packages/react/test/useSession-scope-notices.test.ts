@@ -58,7 +58,7 @@ function snapshot(extra: Record<string, unknown> = {}) {
     sessionId: "sess1",
     flowKind: "demo",
     clientData: { org: { plan: "free" } },
-    resources: { org: { seats: { count: 1 } } },
+    resources: { org: { licenses: { count: 1 } } },
     items: [],
     pagination: { offset: 0, limit: 100, total: 0, hasMore: false, nextOffset: 0 },
     ...extra
@@ -155,7 +155,7 @@ describe("useSession live · other sessions' scope changes", () => {
     const sent = (flowMock.send.mock.calls[0]![2] as { requestId: string }).requestId;
     sessionsMock.state.mockClear();
     await hear({ topic: topic.org(), kind: "state", origin: { requestId: sent } });
-    await hear({ topic: topic.org({ resource: "seats/ada" }), kind: "resource", origin: { requestId: sent } });
+    await hear({ topic: topic.org({ resource: "licenses/ada" }), kind: "resource", origin: { requestId: sent } });
     expect(sessionsMock.state).not.toHaveBeenCalled();
     expect(announced()).toEqual([]);
     // A notice with no origin (a resource route) reaches every view, this one too.
@@ -165,8 +165,8 @@ describe("useSession live · other sessions' scope changes", () => {
 
   it("passes a resource notice to the resource hooks, and reads state when the snapshot holds it", async () => {
     const { announced } = await mountLive();
-    await hear({ topic: topic.org({ resource: "seats/ada" }), kind: "resource", origin: { requestId: "req_elsewhere" } });
-    expect(announced()).toEqual(["seats/ada"]);
+    await hear({ topic: topic.org({ resource: "licenses/ada" }), kind: "resource", origin: { requestId: "req_elsewhere" } });
+    expect(announced()).toEqual(["licenses/ada"]);
     expect(stateOnlyReads()).toHaveLength(1);
   });
 
@@ -191,7 +191,7 @@ describe("useSession live · other sessions' scope changes", () => {
     const { announced } = await mountLive();
     await hear(null);
     expect(stateOnlyReads()).toHaveLength(1);
-    expect(announced()).toEqual(["seats"]);
+    expect(announced()).toEqual(["licenses"]);
   });
 
   it("folds a burst of notices into one read in flight and one waiting", async () => {

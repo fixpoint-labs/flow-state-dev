@@ -583,7 +583,7 @@ The `resource_change` event travels on the stream of the request that made the c
 
 ```tsx
 const session = useSession(sessionId, { flowKind: "desk", live: true });
-const seats = useResourceCollectionList(session, "seats");
+const licenses = useResourceCollectionList(session, "licenses");
 ```
 
 A live view then reads the collection again when any other session writes, creates or deletes one of its items, a worker or schedule with no browser attached included. The same goes for a single resource, and for a scope whose `client.derived` values read its resources. Only a resource a client can read announces its changes this way: one with a `client` config, or any resource of a scope that declares `client.derived`. Collection writes made through the routes on this page reach the session's other live views the same way. Nothing about the change travels with the announcement: the view reads through the same endpoints, with the same checks, as on mount.

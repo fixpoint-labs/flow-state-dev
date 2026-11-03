@@ -65,7 +65,7 @@ describe("Roster live", () => {
     await host.hear({ topic: topic.org({ resource: "workforce/workers/ada" }), kind: "resource" });
     expect(host.reads()).toBe(2);
 
-    await host.hear({ topic: topic.org({ resource: "seats/one" }), kind: "resource" });
+    await host.hear({ topic: topic.org({ resource: "licenses/one" }), kind: "resource" });
     await host.hear({ topic: topic.org(), kind: "state" });
     await host.hear({ topic: topic.session(SESSION), kind: "items" });
     expect(host.reads()).toBe(2);
