@@ -7,7 +7,7 @@
  * reconnect, a change of the crossing answer, or a poll.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PUSH_MINT_MAX_TOPICS } from "@flow-state-dev/contracts";
+import { PUSH_MINT_MAX_TOPICS, wireTopicKey as wireKey } from "@flow-state-dev/contracts";
 import { createClient, topic, type ClientFetch, type WireNotice, type WireTopic } from "../src";
 
 /** A WebSocket double the test drives: open, deliver a frame, drop. */
@@ -75,14 +75,19 @@ function server(
     mintBody?: string;
     /** Hold a mint's answer until the promise this returns settles. */
     holdMint?: (topics: WireTopic[]) => Promise<void> | undefined;
+    /** Fail `GET /capabilities` while this returns true. */
+    capabilitiesFail?: () => boolean;
   } = {}
 ) {
   const mints: MintCall[] = [];
+  const capabilityCalls = { count: 0 };
   let ticket = 0;
   const fetcher: ClientFetch = async (input, init) => {
     const url = String(input);
     const headers = new Headers(init?.headers);
     if (url.endsWith("/capabilities")) {
+      capabilityCalls.count += 1;
+      if (options.capabilitiesFail?.() === true) return Response.json({ error: "down" }, { status: 503 });
       const body = options.push === undefined ? { userStream: false } : { userStream: false, push: options.push };
       return Response.json(body);
     }
@@ -105,7 +110,7 @@ function server(
   };
   const wrapped: ClientFetch = (input, init) =>
     fetcher(input, { ...init, headers: { ...(init?.headers as Record<string, string>), authorization: "Bearer secret" } });
-  return { fetcher: wrapped, mints };
+  return { fetcher: wrapped, mints, capabilityCalls };
 }
 
 function client(fetcher: ClientFetch) {
@@ -432,6 +437,62 @@ describe("client.subscribe on a host with push", () => {
     onChange.mockClear();
     await vi.advanceTimersByTimeAsync(5000);
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("asks again on a reconnect for a topic past the first chunk that the last connection refused", async () => {
+    let allow = false;
+    const late = topic.session(`s${PUSH_MINT_MAX_TOPICS + 1}`);
+    const { fetcher, mints } = server({
+      push: { transport: "websocket" },
+      grant: (t) => allow || wireKey(t) !== wireKey(late)
+    });
+    const many = Array.from({ length: PUSH_MINT_MAX_TOPICS + 2 }, (_, i) => topic.session(`s${i}`));
+    const { socket } = await connected(client(fetcher), many, undefined, true);
+    await settle();
+    const before = mints.length;
+    allow = true;
+    socket.drop();
+    await settle();
+    FakeSocket.all.at(-1)!.open();
+    await settle();
+    const asked = mints.slice(before).flatMap((call) => call.topics.map(wireKey));
+    expect(asked).toContain(wireKey(late));
+  });
+
+  for (const [name, setup] of [
+    ["the capabilities read keeps failing", { capabilitiesFail: () => true }],
+    ["each connect fails", { mintStatus: () => 503 }]
+  ] as const) {
+    it(`arms no timer once the last subscription closes, when ${name}`, async () => {
+      const { fetcher, capabilityCalls, mints } = server({ push: { transport: "websocket" }, ...setup });
+      const sub = client(fetcher).subscribe([S1], { onChange: () => {}, pollIntervalMs: 1000 });
+      await vi.advanceTimersByTimeAsync(3500);
+      sub.close();
+      await settle();
+      const probes = capabilityCalls.count + mints.length;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(capabilityCalls.count + mints.length).toBe(probes);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  }
+
+  it("arms no retry when a capabilities read in flight fails after the last close", async () => {
+    let fail = false;
+    let release: (() => void) | undefined;
+    const held: ClientFetch = async (input, init) => {
+      if (String(input).endsWith("/capabilities")) {
+        await new Promise<void>((resolve) => (release = resolve));
+        if (fail) return Response.json({ error: "down" }, { status: 503 });
+      }
+      return server({ push: { transport: "websocket" } }).fetcher(input, init);
+    };
+    const sub = client(held).subscribe([S1], { onChange: () => {}, pollIntervalMs: 1000 });
+    await settle();
+    sub.close();
+    fail = true;
+    release!();
+    await settle();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("drops a frame that isn't one the server sends", async () => {

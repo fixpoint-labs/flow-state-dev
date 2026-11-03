@@ -150,6 +150,8 @@ export function createPushHub(deps: {
   let lapsed = false;
   let failures = 0;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The current socket's handshake deadline, cleared on open, end and stop. */
+  let handshakeTimer: ReturnType<typeof setTimeout> | undefined;
   /** Bumped on each connect and teardown, so a stale answer is ignored. */
   let generation = 0;
 
@@ -365,12 +367,15 @@ export function createPushHub(deps: {
      * once, whichever comes first.
      */
     const ended = (code: number | undefined): void => {
-      clearTimeout(handshakeTimer);
+      clearTimeout(deadline);
       if (socket !== ws) return;
       socket = undefined;
       state = "idle";
       crosses = false;
+      // Everything this connection learnt goes with it: the next connect asks
+      // for every topic again, refused ones included, as its first chunk does.
       granted.clear();
+      refused.clear();
       minting.clear();
       unacknowledged = [];
       generation += 1;
@@ -388,11 +393,14 @@ export function createPushHub(deps: {
       // fails, the timer runs from then.
       void connect();
     };
-    // A handshake that never answers is a failed connect too.
-    const handshakeTimer = setTimeout(() => ended(undefined), HANDSHAKE_TIMEOUT_MS);
+    // A handshake that never answers is a failed connect too. Each socket
+    // holds its own deadline, so an older socket ending late never clears a
+    // newer one's; `stop()` clears the current one.
+    const deadline = setTimeout(() => ended(undefined), HANDSHAKE_TIMEOUT_MS);
+    handshakeTimer = deadline;
     ws.addEventListener("open", () => {
       if (socket !== ws) return;
-      clearTimeout(handshakeTimer);
+      clearTimeout(deadline);
       opened = true;
       state = "open";
       lapsed = false;
@@ -452,16 +460,24 @@ export function createPushHub(deps: {
       return;
     }
     mode = "checking";
+    const at = generation;
     let push: FlowCapabilities["push"];
     try {
       push = (await deps.capabilities()).push;
     } catch {
+      // Torn down meanwhile (the last subscription closed): nothing to retry for.
+      if (at !== generation || handles.size === 0) return;
       // Unknown: try again later, reading on the timer meanwhile.
       mode = "unknown";
       lapsed = true;
       clearTimeout(retryTimer);
       retryTimer = setTimeout(() => void start(), BACKOFF_INITIAL_MS);
       updateTimers();
+      return;
+    }
+    if (at !== generation || handles.size === 0) {
+      // Torn down meanwhile; keep what was learnt, start nothing.
+      mode = push == null ? "none" : "push";
       return;
     }
     // An older server sends no `push`: the same as none (BP-030).
@@ -476,6 +492,7 @@ export function createPushHub(deps: {
   const stop = (): void => {
     generation += 1;
     clearTimeout(retryTimer);
+    clearTimeout(handshakeTimer);
     const ws = socket;
     socket = undefined;
     state = "idle";
