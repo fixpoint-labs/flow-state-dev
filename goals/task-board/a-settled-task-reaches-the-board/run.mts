@@ -402,6 +402,21 @@ async function until(check: () => boolean | Promise<boolean>, withinMs: number):
   return true;
 }
 
+/** Wait until no view has sent a board read for 1 s (at most 10 s): the reads its opening owed are done. */
+async function quiet(views: View[]): Promise<void> {
+  const total = () => views.reduce((sum, v) => sum + v.reads(), 0);
+  const deadline = Date.now() + 10_000;
+  let last = total();
+  let since = Date.now();
+  while (Date.now() - since < 1_000 && Date.now() < deadline) {
+    await sleep(50);
+    if (total() !== last) {
+      last = total();
+      since = Date.now();
+    }
+  }
+}
+
 const script = (fsd: Client, session: string, s: Script) => fsd.flow("desk").send("respond", { message: JSON.stringify(s) }, { sessionId: session });
 
 // ---------------------------------------------------------------------------
@@ -433,7 +448,7 @@ await runGoal(async (failures, tell) => {
       for (const view of views) {
         if ((await shownAt(view, held, () => true, 5_000)) === undefined) failures.push(`a:setup: ${view.name} never showed the held task`);
       }
-      await sleep(1_500);
+      await quiet(views);
 
       // The window: a reply streams in the conversation, and the user's other
       // conversation files a task its delegate settles.
@@ -512,12 +527,15 @@ await runGoal(async (failures, tell) => {
       const crossed = await until(() => taps.slice(before).length >= 3 && taps.slice(before).every((t) => t.crossedAt !== undefined), 15_000);
       if (!crossed) failures.push("b:crossing: the views' sockets never all said crosses: true within 15 s");
       for (const view of views) await shownAt(view, task, () => true, 5_000);
+      // The window starts once the views have gone quiet: the opening burst (each connect's read, the
+      // filing's notice and the bus's resync) can still be finishing a read when the last socket crosses.
+      await quiet(views);
       const readsBefore = views.map((v) => v.reads());
       await sleep(IDLE_WINDOW_MS);
       const busy = views.map((v, i) => ({ name: v.name, reads: v.reads() - readsBefore[i]! })).filter((v) => v.reads !== 0);
       tell.over("b:0-reads · the views' reads before the window", readsBefore.filter((n) => n > 0));
       if (busy.length > 0) failures.push(`b:0-reads: ${busy.map((v) => `${v.name} made ${v.reads} board reads`).join(", ")} in ${IDLE_WINDOW_MS / 1000} s idle`);
-      else evidence.push(`b: 0 board reads in ${IDLE_WINDOW_MS / 1000} s from each view's first crosses: true`);
+      else evidence.push(`b: 0 board reads in ${IDLE_WINDOW_MS / 1000} s once quiet after each view's first crosses: true`);
 
       // Released on process 2: its pass hands the row out, its doer runs it.
       store.watch("b:linked", task, (row) => row.run?.sessionId !== undefined);
