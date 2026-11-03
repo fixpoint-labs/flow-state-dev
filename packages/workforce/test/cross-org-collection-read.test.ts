@@ -44,7 +44,7 @@ import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/c
 import { z } from "zod";
 import { createFlowState, createInProcessFetch, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
-import { defineWorkerInventoryCollection, doorTask, inventoryWriterActions, openInventory } from "../src/index";
+import { doorTask, inventoryWriterActions, openInventory } from "../src/index";
 
 type Harness = {
   post: (path: string[], body: unknown, headers?: Record<string, string>) => Promise<Answer>;
