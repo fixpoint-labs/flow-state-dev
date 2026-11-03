@@ -34,7 +34,7 @@ app as the user that app declares: Kitchen Sink's one user, and for a lab the
 user editor decides. It sits behind the same sign-in as everything else.
 
 The page is a small Vite build (`pnpm build:devtool`, into `dist/`). `pnpm dev`
-rebuilds it at start; `pnpm serve` serves what `pnpm build` made, and warns when
+rebuilds it at start and again as its source changes; `pnpm serve` serves what `pnpm build` made, and warns when
 there is none.
 
 ## Settings
@@ -93,9 +93,11 @@ see its README. They load `.env.local` the way they do standalone.
   starts its own DevTool on a random loopback port, which isn't proxied and which
   nothing here uses; use `/devtool/` instead. Their in-app "Open trace" links point
   at that port, so they only work on the machine itself.
-- `pnpm dev` serves the labs' built pages (rebuilt at start), not Vite HMR:
-  Vite's dev client loads from absolute paths that can't live under a prefix.
-  Kitchen Sink keeps `next dev` HMR.
+- `pnpm dev` picks up client changes, but without HMR: each lab's pages (and the
+  DevTool page) are rebuilt with `vite build --watch` once the app is up, and a
+  browser refresh loads the new build. Vite's dev client loads from absolute
+  paths that can't live under a prefix. Kitchen Sink keeps `next dev` HMR. A
+  lab's server side (its flows and config) isn't watched: that needs a restart.
 - Kitchen Sink's Bull Board (`REDIS_URL` set) mounts at `/api/admin/queues`
   without the prefix and isn't reachable through the proxy.
 - A lab page's relative URLs resolve against its `<base href>`, so a

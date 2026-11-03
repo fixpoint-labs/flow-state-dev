@@ -37,6 +37,7 @@ export const KITCHEN_SINK_ENV = {
  * @property {string[]} args
  * @property {string} cwd
  * @property {Record<string,string>} [env]
+ * @property {boolean} [background]  Runs beside the steps after it instead of before them (a watcher). `run.mjs` doesn't wait for it, and its exit doesn't stop the app.
  *
  * @typedef {object} HostedApp
  * @property {string} id         Log prefix and route name.
@@ -88,12 +89,11 @@ export const APPS = [
     kind: "spa",
     // The checkout's `start` script: rebuilds the pages first when they are older than their source.
     run: (() => {
-      const step = {
-        cmd: TSX,
-        args: ["scripts/checkout.mts", "--port", "3120", "--no-open"],
-        cwd: join(REPO, "packages/shift-manager"),
-      };
-      return { dev: [step], serve: [step] };
+      const cwd = join(REPO, "packages/shift-manager");
+      const step = { cmd: TSX, args: ["scripts/checkout.mts", "--port", "3120", "--no-open"], cwd };
+      // The checkout builds the pages once, when they're stale; the watcher rebuilds them as their source changes.
+      const pages = { cmd: bin("packages/shift-manager", "vite"), args: ["build", "--watch"], cwd, background: true };
+      return { dev: [pages, step], serve: [step] };
     })(),
   },
   {
@@ -106,7 +106,11 @@ export const APPS = [
     run: (() => {
       const cwd = join(REPO, "labs/teammates");
       const server = { cmd: TSX, args: [FSDEV, "dev", "--app", "@flow-state-dev/teammates", "--port", "3130", "--no-open"], cwd };
-      return { dev: [{ cmd: bin("labs/teammates", "vite"), args: ["build"], cwd }, server], serve: [server] };
+      const vite = bin("labs/teammates", "vite");
+      return {
+        dev: [{ cmd: vite, args: ["build"], cwd }, { cmd: vite, args: ["build", "--watch"], cwd, background: true }, server],
+        serve: [server],
+      };
     })(),
   },
   {
@@ -123,8 +127,11 @@ export const APPS = [
         args: [FSDEV, "dev", "--config", "labs/claude-code-style/fsdev.config.mts", "--app", "@flow-state-dev/claude-code-style", "--port", "3140", "--no-open"],
         cwd: REPO,
       };
-      const pages = { cmd: bin("labs/claude-code-style", "vite"), args: ["build"], cwd: join(REPO, "labs/claude-code-style") };
-      return { dev: [pages, server], serve: [server] };
+      const lab = join(REPO, "labs/claude-code-style");
+      const vite = bin("labs/claude-code-style", "vite");
+      const pages = { cmd: vite, args: ["build"], cwd: lab };
+      const watch = { cmd: vite, args: ["build", "--watch"], cwd: lab, background: true };
+      return { dev: [pages, watch, server], serve: [server] };
     })(),
   },
 ];

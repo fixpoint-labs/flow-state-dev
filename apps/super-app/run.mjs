@@ -23,8 +23,8 @@
  * - `SUPER_APP_ONLY=kitchen-sink,teammates`: start only these apps.
  *
  * The DevTool page at `/devtool/` is built into `dist/` (`pnpm build:devtool`):
- * `dev` rebuilds it first, as it does the labs' pages; `serve` serves what
- * `pnpm build` made.
+ * `dev` rebuilds it first, as it does the labs' pages, and keeps rebuilding it
+ * (and theirs) as the source changes; `serve` serves what `pnpm build` made.
  *
  * The rules are `settings.mjs`. An app that stops leaves the others running; its route answers 502 and the
  * landing page marks it stopped. Ctrl-C stops everything.
@@ -96,9 +96,19 @@ function runStep(app, step, label) {
   });
 }
 
+/** Watchers wait for the app to answer: the checkout may still be building the pages they'd rebuild. */
+function startWatchers(app, i) {
+  const label = `${color(i)}[${app.id}]\x1b[0m`;
+  for (const step of app.run[mode].filter((s) => s.background)) {
+    void runStep(app, step, label).then((code) => {
+      if (!stopping) process.stderr.write(`${label} ${step.args.join(" ")} stopped (exit ${code}); changes to its source won't show until a restart.\n`);
+    });
+  }
+}
+
 async function startApp(app, i) {
   const label = `${color(i)}[${app.id}]\x1b[0m`;
-  const steps = app.run[mode];
+  const steps = app.run[mode].filter((s) => !s.background);
   for (const [n, step] of steps.entries()) {
     const code = await runStep(app, step, label);
     if (stopping) return;
@@ -111,13 +121,16 @@ async function startApp(app, i) {
 }
 
 /** Marks an app running once its port answers. */
-function watchPort(app) {
+function watchPort(app, i) {
   const probe = () => {
     if (stopping || state.get(app.id) !== "starting") return;
     const socket = connect(app.port, "127.0.0.1");
     socket.once("connect", () => {
       socket.destroy();
-      if (state.get(app.id) === "starting") state.set(app.id, "running");
+      if (state.get(app.id) === "starting") {
+        state.set(app.id, "running");
+        startWatchers(app, i);
+      }
     });
     socket.once("error", () => setTimeout(probe, 1000));
   };
@@ -157,6 +170,10 @@ if (mode === "dev") {
   process.stdout.write("[super-app] building the DevTool page\n");
   const built = spawnSync("pnpm", ["run", "build:devtool"], { cwd: fileURLToPath(new URL(".", import.meta.url)), stdio: "inherit" });
   if (built.status !== 0) process.stderr.write("[super-app] the DevTool page failed to build; /devtool/ won't load.\n");
+  else {
+    // Rebuilds as its source changes; a refresh picks the new build up.
+    void runStep({ port }, { cmd: "pnpm", args: ["run", "build:devtool", "--watch"], cwd: fileURLToPath(new URL(".", import.meta.url)) }, "[devtool]");
+  }
 } else if (!existsSync(`${devtoolDir}/index.html`)) {
   process.stderr.write("[super-app] the DevTool page isn't built (run `pnpm build`); /devtool/ won't load.\n");
 }
@@ -175,6 +192,6 @@ proxy.listen(port, host, () => {
 });
 
 apps.forEach((app, i) => {
-  watchPort(app);
+  watchPort(app, i);
   void startApp(app, i);
 });
