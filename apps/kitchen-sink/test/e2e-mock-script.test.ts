@@ -25,7 +25,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { agentWorkerMock, coordinatorRouteMock, holdBeforeAnswer } from "@/lib/e2e-mock-script";
-import { createKitchenSinkTestModelResolver } from "./mock-flowstate";
+import { createKitchenSinkTestModelResolver } from "@/lib/test-model-resolver";
 
 const system = (content: string) => ({ role: "system", content });
 const user = (content: string) => ({ role: "user", content });

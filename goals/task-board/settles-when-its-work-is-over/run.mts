@@ -42,7 +42,7 @@ import { dispatchThroughSeam, markDispatcher, type BlockContext } from "@flow-st
 import { continueRequest, createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
-import { isSuspensionQuestion, openQuestions, type Task } from "@flow-state-dev/orchestration/tasks";
+import { isSuspensionHold, openHolds, type Task } from "@flow-state-dev/orchestration/tasks";
 import { TASK_ID_STATE_KEY } from "../../../packages/workforce/src/workers/keys.ts";
 import {
   createWorkerInstallation,
@@ -606,11 +606,11 @@ async function legD(run: Run): Promise<void> {
   const claimedAt = Math.max(...(await Promise.all(ids.map(async (id) => (await run.h.byId(id))?.startedAt ?? Date.now()))));
   for (const [i, [reason, forPerson]] of STOPS.entries()) {
     const row = await run.h.byId(ids[i]!);
-    const mirrored = row !== undefined && openQuestions(row).some(isSuspensionQuestion);
-    if (row?.status !== "in_progress" || row.keptOpenBy !== "wait" || row.leaseUntil !== undefined || mirrored !== forPerson) {
+    const mirrored = row !== undefined && openHolds(row).some(isSuspensionHold);
+    if (row?.status !== "in_progress" || row.keptOpenBy !== "suspended" || row.leaseUntil !== undefined || mirrored !== forPerson) {
       run.failures.push(
         `d:keeps-its-claim — wanted the ${reason} stop running, kept open by "wait", with no lease, ${forPerson ? "its stop mirrored as an open suspension question" : "and no suspension question"}; ` +
-          `read ${show(row && { status: row.status, keptOpenBy: row.keptOpenBy, leaseUntil: row.leaseUntil, questions: row.questions })}`
+          `read ${show(row && { status: row.status, keptOpenBy: row.keptOpenBy, leaseUntil: row.leaseUntil, holds: row.holds })}`
       );
     }
   }

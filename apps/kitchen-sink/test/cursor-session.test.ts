@@ -27,8 +27,9 @@ import { testFlow } from "@flow-state-dev/testing";
 import type { ResolveCursorClient } from "@flow-state-dev/cursor";
 
 import { CURSOR_DEFAULT_MODEL, CURSOR_SESSION, cursorBlockOptions, cursorSessionFlow } from "@/lib/cursor-mode";
-import { harnessFeeds } from "@/lib/harness-session-flow";
-import { turnNotice, UNKNOWN_CONVERSATION, type HarnessSessionState } from "@/lib/harness-turn";
+import { kitchenSinkHarnessFeeds } from "@/lib/harness-session-flow";
+import type { HarnessSessionState } from "@flow-state-dev/harness-manager";
+import { turnNotice, UNKNOWN_CONVERSATION } from "@/lib/harness-turn";
 import { sessionBranch, worktreeRoot } from "@/lib/harness-worktree";
 import { SCRIPTED_WHOLE_LIST, scriptedCursor, scriptedCursorPauses } from "@/lib/scripted-cursor";
 
@@ -277,7 +278,7 @@ describe("what Kitchen Sink hands the Cursor block (S5, BR-19, BR-23)", () => {
   it("a real run gets the allowlisted environment, the session's model in agent mode, no sandbox, and the plan recorded", () => {
     vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "do-not-hand-this-over");
     vi.stubEnv("CURSOR_API_KEY", "key");
-    const options = cursorBlockOptions(harnessFeeds(CURSOR_SESSION));
+    const options = cursorBlockOptions(kitchenSinkHarnessFeeds(CURSOR_SESSION));
     expect(options.resolveCursorClient).toBeUndefined();
     expect(options.env).toBeDefined();
     expect(options.env!.KITCHEN_SINK_PLANTED_SECRET).toBeUndefined();
@@ -290,9 +291,21 @@ describe("what Kitchen Sink hands the Cursor block (S5, BR-19, BR-23)", () => {
     expect(options.model).toBeTypeOf("function");
   });
 
+  it("trusted, the run gets the named key and still loads no project settings (FIX-2421 D1)", () => {
+    vi.stubEnv("KITCHEN_SINK_HARNESS_TRUSTED", "1");
+    vi.stubEnv("KITCHEN_SINK_HARNESS_PASS", "KITCHEN_SINK_NAMED_KEY");
+    vi.stubEnv("KITCHEN_SINK_NAMED_KEY", "the-operator-named-this");
+    vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "still-not-named");
+    const options = cursorBlockOptions(kitchenSinkHarnessFeeds(CURSOR_SESSION));
+    expect(options.env!.KITCHEN_SINK_NAMED_KEY).toBe("the-operator-named-this");
+    expect(options.env!.KITCHEN_SINK_PLANTED_SECRET).toBeUndefined();
+    // Cursor's SDK can't keep a source's hooks out, so no source is loaded.
+    expect(options.agent).toEqual({ mode: "agent", local: { sandboxOptions: { enabled: false } } });
+  });
+
   it("test mode runs the scripted Cursor in this process, with no env", () => {
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
-    const options = cursorBlockOptions(harnessFeeds(CURSOR_SESSION));
+    const options = cursorBlockOptions(kitchenSinkHarnessFeeds(CURSOR_SESSION));
     expect(options.resolveCursorClient).toBeDefined();
     expect(options.env).toBeUndefined();
   });
@@ -300,7 +313,7 @@ describe("what Kitchen Sink hands the Cursor block (S5, BR-19, BR-23)", () => {
   it("the no-record control turns the plan record off, so the block declares none", () => {
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
     vi.stubEnv("GOAL_CONTROL", "no-record");
-    expect(cursorBlockOptions(harnessFeeds(CURSOR_SESSION)).recordPlan).toBe(false);
+    expect(cursorBlockOptions(kitchenSinkHarnessFeeds(CURSOR_SESSION)).recordPlan).toBe(false);
   });
 
   it("nothing the caller sends reaches the agent's options", async () => {

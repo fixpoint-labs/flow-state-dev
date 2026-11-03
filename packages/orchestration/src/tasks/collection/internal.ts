@@ -23,9 +23,10 @@ import { deliveredByWait, droppedHeldNotices, recordEnding as recordNoticeOwed, 
 import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
 import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
 import { steersForAttempt, untakenSteers } from "../steers";
-import type { SuspensionQuestion } from "../schema/question";
-import { answerOf, askedOnTicket, droppedMirror, hasOpenQuestion, questionWrite, isRowQuestion, keptOnEnding, newRowQuestions, openRowQuestions, owesTurn } from "./questions";
+import type { SuspensionHold } from "../schema/hold";
+import { answerOf, askedOnTicket, droppedMirror, hasOpenHold, holdWrite, isRowHold, keptOnEnding, newRowHolds, openRowHolds, owesTurn } from "./holds";
 import type { TaskChangeKind } from "./change-event";
+import { SKIPPED_LABEL } from "./cascade";
 import type {
   ClaimOptions,
   TaskHandle,
@@ -95,7 +96,7 @@ export function buildInitialTask<TInput, TOutput>(
   // from starting until it is answered (FIX-2133), due when the host sets a deadline.
   const holds =
     init.questions !== undefined && init.questions.length > 0
-      ? newRowQuestions(init.questions, now, filing.questionDueMs !== undefined ? { dueMs: filing.questionDueMs } : {})
+      ? newRowHolds(init.questions, now, filing.holdDueMs !== undefined ? { dueMs: filing.holdDueMs } : {})
       : undefined;
   const filedUnder = filing.filedUnder;
   return {
@@ -137,7 +138,7 @@ export function buildInitialTask<TInput, TOutput>(
           },
         }
       : {}),
-    ...(holds !== undefined ? { questions: holds } : {}),
+    ...(holds !== undefined ? { holds: holds } : {}),
     // Server-written by the backing (FIX-2078), never from `init`.
     ...(filer !== undefined ? { filer: { sessionId: filer.sessionId, ...(filer.requestId !== undefined ? { requestId: filer.requestId } : {}) } } : {}),
     createdAt: now,
@@ -154,7 +155,7 @@ export function buildInitialTask<TInput, TOutput>(
  */
 export interface FilingStamp {
   readonly filedUnder?: { readonly tenantId?: string; readonly orgId?: string };
-  readonly questionDueMs?: number;
+  readonly holdDueMs?: number;
 }
 
 /**
@@ -427,6 +428,72 @@ export function settingsChangeKind(prev: TaskStatus, next: TaskStatus): TaskChan
   if (prev === "pending" && next === "held") return "held";
   if (prev === "held" && next === "pending") return "released";
   return "settings_changed";
+}
+
+/**
+ * The one retry write (FIX-2383): a failed or cancelled row back to
+ * `pending`, keeping its id, history and spend, decided on the freshest
+ * committed row inside the write. Both backings run it.
+ *
+ * It is not an ending: `endingOf` reads `errored → pending` as none, so no
+ * cascade, notice or recorder runs. The grant goes into the row's
+ * `retryLedger`, the board's one retry count (FIX-948). `attempts` is left
+ * alone, so the next claim takes a new attempt and a notice keyed by attempt
+ * is a new one; `maxAttempts` is left alone too, so a row with tries left keeps
+ * them and one with none gets exactly this one.
+ *
+ * Refused, with nothing written: a row that hasn't ended or that completed
+ * (`disallowed`; the status tells which); a row whose last ending is still
+ * being delivered (`settling`: a cascade, a resume or a cancel owed, which a
+ * late payment would aim at the new attempt); a row a dependency of which
+ * ended (`dependency-ended`: it could never start); a spent budget
+ * (`retry-budget`), only where the backing enforces one.
+ *
+ * @param lookup The board's committed row by id, for the dependency check.
+ * @param budgetSpent Whether the board's `maxTotalRetries` is spent, read
+ *   against the committed ledger; `() => false` where none is enforced.
+ */
+export function retryWrite(
+  task: Task,
+  lookup: (id: string) => Task | undefined,
+  budgetSpent: () => boolean,
+): { patch: Partial<Task> } | { decline: TaskWriteDeclineReason } {
+  if (task.status !== "errored" && task.status !== "cancelled") return { decline: "disallowed" };
+  if (task.cascadeOwed != null || task.resumeOwed === true || task.cancelOwed === true) return { decline: "settling" };
+  for (const depId of task.deps ?? []) {
+    const dep = lookup(depId);
+    if (dep !== undefined && (dep.status === "errored" || dep.status === "cancelled")) return { decline: "dependency-ended" };
+  }
+  if (budgetSpent()) return { decline: "retry-budget" };
+  // A cascade's cancel labelled the row skipped and named its cause; the retry undoes both.
+  const labels = task.causedBy !== undefined ? task.labels?.filter((label) => label !== SKIPPED_LABEL) : task.labels;
+  return {
+    patch: {
+      status: "pending",
+      // The failure's words are the next attempt's feedback, as a soft retry's are; a cancel's reason is not.
+      ...(task.status === "errored" ? { feedback: task.error } : {}),
+      error: undefined,
+      completedAt: undefined,
+      cancelledVia: undefined,
+      causedBy: undefined,
+      leaseUntil: undefined,
+      claimedBy: undefined,
+      ...(labels !== task.labels ? { labels } : {}),
+      // The last attempt's live wait was resumed with its ending (no resume is
+      // owed, above): its gate is closed, and a new attempt's wait takes the
+      // slot afresh. A lapsed slot stays: the request it is lapsed for still
+      // runs, and its release delivers what it held.
+      ...(task.wait != null && task.wait.lapsed !== true ? { wait: undefined } : {}),
+      // The ended attempt's questions closed with it (`openHolds` reads none on
+      // an ended row); reopened, they would hold the new attempt. Answered ones
+      // stay, beside the steers that answer them.
+      ...(task.holds?.some((hold) => !isRowHold(hold) || answerOf(task, hold.id) === undefined)
+        ? { holds: task.holds.filter((hold) => isRowHold(hold) && answerOf(task, hold.id) !== undefined) }
+        : {}),
+      retryPending: true,
+      retryLedger: grantRetry(task),
+    },
+  };
 }
 
 function sameIds(a: readonly string[], b: readonly string[] | undefined): boolean {
@@ -803,7 +870,7 @@ export function transitionDeclineReason(
     changeKind !== undefined &&
     SETTLEMENT_CHANGE_KINDS.has(changeKind) &&
     !isTerminalStatus(task.status) &&
-    hasOpenQuestion(task)
+    hasOpenHold(task)
   ) {
     return "open-question";
   }
@@ -812,11 +879,11 @@ export function transitionDeclineReason(
   const claim = options.claim;
   if (options.ifAllowed === true && isTerminalStatus(task.status)) return "terminal";
   // FIX-2133: a confirm's No cancels only while its confirm is open, on the committed row.
-  const whileQuestionOpen = (options as { whileQuestionOpen?: string }).whileQuestionOpen;
-  if (whileQuestionOpen !== undefined) {
-    const hold = task.questions?.find((h) => h.id === whileQuestionOpen);
-    if (hold === undefined || !isRowQuestion(hold)) return "no-such-question";
-    if (answerOf(task, whileQuestionOpen) !== undefined) return "answered";
+  const whileHoldOpen = (options as { whileHoldOpen?: string }).whileHoldOpen;
+  if (whileHoldOpen !== undefined) {
+    const hold = task.holds?.find((h) => h.id === whileHoldOpen);
+    if (hold === undefined || !isRowHold(hold)) return "no-such-question";
+    if (answerOf(task, whileHoldOpen) !== undefined) return "answered";
   }
   if (claim !== undefined && !ticketNamesTask(claim, collectionId, task)) return "not-my-task";
   // FIX-2133, at the settle (FIX-2132): a turn that asked midway settles nothing on its own
@@ -857,8 +924,8 @@ export function transitionDeclineReason(
   if (claim !== undefined && !adopting && leaseLapsed(task, now)) return "lost-claim";
   // FIX-2133: a renewal (any open hold), or a mirror of a run's stop (an open
   // row hold: one source at a time), refused on the committed row.
-  if (options.refuseWithOpenQuestion === "any" && hasOpenQuestion(task)) return "open-question";
-  if (options.refuseWithOpenQuestion === "row" && openRowQuestions(task).length > 0) return "open-question";
+  if (options.refuseWithOpenHold === "any" && hasOpenHold(task)) return "open-question";
+  if (options.refuseWithOpenHold === "row" && openRowHolds(task).length > 0) return "open-question";
   // Last: a write from an attempt that lost the row is refused as that, never
   // as owing a steer the row's next attempt holds (FIX-2086).
   if (options.refuseUntakenSteers === true && targetStatus === "completed" && untakenSteers(task).length > 0) {
@@ -958,7 +1025,7 @@ export function isReady(
   task: Task,
   lookup: (id: string) => Task | undefined
 ): boolean {
-  if (task.status !== "pending" || hasOpenQuestion(task)) return false;
+  if (task.status !== "pending" || hasOpenHold(task)) return false;
   return depsSatisfied(task, lookup);
 }
 
@@ -1001,7 +1068,7 @@ export function isClaimable(
 ): boolean {
   // FIX-2133: a row with an open hold is never admitted, before its start or
   // midway; a running row that owes a turn on its same attempt is (D3).
-  if (hasOpenQuestion(task)) return false;
+  if (hasOpenHold(task)) return false;
   if (task.status !== "pending" && !leaseLapsed(task, now) && !owesTurn(task)) return false;
   return depsSatisfied(task, lookup);
 }
@@ -1198,11 +1265,11 @@ export function requireClaimTicket(
 export function waitingOnPatch(
   task: Task,
   keptOpenBy: Task["keptOpenBy"],
-  options: { leaseUntil?: number; answer?: { output: unknown }; question?: SuspensionQuestion; resume?: boolean; owesTurn?: boolean }
+  options: { leaseUntil?: number; answer?: { output: unknown }; hold?: SuspensionHold; resume?: boolean; owesTurn?: boolean }
 ): Partial<Task> {
   if (keptOpenBy == null) {
     assertValidLeaseDeadline(options.leaseUntil ?? Number.NaN);
-    const resumed = options.resume === true ? questionWrite(task, { op: "resume" }) : "unchanged";
+    const resumed = options.resume === true ? holdWrite(task, { op: "resume" }) : "unchanged";
     const takesTurn = task.turnOwed === true;
     return {
       keptOpenBy: undefined,
@@ -1222,7 +1289,7 @@ export function waitingOnPatch(
     }
   }
   // A stop for a person, mirrored in the same write (FIX-2133); any other wait mirrors nothing.
-  const mirrored = options.question === undefined ? "unchanged" : questionWrite(task, { op: "mirror", hold: options.question });
+  const mirrored = options.hold === undefined ? "unchanged" : holdWrite(task, { op: "mirror", hold: options.hold });
   return {
     keptOpenBy: keptOpenBy,
     leaseUntil: options.leaseUntil,
@@ -1348,6 +1415,8 @@ export function applyClaimToTask<TInput, TOutput>(
     // Every claim advances the turn generation the claim ticket carries (D3).
     turn: (task.turn ?? 0) + 1,
     turnOwed: undefined,
+    // A retried row's reopening ends at its first claim (FIX-2383).
+    retryPending: undefined,
     ...(recovering ? { abandonments: readAbandonments(task as Task) + 1 } : {}),
     startedAt: task.startedAt ?? now,
     leaseUntil: now + leaseDurationMs,

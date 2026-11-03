@@ -14,20 +14,29 @@ import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import type { BlockContext, HarnessBlock } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   cancelAndResume,
   defineTaskCollection,
   getOrCreateTaskCollection,
-  openRowQuestions,
+  openRowHolds,
   resolveResourceCollection,
-  type SuspensionQuestion,
+  type SuspensionHold,
   type Task,
 } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds, type HarnessJudgeVerdict } from "../src";
+import {
+  harnessManager,
+  harnessRunChangesRead,
+  HarnessRunChangesRefused,
+  harnessTaskInputSchema,
+  runOwnerClaimOrder,
+  type HarnessFeeds,
+  type HarnessJudgeVerdict,
+} from "../src";
 import { harnessTaskId } from "../src/workspace";
+import { reviewDetail } from "../src/browser";
 import { seedRepo } from "./fixtures";
 import { CONVERSATIONS, claimHost, cleanUpHosts } from "./claim-host";
 
@@ -155,9 +164,24 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
       return cancelAndResume(ctx as never, tasks, TASK_ID);
     },
   });
+  // What the run changed, read from its session as a review screen reads it (FIX-2384).
+  const changes = harnessRunChangesRead({
+    name: "review-host",
+    uses: [board.capability],
+    board: async (ctx: BlockContext) => ({
+      tasks: await getOrCreateTaskCollection({
+        ctx,
+        backing: "resource",
+        collectionId: BOARD_ID,
+        collection: resolveResourceCollection(ctx, BOARD_ID)!,
+      }),
+      runOf: () => ({ issue: ISSUE, phase: PHASE }),
+    }),
+  });
   const flow = defineFlow({
     kind: FLOW,
     actions: { seed: { block: seed }, drain: { block: board.drain }, cancel: { block: cancel } },
+    reads: { changes },
     internal: { actions: { ...heard } },
     task: { actions: { work: { block: manager } } },
   } as never)({ id: FLOW } as never);
@@ -166,6 +190,8 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,
+    // Every route call is Alice's, in her organization, as the run's session is bound.
+    resolvePrincipal: () => ({ userId: ALICE, orgId: ORG_ID }),
     durable: options.durable ?? true,
     ...(options.userDeadlineMs === undefined ? {} : { userDeadlineMs: options.userDeadlineMs, durabilityRetention: { sweepIntervalMs: 200 } }),
   } as never);
@@ -196,8 +222,11 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
     }
   };
   /** The row's open review, as a screen reads it off `questions`. */
-  const review = (task: Task): SuspensionQuestion | undefined =>
-    task.questions?.find((hold): hold is SuspensionQuestion => hold.source.kind === "suspension" && hold.ask.kind === "review");
+  const review = (task: Task): SuspensionHold | undefined =>
+    task.holds?.find((hold): hold is SuspensionHold => hold.source.kind === "suspension" && hold.ask.kind === "review");
+  /** The engine's record of the open review: the stop's data, as a screen reads it from the run's session. */
+  const stop = async (hold: SuspensionHold) =>
+    (await runtime()).stores.suspensions.get(hold.source.requestId, hold.source.suspensionId) as Promise<{ data?: unknown } | null>;
   const waiting = (task: Task) => task.status === "in_progress" && review(task) !== undefined;
   /** Answer the open review through the engine's answer route, as a screen does. */
   const answer = async (data: unknown): Promise<Response> => {
@@ -213,6 +242,25 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
       { params: { path } } as never,
     );
   };
+  /** The open review's stop, as the engine keeps it: its `data` is what a review screen draws. */
+  const reviewData = async (task: Task): Promise<Record<string, unknown> | undefined> => {
+    const hold = review(task)!;
+    return (await (await runtime()).stores.suspensions.get(hold.source.requestId, hold.source.suspensionId))?.data;
+  };
+  /** The `changes` read, on the run's own session, through the engine's read route. */
+  const readChanges = async (input: Record<string, unknown>, sessionId?: string): Promise<{ status: number; body: any }> => {
+    const router = await state.getRouter();
+    const path = [FLOW, sessionId ?? (await row()).run!.sessionId, "reads", "changes"];
+    const res = await router.POST(
+      new Request(`http://localhost/api/flows/${path.join("/")}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-org-id": ORG_ID },
+        body: JSON.stringify({ userId: ALICE, input }),
+      }),
+      { params: { path } } as never,
+    );
+    return { status: res.status, body: await res.json() };
+  };
   const start = async () => {
     // The router builds the durability sweeper, which ends a stop at its deadline.
     await state.getRouter();
@@ -224,7 +272,7 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
     await until((t) => t.status === "pending", "the failed try back on the board");
     await act("drain");
   };
-  return { act, row, until, review, waiting, answer, start, retry, seen, dispose: () => state.dispose() };
+  return { act, row, until, review, stop, reviewData, readChanges, waiting, answer, start, retry, seen, dispose: () => state.dispose() };
 }
 
 describe("a coding run that made changes waits for a person's review", () => {
@@ -238,9 +286,63 @@ describe("a coding run that made changes waits for a person's review", () => {
       expect(hold.ask.prompt).toContain("- Change 1");
       expect(hold.ask.prompt).toContain("No judge read this run.");
       expect(hold.ask.prompt).toContain("information, not approval");
+      // The browser reader takes the stop's own data as the review card's props, so its field names can't drift apart.
+      const detail = reviewDetail((await h.stop(hold))?.data);
+      expect(detail).toEqual({ branch: expect.any(String), commits: 1, subjects: ["Change 1"], judge: null });
+      expect(hold.ask.prompt).toContain(`1 commit on ${detail!.branch}`);
       expect(held.attempts).toBe(1);
       expect(h.seen).toHaveLength(1);
       expect(existsSync(`${h.seen[0]!.cwd}.lock`)).toBe(false);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("shows the reviewer each file the run changed, and reads one file's patch from the run's session", async () => {
+    // A person accepts what they saw: the files and lines are on the stop
+    // itself, and a file's patch is one read away (FIX-2384).
+    const h = host({ script: ["commits"] });
+    try {
+      await h.start();
+      const held = await h.until(h.waiting, "the review");
+      expect(h.review(held)!.ask.prompt).toContain("1 file changed (+1 −0).");
+      expect(await h.reviewData(held)).toMatchObject({
+        commits: 1,
+        files: [{ path: "change-1.txt", added: 1, removed: 0 }],
+        fileCount: 1,
+        added: 1,
+        removed: 0,
+      });
+
+      const listed = await h.readChanges({});
+      expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+      expect(listed.body.output).toMatchObject({
+        taskId: TASK_ID,
+        diff: { files: [{ path: "change-1.txt", added: 1, removed: 0 }], verified: true },
+        patch: null,
+      });
+      const opened = await h.readChanges({ path: "change-1.txt" });
+      expect(opened.body.output).toMatchObject({ diff: null, patch: { path: "change-1.txt", truncated: false, verified: true } });
+      expect(opened.body.output.patch.patch).toContain("+change 1");
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("reads no changes for a session that ran no task, or for a task another session ran", async () => {
+    const h = host({ script: ["commits"] });
+    try {
+      await h.start();
+      await h.until(h.waiting, "the review");
+      // A session reads only the run it ran: naming a task can't reach another session's checkout.
+      expect(await h.readChanges({}, `s_${ALICE}`)).toMatchObject({
+        status: 422,
+        body: { message: new HarnessRunChangesRefused("not-started").message },
+      });
+      expect(await h.readChanges({ taskId: "some-other-task" })).toMatchObject({
+        status: 422,
+        body: { message: new HarnessRunChangesRefused("not-this-session").message },
+      });
     } finally {
       await h.dispose();
     }
@@ -337,7 +439,7 @@ describe("a coding run that made changes waits for a person's review", () => {
       await h.retry();
       const done = await h.until((t) => t.status === "completed", "the retry to complete");
       expect(done.attempts).toBe(2);
-      expect(done.questions ?? []).toEqual([]);
+      expect(done.holds ?? []).toEqual([]);
     } finally {
       await h.dispose();
     }
@@ -363,7 +465,7 @@ describe("a coding run that made changes waits for a person's review", () => {
       await h.start();
       await h.until(h.waiting, "the review");
       await h.act("cancel");
-      const done = await h.until((t) => t.status === "cancelled" && (t.questions ?? []).length === 0, "the cancel to close the review");
+      const done = await h.until((t) => t.status === "cancelled" && (t.holds ?? []).length === 0, "the cancel to close the review");
       await new Promise((resolve) => setTimeout(resolve, 500));
       expect(done.status).toBe("cancelled");
       expect(h.seen).toHaveLength(1);
@@ -412,7 +514,7 @@ describe("a judged run on a board read from the claim, with review on", () => {
     await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "add a changelog line", input: {} });
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
     const row = await lab.row(CONVERSATIONS, "t1", "conv-a");
-    const hold = row.questions?.find((h) => h.source.kind === "suspension");
+    const hold = row.holds?.find((h) => h.source.kind === "suspension");
     expect(row.status).toBe("in_progress");
     expect(hold?.ask).toMatchObject({ kind: "review" });
     expect(hold?.ask.prompt).toContain("The judge: done (0.86): the line is in");
@@ -430,7 +532,7 @@ describe("a judged run on a board read from the claim, with review on", () => {
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
     const row = await lab.row(CONVERSATIONS, "t1", "conv-a");
     expect(row.status).toBe("in_progress");
-    expect(openRowQuestions(row).map((h) => h.ask.prompt)).toEqual(["which repository did you mean?"]);
-    expect(row.questions?.some((h) => h.source.kind === "suspension")).toBe(false);
+    expect(openRowHolds(row).map((h) => h.ask.prompt)).toEqual(["which repository did you mean?"]);
+    expect(row.holds?.some((h) => h.source.kind === "suspension")).toBe(false);
   }, 60_000);
 });

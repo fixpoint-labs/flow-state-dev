@@ -1,8 +1,9 @@
-import { useFollowLatest } from "@flow-state-dev/react";
+import { useJumpToLatest } from "@flow-state-dev/react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { SessionStep } from "../adapter";
 import { AgentMarkdown } from "./flow-state/message-response";
+import { JumpToLatestButton } from "./JumpToLatest";
 import { composeToolGroupLabel } from "./flow-state/tool-grouping";
 
 // Framed after the Claude Code-style lab's `Sheet`; one overlay both labs share is FIX-2340.
@@ -23,8 +24,8 @@ export function SessionPopup({ label, title, status, onClose, children }: {
 }) {
   const close = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLElement>(null);
-  // Opens on the session's latest turn, and follows it while the reader stays there.
-  const feed = useFollowLatest();
+  // Opens on the session's latest turn; what arrives after waits below the arrow.
+  const feed = useJumpToLatest();
   useEffect(() => {
     // Focus moves in, stays in while it is open, and goes back to whatever opened it on close.
     const opener = document.activeElement as HTMLElement | null;
@@ -62,6 +63,7 @@ export function SessionPopup({ label, title, status, onClose, children }: {
         </header>
         <div ref={feed.ref} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
           {children}
+          <JumpToLatestButton feed={feed} />
         </div>
       </section>
     </div>,

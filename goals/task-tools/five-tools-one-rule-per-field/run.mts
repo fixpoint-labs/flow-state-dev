@@ -17,7 +17,7 @@
  *      worker's turn get the filer's four and `listDelegates`,
  *      and none of the removed six nor `dispatchTask`; only a coordinator set
  *      to `editsOwnDelegates` gets `addDelegate`, `removeDelegate`,
- *      `setFallback`; `reportProgress` and `askQuestion` only on a task
+ *      `setFallback`; `reportProgress` and `holdTaskForUser` only on a task
  *      turn; an inline plan step that calls `reportProgress({ output })`
  *      checkpoints its own row, and the task's result is still the answering
  *      turn's
@@ -360,10 +360,10 @@ await runGoal(async (failures) => {
           }
         }
       };
-      check("a-desk", [...FOUR, "listDelegates"], [...REMOVED, ...OWN, "dispatchTask", "reportProgress", "askQuestion"], "coordinator offered the four, not its own delegate tools");
+      check("a-desk", [...FOUR, "listDelegates"], [...REMOVED, ...OWN, "dispatchTask", "reportProgress", "holdTaskForUser"], "coordinator offered the four, not its own delegate tools");
       check("a-chief", [...FOUR, "listDelegates", ...OWN], [...REMOVED], "a coordinator set to manage its delegates gets addDelegate, removeDelegate, setFallback");
-      check("a-conv", [...FOUR, "listDelegates"], [...REMOVED, ...OWN, "reportProgress", "askQuestion"], "no reportProgress off a task turn");
-      check("a-task", [...FOUR, "listDelegates", "reportProgress", "askQuestion"], [...REMOVED, ...OWN], "a task turn offered reportProgress and askQuestion");
+      check("a-conv", [...FOUR, "listDelegates"], [...REMOVED, ...OWN, "reportProgress", "holdTaskForUser"], "no reportProgress off a task turn");
+      check("a-task", [...FOUR, "listDelegates", "reportProgress", "holdTaskForUser"], [...REMOVED, ...OWN], "a task turn offered reportProgress and holdTaskForUser");
       check("a-step", ["reportProgress"], [...REMOVED, ...OWN], "a step turn offered reportProgress");
 
       // The step's own row holds the checkpoint; the task's result is the answering turn's.

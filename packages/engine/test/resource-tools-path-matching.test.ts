@@ -12,6 +12,10 @@
  * row sees another row's writes. The existing unit tests stub the collection
  * refs; this file does not, so the real `get`/`create`/`getOptional`
  * validation is what answers.
+ *
+ * `readResource` answers only from a collection that opted in with
+ * `llmReadable`, and without the fields its `secret` names: a collection that
+ * didn't opt in answers as for a path no collection matches.
  */
 import {
   DEFAULT_ORG_ID,
@@ -31,25 +35,31 @@ import { z } from "zod";
 import { createExecutionContext, createInMemoryStores } from "../src";
 
 const s = z.object({ v: z.string().default("") });
+const keyed = z.object({ v: z.string().default(""), key: z.string().default("") });
 const OWNER = ownerSegment("user_1");
 const OTHER = ownerSegment("user_2");
 
 async function makeCtx() {
   const resources = {
     profile: defineResource({ scope: "session", stateSchema: s }),
-    files: defineResourceCollection({ scope: "session", pattern: "files/*", stateSchema: s }),
-    docs: defineResourceCollection({ scope: "session", pattern: "docs/**", stateSchema: s }),
+    files: defineResourceCollection({ scope: "session", pattern: "files/*", stateSchema: s, llmReadable: true }),
+    docs: defineResourceCollection({ scope: "session", pattern: "docs/**", stateSchema: s, llmReadable: true }),
     // Registered shallow-first on purpose: a shallow collection must not claim
     // a nested path it can't hold and so hide the deep one behind it.
-    nestShallow: defineResourceCollection({ scope: "session", pattern: "nest/*", stateSchema: s }),
-    nestDeep: defineResourceCollection({ scope: "session", pattern: "nest/**", stateSchema: s }),
-    obs: defineResourceCollection({ scope: "session", pattern: "[topic]/observations", stateSchema: s }),
+    nestShallow: defineResourceCollection({ scope: "session", pattern: "nest/*", stateSchema: s, llmReadable: true }),
+    nestDeep: defineResourceCollection({ scope: "session", pattern: "nest/**", stateSchema: s, llmReadable: true }),
+    obs: defineResourceCollection({ scope: "session", pattern: "[topic]/observations", stateSchema: s, llmReadable: true }),
     notes: defineResourceCollection({
       scope: "org",
       pattern: "notes/[owner]/[id]",
       ownerPrivate: { param: "owner" },
       stateSchema: s,
+      llmReadable: true,
     }),
+    // Not opted in: blocks reach it, the model doesn't.
+    vault: defineResourceCollection({ scope: "session", pattern: "vault/*", stateSchema: s }),
+    // Opted in, with one field that never leaves the server.
+    keys: defineResourceCollection({ scope: "session", pattern: "keys/*", stateSchema: keyed, llmReadable: true, secret: ["key"] }),
     positions: defineProjectedResourceCollection({
       pattern: "positions/*",
       scope: "session",
@@ -78,6 +88,8 @@ async function makeCtx() {
   await ctx.resources.nestDeep.create("x/y", { v: "n" });
   await ctx.resources.obs.create({ topic: "react" }, { v: "o" });
   await ctx.resources.notes.create({ owner: OWNER, id: "mine" }, { v: "m" });
+  await ctx.resources.vault.create("linear", { v: "sk-vault" });
+  await ctx.resources.keys.create("linear", { v: "set", key: "sk-keys" });
   return ctx;
 }
 
@@ -135,6 +147,10 @@ const ROWS: readonly Row[] = [
   [`read notes/${OWNER}/mine`, exec("readResource", { path: `notes/${OWNER}/mine` }), `ok {"path":"notes/${OWNER}/mine","state":{"v":"m"}}`],
   [`create notes/${OTHER}/theirs`, exec("createResource", { path: `notes/${OTHER}/theirs` }), REFUSED],
   [`read notes/${OTHER}/mine`, exec("readResource", { path: `notes/${OTHER}/mine` }), REFUSED],
+  // A collection that didn't opt in with `llmReadable` answers as one nothing registers.
+  ["read vault/linear", exec("readResource", { path: "vault/linear" }), NO_COLLECTION("vault/linear")],
+  // An opted-in collection is read without its `secret` fields.
+  ["read keys/linear", exec("readResource", { path: "keys/linear" }), `ok {"path":"keys/linear","state":{"v":"set"}}`],
 
   // ── resolveResourceByPath ─────────────────────────────────────────────────
   ["byPath profile", byPath("profile"), "ref session/profile"],

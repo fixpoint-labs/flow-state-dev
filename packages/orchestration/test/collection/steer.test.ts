@@ -142,11 +142,11 @@ describe.each([
     const { tasks } = await makeBacking();
     await tasks.createTask({ id: "t", goal: "t" });
     const claimed = (await tasks.claim("w", { leaseDurationMs: 10_000 }))!;
-    await tasks.setKeptOpenBy!("t", "wait", { claim: ticketForClaim("tasks", claimed) });
+    await tasks.setKeptOpenBy!("t", "suspended", { claim: ticketForClaim("tasks", claimed) });
 
     await tasks.steer!("t", { message: "use the draft", from: "filer" });
 
-    expect(tasks.get("t")).toMatchObject({ keptOpenBy: "wait" });
+    expect(tasks.get("t")).toMatchObject({ keptOpenBy: "suspended" });
   });
 
   it("the claim marks every steer taken by the attempt it starts, so a retry's brief carries them all", async () => {

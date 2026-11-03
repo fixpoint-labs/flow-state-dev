@@ -15,6 +15,10 @@
  * fine. Run the server as a separate OS user, or in a container, when it is
  * not.
  *
+ * Cursor loads none of the repository's project settings, trusted or not: its
+ * SDK can't load them with their hooks off. When the operator trusts the
+ * repository (`lib/harness-trust.ts`), the run is handed the keys they named.
+ *
  * Under `KITCHEN_SINK_TEST_MODE=1` the SDK is replaced by the scripted Cursor
  * (`lib/scripted-cursor.ts`), with `env` left unset (the scripted client runs
  * in this process, and the block refuses a custom client beside `env`), and
@@ -25,21 +29,26 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { harnessEnv } from "@flow-state-dev/core";
 import {
+  CURSOR_PASS,
   TESTED_SDK_VERSION,
+  checkCursorReadiness,
   cursorAgent,
-  cursorSignIn,
   readInstalledCursorSdkVersion,
   type CursorAgentOptions,
   type CursorModelSelection,
-  type CursorSignIn,
   type InstalledSdkVersion,
   type ResolveCursorClient,
 } from "@flow-state-dev/cursor";
 
 import { goalControl } from "./goal-control";
-import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
+import { harnessTrust, type RepoLine } from "./harness-trust";
+import type { HarnessTrust } from "./harness-workspace";
+import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
+import type { HarnessBlock, HarnessReadiness } from "@flow-state-dev/core/types";
+import { kitchenSinkHarnessFlow } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
+import { fromReadiness } from "./mode-readiness";
 import type { HarnessModel, ModelChoices } from "./harness-models";
 import { flowKindOf, modeById } from "./modes";
 import { scriptedCursor } from "./scripted-cursor";
@@ -55,35 +64,23 @@ export const CURSOR_SESSION = flowKindOf(modeById("cursor"));
 export const CURSOR_DEFAULT_MODEL = "composer-2.5";
 
 /**
- * The only variables of the server's environment Cursor's runtime is handed
- * (what its commands start with, not what they could read: see the header).
- * `PATH` (its shell finds commands through it), `HOME` (Cursor keeps its
- * agents and its stored login there, so a resumed agent is found only with the
- * same `HOME`), `USER`, `SHELL` and `TMPDIR` (its shell), `CURSOR_API_KEY`, and
- * the proxy and CA settings a proxied network needs. Add a name here, never a
- * spread of `process.env`.
+ * The environment Cursor's runtime gets, and the one its sign-in is checked
+ * over: the Cursor package's own pass-list (what its commands start with, not
+ * what they could read: see the header), and the keys a trusting operator named.
  */
-export const CURSOR_PASS = [
-  "PATH",
-  "HOME",
-  "USER",
-  "SHELL",
-  "TMPDIR",
-  "CURSOR_API_KEY",
-  "HTTPS_PROXY",
-  "https_proxy",
-  "HTTP_PROXY",
-  "http_proxy",
-  "ALL_PROXY",
-  "all_proxy",
-  "NO_PROXY",
-  "no_proxy",
-  "NODE_EXTRA_CA_CERTS",
-] as const;
+export function cursorEnv(
+  env: Record<string, string | undefined> = process.env,
+  trust: HarnessTrust = harnessTrust(),
+): Record<string, string> {
+  return harnessEnv({ pass: [...CURSOR_PASS, ...trust.pass], env });
+}
 
-/** The environment Cursor's runtime gets, and the one its sign-in is checked over. */
-export function cursorEnv(env: Record<string, string | undefined> = process.env): Record<string, string> {
-  return harnessEnv({ pass: CURSOR_PASS, env });
+/** The header's line for a Cursor session: no project settings, trusted or not. */
+export function cursorRepoLine(trust: HarnessTrust = harnessTrust()): RepoLine {
+  return {
+    conventions: trust.trusted ? "not loaded (Cursor can't load them with their hooks off)" : "not loaded",
+    keys: trust.pass,
+  };
 }
 
 /** Whether this server runs the scripted Cursor instead of the SDK. */
@@ -102,7 +99,7 @@ export interface CursorSeams {
  * Sink passes options and nothing else: the plan record, the child process and
  * the classification of a refused agent are the Cursor package's.
  */
-export function cursorBlockOptions(feeds: HarnessFeeds, seams: CursorSeams = {}): CursorAgentOptions {
+export function cursorBlockOptions(feeds: HarnessSessionFeeds, seams: CursorSeams = {}): CursorAgentOptions {
   const resolveCursorClient = seams.resolveCursorClient ?? (cursorIsScripted() ? scriptedCursor() : undefined);
   return {
     cwd: feeds.cwd,
@@ -134,13 +131,13 @@ export function cursorBlockOptions(feeds: HarnessFeeds, seams: CursorSeams = {})
  * neutral `HarnessBlock` (core's own note on that type). Claude Code mode casts
  * the same way.
  */
-export function cursorBlock(feeds: HarnessFeeds, seams: CursorSeams = {}): HarnessBlock {
+export function cursorBlock(feeds: HarnessSessionFeeds, seams: CursorSeams = {}): HarnessBlock {
   return cursorAgent(cursorBlockOptions(feeds, seams)) as unknown as HarnessBlock;
 }
 
 /** Cursor mode's session flow. `seams` is for tests. */
 export function cursorSessionFlow(seams: CursorSeams = {}) {
-  return harnessSessionFlow({
+  return kitchenSinkHarnessFlow({
     kind: CURSOR_SESSION,
     agent: (feeds) => cursorBlock(feeds, seams),
     defaultModel: CURSOR_DEFAULT_MODEL,
@@ -200,8 +197,8 @@ export interface CursorHostChecks {
   readonly makeRoot: (repository: string) => void;
   /** Why a process with exactly `env` can't start here, or `null` when it can. */
   readonly childStarts: (env: Record<string, string>) => string | null;
-  /** Cursor's sign-in over the run's own environment: its key, or the SDK's stored login. No run. */
-  readonly signIn: (env: Record<string, string>) => Promise<CursorSignIn>;
+  /** Whether Cursor can run over the run's own environment (its key or the SDK's stored login), from the Cursor package. No run. */
+  readonly readiness: (env: Record<string, string>) => Promise<HarnessReadiness>;
 }
 
 /**
@@ -223,7 +220,7 @@ export const HOST_CHECKS: CursorHostChecks = {
     mkdirSync(worktreeRoot(repository), { recursive: true });
   },
   childStarts,
-  signIn: cursorSignIn,
+  readiness: checkCursorReadiness,
 };
 
 /**
@@ -260,13 +257,6 @@ export function cursorModeCheck(checks: CursorHostChecks = HOST_CHECKS): ModeChe
     if (child !== null) {
       return { available: false, reason: `Cursor's runtime process can't be started with the run's environment: ${child}` };
     }
-    const signedIn = await checks.signIn(env);
-    if (signedIn.status === "none") {
-      return {
-        available: false,
-        reason: `Cursor is not signed in on this host (${signedIn.reason}). Set CURSOR_API_KEY, or log in with the Cursor SDK, then restart.`,
-      };
-    }
-    return { available: true };
+    return fromReadiness(await checks.readiness(env));
   };
 }

@@ -317,7 +317,7 @@ async function main() {
     /** The row's open question: a row hold no steer answers yet. */
     const openQuestion = (row: BoardRow | undefined) => {
       const answered = new Set((row?.steers ?? []).flatMap((steer) => (steer.answers === undefined ? [] : [steer.answers])));
-      return row?.status === "in_progress" ? row.questions?.find((hold) => hold.source.kind === "row" && !answered.has(hold.id)) : undefined;
+      return row?.status === "in_progress" ? row.holds?.find((hold) => hold.source.kind === "row" && !answered.has(hold.id)) : undefined;
     };
     const heldRow = await lab.waitForRow((row) => row.id === firstId && openQuestion(row) !== undefined);
     const askedLine = askedLines()[0];

@@ -18,7 +18,7 @@ import { readConversationTasks, type ConversationTask } from "../lib/conversatio
 import { workerLabel } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef } from "../lib/reads";
-import { navigate } from "../lib/routes";
+import { RouteLink } from "./RouteLink";
 
 /** The board the surrounding feed's session keeps, and its tasks as last read; `{}` outside a {@link SessionScope}. */
 type Board = { boardRef?: string; read?: ReadonlyMap<string, ConversationTask> };
@@ -146,15 +146,14 @@ function TaskCard({ task, boardRef }: { task: Pick<ConversationTask, "id" | "goa
         {task.assignee == null ? "unassigned" : workerLabel(task.assignee)} ·{" "}
         <span className={status === "errored" ? "text-destructive" : undefined}>{STATUS_WORD[status] ?? status}</span>
       </span>
-      <button
-        type="button"
+      <RouteLink
+        to={{ level: "task", boardRef, taskId: task.id, tab: "session" }}
         className="shrink-0 text-xs text-muted-foreground opacity-60 hover:text-foreground hover:opacity-100 focus-visible:opacity-100 group-hover/task:opacity-100"
         data-testid="task-open"
         aria-label={`Open ${name}`}
-        onClick={() => navigate({ level: "task", boardRef, taskId: task.id, tab: "session" })}
       >
         Open ›
-      </button>
+      </RouteLink>
       {status === "cancelled" ? <CancelledNote taskId={task.id} /> : null}
     </div>
   );
@@ -178,14 +177,13 @@ function CancelledNote({ taskId }: { taskId: string }) {
       {sessionId === null ? (
         name
       ) : (
-        <button
-          type="button"
+        <RouteLink
           className="underline hover:text-foreground"
           data-testid="task-cancelled-report"
-          onClick={() => navigate({ level: "session", sessionId })}
+          to={{ level: "session", sessionId }}
         >
           {name}
-        </button>
+        </RouteLink>
       )}{" "}
       what happened, and name this task ({taskId}).
     </p>

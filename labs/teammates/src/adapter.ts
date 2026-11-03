@@ -32,9 +32,10 @@
  */
 import { createClient, readEveryCollectionPage, type Client, type SessionRequestSummary } from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
+import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   createWorkforceClient,
+  delegateAnswerOf,
   RECEIVED_MESSAGE_COMPONENT,
   SEND_MESSAGE_TOOL,
   WORKER_MESSAGES_RESOURCE,
@@ -42,7 +43,7 @@ import {
   type RosterEntry,
   type WorkforceClient,
 } from "@flow-state-dev/workforce/browser";
-import { taskSpendView } from "@flow-state-dev/orchestration/tasks";
+import { parseNotice, taskSpendView } from "@flow-state-dev/orchestration/tasks";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
 import { harnessName } from "./lib/harness";
@@ -131,7 +132,7 @@ export type ConversationEntry =
   | { kind: "task"; id: string; taskId: string; title: string; to: string }
   /** A task it filed ended, as a line under the name of the worker that ran it; `title` is the task's, once its row is read. */
   | { kind: "result"; id: string; taskId: string; from: string; text: string; title?: string; failed?: boolean; cancelled?: boolean }
-  /** The worker waits for your yes (`waitForUser` with an approval); `resolution` once answered. */
+  /** The worker waits for your yes (`suspendForUser` with an approval); `resolution` once answered. */
   | { kind: "approval"; id: string; requestId: string; suspensionId: string; text: string; resolution?: string };
 
 /** What a conversation shows now. */
@@ -153,10 +154,8 @@ export interface TalkRow {
   at: number;
   /** It was refused, or nobody took it in time: it will never land. */
   undelivered?: boolean;
-  /** The sender asked for a reply and went on: an answer comes back as a message. */
+  /** The sender asked for a reply: one answer comes back, as a message or as a waited send's result. */
   replyRequested?: boolean;
-  /** A call the recipient answered: its reply was the call's result, never a message of its own. */
-  callAnswered?: boolean;
   /** The framework's "no answer" to the message it replies to: the recipient's turn gave none. */
   noAnswer?: boolean;
 }
@@ -243,13 +242,38 @@ const parseArgs = (item: Item): Record<string, unknown> => {
 const HISTORY_SUMMARY = "historySummary";
 
 /** What the screen reads of where the worker's last turn began reading word for word. */
-interface WindowRead {
+export interface WindowRead {
   /** The first turn the window held, when earlier turns had left it. */
   historyStart?: string;
   /** The newest turn folded into the summary, once one was. */
   summarizedThrough?: string;
   /** Whether the summary covers every turn before its mark; one with a hole can't be called that. */
   summaryComplete?: boolean;
+}
+
+/** The public face of the session's history summary resource. */
+export interface HistorySummaryFace {
+  clientData?: { throughRequestId?: string | null; complete?: boolean };
+}
+
+/**
+ * Where the worker's last turn began reading word for word, from the
+ * session's requests and its history summary.
+ *
+ * @param requests The session's recent requests, any order.
+ * @param summary The session's history summary resource, when it has one.
+ */
+export function windowReadOf(requests: readonly SessionRequestSummary[], summary: HistorySummaryFace | undefined): WindowRead {
+  // The latest turn of the worker's own that read a window, by when it started: the one the worker read last.
+  // A turn still starting has no mark yet; the window only moves forward, so the one before it still holds.
+  const answering = requests.filter((r) => !QUIET_ACTIONS.has(r.actionName) && r.historyStart != null);
+  const latest = answering.reduce<SessionRequestSummary | undefined>((a, r) => (a === undefined || (r.startedAtMs ?? 0) > (a.startedAtMs ?? 0) ? r : a), undefined);
+  const through = summary?.clientData?.throughRequestId;
+  return {
+    ...(latest?.historyStart == null ? {} : { historyStart: latest.historyStart.requestId }),
+    // The worker reads after the mark whether or not the summary has a hole; a hole only changes the label.
+    ...(through == null ? {} : { summarizedThrough: through, summaryComplete: summary?.clientData?.complete === true }),
+  };
 }
 
 /**
@@ -360,13 +384,16 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
     if (item.type === "message" && item.role === "user") {
       entries.push({ kind: "user", id: item.id, text: textOf(item) });
     } else if (item.type === "message" && item.role === "assistant" && workers.has(item.agentName)) {
-      // A task it filed ended: the board's line under the worker that ran it.
-      const taskId = /\((task_[^)\s]+)\)/.exec(textOf(item))?.[1] ?? "";
+      // A task it filed ended: the board's line under the worker that ran it, which names its task
+      // in its data. A completed task's answer said as is (`resultTo: "conversation"`) names the
+      // task it answered; one stored before answers were marked names none.
+      const notice = parseNotice(item);
+      const taskId = notice?.taskId ?? delegateAnswerOf(item)?.taskId ?? "";
       const row = rows.get(taskId);
       const task = row === undefined ? undefined : toBoardTask(row);
-      // A line with no task id is a completed task's answer, said as is (`resultTo: "conversation"`).
+      // An answer is a finished task, never one drawn as failed.
       const cancelled = task?.status === "cancelled";
-      const failed = taskId !== "" && task?.status !== "done" && !cancelled;
+      const failed = notice !== undefined && task?.status !== "done" && !cancelled;
       entries.push({
         kind: "result",
         id: item.id,
@@ -382,7 +409,7 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
       if (text.trim() !== "") entries.push({ kind: "assistant", id: item.id, text, ...(item.status === "in_progress" ? { streaming: true } : {}) });
     } else if (item.type === "tool_output" && item.toolCall?.name === SEND_MESSAGE_TOOL) {
       const args = parseArgs(item);
-      const messageId = item.output?.sent ?? item.output?.callId;
+      const messageId = item.output?.sent;
       if (typeof messageId === "string" && typeof args.to === "string") {
         entries.push({ kind: "sent", id: item.id, messageId, to: args.to, text: String(args.text ?? "") });
       }
@@ -419,10 +446,10 @@ export function answeringOf(items: readonly Item[], inProgress: readonly string[
   return inProgress.length > 0 || items.some((i) => i.status === "in_progress" && live(i.requestId));
 }
 
-/** Who a `sendMessage` output went to, when it sent one: a wait-again or a refused call sent nothing. */
+/** Who a `sendMessage` output went to, when it sent one: a refused send sent nothing. */
 function sentTo(item: Item): string | undefined {
   const to = parseArgs(item).to;
-  const messageId = item.output?.sent ?? item.output?.callId;
+  const messageId = item.output?.sent;
   return typeof messageId === "string" && typeof to === "string" ? to : undefined;
 }
 
@@ -504,7 +531,7 @@ function activityOf(requests: readonly SessionRequestSummary[]): Activity {
 
 /** The connection `fsdev dev` served this page with. */
 function connect(): Client {
-  return createClient({ userId: readUserId(), baseUrl: "", fetcher: withBearerToken(readBearerToken()) });
+  return createClient({ userId: readUserId(), baseUrl: readBasePath(), fetcher: withBearerToken(readBearerToken()) });
 }
 
 /** The adapter the app runs on: the package, through one client. */
@@ -611,7 +638,6 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
               at: m.at,
               ...(m.inReplyTo === undefined ? {} : { inReplyTo: m.inReplyTo }),
               ...(m.replyRequested === true ? { replyRequested: true } : {}),
-              ...(m.call === true && m.repliedAt !== undefined ? { callAnswered: true } : {}),
               ...(m.noAnswer === true ? { noAnswer: true } : {}),
               ...(m.status === "refused" || m.status === "undeliverable" ? { undelivered: true } : {}),
             }));
@@ -644,18 +670,11 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       });
       const stopPoll = poll(
         async (): Promise<WindowRead> => {
-          // The latest turn of the worker's own, by when it started: its window is the one the worker read last.
-          const answering = (await client.sessions.requests(sessionId, { limit: 20 })).filter((r) => !QUIET_ACTIONS.has(r.actionName));
-          const latest = answering.reduce<SessionRequestSummary | undefined>((a, r) => (a === undefined || (r.startedAtMs ?? 0) > (a.startedAtMs ?? 0) ? r : a), undefined);
+          const requests = await client.sessions.requests(sessionId, { limit: 20 });
           const summary = (await client.sessions.state(sessionId, { includeItems: false })).resources?.session?.[HISTORY_SUMMARY] as
-            | { clientData?: { throughRequestId?: string | null; complete?: boolean } }
+            | HistorySummaryFace
             | undefined;
-          const through = summary?.clientData?.throughRequestId;
-          return {
-            ...(latest?.historyStart == null ? {} : { historyStart: latest.historyStart.requestId }),
-            // The worker reads after the mark whether or not the summary has a hole; a hole only changes the label.
-            ...(through == null ? {} : { summarizedThrough: through, summaryComplete: summary?.clientData?.complete === true }),
-          };
+          return windowReadOf(requests, summary);
         },
         (next) => {
           read = next;

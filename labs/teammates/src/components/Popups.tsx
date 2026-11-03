@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import type { LabAdapter, TalkRow } from "../adapter";
 import type { Look } from "../lib/looks";
 import { useWatch } from "../lib/use-watch";
@@ -35,41 +35,50 @@ export type AnswerState = "working" | "replied" | "no answer";
 
 /**
  * How a message stands, from the message log: `replied` by a reply message
- * or, for a call, by its result; `no answer` when the reply is the
- * framework's "no answer"; `working` until then.
+ * (one a waited send took as its result is in the log too); `no answer` when
+ * the reply is the framework's "no answer"; `working` until then.
  */
 export const answerIn = (talk: readonly TalkRow[], messageId: string): AnswerState => {
   const reply = talk.find((row) => row.inReplyTo === messageId);
   if (reply !== undefined) return reply.noAnswer === true ? "no answer" : "replied";
-  return talk.some((row) => row.id === messageId && row.callAnswered === true) ? "replied" : "working";
+  return "working";
 };
 
 /** The open popup, live: it reads what it shows by itself, so it stays current while the work goes on. */
-export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, onClose }: {
+export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, onClose, onMissing }: {
   adapter: LabAdapter;
   popup: Popup;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
   onClose: () => void;
+  /** A task popup's conversation holds no such task, once its tasks are read: a link to a task that is gone. */
+  onMissing?: () => void;
 }) {
   return popup.kind === "task" ? (
-    <TaskPopup adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} onClose={onClose} />
+    // Keyed by conversation: a switch never judges the task against the last conversation's rows.
+    <TaskPopup key={popup.sessionId} adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} onClose={onClose} onMissing={onMissing} />
   ) : (
     <MessagePopup adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} onClose={onClose} />
   );
 }
 
 /** A task's run session and its result. */
-function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, onClose }: {
+function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, onClose, onMissing }: {
   adapter: LabAdapter;
   popup: Extract<Popup, { kind: "task" }>;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
   onClose: () => void;
+  onMissing?: () => void;
 }) {
-  const task = (useWatch(adapter.watchTasks, popup.sessionId) ?? []).find((t) => t.id === popup.taskId);
+  const tasks = useWatch(adapter.watchTasks, popup.sessionId);
+  const task = tasks?.find((t) => t.id === popup.taskId);
+  const missing = tasks !== undefined && task === undefined;
+  useEffect(() => {
+    if (missing) onMissing?.();
+  }, [missing, onMissing]);
   const steps = useWatch(adapter.watchRun, task?.runSessionId) ?? [];
   const line = task ? taskLine(task, isCoding(task.to), nameOf) : "Task";
   // A teammate's task carries its look; a coding task is nobody's.

@@ -16,9 +16,14 @@
  * - **Claude Code, Codex and Cursor** are the coding workers, one per
  *   harness, on the lab's coding flow (`src/flows/coder.ts`): it takes the
  *   tasks a teammate files and runs each through its worker's harness, in a
- *   worktree of the working folder. Before a task starts, the harness's own
- *   sign-in check runs; one this machine isn't set up for fails the task with
- *   a sentence that names it and says what's missing.
+ *   worktree of the working folder. Before a task starts, the harness's
+ *   readiness is checked; one this machine isn't set up for fails the task
+ *   with a sentence that names it and says what to run.
+ * - **Readiness** (harness-manager's `harnessReadiness`, one check per
+ *   harness from its integration): read once at start and logged as a table,
+ *   put in the workers' context so Chief of Staff files coding work only on a
+ *   ready harness, and served as the `harness-readiness` flow's `read` action,
+ *   which `{ refresh: true }` reads again.
  * - **The working folder** is one git checkout the operator names. It is the
  *   host's constant run source, so every coding run and every read of the
  *   workers' source tools works in it. There are no projects: no worker has a
@@ -32,11 +37,19 @@
 import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CODEX_PASS, codexAgent, probeCodexAccount } from "@flow-state-dev/codex";
-import { harnessEnv } from "@flow-state-dev/core";
+import { checkCodexReadiness, CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
+import { defineFlow, harnessEnv } from "@flow-state-dev/core";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
-import { CLAUDE_CODE_PASS, claudeCodeAgent, probeClaudeAccount } from "@flow-state-dev/claude-code/sdk";
-import { cursorAgent, cursorSignIn } from "@flow-state-dev/cursor";
+import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { checkCursorReadiness, CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
+import {
+  assertPositiveInt,
+  formatHarnessReadiness,
+  harnessReadiness,
+  harnessReadinessAction,
+  harnessReadinessCapability,
+  type HarnessReadinessRead,
+} from "@flow-state-dev/harness-manager";
 import { createFlowState } from "@flow-state-dev/engine";
 import { system } from "@flow-state-dev/memory";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
@@ -94,9 +107,12 @@ const HARNESSES: Record<string, Harness> = {
       recordWork: true,
       allowedTools: ["Read", "Write", "Edit", "Bash"],
       permissionMode: "acceptEdits",
-      // The working folder's own Claude Code settings and CLAUDE.md, never this machine's user
-      // settings: an output style there (Explanatory's "★ Insight" boxes) would show in the run's steps.
+      // The working folder's own Claude Code settings, CLAUDE.md and skills, never this machine's
+      // user settings: an output style there (Explanatory's "★ Insight" boxes) would show in the
+      // run's steps. Every hook is off: a turn can write one into `.claude/settings.json`, and it
+      // would run by itself on the next turn, in no transcript.
       settingSources: ["project"],
+      settings: { disableAllHooks: true },
     } as never) as unknown as HarnessBlock,
   codex: ({ cwd, resume, onSession, onActivity }) =>
     codexAgent({
@@ -121,33 +137,23 @@ const HARNESSES: Record<string, Harness> = {
     } as never) as unknown as HarnessBlock,
 };
 
-/** The variables Cursor's runtime is handed: its shell's, its sign-in, and a proxied network's. */
-const CURSOR_PASS = ["PATH", "HOME", "USER", "SHELL", "TMPDIR", "CURSOR_API_KEY", "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy", "NODE_EXTRA_CA_CERTS"];
+/** The flow whose `read` action returns the harnesses' readiness rows. */
+const READINESS_FLOW = "harness-readiness";
 
-/** A harness this machine can't run, in a sentence that names it and what's missing. */
-const notSetUp = (harness: string, reason: string, fix: string) => `${harness} isn't set up on this machine: ${reason}. ${fix}, then start the task again.`;
-
-/** Each harness's own sign-in check, run before a task on it starts. */
-const READY: Record<string, () => Promise<string | undefined>> = {
-  "claude-code": async () => {
-    const env = harnessEnv({ pass: CLAUDE_CODE_PASS });
-    let account = await probeClaudeAccount({ env });
-    // A cold start can miss the probe's window: asked once more, as Kitchen Sink does.
-    if (account.status === "none" && account.unanswered === true) account = await probeClaudeAccount({ env });
-    return account.status === "account" ? undefined : notSetUp("Claude Code", account.reason, "Sign in with `claude`");
-  },
-  codex: async () => {
-    const account = await probeCodexAccount({ env: harnessEnv({ pass: CODEX_PASS }), timeoutMs: 30_000 });
-    return account.status === "account" ? undefined : notSetUp("Codex", account.reason, "Sign in with `codex login`");
-  },
-  cursor: async () => {
-    const signIn = await cursorSignIn(harnessEnv({ pass: CURSOR_PASS })).catch((error: unknown) => ({
-      status: "none" as const,
-      reason: `the Cursor SDK didn't load (${error instanceof Error ? error.message : String(error)})`,
-    }));
-    return signIn.status === "none" ? notSetUp("Cursor", signIn.reason, "Set CURSOR_API_KEY or sign in to Cursor") : undefined;
-  },
-};
+/** Each harness's readiness check, over the environment its runs get. */
+function teammatesReadiness(): HarnessReadinessRead {
+  return harnessReadiness({
+    "claude-code": {
+      label: "Claude Code",
+      check: (o) => checkClaudeCodeReadiness({ env: harnessEnv({ pass: CLAUDE_CODE_PASS }), signal: o?.signal }),
+    },
+    codex: {
+      label: "Codex",
+      check: (o) => checkCodexReadiness({ env: harnessEnv({ pass: CODEX_PASS }), timeoutMs: 30_000, signal: o?.signal }),
+    },
+    cursor: { label: "Cursor", check: () => checkCursorReadiness(harnessEnv({ pass: CURSOR_PASS })) },
+  });
+}
 
 /**
  * The working folder, checked: an existing git checkout, as an absolute path.
@@ -167,6 +173,19 @@ export function workingFolder(workdir: string | undefined): string {
     throw new Error(`teammates: TEAMMATES_WORKDIR names ${folder}, which is not a git checkout.`);
   }
   return folder;
+}
+
+/**
+ * The coding-run budget, checked: `TEAMMATES_RUN_TIMEOUT_MS` as a whole number
+ * of milliseconds, or `undefined` (the host's default) when unset. The check is
+ * harness-manager's own `assertPositiveInt`, so a value no timer can hold fails
+ * here, at start, rather than on a claimed run.
+ *
+ * @throws When the setting is not a positive whole number a timer can hold.
+ */
+export function runTimeout(value: string | undefined): number | undefined {
+  if (value === undefined || value.trim() === "") return undefined;
+  return assertPositiveInt("TEAMMATES_RUN_TIMEOUT_MS", Number(value));
 }
 
 /**
@@ -202,6 +221,9 @@ export async function openTeammates(options: TeammatesOptions) {
     localRepositories: [workdir],
     source: () => ({ kind: "repo", repo: workdir }),
   });
+  const readiness = teammatesReadiness();
+  // At start, never awaited: a missing sign-in never stops the server.
+  void readiness.read().then((rows) => console.log(formatHarnessReadiness(rows)));
   let flows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({ standardWorkers: roster.workers, workerFlows: () => flows as never });
   flows = {
@@ -221,6 +243,8 @@ export async function openTeammates(options: TeammatesOptions) {
           earlier.capability,
           // Offered to a worker whose file picks `consultSessions: [consult]` (Chief of Staff).
           consultSessionsCapability(installation),
+          // Which harnesses can run here, so a coding task is filed only on a ready one.
+          harnessReadinessCapability(readiness),
         ],
         beforeAnswer: earlier.fold,
         afterAnswer: mem.captureFromItems,
@@ -232,15 +256,19 @@ export async function openTeammates(options: TeammatesOptions) {
     [CODER_FLOW]: coderFlow({
       harnesses: HARNESSES,
       defaultHarness: options.harness ?? "cursor",
-      ready: READY,
+      ready: readiness.refusal,
       workspace,
       runTimeoutMs: options.runTimeoutMs ?? 20 * 60_000,
     }),
   };
   const copies = hireWorkforce(installation) as Array<{ id: string }>;
+  const readinessFlow = defineFlow({
+    kind: READINESS_FLOW,
+    actions: { read: harnessReadinessAction(readiness) },
+  } as never)({ id: READINESS_FLOW } as never) as { id: string };
 
   const state = createFlowState({
-    flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),
+    flows: Object.fromEntries([...copies, readinessFlow].map((copy) => [copy.id, copy])),
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
     durable: true,
     devtool: { userId: options.userId },

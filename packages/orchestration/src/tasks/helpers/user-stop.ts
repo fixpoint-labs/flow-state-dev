@@ -3,7 +3,7 @@
  * cancel owes that run.
  *
  * The claim gate mirrors the stop on the row (a suspension hold in
- * `Task.questions`, FIX-2133) in the write that drops its lease. Any write
+ * `Task.holds`, FIX-2133) in the write that drops its lease. Any write
  * that then ends the row (a cancel, a cascade's cancel) owes the parked run
  * its `cancelled` resume, on the board's existing owed-resume mark
  * (`Task.resumeOwed`), in that same write, with the mirror it is owed to kept
@@ -23,12 +23,12 @@
 import { requireRequestHost, type BlockContext, type ResumeWaitResult } from "@flow-state-dev/core/types";
 import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
-import { openQuestions, isSuspensionQuestion, suspensionQuestionOf } from "../collection/questions";
+import { openHolds, isSuspensionHold, suspensionHoldOf } from "../collection/holds";
 import type { CancelOptions, TaskCollectionRef, TaskWriteOutcome } from "../collection/types";
 
 /** Whether `row` owes its parked run a `cancelled` resume: it ended while that run waited for a user. */
-export function owesUserResume(row: Pick<Task, "status" | "resumeOwed" | "questions">): boolean {
-  return row.resumeOwed === true && suspensionQuestionOf(row) !== undefined && isTerminalStatus(row.status);
+export function owesUserResume(row: Pick<Task, "status" | "resumeOwed" | "holds">): boolean {
+  return row.resumeOwed === true && suspensionHoldOf(row) !== undefined && isTerminalStatus(row.status);
 }
 
 /** Thrown inside the stop's fence when the cancel was declined: nothing is resolved. */
@@ -58,7 +58,7 @@ export async function cancelAndResume(
   const row = collection.get(id);
   const resumeWait = ctx.requestHost?.resumeWait;
   // The mirror stays while a later request runs for the task (a notice), with `keptOpenBy` cleared.
-  const stop = row === undefined ? undefined : openQuestions(row).find(isSuspensionQuestion);
+  const stop = row === undefined ? undefined : openHolds(row).find(isSuspensionHold);
   if (row === undefined || stop === undefined || resumeWait === undefined) {
     return collection.cancel(id, reason, options);
   }
@@ -94,7 +94,7 @@ export async function cancelAndResume(
  * on a host without durable execution.
  */
 export async function payOwedUserResume(ctx: BlockContext, row: Task): Promise<boolean> {
-  const stop = suspensionQuestionOf(row);
+  const stop = suspensionHoldOf(row);
   const resumeWait = requireRequestHost(ctx).resumeWait;
   if (stop === undefined || resumeWait === undefined) return false;
   const result = await resumeWait({

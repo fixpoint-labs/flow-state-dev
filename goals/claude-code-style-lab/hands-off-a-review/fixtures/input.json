@@ -1,0 +1,8 @@
+{
+  "project": "Theme toggle review",
+  "ask": "Review PR #4272 on branch feat/theme-toggle. It adds a light/dark theme mark to the page header: clicking it flips the theme, the choice is kept in localStorage, and a first visit follows the system setting. Check what it changes and list any UX caveats. Done means a short list of findings I can act on.",
+  "ids": ["4272", "feat/theme-toggle"],
+  "detail": "localStorage",
+  "done": "finding",
+  "goAhead": "Go ahead with what you have."
+}

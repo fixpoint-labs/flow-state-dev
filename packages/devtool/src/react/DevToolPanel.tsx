@@ -189,6 +189,8 @@ function PanelContent({ className }: { className?: string }) {
   const { sendAction, isSending, lastResponse } = useActionDispatch();
 
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
+  // Actions the person sent from this panel; the stream view goes to its end on each.
+  const [sends, setSends] = useState(0);
   // Tracks the request id the user dispatched from the action bar while it's
   // still in flight. Distinct from `activeRequestId` so we can tell whether
   // the open SSE stream belongs to the user (locks the Live toggle) or was
@@ -556,6 +558,8 @@ function PanelContent({ className }: { className?: string }) {
       // later one must not retire an earlier one's answer; only leaving the
       // workspace does. Two Tasks-tab rows can each have one in flight.
       if (!sessionFence.isCurrent()) return undefined;
+      // The person sent it: the stream goes to its end to show it.
+      setSends((n) => n + 1);
       // Re-read the dispatch-run axis at the START of the call, which is what
       // `docs/architecture/server-and-client.md` specifies and what
       // `useSession` does. The reason it is the start rather than the end: the
@@ -985,6 +989,7 @@ function PanelContent({ className }: { className?: string }) {
                 onReconnect={handleReconnect}
                 onContinue={handleContinue}
                 isContinuing={isContinuing}
+                sends={sends}
               />
             </TabsContent>
 

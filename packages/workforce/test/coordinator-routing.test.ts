@@ -47,6 +47,7 @@ import { handler } from "@flow-state-dev/core";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { bootHost, messageOf, quiet, standardWorkers } from "./coordinator-harness";
+import { TOOL_USE_RULE } from "../src/messages/worker-identity";
 
 const heardBy = (host: ReturnType<typeof bootHost>) => host.heard.map((h) => h.worker);
 
@@ -643,7 +644,8 @@ describe("judgment (V7)", () => {
     // coordinator could message, delegate or not: sendMessage's tool list,
     // and the identity layer's (FIX-2334), which leads the system message.
     const messages = judgment.calls[0]!.input as Array<{ role: string; content: unknown }>;
-    const identity = /^You are [\s\S]*?do it\.\n/;
+    // The layer ends with its rule, so the strip ends there too.
+    const identity = new RegExp(`^You are [\\s\\S]*?${TOOL_USE_RULE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\n`);
     const prompt = JSON.stringify(
       messages
         .filter((m) => !(typeof m.content === "string" && m.content.startsWith("<tools>")))
@@ -718,8 +720,11 @@ describe("judgment is the agent's own turn (S8)", () => {
     await post(host, id, "ping, then list");
     expect(judgment.calls[0]!.model).toBe("test/judge");
     expect(await toolOutputs(host, id)).toEqual(["ping", "listDelegates"]);
-    // The worker's own instructions are the turn's prompt, as an agent worker's are.
-    expect(JSON.stringify(judgment.calls[0]!.input)).toContain("Route the work.");
+    const system = (judgment.calls[0]!.input as Array<{ role: string; content: unknown }>).find((message) => message.role === "system");
+    const text = typeof system?.content === "string" ? system.content : "";
+    expect(text.startsWith("You are chief.")).toBe(true);
+    expect(text).toContain(TOOL_USE_RULE);
+    expect(text.indexOf("Route the work.")).toBeGreaterThan(text.indexOf(TOOL_USE_RULE));
   });
 
   it("keeps the delegate tools when the worker's tools: line grants nothing, and fences everything else", async () => {

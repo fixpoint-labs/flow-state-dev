@@ -36,7 +36,7 @@ The settings a worker writes for itself are `instructions`, `model`, `tools`, th
 
 ## What a worker is told first
 
-Before its team's instructions and its own, every worker on `agent` is told who it is. The prompt opens with its name, its team and its `description`, then lists the workers it can message, by name and id, and the workers that take only tasks, which it reaches by filing one. A worker with no `name:` goes by the last part of its id. One rule follows: use your tools to do what you're asked, and don't offer to do what you can do now.
+Before its team's instructions and its own, every worker on `agent` is told who it is. The prompt opens with its name, its team and its `description`, then lists the workers it can message, by name and id, and the workers that take only tasks, which it reaches by filing one. A worker with no `name:` goes by the last part of its id. One rule follows: work things out yourself first. The worker looks with its tools before it asks anyone. It never asks the user for something the system already has, like a task's result or a branch a task made; when its tools can't reach it, it says what it couldn't see and does what it can. It asks the user only what depends on them: a preference, their decision, or a fact no tool reaches. And it does what it can this turn rather than offering to.
 
 The list is read from the roster on every turn, so a worker the user hires or fires shows up, or drops off, on the next turn. A worker whose own body says "You are Alex" contradicts that opening, and the model decides between them. To word it differently, register your own `agent` flow.
 

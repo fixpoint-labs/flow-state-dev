@@ -5,7 +5,7 @@
  * - `desk.front`: the built-in `agent` worker Alice talks to, on the real model, whose
  *   delegates are the three below. Asked to, its model files a task held on a question.
  * - `desk.asker`: an `agent` worker on the real model that asks the person one question midway,
- *   with `askQuestion`, before it answers.
+ *   with `holdTaskForUser`, before it answers.
  * - `desk.doer`: the Lab's `doer` worker flow, a block that stops for an approval, a review or
  *   an input and reads the answer next (`lab/fsdev.config.mts`).
  * - `eng.coder`: DevTeam's coder, as DevTeam declares it.
@@ -86,7 +86,7 @@ model: ${REAL_MODEL}
 
 You are desk.asker. You write one-line greetings.
 
-On a task, if your brief holds no answer from the person yet, call askQuestion exactly once, asking them about ${words.askerAbout}, and then end your turn without writing the greeting. Once your brief holds their answer, write the one-line greeting using it and end your turn. Never ask twice.
+On a task, if your brief holds no answer from the person yet, call holdTaskForUser exactly once, asking them about ${words.askerAbout}, and then end your turn without writing the greeting. Once your brief holds their answer, write the one-line greeting using it and end your turn. Never ask twice.
 `,
   );
   worker(

@@ -4,11 +4,11 @@ import { Spend } from "./Spend";
 import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus";
 
 /**
- * A compact thread card in the main thread, where the lead's `createTask`
+ * A compact task card in the main thread, where the lead's `createTask`
  * call is. It reads the task row live: icon, title, status line, and
- * *View thread*, plus *Answer* when the thread waits on you and *Resolve* and
+ * *View task*, plus *Answer* when the task waits on you and *Resolve* and
  * *Request changes* when it is ready for review. *Resolve* answers the review
- * from the card; *Answer* and *Request changes* open the thread's view, where
+ * from the card; *Answer* and *Request changes* open the task's view, where
  * you type the words.
  */
 export function ThreadCard({
@@ -28,12 +28,12 @@ export function ThreadCard({
   const primary = "bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground";
   const viewThread = (
     <button type="button" className={button} onClick={() => onOpen(task.id)}>
-      View thread
+      View task
     </button>
   );
   return (
     <section
-      aria-label={`Thread: ${task.title}`}
+      aria-label={`Task: ${task.title}`}
       data-entry="thread"
       data-column={column}
       data-task-id={task.id}

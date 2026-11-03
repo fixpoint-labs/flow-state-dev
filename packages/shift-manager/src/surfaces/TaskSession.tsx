@@ -15,15 +15,15 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { buildItemRenderStream, FlowProvider, ItemRenderer, useFlowContext, useFollowLatest } from "@flow-state-dev/react";
+import { buildItemRenderStream, FlowProvider, ItemRenderer, useFlowContext, useJumpToLatest } from "@flow-state-dev/react";
 import { AskCard } from "../components/AskCard";
 import { shiftManagerRenderers } from "../components/ToolLine";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
-import { EmptyState, SectionFailure } from "../components/ui";
+import { EmptyState, JumpToLatestButton, SectionFailure } from "../components/ui";
 import { asksOfTask, waitsOnYou } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { collectionOfBoard, describeFailure, type Ask, type Failure } from "../lib/reads";
-import { navigate } from "../lib/routes";
+import { RouteLink } from "../components/RouteLink";
 import { followRequest, mergeItems, readSessionItems, RunReadError, taskItems, type OpenRun } from "../lib/run";
 import { useTask } from "../lib/task";
 
@@ -79,9 +79,9 @@ export function TaskSession() {
       {waiting ? (
         <div className="mx-4 mt-3 border px-3 py-2 text-xs" data-testid="session-waiting">
           <p className="font-medium">This task is waiting on you.</p>
-          <button type="button" className="mt-1 underline" onClick={() => navigate({ level: "inbox", item: null })}>
+          <RouteLink to={{ level: "inbox", item: null }} className="mt-1 inline-block underline">
             Answer it in Inbox
-          </button>
+          </RouteLink>
         </div>
       ) : null}
       {body}
@@ -97,7 +97,7 @@ function RunItems({ run }: { run: OpenRun }) {
   const [stored, setStored] = useState<{ items: OutputItem[]; truncated: boolean } | undefined>(undefined);
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
   const [attempt, setAttempt] = useState(0);
-  const feed = useFollowLatest();
+  const feed = useJumpToLatest();
   const { reportStatus } = task;
 
   /** Merge items into what is held; nothing until the first read lands. */
@@ -137,6 +137,16 @@ function RunItems({ run }: { run: OpenRun }) {
   // something to merge into, and re-read the session once when it leaves in_progress.
   // A settled request is never followed again: a new send reopens only the open ones.
   const { sent } = task;
+  // Each line sent from the task's composer takes the session to its end, to show it. An effect, not a
+  // call in the send handler as in `Conversation`, because the composer lives in `TaskFrame`. Only growth
+  // is a send: `sent` empties when the task changes.
+  const showSent = feed.sent;
+  const sentSeen = useRef(sent.length);
+  useEffect(() => {
+    const grew = sent.length > sentSeen.current;
+    sentSeen.current = sent.length;
+    if (grew) showSent();
+  }, [sent.length, showSent]);
   const loaded = stored !== undefined;
   const settled = useRef(new Set<string>());
   useEffect(() => {
@@ -224,6 +234,7 @@ function RunItems({ run }: { run: OpenRun }) {
           The run hasn't recorded a step yet.
         </p>
       ) : null}
+      <JumpToLatestButton feed={feed} />
     </div>
   );
 }
@@ -236,9 +247,9 @@ function RunItems({ run }: { run: OpenRun }) {
 function PendingAsk({ ask }: { ask: Ask | undefined }) {
   if (ask === undefined) {
     return (
-      <button type="button" className="text-sm underline" onClick={() => navigate({ level: "inbox", item: null })}>
+      <RouteLink to={{ level: "inbox", item: null }} className="text-sm underline">
         Waiting on you: answer it in Inbox
-      </button>
+      </RouteLink>
     );
   }
   return (

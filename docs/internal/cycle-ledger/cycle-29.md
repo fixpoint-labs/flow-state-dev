@@ -2,7 +2,7 @@
 
 Part of the [cycle ledger](../cycle-ledger.md), whose header defines the feedback classes and reading labels.
 
-Numbered 29 because the open lessons draft #4245 (FIX-2071) already claims 28.
+Numbered 29 because the lessons draft #4245 (FIX-2071) had already claimed 28.
 
 **A large epic: one epic spec, three amendments, sixteen issue specs and about fifty implementation
 PRs over eight days. The rework had three shapes. A check over a file that every PR edits made each

@@ -10,6 +10,7 @@
  *   - read a stop before the confirmation as a refusal: the stopped case fails.
  *   - read the stop off the request summary alone: the stop-item case fails.
  */
+import type { HarnessTurnRecord } from "@flow-state-dev/harness-manager";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -23,14 +24,19 @@ import {
   turnNumbers,
   UNKNOWN_CONVERSATION,
   type PlanPanelInput,
-  type TurnRecord,
 } from "@/lib/harness-turn";
 
-const blank: TurnRecord = { asked: null, confirmed: null, failure: null, stopped: null, error: null, at: 1, steered: null };
+const blank: HarnessTurnRecord = { asked: null, confirmed: null, failure: null, stopped: null, error: null, at: 1, steered: null, base: null, head: null, checks: null, spend: null, endedAt: null, waitsOnApproval: null, setup: null };
 
 describe("turnNotice", () => {
   it("says nothing while the turn runs", () => {
     expect(turnNotice({ ...blank, asked: "c1" }, "running", "c1")).toBeNull();
+  });
+
+  it("a turn suspended on the user's answer waits on them, with the session's conversation (FIX-2432)", () => {
+    // Its record already holds the confirmed conversation: still waiting, never "continued".
+    const waiting = { ...blank, asked: "c1", confirmed: "c1", waitsOnApproval: true };
+    expect(turnNotice(waiting, "waiting", "c1")).toEqual({ kind: "waiting", conversation: "c1" });
   });
 
   it("a stop is a stop, even before a confirmation and with a refusal-shaped failure (BR-9)", () => {
@@ -77,7 +83,7 @@ describe("latestTurn", () => {
   it("runs while streaming, or until the summary names the turn; then reads the summary", () => {
     expect(latestTurn({ items: [msg("r2")], streaming: true, request: { id: "r2", status: "completed" } })?.status).toBe("running");
     expect(latestTurn({ items: [msg("r2")], streaming: false, request: { id: "r1", status: "completed" } })?.status).toBe("running");
-    for (const [status, want] of [["incomplete", "completed"], ["failed", "failed"], ["interrupted", "failed"], ["aborted", "stopped"], ["suspended", "running"]] as const) {
+    for (const [status, want] of [["incomplete", "completed"], ["failed", "failed"], ["interrupted", "failed"], ["aborted", "stopped"], ["suspended", "waiting"]] as const) {
       expect(latestTurn({ items: [msg("r2")], streaming: false, request: { id: "r2", status } })?.status).toBe(want);
     }
   });
@@ -187,7 +193,7 @@ describe("turnNumbers and earliestTurnOf", () => {
 
   it("finds the conversation's earliest recorded turn, by when it started", () => {
     const record = (asked: string | null, confirmed: string | null, at: number) =>
-      ({ asked, confirmed, failure: null, stopped: null, error: null, at }) as TurnRecord;
+      ({ asked, confirmed, failure: null, stopped: null, error: null, at }) as HarnessTurnRecord;
     const turns = { r3: record("s1", "s1", 30), r1: record(null, "s0", 10), r2: record(null, "s1", 20) };
     expect(earliestTurnOf(turns, (id) => id === "s1")).toBe("r2");
     expect(earliestTurnOf(turns, (id) => id === "nope")).toBeNull();

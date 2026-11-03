@@ -9,7 +9,7 @@
  * tells, and the filer may answer it with `updateTask`.
  */
 import { describe, expect, it } from "vitest";
-import type { RowQuestion, Task } from "@flow-state-dev/orchestration/tasks";
+import type { RowHold, Task } from "@flow-state-dev/orchestration/tasks";
 import { bootBoardHost, messageOf, ORG, type BoardHost } from "./conversation-board-harness";
 import { WORKER_MESSAGES_PATTERN } from "../src/messages/message-log";
 import { MAX_MESSAGE_CHARS } from "../src/messages/log-row";
@@ -32,7 +32,7 @@ async function logRows(host: BoardHost) {
 /** The task's open questions, as its row keeps them. */
 const questionsOf = async (host: BoardHost, conv: string, taskId: string) => {
   const row = (await host.row("alice", await host.filingOf("alice", conv), taskId))!;
-  return row.questions!.filter((hold) => hold.source.kind === "row");
+  return row.holds!.filter((hold) => hold.source.kind === "row");
 };
 
 /** The messages from the task's worker that landed in the filing conversation. */
@@ -85,7 +85,7 @@ describe("a task's midway question", () => {
 
 describe("the text a question is told in", () => {
   const question = (prompt: string) => ({ kind: "question" as const, prompt });
-  const hold = (prompt: string) => ({ id: "hold_1", ask: question(prompt) }) as unknown as RowQuestion;
+  const hold = (prompt: string) => ({ id: "hold_1", ask: question(prompt) }) as unknown as RowHold;
   const row = (fields: Partial<Task> = {}) => ({ id: "task_1", goal: "pick a region", ...fields }) as Task;
 
   it("tells a routed task's filer the user answers it, not how to answer it: the question is the user's alone", () => {
@@ -96,7 +96,7 @@ describe("the text a question is told in", () => {
 
   it("tells how to answer a confirm with done: the answer tool refuses a confirm answered with a message alone", () => {
     const yesNo = { kind: "confirm" as const, prompt: "Ship it?" };
-    const confirm = { id: "hold_1", ask: yesNo } as unknown as RowQuestion;
+    const confirm = { id: "hold_1", ask: yesNo } as unknown as RowHold;
     expect(midwayQuestionText(row(), confirm)).toContain('updateTask({ id: "task_1", answers: "hold_1", done: true or false, message })');
     expect(midwayQuestionText(row(), hold("Which region?"))).not.toContain("done:");
   });

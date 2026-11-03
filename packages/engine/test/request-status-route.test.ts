@@ -163,4 +163,37 @@ describe("handleGetRequestStatus", () => {
     expect(body.completedAtMs).toBe(completedAt);
     expect(body.lastHeartbeatAt).toBeUndefined();
   });
+
+  it("reports when an aborted or failed run ended, from the field that run stamps", async () => {
+    const stores = createInMemoryStores();
+    const startedAt = Date.now() - 5_000;
+    const base = {
+      flowKind: "chat",
+      actionName: "run",
+      userId: "u",
+      source: "http",
+      startedAtMs: startedAt,
+      state: {},
+      version: 0,
+      createdAt: startedAt,
+      updatedAt: startedAt
+    };
+    await stores.request.set("req_aborted", { ...base, id: "req_aborted", status: "aborted", abortedAt: startedAt + 1_000 }, "any");
+    await stores.request.set("req_failed", { ...base, id: "req_failed", status: "failed", failedAtMs: startedAt + 2_000 }, "any");
+    await stores.request.set("req_live", { ...base, id: "req_live", status: "in_progress", abortedAt: startedAt + 3_000 }, "any");
+
+    const read = async (requestId: string) =>
+      (await (
+        await handleGetRequestStatus(
+          new Request(`http://test/api/flows/chat/requests/${requestId}/status`),
+          { kind: "request_status", flowKind: "chat", requestId },
+          { registry, stores }
+        )
+      ).json()) as { completedAtMs?: number };
+
+    expect((await read("req_aborted")).completedAtMs).toBe(startedAt + 1_000);
+    expect((await read("req_failed")).completedAtMs).toBe(startedAt + 2_000);
+    // A run that is going again has not ended, whatever an earlier stop stamped.
+    expect((await read("req_live")).completedAtMs).toBeUndefined();
+  });
 });

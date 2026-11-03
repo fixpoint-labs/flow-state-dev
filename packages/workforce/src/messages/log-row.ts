@@ -76,22 +76,31 @@ export const workerMessageRowSchema = z.object({
   /** Why it was refused or couldn't be delivered, or why its last send failed. */
   reason: z.string().optional(),
   /**
-   * A call (FIX-2239): the sender waits on the recipient's reply, the result
-   * of the request that acts on it. Server-set from the tool's `wait`, never
-   * input. Absent on a plain message.
-   */
-  call: z.literal(true).optional(),
-  /** When a call's sender stops waiting (epoch ms): a reply after it is late. */
-  deadlineAt: z.number().optional(),
-  /** When a call's reply was given: the recipient's turn ended. */
-  repliedAt: z.number().optional(),
-  /**
-   * The sender asked for a reply and goes on without waiting (FIX-2310): the
-   * recipient owes one answer, which reaches the sender as a message. From the
-   * tool's `replyRequested`. Absent on a plain message and on a call, whose
-   * reply is its tool's result.
+   * The sender asked for a reply (FIX-2310): the recipient owes one answer,
+   * and it always comes, the recipient's or the framework's "no answer". From
+   * the tool's `replyRequested`, or its `wait`, which asks too. Absent on a
+   * plain message.
    */
   replyRequested: z.literal(true).optional(),
+  /**
+   * When the sender stops waiting for the answer in its own turn (epoch ms,
+   * FIX-2318): set only when it waits (`wait: true`). An answer given while it
+   * still waits is its tool's result; one after reaches it as a message.
+   */
+  deadlineAt: z.number().optional(),
+  /**
+   * When the waiting sender stopped waiting with no answer yet (FIX-2318):
+   * written once, guarded against `answeredBy`, so the answer that comes after
+   * goes to it as a message and never into a wait that ended.
+   */
+  waitEndedAt: z.number().optional(),
+  /**
+   * The wait gate the waiting sender parks on now, and its request (FIX-2318),
+   * written before each park: the answer, landing in the sender's session,
+   * resumes it there, so a turn that answers and goes on doesn't keep the
+   * sender waiting.
+   */
+  waitGate: z.object({ gateId: z.string().min(1), requestId: z.string().min(1) }).optional(),
   /** The message that answered this one, once one did (FIX-2310): set once, so a second answer is never sent. */
   answeredBy: z.string().min(1).optional(),
   /** This message is the framework's "no answer" to the one it answers (FIX-2310): its recipient's turn ended with nothing to say, or failed. */

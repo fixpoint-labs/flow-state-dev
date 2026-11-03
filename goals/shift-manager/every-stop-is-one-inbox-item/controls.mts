@@ -41,9 +41,9 @@ export const CONTROLS: Record<string, Control> = {
     legs: ["c"],
     mustFail: ["c:item-closes", "c:held-cancel-closes-questions"],
     patches: [
-      { module: "packages/orchestration/src/tasks/helpers/user-stop.ts", from: String.raw`openQuestions\(row\)\.find\(isSuspensionQuestion\)`, to: "undefined" },
+      { module: "packages/orchestration/src/tasks/helpers/user-stop.ts", from: String.raw`openHolds\(row\)\.find\(isSuspensionHold\)`, to: "undefined" },
       { module: "packages/orchestration/src/tasks/helpers/user-stop.ts", from: String.raw`if \(stop === undefined \|\| resumeWait === undefined\) return false;`, to: "return false;" },
-      { module: "packages/orchestration/src/tasks/collection/questions.ts", from: String.raw`row\.questions\.length === 0 \|\| isTerminalStatus\(row\.status\)\) return \[\];`, to: "row.questions.length === 0) return [];" },
+      { module: "packages/orchestration/src/tasks/collection/holds.ts", from: String.raw`row\.holds\.length === 0 \|\| isTerminalStatus\(row\.status\)\) return \[\];`, to: "row.holds.length === 0) return [];" },
     ],
   }),
   // New: a steer starts its turn whatever holds the row.
@@ -74,6 +74,6 @@ export const CONTROLS: Record<string, Control> = {
   "default-deadline": control("default-deadline", {
     legs: ["a"],
     mustFail: ["a:no-deadline-waits"],
-    patches: [{ module: "packages/core/src/types/wait-for-user.ts", from: String.raw`options\.deadline \?\? ctx\.requestHost\?\.userDeadlineMs`, to: "options.deadline ?? ctx.requestHost?.userDeadlineMs ?? 1500" }],
+    patches: [{ module: "packages/core/src/types/suspend-for-user.ts", from: String.raw`options\.deadline \?\? ctx\.requestHost\?\.userDeadlineMs`, to: "options.deadline ?? ctx.requestHost?.userDeadlineMs ?? 1500" }],
   }),
 };

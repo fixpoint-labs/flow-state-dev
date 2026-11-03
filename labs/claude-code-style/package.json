@@ -15,10 +15,12 @@
     "test": "vitest run --root ."
   },
   "devDependencies": {
+    "@cursor/sdk": "1.0.40",
     "@flow-state-dev/claude-code": "workspace:*",
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/codex": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/cursor": "workspace:*",
     "@flow-state-dev/design-system": "workspace:*",
     "@flow-state-dev/devtool": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",
@@ -41,6 +43,7 @@
     "@vitejs/plugin-react": "^5.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "happy-dom": "^20.8.3",
     "lucide-react": "^0.575.0",
     "radix-ui": "^1.4.3",

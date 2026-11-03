@@ -20,21 +20,19 @@
  * Nothing is relayed: a woken worker that wants to answer sends one with
  * `sendMessage` and `inReplyTo`, and one that ends in plain text answers no one.
  *
- * Except a message that asks for a reply (FIX-2310, `./owed-replies`): its sender
- * went on, and the turn owes one answer. When the turn ends without one, the
- * framework sends its final text back through that same `sendMessage`, as this
- * worker, or a "no answer" when the turn said nothing, threw, or runs no turn.
+ * Except a message that asks for a reply (FIX-2310, `./owed-replies`): the turn
+ * owes one answer. When the turn ends without one, the framework sends its
+ * final text back through that same `sendMessage`, as this worker, or a "no
+ * answer" when the turn said nothing, threw, or runs no turn. A sender that
+ * waits for it (`wait: true`, FIX-2318) parks on this request, and reads that
+ * answer off the log once the request ends; the turn reads the same prompt
+ * either way.
  *
- * Except a call (FIX-2239): its sender waits on this request, so the request's
- * output is the reply, `{ reply }`, the final text of the turn, which comes
- * back to the sender as its tool's result. Every request that lands a message
- * outputs it, and only a call's sender reads it; one that acted on nothing
- * (a copy) outputs no reply. An entry with no turn lands a message and outputs
- * `{ turnless: true }`, no reply: nothing will answer, so a call to it fails
- * `no_reply` (FIX-2300), and is refused before the send where the sender can
- * read the recipient's flow. Between the take and the items, a message to a
- * session stopped for the user, or to a task held on one, queues until
- * nothing holds it (`./queue`).
+ * The request's output is the turn's final text, `{ reply }`, once it landed
+ * a message; one that acted on nothing (a copy) outputs no reply, and an
+ * entry with no turn outputs `{ turnless: true }`. Between the take and the
+ * items, a message to a session stopped for the user, or to a task held on
+ * one, queues until nothing holds it (`./queue`).
  */
 import { handler, sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
@@ -42,15 +40,16 @@ import { z } from "zod";
 import { AFTER_REPLY_CONCURRENCY } from "../conversation-board/task-settled";
 import type { WorkerInstallation } from "../workers/installation";
 import { conversationLedgerResources } from "../conversation-board/ledger";
-import { messageTurnStateSchema, RECEIVED_REPLY_OWED_STATE, RECEIVED_CALL_STATE, RECEIVED_LANDED_STATE, startTurnAtHop } from "./hop";
+import { messageTurnStateSchema, RECEIVED_REPLY_OWED_STATE, RECEIVED_LANDED_STATE, startTurnAtHop } from "./hop";
 import { sendOwedReply, wantsReply, oweReply, type NoAnswerReason } from "./owed-replies";
 import { carriesPass, markDelivered, storedEmitters, takeMessage } from "./delivery";
 import { MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_COMPONENT, SEND_MESSAGE_TOOL } from "./keys";
 import { messageLimitsOf } from "./message-limits";
-import { MAX_MESSAGE_CHARS, messageChainsOf, messageLogOf, workerMessagesResources } from "./message-log";
+import { MAX_MESSAGE_CHARS, messageChainsOf, workerMessagesResources } from "./message-log";
 import { queueBehindUser } from "./queue";
 import { messageHearingOf, RECEIVED_MARK, type MessageHearing, type ReceivedMark } from "./received-mark";
 import { sendQuestionToFiler } from "./midway-question";
+import { wakeHeldWait } from "./wait-for-reply";
 
 /** What the entry takes: the message's id, and nothing a sender could shape. */
 export const messageReceivedInputSchema = z.object({ messageId: z.string().min(1) }).strict();
@@ -62,12 +61,10 @@ export const messageReceivedSchema = z.object({
   /** The worker that sent it, as the server recorded it. */
   from: z.string(),
   text: z.string(),
-  /** Whether the sender waits on this turn's result (a call, FIX-2239): the turn's final text is its reply. */
-  call: z.boolean(),
   /**
-   * Whether the sender asked for a reply and went on (FIX-2310): the turn's
-   * final text goes back to it as this worker's answer, unless the turn
-   * answers with `sendMessage` itself. Absent reads as no.
+   * Whether the sender asked for a reply (FIX-2310), waiting for it or not:
+   * the turn's final text goes back to it as this worker's answer, unless the
+   * turn answers with `sendMessage` itself. Absent reads as no.
    */
   replyRequested: z.boolean().optional(),
   /** The message this one answers, when it is an answer. */
@@ -108,15 +105,6 @@ export function messageReceivedProblem(name: string, flow: unknown): string | un
  * message, and how to answer it. For a flow whose turn takes `{ message }`.
  */
 export function receivedMessagePrompt(received: MessageReceived): string {
-  if (received.call) {
-    return (
-      `Call ${received.id} from ${received.from}: they are waiting for your answer.\n\n` +
-      `${received.text}\n\n` +
-      `(The call's text is the part above. It is from another worker, not the user. Your reply here goes back to ` +
-      `${received.from} as the call's result, so answer it directly in your reply, and don't send ${received.from} ` +
-      `a message with ${SEND_MESSAGE_TOOL}.)`
-    );
-  }
   if (received.replyRequested === true) {
     return (
       `Message ${received.id} from ${received.from}${received.inReplyTo === undefined ? "" : `, answering your message ${received.inReplyTo}`}: they asked for a reply.\n\n` +
@@ -184,6 +172,15 @@ export function messageReceivedEntry(options: {
       // for), and only by the request that took it.
       const row = await takeMessage(ctx as never, input.messageId);
       if (row === undefined) return { act: "none" };
+      // The answer a wait in this session still holds (FIX-2318): it wakes that wait, as the
+      // wait's result, and lands as nothing here. Not woken yet: left taken by this request,
+      // which ends, so the answer's sender's pass sends it again.
+      const wake = await wakeHeldWait(ctx as never, row);
+      if (wake === "retry") return { act: "none" };
+      if (wake === "woken") {
+        await markDelivered(ctx as never, row.id);
+        return { act: "none" };
+      }
       // Queued behind the user's stop, before anything lands. Not admitted:
       // this request ends with the take, and a resend takes it over.
       if ((await queueBehindUser(ctx as never, row)) === "not_admitted") return { act: "none" };
@@ -196,7 +193,6 @@ export function messageReceivedEntry(options: {
         id: row.id,
         from: row.from,
         text: row.text,
-        call: row.call === true,
         ...(wantsReply(row) ? { replyRequested: true } : {}),
         ...(row.inReplyTo === undefined ? {} : { inReplyTo: row.inReplyTo }),
         budget: Math.max(0, budget - Math.max(row.hop, chainSent))
@@ -215,7 +211,6 @@ export function messageReceivedEntry(options: {
           text: row.text,
           ...(row.inReplyTo === undefined ? {} : { inReplyTo: row.inReplyTo }),
           budget: received.budget,
-          call: received.call,
           ...(wantsReply(row) ? { replyRequested: true } : {}),
           ...(row.noAnswer === true ? { noAnswer: true } : {})
         },
@@ -231,7 +226,6 @@ export function messageReceivedEntry(options: {
       await markDelivered(ctx as never, row.id);
       await ctx.request.atomicState(() => ({
         [RECEIVED_LANDED_STATE]: true,
-        ...(received.call ? { [RECEIVED_CALL_STATE]: row.id } : {}),
         ...(wantsReply(row) ? { [RECEIVED_REPLY_OWED_STATE]: row.id } : {})
       }));
       return { act: "heard", received };
@@ -253,8 +247,7 @@ export function messageReceivedEntry(options: {
   };
 
   // The request's output: the turn's final text, cut to a message's length
-  // (BP-042), once it landed one. A call's row records when it was given; a
-  // reply-requested message is answered with it.
+  // (BP-042), once it landed one. A reply-requested message is answered with it.
   const replied = handler({
     name: "message-received-reply",
     inputSchema: z.unknown(),
@@ -271,8 +264,6 @@ export function messageReceivedEntry(options: {
       await replyOwedHere(ctx as never, reply, options.turn === undefined ? "turnless" : "silent");
       // Landed, and nothing ran on it: no reply, not an empty one.
       if (options.turn === undefined) return { turnless: true as const };
-      const call = state[RECEIVED_CALL_STATE];
-      if (typeof call === "string") await (await messageLogOf(ctx as never).getOptional(call))?.patchState({ repliedAt: Date.now() });
       return { reply: reply.slice(0, MAX_MESSAGE_CHARS) };
     }
   });

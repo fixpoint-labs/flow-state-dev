@@ -1,5 +1,5 @@
 /**
- * Landing page styles for flow-state.dev, ported from the "Landing · agent backend"
+ * Landing page styles for flow-state.dev, ported from the flow-state.dev landing
  * design canvas. Every rule is scoped under `.fs-landing` so it can't leak into docs pages.
  */
 .fs-landing{margin:0;background:#f0ece1}
@@ -72,13 +72,10 @@ body:has(main.fs-landing) {
   background-image: none;
 }
 
-/* Sheets stay full-bleed, but their content is held to the 1240px reading column. */
-.fs-landing .fs-sheet,
-.fs-landing .fs-band,
-.fs-landing .fs-dark > header,
-.fs-landing > .fs-root > .fs-page > footer {
-  padding-inline: max(0px, calc((100% - 1240px) / 2));
-}
+/* The page is one 1240px column; outside it is plain paper with a faint grid
+   fading in from the edges, the same ground as flow-state.build. */
+.fs-landing .fs-root::before{content:"";position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(rgba(27,26,21,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(27,26,21,.09) 1px,transparent 1px);background-size:24px 24px;-webkit-mask-image:radial-gradient(ellipse 55% 30% at 0% 6%,#000,transparent),radial-gradient(ellipse 55% 30% at 100% 40%,#000,transparent),radial-gradient(ellipse 55% 30% at 0% 75%,#000,transparent);mask-image:radial-gradient(ellipse 55% 30% at 0% 6%,#000,transparent),radial-gradient(ellipse 55% 30% at 100% 40%,#000,transparent),radial-gradient(ellipse 55% 30% at 0% 75%,#000,transparent)}
+.fs-landing .fs-page{max-width:1240px;margin:0 auto;border-left:1px solid rgba(27,26,21,.45);border-right:1px solid rgba(27,26,21,.45)}
 .fs-landing .fs-features{grid-template-columns:repeat(4,minmax(0,1fr)) !important}
 .fs-landing .fs-also{grid-template-columns:repeat(4,minmax(0,1fr)) !important}
 @media (max-width:1000px){
@@ -86,14 +83,18 @@ body:has(main.fs-landing) {
 }
 @media (max-width:760px){
 .fs-landing .fs-features,.fs-landing .fs-also{grid-template-columns:1fr !important}
+/* "Also included": icon beside a heading + one-line blurb, so eight items don't each stack three rows tall. */
+.fs-landing .fs-also{gap:0 !important}
+.fs-landing .fs-also li{display:grid !important;grid-template-columns:40px minmax(0,1fr);column-gap:14px;row-gap:2px !important;align-items:start;padding:10px 0 !important}
+.fs-landing .fs-also li svg{grid-row:1 / span 2;margin-top:2px}
+.fs-landing .fs-also li p{grid-column:2}
 }
 
-.fs-landing .fs-page{background:transparent}
-.fs-landing .fs-sheet:not([style*="background"]){
-  background-image:linear-gradient(#f0ece1,#f0ece1);
-  background-repeat:no-repeat;
-  background-size:min(100%,1240px) 100%;
-  background-position:center top;
-}
-.fs-landing .fs-dark .fs-sheet{background-image:none}
-
+/* The two-door switch shared with flow-state.build: this page is the developers' door. */
+.fs-landing .fs-doors{display:inline-flex;border:1px solid rgba(236,231,218,.6)}
+.fs-landing .fs-doors a{display:flex;align-items:baseline;gap:6px;min-height:40px;box-sizing:border-box;padding:10px 14px;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;text-decoration:none;color:#cbc5b5}
+.fs-landing .fs-doors a+a{border-left:1px solid rgba(236,231,218,.6)}
+.fs-landing .fs-doors a.on{background:#f4f1e4;color:#141310}
+.fs-landing .fs-doors a:not(.on):hover{background:#e8f551;color:#1b1a15}
+.fs-landing .fs-doors a span{opacity:.65}
+@media (max-width:760px){.fs-landing .fs-doors a span{display:none}}

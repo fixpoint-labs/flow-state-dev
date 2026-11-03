@@ -25,7 +25,7 @@ import {
 } from "../schema/task-status";
 import { withRetiredShapes } from "../schema/retired-shapes";
 import type { FilingStamp, TaskSettingsPatch } from "./internal";
-import { assertAskable, hasOpenQuestion, questionWrite, questionsDue, newRowQuestions, type QuestionChange } from "./questions";
+import { assertAskable, hasOpenHold, holdWrite, holdsDue, newRowHolds, type HoldChange } from "./holds";
 import { NOTICE_DUE_MS } from "../notice/task-notice";
 import type {
   TaskCollectionRef,
@@ -56,6 +56,7 @@ import {
   defaultOrder,
   denyRetry,
   grantRetry,
+  retryWrite,
   isClaimable,
   listTasks,
   retryBudgetExhaustedError,
@@ -523,21 +524,21 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
   function writeHolds(
     id: string,
     kind: TaskChangeKind,
-    change: QuestionChange,
+    change: HoldChange,
     decline?: (task: Task<TInput, TOutput>) => TaskWriteDeclineReason | undefined
   ): Promise<TaskWriteOutcome> {
     return patchOne(
       id,
       kind,
       (task) => {
-        const decided = questionWrite(task as Task, change);
+        const decided = holdWrite(task as Task, change);
         return typeof decided === "object" && "patch" in decided ? (decided.patch as Partial<Task<TInput, TOutput>>) : undefined;
       },
       {
         decline: (task) => {
           const fenced = decline?.(task);
           if (fenced !== undefined) return fenced;
-          const decided = questionWrite(task as Task, change);
+          const decided = holdWrite(task as Task, change);
           return typeof decided === "object" && "decline" in decided ? decided.decline : undefined;
         },
       }
@@ -728,7 +729,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         "in_progress",
         null,
         () => ({ leaseUntil }),
-        { ...renewOptions, ifAllowed: true, refuseWithOpenQuestion: "any" }
+        { ...renewOptions, ifAllowed: true, refuseWithOpenHold: "any" }
       );
     },
 
@@ -768,7 +769,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         null,
         (task) => waitingOnPatch(task as Task, keptOpenBy, waitOptions) as Partial<Task<TInput, TOutput>>,
         // A mirror of a run's stop is refused on a row a question holds (FIX-2133).
-        { ...linkRunGuards({ claim: waitOptions.claim }), ...(waitOptions.question !== undefined ? { refuseWithOpenQuestion: "row" as const } : {}) }
+        { ...linkRunGuards({ claim: waitOptions.claim }), ...(waitOptions.hold !== undefined ? { refuseWithOpenHold: "row" as const } : {}) }
       );
     },
 
@@ -777,8 +778,8 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       assertAskable(asks);
       const guards = linkRunGuards({ claim: askOptions.claim });
       // Minted once, outside the write, so a CAS replay opens the same holds.
-      const holds = newRowQuestions(asks, now(), { ...(options.filing?.questionDueMs !== undefined ? { dueMs: options.filing.questionDueMs } : {}), midway: true });
-      const outcome = await writeHolds(id, "asked", { op: "ask", questions: holds }, (task) =>
+      const holds = newRowHolds(asks, now(), { ...(options.filing?.holdDueMs !== undefined ? { dueMs: options.filing.holdDueMs } : {}), midway: true });
+      const outcome = await writeHolds(id, "asked", { op: "ask", holds: holds }, (task) =>
         transitionDeclineReason(task as Task, "in_progress", guards, collectionId, now())
       );
       return outcome.outcome === "recorded" ? { ...outcome, questions: holds.map((hold) => hold.id) } : outcome;
@@ -786,15 +787,15 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
 
     async answer(id, answer) {
       // Minted once, outside the write, so a CAS replay keeps one steer.
-      const change: QuestionChange = { op: "answer", answer, steerId: generateId("steer"), at: now() };
+      const change: HoldChange = { op: "answer", answer, steerId: generateId("steer"), at: now() };
       return writeHolds(id, "answered", change);
     },
 
-    async payQuestionDeadlines() {
+    async payHoldDeadlines() {
       const at = now();
       const paid: string[] = [];
       for (const row of Object.values(readTasks()) as Task[]) {
-        if (questionsDue(row, at).length === 0) continue;
+        if (holdsDue(row, at).length === 0) continue;
         const outcome = await writeHolds(row.id, "answered", { op: "deadline", at });
         if (outcome.outcome === "recorded") paid.push(row.id);
       }
@@ -902,6 +903,31 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       return writeSettings(id, settings);
     },
 
+    async retry(id) {
+      // One rule for the decline and the patch, both read off the same committed map (FIX-2383).
+      const decide = (task: Task<TInput, TOutput>, tasks: Readonly<Record<string, Task<TInput, TOutput>>>) =>
+        retryWrite(
+          task as Task,
+          (other) => ownTask(tasks, other) as Task | undefined,
+          // The board's budget, against the committed ledger, as `fail()` reads it.
+          () => maxTotalRetries !== undefined && sumGrantedRetries(Object.values(tasks) as Task[]) >= maxTotalRetries
+        );
+      return patchOne(
+        id,
+        "retry_requested",
+        (task, tasks) => {
+          const decided = decide(task, tasks);
+          return "decline" in decided ? undefined : (decided.patch as Partial<Task<TInput, TOutput>>);
+        },
+        {
+          decline: (task, tasks) => {
+            const decided = decide(task, tasks);
+            return "decline" in decided ? decided.decline : undefined;
+          },
+        }
+      );
+    },
+
     async steer(id, input) {
       // Minted once, outside the write, so a CAS replay keeps one id and one time.
       const steerId = generateId("steer");
@@ -987,7 +1013,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
             task.leaseUntil !== undefined &&
             task.leaseUntil < at &&
             // A held row is never taken back (FIX-2133): it holds no lease, and a renewal racing a midway question is refused.
-            !hasOpenQuestion(task as Task)
+            !hasOpenHold(task as Task)
           ) {
             // Preserve `assignee` — it's the user-set worker-registry
             // routing key, not the runtime worker identity. Clearing it

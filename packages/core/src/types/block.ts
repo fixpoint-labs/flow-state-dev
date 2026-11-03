@@ -10,6 +10,7 @@ import type { DefinedResourceCollection, ResourceCollectionRef } from "./resourc
 import type { ProjectedResourceCollectionRef } from "./projected-resource-collection";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
+import type { TokenCounter } from "./tokens";
 import type { RequestHost } from "./request-host";
 import type { DispatchAddress, DispatchSeam } from "./dispatch";
 import { DISPATCH_SEAM } from "./dispatch";
@@ -120,6 +121,19 @@ export type ExecutionParent = {
     label?: string;
     metadata?: Record<string, unknown>;
   };
+};
+
+/** What `ctx.emit.message` takes beside the message's text or content. */
+export type EmitMessageOptions = {
+  itemVisibility?: ItemVisibility;
+  agentName?: string;
+  transient?: boolean;
+  /**
+   * Structured data the message item carries as `metadata`, for a client to
+   * read instead of parsing the text. Opaque to the engine and never sent to a
+   * model; the emitting package owns its keys and exports their reader.
+   */
+  metadata?: Record<string, unknown>;
 };
 
 export interface ResponseEmitterHandle {
@@ -384,6 +398,14 @@ export interface BlockContext<
   signal: AbortSignal;
   resolveModel: ModelResolver;
 
+  /**
+   * The flow's token counter: `defineFlow({ tokenCounter })`, else core's
+   * `estimateTokenCounter`. The same counter the engine packs history with,
+   * so a block that budgets tokens counts them the way the flow does. Absent
+   * outside an engine run (a mock context); fall back to `estimateTokenCounter`.
+   */
+  tokenCounter?: TokenCounter;
+
   getTarget<TState extends object = Record<string, unknown>>(
     name: string
   ): StateRef<TState> | undefined;
@@ -440,11 +462,11 @@ export interface BlockContext<
     message: {
       (
         text: string,
-        options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
+        options?: EmitMessageOptions
       ): void;
       (
         content: Content[],
-        options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
+        options?: EmitMessageOptions
       ): void;
     };
     /**
@@ -557,9 +579,9 @@ export interface BlockContext<
    * it throws `SuspensionTimeoutError`, and an approval reads as a no. A stop
    * with no `deadline` takes the host's setting for a user's stop, else waits
    * until answered, stopped or cancelled. Needs durable execution, as
-   * `suspend` does. See `types/wait-for-user.ts`.
+   * `suspend` does. See `types/suspend-for-user.ts`.
    */
-  waitForUser: import("./wait-for-user").WaitForUser;
+  suspendForUser: import("./suspend-for-user").SuspendForUser;
 
   /**
    * Manually save a checkpoint at the current execution point. Normally
@@ -766,7 +788,7 @@ export interface BlockContext<
    */
   _emitMessageAwaited?(
     text: string,
-    options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean; role?: "user" | "assistant" }
+    options?: EmitMessageOptions & { role?: "user" | "assistant" }
   ): Promise<void>;
 
   /**

@@ -170,7 +170,7 @@ repeats one of these meanings as **reuse** or **extend** that record.
 ### 3. Two siblings, one hold (FIX-2058 / #3881)
 
 Epic FIX-2058 split "a task waits on a person" by a sorting rule: approvals and input
-suspend the request (`waitForUser`, engine); questions hold the task on its row (board). Two
+suspend the request (`suspendForUser`, engine); questions hold the task on its row (board). Two
 sibling specs then each added a row field (`waitingOn: "user"` + `waitingFor`; `questions[]`),
 an Inbox source, an answer route, a deadline payer, a cancel path and crash debt. Each was
 searched against `main` only, so both passed as **genuinely new**. A third PR added glue so

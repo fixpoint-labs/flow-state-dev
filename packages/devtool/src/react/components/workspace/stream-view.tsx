@@ -16,12 +16,12 @@
  * Operational items (block_output lifecycle, router_decision, context,
  * state_change, resource_change) are filtered out — they live in trace view.
  */
-import { useMemo } from "react";
-import { useFollowLatest } from "@flow-state-dev/react";
+import { useEffect, useMemo, useRef } from "react";
+import { useJumpToLatest } from "@flow-state-dev/react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { collapseToCanonicalLog } from "@flow-state-dev/core/items";
 import type { DevtoolItem } from "../../lib/item-types";
-import { Inbox } from "lucide-react";
+import { ArrowDown, Inbox } from "lucide-react";
 import { ItemRenderer } from "../items/item-renderer";
 import { RequestSeparator } from "./request-separator";
 import { EmptyState } from "../shared/empty-state";
@@ -77,6 +77,8 @@ type StreamViewProps = {
   onContinue?: (requestId: string) => void;
   /** True while a continuation is already streaming for the given request (FIX-865). */
   isContinuing?: (requestId: string) => boolean;
+  /** How many actions the person has sent from the panel: each new one takes the stream to its end. */
+  sends?: number;
 };
 
 export function StreamView({
@@ -88,9 +90,18 @@ export function StreamView({
   onReconnect,
   onContinue,
   isContinuing,
+  sends = 0,
 }: StreamViewProps) {
-  // Opens at the newest request, and follows what streams in while the reader stays at the end.
-  const feed = useFollowLatest();
+  // Opens at the newest request. What streams in after stays below, behind the jump-to-latest
+  // arrow, except the request the person just sent.
+  const feed = useJumpToLatest();
+  const { sent } = feed;
+  const sendsSeen = useRef(sends);
+  useEffect(() => {
+    if (sendsSeen.current === sends) return;
+    sendsSeen.current = sends;
+    sent();
+  }, [sends, sent]);
 
   // Sort chronologically (oldest first), compute token totals from all items,
   // then filter to chat-relevant items for display. Transient items (status
@@ -164,6 +175,19 @@ export function StreamView({
           </div>
         );
       })}
+      <div className="pointer-events-none sticky bottom-0 flex h-0 flex-none justify-center">
+        {feed.atEnd ? null : (
+          <button
+            type="button"
+            aria-label="Jump to latest"
+            title="Jump to latest"
+            onClick={feed.jump}
+            className="pointer-events-auto flex size-8 translate-y-[calc(-100%-0.75rem)] items-center justify-center rounded-full border border-fs-ink/45 bg-fs-card text-fs-ink shadow hover:border-fs-ink focus-visible:ring-2 focus-visible:ring-fs-blue/40 outline-none"
+          >
+            <ArrowDown className="size-4" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

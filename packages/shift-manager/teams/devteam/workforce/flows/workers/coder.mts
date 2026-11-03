@@ -131,13 +131,16 @@ export interface CoderWorkerFlowOptions {
   judge?: HarnessJudge;
   /** Both managers hold a run with commits for the user's review (`reviewChanges`). Absent: off. */
   reviewChanges?: boolean;
+  /** Both managers ask the user before a run's tool calls (`approveTools`). Absent: off. */
+  approveTools?: boolean;
   /** Wall-clock budget for one harness run. */
   runTimeoutMs: number;
   /**
    * Stop a running run for a user's steer, and continue its coding session
    * with the line in the same request (harness-manager's `stopsOnAbort`). Only
-   * for a harness whose abort waits for its process to exit. Absent: off, and
-   * a steer waits for the run's own end.
+   * for a harness whose abort waits for its process to exit. Absent: what the
+   * harness declares (Claude Code stops; the stub doesn't, and a steer waits
+   * for the run's own end).
    */
   stopsOnAbort?: boolean;
   /** The file-declared documents, as `resourcesFromDocs` built them. */
@@ -157,6 +160,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   const checks = {
     ...(options.judge === undefined ? {} : { judge: options.judge }),
     ...(options.reviewChanges === true ? { reviewChanges: true } : {}),
+    ...(options.approveTools === true ? { approveTools: true } : {}),
   };
 
   // Feature work: a task that names an issue and a phase under the feature key.
@@ -167,7 +171,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     phase: options.phase,
     workspace: options.workspace,
     runTimeoutMs: options.runTimeoutMs,
-    ...(options.stopsOnAbort === true ? { stopsOnAbort: true } : {}),
+    ...(options.stopsOnAbort === undefined ? {} : { stopsOnAbort: options.stopsOnAbort }),
     harness: options.harness,
     // The collections a project's run source reads, on the blocks that ask it.
     ...("provision" in options.workspace ? { uses: [projectWorkspaceCapability] } : {}),
@@ -182,7 +186,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     phase: options.answerPhase,
     workspace: options.answerWorkspace,
     runTimeoutMs: options.runTimeoutMs,
-    ...(options.stopsOnAbort === true ? { stopsOnAbort: true } : {}),
+    ...(options.stopsOnAbort === undefined ? {} : { stopsOnAbort: options.stopsOnAbort }),
     harness: options.harness,
     uses: [projectWorkspaceCapability],
   } as never) as TaskWorker;
@@ -204,7 +208,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   /** How a task's run is keyed: its task id, in its payload's phase or the answer phase. */
   const runOf = (row: Task) => {
     const feature = harnessFeatureOf(row.input);
-    if (feature !== undefined) return { issue: taskIssueSegment(row.id), phase: feature.phase };
+    if (feature !== undefined) return { issue: taskIssueSegment(row.id), phase: feature.phase ?? options.phase.phase };
     // A malformed key is no run here, never an answer run: the router sends it to implement, which refuses it.
     return namesHarnessFeature(row.input) ? undefined : { issue: taskIssueSegment(row.id), phase: options.answerPhase.phase };
   };

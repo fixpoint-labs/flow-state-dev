@@ -1,4 +1,5 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { isSendKey } from "@flow-state-dev/react";
+import { useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import type { NewTeammate } from "../adapter";
 import { useSubmit } from "../lib/use-submit";
 
@@ -15,6 +16,18 @@ function Shell({ label, error, children, onSubmit }: { label: string; error?: st
   );
 }
 
+/**
+ * Cmd+Enter (Ctrl+Enter) in a form's text box presses its submit button, so a
+ * form that can't send yet (the button disabled) sends nothing. Plain Enter
+ * stays a new line.
+ */
+function sendOnShortcut(event: KeyboardEvent<HTMLTextAreaElement>) {
+  if (!isSendKey(event)) return;
+  event.preventDefault();
+  const button = event.currentTarget.form?.querySelector<HTMLButtonElement>('button[type="submit"]');
+  if (button && !button.disabled) button.click();
+}
+
 const field = "rounded-sm border border-border bg-card px-2 py-1";
 const primary = "rounded-sm bg-primary px-2 py-1 font-semibold text-primary-foreground disabled:opacity-40";
 const plain = "rounded-sm border border-border px-2 py-1 hover:bg-accent";
@@ -29,7 +42,7 @@ export function HireForm({ onHire, onCancel }: { onHire: (teammate: NewTeammate)
     <Shell label="Hire a teammate" error={error} onSubmit={(e) => void submit(e)}>
       <input aria-label="Teammate name" placeholder="name, e.g. tester" value={name} onChange={(e) => setName(e.target.value)} className={field} />
       <input aria-label="Teammate role" placeholder="What it does, in one line" value={role} onChange={(e) => setRole(e.target.value)} className={field} />
-      <textarea aria-label="Teammate instructions" placeholder="Its instructions" rows={4} value={instructions} onChange={(e) => setInstructions(e.target.value)} className={field} />
+      <textarea aria-label="Teammate instructions" placeholder="Its instructions" rows={4} value={instructions} onChange={(e) => setInstructions(e.target.value)} onKeyDown={sendOnShortcut} className={field} />
       <div className="flex gap-2">
         <button type="submit" disabled={busy || name.trim() === "" || role.trim() === ""} className={primary}>
           Hire
@@ -58,6 +71,7 @@ export function InstructionsForm({ name, onSave, onCancel }: { name: string; onS
         rows={4}
         value={instructions}
         onChange={(e) => setInstructions(e.target.value)}
+        onKeyDown={sendOnShortcut}
         className={field}
       />
       <div className="flex gap-2">

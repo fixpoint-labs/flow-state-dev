@@ -6,7 +6,7 @@
  * count.
  */
 import type { Task } from "./schema/task";
-import { hasOpenQuestion, openRowQuestions, steerPlacesTaken, type QuestionAnswer } from "./collection/questions";
+import { hasOpenHold, openRowHolds, steerPlacesTaken, type QuestionAnswer } from "./collection/holds";
 import { MAX_STEERS, type TaskSteer } from "./schema/steer";
 
 /** What a sender hands the `steer` verb. */
@@ -31,8 +31,8 @@ export interface ShownSteer {
 }
 
 /** `steer` as a worker on `task` is shown it: with the prompt of the question it answers, read off the task's holds. */
-export function shownSteer(task: Pick<Task, "questions">, steer: Pick<TaskSteer, "message" | "from" | "answers">): ShownSteer {
-  const question = steer.answers === undefined ? undefined : task.questions?.find((hold) => hold.id === steer.answers)?.ask.prompt;
+export function shownSteer(task: Pick<Task, "holds">, steer: Pick<TaskSteer, "message" | "from" | "answers">): ShownSteer {
+  const question = steer.answers === undefined ? undefined : task.holds?.find((hold) => hold.id === steer.answers)?.ask.prompt;
   return { message: steer.message, from: steer.from, ...(question !== undefined ? { question } : {}) };
 }
 
@@ -88,7 +88,7 @@ export function steerWrite(
 export function takeSteersPatch(task: Task, takenIn: string): Partial<Task> | undefined {
   // A held row's steers, and the answers that released it (`turnOwed`), are
   // the next turn's (FIX-2133): the turn that asked takes none of them.
-  if (hasOpenQuestion(task) || task.turnOwed === true) return undefined;
+  if (hasOpenHold(task) || task.turnOwed === true) return undefined;
   const steers = task.steers ?? [];
   if (!steers.some((steer) => steer.takenBy !== task.attempts)) return undefined;
   return {
@@ -126,8 +126,8 @@ export const LINE_STEER_REFUSALS: Readonly<Record<LineSteerRefusal, string>> = {
 interface LineSteerLedger {
   readonly steer?: (id: string, input: SteerInput) => Promise<{ outcome: string; reason?: string } | undefined | void>;
   readonly answer?: (id: string, answer: QuestionAnswer) => Promise<{ outcome: string; reason?: string } | undefined | void>;
-  readonly get?: (id: string) => Pick<Task, "status" | "questions" | "steers"> | undefined;
-  readonly getCommitted?: (id: string) => Promise<Pick<Task, "status" | "questions" | "steers"> | undefined>;
+  readonly get?: (id: string) => Pick<Task, "status" | "holds" | "steers"> | undefined;
+  readonly getCommitted?: (id: string) => Promise<Pick<Task, "status" | "holds" | "steers"> | undefined>;
 }
 
 /**
@@ -139,7 +139,7 @@ async function oldestOpenQuestion(ledger: LineSteerLedger, taskId: string, key: 
   const row = ledger.getCommitted !== undefined ? await ledger.getCommitted(taskId) : ledger.get?.(taskId);
   if (row === undefined) return undefined;
   if ((row.steers ?? []).some((steer) => steer.id === key)) return null;
-  return openRowQuestions(row).find((hold) => hold.ask.kind === "question")?.id;
+  return openRowHolds(row).find((hold) => hold.ask.kind === "question")?.id;
 }
 
 /** The request a line arrived on: its verified user and its id, never its input (BP-031). */

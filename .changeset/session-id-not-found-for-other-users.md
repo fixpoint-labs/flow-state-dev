@@ -1,5 +1,0 @@
----
-"@flow-state-dev/engine": patch
----
-
-Another user's session id is now answered as not found (FIX-1022). With a principal resolver configured, every session-addressed route (`/sessions/:id`, its state, stream, requests, children, manifest, resources, metadata, delete and debug routes) answers another user's session with the same `404` an unused id gets, instead of `403 Caller is not the owner`. An action posted into another user's session is refused before it is acknowledged, with `404 Unknown session` and nothing written, instead of `202` followed by a failed run; `runAction` and the transport host throw `UserBindingMismatchError` at admission, ahead of the flow-instance check. The error's message no longer names the session's owner (`sessionUserId` still carries it). An organization mismatch for the session's own user still answers `403`, and another user's request is unchanged. The session debug suspensions route now answers `404 session_not_found` for a session that does not exist, as the other session debug routes do, instead of an empty list. Session keys are unchanged, so stored sessions need no migration.

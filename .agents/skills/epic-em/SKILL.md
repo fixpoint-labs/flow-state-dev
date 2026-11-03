@@ -31,7 +31,7 @@ gates, not the gates.
 - **Architecturally critical** — it sets the shape everything after copies, or is expensive to
   reverse: a shipped contract, a persisted format, a public export, a new dependency.
 - **Never absorbable, whatever the test says** — an `INCONCLUSIVE` POC verdict, an epic
-  `unsettled` claim, an epic-spec `openQuestions` entry. An evidence run that failed to settle a
+  `unsettled` claim, an epic-spec `openHolds` entry. An evidence run that failed to settle a
   question is where it stops being an engineering call.
 - **Keeping another way to do a job** when the closest entry's option would carry it
   ([`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) → "When
@@ -78,7 +78,7 @@ It changes **who decides** — not where the information lives, and not where th
 | A cap blocker | Dispatch that reader **first, every time** — the wake's blocker leaves *"the worker's read on the open threads is on the PR"*, a surface you may not read |
 | Handing a call to a worker | An EM call ranks **below** the approved rules — the epic's ER-n in `DECISIONS.md` → *Who owns what*, and the issue's own `DECISIONS.md` (an older set may also carry BR-n in `BUSINESS-RULES.md`). You don't read them, so the dispatch does: name the call as yours and tell the worker to check it against those rules first, and to return it with the rule cited rather than apply it on a conflict. Overriding an approved rule is a direction change (amendment PR, human approval), never an EM call |
 | A row-keyed answer | Append `{ for, answer }` to the row's `blockerResolutions`; clear `blocker` |
-| An epic-keyed answer (`unsettled`, `openQuestions`) | Append `{ question, answer }` to `epic.answers`, **leave the entry**, let the `epic-agent` fold retire it. The row field cannot hold it: the question resurfaces every wake and `mayWrap` never goes true |
+| An epic-keyed answer (`unsettled`, `openHolds`) | Append `{ question, answer }` to `epic.answers`, **leave the entry**, let the `epic-agent` fold retire it. The row field cannot hold it: the question resurfaces every wake and `mayWrap` never goes true |
 | Any absorbed decision | One line in the next report, naming the fork and the call — absorb and expose, never absorb and hide. Then **run another `epic-wake` before ending the turn**: the wake computed `moreWorkNow` while that row was still blocked, so the row you just unblocked is dispatchable and nothing else will dispatch it |
 
 ## Report outcomes, not phases — Account → Review → Plan

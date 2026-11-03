@@ -30,7 +30,7 @@
 - `GOAL_CONTROL=no-review`: the review step passes every run through (the option ignored). Runs leg a. Must fail **`a:waits`**.
 - `GOAL_CONTROL=fail-on-revise`: a revision always fails the try, as if no session were confirmed. Runs leg c. Must fail **`c:attempt-1`**.
 
-Before this change the manager has no `reviewChanges` option and no `waitForUser`, so leg a fails as under `no-review`.
+Before this change the manager has no `reviewChanges` option and no `suspendForUser`, so leg a fails as under `no-review`.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

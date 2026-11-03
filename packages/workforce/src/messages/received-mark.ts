@@ -6,7 +6,7 @@
  * FIX-2241).
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
-import type { RowQuestion, Task } from "@flow-state-dev/orchestration/tasks";
+import type { RowHold, Task } from "@flow-state-dev/orchestration/tasks";
 import { MESSAGE_RECEIVED_ENTRY } from "./keys";
 
 /**
@@ -17,7 +17,7 @@ import { MESSAGE_RECEIVED_ENTRY } from "./keys";
 export type MessageHearing = "task-sessions";
 
 /** Tell a task's filer its open midway questions, from the asking request (FIX-2241). */
-export type MidwayQuestionTeller = (ctx: BlockContext, row: Task, questions: readonly RowQuestion[]) => Promise<void>;
+export type MidwayQuestionTeller = (ctx: BlockContext, row: Task, questions: readonly RowHold[]) => Promise<void>;
 
 /**
  * The mark `messageReceivedEntry` puts on what it builds.
@@ -29,7 +29,7 @@ export const RECEIVED_MARK = Symbol.for("@flow-state-dev/workforce/message-recei
 /** What the mark carries. */
 export interface ReceivedMark {
   readonly hears?: MessageHearing;
-  /** Whether the entry runs a turn on a message, so a call to it gets a reply. Absent on a mark built before it said (read as unknown). */
+  /** Whether the entry runs a turn on a message, so a message asking it for a reply gets one. Absent on a mark built before it said (read as unknown). */
   readonly runsTurn?: boolean;
   /** How this flow's worker tells a task's filer its midway question, with the installation and flow it was built for. */
   readonly tellMidwayQuestion?: MidwayQuestionTeller;
@@ -56,7 +56,8 @@ export function messageHearingOf(flow: unknown): MessageHearing | "anywhere" | u
 
 /**
  * Whether `flow`'s `onMessageReceived` runs a turn on a message: `false` for
- * an entry built with no turn, so nothing ever answers a call to it;
+ * an entry built with no turn, so nothing of its own ever answers a message
+ * asking it for a reply;
  * `undefined` when the flow says nothing (no entry `messageReceivedEntry`
  * built, or a mark from before it said).
  */
@@ -65,13 +66,13 @@ export function runsMessageTurn(flow: unknown): boolean | undefined {
 }
 
 /**
- * Why a call to `to`, or a message asking it for a reply (FIX-2310), can't be
- * answered (FIX-2300): its flow runs nothing on a message. `asked` names what
- * to leave out. The send refuses with it before anything is written where it can
- * tell; the call answers it failed where it learns only once it lands.
+ * Why a message asking `to` for a reply (FIX-2310), waited on or not, can't
+ * be answered (FIX-2300): its flow runs nothing on a message. The send refuses
+ * with it before anything is written where it can tell; where it learns only
+ * once the message lands, the answer is the framework's "no answer".
  */
-export function noReplyError(to: string, asked: "wait" | "replyRequested" = "wait"): string {
-  return `no_reply: "${to}" takes messages but runs nothing on them, so no reply comes back. Send without ${asked}, or file it a task.`;
+export function noReplyError(to: string): string {
+  return `no_reply: "${to}" takes messages but runs nothing on them, so no reply comes back. Send without replyRequested or wait, or file it a task.`;
 }
 
 /**

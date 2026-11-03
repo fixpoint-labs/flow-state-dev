@@ -44,7 +44,7 @@ const FOLLOW_UPS = [
 ] as const;
 const BRIEF =
   "Deploy the billing service. First draw a deployment ticket with drawTicket. Then, before deploying, " +
-  "ask the person who assigned this which region to deploy to, with askQuestion, and stop there. " +
+  "ask the person who assigned this which region to deploy to, with holdTaskForUser, and stop there. " +
   "Once you have the answer, finish with one line that names the ticket you drew and the region.";
 const LEG_B = "Which ticket did you draw?";
 /** What `drop-answer` hands the re-entered turn in place of the app's answer: not one of `REGIONS`, nor contains one. */
@@ -193,10 +193,10 @@ async function drive(origin: string, store: string) {
 
 /** A row's open question: a row hold on a running row that no steer answers yet. */
 function openQuestionOf(t: StoredTask | undefined): { id: string; ask: { kind: string; prompt: string } } | undefined {
-  const row = t as (StoredTask & { questions?: Array<{ id: string; source: { kind: string }; ask: { kind: string; prompt: string } }>; steers?: Array<{ answers?: string }> }) | undefined;
+  const row = t as (StoredTask & { holds?: Array<{ id: string; source: { kind: string }; ask: { kind: string; prompt: string } }>; steers?: Array<{ answers?: string }> }) | undefined;
   if (row?.status !== "in_progress") return undefined;
   const answered = new Set((row.steers ?? []).flatMap((s) => (s.answers === undefined ? [] : [s.answers])));
-  return row.questions?.find((h) => h.source.kind === "row" && !answered.has(h.id));
+  return row.holds?.find((h) => h.source.kind === "row" && !answered.has(h.id));
 }
 
 // ---- grading ----------------------------------------------------------------------------

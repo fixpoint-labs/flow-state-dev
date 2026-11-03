@@ -72,7 +72,7 @@ const waiting = (id: string, assignee: string | null): BoardRow =>
     title: id,
     status: "in_progress",
     assignee,
-    questions: [{ id: `q-${id}`, actor: "user", openedAt: 1, source: { kind: "row", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
+    holds: [{ id: `q-${id}`, actor: "user", openedAt: 1, source: { kind: "row", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
   });
 const ask = (workerId: string | null, suspensionId: string): Ask =>
   ({ sessionId: `s_${suspensionId}`, workerId, flowId: workerId, parentSessionId: null, kind: "approval", item: { suspensionId }, since: 0, unanswerable: null }) as unknown as Ask;

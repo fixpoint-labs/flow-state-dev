@@ -81,6 +81,8 @@ Shutdown mostly does not write a terminal status on background work's behalf. It
 
 `stores` is a map of named profiles. A profile maps capability slots (typed containers for a category of storage) to adapters. The required slot is `primary` — the catch-all state store for sessions, requests, users, orgs, active requests, checkpoints, content, and traces. The `blobs`, `queue`, and `scheduler` slots are declared but forward-compatible; no backing store ships for them yet.
 
+The `bus` slot carries change notices: every request and session write publishes one on its session's topic, and the session stream wakes on it (see [Change bus](#change-bus)). Leave it out and the primary backs it when the primary's adapter declares `bus`; otherwise the bus is in memory and reaches this process only. An adapter named in the `bus` slot that doesn't declare it fails at `ready()`.
+
 ```ts
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
@@ -577,6 +579,13 @@ Query parameters, all optional:
   or `403` if the app authenticates and another user or organization holds it.
 - `item_types`: comma-separated item types, applied as on the snapshot route.
 
+A connection reads the store when a change notice for the session wakes it, at
+most once a second. On a bus that crosses processes, that is its only read, so
+an open view of a session where nothing changes costs the store nothing. On a
+bus that can't cross (the in-memory default, or one that has stopped crossing)
+it also reads about once a second, so a reply written by another process still
+arrives. Pings and the 15-minute close keep their own timers.
+
 Each SSE frame's `event` is the event's `type`, and its `data` is the whole
 event as JSON. Every event carries `stream: "session"`, `sessionId`, and `at`,
 a server time (epoch ms) to resume from. Reconnecting with any event's `at` as
@@ -621,6 +630,51 @@ new session a new id.
 
 A store adapter shows it serves the stream with
 `createSessionStreamConformanceTests`, from `@flow-state-dev/engine/testing`.
+
+## Change bus
+
+A change notice says that something under a topic changed, never what. Whoever
+hears one reads again through the route it already reads with.
+
+```ts
+import type { ChangeBus, ChangeNotice, BusTopic } from "@flow-state-dev/engine";
+
+// A topic: a scope, its id, the tenant ("" when single-tenant), optionally one resource.
+const topic: BusTopic = { scope: "session", id: sessionId, tenantId: "" };
+const stop = stores.bus!.subscribe(topic, (notice: ChangeNotice) => readAgain(notice.kind));
+```
+
+- `ChangeNotice` is `{ topic, kind, origin? }`. Kinds: `items` (a request's
+  items landed), `request` (a request was written), `run` (a session record
+  was written: the topic's own session or a run under it) and `resync` (the
+  bus may have missed notices; read once). `origin` names the request that
+  made the change, when one did.
+- A subscriber to a scope's topic hears every notice under it, narrowed to a
+  resource or not, with the notice's own topic. A subscriber narrowed to a
+  resource hears only that resource's.
+- Notices are at most once: no replay, no acks, nothing stored.
+
+**Writing an adapter.** A `bus` adapter declares `"bus"` in its
+`capabilities` and resolves `{ bus }`, a `ChangeBus`:
+
+| Member | Contract |
+|---|---|
+| `publish(notice)` | Called only after the change can be read. A failure never fails the write that caused it |
+| `subscribe(topic, listener)` | Returns the unsubscribe |
+| `crossesProcesses` | Whether a notice published in another process reaches this one *now*. Only `true` turns the session stream's timed read off |
+| `onCrossingChange(listener)` | Each change of `crossesProcesses`. A change to `false` puts waiting streams back on the timed read |
+
+A bus that reconnects sends each subscriber one `resync` notice on its topic.
+`createInMemoryBus()` is the default, and the in-process fan-out an adapter can
+compose; it never says it crosses.
+
+**A registry you build yourself.** `resolveStores`, `createFlowState`,
+`runAction`, BullMQ's job processor and `fsdev` apply `withChangeBus(stores)`,
+which gives the registry its bus (the one you set on `stores.bus`, else an
+in-memory one) and wraps its request and session stores so every write
+publishes. A host that writes to the stores past those entries calls it too,
+and writes through the registry it returns. It is idempotent: every entry gets
+the same wrapped stores.
 
 ## Store list options
 
@@ -821,6 +875,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom lo
 - `createInMemoryResourceStateStore` / `createFilesystemResourceStateStore` — Resource state store adapters
 - `createInMemoryOrgStore` / `createFilesystemOrgStore` — Org scope store adapters, implementing `OrgStore`. The filesystem adapter keeps org records under `{rootDir}/projects/`.
 - Session, user, and request scope store factories, and CAS/state ops
+- `createInMemoryBus` / `withChangeBus` and the `ChangeBus`, `ChangeNotice`, `BusTopic` types — the change bus (see [Change bus](#change-bus))
 
 **Streaming:**
 - `createResponseEmitter` — Create an SSE emitter for a request
@@ -1160,11 +1215,11 @@ Each tick takes a single-holder sentinel lease (co-located hosts serialize), enf
 
 **Stopping a suspended request.** The abort route and `ctx.session.stopRequest` also stop a `suspended` request when the host has durable execution: the stop resolves its pending gate `stopped` through the gate's single pending state. A wait gate continues the request with a stop outcome, so the parked call (`parkOnWait` returns `{ answered: false, stopped: true }`) can end the task it waits on and end its turn; any other gate continues the request with the stop recorded, so it ends `aborted` through its own lifecycle (its `onFinished` hook runs) without running past the gate. A gate a person already resolved (approved, say) whose request has not run again yet, so it waits on the sweep's re-drive, is stopped the same way: the gate is recorded `stopped`, the request ends `aborted`, and the approved step never runs. The person's answer, and any form data they sent, is replaced by the stop and not kept. A stop that finds the gate already resolved, with the request running again or about to, answers `409` on the route and `"already-resolved"` from `stopRequest`. A run a task board started (the `task` source) that is parked on a user's stop ends at that stop instead: it continues through the board's claim gate, which cancels the task, and ends `aborted` at the stop itself, with nothing after it run. Checkpoints of `in_progress` or `suspended` requests are never age-pruned — they are the resume points an active or paused run needs.
 
-**Answering a user's stop.** `POST /api/flows/:flowKind/requests/:requestId/answer` with `{ suspensionId, action, data? }` answers a suspension that waits for a user (`ctx.waitForUser`, or a `user_approval` / `user_input` stop), whatever started its run, a task board included, which the resume route refuses. It runs the resume path's ownership checks on the stop's request (flow instance, user, tenant, organization) before it reads the stop, and answers a stop that isn't the caller's, or isn't a user's, as one that doesn't exist (`404`). The answer is checked against the stop's own `allow` and `resumeSchema`; who answered is the signed-in caller, never a body field. It resolves the stop through its single pending state, so of an answer, a cancel, a deadline and a stop, the first wins and the rest are told `already-resolved` (`409`). The client call is a request handle's `answer`.
+**Answering a user's stop.** `POST /api/flows/:flowKind/requests/:requestId/answer` with `{ suspensionId, action, data? }` answers a suspension that waits for a user (`ctx.suspendForUser`, or a `user_approval` / `user_input` stop), whatever started its run, a task board included, which the resume route refuses. It runs the resume path's ownership checks on the stop's request (flow instance, user, tenant, organization) before it reads the stop, and answers a stop that isn't the caller's, or isn't a user's, as one that doesn't exist (`404`). The answer is checked against the stop's own `allow` and `resumeSchema`; who answered is the signed-in caller, never a body field. It resolves the stop through its single pending state, so of an answer, a cancel, a deadline and a stop, the first wins and the rest are told `already-resolved` (`409`). The client call is a request handle's `answer`.
 
-**A user's stop's deadline.** A `waitForUser` call's `deadline`, else `createFlowState({ userDeadlineMs })` (unset by default, one second to 365 days), else none: a stop with no deadline waits until it is answered, stopped or cancelled, and the sweeper never ends it. A raw `ctx.suspend` keeps its own `timeoutMs`. At a deadline the sweeper continues the request: an approval reads as a no, and a review or an input throws `SuspensionTimeoutError` into the block.
+**A user's stop's deadline.** A `suspendForUser` call's `deadline`, else `createFlowState({ userDeadlineMs })` (unset by default, one second to 365 days), else none: a stop with no deadline waits until it is answered, stopped or cancelled, and the sweeper never ends it. A raw `ctx.suspend` keeps its own `timeoutMs`. At a deadline the sweeper continues the request: an approval reads as a no, and a review or an input throws `SuspensionTimeoutError` into the block.
 
-**Cancelling a user's stop.** `RequestHost.resumeWait({ suspension: { requestId, suspensionId }, outcome: { cancelled: true }, first? })` resolves a pending user's stop `cancelled` under its request's lease and continues the request, so `waitForUser` returns `{ cancelled: true }`. The stop must be this principal's (same user, tenant and organization); `first` runs under the lease before the stop resolves, which is where a board writes its task's cancel. A stop already recorded `cancelled` whose request never continued is continued, and so is one the sweeper finds.
+**Cancelling a user's stop.** `RequestHost.resumeWait({ suspension: { requestId, suspensionId }, outcome: { cancelled: true }, first? })` resolves a pending user's stop `cancelled` under its request's lease and continues the request, so `suspendForUser` returns `{ cancelled: true }`. The stop must be this principal's (same user, tenant and organization); `first` runs under the lease before the stop resolves, which is where a board writes its task's cancel. A stop already recorded `cancelled` whose request never continued is continued, and so is one the sweeper finds.
 
 ## Connection resilience
 

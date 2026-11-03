@@ -317,7 +317,7 @@ export interface RequestHandle {
   resume(body: ResumeSuspensionBody, options: StreamOption): Promise<Response>;
   /**
    * Answer a suspension of this request that waits for a user
-   * (`ctx.waitForUser`, or a raw `user_approval` / `user_input` stop),
+   * (`ctx.suspendForUser`, or a raw `user_approval` / `user_input` stop),
    * whatever started its run, a task's included, which `resume` refuses.
    * The server checks the caller owns the request before it reads the stop,
    * resolves it once, and continues the same request; this resolves to its

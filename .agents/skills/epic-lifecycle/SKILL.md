@@ -8,7 +8,9 @@ argument-hint: "<epic issue ID, or the related issue IDs to run under one epic, 
 
 Run a set of **related** issues at once — each getting the full `issue-lifecycle` (spec →
 direction approval → checked spec merge → implement → PR feedback) — from a single session, without their branches
-colliding and without the coordinator's token count exploding.
+colliding and without the coordinator's token count exploding. The issue specs are written
+together and reviewed as one **spec-set PR**, after the epic spec merges
+([`orchestration.md`](../../../docs/contributing/orchestration.md#the-spec-set-one-pr-for-the-epics-issue-specs)).
 
 The unit of work here is the **epic**, not the batch. An epic is a Linear parent issue
 carrying the `Epic` label; the work items are its sub-issues, and its **epic-spec** is where
@@ -35,6 +37,7 @@ ends the turn:
 |---|---|---|
 | **EPIC_SETUP** | Discover/create the epic issue; `epic-agent` authors the retained set and opens its review PR; `project-agent` creates/refreshes the unchanged standing project spec | Epic review PR ready → AWAITING_OBJECTIVE |
 | **AWAITING_OBJECTIVE** | Human approves the reviewed direction; preserve the two-round budget, then dispatch `epic-agent` **MERGE-ONLY** under the canonical merge contract. If the owner merges the epic PR themselves, that merge is the approval and nothing is dispatched | Confirmed epic spec merge, not approval alone |
+| **SPEC_SET** | `epic-wake` dispatches `epic-agent` **Spec set**: one `issue-spec` sub-agent per spec-route child, one set review, one PR. Bugs skip it and start implementing | Spec-set PR approved and merged (one gate for every member) |
 | **RUNNING** | Advance children through `issue-lifecycle`; derive live status from Linear and implementation PRs. The **closure issue** runs last: its QA runs file bugs as children that block it, and it closes only on a clean run. Meaningful epic amendments use follow-up PRs from `main` | Every child merged, closed, or dropped, the closure issue included |
 | **EPIC_WRAP** | Record terminal epic status in Linear; retain the already-merged original review PR. Retire the mailbox handle; dispatch lessons and docs-polish, then the wrap analysis once lessons returns, then the project wrap update. Only meaningful spec amendments get a new PR | Lessons draft PR surfaced (rows-only if no proposal); wrap analysis posted to the epic issue; docs-polish surfaced or justified skip; completion and amendment links reported |
 
@@ -198,6 +201,12 @@ The epic-specific delta:
    · `analysis: <Linear comment link> [N filed]`, never skipped, since "right approach" is
    itself a result · `docs_polish: <PR#|skipped: why>`, which *can* be skipped outright).
 
+   **Persist `epic.specSetMode` and `epic.specSetPr` beside the epic handle.** Set
+   `specSetMode: true` when you **create** an epic; leave it unset on an epic resumed from before
+   the spec set existed, which keeps its per-issue spec PRs. `specSetPr` comes back from the wake
+   once the spec-set PR opens: persist it verbatim and subscribe to it. Members carry
+   `specSetMember: true` and `specPr` = that PR on their rows, which the wake sets and you persist.
+
    **The retained epic set describes approved intent.** Link it at gates alongside live
    status derived from Linear and implementation PRs. Phase transitions update that status,
    not the original merged PR's body or branch. Only meaningful design amendments need
@@ -213,11 +222,12 @@ The epic-specific delta:
      name: epic-wake
      args: {
        epic:  { issueId, name, branch, headSha, prNumber, approved, approvedHeadSha, specMerged, headUnconfirmed,
+                specSetMode, specSetPr,
                 reviewRounds, aboveBarFound, lastSeenActivityAt, lastSeenSha,
-                verdicts, unsettled, openQuestions, answers },
+                verdicts, unsettled, openHolds, answers },
        cap:   <the N you chose and stated>,
        owner: <the GitHub login authorized to sign off by LABEL>,
-       issues: [ { id, route, phase, specPr, implPr, specReviewRounds, specLevelFound,
+       issues: [ { id, route, phase, specPr, specSetMember, implPr, specReviewRounds, specLevelFound,
                    specApproved, approvedHeadSha, specMerged, prFeedbackRounds, verdicts,
                    lastSeenActivityAt, lastSeenSha, blocker, blockerResolutions,
                    approvedInSession, subPrs, assembledGoal, unsettled, blockerFor,
@@ -286,7 +296,7 @@ The epic-specific delta:
      produce, and the thread to reply on. The row's `blocker` carries the question; this carries what
      to show the user when you ask it, and where their answer gets posted. Drop it and you can only
      relay the claim text. Cleared with the row's `blocker`, in the same breath.
-   - **`epic.openQuestions`** — cross-cutting decisions the fold raised that need *you*. Surfaced in
+   - **`epic.openHolds`** — cross-cutting decisions the fold raised that need *you*. Surfaced in
      `blockers` every wake. `epic-agent`'s return contract produces these; the schema accepts them
      under this name, so the two agree.
    - **`epic.unsettled`** — cross-cutting claims a POC came back `INCONCLUSIVE` on. These are
@@ -295,11 +305,11 @@ The epic-specific delta:
      wake, forever). Also re-surfaced in `blockers` every wake.
    - **`epic.answers`** — **how both of those get resolved, and the only way they do.** When the user
      answers a question from either list, add `{ question, answer }` to this array — `question` matching
-     the `openQuestions` string or the `unsettled` claim verbatim, so the wake can pair them — and
+     the `openHolds` string or the `unsettled` claim verbatim, so the wake can pair them — and
      **leave the original entry where it is.** Do not drop it yourself. An answer here triggers an
      `epic-agent` fold on its own (no review activity or verdict needed), outside the review budget,
      which records the decision in the epic-spec; the wake then removes the question from
-     `openQuestions`/`unsettled` for you, and only once that fold actually returned.
+     `openHolds`/`unsettled` for you, and only once that fold actually returned.
 
      Getting this backwards is a silent loss, and it's why the field exists: dropping the question when
      the user answers leaves the epic-spec unchanged and the answer nowhere, so every child issue keeps
@@ -336,7 +346,7 @@ The epic-specific delta:
    Do not invent a workflow action or mechanically merge in the coordinator.
    The authorized `implement` backstop may continue in the same wake with its matching
    `specMerge: { pr, headSha, mergeCommitSha }` receipt; preserve that merge provenance.
-   A material post-merge amendment uses existing `openQuestions` / `blocker` state,
+   A material post-merge amendment uses existing `openHolds` / `blocker` state,
    not a new amendment lifecycle field. Keep its follow-up PR and reviewed head in the
    durable question; hold child dispatch and implementation merge gates until the
    coordinator verifies that head's human approval and confirmed merge, then provides
@@ -476,6 +486,11 @@ The epic-specific delta:
    it; where a worker gave you a bare phrase, say what you have and name what's missing instead
    of inventing the substance.
 
+   **A spec-set gate is one ask.** A `spec-approval` or `spec-merge` entry with `specSet: true`
+   names every member in `issueIds`: put it as one decision covering the set, lead with any
+   **Epic amendments** the PR body lists, and dispatch one MERGE-ONLY for its `pr`, not one per
+   member.
+
    If the epic awaits objective approval, link its review PR and explain what direction
    the human signs off, and say that merging the PR is the sign-off. Approval binds to that reviewed head; after required checks and
    repository thread policy, the epic spec merges before children start.
@@ -540,7 +555,9 @@ The epic-specific delta:
 
 ## Spec review: converge, don't grind
 
-Each sub-issue's spec PR draws its own bot review; unbounded, that is N grinding loops. The bar, the three dispositions, and the **two-round convergence budget** are canonical in
+Each spec PR draws its own bot review; unbounded, that is N grinding loops. In spec-set mode
+there is one: the spec-set PR carries **one** budget, and the wake charges a round to every
+member at once. The bar, the three dispositions, and the **two-round convergence budget** are canonical in
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec review: the bar
 and the convergence rule"; the per-issue mechanics live in `issue-lifecycle` → "The
 spec-review round budget". Every spec and the epic-spec also get
@@ -564,7 +581,7 @@ can't come back as a slip. Two jobs remain the coordinator's:
 
 **A bot `CHANGES_REQUESTED` holds nothing** — it doesn't trip the gate (only a human's
 approval does) and doesn't extend the budget. Never re-request review from a bot.
-Convergence is per issue and independent — issue B doesn't wait on issue A's spec.
+Convergence is per spec PR and independent — outside a spec set, issue B doesn't wait on issue A's spec.
 
 ### When a thread turns on a fact, dispatch a POC — don't buy another round
 
@@ -640,7 +657,9 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
     handles. Create/re-parent nothing, except a missing closure issue (below). Dispatch
     `epic-agent` only for meaningful updates.
   - **Create:** dispatch `epic-agent` to author `specs/epics/<EPIC-ISSUE-ID>/` on
-    `epic/<name>`, open its review PR, and link it from Linear. Required documents are
+    `epic/<name>`, open its review PR, and link it from Linear. Record `specSetMode: true` on
+    the epic: the issue specs come later, as one spec-set PR the wake dispatches once this one
+    merges. Required documents are
     `SPEC.md` and `DECISIONS.md`, plus owned authored artifacts. The set always includes the **closure
     issue**, filed by `epic-agent` and blocked by every other child
     ([`orchestration.md`](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)).
@@ -882,6 +901,13 @@ can't see that; a batch-level pass can. Incoherence is the failure this project 
 against first (tenet 1), so once the epic's specs exist, the set gets one coherence pass
 before any of them is built.
 
+**In spec-set mode this pass runs inside the spec set, before the PR opens** — `epic-agent`
+runs `cross-spec-review` over the drafts and folds the result, so the gate below never holds a
+member. What remains for this section is a child **outside** the set (one that joined later,
+or one the set left out): it has its own spec PR, and it is held and checked against the
+members exactly as below. The members aren't held while it waits. An epic resumed from before
+the spec set runs this section for every spec, as it always did.
+
 Because the epic-spec already coordinates the set up front, this pass narrows to a
 **conformance check** — do the issue specs adhere to the epic's objective, themes, and
 decisions, and what did the epic *not* settle? (`cross-spec-review` handles that narrowing
@@ -980,9 +1006,10 @@ step. So:
 - **Every gate links both intent and current progress.** Link the retained epic/issue
   set and the current review or amendment PR; derive progress from Linear and implementation
   PRs. A retained design snapshot is not a live status dashboard.
-- **Spec-approval gate is per issue, and only on the spec route.** Approvals are
-  independent — issue B isn't blocked by issue A's pending spec, and a **bug** has no such
-  gate at all. Never manufacture one: asking the user to approve a spec for an issue that
+- **Spec-approval gate is per spec PR, and only on the spec route.** The spec-set PR is one
+  gate for all its members, and one weak spec holds the set: offer to drop that issue to its own
+  spec PR rather than wait. Outside a set, approvals are independent — issue B isn't blocked by
+  issue A's pending spec — and a **bug** has no such gate at all. Never manufacture one: asking the user to approve a spec for an issue that
   will never have a spec parks the row on an answer nobody can give.
 - **Spec review converges; merge still obeys repository policy.** Exhausting design
   rounds does not waive required checks, reviews, or unresolved required threads.

@@ -21,7 +21,7 @@ describe("the retired-shape map", () => {
     const on = Object.entries(RETIRED_SHAPES)
       .filter(([, entry]) => entry.on)
       .map(([shape]) => shape);
-    expect(on.sort()).toEqual(["blocked", "post", "queued", "recorded", "reopened"]); // retired-name-refusal: the reopened shape
+    expect(on.sort()).toEqual(["blocked", "post", "questions", "queued", "recorded", "reopened", "suspendedWait"]); // retired-name-refusal: the reopened shape
   });
 
   it("returns a row in no retired shape as the same object", () => {
@@ -126,5 +126,37 @@ describe("the retired-shape map", () => {
     const parsed = taskSchema.parse(withRetiredShapes(stored));
     expect(parsed.keptOpenBy).toBe("filed");
     expect(parsed.leaseUntil).toBeUndefined();
+  });
+
+  // FIX-2317: a question is one kind of hold, so a row FIX-2183 stored with its
+  // holds under `questions` still blocks its claim once read.
+  const stop = {
+    id: "s1",
+    actor: "user",
+    openedAt: 1,
+    source: { kind: "suspension", requestId: "r", suspensionId: "s1" },
+    ask: { kind: "review", prompt: "Look?" },
+  };
+
+  it("questions: a row's holds stored as questions read as holds", () => {
+    const read = withRetiredShapes({ ...row, status: "in_progress", questions: [stop] });
+    expect(read).toMatchObject({ holds: [stop] });
+    expect(read).not.toHaveProperty("questions");
+    expect(taskSchema.parse(read).holds).toEqual([stop]);
+    expect(withRetiredShapes(read)).toBe(read);
+  });
+
+  it("questions: a row that has holds keeps them over a stale questions list", () => {
+    const read = withRetiredShapes({ ...row, status: "in_progress", holds: [stop], questions: [] });
+    expect(read).toMatchObject({ holds: [stop] });
+    expect(read).not.toHaveProperty("questions");
+  });
+
+  it("suspendedWait: a row kept open by its suspended request reads suspended, on both read paths", () => {
+    const stored = { ...row, status: "in_progress", keptOpenBy: "wait" };
+    expect(withRetiredShapes(stored)).toMatchObject({ keptOpenBy: "suspended" });
+    expect(taskSchema.parse(stored).keptOpenBy).toBe("suspended");
+    const read = withRetiredShapes(stored);
+    expect(withRetiredShapes(read)).toBe(read);
   });
 });

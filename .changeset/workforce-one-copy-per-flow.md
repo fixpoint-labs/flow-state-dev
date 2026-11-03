@@ -1,5 +1,0 @@
----
-"@flow-state-dev/workforce": minor
----
-
-Every worker runs on one shared copy of the flow it names. `hireWorkforce(installation)` returns one copy of each worker flow and the roster flow (`workforce-roster`, with `hire`, `fork`, `edit` and `fire`), and mints nothing per worker and pins nothing. A worker flow declares `session: installation.session()` and loads its worker each turn; `workerFlow(...)` builds a flow in its own file on its installation, and `installation.resourceVisibility` narrows each turn's model to its worker's document grants. The built-in `agent` on an installation keeps each worker's skills apart, refuses a turn whose input names a worker, and signs its mailbox posts as the turn's worker. The mailbox wake and the task lookup open each session naming its worker, for standard workers only. Removed: `createSeatHireCapability`, `createSeatHireBlocks`, `registerHiredSeat`, `reloadHiredSeats`, the hired-roster collections and keys, `seatAddress`/`splitSeatAddress`, and `listedSeatRows` (FIX-1788).

@@ -203,13 +203,13 @@ function answersTo(drawn: Array<{ label: string; text: string }>, mark: string) 
  * and drawn, or `undefined` when it has none. A delegate keeps one session per
  * conversation: the run the conversation started, created naming the worker.
  *
- * Reloads first, so nothing is picked, then waits for the copy's list to load
- * and the session to draw its first turn: a turn counted as missing is read
- * off a loaded session, never off one still fetching.
+ * Loads the page afresh first, on no conversation's address, so nothing is
+ * picked, then waits for the copy's list to load and the session to draw its
+ * first turn: a turn counted as missing is read off a loaded session, never
+ * off one still fetching.
  */
 async function delegateSessionOf(page: Page, worker: string): Promise<Locator | undefined> {
-  await page.reload();
-  await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
+  await openShell(page);
   const parent = await conversationId(page);
   const runs = (await sessionsOf(page, worker, true)).filter((s) => s.parentSessionId === parent);
   expect(runs.length, `${worker} has ${runs.length} sessions for the conversation with ${COORDINATOR}`).toBeLessThanOrEqual(1);
@@ -258,7 +258,7 @@ const replyTo = (conversation: Locator, message: string): Locator =>
     .locator('[data-message-role="assistant"]')
     .filter({ hasText: "[reply:talk-to-worker]" });
 
-test("a new support.devices conversation keeps the message and the reply across a reload", async ({
+test("a new support.devices conversation is still open across a reload, with the message and the reply", async ({
   page,
   consoleErrors: _consoleErrors,
 }) => {
@@ -280,9 +280,9 @@ test("a new support.devices conversation keeps the message and the reply across 
   expect(sessionId).toBeTruthy();
   expect((await sessionsOf(page, "support.devices")).map((s) => s.id)).toContain(sessionId);
 
+  // The reload reopens it by itself: the page's address names it.
+  expect(new URL(page.url()).searchParams.get("session")).toBe(sessionId);
   await page.reload();
-  await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
-  await (await openWorkerCopy(page)).locator(`[data-session-id="${sessionId}"]`).click();
   const kept = picked(page);
   await expect(kept.getByText(message, { exact: true })).toBeVisible();
   await expect(replyTo(kept, message)).toBeVisible();

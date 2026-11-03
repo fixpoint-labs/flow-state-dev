@@ -43,7 +43,7 @@ The roster is read on every call, so a worker you hire partway through a convers
 
 When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s task tools in that session: `createTask`, `getTask`, `listTasks` and `updateTask` ([one task, five tools](../orchestration/task-board.md#one-task-five-tools)). `createTask` starts work on a delegate now. With `held: true` it files a task that doesn't start until `updateTask` releases it. With `questions` it files one that doesn't start until the user has answered them from their Inbox, and the answers join the delegate's brief; see [a task's questions](../orchestration/task-board.md#a-tasks-questions). Your app can send the same tools as actions on any of that worker's sessions, named for the board, `tasks`: `createTask_tasks`, `updateTask_tasks` and so on. They act as the signed-in user, and another user's call to them is refused.
 
-A worker working a task also gets `reportProgress`, which writes a status note and a checkpoint of its output on that task, `askQuestion`, which asks the user a question the task then waits on, and `waitForUser`, which stops its turn for the user's approval or review. None is an action.
+A worker working a task also gets `reportProgress`, which writes a status note and a checkpoint of its output on that task, `holdTaskForUser`, which asks the user a question the task then waits on, and `suspendForUser`, which stops its turn for the user's approval or review. None is an action.
 
 A worker with no delegate that takes tasks has no one to hand a task to. On a session of one, the app's actions answer:
 

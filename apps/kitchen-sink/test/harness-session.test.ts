@@ -28,7 +28,8 @@ import type { ClaudeAgentQueryOptions, ResolveClaudeAgent } from "@flow-state-de
 
 import { claudeCodeSessionFlow, CLAUDE_CODE_SESSION } from "@/lib/claude-code-mode";
 import { availableHarnessFlows, resetModeAvailabilityForTests } from "@/lib/harness-gate";
-import { turnNotice, UNKNOWN_CONVERSATION, type HarnessSessionState } from "@/lib/harness-turn";
+import type { HarnessSessionState } from "@flow-state-dev/harness-manager";
+import { turnNotice, UNKNOWN_CONVERSATION } from "@/lib/harness-turn";
 import { sessionBranch, worktreeRoot } from "@/lib/harness-worktree";
 import { scriptedClaudeCode, scriptedPauses } from "@/lib/scripted-claude-code";
 
@@ -94,7 +95,7 @@ async function turn(
   extra: Record<string, unknown> = {},
 ) {
   return testFlow({
-    flow: claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve }),
+    flow: claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve, approveTools: false }),
     action: "turn",
     userId: "u",
     sessionId,
@@ -318,8 +319,8 @@ describe("where a session works (V6)", () => {
 
   it("asks for no sandbox: Kitchen Sink confines no run", async () => {
     // Kitchen Sink is a showcase meant for a machine that allows any edits, so
-    // it hands the SDK no sandbox at all. With `bypassPermissions` beside it,
-    // nothing confines the run — the worktree is where it works, not a fence.
+    // it hands the SDK no sandbox at all. A call the user allows is not
+    // confined — the worktree is where it works, not a fence.
     const stores = createInMemoryStores();
     const recorder = recorded();
     await turn(stores, recorder, "s-unfenced", "hello");
@@ -344,6 +345,42 @@ describe("where a session works (V6)", () => {
     expect(env!.PATH).toBe(process.env.PATH);
   });
 
+  it("untrusted, the run loads nothing from the repository and gets no named key (FIX-2421)", async () => {
+    vi.stubEnv("KITCHEN_SINK_HARNESS_PASS", "KITCHEN_SINK_NAMED_KEY");
+    vi.stubEnv("KITCHEN_SINK_NAMED_KEY", "named-but-not-trusted");
+    const stores = createInMemoryStores();
+    const recorder = recorded();
+    await turn(stores, recorder, "s-untrusted", "hello");
+    const run = recorder.runs[0]!;
+    expect(run.settingSources).toEqual([]);
+    expect(run.settings).toBeUndefined();
+    expect((run.env as Record<string, string | undefined>).KITCHEN_SINK_NAMED_KEY).toBeUndefined();
+  });
+
+  it("trusted, the run loads the repository's project settings with every hook off, and gets the named key (FIX-2421 D1)", async () => {
+    vi.stubEnv("KITCHEN_SINK_HARNESS_TRUSTED", "1");
+    vi.stubEnv("KITCHEN_SINK_HARNESS_PASS", "KITCHEN_SINK_NAMED_KEY");
+    vi.stubEnv("KITCHEN_SINK_NAMED_KEY", "the-operator-named-this");
+    vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "still-not-named");
+    const stores = createInMemoryStores();
+    const recorder = recorded();
+    await turn(stores, recorder, "s-trusted", "hello");
+    const run = recorder.runs[0]!;
+    // Never `user`: the operator's own settings stay out of a trusted run too.
+    expect(run.settingSources).toEqual(["project"]);
+    expect(run.settings).toMatchObject({ disableAllHooks: true });
+    const env = run.env as Record<string, string | undefined>;
+    expect(env.KITCHEN_SINK_NAMED_KEY).toBe("the-operator-named-this");
+    expect(env.KITCHEN_SINK_PLANTED_SECRET).toBeUndefined();
+  });
+
+  it("a turn's input that claims trust changes nothing: only the server's setting decides (FIX-2421, BP-031)", async () => {
+    const stores = createInMemoryStores();
+    const recorder = recorded();
+    await turn(stores, recorder, "s-claims-trust", "hello", { trusted: true, settingSources: ["project"] });
+    expect(recorder.runs[0]!.settingSources).toEqual([]);
+  });
+
   it("a deleted session leaves its worktree and branch (BR-23a)", async () => {
     const stores = createInMemoryStores();
     const recorder = recorded();
@@ -363,7 +400,7 @@ describe("where a session works (V6)", () => {
     // Modes off at the next start.
     vi.stubEnv("VERCEL", "1");
     resetModeAvailabilityForTests();
-    const flows = await availableHarnessFlows({ "claude-code": () => claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve }) });
+    const flows = await availableHarnessFlows({ "claude-code": () => claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve, approveTools: false }) });
     expect(flows["claude-code"]).toBeUndefined();
     expect((await stores.session.get("s-kept"))?.state).toMatchObject({ binding: { confirmed: expect.stringMatching(/^scripted-/) } });
   });

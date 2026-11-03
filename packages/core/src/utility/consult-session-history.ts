@@ -6,7 +6,8 @@
  * `consultSessionHistoryTool()` is a tool a generator calls. It reads the other
  * session's settled turns through `ctx.requestHost.sessions.history` (the
  * principal's own sessions only, by the rule of `sessions.read`), cuts them to
- * a hard token budget from the newest back, and runs one generator with no
+ * a hard token budget from the newest back (counted by the flow's
+ * `ctx.tokenCounter` for the answering model), and runs one generator with no
  * tools over them, on a cheaper model (`intent/utility` by default). Nothing
  * is written to the other session and nothing runs there.
  *
@@ -18,6 +19,7 @@
  * history and its client view: the asking conversation reads the tool's result.
  */
 import { z, type ZodTypeAny } from "zod";
+import { estimateTokenCounter } from "../adapters/token-counter";
 import { generator } from "../blocks/generator";
 import type { GeneratorConfig } from "../blocks/generator";
 import { handler } from "../blocks/handler";
@@ -28,8 +30,6 @@ import type { LLMMessage } from "../types/scope";
 
 /** The default hard cap on the history tokens the consult's generator receives. */
 export const CONSULT_DEFAULT_BUDGET_TOKENS = 24_000;
-/** Characters per token for the budget: the estimate counter's fallback. */
-const CHARS_PER_TOKEN = 4;
 /** The longest reading the tool hands back (BP-042). */
 const MAX_READING_CHARS = 8_000;
 
@@ -118,20 +118,41 @@ function line(message: LLMMessage): string {
   return `${message.role}: ${text}`;
 }
 
+/** Counts one piece of text in tokens, for {@link cutToBudget}. */
+export type CountTokens = (text: string) => Promise<number>;
+
+/** The longest end of `l`, marked `…`, whose line costs at most `left` tokens. */
+async function lineEnd(l: string, left: number, count: CountTokens): Promise<string | undefined> {
+  let lo = 0;
+  let hi = l.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if ((await count(`…${l.slice(l.length - mid)}\n`)) <= left) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo > 0 ? `…${l.slice(l.length - lo)}` : undefined;
+}
+
 /**
- * The transcript under the budget, built from the newest line back. Where the
- * newest turn alone is over it, that turn is cut to its last lines, and a line
- * longer than the budget to its end.
+ * The transcript under the budget, in tokens as `count` counts them, built
+ * from the newest line back. Where the newest turn alone is over it, that turn
+ * is cut to its last lines, and a line longer than the budget to its end.
  */
-export function cutToBudget(history: Pick<SessionHistory, "turns">, budgetTokens: number): { transcript: string; turnsRead: number; cut: boolean } {
-  const budget = Math.max(1, Math.floor(budgetTokens)) * CHARS_PER_TOKEN;
+export async function cutToBudget(
+  history: Pick<SessionHistory, "turns">,
+  budgetTokens: number,
+  count: CountTokens
+): Promise<{ transcript: string; turnsRead: number; cut: boolean }> {
+  const budget = Math.max(1, Math.floor(budgetTokens));
   const kept: string[] = [];
   let used = 0;
   let turnsRead = 0;
   let cut = false;
   for (let t = history.turns.length - 1; t >= 0; t--) {
     const lines = history.turns[t]!.messages.map(line);
-    const size = lines.reduce((n, l) => n + l.length + 1, 0);
+    // Each line with its newline, counted alone: never less than the joined text.
+    const sizes = await Promise.all(lines.map((l) => count(`${l}\n`)));
+    const size = sizes.reduce((n, s) => n + s, 0);
     if (used + size <= budget) {
       kept.unshift(...lines);
       used += size;
@@ -141,12 +162,12 @@ export function cutToBudget(history: Pick<SessionHistory, "turns">, budgetTokens
     if (turnsRead === 0) {
       // The newest turn alone is over the budget: its last lines that fit.
       for (let i = lines.length - 1; i >= 0; i--) {
-        const l = lines[i]!;
-        if (used + l.length + 1 <= budget) {
-          kept.unshift(l);
-          used += l.length + 1;
+        if (used + sizes[i]! <= budget) {
+          kept.unshift(lines[i]!);
+          used += sizes[i]!;
         } else {
-          if (used < budget) kept.unshift(`…${l.slice(l.length - (budget - used - 2))}`);
+          const end = used < budget ? await lineEnd(lines[i]!, budget - used, count) : undefined;
+          if (end !== undefined) kept.unshift(end);
           break;
         }
       }
@@ -173,6 +194,10 @@ type Read =
  */
 export function consultSessionHistoryTool(options: ConsultSessionHistoryOptions = {}) {
   const name = options.name ?? "consultSessionHistory";
+  const model = options.model ?? "intent/utility";
+  // The budget is counted for the model that reads it; a model chosen at run
+  // time is counted as the default one.
+  const countModel = typeof model === "string" ? model : "intent/utility";
   const budgetTokens = options.budgetTokens ?? CONSULT_DEFAULT_BUDGET_TOKENS;
   const resolve =
     options.target?.resolve ??
@@ -191,7 +216,8 @@ export function consultSessionHistoryTool(options: ConsultSessionHistoryOptions 
       if (sessions?.history === undefined) return { ok: false, error: `${noSession} (This host can't read another conversation.)` };
       const history = await sessions.history(target.sessionId, { limit: { tokens: budgetTokens } });
       if (history === undefined) return { ok: false, error: noSession };
-      const fitted = cutToBudget(history, budgetTokens);
+      const counter = ctx.tokenCounter ?? estimateTokenCounter;
+      const fitted = await cutToBudget(history, budgetTokens, (text) => counter.count(text, countModel));
       const newest = history.turns.at(-1);
       return {
         ok: true,
@@ -214,7 +240,7 @@ export function consultSessionHistoryTool(options: ConsultSessionHistoryOptions 
 
   const answer = generator({
     name: `${name}-answer`,
-    model: options.model ?? "intent/utility",
+    model,
     // The reading is the tool's result, not a line of the asking conversation.
     itemVisibility: { client: false, history: false },
     prompt: INSTRUCTIONS,

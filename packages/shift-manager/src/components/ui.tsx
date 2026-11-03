@@ -1,12 +1,14 @@
 /**
  * Shift Manager's small shared pieces: the named empty state, a failed section with
- * Retry, tabs whose selection lives in the URL, a worker's status mark, and
- * the parts of design v2's look every screen draws with: a screen's title,
+ * Retry, tabs whose selection lives in the URL, a worker's status mark, a feed's
+ * jump-to-latest arrow, and the parts of design v2's look every screen draws with: a screen's title,
  * mono meta text, and a task's state square.
  *
  * Every piece is square (v2 draws no rounded corner) and paints only tokens.
  */
 import type { ReactNode } from "react";
+import { ArrowDownIcon } from "lucide-react";
+import type { JumpToLatest } from "@flow-state-dev/react";
 import type { Column } from "../lib/columns";
 import type { ShiftStatus } from "../lib/derive";
 import type { Failure } from "../lib/reads";
@@ -21,6 +23,30 @@ export function EmptyState({ title, children, testId }: { title: string; childre
     <div className="mx-auto max-w-md px-6 py-12 text-center" data-testid={testId ?? "empty-state"}>
       <p className="text-sm font-medium">{title}</p>
       <p className="mt-1 text-sm text-muted-foreground">{children}</p>
+    </div>
+  );
+}
+
+/**
+ * The arrow at the foot of a scrolling feed while there is more below: new content never moves
+ * the view ({@link JumpToLatest}), so this is how the user gets to it. The last child of the
+ * scrolling element; it takes no height, so showing it never moves the feed either.
+ */
+export function JumpToLatestButton({ feed }: { feed: JumpToLatest }) {
+  return (
+    <div className="pointer-events-none sticky bottom-0 flex h-0 justify-center">
+      {feed.atEnd ? null : (
+        <button
+          type="button"
+          aria-label="Jump to latest"
+          title="Jump to latest"
+          onClick={feed.jump}
+          className="pointer-events-auto flex size-8 translate-y-[calc(-100%-0.75rem)] items-center justify-center border border-border bg-card text-foreground shadow-sm hover:bg-accent"
+          data-testid="jump-to-latest"
+        >
+          <ArrowDownIcon className="size-4" />
+        </button>
+      )}
     </div>
   );
 }

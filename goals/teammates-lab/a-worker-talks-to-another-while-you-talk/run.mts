@@ -524,9 +524,12 @@ await runGoal(async (failures, tell_) => {
     const run = filed.find((e) => e.status !== undefined && /^(done|failed)$/.test(e.status));
     if (filed.length === 0) fail("5", `lead started no coding task within ${fixture.runWithinMs / 1000}s`);
     else if (run?.status !== "done") fail("5", `lead's task ended "${run?.status ?? filed[0]!.status}", not "done"`);
-    // The lab has no projects (FIX-2335): the page never shows one, and no worker says the word.
-    const said = (await page.locator("body").innerText()).match(/[^\n]*\bprojects?\b[^\n]*/i);
-    if (said !== null) fail("5", `the page mentions a project: "${said[0].slice(0, 200)}"`);
+    // The lab has no projects (FIX-2335): nothing on the page offers one or asks which one. A
+    // worker's own wording ("the project notes") isn't a project shown, so it doesn't count.
+    const said = (await page.locator("body").innerText()).match(
+      /[^\n]*(\b(which|what|pick|choose|select|open|no|new|in) (a |the )?projects?\b|\bprojects?:)[^\n]*/i,
+    );
+    if (said !== null) fail("5", `the page offers or asks for a project: "${said[0].slice(0, 200)}"`);
     if (run?.status === "done") {
       // The run, opened from its line in a popup: it went through Claude Code.
       await tasks.nth(earlier + filed.indexOf(run)).click();

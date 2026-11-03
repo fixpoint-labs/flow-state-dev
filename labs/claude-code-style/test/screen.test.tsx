@@ -13,7 +13,13 @@ import { createFakeLab } from "./fake-lab";
 // The script runs at a hundredth of real time.
 const fast = () => createFakeLab({ speed: 0.01 });
 
-afterEach(cleanup);
+// The app keeps what is open in the page's address, and drafts in storage across a reload;
+// each test starts on a bare address with no one else's drafts.
+afterEach(() => {
+  cleanup();
+  window.history.replaceState(null, "", "/");
+  window.localStorage.clear();
+});
 
 async function ask(text: string) {
   const box = await screen.findByLabelText("Message the main session");
@@ -37,10 +43,11 @@ async function pick(name = "vendor-notes") {
 
 /**
  * Lay the scrolling feeds out as a browser would (happy-dom lays nothing out): the main thread's
- * list and a sheet's body, each 5000px of content in a 500px view. Every scroll they are asked
+ * list and a sheet's body, each 5000px of content in a 500px view, or
+ * `height(feed)` px for a test whose content must grow. Every scroll they are asked
  * for is recorded with how it moves, and lands at once. Undone by the returned function.
  */
-function layOutFeeds() {
+function layOutFeeds(height: (feed: HTMLElement) => number = () => 5000) {
   const isFeed = (el: HTMLElement) =>
     el.classList.contains("overflow-y-auto") &&
     (el.parentElement?.getAttribute("aria-label") === "Main thread" || el.parentElement?.getAttribute("role") === "dialog");
@@ -49,12 +56,12 @@ function layOutFeeds() {
   const tops = new WeakMap<HTMLElement, number>();
   const scrolls: { feed: HTMLElement; behavior: ScrollBehavior | undefined }[] = [];
   Object.defineProperties(HTMLElement.prototype, {
-    scrollHeight: { configurable: true, get(this: HTMLElement) { return isFeed(this) ? 5000 : 0; } },
+    scrollHeight: { configurable: true, get(this: HTMLElement) { return isFeed(this) ? height(this) : 0; } },
     clientHeight: { configurable: true, get(this: HTMLElement) { return isFeed(this) ? 500 : 0; } },
     scrollTop: {
       configurable: true,
       get(this: HTMLElement) { return tops.get(this) ?? 0; },
-      set(this: HTMLElement, value: number) { tops.set(this, isFeed(this) ? Math.max(0, Math.min(value, 4500)) : 0); },
+      set(this: HTMLElement, value: number) { tops.set(this, isFeed(this) ? Math.max(0, Math.min(value, height(this) - 500)) : 0); },
     },
     scrollTo: {
       configurable: true,
@@ -136,6 +143,23 @@ describe("the session-mode screen", () => {
     expect(screen.queryByLabelText("Message the main session")).toBeNull();
   });
 
+  it("sends with Cmd+Enter and Ctrl+Enter as well as Enter, and Shift+Enter stays a new line", async () => {
+    render(<App adapter={fast()} />);
+    await pick();
+    const box = screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "first line" } });
+    fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+    expect(box.value).toBe("first line");
+    fireEvent.keyDown(box, { key: "Enter", metaKey: true });
+    // The box empties once the send lands.
+    await waitFor(() => expect(box.value).toBe(""));
+    const mine = () => [...thread().querySelectorAll('[data-entry="user"]')].map((el) => el.textContent ?? "");
+    await waitFor(() => expect(mine().join()).toMatch(/first line/));
+    fireEvent.change(box, { target: { value: "second line" } });
+    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
+    await waitFor(() => expect(mine().join()).toMatch(/second line/));
+  });
+
   it("doesn't send when Enter only confirms an IME composition", async () => {
     render(<App adapter={fast()} />);
     await pick();
@@ -150,6 +174,114 @@ describe("the session-mode screen", () => {
     fireEvent.keyDown(box, { key: "Enter", keyCode: 229 });
     expect(box.value).toBe("日本");
     expect(within(thread()).queryByText("日本", { ignore: "textarea" })).toBeNull();
+  });
+
+  it("keeps a line whose send fails, says why, and sends it again on Retry", async () => {
+    const lab = fast();
+    let refuse = true;
+    const adapter = {
+      ...lab,
+      send: (sessionId: string, text: string) =>
+        refuse ? Promise.reject(new Error("the server refused it (401)")) : lab.send(sessionId, text),
+    };
+    render(<App adapter={adapter} />);
+    await pick();
+    const box = screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    const mine = () => [...thread().querySelectorAll('[data-entry="user"]')].map((el) => el.textContent ?? "");
+    await ask("Summarize the vendor notes");
+    const alert = await within(thread()).findByRole("alert");
+    expect(alert.textContent).toMatch(/Not sent: the server refused it \(401\)/);
+    // Nothing typed is lost, and nothing claims it was sent.
+    expect(box.value).toBe("Summarize the vendor notes");
+    expect(mine()).toEqual([]);
+
+    refuse = false;
+    fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(mine().join()).toMatch(/Summarize the vendor notes/));
+    expect(box.value).toBe("");
+    expect(within(thread()).queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps what you typed while a send was in flight once it lands", async () => {
+    const lab = fast();
+    let land!: () => void;
+    const adapter = {
+      ...lab,
+      send: (sessionId: string, text: string) => new Promise<void>((resolve) => (land = resolve)).then(() => lab.send(sessionId, text)),
+    };
+    render(<App adapter={adapter} />);
+    await pick();
+    const box = screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    await ask("first ask");
+    expect(box.value).toBe("first ask");
+    expect(within(thread()).getByRole("button", { name: "Sending…" })).toBeTruthy();
+    fireEvent.change(box, { target: { value: "and a second thought" } });
+    await act(async () => land());
+    await waitFor(() => expect(within(thread()).getByRole("button", { name: "Send" })).toBeTruthy());
+    expect(box.value).toBe("and a second thought");
+  });
+
+  it("keeps a draft revised after a reload when the send from before the reload lands", async () => {
+    const lab = fast();
+    let land!: () => void;
+    const adapter = {
+      ...lab,
+      send: (sessionId: string, text: string) => new Promise<void>((resolve) => (land = resolve)).then(() => lab.send(sessionId, text)),
+    };
+    const open = async () => {
+      await pick();
+      fireEvent.click(within(screen.getByRole("navigation", { name: "Sessions" })).getByRole("button", { name: /Draft the launch note/ }));
+      await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"));
+      return screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    };
+    const first = render(<App adapter={adapter} />);
+    const box = await open();
+    await act(async () => {
+      fireEvent.change(box, { target: { value: "tighten the intro" } });
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+    first.unmount();
+
+    // A reload reopens the session the address names.
+    const reopened = async () => {
+      await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"));
+      return screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    };
+    const second = render(<App adapter={adapter} />);
+    const again = await reopened();
+    expect(again.value).toBe("tighten the intro");
+    fireEvent.change(again, { target: { value: "tighten the intro, and the outro" } });
+    await act(async () => land());
+    second.unmount();
+
+    render(<App adapter={lab} />);
+    expect((await reopened()).value).toBe("tighten the intro, and the outro");
+  });
+
+  it("brings an unsent draft back after a reload, for its own session only", async () => {
+    const lab = fast();
+    const open = async (title: RegExp, heading: string) => {
+      fireEvent.click(within(screen.getByRole("navigation", { name: "Sessions" })).getByRole("button", { name: title }));
+      await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe(heading));
+      return screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    };
+    const first = render(<App adapter={lab} />);
+    await pick();
+    fireEvent.change(await open(/Draft the launch note/, "Draft the launch note"), { target: { value: "half a thought" } });
+    first.unmount();
+
+    // A reload reopens the session the address names, with its draft.
+    const second = render(<App adapter={lab} />);
+    await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"));
+    expect((screen.getByLabelText("Message the main session") as HTMLTextAreaElement).value).toBe("half a thought");
+    second.unmount();
+
+    // A page opened on no session starts a new one, and the draft stays with its own.
+    window.history.replaceState(null, "", "/");
+    render(<App adapter={lab} />);
+    await pick();
+    expect((screen.getByLabelText("Message the main session") as HTMLTextAreaElement).value).toBe("");
+    expect((await open(/Draft the launch note/, "Draft the launch note")).value).toBe("half a thought");
   });
 
   it("clears an unsent draft when another session is opened, so it can't be sent to the wrong one", async () => {
@@ -186,6 +318,36 @@ describe("the session-mode screen", () => {
     await within(thread()).findByRole("region", { name: "Background result: Research Acme" });
     expect(feeds.scrolls).toEqual([]);
     expect(feed.scrollTop).toBe(1200);
+  });
+
+  it("never moves while the turn writes, even at the end: your own line takes you down, then Jump to latest offers the rest", async () => {
+    // The list grows with its text, so what the turn writes lands below the view.
+    const feeds = layOutFeeds((feed) => 500 + (feed.textContent?.length ?? 0) * 4);
+    onTestFinished(feeds.restore);
+    render(<App adapter={fast()} />);
+    await pick();
+    await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+    const feed = threadFeed();
+    const opened = feeds.scrolls.length;
+    await ask("Compare Acme and Globex for us.");
+    // Your own line took you to the end, smoothly: the jump on send, and the line brought in as it landed.
+    await within(feed).findByText("Compare Acme and Globex for us.");
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    const sent = feeds.scrolls.slice(opened);
+    expect(sent.length).toBeGreaterThan(0);
+    expect(sent.length).toBeLessThanOrEqual(2);
+    expect(sent.every((s) => s.feed === feed && s.behavior === "smooth")).toBe(true);
+    const scrolled = feeds.scrolls.length;
+    await within(thread()).findByRole("region", { name: "Background result: Research Acme" });
+    await waitFor(() => expect(within(thread()).queryByRole("status")).toBeNull());
+    // Everything after it arrived below: nothing scrolled, and the way down is offered.
+    expect(feeds.scrolls.length).toBe(scrolled);
+    expect(feed.scrollHeight - feed.scrollTop - feed.clientHeight).toBeGreaterThan(32);
+    const jump = within(thread()).getByRole("button", { name: "Jump to latest" });
+    fireEvent.click(jump);
+    expect(feeds.scrolls.at(-1)).toEqual({ feed, behavior: "smooth" });
+    expect(feed.scrollHeight - feed.scrollTop - feed.clientHeight).toBe(0);
+    expect(within(thread()).queryByRole("button", { name: "Jump to latest" })).toBeNull();
   });
 
   it("opens a task's sheet already at the latest of its work", async () => {
@@ -228,7 +390,7 @@ describe("the session-mode screen", () => {
     // Step 5: stopping is asked of the main session, which cancels its own task.
     await ask("Stop the Globex research.");
     await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("cancelled"));
-    expect(within(thread()).getByText(/updateTask · Research Globex → cancelled/)).toBeTruthy();
+    expect(within(thread()).getByText(/Updated a task/)).toBeTruthy();
   });
 
   it("keeps a task read only: a row opens its work in a sheet over the main thread, with no stop or composer", async () => {
@@ -314,6 +476,49 @@ describe("the session-mode screen", () => {
     fireEvent.click(within(thread()).getByRole("button", { name: "Stop" }));
     await within(thread()).findByText(/Interrupted/);
     expect(within(thread()).queryByRole("status")).toBeNull();
+  });
+
+  it("never stops the turn on one Esc, in the composer or when it closes a sheet", async () => {
+    render(<App adapter={createFakeLab({ speed: 0.2 })} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await within(thread()).findByRole("status");
+    const box = screen.getByLabelText("Message the main session");
+    // Esc in the text box is the box's, however many times it is pressed.
+    fireEvent.keyDown(box, { key: "Escape" });
+    fireEvent.keyDown(box, { key: "Escape" });
+    // An Esc that closes a sheet is spent, even with the second Esc right behind it.
+    await waitFor(() => expect(row("Research Globex")).toBeTruthy());
+    fireEvent.click(row("Research Globex"));
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Work: Research Globex" })).toBeNull();
+    expect(within(thread()).queryByText(/press Esc again/)).toBeNull();
+    // The next Esc only arms: the one that closed the sheet did not count as the first.
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(within(thread()).getByText(/press Esc again/)).toBeTruthy();
+    expect(within(thread()).getByRole("status")).toBeTruthy();
+    expect(within(thread()).queryByText(/Interrupted/)).toBeNull();
+  });
+
+  it("stops the turn on Esc twice, from outside the text box", async () => {
+    render(<App adapter={createFakeLab({ speed: 0.2 })} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await within(thread()).findByRole("status");
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(within(thread()).getByText(/press Esc again to stop the turn/)).toBeTruthy();
+    expect(within(thread()).queryByText(/Interrupted/)).toBeNull();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await within(thread()).findByText(/Interrupted/);
+  });
+
+  it("stops the turn on Cmd+. from the composer", async () => {
+    render(<App adapter={createFakeLab({ speed: 0.2 })} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await within(thread()).findByRole("status");
+    fireEvent.keyDown(screen.getByLabelText("Message the main session"), { key: ".", metaKey: true });
+    await within(thread()).findByText(/Interrupted/);
   });
 
   it("keeps background tasks running when the turn that filed them is interrupted", async () => {

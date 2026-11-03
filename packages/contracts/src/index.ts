@@ -14,13 +14,18 @@
 export * from "./items";
 
 // Pure leaf types not surfaced through the items barrel.
-export type { ResumeAction, SuspensionReason, SuspensionStatus, WaitForUserKind } from "./types/suspension";
-export { isUserSuspension, waitForUserKindOf } from "./types/suspension";
+export type { ResumeAction, SuspensionReason, SuspensionStatus, SuspendForUserKind } from "./types/suspension";
+export { isUserSuspension, suspendForUserKindOf } from "./types/suspension";
 
 // Agent discovery: the shared manifest-entry record and the per-domain source
 // type that projects into it (FIX-817).
 export { MANIFEST_DOMAINS, isManifestDomain } from "./types/manifest";
 export type { ManifestDomain, ManifestEntry, ManifestSource } from "./types/manifest";
+
+// Change notices (FIX-2426): the kinds a notice names, and the wire topic a
+// client watches, which names no user, org or tenant id.
+export { topic } from "./types/change-notice";
+export type { ChangeKind, TopicOptions, TopicScope, WireTopic } from "./types/change-notice";
 
 // Deterministic blockInstanceId construction/parsing (pure string logic).
 export * from "./block-instance-id";

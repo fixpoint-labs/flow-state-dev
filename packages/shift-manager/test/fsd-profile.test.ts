@@ -153,6 +153,21 @@ describe("the fsd profile", () => {
     expect(handed?.skills).toEqual(FSD_SKILLS);
   }, 120_000);
 
+  it.each(["fsd.fsdev.config.mts", "fsdev.config.mts"] as const)("%s holds a coding run that committed for the user's review", async (file) => {
+    // openLab leaves review off by default; both profiles ask for it (FIX-2380 D3).
+    let handed: OpenLabOptions | undefined;
+    vi.doMock("../teams/devteam/host.mts", async (original) => {
+      const host = (await original()) as typeof import("../teams/devteam/host.mts");
+      return { ...host, openLab: (options: OpenLabOptions) => host.openLab((handed = options)) };
+    });
+    try {
+      await openProfile(file, tempStore(`review-${file}`));
+    } finally {
+      vi.doUnmock("../teams/devteam/host.mts");
+    }
+    expect(handed?.reviewChanges).toBe(true);
+  }, 120_000);
+
   // The profile maps only its two shared projects to this checkout, and
   // allows no remote: a run the mapping misses is refused by name, with no
   // worktree of this checkout, and nothing is cloned from GitHub (D3).

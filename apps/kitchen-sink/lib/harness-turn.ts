@@ -2,67 +2,23 @@
  * A harness session's binding and its turns, and what the page reads off them:
  * the notice under a turn, and the plan panel's state.
  *
- * A leaf module (BP-019): the session flow (`lib/harness-session-flow.ts`)
- * declares the state with these schemas on the server, and the page derives
- * what it shows with the functions below in the browser. Nothing here is
+ * The state is `@flow-state-dev/harness-manager`'s harness session flow's
+ * (`harnessSessionStateSchema`), imported here as types only, so the page
+ * derives what it shows with the functions below in the browser. Nothing here is
  * harness-specific: a harness reports its failure through core's neutral
  * classification, and its label comes from the mode list as data.
  */
+import type { HarnessTurnRecord } from "@flow-state-dev/harness-manager";
 import type { RequestStatus } from "@flow-state-dev/core/types";
-import { z } from "zod";
-
-/** What one turn asked for and what came of it, recorded under its request id. */
-export const turnRecordSchema = z.object({
-  /** The conversation the turn asked to continue: the confirmed id when it started. `null` on a first turn. */
-  asked: z.string().nullable().default(null),
-  /** The conversation the harness confirmed during this turn, if it confirmed one. */
-  confirmed: z.string().nullable().default(null),
-  /** The harness's classification of the turn's failure (`harnessFailureKind`), if it failed. */
-  failure: z.string().nullable().default(null),
-  /** Whether the turn ended because it was stopped. */
-  stopped: z.boolean().nullable().default(null),
-  /** The turn's error, as the harness worded it. */
-  error: z.string().nullable().default(null),
-  /** When the turn started, in epoch millis. Orders turns for trimming. */
-  at: z.number().nullable().default(null),
-  /** Lines sent while the turn ran that the harness took into it (`steer`), oldest first. */
-  steered: z.array(z.string()).nullable().default(null),
-});
-
-/** One turn's record. */
-export type TurnRecord = z.infer<typeof turnRecordSchema>;
-
-/**
- * A harness session's state. `model` is the person's pick, set when the
- * session is created and never after. The other two are written only by the
- * session flow's own resolvers, never by a caller (`serverOwned`).
- */
-export const harnessSessionStateSchema = z.object({
-  /**
-   * The model every turn of this session runs, by the id the harness takes.
-   * Set at create and fixed for the session's life (`.readonly()`: the
-   * framework refuses any write that would change it). Absent only on a
-   * session stored before models could be picked, which runs on the mode's
-   * default.
-   */
-  model: z.string().min(1).optional().readonly(),
-  /** The conversation this session is bound to. Written only by `onSession`. */
-  binding: z
-    .object({ confirmed: z.string().nullable().default(null) })
-    .nullable()
-    .default(null),
-  /** Each recent turn's record, by request id. */
-  turns: z.record(turnRecordSchema).nullable().default(null),
-});
-
-/** A harness session's state, as the page reads it from `clientData.session`. */
-export type HarnessSessionState = z.infer<typeof harnessSessionStateSchema>;
 
 /** The classification a harness sets when it doesn't know the conversation it was asked to continue. */
 export const UNKNOWN_CONVERSATION = "unknown-conversation";
 
-/** How a turn's request stands, from the session's request list. */
-export type TurnStatus = "running" | "completed" | "failed" | "stopped";
+/**
+ * How a turn's request stands, from the session's request list. `waiting`:
+ * the request is suspended on a stop the user answers, such as a tool approval.
+ */
+export type TurnStatus = "running" | "waiting" | "completed" | "failed" | "stopped";
 
 /** The code of the status item the framework writes when a request is stopped. */
 const STOP_CODE = "system.request_aborted";
@@ -92,6 +48,8 @@ function statusOf(status: RequestStatus): TurnStatus {
       return "failed";
     case "aborted":
       return "stopped";
+    case "suspended":
+      return "waiting";
     default:
       return "running";
   }
@@ -141,12 +99,14 @@ export type TurnNotice =
   | { readonly kind: "moved"; readonly conversation: string; readonly previous: string }
   | { readonly kind: "refused"; readonly conversation: string; readonly error: string | null }
   | { readonly kind: "error"; readonly error: string | null; readonly conversation: string | null }
-  | { readonly kind: "stopped"; readonly conversation: string | null };
+  | { readonly kind: "stopped"; readonly conversation: string | null }
+  | { readonly kind: "waiting"; readonly conversation: string | null };
 
 /**
  * The notice for one turn, from that turn's own record and how it ended.
  *
- * Read in this order, and the order is the rule: a stop is a stop, never a
+ * Read in this order, and the order is the rule: a turn suspended on a stop
+ * the user answers waits on them, whatever its record holds so far; a stop is a stop, never a
  * refusal, even before the harness confirmed anything; a refusal is only the
  * harness's own unknown-conversation classification, never a message read
  * here (a refusing harness may still have named the asked id first, so this is
@@ -159,8 +119,9 @@ export type TurnNotice =
  * @param kept The session's bound conversation, which a failure never moves.
  * @returns The notice, or `null` while the turn runs or when it has nothing to say.
  */
-export function turnNotice(turn: TurnRecord | null, status: TurnStatus, kept: string | null): TurnNotice | null {
+export function turnNotice(turn: HarnessTurnRecord | null, status: TurnStatus, kept: string | null): TurnNotice | null {
   if (status === "running") return null;
+  if (status === "waiting") return { kind: "waiting", conversation: kept };
   if (status === "stopped" || turn?.stopped === true) return { kind: "stopped", conversation: kept };
   if (turn?.failure === UNKNOWN_CONVERSATION && turn.asked !== null) {
     return { kind: "refused", conversation: turn.asked, error: turn.error };
@@ -381,7 +342,7 @@ export function turnNumbers(items: readonly TurnItem[]): ReadonlyMap<string, num
  * @param matches Whether a conversation id is the one asked about.
  */
 export function earliestTurnOf(
-  turns: Readonly<Record<string, TurnRecord>> | null | undefined,
+  turns: Readonly<Record<string, HarnessTurnRecord>> | null | undefined,
   matches: (conversationId: string) => boolean,
 ): string | null {
   let earliest: { requestId: string; at: number } | null = null;

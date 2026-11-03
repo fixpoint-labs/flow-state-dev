@@ -1,28 +1,51 @@
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { clearDraft, isSendKey, useDraft } from "@flow-state-dev/react";
+import { useRef, type FormEvent, type KeyboardEvent } from "react";
+import { useSubmit } from "../lib/use-submit";
 
 /**
- * Where you type to the open worker. Enter sends, Shift+Enter is a new line.
+ * Where you type to the open worker. Enter or Cmd+Enter (Ctrl+Enter) sends,
+ * Shift+Enter is a new line.
  * A line sent while the worker answers waits for that answer. It sits in the
  * conversation's column (`--thread-width`), and the box grows with what you
  * type up to a cap, then scrolls.
+ *
+ * A line stays in the box until its send lands, so a failed send loses
+ * nothing: the box keeps it and says why, with Retry. A send that lands clears
+ * the box, unless something else was typed meanwhile. The draft is kept per
+ * conversation across a reload.
  */
-export function Composer({ workerName, running, onSend }: { workerName: string; running: boolean; onSend: (text: string) => void }) {
-  const [text, setText] = useState("");
-  const send = () => {
-    const line = text.trim();
-    if (!line) return;
-    setText("");
-    onSend(line);
+export function Composer({
+  sessionId,
+  workerName,
+  running,
+  onSend,
+}: {
+  /** The conversation it types to; `/` and a switch find its composer by it. */
+  sessionId: string;
+  workerName: string;
+  running: boolean;
+  /** Resolves once the line has landed; rejects with why it didn't. */
+  onSend: (text: string) => Promise<void>;
+}) {
+  const [text, setText] = useDraft("teammates:draft", sessionId);
+  const current = useRef(text);
+  current.current = text;
+  const { error, busy, submit } = useSubmit(async (typed: string) => {
+    await onSend(typed.trim());
+    // The box may have closed and reopened while it ran: the stored draft goes only if it is still this line.
+    clearDraft("teammates:draft", sessionId, typed);
+    if (current.current === typed) setText("");
+  });
+  const send = (event?: FormEvent) => {
+    if (!text.trim() || busy) {
+      event?.preventDefault();
+      return;
+    }
+    void submit(event, text);
   };
-  const onSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    send();
-  };
+  const onSubmit = (event: FormEvent) => send(event);
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter that ends an input method's composition (CJK and the like) picks the text; it doesn't send.
-    // Safari fires that Enter after compositionend, so isComposing is false there; keyCode 229 still marks it.
-    const composing = event.nativeEvent.isComposing || event.keyCode === 229;
-    if (event.key === "Enter" && !event.shiftKey && !composing) {
+    if (isSendKey(event, { enterSends: true })) {
       event.preventDefault();
       send();
     }
@@ -33,6 +56,8 @@ export function Composer({ workerName, running, onSend }: { workerName: string; 
         <div className="flex items-end gap-2 rounded-3xl border border-border bg-card px-3 py-2 focus-within:border-ring">
           <textarea
             aria-label={`Message ${workerName}`}
+            data-composer
+            data-session-id={sessionId}
             rows={1}
             value={text}
             onChange={(event) => setText(event.target.value)}
@@ -42,12 +67,20 @@ export function Composer({ workerName, running, onSend }: { workerName: string; 
           />
           <button
             type="submit"
-            disabled={!text.trim()}
+            disabled={!text.trim() || busy}
             className="rounded-full bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground disabled:opacity-40"
           >
-            Send
+            {busy ? "Sending…" : "Send"}
           </button>
         </div>
+        {error !== undefined ? (
+          <p role="alert" className="mt-1 text-xs text-destructive">
+            Not sent: {error} ·{" "}
+            <button type="button" className="underline" onClick={() => send()}>
+              Retry
+            </button>
+          </p>
+        ) : null}
         {running ? <p className="mt-1 text-xs text-muted-foreground">{workerName} is answering · a line you send now waits for it</p> : null}
       </div>
     </form>

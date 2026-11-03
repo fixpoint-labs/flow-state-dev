@@ -87,8 +87,8 @@ no opinion at that spot — not because a convention is missing.
 | the bare clone in `scratch-repo.mts` | Where an artifact has to survive to is the lab's question, not the framework's. A temp-directory repository plus a bare repository at a declared path the work is published to keeps the check re-runnable with no credential while still giving the artifact an address that outlives the process. |
 | `acceptance-check.mjs`, with `acceptance.mts` | The requester's half of the brief. It names the module, the export and the behaviour, and is spawned from here against the produced tree — never copied into a checkout, because a check the run can reach is a check the run can satisfy by rewriting it. |
 
-`harness-stub.mts`, `harness.mts`, `phase.mts` and `worker-config.mts` are
-supporting parts of those.
+`harness.mts`, `phase.mts` and `worker-config.mts` are supporting parts of
+those. The scripted coder is `harnessStub` from `@flow-state-dev/harness-manager`.
 
 ## What it works around
 
@@ -153,9 +153,17 @@ uses its own default: `stub` for DevTeam, `claude-code` for `fsd`.
 | Value | What runs |
 |---|---|
 | `stub` | The scripted coder, no model. It says what it's doing in the run's session and commits one file, so the row settles `completed`. |
-| `claude-code` | Claude Code through its Agent SDK, set up as the honesty check sets it up. At start the Lab asks Claude Code for an account (a sign-in or an Anthropic key) and refuses to start without one, naming what to set. Nothing falls back to the scripted coder (`stub`). |
+| `claude-code` | Claude Code through its Agent SDK. At start the Lab checks whether an account is set up (a sign-in or an Anthropic key) and whether the SDK itself loaded; if either is missing, it logs why and what to set, but still starts the Lab. Nothing falls back to the scripted coder (`stub`). |
+| `codex` | Codex through its SDK, handed only `CODEX_PASS` from the server's environment. It needs `codex login` or `CODEX_API_KEY`; the Lab doesn't check at start, so a run with neither fails and says why. |
+| `cursor` | Cursor through its SDK, in a process of its own handed only `CURSOR_PASS`. It needs a stored login or `CURSOR_API_KEY`; the Lab doesn't check at start, so a run with neither fails and says why. |
 
-A `Coder:` line at start names the coder it started with.
+Codex and Cursor don't take the project's MCP servers the Lab relays, and report no usage
+windows, so Usage shows Claude Code only. One coder serves the whole process.
+
+A `Coder:` line at start names the coder it started with and, on a real one, how long each run
+may take. That is 20 minutes unless `DEVFORCE_LAB_RUN_MINUTES` names another whole number of
+minutes; it also sets the scripted coder's budget, which is otherwise one minute. A value that
+isn't a positive whole number is refused at start.
 
 The scripted coder (`stub`) pauses 2 s before each of its five steps so you can watch them arrive.
 `DEVFORCE_LAB_STEP_MS` changes the pause; a test that only needs the row to settle sets it to `0`.

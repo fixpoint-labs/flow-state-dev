@@ -210,7 +210,7 @@ describe("goalSeekLoop — refuses a board whose drain can return with a row not
           workers: inline("gsl-park-exit-w"),
           onReview, // retired-name-refusal: refusal test
         } as never),
-      ).toThrow(/"gsl-park-exit" sets `onReview`, which was removed \(FIX-2131\).*askQuestion.*waitForUser.*blocked/s); // retired-name-refusal: refusal test
+      ).toThrow(/"gsl-park-exit" sets `onReview`, which was removed \(FIX-2131\).*holdTaskForUser.*suspendForUser.*blocked/s); // retired-name-refusal: refusal test
     }
   });
 

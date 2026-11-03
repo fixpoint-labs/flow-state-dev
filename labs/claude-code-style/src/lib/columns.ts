@@ -16,6 +16,14 @@ export const COLUMNS: readonly { id: Column; label: string }[] = [
   { id: "resolved", label: "Resolved" },
 ];
 
+/** How many of a session's tasks wait on you: those under *Waiting on you* or *Ready for review*, pins aside. */
+export function waitingOnYou(tasks: readonly TaskRow[]): number {
+  return tasks.filter((task) => {
+    const column = columnOf(task, false);
+    return column === "waiting" || column === "review";
+  }).length;
+}
+
 /** The column a task row lands in. A pinned task shows only under *Pinned*. */
 export function columnOf(task: TaskRow, pinned: boolean): Column {
   if (pinned) return "pinned";
