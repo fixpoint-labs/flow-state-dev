@@ -139,8 +139,8 @@ describe("a worker's door (BR-1, BR-2)", () => {
     expect(sent).toEqual([
       {
         workers: [
-          { id: "eng.desk", kind: "desk", door: "respond", rules: false, hired: false, incarnation: null, name: null, teamName: null },
-          { id: "eng.lead", kind: "agent", door: "respond", rules: true, hired: false, incarnation: null, name: null, teamName: null },
+          { id: "eng.desk", kind: "desk", door: "respond", doorTakesTask: false, rules: false, hired: false, incarnation: null, name: null, teamName: null },
+          { id: "eng.lead", kind: "agent", door: "respond", doorTakesTask: true, rules: true, hired: false, incarnation: null, name: null, teamName: null },
         ],
       },
     ]);

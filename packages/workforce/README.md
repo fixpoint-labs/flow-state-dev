@@ -419,6 +419,18 @@ declares with `userMessage` and a `{ message }` input. `openInventory` writes it
 [inventory row](#the-inventory) as `door`. Every worker flow has exactly one: a flow with none, or
 with two, is refused when `hireWorkforce` checks its worker flows, naming the flow.
 
+A door may also take an optional `taskId`: the task a user's line was sent from. The engine stamps
+it on the line and on everything the turn emits, so the task's view finds both by `item.taskId`
+after a reload. The built-in doors (`agent`, the coordinator, the error reporter) take it. A door of
+your own opts in by spreading `doorTask(inputSchema)` into `respond`, which adds the key to the
+input and the matching `taskOf` together. The inventory row says which doors take it, as
+`doorTakesTask`; send the key only to those, since a strict door refuses a key it doesn't declare.
+The id only labels the turn: a steer still picks the session's open task itself.
+
+```ts
+respond: { ...doorTask(inputSchema), block: runTurn, userMessage: (input) => input.message },
+```
+
 ### The documents a worker may touch
 
 A `WORKER.md` may list the [file-declared documents](#reading-documents-from-files) that worker is
@@ -1424,7 +1436,7 @@ where it is when a later roster no longer names the worker. The rows are the sta
 
 | Factory | One row per | Fields |
 |---------|-------------|--------|
-| `defineWorkerInventoryCollection()` | registered worker, at `inventory/workers/<id>` | `id`, `kind` (the worker flow the standard worker runs on), `door` (the action that takes a user's message, or `null`), `rules` (whether its flow declares the standing rules action), `hired` and `incarnation` (`false` and `null` on every row `openInventory` writes, since it lists only standard workers) |
+| `defineWorkerInventoryCollection()` | registered worker, at `inventory/workers/<id>` | `id`, `kind` (the worker flow the standard worker runs on), `door` (the action that takes a user's message, or `null`), `doorTakesTask` (whether that door takes a `taskId`, `false` on older rows), `rules` (whether its flow declares the standing rules action), `hired` and `incarnation` (`false` and `null` on every row `openInventory` writes, since it lists only standard workers) |
 
 The collection is readable by a browser through the ordinary collection read
 (`listCollectionItems` from `@flow-state-dev/client`), from any session whose flow declares it: the

@@ -18,8 +18,12 @@
  * Found by name, as every other entry a worker's roles need is. The one
  * definition of "door" in the package: the contract check reads
  * {@link doorProblem}, and the inventory {@link workerDoorOf}.
+ *
+ * A door may also take an optional `taskId`, the task a line is sent from,
+ * through {@link doorTask}; the inventory says so with {@link doorTakesTask}.
  */
 import type { FlowInstance } from "@flow-state-dev/core";
+import { z } from "zod";
 
 /** The door's name: the public action a user's message arrives on, on every worker flow. */
 export const RESPOND_ACTION = "respond";
@@ -85,6 +89,44 @@ export function doorProblem(name: string, actions: Readonly<Record<string, unkno
     `worker flow "${name}" has no door: no "${RESPOND_ACTION}", ${SHAPE}, so no worker on it could ` +
     `take a user's message. Give it one.`
   );
+}
+
+/** The optional task id a door takes: which task's screen the line was sent from. */
+const taskIdSchema = z.string().min(1).optional();
+
+/**
+ * Lets a door take the task a line is sent from (FIX-2422). Spread into the
+ * `respond` action: it returns the door's input extended with an optional,
+ * non-empty `taskId` (a strict input stays strict), and the matching
+ * `taskOf`, so the engine stamps the id on the user's line and on every item
+ * the turn emits. Together, so a door can't take the key and forget to stamp
+ * it. A door that uses it does not also mark its scope with the same id.
+ *
+ * The id is a label for the task's view. It never routes the line: a steer
+ * still picks the session's open task from server state.
+ *
+ * @param inputSchema The door's own input, `{ message }` at least.
+ */
+export function doorTask<TShape extends z.ZodRawShape, TKeys extends z.UnknownKeysParam>(
+  inputSchema: z.ZodObject<TShape, TKeys>,
+) {
+  const extended = inputSchema.extend({ taskId: taskIdSchema });
+  return {
+    inputSchema: extended,
+    taskOf: (input: { taskId?: string }): string | undefined => input.taskId,
+  };
+}
+
+/**
+ * Whether a worker flow's door takes a task id: its `respond` declares
+ * `taskOf` (see {@link doorTask}). An app sends `taskId` only to such a door,
+ * since a strict door refuses a key it doesn't declare.
+ *
+ * @param actions The flow's public actions.
+ */
+export function doorTakesTask(actions: Readonly<Record<string, unknown>>): boolean {
+  const respond = (actions as Readonly<Record<string, { taskOf?: unknown } | undefined>>)[RESPOND_ACTION];
+  return typeof respond?.taskOf === "function";
 }
 
 /**

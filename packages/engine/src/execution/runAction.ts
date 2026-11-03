@@ -1756,8 +1756,14 @@ async function runActionAttempt<
   // throw until after context creation.
   let parsedInput: unknown;
   let parseError: unknown;
+  // The task this request is for, named by the action's `taskOf`. Stamped on
+  // the echo below and handed to the context as the default task of every
+  // scope, so a replayed request still stamps what it emits.
+  let requestTaskId: string | undefined;
   try {
     parsedInput = parseActionInput(action, options.input);
+    const namedTask = action.taskOf?.(parsedInput);
+    requestTaskId = typeof namedTask === "string" && namedTask.length > 0 ? namedTask : undefined;
 
     // Skip the user-message echo on a continuation (FIX-811): it represents the
     // INITIAL caller input and is already in the merged prior log, so emitting
@@ -1777,6 +1783,7 @@ async function runActionAttempt<
         itemIndex: getResponseItemCount(response),
         provenance: RUNTIME_PROVENANCE,
         ts: Date.now(),
+        ...(requestTaskId !== undefined ? { taskId: requestTaskId } : {}),
         content: [{ type: "output_text", text }]
       };
       await response.emitItemAdded(userItem);
@@ -2034,6 +2041,7 @@ async function runActionAttempt<
       metadata: options.metadata,
       resumeContext,
       input: options.input,
+      requestTaskId,
       signal: composedSignal,
       sideChainSignal: sideChainController.signal,
       modelResolver: options.runtimeConfig.modelResolver,
