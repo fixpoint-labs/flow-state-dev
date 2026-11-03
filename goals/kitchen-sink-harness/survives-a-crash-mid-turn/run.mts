@@ -31,6 +31,8 @@ const FLOW = "claude-code-session";
 const MODEL = "scripted-claude-code";
 /** The engine's stale threshold plus a sweep, and then some: when the cut turn must be listed. */
 const CUT_TURN_MS = 150_000;
+/** What the app logs at start on the dev profile's SQLite with no database URL; anything else is not the scratch file. */
+const SCRATCH_STORE_LINE = "[flowstate] profile=dev store=sqlite durable=true interruptedScan=true";
 const say = (s: string) => console.error(`[ks-crash ${new Date().toISOString().slice(11, 19)}] ${s}`);
 
 await runGoal(async (failures) => {
@@ -45,13 +47,24 @@ await runGoal(async (failures) => {
   git("commit", "-q", "-m", "Start");
   if (process.env.GOAL_SKIP_BUILD !== "1") buildKitchenSink();
   const store = join(dir, "flowstate.db");
-  const serve = (file: string): Promise<KitchenSinkServer> =>
-    startKitchenSink(PORT, {
+  // The dev profile, whatever the shell holds: a database URL or `FSD_ENV=prod` would put the
+  // app on Postgres, and this goal (and its control's restart) would write into that database.
+  const serve = async (file: string): Promise<KitchenSinkServer> => {
+    const server = await startKitchenSink(PORT, {
+      FSD_ENV: "dev",
+      FSD_DB_URL: "",
+      DATABASE_URL: "",
       STORE_TYPE: "sqlite",
       KITCHEN_SINK_STORE_FILE: file,
       KITCHEN_SINK_HARNESS_WORKSPACE: repo,
       XDG_STATE_HOME: join(dir, "state"),
     });
+    if (!server.log().includes(SCRATCH_STORE_LINE)) {
+      server.stop();
+      throw new Error(`setup: the app is not on the scratch SQLite store (want "${SCRATCH_STORE_LINE}"):\n${server.log().slice(-2000)}`);
+    }
+    return server;
+  };
 
   let served = await serve(store);
   try {

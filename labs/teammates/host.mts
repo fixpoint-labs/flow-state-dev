@@ -52,7 +52,7 @@ import {
   harnessReadiness,
   harnessReadinessAction,
   harnessReadinessCapability,
-  harnessStub,
+  scriptedHarness,
   resolveOwnership,
   type HarnessReadinessRead,
 } from "@flow-state-dev/harness-manager";
@@ -287,15 +287,9 @@ export async function openTeammates(options: TeammatesOptions) {
     judge: true,
     doneTimeoutMs,
   });
-  // A goal's scripted harness stands in for every harness a worker names, and is always ready.
+  // A goal's scripted harness (harness-manager's, the one DevTeam serves) stands in for every harness a worker names, and is always ready.
   const scripted =
-    options.scriptedHarnessStepMs === undefined
-      ? undefined
-      : harnessStub({
-          steps: ["Reading the task.", "Planning the change.", "Making the change.", "Checking the change.", "Wrapping up."],
-          stepEveryMs: options.scriptedHarnessStepMs,
-          finalMessage: "A scripted run, no model.",
-        }).slot;
+    options.scriptedHarnessStepMs === undefined ? undefined : scriptedHarness({ stepEveryMs: options.scriptedHarnessStepMs }).slot;
   const harnesses = scripted === undefined ? HARNESSES : Object.fromEntries(Object.keys(HARNESSES).map((name) => [name, scripted as Harness]));
   const readiness = teammatesReadiness();
   // At start, never awaited: a missing sign-in never stops the server.
