@@ -116,7 +116,9 @@ export const listedProjectSchema = z.object({
   id: z.string(),
   title: z.string(),
   /** The git remote its code lives in, or `null` for a project with no repository. */
-  repository: z.string().nullable()
+  repository: z.string().nullable(),
+  /** What the project covers, as its owner wrote it, or `null` for none. What a turn picks one by. */
+  brief: z.string().nullable().optional()
 });
 
 /** What listing the caller's projects returns: shared ones first, then private, each by id. */
@@ -141,14 +143,14 @@ export async function listProjectsOf(ctx: ResourcesContext, userId: string | und
       if (!parsed.success) continue;
       const row = parsed.data;
       if (visibility === "shared" && !isMember(row, userId)) continue;
-      listed.push({ visibility, id: row.id, title: row.title, repository: row.repository });
+      listed.push({ visibility, id: row.id, title: row.title, repository: row.repository, brief: row.brief ?? null });
     }
     projects.push(...listed.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)));
   }
   return { projects };
 }
 
-/** List the projects the session's owner is a member of: each one's address, title and repository. */
+/** List the projects the session's owner is a member of: each one's address, title, repository and brief. */
 export const listProjects = handler({
   name: "project-list",
   inputSchema: listProjectsInputSchema,
