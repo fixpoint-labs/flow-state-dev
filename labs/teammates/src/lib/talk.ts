@@ -8,11 +8,13 @@ import type { ConversationEntry, TalkRow } from "../adapter";
 /**
  * Messages logged to `worker` that its conversation hasn't read yet: each
  * waits for the worker's current answer to end. Joined by message id, so it
- * needs the received entry to carry one.
+ * needs the received entry to carry one. `since` is when the conversation's
+ * window starts: a message sent before it was read in an older turn that the
+ * window no longer holds, so it is not waiting.
  */
-export function pendingFor(worker: string, rows: TalkRow[], entries: ConversationEntry[]): TalkRow[] {
+export function pendingFor(worker: string, rows: TalkRow[], entries: ConversationEntry[], since?: number): TalkRow[] {
   const read = new Set(entries.flatMap((e) => (e.kind === "received" ? [e.messageId] : [])));
-  return rows.filter((m) => m.to === worker && !m.undelivered && !read.has(m.id));
+  return rows.filter((m) => m.to === worker && !m.undelivered && !read.has(m.id) && (since === undefined || m.at >= since));
 }
 
 /**
