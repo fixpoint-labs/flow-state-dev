@@ -31,8 +31,8 @@ describe("insertBeforeBodyClose", () => {
     assert.equal(insertBeforeBodyClose("<BODY>x</BODY>", MARK), `<BODY>x${MARK}</BODY>`);
   });
 
-  it("appends to a page with no body to close, so the button still shows", () => {
-    assert.equal(insertBeforeBodyClose("<p>hi</p>", MARK), `<p>hi</p>${MARK}`);
+  it("leaves a document with no body to close as it was: a fragment isn't a page", () => {
+    assert.equal(insertBeforeBodyClose("<p>hi</p>", MARK), "<p>hi</p>");
   });
 });
 
@@ -60,8 +60,17 @@ describe("bodyCloseInjector (a page that arrives in pieces)", () => {
     assert.equal(out.split(MARK).length - 1, 1);
   });
 
-  it("appends it at the end of a page that never closes its body", async () => {
-    assert.equal(await inject(["<p>one", "two</p>"]), `<p>onetwo</p>${MARK}`);
+  it("passes a stream that never closes a body through untouched", async () => {
+    assert.equal(await inject(["<p>one", "two</p>"]), "<p>onetwo</p>");
+  });
+
+  it("keeps a multi-byte character intact when it is split after the button went in", async () => {
+    // The chunk holding </body> ends inside the é of a script that follows it. Once the button is written,
+    // the rest must still go through the decoder, or the two halves of é arrive as two replacement characters.
+    const tail = Buffer.from("</body><script>caf\u00e9</script>");
+    const cut = tail.indexOf(0xc3) + 1;
+    const out = await inject([tail.subarray(0, cut), tail.subarray(cut)]);
+    assert.equal(out, `${MARK}</body><script>caf\u00e9</script>`);
   });
 
   it("holds back only the tail, so a long page is not delayed until it ends", async () => {

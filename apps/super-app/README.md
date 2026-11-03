@@ -98,6 +98,9 @@ see its README. They load `.env.local` the way they do standalone.
   browser refresh loads the new build. Vite's dev client loads from absolute
   paths that can't live under a prefix. Kitchen Sink keeps `next dev` HMR. A
   lab's server side (its flows and config) isn't watched: that needs a restart.
+- The button is an inline script, so a `Content-Security-Policy` an app sets
+  that forbids inline scripts would stop it showing, with no error on the page.
+  None of the hosted apps sets one.
 - Kitchen Sink's Bull Board (`REDIS_URL` set) mounts at `/api/admin/queues`
   without the prefix and isn't reachable through the proxy.
 - A lab page's relative URLs resolve against its `<base href>`, so a

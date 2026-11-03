@@ -6,6 +6,7 @@
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { request as httpRequest } from "node:http";
 import { gzipSync } from "node:zlib";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -551,6 +552,25 @@ describe("the DevTool button and page", () => {
     const res = await at(open, "/kitchen-sink/zipped", { headers: { accept: "text/html" } });
     assert.equal(res.headers.get("content-encoding"), "gzip");
     assert.equal(await res.text(), "<html><body>zipped</body></html>", "no button, and still readable");
+  });
+
+  it("passes compressed HTML through byte for byte when the request didn't ask for a page", async () => {
+    // Without `Accept: text/html` the request keeps its `accept-encoding`, so the app may compress the page.
+    // The injector can't edit that, and must not touch it either.
+    const raw = await new Promise((resolve, reject) => {
+      const req = httpRequest(
+        { host: "127.0.0.1", port: open.address().port, path: "/kitchen-sink/zipped", headers: { accept: "*/*", "accept-encoding": "gzip" } },
+        (res) => {
+          const parts = [];
+          res.on("data", (c) => parts.push(c));
+          res.on("end", () => resolve({ body: Buffer.concat(parts), encoding: res.headers["content-encoding"] }));
+        },
+      );
+      req.on("error", reject);
+      req.end();
+    });
+    assert.equal(raw.encoding, "gzip");
+    assert.deepEqual(raw.body, gzipSync("<html><body>zipped</body></html>"));
   });
 
   it("writes the button into an SPA's page, after its <base> is moved under the prefix", async () => {

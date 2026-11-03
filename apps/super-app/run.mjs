@@ -23,13 +23,13 @@
  * - `SUPER_APP_ONLY=kitchen-sink,teammates`: start only these apps.
  *
  * The DevTool page at `/devtool/` is built into `dist/` (`pnpm build:devtool`):
- * `dev` rebuilds it first, as it does the labs' pages, and keeps rebuilding it
- * (and theirs) as the source changes; `serve` serves what `pnpm build` made.
+ * `dev` builds it and keeps rebuilding it (and the labs' pages) as the source
+ * changes; `serve` serves what `pnpm build` made.
  *
  * The rules are `settings.mjs`. An app that stops leaves the others running; its route answers 502 and the
  * landing page marks it stopped. Ctrl-C stops everything.
  */
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { connect } from "node:net";
 import { fileURLToPath } from "node:url";
@@ -72,12 +72,12 @@ function prefixLines(stream, label, out) {
   stream.on("end", () => buffered && out.write(`${label} ${buffered}\n`));
 }
 
-/** Run one step to its end (or, for the last, for as long as it lives). Resolves with its exit code. */
-function runStep(app, step, label) {
+/** Run one step to its end (or, for the last, for as long as it lives), with `port` as its `PORT`. Resolves with its exit code. */
+function runStep(step, label, port) {
   return new Promise((resolve) => {
     const child = spawn(step.cmd, step.args, {
       cwd: step.cwd,
-      env: { ...process.env, ...step.env, PORT: String(app.port), FORCE_COLOR: "1" },
+      env: { ...process.env, ...step.env, PORT: String(port), FORCE_COLOR: "1" },
       stdio: ["ignore", "pipe", "pipe"],
       // Its own process group: tsx and next start children of their own.
       detached: true,
@@ -100,7 +100,7 @@ function runStep(app, step, label) {
 function startWatchers(app, i) {
   const label = `${color(i)}[${app.id}]\x1b[0m`;
   for (const step of app.run[mode].filter((s) => s.background)) {
-    void runStep(app, step, label).then((code) => {
+    void runStep(step, label, app.port).then((code) => {
       if (!stopping) process.stderr.write(`${label} ${step.args.join(" ")} stopped (exit ${code}); changes to its source won't show until a restart.\n`);
     });
   }
@@ -110,7 +110,7 @@ async function startApp(app, i) {
   const label = `${color(i)}[${app.id}]\x1b[0m`;
   const steps = app.run[mode].filter((s) => !s.background);
   for (const [n, step] of steps.entries()) {
-    const code = await runStep(app, step, label);
+    const code = await runStep(step, label, app.port);
     if (stopping) return;
     const last = n === steps.length - 1;
     if (!last && code === 0) continue;
@@ -167,13 +167,9 @@ process.on("exit", () => {
 
 const devtoolDir = fileURLToPath(new URL("./dist", import.meta.url));
 if (mode === "dev") {
-  process.stdout.write("[super-app] building the DevTool page\n");
-  const built = spawnSync("pnpm", ["run", "build:devtool"], { cwd: fileURLToPath(new URL(".", import.meta.url)), stdio: "inherit" });
-  if (built.status !== 0) process.stderr.write("[super-app] the DevTool page failed to build; /devtool/ won't load.\n");
-  else {
-    // Rebuilds as its source changes; a refresh picks the new build up.
-    void runStep({ port }, { cmd: "pnpm", args: ["run", "build:devtool", "--watch"], cwd: fileURLToPath(new URL(".", import.meta.url)) }, "[devtool]");
-  }
+  // Builds the page, then rebuilds it as its source changes; a refresh picks the new build up.
+  // Until the first build is written, /devtool/ answers that it isn't built.
+  void runStep({ cmd: "pnpm", args: ["run", "build:devtool", "--watch"], cwd: fileURLToPath(new URL(".", import.meta.url)) }, "[devtool]", port);
 } else if (!existsSync(`${devtoolDir}/index.html`)) {
   process.stderr.write("[super-app] the DevTool page isn't built (run `pnpm build`); /devtool/ won't load.\n");
 }
