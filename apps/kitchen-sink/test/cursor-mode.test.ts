@@ -7,6 +7,10 @@
  *
  * Nothing is asked about a sandbox: Kitchen Sink confines no run.
  *
+ * Whether Cursor is signed in is the Cursor package's answer
+ * (`checkCursorReadiness`, tested there, a stored login included); the mode
+ * shows its reason and remedy as written.
+ *
  * Red state produced before this was trusted: report a host with no key and no
  * stored login as available, and the sign-in case fails.
  */
@@ -23,7 +27,7 @@ const able: CursorHostChecks = {
   sdk: () => ({ kind: "version", version: TESTED_SDK_VERSION }),
   makeRoot: () => undefined,
   childStarts: () => null,
-  signIn: async () => ({ status: "key" }),
+  readiness: async () => ({ ready: true }),
 };
 
 afterEach(() => {
@@ -71,13 +75,11 @@ describe("Cursor mode's check (V7)", () => {
     expect(result).toMatchObject({ available: false, reason: expect.stringContaining("spawn ENOENT") });
   });
 
-  it("is unavailable with no key and no stored login", async () => {
-    const result = await check({ signIn: async () => ({ status: "none", reason: "no stored login" }) });
-    expect(result).toMatchObject({ available: false, reason: expect.stringContaining("not signed in") });
-  });
-
-  it("is available with a stored login and no key", async () => {
-    expect(await check({ signIn: async () => ({ status: "login" }) })).toEqual({ available: true });
+  it("is unavailable with no key and no stored login, with the Cursor package's reason and remedy", async () => {
+    const result = await check({
+      readiness: async () => ({ ready: false, reason: "Cursor has no sign-in: no stored login", remedy: "Set CURSOR_API_KEY" }),
+    });
+    expect(result).toEqual({ available: false, reason: "Cursor has no sign-in: no stored login", remedy: "Set CURSOR_API_KEY" });
   });
 
   it("checks the sign-in and starts the process over the run's environment, not the server's", async () => {
@@ -86,7 +88,7 @@ describe("Cursor mode's check (V7)", () => {
     const seen: Record<string, string>[] = [];
     await check({
       childStarts: (env) => (seen.push(env), null),
-      signIn: async (env) => (seen.push(env), { status: "key" }),
+      readiness: async (env) => (seen.push(env), { ready: true }),
     });
     expect(seen).toHaveLength(2);
     for (const env of seen) {
@@ -121,9 +123,9 @@ describe("Cursor mode's check, on this host's own answers", () => {
     try {
       vi.stubEnv("HOME", home);
       vi.stubEnv("CURSOR_API_KEY", "");
-      expect(await HOST_CHECKS.signIn(cursorEnv())).toMatchObject({ status: "none" });
+      expect(await HOST_CHECKS.readiness(cursorEnv())).toMatchObject({ ready: false, remedy: expect.stringContaining("CURSOR_API_KEY") });
       vi.stubEnv("CURSOR_API_KEY", "key");
-      expect(await HOST_CHECKS.signIn(cursorEnv())).toEqual({ status: "key" });
+      expect(await HOST_CHECKS.readiness(cursorEnv())).toEqual({ ready: true });
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

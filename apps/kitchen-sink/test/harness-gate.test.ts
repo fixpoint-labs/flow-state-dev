@@ -14,6 +14,9 @@
  *   - drop the "not built yet" step: the BR-9, BR-12 and gate-open cases fail, and V2 serves an unbuilt flow.
  *   - drop the memo: both once-per-start cases fail.
  *   - register a mode's flow whatever its availability: every V2 refusal case fails.
+ *   - let Re-check replace the start's answer: the flow list serves a mode that
+ *     turned ready, and the restart-to-open case fails.
+ *   - drop the remedy in `fromReadiness`: the remedy case fails.
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -27,10 +30,15 @@ import { z } from "zod";
 import {
   availableHarnessFlows,
   decideAvailability,
+  fromReadiness,
   MODE_CHECKS,
   modeAvailability,
+  NO_GATEWAY_KEY,
   NOT_BUILT_YET,
+  openableAvailability,
+  recheckModeAvailability,
   resetModeAvailabilityForTests,
+  RESTART_TO_OPEN,
   type ModeCheck,
 } from "@/lib/harness-gate";
 import { readHarnessWorkspace } from "@/lib/harness-workspace";
@@ -133,9 +141,18 @@ describe("V1 · decideAvailability", () => {
 
   it("BR-5: Flow State is available whatever the host", async () => {
     for (const workspace of [on, off]) {
-      expect((await decideAvailability({ workspace, modes: BUILT, checks: {}, gateOpen: false }))["flow-state"]).toEqual({
+      expect((await decideAvailability({ workspace, modes: BUILT, checks: {}, gateOpen: false, gatewayKey: "k" }))["flow-state"]).toEqual({
         available: true,
       });
+    }
+  });
+
+  // Flow State still opens without the key, so a page that needs no model works;
+  // the picker says why its flows won't answer instead of calling it Available and nothing more.
+  it("Flow State says the gateway key is missing, and still opens", async () => {
+    for (const gatewayKey of [undefined, ""]) {
+      const decided = await decideAvailability({ workspace: on, modes: BUILT, checks: {}, gateOpen: false, gatewayKey });
+      expect(decided["flow-state"]).toEqual({ available: true, note: NO_GATEWAY_KEY });
     }
   });
 
@@ -174,6 +191,7 @@ describe("V1 · decideAvailability", () => {
         },
       },
       gateOpen: false,
+      gatewayKey: "k",
     });
     expect(decided.codex).toEqual({ available: false, reason: "the SDK is not installed" });
     expect(decided["claude-code"]).toEqual({ available: true });
@@ -214,6 +232,27 @@ describe("V1 · decideAvailability", () => {
     expect(decided.codex.available).toBe(false);
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
     expect((await decideAvailability({ modes: BUILT, checks: {} })).codex.available).toBe(true);
+  });
+});
+
+describe("fromReadiness: a harness's readiness check as its mode's availability", () => {
+  it("is available when the harness is ready", () => {
+    expect(fromReadiness({ ready: true })).toEqual({ available: true });
+  });
+
+  it("carries the check's reason and remedy as written, so the picker can say what to run", () => {
+    expect(fromReadiness({ ready: false, reason: "Codex has no credential", remedy: "Run `codex login`" })).toEqual({
+      available: false,
+      reason: "Codex has no credential",
+      remedy: "Run `codex login`",
+    });
+  });
+
+  it("has no remedy when the check didn't answer", () => {
+    expect(fromReadiness({ ready: false, reason: "no answer, so the sign-in is unknown", unanswered: true })).toEqual({
+      available: false,
+      reason: "no answer, so the sign-in is unknown",
+    });
   });
 });
 
@@ -334,5 +373,53 @@ describe("V2 · BR-15 · an unavailable mode's flow is not served", () => {
     await withUnbuiltCodex(async () => {
       expect(await served()).toBe(404);
     });
+  });
+});
+
+describe("Re-check: a sign-in made after start shows, and the flow list keeps the start's answer (E11)", () => {
+  it("decides again, so the picker shows the new answer", async () => {
+    let signedIn = false;
+    const check = vi.fn<ModeCheck>(() => (signedIn ? { available: true } : { available: false, reason: "no sign-in", remedy: "sign in" }));
+    vi.stubEnv("VERCEL", "");
+    vi.stubEnv(SETTING, checkout);
+    await withBuiltCodex(check, async () => {
+      expect((await modeAvailability()).codex).toEqual({ available: false, reason: "no sign-in", remedy: "sign in" });
+      signedIn = true;
+      expect((await modeAvailability()).codex.available).toBe(false); // kept until a Re-check
+      await recheckModeAvailability(false);
+      expect((await modeAvailability()).codex).toEqual({ available: true });
+      expect(check).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("a mode that turned ready after start stays closed and says to restart, since its flow isn't registered", async () => {
+    let signedIn = false;
+    vi.stubEnv("VERCEL", "");
+    vi.stubEnv(SETTING, checkout);
+    await withBuiltCodex(() => (signedIn ? { available: true } : { available: false, reason: "no sign-in" }), async () => {
+      const startFlows = await availableHarnessFlows({ codex: () => "flow" });
+      expect(startFlows.codex).toBeUndefined();
+      signedIn = true;
+      await recheckModeAvailability(false);
+      expect((await openableAvailability()).codex).toEqual({ available: false, reason: RESTART_TO_OPEN });
+      // The flow list is built from the start's answer, never the Re-check's.
+      expect((await availableHarnessFlows({ codex: () => "flow" })).codex).toBeUndefined();
+    });
+  });
+
+  it("a mode open at start that a Re-check finds not ready shows the new reason", async () => {
+    let signedIn = true;
+    vi.stubEnv("VERCEL", "");
+    vi.stubEnv(SETTING, checkout);
+    await withBuiltCodex(() => (signedIn ? { available: true } : { available: false, reason: "signed out", remedy: "sign in" }), async () => {
+      expect((await openableAvailability()).codex).toEqual({ available: true });
+      signedIn = false;
+      await recheckModeAvailability(false);
+      expect((await openableAvailability()).codex).toEqual({ available: false, reason: "signed out", remedy: "sign in" });
+    });
+  });
+
+  it("is refused on a production server, which decides once per start", () => {
+    expect(() => recheckModeAvailability(true)).toThrow(/development server/);
   });
 });

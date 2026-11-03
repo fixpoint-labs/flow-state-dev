@@ -10,7 +10,7 @@ If you've cloned the flow-state-dev repository, Shift Manager comes with two Lab
 
 ## Before you start
 
-The `fsd` profile's coding agent is Claude Code. Sign in to Claude Code, or set `ANTHROPIC_API_KEY`, before you start. Without either, the Lab refuses to start and says so.
+The `fsd` profile's coding agent is Claude Code. Sign in to Claude Code, or set `ANTHROPIC_API_KEY`, before you start. Without either, the Lab still starts, and its start log says Claude Code isn't ready and what to set. Coding tasks fail until you fix it. The projects flow's `harnessReadiness` action returns the same answer, and `{ refresh: true }` checks again after you sign in.
 
 The [Shift Coordinator](../workforce/shift-coordinator.md) answers on a model of its own, so its turns need `ANTHROPIC_API_KEY` or `AI_GATEWAY_API_KEY`. A worker that names no `model:`, such as one the Shift Coordinator hires, answers on the Lab's default model, `openai/gpt-6-luna`, so its turns need `OPENAI_API_KEY` or `AI_GATEWAY_API_KEY`.
 
