@@ -153,7 +153,7 @@ uses its own default: `stub` for DevTeam, `claude-code` for `fsd`.
 | Value | What runs |
 |---|---|
 | `stub` | The scripted coder, no model. It says what it's doing in the run's session and commits one file, so the row settles `completed`. |
-| `claude-code` | Claude Code through its Agent SDK, set up as the honesty check sets it up. At start the Lab asks Claude Code for an account (a sign-in or an Anthropic key) and refuses to start without one, naming what to set. Nothing falls back to the scripted coder (`stub`). |
+| `claude-code` | Claude Code through its Agent SDK. At start the Lab checks whether an account is set up (a sign-in or an Anthropic key) and whether the SDK itself loaded; if either is missing, it logs why and what to set, but still starts the Lab. Nothing falls back to the scripted coder (`stub`). |
 | `codex` | Codex through its SDK, handed only `CODEX_PASS` from the server's environment. It needs `codex login` or `CODEX_API_KEY`; the Lab doesn't check at start, so a run with neither fails and says why. |
 | `cursor` | Cursor through its SDK, in a process of its own handed only `CURSOR_PASS`. It needs a stored login or `CURSOR_API_KEY`; the Lab doesn't check at start, so a run with neither fails and says why. |
 

@@ -16,6 +16,9 @@ import type { Job } from "bullmq";
 
 vi.mock("@flow-state-dev/engine", () => ({
   runAction: vi.fn(),
+  // The registry as the processor received it: these cases stub only the
+  // store methods they read. What the wrap does is the engine's to test.
+  withChangeBus: vi.fn((stores: unknown) => stores),
   holdLeasePlace: vi.fn(() => ({ stop: vi.fn() })),
   planQueueWait: vi.fn(() => ({ kind: "wait", delayMs: 10 })),
   settleUnstartedRequest: vi.fn().mockResolvedValue(undefined),
@@ -29,7 +32,7 @@ vi.mock("@flow-state-dev/engine", () => ({
   }
 }));
 
-import { holdLeasePlace, runAction, settleUnstartedRequest } from "@flow-state-dev/engine";
+import { holdLeasePlace, runAction, settleUnstartedRequest, withChangeBus } from "@flow-state-dev/engine";
 import { createFlowJobProcessor, type FlowWorkerDeps } from "../src/worker";
 import type { FlowJobData } from "../src/types";
 
@@ -81,6 +84,20 @@ beforeEach(() => {
   runActionMock.mockReset();
   settleMock.mockClear();
   holdMock.mockClear();
+});
+
+describe("createFlowJobProcessor — change notices", () => {
+  it("runs the job on its registry as the bus wrap returns it, so the run's writes publish", async () => {
+    const wrapped = { request: { getEvents: vi.fn().mockResolvedValue([]) }, bus: {} };
+    vi.mocked(withChangeBus).mockReturnValueOnce(wrapped as never);
+    runActionMock.mockResolvedValue({ output: "ok" } as never);
+    const deps = makeDeps(makeBridge().bridge);
+
+    await createFlowJobProcessor(deps)(makeJob());
+
+    expect(withChangeBus).toHaveBeenCalledWith(deps.stores);
+    expect(runActionMock.mock.calls[0]?.[0]).toMatchObject({ stores: wrapped });
+  });
 });
 
 describe("createFlowJobProcessor — terminal publish semantics", () => {
