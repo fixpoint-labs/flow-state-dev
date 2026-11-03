@@ -29,3 +29,6 @@
 | 2026-11-03 | fix/FIX-2428-subscribe (pre-commit) | n/a | FAIL (expected) | `skip-check`: `b:c-never-hears` only (C's handler ran 7 times) |
 | 2026-11-03 | fix/FIX-2428-subscribe (pre-commit) | n/a | FAIL (expected) | `ignore-crossing`: `c:second-process` only (tab 2 never showed the reply) |
 | 2026-11-03 | fix/FIX-2428-subscribe (fix-up after 844a4f9) | n/a | PASS | After the mint answer, session recheck, shared key and backoff fixes. a: 0 reads in 10 s idle; replies shown 4, 3, 2 ms after saved · b: C never heard; B nothing after revocation · c: no push 1497 ms; second process 1431 ms |
+| 2026-11-03 | 7d98fce | n/a | FAIL (expected) | `no-socket`: `a:no-read-between` (5 reads in 10 s), `a:within-1s` (673, 1284, 1283 ms); also `a:crossing`, `b:control` and CAN'T TELL on c's crossing frames, as before: nothing pushes |
+| 2026-11-03 | 7d98fce | n/a | FAIL (expected) | `skip-check`: `b:c-never-hears` only (C's handler ran 7 times) |
+| 2026-11-03 | 7d98fce | n/a | FAIL (expected) | `ignore-crossing`: `c:second-process` only (tab 2 never showed the reply) |
