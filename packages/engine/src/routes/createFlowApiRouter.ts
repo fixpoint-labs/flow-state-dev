@@ -7,6 +7,7 @@
  * canonical `{ GET, POST, PATCH, DELETE }` dispatcher. The public API
  * shape and behavior is unchanged for callers that don't pass `adapters`.
  */
+import { attachPushState } from "../push/push-delivery";
 import type {
   FlowStateSettings,
   ModelResolver,
@@ -755,6 +756,9 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     enumerable: false,
     configurable: true
   });
+  // Push delivery's state (FIX-2428), for a host that serves the socket to
+  // turn on with `enablePushDelivery`.
+  attachPushState(router, handlers.push);
   return router;
 }
 

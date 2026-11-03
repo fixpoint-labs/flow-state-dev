@@ -16,13 +16,30 @@
  * on a non-API path to the SPA fallback; and a mid-stream SSE failure is handled
  * inside `@hono/node-server` rather than logged to stderr, so there is no longer a
  * server-side signal when a live stream dies mid-flight.
+ *
+ * Push delivery (FIX-2428): `serve()` is the host that serves the change
+ * notice socket. It turns push on for the router it fronts, so
+ * `GET /capabilities` reports `{ transport: "websocket" }` and the router
+ * answers the mint, then takes the WebSocket upgrade on
+ * `<basePath>/users/:userId/stream` and moves frames between the socket and
+ * the engine's socket session. The engine decides what a socket hears; this
+ * file only carries frames.
  */
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
+import type { Duplex } from "node:stream";
+import { WebSocketServer, type WebSocket } from "ws";
 import { serve as honoServe, type HttpBindings } from "@hono/node-server";
 import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
-import type { FlowApiRouter, FlowState, DevToolConnectionConfig } from "@flow-state-dev/engine";
+import {
+  enablePushDelivery,
+  isFlowState,
+  type DevToolConnectionConfig,
+  type FlowApiRouter,
+  type FlowState,
+  type PushDelivery,
+} from "@flow-state-dev/engine";
 import { createServerApp } from "./app";
 import { createPageHtmlTransform } from "./page-html";
 import { isLoopbackHost } from "./bind-guard";
@@ -83,6 +100,20 @@ export interface ServeOptions {
    * caller disposes it once, after every server has drained.
    */
   disposeOnClose?: boolean;
+  /**
+   * Whether to serve push delivery: the WebSocket a client's
+   * `client.subscribe` hears change notices on, at
+   * `<basePath>/users/:userId/stream`. Default `true`. With `false`,
+   * `GET /capabilities` reports `push: null` and clients read on their timer.
+   */
+  push?: boolean;
+  /**
+   * The key push tickets are signed with. Needed only when several processes
+   * serve one address: give every one the same key, so a ticket minted on one
+   * is accepted by another. Default: `process.env.FSD_PUSH_SECRET`, else a
+   * random key for this process.
+   */
+  pushSecret?: string | (() => string);
 }
 
 /** A Connect-style request handler: answer by writing `res`, or call `next()` to pass. */
@@ -162,7 +193,9 @@ export function serve(
   const { app: honoApp, tryDedicatedRoute, dispose } = createServerApp(app, {
     basePath: options.basePath,
     healthPath: options.healthPath,
+    servesPush: options.push !== false,
   });
+  const push = servePush(app, options);
 
   // Static assets + SPA fallback for the DevTool UI, GET-only (Hono also answers
   // HEAD). Registered after the portable app's health/API routes, so it only
@@ -238,6 +271,7 @@ export function serve(
         clearTimeout(timer);
         resolveClose();
       };
+      push.close();
       server.close(() => done());
       // Force-close lingering connections (e.g. open SSE streams) once the
       // grace window elapses so shutdown can't hang.
@@ -282,7 +316,108 @@ export function serve(
       },
     ) as Server;
     server.once("error", onError);
+    server.on("upgrade", (req, socket, head) => push.upgrade(server, req, socket, head));
   });
+}
+
+const DEFAULT_BASE_PATH = "/api/flows";
+/** The largest frame a client may send: a ticket, or a list of topics. */
+const MAX_PUSH_FRAME_BYTES = 64 * 1024;
+
+/** The push half of a served app: the upgrade it takes, and its teardown. */
+type ServedPush = {
+  upgrade(server: Server, req: IncomingMessage, socket: Duplex, head: Buffer): void;
+  close(): void;
+};
+
+/**
+ * Turn push on for the router `app` resolves to, and take upgrades on its
+ * socket path. A router not built by `createFlowApiRouter` has no push, and
+ * reports none.
+ */
+function servePush(app: FlowState | FlowApiRouter, options: ServeOptions): ServedPush {
+  const basePath = (options.basePath ?? DEFAULT_BASE_PATH).replace(/\/+$/, "");
+  const envSecret = process.env.FSD_PUSH_SECRET;
+  const secret = options.pushSecret ?? (envSecret !== undefined && envSecret.length > 0 ? envSecret : undefined);
+  const enable = (router: FlowApiRouter): PushDelivery | undefined => {
+    try {
+      return enablePushDelivery(router, secret !== undefined ? { secret } : {});
+    } catch {
+      return undefined;
+    }
+  };
+  // A raw router is enabled at once; a FlowState once its router resolves,
+  // which is before any request it serves can reach the router.
+  const delivery: Promise<PushDelivery | undefined> =
+    options.push === false
+      ? Promise.resolve(undefined)
+      : isFlowState(app)
+        ? app.getRouter().then(enable, () => undefined)
+        : Promise.resolve(enable(app));
+  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PUSH_FRAME_BYTES });
+
+  return {
+    upgrade(server, req, socket, head) {
+      const userId = socketUserId(req.url, basePath);
+      if (userId === undefined) {
+        // Another listener (a dev server's hot reload) may own this path.
+        if (server.listenerCount("upgrade") <= 1) refuseUpgrade(socket, 404);
+        return;
+      }
+      void delivery.then((served) => {
+        if (served === undefined) {
+          refuseUpgrade(socket, 404);
+          return;
+        }
+        wss.handleUpgrade(req, socket, head, (ws) => carry(ws, served.openSocket(userId, ioFor(ws))));
+      });
+    },
+    close() {
+      for (const client of wss.clients) client.terminate();
+      wss.close();
+    },
+  };
+}
+
+/** The engine's view of a socket: send a frame, or close with a code. */
+function ioFor(ws: WebSocket) {
+  return {
+    send: (frame: unknown) => {
+      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(frame));
+    },
+    close: (code: number, reason: string) => ws.close(code, reason),
+  };
+}
+
+/** Move the client's text frames to the session, and tell it when the socket goes. */
+function carry(ws: WebSocket, session: ReturnType<PushDelivery["openSocket"]>): void {
+  ws.on("message", (data, isBinary) => {
+    if (isBinary) {
+      ws.close(4400, "bad frame");
+      return;
+    }
+    session.receive(Array.isArray(data) ? Buffer.concat(data).toString("utf8") : Buffer.from(data as ArrayBuffer).toString("utf8"));
+  });
+  ws.on("close", () => session.closed());
+  ws.on("error", () => session.closed());
+}
+
+/** The user a socket path names: `<basePath>/users/:userId/stream`, or undefined. */
+function socketUserId(url: string | undefined, basePath: string): string | undefined {
+  if (url === undefined) return undefined;
+  const pathname = url.split("?")[0] ?? "";
+  if (!pathname.startsWith(`${basePath}/users/`)) return undefined;
+  const rest = pathname.slice(`${basePath}/users/`.length).split("/");
+  if (rest.length !== 2 || rest[1] !== "stream" || rest[0] === "") return undefined;
+  try {
+    return decodeURIComponent(rest[0]!);
+  } catch {
+    return undefined;
+  }
+}
+
+function refuseUpgrade(socket: Duplex, status: 404): void {
+  socket.end(`HTTP/1.1 ${status} Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
 }
 
 /**

@@ -307,6 +307,18 @@ mechanisms:
     status: canonical
     doc: packages/engine/README.md
 
+  - id: push-delivery
+    job: Carry change notices from the bus to a browser, so a screen reads again when something it shows changes. A mint checks each topic with its scope's read check and signs a short ticket; a socket hears only ticketed topics; `client.subscribe` keeps one socket per client and reads on a timer wherever push can miss a change.
+    package: "@flow-state-dev/engine"
+    anchor: enablePushDelivery
+    file: packages/engine/src/push/push-delivery.ts
+    adapters: ["@flow-state-dev/node"]
+    builtOn: [change-bus]
+    overlaps:
+      - { id: streaming, relation: distinct-jobs, note: "streaming sends a request's or a session's items themselves; push delivery sends only that a topic changed, and the client reads." }
+    status: canonical
+    doc: apps/docs/guides/realtime.md
+
   # ── Transports and hosts ──────────────────────────────────────────────────
   - id: inbound-transport
     job: Turn an outside request into a run of an action. HTTP is the built-in adapter; the router mounts adapters.

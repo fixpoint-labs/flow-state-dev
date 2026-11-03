@@ -32,6 +32,12 @@ afterEach(() => {
 });
 
 function answer(url: string): Response {
+  if (url.endsWith("/capabilities")) {
+    return new Response(JSON.stringify({ userStream: false, push: { transport: "websocket" } }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  }
   if (url.includes("/stream")) {
     return new Response("", { status: 200, headers: { "content-type": "text/event-stream" } });
   }
@@ -75,11 +81,12 @@ describe("one client is one transport", () => {
 
     const requestStream = sent.stream({});
     const sessionStream = fsd.sessions.stream("sess_1");
-    const userStream = fsd.stream({});
+    // The push mint goes through the same fetcher (FIX-2428).
+    const subscription = fsd.subscribe([{ scope: "user" }], { onChange: () => {} });
     await vi.waitFor(() => expect(seen.filter((url) => url.includes("/stream"))).toHaveLength(3));
     requestStream.close();
     sessionStream.close();
-    userStream.close();
+    subscription.close();
 
     expect(built.transports).toBe(1);
     expect(globalFetch).not.toHaveBeenCalled();

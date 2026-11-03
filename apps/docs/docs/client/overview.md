@@ -303,6 +303,21 @@ const note = await fsd.resources.getCollectionItemState(sessionId, "notes", "lau
 
 See [Client access](/docs/resources/client-access) for what a flow lets a client see and write, [Resource Collections](/docs/resources/collections#lazy-state-by-default) and [Resource Manifest](/docs/resources/manifest) for the model, and [React](/docs/client/react#resource-collection-hooks) for the hooks.
 
+## Hearing changes others make
+
+A screen that shows something other people or agents change, such as a flow read of a session or the user's own data, can ask to hear when it changes and read it again:
+
+```ts
+import { topic } from "@flow-state-dev/client";
+
+const sub = fsd.subscribe([topic.session(sessionId)], {
+  onChange: () => void refresh(), // the read the screen already makes
+  pollIntervalMs: 3000,
+});
+```
+
+`onChange` is told when to read, never what changed. On the Node host it runs as soon as the change is saved: the server sends the notice once the change can be read, and no timer is involved, so the delay is the network and your read, over a WebSocket. On a host with no push, such as Vercel, it runs every `pollIntervalMs`. The code is the same on both. To follow a session's own items, use `fsd.sessions.stream` (or `useSession({ live: true })`) instead. See [`fsd.subscribe`](/docs/api/client#fsdsubscribetopics-options) and the [realtime guide](/guides/realtime).
+
 ## Transcription
 
 For voice flows, `fsd.transcribe` sends audio to the server and returns the text:
@@ -317,7 +332,8 @@ await fsd.flow("voice-chat").send("reply", { text }, { sessionId });
 - **Resume from a cursor.** Pass `startingAfter` (or `lastEventId`) to a request stream; the server replays what you missed and continues.
 - **Duplicate events.** A sliding window (`dedupWindowSize`, default 1000) drops events it has already delivered.
 - **Session streams reconnect.** `fsd.sessions.stream` retries with backoff on its own. A request stream doesn't; reopen it with `startingAfter`.
-- **One transport.** Every call and stream goes through the client's `fetcher`, so credentials and in-process dispatch apply everywhere.
+- **One transport.** Every call and stream goes through the client's `fetcher`, so credentials and in-process dispatch apply everywhere, including the request that opens `subscribe`'s socket.
+- **One socket.** Every `subscribe` call on a client shares one WebSocket, which reconnects on its own and reads on its timer while it's down.
 
 ## Requirements
 
