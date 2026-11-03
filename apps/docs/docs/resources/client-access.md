@@ -586,7 +586,7 @@ const session = useSession(sessionId, { flowKind: "desk", live: true });
 const licenses = useResourceCollectionList(session, "licenses");
 ```
 
-A live view then reads the collection again when any other session writes, creates or deletes one of its items, a worker or schedule with no browser attached included. The same goes for a single resource, and for a scope whose `client.derived` values read its resources. Only a resource a client can read announces its changes this way: one with a `client` config, or any resource of a scope that declares `client.derived`. Collection writes made through the routes on this page reach the session's other live views the same way. Nothing about the change travels with the announcement: the view reads through the same endpoints, with the same checks, as on mount.
+A live view then reads the collection again when any other session writes, creates or deletes one of its items, including a worker or schedule with no browser attached. The same goes for a single resource, and for a scope whose `client.derived` values read its resources. Only a resource a client can read announces its changes this way: one with a `client` config, or any resource of a scope that declares `client.derived`. Collection writes made through the routes on this page reach the session's other live views the same way. The announcement carries no data. The view re-reads with the caller's own permissions, as it does on mount.
 
 A server-side content write can also run a `reactTo.contentUpdated` reaction. That's the in-flow reactive path — a block that runs as part of the mutating turn — separate from the client projection described here. See [Reacting to content changes](/docs/resources/reactive-blocks#reacting-to-content-changes).
 

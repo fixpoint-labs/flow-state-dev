@@ -776,8 +776,8 @@ describe("schema-invalid resource writes (FIX-1256)", () => {
  * happen: a deep-equal no-op increment, and a refused one.
  *
  * Each case asserts the positive first. Without it the test would pass against
- * a registry that never emits at all — the single-resource seam is gated on
- * `client.live` / `reactTo`, so "not called" is the default, not a result.
+ * a registry that never emits at all, where "not called" would be the
+ * default, not a result.
  */
 describe("delta-verb change notification (FIX-1269)", () => {
   it("announces a real increment but not a no-op one, on a single resource", async () => {
@@ -1701,7 +1701,7 @@ describe("createScopeResourceRegistry — live projection (FIX-739)", () => {
     expect(onChange.mock.lastCall?.slice(0, 3)).toEqual(["memos/m1", "created", undefined]);
   });
 
-  it("emits a live delta for a live single resource (and nothing for non-live)", async () => {
+  it("emits a live delta for a live single resource (and no delta for non-live)", async () => {
     const onLive = vi.fn();
     const liveReg = makeRegistry({
       configs: {
@@ -1728,7 +1728,10 @@ describe("createScopeResourceRegistry — live projection (FIX-739)", () => {
       onResourceChanged: onSilent
     });
     await silentReg.get("doc").patchState({ status: "writing" });
-    expect(onSilent).not.toHaveBeenCalled();
+    // A non-live single still reaches the seam (FIX-1506 publishes it for
+    // other sessions' views), with no projected delta: the handler keeps it
+    // off the writer's own stream.
+    expect(onSilent.mock.lastCall?.slice(0, 3)).toEqual(["doc", "updated", undefined]);
   });
 
   it("emits with no projection delta for a live single-resource content write (FIX-756)", async () => {

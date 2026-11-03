@@ -80,7 +80,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
   "no-origin": [
     {
       module: "packages/react/src/hooks/useSession.ts",
-      from: String.raw`if \(notice\.origin !== undefined && ownRequestIdsRef\.current\.has\(notice\.origin\.requestId\)\) return;`,
+      from: String.raw`if \(notice\.origin !== undefined && carriedByOwnStream\(notice\.origin\.requestId\)\) return;`,
       to: ""
     }
   ]

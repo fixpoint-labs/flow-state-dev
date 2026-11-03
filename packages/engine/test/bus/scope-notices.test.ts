@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { DEFAULT_ORG_ID, defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
   handleCreateCollectionItem,
@@ -46,6 +46,14 @@ const licenses = defineResourceCollection({
 });
 
 /** An org collection with no `client` config, in a scope whose derived value may read it. */
+/** A user single resource a client can read, neither live nor reactive. */
+const profile = defineResource({
+  scope: "user",
+  stateSchema: z.object({ bio: z.string().default("") }),
+  default: { bio: "" },
+  client: { expose: ["bio"] }
+});
+
 const audit = defineResourceCollection({
   pattern: "audit/*",
   scope: "org",
@@ -71,7 +79,7 @@ function app() {
     user: { stateSchema: z.object({ theme: z.string().default("light") }) },
     session: { stateSchema: z.object({ topic: z.string().default("") }) },
     request: { stateSchema: z.object({ step: z.string().default("") }) },
-    resources: { licenses, audit, ledger },
+    resources: { licenses, audit, ledger, profile },
     actions: {
       orgPlan: { inputSchema: z.object({ value: z.string() }), block: write("org-plan", async ({ value }, ctx) => ctx.org.patchState({ plan: value })) },
       userTheme: { inputSchema: z.object({ value: z.string() }), block: write("user-theme", async ({ value }, ctx) => ctx.user.patchState({ theme: value })) },
@@ -81,6 +89,13 @@ function app() {
         inputSchema: z.object({ value: z.string() }),
         block: write("addLicense", async ({ value }, ctx) => {
           await ctx.resources.licenses.create(value, { name: value });
+          return {};
+        })
+      },
+      bio: {
+        inputSchema: z.object({ value: z.string() }),
+        block: write("bio", async ({ value }, ctx) => {
+          await ctx.resources.profile.patchState({ bio: value });
           return {};
         })
       },
@@ -160,6 +175,15 @@ describe("resource writes publish on their scope's topic, narrowed to the resour
     const heard = hear(bus, orgTopic);
     await run(bus, "audit", "a1");
     expect(ofKind(heard, "resource").map((n) => n.topic.resource)).toEqual(["audit/a1"]);
+  });
+
+  it("publishes a single resource a client can read, though it is neither live nor reactive", async () => {
+    const bus = createInMemoryBus();
+    const heard = hear(bus, userTopic);
+    const requestId = await run(bus, "bio", "hello");
+    expect(ofKind(heard, "resource")).toEqual([
+      { topic: { ...userTopic, resource: "profile" }, kind: "resource", origin: { requestId } }
+    ]);
   });
 
   it("publishes nothing for a resource no client can read", async () => {

@@ -145,7 +145,8 @@ function liveBoardDriver(sessionId: string, boardRef: string, client: PanelLiveS
  * collection, and on a connect, a reconnect, a tick or a `resync`. The
  * collection's storage path comes from the manifest, read once: a key such as
  * `roster` stores under `workforce/workers/…`. If the manifest can't be read,
- * every resource notice reads again: a read too many, never one missed.
+ * every resource notice reads again: a read too many, never one missed. So
+ * does a pattern with no static prefix.
  * Reads are coalesced: one in flight, one queued.
  */
 function liveScopeDriver(sessionId: string, ref: string, client: PanelNoticeSource): ReadDriver {
@@ -162,9 +163,11 @@ function liveScopeDriver(sessionId: string, ref: string, client: PanelNoticeSour
       }
     );
     const under = (path: string, root: string): boolean => path === root || path.startsWith(`${root}/`);
+    // A pattern with no static prefix (`**`, `[topic]/observations`) can
+    // rule no path out, so every resource notice reads again.
     const names = (path: string | undefined): boolean => {
-      if (path === undefined || prefix === undefined) return true;
-      return under(path, ref) || (prefix !== null && prefix !== "" && under(path, prefix));
+      if (path === undefined || prefix === undefined || prefix === "") return true;
+      return under(path, ref) || (prefix !== null && under(path, prefix));
     };
 
     const subscription = client.subscribe([topic.session(sessionId), topic.user(), topic.org()], {

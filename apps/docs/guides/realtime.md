@@ -108,7 +108,7 @@ An open connection is not checked again. If someone loses access while their tab
 
 ## State and resources other sessions change
 
-You don't need a subscription for a session's own state, or for its user's, its organization's, or their resources. `useSession(sessionId, { live: true })` already subscribes all three topics, and the hooks built on it (`useClientData`, `useResourceCollectionList`, `useResource` and the rest) read again on a change from any session. It skips a change its own request made, since that request's stream already carried it. The workforce panels `Roster` and `BoardColumns` do the same with `live`. Reach for `useSubscription` for a read those hooks don't make, such as a flow read.
+You don't need a subscription for a session's own state, or for its user's, its organization's, or their resources. `useSession(sessionId, { live: true })` subscribes the session, user and org topics for you, and the hooks built on it (`useClientData`, `useResourceCollectionList`, `useResource` and the rest) read again on a change from any session. It skips a change its own request made, since that request's stream already carried it. The workforce panels `Roster` and `BoardColumns` do the same with `live`. Reach for `useSubscription` for a read those hooks don't make, such as a flow read.
 
 ## Following a session's own items
 

@@ -42,11 +42,11 @@
 <rect class="ground" x="338.8" y="157" width="62.4" height="15"/><text class="plate" x="370" y="168" text-anchor="middle">02 ONCE</text>
 <text class="t" x="342" y="332">Everyone in the organization</text>
 <text class="t" x="342" y="348">sees the same rows.</text>
-<text class="t" x="342" y="372">Read once, on mount. Not watched.</text>
+<text class="t" x="342" y="372">Read on mount; with live, on a change.</text>
 <line class="hi" x1="330" y1="436" x2="610" y2="436"/>
 <text class="lb" x="342" y="458">TO READ AGAIN</text>
-<text class="t" x="342" y="478">A panel reads again when its</text>
-<text class="t" x="342" y="494">React key changes.</text>
+<text class="t" x="342" y="478">With live, any session&#8217;s change;</text>
+<text class="t" x="342" y="494">without, a new React key.</text>
 <rect class="solid" x="636" y="56" width="280" height="88"/>
 <text class="lb" x="648" y="88">SOURCE 03</text>
 <text class="nm" x="648" y="110">Your server's flow list</text>
@@ -72,7 +72,7 @@
 <text class="n" x="24" y="560">01</text>
 <text class="t" x="56" y="560">Messages, task plans and approval cards follow one session's items as they arrive.</text>
 <text class="n" x="24" y="585">02</text>
-<text class="t" x="56" y="585">The roster and board panels read a standing collection once, when they mount.</text>
+<text class="t" x="56" y="585">The roster and board panels read a standing collection on mount, and with live again whenever it changes.</text>
 <text class="n" x="24" y="610">03</text>
 <text class="t" x="56" y="610">The navigator reads the flow list once, and a leaf's sessions only when that leaf opens. A leaf is a singleton</text>
 <text class="t" x="56" y="627">flow kind, or one instance of a collection flow kind.</text>

@@ -83,6 +83,21 @@ describe("Roster live", () => {
   });
 });
 
+describe("a live panel over a pattern with no static prefix", () => {
+  it("reads again on any resource change, since no path can be ruled out", async () => {
+    const host = hostClient("[topic]/observations", "observations");
+    render(createElement(Roster, { sessionId: SESSION, collectionRef: "observations", client: host.client as never, live: true }));
+    await waitFor(() => expect(host.subscriptions).toHaveLength(1));
+    await waitFor(() => expect(host.reads()).toBe(1));
+    await waitFor(() => expect(host.client.resources.getResourceManifest).toHaveBeenCalled());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await host.hear({ topic: topic.org({ resource: "t1/observations" }), kind: "resource" });
+    expect(host.reads()).toBe(2);
+  });
+});
+
 describe("BoardColumns live", () => {
   it("reads again on a change to its board", async () => {
     const host = hostClient("tasks/eng/**", "eng.feature.work");

@@ -18,10 +18,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { SubscribeOptions, WireNotice, WireTopic } from "@flow-state-dev/client";
 
-const { sessionsMock, flowMock, subscriptions } = vi.hoisted(() => ({
+const { sessionsMock, flowMock, subscriptions, ownStreams } = vi.hoisted(() => ({
   sessionsMock: { get: vi.fn(), state: vi.fn(), requests: vi.fn(), children: vi.fn() },
   flowMock: { send: vi.fn(), abort: vi.fn() },
-  subscriptions: [] as Array<{ topics: readonly WireTopic[]; options: SubscribeOptions; closed: boolean }>
+  subscriptions: [] as Array<{ topics: readonly WireTopic[]; options: SubscribeOptions; closed: boolean }>,
+  // The view's own request streams, read from a send's response.
+  ownStreams: [] as Array<Record<string, ((event: unknown) => void) | undefined>>
 }));
 
 vi.mock("@flow-state-dev/client", async (importOriginal) => {
@@ -30,7 +32,10 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
   const noopSSE = () => ({ close() {}, get lastEventId() { return undefined; } });
   return {
     ...actual,
-    createSSEClientFromResponse: () => noopSSE(),
+    createSSEClientFromResponse: (options: Record<string, ((event: unknown) => void) | undefined>) => {
+      ownStreams.push(options);
+      return noopSSE();
+    },
     createClient: () =>
       fakeClient({
         sessions: { ...sessionsMock },
@@ -111,6 +116,7 @@ describe("useSession live · other sessions' scope changes", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     subscriptions.length = 0;
+    ownStreams.length = 0;
     sessionsMock.get.mockResolvedValue({ id: "sess1", flowKind: "demo", userId: "devuser", createdAt: 0, updatedAt: 0 });
     sessionsMock.state.mockResolvedValue(snapshot());
     sessionsMock.requests.mockResolvedValue([]);
@@ -161,6 +167,62 @@ describe("useSession live · other sessions' scope changes", () => {
     // A notice with no origin (a resource route) reaches every view, this one too.
     await hear({ topic: topic.org(), kind: "state" });
     expect(stateOnlyReads()).toHaveLength(1);
+  });
+
+  /** Send one action through the view's own stream; returns its request id. */
+  async function sendOwn(result: { current: ReturnType<typeof useSession> }): Promise<string> {
+    flowMock.send.mockResolvedValue(new Response("", { status: 200, headers: { "content-type": "text/event-stream" } }));
+    await act(async () => {
+      await result.current.sendAction("plan", { plan: "pro" });
+    });
+    const calls = flowMock.send.mock.calls;
+    return (calls[calls.length - 1]![2] as { requestId: string }).requestId;
+  }
+
+  it("hears its own request's notices again once that request's stream drops (it no longer carries them)", async () => {
+    const { result } = await mountLive();
+    const sent = await sendOwn(result);
+    await act(async () => {
+      ownStreams[ownStreams.length - 1]!.onError?.(new Error("connection reset"));
+    });
+    await flush();
+    sessionsMock.state.mockClear();
+    await hear({ topic: topic.org(), kind: "state", origin: { requestId: sent } });
+    expect(stateOnlyReads()).toHaveLength(1);
+  });
+
+  it("hears its own request's notices again once another stream replaces that one", async () => {
+    const { result } = await mountLive();
+    const first = await sendOwn(result);
+    await sendOwn(result);
+    sessionsMock.state.mockClear();
+    await hear({ topic: topic.org(), kind: "state", origin: { requestId: first } });
+    expect(stateOnlyReads()).toHaveLength(1);
+  });
+
+  it("hears its own request's notices when the send failed and no stream follows it", async () => {
+    const { result } = await mountLive();
+    flowMock.send.mockRejectedValue(new Error("offline"));
+    await act(async () => {
+      await result.current.sendAction("plan", { plan: "pro" }).catch(() => undefined);
+    });
+    const sent = (flowMock.send.mock.calls[0]![2] as { requestId: string }).requestId;
+    await flush();
+    sessionsMock.state.mockClear();
+    await hear({ topic: topic.org(), kind: "state", origin: { requestId: sent } });
+    expect(stateOnlyReads()).toHaveLength(1);
+  });
+
+  it("keeps skipping its own request's notices after the stream saw it end", async () => {
+    const { result } = await mountLive();
+    const sent = await sendOwn(result);
+    await act(async () => {
+      ownStreams[ownStreams.length - 1]!.onRequestStatus?.({ status: "completed" });
+    });
+    await flush();
+    sessionsMock.state.mockClear();
+    await hear({ topic: topic.org(), kind: "state", origin: { requestId: sent } });
+    expect(stateOnlyReads()).toHaveLength(0);
   });
 
   it("passes a resource notice to the resource hooks, and reads state when the snapshot holds it", async () => {
