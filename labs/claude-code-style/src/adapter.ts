@@ -192,7 +192,7 @@ const TURN_ACTIONS = new Set(["respond", "onTaskSettled"]);
  * The notices on a listed session's topic that may change its row: a turn (its running state, its
  * title), a board change (what it waits on you for, FIX-2429's `board`), and a resource. Never `items`.
  */
-const ROW_KINDS: ReadonlySet<string> = new Set(["request", "board", "resource"]);
+const ROW_CHANGES: ReadonlySet<string> = new Set(["request", "board", "resource"]);
 
 /** The board action your line on a thread goes through: the task tools' `updateTask` on the conversation's board. */
 const UPDATE_TASK_ACTION = "updateTask_tasks";
@@ -730,7 +730,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
           {
             onChange: (notice) => {
               if (notice === null || notice.kind === "resync") relist = true;
-              else if (notice.topic.scope === "session" && ROW_KINDS.has(notice.kind)) dirty.add(notice.topic.id);
+              else if (notice.topic.scope === "session" && ROW_CHANGES.has(notice.kind)) dirty.add(notice.topic.id);
               else return;
               void pump();
             },
