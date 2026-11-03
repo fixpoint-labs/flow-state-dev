@@ -8,7 +8,7 @@ import { EventEmitter } from "node:events";
 import type { Pool } from "pg";
 import type { QueryExecutor } from "../src/types";
 
-export class FakeClient extends EventEmitter {
+class FakeClient extends EventEmitter {
   readonly listening = new Set<string>();
   /** Set on release: whether it was handed back broken. */
   released: { broken: boolean } | undefined;
