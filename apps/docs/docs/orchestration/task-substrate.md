@@ -545,6 +545,20 @@ The `task` snapshot is the post-mutation row minus the fields the substrate keep
 
 UIs stay in sync off that stream rather than by polling. The `<TaskPlan />` component and the DevTool subscribe to `task-change` items, filter by `collectionId`, and rebuild the board's state from them. You don't wire any of it up: every collection `getOrCreateTaskCollection` hands you emits these items itself.
 
+### Board notices
+
+The item lands on the stream of the session that made the change. A task often settles somewhere else: in its own task session, or on another process. So every change also publishes a board notice. It goes on the topic of the session that filed the row (the row's filer, or the running session for a board that hands nothing out), narrowed to the board's `collectionId`, with kind `board`. It carries no rows. A screen subscribes `topic.session(conversationId, { resource: "tasks" })` with `client.subscribe` or `useSubscription`, and reads the board again when one arrives:
+
+```ts
+useSubscription(
+  [topic.session(conversationId, { resource: "tasks" }), topic.session(conversationId, { resource: "plan" })],
+  refresh, // your board read, run again on each notice
+  { pollIntervalMs: 3000 },
+);
+```
+
+Subscribe each ledger your read returns. Workforce's `listTasks_tasks` read merges the conversation board with its planning worker's steps, so its screens subscribe `tasks` and `plan`. Because the topic is narrowed, a reply streaming in the conversation never wakes the screen. The session stream hears board notices on its topic and ignores them. As with any notice, `pollIntervalMs` is the fallback wherever push can't reach (see [Keeping a screen current](/guides/realtime#task-boards)).
+
 ## Related pages
 
 - [Task board](./task-board.md) — the concurrent drain built on a TaskCollection.

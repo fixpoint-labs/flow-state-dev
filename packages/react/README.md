@@ -252,7 +252,7 @@ Low-level hook for direct action execution without session management.
 ### `useSubscription(topics, read, options?)`
 
 Runs `read` again when something under `topics` changes, through the provider's
-client and `fsd.subscribe`. One read runs at a time and at most one more waits,
+client (or `options.client`, a client you built yourself) and `fsd.subscribe`. One read runs at a time and at most one more waits,
 so a burst of changes is one more read. `read` gets the notice that woke it, or
 `null` when the screen should read everything again: after a connect or a
 reconnect, on a timer tick, and when push starts or stops reaching every server
@@ -262,10 +262,11 @@ follow-up read covers them all). It doesn't read on mount.
 ```tsx
 import { topic } from "@flow-state-dev/client";
 
-useSubscription([topic.session(sessionId)], refresh, { pollIntervalMs: 3000 });
+useSubscription([topic.session(sessionId, { resource: "tasks" })], refresh, { pollIntervalMs: 3000 });
 ```
 
-`pollIntervalMs` reads on a timer wherever push can miss a change (a host with
+Narrow a session topic to the resource or task board the read shows, so a reply
+streaming in the session doesn't wake it. `pollIntervalMs` reads on a timer wherever push can miss a change (a host with
 no push, a socket that is down); omit it for no timer. `enabled: false`
 subscribes nothing. For a session's own items, use `useSession({ live: true })`.
 
@@ -681,11 +682,9 @@ import { BoardList } from "@flow-state-dev/react";
 
 It reads the same rows `BoardColumns` does, through the same `sessionId`, `boardRef`, `client` and `limit`, and labels a row the same way, with the assignee beside it when there is one. Nothing is hidden: a finished or cancelled task stays in the list, and a status the component does not recognise shows as its own word. A row without a `createdAt` follows the dated ones, in read order.
 
-`live` re-reads the board whenever the session named by `sessionId` records a change to it. Pass the id of the session whose runs write to the board. A change made in a different session shows after the list remounts, or the next time this session changes the board. With `live` off, the default, it reads on mount like the other panels. If the server doesn't offer the session stream, or refuses it, the list reads once and shows no error.
+`live` re-reads the board whenever a task on it changes, in any session and on any server process: it subscribes `topic.session(sessionId, { resource: boardRef })`, where every board change is announced on the session that filed the task. Pass the id of the session that files the tasks, usually the conversation. A reply streaming in that session doesn't make it read. Where push can miss a change (a host with no push, a socket that is down) it reads every 3 s instead. With `live` off, the default, it reads on mount like the other panels.
 
-Each live list opens its own connection to its session's stream while mounted, so a page that also calls `useSession(..., { live: true })` on that session holds two.
-
-The read and the live stream go through one `client`, so the stream carries the read's credential to the read's origin. Any client from `createClient` works. A client that can only read (it has `resources.listCollectionItems` but no `sessions.stream`) takes no `live`, and TypeScript rejects that pair.
+The read and the live subscription go through one `client`, so the subscription carries the read's credential to the read's origin. Any client from `createClient` works, and every subscription on it shares one connection. A client that can only read (it has `resources.listCollectionItems` but no `subscribe`) takes no `live`, and TypeScript rejects that pair.
 
 The list renders the `<li>` for every row and puts the task's id on it (`data-task-id`), so a `row` slot returns the body that goes inside one.
 

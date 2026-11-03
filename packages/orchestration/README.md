@@ -91,7 +91,12 @@ denied.
 (the `taskBoard` default; survives block boundaries within a request), or on a state ref you
 pass, such as `ctx.sequencer` for one board invocation. `backing: "resource"` outlives the
 request: a user's queue, an org work pool, declared with `defineTaskCollection`. Every
-mutation that changes a field emits a `task-change` component item.
+mutation that changes a field emits a `task-change` component item on the writing session's
+stream, and publishes a `board` change notice on the topic of the session that filed the row
+(its `filer`, else the ledger's legacy filer, else the running session), narrowed to the
+`collectionId`. A screen of the board subscribes that topic (`topic.session(id, { resource })`)
+and reads again, whichever session or process settled the task. A context with no engine seam
+(a hand-built test context) publishes nothing.
 
 **A ledger per partition.** A `user`-scoped collection can take a `partitionBy`
 function, keeping one set of rows per partition at the user's scope:

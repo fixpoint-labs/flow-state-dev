@@ -27,6 +27,9 @@
  * | any other request write | `request` on its session, and `run` on that session's parent |
  * | any session write | `run` on the session, and on its parent |
  *
+ * A task board's change (`board`, narrowed to the board) is not a store write
+ * here: orchestration names it through the board-notice seam (`board-notice.ts`).
+ *
  * Not `persistEvents`, which feeds the request's own stream. A write that did
  * not land (a version conflict, a status predicate that failed) publishes
  * nothing. A failed publish never fails the write. Notices for one topic and
@@ -114,6 +117,15 @@ const pending = new WeakMap<ChangeBus, Map<string, ChangeNotice>>();
 function noticeKey(notice: ChangeNotice): string {
   const { scope, tenantId, id, resource } = notice.topic;
   return `${scope}\u0000${tenantId}\u0000${id}\u0000${resource ?? ""}\u0000${notice.kind}`;
+}
+
+/**
+ * Queue `notices` for `bus`, to go out at the end of this microtask turn,
+ * folded as the store writes' notices are. Never throws. The board-notice
+ * seam (`board-notice.ts`) publishes through it.
+ */
+export function queueNotices(bus: ChangeBus, notices: readonly ChangeNotice[]): void {
+  publish(bus, notices);
 }
 
 /** Queue `notices` for `bus`, to go out at the end of this microtask turn. Never throws. */

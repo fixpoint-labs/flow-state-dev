@@ -2,7 +2,8 @@
  * `useSubscription(topics, read, options)` (FIX-2428): run a screen's read
  * again when something under `topics` changes.
  *
- * It subscribes through the provider's client (`client.subscribe`), which
+ * It subscribes through the provider's client (`client.subscribe`), or the
+ * host's own when it passes `client`, which
  * owns the one socket and the timer: push on a host that has it, and a read
  * every `pollIntervalMs` wherever push can miss a change. The read goes
  * through the coalesced read, so a burst of notices is one read in flight
@@ -14,7 +15,7 @@
  * then.
  */
 import { useEffect, useMemo, useRef } from "react";
-import type { WireNotice, WireTopic } from "@flow-state-dev/client";
+import type { Client, WireNotice, WireTopic } from "@flow-state-dev/client";
 import { wireTopicKey } from "@flow-state-dev/contracts";
 import { coalescedReads } from "../internal/coalescedReads";
 import { useClient } from "../internal/useClient";
@@ -29,6 +30,12 @@ export type UseSubscriptionOptions = {
   pollIntervalMs?: number;
   /** `false` subscribes nothing. Default `true`. */
   enabled?: boolean;
+  /**
+   * The client to subscribe through, for a host that holds its own (its own
+   * user, origin and `fetcher`, so the socket carries its credential). Pass a
+   * stable reference. Default: the provider's client.
+   */
+  client?: Pick<Client, "subscribe">;
 };
 
 /** One key per distinct topic list, so an equal list keeps the subscription. */
@@ -54,7 +61,8 @@ export function useSubscription(
   read: (notice: WireNotice | null) => unknown,
   options: UseSubscriptionOptions = {}
 ): void {
-  const client = useClient();
+  const built = useClient();
+  const client = options.client ?? built;
   const readRef = useRef(read);
   readRef.current = read;
   const key = topicsKey(topics);

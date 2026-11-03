@@ -16,6 +16,7 @@
  * |                 | and that feed's connection state, for the connection bar; `loadEarlier`    |
  * |                 | is the feed's, for a thread longer than its first read                     |
  * | `watchTasks`    | the conversation board's `listTasks_tasks` read, and the rows' open holds  |
+ * |                 | again on each notice of the board, through `client.subscribe`              |
  * | `watchTaskWork` | the items of a task's run session, followed through `sessionFeed`, with   |
  * |                 | its `loadEarlier` too                                                      |
  * | `sayInThread`   | the Inbox client's answer to the thread's open question, else `updateTask_tasks` with your line |
@@ -23,7 +24,7 @@
  * | `requestChanges`| the same answer with `{ verdict: "revise", words }`                        |
  * | `watchPins`, `pin`, `unpin` | the lab's `pins` flow, your own user state                    |
  */
-import { createClient, sessionFeed, type Client, type SessionConnectionState, type SessionFeed, type SessionSummary } from "@flow-state-dev/client";
+import { createClient, sessionFeed, topic, type Client, type SessionConnectionState, type SessionFeed, type SessionSummary } from "@flow-state-dev/client";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import { createInboxClient, inboxItems, type InboxAnswer, type InboxHold, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
 import { parseNotice, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
@@ -237,6 +238,56 @@ function every<T>(read: () => Promise<T>, onChange: (value: T) => void, everyMs 
   return () => {
     live = false;
     clearTimeout(timer);
+  };
+}
+
+/** How often a session's task list reads on a timer, wherever push can miss a change. */
+const TASKS_EVERY_MS = 2_000;
+/** The ledgers a session's `listTasks` read returns: its board and its planning worker's steps. */
+const BOARD_LEDGERS = ["tasks", "plan"] as const;
+
+/**
+ * Read `read` now, and again whenever a session's board changes (FIX-2429):
+ * the session's topic narrowed to each ledger, so a reply streaming in the
+ * session never wakes it. Reports a value only when it changed, as
+ * {@link every} does. One read at a time, and one waiting for any number of
+ * notices. Wherever push can miss a change, `client.subscribe` reads every
+ * `everyMs` instead.
+ */
+function onBoardChange<T>(client: Client, sessionId: string, read: () => Promise<T>, onChange: (value: T) => void, everyMs = TASKS_EVERY_MS): Unsubscribe {
+  let live = true;
+  let last: string | undefined;
+  let running = false;
+  let queued = false;
+  const tick = async (): Promise<void> => {
+    if (!live) return;
+    if (running) {
+      queued = true;
+      return;
+    }
+    running = true;
+    try {
+      const value = await read();
+      const key = JSON.stringify(value);
+      if (live && key !== last) {
+        last = key;
+        onChange(value);
+      }
+    } catch (error) {
+      console.warn("[claude-code-style]", error);
+    }
+    running = false;
+    if (queued) {
+      queued = false;
+      void tick();
+    }
+  };
+  const topics = BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource }));
+  const subscription = client.subscribe(topics, { onChange: () => void tick(), pollIntervalMs: everyMs });
+  void tick();
+  return () => {
+    live = false;
+    subscription.close();
   };
 }
 
@@ -723,7 +774,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
       };
     },
     // The board is a read, so listing it every tick while the pane is open stores nothing.
-    watchTasks: (sessionId, onChange) => every(() => boardOf(sessionId), onChange, 2000),
+    watchTasks: (sessionId, onChange) => onBoardChange(fsd, sessionId, () => boardOf(sessionId), onChange),
     // Shown only inside the tasks pane or the threads board, whose watch keeps `runSessionOf` current.
     watchTaskWork: (_sessionId, taskId, onChange) => {
       // The task's run session is known once the board has listed it, and a re-run moves it: follow

@@ -1,45 +1,42 @@
 // @vitest-environment happy-dom
 /**
  * `BoardList`: one board as a list with each task's status (FIX-1622 V1), and
- * its `live` re-read (V2, V3).
+ * its `live` re-read (V2, V3; on board notices since FIX-2429).
  *
- * The stream is faked at the client seam, so each live case hands the list
- * exactly the events it would get and counts the board reads it makes. Reads
- * are counted rather than only the rows asserted, because a list that polls,
- * or re-reads on every copy the stream repeats, draws the same rows. The
- * transport cases run the real stream client against a host `fetch`, since
- * "the stream carries the read's credential, to the read's origin" is the
+ * `client.subscribe` is faked at the client seam, so each live case hands the
+ * list exactly the notices it would hear and counts the board reads it makes.
+ * Reads are counted rather than only the rows asserted, because a list that
+ * polls, or re-reads on every notice of a burst, draws the same rows. The
+ * transport cases run the real client against a host `fetch`, since "the
+ * subscription carries the read's credential, to the read's origin" is the
  * list and the client together.
  *
  * Every read the list makes is held until the case releases it, so "a change
- * that lands mid-read" is a change delivered while a read is still open.
+ * that lands mid-read" is a notice delivered while a read is still open.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
-import type { OutputItem, SessionStreamEvent } from "@flow-state-dev/core/items";
-import { createClient, type SessionStreamOptions, type SessionsApi } from "@flow-state-dev/client";
+import { createClient, type Client, type SubscribeOptions, type WireNotice, type WireTopic } from "@flow-state-dev/client";
 
-const streams: Array<{ options: SessionStreamOptions & { sessionId: string }; closed: boolean }> = [];
+const subscriptions: Array<{ topics: readonly WireTopic[]; options: SubscribeOptions; closed: boolean }> = [];
 
-/** The session stream a host client opens, faked: captured so a case can drive it. */
-const fakeStream: SessionsApi["stream"] = (sessionId, options = {}) => {
-  const entry = { options: { sessionId, ...options }, closed: false };
-  streams.push(entry);
+/** `client.subscribe`, faked: captured so a case can deliver notices. */
+const fakeSubscribe: Client["subscribe"] = (topics, options) => {
+  const entry = { topics, options, closed: false };
+  subscriptions.push(entry);
   return {
     close: () => {
       entry.closed = true;
-    },
-    lastAt: undefined,
-    stopped: false
+    }
   };
 };
 
-/** A host client: the board read the case controls, and the faked stream. */
+/** A host client: the board read the case controls, and the faked subscribe. */
 function hostClient<T extends { listCollectionItems: unknown }>(resources: T) {
-  return { resources, sessions: { stream: fakeStream } } as unknown as {
+  return { resources, subscribe: fakeSubscribe } as unknown as {
     resources: T & import("@flow-state-dev/client").ResourcesApi;
-    sessions: Pick<SessionsApi, "stream">;
+    subscribe: Client["subscribe"];
   };
 }
 
@@ -93,76 +90,31 @@ function fixedSource(items: Row[]) {
   return { listCollectionItems: vi.fn(async () => ({ items })) };
 }
 
-function openStream() {
-  const open = streams.filter((s) => !s.closed);
+function openSubscription() {
+  const open = subscriptions.filter((s) => !s.closed);
   const last = open[open.length - 1];
-  if (last === undefined) throw new Error("no open session stream");
-  return last.options;
+  if (last === undefined) throw new Error("no open subscription");
+  return last;
 }
 
-function deliver(event: SessionStreamEvent): void {
-  const options = openStream();
-  act(() => {
-    if (event.type === "session.item") options.onItem?.(event);
-    if (event.type === "session.runs") options.onRuns?.(event);
-  });
+/** Hand the open subscription what `client.subscribe` would: a notice, or `null` for a connect, reconnect or tick. */
+function hear(notice: WireNotice | null): void {
+  const { options } = openSubscription();
+  act(() => options.onChange(notice));
 }
 
-/** The notice every connection opens with; `at` is the point its first read reaches back to. */
-const opening = (at: number): SessionStreamEvent => ({
-  stream: "session",
-  sessionId: SESSION,
-  at,
-  type: "session.runs",
-  runs: []
-});
-
-function component(
-  requestId: string,
-  id: string,
-  name: string,
-  data: Record<string, unknown>,
-  ts: number,
-  itemIndex = 0
-): OutputItem {
-  return {
-    id,
-    type: "component",
-    status: "completed",
-    requestId,
-    itemIndex,
-    ts,
-    provenance: { blockName: "b", blockInstanceId: "b_1", phase: "main" },
-    component: name,
-    data
-  } as unknown as OutputItem;
-}
-
-/** A `task-change` for `board`, carrying the whole row the way the session's item log does. */
-function taskChange(requestId: string, board: string, taskId: string, ts: number, task: Record<string, unknown> = {}) {
-  return component(
-    requestId,
-    `tc_${taskId}`,
-    "task-change",
-    { collectionId: board, taskId, kind: "added", task: { id: taskId, status: "pending", ...task } },
-    ts
-  );
-}
-
-const itemEvent = (at: number, requestId: string, item: OutputItem): SessionStreamEvent => ({
-  stream: "session",
-  sessionId: SESSION,
-  at,
-  type: "session.item",
-  requestId,
-  item
+/** A board notice on the session's topic, narrowed to `board`. */
+const boardNotice = (board: string = BOARD): WireNotice => ({
+  topic: { scope: "session", id: SESSION, resource: board },
+  kind: "board",
+  origin: { requestId: "req_1" }
 });
 
 const rowIds = () => [...document.querySelectorAll("li[data-task-id]")].map((li) => li.getAttribute("data-task-id"));
 const settle = () => act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
 
 beforeEach(() => {
-  streams.length = 0;
+  subscriptions.length = 0;
 });
 
 afterEach(() => {
@@ -302,163 +254,64 @@ describe("BoardList · live (V2)", () => {
     );
   }
 
-  /**
-   * Mount a live list, connect its stream with an opening scan that finds
-   * nothing for this board, and let the mount read land. Hands back the
-   * source at one read.
-   */
+  /** Mount a live list and let its mount read land. Hands back the source at one read. */
   async function mountLive(rows: Row[] = [card("t-1", "pending")]) {
     const source = heldSource(rows);
     const view = renderLive(source);
-    deliver(opening(100));
     await source.release();
     await waitFor(() => expect(rowIds()).toHaveLength(rows.length));
     expect(source.listCollectionItems).toHaveBeenCalledTimes(1);
     return { source, view };
   }
 
-  it("without live, opens no stream and reads once (BR-17)", async () => {
+  it("without live, subscribes nothing and reads once (BR-17)", async () => {
     const source = fixedSource([card("t-1", "pending")]);
     render(createElement(BoardList, { sessionId: SESSION, boardRef: BOARD, client: hostClient(source) }));
     await waitFor(() => expect(rowIds()).toEqual(["t-1"]));
     await settle();
-    expect(streams).toHaveLength(0);
+    expect(subscriptions).toHaveLength(0);
     expect(source.listCollectionItems).toHaveBeenCalledTimes(1);
   });
 
-  it("opens the session's stream, components only, before its first read", async () => {
-    const opened: string[] = [];
-    const source = heldSource([]);
-    source.listCollectionItems.mockImplementationOnce(() => {
-      opened.push(streams.length === 1 ? "read after the stream" : "read before the stream");
-      return new Promise(() => {});
-    });
-    renderLive(source);
-    expect(opened).toEqual(["read after the stream"]);
-    expect(streams[0]!.options).toMatchObject({ sessionId: SESSION, itemTypes: ["component"] });
-    // No `since`: the first connection reaches back a minute.
-    expect(streams[0]!.options.since).toBeUndefined();
-  });
-
-  it("reads once, on mount, when the opening scan finds nothing for this board", async () => {
-    const source = heldSource([card("t-1", "pending")]);
-    renderLive(source);
-    deliver(opening(100));
-    // The scan finds another board's change, and a component on this board
-    // that is not a task change.
-    deliver(itemEvent(100, "req_a", taskChange("req_a", "eng.feature.backlog", "t-9", Date.now())));
-    deliver(itemEvent(100, "req_a", component("req_a", "cp_1", "note", { body: "hello", collectionId: BOARD }, Date.now())));
-    await source.release();
-    // A later notice on the same connection says the runs changed, not the board.
-    deliver(opening(1_100));
-    await settle();
-    expect(source.pending()).toBe(0);
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(1);
-  });
-
-  it("reads once more when the opening scan finds changes to this board, however many", async () => {
-    const source = heldSource([card("t-1", "pending"), card("t-2", "pending")]);
-    renderLive(source);
-    deliver(opening(100));
-    // Changes from 30 s ago and from just now, heard while the mount read is open.
-    deliver(itemEvent(100, "req_a", taskChange("req_a", BOARD, "t-1", Date.now() - 30_000)));
-    deliver(itemEvent(100, "req_b", taskChange("req_b", BOARD, "t-2", Date.now())));
-    expect(source.pending()).toBe(1);
-    await source.release();
-    expect(source.pending()).toBe(1);
-    await source.release();
-    await settle();
-    expect(source.pending()).toBe(0);
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
-  });
-
-  it("shows a change kept after the mount read that the stream delivers only in its opening scan", async () => {
+  it("subscribes its session's topic narrowed to the board, with a timer for where push can miss a change, and reads on mount", async () => {
     const source = heldSource([]);
     renderLive(source);
-    deliver(opening(100));
-    // Every read the list has asked for so far lands before the change is kept.
-    while (source.pending() > 0) await source.release();
-    source.setRows([card("t-new", "pending")]);
-    // The server named the runs, then began its first scan, which finds the
-    // change: it arrives as part of that opening scan and nowhere else.
-    deliver(itemEvent(100, "req_file", taskChange("req_file", BOARD, "t-new", Date.now())));
-    await settle();
+    expect(subscriptions).toHaveLength(1);
+    // Narrowed: a streaming reply's `items` notices on the session never wake it.
+    expect(subscriptions[0]!.topics).toEqual([{ scope: "session", id: SESSION, resource: BOARD }]);
+    expect(subscriptions[0]!.options.pollIntervalMs).toEqual(expect.any(Number));
+    // The mount read: on a host with no push, nothing else reads before the first tick.
     expect(source.pending()).toBe(1);
-    await source.release();
-    await waitFor(() => expect(rowIds()).toEqual(["t-new"]));
   });
 
-  it("shows a change kept during its mount read with the page's clock 10 s ahead of the server's", async () => {
-    const source = heldSource([]);
-    renderLive(source);
-    // The stream connects while the mount read is still open.
-    deliver(opening(100));
-    // The mount read reached the store just before the change was kept.
-    await source.release();
-    source.setRows([card("t-new", "pending")]);
-    // The stream's first read finds the change, stamped by the server's clock,
-    // 10 s behind this page's.
-    deliver(itemEvent(100, "req_file", taskChange("req_file", BOARD, "t-new", Date.now() - 10_000)));
-    await settle();
-    expect(source.pending()).toBe(1);
-    await source.release();
-    await waitFor(() => expect(rowIds()).toEqual(["t-new"]));
-    await settle();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
-  });
-
-  it("reads nothing when a reconnect replays what the opening scan found (BR-12)", async () => {
-    const source = heldSource([card("t-1", "pending")]);
-    renderLive(source);
-    deliver(opening(100));
-    const found = itemEvent(100, "req_a", taskChange("req_a", BOARD, "t-1", Date.now()));
-    deliver(found);
-    await source.release();
-    await source.release();
-    await settle();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
-
-    // The connection drops; the next one's opening scan delivers the same change.
-    act(() => openStream().onReconnecting?.({ attempt: 1 }));
-    deliver(opening(1_100));
-    deliver({ ...found, at: 1_100 });
-    await settle();
-    expect(source.pending()).toBe(0);
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
-  });
-
-  it("reads the board again on a change to it, and draws the read, never the change (BR-8, BR-9)", async () => {
-    const { source } = await mountLive([card("t-1", "pending", { title: "Charger fire" })]);
-    // The change says `completed` and carries fields the board withholds; the read says `pending`.
-    deliver(itemEvent(200, "req_1", taskChange("req_1", BOARD, "t-1", Date.now(), { status: "completed", metadata: { author: "x" } })));
-    expect(source.pending()).toBe(1);
-    await source.release();
-
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
-    expect(document.querySelector('li[data-task-id="t-1"] [data-task-status]')?.textContent).toBe("pending");
-    expect(document.body.textContent).not.toContain("completed");
-    expect(document.body.textContent).not.toContain("author");
-  });
-
-  it("reads nothing for another board's change, another kind of component, or an item that is not a component (BR-10)", async () => {
+  it("reads again on a connect or reconnect, which may have missed a change", async () => {
     const { source } = await mountLive();
-    deliver(itemEvent(200, "req_1", taskChange("req_1", "eng.feature.backlog", "t-9", Date.now())));
-    deliver(itemEvent(200, "req_1", component("req_1", "cp_1", "note", { body: "hello", collectionId: BOARD }, Date.now())));
-    deliver(
-      itemEvent(200, "req_1", {
-        ...(taskChange("req_1", BOARD, "t-8", Date.now()) as unknown as Record<string, unknown>),
-        type: "message"
-      } as unknown as OutputItem)
-    );
+    hear(null);
+    expect(source.pending()).toBe(1);
+    await source.release();
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads nothing until something under its topic changes", async () => {
+    const { source } = await mountLive();
     await settle();
+    expect(source.pending()).toBe(0);
     expect(source.listCollectionItems).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads the board again on a board notice, and draws the read, never anything the notice says (BR-8, BR-9)", async () => {
+    const { source } = await mountLive([card("t-1", "pending", { title: "Charger fire" })]);
+    source.setRows([card("t-1", "completed", { title: "Charger fire" })]);
+    hear(boardNotice());
+    expect(source.pending()).toBe(1);
+    await source.release();
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+    expect(document.querySelector('li[data-task-id="t-1"] [data-task-status]')?.textContent).toBe("completed");
   });
 
   it("reads at most once more for a burst, with one read in flight and one queued (BR-11)", async () => {
     const { source } = await mountLive();
-    for (const n of [1, 2, 3, 4, 5]) {
-      deliver(itemEvent(200, `req_${n}`, taskChange(`req_${n}`, BOARD, `t-${n}`, Date.now())));
-    }
+    for (let n = 0; n < 5; n += 1) hear(boardNotice());
     // One in flight, and the other four queued as one.
     expect(source.pending()).toBe(1);
     await source.release();
@@ -472,10 +325,9 @@ describe("BoardList · live (V2)", () => {
   it("reads a change that lands while the mount read pages in exactly one read after it", async () => {
     const source = heldSource([]);
     renderLive(source);
-    deliver(opening(100));
-    // Kept while the mount read is still open: that read may or may not hold it.
-    deliver(itemEvent(1_200, "req_file", taskChange("req_file", BOARD, "t-new", Date.now())));
-    deliver(itemEvent(1_200, "req_more", taskChange("req_more", BOARD, "t-more", Date.now())));
+    // Heard while the mount read is still open: that read may or may not hold it.
+    hear(boardNotice());
+    hear(boardNotice());
     source.setRows([card("t-new", "pending"), card("t-more", "pending")]);
     expect(source.pending()).toBe(1);
     await source.release();
@@ -487,87 +339,40 @@ describe("BoardList · live (V2)", () => {
     expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
   });
 
-  it("reads nothing for a copy the stream repeats across a reconnect, and reads a change kept during the drop (BR-12, BR-14)", async () => {
-    const { source } = await mountLive();
-    const filed = taskChange("req_1", BOARD, "t-1", Date.now());
-    deliver(itemEvent(1_100, "req_1", filed));
-    await source.release();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
-
-    // The connection drops; the next one resumes a little before where it
-    // left off, and its notice reads nothing.
-    act(() => openStream().onReconnecting?.({ attempt: 1 }));
-    deliver(opening(1_100));
-    deliver(itemEvent(1_100, "req_1", filed));
-    await settle();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
-
-    // Kept while the stream was down: new to the list, so it reads.
-    deliver(itemEvent(1_100, "req_2", taskChange("req_2", BOARD, "t-2", Date.now() - 20_000)));
-    expect(source.pending()).toBe(1);
-    await source.release();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(3);
-  });
-
-  it("reads for a later copy of the same keyed change, stamped after the one it heard", async () => {
-    const { source } = await mountLive();
-    const ts = Date.now();
-    deliver(itemEvent(1_100, "req_1", taskChange("req_1", BOARD, "t-1", ts)));
-    await source.release();
-    deliver(itemEvent(2_100, "req_1", { ...(taskChange("req_1", BOARD, "t-1", ts + 5) as object), itemIndex: 3 } as OutputItem));
-    expect(source.pending()).toBe(1);
-  });
-
-  it("keeps its rows and says nothing when the stream is refused, and reads nothing more (BR-15)", async () => {
-    for (const status of [401, 404, 501]) {
-      streams.length = 0;
-      const source = heldSource([card("t-1", "pending")]);
-      renderLive(source);
-      await source.release();
-      await waitFor(() => expect(rowIds()).toEqual(["t-1"]));
-      act(() => openStream().onStop?.({ status }));
-      await settle();
-      expect(rowIds()).toEqual(["t-1"]);
-      expect(document.querySelector('[role="alert"]')).toBeNull();
-      expect(source.listCollectionItems).toHaveBeenCalledTimes(1);
-      cleanup();
-    }
-  });
-
   it("does not show loading over its rows while it reads them again", async () => {
-    const { source } = await mountLive([card("t-1", "pending")]);
-    deliver(itemEvent(1_100, "req_1", taskChange("req_1", BOARD, "t-2", Date.now())));
-    expect(source.pending()).toBe(1);
+    await mountLive([card("t-1", "pending")]);
+    hear(boardNotice());
     expect(document.querySelector('[data-state="loading"]')).toBeNull();
     expect(rowIds()).toEqual(["t-1"]);
   });
 
-  it("closes its stream on unmount, and on a new board discards the old board's read (BR-18)", async () => {
+  it("closes its subscription on unmount, and on a new board discards the old board's read (BR-18)", async () => {
     const source = heldSource([card("t-1", "pending")]);
     const props = { sessionId: SESSION, client: hostClient(source), live: true } as const;
     const view = render(createElement(BoardList, { ...props, boardRef: BOARD }));
-    const first = streams[0]!;
+    const first = subscriptions[0]!;
     // The old board's read is still open when the board changes.
     view.rerender(createElement(BoardList, { ...props, boardRef: "eng.feature.backlog" }));
     expect(first.closed).toBe(true);
-    expect(streams.filter((s) => !s.closed)).toHaveLength(1);
+    const open = subscriptions.filter((s) => !s.closed);
+    expect(open.map((s) => s.topics)).toEqual([[{ scope: "session", id: SESSION, resource: "eng.feature.backlog" }]]);
     source.setRows([card("t-2", "pending")]);
     await source.release();
     await source.release();
     await waitFor(() => expect(rowIds()).toEqual(["t-2"]));
 
     view.unmount();
-    expect(streams.every((s) => s.closed)).toBe(true);
+    expect(subscriptions.every((s) => s.closed)).toBe(true);
   });
 });
 
 // ---------------------------------------------------------------------------
-// V3 · the stream's credential
+// V3 · the subscription's credential
 // ---------------------------------------------------------------------------
 
-describe("BoardList · the stream carries the read's credential, to the read's origin (V3, BR-16)", () => {
+describe("BoardList · the subscription carries the read's credential, to the read's origin (V3, BR-16)", () => {
   // The real client, against a host `fetch`: one transport for the read and
-  // the stream is the client and the list together.
+  // the subscription is the client and the list together.
   function hostFetchAnswering(rows: Row[]) {
     const sent: Array<{ url: string; authorization: string | null }> = [];
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -575,14 +380,14 @@ describe("BoardList · the stream carries the read's credential, to the read's o
       headers.set("authorization", "Bearer host-token");
       const url = String(input);
       sent.push({ url, authorization: headers.get("authorization") });
-      // A stream refused for good, so the client stops and the case ends quietly.
-      if (url.includes("/stream")) return new Response(null, { status: 404 });
+      // A host with no push, so the client reads on its timer and the case ends quietly.
+      if (url.includes("/capabilities")) return new Response(JSON.stringify({ push: null }), { status: 200 });
       return new Response(JSON.stringify({ items: rows }), { status: 200 });
     });
     return { fetcher, sent };
   }
 
-  it("sends the read and the stream through the host's client, header and all", async () => {
+  it("sends the read and the subscription through the host's client, header and all", async () => {
     // The plain `fetch`: anything that reaches it went out without the host's header.
     const plain = vi.fn(async () => new Response(null, { status: 401 }));
     vi.stubGlobal("fetch", plain);
@@ -591,12 +396,12 @@ describe("BoardList · the stream carries the read's credential, to the read's o
 
     render(createElement(BoardList, { sessionId: SESSION, boardRef: BOARD, client, live: true }));
     await waitFor(() => expect(rowIds()).toEqual(["t-1"]));
-    await waitFor(() => expect(host.sent.some((s) => s.url.includes(`/sessions/${SESSION}/stream`))).toBe(true));
+    await waitFor(() => expect(host.sent.some((s) => s.url.includes("/capabilities"))).toBe(true));
     expect(host.sent.every((s) => s.authorization === "Bearer host-token")).toBe(true);
     expect(plain).not.toHaveBeenCalled();
   });
 
-  it("reads and streams through the provider's fetch when the host passes no client", async () => {
+  it("reads and subscribes through the provider's fetch when the host passes no client", async () => {
     const plain = vi.fn(async () => new Response(null, { status: 401 }));
     vi.stubGlobal("fetch", plain);
     const host = hostFetchAnswering([card("t-1", "pending")]);
@@ -610,13 +415,13 @@ describe("BoardList · the stream carries the read's credential, to the read's o
     await waitFor(() => expect(rowIds()).toEqual(["t-1"]));
     await waitFor(() =>
       expect(host.sent.map((s) => new URL(s.url, window.location.href).pathname)).toEqual(
-        expect.arrayContaining([`/api/flows/sessions/${SESSION}/stream`, `/api/flows/sessions/${SESSION}/resources/${BOARD}`])
+        expect.arrayContaining(["/api/flows/capabilities", `/api/flows/sessions/${SESSION}/resources/${BOARD}`])
       )
     );
     expect(plain).not.toHaveBeenCalled();
   });
 
-  it("sends the stream to the origin the host's client reads, not the provider's", async () => {
+  it("subscribes at the origin the host's client reads, not the provider's", async () => {
     const plain = vi.fn(async () => new Response(null, { status: 401 }));
     vi.stubGlobal("fetch", plain);
     const host = hostFetchAnswering([card("t-1", "pending")]);
@@ -628,7 +433,7 @@ describe("BoardList · the stream carries the read's credential, to the read's o
         children: createElement(BoardList, { sessionId: SESSION, boardRef: BOARD, client, live: true })
       })
     );
-    await waitFor(() => expect(host.sent.some((s) => s.url.includes("/stream"))).toBe(true));
+    await waitFor(() => expect(host.sent.some((s) => s.url.includes("/capabilities"))).toBe(true));
     expect(new Set(host.sent.map((s) => new URL(s.url).origin))).toEqual(new Set(["https://boards.example"]));
     expect(plain).not.toHaveBeenCalled();
   });

@@ -18,10 +18,13 @@
  *   status moved, or deleted.
  * - `run` — a session record was written: the topic's own session, or a run
  *   (a child session) under it.
+ * - `board` — a row on a task board changed (FIX-2429), on the topic of the
+ *   session that filed it, narrowed to the board's id. The session stream
+ *   ignores it: a board is read through its own read.
  * - `resync` — the bus may have missed notices (it reconnected). Every
  *   subscriber reads once, whatever kinds it otherwise listens for.
  */
-export type ChangeKind = "items" | "request" | "run" | "resync";
+export type ChangeKind = "items" | "request" | "run" | "board" | "resync";
 
 /** The scopes a topic can name. No other topic exists. */
 export type TopicScope = "session" | "user" | "org";

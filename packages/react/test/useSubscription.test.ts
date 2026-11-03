@@ -202,6 +202,19 @@ describe("useSubscription", () => {
     expect(subscriptions).toEqual([]);
   });
 
+  it("subscribes through a host's own client when it passes one, so the socket carries that client's credential", () => {
+    const own: Array<readonly WireTopic[]> = [];
+    const client = {
+      subscribe: (topics: readonly WireTopic[]) => {
+        own.push(topics);
+        return { close() {} };
+      }
+    };
+    renderHook(() => useSubscription([S1], () => {}, { client }));
+    expect(own).toEqual([[S1]]);
+    expect(subscriptions).toEqual([]);
+  });
+
   it("drops a waiting read on unmount", async () => {
     const gate = gatedRead();
     const { unmount } = renderHook(() => useSubscription([S1], gate.read));

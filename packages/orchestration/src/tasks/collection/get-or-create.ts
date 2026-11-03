@@ -13,6 +13,7 @@
  * these items, filter by `data.collectionId`, and render the board.
  */
 import type { JsonObject } from "@flow-state-dev/core";
+import { publishBoardChange } from "@flow-state-dev/core/types";
 import type { ItemVisibility, OutputItem } from "@flow-state-dev/core/items";
 import type {
   BlockContext,
@@ -165,7 +166,18 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   // host sets a deadline for a person (the epic's D3): server-set.
   const filing = filingStampOf(options.ctx);
 
+  // Whose board a change is on (FIX-2429): the session that filed the row,
+  // whose view shows the board. A row with no filer (a board that hands nothing
+  // out, or a row filed before `Task.filer`) uses the ledger's legacy filer
+  // where it declares one, else the running session.
+  const legacyFiler = legacyFilerOf(options);
+  const runningSession = options.ctx.session?.identity?.id;
   const onChange = (event: TaskChangeEvent): void => {
+    // A board notice beside the item: the item goes on the writing session's
+    // stream; the notice reaches every open view of the filer's board, from
+    // whichever session and process settles the row. Server-written (BP-031).
+    const filer = event.task.filer?.sessionId ?? legacyFiler?.(event.task) ?? runningSession;
+    if (filer !== undefined) publishBoardChange(options.ctx, { sessionId: filer, board: event.collectionId });
     options.ctx.emit.component(
       TASK_CHANGE_COMPONENT_TYPE,
       {
@@ -264,6 +276,14 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     ...(filed !== undefined ? { cascadeFiled: { owes: filed.owes, pay: (row: Task) => filed.pay(ctx, row) } } : {}),
     ...(delivery !== undefined ? { delivery } : {}),
   });
+}
+
+/** The legacy filer a resource-backed ledger declares, bound to the partition it is read at. */
+function legacyFilerOf(options: GetOrCreateTaskCollectionOptions): ((row: Task) => string | undefined) | undefined {
+  if (options.backing !== "resource") return undefined;
+  const declared = options.collection.config;
+  const legacy = isDefinedTaskCollection(declared) ? declared.__taskCollection.delivery?.legacyFiler : undefined;
+  return legacy === undefined ? undefined : (row) => legacy(row, options.partition);
 }
 
 /**

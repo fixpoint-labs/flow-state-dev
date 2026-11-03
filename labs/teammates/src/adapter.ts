@@ -18,7 +18,7 @@
  * | `editInstructions`  | the workforce client's `edit`, on one of the user's own workers               |
  * | `fire`              | the workforce client's `fire`, on one of the user's own workers               |
  * | `watchTasks`        | the board's rows, as the conversation's stream carries each one (`task-change`) |
- * |                     | and, while a running row names no run, the board's `listTasks` read for its run |
+ * |                     | and the board's `listTasks` read, on each notice of the conversation's board   |
  * |                     | and `taskSpendView` on a row, for the harness and model its run reported      |
  * |                     | and each linked run's session, where the run writes its row (its holds)      |
  * |                     | and `taskRowView` with the Inbox's holds (`inboxItems`), for what it waits on |
@@ -36,7 +36,7 @@
  * The page acts as the user `fsdev dev` hands it (the config's `devtool`
  * block), with the bearer token when there is one, on the server it came from.
  */
-import { createClient, readEveryCollectionPage, type Client, type SessionConnectionState, type SessionRequestSummary } from "@flow-state-dev/client";
+import { createClient, readEveryCollectionPage, topic, type Client, type SessionConnectionState, type SessionRequestSummary } from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
@@ -251,6 +251,8 @@ const TASK_CHANGE = "task-change";
 const CREATE_TASK = "createTask";
 /** The board's read of its rows, on a conversation's flow. */
 const LIST_TASKS = "listTasks_tasks";
+/** The ledgers that read returns: the conversation's board and its planning worker's steps. */
+const BOARD_LEDGERS = ["tasks", "plan"] as const;
 /** The board's action a question on a row is answered through, on the conversation that filed it. */
 const UPDATE_TASK = "updateTask_tasks";
 /** Requests that are a worker answering: everything but the board's own passes. */
@@ -361,6 +363,44 @@ function poll<T>(read: () => Promise<T>, onValue: (value: T) => void, everyMs = 
   return () => {
     live = false;
     clearTimeout(timer);
+  };
+}
+
+/**
+ * Run `read` now, and again on each notice of a conversation's board (FIX-2429):
+ * its session's topic narrowed to each ledger its `listTasks` read returns, so a
+ * reply streaming in the conversation never wakes it. One read at a time, and
+ * one waiting for any number of notices. Wherever push can miss a change,
+ * `client.subscribe` reads every `everyMs` instead.
+ */
+function onBoardChange(client: Client, sessionId: string, read: () => Promise<void>, everyMs = POLL_MS): Unsubscribe {
+  let live = true;
+  let running = false;
+  let queued = false;
+  const run = async (): Promise<void> => {
+    if (!live) return;
+    if (running) {
+      queued = true;
+      return;
+    }
+    running = true;
+    try {
+      await read();
+    } catch (error) {
+      console.error("teammates: a read failed", error);
+    }
+    running = false;
+    if (queued) {
+      queued = false;
+      void run();
+    }
+  };
+  const topics = BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource }));
+  const subscription = client.subscribe(topics, { onChange: () => void run(), pollIntervalMs: everyMs });
+  void run();
+  return () => {
+    live = false;
+    subscription.close();
   };
 }
 
@@ -798,9 +838,12 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     watchTasks(sessionId, onChange) {
       const show = stableList(onChange);
       let rows = new Map<string, Record<string, any>>();
-      /** The run each running row's last board read named, by task id. */
-      const runs = new Map<string, unknown>();
-      let stopRead: Unsubscribe | undefined;
+      /**
+       * Each row as the board's last read answered it. A task settles, and its run links itself, in
+       * the task's own session, which the conversation's stream doesn't carry; the board's notice
+       * does, and the read says what changed. The newer of the two copies is the row.
+       */
+      let listed = new Map<string, Record<string, any>>();
       /**
        * Each linked run's own copy of its row. A run writes its row on its own session (its link, its
        * questions, its review), so the conversation hears of those only when the task ends: the run's
@@ -834,8 +877,15 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           runFeeds.set(runSession, stop);
         }
       };
+      // The board read's fields win: it names no time to compare, and a change after it sends a notice
+      // that reads again. The conversation's copy keeps what the read leaves out (a result's output).
+      const merged = (): Record<string, any>[] => {
+        const all = new Map(rows);
+        for (const [id, row] of listed) all.set(id, { ...all.get(id), ...row });
+        return [...all.values()];
+      };
       const publish = () => {
-        const current = [...rows.values()].map((row) => newer(row.run == null && runs.has(row.id) ? { ...row, run: runs.get(row.id) } : row));
+        const current = merged().map(newer);
         const flowOf = (id: string) => (id === sessionId ? flowOfSession.get(sessionId) : runFlows.get(id));
         const holds = holdsOfRows(sessionId, current, flowOf);
         openHolds.set(sessionId, holds);
@@ -859,37 +909,21 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           }),
         ).then(publish, (error) => console.error("teammates: a session's flow couldn't be read", error));
       };
-      // A run links itself on its own session, so the conversation hears of it only when the task ends:
-      // while a running row names no run, the board is read until it does, and the run's steps show as they happen.
-      const readWhileUnlinked = () => {
-        const unlinked = [...rows.values()].some((row) => row.status !== "completed" && row.status !== "errored" && row.status !== "cancelled" && row.run == null && !runs.has(row.id));
-        if (!unlinked) {
-          stopRead?.();
-          stopRead = undefined;
-        } else if (stopRead === undefined) {
-          stopRead = poll(
-            async () => {
-              const flow = flowOfSession.get(sessionId) ?? (await client.sessions.get(sessionId)).flowKind;
-              const listed = await client.flow(flow).read<{ ok: boolean; error?: string; tasks: Array<Record<string, any>> }>(LIST_TASKS, {}, { sessionId });
-              if (!listed.ok) throw new Error(listed.error);
-              return listed.tasks.flatMap((task) => (task.run?.sessionId === undefined ? [] : [[task.id as string, task.run] as const]));
-            },
-            (linked) => {
-              for (const [id, run] of linked) runs.set(id, run);
-              publish();
-              readWhileUnlinked();
-            },
-          );
-        }
-      };
+      // A run links itself, and a task settles, on its own session: the board's notice says so.
+      const stopBoard = onBoardChange(client, sessionId, async () => {
+        const flow = flowOfSession.get(sessionId) ?? (await client.sessions.get(sessionId)).flowKind;
+        const read = await client.flow(flow).read<{ ok: boolean; error?: string; tasks: Array<Record<string, any>> }>(LIST_TASKS, {}, { sessionId });
+        if (!read.ok) throw new Error(read.error);
+        listed = new Map(read.tasks.map((task) => [task.id as string, task]));
+        publish();
+      });
       const stopFeed = watchFeed(sessionId, boardRows, (read) => {
         rows = read;
         publish();
-        readWhileUnlinked();
       });
       return () => {
         stopFeed();
-        stopRead?.();
+        stopBoard();
         for (const stop of runFeeds.values()) stop();
       };
     },
