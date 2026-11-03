@@ -206,6 +206,14 @@ export function doorOf(workers: readonly Worker[], flowId: string): string | nul
 }
 
 /**
+ * Whether the door of the flow that owns a session takes a task id, read the
+ * same way as {@link doorOf}. `false` when no worker row is on the flow.
+ */
+export function doorTakesTaskOf(workers: readonly Worker[], flowId: string): boolean {
+  return workers.find((worker) => worker.kind === flowId)?.doorTakesTask ?? false;
+}
+
+/**
  * The teams in the worker inventory, each with its display name and its
  * workers, in first-seen order, with the org workers' General group first.
  */

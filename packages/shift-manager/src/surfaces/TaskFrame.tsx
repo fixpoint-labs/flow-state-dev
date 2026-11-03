@@ -17,7 +17,7 @@ import { interruptChordLabel, useInterruptKeys } from "@flow-state-dev/react";
 import { useEffect, useState } from "react";
 import { EmptyState, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { columnFor } from "../lib/columns";
-import { asksOfTask, doorOf, rosterOf, workerFor, workerLabel, waited } from "../lib/derive";
+import { asksOfTask, doorOf, doorTakesTaskOf, rosterOf, workerFor, workerLabel, waited } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
@@ -272,7 +272,7 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
   const flowId = task.run.kind === "open" ? task.run.run.flowId : undefined;
   const door = flowId === undefined ? null : doorOf(workers, flowId);
   // A door that takes the task's id stamps the line and its reply with it, so the Session finds them after a reload.
-  const stamps = flowId !== undefined && workers.find((w) => w.kind === flowId)?.doorTakesTask === true;
+  const stamps = flowId !== undefined && doorTakesTaskOf(workers, flowId);
   const blocked =
     row === undefined
       ? "This task isn't on its board yet."

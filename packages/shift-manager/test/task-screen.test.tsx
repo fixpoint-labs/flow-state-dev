@@ -472,18 +472,15 @@ describe("a line sent from a task's composer", () => {
   }, 60_000);
 
   it("to a door that keeps no task id, shows the line while the screen is open, sends no task id, and loses it on a remount", async () => {
-    const opened = await openLab();
+    // The workers' door doesn't spread `doorTask`, as an app's own door that hasn't opted in.
+    const opened = await openLab({ untaskedDoors: true });
     const row = await finishedRow(opened);
-    // The inventory reads as a door that takes no task: as a row written before the field, or an app's own door.
     const real = globalThis.fetch;
     const bodies: unknown[] = [];
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
       const url = String(input instanceof Request ? input.url : input);
       if (init?.method === "POST" && url.includes("/actions/respond")) bodies.push(JSON.parse(String(init.body)));
-      const answer = await real(input, init);
-      if (!url.includes("/resources/")) return answer;
-      const text = (await answer.text()).replaceAll('"doorTakesTask":true', '"doorTakesTask":false');
-      return new Response(text, { status: answer.status, statusText: answer.statusText, headers: answer.headers });
+      return real(input, init);
     });
     const path = `/tasks/${row.boardRef}/${row.id}/session`;
     await renderAt(opened.served.baseUrl, path);

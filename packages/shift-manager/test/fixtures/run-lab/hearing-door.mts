@@ -39,3 +39,13 @@ export const hearingDoor = {
     description: "A user's line into this worker's session.",
   },
 };
+
+/** The same door without `doorTask`: it takes no task id, as an app's own door that hasn't opted in. */
+export const untaskedHearingDoor = {
+  respond: {
+    block: hear,
+    inputSchema: messageInput,
+    userMessage: (input: { message: string }) => input.message,
+    description: "A user's line into this worker's session.",
+  },
+};
