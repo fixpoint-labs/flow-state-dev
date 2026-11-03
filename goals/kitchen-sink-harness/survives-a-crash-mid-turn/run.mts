@@ -94,7 +94,7 @@ await runGoal(async (failures) => {
 
     const lost = await readConversation(me, session.id, said, [first.id]);
     if (lost !== undefined) failures.push(`conversation — ${lost}`);
-    const cutTurn = await readCutTurn(me, held.id, CUT_TURN_MS);
+    const cutTurn = await readCutTurn(me, session.id, held.id, CUT_TURN_MS);
     if (cutTurn !== undefined) failures.push(`cut-turn — ${cutTurn}`);
     return { failures, evidence: `crashed mid-turn, served again; session ${session.id} kept turn ${first.id}, ${held.id} listed interrupted and not running` };
   } finally {

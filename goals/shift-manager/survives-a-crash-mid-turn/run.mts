@@ -81,6 +81,7 @@ await runGoal(async (failures) => {
 
     // Kill only once the run is read as running: never on a timer.
     let cut: string | undefined;
+    let cutSession: string | undefined;
     let before: Awaited<ReturnType<typeof readRow>>;
     for (const until = Date.now() + 120_000; cut === undefined && Date.now() < until; await sleep(1_000)) {
       before = await readRow();
@@ -88,6 +89,7 @@ await runGoal(async (failures) => {
       if (before?.status !== "in_progress" || runSession == null) continue;
       const running = ((await me.sessions.requests(runSession, { limit: 20 })) as Array<{ id: string; status: string }>).find((r) => r.status === "in_progress");
       cut = running?.id;
+      cutSession = runSession;
     }
     if (cut === undefined) throw new Error(`setup: the coding run never read as running: ${JSON.stringify(before!)}`);
     const attempts = before!.attempts ?? 1;
@@ -100,7 +102,7 @@ await runGoal(async (failures) => {
 
     const lost = await readConversation(me, conversation.id, said, [first.id, filed.id]);
     if (lost !== undefined) failures.push(`conversation — ${lost}`);
-    const cutTurn = await readCutTurn(me, cut, CUT_TURN_MS);
+    const cutTurn = await readCutTurn(me, cutSession!, cut, CUT_TURN_MS);
     if (cutTurn !== undefined) failures.push(`cut-turn — ${cutTurn}`);
     const task = await readTaskAfterCrash(readRow, attempts, TASK_MS);
     if (task.failure !== undefined) failures.push(`task — ${task.failure}`);

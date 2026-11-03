@@ -5,8 +5,8 @@
  *
  * - {@link readConversation}: the session still lists the person's message and
  *   every turn that ended before the crash.
- * - {@link readCutTurn}: `requests.interrupted()` lists the turn that was
- *   running, and it no longer reads as running.
+ * - {@link readCutTurn}: the host marks the turn that was running
+ *   interrupted with no call from the goal, and `requests.interrupted()` lists it.
  * - {@link readTaskAfterCrash}: the coding task's row reads a fresh attempt or
  *   an ending with its reason, with no call from the goal in between.
  *
@@ -16,8 +16,6 @@
 import type { Client } from "@flow-state-dev/client";
 import { sleep } from "./time.mts";
 
-/** A request status that still counts as running. */
-const RUNNING = new Set(["pending", "queued", "in_progress", "running"]);
 /** A task status that has ended. */
 const ENDED = new Set(["completed", "errored", "failed", "cancelled"]);
 
@@ -71,29 +69,37 @@ export async function readConversation(client: Client, sessionId: string, said: 
 }
 
 /**
- * The cut-turn signal: within `ms`, `requests.interrupted()` lists
- * `requestId`, and its status does not read as running.
+ * The cut-turn signal: within `ms`, the host itself marks `requestId`
+ * interrupted, and then `requests.interrupted()` lists it.
  *
- * Polled, because a host marks a request interrupted once its heartbeat is
- * stale, which is the host's threshold after the crash, not the moment it
- * serves again.
+ * The wait reads only: the session's request list, polled, because a host
+ * marks a request interrupted once its heartbeat is stale, which is the host's
+ * threshold after the crash, not the moment it serves again. It never calls
+ * `requests.interrupted()` while it waits, since that call asks the server to
+ * sweep first and would do the host's recovery for it.
+ *
+ * @param sessionId The session the cut request ran in.
  */
-export async function readCutTurn(client: Client, requestId: string, ms: number): Promise<string | undefined> {
-  let seen: string[] = [];
-  for (const until = Date.now() + ms; Date.now() < until; await sleep(2_000)) {
-    let listed;
+export async function readCutTurn(client: Client, sessionId: string, requestId: string, ms: number): Promise<string | undefined> {
+  let status: string | undefined;
+  for (const until = Date.now() + ms; status !== "interrupted" && Date.now() < until; await sleep(2_000)) {
     try {
-      listed = await client.requests.interrupted();
+      const requests = (await client.sessions.requests(sessionId, { limit: 100 })) as Array<{ id: string; status: string }>;
+      status = requests.find((r) => r.id === requestId)?.status;
     } catch (error) {
-      return `requests.interrupted() failed: ${error instanceof Error ? error.message : String(error)}`;
+      return `the cut turn's session ${sessionId} can't be read: ${error instanceof Error ? error.message : String(error)}`;
     }
-    seen = listed.map((r) => r.id);
-    const cut = listed.find((r) => r.id === requestId);
-    if (cut === undefined) continue;
-    const status = (await cut.status()).status;
-    return RUNNING.has(status) ? `the cut turn ${requestId} is listed as interrupted but reads ${status}` : undefined;
   }
-  return `requests.interrupted() never listed the cut turn ${requestId} within ${ms / 1000}s (it listed ${seen.length === 0 ? "nothing" : seen.join(", ")})`;
+  if (status !== "interrupted") {
+    return `the host never marked the cut turn ${requestId} interrupted within ${ms / 1000}s (it reads ${status ?? "missing"})`;
+  }
+  let listed;
+  try {
+    listed = await client.requests.interrupted();
+  } catch (error) {
+    return `requests.interrupted() failed: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  return listed.some((r) => r.id === requestId) ? undefined : `the cut turn ${requestId} reads interrupted but requests.interrupted() does not list it`;
 }
 
 /** A task row, as far as the task signal reads it. */
