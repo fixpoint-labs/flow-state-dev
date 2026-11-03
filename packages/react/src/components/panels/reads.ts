@@ -57,7 +57,7 @@ const EMPTY: PanelRow<never>[] = [];
  * Where push covers the list it reads on a board notice, a connect and a
  * reconnect only.
  */
-export const LIVE_BOARD_POLL_MS = 3_000;
+const LIVE_BOARD_POLL_MS = 3_000;
 
 /**
  * Read a board, and read it again whenever it changes (FIX-2429).

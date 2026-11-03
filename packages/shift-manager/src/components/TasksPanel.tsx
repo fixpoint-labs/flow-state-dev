@@ -32,7 +32,7 @@ type Read = { tasks: ConversationTask[] } | { failure: string } | undefined;
 /** How often the panel reads on a timer, where push can miss a change, while a task is open or just moved. */
 export const TASKS_POLL_MS = 3_000;
 /** How long the panel keeps its timer after a task moved: the turn its ending woke runs in that time. */
-export const AFTER_A_MOVE_MS = 30_000;
+const AFTER_A_MOVE_MS = 30_000;
 
 /** Whether a task can still move by itself. */
 export const isOpen = (task: ConversationTask) => task.status === "pending" || task.status === "in_progress";

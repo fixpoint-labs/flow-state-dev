@@ -547,7 +547,7 @@ UIs stay in sync off that stream rather than by polling. The `<TaskPlan />` comp
 
 ### Board notices
 
-The item lands on the stream of the session that made the change. A task often settles somewhere else: in its own task session, or on another process. So every change also publishes a board notice. It goes on the topic of the session that filed the row (the row's filer, or the running session for a board that hands nothing out), narrowed to the board's `collectionId`, with kind `board`. It carries no rows. A screen subscribes `topic.session(conversationId, { resource: "tasks" })` with `client.subscribe` or `useSubscription`, and reads the board again when one arrives:
+The item lands on the stream of the session that made the change. A task often settles somewhere else: in its own task session, or on another process. So every change also publishes a board notice. It goes on the topic of the session that filed the row (the session that filed the row, or the running session when the row names no filer), narrowed to the board's `collectionId`, with kind `board`. It carries no rows. A screen subscribes `topic.session(conversationId, { resource: "tasks" })` with `client.subscribe` or `useSubscription`, and reads the board again when one arrives:
 
 ```ts
 useSubscription(
@@ -557,7 +557,7 @@ useSubscription(
 );
 ```
 
-Subscribe each ledger your read returns. Workforce's `listTasks_tasks` read merges the conversation board with its planning worker's steps, so its screens subscribe `tasks` and `plan`. Because the topic is narrowed, a reply streaming in the conversation never wakes the screen. The session stream hears board notices on its topic and ignores them. As with any notice, `pollIntervalMs` is the fallback wherever push can't reach (see [Keeping a screen current](/guides/realtime#task-boards)).
+Subscribe each board your read returns. Workforce's `listTasks_tasks` read merges the conversation board with its planning worker's steps, so its screens subscribe `tasks` and `plan`. Because the topic is narrowed, a reply streaming in the conversation never wakes the screen. `useSession`'s live stream doesn't react to board notices. As with any notice, `pollIntervalMs` is the fallback wherever push can't reach (see [Keeping a screen current](/guides/realtime#task-boards)).
 
 ## Related pages
 

@@ -29,7 +29,11 @@ function TaskList({ sessionId }: { sessionId: string }) {
   );
 
   useEffect(() => void refresh(), [refresh]); // the first read
-  useSubscription([topic.session(sessionId, { resource: "tasks" })], refresh, { pollIntervalMs: 3000 });
+  useSubscription(
+    [topic.session(sessionId, { resource: "tasks" }), topic.session(sessionId, { resource: "plan" })],
+    refresh,
+    { pollIntervalMs: 3000 },
+  );
 
   return <ul>{tasks.map((task) => <li key={task.id}>{task.title}</li>)}</ul>;
 }
@@ -72,7 +76,7 @@ useSubscription(
 );
 ```
 
-Workforce's `listTasks_tasks` read returns the conversation's board and its planning worker's own steps, which sit on the `plan` board, so a screen of that read subscribes both. A flow with no planning worker never announces anything on `plan`, so the extra topic costs nothing.
+Workforce's `listTasks_tasks` read returns the conversation's board and its planning worker's own steps, which sit on the `plan` board, so a screen of that read subscribes both. Subscribing `plan` is harmless when the flow has no planning worker.
 
 `BoardList` with `live` does this for you, for the one board it draws. Its `client` needs `subscribe` (see [A board as a list](/docs/workforce/ui#a-board-as-a-list)).
 

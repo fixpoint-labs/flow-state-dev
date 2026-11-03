@@ -153,6 +153,41 @@ describe("a coding task's run, while it runs", () => {
   });
 });
 
+describe("a board read still in flight when the watch stops", () => {
+  it("shows nothing and follows no run once it lands", async () => {
+    const item = filed("in_progress");
+    const push = fakeSubscribe();
+    const opened: string[] = [];
+    let land!: () => void;
+    const client = {
+      subscribe: push.subscribe,
+      sessions: {
+        state: async () => ({ at: 1, sessionCreatedAt: 1, items: [item], pagination: { hasMore: false, nextOffset: 1 } }),
+        stream: (id: string) => {
+          opened.push(id);
+          return { close() {} };
+        },
+        get: async () => ({ id: "wks_1", flowKind: "agent" }),
+      },
+      flow: () => ({
+        read: () =>
+          new Promise((resolve) => {
+            land = () => resolve({ ok: true, tasks: [{ ...item.data.task, run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 } }] });
+          }),
+      }),
+    } as unknown as Client;
+    const calls: BoardTask[][] = [];
+    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => calls.push(next));
+    await until(() => land !== undefined && calls.length > 0);
+    const before = calls.length;
+    stop();
+    land();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(calls).toHaveLength(before);
+    expect(opened).not.toContain("dsx_run");
+  });
+});
+
 describe("a coding task's hold, while it runs", () => {
   /**
    * The run writes its row on its own session: its link, and the review it stops for. The

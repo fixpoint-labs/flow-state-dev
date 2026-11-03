@@ -120,7 +120,7 @@ The reads and the live subscription both go through `client`, so the subscriptio
 
 Rows already on screen stay there while the list reads again.
 
-A live list shares its client's one connection with every other subscription on that client (see [Keeping a screen current](/guides/realtime)). On a host that can't push, or while the connection is down, it reads every few seconds instead, so it never goes stale for long.
+A live list shares its client's one connection with every other subscription on that client (see [Keeping a screen current](/guides/realtime)). On a host that can't push, or while the connection is down, it reads every 3 seconds instead.
 
 Each row shows the task's `title` (its `goal` if there is no title, its `id` if there is neither), its status word, and the assignee when there is one. The words are the ones the columns are headed with (`pending`, `in_progress`, and so on). A task in a status the list doesn't recognise shows with its own word. No row is hidden. A row without a `createdAt` follows the dated ones.
 

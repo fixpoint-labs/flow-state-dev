@@ -884,7 +884,10 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         for (const [id, row] of listed) all.set(id, { ...all.get(id), ...row });
         return [...all.values()];
       };
+      // Set once the watch stops: a read or a flow lookup that lands after it shows nothing and follows no run.
+      let stopped = false;
       const publish = () => {
+        if (stopped) return;
         const current = merged().map(newer);
         const flowOf = (id: string) => (id === sessionId ? flowOfSession.get(sessionId) : runFlows.get(id));
         const holds = holdsOfRows(sessionId, current, flowOf);
@@ -914,6 +917,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         const flow = flowOfSession.get(sessionId) ?? (await client.sessions.get(sessionId)).flowKind;
         const read = await client.flow(flow).read<{ ok: boolean; error?: string; tasks: Array<Record<string, any>> }>(LIST_TASKS, {}, { sessionId });
         if (!read.ok) throw new Error(read.error);
+        if (stopped) return;
         listed = new Map(read.tasks.map((task) => [task.id as string, task]));
         publish();
       });
@@ -922,6 +926,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         publish();
       });
       return () => {
+        stopped = true;
         stopFeed();
         stopBoard();
         for (const stop of runFeeds.values()) stop();
