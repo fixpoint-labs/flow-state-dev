@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { StoreSubscriptionError } from "@flow-state-dev/engine";
 import { createPostgresRequestStore, initializeSchema, type QueryExecutor } from "../src";
 import { FakeNotifyNetwork, until } from "./fake-notify-network";
+import { openListen } from "../src/listen";
 import { freshPglite } from "./shared-pglite";
 
 async function executor(): Promise<QueryExecutor> {
@@ -21,6 +22,20 @@ async function executor(): Promise<QueryExecutor> {
   await initializeSchema(exec);
   return exec;
 }
+
+describe("the listen helper", () => {
+  it("refuses a connection that failed before it could be handed over, rather than returning it dead", async () => {
+    const network = new FakeNotifyNetwork();
+    network.errorAfterListen = 1;
+    let lostHeard = 0;
+    await expect(
+      openListen(network.pool, "flow_events", { notification: () => {}, lost: () => (lostHeard += 1) })
+    ).rejects.toThrow();
+    expect(network.clients[0]!.released).toEqual({ broken: true });
+    // The caller never held it, so it isn't told it lost it.
+    expect(lostHeard).toBe(0);
+  });
+});
 
 describe("a request tail on the shared listen helper", () => {
   it("reconnects when its listening connection is killed", async () => {
@@ -39,6 +54,20 @@ describe("a request tail on the shared listen helper", () => {
     await until(() => network.open.size === 0);
     // Handed back healthy on the way out, so the pool keeps it.
     expect(network.clients[1]!.released).toEqual({ broken: false });
+  });
+
+  it("reconnects when its connection fails just after LISTEN, before it resumes", async () => {
+    const network = new FakeNotifyNetwork();
+    network.errorAfterListen = 1;
+    const store = createPostgresRequestStore(await executor(), { liveTailPool: network.pool });
+    const controller = new AbortController();
+    const tail = store.subscribeToEvents("r1", { fromSequence: 0, signal: controller.signal, livenessTimeoutMs: 60_000 });
+    const pending = tail.next();
+    // Not left waiting out its liveness timeout on a dead connection.
+    await until(() => network.clients.length === 2 && network.listeners("flow_events").length === 1, 2_000);
+    expect(network.clients[0]!.released).toEqual({ broken: true });
+    controller.abort();
+    await pending;
   });
 
   it("gives up after its reconnect budget", async () => {

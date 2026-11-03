@@ -25,3 +25,4 @@
 | 2026-11-03 | fix/FIX-2427-postgres-bus (pre-commit) | n/a | FAIL (expected) | `GOAL_CONTROL=no-listen`: `1:reply` and `1:run` never arrived within 3 s (also `3`, `4`, since the patch says "crosses" everywhere) |
 | 2026-11-03 | fix/FIX-2427-postgres-bus (pre-commit) | n/a | FAIL (expected) | `GOAL_CONTROL=trust-listen`: `3:drop` never arrived within 10 s, nor `3:back` |
 | 2026-11-03 | fix/FIX-2427-postgres-bus (pre-commit) | n/a | FAIL (expected) | `GOAL_CONTROL=no-bus` (today's `main`): `2:idle` 80 statements in 10 s for two views |
+| 2026-11-03 | fix/FIX-2427-postgres-bus (after 19da0cf, resync on the first connection) | n/a | PASS · controls FAIL (expected) | 2: 0 view statements, 5 pings · 1: reply 110 ms, run 123 ms · 3: reply 453 ms after the drop; back, next 111 ms · 4: 479 ms. `no-listen` FAILs 1, `trust-listen` FAILs 3, `no-bus` FAILs 2 (80 statements) |

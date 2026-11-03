@@ -37,9 +37,19 @@ function busOn(network: FakeNotifyNetwork, options: { tailPool?: boolean; notify
   return bus;
 }
 
-function hear(bus: PostgresBus, topic: BusTopic): ChangeNotice[] {
+/** Every notice `bus` delivers on `topic`, a connection's `resync` included. */
+function hearAll(bus: PostgresBus, topic: BusTopic): ChangeNotice[] {
   const heard: ChangeNotice[] = [];
   bus.subscribe(topic, (notice) => heard.push(notice));
+  return heard;
+}
+
+/** The notices `bus` delivers on `topic` that some write sent: every `resync` left out. */
+function hear(bus: PostgresBus, topic: BusTopic): ChangeNotice[] {
+  const heard: ChangeNotice[] = [];
+  bus.subscribe(topic, (notice) => {
+    if (notice.kind !== "resync") heard.push(notice);
+  });
   return heard;
 }
 
@@ -50,6 +60,19 @@ function crossings(bus: PostgresBus): boolean[] {
 }
 
 describe("the Postgres bus · when it says it crosses processes", () => {
+  it("tells every subscriber to read once on its first connection, before it says it crosses", async () => {
+    const network = new FakeNotifyNetwork();
+    const bus = busOn(network);
+    const order: string[] = [];
+    bus.onCrossingChange((crosses) => order.push(`crosses:${crosses}`));
+    bus.subscribe(s1, (notice) => order.push(`s1:${notice.kind}`));
+    bus.subscribe({ ...s1, id: "s2" }, (notice) => order.push(`s2:${notice.kind}`));
+    await until(() => bus.crossesProcesses);
+    // A notice sent before the LISTEN took effect reached nobody here: each
+    // view reads once, while its timed read is still on.
+    expect(order).toEqual(["s1:resync", "s2:resync", "crosses:true"]);
+  });
+
   it("says so only once its own ping comes back over LISTEN, and says it as an event", async () => {
     const network = new FakeNotifyNetwork();
     const bus = busOn(network);
@@ -80,8 +103,9 @@ describe("the Postgres bus · when it says it crosses processes", () => {
     const network = new FakeNotifyNetwork();
     const bus = busOn(network);
     const seen = crossings(bus);
-    const heard = hear(bus, s1);
+    const heard = hearAll(bus, s1);
     await until(() => bus.crossesProcesses);
+    expect(heard.map((n) => n.kind)).toEqual(["resync"]);
 
     const [first] = network.listeners(BUS_CHANNEL);
     first!.kill();
@@ -92,8 +116,8 @@ describe("the Postgres bus · when it says it crosses processes", () => {
     // sent while it was down are gone.
     await until(() => bus.crossesProcesses);
     expect(network.listeners(BUS_CHANNEL)).toHaveLength(1);
-    expect(heard.map((n) => n.kind)).toEqual(["resync"]);
-    expect(heard[0]!.topic).toEqual(s1);
+    expect(heard.map((n) => n.kind)).toEqual(["resync", "resync"]);
+    expect(heard[1]!.topic).toEqual(s1);
     expect(seen).toEqual([true, false, true]);
   });
 

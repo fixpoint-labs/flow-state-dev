@@ -18,7 +18,9 @@
  *   while it hears its own ping come back. Unheard for 3 s, or the connection
  *   lost, it says it does not, and the session stream goes back to its
  *   once-a-second read; it reconnects, sends every subscriber a `resync`, and
- *   says it crosses again on the next ping it hears. It never gives up.
+ *   says it crosses again on the next ping it hears. It never gives up. The
+ *   first connection sends the `resync` too: a notice sent between a view's
+ *   first read and the `LISTEN` taking effect was heard by nobody.
  * - **No tail pool, no crossing.** Without one (`{ executor }`, `{ pool }`
  *   without `liveTailPool`, or `liveTailPool: null`) the bus never listens
  *   and never says it crosses.
@@ -106,8 +108,6 @@ class PgBus implements PostgresBus {
   /** Bumped on every start and stop, so a connect that finishes late knows it is stale. */
   #generation = 0;
   #connection: ListenConnection | undefined;
-  /** Whether this run of the listener has held a connection before: the next one resyncs. */
-  #reconnecting = false;
   #attempt = 0;
   #openedAt = 0;
   #lastHeardAt = 0;
@@ -167,7 +167,6 @@ class PgBus implements PostgresBus {
   #start(): void {
     if (this.#pool === null || this.#closed) return;
     this.#generation += 1;
-    this.#reconnecting = false;
     this.#attempt = 0;
     this.#connecting = this.#connect(this.#generation);
   }
@@ -214,9 +213,11 @@ class PgBus implements PostgresBus {
   #opened(connection: ListenConnection): void {
     this.#connection = connection;
     this.#openedAt = Date.now();
-    // A reconnect may have missed notices: every subscriber reads once.
-    if (this.#reconnecting) this.#resync();
-    this.#reconnecting = true;
+    // Every connection, the first included, may have missed notices: one sent
+    // after a view's last read and before this LISTEN took effect is gone. So
+    // every subscriber reads once, and before the first ping heard can say
+    // "crosses" and stop the views' timed read.
+    this.#resync();
     this.#startPinging();
   }
 

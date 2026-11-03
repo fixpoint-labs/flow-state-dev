@@ -26,7 +26,8 @@ export type ListenConnection = {
  *
  * @param handlers.notification Called with each payload on `channel`.
  * @param handlers.lost Called once, when the connection fails after `LISTEN` succeeded.
- * @throws When the checkout or the `LISTEN` fails; the connection is discarded first.
+ * @throws When the checkout or the `LISTEN` fails, or the connection fails
+ *   before it is handed back; the connection is discarded first.
  */
 export async function openListen(
   pool: Pool,
@@ -77,6 +78,13 @@ export async function openListen(
     lost = true;
     await connection.release(true);
     throw error;
+  }
+  // Failed after LISTEN answered and before this resumed: `lost` was not
+  // called (nobody held it yet), so a caller handed it would wait on a dead
+  // connection. Refuse it, as a LISTEN that failed is refused.
+  if (lost) {
+    await connection.release(true);
+    throw new Error(`the LISTEN ${channel} connection failed as it opened`);
   }
   listening = true;
   return connection;

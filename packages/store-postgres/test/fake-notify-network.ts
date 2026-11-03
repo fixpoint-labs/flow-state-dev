@@ -24,7 +24,15 @@ class FakeClient extends EventEmitter {
     this.statements.push(text);
     if (this.network.failListen) throw new Error("LISTEN refused");
     const [verb, channel] = text.split(/\s+/);
-    if (verb === "LISTEN") this.listening.add(channel!);
+    if (verb === "LISTEN") {
+      await this.network.listenGate;
+      this.listening.add(channel!);
+      if (this.network.errorAfterListen > 0) {
+        this.network.errorAfterListen -= 1;
+        // The connection fails after LISTEN succeeded and before its caller resumes.
+        queueMicrotask(() => this.kill());
+      }
+    }
     if (verb === "UNLISTEN") this.listening.delete(channel!);
     return { rows: [], rowCount: 0 };
   }
@@ -54,6 +62,10 @@ export class FakeNotifyNetwork {
   /** Checkouts still to fail. */
   failConnects = 0;
   failListen = false;
+  /** LISTENs still to fail in the microtask after they succeed. */
+  errorAfterListen = 0;
+  /** Every LISTEN waits on this before it takes effect. */
+  listenGate: Promise<void> = Promise.resolve();
 
   readonly executor: QueryExecutor = {
     query: async (text: string, values?: unknown[]) => {
