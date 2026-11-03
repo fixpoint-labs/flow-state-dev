@@ -85,6 +85,7 @@ const row = (ownerSessionId: string, id: string, status: string): BoardRow => ({
   id,
   title: id,
   goal: null,
+  context: null,
   status,
   assignee: null,
   priority: null,

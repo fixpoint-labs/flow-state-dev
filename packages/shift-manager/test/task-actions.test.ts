@@ -60,7 +60,8 @@ describe("the Lab reader's task actions, against a real Lab", () => {
 
     // Re-file the row the reader drew, with one field overridden.
     const cancelled = (await reader.readBoard(CONVERSATION)).find((r) => r.id === row.id)!;
-    const refiled = await actions.refile({ ...cancelled, priority: null }, { title: "Release notes, again" });
+    // A drawn row's goal is nullable and its priority is text, so those two are mapped; the rest copies as drawn.
+    const refiled = await actions.refile({ ...cancelled, goal: cancelled.goal!, priority: null }, { title: "Release notes, again" });
     const fresh = (await reader.readBoard(CONVERSATION)).find((r) => r.id === refiled)!;
     expect(fresh).toMatchObject({ status: "pending", goal: row.goal, context: row.context, title: "Release notes, again" });
     expect(fresh.id).not.toBe(row.id);
