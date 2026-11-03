@@ -49,7 +49,7 @@ import { runAction } from "@flow-state-dev/engine";
 import { serve } from "@flow-state-dev/node";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { probeClaudeAccount } from "@flow-state-dev/claude-code/sdk";
-import { createInboxClient, type InboxItem } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, taskActionName, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { reconcileInbox, rowTruthOf, suspensionTruthOf } from "@flow-state-dev/orchestration/inbox/check";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
 import { claudeCodeEnv, claudeCodeHarness, selectHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
@@ -58,7 +58,7 @@ import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../../../packages/sh
 import { commitAll, createBareRemote } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";
 import { connect } from "../../../packages/shift-manager/src/lib/connection.ts";
-import { UPDATE_TASK_ACTION, createLabReader } from "../../../packages/shift-manager/src/lib/reads.ts";
+import { CONVERSATION_BOARD_COLLECTION, createLabReader } from "../../../packages/shift-manager/src/lib/reads.ts";
 
 stripIntentOverrides();
 
@@ -562,7 +562,7 @@ await runGoal(async (failures, tell) => {
     try {
       const held = await host.until(host.task, (t) => isHeld(t) || isSettled(t), 30_000);
       if (!isHeld(held)) fail("r3:held", `the task is ${held?.status}`);
-      const cancelled = await host.act(UPDATE_TASK_ACTION, { id: host.taskId, status: "cancelled" });
+      const cancelled = await host.act(taskActionName("updateTask", CONVERSATION_BOARD_COLLECTION), { id: host.taskId, status: "cancelled" });
       if (cancelled.output?.ok !== true) fail("r3:cancelled", `the cancel was refused: ${show(cancelled.output ?? cancelled.error)}`);
       const done = await host.until(host.task, (t) => t?.status === "cancelled", 10_000);
       await host.act(LIST_TASKS_ACTION, {});
