@@ -2046,7 +2046,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     // resource: the re-entrant write acquires a fresh chain slot instead of
     // chaining behind — and deadlocking on — the write that is awaiting it.
     const notifySingleChange = async (prev: JsonObject, post: JsonObject): Promise<void> => {
-      if (config.client?.live !== true && config.reactTo === undefined) return;
+      // Every committed change reaches the seam (FIX-1506): the handler
+      // decides what each opt-in gets. The writer's own stream still hears
+      // only live singles, `reactTo` still runs only where bound, and a
+      // change another session's view may read publishes its notice.
       const projection =
         config.client?.live === true
           ? await liveProjection(config, post)

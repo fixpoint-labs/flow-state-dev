@@ -56,6 +56,7 @@ import {
   sessionKeyScopeId,
   sessionStorageScope,
 } from "../resources/lineage-scope";
+import { noticePathFor, publishScopeChange } from "../bus/scope-changes";
 
 type ResourceRouteContext = {
   registry: FlowRegistry;
@@ -76,6 +77,25 @@ type ResourceRouteContext = {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * A browser's write to a session collection item: publish the session's
+ * topic, narrowed to the item, so the session's other live views read again
+ * (FIX-1506). No request made it, so it names none, and every view hears it,
+ * the writer's own included. A row only its owner may read is published on
+ * the bare session topic instead (`noticePathFor`). Lineage-shared keys reach
+ * only this session's topic, a stated limit (FIX-2426).
+ */
+function publishSessionResource(ctx: ResourceRouteContext, sessionId: string, storageKey: string, collection: object): void {
+  const resource = noticePathFor(collection, storageKey);
+  publishScopeChange(ctx.stores.bus, {
+    scope: "session",
+    id: sessionId,
+    tenantId: ctx.tenantId,
+    kind: "resource",
+    ...(resource !== undefined ? { resource } : {})
+  });
+}
 
 /** Absent unless `ownerKeyMaySeed` admits the key for this user against the template scope's collections. */
 async function resolveTemplateRaw(
@@ -351,6 +371,7 @@ export async function handleCreateCollectionItem(
     await ctx.stores.content.set(sessionStorageScope(session, scopeId), scopeId, storageKey, content);
   }
 
+  publishSessionResource(ctx, route.sessionId, storageKey, config);
   return jsonResponse(201, { topic: topic.trim() });
 }
 
@@ -423,6 +444,7 @@ export async function handleUpdateResourceContent(
   // Write to ContentStore (the canonical content location during execution).
   await ctx.stores.content.set(sessionStorageScope(session, scopeId), scopeId, storageKey, content);
 
+  publishSessionResource(ctx, route.sessionId, storageKey, config);
   return jsonResponse(200, { ref: route.ref, topic: route.topic });
 }
 
@@ -849,5 +871,6 @@ export async function handleDeleteCollectionItem(
   // predicate fences it, and closing it is cross-record atomicity (FIX-854).
   await ctx.stores.content.delete(sessionStorageScope(session, scopeId), scopeId, storageKey);
 
+  publishSessionResource(ctx, route.sessionId, storageKey, config);
   return jsonResponse(200, { ref: route.ref, topic: route.topic });
 }

@@ -56,7 +56,7 @@ useSubscription([topic.session(sessionId)], (notice) => {
 });
 ```
 
-`kind` is `"items"`, `"request"`, `"run"` or `"resync"`. Read everything on `null` and on `"resync"`: the screen may have missed something.
+`kind` is `"items"`, `"request"`, `"run"`, `"state"`, `"resource"` or `"resync"`. `"state"` means the scope's state was written, and `"resource"` that a resource under it was, with the resource's path in `topic.resource`. `origin.requestId` names the request that made the change, when one did. Read everything on `null` and on `"resync"`: the screen may have missed something.
 
 ## Outside React
 
@@ -105,6 +105,10 @@ await serve(flowstate, {
 Each topic is checked on the server when the connection opens, with the same check the matching read uses. The client asks through its own `fetcher`, so a bearer token your fetcher adds signs the connection in, and so does a cookie. A topic the caller may not read is left out, exactly as a session that doesn't exist is, and the screen never hears of it. With `pollIntervalMs`, the client asks for it again at each tick, so access given back starts working without a reload.
 
 An open connection is not checked again. If someone loses access while their tab stays open, their reads are refused at once, and the connection can still say that something changed, never what, until it reconnects. The server closes every connection after an hour, and the reconnect checks again.
+
+## State and resources other sessions change
+
+You don't need a subscription for a session's own state, or for its user's, its organization's, or their resources. `useSession(sessionId, { live: true })` subscribes the session, user and org topics for you, and the hooks built on it (`useClientData`, `useResourceCollectionList`, `useResource` and the rest) read again on a change from any session. It skips a change its own request made, since that request's stream already carried it. The workforce panels `Roster` and `BoardColumns` do the same with `live`. Reach for `useSubscription` for a read those hooks don't make, such as a flow read.
 
 ## Following a session's own items
 
