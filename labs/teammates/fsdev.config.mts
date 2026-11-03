@@ -18,11 +18,18 @@
  * - `TEAMMATES_RUN_TIMEOUT_MS`: the wall-clock budget for one coding run, in
  *   milliseconds (default 20 minutes). A value that isn't a positive whole
  *   number a timer can hold stops the lab at start.
+ * - `TEAMMATES_SETUP`: a command each fresh worktree runs before its coding
+ *   run starts, such as `pnpm install --frozen-lockfile` (default: none).
+ * - `TEAMMATES_CHECKS`: the commands a coding run's worktree must pass before
+ *   its task is done, `;`-separated, such as `pnpm typecheck; pnpm test`
+ *   (default: none). A red one sends the run back with the command's output.
+ *   Neither runs through a shell, so `&&`, `|` and redirects stop the lab at
+ *   start.
  */
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defaultStore, openTeammates, runTimeout } from "./host.mts";
+import { checkCommands, defaultStore, openTeammates, runTimeout, setupCommand } from "./host.mts";
 
 /** The repository this lab lives in: the working folder when `TEAMMATES_WORKDIR` is unset. */
 const PROJECT_ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -37,6 +44,8 @@ export default await openTeammates({
   workdir: process.env.TEAMMATES_WORKDIR ?? PROJECT_ROOT,
   runsRoot: process.env.TEAMMATES_RUNS ?? join(dirname(store), "teammates-runs"),
   runTimeoutMs: runTimeout(process.env.TEAMMATES_RUN_TIMEOUT_MS),
+  setup: setupCommand(process.env.TEAMMATES_SETUP),
+  checks: checkCommands(process.env.TEAMMATES_CHECKS),
   ...(process.env.TEAMMATES_TREE === undefined ? {} : { tree: process.env.TEAMMATES_TREE }),
   ...(process.env.TEAMMATES_HARNESS === undefined ? {} : { harness: process.env.TEAMMATES_HARNESS }),
 });

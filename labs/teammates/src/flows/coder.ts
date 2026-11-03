@@ -19,7 +19,9 @@
  * same coding session for one more run, which you review again.
  *
  * Where a run works comes from the host's workspace, whose source is the
- * lab's one working folder: every run gets a worktree of it.
+ * lab's one working folder: every run gets a worktree of it. With `checks`,
+ * a run is done only when those commands pass in its worktree too; a red one
+ * sends the run back, its brief naming the command and the end of its output.
  *
  * It hears worker messages only in its tasks' sessions, so nobody messages it
  * by name. The screen opens no conversation with it, so its door is not
@@ -30,7 +32,7 @@
 import { z } from "zod";
 import { defineFlow, handler, router } from "@flow-state-dev/core";
 import type { BlockDefinition, HarnessBlock } from "@flow-state-dev/core/types";
-import { goalJudge, harnessManager, type HarnessFeeds, type PhaseSpec } from "@flow-state-dev/harness-manager";
+import { commandCheck, goalJudge, harnessManager, type HarnessFeeds, type PhaseSpec } from "@flow-state-dev/harness-manager";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -70,6 +72,12 @@ export interface CoderFlowOptions {
   workspace: WorkspaceHost;
   /** Wall-clock budget for one run. */
   runTimeoutMs: number;
+  /**
+   * The working folder's checks: commands a run's worktree must pass before
+   * its task is done, and how long they may take together. Absent, or no
+   * commands: a run is done when its harness says it finished.
+   */
+  checks?: { commands: readonly string[]; timeoutMs: number };
 }
 
 /** A task's run: its goal and brief, done when the harness says it finished. */
@@ -81,11 +89,21 @@ const PHASE: PhaseSpec = {
       run.task.goal,
       run.task.context,
       `Work in ${run.workspacePath}. Make the change, commit it with git, and say in one line what changed.`,
+      run.feedback === undefined ? undefined : `Why the last attempt stopped:\n\n${run.feedback}`,
     ]
       .filter((line): line is string => typeof line === "string" && line !== "")
       .join("\n\n"),
   isDone: (run) => run.stopReport === "finished",
 } as PhaseSpec;
+
+/**
+ * The phase a coding run runs, with the working folder's checks when the host names any.
+ *
+ * @throws When `checks.timeoutMs` isn't a positive whole number.
+ */
+export function codingPhase(checks?: CoderFlowOptions["checks"]): PhaseSpec {
+  return checks === undefined || checks.commands.length === 0 ? PHASE : commandCheck(PHASE, checks);
+}
 
 /** What a user's line in one of a coding worker's sessions is answered with. */
 const DOOR_REPLY =
@@ -99,6 +117,7 @@ const DOOR_REPLY =
  * @throws When the default harness is not one the host offers.
  */
 export function coderFlow(options: CoderFlowOptions) {
+  const phase = codingPhase(options.checks);
   const names = Object.keys(options.harnesses);
   if (names.length === 0) throw new Error(`${CODER_FLOW}: the host offers no harness.`);
   if (!names.includes(options.defaultHarness)) {
@@ -112,7 +131,7 @@ export function coderFlow(options: CoderFlowOptions) {
           name: `${CODER_FLOW}-${name}`,
           ledgers: conversationLedgers,
           tenant: undefined,
-          phase: PHASE,
+          phase,
           workspace: options.workspace,
           runTimeoutMs: options.runTimeoutMs,
           harness,

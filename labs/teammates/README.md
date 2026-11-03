@@ -129,6 +129,8 @@ This builds the pages and serves them with the lab's server (`fsdev.config.mts`)
 | `TEAMMATES_TREE` | the workers' tree | `workforce/` here |
 | `TEAMMATES_RUNS` | the folder each coding run's worktree goes in | `.fsdev/teammates-runs/` here |
 | `TEAMMATES_RUN_TIMEOUT_MS` | the wall-clock budget for one coding run, in milliseconds | `1200000` (20 minutes) |
+| `TEAMMATES_SETUP` | a command each fresh worktree runs before its coding run starts, such as `pnpm install --frozen-lockfile`; no shell | none |
+| `TEAMMATES_CHECKS` | the commands a coding run's worktree must pass before its task is done, `;`-separated, such as `pnpm typecheck; pnpm test`; no shell, so a `;` inside one command, even quoted, isn't supported. A red one sends the run back with the command's output | none |
 
 The model needs a credential the gateway takes (`AI_GATEWAY_API_KEY`). Each coding agent needs its
 own sign-in: Claude Code signed in, or `ANTHROPIC_API_KEY`; Codex signed in (`codex login`), or
