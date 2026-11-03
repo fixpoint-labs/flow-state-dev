@@ -25,6 +25,9 @@
  *   (default: none). A red one sends the run back with the command's output.
  *   Neither runs through a shell, so `&&`, `|` and redirects stop the lab at
  *   start.
+ * - `GOAL_HARNESS=stub`: for goal checks only. Every coding worker runs on a
+ *   scripted harness, no model and no sign-in, whose five steps are
+ *   `GOAL_HARNESS_STEP_MS` apart (default 2000).
  */
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -48,4 +51,5 @@ export default await openTeammates({
   checks: checkCommands(process.env.TEAMMATES_CHECKS),
   ...(process.env.TEAMMATES_TREE === undefined ? {} : { tree: process.env.TEAMMATES_TREE }),
   ...(process.env.TEAMMATES_HARNESS === undefined ? {} : { harness: process.env.TEAMMATES_HARNESS }),
+  ...(process.env.GOAL_HARNESS === "stub" ? { scriptedHarnessStepMs: Number(process.env.GOAL_HARNESS_STEP_MS ?? 2_000) } : {}),
 });
