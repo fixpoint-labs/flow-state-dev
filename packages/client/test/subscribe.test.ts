@@ -495,6 +495,55 @@ describe("client.subscribe on a host with push", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("unsubscribes a topic whose last subscription closed before its ticket was acknowledged", async () => {
+    const { fetcher } = server({ push: { transport: "websocket" } });
+    const fsd = client(fetcher);
+    const keep = await connected(fsd, [S1], undefined, true);
+    FakeSocket.autoAck = false;
+    const both = fsd.subscribe([topic.org(), topic.user()], { onChange: () => {} });
+    await settle();
+    expect(keep.socket.sent.at(-1)).toEqual({ type: "subscribe", ticket: "t2" });
+    // Another subscription wants `user` too, while the ticket is in flight.
+    const userOnly = vi.fn();
+    fsd.subscribe([topic.user()], { onChange: userOnly });
+    both.close();
+    keep.socket.frame({ type: "subscribed" });
+    // The server subscribed `org` for that ticket; nothing wants it now.
+    expect(keep.socket.sent.at(-1)).toEqual({ type: "unsubscribe", topics: [topic.org()] });
+    // `user` is still wanted: it is heard, and read once.
+    expect(userOnly.mock.calls).toEqual([[null]]);
+  });
+
+  it("sends no ticket for a mint whose topics all lost their subscriptions while it was in flight", async () => {
+    let release: (() => void) | undefined;
+    const { fetcher } = server({
+      push: { transport: "websocket" },
+      holdMint: (topics) => (topics.some((t) => t.scope === "org") ? new Promise<void>((resolve) => (release = resolve)) : undefined)
+    });
+    const fsd = client(fetcher);
+    const keep = await connected(fsd, [S1], undefined, true);
+    const sent = keep.socket.sent.length;
+    const org = fsd.subscribe([topic.org()], { onChange: () => {} });
+    await settle();
+    org.close();
+    release!();
+    await settle();
+    expect(keep.socket.sent.slice(sent)).toEqual([]);
+  });
+
+  it("passes a notice only to a subscription whose topic this socket was granted", async () => {
+    const { fetcher } = server({ push: { transport: "websocket" }, grant: (t) => t.scope !== "org" });
+    const fsd = client(fetcher);
+    const keep = await connected(fsd, [S1], undefined, true);
+    const refusedOrg = vi.fn();
+    fsd.subscribe([topic.org()], { onChange: refusedOrg });
+    await settle();
+    refusedOrg.mockClear();
+    // A notice for a topic the mint refused this socket never reaches it.
+    keep.socket.frame({ type: "notice", ...notice(topic.org(), "request") });
+    expect(refusedOrg).not.toHaveBeenCalled();
+  });
+
   it("drops a frame that isn't one the server sends", async () => {
     const { fetcher } = server({ push: { transport: "websocket" } });
     const { onChange, socket } = await connected(client(fetcher), [S1], undefined, true);

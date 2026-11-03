@@ -138,7 +138,7 @@ export function createPushHub(deps: {
    * sent. The server acknowledges tickets in that order, once it hears their
    * topics; until then a read could miss a change under them.
    */
-  let unacknowledged: Array<Set<string>> = [];
+  let unacknowledged: Array<Map<string, WireTopic>> = [];
 
   let mode: "unknown" | "checking" | "none" | "push" = "unknown";
   let socket: WebSocket | undefined;
@@ -206,8 +206,8 @@ export function createPushHub(deps: {
     }));
 
   /**
-   * Record which of `asked` the answer left out, and return the ones it
-   * granted. Those are heard only once the server acknowledges the ticket.
+   * Record which of `asked` the answer left out. The ones it granted are
+   * heard only once the server acknowledges the ticket.
    */
   const record = (asked: readonly string[], answer: { topics: WireTopic[] }): Set<string> => {
     const answered = new Set(answer.topics.map(wireTopicKey));
@@ -224,25 +224,37 @@ export function createPushHub(deps: {
     return grantedNow;
   };
 
-  /** Send a ticket for `keys`, to be heard once the server acknowledges it. */
-  const sendTicket = (ws: WebSocket, ticket: string, keys: Set<string>): void => {
+  /**
+   * Send a ticket, to be heard once the server acknowledges it. `topics` is
+   * every topic the ticket grants, wanted or not: the server subscribes them
+   * all, so the acknowledgement must account for each.
+   */
+  const sendTicket = (ws: WebSocket, ticket: string, topics: readonly WireTopic[]): void => {
     // Queued before sending: a server may acknowledge before `send` returns.
-    unacknowledged.push(keys);
+    unacknowledged.push(new Map(topics.map((t) => [wireTopicKey(t), t])));
     ws.send(JSON.stringify({ type: "subscribe", ticket }));
   };
 
   /** The server heard the oldest ticket's topics: they are covered, and read once. */
   const acknowledged = (): void => {
-    const keys = unacknowledged.shift();
-    if (keys === undefined) return;
+    const ticketTopics = unacknowledged.shift();
+    if (ticketTopics === undefined) return;
     // A ticket accepted: the connect worked, so the backoff starts over.
     failures = 0;
     const added = new Set<string>();
-    for (const key of keys) {
-      if (!counts.has(key) || granted.has(key)) continue;
+    const unwanted: WireTopic[] = [];
+    for (const [key, ticketTopic] of ticketTopics) {
+      // Its last subscription closed while the ticket was in flight: the
+      // server now hears it for nobody, so stop it hearing it.
+      if (!counts.has(key)) {
+        if (!granted.has(key)) unwanted.push(ticketTopic);
+        continue;
+      }
+      if (granted.has(key)) continue;
       granted.add(key);
       added.add(key);
     }
+    if (unwanted.length > 0 && socket !== undefined) socket.send(JSON.stringify({ type: "unsubscribe", topics: unwanted }));
     updateTimers();
     // Each connect, and each topic added, reads once (ER-6): it may have
     // missed changes made before the server heard it.
@@ -257,7 +269,7 @@ export function createPushHub(deps: {
   const mintMore = async (keys: readonly string[]): Promise<void> => {
     if (state !== "open") return;
     const asking = keys.filter(
-      (key) => counts.has(key) && !granted.has(key) && !minting.has(key) && !unacknowledged.some((set) => set.has(key))
+      (key) => counts.has(key) && !granted.has(key) && !minting.has(key) && !unacknowledged.some((pending) => pending.has(key))
     );
     if (asking.length === 0) return;
     // One mint takes at most PUSH_MINT_MAX_TOPICS; more go as several tickets
@@ -285,8 +297,10 @@ export function createPushHub(deps: {
       updateTimers();
       return;
     }
-    const grantedNow = record(asking, answer);
-    if (answer.topics.length > 0) sendTicket(socket, answer.ticket, grantedNow);
+    record(asking, answer);
+    // A ticket none of whose topics is still wanted would only subscribe the
+    // server for nobody.
+    if (answer.topics.some((t) => counts.has(wireTopicKey(t)))) sendTicket(socket, answer.ticket, answer.topics);
     updateTimers();
   };
 
@@ -410,7 +424,8 @@ export function createPushHub(deps: {
       unacknowledged = [];
       // The connect reads once the server acknowledges this ticket, not now:
       // a read now could finish before the server hears the topics.
-      sendTicket(ws, ready.ticket, record(asked.map(wireTopicKey), ready));
+      record(asked.map(wireTopicKey), ready);
+      sendTicket(ws, ready.ticket, ready.topics);
       updateTimers();
       // Topics subscribed while this connect was in flight.
       const asked2 = new Set(asked.map(wireTopicKey));
@@ -445,7 +460,12 @@ export function createPushHub(deps: {
       if (frame.type === "notice") {
         const { type: _type, ...notice } = frame;
         for (const handle of [...handles]) {
-          if (handle.topics.some((subscribed) => covers(subscribed, notice.topic))) call(handle, notice);
+          // Only through a topic this socket was granted: a notice for any
+          // other never reaches a subscription, whatever the server sent.
+          const heard = handle.topics.some(
+            (subscribed) => granted.has(wireTopicKey(subscribed)) && covers(subscribed, notice.topic)
+          );
+          if (heard) call(handle, notice);
         }
       }
     });
