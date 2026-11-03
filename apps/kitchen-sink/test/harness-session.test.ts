@@ -47,6 +47,15 @@ beforeAll(() => {
   stateHome = join(scratch, "state");
   execFileSync("git", ["init", "-q", "-b", "main", repo]);
   writeFileSync(join(repo, "README.md"), "hello\n");
+  writeFileSync(
+    join(repo, "check.mjs"),
+    [
+      `import { existsSync } from "node:fs";`,
+      `if (!existsSync(".set-up")) { console.error("SETUP-MARKER missing"); process.exit(5); }`,
+      `console.error("CHECK-MARKER: red on purpose"); process.exit(3);`,
+    ].join("\n"),
+  );
+  writeFileSync(join(repo, ".gitignore"), ".set-up\n");
   git(repo, "add", ".");
   git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
   scriptedPauses.stepMs = 0;
@@ -404,4 +413,28 @@ describe("where a session works (V6)", () => {
     expect(flows["claude-code"]).toBeUndefined();
     expect((await stores.session.get("s-kept"))?.state).toMatchObject({ binding: { confirmed: expect.stringMatching(/^scripted-/) } });
   });
+});
+
+describe("the host's setup and checks", () => {
+  it("runs setup in the fresh worktree, then records the checks, red ones included", async () => {
+    vi.stubEnv("KITCHEN_SINK_HARNESS_SETUP", `${process.execPath} -e "require('node:fs').writeFileSync('.set-up', '')"`);
+    vi.stubEnv("KITCHEN_SINK_HARNESS_CHECKS", `${process.execPath} check.mjs`);
+    const stores = createInMemoryStores();
+    const result = await turn(stores, recorded(), "s-setup-checks", "Say hello.");
+    expect(result.error).toBeUndefined();
+    const record = (await stateOf(stores, "s-setup-checks")).turns?.[result.requestId];
+    expect(record?.setup).toEqual({ state: "done", tail: null });
+    expect(record?.checks).toHaveLength(1);
+    expect(record?.checks?.[0]?.exitCode).toBe(3);
+    expect(record?.checks?.[0]?.tail).toContain("CHECK-MARKER");
+    expect(record?.error ?? null).toBeNull();
+  }, 60_000);
+
+  it("runs no check and no setup when neither is set", async () => {
+    const stores = createInMemoryStores();
+    const result = await turn(stores, recorded(), "s-no-commands", "Say hello.");
+    const record = (await stateOf(stores, "s-no-commands")).turns?.[result.requestId];
+    expect(record?.setup ?? null).toBeNull();
+    expect(record?.checks ?? null).toBeNull();
+  }, 60_000);
 });
