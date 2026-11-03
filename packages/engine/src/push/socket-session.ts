@@ -12,6 +12,8 @@
  * - **No check while open** (D2). An open socket hears its topics until it
  *   closes, at most an hour after it opened (4000); the client mints again to
  *   reconnect, and the mint checks again.
+ * - **`subscribed` frames.** Each accepted ticket is acknowledged once its
+ *   topics are subscribed on the bus, so the client reads after that point.
  * - **`crossing` frames.** After the first ticket, and on each change, the
  *   socket says whether its process's bus hears other processes. A control
  *   frame about the socket, never a notice kind.
@@ -125,6 +127,9 @@ export function openPushSocket(options: OpenPushSocketOptions): PushSocket {
       if (subscriptions.has(key)) continue;
       subscriptions.set(key, { wireKey: wireTopicKey(toWire(granted.bus)), off: bus.subscribe(granted.bus, hear) });
     }
+    // Its topics are heard from here on: a read the client makes once it
+    // hears this misses nothing under them.
+    send({ type: "subscribed" });
     if (accepted) return;
     accepted = true;
     clearTimeout(ticketTimer);

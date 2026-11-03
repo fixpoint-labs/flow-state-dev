@@ -496,9 +496,6 @@ export interface RequestStreamHandle {
 }
 
 /**
- * Handle returned by optional user-stream SSE connections.
- */
-/**
  * Callback set for request-stream SSE events.
  */
 export type RequestSSECallbacks = {

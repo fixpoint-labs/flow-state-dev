@@ -343,18 +343,48 @@ describe("the socket session", () => {
     const ws = socket(delivery!);
     expect(ws.frames).toEqual([]);
     ws.send({ type: "subscribe", ticket: await ticketFor(router, [topic.user()]) });
-    expect(ws.frames).toEqual([{ type: "crossing", crosses: false }]);
+    expect(ws.frames).toEqual([{ type: "subscribed" }, { type: "crossing", crosses: false }]);
     crosses = true;
     for (const listener of crossingListeners) listener(true);
     expect(ws.frames).toEqual([
+      { type: "subscribed" },
       { type: "crossing", crosses: false },
       { type: "crossing", crosses: true }
     ]);
-    // A second ticket adds topics; it sends no second first frame.
+    // A second ticket adds topics: it is acknowledged once its topics are
+    // heard, and sends no second crossing frame.
     ws.send({ type: "subscribe", ticket: await ticketFor(router, [topic.org()]) });
-    expect(ws.frames).toHaveLength(2);
+    expect(ws.frames.slice(3)).toEqual([{ type: "subscribed" }]);
     ws.end();
     expect(crossingListeners.size).toBe(0);
+  });
+
+  it("acknowledges a ticket only after its topics are subscribed on the bus", async () => {
+    const inner = createInMemoryBus();
+    const order: string[] = [];
+    const bus: ChangeBus = {
+      ...inner,
+      publish: inner.publish,
+      subscribe: (busTopic, listener) => {
+        order.push(`bus:${busTopic.scope}`);
+        return inner.subscribe(busTopic, listener);
+      },
+      crossesProcesses: true,
+      onCrossingChange: () => () => {}
+    };
+    const { router, delivery } = app({ bus });
+    const frames: string[] = [];
+    const session = delivery!.openSocket("alice", {
+      send: (frame) => {
+        order.push(`frame:${frame.type}`);
+        frames.push(frame.type);
+      },
+      close: () => {}
+    });
+    session.receive(JSON.stringify({ type: "subscribe", ticket: await ticketFor(router, [topic.user()]) }));
+    session.receive(JSON.stringify({ type: "subscribe", ticket: await ticketFor(router, [topic.org()]) }));
+    expect(order).toEqual(["bus:user", "frame:subscribed", "frame:crossing", "bus:org", "frame:subscribed"]);
+    session.closed();
   });
 
   it("stops hearing a topic it unsubscribes, and everything once it closes", async () => {
@@ -458,7 +488,7 @@ describe("the socket session", () => {
         )
       })
     );
-    expect(frames).toEqual([{ type: "crossing", crosses: false }]);
+    expect(frames).toEqual([{ type: "subscribed" }, { type: "crossing", crosses: false }]);
     session.closed();
   });
 });
@@ -491,7 +521,7 @@ describe("enablePushDelivery", () => {
       const ws = socket(delivery);
       ws.send({ type: "subscribe", ticket: answer.ticket });
       expect(ws.closed()).toBeUndefined();
-      expect(ws.frames).toEqual([{ type: "crossing", crosses: false }]);
+      expect(ws.frames).toEqual([{ type: "subscribed" }, { type: "crossing", crosses: false }]);
     }
   });
 

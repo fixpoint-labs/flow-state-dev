@@ -16,6 +16,7 @@ import type {
   SessionStreamHandle
 } from "../types";
 import { ClientHttpError } from "../types";
+import { BACKOFF_INITIAL_MS, BACKOFF_MAX_MS, backoffDelay } from "../internal/backoff";
 
 /** Where an opener connects, and through what: the opening client's transport. */
 type StreamTarget = {
@@ -304,8 +305,8 @@ export function openSessionStream(
   options: SessionStreamOptions
 ): SessionStreamHandle {
   const { fetcher } = target;
-  const initialDelayMs = options.retry?.initialDelayMs ?? 1_000;
-  const maxDelayMs = options.retry?.maxDelayMs ?? 30_000;
+  const initialDelayMs = options.retry?.initialDelayMs ?? BACKOFF_INITIAL_MS;
+  const maxDelayMs = options.retry?.maxDelayMs ?? BACKOFF_MAX_MS;
   const itemTypes =
     options.itemTypes === undefined || options.itemTypes.length === 0
       ? undefined
@@ -318,7 +319,7 @@ export function openSessionStream(
 
   const reconnectLater = (): void => {
     if (stopped) return;
-    const delay = Math.min(maxDelayMs, initialDelayMs * 2 ** attempt);
+    const delay = backoffDelay(attempt, initialDelayMs, maxDelayMs);
     attempt += 1;
     timer = setTimeout(() => {
       timer = undefined;

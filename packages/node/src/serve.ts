@@ -193,6 +193,7 @@ export function serve(
   const { app: honoApp, tryDedicatedRoute, dispose } = createServerApp(app, {
     basePath: options.basePath,
     healthPath: options.healthPath,
+    servesPush: options.push !== false,
   });
   const push = servePush(app, options);
 

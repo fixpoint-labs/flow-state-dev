@@ -32,6 +32,7 @@ import {
   type WireNotice,
   type WireTopic
 } from "@flow-state-dev/contracts";
+import { BACKOFF_INITIAL_MS, backoffDelay } from "../internal/backoff";
 import type { Transport } from "../internal/http";
 import type { FlowCapabilities } from "../types";
 
@@ -68,9 +69,6 @@ type Handle = {
 /** How long a socket may take to open before the connect counts as failed. */
 const HANDSHAKE_TIMEOUT_MS = 10_000;
 
-/** Backoff between failed connects: 1 s, doubling, at most 30 s. */
-const RETRY_BASE_MS = 1_000;
-const RETRY_MAX_MS = 30_000;
 
 /** Close codes that mean "this connect failed", not "the connection dropped". */
 const FAILED_CONNECT_CODES = new Set<number>([
@@ -97,6 +95,21 @@ function readMintAnswer(value: unknown): WebSocketAnswer | { transport: "other";
   return typeof answer.transport === "string" ? { transport: "other", name: answer.transport } : undefined;
 }
 
+/** A frame the server sends, checked before anything reads it; anything else is dropped. */
+function readServerFrame(value: unknown): PushServerFrame | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const frame = value as Record<string, unknown>;
+  if (frame.type === "subscribed") return { type: "subscribed" };
+  if (frame.type === "crossing") return typeof frame.crosses === "boolean" ? { type: "crossing", crosses: frame.crosses } : undefined;
+  if (frame.type !== "notice" || typeof frame.kind !== "string") return undefined;
+  const topic = frame.topic as Record<string, unknown> | null | undefined;
+  if (typeof topic !== "object" || topic === null) return undefined;
+  if (topic.resource !== undefined && typeof topic.resource !== "string") return undefined;
+  const scoped =
+    topic.scope === "session" ? typeof topic.id === "string" : topic.scope === "user" || topic.scope === "org";
+  return scoped ? (frame as PushServerFrame) : undefined;
+}
+
 /** Whether `subscribed` covers a notice under `heard`. */
 function covers(subscribed: WireTopic, heard: WireTopic): boolean {
   if (subscribed.scope !== heard.scope) return false;
@@ -113,12 +126,18 @@ export function createPushHub(deps: {
   const handles = new Set<Handle>();
   /** Every subscribed topic, counted by handle. */
   const counts = new Map<string, { topic: WireTopic; count: number }>();
-  /** Topics the current socket hears. */
+  /** Topics the current socket hears: the server acknowledged their ticket. */
   const granted = new Set<string>();
   /** Topics the mint left out of its answer, until asked again. */
   const refused = new Set<string>();
-  /** Topics a mint is asking for now. */
-  const minting = new Set<string>();
+  /** Topics a mint is asking for now, each with the connection it asks for. */
+  const minting = new Map<string, number>();
+  /**
+   * The topics of each ticket sent and not yet acknowledged, in the order
+   * sent. The server acknowledges tickets in that order, once it hears their
+   * topics; until then a read could miss a change under them.
+   */
+  let unacknowledged: Array<Set<string>> = [];
 
   let mode: "unknown" | "checking" | "none" | "push" = "unknown";
   let socket: WebSocket | undefined;
@@ -183,21 +202,48 @@ export function createPushHub(deps: {
       body: JSON.stringify({ topics })
     }));
 
-  /** Record which of `asked` the answer granted; returns the newly granted keys. */
+  /**
+   * Record which of `asked` the answer left out, and return the ones it
+   * granted. Those are heard only once the server acknowledges the ticket.
+   */
   const record = (asked: readonly string[], answer: { topics: WireTopic[] }): Set<string> => {
     const answered = new Set(answer.topics.map(wireTopicKey));
-    const added = new Set<string>();
+    const grantedNow = new Set<string>();
     for (const key of asked) {
       if (!counts.has(key)) continue;
       if (answered.has(key)) {
         refused.delete(key);
-        if (!granted.has(key)) added.add(key);
-        granted.add(key);
+        grantedNow.add(key);
       } else {
         refused.add(key);
       }
     }
-    return added;
+    return grantedNow;
+  };
+
+  /** Send a ticket for `keys`, to be heard once the server acknowledges it. */
+  const sendTicket = (ws: WebSocket, ticket: string, keys: Set<string>): void => {
+    // Queued before sending: a server may acknowledge before `send` returns.
+    unacknowledged.push(keys);
+    ws.send(JSON.stringify({ type: "subscribe", ticket }));
+  };
+
+  /** The server heard the oldest ticket's topics: they are covered, and read once. */
+  const acknowledged = (): void => {
+    const keys = unacknowledged.shift();
+    if (keys === undefined) return;
+    // A ticket accepted: the connect worked, so the backoff starts over.
+    failures = 0;
+    const added = new Set<string>();
+    for (const key of keys) {
+      if (!counts.has(key) || granted.has(key)) continue;
+      granted.add(key);
+      added.add(key);
+    }
+    updateTimers();
+    // Each connect, and each topic added, reads once (ER-6): it may have
+    // missed changes made before the server heard it.
+    touched(added);
   };
 
   const touched = (added: Set<string>): void => {
@@ -207,33 +253,36 @@ export function createPushHub(deps: {
   /** Ask for topics the open socket doesn't hear yet. */
   const mintMore = async (keys: readonly string[]): Promise<void> => {
     if (state !== "open") return;
-    const asking = keys.filter((key) => counts.has(key) && !granted.has(key) && !minting.has(key));
+    const asking = keys.filter(
+      (key) => counts.has(key) && !granted.has(key) && !minting.has(key) && !unacknowledged.some((set) => set.has(key))
+    );
     if (asking.length === 0) return;
-    for (const key of asking) minting.add(key);
     const at = generation;
+    for (const key of asking) minting.set(key, at);
     let answer: Awaited<ReturnType<typeof mint>>;
     try {
       answer = await mint(asking.map((key) => counts.get(key)!.topic));
     } catch {
       answer = undefined;
     }
-    for (const key of asking) minting.delete(key);
+    // Only this mint's own markers: a newer connection's mint of the same
+    // topic stays in flight.
+    for (const key of asking) if (minting.get(key) === at) minting.delete(key);
     if (at !== generation || state !== "open" || socket === undefined) return;
     if (answer === undefined || answer.transport !== "websocket") {
       for (const key of asking) if (counts.has(key)) refused.add(key);
       updateTimers();
       return;
     }
-    if (answer.topics.length > 0) socket.send(JSON.stringify({ type: "subscribe", ticket: answer.ticket }));
-    const added = record(asking, answer);
+    const grantedNow = record(asking, answer);
+    if (answer.topics.length > 0) sendTicket(socket, answer.ticket, grantedNow);
     updateTimers();
-    touched(added);
   };
 
   const scheduleRetry = (): void => {
     failures += 1;
     lapsed = true;
-    const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** Math.max(0, failures - 1));
+    const delay = backoffDelay(failures - 1);
     clearTimeout(retryTimer);
     retryTimer = setTimeout(() => void connect(), delay);
     updateTimers();
@@ -311,6 +360,8 @@ export function createPushHub(deps: {
       state = "idle";
       crosses = false;
       granted.clear();
+      minting.clear();
+      unacknowledged = [];
       generation += 1;
       try {
         ws.close();
@@ -337,36 +388,38 @@ export function createPushHub(deps: {
       crosses = false;
       firstCrossingFrame = true;
       granted.clear();
-      ws.send(JSON.stringify({ type: "subscribe", ticket: ready.ticket }));
-      const added = record(
-        asked.map(wireTopicKey),
-        ready
-      );
+      unacknowledged = [];
+      // The connect reads once the server acknowledges this ticket, not now:
+      // a read now could finish before the server hears the topics.
+      sendTicket(ws, ready.ticket, record(asked.map(wireTopicKey), ready));
       updateTimers();
-      // Each connect reads once (ER-6): it may have missed changes.
-      touched(added);
       // Topics subscribed while this connect was in flight.
-      void mintMore([...counts.keys()].filter((key) => !granted.has(key) && !refused.has(key)));
+      const asked2 = new Set(asked.map(wireTopicKey));
+      void mintMore([...counts.keys()].filter((key) => !asked2.has(key) && !refused.has(key)));
     });
     ws.addEventListener("message", (event) => {
       if (socket !== ws) return;
-      let frame: PushServerFrame;
+      let parsed: unknown;
       try {
-        frame = JSON.parse(String((event as MessageEvent).data)) as PushServerFrame;
+        parsed = JSON.parse(String((event as MessageEvent).data));
       } catch {
         return;
       }
+      const frame = readServerFrame(parsed);
+      if (frame === undefined) return;
+      if (frame.type === "subscribed") {
+        acknowledged();
+        return;
+      }
       if (frame.type === "crossing") {
-        // The server sends this only once it accepted the ticket: the connect
-        // has succeeded, so the backoff starts over.
-        failures = 0;
         const first = firstCrossingFrame;
         firstCrossingFrame = false;
         const changed = frame.crosses !== crosses;
         crosses = frame.crosses;
         updateTimers();
         // A change of the answer reads once, as a connect does. The first
-        // frame follows the connect's own read, so it adds none.
+        // frame follows the connect's own read (on its acknowledgement), so
+        // it adds none.
         if (changed && !first) touched(new Set(granted));
         return;
       }
@@ -396,7 +449,7 @@ export function createPushHub(deps: {
       mode = "unknown";
       lapsed = true;
       clearTimeout(retryTimer);
-      retryTimer = setTimeout(() => void start(), RETRY_BASE_MS);
+      retryTimer = setTimeout(() => void start(), BACKOFF_INITIAL_MS);
       updateTimers();
       return;
     }
@@ -421,6 +474,8 @@ export function createPushHub(deps: {
     failures = 0;
     granted.clear();
     refused.clear();
+    minting.clear();
+    unacknowledged = [];
     if (mode === "checking") mode = "unknown";
     ws?.close(1000);
   };

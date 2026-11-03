@@ -684,8 +684,10 @@ through the read check its scope uses and signs a 30-second ticket for the ones
 it grants. The host hands each socket that opens on `/users/:userId/stream` to
 `delivery.openSocket(userId, { send, close })` and moves text frames to the
 returned session's `receive`. The session accepts topics only from a ticket for
-that user, and closes the socket after an hour. After the first ticket, and each
-time the bus's `crossesProcesses` changes, it sends `{ type: "crossing", crosses }`:
+that user, and closes the socket after an hour. It answers each accepted ticket
+with `{ type: "subscribed" }` once the ticket's topics are heard, so a client reads
+after that point and misses nothing. After the first ticket, and each time the
+bus's `crossesProcesses` changes, it sends `{ type: "crossing", crosses }`:
 whether notices from other processes reach this socket. A client keeps reading on
 its timer until it hears `crosses: true`.
 `serve()` in `@flow-state-dev/node` does all of this; `secret` defaults to a

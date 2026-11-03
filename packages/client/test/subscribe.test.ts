@@ -12,6 +12,12 @@ import { createClient, topic, type ClientFetch, type WireNotice, type WireTopic 
 /** A WebSocket double the test drives: open, deliver a frame, drop. */
 class FakeSocket {
   static all: FakeSocket[] = [];
+  /**
+   * Acknowledge each ticket at once, as a server that subscribes it before
+   * the next frame does. A test of the gap before the acknowledgement turns
+   * it off and sends `subscribed` itself.
+   */
+  static autoAck = true;
   readonly sent: unknown[] = [];
   readyState = 0;
   closedWith: number | undefined;
@@ -23,7 +29,9 @@ class FakeSocket {
     (this.listeners[type] ??= []).push(listener);
   }
   send(data: string): void {
-    this.sent.push(JSON.parse(data));
+    const frame = JSON.parse(data) as { type: string };
+    this.sent.push(frame);
+    if (frame.type === "subscribe" && FakeSocket.autoAck) this.frame({ type: "subscribed" });
   }
   close(code = 1000): void {
     if (this.readyState === 3) return;
@@ -64,6 +72,8 @@ function server(
     mintStatus?: () => number;
     /** A raw 200 body for the mint, in place of a real answer. */
     mintBody?: string;
+    /** Hold a mint's answer until the promise this returns settles. */
+    holdMint?: (topics: WireTopic[]) => Promise<void> | undefined;
   } = {}
 ) {
   const mints: MintCall[] = [];
@@ -78,6 +88,7 @@ function server(
     if (url.endsWith("/users/u1/stream") && init?.method === "POST") {
       const { topics } = JSON.parse(String(init.body)) as { topics: WireTopic[] };
       mints.push({ topics, authorization: headers.get("authorization") });
+      await options.holdMint?.(topics);
       const status = options.mintStatus?.() ?? 200;
       if (status !== 200) return Response.json({ error: "no" }, { status });
       if (options.mintBody !== undefined) return new Response(options.mintBody, { status: 200 });
@@ -109,6 +120,7 @@ const notice = (topicValue: WireTopic, kind: WireNotice["kind"] = "items"): Wire
 
 beforeEach(() => {
   FakeSocket.all = [];
+  FakeSocket.autoAck = true;
   vi.useFakeTimers();
   vi.stubGlobal("WebSocket", FakeSocket);
 });
@@ -314,6 +326,7 @@ describe("client.subscribe on a host with push", () => {
   });
 
   it("backs off 1, 2, 4, 8, 16 s across sockets that open and then have their ticket refused", async () => {
+    FakeSocket.autoAck = false; // a refused ticket is never acknowledged
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const { fetcher } = server({ push: { transport: "websocket" } });
     client(fetcher).subscribe([S1], { onChange: () => {}, pollIntervalMs: 60_000 });
@@ -332,6 +345,86 @@ describe("client.subscribe on a host with push", () => {
       gaps.push(waited);
     }
     expect(gaps.slice(0, 5)).toEqual([1000, 2000, 4000, 8000, 16000]);
+  });
+
+  it("reads on connect only once the server acknowledges the ticket, and keeps its timer until then", async () => {
+    FakeSocket.autoAck = false;
+    const { fetcher } = server({ push: { transport: "websocket" } });
+    const onChange = vi.fn();
+    client(fetcher).subscribe([S1], { onChange, pollIntervalMs: 1000 });
+    await settle();
+    const socket = FakeSocket.all.at(-1)!;
+    socket.open();
+    // A read now could finish before the server hears S1: a write in that
+    // gap would be missed. So no connect read yet, and the timer runs.
+    expect(onChange).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(onChange.mock.calls).toEqual([[null]]);
+    onChange.mockClear();
+    socket.frame({ type: "subscribed" });
+    socket.frame({ type: "crossing", crosses: true });
+    // The connect read, after acceptance; the first crossing frame adds none.
+    expect(onChange.mock.calls).toEqual([[null]]);
+    onChange.mockClear();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("covers a topic added to a live socket only once the server acknowledges its ticket", async () => {
+    const { fetcher } = server({ push: { transport: "websocket" } });
+    const fsd = client(fetcher);
+    const first = await connected(fsd, [S1], undefined, true);
+    FakeSocket.autoAck = false;
+    const onChange = vi.fn();
+    fsd.subscribe([topic.org()], { onChange, pollIntervalMs: 1000 });
+    await settle();
+    expect(first.socket.sent.at(-1)).toEqual({ type: "subscribe", ticket: "t2" });
+    expect(onChange).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(onChange.mock.calls).toEqual([[null]]);
+    onChange.mockClear();
+    first.socket.frame({ type: "subscribed" });
+    expect(onChange.mock.calls).toEqual([[null]]);
+    onChange.mockClear();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("mints a topic again after a stop and reopen, though an older mint for it was still in flight", async () => {
+    let release: (() => void) | undefined;
+    const { fetcher, mints } = server({
+      push: { transport: "websocket" },
+      holdMint: (topics) =>
+        topics.some((t) => t.scope === "org") && release === undefined
+          ? new Promise<void>((resolve) => (release = resolve))
+          : undefined
+    });
+    const fsd = client(fetcher);
+    const first = await connected(fsd, [S1], undefined, true);
+    const pending = fsd.subscribe([topic.org()], { onChange: () => {} });
+    await settle();
+    first.sub.close();
+    pending.close();
+    const second = await connected(fsd, [topic.user()], undefined, true);
+    const onChange = vi.fn();
+    fsd.subscribe([topic.org()], { onChange });
+    await settle();
+    release!();
+    await settle();
+    expect(mints.filter((call) => call.topics.some((t) => t.scope === "org"))).toHaveLength(2);
+    expect(second.socket.sent.filter((frame) => (frame as { type: string }).type === "subscribe")).toHaveLength(2);
+    expect(onChange.mock.calls).toEqual([[null]]);
+  });
+
+  it("drops a frame that isn't one the server sends", async () => {
+    const { fetcher } = server({ push: { transport: "websocket" } });
+    const { onChange, socket } = await connected(client(fetcher), [S1], undefined, true);
+    onChange.mockClear();
+    socket.frame({ type: "notice", topic: { scope: "session" }, kind: "items" });
+    socket.frame({ type: "notice", kind: "items" });
+    socket.frame({ type: "crossing", crosses: "yes" });
+    socket.frame(["notice"]);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("reconnects at once when the server ends the socket at its age limit", async () => {

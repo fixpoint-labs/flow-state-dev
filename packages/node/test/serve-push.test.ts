@@ -109,7 +109,7 @@ describe("serve() push delivery", () => {
     await ws.opened;
     ws.socket.send(JSON.stringify({ type: "subscribe", ticket: answer.ticket }));
     await until(() => ws.frames.length > 0);
-    expect(ws.frames[0]).toEqual({ type: "crossing", crosses: false });
+    expect(ws.frames[0]).toEqual({ type: "subscribed" });
 
     await fetch(`${base}/api/flows/chat/${sessionId}/actions/say`, {
       method: "POST",
@@ -154,7 +154,7 @@ describe("serve() push delivery", () => {
     await onB.opened;
     onB.socket.send(JSON.stringify({ type: "subscribe", ticket: answer.ticket }));
     await until(() => onB.frames.length > 0);
-    expect(onB.frames[0]).toEqual({ type: "crossing", crosses: false });
+    expect(onB.frames[0]).toEqual({ type: "subscribed" });
 
     const onC = open(c.base, `/api/flows${answer.path}`);
     await onC.opened;
@@ -179,9 +179,29 @@ describe("serve() push delivery", () => {
         ws.socket.send(JSON.stringify({ type: "subscribe", ticket: answer.ticket }));
         await until(() => ws.frames.length > 0 || ws.closeCode() !== undefined);
         expect(ws.closeCode()).toBeUndefined();
-        expect(ws.frames[0]).toEqual({ type: "crossing", crosses: false });
+        expect(ws.frames[0]).toEqual({ type: "subscribed" });
       }
     }
+  });
+
+  it("reports and mints push only on the host that serves the socket, when two hosts share a router", async () => {
+    const flowState = createFlowState({ flows: { chat }, stores: { default: { primary: inMemoryStores() } } });
+    const router = await flowState.getRouter();
+    const options = { port: 0, host: "127.0.0.1", handleSignals: false, shutdownGraceMs: 200, disposeOnClose: false };
+    const withPush = await serve(router, options);
+    const withoutPush = await serve(router, { ...options, push: false });
+    handles.push(withPush, withoutPush);
+    const on = `http://127.0.0.1:${withPush.port}`;
+    const off = `http://127.0.0.1:${withoutPush.port}`;
+    expect(await (await fetch(`${on}/api/flows/capabilities`)).json()).toEqual({ userStream: false, push: { transport: "websocket" } });
+    expect(await (await fetch(`${off}/api/flows/capabilities`)).json()).toEqual({ userStream: false, push: null });
+    const offMint = await fetch(`${off}/api/flows/users/alice/stream`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ topics: [topic.user()] })
+    });
+    expect(offMint.status).toBe(404);
+    expect((await mint(on, [topic.user()])).transport).toBe("websocket");
   });
 
   it("takes the shared secret from FSD_PUSH_SECRET when pushSecret is not given", async () => {
@@ -194,7 +214,7 @@ describe("serve() push delivery", () => {
     await ws.opened;
     ws.socket.send(JSON.stringify({ type: "subscribe", ticket: answer.ticket }));
     await until(() => ws.frames.length > 0);
-    expect(ws.frames[0]?.type).toBe("crossing");
+    expect(ws.frames[0]?.type).toBe("subscribed");
   });
 
   it("closes open sockets when the server closes", async () => {
@@ -223,6 +243,20 @@ describe("serve() push delivery", () => {
 });
 
 describe("createServerApp", () => {
+  it("reports no push over a router another host serves push for", async () => {
+    const flowState = createFlowState({ flows: { chat }, stores: { default: { primary: inMemoryStores() } } });
+    const router = await flowState.getRouter();
+    const handle = await serve(router, { port: 0, host: "127.0.0.1", handleSignals: false, disposeOnClose: false });
+    handles.push(handle);
+    const { app } = createServerApp(router);
+    const response = await app.fetch(new Request("http://localhost/api/flows/capabilities"));
+    expect(await response.json()).toEqual({ userStream: false, push: null });
+    const minted = await app.fetch(
+      new Request("http://localhost/api/flows/users/alice/stream", { method: "POST", body: JSON.stringify({ topics: [] }) })
+    );
+    expect(minted.status).toBe(404);
+  });
+
   it("serves no push: capabilities says so, with no socket to open", async () => {
     const flowState = createFlowState({ flows: { chat }, stores: { default: { primary: inMemoryStores() } } });
     const { app, dispose } = createServerApp(flowState);

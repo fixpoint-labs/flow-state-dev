@@ -56,11 +56,19 @@ export type WireNotice = {
  * What a server sends on the socket.
  *
  * - `notice`: a change under a topic the socket subscribed.
+ * - `subscribed`: a delivery control frame acknowledging one accepted ticket,
+ *   in the order the tickets arrived. Sent once the ticket's topics are heard,
+ *   so a read the client makes after it misses no change under them.
  * - `crossing`: a delivery control frame saying whether this process's bus
- *   hears changes made in other processes. Sent after the first ticket and on
- *   each change of the answer. Never a notice kind, and never carries rows.
+ *   hears changes made in other processes. Sent after the first ticket's
+ *   `subscribed`, and on each change of the answer.
+ *
+ * Control frames are never a notice kind, and never carry rows.
  */
-export type PushServerFrame = ({ type: "notice" } & WireNotice) | { type: "crossing"; crosses: boolean };
+export type PushServerFrame =
+  | ({ type: "notice" } & WireNotice)
+  | { type: "subscribed" }
+  | { type: "crossing"; crosses: boolean };
 
 /**
  * What a client sends on the socket.

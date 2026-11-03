@@ -15,6 +15,7 @@
  */
 import { useEffect, useMemo, useRef } from "react";
 import type { WireNotice, WireTopic } from "@flow-state-dev/client";
+import { wireTopicKey } from "@flow-state-dev/contracts";
 import { coalescedReads } from "../internal/coalescedReads";
 import { useClient } from "../internal/useClient";
 
@@ -32,14 +33,12 @@ export type UseSubscriptionOptions = {
 
 /** One key per distinct topic list, so an equal list keeps the subscription. */
 function topicsKey(topics: readonly WireTopic[]): string {
-  return JSON.stringify(
-    topics.map((t) => [t.scope, t.scope === "session" ? t.id : "", t.resource ?? ""])
-  );
+  return topics.map(wireTopicKey).join("\u0001");
 }
 
 function sameNotice(a: WireNotice | null, b: WireNotice | null): boolean {
   if (a === null || b === null) return a === b;
-  return a.kind === b.kind && topicsKey([a.topic]) === topicsKey([b.topic]);
+  return a.kind === b.kind && wireTopicKey(a.topic) === wireTopicKey(b.topic);
 }
 
 /**

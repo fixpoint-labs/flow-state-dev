@@ -173,7 +173,7 @@ durable background work). See the deployment guides for the full topology:
 | `pageHandler` | — | A Connect-style `(req, res, next)` handler tried before `staticDir`'s SPA fallback for non-API GET requests, for a dev server's middleware. A real file in `staticDir` and a dedicated adapter route are served ahead of it. Calling `next()` passes the request on; `next(err)` returns a 500. |
 | `shutdownGraceMs` | `10000` | Grace window before lingering connections are force-closed. |
 | `disposeOnClose` | `true` | Whether `close()` disposes the `FlowState` after draining. Set `false` when several servers share one runtime, and dispose it yourself once they have all closed. |
-| `push` | `true` | Serve the change-notice WebSocket at `<basePath>/users/:userId/stream` (see [Push](#push)). `false` reports `push: null`. |
+| `push` | `true` | Serve the change-notice WebSocket at `<basePath>/users/:userId/stream` (see [Push](#push)). `false` reports `push: null` and answers the mint 404, also over a router another host serves push for. |
 | `pushSecret` | `process.env.FSD_PUSH_SECRET`, then a random key | `string \| (() => string)`. The key push tickets are signed with. Give every process behind one address the same one. |
 
 ### `createPageHtmlTransform(options)`

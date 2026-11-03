@@ -32,3 +32,5 @@
 | 2026-11-03 | 7d98fce | n/a | FAIL (expected) | `no-socket`: `a:no-read-between` (5 reads in 10 s), `a:within-1s` (673, 1284, 1283 ms); also `a:crossing`, `b:control` and CAN'T TELL on c's crossing frames, as before: nothing pushes |
 | 2026-11-03 | 7d98fce | n/a | FAIL (expected) | `skip-check`: `b:c-never-hears` only (C's handler ran 7 times) |
 | 2026-11-03 | 7d98fce | n/a | FAIL (expected) | `ignore-crossing`: `c:second-process` only (tab 2 never showed the reply) |
+| 2026-11-03 | fix/FIX-2428-subscribe (after 7ac2f3f, pre-commit) | n/a | PASS | After the ticket acknowledgement, stale-mint and per-host push fixes. a: 0 reads in 10 s idle; replies shown 4, 2, 4 ms · b: C never heard; B nothing after revocation · c: no push 1496 ms; second process 1446 ms |
+| 2026-11-03 | fix/FIX-2428-subscribe (after 7ac2f3f, pre-commit) | n/a | FAIL (expected) | `no-socket`: `a:no-read-between` (5 reads), `a:within-1s` (674, 1283, 1287 ms); plus `a:crossing`, `b:control` and c's frames CAN'T TELL, as before · `skip-check`: `b:c-never-hears` only (7 calls) · `ignore-crossing`: `c:second-process` only |
