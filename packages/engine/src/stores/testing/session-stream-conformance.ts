@@ -56,12 +56,11 @@ export type CreateSessionStreamConformanceTestsOptions = {
 
 const SHIPPED_TIMINGS = { ...SESSION_STREAM_TIMINGS };
 /**
- * How soon a reply a notice woke must arrive, on the shipped clock. Below one
- * interval, the soonest the read after a missed or spent wake can come, with
- * room for a loaded machine (a reply measured from its POST takes the run's
- * own time too).
+ * How soon a reply a notice woke must arrive, on the shipped clock: half an
+ * interval. A wake that was missed, or a read slot already spent, shows as one
+ * interval or more.
  */
-const WOKEN_WITHIN_MS = SHIPPED_TIMINGS.intervalMs * 0.75;
+const WOKEN_WITHIN_MS = SHIPPED_TIMINGS.intervalMs / 2;
 const FAST_TIMINGS = {
   intervalMs: 40,
   maxAgeMs: 60_000,
@@ -279,6 +278,27 @@ async function finished(stores: StoreRegistry, requestId: string): Promise<void>
     if (Date.now() > deadline) throw new Error(`request ${requestId} never finished`);
     await delay(10);
   }
+}
+
+/**
+ * Wait until a view of the session has a quiet interval behind it, so the
+ * next change's read can't be held by the one-read-an-interval cap.
+ *
+ * A request's last write is not its settle: its run stamps `finalizedAtMs`
+ * just after, and that write's notice can wake a view that opened in
+ * between. The read it wakes comes up to an interval after the view's last
+ * one, and a change inside the interval after that read waits for the next.
+ * So wait for the stamp, then two intervals.
+ */
+async function quietAfter(stores: StoreRegistry, requestId: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  for (;;) {
+    const record = await stores.request.get(requestId);
+    if (record?.finalizedAtMs != null) break;
+    if (Date.now() > deadline) throw new Error(`request ${requestId} was never finalized`);
+    await delay(10);
+  }
+  await delay(SESSION_STREAM_TIMINGS.intervalMs * 2 + 300);
 }
 
 async function seedSession(
@@ -1093,11 +1113,11 @@ export function createSessionStreamConformanceTests(
       Object.assign(SESSION_STREAM_TIMINGS, SHIPPED_TIMINGS);
       const stores = { ...(await createStores()), bus: crossingBus() };
       const r = router(stores);
-      await finished(stores, await say(r, "s1", { text: "opening" }));
+      const opening = await say(r, "s1", { text: "opening" });
+      await finished(stores, opening);
       const live = await stream(r, "s1");
       await live.waitFor((e) => e.type === "session.runs");
-      // Long past the first read, so a timer could not be what sends it.
-      await delay(1_500);
+      await quietAfter(stores, opening);
 
       const sentAt = Date.now();
       await finished(stores, await say(r, "s1", { text: "woken by the write" }));
@@ -1114,10 +1134,11 @@ export function createSessionStreamConformanceTests(
       Object.assign(SESSION_STREAM_TIMINGS, SHIPPED_TIMINGS);
       const stores = { ...(await createStores()), bus: crossingBus() };
       const r = router(stores);
-      await finished(stores, await say(r, "s1", { text: "opening" }));
+      const opening = await say(r, "s1", { text: "opening" });
+      await finished(stores, opening);
       const live = await stream(r, "s1");
       await live.waitFor((e) => e.type === "session.runs");
-      await delay(1_500);
+      await quietAfter(stores, opening);
 
       const release = hold("spread");
       const sentAt = Date.now();
