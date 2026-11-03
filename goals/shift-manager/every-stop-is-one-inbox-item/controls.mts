@@ -80,6 +80,7 @@ export const CONTROLS: Record<string, Control> = {
   "wrapper-kill": control("wrapper-kill", {
     legs: ["j3"],
     mustFail: ["j3:crashed"],
+    // `from` must match the crash line in goals/lib/server.mts verbatim; keep the two in sync.
     patches: [{ module: "goals/lib/server.mts", from: String.raw`stopProcessGroup\(child, "SIGKILL"\); // the crash`, to: 'child.kill("SIGKILL"); // the crash' }],
   }),
 };

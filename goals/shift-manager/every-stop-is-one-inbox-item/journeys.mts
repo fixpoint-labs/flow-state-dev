@@ -232,6 +232,8 @@ export async function journeyRestart(serving: Serving, shipped: Shipped, context
   try {
     served = await crashAndRestart(served.child, () => serveLab(serving, "j3-after"));
   } catch (error) {
+    // No restart served, so `served` is still the crashed host: stop it on every exit (its exit is awaited).
+    await served.stop();
     // Only the crash's own refusal is `j3:crashed`; a restart that never serves throws as before.
     if (!(error instanceof Error && error.message.startsWith("crashAndRestart:"))) throw error;
     fail("j3:crashed", error.message);
