@@ -213,6 +213,28 @@ describe("the Postgres bus · what a subscriber hears", () => {
   });
 });
 
+describe("the Postgres bus · a notice too large for NOTIFY", () => {
+  it("still reaches the other process's subscribers narrowed to its resource", async () => {
+    const network = new FakeNotifyNetwork();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const here = busOn(network);
+    const there = busOn(network);
+    const resource = "r".repeat(9_000);
+    const narrowed = hear(there, { ...s1, resource });
+    // Widened to the scope: a view of another resource under it reads too, never fewer.
+    const other = hear(there, { ...s1, resource: "notes" });
+    const elsewhere = hear(there, { ...s1, id: "s2" });
+    hear(here, s1);
+    await until(() => there.crossesProcesses && here.crossesProcesses);
+    await here.publish({ topic: { ...s1, resource }, kind: "run" });
+    await until(() => narrowed.length === 1);
+    expect(narrowed[0]).toEqual({ topic: { ...s1, resource }, kind: "run" });
+    expect(other.map((n) => n.kind)).toEqual(["run"]);
+    await delay(10);
+    expect(elsewhere).toEqual([]);
+  });
+});
+
 describe("the Postgres bus · what it holds open", () => {
   it("opens no connection until a subscriber does, and hands it back when the last one leaves", async () => {
     const network = new FakeNotifyNetwork();

@@ -84,6 +84,7 @@ export type PostgresBusOptions = {
 let warnedNeverHeard = false;
 let warnedOversized = false;
 let warnedListenerFailure = false;
+let warnedListenFailed = false;
 
 /** Create the Postgres bus. */
 export function createPostgresBus(options: PostgresBusOptions): PostgresBus {
@@ -192,7 +193,8 @@ class PgBus implements PostgresBus {
           notification: (payload) => this.#heard(payload),
           lost: () => this.#lost(connection)
         });
-      } catch {
+      } catch (error) {
+        warnListenFailed(error);
         connection = undefined;
       }
       if (generation !== this.#generation) {
@@ -287,7 +289,35 @@ class PgBus implements PostgresBus {
     }
     if (ping !== undefined) return; // another process's ping
     const notice = noticeOf(message);
-    if (notice !== undefined) void this.#local.publish(notice);
+    if (notice === undefined) return;
+    if ((message as { w?: unknown }).w === true) this.#wakeScope(notice);
+    else void this.#local.publish(notice);
+  }
+
+  /**
+   * A notice widened to its scope on the way (too large for `NOTIFY`): every
+   * subscriber of that scope hears it, narrowed or not, each on its own topic,
+   * since the in-process fan-out gives a narrowed subscriber only its own
+   * resource and the widened notice names none.
+   */
+  #wakeScope(notice: ChangeNotice): void {
+    const { scope, id, tenantId } = notice.topic;
+    const hearing = [...this.#subscriptions].filter(
+      ({ topic }) => topic.scope === scope && topic.id === id && topic.tenantId === tenantId
+    );
+    if (hearing.length === 0) return;
+    queueMicrotask(() => {
+      for (const subscription of hearing) {
+        if (!this.#subscriptions.has(subscription)) continue;
+        try {
+          subscription.listener({ topic: subscription.topic, kind: notice.kind });
+        } catch (error) {
+          if (warnedListenerFailure) continue;
+          warnedListenerFailure = true;
+          console.warn("[flow-state] a change-bus listener threw; later failures are not logged.", error);
+        }
+      }
+    });
   }
 
   #resync(): void {
@@ -331,7 +361,10 @@ class PgBus implements PostgresBus {
   }
 }
 
-/** The `NOTIFY` payload for `notice`: its topic and kind, and the bus's id. */
+/**
+ * The `NOTIFY` payload for `notice`: its topic and kind, and the bus's id;
+ * `w: true` when it was widened to its scope to fit.
+ */
 function payloadOf(id: string, notice: ChangeNotice): string {
   const { topic, kind } = notice;
   const payload = JSON.stringify({ p: id, topic, kind });
@@ -343,7 +376,7 @@ function payloadOf(id: string, notice: ChangeNotice): string {
     );
   }
   const { resource: _resource, ...scope } = topic;
-  return JSON.stringify({ p: id, topic: scope, kind });
+  return JSON.stringify({ p: id, topic: scope, kind, w: true });
 }
 
 /** A notice read off the wire, or `undefined` when it isn't one. */
@@ -357,6 +390,16 @@ function noticeOf(message: object): ChangeNotice | undefined {
     topic: { scope, id, tenantId, ...(resource !== undefined ? { resource } : {}) },
     kind: kind as ChangeNotice["kind"]
   };
+}
+
+/** The first time a listening connection fails to open, say why; later failures are not logged. */
+function warnListenFailed(error: unknown): void {
+  if (warnedListenFailed) return;
+  warnedListenFailed = true;
+  console.warn(
+    "[flow-state] the Postgres change bus could not open its listening connection; views on this process keep reading the store once a second while it retries. Later failures are not logged.",
+    error
+  );
 }
 
 function warnNeverHeard(): void {
