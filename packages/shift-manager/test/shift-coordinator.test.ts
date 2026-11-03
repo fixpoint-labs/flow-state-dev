@@ -69,6 +69,7 @@ describe("which worker is the Shift Coordinator (V2, D2)", () => {
       kind: "agent",
       door: "run",
       rules: false,
+      doorTakesTask: false,
       team: GENERAL_TEAM,
       teamName: "General",
       name: "shift-coordinator",
