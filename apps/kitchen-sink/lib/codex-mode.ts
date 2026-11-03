@@ -48,14 +48,13 @@ import {
   assertTestedSdkVersion,
   CODEX_PASS,
   CodexAgentAbortedError,
+  checkCodexReadiness,
   codexAgent,
   createDefaultResolveCodexClient,
   findCodexProgram,
   listCodexModels,
-  probeCodexAccount,
   readInstalledCodexSdkVersion,
   TESTED_SDK_VERSION,
-  type CodexAccountProbe,
   type CodexAgentOptions,
   type CodexClientOptions,
   type CodexModelList,
@@ -68,10 +67,11 @@ import { goalControl } from "./goal-control";
 import { harnessTrust, type RepoLine } from "./harness-trust";
 import type { HarnessTrust } from "./harness-workspace";
 import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import type { HarnessBlock, HarnessReadiness } from "@flow-state-dev/core/types";
 import { kitchenSinkHarnessFlow } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
+import { fromReadiness } from "./mode-readiness";
 import type { ModelChoices } from "./harness-models";
 import { flowKindOf, modeById } from "./modes";
 import { scriptedCodex } from "./scripted-codex";
@@ -292,8 +292,8 @@ export interface CodexHostChecks {
   readonly sdk: InstalledSdkVersionReader;
   /** Make the worktree root and return it, or throw why it can't be made. */
   readonly makeRoot: (repository: string) => string;
-  /** The Codex package's answer about its sign-in, over the run's own environment. No run. */
-  readonly probe: (env: Record<string, string>) => Promise<CodexAccountProbe>;
+  /** Whether Codex can run over the run's own environment (its SDK and sign-in), from the Codex package. No run. */
+  readonly readiness: (env: Record<string, string>) => Promise<HarnessReadiness>;
 }
 
 /**
@@ -337,7 +337,7 @@ export const HOST_CHECKS: CodexHostChecks = {
   },
   // A loaded host can take a while to start Codex: give it longer than the package's default.
   // Deliberate: 30 s keeps the limit this check had before it moved, for cold hosts, so it is longer than Claude Code mode's 10 s probe.
-  probe: (env) => probeCodexAccount({ env, timeoutMs: 30_000 }),
+  readiness: (env) => checkCodexReadiness({ env, timeoutMs: 30_000 }),
 };
 
 /**
@@ -373,17 +373,6 @@ export function codexModeCheck(checks: CodexHostChecks = HOST_CHECKS): ModeCheck
       };
     }
     // A key in the run's environment counts, though `codex login status` says otherwise.
-    const account = await checks.probe(codexEnv());
-    if (account.status === "sdk-missing") return { available: false, reason: `The Codex SDK is not installed. ${account.reason}` };
-    if (account.status === "none") {
-      return {
-        available: false,
-        reason:
-          account.unanswered === true
-            ? `${account.reason}, so its sign-in is unknown. Restart the server to ask again.`
-            : `Codex is not signed in on this host (\`codex login status\`: ${account.reason}, and there is no CODEX_API_KEY in the run's environment). Sign in with \`codex login\`, then restart.`,
-      };
-    }
-    return { available: true };
+    return fromReadiness(await checks.readiness(codexEnv()));
   };
 }

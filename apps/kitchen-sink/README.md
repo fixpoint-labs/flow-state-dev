@@ -29,7 +29,7 @@ PORT=3001 pnpm --filter @flow-state-dev/kitchen-sink dev
 
 The `curl` examples in this README use `localhost:3000`. Change the port to match.
 
-The front page is the picker. Pick **Flow State** for the assistant and the support desk, at [http://localhost:3000/flow-state](http://localhost:3000/flow-state). A mode this machine can't run is listed with the reason, and opening it does nothing.
+The front page is the picker. Pick **Flow State** for the assistant and the support desk, at [http://localhost:3000/flow-state](http://localhost:3000/flow-state). A mode this machine can't run is listed with the reason and, when there's one, what to run (`codex login`, say), and opening it does nothing. The picker checks each mode when the server starts. On a dev server, **Re-check** checks again, so a sign-in you make after starting shows without a restart. A mode that becomes ready that way still needs a restart to open, and the picker says so. Without `AI_GATEWAY_API_KEY`, Flow State still opens, and its card says none of its flows can answer until you set the key.
 
 Coding harness modes work on a git repository. With `pnpm dev`, that is the checkout the server runs from, and you set nothing. To use another checkout, or to run them on a production server, name its top level:
 

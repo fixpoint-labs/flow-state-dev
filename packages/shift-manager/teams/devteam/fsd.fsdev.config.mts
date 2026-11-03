@@ -73,7 +73,7 @@ if (em === undefined) throw new Error("the DevTeam tree declares no EM");
 const coderWorkerId = ((em.declared.delegates as string[] | undefined) ?? []).find((id) => workerFlowOf(id) === CODER_FLOW);
 if (coderWorkerId === undefined) throw new Error(`the DevTeam's EM "${em.id}" names no delegate on the coder worker flow`);
 
-// Before anything is opened: with no Claude Code account this throws, and the Lab never listens.
+// Before anything is opened: logs whether Claude Code can run here, with what to run when it can't.
 const harness = await startHarness("claude-code");
 
 /** The Lab this profile serves. */
@@ -103,6 +103,7 @@ export const lab = await openLab({
   usage: {
     "claude-code": ({ signal } = {}) => readClaudeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
   },
+  readiness: harness.readiness,
 });
 
 export default lab.state;

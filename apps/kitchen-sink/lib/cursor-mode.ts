@@ -31,12 +31,11 @@ import { harnessEnv } from "@flow-state-dev/core";
 import {
   CURSOR_PASS,
   TESTED_SDK_VERSION,
+  checkCursorReadiness,
   cursorAgent,
-  cursorSignIn,
   readInstalledCursorSdkVersion,
   type CursorAgentOptions,
   type CursorModelSelection,
-  type CursorSignIn,
   type InstalledSdkVersion,
   type ResolveCursorClient,
 } from "@flow-state-dev/cursor";
@@ -45,10 +44,11 @@ import { goalControl } from "./goal-control";
 import { harnessTrust, type RepoLine } from "./harness-trust";
 import type { HarnessTrust } from "./harness-workspace";
 import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import type { HarnessBlock, HarnessReadiness } from "@flow-state-dev/core/types";
 import { kitchenSinkHarnessFlow } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
+import { fromReadiness } from "./mode-readiness";
 import type { HarnessModel, ModelChoices } from "./harness-models";
 import { flowKindOf, modeById } from "./modes";
 import { scriptedCursor } from "./scripted-cursor";
@@ -197,8 +197,8 @@ export interface CursorHostChecks {
   readonly makeRoot: (repository: string) => void;
   /** Why a process with exactly `env` can't start here, or `null` when it can. */
   readonly childStarts: (env: Record<string, string>) => string | null;
-  /** Cursor's sign-in over the run's own environment: its key, or the SDK's stored login. No run. */
-  readonly signIn: (env: Record<string, string>) => Promise<CursorSignIn>;
+  /** Whether Cursor can run over the run's own environment (its key or the SDK's stored login), from the Cursor package. No run. */
+  readonly readiness: (env: Record<string, string>) => Promise<HarnessReadiness>;
 }
 
 /**
@@ -220,7 +220,7 @@ export const HOST_CHECKS: CursorHostChecks = {
     mkdirSync(worktreeRoot(repository), { recursive: true });
   },
   childStarts,
-  signIn: cursorSignIn,
+  readiness: checkCursorReadiness,
 };
 
 /**
@@ -257,13 +257,6 @@ export function cursorModeCheck(checks: CursorHostChecks = HOST_CHECKS): ModeChe
     if (child !== null) {
       return { available: false, reason: `Cursor's runtime process can't be started with the run's environment: ${child}` };
     }
-    const signedIn = await checks.signIn(env);
-    if (signedIn.status === "none") {
-      return {
-        available: false,
-        reason: `Cursor is not signed in on this host (${signedIn.reason}). Set CURSOR_API_KEY, or log in with the Cursor SDK, then restart.`,
-      };
-    }
-    return { available: true };
+    return fromReadiness(await checks.readiness(env));
   };
 }
