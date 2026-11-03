@@ -111,6 +111,12 @@ export type Worker = {
    * the field.
    */
   rules: boolean;
+  /**
+   * Whether its door takes the task a line is sent from (`taskId`), and
+   * stamps the turn with it, as the hire published it. `false` on a row
+   * written before the field: such a door is sent no `taskId`.
+   */
+  doorTakesTask: boolean;
   /** The id of the team it sits under, or {@link GENERAL_TEAM} for an org worker (see {@link toWorker}). */
   team: string;
   /** Its team's display name: the team's own, "General" for {@link GENERAL_TEAM}, else the team id. */
@@ -436,6 +442,7 @@ export function toWorker(row: unknown): Worker | undefined {
     kind: text(field(row, "kind")),
     door: text(field(row, "door")),
     rules: field(row, "rules") === true,
+    doorTakesTask: field(row, "doorTakesTask") === true,
     ...workerNames(id, text(field(row, "name")), text(field(row, "teamName"))),
   };
 }

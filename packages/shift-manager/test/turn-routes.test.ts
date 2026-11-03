@@ -11,6 +11,7 @@ const worker = (id: string, door: string | null = "message", flow = "coder"): Wo
   kind: flow,
   door,
   rules: false,
+  doorTakesTask: false,
   team: id.split(".")[0]!,
   teamName: id.split(".")[0]!,
   name: id.split(".")[1]!,

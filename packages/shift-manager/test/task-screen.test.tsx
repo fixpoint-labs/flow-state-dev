@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import { connect } from "../src/lib/connection";
+import { readSessionItems } from "../src/lib/run";
 import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef, toBoardRow, type BoardRow } from "../src/lib/reads";
 import { openRunLab, RUN_LAB_ASK, RUN_LAB_SPEND, RUN_LAB_USER_ID } from "./fixtures/run-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
@@ -425,24 +426,78 @@ describe("a finished task's composer (FIX-1764)", () => {
 
 // FIX-2009.
 describe("a line sent from a task's composer", () => {
-  it("shows in the task's Session with the worker's reply, though neither carries the task's stamp", async () => {
-    const opened = await openLab();
-    const row = await finishedRow(opened);
-    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
+  /** Send `line` from the open task's composer, and wait until the Session shows it and the reply. */
+  async function sendFromTask(line: string) {
     await screen.findByTestId("session", {}, { timeout: 10_000 });
     const input = (await screen.findByTestId("task-composer-input")) as HTMLInputElement;
     await waitFor(() => expect(input.disabled).toBe(false));
-    const line = `where are we on this? ${globalThis.crypto.randomUUID().slice(0, 6)}`;
     fireEvent.change(input, { target: { value: line } });
     fireEvent.click(screen.getByTestId("task-composer-send"));
     await waitFor(() => expect(screen.getByTestId("task-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 15_000 });
-    // Shown because this view sent it: the door turn stores no task stamp.
     const session = screen.getByTestId("session-items");
     await waitFor(() => {
       expect(session.textContent).toContain(line);
       expect(session.textContent).toContain(`Heard: ${line}`);
     }, { timeout: 10_000 });
-  }, 40_000);
+  }
+
+  /** Unmount the task screen, as a reload does, and open it again on the same task. */
+  async function remount(baseUrl: string, path: string) {
+    cleanup();
+    await renderAt(baseUrl, path);
+    return screen.findByTestId("session-items", {}, { timeout: 10_000 });
+  }
+
+  it("keeps the line and the reply in the Session after the screen remounts: the door stamps both with the task", async () => {
+    const opened = await openLab();
+    const row = await finishedRow(opened);
+    const path = `/tasks/${row.boardRef}/${row.id}/session`;
+    await renderAt(opened.served.baseUrl, path);
+    const line = `where are we on this? ${globalThis.crypto.randomUUID().slice(0, 6)}`;
+    await sendFromTask(line);
+
+    // The store, with no app memory: both items carry the task's id.
+    const stored = (await readSessionItems(opened.client, row.run!.sessionId)).items;
+    const said = (role: string, text: string) =>
+      stored.filter((item) => item.type === "message" && item.role === role && JSON.stringify(item.content).includes(text)).map((item) => item.taskId);
+    expect(said("user", line)).toEqual([row.id]);
+    expect(said("assistant", `Heard: ${line}`)).toEqual([row.id]);
+
+    // A fresh screen has sent nothing, so it finds them by the stamp alone.
+    const session = await remount(opened.served.baseUrl, path);
+    await waitFor(() => {
+      expect(session.textContent).toContain(line);
+      expect(session.textContent).toContain(`Heard: ${line}`);
+    }, { timeout: 10_000 });
+  }, 60_000);
+
+  it("to a door that keeps no task id, shows the line while the screen is open, sends no task id, and loses it on a remount", async () => {
+    const opened = await openLab();
+    const row = await finishedRow(opened);
+    // The inventory reads as a door that takes no task: as a row written before the field, or an app's own door.
+    const real = globalThis.fetch;
+    const bodies: unknown[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (init?.method === "POST" && url.includes("/actions/respond")) bodies.push(JSON.parse(String(init.body)));
+      const answer = await real(input, init);
+      if (!url.includes("/resources/")) return answer;
+      const text = (await answer.text()).replaceAll('"doorTakesTask":true', '"doorTakesTask":false');
+      return new Response(text, { status: answer.status, statusText: answer.statusText, headers: answer.headers });
+    });
+    const path = `/tasks/${row.boardRef}/${row.id}/session`;
+    await renderAt(opened.served.baseUrl, path);
+    const line = `no stamp ${globalThis.crypto.randomUUID().slice(0, 6)}`;
+    // Shown because this view sent it.
+    await sendFromTask(line);
+    expect(bodies).toHaveLength(1);
+    expect(JSON.stringify(bodies[0])).not.toContain("taskId");
+
+    // Nothing in the store names the task, so a fresh screen shows neither.
+    const session = await remount(opened.served.baseUrl, path);
+    await screen.findAllByTestId("session-item", {}, { timeout: 10_000 });
+    expect(session.textContent).not.toContain(line);
+  }, 60_000);
 
   it("still shows the line and the reply when the send ends before the Session's first read lands", async () => {
     const opened = await openLab();

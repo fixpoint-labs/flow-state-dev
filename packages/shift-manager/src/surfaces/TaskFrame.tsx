@@ -271,6 +271,8 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
       : rosterOf(snapshot).workers;
   const flowId = task.run.kind === "open" ? task.run.run.flowId : undefined;
   const door = flowId === undefined ? null : doorOf(workers, flowId);
+  // A door that takes the task's id stamps the line and its reply with it, so the Session finds them after a reload.
+  const stamps = flowId !== undefined && workers.find((w) => w.kind === flowId)?.doorTakesTask === true;
   const blocked =
     row === undefined
       ? "This task isn't on its board yet."
@@ -293,8 +295,9 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
       blocked={blocked}
       // No `held`: the draft stays until the door turn ends. The Session follows the request from `onStarted`.
       send={async (message) => {
-        const sent = await sendTurn(client, { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! }, message, {
-          onStarted: task.noteSent,
+        const target = { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! };
+        const sent = await sendTurn(client, stamps ? { ...target, taskId: task.taskId } : target, message, {
+          onStarted: (requestId) => task.noteSent(requestId, stamps),
         });
         // It stopped short, maybe on a new ask: read the Lab again so Inbox lists whatever it raised.
         if (sent.suspended) void refresh();
