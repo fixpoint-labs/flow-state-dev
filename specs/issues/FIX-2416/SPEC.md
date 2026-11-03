@@ -6,7 +6,7 @@
 
 | Someone who… | Today | After |
 |---|---|---|
-| **reloads a Kitchen Sink Flow State session that ran in Build** | It reopens in Ask. The artifact panel is gone, and the next message runs in Ask | It reopens in Build, with the artifact panel open |
+| **reloads a Kitchen Sink Flow State session that ran in Build** | It reopens in Ask. The artifact panel is gone, and the next message runs in Ask | It reopens in Build, with the artifact panel open. The panel shows whenever the mode is Build; it has no stored state of its own |
 | **switches between two sessions** | Each one shows the last session's mode, thinking style and features | Each one shows what it last ran with |
 | **opens a new session** | Ask and the default style and features | No change: Ask and the defaults |
 | **changes a control and then switches away without sending** | Lost | Still lost. Nothing has run with it, so the session has no record of it |
@@ -28,15 +28,20 @@
 **The check.** A Kitchen Sink e2e test (`e2e/mode-switching.spec.ts`, "a session reopens in the mode
 it last ran in") sends a message in Build, reloads, and expects the mode selector to read Build. On
 `main` it fails ("Ask"). A unit test of the hook covers the defaults for a new session, a session
-switch, and a choice made before the record loads.
+switch and a switch back, a choice made before the record loads or after it was applied, a record
+that leaves features out, and a session reopened during, or after a failed, first turn.
 
 ## What changes
 
 App glue only, in `apps/kitchen-sink`. The `run` action already writes mode, thinking style and
 features to session state on every turn, and the flow already projects them as the `modeStatus`
-client data. The page never reads them back. A small hook keeps the three controls for the open
-session and seeds them from that record, once per session. The page gives the hook the record only
-when the snapshot belongs to the open session.
+client data. The page never reads them back. A small hook, `lib/use-session-controls.ts`, holds the three
+controls for the open session and seeds them from that record once per session, never over a choice
+the user made in that session first. It seeds whatever `requestCount` says: `run` records the
+controls before its generator runs and counts the request only at the end, so a session reopened
+during, or after a failed, first turn still has them. A session that never ran projects the
+defaults. The page gives the hook the record only when the snapshot belongs to the open session
+([D1 → Guard](DECISIONS.md#d1)).
 
 Documentation: no documentation impact. This is a fix to how the reference app behaves; no page
 describes these controls resetting.
@@ -49,16 +54,16 @@ describes these controls resetting.
 
 ## What's already here, and the debt
 
-- **Reused:** the `modeStatus` projection in `flows/chat-agent/flow.ts`, and the render-time reset
-  that `lib/use-session-draft.ts` uses.
-- **Adds:** one hook file of about 100 lines and its test. **Removes:** three `useState` calls from
+- **Reused:** the `modeStatus` projection in `flows/chat-agent/flow.ts`, and the render-time
+  session-id reset that `lib/use-session-draft.ts` uses.
+- **Adds:** one hook file and its unit test. **Removes:** three `useState` calls from
   `app/flow-state/page.tsx`. Net: no new debt.
 
 ## Sign off
 
 - **The goal**: a session reopens on what it last ran with. *If wrong:* the hook is deleted and the three `useState` calls come back.
 - **The debt**: neutral. One hook replaces three pieces of page state. *If wrong:* one file to delete.
-- **D1** · [seed from the record the server already keeps](DECISIONS.md#d1). *If wrong:* a session action is added later; the hook keeps its shape.
+- **D1** · [seed from the record the server already keeps](DECISIONS.md#d1). *If wrong:* a session action is added later behind the hook; the page still hands the same three values to the turn.
 - **Open: none.**
 
-Improvement · `apps/kitchen-sink` · S · epic FIX-2369 wave 0 · implementation #4383
+Improvement · `apps/kitchen-sink` · S · epic FIX-2369 wave 0 · shipped in #4383
