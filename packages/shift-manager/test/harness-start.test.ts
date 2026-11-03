@@ -173,7 +173,7 @@ describe("each coder's label", () => {
     ["codex", "Codex"],
     ["cursor", "Cursor"],
   ] as const)("%s is called %s", async (value, label) => {
-    const started = await start("stub", value, ACCOUNT);
+    const started = await start("stub", value, [READY]);
     expect(started.harness?.label).toBe(label);
   });
 });
