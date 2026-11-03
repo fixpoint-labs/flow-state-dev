@@ -1,3 +1,4 @@
+// fallow-ignore-file duplicate-export -- each lab is its own app, and both expose the same LabAdapter shape on purpose.
 /**
  * The lab's one way in and out. Every read and write the screen makes goes
  * through `LabAdapter`, and nothing else in `src/` touches a package. Each
