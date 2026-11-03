@@ -90,9 +90,13 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
         <p className="truncate text-xs text-muted-foreground">
           {worker.kind ?? "unknown flow"}
           {" · "}
-          <span title={gaps.harness} data-testid="roster-worker-harness">
-            —
-          </span>
+          {worker.harness === undefined ? (
+            <span title={gaps.harness} data-testid="roster-worker-harness">
+              —
+            </span>
+          ) : (
+            <span data-testid="roster-worker-harness">{worker.harness}</span>
+          )}
         </p>
         <RouteLink
           to={{ level: "worker-settings", worker: worker.id }}
