@@ -13,7 +13,7 @@ import type { Failure } from "../src/lib/reads";
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const message = (id: string, text: string, ts: number) => ({ id, type: "message", status: "completed", requestId: `req_${id}`, itemIndex: 0, ts, role: "assistant", content: [{ type: "output_text", text }] });
 
-function host(history: unknown[], options: { failState?: boolean } = {}) {
+function host(history: unknown[], options: { failState?: boolean; failStream?: boolean } = {}) {
   const counts = { state: 0, stream: 0 };
   let send!: (frame: string) => void;
   const fetcher = (async (url: string, init?: RequestInit) => {
@@ -28,6 +28,7 @@ function host(history: unknown[], options: { failState?: boolean } = {}) {
     }
     if (url.includes("/stream")) {
       counts.stream += 1;
+      if (options.failStream === true) return json({ error: "the stream is down" }, 503);
       const body = new ReadableStream<Uint8Array>({
         start(controller) {
           send = (frame) => controller.enqueue(new TextEncoder().encode(frame));
@@ -76,6 +77,16 @@ describe("followSessionItems", () => {
     await until(() => reads.length > 0);
     expect(reads.at(-1)!.truncated).toBe(true);
     expect(reads.at(-1)!.items.at(-1)!.id).toBe("m259");
+  });
+
+  it("reports an empty session once its history read lands, whether or not the stream ever opens", async () => {
+    const h = host([], { failStream: true });
+    const reads: SessionItems[] = [];
+    stops.push(followSessionItems(h.client, "s1", { onRead: (read) => reads.push(read), onFailure: () => {} }));
+    // The history read landed with nothing in it; the stream keeps failing and never names the runs.
+    await until(() => h.counts.state === 1 && h.counts.stream >= 1);
+    await until(() => reads.length > 0);
+    expect(reads[0]).toEqual({ items: [], truncated: false });
   });
 
   it("keeps the failure once the feed gives up, never reporting a stopped feed as an empty read", async () => {

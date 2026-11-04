@@ -120,14 +120,21 @@ export function followSessionItems(client: Pick<Client, "sessions">, sessionId: 
   let last: readonly OutputItem[] | undefined;
   let read = false;
   const stop = feed.subscribe(({ items, hasEarlier, state, error }) => {
-    // Only a history read that landed counts: a feed that gave up (`stopped`, its items empty) is a
-    // failure, not an empty session. A landed read clears the error.
-    if (!read && error !== null) {
-      to.onFailure(describeFailure(error));
+    // Before the history lands the feed publishes only its read's failures: a try that failed, or
+    // the feed giving up (`stopped`, its items empty), neither of which is an empty session. Its
+    // first publish with no error is the history read landing, empty or not, whatever the stream
+    // does after: the stream stays `connecting` until it names the session's runs, which a stream
+    // that keeps failing never does.
+    if (!read) {
+      if (error !== null) {
+        to.onFailure(describeFailure(error));
+        return;
+      }
+    } else if ((items.length === 0 && state === "connecting") || items === last) {
+      // A feed that starts over (its stream lapsed) empties itself until its history is read again;
+      // what was shown stays. A change of connection state alone moves nothing.
       return;
     }
-    // Nothing until the history lands, and a change of connection state alone moves nothing.
-    if ((items.length === 0 && state === "connecting") || items === last) return;
     last = items;
     read = true;
     to.onRead({ items: [...items], truncated: hasEarlier });
