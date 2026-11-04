@@ -62,6 +62,7 @@ const row = (id: string, status: string, extra: Partial<BoardRow> = {}): BoardRo
   id,
   title: id,
   goal: null,
+  context: null,
   status,
   assignee: null,
   priority: null,
