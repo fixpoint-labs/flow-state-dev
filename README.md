@@ -52,7 +52,7 @@ export default defineFlow({
 })();
 ```
 
-`kind` names the flow, `actions` lists what a client can call (here, `chat`), and `client.expose` picks which session state fields clients can see. That is a streaming chat with conversation history and a session counter.
+Save it as `src/flows/my-app/flow.ts`. `kind` names the flow, `actions` lists what a client can call (here, `chat`), and `client.expose` picks which session state fields clients can see. `defineFlow` returns a factory; calling it with no arguments, the trailing `()`, gives the flow you register. That is a streaming chat with conversation history and a session counter.
 
 To serve it from Next.js, register the flow once and mount one catch-all route. There are no other routes to write:
 
@@ -78,7 +78,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 ```
 
-The model string resolves from the provider package and API key you set up below. The [Quick Start](https://flow-state.dev/docs/getting-started/quick-start) adds the React side.
+The model string resolves from the provider package and API key you set up below. Its prefix names the provider, so with an Anthropic or Google key use `anthropic/claude-sonnet-5-5` or `google/gemini-3.1-pro` instead, with `@ai-sdk/anthropic` or `@ai-sdk/google` installed. The [Quick Start](https://flow-state.dev/docs/getting-started/quick-start) adds the React side.
 
 Every block is one of five kinds, and any block can be used as a tool, so a model can call a single function or a whole pipeline.
 
@@ -108,7 +108,7 @@ pnpm add @ai-sdk/openai   # or @ai-sdk/anthropic, @ai-sdk/google
 
 Set the matching key (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GOOGLE_GENERATIVE_AI_API_KEY`) in your shell or `.env.local`.
 
-**Try a flow.** With a flow under `src/flows/` or `flows/`, the `fsdev` command runs it without a server or a UI:
+**Try a flow.** Run from your project root, `fsdev` finds flows in `src/flows/` and `flows/` (or in your `fsdev.config`, if you have one) and runs them without a server or a UI. This uses the `my-app` flow above:
 
 ```bash
 pnpm exec fsdev run my-app chat -i '{"message": "Hello!"}'   # prints one JSON event per line (NDJSON)
