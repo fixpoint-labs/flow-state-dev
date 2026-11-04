@@ -1005,10 +1005,12 @@ export function createWiredLab(fsd: Client): LabAdapter {
             .flow(turn.flowId ?? turn.flowKind)
             .request(turn.id)
             .abort()
-            .catch((error: unknown) => {
-              // A turn that ended meanwhile answers 409, which is the stop already done.
-              if ((error as { status?: number }).status === 409) return;
-              throw error;
+            .catch(async (error: unknown) => {
+              // A 409 is a turn that ended meanwhile, or one an answer resumed first, which runs on:
+              // the record decides. Still running, the server refused the stop.
+              if ((error as { status?: number }).status !== 409) throw error;
+              const now = (await fsd.sessions.requests(sessionId, { limit: RECENT_TURNS })).find((r) => r.id === turn.id);
+              if (now?.status === "in_progress") throw new Error("The turn went on before the stop reached it. Press Stop again.");
             });
         }
       } catch (error) {

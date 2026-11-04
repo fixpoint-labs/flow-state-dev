@@ -34,6 +34,8 @@ interface Target {
   /** The host stops answering; `restore` brings it back. */
   lose(): void;
   restore(): void;
+  /** The next abort is answered 409 and goes no further, as when an answer resumed the turn first. */
+  refuseNextAbort(): void;
   /** Lets the research the stop scenario holds finish. */
   releaseResearch(): void;
   /** The abort calls the adapter posted, by URL; the fake posts none, so it has none. */
@@ -70,6 +72,7 @@ function fakeTarget(): Target {
     lose: () => fake.setConnection("lapsed"),
     restore: () => fake.setConnection("live"),
     releaseResearch: () => {},
+    refuseNextAbort: () => fake.refuseNextStop(),
     close: async () => {},
   };
 }
@@ -142,10 +145,19 @@ async function realTarget(): Promise<Target> {
   const { flowState } = await openLab({ data, userId: "u_lab", model: "test/scripted", utilityModel: "test/utility", repositories: [], modelResolver: labScript(failing, held) });
   const inProcess = createInProcessFetch(flowState as never) as unknown as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   const aborts: string[] = [];
-  // Every call goes to the host as it is; an abort is noted on the way.
+  const refuse = { next: false };
+  // Every call goes to the host as it is; an abort is noted on the way. A refused one is the
+  // abort route's 409 for a turn an answer resumed first (`already-resolved`): it never reaches the
+  // host, so the turn runs on, and only the request record says so.
   const plug = pluggable(async (input, init) => {
     const url = String(input instanceof Request ? input.url : input);
-    if (init?.method === "POST" && url.endsWith("/abort")) aborts.push(url);
+    if (init?.method === "POST" && url.endsWith("/abort")) {
+      aborts.push(url);
+      if (refuse.next) {
+        refuse.next = false;
+        return new Response(JSON.stringify({ error: "Request was resumed before the stop reached it" }), { status: 409, headers: { "content-type": "application/json" } });
+      }
+    }
     return inProcess(input, init);
   });
   const lab = createWiredLab(createClient({ userId: "u_lab", baseUrl: "", fetcher: plug.fetcher as never }));
@@ -157,6 +169,7 @@ async function realTarget(): Promise<Target> {
     lose: () => plug.pull(),
     restore: () => plug.restore(),
     releaseResearch: () => releaseResearch(),
+    refuseNextAbort: () => (refuse.next = true),
     aborts,
     close: async () => {
       releaseResearch();
@@ -328,6 +341,26 @@ describe.each([
         expect(stopped[0]!.requestId).toBe(turn);
         expect(ended.entries[at - 1]!.requestId).toBe(turn);
       }
+    });
+
+    check("a stop the server refuses while the turn runs on clears stopping, says why, and draws no stopped line", async () => {
+      target = await make();
+      const { lab } = target;
+      const id = await target.open("session");
+      const view = thread(lab, id);
+      await lab.send(id, ASK.long);
+      await view.until((v) => v.running);
+      target.refuseNextAbort();
+      await expect(lab.interrupt(id)).rejects.toThrow(/Press Stop again/);
+      // The record still reads running: no stopped line, and Stop is offered again.
+      await waitFor(300);
+      const after = view.latest()!;
+      expect(after.running).toBe(true);
+      expect(after.stopping).toBe(false);
+      expect(after.entries.some((e) => e.kind === "stopped")).toBe(false);
+      // Pressed again, it stops.
+      await lab.interrupt(id);
+      await view.until((v) => !v.running && v.entries.some((e) => e.kind === "stopped"));
     });
 
     check("counts the background work the stopped turn left running, from the session's runs", async () => {

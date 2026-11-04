@@ -51,6 +51,8 @@ export interface FakeLab extends LabAdapter {
   fail(title: string, error: string): void;
   /** The next turn's model call fails: the turn ends with no reply, as the real adapter shows it today. */
   failNextTurn(): void;
+  /** The next Stop is refused while its turn runs on, as a server that resumed the turn first refuses it. */
+  refuseNextStop(): void;
 }
 
 interface FixtureTask extends TaskRow {
@@ -123,6 +125,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
   let seq = 0;
   let connection: ConnectionState = "live";
   let failNext = false;
+  let refuseStop = false;
   const nextId = (prefix: string) => `${prefix}-${++seq}`;
 
   const notify = () => {
@@ -432,6 +435,9 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       connection = state;
       notify();
     },
+    refuseNextStop() {
+      refuseStop = true;
+    },
     failNextTurn() {
       failNext = true;
     },
@@ -482,6 +488,10 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     async interrupt(sessionId) {
       const s = session(sessionId);
       if (!s.running) return;
+      if (refuseStop) {
+        refuseStop = false;
+        throw new Error("The turn went on before the stop reached it. Press Stop again.");
+      }
       for (const t of s.timers) clearTimeout(t);
       s.timers = [];
       // Stopping until the server says the turn ended, then its stopped line after its last entry.
