@@ -372,6 +372,16 @@ describe.each([
       await view.until((v) => !v.running, 30_000);
     });
 
+    check("stops a turn sent just before the press, though the view has not read it yet", async () => {
+      const { lab, id, view } = await answering();
+      await lab.send(id, ASK.meanwhile);
+      // No wait for the view to read the second turn: Stop is pressed at once.
+      await lab.interrupt(id);
+      const after = await view.until((v) => !v.running && !v.stopping, 30_000);
+      expect(after.entries.some((e) => e.kind === "stopped")).toBe(true);
+      if (target!.aborts !== undefined) expect(target!.aborts).toHaveLength(2);
+    });
+
     check("a stop the server refuses while the turn runs on clears stopping, says why, and draws no stopped line", async () => {
       const { lab, id, view } = await answering();
       target!.refuseNextAbort();

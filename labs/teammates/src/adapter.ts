@@ -1013,10 +1013,11 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     async interrupt(sessionId) {
       const flow = flowOfSession.get(sessionId);
       if (flow === undefined) throw new Error(`teammates: ${sessionId} is not an open conversation`);
-      // The turns running at the press, as the view showed them; a line sent after it is its own turn.
-      const ids =
-        runningNow.get(sessionId) ??
-        (await client.sessions.requests(sessionId, { status: "in_progress", limit: 20 })).filter((r) => !QUIET_ACTIONS.has(r.actionName)).map((r) => r.id);
+      // The turns running at the press: what the view showed, plus what the server reads now, since the
+      // view's read can lag a line sent just before the press. A line sent after it is its own turn.
+      const shown = runningNow.get(sessionId) ?? [];
+      const read = (await client.sessions.requests(sessionId, { status: "in_progress", limit: 20 })).filter((r) => !QUIET_ACTIONS.has(r.actionName)).map((r) => r.id);
+      const ids = [...new Set([...shown, ...read])];
       const stop = { ids: new Set(ids) };
       stops.set(sessionId, stop);
       wake(sessionId);
