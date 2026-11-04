@@ -215,15 +215,15 @@ return (
 
 | Option / return | Type | Notes |
 |----------|------|-------|
-| `options.resetKey` | `string \| null` | What the feed shows, such as a session id. A change opens the feed at its end again, with no animation. A key that arrives where there was none (`null`) after the person sent doesn't reopen the feed: that conversation is the one the send created, and the line still rises, or keeps its rise. |
-| `options.startAtEnd` | `boolean` | Open at the end. Default `true`; `false` opens where the element starts, for a feed with a lead above its turns, and ignores `resetKey` changes. |
+| `options.resetKey` | `string \| null` | What the feed shows, such as a session id. A change opens the feed at its end again, with no animation (with `startAtEnd` on), and with either setting drops the space kept for the last conversation and any send still waiting for its line. Replacing the scrolling element under the same key leaves the reader where they were. If the send itself creates the conversation, so `resetKey` goes from `null` to a key after `sent()`, the feed doesn't reopen: a line that hasn't risen yet rises when it lands, and one that already rose stays where it is. |
+| `options.startAtEnd` | `boolean` | Open at the end. Default `true`; `false` opens where the element starts, for a feed with a lead above its turns, and a `resetKey` change doesn't reopen such a feed at its end. |
 | `ref` | `(node: HTMLElement \| null) => void` | Attach to the scrolling element. |
 | `mine(key)` | `(key: string) => SentLineMark` | Returns `{ "data-sent-line": key }`. Spread it on each of the person's own lines. `key` should stay the same while the line redraws, such as its id. Put it on an element with a box of its own, not a `display: contents` wrapper. |
-| `sent()` | `() => void` | Call when the person sends. Their marked line scrolls to near the top when it lands, once. It also works when called after the line is drawn. Called before the scrolling element mounts, the feed opens at its end when it does. |
+| `sent()` | `() => void` | Call when the person sends. Their marked line scrolls to near the top when it lands, once. Calling it after the line is drawn works too, for an app that learns of the send in an effect: the newest marked line the feed had not shown before is the one that rises. Called before the scrolling element mounts, the feed opens at its end when it does. |
 | `atEnd` | `boolean` | `false` when there is more than 32 px of content below the view: show a jump-to-latest button. |
 | `jump()` | `() => void` | Scroll to the end of the content, smoothly. |
 
-To let the line reach the top under a short reply, the hook adds space at the end of the feed as bottom padding. The space shrinks as the reply grows and is gone once the reply fills the view. Otherwise it stays until the next send, or until the feed opens or switches, so a short reply has blank space under it. `atEnd` and `jump()` ignore it.
+To let the line reach the top under a short reply, the hook adds space at the end of the feed as bottom padding. The space shrinks as the reply grows and is gone once the reply fills the view. Otherwise it stays until the next send, or until `resetKey` changes (with either `startAtEnd` setting), so a short reply has blank space under it. `atEnd` and `jump()` ignore it.
 
 A reply that grows past the bottom edge, or content that isn't the person's line, never moves the view. A feed that never calls `mine` or `sent` keeps the view where the reader put it and shows the button when there is more below.
 
