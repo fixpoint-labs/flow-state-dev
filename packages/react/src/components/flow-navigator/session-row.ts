@@ -44,14 +44,21 @@ const STATES: Record<RequestStatus, Omit<SessionRowState, "status"> | null> = {
   aborted: null
 };
 
+const WAITING_ON_WORK: Omit<SessionRowState, "status"> = { label: "Waiting", mark: "◇", needsYou: false };
+
 /**
  * The row's state, or `null` for a session with nothing to say: no request
  * yet, a finished one, one its person stopped, or a listing not asked for
  * status.
  */
-export function sessionRowState(session: Pick<SessionSummary, "requestStatus">): SessionRowState | null {
+export function sessionRowState(
+  session: Pick<SessionSummary, "requestStatus" | "requestWaitsForUser">
+): SessionRowState | null {
   const status = session.requestStatus;
   if (status == null) return null;
+  // A stop on other work (a reply from another worker) resumes by itself.
+  // A row that doesn't say reads as waiting on you, the safer miss.
+  if (status === "suspended" && session.requestWaitsForUser === false) return { status, ...WAITING_ON_WORK };
   const state = STATES[status];
   return state === null || state === undefined ? null : { status, ...state };
 }

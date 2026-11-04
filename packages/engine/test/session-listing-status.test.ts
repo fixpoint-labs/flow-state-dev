@@ -108,6 +108,48 @@ describe("GET /sessions?include=status", () => {
     });
   });
 
+  it("says whether a stopped turn waits for the user or on other work", async () => {
+    const stores = createInMemoryStores();
+    const stop = (requestId: string, sessionId: string, reason: string) =>
+      stores.suspensions.set({
+        suspensionId: `stop_${requestId}`,
+        requestId,
+        flowKind: "notes",
+        actionName: "run",
+        sessionId,
+        userId: "u_1",
+        reason,
+        message: "",
+        status: "pending",
+        blockInstanceId: "b",
+        stepIndex: 0,
+        createdAt: 1
+      } as never);
+    await seedSession(stores, "s_question");
+    await seedRequest(stores, "rq", "s_question", "suspended", 1000);
+    await stop("rq", "s_question", "user_input");
+    await seedSession(stores, "s_reply");
+    await seedRequest(stores, "rw", "s_reply", "suspended", 1000);
+    await stop("rw", "s_reply", "wait");
+    await seedSession(stores, "s_done");
+    await seedRequest(stores, "rd", "s_done", "completed", 1000);
+
+    const response = await host(stores).GET(
+      new Request("http://localhost/api/flows/sessions?flowKind=notes&include=status"),
+      { params: { path: ["sessions"] } }
+    );
+    const body = (await response.json()) as {
+      sessions: Array<{ id: string; requestStatus?: string; requestWaitsForUser?: boolean }>;
+    };
+    const rows = Object.fromEntries(body.sessions.map((s) => [s.id, [s.requestStatus, s.requestWaitsForUser]]));
+    // A question waits for the person; a wait on another worker's reply resumes by itself.
+    expect(rows).toEqual({
+      s_question: ["suspended", true],
+      s_reply: ["suspended", false],
+      s_done: ["completed", undefined]
+    });
+  });
+
   it("lets a request still going win over a later one that ended", async () => {
     const stores = createInMemoryStores();
     await seedSession(stores, "s1");

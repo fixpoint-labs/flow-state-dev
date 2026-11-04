@@ -255,7 +255,7 @@ describe("withChangeBus · every request and session write publishes its session
     expect(child.map((n) => n.kind)).toContain("request");
   });
 
-  it("names the owner's user topic for every session and request write but items, so a list of their sessions hears one it doesn't list yet", async () => {
+  it("names the owner's user topic for a session or request write, not items or a state delta, so a list of their sessions hears one it doesn't list yet", async () => {
     const { stores, bus } = wired();
     const alice = hear(bus, { scope: "user", id: "alice", tenantId: "" });
     const bob = hear(bus, { scope: "user", id: "bob", tenantId: "" });
@@ -277,6 +277,16 @@ describe("withChangeBus · every request and session write publishes its session
     await tick();
     await tick();
     expect(alice).toEqual([]);
+
+    // Nor a state field's delta, which a busy turn writes many of. The
+    // session's own topic still hears it.
+    const own = hear(bus, sessionTopic("s_new"));
+    await stores.session.patchField!("s_new", ["model"], "m", "any", Date.now());
+    await stores.request.incField!("r1", ["n"], 1, "any", Date.now());
+    await tick();
+    await tick();
+    expect(alice).toEqual([]);
+    expect(own.map((n) => n.kind).sort()).toEqual(["request", "run"]);
 
     alice.length = 0;
     await stores.session.delete("s_new");

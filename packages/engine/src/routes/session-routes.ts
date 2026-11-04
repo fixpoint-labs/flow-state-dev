@@ -318,7 +318,7 @@ export async function handleListSessions(
     include.status === true
       ? await Promise.all(
           visible.map((s) =>
-            latestRequestStatus(ctx.stores.request, toBareSessionId(s.id, ctx.tenantId), s, ctx.tenantId)
+            latestRequestStatus(ctx.stores, toBareSessionId(s.id, ctx.tenantId), s, ctx.tenantId)
           )
         )
       : undefined;
@@ -328,8 +328,13 @@ export async function handleListSessions(
     // and only the state each row's flow exposes (FIX-1588).
     sessions: visible.map((s, index) => {
       const row = toClientSession(ctx.registry, s, toBareSessionId(s.id, ctx.tenantId));
-      const requestStatus = statuses?.[index];
-      return requestStatus === undefined ? row : { ...row, requestStatus };
+      const latest = statuses?.[index];
+      if (latest === undefined) return row;
+      return {
+        ...row,
+        requestStatus: latest.status,
+        ...(latest.waitsForUser === undefined ? {} : { requestWaitsForUser: latest.waitsForUser })
+      };
     })
   });
 }

@@ -872,7 +872,8 @@ describe("FlowNavigator · a session row's state and age", () => {
   it("marks the sessions that need their person, and only those", async () => {
     const now = Date.now();
     const rows = [
-      { id: "s-wait", requestStatus: "suspended" },
+      { id: "s-wait", requestStatus: "suspended", requestWaitsForUser: true },
+      { id: "s-reply", requestStatus: "suspended", requestWaitsForUser: false },
       { id: "s-run", requestStatus: "in_progress" },
       { id: "s-done", requestStatus: "completed" },
       { id: "s-stopped", requestStatus: "aborted" },
@@ -892,6 +893,8 @@ describe("FlowNavigator · a session row's state and age", () => {
       (mark) => mark.closest("[data-session-id]")!.getAttribute("data-session-id")
     );
     expect(needsYou).toEqual(["s-wait", "s-lost"]);
+    // Waiting on another worker's reply resumes by itself.
+    expect(sessionRow("s-reply").querySelector("[data-request-status]")?.getAttribute("aria-label")).toBe("Waiting");
     // Running is shown, but is not something to answer.
     expect(sessionRow("s-run").querySelector("[data-request-status]")?.getAttribute("aria-label")).toBe("Running");
     // A finished turn, a stop you made and a session with no turn carry no mark.

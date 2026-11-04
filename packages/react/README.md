@@ -275,6 +275,50 @@ streaming in the session doesn't wake it. `pollIntervalMs` reads on a timer wher
 no push, a socket that is down); omit it for no timer. `enabled: false`
 subscribes nothing. For a session's own items, use `useSession({ live: true })`.
 
+### `useSessionList(options)`
+
+A flow's sessions, kept current. Use it to draw your own list of conversations.
+
+```tsx
+import { useSessionList, sessionLabel, sessionRowState } from "@flow-state-dev/react";
+
+function Conversations() {
+  const { sessions, error, refresh } = useSessionList({ flowKind: "support" });
+  if (error) return <button onClick={refresh}>Retry: {error}</button>;
+  return (
+    <ul>
+      {sessions.map((session) => (
+        <li key={session.id}>
+          {sessionLabel(session)} {sessionRowState(session)?.label}
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+Name the flow by `flowKind`, or by `flowId` for one copy of a collection flow.
+`includeDispatchRuns` also lists the sessions dispatchers ran work in (default
+`false`). `includeStatus` asks for each row's `requestStatus` (default `true`).
+`enabled: false` reads nothing and holds nothing. `client` is your own client,
+as a stable reference; it needs `sessions.list`, plus `subscribe` to stay
+current. Left out, the provider's client.
+
+It returns `{ sessions, isLoading, error, refresh }`: the rows newest first, an
+error message or `null`, and a function that reads again now. It reads on
+mount, again on each `"run"` notice on `topic.user()` (a session of the user's
+created, titled or deleted, or a request started or ended, from any tab, script
+or CLI run), and again when the page becomes visible. A change from another
+server process arrives at once only on a change bus that crosses processes;
+otherwise it shows up at the next read. A client without `subscribe`
+reads once.
+
+`sessionLabel(session)`, `sessionRowState(session)` and `sessionAge(updatedAt, now)`
+are the helpers `FlowNavigator` draws its rows with. `sessionLabel` gives the
+title or a shortened id. `sessionRowState` gives `{ status, label, mark, needsYou }`,
+or `null` for a session with nothing to show. `sessionAge` gives `now`, `4m`,
+`3h`, `2d` or `5w`.
+
 ### `useRequestStream(options)`
 
 Low-level hook for subscribing to a request's SSE stream with reactive item/status views. Message and reasoning text streams in token-by-token.
@@ -617,11 +661,13 @@ How deep the tree goes comes from each flow's declared `cardinality`. A flow dec
 
 `onSelectSession(sessionId, flow)` fires when a session row is picked. The second argument describes the instance that session was listed under: `{ kind, address, cardinality }`, where `address` is the kind name for a singleton and the instance id for one copy of a collection. Selection is yours to keep; pass it back as `selectedSessionId` to mark the current row.
 
-Sessions load when you open a leaf, a row whose sessions you can open: a singleton's row, or one copy under a collection. Expanding a collection row to see its copies costs no request.
+Sessions load when you open a leaf, a row whose sessions you can open: a singleton's row, or one copy under a collection. Expanding a collection row to see its copies costs no request. An open leaf's sessions stay current: when the `client` has `subscribe`, the list reads again whenever one of the user's sessions is created, titled or deleted, or one of its requests starts or ends, and when the page becomes visible. A client narrowed to `flows` and `sessions.list` reads the sessions once each time the leaf opens.
+
+Each session row shows a mark for its latest request's state and how long ago the session changed (`now`, `4m`, `3h`, `2d`, `5w`). The marks are ● Running, ◆ Waiting on you (a question or an approval), ◇ Waiting (on other work, such as another worker's reply), ! Interrupted, ✕ Failed and ! Incomplete; hover one for its label. A completed request, one the person stopped, and a session with no request show no mark. Every mark but Running and Waiting is drawn in `--fsd-nav-attention`, because those sessions need the person.
 
 Pass `includeDispatchRuns` and the listing also covers the sessions dispatchers ran work in, each drawn one level under the session that started it. One level is all there is: a run started by another run sits beside its own parent, and a run whose parent is not in the listing sits at the left margin. The `rowTrailing` slot receives `dispatchRun` on those rows, carrying the id of the session that started it, so you can label the row or link to it. Left out, the rail lists the sessions a person started.
 
-The navigator reads through one `client`: its flow list and its user's sessions. Pass your own when your API needs auth headers or a custom `fetch`, and pass a stable reference, one held in a context or a `useMemo` rather than an object built during render. Any client from `createClient` works; the prop asks only for `flows` and `sessions.list`. Left out, the navigator uses the nearest `FlowProvider`'s user, `baseUrl` and `fetcher`. It lists the client's own user's sessions.
+The navigator reads through one `client`: its flow list and its user's sessions. Pass your own when your API needs auth headers or a custom `fetch`, and pass a stable reference, one held in a context or a `useMemo` rather than an object built during render. Any client from `createClient` works; the prop asks only for `flows` and `sessions.list`, plus `subscribe` for live session lists. Left out, the navigator uses the nearest `FlowProvider`'s user, `baseUrl` and `fetcher`. It lists the client's own user's sessions.
 
 The package brings no CSS framework and no icon set. Style the rows by setting the `--fsd-nav-*` CSS custom properties on any ancestor, and fill in your own affordances through `slots`: `sectionHeader` beside a section label, `rowTrailing` at the end of any row, `leafToolbar` at the end of an open leaf's row, `leafDetail` under an open leaf's row, and `emptySection` for a section whose kinds the server does not have.
 
