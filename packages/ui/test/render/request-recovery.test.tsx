@@ -186,3 +186,53 @@ function typeContract() {
   void (<RequestRecovery code="E_MODEL" onDiscard={async () => {}} />);
 }
 void typeContract;
+
+/**
+ * A turn you stopped: the request ended `aborted` because you pressed Stop.
+ * Nothing failed and there is nothing to retry, so the line is a quiet status,
+ * not an alert. What still runs is a live count the app passes, so the line
+ * never claims work runs when none does.
+ */
+describe("a turn you stopped", () => {
+  it("reads as stopped by you, quietly, with no action of its own", () => {
+    render(<RequestRecovery stopped />);
+    const line = screen.getByRole("status");
+    expect(line.dataset.state).toBe("stopped");
+    expect(line.textContent).toContain("Interrupted by you");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(line.className).not.toContain("destructive");
+    expect(line.className).not.toContain("bg-attention");
+  });
+
+  it("counts the background work still running, and opens it with View", () => {
+    const onView = vi.fn();
+    render(<RequestRecovery stopped stillRunning={2} onView={onView} />);
+    expect(screen.getByRole("status").textContent).toContain("2 background tasks still running");
+    fireEvent.click(screen.getByRole("button", { name: /view/i }));
+    expect(onView).toHaveBeenCalledTimes(1);
+  });
+
+  it("says one task, not one tasks", () => {
+    render(<RequestRecovery stopped stillRunning={1} />);
+    expect(screen.getByRole("status").textContent).toContain("1 background task still running");
+  });
+
+  it("drops the clause when nothing runs, or when the count isn't known", () => {
+    const { container } = render(<RequestRecovery stopped stillRunning={0} onView={() => {}} />);
+    expect(container.textContent).not.toContain("still running");
+    expect(screen.queryByRole("button", { name: /view/i })).toBeNull();
+    cleanup();
+    const unknown = render(<RequestRecovery stopped onView={() => {}} />);
+    expect(unknown.container.textContent).not.toContain("still running");
+  });
+});
+
+/** A stopped line takes no reason and no recovery action: the server retries none. Checked by `tsc`, not run. */
+function stoppedContract() {
+  // @ts-expect-error a stopped turn has nothing to retry
+  void (<RequestRecovery stopped onRetry={async () => {}} />);
+  // @ts-expect-error a stopped turn did not fail: it has no reason
+  void (<RequestRecovery stopped reason="boom" />);
+}
+void stoppedContract;

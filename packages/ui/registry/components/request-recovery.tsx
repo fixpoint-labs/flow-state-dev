@@ -2,7 +2,8 @@
 
 /**
  * The line a turn that didn't finish leaves in a thread: a failed turn's
- * reason with a Retry, or a turn a restart cut off with Continue and Discard.
+ * reason with a Retry, a turn a restart cut off with Continue and Discard, or
+ * a turn the person stopped.
  *
  * Plain props, not a session: an app passes the reason it holds (an
  * `ErrorItem`'s `message`, `code` and `details` spread straight in) and, for
@@ -16,10 +17,16 @@
  * line reads as interrupted instead: Continue carries the same request on
  * (`request(id).continue()`), Discard ends it (`request(id).abort()`). Retry is
  * not drawn on that line: it would start a second request beside the lost one.
+ *
+ * Pass `stopped` for a turn the person stopped (an `aborted` request) and the
+ * line is a quiet status, *Interrupted by you*, with no recovery action: the
+ * server retries only a failed or cut-off request. `stillRunning` is the
+ * session's unfinished background work, counted live (`sessionFeed`'s `runs`);
+ * while it is above 0 the line says so, with a View that runs `onView`.
  */
 
 import { useState, type ReactNode } from "react";
-import { AlertCircle, CirclePause, Play, RotateCcw, X } from "lucide-react";
+import { AlertCircle, CirclePause, CircleStop, Play, RotateCcw, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ErrorBody, type ErrorBodyProps } from "./error";
@@ -64,9 +71,52 @@ export type InterruptedRequestProps = CommonProps & {
     | { onContinue?: undefined; onDiscard: Action }
   );
 
-export type RequestRecoveryProps = FailedRequestProps | InterruptedRequestProps;
+/** A turn the person stopped: no reason and no recovery action, and what still runs when that is known. */
+export type StoppedRequestProps = Pick<CommonProps, "className"> & {
+  stopped: true;
+  /** The session's background work still running; 0 or absent (not known yet) draws no clause. */
+  stillRunning?: number;
+  /** Open where the app lists that work. Drawn as View beside the count. */
+  onView?: () => void;
+  reason?: undefined;
+  code?: undefined;
+  details?: undefined;
+  onRetry?: undefined;
+  onContinue?: undefined;
+  onDiscard?: undefined;
+};
 
-export function RequestRecovery({
+export type RequestRecoveryProps = FailedRequestProps | InterruptedRequestProps | StoppedRequestProps;
+
+export function RequestRecovery(props: RequestRecoveryProps) {
+  return "stopped" in props && props.stopped ? <StoppedLine {...props} /> : <RecoveryLine {...(props as FailedRequestProps | InterruptedRequestProps)} />;
+}
+
+/** The stopped look: a status line, muted, with the live count and View when work still runs. */
+function StoppedLine({ stillRunning, onView, className }: StoppedRequestProps) {
+  const running = stillRunning ?? 0;
+  return (
+    <div
+      role="status"
+      data-testid="request-recovery"
+      data-state="stopped"
+      className={cn("flex items-center gap-2 text-xs text-muted-foreground", className)}
+    >
+      <CircleStop className="h-3.5 w-3.5 shrink-0" />
+      <span>
+        Interrupted by you
+        {running > 0 && ` · ${running} background ${running === 1 ? "task" : "tasks"} still running`}
+      </span>
+      {running > 0 && onView && (
+        <button type="button" onClick={onView} className="underline underline-offset-2 hover:text-foreground">
+          View
+        </button>
+      )}
+    </div>
+  );
+}
+
+function RecoveryLine({
   reason,
   code,
   details,
@@ -75,7 +125,7 @@ export function RequestRecovery({
   onContinue,
   onDiscard,
   className
-}: RequestRecoveryProps) {
+}: FailedRequestProps | InterruptedRequestProps) {
   const [refused, setRefused] = useState<string | null>(null);
   /** The action running now, by its idle word; every button waits while one runs. */
   const [busy, setBusy] = useState<string | null>(null);
