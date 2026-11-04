@@ -20,7 +20,7 @@ opening a step, and gives two ways to act on the outcome.**
   what changed, which is the issue's main complaint.
 - **Bigger, and not this issue's:** a diff view of the edited files (FIX-2384 owns diffs); Codex
   and Cursor recording their file touches the way Claude Code does (a change in those two
-  packages, filed as a follow-up, D1); the summary on the task's line in the thread.
+  packages, FIX-2555, D1); the summary on the task's line in the thread.
 - **Not done if:** the files come from anywhere but the package's recorded-work reader, the
   duration shows on a task still running, the result's tone is decided in the popup rather than
   by the lab's one task-state helper, or the follow-up button types into a conversation other
@@ -83,8 +83,8 @@ flowchart LR
   per-conversation draft for the prefill. Commands are counted from the steps the popup already
   watches, by the shell flag `toolSubject` already sets (`code`); no tool args are re-parsed.
 - **Only Claude Code records file touches today.** Codex and Cursor record plans and pull
-  requests but not `observed-file-ops`, so their tasks show no file count. Filed as a follow-up
-  for those two packages (D1).
+  requests but not `observed-file-ops`, so their tasks show no file count. Follow-up: FIX-2555
+  (D1).
 - **The duration's start.** The board keeps a task's first `startedAt` across a retry; the run
   link's `startedAt` is this attempt's. The line uses whichever FIX-2395 carries; if it is the
   task's, a retried task's duration spans its attempts (D2).

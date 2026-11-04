@@ -16,7 +16,7 @@
   the package. A first draft of this spec chose the step parse; review pointed at FIX-2385, and
   it was reversed.
 - **Cost:** a Codex or Cursor task's line has no file part until those packages record file
-  touches. The line omits it rather than say 0. Follow-up filed for Codex and Cursor.
+  touches. The line omits it rather than say 0. Follow-up: FIX-2555.
 - **If wrong:** if the gap matters before the follow-up lands, the fix is in those packages'
   recorders, not a parse here.
 
