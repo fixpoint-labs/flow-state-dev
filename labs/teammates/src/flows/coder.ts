@@ -12,8 +12,16 @@
  * A harness this machine isn't set up for fails the task at once, saying
  * why; it never moves to another.
  *
+ * A run that committed waits for your review before its task completes
+ * (harness-manager's `reviewChanges`): the task's popup shows its commits and
+ * the judge's verdict (`goalJudge`, which reads the run against the task's
+ * goal first), with **Accept** and **Ask for changes**. Your words go to the
+ * same coding session for one more run, which you review again.
+ *
  * Where a run works comes from the host's workspace, whose source is the
- * lab's one working folder: every run gets a worktree of it.
+ * lab's one working folder: every run gets a worktree of it. With `checks`,
+ * a run is done only when those commands pass in its worktree too; a red one
+ * sends the run back, its brief naming the command and the end of its output.
  *
  * It hears worker messages only in its tasks' sessions, so nobody messages it
  * by name. The screen opens no conversation with it, so its door is not
@@ -24,7 +32,7 @@
 import { z } from "zod";
 import { defineFlow, handler, router } from "@flow-state-dev/core";
 import type { BlockDefinition, HarnessBlock } from "@flow-state-dev/core/types";
-import { harnessManager, type HarnessFeeds, type PhaseSpec } from "@flow-state-dev/harness-manager";
+import { commandCheck, goalJudge, harnessManager, type HarnessFeeds, type PhaseSpec } from "@flow-state-dev/harness-manager";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -55,14 +63,21 @@ export interface CoderFlowOptions {
   defaultHarness: string;
   /**
    * Why a harness can't run on this machine, asked before each task starts:
-   * a plain sentence that names it, or `undefined` when it can. A task on a
-   * harness that can't run fails with that sentence and never moves to another.
+   * a plain sentence that names it, or `undefined` when it can (harness-manager's
+   * `readiness.refusal`). A task on a harness that can't run fails with that
+   * sentence and never moves to another.
    */
-  ready?: Readonly<Record<string, () => Promise<string | undefined>>>;
+  ready?: (harness: string) => Promise<string | undefined>;
   /** Where a run works: the host over the lab's working folder. */
   workspace: WorkspaceHost;
   /** Wall-clock budget for one run. */
   runTimeoutMs: number;
+  /**
+   * The working folder's checks: commands a run's worktree must pass before
+   * its task is done, and how long they may take together. Absent, or no
+   * commands: a run is done when its harness says it finished.
+   */
+  checks?: { commands: readonly string[]; timeoutMs: number };
 }
 
 /** A task's run: its goal and brief, done when the harness says it finished. */
@@ -74,11 +89,21 @@ const PHASE: PhaseSpec = {
       run.task.goal,
       run.task.context,
       `Work in ${run.workspacePath}. Make the change, commit it with git, and say in one line what changed.`,
+      run.feedback === undefined ? undefined : `Why the last attempt stopped:\n\n${run.feedback}`,
     ]
       .filter((line): line is string => typeof line === "string" && line !== "")
       .join("\n\n"),
   isDone: (run) => run.stopReport === "finished",
 } as PhaseSpec;
+
+/**
+ * The phase a coding run runs, with the working folder's checks when the host names any.
+ *
+ * @throws When `checks.timeoutMs` isn't a positive whole number.
+ */
+export function codingPhase(checks?: CoderFlowOptions["checks"]): PhaseSpec {
+  return checks === undefined || checks.commands.length === 0 ? PHASE : commandCheck(PHASE, checks);
+}
 
 /** What a user's line in one of a coding worker's sessions is answered with. */
 const DOOR_REPLY =
@@ -92,6 +117,7 @@ const DOOR_REPLY =
  * @throws When the default harness is not one the host offers.
  */
 export function coderFlow(options: CoderFlowOptions) {
+  const phase = codingPhase(options.checks);
   const names = Object.keys(options.harnesses);
   if (names.length === 0) throw new Error(`${CODER_FLOW}: the host offers no harness.`);
   if (!names.includes(options.defaultHarness)) {
@@ -105,10 +131,13 @@ export function coderFlow(options: CoderFlowOptions) {
           name: `${CODER_FLOW}-${name}`,
           ledgers: conversationLedgers,
           tenant: undefined,
-          phase: PHASE,
+          phase,
           workspace: options.workspace,
           runTimeoutMs: options.runTimeoutMs,
           harness,
+          // A run that committed waits for your review; the judge's verdict is shown on it as information.
+          reviewChanges: true,
+          judge: goalJudge({ name: `${CODER_FLOW}-${name}-judge` }),
         } as never) as TaskWorker;
       }
 
@@ -120,7 +149,7 @@ export function coderFlow(options: CoderFlowOptions) {
         execute: async (_task: unknown, ctx: unknown) => {
           const { config } = await installation.resolveWorker(ctx as never, CODER_FLOW);
           const harness = (config as { harness?: string }).harness ?? options.defaultHarness;
-          const missing = await options.ready?.[harness]?.();
+          const missing = await options.ready?.(harness);
           if (missing !== undefined) throw new Error(missing);
           return managers[harness]!;
         },

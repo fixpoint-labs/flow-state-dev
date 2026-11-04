@@ -20,7 +20,7 @@
  */
 import { createElement, useMemo, type ReactNode } from "react";
 import { cardRows, type BoardCardRow } from "./cards";
-import { usePanelRows, type PanelRowSource } from "./reads";
+import { usePanelRows, type PanelNoticeSource, type PanelRowSource } from "./reads";
 import { usePanelSource } from "./usePanelSource";
 import {
   bareList,
@@ -80,7 +80,7 @@ export type BoardColumnsSlots = {
   readonly empty?: () => ReactNode;
 };
 
-export type BoardColumnsProps = {
+type BoardColumnsCommonProps = {
   /** The session the read is addressed to. Its organization is the one read. */
   readonly sessionId: string;
   /**
@@ -88,11 +88,6 @@ export type BoardColumnsProps = {
    * `eng.feature.work`. One path segment, so it carries no slash.
    */
   readonly boardRef: string;
-  /**
-   * The host's own client, so the read carries the host's transport
-   * and its credential (BR-29). Pass a STABLE reference — see `Roster`.
-   */
-  readonly client?: PanelRowSource;
   /**
    * Rows to request per page: the size of each fetch, not a cap on what
    * renders. The panel follows the cursor for up to 1,000 pages; a collection
@@ -102,6 +97,21 @@ export type BoardColumnsProps = {
   readonly limit?: number;
   readonly slots?: BoardColumnsSlots;
 };
+
+/**
+ * What reads the board, and what hears its changes: one client.
+ *
+ * - `client`: the host's own client, so the read carries the host's transport
+ *   and its credential (BR-29). Pass a STABLE reference — see `Roster`.
+ * - `live`: read the board again whenever another session changes a task on
+ *   it, heard through the client's `subscribe`. A client that only reads
+ *   takes no `live`.
+ */
+type BoardColumnsTransportProps =
+  | { readonly client?: PanelNoticeSource & PanelRowSource; readonly live?: boolean }
+  | { readonly client: PanelRowSource; readonly live?: false };
+
+export type BoardColumnsProps = BoardColumnsCommonProps & BoardColumnsTransportProps;
 
 /**
  * The published prop names, as a value.
@@ -114,6 +124,7 @@ export const boardColumnsPropNames = [
   "boardRef",
   "client",
   "limit",
+  "live",
   "sessionId",
   "slots"
 ] as const;
@@ -171,7 +182,7 @@ function defaultCardBody(row: BoardCardRow): ReactNode {
 }
 
 export function BoardColumns(props: BoardColumnsProps): ReactNode {
-  const { sessionId, boardRef, client, limit, slots = {} } = props;
+  const { sessionId, boardRef, client, limit, live = false, slots = {} } = props;
 
   const source = usePanelSource(client);
 
@@ -180,7 +191,8 @@ export function BoardColumns(props: BoardColumnsProps): ReactNode {
     sessionId,
     boardRef,
     limit,
-    "Failed to load this board"
+    "Failed to load this board",
+    live ? { notices: source as PanelNoticeSource } : undefined
   );
 
   const rows = useMemo(() => cardRows(state.rows), [state.rows]);

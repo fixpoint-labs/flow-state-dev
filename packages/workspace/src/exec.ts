@@ -68,14 +68,19 @@ export async function run(
   return { stdout: String(result.stdout), stderr: String(result.stderr) };
 }
 
-/** The most of a by-line run's standard error kept for its failure. */
+/** The most of a by-line run's standard error kept for its failure: the end of it, where the error is. */
 const STDERR_KEPT = 64 * 1024;
 
 /**
  * `run`, with standard output handed to `onLine` as it arrives. A failure
  * rejects the way `execFile`'s does: `code` is the exit code, `signal` the
  * signal that ended it, `killed` set when the wall clock did, and `stderr`
- * what it wrote there.
+ * the last of what it wrote there.
+ *
+ * The command runs in a process group of its own (outside Windows), and the
+ * wall clock kills that whole group: a command that starts children (a shell
+ * script, a package manager's lifecycle scripts) can't outlive its budget
+ * through them, or keep the run from settling by holding its output open.
  */
 async function runByLine(
   file: string,
@@ -83,18 +88,35 @@ async function runByLine(
   options: RunOptions,
   onLine: (line: string) => void,
 ): Promise<{ stdout: string; stderr: string }> {
+  const ownGroup = process.platform !== "win32";
   const child = spawn(file, args, {
     cwd: options.cwd,
-    timeout: options.timeoutMs,
     env: options.env === undefined ? process.env : { ...process.env, ...options.env },
     stdio: ["pipe", "pipe", "pipe"],
+    detached: ownGroup,
     ...(options.signal !== undefined ? { signal: options.signal } : {}),
   });
+  let timedOut = false;
+  const stop = (): void => {
+    try {
+      if (ownGroup && child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
+      else child.kill("SIGKILL");
+    } catch {
+      // Already gone.
+    }
+    // A descendant that left the group can still hold the pipes; let go of them.
+    child.stdout.destroy();
+    child.stderr.destroy();
+  };
+  const clock = setTimeout(() => {
+    timedOut = true;
+    stop();
+  }, options.timeoutMs);
   child.stdin.end(options.input);
   let stderr = "";
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", (chunk: string) => {
-    if (stderr.length < STDERR_KEPT) stderr += chunk.slice(0, STDERR_KEPT - stderr.length);
+    stderr = (stderr + chunk).slice(-STDERR_KEPT);
   });
   let failed: unknown;
   const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
@@ -104,20 +126,20 @@ async function runByLine(
       onLine(line);
     } catch (error) {
       failed = error;
-      child.kill();
+      stop();
     }
   });
   const [code, signal] = await new Promise<[number | null, NodeJS.Signals | null]>((resolve, reject) => {
     child.once("error", reject);
     // `close`, not `exit`: every line has been handed over by then.
     child.once("close", (exitCode, exitSignal) => resolve([exitCode, exitSignal]));
-  });
+  }).finally(() => clearTimeout(clock));
   if (failed !== undefined) throw failed;
-  if (code !== 0) {
+  if (code !== 0 || timedOut) {
     throw Object.assign(new Error(`Command failed: ${file} ${args.join(" ")}\n${stderr}`), {
       code,
       signal,
-      killed: child.killed || signal !== null,
+      killed: timedOut || signal !== null,
       stderr,
     });
   }
@@ -139,3 +161,84 @@ export const GIT_TIMEOUT_MS = 600_000;
  * to count it in the longest it can hold that lock.
  */
 export const CHECKOUT_CLEANUP_TIMEOUT_MS = 60_000;
+
+/** How a {@link runToEnd} process ended. */
+export interface RunToEndResult {
+  /** The exit code, or `null` when a signal ended it. */
+  exitCode: number | null;
+  /** The wall clock ran out and the process group was stopped. */
+  timedOut: boolean;
+  /** Standard output and standard error together, in arrival order: the last `keepChars` of it. */
+  output: string;
+}
+
+/**
+ * Run `file` with `args` to its end, whatever its exit code, keeping the end
+ * of what it wrote.
+ *
+ * Unlike {@link run}, a non-zero exit resolves: the caller's question is what
+ * happened, not whether it worked. The process gets a group of its own, so
+ * the wall clock stops what it started too (a test runner's workers), not
+ * only the process named. A file that cannot be started at all resolves as
+ * exit code 127, with the reason as its output. An aborted `signal` stops
+ * the group as the wall clock does, and reports it as timed out.
+ */
+export async function runToEnd(
+  file: string,
+  args: string[],
+  options: { cwd: string; timeoutMs: number; keepChars: number; env?: Record<string, string>; signal?: AbortSignal },
+): Promise<RunToEndResult> {
+  let output = "";
+  const keep = (chunk: string) => {
+    output = (output + chunk).slice(-options.keepChars);
+  };
+  return await new Promise<RunToEndResult>((resolve) => {
+    let timedOut = false;
+    let settled = false;
+    const child = spawn(file, args, {
+      cwd: options.cwd,
+      env: options.env === undefined ? process.env : { ...process.env, ...options.env },
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+    });
+    const stopGroup = () => {
+      if (child.pid === undefined) return;
+      try {
+        if (process.platform === "win32") child.kill("SIGKILL");
+        else process.kill(-child.pid, "SIGKILL");
+      } catch {
+        // Already gone.
+      }
+    };
+    const stop = () => {
+      timedOut = true;
+      stopGroup();
+    };
+    const timer = setTimeout(stop, options.timeoutMs);
+    options.signal?.addEventListener("abort", stop, { once: true });
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", keep);
+    child.stderr.on("data", keep);
+    const finish = (result: RunToEndResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      options.signal?.removeEventListener("abort", stop);
+      resolve(result);
+    };
+    child.once("error", (error) => finish({ exitCode: 127, timedOut: false, output: `${output}${error.message}`.slice(-options.keepChars) }));
+    // The group, once the leader exits: anything it left running goes with
+    // it, on a clean exit too, so nothing it started outlives the call (the
+    // caller may let the checkout go next). On `exit`, not `close`: a child
+    // still holding the pipes would hold `close` back until the clock ran out.
+    let exited: number | null | undefined;
+    child.once("exit", (exitCode) => {
+      exited = exitCode;
+      clearTimeout(timer);
+      stopGroup();
+    });
+    // `close` only collects the last of the output.
+    child.once("close", (exitCode) => finish({ exitCode: exited !== undefined ? exited : exitCode, timedOut, output }));
+  });
+}

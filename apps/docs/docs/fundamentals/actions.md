@@ -35,6 +35,7 @@ Each action has:
 - **`inputSchema`** — Zod schema that validates every incoming request. Invalid input is rejected before any block runs.
 - **`block`** — The block (or pipeline) to execute. This is where the work happens.
 - **`userMessage`** (optional) — Extracts a display string from the input. The framework emits it as a user-role `message` item before execution begins, so the conversation history shows what the user said. The emitted item is what transports, replay, and observability read; it also feeds future turns' `history`. It does not directly feed this turn's LLM call — that's the generator's `user` slot. Wiring both to the same source is safe; the framework deduplicates equivalent content at message assembly. See [Generator context > User slot](../advanced/generator-context.md#user-slot) for the generator-side counterpart.
+- **`taskOf`** (optional) — Names the task a request is for, read from the input: `taskOf: (input) => input.taskId`. When it returns an id, the framework stamps it as `taskId` on the user-role message and on every item the request emits, so a screen showing one task can pick out its lines with `itemsForTask` after a reload. A block that marks its own task, as a task board's worker does, keeps its own id. Return `undefined` to stamp nothing. The id is a label for display: it never routes the request or decides who may run it.
 - **`concurrency`** (optional) — Declares what happens when requests collide on the same session. See [Concurrency policies](../advanced/concurrency-policies.md).
 
 ## Invoking actions
@@ -96,7 +97,7 @@ Client                        Server
 Step by step:
 1. **Validate** — Input is checked against `inputSchema`. Bad input returns 400.
 2. **Session** — Resolved from `sessionId` or created new.
-3. **User message** — If `userMessage` is defined, a user-role message item is emitted to the stream.
+3. **User message** — If `userMessage` is defined, a user-role message item is emitted to the stream, stamped with the task `taskOf` names, if any.
 4. **Execute** — The root block runs asynchronously. Items stream to the client as they're produced.
 5. **Complete** — Lifecycle hooks fire. The stream emits `request.completed` (or `request.failed`).
 

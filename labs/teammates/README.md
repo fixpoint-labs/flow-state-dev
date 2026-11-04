@@ -14,21 +14,31 @@ theme so it reads as the app it copies.
   saying what it is doing now (*Replying to you*, *Messaging writer*, *Running coding task: …*,
   *Idle*), and how many new entries its conversation has since you last looked. The same icon
   marks the teammate in the conversation's header, on message lines and in popups; the header
-  carries the same status line. Under them, *Background* lists the coding
-  tasks they started; each opens its run in a popup, read only.
+  carries the same status line.
 - **Center:** the chosen worker's one conversation. It goes on for weeks, past its history window
   of 50 turns: before a turn leaves the window, it is folded into a running summary that the worker
   reads with the turns it still has word for word. A divider marks where the word-for-word turns
   begin, and reads *summarized* once earlier turns have been folded in.
-- **Typing and scrolling:** the list follows an answer as it is written only while you are at the
-  end, and offers *Jump to latest* when you have scrolled up; a task's line is drawn the moment it is
-  filed and fills in where it is. Enter sends; Cmd+Enter (Ctrl+Enter) sends from every box,
-  including a teammate's instructions, where plain Enter is a new line.
+- **Typing and scrolling:** a line you send rises to near the top and its answer is written below
+  it; nothing else moves the list, and *Jump to latest* appears when there is more below. A task's
+  line is drawn the moment it is filed and fills in where it is. Enter sends; Cmd+Enter
+  (Ctrl+Enter) sends from every box, including a teammate's instructions, where plain Enter is a
+  new line.
 - **Popup:** a message line or a task line in the conversation opens that piece of work in a popup
   over it: the other worker's session, read only and live. It closes with Esc, its close button, or
   a click outside it, and the conversation under it keeps its place.
-- **Right:** Talk, the worker's exchanges with the other workers, grouped by worker, from the
-  message log. It closes.
+- **Right:** the open teammate's panel. At the top, its name and role, and *Edit instructions*.
+  Under that, the tasks its conversation started, coding tasks and teammates' jobs alike. Running
+  tasks come first. *Done*, *Failed* and *Cancelled* each fold into one line with a count, and a
+  click opens the rows. A task that ends moves into its group as it ends. Each row opens the task in
+  a popup. A *Routines* section sits at the foot, empty for now.
+- **Keys:** ⌘K (Ctrl+K) finds a teammate by its name or role, or opens *Hire a teammate*. Alt+↑
+  and Alt+↓ move to the previous or next teammate. `/` puts the cursor in the composer, and `?`
+  lists every key. Opening a teammate puts the cursor in its composer. Firing a teammate you hired
+  asks first in a row under the header, with *Keep* focused.
+- **The page's address** names the open teammate and an open task popup
+  (`?worker=<id>&session=<id>&task=<id>`), so a reload or a link reopens them, and Back returns
+  to what you had open before. A link to a teammate or task that is gone opens the first teammate.
 
 Scope is core messaging and session management. There are no group chats, no new-chat button and
 no session list. The design and the decisions behind it are in the
@@ -60,8 +70,8 @@ coding agent's job does: you watch it, you don't talk to it. Ask Chief of Staff 
 and Chief of Staff starts a coding task in the working folder, on one of three coding agents:
 Claude Code, Codex or Cursor. Name one ("have Codex do it") and that one runs; name none and Cursor
 does, with no question first. Each agent is a worker of its own, off the list and never
-messaged, whose `WORKER.md` names its `harness:`. A line in Chief of Staff's conversation and an
-item under *Background* show the task, tagged with the agent it runs on (and the model, once the
+messaged, whose `WORKER.md` names its `harness:`. A line in Chief of Staff's conversation and a
+row in Chief of Staff's panel show the task, tagged with the agent it runs on (and the model, once the
 run reports one), and open its run in a popup. The result lands in Chief of Staff's conversation as
 the coding task's line, *Coding task finished: …*. To change a coding task, tell Chief of Staff,
 who starts the next one.
@@ -75,10 +85,29 @@ agents, though each names its tools its own way. A Claude Code run loads the wor
 Claude Code settings and `CLAUDE.md`, not your user-level ones, so an output style set in yours
 doesn't show in its steps.
 
-Before a task starts, its agent's own sign-in check runs. An agent this machine isn't set up for
-fails the task at once, with a line that names it and what's missing, such as "Codex isn't set up on
-this machine: Not logged in. Sign in with `codex login`, then start the task again." It never runs
-on another agent instead.
+A coding task that committed waits for your review before it completes. Its popup shows *Ready for
+review*: the commits on its branch, and a judge's verdict on whether the run did what the task
+asked, which is information, not approval. **Accept** completes the task. **Ask for changes**, with
+your words, sends them to the same coding session for one more run, which you review again. A run
+that asks you something shows its question in the popup with a box for your answer, and goes on
+with it.
+
+When the lab starts, it checks which coding agents this machine can run and logs a table:
+
+```
+Coding harnesses on this machine:
+✓ Cursor
+✗ Codex: Codex has no credential: Not logged in. Run `codex login`, or set CODEX_API_KEY.
+? Claude Code: The check did not answer within 30 s.
+```
+
+Chief of Staff sees the same rows, so it starts coding tasks only on an agent marked ✓ and tells
+you what to run for one that isn't. The `harness-readiness` flow's `read` action returns the rows,
+and `{ refresh: true }` checks again. A task on an agent last read as not ready is checked once
+more before it starts, so signing in after the lab started works without a restart. If it still
+isn't ready, the task fails at once with a line that names the agent and what to run, such as
+"Codex isn't set up on this machine: Codex has no credential: Not logged in. Run `codex login`, or
+set CODEX_API_KEY. Then start the task again." It never runs on another agent instead.
 
 There is one working folder, a checkout you name when you start the lab (see [Run it](#run-it)),
 and every job that needs files works in it. Nothing on the page picks a folder, and no worker can
@@ -88,8 +117,8 @@ name another one.
 
 You can hire teammates of your own (*Hire a teammate*, under the list): a name, one line on what it
 does, and its instructions. It joins the list at once, you can talk to it, and Chief of Staff can
-hand it tasks. Your own teammates get an *Instructions* control, which replaces their instructions
-from the next turn on, and *Fire*, which takes them off the list; their conversation stays readable.
+hand it tasks. Your own teammates' panels have *Edit instructions*, which replaces their instructions
+from the next turn on, and their header has *Fire*, which takes them off the list; their conversation stays readable.
 The three teammates from the files can't be edited or fired.
 
 ## Run it
@@ -110,6 +139,10 @@ The command builds the pages and serves them with the lab's server (`fsdev.confi
 | `TEAMMATES_STORE` | the SQLite file | `.fsdev/teammates.sqlite` here |
 | `TEAMMATES_USER` | who the page acts as | `you` |
 | `TEAMMATES_TREE` | the workers' tree | `workforce/` here |
+| `TEAMMATES_RUNS` | the folder each coding run's worktree goes in | `.fsdev/teammates-runs/` here |
+| `TEAMMATES_RUN_TIMEOUT_MS` | the wall-clock budget for one coding run, in milliseconds | `1200000` (20 minutes) |
+| `TEAMMATES_SETUP` | a command each fresh worktree runs before its coding run starts, such as `pnpm install --frozen-lockfile`; no shell | none |
+| `TEAMMATES_CHECKS` | the commands a coding run's worktree must pass before its task is done, `;`-separated, such as `pnpm typecheck; pnpm test`; no shell, so a `;` inside one command, even quoted, isn't supported. A red one sends the run back with the command's output | none |
 
 The model needs a credential the gateway takes (`AI_GATEWAY_API_KEY`). Each coding agent needs its
 own sign-in: Claude Code signed in, or `ANTHROPIC_API_KEY`; Codex signed in (`codex login`), or
@@ -120,9 +153,9 @@ search needs one search provider's key (`TAVILY_API_KEY`, `EXA_API_KEY`, `BRAVE_
 The team works in this repository's checkout unless `TEAMMATES_WORKDIR` names another. Naming a
 folder that doesn't exist or isn't a git checkout stops the lab at start with an error that names
 the setting and the path; it never falls back to the current directory. Each coding run works in a
-worktree of the folder, under the lab's `.fsdev/teammates-runs/`, so the checkout's `.gitignore`
-must ignore `**/.fsdev/`, where a run keeps its own notes; a run refuses a checkout that doesn't.
-The checkout's own branch and working tree are never changed.
+worktree of the folder, under the lab's `.fsdev/teammates-runs/` (or `TEAMMATES_RUNS`), so the
+checkout's `.gitignore` must ignore `**/.fsdev/`, where a run keeps its own notes; a run refuses a
+checkout that doesn't. The checkout's own branch and working tree are never changed.
 
 ### Try it
 
@@ -149,7 +182,7 @@ names the package call it makes.
 | On screen | Package piece |
 |---|---|
 | The worker list, sending, the conversation, busy status | the workforce client's `roster()` and `ensureWorkerSession`, the flow's `respond`, session items, `listSessionRequests` |
-| Workers messaging each other, the Talk panel | `sendMessage`, the received-message item (`workforce:received`), and the message log |
+| Workers messaging each other | `sendMessage`, the received-message item (`workforce:received`), and the message log |
 | Hiring, changing and firing your own teammates | the workforce client's `hire`, `edit` and `fire`, on the roster flow |
 | Task lines | the conversation board's rows |
 | A teammate's icon and color | its `WORKER.md`'s `icon:` and `color:` lines, declared on the `agent` flow with `settings` and shown on its `roster()` row with `showSettings` |
@@ -157,8 +190,15 @@ names the package call it makes.
 | A message's popup | the recipient's session items: the turn whose received-message item carries the message's id |
 | The working folder | `localWorkspaceHost` with a constant run source, `{ kind: "repo", repo }`, and the folder in `localRepositories`; `projectSourceTools` read it |
 | Coding tasks and their runs | the conversation board's rows assigned to the worker on the coding flow, which the list leaves out; the row's `run` link, read as the run session's items |
+| A task waiting on you, and your answer | the row's holds through the Inbox's `inboxItems` and `taskRowView`, answered with the Inbox client's `answerOne`; a review drawn by the UI registry's `review-hold`, installed in `src/components/flow-state/`, from the run's stop read by harness-manager's `reviewDetail` |
 | A run's steps in plain words | the UI registry's `tool-naming` and `tool-grouping`, installed in `src/components/flow-state/`, over each tool call's name and arguments |
 | The divider and its *summarized* label | the last request's `historyStart`, and the session's `historySummary` resource |
+
+The conversation follows its session's stream. Busy status, whether a conversation is answering,
+and the divider read the conversation's requests when one of them changes, and the divider reads the
+`historySummary` resource when it changes, through `client.subscribe`. A long reply costs them no
+more reads than a short one. On a host whose push can miss a change, such as the SQLite store the
+lab runs on, they also read every 1.5 seconds, as before.
 
 `color:` names one of the lab's palette, `blue`, `green`, `amber`, `rose`, `violet` or `teal`,
 each a `--teammate-*` token in the theme. A teammate whose file sets neither line, such as one you

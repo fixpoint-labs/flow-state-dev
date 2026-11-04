@@ -26,15 +26,15 @@ const pinsBlock = (name: string, change: (pinned: string[], taskId: string) => s
     },
   });
 
-/** Build the flow: list, pin and unpin, over your user state. */
+/** Build the flow: list (a read), pin and unpin, over your user state. */
 export function definePinsFlow() {
   const taskInput = z.object({ taskId: z.string().min(1) });
   return defineFlow({
     kind: PINS_FLOW,
     user: { stateSchema: z.object({ pinned: z.array(z.string()).default([]) }) },
-    actions: {
+    // A read, not an action: the screen reads your pins whenever they change, and a read stores no request.
+    reads: {
       listPins: {
-        inputSchema: z.object({}),
         block: handler({
           name: "listPins",
           inputSchema: z.object({}),
@@ -42,6 +42,8 @@ export function definePinsFlow() {
           execute: async (_input, ctx) => ({ pinned: pinnedOf(ctx) }),
         }),
       },
+    },
+    actions: {
       pin: { inputSchema: taskInput, block: pinsBlock("pin", (pinned, id) => (pinned.includes(id) ? pinned : [...pinned, id])) },
       unpin: { inputSchema: taskInput, block: pinsBlock("unpin", (pinned, id) => pinned.filter((p) => p !== id)) },
     },

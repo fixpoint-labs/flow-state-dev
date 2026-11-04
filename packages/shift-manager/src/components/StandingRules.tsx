@@ -8,7 +8,7 @@
  * edit shows the Lab's reason, and the list is read again.
  */
 import { useState } from "react";
-import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
+import { traceHref } from "@flow-state-dev/devtool/react";
 import { MAX_RULE_CHARS, MAX_RULES } from "@flow-state-dev/workforce/browser";
 import { useStandingRules, type StandingRule, type StandingRulesView } from "../lib/rules";
 import { SectionFailure } from "./ui";
@@ -77,10 +77,8 @@ function Origin({ rule, devtoolUrl }: { rule: StandingRule; devtoolUrl?: string 
       </span>
     );
   }
-  const url = new URL(devtoolUrl);
-  url.searchParams.set(SESSION_ADDRESS_PARAM, rule.sessionId);
   return (
-    <a href={url.toString()} target="_blank" rel="noreferrer" className="underline" data-testid="rule-origin" data-origin="conversation" data-session-id={rule.sessionId}>
+    <a href={traceHref(devtoolUrl, rule.sessionId)} target="_blank" rel="noreferrer" className="underline" data-testid="rule-origin" data-origin="conversation" data-session-id={rule.sessionId}>
       from a conversation
     </a>
   );

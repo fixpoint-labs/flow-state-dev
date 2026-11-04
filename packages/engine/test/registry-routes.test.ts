@@ -239,7 +239,8 @@ describe("createFlowApiRouter", () => {
     );
     expect(capabilitiesResponse.status).toBe(200);
     expect((await capabilitiesResponse.json()) as { userStream: boolean }).toEqual({
-      userStream: false
+      userStream: false,
+      push: null
     });
 
     const missingUserResponse = await router.POST(
@@ -346,7 +347,9 @@ describe("createFlowApiRouter", () => {
         }
       }
     );
-    expect(userStreamResponse.status).toBe(501);
+    // The push socket is a host's upgrade; a plain GET reaching the router
+    // is told so (FIX-2428).
+    expect(userStreamResponse.status).toBe(426);
 
     const deleteSessionResponse = await router.DELETE(
       new Request("http://localhost/api/flows/sessions/sess_1", {

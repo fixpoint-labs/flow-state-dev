@@ -20,6 +20,7 @@
  * when the turn ends.
  */
 import type {
+  ConnectionState,
   LabAdapter,
   ProjectRow,
   ReviewDetail,
@@ -39,6 +40,12 @@ export interface FakeOptions {
   speed?: number;
   /** The clock, in ms. */
   now?: () => number;
+}
+
+/** The fake, plus what a test does to its server. */
+export interface FakeLab extends LabAdapter {
+  /** Every thread's feed reports `state` from now on. */
+  setConnection(state: ConnectionState): void;
 }
 
 interface FixtureTask extends TaskRow {
@@ -101,12 +108,13 @@ const CODE_REVIEW_PROMPT = [
 ].join("\n");
 
 /** fake: stands in for the whole package until wiring. */
-export function createFakeLab(options: FakeOptions = {}): LabAdapter {
+export function createFakeLab(options: FakeOptions = {}): FakeLab {
   const speed = options.speed ?? 1;
   const now = options.now ?? (() => Date.now());
   const sessions = new Map<string, FixtureSession>();
   const listeners = new Set<() => void>();
   let seq = 0;
+  let connection: ConnectionState = "live";
   const nextId = (prefix: string) => `${prefix}-${++seq}`;
 
   const notify = () => {
@@ -398,6 +406,10 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
   seedThreads();
 
   return {
+    setConnection(state) {
+      connection = state;
+      notify();
+    },
     modes: ["session", "threads"],
     watchSessions(onChange) {
       return watch(() => onChange([...sessions.values()].map((s) => ({ ...s.row, waiting: waitingOnYou(s.tasks) })).sort((a, b) => b.updatedAt - a.updatedAt)));
@@ -449,7 +461,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
       return watch(() => {
         const s = sessions.get(sessionId);
         if (!s) return;
-        const view: ThreadView = { entries: s.entries, running: s.running, turnStartedAt: s.turnStartedAt };
+        const view: ThreadView = { entries: s.entries, running: s.running, turnStartedAt: s.turnStartedAt, connection };
         onChange(view);
       });
     },

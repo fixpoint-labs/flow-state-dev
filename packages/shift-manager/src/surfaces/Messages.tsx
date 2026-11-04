@@ -11,21 +11,20 @@ import { EmptyState, Meta, ScreenTitle, SectionFailure } from "../components/ui"
 import { workerLabel, type LoadedSnapshot } from "../lib/derive";
 import { firstLine, exchangesOf, useMessages, type WorkerMessageRow } from "../lib/messages";
 import { projectReaderOf } from "../lib/projects";
-import { navigate } from "../lib/routes";
+import { RouteLink } from "../components/RouteLink";
 import { clockTime } from "../lib/shell";
 
 function Side({ worker, sessionId, testId }: { worker: string; sessionId: string; testId: string }) {
   return (
-    <button
-      type="button"
+    <RouteLink
       className="font-mono text-[11.5px] font-medium underline-offset-2 hover:underline"
-      onClick={() => navigate({ level: "session", sessionId })}
+      to={{ level: "session", sessionId }}
       data-testid={testId}
       data-session-id={sessionId}
       title={`Open ${workerLabel(worker)}'s session`}
     >
       {workerLabel(worker)}
-    </button>
+    </RouteLink>
   );
 }
 

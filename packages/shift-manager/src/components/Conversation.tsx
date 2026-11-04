@@ -170,6 +170,8 @@ export function Conversation({
   const composer = (
     <TurnComposer
       testId={`${testId}-composer`}
+      // A session the view names (a project's, a workstream's) keeps its own draft; otherwise the worker's conversation does.
+      draftKey={session !== undefined ? `session:${session}` : `conversation:${worker.id}`}
       scale={scale}
       label={`Message ${name}`}
       placeholder={`Message ${name}…`}
@@ -263,6 +265,7 @@ export function Conversation({
                       data-request-id={item.requestId}
                       data-item-type={item.type}
                       data-role={role}
+                      {...(item.type === "message" && role === "user" ? feed.mine(item.id) : {})}
                     >
                       {item.type === "message" && role === "assistant" ? (
                         // v2's label over each of the worker's messages: its name and the time it was written (v2:135).

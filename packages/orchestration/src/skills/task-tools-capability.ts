@@ -73,6 +73,7 @@ import {
   type TaskSettingsPatch,
   type TaskStatus,
   type TaskWriteOutcome,
+  type TaskWriteDeclineReason,
   withoutNoticeMarkers,
   cancelledDependents,
   MAX_STEERS,
@@ -105,6 +106,7 @@ import {
   waitOnTask,
 } from "../tasks/helpers/wait-on-task";
 import { cancelAndResume } from "../tasks/helpers/user-stop";
+import { taskToolSuffix } from "./task-tool-suffix";
 
 /** A filing's question as the board keeps it: a plain string is a question. */
 function askOf(question: string | { kind: "question" | "confirm"; prompt: string; onNo?: "cancel" | "continue" }): QuestionInit {
@@ -1791,6 +1793,13 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
              * of its own. On the board's action only: a model's tool reads none.
              */
             spend: taskSpendViewSchema.nullable().optional(),
+            /**
+             * When the row was last written (epoch ms), as the row records it
+             * (FIX-2429), so a client that holds the row from another source
+             * too (a run's own session) keeps the newer copy. On the board's
+             * action only, like `spend`.
+             */
+            updatedAt: z.number().optional(),
             /** A request is waiting on this task's ending (`getTask` with `wait`). */
             waitedOn: z.literal(true).optional(),
             ...waitingShape,
@@ -1825,7 +1834,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
           ...(t.run != null ? { run: t.run } : {}),
           // A client's read, never a model's (FIX-2288): the action carries it, the tool doesn't.
-          ...(claimless ? { spend: taskSpendView(t) } : {}),
+          ...(claimless ? { spend: taskSpendView(t), updatedAt: t.updatedAt } : {}),
           ...(t.wait != null && t.wait.lapsed !== true && !isTerminalStatus(t.status) ? { waitedOn: true as const } : {}),
           ...waitingOf(t),
           ...withCurrentId(currentFor(t, latest.get(t.followUpOf ?? t.id))),
@@ -2029,8 +2038,72 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     },
   });
 
-  // The filer's four.
-  return [createTask, getTask, listTasks, updateTask];
+  // The filer's four; an action gets a retry beside them.
+  if (!claimless) return [createTask, getTask, listTasks, updateTask];
+
+  /**
+   * Retry a failed or cancelled task (FIX-2383): the same task back to
+   * waiting, with its id, history and spend, and one more attempt counted in
+   * the board's retry ledger. A person's or an app's move, so only an action
+   * offers it: a model files a follow-up instead.
+   */
+  const retryTask = defineTool({
+    name: named("retryTask"),
+    description:
+      "Retry a task that failed or was cancelled: the same task goes back to waiting and runs again, " +
+      "keeping its id, its messages, its output so far and what it has spent, with one more try. " +
+      "A completed task isn't retried: file a follow-up. A refusal names the rule.",
+    inputSchema: z.object({ id: z.string() }),
+    outputSchema: z.union([
+      z.object({ ok: z.literal(true) }),
+      z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
+    ]),
+    execute: async (input, ctx) => {
+      const collection = await resolve(ctx);
+      if (!collection) return noBoardError;
+      const current = collection.get(input.id);
+      // A row the caller doesn't reach is answered as not found, with nothing written (BP-031).
+      if (current === undefined || !callerReaches(ctx, current)) return taskNotFoundError(input.id);
+      if (collection.retry === undefined) {
+        return { ok: false as const, taskId: input.id, error: `retry_not_supported: task "${input.id}"'s board takes no retry. Nothing was written.` };
+      }
+      let outcome: TaskWriteOutcome;
+      try {
+        outcome = await collection.retry(input.id);
+      } catch (err) {
+        if (err instanceof TaskWriteRefusedError) return refusedError(err);
+        throw err;
+      }
+      if (outcome.outcome !== "declined") return { ok: true as const };
+      const now = collection.get(input.id) ?? { ...current, status: outcome.status };
+      return retryDeclinedError(now, outcome.reason, (id) => collection.get(id));
+    },
+  });
+
+  return [createTask, getTask, listTasks, updateTask, retryTask];
+}
+
+/** A refused retry (FIX-2383): the rule, the task's state, and the next move. */
+function retryDeclinedError(task: Task, reason: TaskWriteDeclineReason, lookup: (id: string) => Task | undefined) {
+  const refuse = (code: string, rule: string) => ({ ok: false as const, taskId: task.id, error: `${code}: ${rule} Nothing was written.` });
+  switch (reason) {
+    case "settling":
+      return refuse("settling", `task "${task.id}"'s ${task.status === "errored" ? "failure" : "cancel"} is still being passed on. Try again in a moment.`);
+    case "dependency-ended": {
+      const ended = (task.deps ?? []).filter((dep) => {
+        const status = lookup(dep)?.status;
+        return status === "errored" || status === "cancelled";
+      });
+      return refuse("dependency_ended", `task "${task.id}" waits on ${ended.map((dep) => `"${dep}"`).join(", ")}, which failed or was cancelled, so it could never start. Retry ${ended.length === 1 ? "it" : "them"} first.`);
+    }
+    case "retry-budget":
+      return refuse("retry_budget_spent", `the board has spent its retry budget (maxTotalRetries), so task "${task.id}" stays ${task.status}.`);
+    default:
+      if (task.status === "completed") {
+        return refuse("task_finished", `task "${task.id}" completed, and a completed task's output never changes. File a follow-up with createTask({ followUpOf: "${task.id}" }) for more work.`);
+      }
+      return refuse("not_finished", `task "${task.id}" is ${task.status}: only a task that failed or was cancelled is retried. Cancel it, or send it a message, while it is open.`);
+  }
 }
 
 /**
@@ -2162,19 +2235,8 @@ export function taskToolsForTurn(
 // The task tools as flow actions
 // ---------------------------------------------------------------------------
 
-/**
- * The qualifier that makes one board's task tools distinct from
- * another's: the board's collection id with every character a provider does
- * not allow in a tool name (`[a-zA-Z0-9_-]`) turned into `_`. So
- * `eng.feature.work`'s tools are `updateTask_eng_feature_work`.
- *
- * **Pinned.** It is the name a model is told about on a dotted board and the
- * name an action carries under {@link taskToolActions}, and the DevTool scopes
- * a row's actions to its board by it.
- */
-export function taskToolSuffix(collectionId: string): string {
-  return collectionId.replace(/[^a-zA-Z0-9_-]/g, "_");
-}
+// The board qualifier lives in a leaf module, so `./inbox` names a board's actions without this runtime.
+export { taskToolSuffix };
 
 /**
  * What {@link taskToolActions} reads off a board handle. Structural, so this

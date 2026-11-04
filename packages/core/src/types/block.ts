@@ -17,6 +17,7 @@ import { DISPATCH_SEAM } from "./dispatch";
 import type { RequestEndSeam, RequestSpendSeam } from "./request-end";
 import { REQUEST_END_SEAM, REQUEST_SPEND_SEAM } from "./request-end";
 import { REQUEST_RESUME_SEAM, type RequestResume } from "./request-resume";
+import { BOARD_NOTICE_SEAM, type BoardNoticeSeam } from "./board-notice";
 import type { TracingLevel } from "../helpers/tracing-level";
 import type { Content } from "../items/content";
 import type {
@@ -121,6 +122,19 @@ export type ExecutionParent = {
     label?: string;
     metadata?: Record<string, unknown>;
   };
+};
+
+/** What `ctx.emit.message` takes beside the message's text or content. */
+export type EmitMessageOptions = {
+  itemVisibility?: ItemVisibility;
+  agentName?: string;
+  transient?: boolean;
+  /**
+   * Structured data the message item carries as `metadata`, for a client to
+   * read instead of parsing the text. Opaque to the engine and never sent to a
+   * model; the emitting package owns its keys and exports their reader.
+   */
+  metadata?: Record<string, unknown>;
 };
 
 export interface ResponseEmitterHandle {
@@ -449,11 +463,11 @@ export interface BlockContext<
     message: {
       (
         text: string,
-        options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
+        options?: EmitMessageOptions
       ): void;
       (
         content: Content[],
-        options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
+        options?: EmitMessageOptions
       ): void;
     };
     /**
@@ -624,6 +638,13 @@ export interface BlockContext<
   [REQUEST_SPEND_SEAM]?: RequestSpendSeam;
 
   /**
+   * @internal The running request's board-notice seam (FIX-2429), under a
+   * symbol key. Read only by `publishBoardChange`, which the task
+   * collection's change adapter calls. See `types/board-notice.ts`.
+   */
+  [BOARD_NOTICE_SEAM]?: BoardNoticeSeam;
+
+  /**
    * @internal How the running request resumed (FIX-2129), under a symbol key.
    * Read only by `requestResumeOf`. See `types/request-resume.ts`.
    */
@@ -775,7 +796,7 @@ export interface BlockContext<
    */
   _emitMessageAwaited?(
     text: string,
-    options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean; role?: "user" | "assistant" }
+    options?: EmitMessageOptions & { role?: "user" | "assistant" }
   ): Promise<void>;
 
   /**

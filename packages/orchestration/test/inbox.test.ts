@@ -8,8 +8,8 @@
  * item with no route, a closed hold back, one stop under two items.
  */
 import { describe, expect, it, vi } from "vitest";
-import type { Client, SessionRequestSummary } from "@flow-state-dev/client";
-import { createInboxClient, inboxItems, type InboxRow, type InboxSuspension } from "../src/inbox";
+import { ClientHttpError, type Client, type SessionRequestSummary } from "@flow-state-dev/client";
+import { createInboxClient, inboxItems, taskActionName, type InboxRow, type InboxSuspension } from "../src/inbox";
 import { reconcileInbox, rowTruthOf, suspensionTruthOf, taskItemId, type InboxTruth } from "../src/inbox/check";
 import { NO_BOARD_UNANSWERABLE, NO_FLOW_UNANSWERABLE } from "../src/inbox/holds";
 import type { TaskHold } from "../src/tasks";
@@ -415,5 +415,86 @@ describe("suspensionTruthOf: what a session's suspended requests record", () => 
       { suspensionId: "a", sessionId: "s", requestId: "r1", taskRun: true },
       { suspensionId: "d", sessionId: "s", requestId: "r2", taskRun: false },
     ]);
+  });
+});
+
+describe("a board's task actions: inbox.board(at)", () => {
+  const AT = { flowId: "desk", sessionId: "s_desk", board: "eng.work" };
+
+  /** A client whose board answers `output`, the request listed on page `onPage` (from 0) of the session's requests. */
+  const boardClient = (
+    output: unknown,
+    { status = "completed", onPage = 0, sendError }: { status?: string; onPage?: number; sendError?: Error } = {},
+  ) => {
+    const send = vi.fn(async () => {
+      if (sendError !== undefined) throw sendError;
+      return { id: "req_act" };
+    });
+    const wait = vi.fn(async () => ({ status }));
+    const flow = vi.fn(() => ({ send, request: () => ({ wait }) }));
+    const filler = (page: number) => Array.from({ length: 100 }, (_, i) => ({ id: `other_${page}_${i}` }));
+    const requests = vi.fn(async (_session: string, { offset = 0 }: { offset?: number }) => {
+      const page = offset / 100;
+      if (page < onPage) return filler(page);
+      const error = status === "failed" ? { error: { message: "the action failed" } } : {};
+      return page === onPage ? [{ id: "req_act", result: { output, ...error } }] : [];
+    });
+    return { send, flow, requests, actions: createInboxClient({ flow, sessions: { requests } } as unknown as Client).board(AT) };
+  };
+
+  it("names the board's own action and builds its payload, on the board's session", async () => {
+    const { send, flow, actions } = boardClient({ ok: true });
+    await actions.steer("t1", "Use the March export");
+    await actions.release("t2");
+    await actions.retry("t3");
+    expect(flow).toHaveBeenCalledWith("desk");
+    expect(send.mock.calls).toEqual([
+      ["updateTask_eng_work", { id: "t1", message: "Use the March export" }, { sessionId: "s_desk" }],
+      ["updateTask_eng_work", { id: "t2", status: "pending" }, { sessionId: "s_desk" }],
+      ["retryTask_eng_work", { id: "t3" }, { sessionId: "s_desk" }],
+    ]);
+    expect(taskActionName("updateTask", "eng.work")).toBe("updateTask_eng_work");
+  });
+
+  it("cancel resolves to the dependents the board took along, and to none when it names none", async () => {
+    expect(await boardClient({ ok: true, cancelled: ["t4", "t5"] }).actions.cancel("t1")).toEqual(["t4", "t5"]);
+    // The board's updateTask leaves `cancelled` out when no dependent went with the task.
+    expect(await boardClient({ ok: true }).actions.cancel("t1")).toEqual([]);
+  });
+
+  it("cancel rejects a `cancelled` it can't read, rather than report no dependents cancelled", async () => {
+    // A mistyped list is a protocol bug; resolving [] would tell the screen nothing else was cancelled.
+    await expect(boardClient({ ok: true, cancelled: "t4" }).actions.cancel("t1")).rejects.toThrow(/cancelled dependents/);
+    await expect(boardClient({ ok: true, cancelled: ["t4", 5] }).actions.cancel("t1")).rejects.toThrow(/cancelled dependents/);
+  });
+
+  it("refile copies the row's brief, overrides winning, and leaves out what the row doesn't carry", async () => {
+    const { send, actions } = boardClient({ ok: true, taskId: "t9" });
+    const row = { goal: "Audit the licenses", title: "Audit", context: "Only the npm ones", assignee: "eng.tasker", labels: ["legal"], priority: null };
+    expect(await actions.refile(row, { assignee: "eng.writer", deps: ["t2"] })).toBe("t9");
+    expect(send.mock.calls[0]).toEqual([
+      "createTask_eng_work",
+      { goal: "Audit the licenses", title: "Audit", context: "Only the npm ones", assignee: "eng.writer", labels: ["legal"], deps: ["t2"] },
+      { sessionId: "s_desk" },
+    ]);
+  });
+
+  it("finds its answer past the first page of the session's requests", async () => {
+    const { actions, requests } = boardClient({ ok: true, cancelled: ["t4"] }, { onPage: 2 });
+    expect(await actions.cancel("t1")).toEqual(["t4"]);
+    expect(requests.mock.calls.map((call) => (call as unknown[])[1])).toMatchObject([{ offset: 0 }, { offset: 100 }, { offset: 200 }]);
+  });
+
+  it("rejects the board's refusal with its words, a failed request with its error, and an answer it can't find", async () => {
+    const finished = 'task_finished: task "t1" is completed. Nothing was written.';
+    await expect(boardClient({ ok: false, error: finished }).actions.steer("t1", "more")).rejects.toThrow(/task_finished/);
+    await expect(boardClient(undefined, { status: "failed" }).actions.cancel("t1")).rejects.toThrow("the action failed");
+    // Every page full of other requests: the answer is never read, so it is never a yes.
+    await expect(boardClient({ ok: true }, { onPage: 99 }).actions.release("t1")).rejects.toThrow(/couldn't be read, so check the board/);
+  });
+
+  it("rejects a 4xx with the route's reason", async () => {
+    const { actions } = boardClient({ ok: true }, { sendError: new ClientHttpError("Unknown action updateTask_eng_work", { status: 404, body: null }) });
+    await expect(actions.cancel("t1")).rejects.toThrow("Unknown action updateTask_eng_work");
   });
 });

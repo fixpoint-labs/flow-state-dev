@@ -12,8 +12,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import { connect } from "../src/lib/connection";
+import { readSessionItems } from "../src/lib/run";
 import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef, toBoardRow, type BoardRow } from "../src/lib/reads";
-import { openRunLab, RUN_LAB_ASK, RUN_LAB_USER_ID } from "./fixtures/run-lab/lab.mts";
+import { openRunLab, RUN_LAB_ASK, RUN_LAB_SPEND, RUN_LAB_USER_ID } from "./fixtures/run-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
 type Opened = Awaited<ReturnType<typeof openRunLab>>;
@@ -123,16 +124,45 @@ describe("Interrupt (BR-11, BR-13, BR-14)", () => {
   }, 30_000);
 });
 
-describe("Esc interrupts wherever the activity line says so", () => {
-  it("stops the run from the composer and from a tab with no Session mounted", async () => {
+describe("interrupting takes a deliberate gesture, never one Esc", () => {
+  it("one Esc, on the frame or in the composer, stops nothing; Esc Esc stops it from a tab with no Session mounted", async () => {
+    const opened = await openLab();
+    const row = await heldRow(opened, true);
+    const runtime = await opened.lab.flowState.getRuntime();
+    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/brief`);
+    await waitFor(() => expect(screen.getByTestId("run-state").getAttribute("data-state")).toBe("in_progress"), { timeout: 10_000 });
+    expect(screen.getByTestId("interrupt-hint").textContent).toMatch(/^esc esc or (⌘\.|Ctrl\+\.) to interrupt$/);
+    expect(screen.queryByTestId("task-session")).toBeNull();
+    const frame = screen.getByTestId("task-frame");
+    const composer = screen.getByTestId("task-composer-input");
+
+    // Typing in the composer: Esc is the box's, however many times.
+    fireEvent.keyDown(composer, { key: "Escape" });
+    fireEvent.keyDown(composer, { key: "Escape" });
+    // One Esc on the frame only arms, and says so.
+    fireEvent.keyDown(frame, { key: "Escape" });
+    expect(screen.getByTestId("interrupt-hint").textContent).toBe("press Esc again to interrupt");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(screen.getByTestId("run-state").getAttribute("data-state")).toBe("in_progress");
+    expect(((await runtime.stores.request.get(row.run!.requestId)) as { status: string }).status).toBe("in_progress");
+
+    // The second Esc inside the window stops it.
+    fireEvent.keyDown(frame, { key: "Escape" });
+    await waitFor(() => expect(screen.getByTestId("run-state").getAttribute("data-state")).toBe("aborted"), { timeout: 10_000 });
+    // And the line says when the run's record says it stopped.
+    const record = (await runtime.stores.request.get(row.run!.requestId)) as { abortedAt?: number };
+    expect(record.abortedAt).toBeTypeOf("number");
+    const clock = new Date(record.abortedAt!).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    expect((await screen.findByTestId("run-stopped-at")).textContent).toBe(`· run stopped at ${clock}`);
+  }, 30_000);
+
+  it("Cmd+. stops it at once, even from the composer", async () => {
     const opened = await openLab();
     const row = await heldRow(opened, true);
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/brief`);
     await waitFor(() => expect(screen.getByTestId("run-state").getAttribute("data-state")).toBe("in_progress"), { timeout: 10_000 });
-    expect(screen.getByTestId("task-activity").textContent).toContain("esc to interrupt");
-    expect(screen.queryByTestId("task-session")).toBeNull();
-    const composer = screen.getByTestId("task-composer-input");
-    fireEvent.keyDown(composer, { key: "Escape" });
+    expect(screen.getByTestId("task-interrupt").getAttribute("title")).toMatch(/^Stop this run \(Esc Esc or (⌘\.|Ctrl\+\.)\)$/);
+    fireEvent.keyDown(screen.getByTestId("task-composer-input"), { key: ".", metaKey: true });
     await waitFor(() => expect(screen.getByTestId("run-state").getAttribute("data-state")).toBe("aborted"), { timeout: 10_000 });
   }, 30_000);
 });
@@ -396,24 +426,75 @@ describe("a finished task's composer (FIX-1764)", () => {
 
 // FIX-2009.
 describe("a line sent from a task's composer", () => {
-  it("shows in the task's Session with the worker's reply, though neither carries the task's stamp", async () => {
-    const opened = await openLab();
-    const row = await finishedRow(opened);
-    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
+  /** Send `line` from the open task's composer, and wait until the Session shows it and the reply. */
+  async function sendFromTask(line: string) {
     await screen.findByTestId("session", {}, { timeout: 10_000 });
     const input = (await screen.findByTestId("task-composer-input")) as HTMLInputElement;
     await waitFor(() => expect(input.disabled).toBe(false));
-    const line = `where are we on this? ${globalThis.crypto.randomUUID().slice(0, 6)}`;
     fireEvent.change(input, { target: { value: line } });
     fireEvent.click(screen.getByTestId("task-composer-send"));
     await waitFor(() => expect(screen.getByTestId("task-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 15_000 });
-    // Shown because this view sent it: the door turn stores no task stamp.
     const session = screen.getByTestId("session-items");
     await waitFor(() => {
       expect(session.textContent).toContain(line);
       expect(session.textContent).toContain(`Heard: ${line}`);
     }, { timeout: 10_000 });
-  }, 40_000);
+  }
+
+  /** Unmount the task screen, as a reload does, and open it again on the same task. */
+  async function remount(baseUrl: string, path: string) {
+    cleanup();
+    await renderAt(baseUrl, path);
+    return screen.findByTestId("session-items", {}, { timeout: 10_000 });
+  }
+
+  it("keeps the line and the reply in the Session after the screen remounts: the door stamps both with the task", async () => {
+    const opened = await openLab();
+    const row = await finishedRow(opened);
+    const path = `/tasks/${row.boardRef}/${row.id}/session`;
+    await renderAt(opened.served.baseUrl, path);
+    const line = `where are we on this? ${globalThis.crypto.randomUUID().slice(0, 6)}`;
+    await sendFromTask(line);
+
+    // The store, with no app memory: both items carry the task's id.
+    const stored = (await readSessionItems(opened.client, row.run!.sessionId)).items;
+    const said = (role: string, text: string) =>
+      stored.filter((item) => item.type === "message" && item.role === role && JSON.stringify(item.content).includes(text)).map((item) => item.taskId);
+    expect(said("user", line)).toEqual([row.id]);
+    expect(said("assistant", `Heard: ${line}`)).toEqual([row.id]);
+
+    // A fresh screen has sent nothing, so it finds them by the stamp alone.
+    const session = await remount(opened.served.baseUrl, path);
+    await waitFor(() => {
+      expect(session.textContent).toContain(line);
+      expect(session.textContent).toContain(`Heard: ${line}`);
+    }, { timeout: 10_000 });
+  }, 60_000);
+
+  it("to a door that keeps no task id, shows the line while the screen is open, sends no task id, and loses it on a remount", async () => {
+    // The workers' door doesn't spread `doorTask`, as an app's own door that hasn't opted in.
+    const opened = await openLab({ untaskedDoors: true });
+    const row = await finishedRow(opened);
+    const real = globalThis.fetch;
+    const bodies: unknown[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (init?.method === "POST" && url.includes("/actions/respond")) bodies.push(JSON.parse(String(init.body)));
+      return real(input, init);
+    });
+    const path = `/tasks/${row.boardRef}/${row.id}/session`;
+    await renderAt(opened.served.baseUrl, path);
+    const line = `no stamp ${globalThis.crypto.randomUUID().slice(0, 6)}`;
+    // Shown because this view sent it.
+    await sendFromTask(line);
+    expect(bodies).toHaveLength(1);
+    expect(JSON.stringify(bodies[0])).not.toContain("taskId");
+
+    // Nothing in the store names the task, so a fresh screen shows neither.
+    const session = await remount(opened.served.baseUrl, path);
+    await screen.findAllByTestId("session-item", {}, { timeout: 10_000 });
+    expect(session.textContent).not.toContain(line);
+  }, 60_000);
 
   it("still shows the line and the reply when the send ends before the Session's first read lands", async () => {
     const opened = await openLab();
@@ -451,14 +532,19 @@ describe("a line sent from a task's composer", () => {
 });
 
 describe("the inspector (BR-18 to BR-23)", () => {
-  it("shows the worker, started, the harness gap, what a recording run recorded, and the trace link with the session beside it", async () => {
+  it("shows the worker, started, what the run spent, what a recording run recorded, and the trace link with the session beside it", async () => {
     const opened = await openLab();
-    const row = await heldRow(opened, true);
+    const held = await heldRow(opened, true);
+    // Once the board has written what the run reported onto the row.
+    const row = await eventually(async () => (await opened.rows()).find((r) => r.id === held.id && r.spend !== null), "the held run's spend");
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`, "http://127.0.0.1:4000");
     const inspector = await screen.findByTestId("task-inspector");
     expect(within(inspector).getByTestId("inspector-worker-id").getAttribute("data-worker-id")).toBe(opened.lab.ownWorker!.id);
     expect(within(inspector).getByTestId("inspector-started-at").getAttribute("data-started-at")).toBe(String(row.startedAt));
-    expect(within(inspector).getByTestId("inspector-harness-gap").textContent).toBe(GAPS.task.harness);
+    // The harness, tokens and charge the run reported, from the row the board wrote while it runs (FIX-2398).
+    const spend = within(inspector).getByTestId("inspector-spend");
+    expect(spend.getAttribute("data-harness")).toBe(RUN_LAB_SPEND.harness);
+    expect(spend.textContent).toContain("claude-sonnet-4-5 · 12.4k in · 2.3k out · $0.42");
     const files = await within(inspector).findAllByTestId("inspector-file", {}, { timeout: 10_000 });
     expect(files.map((f) => [f.getAttribute("data-path"), f.getAttribute("data-kind")])).toEqual([["notes/audit.md", "created"]]);
     expect(within(inspector).getAllByTestId("inspector-plan-step").map((s) => s.getAttribute("data-status"))).toEqual(["completed", "in_progress"]);
@@ -481,7 +567,7 @@ describe("the inspector (BR-18 to BR-23)", () => {
     await renderAt(opened.served.baseUrl, `/tasks/${held.boardRef}/${waiting.taskId}/brief`);
     const after = await screen.findByTestId("inspector-after");
     expect(within(after).getAllByRole("listitem").map((li) => li.getAttribute("data-task-id"))).toEqual([held.id]);
-    fireEvent.click(within(after).getByRole("button"));
+    fireEvent.click(within(after).getByRole("link"));
     await waitFor(() => expect(window.location.pathname).toBe(`/tasks/${held.boardRef}/${held.id}/session`));
     const blocks = await screen.findByTestId("inspector-blocks");
     expect(within(blocks).getAllByRole("listitem").map((li) => li.getAttribute("data-task-id"))).toEqual([waiting.taskId]);

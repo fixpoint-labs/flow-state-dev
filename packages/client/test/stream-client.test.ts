@@ -3,8 +3,7 @@ import {
   createClient,
   createSSEClientFromResponse,
   type ClientFetch,
-  type RequestStreamOptions,
-  type UserStreamOptions
+  type RequestStreamOptions
 } from "../src";
 
 /** A request's stream, opened through one client's `request(id).stream()`. */
@@ -13,21 +12,7 @@ function requestStream({ url, fetcher, ...options }: RequestStreamOptions & { ur
   return createClient({ userId: "devuser", baseUrl: "", fetcher }).flow(flow!).request(id!).stream(options);
 }
 
-/** The user stream, opened through one client's `stream()`. */
-function userStream({ url, fetcher, ...options }: UserStreamOptions & { url: string; fetcher: ClientFetch }) {
-  const [, userId] = /\/api\/flows\/users\/([^/]+)\/stream/.exec(url)!;
-  return createClient({ userId: userId!, baseUrl: "", fetcher }).stream(options);
-}
-
 function requestEventFrame(options: {
-  id: string;
-  event: string;
-  data: Record<string, unknown>;
-}): string {
-  return `id: ${options.id}\nevent: ${options.event}\ndata: ${JSON.stringify(options.data)}\n\n`;
-}
-
-function userEventFrame(options: {
   id: string;
   event: string;
   data: Record<string, unknown>;
@@ -539,68 +524,6 @@ describe("request.streamFromResponse", () => {
     await flushSSE();
 
     expect(onClose).not.toHaveBeenCalled();
-  });
-});
-
-describe("client.stream", () => {
-  it("parses optional user-stream events and dispatches callbacks", async () => {
-    const onResourceChanged = vi.fn();
-    const onScopeStateChanged = vi.fn();
-
-    const streamBody = [
-      userEventFrame({
-        id: "devuser:1",
-        event: "resource.changed",
-        data: {
-          stream: "user",
-          type: "resource.changed",
-          userId: "devuser",
-          sequence_number: 1,
-          ts: 1,
-          scope: "session",
-          resourcePath: "docs/1",
-          changeType: "updated"
-        }
-      }),
-      userEventFrame({
-        id: "devuser:2",
-        event: "scope.state.changed",
-        data: {
-          stream: "user",
-          type: "scope.state.changed",
-          userId: "devuser",
-          sequence_number: 2,
-          ts: 2,
-          scope: "session",
-          scopeId: "sess_1",
-          changeType: "updated"
-        }
-      })
-    ].join("");
-
-    const fetcher = vi.fn<ClientFetch>(async () =>
-      new Response(streamBody, {
-        status: 200,
-        headers: {
-          "content-type": "text/event-stream"
-        }
-      })
-    );
-
-    const handle = userStream({
-      url: "/api/flows/users/devuser/stream",
-      fetcher,
-      onResourceChanged,
-      onScopeStateChanged
-    });
-
-    await flushSSE();
-
-    expect(onResourceChanged).toHaveBeenCalledTimes(1);
-    expect(onScopeStateChanged).toHaveBeenCalledTimes(1);
-    expect(handle.lastEventId).toBe("devuser:2");
-
-    handle.close();
   });
 });
 

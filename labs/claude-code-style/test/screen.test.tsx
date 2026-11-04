@@ -13,7 +13,13 @@ import { createFakeLab } from "./fake-lab";
 // The script runs at a hundredth of real time.
 const fast = () => createFakeLab({ speed: 0.01 });
 
-afterEach(cleanup);
+// The app keeps what is open in the page's address, and drafts in storage across a reload;
+// each test starts on a bare address with no one else's drafts.
+afterEach(() => {
+  cleanup();
+  window.history.replaceState(null, "", "/");
+  window.localStorage.clear();
+});
 
 async function ask(text: string) {
   const box = await screen.findByLabelText("Message the main session");
@@ -145,7 +151,8 @@ describe("the session-mode screen", () => {
     fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
     expect(box.value).toBe("first line");
     fireEvent.keyDown(box, { key: "Enter", metaKey: true });
-    expect(box.value).toBe("");
+    // The box empties once the send lands.
+    await waitFor(() => expect(box.value).toBe(""));
     const mine = () => [...thread().querySelectorAll('[data-entry="user"]')].map((el) => el.textContent ?? "");
     await waitFor(() => expect(mine().join()).toMatch(/first line/));
     fireEvent.change(box, { target: { value: "second line" } });
@@ -167,6 +174,114 @@ describe("the session-mode screen", () => {
     fireEvent.keyDown(box, { key: "Enter", keyCode: 229 });
     expect(box.value).toBe("日本");
     expect(within(thread()).queryByText("日本", { ignore: "textarea" })).toBeNull();
+  });
+
+  it("keeps a line whose send fails, says why, and sends it again on Retry", async () => {
+    const lab = fast();
+    let refuse = true;
+    const adapter = {
+      ...lab,
+      send: (sessionId: string, text: string) =>
+        refuse ? Promise.reject(new Error("the server refused it (401)")) : lab.send(sessionId, text),
+    };
+    render(<App adapter={adapter} />);
+    await pick();
+    const box = screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    const mine = () => [...thread().querySelectorAll('[data-entry="user"]')].map((el) => el.textContent ?? "");
+    await ask("Summarize the vendor notes");
+    const alert = await within(thread()).findByRole("alert");
+    expect(alert.textContent).toMatch(/Not sent: the server refused it \(401\)/);
+    // Nothing typed is lost, and nothing claims it was sent.
+    expect(box.value).toBe("Summarize the vendor notes");
+    expect(mine()).toEqual([]);
+
+    refuse = false;
+    fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(mine().join()).toMatch(/Summarize the vendor notes/));
+    expect(box.value).toBe("");
+    expect(within(thread()).queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps what you typed while a send was in flight once it lands", async () => {
+    const lab = fast();
+    let land!: () => void;
+    const adapter = {
+      ...lab,
+      send: (sessionId: string, text: string) => new Promise<void>((resolve) => (land = resolve)).then(() => lab.send(sessionId, text)),
+    };
+    render(<App adapter={adapter} />);
+    await pick();
+    const box = screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    await ask("first ask");
+    expect(box.value).toBe("first ask");
+    expect(within(thread()).getByRole("button", { name: "Sending…" })).toBeTruthy();
+    fireEvent.change(box, { target: { value: "and a second thought" } });
+    await act(async () => land());
+    await waitFor(() => expect(within(thread()).getByRole("button", { name: "Send" })).toBeTruthy());
+    expect(box.value).toBe("and a second thought");
+  });
+
+  it("keeps a draft revised after a reload when the send from before the reload lands", async () => {
+    const lab = fast();
+    let land!: () => void;
+    const adapter = {
+      ...lab,
+      send: (sessionId: string, text: string) => new Promise<void>((resolve) => (land = resolve)).then(() => lab.send(sessionId, text)),
+    };
+    const open = async () => {
+      await pick();
+      fireEvent.click(within(screen.getByRole("navigation", { name: "Sessions" })).getByRole("button", { name: /Draft the launch note/ }));
+      await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"));
+      return screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    };
+    const first = render(<App adapter={adapter} />);
+    const box = await open();
+    await act(async () => {
+      fireEvent.change(box, { target: { value: "tighten the intro" } });
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+    first.unmount();
+
+    // A reload reopens the session the address names.
+    const reopened = async () => {
+      await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"));
+      return screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    };
+    const second = render(<App adapter={adapter} />);
+    const again = await reopened();
+    expect(again.value).toBe("tighten the intro");
+    fireEvent.change(again, { target: { value: "tighten the intro, and the outro" } });
+    await act(async () => land());
+    second.unmount();
+
+    render(<App adapter={lab} />);
+    expect((await reopened()).value).toBe("tighten the intro, and the outro");
+  });
+
+  it("brings an unsent draft back after a reload, for its own session only", async () => {
+    const lab = fast();
+    const open = async (title: RegExp, heading: string) => {
+      fireEvent.click(within(screen.getByRole("navigation", { name: "Sessions" })).getByRole("button", { name: title }));
+      await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe(heading));
+      return screen.getByLabelText("Message the main session") as HTMLTextAreaElement;
+    };
+    const first = render(<App adapter={lab} />);
+    await pick();
+    fireEvent.change(await open(/Draft the launch note/, "Draft the launch note"), { target: { value: "half a thought" } });
+    first.unmount();
+
+    // A reload reopens the session the address names, with its draft.
+    const second = render(<App adapter={lab} />);
+    await waitFor(() => expect(within(thread()).getByRole("heading").textContent).toBe("Draft the launch note"));
+    expect((screen.getByLabelText("Message the main session") as HTMLTextAreaElement).value).toBe("half a thought");
+    second.unmount();
+
+    // A page opened on no session starts a new one, and the draft stays with its own.
+    window.history.replaceState(null, "", "/");
+    render(<App adapter={lab} />);
+    await pick();
+    expect((screen.getByLabelText("Message the main session") as HTMLTextAreaElement).value).toBe("");
+    expect((await open(/Draft the launch note/, "Draft the launch note")).value).toBe("half a thought");
   });
 
   it("clears an unsent draft when another session is opened, so it can't be sent to the wrong one", async () => {
@@ -363,19 +478,46 @@ describe("the session-mode screen", () => {
     expect(within(thread()).queryByRole("status")).toBeNull();
   });
 
-  it("doesn't stop the turn when Escape only dismisses an IME composition", async () => {
+  it("never stops the turn on one Esc, in the composer or when it closes a sheet", async () => {
     render(<App adapter={createFakeLab({ speed: 0.2 })} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
     await within(thread()).findByRole("status");
     const box = screen.getByLabelText("Message the main session");
-    act(() => {
-      box.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", isComposing: true, bubbles: true }));
-    });
-    fireEvent.keyDown(box, { key: "Escape", keyCode: 229 });
-    expect(within(thread()).getByRole("status")).toBeTruthy();
-    // A plain Escape still stops it.
+    // Esc in the text box is the box's, however many times it is pressed.
     fireEvent.keyDown(box, { key: "Escape" });
+    fireEvent.keyDown(box, { key: "Escape" });
+    // An Esc that closes a sheet is spent, even with the second Esc right behind it.
+    await waitFor(() => expect(row("Research Globex")).toBeTruthy());
+    fireEvent.click(row("Research Globex"));
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Work: Research Globex" })).toBeNull();
+    expect(within(thread()).queryByText(/press Esc again/)).toBeNull();
+    // The next Esc only arms: the one that closed the sheet did not count as the first.
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(within(thread()).getByText(/press Esc again/)).toBeTruthy();
+    expect(within(thread()).getByRole("status")).toBeTruthy();
+    expect(within(thread()).queryByText(/Interrupted/)).toBeNull();
+  });
+
+  it("stops the turn on Esc twice, from outside the text box", async () => {
+    render(<App adapter={createFakeLab({ speed: 0.2 })} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await within(thread()).findByRole("status");
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(within(thread()).getByText(/press Esc again to stop the turn/)).toBeTruthy();
+    expect(within(thread()).queryByText(/Interrupted/)).toBeNull();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await within(thread()).findByText(/Interrupted/);
+  });
+
+  it("stops the turn on Cmd+. from the composer", async () => {
+    render(<App adapter={createFakeLab({ speed: 0.2 })} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await within(thread()).findByRole("status");
+    fireEvent.keyDown(screen.getByLabelText("Message the main session"), { key: ".", metaKey: true });
     await within(thread()).findByText(/Interrupted/);
   });
 

@@ -27,6 +27,7 @@ const sidebars: SidebarsConfig = {
     "routing-with-evaluators",
     "adding-skills-to-your-app",
     "projects-on-org-scope",
+    "realtime",
     "writing-ui-stories",
     "choosing-patterns-with-benchmarks",
     "routing-errors-to-sentry",

@@ -1,19 +1,25 @@
 /**
- * flow-state.dev home page: "The open-source backend for your AI workforce."
+ * flow-state.dev home page: "Harness your AI workforce."
  *
  * The page is a static port of the landing design (see `src/components/Landing`).
  * It renders its own nav and footer, so it skips the docs `Layout`; `Head` still
  * sets the title, description and the three page fonts.
  */
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import Head from "@docusaurus/Head";
 
 import { landingMarkup } from "../components/Landing/markup";
 import "../components/Landing/landing.css";
 
-const TITLE = "flow-state.dev · The open-source backend for your AI workforce";
+const TITLE = "flow-state.dev · Harness your AI workforce";
 const DESCRIPTION =
-  "Put hundreds of agents to work, on any model, in an app built your way. Flow State runs the flows, tasks, messages and memory underneath.";
+  "Build your own harness with Flow State, from one agent to a whole workforce, shaped to how your team works, on any model, at a cost you control.";
+
+/** Closes the phone menu when one of its links is followed, so "Starters" doesn't leave it open. */
+function closeMenuOnLink(event: MouseEvent<HTMLElement>): void {
+  const target = event.target as Element;
+  if (target.closest("a")) target.closest("details.fs-menu")?.removeAttribute("open");
+}
 
 /** The landing page. */
 export default function Home(): ReactNode {
@@ -30,7 +36,7 @@ export default function Home(): ReactNode {
           href="https://fonts.googleapis.com/css2?family=Archivo:wght@900&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&display=swap"
         />
       </Head>
-      <main className="fs-landing" dangerouslySetInnerHTML={{ __html: landingMarkup }} />
+      <main className="fs-landing" onClick={closeMenuOnLink} dangerouslySetInnerHTML={{ __html: landingMarkup }} />
     </>
   );
 }

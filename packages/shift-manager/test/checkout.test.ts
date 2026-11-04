@@ -2,8 +2,10 @@
  * The checkout's `start` and `dev` scripts (`scripts/checkout.mts`), run as
  * `pnpm shift-manager:dev` runs them: the `fsd` profile opens with no
  * `--config`, `--config` naming DevTeam's file opens DevTeam (in the form
- * typed from the repository root, too), and under `--dev` a coder the profile
- * can't start refuses before the watcher starts, whichever profile it is.
+ * typed from the repository root, too), a missing Claude credential is
+ * logged with what to set rather than stopping the start (FIX-2391), and
+ * under `--dev` a coder the profile can't pick refuses before the watcher
+ * starts, whichever profile it is.
  *
  * Each case runs the script in a child process with no Claude credential (no
  * `ANTHROPIC_API_KEY`, no `CLAUDE_CODE_OAUTH_TOKEN`, an empty home). Which
@@ -83,14 +85,15 @@ describe("the checkout's script", () => {
     expect(existsSync(s.devteam)).toBe(false);
   }, 120_000);
 
-  it("with no --config and no credential exits 3 before it listens: fsd's coder is Claude Code", async () => {
+  it("with no --config and no credential opens fsd on Claude Code, and its log says what to set", async () => {
     const s = stores();
-    const started = await run(["--assets", assets], s, {}, 60_000);
-    expect(started.outcome, started.output).toBe("exited");
-    expect(started.code).toBe(3);
-    expect(started.output).toContain("DEVFORCE_LAB_HARNESS=stub");
-    expect(existsSync(s.devteam)).toBe(false);
-  }, 90_000);
+    const started = await run(["--assets", assets], s);
+    expect(started.outcome, started.output).toBe("listening");
+    expect(started.output).toContain("Coder: Claude Code; each run may take 20 minutes (DEVFORCE_LAB_RUN_MINUTES).");
+    const row = started.output.split("\n").find((line) => line.includes("✗ Claude Code"));
+    expect(row, started.output).toContain("ANTHROPIC_API_KEY");
+    expect(existsSync(s.fsd)).toBe(true);
+  }, 120_000);
 
   it.each([
     ["typed from the package folder", DEVTEAM, pkg],
@@ -107,13 +110,13 @@ describe("the checkout's script", () => {
   // Under --dev a Lab that fails to load leaves the watcher waiting for a save,
   // so a refusal only ends the command if it comes before the watcher starts.
   it.each([
-    ["--dev with no --config (fsd, Claude Code by default)", ["--dev"], {}],
-    ["--dev --config=<fsd>", ["--dev", `--config=${FSD}`], {}],
-    ["--dev on DevTeam with DEVFORCE_LAB_HARNESS=claude-code", ["--dev", "--config", DEVTEAM], { DEVFORCE_LAB_HARNESS: "claude-code" }],
-  ] as const)("%s with no credential exits 3 before it listens, naming what to set", async (_, args, env) => {
-    const started = await run([...args], stores(), env, 60_000);
+    ["--dev with no --config (fsd)", ["--dev"]],
+    ["--dev --config=<fsd>", ["--dev", `--config=${FSD}`]],
+    ["--dev on DevTeam", ["--dev", "--config", DEVTEAM]],
+  ] as const)("%s with a coder it can't pick exits 3 before it listens, naming the choices", async (_, args) => {
+    const started = await run([...args], stores(), { DEVFORCE_LAB_HARNESS: "nope" }, 60_000);
     expect(started.outcome, started.output).toBe("exited");
     expect(started.code).toBe(3);
-    expect(started.output).toContain("DEVFORCE_LAB_HARNESS=stub");
+    expect(started.output).toContain("use one of stub, claude-code, codex, cursor");
   }, 90_000);
 });

@@ -1,5 +1,5 @@
 import { useJumpToLatest } from "@flow-state-dev/react";
-import { Fragment, useCallback, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { BoardTask, ConversationEntry, LabAdapter, WorkerRow } from "../adapter";
 import type { Look } from "../lib/looks";
 import { useStatusLine } from "../lib/status";
@@ -8,11 +8,12 @@ import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
+import { ConnectionBanner, isFeedStale, STALE_CLASS } from "./flow-state/connection-banner";
 import { JumpToLatestButton } from "./JumpToLatest";
+import { LoadEarlier } from "./LoadEarlier";
 import { Entry } from "./Entry";
 import { answerIn, type Popup } from "./Popups";
 import { TaskCard } from "./TaskCard";
-import { InstructionsForm } from "./TeammateForms";
 
 /** A small button in the conversation's header. */
 const HEADER_BUTTON = "rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase hover:bg-accent";
@@ -33,8 +34,9 @@ function placeholderOf(entry: TaskEntry, harness: string | undefined): BoardTask
  * The center: the worker's one conversation. A divider marks where the turns
  * the worker reads word for word begin. A message another worker sent that
  * waits for the current answer shows as a pending line until it lands. A
- * teammate the user hired also gets its instructions and a fire control in
- * the header.
+ * teammate the user hired also gets a fire control in the header; its
+ * instructions are edited from its panel. Fire asks first in a row under the header, with Keep focused,
+ * so a stray Enter keeps the teammate.
  *
  * New content settles in place: the list follows it only while you are at
  * the end, and offers *Jump to latest* when you have scrolled up. A task card
@@ -51,8 +53,6 @@ export function Conversation({
   harnessOf,
   onFire,
   onOpen,
-  talkOpen,
-  onToggleTalk,
 }: {
   adapter: LabAdapter;
   worker: WorkerRow;
@@ -66,21 +66,29 @@ export function Conversation({
   onFire: () => Promise<void>;
   /** Open a popup over the thread: a task this conversation filed, or a message it sent. */
   onOpen: (popup: Popup) => void;
-  talkOpen: boolean;
-  onToggleTalk: () => void;
 }) {
   const view = useWatch(adapter.watchConversation, sessionId);
+  // What the conversation's feed last heard from the server; a stale one greys the status and stops its clock.
+  const connection = useWatch(adapter.watchConnection, sessionId) ?? "connecting";
+  const stale = isFeedStale(connection);
   const mark = useWatch(adapter.watchWindow, sessionId);
   const talk = useWatch(adapter.watchTalk, worker.id) ?? [];
   const entries = view?.entries ?? [];
   const running = view?.running ?? false;
   const pending = pendingFor(worker.id, talk, entries);
   const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
-  const status = useStatusLine(adapter, worker, sessionId, nameOf, isCoding);
-  const [panel, setPanel] = useState<"instructions">();
-  const fire = () => {
-    if (window.confirm(`Fire ${worker.name}? It leaves your roster; this conversation stays readable.`)) void onFire();
+  const status = useStatusLine(adapter, worker, sessionId, nameOf, isCoding, stale);
+  const [panel, setPanel] = useState<"fire">();
+  const keep = useRef<HTMLButtonElement>(null);
+  const fireButton = useRef<HTMLButtonElement>(null);
+  // Keep (or Esc) closes the row and puts focus back on the header's Fire, where the person was.
+  const keepWorker = () => {
+    setPanel(undefined);
+    fireButton.current?.focus();
   };
+  useEffect(() => {
+    if (panel === "fire") keep.current?.focus();
+  }, [panel]);
 
   const last = entries[entries.length - 1];
   // An answer on screen, written or being written, is the sign it is answering; the line shows only before one starts.
@@ -107,49 +115,48 @@ export function Conversation({
         <Avatar look={lookOf(worker.id)} />
         <div className="min-w-0">
           <h1 className="text-sm font-semibold">{worker.name}</h1>
-          <p className="truncate text-xs text-muted-foreground" data-header-status>
+          <p className={cn("truncate text-xs text-muted-foreground", stale && STALE_CLASS)} data-header-status>
             {status}
           </p>
         </div>
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{worker.role}</span>
         {worker.own ? (
-          <>
-            <button type="button" onClick={() => setPanel((p) => (p === "instructions" ? undefined : "instructions"))} className={HEADER_BUTTON}>
-              Instructions
-            </button>
-            <button type="button" onClick={fire} className={HEADER_BUTTON}>
-              Fire
-            </button>
-          </>
+          <button ref={fireButton} type="button" onClick={() => setPanel("fire")} aria-expanded={panel === "fire"} className={HEADER_BUTTON}>
+            Fire
+          </button>
         ) : null}
         {running ? (
-          <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-widest text-info uppercase">
+          <span className={cn("flex items-center gap-1.5 font-mono text-[10px] tracking-widest text-info uppercase", stale && STALE_CLASS)}>
             <span className="size-2 animate-pulse rounded-full bg-info" /> working
           </span>
         ) : null}
-        <button
-          type="button"
-          aria-pressed={talkOpen}
-          onClick={onToggleTalk}
-          className={cn("rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase hover:bg-accent", talkOpen && "bg-accent")}
-        >
-          Talk
-        </button>
       </header>
-      {panel === "instructions" ? (
-        <div className="border-b border-border px-6 py-3">
-          <InstructionsForm
-            name={worker.name}
-            onSave={async (instructions) => {
-              await adapter.editInstructions(worker.id, instructions);
-              setPanel(undefined);
-            }}
-            onCancel={() => setPanel(undefined)}
-          />
+      {/* A stopped feed comes back with the page: every conversation's feed reopens on load. */}
+      <ConnectionBanner feed={{ state: connection }} onRetry={() => window.location.reload()} />
+      {panel === "fire" ? (
+        <div
+          role="group"
+          aria-label={`Fire ${worker.name}?`}
+          className="flex items-center gap-3 border-b border-border bg-destructive/10 px-6 py-2 text-sm"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.stopPropagation();
+              keepWorker();
+            }
+          }}
+        >
+          <span className="min-w-0 flex-1">Fire {worker.name}? It leaves your roster; this conversation stays readable.</span>
+          <button type="button" onClick={() => void onFire()} className={cn(HEADER_BUTTON, "text-destructive")}>
+            Fire
+          </button>
+          <button ref={keep} type="button" onClick={keepWorker} className={HEADER_BUTTON}>
+            Keep
+          </button>
         </div>
       ) : null}
       <div ref={feed.ref} data-scroller className="relative flex-1 overflow-y-auto px-6 pt-4 pb-10">
         <div data-column className="mx-auto flex max-w-(--thread-width) flex-col gap-3">
+          <LoadEarlier load={view?.loadEarlier} />
           {entries.length === 0 ? (
             <div className="mt-24 text-center text-sm text-muted-foreground">Say hello to {worker.name}. This is your one conversation with it.</div>
           ) : null}
@@ -164,7 +171,11 @@ export function Conversation({
                   <span className="h-px flex-1 bg-border" />
                 </div>
               ) : null}
-              <div className={cn(i < markAt && "opacity-60")} data-in-window={markAt < 0 || i >= markAt ? "true" : "false"}>
+              <div
+                className={cn(i < markAt && "opacity-60")}
+                data-in-window={markAt < 0 || i >= markAt ? "true" : "false"}
+                {...(entry.kind === "user" ? feed.mine(entry.id) : {})}
+              >
                 {entry.kind === "task" ? (
                   taskTile(entry)
                 ) : (
@@ -200,10 +211,10 @@ export function Conversation({
         </div>
         <JumpToLatestButton feed={feed} />
       </div>
-      <Composer workerName={worker.name} running={running} onSend={(text) => {
+      <Composer sessionId={sessionId} workerName={worker.name} running={running} onSend={(text) => {
           // Your own line takes you to the end, wherever you had scrolled to.
           feed.sent();
-          void adapter.send(sessionId, text);
+          return adapter.send(sessionId, text);
         }}
       />
     </main>

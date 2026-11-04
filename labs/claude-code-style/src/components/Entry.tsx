@@ -1,3 +1,4 @@
+import type { SentLineMark } from "@flow-state-dev/react";
 import { useState } from "react";
 import { defaultRehypePlugins } from "streamdown";
 import type { ThreadEntry } from "../adapter";
@@ -26,13 +27,15 @@ function AgentMarkdown({ text, className }: { text: string; className?: string }
  * session's text is Markdown; a tool call is one line in plain words
  * (`toolLine`); a background result is one collapsed line at the point the main
  * session took it, which opens to the task's reply; a thread in threads mode is
- * a card (`ThreadCard`, which the main thread draws).
+ * a card (`ThreadCard`, which the main thread draws). `mark` is the feed's
+ * mark for your line (`useJumpToLatest`'s `mine`), so a line you send rises to
+ * near the top of the feed.
  */
-export function Entry({ entry }: { entry: ThreadEntry }) {
+export function Entry({ entry, mark }: { entry: ThreadEntry; mark?: SentLineMark }) {
   switch (entry.kind) {
     case "user":
       return (
-        <div className="flex flex-col items-end gap-1">
+        <div className="flex flex-col items-end gap-1" {...mark}>
           <div className="max-w-[80%] border border-border bg-card px-3 py-2 text-sm whitespace-pre-wrap" data-entry="user">
             {entry.text}
             {entry.queued ? <span className="mt-1 block text-xs text-muted-foreground">queued · runs when this turn ends</span> : null}

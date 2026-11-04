@@ -12,6 +12,7 @@ import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { ownsRecord } from "../context/record-owner";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
+import { terminalAtMs } from "../stores/request-ended-at";
 import { resolveRequestIncarnation, resolveSessionStorageKey } from "../stores/scope-keys";
 import {
   createClientEventFilter,
@@ -576,7 +577,7 @@ async function missingTerminalEvent(
     requestId: record.id,
     sequence_number: last + 1,
     status: record.status,
-    ts: record.completedAtMs ?? record.failedAtMs ?? record.updatedAt ?? Date.now()
+    ts: terminalAtMs(record) ?? record.updatedAt ?? Date.now()
   } as RequestStreamEvent;
 }
 

@@ -1,0 +1,87 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Today: a request writes a reply to the request and session stores, and each open session-stream view reads those stores every second, four statements a second when nothing changed. After: the same writes pass through one wrapper, applied in resolveStores and at each entry that takes a raw registry, which publishes a notice on the session's topic to the bus after each write lands. The bus is a new stores slot with an in-memory adapter by default. The session stream subscribes to its session's topic and reads when woken, at most once a second. The timed read stays only where the bus cannot cross processes: the in-memory bus, and serverless hosts."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .band  { fill:var(--surface-2); }
+    .cell  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .fall  { fill:var(--surface); stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:5 4; }
+    .ln    { stroke:var(--ink-2); stroke-width:1.4; fill:none; }
+    .ln-g  { stroke:var(--gone); stroke-width:1.4; fill:none; stroke-dasharray:4 3; }
+    .ln-c  { stroke:var(--code); stroke-width:1.6; fill:none; }
+    .hd    { fill:var(--ink-2); }
+    .hd-g  { fill:var(--gone); }
+    .hd-c  { fill:var(--code); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-e   { font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-g   { fill:var(--gone); } .c-c { fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="today">
+    <rect class="band" x="16" y="14" width="908" height="22" rx="4"/>
+    <text class="t-lbl" x="28" y="29">TODAY · EVERY OPEN VIEW READS THE STORE EACH SECOND</text>
+    <rect class="cell" x="28" y="58" width="190" height="50" rx="5"/>
+    <text class="t-b" x="42" y="79">A request writes</text>
+    <text class="t-s" x="42" y="96">a reply, a status, a run</text>
+    <line class="ln" x1="218" y1="83" x2="300" y2="83"/>
+    <polygon class="hd" points="300,78 309,83 300,88"/>
+    <rect class="cell" x="312" y="58" width="210" height="50" rx="5"/>
+    <text class="t-b" x="326" y="79">Request and session stores</text>
+    <text class="t-s" x="326" y="96">any adapter, any process</text>
+    <line class="ln-g" x1="640" y1="83" x2="532" y2="83"/>
+    <polygon class="hd-g" points="532,78 523,83 532,88"/>
+    <text class="t-e c-g" x="540" y="74">reads every 1 s</text>
+    <rect class="cell" x="640" y="58" width="270" height="50" rx="5"/>
+    <text class="t-b" x="654" y="79">Session stream, per open view</text>
+    <text class="t-s" x="654" y="96">4 statements a second, changed or not</text>
+  </g>
+
+  <g id="after">
+    <rect class="band" x="16" y="140" width="908" height="22" rx="4"/>
+    <text class="t-lbl" x="28" y="155">AFTER · A WRITE WAKES THE VIEWS OF ITS SESSION</text>
+    <rect class="cell" x="28" y="184" width="190" height="50" rx="5"/>
+    <text class="t-b" x="42" y="205">A request writes</text>
+    <text class="t-s" x="42" y="222">the same writes, unchanged</text>
+    <line class="ln" x1="218" y1="209" x2="300" y2="209"/>
+    <polygon class="hd" points="300,204 309,209 300,214"/>
+    <rect class="new" x="312" y="184" width="210" height="50" rx="5"/>
+    <text class="t-b" x="326" y="205">One wrapper, every entry</text>
+    <text class="t-s" x="326" y="222">publishes after the write lands</text>
+
+    <line class="ln-c" x1="417" y1="234" x2="417" y2="282"/>
+    <polygon class="hd-c" points="412,282 417,291 422,282"/>
+    <text class="t-e c-c" x="426" y="264">notice · session topic · kind</text>
+
+    <rect class="new" x="312" y="294" width="210" height="50" rx="5"/>
+    <text class="t-b" x="326" y="315">The bus · a stores slot</text>
+    <text class="t-s" x="326" y="332">in-memory by default</text>
+
+    <polyline class="ln-c" points="522,319 600,319 600,226 631,226"/>
+    <polygon class="hd-c" points="631,221 640,226 631,231"/>
+    <text class="t-e c-c" x="606" y="270">wakes</text>
+
+    <rect class="new" x="640" y="184" width="270" height="50" rx="5"/>
+    <text class="t-b" x="654" y="205">Session stream, per open view</text>
+    <text class="t-s" x="654" y="222">woken, at most a read a second · idle 0</text>
+    <line class="ln" x1="640" y1="200" x2="532" y2="200"/>
+    <polygon class="hd" points="532,195 523,200 532,205"/>
+    <text class="t-e" x="548" y="192" style="fill:var(--ink-2)">one read</text>
+
+    <line class="ln-g" x1="775" y1="294" x2="775" y2="243"/>
+    <polygon class="hd-g" points="770,243 775,235 780,243"/>
+    <rect class="fall" x="640" y="294" width="270" height="50" rx="5"/>
+    <text class="t-b" x="654" y="315">Timed read, 1 s, only as fallback</text>
+    <text class="t-s" x="654" y="332">where the bus can't cross processes</text>
+    <text class="t-s" x="28" y="372">Same route, same events, same client. What changes is what makes a view read.</text>
+  </g>
+</svg>

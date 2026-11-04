@@ -18,6 +18,8 @@ export default defineConfig(
       "**/dist/**",
       "**/dist-client/**",
       "**/.next/**",
+      // The super app's sub-route build of Kitchen Sink (`apps/super-app/build.mjs`).
+      "**/.next-super-app/**",
       "**/.docusaurus/**",
       "**/.turbo/**",
       "**/.fsdev/**",

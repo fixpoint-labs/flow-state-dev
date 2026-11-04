@@ -1,5 +1,22 @@
 # @flow-state-dev/bullmq
 
+## 0.3.1
+
+### Patch Changes
+
+- e0daf6e: Stores profiles take a `bus` slot: a change bus that carries notices that something under a session, user or org changed (`ChangeBus`, `ChangeNotice`, `BusTopic`, `createInMemoryBus`). Every request and session write publishes on its session's topic, through `withChangeBus`, which `resolveStores`, `createFlowState`, `runAction`, BullMQ's job processor and `fsdev run` / `chat` apply. The session stream (`GET /sessions/:id/stream`) now reads when a notice wakes it, at most once a second; on a bus that crosses processes it reads nothing while the session is idle. The in-memory bus, the default and the only one that ships today, keeps the once-a-second read as well, so nothing changes for a deployment that sets no `bus`. A `bus` adapter declares `"bus"` in its capabilities and resolves `{ bus }`. `@flow-state-dev/contracts` (re-exported by core) adds `ChangeKind` and the wire topic constructors `topic.session(id)`, `topic.user()` and `topic.org()` (FIX-2426).
+- Updated dependencies [e0daf6e]
+- Updated dependencies [b9e6dd0]
+- Updated dependencies [151309c]
+- Updated dependencies [9a355b2]
+- Updated dependencies [824ce87]
+- Updated dependencies [7d92efe]
+- Updated dependencies [387bee2]
+- Updated dependencies [6c4a3b3]
+  - @flow-state-dev/engine@0.4.0
+  - @flow-state-dev/core@0.4.0
+  - @flow-state-dev/scheduled@0.3.1
+
 ## 0.3.0
 
 ### Minor Changes

@@ -30,7 +30,8 @@ import { openRowHolds } from "@flow-state-dev/orchestration/tasks";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
 import { createTaskToolsCapability } from "@flow-state-dev/orchestration";
 import { LIST_TASKS_ACTION } from "../src/lib/conversation-tasks";
-import { UPDATE_TASK_ACTION } from "../src/lib/reads";
+import { taskActionName } from "@flow-state-dev/orchestration/inbox";
+import { CONVERSATION_BOARD_COLLECTION } from "../src/lib/reads";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { harnessStub, type HarnessStub, type HarnessStubOptions, type StubRun } from "@flow-state-dev/harness-manager";
@@ -41,6 +42,8 @@ const resolvedControlTools = (list: unknown): GeneratorTool[] =>
   (typeof list === "function" ? list({}) : (list ?? [])) as GeneratorTool[];
 
 const SHIFT_COORDINATOR = "shift-coordinator";
+/** The conversation board's `updateTask`, which these tests send to directly. */
+const UPDATE_TASK = taskActionName("updateTask", CONVERSATION_BOARD_COLLECTION);
 const DELEGATE_ANSWER = "The licenses are all MIT.";
 
 let opened: Lab | undefined;
@@ -457,13 +460,14 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect((await coderLines(lab, id, taskId)).map((m) => m.text).join("\n")).toContain("visibility and id");
   });
 
-  it("refuses a task naming only one of issue and phase after the claim, without running it as an answer", async () => {
+  // A phase with no issue says what kind of work but not which; an issue alone is enough (FIX-2388).
+  it("refuses a task naming a phase but no issue after the claim, without running it as an answer", async () => {
     const stub = readsMarker();
-    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("ship it", { project: STOREFRONT, harnessFeature: { issue: "greeting" } })]), stub);
+    const { lab } = await openCoderLab(scriptedCoder([fileForCoder("ship it", { project: STOREFRONT, harnessFeature: { phase: "implement" } })]), stub);
     const { id, task, taskId } = await fileAndSettle(lab);
     expect(task).toMatchObject({ status: "errored", attempts: 1 });
     expect(stub.runs).toHaveLength(0);
-    expect((await coderLines(lab, id, taskId)).map((m) => m.text).join("\n")).toContain("Feature work names both");
+    expect((await coderLines(lab, id, taskId)).map((m) => m.text).join("\n")).toContain("Feature work names an issue");
   });
 
   it("runs a task whose own fields include a plain `issue` as an answer, never as half a feature", async () => {
@@ -541,7 +545,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     await quiet(lab);
     expect(stub.runs).toHaveLength(1);
 
-    expect((await act(lab, id, UPDATE_TASK_ACTION, { id: taskId, answers: question.id, message: reply })).output).toMatchObject({ ok: true });
+    expect((await act(lab, id, UPDATE_TASK, { id: taskId, answers: question.id, message: reply })).output).toMatchObject({ ok: true });
     const done = await until(async () => storedTask(lab, taskId), (task) => task?.status === "completed", "the answered task");
     await quiet(lab);
     expect(done).toMatchObject({ attempts: 1 });
@@ -572,7 +576,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
       expect.stringMatching(new RegExp(`asks: "Which branch should I read\\?"\\n.*answers: "${question.id}"`)),
     ]);
 
-    expect((await act(lab, id, UPDATE_TASK_ACTION, { id: taskId, answers: question.id, message: reply })).output).toMatchObject({ ok: true });
+    expect((await act(lab, id, UPDATE_TASK, { id: taskId, answers: question.id, message: reply })).output).toMatchObject({ ok: true });
     const done = await until(async () => storedTask(lab, taskId), (task) => task?.status === "completed", "the answered task");
     expect(done).toMatchObject({ attempts: 1 });
     expect(stub.runs[1]!.prompt).toContain(reply);

@@ -125,6 +125,7 @@ import {
   DEFAULT_MAX_ABANDONMENTS,
   defaultOrder,
   grantRetry,
+  retryWrite,
   isClaimable,
   listTasks,
   routeFailure,
@@ -208,6 +209,12 @@ export interface ResourceBackedOptions {
    * to publish lifecycle changes onto the framework item stream.
    */
   onChange?: (event: TaskChangeEvent) => void;
+  /**
+   * Fired after a committed write that is no lifecycle change, so emits no
+   * `task-change` (a run's spend, a cleared marker): with `onChange`, every
+   * write that changes a row reaches one of the two (FIX-2429).
+   */
+  onWrite?: (task: Task) => void;
   /**
    * Item-log accessor for `TaskHandle.items()` (FIX-480). Reads the
    * response's persistent item buffer at call time so synthesizer
@@ -528,7 +535,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
   const emit = createTaskChangeEmitter<TInput, TOutput>(
     options.collectionId,
-    onChange
+    onChange,
+    options.onWrite
   );
 
   function listAll(): Task<TInput, TOutput>[] {
@@ -632,7 +640,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     // The outcome describes the invocation that committed, so a replay that
     // took a different branch cannot report an earlier attempt's write.
     if (committed === undefined) return { outcome: "unchanged" };
-    if (kind !== null) emit(kind, committed.task, committed.prevStatus);
+    emit(kind, committed.task, committed.prevStatus);
     // The ending's own pass pays the cascade it owes (FIX-2080 D2).
     await payCascadeAfterWrite(cascadeWrites, committed.task as Task);
     // Then the delivery, so a notice names the dependents just cancelled.
@@ -707,9 +715,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
     if (written === undefined) return { outcome: "unchanged" };
     const changeKind = typeof kind === "function" ? kind(written.prev, written.next) : kind;
-    if (changeKind !== null) {
-      emit(changeKind, written.next, written.prev.status !== written.next.status ? written.prev.status : undefined);
-    }
+    emit(changeKind, written.next, written.prev.status !== written.next.status ? written.prev.status : undefined);
     return { outcome: "recorded" };
   }
 
@@ -783,7 +789,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
    * took, and a throw from the updater skips the store's check of that
    * snapshot, so a row another request has moved on since (claimed,
    * dispatched, its wait slot released) could be refused on a stale read. A
-   * `terminal` decline needs no second look: an ending is final.
+   * `terminal` decline needs no second look: an ending is final unless a
+   * retry reopens it (FIX-2383), and a stale refusal then costs one more try.
    */
   async function confirmedDecline(id: string, write: () => Promise<TaskWriteOutcome>): Promise<TaskWriteOutcome> {
     const outcome = await write();
@@ -1270,6 +1277,21 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // New dependencies have the filing's window (`cancelIfDepEnded`).
       if (settings.deps !== undefined && outcome.outcome === "recorded") await cancelIfDepEnded(id);
       return outcome;
+    },
+
+    async retry(id) {
+      // Dependencies are read as stored now, so one another request ended is refused here (FIX-2383).
+      await refreshDeps([lookupRow(id) ?? { id }]);
+      // A request reads the row as the snapshot it first took: a refusal is
+      // confirmed against the committed row (`confirmedDecline`). The grant is
+      // counted, not capped: this backing enforces no `maxTotalRetries`.
+      return confirmedDecline(id, () =>
+        patchRef(id, "retry_requested", (task) => {
+          const decided = retryWrite(task as Task, lookupRow, () => false);
+          if ("decline" in decided) throw new WriteDeclined(decided.decline, task.status);
+          return decided.patch as Partial<Task<TInput, TOutput>>;
+        })
+      );
     },
 
     async steer(id, input) {

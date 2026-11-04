@@ -21,6 +21,7 @@ export type ParsedFlowRoute =
   | { kind: "delete_session"; sessionId: string }
   | { kind: "patch_session_metadata"; sessionId: string }
   | { kind: "user_stream"; userId: string }
+  | { kind: "user_stream_mint"; userId: string }
   | { kind: "transcribe" }
   | { kind: "retry_request"; flowKind: string; sessionId: string; requestId: string }
   | { kind: "continue_request"; flowKind: string; sessionId: string; requestId: string }

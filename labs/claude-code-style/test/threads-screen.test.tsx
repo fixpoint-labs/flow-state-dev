@@ -10,7 +10,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/App";
 import { createFakeLab } from "./fake-lab";
 
-afterEach(cleanup);
+// The app keeps what is open in the page's address; each test starts on a bare one.
+afterEach(() => {
+  cleanup();
+  window.history.replaceState(null, "", "/");
+});
 
 const thread = () => screen.getByRole("main", { name: "Main thread" });
 const board = () => screen.getByRole("complementary", { name: "Tasks" });
@@ -90,7 +94,8 @@ describe("the threads-mode screen", () => {
     // Cmd+Enter answers, the same as the button.
     fireEvent.keyDown(box, { key: "Enter", metaKey: true });
     await waitFor(() => expect(card("Vendor B · regions").dataset.column).toBe("working"));
-    expect((box as HTMLTextAreaElement).value).toBe("");
+    // The box clears once the send resolves, which can land after the card moves.
+    await waitFor(() => expect((box as HTMLTextAreaElement).value).toBe(""));
   });
 
   it("requests changes with Ctrl+Enter in the What should change box", async () => {

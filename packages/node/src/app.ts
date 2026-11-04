@@ -31,6 +31,14 @@ export interface ServerAppOptions {
   basePath?: string;
   /** Health endpoint path. Default `"/healthz"`. 200 once ready, 503 before. */
   healthPath?: string;
+  /**
+   * Whether the host running this app serves the push socket. Default
+   * `false`: the app reports `push: null` in `GET /capabilities` and answers
+   * the push mint 404, even over a router another host serves push for, so a
+   * client reads on its timer instead of minting for a socket this host
+   * doesn't open. `serve()` sets it when it serves push.
+   */
+  servesPush?: boolean;
 }
 
 /** The portable host app plus its lifecycle handles. */
@@ -136,6 +144,18 @@ export function createServerApp(
   // snapshot (below) where a PaaS needs it. Given the same `FlowState`, it
   // resolves the same memoized router this app holds.
   const inProcessFetch = createInProcessFetch(app, { basePath });
+
+  // Push belongs to the host that serves its socket. A router shared with a
+  // host that does may have push on; this app says what it serves itself.
+  if (options.servesPush !== true) {
+    hono.get(`${basePath}/capabilities`, async (c) => {
+      const response = await inProcessFetch(c.req.raw);
+      if (!response.ok) return response;
+      const body = (await response.json()) as Record<string, unknown>;
+      return c.json({ ...body, push: null }, 200);
+    });
+    hono.post(`${basePath}/users/:userId/stream`, (c) => c.json({ error: "This host serves no push" }, 404));
+  }
 
   // The bare mount and everything under it both reach the engine router.
   hono.all(basePath, (c) => inProcessFetch(c.req.raw));
