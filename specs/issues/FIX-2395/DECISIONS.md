@@ -31,8 +31,6 @@
 
 ## Decided, not asked
 
-- The elapsed time uses the lab's `age` format (`now`, `5m`, `2h`), ticking on the panel's clock,
-  and stops while the feed is stale, as the status line's age does.
 - The failure reason is the row's `error`, cut to one line with `truncate`; the popup has the whole.
 
 ## Notes from review
@@ -54,6 +52,12 @@ Round 1 (#4717). None changes the approach.
 Round 2 (#4717), architect follow-up: FIX-2397's status line reads a task's tone and its
 *waiting* / *failed* word from `lib/task-state.ts`; only an approval's tone stays in `status.ts`.
 Both specs now say so.
+
+Round 3 (#4717), cross-spec owners settled with FIX-2394 (#4735, its *DECISIONS → Owners, with
+#4717*): the running-row clock and the per-state heading counts are FIX-2394's `task-signals`
+item; this spec drops its timer and keeps a plain total. D1's row times stay here, and #4735's
+clock depends on them. `lib/task-state.ts` still decides tone, including the warning tone for
+FIX-2394's `quiet` signal.
 
 ## How it got here
 

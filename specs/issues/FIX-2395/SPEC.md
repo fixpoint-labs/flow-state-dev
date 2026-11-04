@@ -1,4 +1,4 @@
-# FIX-2395 · A teammate's tasks read newest first, with how long each has run and why each failed
+# FIX-2395 · A teammate's tasks read newest first, with why each failed
 
 **Spec** · [Decisions](DECISIONS.md)
 
@@ -11,7 +11,7 @@ colours a failure. What the issue asks for and the panel still lacks is below.
 
 | Someone who… | Today | After |
 |---|---|---|
-| **looks at a running coding task** | `running · Claude Code` | `running · 12m · Claude Code`: how long it has run, and the minutes tick |
+| **looks at a running coding task** | `running · Claude Code` | No change here. How long it has run is FIX-2394's running clock (`task-signals`, #4735), from this spec's times |
 | **has a task that failed** | One collapsed *Failed (2)* line; opening it shows each row as `failed`, no reason | *Failed* is open, newest first, each row with its one-line reason (`failed · tests did not pass`) |
 | **has run thirty tasks with a teammate** | *Done (30)* opens to all thirty, oldest first | *Done (30)* opens to the newest five and a *Show all 30* button |
 | **scans the panel** | Rows in filing order; heading *Tasks* | Newest first in every group; heading *Tasks (32)* |
@@ -19,23 +19,25 @@ colours a failure. What the issue asks for and the panel still lacks is below.
 
 ## The goal, and how we'll know it's met
 
-**A teammate's panel says, at a glance, what is running and for how long, what failed and why,
+**A teammate's panel says, at a glance, what is running, what failed and why,
 and what finished most recently; its task lines in the conversation use the same words.**
 
 - **The real need:** [epic FIX-2369](../../epics/FIX-2369/SPEC.md), R-29 (*see what the work is
   doing*). A list in filing order with no times and no reasons makes you open each task to learn
   anything.
-- **Smaller, and rejected:** sort and cap only, no timer. The timer is what tells a stuck run from
-  a working one.
+- **Smaller, and rejected:** sort and cap only, failures still folded. A failure is what you came
+  to act on.
+- **Not this issue's:** the running-row clock and the stall signal. FIX-2394 (#4735) owns them in
+  its `task-signals` item, from each attempt's `run.startedAt`; this spec gives it the row times.
 - **Bigger, and not this issue's:** a shared task-list component for every app. Shift Manager and
   the Claude Code-style lab draw tasks differently; FIX-2379 already gives them one vocabulary.
-- **Not done if:** a running row shows no elapsed time, a failed row hides its reason, *Done* lists
+- **Not done if:** a failed row hides its reason, *Done* lists
   more than five before *Show all*, or a `TaskCard` and its panel row disagree on a task's word or
   colour.
 
 **The check.** A Teammates test (`test/task-panel.test.tsx`) renders the panel from fake board rows
 carrying times: two running (one waiting on you), two failed with errors, seven done, one
-cancelled. It reads the heading count, the order, a running row's elapsed time, each failed row's
+cancelled. It reads the heading count, the order, each failed row's
 reason, five done rows plus *Show all 7*, and a `TaskCard`'s word and tone against its row. On
 `main` it fails (no times, filing order, failed collapsed with no reason). An orchestration test
 reads `createdAt`, `startedAt` and `completedAt` off the board's `listTasks` action and not off the
@@ -51,8 +53,8 @@ model's tool. The lab's adapter test confirms `toBoardTask` passes them through.
   row view's `times`.
 - **Teammates' panel:** the groups become *Running* (waiting tasks first), *Failed* (open), *Done*
   (collapsed, newest five, then *Show all N*), *Cancelled* (collapsed). Newest first throughout.
-  Heading count. A running row shows its elapsed time; a failed row its reason, one line
-  ([D2](DECISIONS.md#d2)).
+  A plain total in the heading (`Tasks (32)`); per-state counts are FIX-2394's `taskCounts`. A
+  failed row shows its reason, one line ([D2](DECISIONS.md#d2)).
 - **One helper for a task's word and tone** (`lib/task-state.ts`), read by the panel row and
   `TaskCard`, so the two can't drift. It is the lab's only owner of a task's tone: FIX-2396's task
   popup and FIX-2397's status line read it too, rather than deciding again. Its words are a row's short subline
