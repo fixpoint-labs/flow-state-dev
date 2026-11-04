@@ -40,7 +40,9 @@ App glue only, in `labs/teammates`.
   whose row view waits on you reads *Waiting on you: …* (FIX-2379's words). A task that ended in
   the last two minutes reads *Coding task finished / failed: …*, from its `completedAt`
   ([FIX-2395](../FIX-2395/SPEC.md) puts it on the row). `statusLine` returns a tone beside the
-  text, so the row can colour it.
+  text, so the row can colour it. For a task, the tone and the *waiting* / *failed* word come from
+  FIX-2395's `lib/task-state.ts`, the lab's one owner of a task's tone. An approval is not a task,
+  so its *Needs your OK* tone (the attention colour) stays in `status.ts`.
 - **`WorkersList.tsx`:** the attention badge on a row that needs you; the rows report what they
   hold, so the list sets the tab's title; the *Notify me* toggle in the foot.
 - **`lib/attention.ts`:** the title count and the notifier, both pure over what the rows report.

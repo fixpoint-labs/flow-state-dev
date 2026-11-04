@@ -55,7 +55,7 @@ model's tool. The lab's adapter test confirms `toBoardTask` passes them through.
   ([D2](DECISIONS.md#d2)).
 - **One helper for a task's word and tone** (`lib/task-state.ts`), read by the panel row and
   `TaskCard`, so the two can't drift. It is the lab's only owner of a task's tone: FIX-2396's task
-  popup reads it too, rather than deciding a fourth time. Its words are a row's short subline
+  popup and FIX-2397's status line read it too, rather than deciding again. Its words are a row's short subline
   (`waiting on you`, `failed`); the worker status line's sentences are FIX-2397's.
 - **This spec owns a task's times on `BoardTask`.** FIX-2396's run duration derives from
   `startedAt` and `completedAt` here; it reads no time a second way.

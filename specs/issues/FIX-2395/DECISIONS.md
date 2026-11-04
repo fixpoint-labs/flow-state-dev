@@ -51,6 +51,10 @@ Round 1 (#4717). None changes the approach.
 - **Where the orchestration check lives (Cursor):** in `list-tasks-spend.test.ts`, beside
   `updatedAt`'s, as the reviewer suggests.
 
+Round 2 (#4717), architect follow-up: FIX-2397's status line reads a task's tone and its
+*waiting* / *failed* word from `lib/task-state.ts`; only an approval's tone stays in `status.ts`.
+Both specs now say so.
+
 ## How it got here
 
 - **Drafted (Nov 4):** the issue's *Background* list had already moved to the panel (FIX-2525), so

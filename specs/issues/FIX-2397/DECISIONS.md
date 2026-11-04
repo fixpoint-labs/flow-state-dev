@@ -60,6 +60,10 @@ Round 1 (#4717). None changes the approach.
   teammate's watches (hooks per row), so the list would have to open them a second time to count.
   The row reports what it read; the list only sums.
 
+Round 2 (#4717), architect follow-up: FIX-2397's status line reads a task's tone and its
+*waiting* / *failed* word from `lib/task-state.ts`; only an approval's tone stays in `status.ts`.
+Both specs now say so.
+
 ## How it got here
 
 - **Drafted (Nov 4).** Stacked on FIX-2395, whose row times the ending line reads.
