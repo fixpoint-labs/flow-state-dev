@@ -110,6 +110,7 @@ Returns:
 - `detail` — Session metadata
 - `snapshot` — Current state snapshot with clientData
 - `latestRequest` — Most recent request on this session as a `SessionRequestSummary`, regardless of status. `null` until first fetch resolves. Refreshed on mount and on every terminal SSE event so consumers can render recovery affordances.
+- `followedRequest` — The request the view shows last, as `{ id, status, startedAtMs?, completedAtMs?, failedAtMs? }`: the one the newest item in `items` belongs to. A request sent beside it that adds no items, such as a steered line, doesn't replace it, so read a turn's status here when `latestRequest` may name something else. `status` comes from the stream while it runs; when it ends, or after a reload, the record comes from the `latestRequest` read if it is the newest request, else from one status read. `null` until `items` holds an item, and always with `items: false`.
 - `items`, `messages`, `blockOutputs`, `functionCalls` — Filtered item views
 - `isLoading`, `isStreaming`, `error` — Status flags. The hook reads a long history a page at a time and starts over when the pages shift under it, as when a keyed component is emitted again partway through the read; if they still shift after five tries, it sets `error` rather than show part of the history. A snapshot read started after the failure, such as `refresh()`, clears that error when it succeeds, as it clears any error a failed snapshot read left; it leaves an action's error alone.
 - `statusMessage` — Request-scoped status slot mirror. Latest `ctx.emit.status()` value from the in-flight request (empty string when unset; resets on request termination). Pair with a streaming indicator to show "what's happening right now" with a "Working..." fallback.
@@ -125,7 +126,7 @@ Returns:
 - `continueRequest(requestId)` — Continue a crash-interrupted request under its OWN id and stream the re-entry's items back into `session.items`. Unlike `resumeLatestRequest` (which re-dispatches the most recent request via `/retry` under a new id), this targets a specific `requestId` — the caller resolves which interrupted request to continue rather than assuming "latest". POSTs inline with `Accept: text/event-stream`; on a 202 fallback it reconnects via GET rather than re-POSTing.
 - `followRequest(requestId)` — Follow a request of this session that was sent without the hook: stream its items into `session.items` from the start, and make it the request `abortRequest` stops. Closes the stream followed now and sends nothing. Followed again after its stream dropped, it picks up after the last event the view had, so a state change is not applied twice. Returns `false` and follows nothing for a request the person stopped or dismissed, even while the server still lists it as running. For a request sent beside the one the page follows, such as a turn that waits for the running one: send it through the client, and follow it once the running turn ends. `useHarnessLines` does this for a harness session's lines.
 - `getOwnedItems(ownedBy)` — Items owned by a container scope (O(1) indexed lookup)
-- `refresh()` — Manually refetch
+- `refresh(options?)` — Re-read the view: the snapshot with its whole item history, and `childSessions`. `refresh({ items: false })` re-reads state, `detail` and `childSessions` with one state read and no item pages, and leaves `items` as they are. Use it when only state changed, such as after a request sent beside the one the view follows. A state read that lands late never rewinds state a newer read set. The hook re-reads state itself after `abortRequest()` and when a request it follows ends without completing; a completed request gets the full read, which settles its items.
 
 ### `useHarnessLines(session, options?)`
 
@@ -247,6 +248,26 @@ Fetches the static manifest of public resources for the session's flow. Cached m
 ### `useAction(options)`
 
 Low-level hook for direct action execution without session management.
+
+### `useSubscription(topics, read, options?)`
+
+Runs `read` again when something under `topics` changes, through the provider's
+client and `fsd.subscribe`. One read runs at a time and at most one more waits,
+so a burst of changes is one more read. `read` gets the notice that woke it, or
+`null` when the screen should read everything again: after a connect or a
+reconnect, on a timer tick, and when push starts or stops reaching every server
+process. It also gets `null` when several changes arrived during one read (one
+follow-up read covers them all). It doesn't read on mount.
+
+```tsx
+import { topic } from "@flow-state-dev/client";
+
+useSubscription([topic.session(sessionId)], refresh, { pollIntervalMs: 3000 });
+```
+
+`pollIntervalMs` reads on a timer wherever push can miss a change (a host with
+no push, a socket that is down); omit it for no timer. `enabled: false`
+subscribes nothing. For a session's own items, use `useSession({ live: true })`.
 
 ### `useRequestStream(options)`
 
@@ -395,6 +416,52 @@ A feed that opens is already at its end on the first frame: on mount, when `rese
 - `jump()`: to the end, smoothly.
 - `sent()`: call when the person sends a line. It jumps to the end and brings the next content that lands below into view, which is the line they sent. What arrives after that stays below.
 
+### `useDraft(namespace, id)`
+
+Keeps what someone has typed in a message box across a reload. The text is stored in `localStorage` under `<namespace>:<id>` and read back when the box opens.
+
+```tsx
+const [draft, setDraft] = useDraft("my-app:composer", sessionId);
+const latest = useRef(draft);
+latest.current = draft;
+const send = async () => {
+  const typed = draft;
+  await sendLine(typed.trim()); // throws when the send fails: the draft stays
+  // The box may have closed and reopened meanwhile: drop the stored copy only if it is still this text.
+  clearDraft("my-app:composer", sessionId, typed);
+  // Clear the box only if nothing was typed while the send ran.
+  if (latest.current === typed) setDraft("");
+};
+return <textarea value={draft} onChange={(e) => setDraft(e.target.value)} />;
+```
+
+Clear the draft only once the send has landed, so a failed send leaves the text where it was. `setDraft("")` drops the stored copy. A setter held from an earlier `id`, such as a slow send that settles after the person switched sessions, stores under that id and leaves the box they're looking at alone. A setter called after the box unmounted does nothing, since the box opened next owns the stored draft.
+
+- `id` may be `undefined` while the box doesn't know where it writes yet. Text typed then is kept in memory and stored once `id` arrives.
+- `clearDraft(namespace, id, sent?)`: drop the stored copy without touching what any box shows, for a send the server took while the person kept typing. With `sent`, it drops the copy only if it still holds that text, surrounding whitespace aside.
+- `readDraft(namespace, id)` and `saveDraft(namespace, id, text)`: read or store the stored copy directly, for a send that settles after its box closed.
+- Storage that throws (quota, private mode) keeps the draft in memory only.
+
+### `useSubmit(action)`
+
+Holds a button or form while its call runs, and keeps the refusal to show. Use it for any call that changes something, so a double click sends it once and a failure never looks like it worked.
+
+```tsx
+const pin = useSubmit(() => adapter.pin(taskId));
+return (
+  <>
+    <button disabled={pin.busy} onClick={() => void pin.submit(undefined)}>Pin</button>
+    {pin.error ? <p role="alert">Couldn't pin: {pin.error}</p> : null}
+  </>
+);
+```
+
+- `submit(event?, ...args)`: runs `action(...args)`. Pass a form's submit event to prevent its default. It never throws.
+- `busy`: `true` while the action runs. A call made while one runs does nothing, even before `busy` re-renders.
+- `error`: the last refusal's message, cleared when the action runs again.
+
+It wraps any async call. To send one flow action, use `useAction`.
+
 ### `isSendKey(event, options?)`
 
 The send shortcut for a message box. Cmd+Enter on a Mac and Ctrl+Enter elsewhere send from any box, so a person never has to reach for the button.
@@ -411,6 +478,19 @@ The send shortcut for a message box. Cmd+Enter on a Mac and Ctrl+Enter elsewhere
 
 - `enterSends` (default `false`): plain Enter sends too, as in a chat composer. Leave it off in a box for a longer answer, where Enter is a new line.
 - Shift+Enter never sends, and neither does an Enter that confirms an input method's composition (CJK and the like, including Safari's `keyCode` 229).
+
+### `isTypingTarget(target)`
+
+Whether a key landed in something the person types into: an input, a text area, a select, or editable text. A page-wide shortcut that is a printable key checks it first, so `/` or `?` typed into a message box stays text.
+
+```ts
+window.addEventListener("keydown", (event) => {
+  if (event.key === "/" && !isTypingTarget(event.target)) {
+    event.preventDefault();
+    composer.current?.focus();
+  }
+});
+```
 
 ### `useInterruptKeys(options)` and `createInterruptKeys(options?)`
 

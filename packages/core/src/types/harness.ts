@@ -34,6 +34,8 @@
  *   {@link HarnessUsageReport} and {@link HarnessUsageHook} — a
  *   subscription's usage windows as a vendor reports them, and the on-demand
  *   read a host registers per harness.
+ * - {@link HarnessReadiness} and {@link HarnessReadinessCheck} — whether a
+ *   harness can run on this machine, and the check a host registers per harness.
  * - {@link HarnessRunSpend}, {@link HarnessBilling} and
  *   {@link reportHarnessSpend} — what one run spent, reported into the
  *   running request as the run goes and when it ends (FIX-2145, FIX-2288).
@@ -436,6 +438,28 @@ export type HarnessUsageReading =
 export type HarnessUsageReader = (options?: { signal?: AbortSignal }) => Promise<HarnessUsageReading>;
 
 /**
+ * Whether a harness can run on this machine, as one check found it.
+ *
+ * `ready: false` carries `reason`, what is wrong, and `remedy`, what the user
+ * does about it, as two sentences so a chip can show the remedy alone.
+ * `unanswered` is set when the check got no answer (it timed out, was stopped,
+ * or could not start), so nothing is known either way; such a row usually has
+ * no remedy, since there is nothing to fix yet.
+ */
+export type HarnessReadiness =
+  | { ready: true }
+  | { ready: false; reason: string; remedy?: string; unanswered?: true };
+
+/**
+ * Check, with no run, whether a harness can run on this machine: its SDK, its
+ * sign-in or key. A host hands one per harness to whatever keeps the answer.
+ * A check never throws for an expected state; it returns it with its reason.
+ * `signal` aborts a check the caller stopped waiting for: a check that starts a
+ * process ends it then, or the process outlives the caller's timeout.
+ */
+export type HarnessReadinessCheck = (options?: { signal?: AbortSignal }) => Promise<HarnessReadiness>;
+
+/**
  * One window a harness heard about during a run: what a {@link HarnessUsageHook}
  * is handed.
  *
@@ -483,7 +507,9 @@ export interface HarnessRunSpend {
   /**
    * The harness's own id for this run (FIX-2288). A later report with the same
    * id replaces the earlier one, so a harness reports its running total, never
-   * an increment. Absent: the report is one settled run of its own.
+   * an increment. Absent: the report is one settled run of its own, and the
+   * engine names it (a fresh `settled_…` id) as it counts it, so what a reader
+   * reads back, and what a continuation recovers from the log, carries that id.
    */
   runId?: string;
   /** The harness, by the name a usage record is kept under (`claude-code`, `codex`, `cursor`). */
@@ -516,7 +542,8 @@ export interface HarnessRunSpend {
  * tokens `null`), on each usage event its vendor sends (the run's total so
  * far), and from its `finally` when the run ends however it ends (the final
  * total). Each report carries the whole run so far, never an increment, and
- * the run counts once. Without a `runId`, each call is one settled run.
+ * the run counts once. Without a `runId`, each call is one settled run, which
+ * the engine gives an id of its own.
  *
  * @returns `false` when the context carries no spend ledger: a hand-built
  *   test context, or a block run outside a request. Nothing is counted then.

@@ -6,8 +6,8 @@
  * summary line, GROUP BY as a segmented control, and the Queued toggle, off
  * by default and saying how many rows it hides (BR-14). The columns are
  * v2's: the state square, ID, TASK, NOW, STREAM, WORKER, TIME (elapsed from
- * the row's start, by a clock) and COST. Columns with no shipped read say who
- * ships them (BR-16).
+ * the row's start, by a clock) and COST (the vendor's charge its runs
+ * reported, FIX-2398). Columns with no shipped read say who ships them (BR-16).
  */
 import { useEffect, useState } from "react";
 import { COLUMNS, columnFor } from "../lib/columns";
@@ -19,6 +19,7 @@ import { EmptyState, Meta, ScreenTitle, SectionFailure, STATE_OF_COLUMN, StateSq
 import { RouteLink, isPlainClick } from "../components/RouteLink";
 import { useLab } from "../lib/lab-data";
 import { cn } from "../lib/utils";
+import { costAmount, spendLine } from "../components/flow-state/spend";
 import type { Gaps } from "../gaps";
 
 /** The columns Tasks groups by State, done excluded. */
@@ -147,7 +148,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                 <th className="pt-[9px] pb-[7px] font-medium">STREAM</th>
                 <th className="pt-[9px] pb-[7px] font-medium">WORKER</th>
                 <th className="pt-[9px] pb-[7px] font-medium">TIME</th>
-                <th className="pt-[9px] pb-[7px] text-right font-medium" title={gaps.cost}>
+                <th className="pt-[9px] pb-[7px] text-right font-medium">
                   COST
                 </th>
               </tr>
@@ -206,8 +207,12 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                       <td className={cn(MONO_CELL, "text-muted-foreground")} data-testid="task-row-time">
                         {time ?? "—"}
                       </td>
-                      <td className={cn(MONO_CELL, "pr-0 text-right text-muted-foreground")} title={gaps.cost} data-testid="task-row-cost">
-                        —
+                      <td
+                        className={cn(MONO_CELL, "pr-0 text-right text-muted-foreground")}
+                        title={spendLine(row.spend, { split: true }) || undefined}
+                        data-testid="task-row-cost"
+                      >
+                        {row.spend?.costUsd == null ? "—" : costAmount(row.spend.costUsd)}
                       </td>
                     </tr>
                   );

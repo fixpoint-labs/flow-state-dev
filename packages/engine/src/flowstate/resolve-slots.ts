@@ -5,9 +5,11 @@
  * declared adapter and projects the capability slots onto the flat
  * `StoreRegistry` the runtime consumes. `primary` covers all
  * sub-stores; `blobs` / `queue` / `scheduler` are forward-compatible and
- * map to no sub-store today (declaring them is a no-op). Any sub-store left
- * uncovered falls back to an in-memory store, preserving the historical
- * `resolveStores()` behavior.
+ * map to no sub-store today (declaring them is a no-op). `bus` projects onto
+ * `StoreRegistry.bus`, backed by the primary when the profile names no bus
+ * and the primary declares it. Any sub-store left uncovered falls back to an
+ * in-memory store, preserving the historical `resolveStores()` behavior; the
+ * bus too.
  */
 import type { StoreRegistry } from "../stores/types";
 import type { CapabilitySlot, CapabilitySlotMap, StoreAdapter } from "../stores/store-adapter";
@@ -64,8 +66,16 @@ export async function resolveProfileStores(options: {
   const adapters: StoreAdapter[] = [];
   const seen = new Set<StoreAdapter>();
 
-  for (const slot of Object.keys(profile) as CapabilitySlot[]) {
-    const adapter = profile[slot];
+  // The bus (FIX-2426, epic D5): the profile's `bus` slot, else the primary
+  // when it declares `bus`. Neither leaves it to `resolveStores`, in memory.
+  const slots: Array<[CapabilitySlot, StoreAdapter | undefined]> = Object.entries(profile) as Array<
+    [CapabilitySlot, StoreAdapter | undefined]
+  >;
+  if (profile.bus === undefined && profile.primary?.capabilities.includes("bus") === true) {
+    slots.push(["bus", profile.primary]);
+  }
+
+  for (const [slot, adapter] of slots) {
     if (adapter === undefined) continue;
 
     if (!adapter.capabilities.includes(slot)) {
@@ -85,7 +95,20 @@ export async function resolveProfileStores(options: {
     // adapter is recorded (so dispose runs) but not resolved into the registry.
     if (FORWARD_COMPATIBLE_SLOTS.has(slot)) continue;
 
-    partials.push(await adapter.resolve([slot]));
+    const resolved = await adapter.resolve([slot]);
+    if (slot === "bus") {
+      if (resolved.bus === undefined) {
+        throw new FlowStateConfigError(
+          `Profile "${profileName}" slot "bus": the adapter declares the "bus" capability but resolved no bus.`
+        );
+      }
+      partials.push({ bus: resolved.bus });
+      continue;
+    }
+    // Only the adapter backing `bus` supplies it: a primary that doesn't
+    // declare the slot backs no bus, whatever its registry carries.
+    const { bus: _undeclared, ...rest } = resolved;
+    partials.push(rest);
   }
 
   // Compose partials. Insertion order means a later, more-specific slot would

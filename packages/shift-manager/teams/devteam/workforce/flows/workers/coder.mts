@@ -33,6 +33,13 @@
  * detached: the claim gate refuses an entry that authors session state
  * beneath it, and this flow refuses to build otherwise, naming the entry.
  *
+ * **A worker can pick its harness** (FIX-2486). Beside the default slot, the
+ * flow takes named harnesses (`harnesses`), and a worker naming one in its
+ * `harness` setting (`harness: cursor`) has its tasks, steers and talk run
+ * through managers built for that one. A worker naming none runs on the
+ * default; a name the flow doesn't run is refused at hire, never run on
+ * another harness.
+ *
  * **One door** covers both managers: a user's line typed in a run's own
  * session, whose task is found on the board of the session it was filed
  * from. While the task is open the line steers it, and the run takes it at
@@ -87,6 +94,7 @@ import {
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
 import type { WorkspaceHost } from "@flow-state-dev/workspace";
+import { z } from "zod";
 import {
   defineReadOwnFacts,
   INSPECT_ENTRY,
@@ -100,6 +108,47 @@ export const CODER_FLOW = "coder";
 /** The answer manager's name: its blocks are named apart from the implement manager's. */
 const ANSWER_MANAGER = "harness-manager-answer";
 
+/** The setting a `coder` worker names its coding harness by: `harness: cursor` in its `WORKER.md`, or in a hire's `settings`. */
+export const HARNESS_SETTING = "harness";
+
+/** A coding harness a worker on this flow may run on, beside the default slot. */
+export interface CoderHarness {
+  /** How the managers are pointed at it, as {@link CoderWorkerFlowOptions.harness} is. */
+  slot: (feeds: HarnessFeeds) => HarnessBlock;
+  /** Wall-clock budget for one of its runs. Absent: the flow's `runTimeoutMs`. */
+  runTimeoutMs?: number;
+  /** As {@link CoderWorkerFlowOptions.stopsOnAbort}, for this harness. Absent: the flow's, else what the harness declares. */
+  stopsOnAbort?: boolean;
+}
+
+/**
+ * The harness names a `coder` worker may set: the default's name, when it has
+ * one, then every named harness, each once. Empty when the flow was given
+ * neither, and then a worker naming any harness is refused at hire.
+ */
+export function coderHarnessNames(options: Pick<CoderWorkerFlowOptions, "harnessName" | "harnesses">): string[] {
+  return [...new Set([...(options.harnessName === undefined ? [] : [options.harnessName]), ...Object.keys(options.harnesses ?? {})])];
+}
+
+/**
+ * The flow's settings: the lab's, and `harness` naming one of `names`. A name
+ * outside them is refused at hire with the names it could have been, so a
+ * worker is never written on a harness nothing here runs, and never runs on
+ * another one instead.
+ */
+function coderSettingsSchema(names: readonly string[]) {
+  if (names.length === 0) return workerSettingsSchema();
+  const listed = names.join(", ");
+  return workerSettingsSchema().extend({
+    [HARNESS_SETTING]: z
+      .string()
+      .refine((name) => names.includes(name), (name) => ({
+        message: `harness "${name}" is not one this Shift Manager runs; pick one of: ${listed}`,
+      }))
+      .optional(),
+  });
+}
+
 export interface CoderWorkerFlowOptions {
   /** The installation whose workers run on this worker flow. */
   installation: WorkerInstallation;
@@ -111,6 +160,19 @@ export interface CoderWorkerFlowOptions {
    * here. Nothing else differs between the two. Called once per manager.
    */
   harness: (feeds: HarnessFeeds) => HarnessBlock;
+  /**
+   * The default slot's harness name, which a worker may also name in its
+   * `harness:` setting to run on it. Absent: a worker can name it only if
+   * {@link harnesses} holds it too.
+   */
+  harnessName?: string;
+  /**
+   * **The harnesses a worker picks.** Each a worker may name in its
+   * `harness:` setting (`harness: cursor`), and its tasks, steers and talk run
+   * through that one instead of the default slot. A worker naming none runs on
+   * the default. Absent or empty, every worker runs on the default slot.
+   */
+  harnesses?: Readonly<Record<string, CoderHarness>>;
   /**
    * Where a feature task works: a fixed repository (`{ root, sourceRepo,
    * baseRef }`), or a workspace host whose source is `projectWorkspace()`, so
@@ -163,52 +225,10 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     ...(options.approveTools === true ? { approveTools: true } : {}),
   };
 
-  // Feature work: a task that names an issue and a phase under the feature key.
-  const implement = harnessManager({
-    ledgers: conversationLedgers,
-    ...checks,
-    tenant: undefined,
-    phase: options.phase,
-    workspace: options.workspace,
-    runTimeoutMs: options.runTimeoutMs,
-    ...(options.stopsOnAbort === undefined ? {} : { stopsOnAbort: options.stopsOnAbort }),
-    harness: options.harness,
-    // The collections a project's run source reads, on the blocks that ask it.
-    ...("provision" in options.workspace ? { uses: [projectWorkspaceCapability] } : {}),
-  } as never) as TaskWorker;
-
-  // A user's ask: a task naming no feature work.
-  const answer = harnessManager({
-    name: ANSWER_MANAGER,
-    ledgers: conversationLedgers,
-    ...checks,
-    tenant: undefined,
-    phase: options.answerPhase,
-    workspace: options.answerWorkspace,
-    runTimeoutMs: options.runTimeoutMs,
-    ...(options.stopsOnAbort === undefined ? {} : { stopsOnAbort: options.stopsOnAbort }),
-    harness: options.harness,
-    uses: [projectWorkspaceCapability],
-  } as never) as TaskWorker;
-
-  // The claim gate refuses an entry that authors session state beneath it;
-  // `workerTaskEntry` keeps the turn's skill state on the session, which lets
-  // a harness through that would. Refused here, at startup, naming the entry.
-  for (const manager of [implement, answer]) {
-    assertDispatchEntrySupported({ name: CODER_FLOW, target: WORKER_TASK_ENTRY, block: manager });
-  }
-
-  const byTask = router({
-    name: "coder-by-task",
-    inputSchema: taskWorkerInputSchema.passthrough(),
-    routes: [implement, answer] as never,
-    execute: (task: { input?: unknown }) => (namesHarnessFeature(task.input) ? implement : answer),
-  } as never) as BlockDefinition<any, any>;
-
   /** How a task's run is keyed: its task id, in its payload's phase or the answer phase. */
   const runOf = (row: Task) => {
     const feature = harnessFeatureOf(row.input);
-    if (feature !== undefined) return { issue: taskIssueSegment(row.id), phase: feature.phase };
+    if (feature !== undefined) return { issue: taskIssueSegment(row.id), phase: feature.phase ?? options.phase.phase };
     // A malformed key is no run here, never an answer run: the router sends it to implement, which refuses it.
     return namesHarnessFeature(row.input) ? undefined : { issue: taskIssueSegment(row.id), phase: options.answerPhase.phase };
   };
@@ -219,20 +239,132 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     const filed = await filingConversationBoard(ctx);
     return filed === undefined ? undefined : { tasks: filed.tasks, runOf };
   };
-  const message = harnessSessionDoor({
-    name: "coder",
-    harness: options.harness,
-    board,
-    // A steer to a task running nothing (waiting on its filed work) starts the turn it is owed.
-    onSteered: (ctx, row) => startOwedSteerTurn(ctx, row),
-  });
+
+  /**
+   * Everything that drives a harness, built for one: the two managers, the
+   * router between them, the door a line typed in a run's session takes, and
+   * the talk turn another worker's message to a finished task takes. A
+   * manager's harness is fixed when it is built, so each harness a worker may
+   * name gets its own. The default's names are the ones runs were always
+   * recorded under; a named harness's carry its name.
+   */
+  const buildFor = (harness: CoderHarness, suffix: string) => {
+    const runTimeoutMs = harness.runTimeoutMs ?? options.runTimeoutMs;
+    const stopsOnAbort = harness.stopsOnAbort ?? options.stopsOnAbort;
+    // Feature work: a task that names an issue and a phase under the feature key.
+    const implement = harnessManager({
+      ...(suffix === "" ? {} : { name: `harness-manager${suffix}` }),
+      ledgers: conversationLedgers,
+      ...checks,
+      tenant: undefined,
+      phase: options.phase,
+      workspace: options.workspace,
+      runTimeoutMs,
+      ...(stopsOnAbort === undefined ? {} : { stopsOnAbort }),
+      harness: harness.slot,
+      // The collections a project's run source reads, on the blocks that ask it.
+      ...("provision" in options.workspace ? { uses: [projectWorkspaceCapability] } : {}),
+    } as never) as TaskWorker;
+
+    // A user's ask: a task naming no feature work.
+    const answer = harnessManager({
+      name: `${ANSWER_MANAGER}${suffix}`,
+      ledgers: conversationLedgers,
+      ...checks,
+      tenant: undefined,
+      phase: options.answerPhase,
+      workspace: options.answerWorkspace,
+      runTimeoutMs,
+      ...(stopsOnAbort === undefined ? {} : { stopsOnAbort }),
+      harness: harness.slot,
+      uses: [projectWorkspaceCapability],
+    } as never) as TaskWorker;
+
+    // The claim gate refuses an entry that authors session state beneath it;
+    // `workerTaskEntry` keeps the turn's skill state on the session, which lets
+    // a harness through that would. Refused here, at startup, naming the entry.
+    for (const manager of [implement, answer]) {
+      assertDispatchEntrySupported({ name: CODER_FLOW, target: WORKER_TASK_ENTRY, block: manager });
+    }
+
+    const byTask = router({
+      name: `coder-by-task${suffix}`,
+      inputSchema: taskWorkerInputSchema.passthrough(),
+      routes: [implement, answer] as never,
+      execute: (task: { input?: unknown }) => (namesHarnessFeature(task.input) ? implement : answer),
+    } as never) as BlockDefinition<any, any>;
+
+    const door = harnessSessionDoor({
+      name: `coder${suffix}`,
+      harness: harness.slot,
+      board,
+      // A steer to a task running nothing (waiting on its filed work) starts the turn it is owed.
+      onSteered: (ctx, row) => startOwedSteerTurn(ctx, row),
+    });
+    const talk = harnessTalkTurn({ name: `${CODER_FLOW}-message${suffix}`, harness: harness.slot, board });
+    return { byTask, door, talk };
+  };
+
+  type Built = ReturnType<typeof buildFor>;
+  const defaultBuilt = buildFor({ slot: options.harness }, "");
+  const named = new Map<string, Built>(
+    Object.entries(options.harnesses ?? {})
+      .filter(([name]) => name !== options.harnessName)
+      .map(([name, harness]) => [name, buildFor(harness, `-${name}`)]),
+  );
+  const harnessNames = coderHarnessNames(options);
+
+  /**
+   * What the session's worker names in its `harness:` setting, read from the
+   * worker this turn resolves (a declared one, or the user's own on the
+   * roster). A worker naming none, or the default's own name, runs on the
+   * default; the config schema refused every other name at hire, so a name
+   * built for nothing here is a worker written before its harness went away,
+   * and is refused rather than run on another.
+   */
+  const builtFor = async (ctx: unknown): Promise<Built> => {
+    const worker = await workerOf(installation, CODER_FLOW)(ctx as never);
+    const name = worker.config.harness;
+    if (name === undefined || name === options.harnessName) return defaultBuilt;
+    const found = named.get(name);
+    if (found === undefined) {
+      throw new Error(
+        `worker "${worker.id}" names harness "${name}", which this Shift Manager doesn't run; it runs ${harnessNames.join(", ")}`,
+      );
+    }
+    return found;
+  };
+  const all = [defaultBuilt, ...named.values()];
+  /**
+   * A router over one piece of every harness's build, picked by the session's
+   * worker. With no named harness there is nothing to pick, and the piece is
+   * used as it is: the block tree stays what it was before workers could pick.
+   */
+  const byHarness = (name: string, inputSchema: unknown, pick: (built: Built) => unknown) =>
+    named.size === 0
+      ? (pick(defaultBuilt) as BlockDefinition<any, any>)
+      : (router({
+          name,
+          inputSchema,
+          routes: all.map(pick),
+          // The worker is read off the user's roster, so the router declares the installation's resources.
+          resources: installation.resources,
+          execute: async (_input: unknown, ctx: unknown) => pick(await builtFor(ctx)),
+        } as never) as BlockDefinition<any, any>);
+
+  const byTask = byHarness("coder-by-harness", taskWorkerInputSchema.passthrough(), (built) => built.byTask);
+  const message = {
+    ...defaultBuilt.door,
+    block: byHarness("coder-door-by-harness", defaultBuilt.door.inputSchema, (built) => built.door.block),
+  };
+  const talk = byHarness("coder-talk-by-harness", z.object({ message: z.string() }), (built) => built.talk);
 
   return defineFlow({
     kind: CODER_FLOW,
     // Registered once, under its flow name, which is what the coordinator's
     // dispatcher names in `flowKind`; the worker is named by the row's session.
     cardinality: "collection",
-    configSchema: workerSettingsSchema(),
+    configSchema: coderSettingsSchema(harnessNames),
     session: installation.session(),
     // Installed at flow level. Org-scoped, and organization identity is
     // unconditional, so the org registry is always built for a request that
@@ -264,7 +396,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
           hears: "task-sessions",
           turn: sequencer({ name: `${CODER_FLOW}-message-turn`, inputSchema: messageReceivedSchema }).step(
             (received: MessageReceived) => ({ message: `Message from ${received.from}, another worker: ${received.text}` }),
-            harnessTalkTurn({ name: `${CODER_FLOW}-message`, harness: options.harness, board })
+            talk
           ),
         }),
       },

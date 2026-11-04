@@ -4,7 +4,8 @@
  *
  * Server only. One place per session, keyed on the flow kind, the tenant and
  * the session, and the same place every turn and after a restart. The first
- * turn cuts it from the repository's `HEAD`; nothing is fetched. Nothing here
+ * turn cuts it from the repository's `HEAD`, then runs the host's setup command
+ * in it when one is set; nothing is fetched. Nothing here
  * clears a place: a session going idle, being deleted, or the server
  * restarting leaves its worktree and branch for the person to take.
  *
@@ -22,7 +23,7 @@ import { createHash } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join } from "node:path";
-import { localWorkspaceHost } from "@flow-state-dev/workspace";
+import { localWorkspaceHost, type PlaceSetup, type WorkspaceSetup } from "@flow-state-dev/workspace";
 
 /** The environment the root is derived from. */
 export type WorktreeEnv = Readonly<Record<string, string | undefined>>;
@@ -42,6 +43,16 @@ export interface SessionWorktree {
   readonly path: string;
   /** The session's branch, in the repository. */
   readonly branch: string;
+  /** What the setup command came to, when this provision ran it: only on the worktree's first turn. */
+  readonly setup?: PlaceSetup;
+}
+
+/** What one provision is handed beyond the place. */
+export interface ProvisionOptions {
+  /** Run in the worktree when it is first made, before the turn reaches it. */
+  readonly setup?: WorkspaceSetup;
+  /** Told when the setup command starts. */
+  readonly onSetup?: () => void | Promise<void>;
 }
 
 /** A flow kind is ours: lowercase words joined by single dashes, so `--` can frame the tenant. */
@@ -131,13 +142,15 @@ export async function provisionSessionWorktree(
   repository: string,
   place: SessionPlace,
   env: WorktreeEnv = process.env,
+  options: ProvisionOptions = {},
 ): Promise<SessionWorktree> {
   const branch = sessionBranch(place);
-  const provisioned = await hostFor(repository, env).provision(sourceFor(repository), {
+  const provisioned = await hostFor(repository, env, options.setup).provision(sourceFor(repository), {
     place: placeSegments(place),
     branch,
+    ...(options.onSetup === undefined ? {} : { onSetup: options.onSetup }),
   });
-  return { path: realpathSync(provisioned.cwd), branch };
+  return { path: realpathSync(provisioned.cwd), branch, ...(provisioned.setup === undefined ? {} : { setup: provisioned.setup }) };
 }
 
 function sourceFor(repository: string) {
@@ -145,12 +158,13 @@ function sourceFor(repository: string) {
 }
 
 /** The host for one repository. The repository is the operator's allowance; no remote is reached. */
-function hostFor(repository: string, env: WorktreeEnv) {
+function hostFor(repository: string, env: WorktreeEnv, setup?: WorkspaceSetup) {
   const repo = realpathSync(repository);
   return localWorkspaceHost({
     root: worktreeRoot(repo, env),
     remotes: { allow: [] },
     localRepositories: [repo],
     source: () => sourceFor(repo),
+    ...(setup === undefined ? {} : { setup }),
   });
 }

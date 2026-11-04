@@ -63,6 +63,8 @@ export interface WorkerConfig {
   workerId?: string;
   instructions?: string;
   document?: string;
+  /** The coding harness a `coder` worker names, which its flow's schema checked at hire. */
+  harness?: string;
   workerSkills: Array<{ name: string; skillMd: string }>;
 }
 

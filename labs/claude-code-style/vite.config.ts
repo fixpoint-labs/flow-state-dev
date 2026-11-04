@@ -14,5 +14,9 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
+  // Relative asset URLs, read against the page's `<base href>` (`index.html`): the
+  // same build serves at the root of its origin and under a proxy's sub-route
+  // (`apps/super-app`), which rewrites that `<base>` to its prefix.
+  base: "./",
   build: { outDir: "dist-client" },
 });

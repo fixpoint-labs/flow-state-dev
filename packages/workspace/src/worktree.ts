@@ -100,7 +100,7 @@ export interface WorktreeRequest {
 
 /** What `provisionWorktree` made or found. */
 export interface Worktree {
-  /** Whether this call cut the branch. */
+  /** Whether this call made the tree (`git worktree add`), for a new branch or one that already existed. `false` for a hand-back. */
   created: boolean;
   /** The ref a new branch was cut from. Only when `created`. */
   baseRef?: string;

@@ -1,11 +1,16 @@
+import { ClientHttpError } from "@flow-state-dev/client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LabAdapter, NewTeammate, WorkerRow } from "./adapter";
 import { Conversation } from "./components/Conversation";
+import { KeysSheet } from "./components/KeysSheet";
 import { PopupView, type Popup } from "./components/Popups";
+import { Switcher } from "./components/Switcher";
 import { TalkPanel } from "./components/TalkPanel";
 import { WorkersList } from "./components/WorkersList";
+import { ConnectionScreen, type ConnectionFailure } from "./components/flow-state/connection-screen";
 import { readAddress, writeAddress, type Address, type AddressWrite } from "./lib/address";
 import { harnessName } from "./lib/harness";
+import { focusComposer, focusWhenDrawn, useLabKeys } from "./lib/keys";
 import { lookOf as lookOfRow } from "./lib/looks";
 
 /**
@@ -18,8 +23,27 @@ import { lookOf as lookOfRow } from "./lib/looks";
  * unless the page's address names what was open (`lib/address`): a reload, a
  * link and Back reopen the teammate and the task popup.
  *
- * The roster is read again after a hire or a fire made here.
+ * The roster is read again after a hire or a fire made here. A first read
+ * that fails draws the registry's `connection-screen`, which reads again on
+ * its own until one lands. Once the screen is up, a conversation's feed that
+ * loses the server draws `connection-banner` over it and greys the status
+ * lines drawn from that feed.
+ *
+ * Keys (`useLabKeys`): ⌘K switches to any teammate or hires one, Alt+↑/↓
+ * steps through the teammates, `/` puts the cursor in the composer, `?` lists
+ * the keys. Opening a teammate, however it is opened, puts the cursor in its
+ * composer.
  */
+
+/** What `?` lists: every key the lab has. */
+const KEYS = [
+  ["⌘K / Ctrl+K", "Switch to any teammate, or hire one"],
+  ["Alt+↑ / Alt+↓", "The previous or next teammate"],
+  ["/", "Put the cursor in the composer"],
+  ["?", "This list"],
+  ["Enter", "Send, in the composer"],
+  ["Esc", "Close a dialog"],
+] as const;
 export function App({ adapter }: { adapter: LabAdapter }) {
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
   const [sessions, setSessions] = useState<Record<string, string>>({});
@@ -27,10 +51,18 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   // A task or a message, open in a popup over the thread.
   const [popup, setPopup] = useState<Popup>();
   const [talkOpen, setTalkOpen] = useState(true);
+  const [switching, setSwitching] = useState(false);
+  const [keysOpen, setKeysOpen] = useState(false);
+  const [hiring, setHiring] = useState(false);
   // What the address named when the page loaded, until the roster is read.
   const start = useRef<Address | null>(null);
   if (start.current === null) start.current = readAddress();
   const [ready, setReady] = useState(false);
+  // The first roster read's failure, until a read lands: the page has nothing yet to keep on screen.
+  const [unreachable, setUnreachable] = useState<ConnectionFailure>();
+  const live = useRef(true);
+  // Bumped by each boot read; only the newest read's answer lands, so a slow read a Retry overtook can't redraw the failure.
+  const boots = useRef(0);
   // How the next address write lands: a pick adds a Back step, anything else replaces.
   const how = useRef<AddressWrite>("replace");
   const conversations = useRef<Record<string, string>>({});
@@ -53,26 +85,33 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     return { roster, talking };
   }, [adapter]);
 
-  useEffect(() => {
-    let live = true;
-    void loadRoster().then(({ talking }) => {
-      if (!live) return;
-      // The address's teammate and task, when they are still here; the first teammate otherwise.
+  // The first read: the roster, then the address's teammate and task, when they are still here; the first teammate otherwise.
+  const boot = useCallback(async () => {
+    const mine = ++boots.current;
+    try {
+      const { talking } = await loadRoster();
+      if (!live.current || mine !== boots.current) return;
+      setUnreachable(undefined);
       const named = start.current ?? {};
       setSelected((current) => current ?? (talking.some((w) => w.id === named.worker) ? named.worker : talking[0]?.id));
       setPopup((current) => current ?? fromAddress(named));
       setReady(true);
-    });
+    } catch (error) {
+      if (live.current && mine === boots.current) setUnreachable(error instanceof ClientHttpError ? { httpStatus: error.status, message: error.message } : { message: error instanceof Error ? error.message : String(error) });
+    }
+  }, [loadRoster]);
+  useEffect(() => {
+    live.current = true;
+    void boot();
     return () => {
-      live = false;
+      live.current = false;
     };
-  }, [adapter, loadRoster]);
+  }, [boot]);
 
   const hire = async (teammate: NewTeammate) => {
     const hired = await adapter.hire(teammate);
     await loadRoster();
-    how.current = "push";
-    setSelected(hired.id);
+    selectWorker(hired.id);
   };
   const fire = async (worker: string) => {
     await adapter.fire(worker);
@@ -93,10 +132,12 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const worker = teammates.find((w) => w.id === selected);
   // No worker chosen, no Talk column held for one.
   const talkShown = talkOpen && worker !== undefined;
-  // A user's pick: a step Back returns from.
+  // A user's pick: a step Back returns from, and the teammate opens with the cursor in its composer.
   const selectWorker = useCallback((id: string) => {
     how.current = "push";
     setSelected(id);
+    const sessionId = conversations.current[id];
+    if (sessionId !== undefined) focusComposer(sessionId);
   }, []);
   const openPopup = useCallback((next: Popup) => {
     how.current = "push";
@@ -137,6 +178,24 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
   const sessionId = selected ? sessions[selected] : undefined;
+  useLabKeys({
+    palette: () => setSwitching((open) => !open),
+    step: (by) => {
+      // The teammates in the order the list draws them; the ends hold.
+      const at = teammates.findIndex((w) => w.id === selected);
+      const next = teammates[at === -1 ? (by === 1 ? 0 : teammates.length - 1) : at + by];
+      if (next !== undefined) selectWorker(next.id);
+    },
+    help: () => setKeysOpen(true),
+  });
+
+  if (unreachable !== undefined) {
+    return (
+      <ConnectionScreen kind="unreachable" title="Can't reach the lab" failure={unreachable} onRetry={boot}>
+        The roster read failed. Check that the lab's server is running; this page tries again on its own.
+      </ConnectionScreen>
+    );
+  }
   return (
     <div
       className="grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
@@ -154,6 +213,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         onSelect={selectWorker}
         onOpen={openPopup}
         onHire={hire}
+        hiring={hiring}
+        onHiring={setHiring}
       />
       {worker && sessionId ? (
         <Conversation
@@ -175,6 +236,26 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         <main aria-label="Conversation" />
       )}
       {talkShown ? <TalkPanel adapter={adapter} worker={worker} nameOf={nameOf} onClose={() => setTalkOpen(false)} /> : null}
+      <Switcher
+        open={switching}
+        onOpenChange={setSwitching}
+        teammates={teammates}
+        onPick={(id) => {
+          // A pick goes somewhere: the key list or a popup, if one was open under the switcher, closes too.
+          setSwitching(false);
+          setKeysOpen(false);
+          setPopup(undefined);
+          selectWorker(id);
+        }}
+        onHire={() => {
+          setSwitching(false);
+          setKeysOpen(false);
+          setPopup(undefined);
+          setHiring(true);
+          focusWhenDrawn('input[aria-label="Teammate name"]');
+        }}
+      />
+      <KeysSheet open={keysOpen} onOpenChange={setKeysOpen} keys={KEYS} />
       {popup ? <PopupView adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} onClose={closePopup} onMissing={popup === addressed.current ? dropPopup : undefined} /> : null}
     </div>
   );

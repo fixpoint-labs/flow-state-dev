@@ -94,6 +94,12 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
       userId: p.userId
     }))
   ],
+  user_stream_mint: [
+    entry("POST", "/users/:userId/stream", (p) => ({
+      kind: "user_stream_mint",
+      userId: p.userId
+    }))
+  ],
   check_interrupted_requests: [
     entry("POST", "/users/:userId/check-interrupted", (p) => ({
       kind: "check_interrupted_requests",

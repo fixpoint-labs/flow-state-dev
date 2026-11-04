@@ -1,0 +1,93 @@
+<svg viewBox="0 0 940 440" role="img" aria-label="What changes. Twelve views in three apps stop reading on a fixed timer. Shift Manager: the message log and a project's entries read on a resource notice, a worker's conversation follows the session stream, and a task's run link arrives as a board notice. Teammates lab: the busy status, activity and the context-window divider read on a request notice, and the Talk panel on a resource notice. Claude-code-style lab: the thread and a task's work follow the session stream, the session rows read on each session's notices, and pins on a user-state notice, through a read that writes nothing. Each keeps today's pace as its fallback where push can miss a change. Left as they are: four waits on one request, owned by FIX-2455; the four board views, FIX-2429's; ten timers that read nothing."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .row   { fill:var(--code-soft); stroke:var(--code); stroke-width:1; }
+    .foot  { fill:var(--surface-2); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .gone  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; text-decoration:line-through; }
+    .t-n   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+  <g id="shift-manager">
+    <rect class="lane" x="16" y="16" width="292" height="312" rx="6"/>
+    <text class="t-lbl" x="30" y="36">SHIFT MANAGER</text>
+    <rect class="row" x="28" y="48" width="268" height="62" rx="4"/>
+    <text class="t-b" x="40" y="68">The message log</text>
+    <text class="gone" x="40" y="84">every 5 s</text>
+    <text class="t-n" x="40" y="100">user resource notice</text>
+    <rect class="row" x="28" y="118" width="268" height="62" rx="4"/>
+    <text class="t-b" x="40" y="138">A worker's conversation</text>
+    <text class="gone" x="40" y="154">every 5 s</text>
+    <text class="t-n" x="40" y="170">the session stream</text>
+    <rect class="row" x="28" y="188" width="268" height="62" rx="4"/>
+    <text class="t-b" x="40" y="208">A project's entries</text>
+    <text class="gone" x="40" y="224">every 5 s</text>
+    <text class="t-n" x="40" y="240">user or org resource notice</text>
+    <rect class="row" x="28" y="258" width="268" height="62" rx="4"/>
+    <text class="t-b" x="40" y="278">A task's run, before it is linked</text>
+    <text class="gone" x="40" y="294">every 2 s, up to 30 times</text>
+    <text class="t-n" x="40" y="310">board notice (FIX-2429's publish)</text>
+  </g>
+  <g id="teammates">
+    <rect class="lane" x="324" y="16" width="292" height="312" rx="6"/>
+    <text class="t-lbl" x="338" y="36">TEAMMATES LAB</text>
+    <rect class="row" x="336" y="48" width="268" height="62" rx="4"/>
+    <text class="t-b" x="348" y="68">A conversation's busy status</text>
+    <text class="gone" x="348" y="84">every 1.5 s</text>
+    <text class="t-n" x="348" y="100">request notice</text>
+    <rect class="row" x="336" y="118" width="268" height="62" rx="4"/>
+    <text class="t-b" x="348" y="138">The Talk panel</text>
+    <text class="gone" x="348" y="154">every 1.5 s</text>
+    <text class="t-n" x="348" y="170">user resource notice</text>
+    <rect class="row" x="336" y="188" width="268" height="62" rx="4"/>
+    <text class="t-b" x="348" y="208">A worker's activity</text>
+    <text class="gone" x="348" y="224">every 1.5 s</text>
+    <text class="t-n" x="348" y="240">request notice</text>
+    <rect class="row" x="336" y="258" width="268" height="62" rx="4"/>
+    <text class="t-b" x="348" y="278">The context-window divider</text>
+    <text class="gone" x="348" y="294">every 1.5 s</text>
+    <text class="t-n" x="348" y="310">request and session resource notice</text>
+  </g>
+  <g id="claude-code-style">
+    <rect class="lane" x="632" y="16" width="292" height="312" rx="6"/>
+    <text class="t-lbl" x="646" y="36">CLAUDE-CODE-STYLE LAB</text>
+    <rect class="row" x="644" y="48" width="268" height="62" rx="4"/>
+    <text class="t-b" x="656" y="68">The session rows</text>
+    <text class="gone" x="656" y="84">every 3 s</text>
+    <text class="t-n" x="656" y="100">each listed session's notices (D1)</text>
+    <rect class="row" x="644" y="118" width="268" height="62" rx="4"/>
+    <text class="t-b" x="656" y="138">The thread</text>
+    <text class="gone" x="656" y="154">every 1.5 s</text>
+    <text class="t-n" x="656" y="170">session stream · request notice</text>
+    <rect class="row" x="644" y="188" width="268" height="62" rx="4"/>
+    <text class="t-b" x="656" y="208">A task's work</text>
+    <text class="gone" x="656" y="224">every 2 s</text>
+    <text class="t-n" x="656" y="240">the run's session stream</text>
+    <rect class="row" x="644" y="258" width="268" height="62" rx="4"/>
+    <text class="t-b" x="656" y="278">Pins</text>
+    <text class="gone" x="656" y="294">every 3 s, each read a request</text>
+    <text class="t-n" x="656" y="310">user state notice · a read</text>
+  </g>
+  <g id="left">
+    <rect class="foot" x="16" y="344" width="908" height="80" rx="6"/>
+    <text class="t-lbl" x="32" y="366">LEFT AS THEY ARE</text>
+    <text class="t-h" x="32" y="388">Four waits on one request</text>
+    <text class="t-s" x="32" y="406">sending, an action, an interrupt, an answer · FIX-2455</text>
+    <text class="t-h" x="352" y="388">Four board views</text>
+    <text class="t-s" x="352" y="406">FIX-2429's</text>
+    <text class="t-h" x="560" y="388">Ten timers that read nothing</text>
+    <text class="t-s" x="560" y="406">clocks, animation, a retry, a deadline</text>
+  </g>
+</svg>

@@ -1,6 +1,7 @@
 "use client";
 
 import { DevToolPanel } from "@flow-state-dev/devtool/react";
+import { BASE_PATH } from "@/lib/base-path";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 
 /**
@@ -12,12 +13,13 @@ import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
  * surfaces see the same sessions.
  *
  * `userIdControl="host"` hides the panel's userId editor since the host owns
- * identity here.
+ * identity here. `baseUrl` is the app's base path, so the panel reaches the
+ * flow API when the app is served under a sub-route.
  */
 export default function DevToolPage() {
   return (
     <div data-testid="devtool-panel" className="h-full">
-      <DevToolPanel userId={KITCHEN_SINK_USER_ID} userIdControl="host" />
+      <DevToolPanel baseUrl={BASE_PATH} userId={KITCHEN_SINK_USER_ID} userIdControl="host" />
     </div>
   );
 }

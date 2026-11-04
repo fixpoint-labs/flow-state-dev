@@ -4,8 +4,10 @@ import { TASK_STATUS } from "../lib/task-status";
 import { useMissing, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Entry } from "./Entry";
+import { LoadEarlier } from "./LoadEarlier";
 import { Sheet } from "./Sheet";
-import { Spend } from "./Spend";
+import { Spend } from "./flow-state/spend";
+import { harnessLabelOf } from "./ThreadStatus";
 import { TaskCard, TaskDoneRow } from "./TaskCard";
 
 /** The endings a task stays in: these rows move to the pane's *Done* group. */
@@ -109,13 +111,14 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
       subtitle={
         <>
           {task.goal}
-          <Spend task={task} split harness />
+          <Spend spend={task.spend} split harnessLabel={harnessLabelOf(task)} />
         </>
       }
       onClose={onClose}
       footer={READ_ONLY_NOTE}
     >
       {work === undefined || work.entries.length === 0 ? <p className="text-sm text-muted-foreground">Nothing yet.</p> : null}
+      <LoadEarlier load={work?.loadEarlier} />
       {work?.entries.map((entry) => <Entry key={entry.id} entry={entry} />)}
     </Sheet>
   );

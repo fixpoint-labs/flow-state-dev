@@ -24,6 +24,7 @@ import { cacheTokensOf } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { GeneratorModelResultPayload, HarnessRunSpend, ModelUsageEntry, RequestSpend } from "@flow-state-dev/core/types";
+import { storeIdentity } from "../bus/publish-writes";
 
 /** One request's ledger. */
 export interface RequestSpendLedger {
@@ -48,21 +49,31 @@ export interface RequestSpendLedger {
  * already handed on, so {@link RequestSpendLedger.takeSinceLastEnding} never
  * hands it on again. `recovered` and `recoveredHarnessRuns` are what a run that
  * never ended (its process died) left in the log: counted, and handed on at
- * this run's first ending.
+ * this run's first ending. `carriedHarnessRuns` are the harness runs an
+ * earlier ending already handed on: in {@link RequestSpendLedger.total} like
+ * `carried`, never handed on again, and a later report under the same run id,
+ * reported here or recovered from the log, is handed on as its change since.
  */
 export function createRequestSpendLedger(
   carried: Readonly<Record<string, ModelUsageEntry>> = {},
   recovered: Readonly<Record<string, ModelUsageEntry>> = {},
-  recoveredHarnessRuns: readonly HarnessRunSpend[] = []
+  recoveredHarnessRuns: readonly HarnessRunSpend[] = [],
+  carriedHarnessRuns: readonly HarnessRunSpend[] = []
 ): RequestSpendLedger {
   const byModel: Record<string, ModelUsageEntry> = Object.assign(Object.create(null), copyOf(carried));
   for (const [model, entry] of Object.entries(recovered)) addEntry((byModel[model] ??= emptyEntry()), entry);
   // One entry per run, as last reported, in the order last reported. A report
-  // with no run id is a run of its own, under a key nothing else reports to;
-  // so is each run the log recovered.
-  const harnessRuns = new Map<string, HarnessRunSpend>(recoveredHarnessRuns.map((run, i) => [`recovered:${i}`, { ...run }]));
+  // with no run id is a run of its own, under a key nothing else reports to.
+  // A run the log recovered under a carried run's id is that run's later
+  // report: it replaces the carried one, which stays what was handed on.
+  const carriedRuns = keyedRuns(carriedHarnessRuns, "carried");
+  const harnessRuns = new Map<string, HarnessRunSpend>(carriedRuns);
+  for (const [key, run] of keyedRuns(recoveredHarnessRuns, "recovered")) {
+    harnessRuns.delete(key);
+    harnessRuns.set(key, run);
+  }
   // Each run as the last ending handed it on.
-  let takenRuns = new Map<string, HarnessRunSpend>();
+  let takenRuns = new Map<string, HarnessRunSpend>([...carriedRuns].map(([key, run]) => [key, { ...run }]));
   let takenByModel: Record<string, ModelUsageEntry> = copyOf(carried);
   let settledRuns = 0;
 
@@ -116,6 +127,20 @@ export function createRequestSpendLedger(
       return since();
     }
   };
+}
+
+/**
+ * `runs` by ledger key, each run at its last report: `run:<id>`, or
+ * `<prefix>:<index>` for a run that names no id.
+ */
+function keyedRuns(runs: readonly HarnessRunSpend[], prefix: string): Map<string, HarnessRunSpend> {
+  const keyed = new Map<string, HarnessRunSpend>();
+  runs.forEach((run, i) => {
+    const key = run.runId === undefined ? `${prefix}:${i}` : `run:${run.runId}`;
+    keyed.delete(key);
+    keyed.set(key, { ...run });
+  });
+  return keyed;
 }
 
 /** Whether two reports of one run say the same. */
@@ -192,8 +217,9 @@ const endingInterruptedRuns = new WeakMap<object, Map<string, number>>();
  *   recorded it.
  */
 export function holdInterruptedEnding(requestStore: object, requestId: string): () => void {
-  let runs = endingInterruptedRuns.get(requestStore);
-  if (runs === undefined) endingInterruptedRuns.set(requestStore, (runs = new Map()));
+  // The raw store and its change-bus wrapper are one store (FIX-2426).
+  let runs = endingInterruptedRuns.get(storeIdentity(requestStore));
+  if (runs === undefined) endingInterruptedRuns.set(storeIdentity(requestStore), (runs = new Map()));
   runs.set(requestId, (runs.get(requestId) ?? 0) + 1);
   let released = false;
   return () => {
@@ -207,7 +233,7 @@ export function holdInterruptedEnding(requestStore: object, requestId: string): 
 
 /** Whether an interrupted run of `requestId` is still ending in this process. */
 export function isInterruptedEndingHeld(requestStore: object, requestId: string): boolean {
-  return endingInterruptedRuns.get(requestStore)?.has(requestId) === true;
+  return endingInterruptedRuns.get(storeIdentity(requestStore))?.has(requestId) === true;
 }
 
 /** `a` and `b` added up by model, as a new map; neither is changed. */

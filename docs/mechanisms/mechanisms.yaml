@@ -294,6 +294,31 @@ mechanisms:
     status: canonical
     doc: packages/engine/README.md
 
+  - id: change-bus
+    job: Tell whoever watches a scope (session, user, org, optionally one resource) that something under it changed, never what. Request and session writes publish through one wrapper; the session stream wakes on it. The `bus` slot of a stores profile; in memory by default, Postgres as the first adapter that crosses processes.
+    package: "@flow-state-dev/engine"
+    anchor: createInMemoryBus
+    file: packages/engine/src/bus/in-memory-bus.ts
+    adapters: ["@flow-state-dev/store-postgres"]
+    builtOn: [store]
+    overlaps:
+      - { id: streaming, relation: distinct-jobs, note: "streaming sends one request's item log and ends with it; a bus topic is a scope's and outlives every request." }
+      - { id: task-notice, relation: distinct-jobs, note: "task-notice turns a task's ending into a notice owed to the session that filed it; a change notice is a best-effort wake with no rows." }
+    status: canonical
+    doc: packages/engine/README.md
+
+  - id: push-delivery
+    job: Carry change notices from the bus to a browser, so a screen reads again when something it shows changes. A mint checks each topic with its scope's read check and signs a short ticket; a socket hears only ticketed topics; `client.subscribe` keeps one socket per client and reads on a timer wherever push can miss a change.
+    package: "@flow-state-dev/engine"
+    anchor: enablePushDelivery
+    file: packages/engine/src/push/push-delivery.ts
+    adapters: ["@flow-state-dev/node"]
+    builtOn: [change-bus]
+    overlaps:
+      - { id: streaming, relation: distinct-jobs, note: "streaming sends a request's or a session's items themselves; push delivery sends only that a topic changed, and the client reads." }
+    status: canonical
+    doc: apps/docs/guides/realtime.md
+
   # ── Transports and hosts ──────────────────────────────────────────────────
   - id: inbound-transport
     job: Turn an outside request into a run of an action. HTTP is the built-in adapter; the router mounts adapters.
@@ -684,6 +709,17 @@ mechanisms:
     overlaps: []
     status: canonical
     doc: packages/core/README.md
+
+  - id: harness-readiness
+    job: Say which coding harnesses can run on this machine and what to do about one that can't. Core owns the neutral check; Claude Code, Codex and Cursor each ship one; harness-manager keeps the rows and serves them as a read action, a coordinator context entry and a pre-start refusal.
+    package: "@flow-state-dev/harness-manager"
+    anchor: harnessReadiness
+    file: packages/harness-manager/src/readiness.ts
+    adapters: ["@flow-state-dev/claude-code", "@flow-state-dev/codex", "@flow-state-dev/cursor"]
+    builtOn: [coding-harness, capability]
+    overlaps: []
+    status: canonical
+    doc: packages/harness-manager/README.md
 
   - id: harness-steering
     job: Send a line typed into a harness session into the running turn when the harness takes it, or as the next turn.

@@ -14,6 +14,7 @@ import type { RequestSpend } from "@flow-state-dev/core/types";
 import {
   createResourceBackedTaskCollection,
   createStateBackedTaskCollection,
+  requestSpendView,
   taskSpendView,
   ticketForClaim,
   type TaskChangeEvent,
@@ -40,7 +41,34 @@ describe("taskSpendView", () => {
 
   it("names a harness run's model before any tokens, and reads its tokens as null, not 0, while unreported", () => {
     const view = taskSpendView({ spend: { requests: [{ requestId: "q1", settled: [], live: [{ source: "codex", kind: "harness", billing: null, inputTokens: 0, outputTokens: 0, costUsd: null, runs: 1, unreported: 1 }], harness: "codex", harnessModel: "gpt-5", model: null, writer: null, admittedAt: null, recovered: null }] } });
-    expect(view).toEqual({ harness: "codex", model: "gpt-5", inputTokens: null, outputTokens: null, unreported: true, live: true });
+    expect(view).toEqual({ harness: "codex", model: "gpt-5", inputTokens: null, outputTokens: null, costUsd: null, unreported: true, live: true });
+  });
+
+  // A person picks a harness by what it cost, so a cost is only what a vendor billed (FIX-2398 D3):
+  // charges add across requests, and a subscription run, which bills none, never reads as $0.
+  it("sums the charges vendors reported, and reads null rather than 0 when only subscription runs ran", () => {
+    const source = (costUsd: number | null, billing: "api-key" | "subscription") => ({ source: "claude-code", kind: "harness" as const, billing, inputTokens: 100, outputTokens: 10, costUsd, runs: 1, unreported: 0 });
+    const entry = (requestId: string, settled: ReturnType<typeof source>[]) => ({ requestId, settled, live: null, harness: "claude-code", harnessModel: "claude-sonnet-4-5", model: null, writer: null, admittedAt: null, recovered: null });
+    const subscriptionOnly = taskSpendView({ status: "completed", spend: { requests: [entry("q1", [source(null, "subscription")])] } });
+    expect(subscriptionOnly?.costUsd).toBeNull();
+    expect(subscriptionOnly?.inputTokens).toBe(100);
+    const mixed = taskSpendView({ status: "completed", spend: { requests: [entry("q1", [source(null, "subscription")]), entry("q2", [source(0.25, "api-key")]), entry("q3", [source(0.5, "api-key")])] } });
+    expect(mixed?.costUsd).toBeCloseTo(0.75);
+    expect(mixed?.inputTokens).toBe(300);
+  });
+
+  // A harness session's turn has a request and no row; it must read exactly as
+  // a task that ran the same request reads, or the one spend line disagrees.
+  it("reads one request's spend as a settled task reads: the last run named, every token and charge summed", () => {
+    const spend: RequestSpend = {
+      byModel: {},
+      harnessRuns: [
+        { runId: "a", harness: "codex", model: "gpt-5-codex", inputTokens: 40, outputTokens: 4, costUsd: 0.01, billing: "api-key" },
+        { runId: "b", harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 100, outputTokens: 10, costUsd: null, billing: "subscription" },
+      ],
+    };
+    expect(requestSpendView(spend, "q1")).toMatchObject({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 140, costUsd: 0.01 });
+    expect(requestSpendView(NONE, "q1")).toBeNull();
   });
 });
 
@@ -92,7 +120,7 @@ describe.each([
     const before = events.length;
 
     await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: harnessRun(null, null) }, { claim });
-    expect(view(collection)).toEqual({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: null, outputTokens: null, unreported: true, live: true });
+    expect(view(collection)).toEqual({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: null, outputTokens: null, costUsd: null, unreported: true, live: true });
 
     await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: harnessRun(100, 20) }, { claim });
     expect(view(collection)).toMatchObject({ inputTokens: 100, outputTokens: 20, unreported: false, live: true });
@@ -122,7 +150,7 @@ describe.each([
     // And on a completed row, a late ending of the first request still lands.
     await collection.recordSpend!("t", { requestId: "q1", part: "settle", spend: modelCalls(4, 4) }, { claim });
 
-    expect(view(collection)).toEqual({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 1254, outputTokens: 254, unreported: false, live: false });
+    expect(view(collection)).toEqual({ harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 1254, outputTokens: 254, costUsd: null, unreported: false, live: false });
   });
 
   it("keeps a dead request's live tokens but stops reading live once a retry finishes the task", async () => {
@@ -147,6 +175,27 @@ describe.each([
     await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: { byModel: {}, harnessRuns: [...logged.harnessRuns, { ...harnessRun(300, 60).harnessRuns[0]!, runId: "unfinished" }] }, ...first }, { claim });
     await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: logged, ...second }, { claim });
     expect(view(collection)).toMatchObject({ inputTokens: 400, outputTokens: 70, live: true });
+  });
+
+  it("counts a dead run's charge once when its request is continued, as its tokens are", async () => {
+    // Two paid runs, one finished and logged: the continuation reports that one's charge again, so the row keeps only the other's.
+    const { collection, claim } = await claimed();
+    const paid = (runId: string): RequestSpend["harnessRuns"][number] => ({ runId, harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 100, outputTokens: 10, costUsd: 0.1, billing: "api-key" });
+    const logged: RequestSpend = { byModel: {}, harnessRuns: [paid("logged")] };
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: { byModel: {}, harnessRuns: [paid("logged"), paid("unfinished")] }, writer: "first", admittedAt: 1 }, { claim });
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: logged, writer: "second", admittedAt: 2, recovered: logged }, { claim });
+    expect(view(collection)).toMatchObject({ inputTokens: 200, outputTokens: 20 });
+    expect(view(collection)?.costUsd).toBeCloseTo(0.2);
+  });
+
+  it("keeps a dead run's later charge when only its charge changed after the log's report", async () => {
+    // The run's live report raised its charge to $0.20 with the same tokens; the log holds the $0.10 report.
+    const { collection, claim } = await claimed();
+    const run = (costUsd: number): RequestSpend => ({ byModel: {}, harnessRuns: [{ runId: "r", harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 10, outputTokens: 2, costUsd, billing: "api-key" }] });
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: run(0.2), writer: "first", admittedAt: 1 }, { claim });
+    await collection.recordSpend!("t", { requestId: "q1", part: "live", spend: run(0.1), writer: "second", admittedAt: 2, recovered: run(0.1) }, { claim });
+    expect(view(collection)).toMatchObject({ inputTokens: 10, outputTokens: 2 });
+    expect(view(collection)?.costUsd).toBeCloseTo(0.2);
   });
 
   it("keeps a dead run's harness tokens when its request is continued in a new process", async () => {

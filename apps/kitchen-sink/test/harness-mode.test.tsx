@@ -112,6 +112,36 @@ describe("the picker, for an available mode that carries a note", () => {
   });
 });
 
+describe("the picker, for an unavailable mode with a remedy (FIX-2391)", () => {
+  it("shows the reason and what to run, and in development a Re-check", async () => {
+    (globalThis as Record<symbol, unknown>)[Symbol.for("kitchen-sink.harness-gate")] = Promise.resolve({
+      "flow-state": { available: true },
+      "claude-code": { available: true },
+      codex: { available: false, reason: "Codex has no credential: Not logged in", remedy: "Run `codex login`, or set CODEX_API_KEY." },
+      cursor: { available: false, reason: "Cursor has no sign-in" },
+    });
+    render(await PickerPage());
+    const codex = document.querySelector<HTMLElement>('[data-mode-id="codex"]')!;
+    expect(within(codex).getByTestId("mode-reason").textContent).toBe("Codex has no credential: Not logged in");
+    expect(within(codex).getByTestId("mode-remedy").textContent).toBe("Run `codex login`, or set CODEX_API_KEY.");
+    const cursor = document.querySelector<HTMLElement>('[data-mode-id="cursor"]')!;
+    expect(within(cursor).queryByTestId("mode-remedy")).toBeNull();
+    expect(screen.getByTestId("mode-recheck").textContent).toBe("Re-check");
+  });
+
+  it("offers no Re-check on a production server, which decides once per start", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    (globalThis as Record<symbol, unknown>)[Symbol.for("kitchen-sink.harness-gate")] = Promise.resolve({
+      "flow-state": { available: true },
+      "claude-code": { available: true },
+      codex: { available: true },
+      cursor: { available: true },
+    });
+    render(await PickerPage());
+    expect(screen.queryByTestId("mode-recheck")).toBeNull();
+  });
+});
+
 describe("V5 · BR-14 · an unavailable mode by its address", () => {
   it("shows the picker's reason and the way back, and draws no rail, no navigator, no composer", async () => {
     vi.stubEnv("VERCEL", "1");

@@ -291,6 +291,18 @@ describe("what Kitchen Sink hands the Cursor block (S5, BR-19, BR-23)", () => {
     expect(options.model).toBeTypeOf("function");
   });
 
+  it("trusted, the run gets the named key and still loads no project settings (FIX-2421 D1)", () => {
+    vi.stubEnv("KITCHEN_SINK_HARNESS_TRUSTED", "1");
+    vi.stubEnv("KITCHEN_SINK_HARNESS_PASS", "KITCHEN_SINK_NAMED_KEY");
+    vi.stubEnv("KITCHEN_SINK_NAMED_KEY", "the-operator-named-this");
+    vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "still-not-named");
+    const options = cursorBlockOptions(kitchenSinkHarnessFeeds(CURSOR_SESSION));
+    expect(options.env!.KITCHEN_SINK_NAMED_KEY).toBe("the-operator-named-this");
+    expect(options.env!.KITCHEN_SINK_PLANTED_SECRET).toBeUndefined();
+    // Cursor's SDK can't keep a source's hooks out, so no source is loaded.
+    expect(options.agent).toEqual({ mode: "agent", local: { sandboxOptions: { enabled: false } } });
+  });
+
   it("test mode runs the scripted Cursor in this process, with no env", () => {
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
     const options = cursorBlockOptions(kitchenSinkHarnessFeeds(CURSOR_SESSION));

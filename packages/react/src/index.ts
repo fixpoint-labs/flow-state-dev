@@ -17,6 +17,8 @@ export {
   useSession,
   type SessionItemsOptions,
   type SessionChildSessionsOptions,
+  type FollowedRequest,
+  type SessionRefreshOptions,
   type SessionView,
   type UseSessionHookOptions
 } from "./hooks/useSession";
@@ -188,8 +190,18 @@ export {
   type JumpToLatestOptions
 } from "./hooks/useJumpToLatest";
 
+export { useDraft, clearDraft, readDraft, saveDraft } from "./hooks/useDraft";
+
+export { useSubscription, type UseSubscriptionOptions } from "./hooks/useSubscription";
+
+export {
+  useSubmit,
+  type Submit
+} from "./hooks/useSubmit";
+
 export {
   isSendKey,
+  isTypingTarget,
   type SendKeyEvent,
   type SendKeyOptions
 } from "./send-key";

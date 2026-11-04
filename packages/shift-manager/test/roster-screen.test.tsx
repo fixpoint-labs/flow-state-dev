@@ -9,12 +9,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import type { Client } from "@flow-state-dev/client";
+import { spendAfterWrite } from "@flow-state-dev/orchestration/tasks";
 import type { LoadedSnapshot } from "../src/lib/derive";
 import { GENERAL_TEAM, inboxSection, toBoardRow, toWorker, type Ask, type BoardRow, type ConversationBoards, type LabSnapshot, type Section } from "../src/lib/reads";
 
 let fixture: LabSnapshot;
 /** What the user's roster read answers: their own workers and the standard ones. */
-let rosterRead: () => Promise<Array<{ id: string; flow: string; standard: boolean; description: string | null }>> = async () => [];
+let rosterRead: () => Promise<
+  Array<{ id: string; flow: string; standard: boolean; description: string | null; settings?: Record<string, unknown> }>
+> = async () => [];
 
 vi.mock("../src/lib/workforce", () => ({
   useWorkforce: () => ({ roster: () => rosterRead() }),
@@ -143,6 +146,26 @@ describe("Roster (V3)", () => {
     // The standard ones are the inventory's rows, drawn once each.
     expect(workers.filter((w) => w.getAttribute("data-worker-id") === "eng.coder")).toHaveLength(1);
     expect(workers).toHaveLength(6);
+  });
+
+  it("shows the harness a coder names in its settings, and the gap for one that names none (FIX-2486)", async () => {
+    rosterRead = async () => [
+      { id: "cursor", flow: "coder", standard: false, description: "An engineer on Cursor.", settings: { harness: "cursor" } },
+      { id: "eng.coder", flow: "coder", standard: true, description: null, settings: { harness: "codex" } },
+    ];
+    await open("/roster");
+    const page = await screen.findByTestId("roster");
+    await within(page).findByTestId("roster-worker-own");
+    const harnessOf = (id: string) =>
+      within(within(page).getAllByTestId("roster-worker").find((w) => w.getAttribute("data-worker-id") === id)!).getByTestId(
+        "roster-worker-harness",
+      );
+    expect(harnessOf("cursor").textContent).toBe("cursor");
+    expect(harnessOf("cursor").getAttribute("title")).toBeNull();
+    // A declared worker's harness comes off its roster entry too.
+    expect(harnessOf("eng.coder").textContent).toBe("codex");
+    expect(harnessOf("ops.idle").textContent).toBe("—");
+    expect(harnessOf("ops.idle").getAttribute("title")).toBe(GAPS.harness);
   });
 
   it("with the inventory unread, still draws the roster's workers, and says the inventory failed", async () => {
@@ -350,6 +373,36 @@ describe("Tasks (BR-14)", () => {
     // No display name on this row, so the worker reads as its id.
     expect(cell("E-1", "task-row-worker")).toBe("eng.coder");
     expect(cell("E-1", "task-row-time")).toMatch(/^6m 4\ds$/);
+  });
+
+  it("reads COST from the charge the row's runs reported, and none for a run billed by subscription (FIX-2398)", async () => {
+    // A row as the board stores it: what its one run spent, settled.
+    const spent = (id: string, costUsd: number | null, billing: "api-key" | "subscription"): BoardRow => {
+      const run = { runId: `r-${id}`, harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 12_400, outputTokens: 2_300, costUsd, billing };
+      const spend = spendAfterWrite({ spend: null }, { requestId: `q-${id}`, part: "settle", spend: { byModel: {}, harnessRuns: [run] } });
+      return toBoardRow("s_eng.tasks", "s_eng", id, { id, title: `${id} title`, status: "in_progress", assignee: "eng.coder", spend });
+    };
+    const snapshot = lab();
+    const eng = snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.boards["s_eng"] : undefined;
+    if (eng?.ok === true) eng.value.rows = [...eng.value.rows, spent("E-8", 0.42, "api-key"), spent("E-9", null, "subscription")];
+    await open("/tasks", snapshot);
+    await screen.findByTestId("tasks-table");
+    const cost = (id: string) => within(screen.getAllByTestId("task-row").find((r) => r.getAttribute("data-task-id") === id)!).getByTestId("task-row-cost");
+    expect(cost("E-8").textContent).toBe("$0.42");
+    expect(cost("E-8").getAttribute("title")).toBe("claude-sonnet-4-5 · 12.4k in · 2.3k out · $0.42");
+    // A subscription run reports no charge: no dollar figure, but its tokens on hover.
+    expect(cost("E-9").textContent).toBe("—");
+    expect(cost("E-9").getAttribute("title")).toBe("claude-sonnet-4-5 · 12.4k in · 2.3k out");
+    // A row whose runs reported nothing reads no spend.
+    expect(cost("E-1").textContent).toBe("—");
+    expect(cost("E-1").getAttribute("title")).toBeNull();
+  });
+
+  it("reads no spend off a stored ledger it can't fold, rather than failing the board's read (FIX-2398)", () => {
+    // An older or damaged write: the row still reads, its COST as "—".
+    const unreadable = toBoardRow("s_eng.tasks", "s_eng", "E-7", { id: "E-7", title: "E-7", status: "completed", assignee: "eng.coder", spend: { requests: "not a list" } });
+    expect(unreadable.spend).toBeNull();
+    expect(unreadable.title).toBe("E-7");
   });
 
   it("names a task the shift-coordinator worker holds as the Shift Coordinator's, in its row and its worker group", async () => {

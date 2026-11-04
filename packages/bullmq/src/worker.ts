@@ -30,7 +30,7 @@ import {
 } from "@flow-state-dev/engine";
 import { DelayedError, Worker, UnrecoverableError } from "bullmq";
 import type { Job } from "bullmq";
-import { runAction } from "@flow-state-dev/engine";
+import { runAction, withChangeBus } from "@flow-state-dev/engine";
 import type {
   FlowRegistry,
   LeasePlace,
@@ -89,7 +89,10 @@ const CANCELLED = Symbol("cancelled");
  * connection (constructing a BullMQ `Worker` connects eagerly).
  */
 export function createFlowJobProcessor(deps: FlowWorkerDeps) {
-  const { registry, stores, runtimeConfig, bridge, onItem, leaseBackend, deferPatienceMs } = deps;
+  const { registry, runtimeConfig, bridge, onItem, leaseBackend, deferPatienceMs } = deps;
+  // A raw registry's writes publish on the bus (FIX-2426), including the
+  // settles this processor writes itself, beside runAction.
+  const stores = withChangeBus(deps.stores);
 
   /**
    * Give a place back, best effort: a place that cannot be given back lapses

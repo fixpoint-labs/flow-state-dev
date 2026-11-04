@@ -23,6 +23,9 @@
  * - **Claude Code as the coder by default** (`harness.mts`): at start the Lab
  *   asks Claude Code for an account and refuses to start without one, naming
  *   what to set. `DEVFORCE_LAB_HARNESS=stub` runs the scripted coder instead.
+ * - **A coding run waits for your review.** A run that made commits holds its
+ *   task in Inbox, *Ready for review* with the judge's line, until you Accept
+ *   or Ask for changes (harness-manager's `reviewChanges`).
  * - **Runs work in this checkout.** A coding run on FSD or Shift Manager gets
  *   a fresh worktree of the checkout this file sits in, on a branch of its
  *   own cut from the newer of local `main` and its upstream ({@link CHECKOUTS},
@@ -52,7 +55,7 @@ import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { CHECKOUT, CHECKOUTS } from "./fsd-checkouts.mts";
 import { FSD_DOCUMENTS, FSD_MCP_SERVERS, FSD_PROJECTS, FSD_SKILLS } from "./fsd-projects.mts";
 import { readClaudeUsage } from "@flow-state-dev/claude-code/sdk";
-import { claudeCodeEnv, errorReporterHarness, startHarness } from "./harness.mts";
+import { claudeCodeEnv, errorReporterHarness, startHarness, workerHarnesses } from "./harness.mts";
 import { LAB_TREE, openLab } from "./host.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
 import { EM_FLOW } from "./workforce/flows/workers/em.mts";
@@ -70,18 +73,24 @@ if (em === undefined) throw new Error("the DevTeam tree declares no EM");
 const coderWorkerId = ((em.declared.delegates as string[] | undefined) ?? []).find((id) => workerFlowOf(id) === CODER_FLOW);
 if (coderWorkerId === undefined) throw new Error(`the DevTeam's EM "${em.id}" names no delegate on the coder worker flow`);
 
-// Before anything is opened: with no Claude Code account this throws, and the Lab never listens.
+// Before anything is opened: logs whether Claude Code can run here, with what to run when it can't.
 const harness = await startHarness("claude-code");
 
 /** The Lab this profile serves. */
 export const lab = await openLab({
   stores: sqliteStores({ filename: STORE }),
   harness: harness.slot,
+  harnessName: harness.name,
+  // A coder hired with `settings: { harness: "cursor" }` runs on Cursor, not the coder above.
+  harnesses: workerHarnesses(),
   runTimeoutMs: harness.runTimeoutMs,
+  coderHarness: harness.label,
   // Runs' places beside the store, the two projects' worktrees of this checkout
   // among them. No remote is allowed: a run is never cloned from one.
   workspace: { root: join(dirname(STORE), "fsd-runs"), remotes: { allow: [] }, checkouts: CHECKOUTS },
   coderWorkerId,
+  // A coding run that committed waits in Inbox for the user's review before its task completes.
+  reviewChanges: true,
   inventory: true,
   devtool: true,
   projects: FSD_PROJECTS,
@@ -98,6 +107,7 @@ export const lab = await openLab({
   usage: {
     "claude-code": ({ signal } = {}) => readClaudeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
   },
+  readiness: harness.readiness,
 });
 
 export default lab.state;

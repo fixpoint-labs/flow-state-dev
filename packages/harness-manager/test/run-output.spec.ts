@@ -7,6 +7,8 @@
  * a run that writes a book does not put one on the row. The fields are
  * additive: a feature row's output keeps every field it had.
  */
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { afterAll, describe, expect, it } from "vitest";
 import { runTopic } from "../src";
 import { runBoardSegment } from "../src/workspace";
@@ -38,6 +40,21 @@ describe("a completed run's output", () => {
     expect(lab.answersSeen).toEqual(["the repo has two packages"]);
   }, 60_000);
 
+  it("names the base and the checkout, so `git log <base>..<branch>` there lists exactly the run's commits", async () => {
+    const lab = claimHost({ mode: "claim", script: [{ answer: "done", commits: 2 }] });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "change the repo", input: {} });
+
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+
+    const output = (await lab.row(CONVERSATIONS, "t1", "conv-a")).output as { branch: string; commits: number; baseCommit: string; path: string; commitsVerified: boolean };
+    expect(output.baseCommit).toMatch(/^[0-9a-f]{40}$/);
+    expect(output.commitsVerified).toBe(true);
+    expect(existsSync(output.path)).toBe(true);
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: output.path, encoding: "utf8" }).trim();
+    expect(git("rev-parse", "--abbrev-ref", "HEAD")).toBe(output.branch);
+    expect(git("log", "--format=%s", `${output.baseCommit}..${output.branch}`).split("\n")).toHaveLength(output.commits);
+  }, 60_000);
+
   it("cuts a long answer at 8,000 characters, and counts no commits for a run that made none", async () => {
     const long = "x".repeat(9_000);
     const lab = claimHost({ mode: "claim", script: [{ answer: long }] });
@@ -64,6 +81,9 @@ describe("a completed run's output", () => {
       answer: "implemented",
       branch: record!.branch,
       commits: 1,
+      commitsVerified: true,
+      baseCommit: record!.baseCommit,
+      path: expect.any(String),
       judged: false,
       // No review was asked: a manager built without `reviewChanges`.
       review: null,

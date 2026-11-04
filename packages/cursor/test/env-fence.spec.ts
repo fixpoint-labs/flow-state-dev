@@ -32,6 +32,7 @@ import {
   type CursorAgentOptions,
 } from "../src/agent";
 import { CursorAgentAbortedError } from "../src/errors";
+import { CURSOR_PASS } from "../src/index";
 import { TESTED_SDK_VERSION, type ResolvedCursorClient } from "../src/types";
 
 const FAKE_SDK = pathToFileURL(resolve(import.meta.dirname, "fixtures/fake-cursor-sdk.mjs")).href;
@@ -110,6 +111,28 @@ describe("cursorAgent — env set: the runtime's own process (V8, CI half)", () 
 
     expect(error).toBeNull();
     expect(shellReport(items).stdout).toBe("server-secret");
+  }, 30_000);
+});
+
+describe("cursorAgent — env from CURSOR_PASS", () => {
+  it("hands a command the key, home and proxy a run needs, and no server secret it does not name", async () => {
+    // Every host that fences Cursor builds its env from this one list, so a
+    // name missing from it is a run that cannot sign in, find its stored
+    // agents or reach the network through a proxy, on every host at once.
+    vi.stubEnv(CANARY, "server-secret");
+    vi.stubEnv("CURSOR_API_KEY", "key-for-the-run");
+    vi.stubEnv("HOME", "/home/cursor-pass-spec");
+    vi.stubEnv("HTTPS_PROXY", "http://proxy.invalid:3128");
+    vi.stubEnv("https_proxy", "http://proxy.invalid:3128");
+    const block = cursorAgent({ ...FENCED_FAKE, env: harnessEnv({ pass: CURSOR_PASS }) });
+
+    const { error, items } = await testBlock(block, { input: { prompt: "echo" } });
+
+    expect(error).toBeNull();
+    const report = shellReport(items);
+    expect(report.stdout).toBe("");
+    expect(report.envKeys).toEqual(expect.arrayContaining(["CURSOR_API_KEY", "HOME", "HTTPS_PROXY", "https_proxy", "PATH"]));
+    expect(report.envKeys).not.toContain(CANARY);
   }, 30_000);
 });
 
