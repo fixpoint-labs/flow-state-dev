@@ -16,10 +16,9 @@ import {
 import { z, type ZodTypeAny } from "zod";
 import { STEER_TURN_ENTRY } from "./board-entries";
 import { startOwedSteerTurn } from "./steer-turn-start";
-import { conversationLedgerAt, conversationLedgerResources } from "./ledger";
-import { admitOwnTask } from "./task-admission";
+import { conversationLedgerResources, ledgerAboveOf } from "./ledger";
+import { admitOwnTask, markAdmittedTask } from "./task-admission";
 import { AFTER_REPLY_CONCURRENCY } from "./task-settled";
-import { boardAboveOf } from "./board-above";
 import { sessionTaskOf } from "./task-entry";
 
 export { STEER_TURN_ENTRY } from "./board-entries";
@@ -28,15 +27,6 @@ export { STEER_TURN_ENTRY } from "./board-entries";
 const STEERED_AFTER_ANSWER =
   "You were sent the messages below about this task after your last model call. Act on them, then answer again. " +
   "A checkpoint you reported stands as the task's output unless you report a new one.";
-
-/**
- * The ledger this session's task is on: the conversation it was opened for,
- * or, in a workstream's session, the one whose routed task it works (FIX-2083).
- */
-async function sessionLedger(ctx: BlockContext): Promise<TaskCollectionRef | undefined> {
-  const partition = boardAboveOf(ctx);
-  return partition === undefined ? undefined : conversationLedgerAt(ctx, partition);
-}
 
 /**
  * The open task this session works, in its chain (the task it was opened
@@ -48,7 +38,7 @@ async function sessionLedger(ctx: BlockContext): Promise<TaskCollectionRef | und
 async function sessionOpenTask(ctx: BlockContext): Promise<{ ledger: TaskCollectionRef; row: Task } | undefined> {
   const taskId = sessionTaskOf(ctx);
   if (taskId === undefined) return undefined;
-  const ledger = await sessionLedger(ctx);
+  const ledger = await ledgerAboveOf(ctx);
   if (ledger === undefined) return undefined;
   const open = (ledger.list() as Task[]).filter((task) => (task.followUpOf ?? task.id) === taskId && !isTerminalStatus(task.status));
   if (open.length === 0) return undefined;
@@ -63,7 +53,7 @@ async function sessionOpenTask(ctx: BlockContext): Promise<{ ledger: TaskCollect
  * board to read, where nothing says the task ended.
  */
 export async function sessionTaskChainEnded(ctx: BlockContext): Promise<boolean> {
-  if (sessionTaskOf(ctx) === undefined || (await sessionLedger(ctx)) === undefined) return false;
+  if (sessionTaskOf(ctx) === undefined || (await ledgerAboveOf(ctx)) === undefined) return false;
   return (await sessionOpenTask(ctx)) === undefined;
 }
 
@@ -161,7 +151,7 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
     resources: { ...conversationLedgerResources },
     execute: async (_input, ctx): Promise<Taken> => {
       // Admitted, the claim is stamped and names the row; otherwise there is nothing to run.
-      const running = await runningTaskOf(sessionLedger, ctx as never);
+      const running = await runningTaskOf(ledgerAboveOf, ctx as never);
       if (running === undefined) return SKIP;
       // Shown in the session as it takes them, as a model call's take shows
       // them (FIX-2113): the turn's own message isn't kept, so a later turn
@@ -180,7 +170,7 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
     execute: async (value, ctx) => {
       const taken = value as Exclude<Taken, { skip: true }>;
       if (options.turn !== undefined) return { message: renderSteers(taken.steers, STEERED_AFTER_ANSWER) };
-      const running = await runningTaskOf(sessionLedger, ctx as never);
+      const running = await runningTaskOf(ledgerAboveOf, ctx as never);
       if (running === undefined) throw new Error(`"${name}" lost the claim it was admitted with before its block ran.`);
       const { claim, ledger } = running;
       const row = ledger.get(taken.taskId) ?? running.row;
@@ -206,7 +196,7 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
     resources: { ...conversationLedgerResources },
     execute: async (_input, ctx) => {
       await afterTaskCheck(ctx as never, async () => {
-        const ledger = await sessionLedger(ctx as never);
+        const ledger = await ledgerAboveOf(ctx as never);
         const sessionId = ctx.session.identity.id;
         const row = ledger?.list({ status: "in_progress" }).find((task) => task.run?.sessionId === sessionId);
         if (row?.keptOpenBy === "steer" || row?.turnOwed === true) return;
@@ -226,6 +216,8 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
       // wake. That request's end checks the task, and owes this turn again for
       // a steer it didn't take.
       .tap(admitOwnTask(`${name}-admission`, true, { unlessAnotherTurnWaits: true }))
+      // The steer lines and the reply are the admitted task's: a board steer never passes the door's stamp.
+      .tap(markAdmittedTask(`${name}-mark-task`))
       .step(take as BlockDefinition<any, any>)
       .stepIf((taken: unknown) => !skipped(taken), run as BlockDefinition<any, any>)
       .tapIf((answer: unknown) => !skipped(answer), noteTaskAnswer)

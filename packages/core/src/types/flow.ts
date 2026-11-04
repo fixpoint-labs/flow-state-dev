@@ -218,6 +218,17 @@ export type ActionCore<
   onCompleted?: BlockDefinition<any, any>;
   onErrored?: BlockDefinition<any, any>;
   userMessage?: (input: TBlock["inputSchema"]["_output"]) => string;
+  /**
+   * Names the task this request is for, read from the action's input. When it
+   * returns an id, the runtime stamps it as `OutputItem.taskId` on the
+   * `userMessage` echo and on every item the request emits, unless a nearer
+   * scope marks another task with `ctx._markTaskScope`. Trace items stay
+   * unstamped. Returning `undefined` (or an empty string) stamps nothing.
+   *
+   * The id is a label: it attributes items to a task's view and never routes,
+   * admits or authorizes. A reader that starts deciding by `taskId` checks it.
+   */
+  taskOf?: (input: TBlock["inputSchema"]["_output"]) => string | undefined;
   tokenBudget?: {
     maxTotalTokens: number;
     warnAt?: number;

@@ -76,4 +76,11 @@ export const CONTROLS: Record<string, Control> = {
     mustFail: ["a:no-deadline-waits"],
     patches: [{ module: "packages/core/src/types/suspend-for-user.ts", from: String.raw`options\.deadline \?\? ctx\.requestHost\?\.userDeadlineMs`, to: "options.deadline ?? ctx.requestHost?.userDeadlineMs ?? 1500" }],
   }),
+  // FIX-2407's: j3's crash signals only the `tsx` wrapper, which leaves the server under it running.
+  "wrapper-kill": control("wrapper-kill", {
+    legs: ["j3"],
+    mustFail: ["j3:crashed"],
+    // `from` must match the crash line in goals/lib/server.mts verbatim; keep the two in sync.
+    patches: [{ module: "goals/lib/server.mts", from: String.raw`stopProcessGroup\(child, "SIGKILL"\); // the crash`, to: 'child.kill("SIGKILL"); // the crash' }],
+  }),
 };

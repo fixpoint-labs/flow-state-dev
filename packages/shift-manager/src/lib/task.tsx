@@ -78,9 +78,16 @@ export type TaskView = {
   /** When an aborted run stopped, by its request record; `undefined` when the record has no end time. */
   stoppedAt: number | undefined;
   devtoolUrl: string | undefined;
-  /** Request ids this composer started, newest last, for this open task only (FIX-2009). */
+  /** Request ids this composer started, newest last, for this open task only (FIX-2009): the Session follows each. */
   sent: readonly string[];
-  noteSent(requestId: string): void;
+  /**
+   * The ones among `sent` whose door keeps no task id, so their items carry no
+   * stamp: the Session shows these by request id. A stamping door's turns are
+   * found by the stamp alone.
+   */
+  unstamped: readonly string[];
+  /** @param stamped Whether the line went with the task's id, to a door that stamps it. */
+  noteSent(requestId: string, stamped: boolean): void;
 };
 
 const TaskContext = createContext<TaskView | null>(null);
@@ -288,8 +295,16 @@ export function TaskProvider({
   }, [client, openRun, interrupt.kind, reportStatus]);
 
   const [sent, setSent] = useState<string[]>([]);
-  useEffect(() => setSent([]), [boardRef, taskId]);
-  const noteSent = useCallback((requestId: string) => setSent((held) => (held.includes(requestId) ? held : [...held, requestId])), []);
+  const [unstamped, setUnstamped] = useState<string[]>([]);
+  useEffect(() => {
+    setSent([]);
+    setUnstamped([]);
+  }, [boardRef, taskId]);
+  const noteSent = useCallback((requestId: string, stamped: boolean) => {
+    const add = (held: string[]) => (held.includes(requestId) ? held : [...held, requestId]);
+    setSent(add);
+    if (!stamped) setUnstamped(add);
+  }, []);
 
   const value: TaskView = {
     boardRef,
@@ -314,6 +329,7 @@ export function TaskProvider({
     stoppedAt: currentStatus === "aborted" && status !== undefined && "status" in status ? status.endedAtMs : undefined,
     devtoolUrl,
     sent,
+    unstamped,
     noteSent,
   };
   return <TaskContext.Provider value={value}>{children}</TaskContext.Provider>;

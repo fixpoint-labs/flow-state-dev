@@ -14,16 +14,11 @@
  * row there that this turn's own request holds.
  */
 import { defineCapability } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
 import { createHoldTaskForUser, createSuspendForUserTool } from "@flow-state-dev/orchestration";
-import { boardAboveOf } from "./board-above";
-import { conversationLedgerAt, conversationLedgerResources } from "./ledger";
+import { conversationLedgerResources, ledgerAboveOf } from "./ledger";
 
 // The board this session's task is on: server-set state (`./board-above`).
-const resolve = async (ctx: BlockContext) => {
-  const filing = boardAboveOf(ctx);
-  return filing !== undefined ? conversationLedgerAt(ctx, filing) : undefined;
-};
+const resolve = ledgerAboveOf;
 
 const ask = createHoldTaskForUser({ resolve });
 const wait = createSuspendForUserTool({ resolve });

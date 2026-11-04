@@ -20,11 +20,12 @@
 import { handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, ConcurrencyConfig } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { runningTaskOf } from "@flow-state-dev/orchestration";
 import { afterTaskCheck, taskRequestAdmission, type TaskEndRules } from "@flow-state-dev/orchestration/task-board";
 import { filedWorkKeepsOpen, keepsFilerOpen, type Task, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 import { boardAboveOf } from "./board-above";
 import { CHECK_TASK_ENTRY, PIECE_OF, STEER_TURN_ENTRY } from "./board-entries";
-import { conversationLedgerAt, ownConversationLedger } from "./ledger";
+import { conversationLedgerAt, conversationLedgerResources, ledgerAboveOf, ownConversationLedger } from "./ledger";
 import { anotherTurnWaitsOnItsPlan } from "./plan";
 
 /** The running row this session works, on the board above it (`./board-above`), or none. */
@@ -115,5 +116,27 @@ export function admitOwnTask(name: string, answerCounts: boolean, options: { rea
       // waits on a step of its own plan (FIX-2113): its turn isn't over.
       options.unlessAnotherTurnWaits === true && (await anotherTurnWaitsOnItsPlan(ctx)) ? undefined : ownTaskRow(ctx),
     endRules: conversationEndRules
+  });
+}
+
+/**
+ * Mark the entry's scope with the task this request was admitted for, so what
+ * it emits is stored under that task and the task's view reads it after a
+ * reload. Read from the admitted claim, server state, never from the input.
+ * Its own step, right after {@link admitOwnTask} and before the step that
+ * emits: a scope reads the mark when it opens. Marks nothing when nothing was
+ * admitted.
+ */
+export function markAdmittedTask(name: string) {
+  return handler({
+    name,
+    transient: true,
+    inputSchema: z.unknown(),
+    resources: { ...conversationLedgerResources },
+    execute: async (_input, rawCtx) => {
+      const ctx = rawCtx as unknown as BlockContext;
+      const running = await runningTaskOf(ledgerAboveOf, ctx);
+      if (running !== undefined) ctx._markTaskScope?.(running.row.id);
+    }
   });
 }

@@ -257,20 +257,24 @@ export async function openInventory(
     try {
       const ran = await options.run({
         action: INVENTORY_REGISTER_WORKERS,
-        // Id, kind, door, rules, display names, origin and incarnation only. A worker's row is the whole of what the
+        // Id, kind, door (and whether it takes a task), rules, display names, origin and incarnation only. A worker's row is the whole of what the
         // inventory knows about it, and everything else on a record is the
         // declared layer's to answer.
         input: {
-          workers: workers.map((worker) => ({
-            id: worker.id,
-            kind: worker.kind,
-            door: workerDoorOf(worker).door,
-            rules: Object.hasOwn(worker.actions, STANDING_RULES_ACTION),
-            name: worker.name ?? null,
-            teamName: worker.teamName ?? null,
-            hired: false,
-            incarnation: null,
-          })),
+          workers: workers.map((worker) => {
+            const { door, takesTask } = workerDoorOf(worker);
+            return {
+              id: worker.id,
+              kind: worker.kind,
+              door,
+              doorTakesTask: takesTask,
+              rules: Object.hasOwn(worker.actions, STANDING_RULES_ACTION),
+              name: worker.name ?? null,
+              teamName: worker.teamName ?? null,
+              hired: false,
+              incarnation: null,
+            };
+          }),
         },
         userId: options.userId,
         orgId,

@@ -59,7 +59,7 @@ export function useRoster(readAt: number | undefined): RosterRead {
 
 /**
  * The user's own workers as rows beside the inventory's: each on the flow
- * it names, with that flow's door and rules flag, grouped and named the way an inventory
+ * it names, with that flow's door and its rules and task flags, grouped and named the way an inventory
  * row is.
  */
 function ownWorkers(entries: readonly RosterEntry[], inventory: readonly Worker[]): Worker[] {
@@ -70,6 +70,7 @@ function ownWorkers(entries: readonly RosterEntry[], inventory: readonly Worker[
       kind: entry.flow,
       door: inventory.find((worker) => worker.kind === entry.flow)?.door ?? null,
       rules: inventory.find((worker) => worker.kind === entry.flow)?.rules ?? false,
+      doorTakesTask: inventory.find((worker) => worker.kind === entry.flow)?.doorTakesTask ?? false,
       ...workerNames(entry.id, entry.name, entry.teamName),
       ...harnessOf(entry),
     }));

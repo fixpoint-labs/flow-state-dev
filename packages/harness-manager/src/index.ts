@@ -215,6 +215,7 @@ export {
   type StubToolCall,
   type StubToolCallRecord,
 } from "./harness-stub";
+export { commitScriptedWork, scriptedHarness, type ScriptedHarnessOptions } from "./scripted-harness";
 // ── A run's tool calls, approved by a person (`approveTools`) ───────────────
 // Exported for a flow other than the manager to compose the same wait.
 export {

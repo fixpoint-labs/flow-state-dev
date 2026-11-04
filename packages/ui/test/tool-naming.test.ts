@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { toolIntent, toolSubject } from "../registry/components/tool-naming";
+import { toolBaseName, toolIntent, toolOutcome, toolSubject } from "../registry/components/tool-naming";
 
 describe("toolIntent", () => {
   it("reads Bash's description as the call's intent", () => {
@@ -96,5 +96,109 @@ describe("toolSubject", () => {
     expect(toolSubject("file_change", { changes: [{ path: "/w/src/components/Conversation.tsx", kind: "update" }] })?.text).toBe("Edit …/src/components/Conversation.tsx");
     expect(toolSubject("file_change", { changes: [{ path: "a.ts" }, { path: "b.ts" }, { path: "c.ts" }] })?.text).toBe("Edit a.ts and 2 more");
     expect(toolSubject("file_change", { changes: [] })).toBeUndefined();
+  });
+});
+
+// A person watching a worker should see what each step acted on: six project
+// reads must not read as six "Read a project file" lines, and no tool should
+// read as its raw name.
+describe("toolSubject for workforce and task tools", () => {
+  const line = (name: string, args: unknown, output?: unknown) => toolSubject(name, args, output)?.text;
+
+  it("names a project read by its path, and the lines it asked for", () => {
+    expect(line("readProjectSource", { path: "src/billing/ledger.ts" })).toBe("Read src/billing/ledger.ts");
+    expect(line("readProjectSource", { path: "a.ts", startLine: 3, endLine: 9 })).toBe("Read a.ts, lines 3-9");
+    expect(line("readProjectSource", { path: "a.ts", startLine: 4, endLine: 4 })).toBe("Read a.ts, line 4");
+    expect(line("readProjectSource", { path: "a.ts", startLine: 4, endLine: null })).toBe("Read a.ts, from line 4");
+  });
+
+  it("names a search by its pattern, and its match count once it has a result", () => {
+    expect(line("grepProjectSource", { pattern: "LEDGER" })).toBe('Search "LEDGER"');
+    expect(line("grepProjectSource", { pattern: "LEDGER", prefix: "src" })).toBe('Search "LEDGER" in src');
+    const grep = (n: number, cut: unknown = null) => ({ kind: "grep", matches: Array.from({ length: n }, () => ({})), cut });
+    expect(line("grepProjectSource", { pattern: "x" }, grep(0))).toBe('Search "x" · no matches');
+    expect(line("grepProjectSource", { pattern: "x" }, grep(1))).toBe('Search "x" · 1 match');
+    expect(line("grepProjectSource", { pattern: "x" }, grep(10))).toBe('Search "x" · 10 matches');
+    expect(line("grepProjectSource", { pattern: "x" }, grep(50, { left: 3, by: "matches" }))).toBe('Search "x" · 50+ matches');
+    // A refused search has no count to give.
+    expect(line("grepProjectSource", { pattern: "x" }, { kind: "refused", reason: "no-project", message: "m" })).toBe('Search "x"');
+  });
+
+  it("names a listing by its pattern, else the project's files, and its count", () => {
+    expect(line("globProjectSource", { pattern: "src/**" }, { kind: "glob", paths: ["a", "b"], cut: null })).toBe("List src/** · 2 files");
+    expect(line("globProjectSource", { pattern: null })).toBe("List the project's files");
+    expect(line("globProjectSource", {}, { kind: "glob", paths: [], cut: null })).toBe("List the project's files · no files");
+  });
+
+  it("names a task by its title, else its goal, never its id", () => {
+    expect(line("createTask", { title: "Fix the login copy", goal: "The login page says..." })).toBe("Start a task: Fix the login copy");
+    expect(line("createTask", { goal: "Fix the login copy" })).toBe("Start a task: Fix the login copy");
+    expect(line("getTask", { id: "task_9f2" })).toBe("Check on a task");
+    expect(line("getTask", { id: "task_9f2" }, { ok: true, task: { id: "task_9f2", goal: "g", title: "Fix the login copy" } })).toBe(
+      'Check on "Fix the login copy"'
+    );
+  });
+
+  // Two boards sharing a block qualify its tools by board (orchestration's `taskToolSuffix`).
+  it("reads a board-qualified task tool as its base, and leaves other underscored names alone", () => {
+    expect(line("createTask_tasks", { title: "Fix the login copy", goal: "g" })).toBe("Start a task: Fix the login copy");
+    expect(line("updateTask_eng_feature_work", { id: "t" })).toBe("Update a task");
+    expect(toolBaseName("createTask_tasks")).toBe("createTask");
+    expect(toolBaseName("read_file")).toBe("read_file");
+    expect(toolBaseName("constructor_x")).toBe("constructor_x");
+  });
+
+  it("says who a message went to, and what the other tools did, in plain words", () => {
+    expect(line("sendMessage", { to: "eng.taker", text: "hi" })).toBe("Message eng.taker");
+    expect(line("sendMessage", { to: { task: "task_1" }, text: "hi" })).toBe("Message the worker on a task");
+    expect(line("sendMessage", { to: { session: "s_1" }, text: "hi" })).toBe("Message a conversation");
+    expect(line("reportProgress", { statusNote: "Drafted the copy" })).toBe("Note progress: Drafted the copy");
+    expect(line("reportProgress", { output: {} })).toBe("Note progress");
+    expect(line("suspendForUser", { kind: "review", prompt: "p", title: "The new copy" })).toBe("Ask for your review: The new copy");
+    expect(line("suspendForUser", { kind: "approval", prompt: "p" })).toBe("Ask for your approval");
+    expect(line("holdTaskForUser", { question: "Which region?" })).toBe("Ask you a question");
+    expect(line("updateTask", { id: "t" })).toBe("Update a task");
+    expect(line("listTasks", {})).toBe("Look over the tasks");
+    expect(line("consultSessionHistory", { session: "s", question: "q" })).toBe("Read a conversation");
+  });
+
+  it("gives every one of the twelve tools words, even before its args arrive", () => {
+    const twelve = [
+      "readProjectSource", "grepProjectSource", "globProjectSource", "createTask", "getTask", "updateTask",
+      "listTasks", "holdTaskForUser", "suspendForUser", "sendMessage", "reportProgress", "consultSessionHistory",
+    ];
+    for (const name of twelve) {
+      const text = line(name, undefined);
+      expect(text, name).toBeDefined();
+      expect(text, name).not.toContain(name);
+    }
+  });
+});
+
+describe("toolOutcome", () => {
+  it("is failed for each shape a tool refuses in", () => {
+    expect(toolOutcome("createTask", { ok: false, error: "nope" })).toBe("failed");
+    expect(toolOutcome("grepProjectSource", { kind: "refused", reason: "not-a-member", message: "m" })).toBe("failed");
+    // A send that waited on a reply its message never got to give.
+    expect(toolOutcome("sendMessage", { status: "failed", sent: "msg_1", error: "undeliverable" })).toBe("failed");
+    expect(toolOutcome("readProjectSource", { kind: "read", path: "a.ts", status: "missing" })).toBe("failed");
+    expect(toolOutcome("readProjectSource", { kind: "read", path: "a", status: "directory" })).toBe("failed");
+  });
+
+  it("is ok for a result that worked, including a search that found nothing", () => {
+    expect(toolOutcome("readProjectSource", { kind: "read", path: "a.ts", status: "ok" })).toBe("ok");
+    expect(toolOutcome("grepProjectSource", { kind: "grep", matches: [], cut: null })).toBe("ok");
+    expect(toolOutcome("createTask", { ok: true, taskId: "t" })).toBe("ok");
+    expect(toolOutcome("custom", "done")).toBe("ok");
+    expect(toolOutcome("custom", undefined)).toBe("ok");
+  });
+
+  // A top-level status is the call's only in the waited send's shape; otherwise it is a task's.
+  it("does not read a task's status as the call's", () => {
+    expect(toolOutcome("createTask", { ok: true, taskId: "t", status: "held" })).toBe("ok");
+    expect(toolOutcome("getTask", { ok: true, task: { id: "t", status: "failed" } })).toBe("ok");
+    expect(toolOutcome("custom", { status: "failed" })).toBe("ok");
+    // A read's status counts only on the read tool.
+    expect(toolOutcome("custom", { kind: "read", status: "missing" })).toBe("ok");
   });
 });

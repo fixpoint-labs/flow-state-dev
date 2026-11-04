@@ -50,8 +50,12 @@ import { describeFailure } from "./reads";
  */
 export type TurnStop = "ask" | "wait" | null;
 
-/** Where a line goes: the session, the flow that owns it, and that flow's door. */
-export type TurnTarget = { sessionId: string; flowId: string; door: string };
+/**
+ * Where a line goes: the session, the flow that owns it, and that flow's door.
+ * `taskId`, for a door that takes one (its worker row's `doorTakesTask`): the task
+ * the line is sent from, which the door stamps on the line and its reply.
+ */
+export type TurnTarget = { sessionId: string; flowId: string; door: string; taskId?: string };
 
 /** Why a line was not delivered. */
 export class TurnNotDelivered extends Error {
@@ -213,7 +217,7 @@ export async function sendTurn(
   const actions = client.flow(target.flowId);
   let requestId: string;
   try {
-    requestId = (await call(() => actions.send(target.door, { message }, { sessionId: target.sessionId }))).id;
+    requestId = (await call(() => actions.send(target.door, target.taskId === undefined ? { message } : { message, taskId: target.taskId }, { sessionId: target.sessionId }))).id;
   } catch (error) {
     if (error instanceof ClientCallFailed) throw new TurnNotDelivered("not-sent", error.message);
     throw error;

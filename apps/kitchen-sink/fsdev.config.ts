@@ -50,16 +50,24 @@ const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
  * this file loads: a deployment on Postgres never opens it and may not be able
  * to write here. SQLite opens a file in a folder that exists, and a fresh
  * checkout has no `.fsdev/data`.
+ *
+ * The file is `.fsdev/data/flowstate.db`. A goal check names a scratch file in
+ * `KITCHEN_SINK_STORE_FILE`, honoured in test mode only, so a check that
+ * restarts the server on its store never writes the developer's.
  */
 function localSqliteStores(): StoreAdapter {
-  const dir = path.join(process.cwd(), ".fsdev", "data");
+  const goalFile = process.env.KITCHEN_SINK_TEST_MODE === "1" ? process.env.KITCHEN_SINK_STORE_FILE : undefined;
+  const file =
+    goalFile === undefined || goalFile === ""
+      ? path.join(process.cwd(), ".fsdev", "data", "flowstate.db")
+      : path.resolve(goalFile);
   let inner: StoreAdapter | undefined;
   return {
     capabilities: ["primary"],
     resolve(slots) {
       if (inner === undefined) {
-        mkdirSync(dir, { recursive: true });
-        inner = sqliteStores({ filename: path.join(dir, "flowstate.db") });
+        mkdirSync(path.dirname(file), { recursive: true });
+        inner = sqliteStores({ filename: file });
       }
       return inner.resolve(slots);
     },
