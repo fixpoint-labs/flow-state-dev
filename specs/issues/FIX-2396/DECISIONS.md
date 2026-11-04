@@ -3,25 +3,29 @@
 [Spec](SPEC.md) · **Decisions**
 
 <a name="d1"></a>
-## D1 · The summary is read in the lab's adapter, not the UI registry
+## D1 · Files come from the package's recorded-work reader, not the run's steps
 
-| | Lab adapter (chosen) | Registry `tool-naming.ts` |
+| | `readRecordedWork` (chosen) | Re-parse tool args from the steps |
 |---|---|---|
-| Who uses it now | Teammates' popup only | Teammates; Claude Code-style later |
-| Change size | one lab | a registry file and every copy of it across the labs and Shift Manager |
-| Risk | a second copy if another app wants it | none beyond size |
+| Owner of "which files a run touched" | `harness-manager`, one reader for every app (FIX-2385) | a second parser in the lab, beside `toolSubject` |
+| Harnesses covered today | Claude Code only; Codex and Cursor record none yet | all three, by tool name |
+| Drift when a harness changes its tool shapes | none here: the recorder changes | this lab's allowlist goes stale |
 
-- **Because:** the issue places the popup in the lab, and only one app reads it today. Moving a
-  helper later is cheap; changing a registry file now touches four copies for one reader.
-- **If wrong:** when a second app asks, `runSummary` and the paths read move to
-  `tool-naming.ts` and the lab imports them; the tests move with them.
+- **Because:** FIX-2385 moved the reader into the package so the labs' "Edited N files"
+  summaries (this issue and FIX-2384) would not re-parse steps; the epic's ER-3 keeps a need in
+  the package. A first draft of this spec chose the step parse; review pointed at FIX-2385, and
+  it was reversed.
+- **Cost:** a Codex or Cursor task's line has no file part until those packages record file
+  touches. The line omits it rather than say 0. Follow-up filed for Codex and Cursor.
+- **If wrong:** if the gap matters before the follow-up lands, the fix is in those packages'
+  recorders, not a parse here.
 
 <a name="d2"></a>
 ## D2 · Duration shows once the task ended, from the row's own times
 
 | | End minus start, ended only (chosen) | A live clock while it runs |
 |---|---|---|
-| Source | `startedAt`/`completedAt` the board wrote | the same plus a ticking timer |
+| Source | the task times FIX-2395 carries on `BoardTask` | the same plus a ticking timer |
 | Re-renders | none | one a second per open popup |
 | Wrong value risk | spans retries (noted in the spec) | the same, plus clock skew between browser and server |
 
@@ -45,13 +49,14 @@
 
 ## Decided, not asked
 
-- **E1 · Files counted, not edits.** Distinct paths from completed file-changing steps
-  (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `edit`, `write`, `create_file`, `delete`,
-  `file_change` and their `_file` forms, case-folded). A failed or still-running edit isn't one.
-- **E2 · Commands counted** from shell steps that ran (done or failed), not ones still running.
+- **E1 · Files are the recorded rows**, one per path as the recorder keys them; a truncated read
+  says `200+ files`.
+- **E2 · Commands counted** from shell steps (`code: true`) that ran, done or failed, not ones
+  still running.
 - **E3 · Chips show the file's name**, the full path as their title; past eight, a `+N more` chip.
 - **E4 · Copy copies the result, else the error.** A task with neither shows no Copy.
-- **E5 · Status tone applies to every task popup**, coding or not: a green failed result is wrong
-  everywhere. The summary line is for coding tasks, whose runs report tool steps.
+- **E5 · Status tone applies to every task popup**, coding or not, read from FIX-2395's
+  `lib/task-state.ts`: the popup doesn't become another place that colours status. The summary
+  line is for coding tasks.
 - **E6 · Follow up and Copy show once the task ended** (done, failed or cancelled).
 - **E7 · No changeset:** the Teammates lab is private.
