@@ -193,6 +193,44 @@ useSubscription([topic.session(sessionId)], refresh, { pollIntervalMs: 3000 });
 
 Returns nothing. It doesn't read on mount.
 
+### `useJumpToLatest(options?)`
+
+Scrolls a conversation the way ChatGPT and Claude do. When the person sends a line, the line rises to near the top of the view and the reply streams in under it, where they can read it. After that the view stays where it is until the reader moves it.
+
+```tsx
+const feed = useJumpToLatest({ resetKey: sessionId });
+
+return (
+  <>
+    <div ref={feed.ref} className="overflow-y-auto">
+      {lines.map((line) => (
+        <div key={line.id} {...(line.role === "user" ? feed.mine(line.id) : {})}>{line.text}</div>
+      ))}
+    </div>
+    {feed.atEnd ? null : <button onClick={feed.jump}>Jump to latest</button>}
+    <Composer onSend={(text) => { feed.sent(); return send(text); }} />
+  </>
+);
+```
+
+| Option / return | Type | Notes |
+|----------|------|-------|
+| `options.resetKey` | `string \| null` | What the feed shows, such as a session id. A change to a different conversation opens the feed at its end again, with no animation (with `startAtEnd` on), and with either setting drops the space kept for the last conversation and cancels a rise that hasn't happened yet. Replacing the scrolling element under the same key leaves the reader where they were. The one exception is a send that creates the conversation: when `resetKey` goes from `null` to a key after `sent()`, the feed doesn't reopen and keeps its space, a line that hasn't risen yet rises when it lands, and one that already rose stays where it is. |
+| `options.startAtEnd` | `boolean` | Open at the end. Default `true`; `false` opens where the element starts, for a feed with a lead above its turns, and a `resetKey` change doesn't reopen such a feed at its end. |
+| `ref` | `(node: HTMLElement \| null) => void` | Attach to the scrolling element. |
+| `mine(key)` | `(key: string) => SentLineMark` | Returns `{ "data-sent-line": key }`. Spread it on each of the person's own lines. `key` should stay the same while the line redraws, such as its id. Put it on an element with a box of its own, not a `display: contents` wrapper. |
+| `sent()` | `() => void` | Call when the person sends. Their marked line scrolls to near the top when it lands, once. Calling it after the line is drawn works too, for an app that learns of the send in an effect: the newest marked line the feed had not shown before is the one that rises. Called before the scrolling element mounts, such as from a view that shows an empty state until the first line, the line still rises when the feed mounts with it, with space kept below it for the reply. |
+| `atEnd` | `boolean` | `false` when there is more than 32 px of content below the view: show a jump-to-latest button. |
+| `jump()` | `() => void` | Scroll to the end of the content, smoothly. |
+
+To let the line reach the top under a short reply, the hook adds space at the end of the feed as bottom padding. The space shrinks as the reply grows and is gone once the reply fills the view. Otherwise it stays until the next send, or until `resetKey` switches to a different conversation (with either `startAtEnd` setting), so a short reply has blank space under it. `atEnd` and `jump()` ignore it.
+
+A reply that grows past the bottom edge, or content that isn't the person's line, never moves the view. A feed that never calls `mine` or `sent` keeps the view where the reader put it and shows the button when there is more below.
+
+Any scroll the reader makes, with the wheel, touch, scroll keys (arrows, Page Up/Down, Home, End, Space) or the scrollbar, cancels a rise that hasn't happened yet. Keys typed into an input, textarea, select or editable element inside the feed don't count as scrolling.
+
+With `startAtEnd` on, a feed that opens is already at its end on the first frame, with nothing animating: on mount, when `resetKey` changes, and when content first fills a feed that was empty, such as a conversation that loads after the feed mounts.
+
 ### `useVoice(session, options)`
 
 Voice input/output composing with `useSession`.

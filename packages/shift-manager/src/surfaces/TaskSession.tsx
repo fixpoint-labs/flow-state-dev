@@ -214,7 +214,13 @@ function RunItems({ run }: { run: OpenRun }) {
       <SessionItemsProvider value={stored.items}>
         <ol className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 py-4" data-testid="session-items">
           {shown.items.map((item) => (
-            <li key={`${item.requestId}/${item.id}`} data-testid="session-item" data-item-id={item.id} data-item-type={item.type}>
+            <li
+              key={`${item.requestId}/${item.id}`}
+              data-testid="session-item"
+              data-item-id={item.id}
+              data-item-type={item.type}
+              {...(item.type === "message" && item.role === "user" ? feed.mine(item.id) : {})}
+            >
               {item.type === "suspension" ? (
                 <PendingAsk ask={asks.find((ask) => ask.item.suspensionId === item.suspensionId)} />
               ) : (

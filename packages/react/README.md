@@ -398,25 +398,45 @@ Explicit `onApprove`/`onReject` props still take precedence; with neither a prov
 
 ### `useJumpToLatest(options?)`
 
-Keeps a conversation where the reader put it, and offers the way to its newest content. Attach `ref` to the scrolling element.
+Scrolls a conversation the way ChatGPT and Claude do. A line the person sends rises to near the top of the view and its reply streams in below it. After that, the view stays where it is until the reader moves it. Attach `ref` to the scrolling element, mark each of the person's own lines with `mine(key)`, and call `sent()` when they send.
 
 ```tsx
 const feed = useJumpToLatest({ resetKey: sessionId });
 return (
-  <div ref={feed.ref} className="overflow-y-auto">
-    {/* the turns */}
+  <>
+    <div ref={feed.ref} className="overflow-y-auto">
+      {lines.map((line) => (
+        <div key={line.id} {...(line.role === "user" ? feed.mine(line.id) : {})}>
+          {line.text}
+        </div>
+      ))}
+    </div>
     {feed.atEnd ? null : <button onClick={feed.jump}>Jump to latest</button>}
-  </div>
+    <Composer
+      onSend={(text) => {
+        feed.sent();
+        return send(text);
+      }}
+    />
+  </>
 );
 ```
 
-New content never scrolls the feed, even when the reader is at the end, because they may be reading. When something arrives below what is on screen, `atEnd` turns `false`: show a jump-to-latest button that calls `jump()`. It turns `true` again once the reader is back at the end.
+- `ref`: attach to the scrolling element.
+- `mine(key)`: returns `{ "data-sent-line": key }` (typed `SentLineMark`). Spread it on each of the person's lines. `key` names the line and should stay the same while it redraws, such as its id. Put it on an element with a box of its own, not on a `display: contents` wrapper.
+- `sent()`: call when the person sends a line. When their line lands, it scrolls smoothly to near the top of the feed, once, from wherever the reader was. Calling it after the line is already drawn works too, for an app that learns of the send in an effect: the newest marked line the feed had not shown before is the one that rises. Called before the scrolling element mounts, such as from a view that shows an empty state until the first line, the line still rises when the feed mounts with it, with space kept below it for the reply.
+- `atEnd`: `false` when there is content below the view (more than 32 px). Show a jump-to-latest button then.
+- `jump()`: scrolls smoothly to the end of the content.
+- `startAtEnd` (default `true`): `false` opens where the element starts, such as a feed with a lead above its turns. A `resetKey` change doesn't reopen such a feed at its end.
+- `resetKey`: what the feed shows, such as a session id. A change to a different conversation opens the feed at its end again (with `startAtEnd` on) and, with either setting, drops the space kept for the last conversation and cancels a rise that hasn't happened yet. Replacing the scrolling element under the same key leaves the reader where they were. The one exception is a send that creates the conversation: when `resetKey` goes from `null` to a key after `sent()`, the feed doesn't reopen and keeps its space, a line that hasn't risen yet rises when it lands, and one that already rose stays where it is.
 
-A feed that opens is already at its end on the first frame: on mount, when `resetKey` changes (switching to another session), and when its first read fills it. Nothing animates there.
+So the line can reach the top under a short reply, the hook keeps space at the end of the feed, as bottom padding on the scrolling element. The space shrinks as the reply grows and is gone once the reply fills the view. Otherwise it stays until the next send, or until `resetKey` switches to a different conversation (with either `startAtEnd` setting), so a short reply has blank space under it. `atEnd` and `jump()` ignore the space.
 
-- `startAtEnd` (default `true`): `false` opens where the element starts, such as a feed with a lead above its turns.
-- `jump()`: to the end, smoothly.
-- `sent()`: call when the person sends a line. It jumps to the end and brings the next content that lands below into view, which is the line they sent. What arrives after that stays below.
+A reply growing past the bottom edge never moves the view: `atEnd` turns `false` and the button appears. Content that isn't the person's line, such as another participant's message or a tool result, never moves it either. A feed that never calls `mine` or `sent` behaves this way throughout: the view stays put and the button shows when there is more below.
+
+Any scroll by the person cancels a rise that hasn't happened yet: the wheel, touch, a press on the scrollbar, or a scroll key (arrows, Page Up/Down, Home, End, Space) pressed on the feed. Keys typed into an input, textarea, select or editable element inside the feed don't count.
+
+With `startAtEnd` on, a feed that opens is already at its end on the first frame, with nothing animating: on mount, when `resetKey` changes, and when content first fills a feed that was empty, such as a conversation that loads after the feed mounts.
 
 ### `useDraft(namespace, id)`
 

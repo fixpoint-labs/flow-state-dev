@@ -100,7 +100,9 @@ export function ThreadView({
       <Spend spend={task.spend} split className="px-4" />
       <div ref={feed.ref} className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pt-2 pb-8 [overflow-wrap:anywhere]">
         <LoadEarlier load={work?.loadEarlier} />
-        {work?.entries.map((entry) => <Entry key={entry.id} entry={entry} />)}
+        {work?.entries.map((entry) => (
+          <Entry key={entry.id} entry={entry} mark={entry.kind === "user" ? feed.mine(entry.id) : undefined} />
+        ))}
         <JumpToLatestButton feed={feed} />
       </div>
       {question ? (

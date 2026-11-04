@@ -265,6 +265,7 @@ export function Conversation({
                       data-request-id={item.requestId}
                       data-item-type={item.type}
                       data-role={role}
+                      {...(item.type === "message" && role === "user" ? feed.mine(item.id) : {})}
                     >
                       {item.type === "message" && role === "assistant" ? (
                         // v2's label over each of the worker's messages: its name and the time it was written (v2:135).

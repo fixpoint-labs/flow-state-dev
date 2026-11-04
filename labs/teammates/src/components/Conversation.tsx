@@ -201,7 +201,11 @@ export function Conversation({
                   <span className="h-px flex-1 bg-border" />
                 </div>
               ) : null}
-              <div className={cn(i < markAt && "opacity-60")} data-in-window={markAt < 0 || i >= markAt ? "true" : "false"}>
+              <div
+                className={cn(i < markAt && "opacity-60")}
+                data-in-window={markAt < 0 || i >= markAt ? "true" : "false"}
+                {...(entry.kind === "user" ? feed.mine(entry.id) : {})}
+              >
                 {entry.kind === "task" ? (
                   taskTile(entry)
                 ) : (
