@@ -54,13 +54,13 @@ readiness action) and the page only for what it shows.
 | | |
 |---|---|
 | **Goal check, leg a** | `goals/claude-code-style-lab/checks-the-repository-first`, model n/a, `CLAUDE_CODE_STYLE_HARNESS=stub`, run by the implementer at completion; verdict on the labs PR |
-| **Signal, leg a** | **refused**: `createProject` through the public client on a plain folder and on a git repository with no `.fsdev/` rule both fail with code `repository-unusable`, and `listProjects` holds neither. **same-words**: the picker shows each refusal's text before Create is pressed, and Create stays disabled. **made**: a listed repository with the rule is made, and the line under the field says worktree |
+| **Signal, leg a** | **refused**: `createProject` through the public client on a plain folder, a git repository with no `.fsdev/` rule, and one whose rule is written but not committed all fail with code `repository-unusable`, and `listProjects` holds none of them. **same-words**: the picker shows each refusal's text before Create is pressed, and Create stays disabled. **made**: a listed repository with the rule is made, and the line under the field says worktree |
 | **Goal check, leg b** | `goals/teammates-lab/first-run-shows-its-context`, model n/a (no turn is graded), real browser, the `CODEX_HOME` set-up of `goals/teammates-lab/routes-only-to-ready-harnesses` |
 | **Signal, leg b** | **strip**: the folder chip reads the `TEAMMATES_WORKDIR` the run set (a temp checkout, not this repository), the model chip `TEAMMATES_MODEL`, the harness chip `TEAMMATES_HARNESS`. **codex-chip**: a Codex chip with `codex login` in it; after the run logs in into that `CODEX_HOME`, Re-check turns it ✓ within 30 s. **starter**: clicking a starter line puts its text in the composer, and the session has no new request 3 s later |
 | **Input** | Temp folders made by the run, with names no lab file holds; the Teammates roster as shipped. A different folder, model string or harness passes a correct lab |
 | **Anti-game** | Leg a grades the server's refusals and the project list, never the adapter. Leg b's strip values are set by the run to values no source file names, so a constant can't pass |
-| **Controls that must fail** | `GOAL_CONTROL=no-repository-check`: the lab's projects flow built without the check. Must FAIL **refused** (both projects are made). `GOAL_CONTROL=fixed-chips`: the chips drawn from a constant all-ready list. Must FAIL **codex-chip** |
-| **Unit, no goal check** | Kitchen Sink's chips per mode and Shift Manager's starter lines are copy over data the app already holds. Each gets a test shown red first: Kitchen Sink, every mode's chips differ and none names `doc-1`; Shift Manager, two rosters with different delegates give different lines, and none holds a Lab's worker name from source. The workspace check: a plain folder, a repository without the rule, one tracking a file under `.fsdev/`, a remote scheme the host refuses, and a good one, each with its answer, and the same answer as the provision check gives for the same repository |
+| **Controls that must fail** | `GOAL_CONTROL=no-repository-check`: the lab's projects flow built without the check. Must FAIL **refused** (all three projects are made). `GOAL_CONTROL=fixed-chips`: the chips drawn from a constant all-ready list. Must FAIL **codex-chip** |
+| **Unit, no goal check** | Kitchen Sink's chips per mode and Shift Manager's starter lines are copy over data the app already holds. Each gets a test shown red first: Kitchen Sink, every mode's chips differ and none names `doc-1`; Shift Manager, two rosters with different delegates give different lines, and none holds a Lab's worker name from source. The workspace check: a plain folder, a repository without the rule, one whose rule is only in uncommitted changes, one with no commit, one tracking a file under `.fsdev/`, a remote scheme the host refuses, and a good one, each with its answer, and the same answer as the provision check gives for the same repository |
 
 ## What changes
 
@@ -92,8 +92,8 @@ readiness action) and the page only for what it shows.
   optional like `list` and `remove`. It answers `{ usable: true, how: "worktree" | "clone" }`
   or `{ usable: false, problem }` without making anything: the host's remote allow-list, then
   for a `file://` remote or a listed repository that it exists and is a git repository, then
-  `ignoredProblem` on it, the function `provision` already runs. A network remote the host
-  allows is `usable` with no reachability read ([E3](DECISIONS.md#e3)).
+  `ignoredProblem` on the last commit's tree ([E5](DECISIONS.md#e5)), the function `provision`
+  already runs on the checkout cut from it. A network remote the host allows is `usable` with no reachability read ([E3](DECISIONS.md#e3)).
 - **`@flow-state-dev/workforce`:** `defineProjectBlocks({ checkRepository? })`. Given, it runs
   after `repositoryProblem` in `createProject` and `setRepository` and refuses with
   `ProjectRefusedError("repository-unusable", problem)`, and adds a read-only

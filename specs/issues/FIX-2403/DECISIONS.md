@@ -22,8 +22,8 @@ flowchart TD
 | | Host's check, through an option (chosen) | Lab picker only | Workforce reads the disk |
 |---|---|---|---|
 | A client that skips the page is refused | yes | no | yes |
-| Same answer as the run's checkout gets | yes: one function | a copy | a copy |
-| Project rows stay machine-independent | yes: no host, no check | yes | no: every server refuses by its own disk |
+| Same answer as the run's checkout gets | yes: one function, on the last commit's tree (E5) | a copy | a copy |
+| Refuses by this server's disk | only where the app passes the option (opt-in) | no | always |
 | Knows the host's remotes and listed repositories | yes | by lab code | no |
 
 - **Instead of:** checking in the picker only, or making `createProject` stat paths and run
@@ -57,10 +57,15 @@ flowchart TD
 - **E4 · Provision keeps its check.** A repository can change between create and run (a
   `.gitignore` edit, a deleted folder), so the run's refusal stays the last word. The two calls
   share `ignoredProblem`, so they can't disagree on the same tree.
-- **E5 · The ignore check reads the source repository's working tree.** For a listed
-  repository that is the tree a worktree is cut from, so it matches. For a `file://` clone it
-  reads the source's tree, which can differ from its committed `.gitignore` while edited; E4
-  catches that case at the run.
+- <a name="e5"></a>**E5 · The ignore check reads the last commit's tree, the one a run's
+  checkout is cut from.** Not the working tree: a rule written but not committed protects
+  nothing in a worktree or a clone, and following the picker's own remedy without a commit
+  would pass the check and fail the run. The check writes the commit's `.gitignore` files to a
+  scratch folder under a scratch index and runs the same `ignoredProblem` there. A rule that is
+  only in uncommitted changes is refused with "commit the .gitignore change"; a repository with
+  no commit yet is refused, since a run is cut from one. A pinned remote branch (`baseRef:
+  origin/main`) is not fetched here; E4 covers it at the run. *(Amended after review: the
+  first draft read the working tree.)*
 - **E6 · The chips are one registry component** (`harness-readiness`), copied into both labs
   (epic D4). Each lab reads the rows through its own `harness-readiness` flow's `read`
   action, which FIX-2391 already serves.
@@ -71,6 +76,11 @@ flowchart TD
   folder, as today.
 - **E9 · The empty right pane in the Claude Code-style lab says what will appear there**
   (background tasks in Sessions, threads in Projects). Copy, no data.
+- <a name="e11"></a>**E11 · The allow-list comes before the disk.** A path that is neither a
+  listed repository nor a remote the host allows is refused before any `stat` or git call, so
+  the read-only action can't probe the server's disk. The problems it names (no folder, not a
+  repository, tracked files under `.fsdev/`) are the ones a run's refusal already shows for
+  the same repository.
 - **E10 · Order of work.** One package PR from `main` (workspace method, workforce option,
   harness-manager export, registry component), then one apps PR. Kitchen Sink's change touches
   `flow-state/page.tsx` by one prop; it merges after that file's open stacks if any are up.
@@ -81,6 +91,22 @@ flowchart TD
   overlay is still open.
 - **Starter lines written by a model at session start.** A model turn before the first line
   costs money and time on every open, and the lines from live data already fit.
+
+## Notes from review
+
+Round 1 (Codex, and a second look posted on the PR):
+
+- **Folded:** the check read the working tree, so an uncommitted rule passed and the run
+  failed (both reviews). E5 now reads the last commit's tree; the unit list and goal leg a gain
+  the uncommitted-rule case.
+- **Folded:** allow-list first, as a decision (E11).
+- **Folded:** D1's table overstated machine independence; the row now says the refusal is
+  opt-in. A consequence: a project made on one host can be refused on another, and
+  `setRepository` can refuse an existing project whose folder moved.
+- **Recorded, not folded:** split the apps' copy into their own issues so the risky package
+  piece isn't held behind it. E10 already ships the package first; the issue is scoped as one.
+- **Recorded:** type the workforce option structurally (it is), reuse `ASK_MARKER_IGNORED`
+  (it is), and say in the picker that a remote's reach is checked on the first run (E3).
 
 ## How it got here
 
