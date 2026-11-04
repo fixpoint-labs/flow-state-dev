@@ -33,7 +33,7 @@ The views that never send have b, d and e only; `first-send` has f only.
 
 - `main-rule`: the hook as it was on `main` before this change (581142fb), plus a `mine` that only sets the attribute. A send goes to the end. Must fail **a.short** and **a.long** on all six surfaces that send, and **f**: the first send's conversation reopens at its end and the reply scrolls the view.
 - `no-reserve`: the hook keeps no space under the sent line. Must fail **a.short** and **a.long** on all six surfaces that send. The spec expected the short reply only; the person's line lands before its reply starts, so with no space it can't rise under either length. Must fail **f** too: with no space under it, the first line can't rise (64 px down against 44 px).
-- `key-reset`: the hook reopens the feed when a key arrives where there was none while a send waits, as a switch does. Must fail **f**.
+- `key-reset`: the hook reopens the feed when a key arrives where there was none after a send, as a switch does. Must fail **f**.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

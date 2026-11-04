@@ -380,6 +380,28 @@ describe("sending a line", () => {
     expect(space(screen.getByTestId("feed"))).toBeGreaterThan(0);
   });
 
+  it("keeps the rise of the first line of a conversation the send creates, though the line lands before the key", async () => {
+    // A line drawn as it goes out, then the conversation's id from the reply.
+    const { rerender } = await opened(20, { resetKey: null });
+    act(() => feed.sent());
+    rerender(feedElement({ lines: 21, mine: [20], resetKey: null }));
+    await settle();
+    rerender(feedElement({ lines: 21, mine: [20], resetKey: "created" }));
+    await settle();
+    expect(nearTop(20)).toBe(true);
+    expect(space(screen.getByTestId("feed"))).toBeGreaterThan(0);
+  });
+
+  it("brings up the line sent while the scrolling element is replaced, in the same conversation", async () => {
+    const { rerender } = await opened(20, { resetKey: "a", elementKey: "one" });
+    act(() => feed.sent());
+    rerender(feedElement({ lines: 20, resetKey: "a", elementKey: "two" }));
+    await settle();
+    rerender(feedElement({ lines: 21, mine: [20], resetKey: "a", elementKey: "two" }));
+    await settle();
+    expect(nearTop(20)).toBe(true);
+  });
+
   it("drops the space on switching to another conversation, which opens at its end", async () => {
     const { rerender } = await opened(20, { resetKey: "a" });
     act(() => feed.sent());
@@ -472,6 +494,29 @@ describe("opening a conversation", () => {
     rerender(feedElement({ lines: 7, startAtEnd: false, mine: [6] }));
     await settle();
     expect(nearTop(6)).toBe(true);
+  });
+
+  it("opened at the start, drops the space kept for the last conversation's line on a switch", async () => {
+    const { rerender } = await opened(20, { startAtEnd: false, resetKey: "a" });
+    act(() => feed.sent());
+    rerender(feedElement({ lines: 21, mine: [20], startAtEnd: false, resetKey: "a" }));
+    await settle();
+    expect(space(screen.getByTestId("feed"))).toBeGreaterThan(0);
+    rerender(feedElement({ lines: 3, startAtEnd: false, resetKey: "b" }));
+    await settle();
+    expect(screen.getByTestId("feed").style.paddingBottom).toBe("");
+  });
+
+  it("opened at the start, does not lift a line of the next conversation for a send made in the last one", async () => {
+    const { rerender } = await opened(5, { startAtEnd: false, resetKey: "a" });
+    act(() => feed.sent());
+    rerender(feedElement({ lines: 0, startAtEnd: false, resetKey: "b" }));
+    await settle();
+    moves.length = 0;
+    rerender(feedElement({ lines: 20, mine: [15], startAtEnd: false, resetKey: "b" }));
+    await settle();
+    expect(screen.getByTestId("feed").scrollTop).toBe(0);
+    expect(moves).toEqual([]);
   });
 
   it("does not open at the end for a changed key when it opens at the start", async () => {

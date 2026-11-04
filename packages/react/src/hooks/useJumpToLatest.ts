@@ -49,9 +49,11 @@ export type JumpToLatestOptions = {
    * What the feed shows, such as a session id. When it changes, a feed that
    * starts at the end opens at the end again, instantly, whatever the reader
    * had scrolled to in the last one. Replacing the scrolling element with the
-   * same key leaves the reader where they were. A key that arrives where there
-   * was none (`null`) while a send waits for its line is the conversation that
-   * send created: the line still rises.
+   * same key leaves the reader where they were. Either way, the space kept
+   * under the last conversation's line, and a send still waiting for its line,
+   * do not carry over. A key that arrives where there was none (`null`) after
+   * the person sent is the conversation that send created: the line still
+   * rises, or keeps its rise.
    */
   resetKey?: string | null;
 };
@@ -91,7 +93,7 @@ function scrollToTop(el: HTMLElement, top: number, behavior: "instant" | "smooth
 const mine = (key: string): SentLineMark => ({ [MINE]: key });
 
 /** What the scrolling element's hook does, for the calls that come from outside its effect. */
-type Feed = { sent: () => void; jump: () => void; reset: () => void; waiting: () => boolean };
+type Feed = { sent: () => void; jump: () => void; reset: (toEnd: boolean) => void };
 
 /**
  * Keep the scrolling element `ref` is attached to where the reader put it,
@@ -107,6 +109,12 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
   const opening = useRef(startAtEnd);
   const frame = useRef<number | undefined>(undefined);
   const feed = useRef<Feed | undefined>(undefined);
+  // Armed by `sent`: the next of the person's lines the feed shows rises, once. Kept across a replaced
+  // element, so a send made as it is replaced still rises. A send that fails before its line draws stays
+  // armed until the person scrolls; the hook is told of no failure to disarm it on.
+  const waiting = useRef(false);
+  // Whether the person has sent in the conversation shown: in one that arrives where there was none, the send created it.
+  const sentHere = useRef(false);
 
   /** End the opening a frame after the feed overflows; a feed emptied before then, such as one switching conversations, keeps opening. */
   const closeOpening = useCallback((el: HTMLElement) => {
@@ -125,9 +133,6 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
   // Before paint, so the first frame of a feed that opens at the end is already there.
   useLayoutEffect(() => {
     if (node === null) return;
-    // Armed by `sent`: the next of the person's lines the feed shows rises, once. A send that fails before its
-    // line draws stays armed until the person scrolls; the hook is told of no failure to disarm it on.
-    let waiting = false;
     // The person's lines the feed has shown already, by key: none of them is the one a send waits for.
     const shown = new Set<string>();
     let settling: number | undefined;
@@ -166,7 +171,7 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
       settling = requestAnimationFrame(() => {
         settling = requestAnimationFrame(() => {
           settling = undefined;
-          if (!waiting) showAll();
+          if (!waiting.current) showAll();
         });
       });
     };
@@ -203,7 +208,7 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
 
     /** The person's line landed: space below it, and up it goes. */
     const bring = (line: HTMLElement) => {
-      waiting = false;
+      waiting.current = false;
       held = false;
       anchor = line.getAttribute(MINE)!;
       showAll();
@@ -225,7 +230,7 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
       }
       const line = unshown();
       if (line !== undefined) {
-        if (waiting) return bring(line);
+        if (waiting.current) return bring(line);
         if (added) settleLater();
       }
       // Content under the line that shrinks, such as a working line going away, pulls the end up past
@@ -256,7 +261,7 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
     };
     // The person scrolls: what the hook was about to do, or doing, stops for this response.
     const theirs = () => {
-      waiting = false;
+      waiting.current = false;
       gliding = undefined;
       held = true;
     };
@@ -298,21 +303,20 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
         opening.current = false;
         const line = unshown();
         if (line !== undefined) bring(line);
-        else waiting = true;
+        else waiting.current = true;
       },
       jump: () => {
-        waiting = false;
+        waiting.current = false;
         held = true;
         setAtEnd(true);
         glide(contentHeight() - node.clientHeight, "smooth");
       },
-      reset: () => {
-        waiting = false;
+      reset: (toEnd) => {
         gliding = undefined;
         dropSpace();
-        scrollToTop(node, node.scrollHeight, "instant");
+        if (toEnd) scrollToTop(node, node.scrollHeight, "instant");
+        else setAtEnd(near());
       },
-      waiting: () => waiting,
     };
     return () => {
       feed.current = undefined;
@@ -337,15 +341,18 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
     if (shownKey.current === options.resetKey) return;
     const was = shownKey.current;
     shownKey.current = options.resetKey;
+    // No conversation, then one, after the person sent: the send created it, and its line keeps its rise.
+    if (was == null && sentHere.current) return;
+    // Nothing kept for the last conversation carries over: a send waiting for its line, or the space kept under one.
+    sentHere.current = false;
+    waiting.current = false;
+    feed.current?.reset(startAtEnd);
     if (!startAtEnd) return;
-    // No conversation, then one, while a send waits: the send created it, and its line is still to rise.
-    if (was == null && feed.current?.waiting()) return;
     opening.current = true;
     setAtEnd(true);
     // Not closed here: what the element holds may still be the last conversation. The new one's content closes it.
     if (frame.current !== undefined) cancelAnimationFrame(frame.current);
     frame.current = undefined;
-    feed.current?.reset();
   }, [options.resetKey, startAtEnd, node]);
 
   const jump = useCallback(() => {
@@ -354,6 +361,7 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
   }, []);
 
   const sent = useCallback(() => {
+    sentHere.current = true;
     // No scrolling element yet, such as a view drawing an empty state until the first request:
     // it opens at its end when it mounts, which shows the line.
     if (feed.current === undefined) {

@@ -55,7 +55,7 @@ const CONTROLS: Record<string, { why: string; fails: Signal[] }> = {
   // The person's line lands before its reply starts, so with no space it can't reach the top under either length.
   "no-reserve": { why: "useJumpToLatest keeps no space under the sent line", fails: ["a.short", "a.long", "f"] },
   // The conversation's id arriving before its first line reopens the feed, as if switched to: the reply scrolls as history.
-  "key-reset": { why: "useJumpToLatest reopens on a key that arrives while a send waits", fails: ["f"] },
+  "key-reset": { why: "useJumpToLatest reopens on a key that arrives after a send", fails: ["f"] },
 };
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(CONTROLS).join(", ")}`);
