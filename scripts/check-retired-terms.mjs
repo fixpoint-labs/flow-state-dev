@@ -243,6 +243,21 @@ export const EXCEPTIONS = [
     why: "Claude Code's threads mode, which the Claude Code-style lab copies by name: a thread is a task in a session of its own, not a mailbox's",
   },
   {
+    id: "subscription-modules",
+    terms: ["thread", "member", "kind"],
+    where: (path) => /^packages\/workforce\/(?:src\/subscriptions\/|test\/subscriptions-)/.test(path),
+    strip: /\bthreads?\b|\bThreads?(?=[A-Z_]|\b)|(?<=[a-z])Threads?\b|\bmembers?\b|\bkinds?\b|(?<=\b|_)KINDS\b|(?<=[a-z])Kinds?\b/g,
+    why: "an outside service's thread (a PR, an issue, a repository), a sender's `member` role there, and an event's kind: FIX-2471's signed subscription vocabulary, not a mailbox's thread or member, nor a worker flow",
+  },
+  {
+    id: "subscription-docs",
+    terms: ["thread", "member", "kind"],
+    where: (path) => path === "packages/workforce/README.md" || path === "apps/docs/docs/workforce/messaging-workers.md",
+    // Only on a line that names the outside service, so a mailbox's thread elsewhere on the page still counts.
+    strip: /\bSCREEN_KINDS\b|(?:\bthreads?\b|\b[Mm]embers?\b|\bkinds?\b)(?=[^\n]*(?:subscri|provider|event|\bPR\b|pull request|repositor|outside|`thread`|canRead|github))|(?<=(?:subscri|provider|event|\bPR\b|pull request|repositor|outside|canRead|github)[^\n]*)(?:\bthreads?\b|\b[Mm]embers?\b|\bkinds?\b)/g,
+    why: "the subscription pages' outside thread, a sender's member role and an event's kind (FIX-2471), on lines that name the outside service",
+  },
+  {
     id: "old-page-redirect",
     terms: ["mailbox"],
     where: (path) => path === "apps/docs/docusaurus.config.ts",

@@ -2661,7 +2661,7 @@ Three pieces work together:
   `SUBSCRIPTION_ROUTE_ENTRY`, as the service's own principal (`service:<provider>`) in the org.
 
 A provider is `{ provider, canRead(thread, ctx), self?(ctx) }`. `canRead` answers whether the
-running request's user can read a thread, on that user's credentials. `self` gives that user's own
+running request's user can read a thread on the provider, on that user's credentials. `self` gives that user's own
 id on the provider, so their own actions are dropped.
 
 ```ts
@@ -2697,7 +2697,7 @@ The `subscribe` input is `{ provider, thread, kinds?, screens?, outsiders?, inte
 
 - `thread` is one of the thread keys events carry. A PR's events carry its repository's key and
   its own (`github:acme/api`, then `github:acme/api#412`), so following the repository hears all its PRs.
-- `kinds` limits the event kinds heard. Leave it out to hear every kind.
+- `kinds` limits which events are heard, by their `kind`. Leave it out to hear every event.
 - `screens` lists screens that must all pass: `{ screen: "labels", any }` (the event carries one of
   these labels), `{ screen: "words", any }` (the title or text contains one, in any case) and
   `{ screen: "allow", ids }` (only these senders).
@@ -2706,7 +2706,7 @@ The `subscribe` input is `{ provider, thread, kinds?, screens?, outsiders?, inte
   counts as an outsider.
 - `interest` is kept with the subscription, for screens that read it.
 
-It answers `{ id }`. Subscribing the same conversation to the same thread again updates that
+It answers `{ id }`. A second `subscribe` from the same conversation for the same `thread` updates that
 subscription. A refusal answers `{ refused }`, starting with a code: `not_a_worker`, `no_thread`
 (a sentence alone selects nothing), `no_provider`, `wrong_provider` (the key isn't that
 provider's), `not_readable` (the user can't read the thread) or `no_session`.
