@@ -80,9 +80,14 @@ button on this same look.
   its own turn (FIX-2376), so Stop stops the turns running when it is pressed. A line sent after
   that starts a new turn, which is not aborted and reads running beside the stopped line.
 - **Stopping and its end.** The adapter holds `stopping` from the `interrupt` call until the
-  request read shows every turn it aborted ended; a turn started after the press does not hold it. A 409 from abort means the turn already ended, and counts as
-  done. Any other refusal clears `stopping` and is shown beside the button. The Stop button is
-  disabled while stopping.
+  request read shows every turn it aborted ended; a turn started after the press does not hold it.
+  The request record decides, not the abort's status code. A 409 has two meanings
+  (`engine/src/routes/abort-routes.ts`): the turn already ended (`finished`), or it was resumed
+  from an approval answer before the stop reached it (`already-resolved`), and runs on. So after
+  a 409 the adapter waits for the next request read: a terminal record ends the wait as any
+  stop does; a record still `in_progress` clears `stopping` and shows the server's refusal beside
+  the button, so the person can press Stop again. Any other refusal clears `stopping` and is
+  shown the same way. The Stop button is disabled while stopping.
 - **Teammates' keys.** `useInterruptKeys` on the document, enabled while the worker answers, as the
   other lab's `Thread.tsx` has it. The session popup's own Esc listener prevents the default, so
   closing it never arms a stop.
@@ -126,5 +131,7 @@ For the implementer; recorded, not baked into the design.
   The issue's lab-only scope gained a registry look by the epic's D4, its single Esc gave way to
   FIX-2413's gesture, and the fixed *keep running* text became a live count so FIX-2202 can land on
   either side.
+- **Review round 2 (Codex)** — a 409 from abort can mean the turn resumed from an approval, so the
+  request record, not the status code, ends *Stopping…*.
 
 **Open: none.**
