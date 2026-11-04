@@ -154,9 +154,9 @@ const existing = await notes.get({ topic: "rust" });
 
 The framework resolves `{ topic: "react" }` to the storage key `react/notes`.
 
-### Looking rows up by a field
+### Looking items up by a field
 
-A key answers one question: which row lives at this address. Sometimes you need to find rows by a field that isn't in the key, like a task by its id when tasks are filed under the conversation they came from. Declare the field as an index on the collection, then ask for it with `findBy`:
+A key answers one question: which item lives at this address. Sometimes you need to find items by a field that isn't in the key, like a task by its id when tasks are filed under the conversation they came from. Declare the field as an index on the collection, then ask for it with `findBy`:
 
 ```ts
 const work = defineResourceCollection({
@@ -170,32 +170,32 @@ const work = defineResourceCollection({
 });
 
 // In a block:
-const [row] = await ctx.resources.work.findBy("byTaskId", id);
+const [item] = await ctx.resources.work.findBy("byTaskId", id);
 const tagged = await ctx.resources.work.findBy("byTag", "urgent");
 ```
 
-`findBy(name, value)` returns the rows whose index has that value, as `ResourceRef`s in key order, the same refs `list()` returns. It reads the same rows `list()` reads, behind the same owner rules, so it never returns a row `list()` would hide. An index name the collection doesn't declare throws.
+`findBy(name, value)` returns the items whose index has that value, as `ResourceRef`s in key order, the same refs `list()` returns. It reads the same items `list()` reads, behind the same owner rules, so it never returns an item `list()` would hide. An index name the collection doesn't declare throws.
 
-**What an index function returns.** A string, number or boolean, or an array of them, and the row is found by each value. `null` and `undefined` mean the row has no value for that index. Lookups are equality only, and types stay apart: `findBy("byCount", 1)` does not find a row whose value is the string `"1"`.
+**What an index function returns.** A string, number or boolean, or an array of them, and the item is found by each value. `null` and `undefined` mean the item has no value for that index. Lookups are equality only, and types stay apart: `findBy("byCount", 1)` does not find an item whose value is the string `"1"`.
 
-**Keep the function deterministic.** It gets the row's key and state, and must answer from those alone. A function that reads the clock or another row will drift from what was recorded when the row was written. Every hit is checked against its row before it's returned, so a row whose value has changed never comes back, but a row the index never recorded can't be found either. A function that throws fails the write it runs for, so guard fields that older rows may lack.
+**Keep the function deterministic.** It gets the item's key and state, and must answer from those alone. A function that reads the clock or another item will drift from what was recorded when the item was written. Every hit is checked against its item before it's returned, so an item whose value has changed never comes back, but an item the index never recorded can't be found either. A function that throws fails the write it runs for, so guard fields that older items may lack.
 
-**Versions.** A bare function is version 1. When you change what a function returns for rows that already exist, declare `{ version, value }` with a higher version. The next lookup in each scope rebuilds the index from the rows, and the old version's entries are never read again. Two collections in one scope whose patterns can match the same keys can't declare one index name at two versions: the server refuses to start.
+**Versions.** A bare function is version 1. When you change what a function returns for items that already exist, declare `{ version, value }` with a higher version. The next lookup in each scope rebuilds the index from the items, and the old version's entries are never read again. Two collections in one scope whose patterns can match the same keys can't declare one index name at two versions: the server refuses to start.
 
-**The first lookup builds the index.** Adding an index to a collection that already has rows needs no backfill step. The first `findBy` in each scope reads the collection's rows, answers from them, and records their entries. Every later write keeps those entries current. That first lookup costs one read of the whole collection in that scope.
+**The first lookup builds the index.** Adding an index to a collection that already has items needs no backfill step. The first `findBy` in each scope reads the collection's items, answers from them, and records their entries. Every later write keeps those entries current. That first lookup costs one read of the whole collection in that scope.
 
 **What it costs on each store.**
 
 | Store | `findBy` reads |
 | --- | --- |
-| SQLite, Postgres | One index query, then one row read per hit. A row and its index entries are written in one transaction. |
-| Memory, filesystem | The collection's rows, filtered in memory. Same results, slower on a large collection. |
+| SQLite, Postgres | One index query, then one item read per hit. An item and its index entries are written in one transaction. |
+| Memory, filesystem | The collection's items, filtered in memory. Same results, slower on a large collection. |
 
-On SQLite and Postgres, a lookup on an index whose value many rows share costs one read per row it returns, so an index pays off most on a field that picks out a few rows, like an id.
+On SQLite and Postgres, a lookup on an index whose value many items share costs one read per item it returns, so an index pays off most on a field that picks out a few items, like an id.
 
-**When not to use it.** `findBy` is for rows you haven't read yet. If a block already holds the rows (an eager collection, or a list it just made), filtering them in code costs nothing, and `findBy` would add a store read.
+**When not to use it.** `findBy` is for items you haven't read yet. If a block already holds the items (an eager collection, or a list it just made), filtering them in code costs nothing, and `findBy` would add a store read.
 
-**Writes from elsewhere.** Every write through the server's stores keeps the index current: block writes, the resource routes, and code that writes `runtime.stores` directly. A process that writes the collection without declaring the index makes the next lookup in that scope rebuild it, so rows are not missed. A process running a release from before indexes existed can't do that. Finish such a rollout before the first lookup, or bump the index's version once it's done.
+**Writes from elsewhere.** Every write through the server's stores keeps the index current: block writes, the resource routes, and code that writes `runtime.stores` directly. A process that writes the collection without declaring the index makes the next lookup in that scope rebuild it, so items are not missed. A process running a release from before indexes existed can't do that. Finish such a rollout before the first lookup, or bump the index's version once it's done.
 
 ## Owner-private collections
 

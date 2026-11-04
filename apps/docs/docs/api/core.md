@@ -262,7 +262,7 @@ Config options:
 - `onInstanceCreated?: (key, state, ctx) => void` — lifecycle hook
 - `onInstanceUpdated?: (key, state, prevState, ctx) => void` — lifecycle hook
 - `onInstanceDeleted?: (key, ctx) => void` — lifecycle hook
-- `indexes?: Record<string, IndexFn | { version: number; value: IndexFn }>` — fields the rows can be looked up by with `findBy`. `IndexFn` is `(key, state) => value`, where `value` is a string, number or boolean, an array of them, or `null` / `undefined` for no value. A bare function is version 1. Names must be non-empty and must not contain `@`; a version must be a positive integer; anything else throws when the collection is defined. Two collections in one scope whose patterns can match the same keys must not declare one index name at two versions, or the server refuses to start. See [Looking rows up by a field](/docs/resources/collections#looking-rows-up-by-a-field)
+- `indexes?: Record<string, IndexFn | { version: number; value: IndexFn }>` — fields the items can be looked up by with `findBy`. `IndexFn` is `(key, state) => value`, where `value` is a string, number or boolean, an array of them, or `null` / `undefined` for no value. A bare function is version 1. Names must be non-empty and must not contain `@`; a version must be a positive integer; anything else throws when the collection is defined. Two collections in one scope whose patterns can match the same keys must not declare one index name at two versions, or the server refuses to start. See [Looking items up by a field](/docs/resources/collections#looking-items-up-by-a-field)
 
 Runtime `ResourceCollectionRef` methods:
 
