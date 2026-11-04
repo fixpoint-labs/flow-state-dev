@@ -1207,15 +1207,6 @@ export function createSessionStreamConformanceTests(
       } else {
         a = b = await createStores();
       }
-      // Two servers on one store are two processes, which the in-memory bus
-      // doesn't reach: the holding server hears the other's line by its timed
-      // read, on a bus that says it doesn't cross. A store with its own bus
-      // (Postgres) keeps it.
-      if (a.bus === undefined) {
-        const notCrossing = crossingBus();
-        notCrossing.setCrossing(false);
-        a = { ...a, bus: notCrossing };
-      }
       const bus = crossingBus();
       try {
         const counted = countSessionReads({ ...a, bus }, "s1");
