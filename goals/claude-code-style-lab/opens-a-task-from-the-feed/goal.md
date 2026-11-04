@@ -49,3 +49,7 @@ AI Gateway.
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-11-04 | a4b541ef | lab default | FAIL (control `no-feed-open`) | opens-from-result, row-marked (row hidden, aria-expanded=false) and opens-from-start-line only; dot-is-live passed, the sheet opened from the pane |
+| 2026-11-04 | a4b541ef | lab default | FAIL (control `frozen-dot`) | dot-is-live only: the cancelled line's dot read "cancelled" while the row was in_progress |
+| 2026-11-04 | a4b541ef | lab default | FAIL (control `done-shut`) | row-marked only: the row was marked (aria-expanded=true) but hidden in the shut Done |
+| 2026-11-04 | a4b541ef | lab default | PASS | sheet `Work: Note the finished run`, address named it; Done row shown and marked; retried line's dot "running" for row in_progress after 71 ms, words "cancelled · now running"; start line opened `Work: Add line to NOTES.md`, dot "running" for row in_progress |
