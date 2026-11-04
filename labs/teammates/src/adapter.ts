@@ -164,6 +164,13 @@ export interface BoardTask {
   spend?: TaskSpendView;
   /** What it waits on you for, while something does: its oldest open hold. */
   waiting?: TaskWaiting;
+  /** The row as orchestration's `taskRowView` reads it, once per read: its state and times, for its time signal and the panel's counts. */
+  view?: TaskRowView;
+  /**
+   * What the view doesn't carry, for the time signal: when this attempt's run started (its run link's
+   * `startedAt`), and the row's lease deadline, which a live run keeps renewing. Each absent until the row has it.
+   */
+  run?: { startedAt?: number; leaseUntil?: number };
 }
 
 /**
@@ -633,7 +640,18 @@ export function toBoardTask(
     ...harnessAndModel(spendOf(spend), harnessOf(row.assignee ?? "")),
     ...(spend === null ? {} : { spend }),
     ...waitingOf(view),
+    ...(view === null ? {} : { view }),
+    ...runOf(row),
   };
+}
+
+/** A row's run start and lease deadline, each only when the row has it. */
+function runOf(row: Record<string, any>): Pick<BoardTask, "run"> {
+  const run = {
+    ...(typeof row.run?.startedAt === "number" ? { startedAt: row.run.startedAt as number } : {}),
+    ...(typeof row.leaseUntil === "number" ? { leaseUntil: row.leaseUntil as number } : {}),
+  };
+  return Object.keys(run).length === 0 ? {} : { run };
 }
 
 /** The fields a re-file copies from a task, as the board's `refile` takes them. */

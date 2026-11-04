@@ -137,6 +137,15 @@ task's sheet or thread view splits it into input and output. A count no run has 
 "no tokens reported yet", never 0, and one still missing a source is marked partial. All of it comes from the `spend` the
 board's `listTasks` rows carry; the lab sums nothing itself.
 
+Every task also shows its time. A running card reads *working · 4m 12s*, counted from when this
+attempt's run started, so a retried task starts again from zero. A running task whose run has
+stopped answering reads *quiet for 40m* in amber: the run stopped renewing its claim on the task
+(the board's lease lapsed), as when the server running it died, and it stays quiet until the
+board hands the task to a new run. A run that is alive but slow keeps renewing, so it never reads
+quiet; a long clock is the sign there. A finished row says how long ago it ended, the threads
+board's rows carry the same time, and the pane's heading counts the tasks running, waiting, failed
+and done.
+
 Both modes are wired. The screen tests run on a test double, `test/fake-lab.ts`, which the app
 never imports.
 

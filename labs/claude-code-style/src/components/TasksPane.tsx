@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LabAdapter, TaskRow, TaskStatus } from "../adapter";
 import { TASK_STATUS } from "../lib/task-status";
-import { useMissing, useWatch } from "../lib/use-watch";
+import { useMissing, useNow, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Entry } from "./Entry";
 import { LoadEarlier } from "./LoadEarlier";
 import { Sheet } from "./Sheet";
 import { ErrorBody } from "./flow-state/error";
 import { Spend } from "./flow-state/spend";
+import { taskCounts } from "./flow-state/task-signals";
 import { TaskActions } from "./flow-state/task-actions";
 import { harnessLabelOf } from "./ThreadStatus";
 import { TaskCard, TaskDoneRow } from "./TaskCard";
@@ -23,7 +24,9 @@ const FINISHED: ReadonlySet<TaskStatus> = new Set(["completed", "errored", "canc
  * stop or steer a task still works too. Running and waiting tasks show as
  * cards; finished ones fold into a *Done* group, collapsed until you open it,
  * or until the open task is one of them: then it opens, and the marked row
- * scrolls into view, wherever the task was opened from.
+ * scrolls into view, wherever the task was opened from. The heading counts
+ * them by state (running, waiting, failed, done), and each row carries its
+ * time: a running card's clock ticks each second.
  */
 export function TasksPane({
   adapter,
@@ -50,6 +53,8 @@ export function TasksPane({
   const active = tasks.filter((t) => !FINISHED.has(t.status));
   const done = tasks.filter((t) => FINISHED.has(t.status));
   const toggle = (id: string) => onOpen(openId === id ? undefined : id);
+  const now = useNow(tasks.length > 0);
+  const counts = taskCounts(tasks.flatMap((t) => (t.view === undefined ? [] : [t.view])));
   // Done opens when the open task is in it, however it was opened; you can still shut it.
   const [doneOpen, setDoneOpen] = useState(false);
   const openInDone = done.some((t) => t.id === openId) ? openId : undefined;
@@ -66,7 +71,7 @@ export function TasksPane({
   return (
     <aside aria-label="Background tasks" className="flex h-full min-h-0 flex-col bg-inspector">
       <div className="px-4 pt-4 pb-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
-        Background tasks · {active.length}
+        Background tasks{counts === "" ? "" : ` · ${counts}`}
       </div>
       {tasks.length === 0 ? (
         <p className="px-4 text-xs text-muted-foreground">
@@ -78,7 +83,7 @@ export function TasksPane({
             <ul className="flex flex-col gap-2">
               {active.map((task) => (
                 <li key={task.id}>
-                  <TaskCard task={task} selected={task.id === openId} onOpen={() => toggle(task.id)} />
+                  <TaskCard task={task} selected={task.id === openId} onOpen={() => toggle(task.id)} now={now} />
                 </li>
               ))}
             </ul>
@@ -91,7 +96,7 @@ export function TasksPane({
               <ul className="mt-2 flex flex-col">
                 {done.map((task) => (
                   <li key={task.id}>
-                    <TaskDoneRow task={task} selected={task.id === openId} onOpen={() => toggle(task.id)} />
+                    <TaskDoneRow task={task} selected={task.id === openId} onOpen={() => toggle(task.id)} now={now} />
                   </li>
                 ))}
               </ul>

@@ -44,6 +44,8 @@ import {
   type InboxHold,
   type InboxRow,
   type TaskHold,
+  type TaskRowView,
+  taskRowView,
 } from "@flow-state-dev/orchestration/inbox";
 import { parseNotice, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
@@ -162,6 +164,13 @@ export interface TaskRow {
   spend?: TaskSpendView;
   /** Why its last attempt failed, as the board recorded it; only on a failed task. */
   error?: string;
+  /** The row as orchestration's `taskRowView` reads it, once per read: its state and times, for its time signal and the pane's counts. */
+  view?: TaskRowView;
+  /**
+   * What the view doesn't carry, for the time signal: when this attempt's run started (its run link's
+   * `startedAt`), and the row's lease deadline, which a live run keeps renewing. Each absent until the row has it.
+   */
+  run?: { startedAt?: number; leaseUntil?: number };
 }
 
 /** A board's task changes, as the opened task's action row makes them: the board's own calls, refusals in its words. */
@@ -626,7 +635,13 @@ export function createWiredLab(fsd: Client): LabAdapter {
   };
 
   /** A listed task row, as much as the screen reads. */
-  type Listed = TaskRow & { runSessionId?: string; run?: { sessionId: string; requestId: string }; holds?: TaskHold[]; attempts?: number };
+  type Listed = Omit<TaskRow, "run"> & {
+    runSessionId?: string;
+    run?: { sessionId: string; requestId: string; startedAt?: number };
+    holds?: TaskHold[];
+    attempts?: number;
+    leaseUntil?: number;
+  };
 
   /** Each listed task's run session, by task id, as the last list saw it. */
   const runSessionOf = new Map<string, string>();
@@ -661,6 +676,8 @@ export function createWiredLab(fsd: Client): LabAdapter {
       ...(Array.isArray(task.holds) ? { holds: task.holds } : {}),
       ...(task.spend == null ? {} : { spend: task.spend }),
       ...(typeof task.attempts === "number" ? { attempts: task.attempts } : {}),
+      ...(typeof task.leaseUntil === "number" ? { leaseUntil: task.leaseUntil } : {}),
+      view: taskRowView({ ...task, board: sessionId }),
     }));
   };
 
@@ -757,13 +774,15 @@ export function createWiredLab(fsd: Client): LabAdapter {
     const listed = await listedWithWaitingOn(sessionId);
     const rows = await Promise.all(
       listed.map(async (task): Promise<TaskRow> => {
-        const { runSessionId: _session, run: _run, holds: _holds, attempts: _attempts, ...row } = task;
+        const { runSessionId: _session, run: link, holds: _holds, attempts: _attempts, leaseUntil, ...row } = task;
+        const run = { ...(typeof link?.startedAt === "number" ? { startedAt: link.startedAt } : {}), ...(leaseUntil === undefined ? {} : { leaseUntil }) };
         // The harness its run reported; until one reports, the assignee's `harness` setting.
         const harness = task.spend?.harness ?? (await harnessOf(task));
         const review = harness !== undefined && row.status === "completed" ? await reviewOf(sessionId, task) : undefined;
         const error = row.status === "errored" ? await errorOf(sessionId, task) : undefined;
         return {
           ...row,
+          ...(Object.keys(run).length === 0 ? {} : { run }),
           ...(harness === undefined ? {} : { harness }),
           ...(review === undefined ? {} : { review }),
           ...(error === undefined ? {} : { error }),

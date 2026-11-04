@@ -92,7 +92,8 @@ describe("the session-mode screen", () => {
     expect(within(sessions).getByRole("button", { current: true }).textContent).toMatch(/New session/);
     expect(within(thread()).getByText("in project: vendor-notes")).toBeTruthy();
     expect(within(thread()).getByText("Session")).toBeTruthy();
-    expect(within(pane()).getByText(/Background tasks · 0/)).toBeTruthy();
+    // No tasks: the heading counts nothing, never a 0.
+    expect(within(pane()).getByText(/^Background tasks$/)).toBeTruthy();
   });
 
   it("opens no session until a project is picked, even when StrictMode replays the mount", async () => {
@@ -373,7 +374,7 @@ describe("the session-mode screen", () => {
     await ask("Compare Acme and Globex for us.");
 
     // Steps 2 and 3: the main session writes, then two task rows appear.
-    await waitFor(() => expect(within(pane()).getByText(/Background tasks · 2/)).toBeTruthy());
+    await waitFor(() => expect(within(pane()).getByText(/^Background tasks · 2 running$/)).toBeTruthy());
     expect(within(thread()).getByText(/write the outline myself/)).toBeTruthy();
 
     // Step 4: the card lands while the working indicator is still on, and the turn goes on to use it.
@@ -437,13 +438,13 @@ describe("the session-mode screen", () => {
     expect(within(thread()).getAllByText("Compare Acme and Globex for us.").length).toBeGreaterThan(0);
   });
 
-  it("folds finished tasks into a collapsed Done group of one-line rows, and counts only the active ones", async () => {
+  it("folds finished tasks into a collapsed Done group of one-line rows, and counts each state", async () => {
     render(<App adapter={fast()} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
     await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"));
-    // Acme is done and Globex still runs: one card, one done row, and the count is the active one.
-    expect(within(pane()).getByText(/Background tasks · 1/)).toBeTruthy();
+    // Acme is done and Globex still runs: one card, one done row, and the heading counts each.
+    expect(within(pane()).getByText(/^Background tasks · 1 running · 1 done$/)).toBeTruthy();
     const done = within(pane()).getByText(/Done · 1/).closest("details")!;
     expect(done.open).toBe(false);
     expect(within(done).getByRole("button", { name: /Research Acme/, hidden: true })).toBeTruthy();
@@ -577,7 +578,7 @@ describe("the session-mode screen", () => {
     render(<App adapter={createFakeLab({ speed: 0.1 })} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await waitFor(() => expect(within(pane()).getByText(/Background tasks · 2/)).toBeTruthy());
+    await waitFor(() => expect(within(pane()).getByText(/^Background tasks · 2 running$/)).toBeTruthy());
     expect(row("Research Acme").dataset.taskStatus).toBe("in_progress");
     fireEvent.click(within(thread()).getByRole("button", { name: "Stop" }));
     await within(thread()).findByText(/Background tasks keep running/);
