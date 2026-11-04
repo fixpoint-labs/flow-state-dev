@@ -6,7 +6,7 @@
  * through the public client, and a session opened on a new project.
  */
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Client } from "@flow-state-dev/client";
 import { taskActionName } from "@flow-state-dev/orchestration/inbox";
@@ -92,25 +92,8 @@ export function clonesUnder(root: string): string[] {
 }
 
 
-/** A control's change to the lab's source: in which file, the text it replaces, and with what. */
-export interface Plant {
-  file: string;
-  from: string;
-  to: string;
-}
-
-/** Plant `control`'s changes from `plants` (none for ""), and hand back what puts the files back. */
-export function plant(plants: Record<string, Plant[]>, control: string): () => void {
-  if (control !== "" && plants[control] === undefined) throw new Error(`setup: no control named ${control}`);
-  const undo: (() => void)[] = [];
-  for (const change of plants[control] ?? []) {
-    const before = readFileSync(change.file, "utf8");
-    if (before.split(change.from).length !== 2) throw new Error(`setup: ${change.file} doesn't hold the text the ${control} control replaces exactly once`);
-    writeFileSync(change.file, before.replace(change.from, change.to));
-    undo.push(() => writeFileSync(change.file, before));
-  }
-  return () => undo.forEach((put) => put());
-}
+// A control's change to the lab's source, and its planting, are shared with other labs' goals.
+export { plant, type Plant } from "../lib/plant.mts";
 
 /** Build the lab's pages, which `--app` serves: after a control's plant, and again once it is put back. */
 export const buildPages = () => execFileSync("pnpm", ["--filter", "@flow-state-dev/claude-code-style", "build"], { cwd: REPO_ROOT, stdio: "ignore" });
