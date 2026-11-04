@@ -384,9 +384,8 @@ export interface AgentWorkerFlowOptions {
    * How many model steps a turn may take: each step is one model call, and a
    * step that calls tools leads to another. The last one offers no tools, so a
    * worker still looking things up answers with what it found. Defaults to
-   * 50, room for a worker to read several files or make several lookups
-   * before it answers. Raise it for workers that dig further: a researcher
-   * reading a whole repository spends a step per file.
+   * {@link DEFAULT_MAX_STEPS} (50). Raise it for workers that dig further: a
+   * researcher reading a whole repository spends a step per file.
    */
   maxSteps?: number;
   /**

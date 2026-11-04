@@ -336,9 +336,10 @@ describe("a message that asks for a reply", { timeout: 40_000 }, () => {
     expect(await until(async () => (await answersTo(h, ask!)).length === 1)).toBe(true);
     await h.settled();
 
-    // She spent every step but the last on lookups (the flow's default of 50, or its maxSteps), then answered.
-    // The default is workforce's, not core's generator cap of 8: eight steps
-    // ran out before a worker had read enough to answer.
+    // She spent every step but the last on lookups (the flow's default budget
+    // of 50, or its maxSteps), then answered: a worker that never stops looking
+    // things up still answers on the last step. The literal is deliberate, so a
+    // silent change to the default fails here.
     expect(lookups.length).toBe((agentOptions.maxSteps ?? 50) - 1);
     const [answer] = await answersTo(h, ask!);
     expect(answer).toMatchObject({ from: "ada", to: "otto", text: "The doc says Bluebird.", toSession: otto, status: "delivered" });
