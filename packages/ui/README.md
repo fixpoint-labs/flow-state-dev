@@ -36,7 +36,7 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `message` | Individual message display with streaming markdown |
 | `reasoning` | Expandable reasoning/thinking display with streaming |
 | `tool` | Tool calls as one-line rows that open to args, result and metadata; `ToolGroup` folds a run of consecutive calls and reasoning into one line that opens to every step in order |
-| `tool-naming` | Pure `toolSubject` and `toolIntent` helpers that name a tool call from its name and args (the shell command run, the file read, the MCP tool called); installed with `tool` |
+| `tool-naming` | Pure helpers that name a tool call: `toolSubject` reads its name, args and, once done, its result into a line (the shell command run, the file read, the MCP tool called, a workforce project read or search with its match count, a task by its title); `toolIntent` reads the intent a call states; `toolOutcome` says `failed` when the result reports a refusal (`ok: false`, `kind: "refused"`, `status: "failed"` with an `error`, a project read whose status is not `ok`). Installed with `tool`, whose `tool-grouping` also exports the step-run state helpers (`toolStepState`, `toolRunState`, `withToolState`, `toolRunOpen`) |
 | `code-block` | Syntax-highlighted code with copy action and dual-theme |
 | `prompt-input` | Smart input with file upload, suggestions, submit |
 | `sources` | Citation and source display with collapsible list |

@@ -98,3 +98,35 @@ body:has(main.fs-landing) {
 .fs-landing .fs-doors a:not(.on):hover{background:#e8f551;color:#1b1a15}
 .fs-landing .fs-doors a span{opacity:.65}
 @media (max-width:760px){.fs-landing .fs-doors a span{display:none}}
+
+/* Phones: the first screen carries the logo, the headline and one call to action.
+   The nav and the door switch fold into a menu, the hero drops its rail, the
+   subhead shortens to one line, "Read the docs" becomes a text link, and the tag
+   row, illustration and install command follow the call to action. Wider screens
+   never see `.fs-mob` or `.fs-menu`. */
+.fs-landing .fs-mob,.fs-landing .fs-menu{display:none}
+@media (max-width:760px){
+.fs-landing .fs-mob{display:block}
+.fs-landing .fs-desk{display:none}
+.fs-landing .fs-header{position:relative;padding:12px 20px !important}
+.fs-landing .fs-header>.fs-doors,.fs-landing .fs-header>.fs-nav{display:none !important}
+.fs-landing .fs-menu{display:block}
+.fs-landing .fs-menu summary{display:flex;align-items:center;justify-content:center;width:44px;height:44px;box-sizing:border-box;list-style:none;cursor:pointer;color:#f4f1e4;border:1px solid rgba(236,231,218,.6)}
+.fs-landing .fs-menu summary::-webkit-details-marker{display:none}
+.fs-landing .fs-menu summary:focus-visible{outline:2px solid #f4f1e4;outline-offset:2px}
+.fs-landing .fs-menu[open] summary{background:#f4f1e4;color:#141310}
+.fs-landing .fs-menu-panel{position:absolute;top:100%;left:0;right:0;z-index:10;display:flex;flex-direction:column;gap:16px;padding:4px 20px 20px;background:#141310;border-bottom:1px solid rgba(236,231,218,.45)}
+.fs-landing .fs-menu-panel .fs-nav{display:flex;flex-direction:column;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:14px;font-weight:500}
+.fs-landing .fs-menu-panel .fs-nav a{padding:13px 0;border-bottom:1px solid rgba(236,231,218,.15)}
+.fs-landing .fs-menu-panel .fs-doors{align-self:flex-start}
+.fs-landing .fs-hero .fs-rail{display:none}
+.fs-landing .fs-hero-body{flex-direction:column;flex-wrap:nowrap !important;gap:24px !important;padding-top:28px !important;padding-bottom:40px !important}
+.fs-landing .fs-hero-text,.fs-landing .fs-hero-tags{display:contents !important}
+.fs-landing .fs-hero-pill{align-self:flex-start}
+.fs-landing .fs-hero-art{order:1;flex:none !important;align-self:stretch !important}
+.fs-landing .fs-hero-tagline{order:2}
+.fs-landing .fs-hero-install{order:3}
+.fs-landing .fs-hero-ctas{flex-direction:column;align-items:flex-start;gap:6px !important}
+.fs-landing .fs-hero-ctas .fs-btn-ghost,.fs-landing .fs-hero-ctas .fs-btn-ghost:hover{padding:0;border:0;background:none;color:#f4f1e4;font-family:"Space Grotesk",system-ui,sans-serif;font-size:15px;font-weight:500;letter-spacing:0;text-transform:none;text-decoration:underline;text-underline-offset:4px}
+.fs-landing .fs-hero-ctas .fs-btn-ghost:hover{color:#e8f551}
+}
