@@ -196,6 +196,9 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     history: routedTaskHistory,
     uses: [factory.tools, factory.messages],
     prompt: [
+      // The default-layer entry. It must change together with the first
+      // `prompt` entry of Workforce's built-in agent flow's turn: when that
+      // entry changes, change this one to match.
       (_input: unknown, ctx: BlockContext) => workerIdentityPrompt(ctx, installation),
       (_input: unknown, ctx: BlockContext) => settingsOf(ctx).teamInstructions,
       (_input: unknown, ctx: BlockContext) => settingsOf(ctx).instructions,
