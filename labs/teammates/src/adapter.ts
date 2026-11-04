@@ -827,7 +827,7 @@ export function answeringOf(items: readonly Item[], inProgress: readonly string[
  * (the list trails the items). Only those two item types: the board's own passes write rows, never
  * an answer, and a Stop must never reach them.
  */
-export function answeringTurnsOf(items: readonly Item[], inProgress: readonly string[], ended: readonly string[] = []): string[] {
+function answeringTurnsOf(items: readonly Item[], inProgress: readonly string[], ended: readonly string[] = []): string[] {
   const writing = items
     .filter((i) => (i.type === "message" || i.type === "tool_output") && i.status === "in_progress" && !ended.includes(i.requestId))
     .map((i) => i.requestId as string);

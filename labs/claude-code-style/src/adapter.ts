@@ -456,7 +456,7 @@ export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[
  * its request ids). A stopped turn with no entry in the loaded window gets no line: there is nowhere
  * true to put it.
  */
-export function withStopped(entries: readonly ThreadEntry[], stopped: ReadonlySet<string>): ThreadEntry[] {
+function withStopped(entries: readonly ThreadEntry[], stopped: ReadonlySet<string>): ThreadEntry[] {
   if (stopped.size === 0) return [...entries];
   const lastOf = new Map<string, number>();
   entries.forEach((entry, at) => {
