@@ -172,7 +172,7 @@
       "name": "tool-naming",
       "title": "Tool Naming",
       "type": "registry:component",
-      "description": "Pure helpers that name a tool call in a few words from its name and args: the command a shell ran, the file a read opened, the MCP tool called, or the description the call stated.",
+      "description": "Pure helpers that name a tool call in a few words from its name, args and result: the command a shell ran, the file a read opened, the MCP tool called, a workforce or task tool's subject and count, or the description the call stated; and whether its result reports that it failed.",
       "dependencies": [],
       "registryDependencies": [],
       "files": [
