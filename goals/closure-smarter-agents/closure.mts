@@ -159,8 +159,10 @@ const serving = new Set<() => void>();
 
 /**
  * Hold `child` (a detached process group, as an app is served) as served
- * until the returned stop is called. {@link planted}'s signal handler stops
- * every one still held, so a SIGINT or SIGTERM never leaves a server running.
+ * until the returned stop is called. {@link planted} stops every one still
+ * held when its run ends, however it ends (the asks done, a driver's start or
+ * an ask throwing, a SIGINT or SIGTERM), so no driver needs its own cleanup
+ * and no server outlives its run.
  */
 export function servedUntilStopped(child: ChildProcess): () => void {
   const stop = () => {
@@ -169,6 +171,11 @@ export function servedUntilStopped(child: ChildProcess): () => void {
   };
   serving.add(stop);
   return stop;
+}
+
+/** Stop every app still served. */
+function stopServing(): void {
+  for (const stop of [...serving]) stop();
 }
 
 /** A client for `userId` against `origin`, carrying `bearer` when the host has a door. */
@@ -245,7 +252,7 @@ export async function planted<T>(key: string, plant: () => Record<string, string
   }
   // A signal never reaches `finally`: stop every served app's process group, put the tree back, then exit.
   const onSignal = () => {
-    for (const stop of [...serving]) stop();
+    stopServing();
     restoreFrom(file, journal);
     process.exit(130);
   };
@@ -256,6 +263,7 @@ export async function planted<T>(key: string, plant: () => Record<string, string
   } finally {
     process.off("SIGINT", onSignal);
     process.off("SIGTERM", onSignal);
+    stopServing();
     restoreFrom(file, journal);
   }
 }
@@ -523,10 +531,12 @@ export async function act(fsd: Fsd, flow: string, sessionId: string, action: str
 /** How one app records each ask's turn for one run. A missing ask is one the app does not run on this pass. */
 export type AppAsks = Partial<Record<Ask, (d: Draw) => Promise<Turn>>>;
 
-/** One app, served for one run: its asks, and how to stop it. */
+/**
+ * One app, served for one run: its asks. Its server is stopped by the run's
+ * own cleanup ({@link planted}), whatever ends the run, so a driver holds no stop.
+ */
 export interface AppRun {
   asks: AppAsks;
-  stop: () => void | Promise<void>;
 }
 
 /** An app's script: what it plants for a run, and how it serves the app and records each ask. */
@@ -600,20 +610,17 @@ export async function runClosure(driver: AppDriver): Promise<void> {
       const d = draw();
       const scratch = goalTmpDir(`closure-${driver.app}-${p.pass}-${n}`);
       await planted(driver.app, () => driver.plant(d, p, scratch), async () => {
+        // Its server is stopped by `planted`, however this ends.
         const run = await driver.start(d, p, scratch);
-        try {
-          for (const ask of asks) {
-            const record = run.asks[ask];
-            if (record === undefined) throw new Error(`setup: ${driver.app} has no driver for the ${ask} ask`);
-            const turn = await record(d);
-            const graded = GRADE[ask](turn, d, driver);
-            ((sheet[ask] ??= {})[driver.app] ??= []).push(graded);
-            for (const line of graded) failures.push(`${ask} · run ${n} · ${line}`);
-            notes.push(`${ask} run ${n}: ${graded.length === 0 ? "pass" : "FAIL"}`);
-            console.error(`[${driver.app} ${ask} run ${n}] ${graded.length === 0 ? "pass" : graded.join("; ")}\n  reply: ${JSON.stringify(turn.reply.slice(0, 400))}\n  tools: ${turn.tools.map((t) => t.name).join(", ")}`);
-          }
-        } finally {
-          await run.stop();
+        for (const ask of asks) {
+          const record = run.asks[ask];
+          if (record === undefined) throw new Error(`setup: ${driver.app} has no driver for the ${ask} ask`);
+          const turn = await record(d);
+          const graded = GRADE[ask](turn, d, driver);
+          ((sheet[ask] ??= {})[driver.app] ??= []).push(graded);
+          for (const line of graded) failures.push(`${ask} · run ${n} · ${line}`);
+          notes.push(`${ask} run ${n}: ${graded.length === 0 ? "pass" : "FAIL"}`);
+          console.error(`[${driver.app} ${ask} run ${n}] ${graded.length === 0 ? "pass" : graded.join("; ")}\n  reply: ${JSON.stringify(turn.reply.slice(0, 400))}\n  tools: ${turn.tools.map((t) => t.name).join(", ")}`);
         }
       });
     }

@@ -60,7 +60,6 @@ const driver: AppDriver = {
     const main = async (line: string, budgetMs?: number) =>
       askWorker(fsd, { user: USER, worker: MAIN, sessionId: await sessionOf(MAIN), line, ...(budgetMs === undefined ? {} : { budgetMs }) });
     return {
-      stop: served.stop,
       asks: {
         date: (d) => main(d.lines.date),
         sizing: (d) => main(d.lines.sizing),

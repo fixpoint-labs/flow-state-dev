@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { REPO_ROOT, runGoal, sleep } from "../../lib/index.mts";
-import { FOLD_MARGIN, foldFillersPassed, planted, skillFiles } from "../closure.mts";
+import { FOLD_MARGIN, foldFillersPassed, planted, servedUntilStopped, skillFiles } from "../closure.mts";
 import { historyWindowOf } from "../../lib/history.mts";
 
 /** `count` requests in start order; with `window`, the latest carries a `historyStart` that many turns back. */
@@ -202,6 +202,15 @@ async function recoversBeforePlanting(): Promise<string | undefined> {
 }
 const recovery = await recoversBeforePlanting();
 
+/** Running, and not a zombie: a killed process whose parent has gone stays in /proc until something reaps it. */
+function running(pid: number): boolean {
+  try {
+    return !/^\d+ \(.*\) Z/.test(readFileSync(`/proc/${pid}/stat`, "utf8"));
+  } catch {
+    return false;
+  }
+}
+
 /**
  * SIGTERM to a run while it holds a served app: the app's process group is
  * stopped and the planted file put back, before the run exits.
@@ -216,14 +225,7 @@ async function signalStopsTheServer(): Promise<string | undefined> {
   probe.stderr!.on("data", (d) => (out += String(d)));
   let pid: number | undefined;
   for (const until = Date.now() + 60_000; Date.now() < until && pid === undefined; await sleep(200)) pid = Number(/pid (\d+)/.exec(out)?.[1]) || undefined;
-  // Running, and not a zombie: a killed process whose parent has gone stays in /proc until something reaps it.
-  const alive = (p: number) => {
-    try {
-      return !/^\d+ \(.*\) Z/.test(readFileSync(`/proc/${p}/stat`, "utf8"));
-    } catch {
-      return false;
-    }
-  };
+  const alive = running;
   try {
     if (pid === undefined) return `the probe never started its server: ${out.slice(-500)}`;
     const exited = new Promise((resolve) => probe.once("exit", resolve));
@@ -241,13 +243,38 @@ async function signalStopsTheServer(): Promise<string | undefined> {
 }
 const signalled = await signalStopsTheServer();
 
+/**
+ * A driver whose start serves an app and then throws (a project it can't
+ * create, say): the run's own cleanup must stop that server.
+ */
+async function aFailedStartStopsItsServer(): Promise<string | undefined> {
+  let pid: number | undefined;
+  try {
+    await planted(`failed-start-${process.pid}`, () => ({}), async () => {
+      const child = spawn("sleep", ["300"], { detached: true, stdio: "ignore" });
+      servedUntilStopped(child);
+      pid = child.pid;
+      throw new Error("setup: createProject ended failed");
+    });
+  } catch {
+    // the start's own error: expected
+  }
+  if (pid === undefined) return "the probe never started its server";
+  await sleep(500);
+  if (!running(pid)) return undefined;
+  process.kill(-pid, "SIGKILL");
+  return `the served process ${pid} still runs after its start threw`;
+}
+const failedStart = await aFailedStartStopsItsServer();
+
 await runGoal((failures, tell) => {
   if (recovery !== undefined) failures.push(`planting after a killed run: ${recovery}`);
   if (signalled !== undefined) failures.push(`a signal mid-run: ${signalled}`);
+  if (failedStart !== undefined) failures.push(`a start that throws after serving: ${failedStart}`);
   for (const [name, graded, shouldPass] of tell.over("grader cases", cases)) {
     if (shouldPass && graded.length > 0) failures.push(`${name}: should pass, got ${graded.join("; ")}`);
     if (!shouldPass && graded.length === 0) failures.push(`${name}: a hollow turn passed`);
   }
   for (const [name, got, want] of tell.over("verdict rules", rules)) if (got !== want) failures.push(`${name}: got ${got}`);
-  return { failures, evidence: `${cases.length} grader cases (${cases.filter((c) => !c[2]).length} hollow, each refused), ${rules.length} verdict rules, planting after a killed run, and a signal mid-run` };
+  return { failures, evidence: `${cases.length} grader cases (${cases.filter((c) => !c[2]).length} hollow, each refused), ${rules.length} verdict rules, planting after a killed run, a signal mid-run, and a start that throws after serving` };
 });

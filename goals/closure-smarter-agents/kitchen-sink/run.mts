@@ -67,7 +67,6 @@ const driver: AppDriver = {
     const fsd = clientFor(served.origin, USER);
     const desk = (line: string) => askWorker(fsd, { user: USER, worker: DESK, line });
     return {
-      stop: served.stop,
       asks: {
         date: (d) => desk(d.lines.date),
         sizing: (d) => desk(d.lines.sizing),

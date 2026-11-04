@@ -58,7 +58,6 @@ const driver: AppDriver = {
     };
     const coordinator = (line: string) => askWorker(fsd, { user: OWNER.userId, worker: COORDINATOR, line });
     return {
-      stop: served.stop,
       asks: {
         date: (d) => coordinator(d.lines.date),
         sizing: (d) => coordinator(d.lines.sizing),

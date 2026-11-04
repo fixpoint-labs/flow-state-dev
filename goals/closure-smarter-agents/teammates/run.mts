@@ -47,7 +47,6 @@ const driver: AppDriver = {
     const fsd = clientFor(served.origin, USER);
     const lead = (line: string, budgetMs?: number) => askWorker(fsd, { user: USER, worker: LEAD, line, ...(budgetMs === undefined ? {} : { budgetMs }) });
     return {
-      stop: served.stop,
       asks: {
         date: (d) => lead(d.lines.date),
         sizing: (d) => lead(d.lines.sizing),
