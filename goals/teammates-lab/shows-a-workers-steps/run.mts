@@ -50,7 +50,7 @@ const SETTLE_MS = 3_000;
 const POPUP_ONLY: ModulePatch[] = [
   {
     module: "labs/teammates/src/adapter.ts",
-    from: String.raw`const step = toolStep\(item\);`,
+    from: String.raw`const step = toolStep\(item, ended\);`,
     to: "continue;",
   },
 ];

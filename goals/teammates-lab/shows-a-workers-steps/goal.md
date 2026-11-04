@@ -49,3 +49,4 @@ and the lab's pages built: `pnpm --filter @flow-state-dev/teammates build`).
 | 2026-11-04 | f3b19ba4 + this change | openai/gpt-6-luna | FAIL 1/3 | Run 3 searched and answered from the match: no read, so no step named a file. The value moved onto its own line under a heading |
 | 2026-11-04 | f3b19ba4 + this change | openai/gpt-6-luna | PASS 3/3 | Each run showed "Read …/releases/next/plan.md" in 35 to 40 views before the answer; after, one run per turn, done and closed ("Searched the code and read a file") |
 | 2026-11-04 | f3b19ba4 + this change | openai/gpt-6-luna | control `popup-only`: FAIL as required | All 3 runs: no view held a run of steps, before or after the answer |
+| 2026-11-04 | 9c4c98d1 + control pattern fix | openai/gpt-6-luna | PASS 1/1, control `popup-only` FAIL 1/1 | Re-run after the adapter call became `toolStep(item, ended)`; the control's pattern follows it |
