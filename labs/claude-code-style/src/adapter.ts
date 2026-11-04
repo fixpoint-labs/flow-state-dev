@@ -19,6 +19,7 @@
  * |                 | is the feed's, for a thread longer than its first read; its running turn   |
  * |                 | is the session's requests, read on each request notice                     |
  * | `watchTasks`    | the conversation board's `listTasks_tasks` read, and the rows' open holds  |
+ * |                 | again on each notice of the board, through `client.subscribe`              |
  * | `watchTaskWork` | the items of a task's run session, followed through `sessionFeed`, with   |
  * |                 | its `loadEarlier` too, from the moment the board's read names that session |
  * | `sayInThread`   | the Inbox client's answer to the thread's open question, else `updateTask_tasks` with your line |
@@ -27,7 +28,7 @@
  * | `watchPins`, `pin`, `unpin` | the lab's `pins` flow, your own user state; `watchPins` is its |
  * |                 | `listPins` read, again on each state notice of your user topic             |
  *
- * Every watch but `watchTasks` reads on a change; `watchTasks` still reads on a clock (`every`).
+ * Every watch reads on a change, through `onNotice`.
  */
 import { createClient, sessionFeed, topic, type Client, type SessionConnectionState, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
@@ -224,33 +225,10 @@ export interface Item {
 }
 
 
-/**
- * Read `read` now and every `everyMs`, reporting a value only when it
- * changed. A failed read is logged and tried again on the next tick.
- */
-function every<T>(read: () => Promise<T>, onChange: (value: T) => void, everyMs = READ_EVERY_MS): Unsubscribe {
-  let live = true;
-  let last: string | undefined;
-  let timer: ReturnType<typeof setTimeout>;
-  const tick = async () => {
-    try {
-      const value = await read();
-      const key = JSON.stringify(value);
-      if (live && key !== last) {
-        last = key;
-        onChange(value);
-      }
-    } catch (error) {
-      console.warn("[claude-code-style]", error);
-    }
-    if (live) timer = setTimeout(tick, everyMs);
-  };
-  timer = setTimeout(tick, 0);
-  return () => {
-    live = false;
-    clearTimeout(timer);
-  };
-}
+/** How often a session's task list reads on a timer, wherever push can miss a change. */
+const TASKS_EVERY_MS = 2_000;
+/** The ledgers a session's `listTasks` read returns: its board and its planning worker's steps. */
+const BOARD_LEDGERS = ["tasks", "plan"] as const;
 
 /**
  * A read again after a failed one, 1 s and doubling to 30 s, the shape of the
@@ -279,7 +257,7 @@ function retryAfterFailure(again: () => void): { failed(): void; succeeded(): vo
 
 /**
  * Read `read` now, and again whenever a notice under `topics` passes `hears`
- * (FIX-2466), reporting a value only when it changed, as {@link every} does.
+ * (FIX-2466), reporting a value only when it changed.
  * A connect, a reconnect, a tick and a `resync` read too. One read at a time,
  * and one waiting for any number of notices. Wherever push can miss a change,
  * `client.subscribe` reads every `everyMs` instead, so the view keeps no
@@ -926,7 +904,10 @@ export function createWiredLab(fsd: Client): LabAdapter {
       };
     },
     // The board is a read, so listing it every tick while the pane is open stores nothing.
-    watchTasks: (sessionId, onChange) => every(() => boardOf(sessionId), onChange, 2000),
+    // The board's notices (FIX-2429): the topics are narrowed to the ledgers the read returns,
+    // so every notice on them is the board's, and a reply streaming in the session never wakes it.
+    watchTasks: (sessionId, onChange) =>
+      onNotice(fsd, BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })), () => true, () => boardOf(sessionId), onChange, TASKS_EVERY_MS),
     // Shown only inside the tasks pane or the threads board, whose watch keeps `runSessionOf` current.
     watchTaskWork: (_sessionId, taskId, onChange) => {
       // The task's run session is known once the board has listed it, and a re-run moves it: follow

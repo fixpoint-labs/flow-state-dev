@@ -5,23 +5,13 @@
  * reads one item. All go through the package's internal `useFencedRead`
  * (`internal/useFencedRead.ts`), which the flow navigator's reads share, so the
  * fence protocol lives there, once. A live `BoardList` reads its board again on
- * the session's changes (`liveBoardDriver`); a live `Roster` or `BoardColumns`
+ * each board notice (`liveBoardDriver`); a live `Roster` or `BoardColumns`
  * reads its collection again on another session's change to it, heard through
  * `client.subscribe` (`liveScopeDriver`, FIX-1506). Internal on purpose —
  * exporting a read would let a host mount it twice.
  */
 import { useMemo } from "react";
-import {
-  compareItemOrder,
-  readEveryCollectionPage,
-  topic,
-  type Client,
-  type ResourcesApi,
-  type SessionsApi,
-  type WireNotice
-} from "@flow-state-dev/client";
-import type { OutputItem } from "@flow-state-dev/core/items";
-import { followSession } from "@flow-state-dev/client/internal";
+import { readEveryCollectionPage, topic, type Client, type ResourcesApi, type WireNotice } from "@flow-state-dev/client";
 import { coalescedReads } from "../../internal/coalescedReads";
 import { LIVE_POLL_MS, mayBelongTo, storagePrefixOf } from "../../internal/scopeNotices";
 import { useFencedRead, type ReadDriver } from "../../internal/useFencedRead";
@@ -40,11 +30,11 @@ export type PanelRowSource = { readonly resources: Pick<ResourcesApi, "listColle
 export type PanelItemSource = { readonly resources: Pick<ResourcesApi, "getCollectionItemState"> };
 
 /**
- * A live `BoardList`'s slice: the board read, and the session stream that says
- * when to read it again. Both go through the one client, so the stream always
- * carries the read's credential.
+ * A live `BoardList`'s slice: the board read, and the subscription that says
+ * when to read it again. Both go through the one client, so the subscription
+ * always carries the read's credential.
  */
-export type PanelLiveSource = PanelRowSource & { readonly sessions: Pick<SessionsApi, "stream"> };
+export type PanelLiveSource = PanelRowSource & { readonly subscribe: Client["subscribe"] };
 
 /**
  * A live `Roster`'s or `BoardColumns`' slice: the collection read, the
@@ -57,8 +47,8 @@ export type PanelNoticeSource = {
   readonly subscribe: Client["subscribe"];
 };
 
-/** How a live panel hears its changes: the session stream (`BoardList`) or notices. */
-export type PanelLive = { readonly stream: PanelLiveSource } | { readonly notices: PanelNoticeSource };
+/** How a live panel hears its changes: its board's notices (`BoardList`) or the scopes' resource notices. */
+export type PanelLive = { readonly board: PanelLiveSource } | { readonly notices: PanelNoticeSource };
 
 /** One row as a panel receives it: its topic, and the collection's projection of its state. */
 export type PanelRow<TClient = unknown> = {
@@ -79,56 +69,30 @@ const EMPTY: PanelRow<never>[] = [];
 
 
 /**
- * Whether an item says a task on board `boardRef` changed. Two equality
- * checks: the substrate's `task-change` component, naming this board.
- */
-function namesBoard(item: OutputItem, boardRef: string): boolean {
-  if (item.type !== "component") return false;
-  const component = item as { component?: unknown; data?: { collectionId?: unknown } | null };
-  return component.component === "task-change" && component.data?.collectionId === boardRef;
-}
-
-/**
- * Read a board, and read it again whenever the session keeps a change to it.
+ * Read a board, and read it again whenever it changes (FIX-2429).
  *
- * The stream opens before the board is read on mount, and its opening scan
- * reaches back a minute on the server's own clock. So a change kept around
- * the mount read, before it, during it or after it, is heard, and every change
- * to this board heard for the first time reads it again, whichever scan finds
- * it. A board with no change in the last minute costs one read on mount; a
- * change the opening scan finds adds a read, coalesced with any others as
- * below. Nothing here compares a server's clock with this page's.
+ * The list subscribes its session's topic narrowed to the board, through the
+ * client's `subscribe`, so a task settled in any session, on any process,
+ * reaches it as a board notice, and a streaming reply in the session (its
+ * `items` notices) never does. It reads on mount, on each notice, and on each
+ * connect, reconnect or timer tick (`null`), which may have missed a change.
  *
  * Reads are coalesced: one in flight, and one queued for any number of
- * changes that arrive meanwhile. A copy the stream delivers again (the same
- * request id and item id, stamped no later than one already heard), as a
- * reconnect does, wakes nothing. What the item carries is never drawn: it says
- * when to read, never what. A stream refused, missing or stopped leaves the
- * rows as they are, with no error.
+ * notices that arrive meanwhile. A notice says when to read, never what: the
+ * rows drawn are always the read's.
  */
 function liveBoardDriver(sessionId: string, boardRef: string, client: PanelLiveSource): ReadDriver {
   return (read) => {
-    const heard = new Map<string, OutputItem>();
     const reads = coalescedReads(read);
-
-    const close = followSession({
-      sessionId,
-      client,
-      itemTypes: ["component"],
-      onItem: ({ requestId, item }) => {
-        if (!namesBoard(item, boardRef)) return;
-        const key = `${requestId}\u0000${item.id}`;
-        const held = heard.get(key);
-        if (held !== undefined && compareItemOrder(item, held) <= 0) return;
-        heard.set(key, item);
-        reads.request();
-      }
+    const subscription = client.subscribe([topic.session(sessionId, { resource: boardRef })], {
+      onChange: () => reads.request(),
+      pollIntervalMs: LIVE_POLL_MS
     });
     reads.request();
 
     return () => {
       reads.close();
-      close();
+      subscription.close();
     };
   };
 }
@@ -194,11 +158,10 @@ function liveScopeDriver(sessionId: string, ref: string, client: PanelNoticeSour
  * cursor, is an error (the panel's error line and Retry), never the rows read
  * so far (BR-19, BR-21).
  *
- * With `live.stream`, `ref` is a task board, and the rows are read again
- * whenever the session keeps a change to it (see `liveBoardDriver`). With
- * `live.notices`, they are read again on another session's change to the
- * collection (see `liveScopeDriver`). Without either they are read once, on
- * mount.
+ * With `live.board`, `ref` is a task board, and the rows are read again on
+ * each of its board notices (see `liveBoardDriver`). With `live.notices`, they
+ * are read again on another session's change to the collection (see
+ * `liveScopeDriver`). Without either they are read once, on mount.
  */
 export function usePanelRows<TClient = unknown>(
   source: PanelRowSource,
@@ -208,16 +171,16 @@ export function usePanelRows<TClient = unknown>(
   failureMessage: string,
   live?: PanelLive
 ): PanelRows<TClient> {
-  const liveSource = live === undefined ? undefined : "stream" in live ? live.stream : live.notices;
-  const byStream = live !== undefined && "stream" in live;
+  const liveSource = live === undefined ? undefined : "board" in live ? live.board : live.notices;
+  const byBoard = live !== undefined && "board" in live;
   const driver = useMemo(
     () =>
       liveSource === undefined
         ? undefined
-        : byStream
+        : byBoard
           ? liveBoardDriver(sessionId, ref, liveSource as PanelLiveSource)
           : liveScopeDriver(sessionId, ref, liveSource as PanelNoticeSource),
-    [liveSource, byStream, sessionId, ref]
+    [liveSource, byBoard, sessionId, ref]
   );
   const { data, isLoading, error, refresh } = useFencedRead<readonly PanelRow<TClient>[]>(
     [source, sessionId, ref, limit],

@@ -8,10 +8,10 @@
  * status this version does not know still shows, as its own word, and no row
  * is hidden whatever its status.
  *
- * With `live`, the list follows the session it reads through and reads the
- * board again whenever that session keeps a change to it. A change kept in any
- * other session shows on the list's next read. The rows drawn are always the
- * read's, never a change's own payload.
+ * With `live`, the list reads the board again whenever it changes: a board
+ * notice on the session's topic, narrowed to the board, which a task settled
+ * in any session or process sends. Wherever push can miss a change it reads on
+ * a timer. The rows drawn are always the read's, never a notice's.
  *
  * Loading, empty and a failed read are three different renders.
  */
@@ -35,7 +35,7 @@ export type BoardListSlots = {
 };
 
 type BoardListCommonProps = {
-  /** The session the read is addressed to, and, with `live`, the one the list follows. */
+  /** The session the read is addressed to, and, with `live`, the one whose board notices it hears. */
   readonly sessionId: string;
   /**
    * The key the session's flow declares this board's ledger under. One path
@@ -53,17 +53,18 @@ type BoardListCommonProps = {
 };
 
 /**
- * What reads the board, and what the live stream is sent with: one client.
+ * What reads the board, and what the live subscription is sent with: one client.
  *
- * - `client`: the host's own client, so the read and the live stream carry the
- *   host's transport and its credential. Pass a STABLE reference. Without
+ * - `client`: the host's own client, so the read and the subscription carry
+ *   the host's transport and its credential. Pass a STABLE reference. Without
  *   one, the panel uses the nearest `FlowProvider`'s user, `baseUrl` and
  *   `fetcher`.
- * - `live`: read the board again whenever the session keeps a change to it.
+ * - `live`: read the board again whenever it changes.
  *
- * A live list's client must be able to stream (`sessions`): the stream goes
- * through the same client as the read, so it carries the read's credential to
- * the read's origin. A client that only reads takes no `live`.
+ * A live list's client must be able to subscribe (`subscribe`): the
+ * subscription goes through the same client as the read, so it carries the
+ * read's credential to the read's origin. A client that only reads takes no
+ * `live`.
  */
 type BoardListTransportProps =
   | { readonly client?: PanelLiveSource; readonly live?: boolean }
@@ -130,7 +131,7 @@ export function BoardList(props: BoardListProps): ReactNode {
     boardRef,
     limit,
     "Failed to load this board",
-    live ? { stream: source as PanelLiveSource } : undefined
+    live ? { board: source as PanelLiveSource } : undefined
   );
   const rows = useMemo(() => newestFirst(cardRows(state.rows)), [state.rows]);
 

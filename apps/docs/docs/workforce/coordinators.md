@@ -475,7 +475,7 @@ It hears when a task completes, with what came back; when it fails for good, wit
 
 | Action | What it does |
 | --- | --- |
-| `listTasks_tasks` | This conversation's tasks only, even when another conversation has the same coordinator and the same delegates |
+| `listTasks_tasks` | This conversation's tasks, and the steps its coordinator filed for itself, only: never another conversation's, even with the same coordinator and the same delegates |
 | `getTask_tasks` | One task whole: its brief, its fields, how it stands, its delegate's status note, and its output |
 | `createTask_tasks` | Files a task: it starts at once, after its `deps`, or, with `held: true`, when you release it |
 | `updateTask_tasks` | Before the task starts: changes any of its fields, its delegate included, holds it (`status: "held"`) or releases it (`status: "pending"`). Until it finishes: sends it a `message`, or cancels it (`status: "cancelled"`), with nothing said in the conversation |
