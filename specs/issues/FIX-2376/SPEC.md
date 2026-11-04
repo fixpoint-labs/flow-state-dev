@@ -127,7 +127,7 @@ FIX-2375 widens. Neither takes turn state from `sessionFeed`'s `runs`, which are
 | The debt | |
 |---|---|
 | **Removes** | The dead `queued` field and two marks, Teammates' false composer claim, two fake queues and the test that proved them; Flow State's whole-composer lock |
-| **Adds** | A hook named for harnesses serving a plain chat. Accepted: renaming a public hook is its own change; issue to file, *give `useHarnessLines` a neutral name*. Two Flow State controls stay locked while three are live: accepted, they save through `sendAction` |
+| **Adds** | A hook named for harnesses serving a plain chat. Accepted: renaming a public hook is its own change; filed as FIX-2557, *give `useHarnessLines` a neutral name*. Two Flow State controls stay locked while three are live: accepted, they save through `sendAction` |
 | **Leaves** | FIX-1015 (the composer during a drain): a line sent then now waits, not blocked; the bug stays open. FIX-2406 owns the shared contract matrix; leg a is one of its scenarios |
 
 **Net: down.** A dead field, three false claims and two fake queues go; one hook gains two options.

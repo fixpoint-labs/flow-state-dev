@@ -113,7 +113,7 @@ For the implementer; recorded, not baked into the design.
   optional, not required for this spec."
 - *Second-look review, PR #4732:* "Since the rename is already conceded as a follow-up, file that
   issue now so the two new public options don't cement the name." The issue (*give
-  `useHarnessLines` a neutral name*) is to be filed before the react slice merges.
+  `useHarnessLines` a neutral name*) is filed as FIX-2557; land it before or with the react slice.
 
 ## How it got here
 
