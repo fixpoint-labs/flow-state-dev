@@ -312,7 +312,7 @@ async function oneRun(n: number, failures: string[], notes: string[]): Promise<v
     else if (!noProject.reads.some((read) => read.output?.kind === "refused" && read.output.reason === "no-project")) {
       fail(`leg 2 · read refused: no read was refused no-project: ${JSON.stringify(noProject.reads).slice(0, 300)}`);
     }
-    if (noProject.reads.length > 0 && !noProject.lines.some((line) => line.failed && line.line.endsWith("(failed)"))) {
+    if (!noProject.lines.some((line) => line.failed && line.line.endsWith("(failed)"))) {
       fail(`leg 2 · refusal reads failed: no tool line says failed: ${JSON.stringify(noProject.lines.map((l) => l.line)).slice(0, 300)}`);
     }
 
@@ -331,7 +331,7 @@ async function oneRun(n: number, failures: string[], notes: string[]): Promise<v
     else if (!offMembers.reads.some((read) => read.output?.kind === "refused" && read.output.reason === "not-a-member")) {
       fail(`leg 3 · read refused: no read was refused not-a-member: ${JSON.stringify(offMembers.reads).slice(0, 300)}`);
     }
-    if (offMembers.reads.length > 0 && !offMembers.lines.some((line) => line.failed && line.line.endsWith("(failed)"))) {
+    if (!offMembers.lines.some((line) => line.failed && line.line.endsWith("(failed)"))) {
       fail(`leg 3 · refusal reads failed: no tool line says failed: ${JSON.stringify(offMembers.lines.map((l) => l.line)).slice(0, 300)}`);
     }
     notes.push(`run ${n} legs 2-3: ${noProject.reads.length} and ${offMembers.reads.length} read call(s)`);

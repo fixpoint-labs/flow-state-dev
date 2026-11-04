@@ -41,7 +41,7 @@ with a second user in its members.
     search its pattern, a listing its pattern. A turn may find the value by a search alone, so
     the value's own file is noted when a line names it, not required.
   - *refusal reads failed* (legs 2 and 3): a tool line of the turn says `(failed)` and is a failed
-    step. Graded only when the turn made a read call, which *read refused* already requires.
+    step. A turn with no read call fails it, as it fails *read refused*.
 
 Each leg passes in every one of `GOAL_RUNS` (3) fresh runs.
 
