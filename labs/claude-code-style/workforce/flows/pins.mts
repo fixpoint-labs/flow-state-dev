@@ -10,36 +10,38 @@ import { z } from "zod";
 /** The flow kind the screen reads and writes pins through. */
 export const PINS_FLOW = "pins";
 
-const pinsSchema = z.object({ pinned: z.array(z.string()) });
-const pinnedOf = (ctx: { user: { state: unknown } }) => (ctx.user.state as { pinned?: string[] }).pinned ?? [];
+const userStateSchema = z.object({ pinned: z.array(z.string()).default([]) });
 
 /** A handler that changes your pins by `change` and answers them. */
 const pinsBlock = (name: string, change: (pinned: string[], taskId: string) => string[]) =>
   handler({
     name,
     inputSchema: z.object({ taskId: z.string().min(1) }),
-    outputSchema: pinsSchema,
+    outputSchema: userStateSchema,
+    userStateSchema,
     execute: async (input, ctx) => {
-      const pinned = change(pinnedOf(ctx), input.taskId);
+      const pinned = change(ctx.user.state.pinned, input.taskId);
       await ctx.user.patchState({ pinned });
       return { pinned };
     },
   });
+  
 
 /** Build the flow: list (a read), pin and unpin, over your user state. */
 export function definePinsFlow() {
   const taskInput = z.object({ taskId: z.string().min(1) });
   return defineFlow({
     kind: PINS_FLOW,
-    user: { stateSchema: z.object({ pinned: z.array(z.string()).default([]) }) },
+    user: { stateSchema: userStateSchema },
     // A read, not an action: the screen reads your pins whenever they change, and a read stores no request.
     reads: {
       listPins: {
         block: handler({
           name: "listPins",
           inputSchema: z.object({}),
-          outputSchema: pinsSchema,
-          execute: async (_input, ctx) => ({ pinned: pinnedOf(ctx) }),
+          outputSchema: userStateSchema,
+          userStateSchema,
+          execute: async (_input, ctx) => ({ pinned: ctx.user.state.pinned }),
         }),
       },
     },
@@ -47,5 +49,5 @@ export function definePinsFlow() {
       pin: { inputSchema: taskInput, block: pinsBlock("pin", (pinned, id) => (pinned.includes(id) ? pinned : [...pinned, id])) },
       unpin: { inputSchema: taskInput, block: pinsBlock("unpin", (pinned, id) => pinned.filter((p) => p !== id)) },
     },
-  } as never);
+  });
 }
