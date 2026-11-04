@@ -4,7 +4,8 @@
  * filed. Any other board is drawn by `TaskPlan` (`flow-state/task-plan.tsx`,
  * byte-equal to the registry, no router).
  */
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useSubscription } from "@flow-state-dev/react";
 import type { ComponentItem, OutputItem } from "@flow-state-dev/core/items";
 import { ERROR_REPORTER_FLOW } from "@flow-state-dev/workforce/browser";
 import { SessionItemsProvider, useSessionItems } from "./flow-state/session-items-context";
@@ -14,7 +15,7 @@ import { isOpen, TASKS_POLL_MS } from "./TasksPanel";
 import { STATE_OF_COLUMN, StateSquare } from "./ui";
 import { columnFor } from "../lib/columns";
 import { useConversationSession } from "../lib/conversation";
-import { readConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
+import { conversationBoardTopics, readConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
 import { workerLabel } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef } from "../lib/reads";
@@ -63,44 +64,52 @@ function isConversationTaskChange(item: OutputItem): boolean {
 }
 
 /**
- * A failed read leaves the last one, or the feed's record, and is tried again while a task could be moving.
- * A read that shows a task moved reloads the Lab, so what the snapshot counts agrees with the card.
+ * Reads on mount, when the Lab is read again, and on each board notice
+ * (FIX-2429). Wherever push can miss a change it reads on a timer, only while a
+ * task could be moving. A failed read leaves the last one, or the feed's
+ * record, and keeps the timer. A read that shows a task moved reloads the Lab,
+ * so what the snapshot counts agrees with the card.
  */
 function LiveBoard({ flow, sessionId, boardRef, children }: { flow: string; sessionId: string; boardRef: string; children: ReactNode }) {
   const { client, snapshot, refresh } = useLab();
   const readAt = snapshot !== undefined && "readAt" in snapshot ? snapshot.readAt : undefined;
   const [read, setRead] = useState<{ sessionId: string; tasks: ReadonlyMap<string, ConversationTask> } | undefined>(undefined);
-  const [polls, setPolls] = useState(0);
   // Whether the last read left a task that can still move; before any read lands, assume one can.
-  const moving = useRef(true);
+  const [moving, setMoving] = useState(true);
   // Each task and where it stood at the last read.
   const standing = useRef<string | undefined>(undefined);
+  // Only the latest read started may land.
+  const latest = useRef(0);
   useEffect(() => {
-    moving.current = true;
+    setMoving(true);
     standing.current = undefined;
   }, [flow, sessionId]);
 
+  // `signal` aborts once the read's subscription or effect is gone: a read that lands after the
+  // board unmounted sets nothing and reloads nothing.
+  const readBoard = useCallback(async (_notice?: unknown, signal?: AbortSignal) => {
+    const mine = ++latest.current;
+    try {
+      const tasks = await readConversationTasks(client, flow, sessionId);
+      if (mine !== latest.current || signal?.aborted === true) return;
+      setRead({ sessionId, tasks: new Map(tasks.map((task) => [task.id, task])) });
+      const now = tasks.map((task) => `${task.id}:${task.status}`).join(",");
+      if (standing.current !== undefined && standing.current !== now) void refresh();
+      standing.current = now;
+      setMoving(tasks.some(isOpen));
+    } catch {
+      // The last read stands; the timer, if any, stays on.
+    }
+  }, [client, refresh, flow, sessionId]);
+
   useEffect(() => {
-    let closed = false;
-    let next: ReturnType<typeof setTimeout> | undefined;
-    readConversationTasks(client, flow, sessionId)
-      .then((tasks) => {
-        if (closed) return;
-        setRead({ sessionId, tasks: new Map(tasks.map((task) => [task.id, task])) });
-        const now = tasks.map((task) => `${task.id}:${task.status}`).join(",");
-        if (standing.current !== undefined && standing.current !== now) void refresh();
-        standing.current = now;
-        moving.current = tasks.some(isOpen);
-        if (moving.current) next = setTimeout(() => setPolls((n) => n + 1), TASKS_POLL_MS);
-      })
-      .catch(() => {
-        if (!closed && moving.current) next = setTimeout(() => setPolls((n) => n + 1), TASKS_POLL_MS);
-      });
-    return () => {
-      closed = true;
-      if (next !== undefined) clearTimeout(next);
-    };
-  }, [client, refresh, flow, sessionId, readAt, polls]);
+    const ended = new AbortController();
+    void readBoard(null, ended.signal);
+    return () => ended.abort();
+  }, [readBoard, readAt]);
+
+  const topics = useMemo(() => conversationBoardTopics(sessionId), [sessionId]);
+  useSubscription(topics, readBoard, { client, ...(moving ? { pollIntervalMs: TASKS_POLL_MS } : {}) });
 
   const board = useMemo(() => ({ boardRef, read: read?.sessionId === sessionId ? read.tasks : undefined }), [boardRef, read, sessionId]);
   return <BoardContext.Provider value={board}>{children}</BoardContext.Provider>;

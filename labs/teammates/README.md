@@ -18,8 +18,8 @@ theme on purpose, so it reads as the app it copies.
   tasks they started; each opens its run in a popup, read only.
 - **Center:** the chosen worker's one conversation. It goes on for weeks. A divider marks where the
   turns the worker reads word for word begin; it reads *summarized* only when the earlier turns were
-  summarized for the worker. New content settles in place: the list follows an answer as it is
-  written only while you are at the end, and offers *Jump to latest* when you have scrolled up; a
+  summarized for the worker. A line you send rises to near the top and its answer is written
+  below it; nothing else moves the list, and *Jump to latest* appears when there is more below. A
   task's line is drawn the moment it is filed and fills in where it is. Enter sends; Cmd+Enter
   (Ctrl+Enter) sends from every box, including a teammate's instructions, where plain Enter is a
   new line.

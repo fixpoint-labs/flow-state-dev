@@ -170,12 +170,18 @@ const refresh = useCallback(
   [sessionId],
 );
 
-useSubscription([topic.session(sessionId)], refresh, { pollIntervalMs: 3000 });
+useSubscription(
+  [topic.session(sessionId, { resource: "tasks" }), topic.session(sessionId, { resource: "plan" })],
+  refresh,
+  { pollIntervalMs: 3000 },
+);
 ```
+
+The topics are narrowed to the two boards `listTasks_tasks` returns (the conversation's tasks and its planning worker's steps), so a reply streaming in the session doesn't wake the read; a task that settles in another session still does (see [Task boards](/guides/realtime#task-boards)).
 
 On the Node host the read runs as soon as the change is saved, over a WebSocket; on a host with no push it runs every `pollIntervalMs`. A burst of changes runs it once more after the read in flight finishes, not once per change. The read gets the notice that woke it (`{ topic, kind, origin? }`), or `null` when the screen should read everything again: after a connect or a reconnect, on a timer tick, and when push starts or stops reaching every server process. Act on `kind` when the screen only cares about some changes, and read everything on `null`. Leave `pollIntervalMs` out for no timer. `enabled: false` subscribes nothing.
 
-The hook doesn't read on mount; keep the first read where the screen already makes it. It uses the provider's client, so the provider's `fetcher` signs the socket in. See [`fsd.subscribe`](/docs/api/client#fsdsubscribetopics-options) for which topics a caller hears.
+The hook doesn't read on mount; keep the first read where the screen already makes it. It uses the provider's client, so the provider's `fetcher` signs the socket in. An app that builds its own client passes it as `client` instead. See [`fsd.subscribe`](/docs/api/client#fsdsubscribetopics-options) for which topics a caller hears.
 
 ### Background work
 

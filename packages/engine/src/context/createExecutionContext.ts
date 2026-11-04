@@ -1,6 +1,7 @@
 import { WRITES_OUTLIVE_ABORT, attachRequestEndRegistry, createRequestEndRegistry, type WritesOutliveAbort } from "../execution/request-end-hooks";
 import { createRequestSpendLedger, isInterruptedEndingHeld, loggedSpendOf, sumSpend } from "../execution/request-spend-ledger";
 import { isOrgAttributed, UnattributedOrgError } from "./org-attribution";
+import { createBoardNoticeSeam } from "../bus/board-notice";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type {
   AnyResourceRef,
@@ -98,6 +99,7 @@ import {
 } from "../errors/error-capture";
 import { SuspensionError, SuspensionRejectedError, SuspensionTimeoutError, resolveAllowedActions, type SuspendOptions } from "@flow-state-dev/core";
 import {
+  BOARD_NOTICE_SEAM,
   DISPATCH_SEAM,
   REQUEST_RESUME_SEAM,
   REQUEST_SPEND_SEAM,
@@ -1142,6 +1144,8 @@ export async function createExecutionContext<
   // `tenantMatches` is strict equality), so the option and the resolved value
   // cannot differ. Org is the one identity field whose check permits a
   // difference, which is why it is the one that had to change.
+  const boardNoticeSeam =
+    stores.bus !== undefined ? createBoardNoticeSeam(stores.bus, { requestId, tenantId: options.tenantId }) : undefined;
   const requestHostBuild =
     options.requestHost !== undefined
       ? createRequestHost({
@@ -3803,6 +3807,9 @@ export async function createExecutionContext<
       ...(requestHostBuild !== undefined
         ? { requestHost: requestHostBuild.host, [DISPATCH_SEAM]: requestHostBuild.seam }
         : {}),
+      // A task board's change reaches this run's bus (FIX-2429), under the
+      // request's tenant. No bus (a registry no entry wrapped): no seam.
+      ...(boardNoticeSeam !== undefined ? { [BOARD_NOTICE_SEAM]: boardNoticeSeam } : {}),
       settings: options.settings ?? {},
       request: requestHandle,
       session: sessionHandle,

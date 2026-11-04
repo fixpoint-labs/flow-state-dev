@@ -17,6 +17,7 @@ import { DISPATCH_SEAM } from "./dispatch";
 import type { RequestEndSeam, RequestSpendSeam } from "./request-end";
 import { REQUEST_END_SEAM, REQUEST_SPEND_SEAM } from "./request-end";
 import { REQUEST_RESUME_SEAM, type RequestResume } from "./request-resume";
+import { BOARD_NOTICE_SEAM, type BoardNoticeSeam } from "./board-notice";
 import type { TracingLevel } from "../helpers/tracing-level";
 import type { Content } from "../items/content";
 import type {
@@ -635,6 +636,13 @@ export interface BlockContext<
    * ends. See `types/request-end.ts`.
    */
   [REQUEST_SPEND_SEAM]?: RequestSpendSeam;
+
+  /**
+   * @internal The running request's board-notice seam (FIX-2429), under a
+   * symbol key. Read only by `publishBoardChange`, which the task
+   * collection's change adapter calls. See `types/board-notice.ts`.
+   */
+  [BOARD_NOTICE_SEAM]?: BoardNoticeSeam;
 
   /**
    * @internal How the running request resumed (FIX-2129), under a symbol key.

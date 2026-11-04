@@ -1,0 +1,96 @@
+<svg viewBox="0 0 940 500" role="img" aria-label="What changes. Today: you send, the view goes to the end, your line sits at the bottom edge and the reply grows below the view, out of sight, behind the arrow. After: you send, your line rises to near the top of the view with room kept below it, the reply streams into that room in view, and once it grows past the bottom edge the view stays put and the arrow shows." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .view   { fill:none; stroke:var(--accent); stroke-width:2; }
+    .line   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .reply  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .old    { fill:var(--surface-2); }
+    .room   { fill:none; stroke:var(--ink-3); stroke-width:1; stroke-dasharray:3 3; }
+    .hidden { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; stroke-dasharray:4 3; opacity:.6; }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="940" height="500"/>
+  <g id="heads">
+    <text class="t-lbl" x="210" y="30">1 · YOU SEND</text>
+    <text class="t-lbl" x="470" y="30">2 · REPLY STREAMS</text>
+    <text class="t-lbl" x="730" y="30">3 · REPLY OUTGROWS THE VIEW</text>
+  </g>
+  <g id="today">
+    <text class="t-h" x="16" y="106" style="fill:var(--ink)">Today</text>
+    <text class="t-s" x="16" y="124">main · #4275</text>
+    <rect class="line" x="220" y="146" width="130" height="20" rx="2"/>
+    <rect class="old" x="220" y="112" width="130" height="30" rx="2"/>
+    <rect class="old" x="220" y="66" width="130" height="40" rx="2"/>
+    <rect class="view" x="210" y="60" width="150" height="110" rx="3"/>
+    <text class="t-s" x="210" y="232">your line at the bottom edge</text>
+    <rect class="hidden" x="480" y="174" width="130" height="30" rx="2"/>
+    <rect class="line" x="480" y="146" width="130" height="20" rx="2"/>
+    <rect class="old" x="480" y="112" width="130" height="30" rx="2"/>
+    <rect class="old" x="480" y="66" width="130" height="40" rx="2"/>
+    <rect class="view" x="470" y="60" width="150" height="110" rx="3"/>
+    <text class="t-s" x="470" y="232">reply below the view · arrow</text>
+    <rect class="hidden" x="740" y="174" width="130" height="46" rx="2"/>
+    <rect class="line" x="740" y="146" width="130" height="20" rx="2"/>
+    <rect class="old" x="740" y="112" width="130" height="30" rx="2"/>
+    <rect class="old" x="740" y="66" width="130" height="40" rx="2"/>
+    <rect class="view" x="730" y="60" width="150" height="110" rx="3"/>
+    <text class="t-s" x="730" y="232">still out of sight · arrow</text>
+  </g>
+    <line class="row" x1="16" y1="250" x2="924" y2="250"/>
+  <g id="after">
+    <text class="t-h" x="16" y="322" style="fill:var(--ink)">After</text>
+    <text class="t-s" x="16" y="340">this issue</text>
+    <rect class="room" x="220" y="308" width="130" height="74" rx="2"/>
+    <rect class="line" x="220" y="282" width="130" height="20" rx="2"/>
+    <rect class="old" x="220" y="256" width="130" height="14" rx="2"/>
+    <rect class="view" x="210" y="276" width="150" height="110" rx="3"/>
+    <text class="t-s" x="210" y="448">line near the top · room kept</text>
+    <rect class="room" x="480" y="356" width="130" height="26" rx="2"/>
+    <rect class="reply" x="480" y="308" width="130" height="44" rx="2"/>
+    <rect class="line" x="480" y="282" width="130" height="20" rx="2"/>
+    <rect class="old" x="480" y="256" width="130" height="14" rx="2"/>
+    <rect class="view" x="470" y="276" width="150" height="110" rx="3"/>
+    <text class="t-s" x="470" y="448">reply streams into view</text>
+    <rect class="hidden" x="740" y="386" width="130" height="40" rx="2"/>
+    <rect class="reply" x="740" y="308" width="130" height="78" rx="2"/>
+    <rect class="line" x="740" y="282" width="130" height="20" rx="2"/>
+    <rect class="old" x="740" y="256" width="130" height="14" rx="2"/>
+    <rect class="view" x="730" y="276" width="150" height="110" rx="3"/>
+    <text class="t-s" x="730" y="448">no move past the edge · arrow</text>
+  </g>
+  <g id="legend">
+    <rect class="view" x="210" y="470" width="18" height="12" rx="2"/><text class="t-s" x="234" y="480">the view</text>
+    <rect class="line" x="300" y="470" width="18" height="12" rx="2"/><text class="t-s" x="324" y="480">your line</text>
+    <rect class="reply" x="392" y="470" width="18" height="12" rx="2"/><text class="t-s" x="416" y="480">reply, in view</text>
+    <rect class="hidden" x="500" y="470" width="18" height="12" rx="2"/><text class="t-s" x="524" y="480">reply, below the view</text>
+    <rect class="room" x="650" y="470" width="18" height="12" rx="2"/><text class="t-s" x="674" y="480">room kept below</text>
+  </g>
+</svg>

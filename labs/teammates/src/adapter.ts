@@ -21,7 +21,7 @@
  * | `editInstructions`  | the workforce client's `edit`, on one of the user's own workers               |
  * | `fire`              | the workforce client's `fire`, on one of the user's own workers               |
  * | `watchTasks`        | the board's rows, as the conversation's stream carries each one (`task-change`) |
- * |                     | and, while a running row names no run, the board's `listTasks` read for its run |
+ * |                     | and the board's `listTasks` read, on each notice of the conversation's board   |
  * |                     | and `taskSpendView` on a row, for the harness and model its run reported      |
  * |                     | and each linked run's session, where the run writes its row (its holds)      |
  * |                     | and `taskRowView` with the Inbox's holds (`inboxItems`), for what it waits on |
@@ -63,7 +63,7 @@ import {
   type RosterEntry,
   type WorkforceClient,
 } from "@flow-state-dev/workforce/browser";
-import { isTerminalStatus, parseNotice, taskSpendView } from "@flow-state-dev/orchestration/tasks";
+import { isTerminalStatus, parseNotice, taskSpendView, taskSpendViewSchema } from "@flow-state-dev/orchestration/tasks";
 import { createInboxClient, inboxItems, taskRowView, type InboxAnswer, type InboxHold, type InboxRow } from "@flow-state-dev/orchestration/inbox";
 import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import { CODER_FLOW } from "./lib/coder-flow";
@@ -197,6 +197,8 @@ export interface TalkRow {
   at: number;
   /** It was refused, or nobody took it in time: it will never land. */
   undelivered?: boolean;
+  /** It landed: as a received line in one of the recipient's conversations, or as a waited send's result, which lands as no line. */
+  delivered?: boolean;
   /** The sender asked for a reply: one answer comes back, as a message or as a waited send's result. */
   replyRequested?: boolean;
   /** The framework's "no answer" to the message it replies to: the recipient's turn gave none. */
@@ -263,8 +265,12 @@ const POLL_MS = 1_500;
 const TASK_CHANGE = "task-change";
 /** The tool a worker files a task with. */
 const CREATE_TASK = "createTask";
+/** What a board row's `listTasks` read never carries: an ended task's output and error, read from the row's other copies. */
+const UNPROJECTED = ["output", "error"] as const;
 /** The board's read of its rows, on a conversation's flow. */
 const LIST_TASKS = "listTasks_tasks";
+/** The ledgers that read returns: the conversation's board and its planning worker's steps. */
+const BOARD_LEDGERS = ["tasks", "plan"] as const;
 /** The board's action a question on a row is answered through, on the conversation that filed it. */
 const UPDATE_TASK = "updateTask_tasks";
 /** Requests that are a worker answering: everything but the board's own passes. */
@@ -476,10 +482,17 @@ function boardRows(items: readonly Item[]): Map<string, Record<string, any>> {
   return rows;
 }
 
-/** What a row's spend says ran it: the harness and model its run reported, or nothing. */
+/**
+ * What a row's spend says ran it: the harness and model its run reported, or nothing.
+ *
+ * A row reaches here in one of two shapes: the stored ledger (`spend.requests`), as a
+ * `task-change` item carries it, or the view the board's `listTasks` read already folded
+ * (`taskSpendViewSchema`). Folding a view again would read as nothing spent.
+ */
 function spendOf(row: Record<string, any>): { harness?: string; model?: string } {
   try {
-    const view = taskSpendView(row as never);
+    const folded = taskSpendViewSchema.safeParse(row.spend);
+    const view = folded.success ? folded.data : taskSpendView(row as never);
     return { ...(view?.harness == null ? {} : { harness: view.harness }), ...(view?.model == null ? {} : { model: view.model }) };
   } catch {
     return {};
@@ -844,6 +857,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
               ...(m.replyRequested === true ? { replyRequested: true } : {}),
               ...(m.noAnswer === true ? { noAnswer: true } : {}),
               ...(m.status === "refused" || m.status === "undeliverable" ? { undelivered: true } : {}),
+              ...(m.status === "delivered" ? { delivered: true } : {}),
             }));
         },
         onChange,
@@ -922,26 +936,44 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     watchTasks(sessionId, onChange) {
       const show = stableList(onChange);
       let rows = new Map<string, Record<string, any>>();
-      /** The run each running row's last board read named, by task id. */
-      const runs = new Map<string, unknown>();
-      let stopRead: Unsubscribe | undefined;
+      /**
+       * Each row as the board's last read answered it. A task settles, and its run links itself, in
+       * the task's own session, which the conversation's stream doesn't carry; the board's notice
+       * does, and the read says what changed.
+       */
+      let listed = new Map<string, Record<string, any>>();
       /**
        * Each linked run's own copy of its row. A run writes its row on its own session (its link, its
        * questions, its review), so the conversation hears of those only when the task ends: the run's
-       * session is followed too, and the newer of the two copies is the row.
+       * session is followed too.
        */
       const runRows = new Map<string, Record<string, any>>();
       const runFeeds = new Map<string, Unsubscribe>();
-      const newer = (row: Record<string, any>) => {
-        const fromRun = runRows.get(row.id);
-        return fromRun !== undefined && (fromRun.updatedAt ?? 0) > (row.updatedAt ?? 0) ? fromRun : row;
+      /**
+       * A row is the board read's (FIX-2429): every committed write of a row sends a board notice, so
+       * the read is never more than one notice behind, and a field it leaves out is cleared (an
+       * answered hold). Until the first read lands, the conversation's copy, else the run's, stands in.
+       * The run's and the conversation's copies give only what the read never carries: an ended
+       * task's output and error ({@link UNPROJECTED}).
+       */
+      const rowOf = (id: string): Record<string, any> => {
+        const board = listed.get(id);
+        if (board === undefined) return rows.get(id) ?? runRows.get(id)!;
+        if (!isTerminalStatus(board.status)) return board;
+        const ended: Record<string, unknown> = {};
+        for (const field of UNPROJECTED) {
+          const value = runRows.get(id)?.[field] ?? rows.get(id)?.[field];
+          if (value !== undefined) ended[field] = value;
+        }
+        return { ...board, ...ended };
       };
       const followRuns = (current: readonly Record<string, any>[]) => {
         for (const row of current) {
           const runSession = row.run?.sessionId;
           if (typeof runSession !== "string") continue;
-          // An ended task's row already says all there is: its run is let go, or never followed.
-          if (isTerminalStatus(row.status)) {
+          // An ended task's run is let go once the run's own copy says it ended (it carries the output
+          // the board read doesn't), or never followed when no copy of it was ever read.
+          if (isTerminalStatus((runRows.get(row.id) ?? row).status)) {
             runFeeds.get(runSession)?.();
             runFeeds.set(runSession, () => {});
             continue;
@@ -958,8 +990,13 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           runFeeds.set(runSession, stop);
         }
       };
+      /** Every row, the conversation's order first, each as {@link rowOf} settles it. */
+      const merged = (): Record<string, any>[] => [...new Set([...rows.keys(), ...listed.keys()])].map(rowOf);
+      // Set once the watch stops: a read or a flow lookup that lands after it shows nothing and follows no run.
+      let stopped = false;
       const publish = () => {
-        const current = [...rows.values()].map((row) => newer(row.run == null && runs.has(row.id) ? { ...row, run: runs.get(row.id) } : row));
+        if (stopped) return;
+        const current = merged();
         const flowOf = (id: string) => (id === sessionId ? flowOfSession.get(sessionId) : runFlows.get(id));
         const holds = holdsOfRows(sessionId, current, flowOf);
         openHolds.set(sessionId, holds);
@@ -983,37 +1020,33 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           }),
         ).then(publish, (error) => console.error("teammates: a session's flow couldn't be read", error));
       };
-      // A run links itself on its own session, so the conversation hears of it only when the task ends:
-      // while a running row names no run, the board is read until it does, and the run's steps show as they happen.
-      const readWhileUnlinked = () => {
-        const unlinked = [...rows.values()].some((row) => row.status !== "completed" && row.status !== "errored" && row.status !== "cancelled" && row.run == null && !runs.has(row.id));
-        if (!unlinked) {
-          stopRead?.();
-          stopRead = undefined;
-        } else if (stopRead === undefined) {
-          stopRead = poll(
-            async () => {
-              const flow = flowOfSession.get(sessionId) ?? (await client.sessions.get(sessionId)).flowKind;
-              const listed = await client.flow(flow).read<{ ok: boolean; error?: string; tasks: Array<Record<string, any>> }>(LIST_TASKS, {}, { sessionId });
-              if (!listed.ok) throw new Error(listed.error);
-              return listed.tasks.flatMap((task) => (task.run?.sessionId === undefined ? [] : [[task.id as string, task.run] as const]));
-            },
-            (linked) => {
-              for (const [id, run] of linked) runs.set(id, run);
-              publish();
-              readWhileUnlinked();
-            },
-          );
-        }
-      };
+      // A run links itself, and a task settles, on its own session: the board's notice says so
+      // (FIX-2429). The topics are narrowed to the ledgers the read returns, so every notice on
+      // them is the board's: a reply streaming in the conversation never reaches them.
+      const stopBoard = onNotice(
+        client,
+        BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })),
+        () => true,
+        async () => {
+          const flow = flowOfSession.get(sessionId) ?? (await client.sessions.get(sessionId)).flowKind;
+          const read = await client.flow(flow).read<{ ok: boolean; error?: string; tasks: Array<Record<string, any>> }>(LIST_TASKS, {}, { sessionId });
+          if (!read.ok) throw new Error(read.error);
+          return read.tasks;
+        },
+        (tasks) => {
+          if (stopped) return;
+          listed = new Map(tasks.map((task) => [task.id as string, task]));
+          publish();
+        },
+      );
       const stopFeed = watchFeed(sessionId, boardRows, (read) => {
         rows = read;
         publish();
-        readWhileUnlinked();
       });
       return () => {
+        stopped = true;
         stopFeed();
-        stopRead?.();
+        stopBoard();
         for (const stop of runFeeds.values()) stop();
       };
     },
