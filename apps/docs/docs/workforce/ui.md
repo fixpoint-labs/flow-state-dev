@@ -45,13 +45,13 @@ Each session row shows the session's title, a mark for the state of its latest r
 | Mark | Label | Latest request |
 |------|------|----------------|
 | ● | Running | `in_progress` |
-| ◆ | Waiting on you | `suspended`, on a question or an approval for the person |
+| ◆ | Waiting on you | `suspended`, on a question or an approval for the user |
 | ◇ | Waiting | `suspended`, on other work, such as a reply from another worker |
 | ! | Interrupted | `interrupted` |
 | ✕ | Failed | `failed` |
 | ! | Incomplete | `incomplete` |
 
-A session whose latest request completed, one the person stopped, and one with no request yet show no mark. Every mark except Running and Waiting is drawn in `--fsd-nav-attention`, since those sessions need the person. A request still running or waiting counts as the latest, even when a later one has ended.
+A session whose latest request completed, one the user stopped, and one with no request yet show no mark. Every mark except Running and Waiting is drawn in `--fsd-nav-attention`, since those sessions need the user. A request still running or waiting counts as the latest, even when a later one has ended.
 
 With a `client` that has `subscribe`, as any client from `createClient` does, an open leaf's sessions stay current. A session created, titled or deleted, or a request starting or ending, shows up within about a second on a host that pushes and within a few seconds elsewhere, whether the change came from this tab, another one, a script or a CLI run. A change from another server process arrives that fast only on a [bus that crosses processes](/guides/realtime#one-process-several-processes). The list also reads again when the page becomes visible. A client you narrowed to `flows` and `sessions.list` reads the sessions once each time the leaf opens.
 
@@ -172,7 +172,7 @@ The components ship with no CSS framework and no icon set. Style them with:
 
 - **CSS custom properties** for colour, spacing and type: `--fsd-nav-*` for the navigator,
   `--fsd-panel-*` for the roster, the board columns and the board list. Set them on any ancestor.
-  `--fsd-nav-attention` colours the marks on session rows that need the person; it defaults to an orange.
+  `--fsd-nav-attention` colours the marks on session rows that need the user; it defaults to an orange.
 - **Slots** for the parts that are yours. The navigator's are `rowTrailing` at the end of a row, `leafToolbar` on an open leaf's row, `leafDetail` under an open leaf's row for content that doesn't fit on it, `sectionHeader` beside a section label, and `emptySection` for a section whose flow kinds your server doesn't have.
 
 The navigator draws a dashed line down from each open row, past the rows under it, and indents each level by the width of the expand arrow. `--fsd-nav-guide` sets the line colour. Set it to `transparent` to hide the lines.
