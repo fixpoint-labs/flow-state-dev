@@ -21,7 +21,7 @@
  *   `runGoal`.
  */
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -30,6 +30,7 @@ import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { foldOf, goalTmpDir, intentFreeEnv, onClosed, REPO_ROOT, refuseIfAnswering, runGoal, sleep, stopProcessGroup, type SessionReads } from "../lib/index.mts";
 import {
+  ASKS,
   cellsFor,
   checksFrom,
   gradeCoder,
@@ -133,7 +134,7 @@ export async function serveFsdev(options: { root: string; cwd: string; args?: st
   );
   const keep = (chunk: Buffer) => {
     log += chunk.toString();
-    writeFileSync(options.logTo, log);
+    appendFileSync(options.logTo, chunk);
   };
   child.stdout!.on("data", keep);
   child.stderr!.on("data", keep);
@@ -186,19 +187,22 @@ function restoreFrom(file: string, journal: Journal): void {
 }
 
 /**
- * Write `files` (absolute path → text) for the duration of `fn`, journaled under `key`, then put
- * each back as it was (removed when it did not exist, with any folder made
- * for it: an empty skill folder is a load error). The served tree is this
- * checkout or a scratch tree; either way it leaves as it came. What is to be
- * put back is journaled first, so a run killed before its `finally` is
- * undone by the next one.
+ * Write the files `plant` returns (absolute path → text) for the duration of
+ * `fn`, journaled under `key`, then put each back as it was (removed when it
+ * did not exist, with any folder made for it: an empty skill folder is a load
+ * error). The served tree is this checkout or a scratch tree; either way it
+ * leaves as it came. What is to be put back is journaled first, so a run
+ * killed before its `finally` is undone by the next one, before `plant`
+ * reads the tree.
  */
-async function planted<T>(key: string, files: Record<string, string>, fn: () => Promise<T>): Promise<T> {
+export async function planted<T>(key: string, plant: () => Record<string, string>, fn: () => Promise<T>): Promise<T> {
   const file = journalFile(key);
+  // Put back what a killed run left first: `plant` reads the tree it planted into.
   if (existsSync(file)) {
     console.error(`putting back what a killed run left planted (${file})`);
     restoreFrom(file, JSON.parse(readFileSync(file, "utf8")) as Journal);
   }
+  const files = plant();
   const journal: Journal = { before: {}, made: [] };
   for (const path of Object.keys(files)) {
     journal.before[path] = existsSync(path) ? readFileSync(path, "utf8") : null;
@@ -265,6 +269,8 @@ type Item = {
   content?: { text?: string }[];
   output?: unknown;
   toolCall?: { name?: string; arguments?: string };
+  status?: string;
+  error?: unknown;
 };
 
 /** Every message and tool item of a session, oldest first. */
@@ -406,6 +412,7 @@ export function turnOf(items: readonly Item[], askedAt: Date, answeredAt: Date):
       name: item.blockName ?? item.toolCall?.name ?? "(unnamed)",
       input: item.toolCall?.arguments ?? "",
       output: typeof item.output === "string" ? item.output : JSON.stringify(item.output ?? null),
+      ok: item.status !== "failed" && item.error == null,
     }));
   return { reply, tools, requests: 1, askedAt, answeredAt };
 }
@@ -499,7 +506,7 @@ const GRADE: Record<Ask, (turn: Turn, d: Draw, app: App) => Graded> = {
 /** The asks this run grades: the ones `driver.app` counts in on this pass, narrowed by `GOAL_ASKS` (comma-separated). */
 function asksFor(app: App, pass: Pass): Ask[] {
   const only = (process.env.GOAL_ASKS ?? "").split(",").filter(Boolean);
-  return (["date", "multiFile", "coder", "knowledge", "sizing", "skill", "fold"] as Ask[]).filter(
+  return ASKS.filter(
     (ask) => cellsFor(pass, ask).includes(app) && (only.length === 0 || only.includes(ask)),
   );
 }
@@ -530,7 +537,7 @@ export async function runClosure(driver: AppDriver): Promise<void> {
     for (let n = 1; n <= runs; n += 1) {
       const d = draw();
       const scratch = goalTmpDir(`closure-${driver.app}-${p.pass}-${n}`);
-      await planted(driver.app, driver.plant(d, p, scratch), async () => {
+      await planted(driver.app, () => driver.plant(d, p, scratch), async () => {
         const run = await driver.start(d, p, scratch);
         try {
           for (const ask of asks) {

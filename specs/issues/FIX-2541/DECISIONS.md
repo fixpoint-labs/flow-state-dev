@@ -119,8 +119,11 @@ lab fails. That re-opens FIX-2500 late, at wrap, by one issue.
 - **The Claude Code-style lab has no fold (read, Nov 4).** No `historySummary` anywhere under
   `labs/claude-code-style`; Teammates builds one in `host.mts`. This is the open question.
 
-**In flight, load-bearing:** the four app drivers are not built. The cut run cannot start
-until they are. See `poc/closure-asks/README.md`.
+- **The four app drivers are built (Nov 4).** `goals/closure-smarter-agents/<app>/run.mts`, one
+  per app, over the shared graders and `closure.mts`; `verdict/run.mts` reads a pass's sheets. One
+  real-model run of each non-coder ask reached every app's worker. The coder ask has not yet
+  passed on a host where Claude Code starts, and Kitchen Sink's docs asks wait on FIX-2496. The
+  POC in `poc/closure-asks/` stays as the retained evidence the graders came from.
 
 ## How it got here
 

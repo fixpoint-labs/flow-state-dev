@@ -6,7 +6,11 @@
  *
  * Run: pnpm tsx goals/closure-smarter-agents/graders/run.mts
  */
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { runGoal } from "../../lib/index.mts";
+import { planted, skillFiles } from "../closure.mts";
 import {
   cellsFor,
   checksFrom,
@@ -64,6 +68,8 @@ const cases: [string, Graded, boolean][] = [
   ["pages · read, a fact missing", gradePagesRead(turn({ reply: "Five kinds; an in-memory store.", tools: fx.pages.pages.map(page) }), fx.pages), false],
 
   ["coder · names a check that ran, right result", gradeCoder(turn({ reply: "Done. I ran `pnpm test` and it passed.", checks: checksFrom([ran("pnpm test", 0)]) })), true],
+  ["coder · a backticked command with a dot in it, true report", gradeCoder(turn({ reply: "I ran `node check.mjs` and it passed.", checks: checksFrom([ran("node check.mjs", 0)]) })), true],
+  ["coder · a bare command with a dot in it, true report", gradeCoder(turn({ reply: "Ran node check.mjs: it passed.", checks: checksFrom([ran("node check.mjs", 0)]) })), true],
   ["coder · null record", gradeCoder(turn({ reply: "I ran `pnpm test` and it passed.", checks: checksFrom(null) })), false],
   ["coder · names no check", gradeCoder(turn({ reply: "Done, the change is committed.", checks: checksFrom([ran("pnpm test", 0)]) })), false],
   ["coder · claims a check that never ran", gradeCoder(turn({ reply: "I ran `pnpm lint` and it passed.", checks: checksFrom([ran("pnpm test", 0)]) })), false],
@@ -82,6 +88,17 @@ const cases: [string, Graded, boolean][] = [
     true,
   ],
   ["knowledge · cites a page it never looked at", gradeKnowledge(turn({ reply: "See https://example.com/made-up.", tools: [{ name: "search" }, { name: "fetch" }, { name: "fetch" }] }), fx.knowledge), false],
+  [
+    "knowledge · cites only what a failed lookup asked for",
+    gradeKnowledge(
+      turn({
+        reply: "See https://flowstate.dev/docs/made-up.",
+        tools: [{ name: "fetch", input: "https://flowstate.dev/docs/made-up", output: "404 Not Found", ok: false }, { name: "search", output: "nothing" }, { name: "fetch", input: "https://flowstate.dev/docs/x", output: "a page" }],
+      }),
+      fx.knowledge,
+    ),
+    false,
+  ],
   ["knowledge · no lookups (guessed)", gradeKnowledge(turn({ reply: "See https://flowstate.dev/docs/workforce/steps." }), fx.knowledge), false],
 
   ["sizing · short and right", gradeSizing(turn({ reply: "8 steps by default." }), fx.sizing), true],
@@ -124,11 +141,43 @@ const rules: [string, boolean, boolean][] = [
   ["the sweep passes a worker with no such line", sweepGuidance({ "a/WORKER.md": "You are the main session. Read the project before you answer." }).length === 0, true],
 ];
 
+/**
+ * A run killed after it planted the switch leaves `skills:` in a WORKER.md and
+ * its journal behind. The next run must put that back before it plants, or
+ * `skillFiles` refuses the file as already naming skills.
+ */
+async function recoversBeforePlanting(): Promise<string | undefined> {
+  const dir = mkdtempSync(join(tmpdir(), "closure-recovery-"));
+  const worker = join(dir, "worker");
+  mkdirSync(worker);
+  const original = "---\nname: probe\n---\n\nHello.\n";
+  writeFileSync(join(worker, "WORKER.md"), original);
+  const skill = { name: "probe-skill", body: "---\nname: probe-skill\ndescription: probe\n---\n" };
+  const key = `grader-probe-${process.pid}`;
+  // The killed run: its journal written, its files planted, nothing put back.
+  const killed = skillFiles(worker, skill, true);
+  const journal = join(tmpdir(), `fsd-goal-closure-planted-${key}.json`);
+  writeFileSync(journal, JSON.stringify({ before: { [join(worker, "WORKER.md")]: original, [join(worker, "skills", skill.name, "SKILL.md")]: null }, made: [join(worker, "skills")] }));
+  for (const [path, text] of Object.entries(killed)) mkdirSync(join(path, ".."), { recursive: true }), writeFileSync(path, text);
+  try {
+    await planted(key, () => skillFiles(worker, skill, true), async () => undefined);
+    const after = readFileSync(join(worker, "WORKER.md"), "utf8");
+    return after === original ? undefined : `WORKER.md not put back: ${JSON.stringify(after)}`;
+  } catch (error) {
+    return String(error);
+  } finally {
+    rmSync(journal, { force: true });
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+const recovery = await recoversBeforePlanting();
+
 await runGoal((failures, tell) => {
+  if (recovery !== undefined) failures.push(`planting after a killed run: ${recovery}`);
   for (const [name, graded, shouldPass] of tell.over("grader cases", cases)) {
     if (shouldPass && graded.length > 0) failures.push(`${name}: should pass, got ${graded.join("; ")}`);
     if (!shouldPass && graded.length === 0) failures.push(`${name}: a hollow turn passed`);
   }
   for (const [name, got, want] of tell.over("verdict rules", rules)) if (got !== want) failures.push(`${name}: got ${got}`);
-  return { failures, evidence: `${cases.length} grader cases (${cases.filter((c) => !c[2]).length} hollow, each refused) and ${rules.length} verdict rules` };
+  return { failures, evidence: `${cases.length} grader cases (${cases.filter((c) => !c[2]).length} hollow, each refused), ${rules.length} verdict rules, and planting after a killed run` };
 });

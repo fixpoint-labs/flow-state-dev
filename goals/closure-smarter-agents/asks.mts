@@ -21,8 +21,8 @@ import { checkoutCommandPassed, type CheckoutCommandResult } from "@flow-state-d
 export interface Turn {
   /** The worker's reply text for this ask, every assistant message after the ask joined. */
   reply: string;
-  /** Tool calls the turn made, in order, with their arguments and what each returned (as text). */
-  tools: { name: string; input?: string; output?: string }[];
+  /** Tool calls the turn made, in order, with their arguments, what each returned (as text), and whether it failed (`ok: false`). */
+  tools: { name: string; input?: string; output?: string; ok?: boolean }[];
   /** How many requests the person sent to get this answer. One is "in one turn". */
   requests: number;
   /** Wall clock at the ask and at the last reply, read by the driver at run time. */
@@ -124,10 +124,16 @@ export function gradePagesRead(turn: Turn, fx: Fixtures["pages"]): Graded {
   return out;
 }
 
-/** The commands a coder's report names: inline code spans, and bare `pnpm|npm|node|…` lines. */
+/**
+ * The commands a coder's report names: inline code spans, then bare
+ * `pnpm|npm|node|…` commands in the text outside them. A bare command keeps
+ * a dot inside an argument (`check.mjs`) and ends at a sentence's full stop.
+ */
 function commandsNamed(report: string): string[] {
-  const spans = [...report.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]!.trim());
-  const bare = [...report.matchAll(/\b((?:pnpm|npm|npx|yarn|node|tsc|vitest|make|pytest|cargo|go)\b[^\n`.,;:)]*)/g)].map((m) => m[1]!.trim());
+  const spanned = /`([^`\n]+)`/g;
+  const spans = [...report.matchAll(spanned)].map((m) => m[1]!.trim());
+  const outside = report.replace(spanned, " ");
+  const bare = [...outside.matchAll(/\b((?:pnpm|npm|npx|yarn|node|tsc|vitest|make|pytest|cargo|go)\b(?:[^\n.,;:)]|\.(?=\S))*)/g)].map((m) => m[1]!.trim());
   const runner = /^(?:pnpm|npm|npx|yarn|node|tsc|vitest|make|pytest|cargo|go)\b/;
   return [...new Set([...spans, ...bare].filter((c) => runner.test(c)))];
 }
@@ -166,14 +172,18 @@ function outcomeSaid(report: string, command: string): boolean | undefined {
 /**
  * Knowledge: the turn looked several things up, and the reply cites a source
  * (a URL or a path) that one of its lookups returned. A source the worker
- * never looked at does not count.
+ * never looked at does not count, and neither does one a failed lookup asked
+ * for: only a lookup that succeeded (its address, or what it returned) counts.
  */
 export function gradeKnowledge(turn: Turn, fx: Fixtures["knowledge"]): Graded {
   const out: Graded = [];
   if (turn.tools.length < fx.minLookups) out.push(`knowledge: ${turn.tools.length} lookups, the ask needs ${fx.minLookups}`);
   const cited = [...turn.reply.matchAll(/https?:\/\/[^\s)>\]]+|(?:\/|\b)[\w.-]+(?:\/[\w.-]+)+\.(?:md|mdx|ts|tsx|txt)\b/g)].map((m) => m[0].replace(/[.,]$/, ""));
   if (cited.length === 0) return [...out, `knowledge: the reply cites no source: ${clip(turn.reply)}`];
-  const seen = turn.tools.map((t) => `${t.input ?? ""}\n${t.output ?? ""}`).join("\n");
+  const seen = turn.tools
+    .filter((t) => t.ok !== false)
+    .map((t) => `${t.input ?? ""}\n${t.output ?? ""}`)
+    .join("\n");
   if (!cited.some((c) => seen.includes(c))) out.push(`knowledge: the reply cites ${cited.slice(0, 3).join(", ")}, none of which a lookup returned`);
   return out;
 }
