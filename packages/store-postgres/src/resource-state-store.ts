@@ -26,7 +26,9 @@
  * markers in `resource_index_built`. Each write's index upkeep rides the
  * write's own statement as data-modifying CTEs gated on the write having
  * landed, so a row and its entries commit together or not at all, with no
- * transaction and on any executor. The rule is on `ResourceStateIndexes`.
+ * transaction and on any executor. A landed `set` then sweeps the markers its
+ * statement's snapshot could not see, in a second statement. The rule is on
+ * `ResourceStateIndexes`.
  */
 
 import { randomUUID } from "node:crypto";
@@ -87,11 +89,26 @@ function indexUpkeep(source: string, base: number): string {
    fsd_markers_cleared AS (
      DELETE FROM resource_index_built b
       WHERE ${landed}
-        AND b.scope_type = ${scopeType}::text AND b.scope_id = ${scopeId}::text
+        AND ${unlistedMarkers(scopeType, scopeId, key, listedCollections, listedIndexes)}
+   )`;
+}
+
+/**
+ * The predicate on `resource_index_built b` picking the markers a write of
+ * `key` must clear: those whose index covers the key and that the write did
+ * not list. Shared by the in-statement CTE and the post-write sweep in `set`.
+ */
+function unlistedMarkers(
+  scopeType: string,
+  scopeId: string,
+  key: string,
+  listedCollections: string,
+  listedIndexes: string
+): string {
+  return `b.scope_type = ${scopeType}::text AND b.scope_id = ${scopeId}::text
         AND ${key}::text ~ b.key_regex
         AND NOT EXISTS (SELECT 1 FROM unnest(${listedCollections}::text[], ${listedIndexes}::text[]) AS l(c, i)
-                         WHERE l.c = b.collection AND l.i = b.index_name)
-   )`;
+                         WHERE l.c = b.collection AND l.i = b.index_name)`;
 }
 
 /** The parameters {@link indexUpkeep} reads, for a write of `key` listing `entries`. */
@@ -148,6 +165,155 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
     return row === undefined ? undefined : parseRow(row);
   };
 
+  /** The write itself, one statement per path; `set` adds the marker sweep. */
+  const writeState = async (
+    scopeType: StorageScopeType,
+    scopeId: string,
+    resourceKey: string,
+    state: JsonObject,
+    expectedVersion: ExpectedVersion,
+    options?: ResourceStateSetOptions
+  ): Promise<SetResult<JsonObject>> => {
+    assertSetExpectedVersion(expectedVersion);
+    const payload = JSON.stringify(state);
+    const upkeep = upkeepParams(scopeType, scopeId, resourceKey, options?.indexEntries ?? []);
+
+    if (expectedVersion === "any") {
+      // The bump happens IN the statement, not from a prior read: a
+      // read-then-write here is not atomic, and two concurrent `"any"`
+      // writers would both compute the same next version and both commit it.
+      // The loser would then hold a version naming the winner's row, and its
+      // next CAS write would sail through and clobber it — the exact lost
+      // update this store exists to stop, on the one path every caller uses
+      // until the registry driver lands.
+      const written = await executor.query(
+        `WITH w AS (
+           INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
+           VALUES ($1, $2, $3, $4::jsonb, 1, 'live')
+           ON CONFLICT (scope_type, scope_id, resource_key) DO UPDATE SET
+             state = EXCLUDED.state,
+             version = resource_state.version + 1,
+             lifecycle = 'live'
+           RETURNING version
+         ),
+         ${indexUpkeep("w", 5)}
+         SELECT version FROM w`,
+        [scopeType, scopeId, resourceKey, payload, ...upkeep]
+      );
+      return { ok: true, version: Number(written.rows[0]!.version) };
+    }
+
+    if (expectedVersion === "absent") {
+      // "No row at all" is the insert, and nothing else: the PK arbitrates,
+      // and `DO NOTHING` turns any existing row — live OR tombstoned — into
+      // zero rows. That is the whole difference from the `0` branch below,
+      // which goes on to revive a tombstone. Deliberately one statement: a
+      // read-then-insert would let a delete land in between and put the
+      // write back on the resurrection path this exists to close.
+      //
+      // The conflicting row comes back from the SAME statement, because a
+      // separate read afterwards is a time-of-check/time-of-use split: an
+      // explicit `create()` at `0` can revive the key in between, and the
+      // read would then describe a LIVE row where a tombstone did the
+      // refusing. `runResourceCAS` reads a conflict carrying a current value
+      // as retryable, so it would re-run the mutator and apply it to the
+      // recreated generation instead of throwing `ResourceDeletedError` —
+      // the write landing on a delete, which is the whole thing `"absent"`
+      // exists to stop.
+      const attempt = await executor.query(
+        `WITH ins AS (
+           INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
+           VALUES ($1, $2, $3, $4::jsonb, 1, 'live')
+           ON CONFLICT (scope_type, scope_id, resource_key) DO NOTHING
+           RETURNING version, state, lifecycle
+         ),
+         ${indexUpkeep("ins", 5)}
+         SELECT version, state, lifecycle, true AS inserted FROM ins
+         UNION ALL
+         SELECT version, state, lifecycle, false AS inserted
+           FROM resource_state
+          WHERE scope_type = $1 AND scope_id = $2 AND resource_key = $3
+            AND NOT EXISTS (SELECT 1 FROM ins)`,
+        [scopeType, scopeId, resourceKey, payload, ...upkeep]
+      );
+      const attempted = attempt.rows[0] as (RawRow & { inserted: boolean }) | undefined;
+      if (attempted === undefined) {
+        // No arm produced a row, which happens in exactly one case: the
+        // conflicting row was committed by another transaction AFTER this
+        // statement's snapshot, so the unique index refused the insert while
+        // the `UNION` arm — reading under that snapshot — could not see it.
+        // That is a racing first insert, not the revive above: a tombstone
+        // old enough to refuse us predates the snapshot and is visible to
+        // both arms. Nothing atomic is available here, so re-read.
+        return resourceStateConflict(await readRow(scopeType, scopeId, resourceKey));
+      }
+      if (attempted.inserted) return { ok: true, version: 1 };
+      return resourceStateConflict(parseRow(attempted));
+    }
+
+    if (expectedVersion === 0) {
+      // No row at all: a plain insert at version 1. `DO NOTHING` makes a lost
+      // race report zero rows rather than overwriting the winner.
+      const inserted = await executor.query(
+        `WITH w AS (
+           INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
+           VALUES ($1, $2, $3, $4::jsonb, 1, 'live')
+           ON CONFLICT (scope_type, scope_id, resource_key) DO NOTHING
+           RETURNING version
+         ),
+         ${indexUpkeep("w", 5)}
+         SELECT version FROM w`,
+        [scopeType, scopeId, resourceKey, payload, ...upkeep]
+      );
+      if (inserted.rows.length > 0) return { ok: true, version: 1 };
+
+      // A row exists. Recreating over a tombstone continues from its version,
+      // so a version is never reused; a live row is a conflict.
+      const current = await readRow(scopeType, scopeId, resourceKey);
+      if (current === undefined || current.lifecycle === "live") {
+        return resourceStateConflict(current);
+      }
+      const nextVersion = current.version + 1;
+      // Fence on the tombstone version this call actually observed. Without
+      // it the predicate says only "still not live", so a revive that raced
+      // another revive-plus-delete would write a version the other
+      // generation already used — reusing a version is precisely what the
+      // retained tombstone exists to prevent.
+      const revived = await executor.query(
+        `WITH w AS (
+           UPDATE resource_state SET state = $1::jsonb, version = $2, lifecycle = 'live'
+           WHERE scope_type = $3 AND scope_id = $4 AND resource_key = $5
+             AND lifecycle <> 'live' AND version = $6
+           RETURNING version
+         ),
+         ${indexUpkeep("w", 7)}
+         SELECT version FROM w`,
+        [payload, nextVersion, scopeType, scopeId, resourceKey, current.version, ...upkeep]
+      );
+      if (revived.rows.length === 0) {
+        return resourceStateConflict(await readRow(scopeType, scopeId, resourceKey));
+      }
+      return { ok: true, version: nextVersion };
+    }
+
+    const nextVersion = expectedVersion + 1;
+    const updated = await executor.query(
+      `WITH w AS (
+         UPDATE resource_state SET state = $1::jsonb, version = $2, lifecycle = 'live'
+         WHERE scope_type = $3 AND scope_id = $4 AND resource_key = $5
+           AND version = $6 AND lifecycle = 'live'
+         RETURNING version
+       ),
+       ${indexUpkeep("w", 7)}
+       SELECT version FROM w`,
+      [payload, nextVersion, scopeType, scopeId, resourceKey, expectedVersion, ...upkeep]
+    );
+    if (updated.rows.length === 0) {
+      return resourceStateConflict(await readRow(scopeType, scopeId, resourceKey));
+    }
+    return { ok: true, version: nextVersion };
+  };
+
   return {
     async get(
       scopeType: StorageScopeType,
@@ -167,144 +333,31 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       expectedVersion: ExpectedVersion,
       options?: ResourceStateSetOptions
     ): Promise<SetResult<JsonObject>> {
-      assertSetExpectedVersion(expectedVersion);
-      const payload = JSON.stringify(state);
-      const upkeep = upkeepParams(scopeType, scopeId, resourceKey, options?.indexEntries ?? []);
-
-      if (expectedVersion === "any") {
-        // The bump happens IN the statement, not from a prior read: a
-        // read-then-write here is not atomic, and two concurrent `"any"`
-        // writers would both compute the same next version and both commit it.
-        // The loser would then hold a version naming the winner's row, and its
-        // next CAS write would sail through and clobber it — the exact lost
-        // update this store exists to stop, on the one path every caller uses
-        // until the registry driver lands.
-        const written = await executor.query(
-          `WITH w AS (
-             INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
-             VALUES ($1, $2, $3, $4::jsonb, 1, 'live')
-             ON CONFLICT (scope_type, scope_id, resource_key) DO UPDATE SET
-               state = EXCLUDED.state,
-               version = resource_state.version + 1,
-               lifecycle = 'live'
-             RETURNING version
-           ),
-           ${indexUpkeep("w", 5)}
-           SELECT version FROM w`,
-          [scopeType, scopeId, resourceKey, payload, ...upkeep]
+      const result = await writeState(scopeType, scopeId, resourceKey, state, expectedVersion, options);
+      if (result.ok) {
+        // The sweep: a second statement, so a fresh snapshot under READ
+        // COMMITTED. The write's own statement clears the markers it can see,
+        // but not one a `beginBuild` committed after that statement's
+        // snapshot was taken (while it waited on the row lock, say). A build
+        // behind such a marker may have scanned the row before the write
+        // committed and marked itself built without it. Every marker committed
+        // before the write is visible here, and a build that begins after
+        // this statement scans after the write committed, so between them no
+        // build can be left built without the row. See `ResourceStateIndexes`.
+        const listed = options?.indexEntries ?? [];
+        await executor.query(
+          `DELETE FROM resource_index_built b
+            WHERE ${unlistedMarkers("$1", "$2", "$3", "$4", "$5")}`,
+          [
+            scopeType,
+            scopeId,
+            resourceKey,
+            listed.map((entry) => entry.collection),
+            listed.map((entry) => entry.index)
+          ]
         );
-        return { ok: true, version: Number(written.rows[0]!.version) };
       }
-
-      if (expectedVersion === "absent") {
-        // "No row at all" is the insert, and nothing else: the PK arbitrates,
-        // and `DO NOTHING` turns any existing row — live OR tombstoned — into
-        // zero rows. That is the whole difference from the `0` branch below,
-        // which goes on to revive a tombstone. Deliberately one statement: a
-        // read-then-insert would let a delete land in between and put the
-        // write back on the resurrection path this exists to close.
-        //
-        // The conflicting row comes back from the SAME statement, because a
-        // separate read afterwards is a time-of-check/time-of-use split: an
-        // explicit `create()` at `0` can revive the key in between, and the
-        // read would then describe a LIVE row where a tombstone did the
-        // refusing. `runResourceCAS` reads a conflict carrying a current value
-        // as retryable, so it would re-run the mutator and apply it to the
-        // recreated generation instead of throwing `ResourceDeletedError` —
-        // the write landing on a delete, which is the whole thing `"absent"`
-        // exists to stop.
-        const attempt = await executor.query(
-          `WITH ins AS (
-             INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
-             VALUES ($1, $2, $3, $4::jsonb, 1, 'live')
-             ON CONFLICT (scope_type, scope_id, resource_key) DO NOTHING
-             RETURNING version, state, lifecycle
-           ),
-           ${indexUpkeep("ins", 5)}
-           SELECT version, state, lifecycle, true AS inserted FROM ins
-           UNION ALL
-           SELECT version, state, lifecycle, false AS inserted
-             FROM resource_state
-            WHERE scope_type = $1 AND scope_id = $2 AND resource_key = $3
-              AND NOT EXISTS (SELECT 1 FROM ins)`,
-          [scopeType, scopeId, resourceKey, payload, ...upkeep]
-        );
-        const attempted = attempt.rows[0] as (RawRow & { inserted: boolean }) | undefined;
-        if (attempted === undefined) {
-          // No arm produced a row, which happens in exactly one case: the
-          // conflicting row was committed by another transaction AFTER this
-          // statement's snapshot, so the unique index refused the insert while
-          // the `UNION` arm — reading under that snapshot — could not see it.
-          // That is a racing first insert, not the revive above: a tombstone
-          // old enough to refuse us predates the snapshot and is visible to
-          // both arms. Nothing atomic is available here, so re-read.
-          return resourceStateConflict(await readRow(scopeType, scopeId, resourceKey));
-        }
-        if (attempted.inserted) return { ok: true, version: 1 };
-        return resourceStateConflict(parseRow(attempted));
-      }
-
-      if (expectedVersion === 0) {
-        // No row at all: a plain insert at version 1. `DO NOTHING` makes a lost
-        // race report zero rows rather than overwriting the winner.
-        const inserted = await executor.query(
-          `WITH w AS (
-             INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
-             VALUES ($1, $2, $3, $4::jsonb, 1, 'live')
-             ON CONFLICT (scope_type, scope_id, resource_key) DO NOTHING
-             RETURNING version
-           ),
-           ${indexUpkeep("w", 5)}
-           SELECT version FROM w`,
-          [scopeType, scopeId, resourceKey, payload, ...upkeep]
-        );
-        if (inserted.rows.length > 0) return { ok: true, version: 1 };
-
-        // A row exists. Recreating over a tombstone continues from its version,
-        // so a version is never reused; a live row is a conflict.
-        const current = await readRow(scopeType, scopeId, resourceKey);
-        if (current === undefined || current.lifecycle === "live") {
-          return resourceStateConflict(current);
-        }
-        const nextVersion = current.version + 1;
-        // Fence on the tombstone version this call actually observed. Without
-        // it the predicate says only "still not live", so a revive that raced
-        // another revive-plus-delete would write a version the other
-        // generation already used — reusing a version is precisely what the
-        // retained tombstone exists to prevent.
-        const revived = await executor.query(
-          `WITH w AS (
-             UPDATE resource_state SET state = $1::jsonb, version = $2, lifecycle = 'live'
-             WHERE scope_type = $3 AND scope_id = $4 AND resource_key = $5
-               AND lifecycle <> 'live' AND version = $6
-             RETURNING version
-           ),
-           ${indexUpkeep("w", 7)}
-           SELECT version FROM w`,
-          [payload, nextVersion, scopeType, scopeId, resourceKey, current.version, ...upkeep]
-        );
-        if (revived.rows.length === 0) {
-          return resourceStateConflict(await readRow(scopeType, scopeId, resourceKey));
-        }
-        return { ok: true, version: nextVersion };
-      }
-
-      const nextVersion = expectedVersion + 1;
-      const updated = await executor.query(
-        `WITH w AS (
-           UPDATE resource_state SET state = $1::jsonb, version = $2, lifecycle = 'live'
-           WHERE scope_type = $3 AND scope_id = $4 AND resource_key = $5
-             AND version = $6 AND lifecycle = 'live'
-           RETURNING version
-         ),
-         ${indexUpkeep("w", 7)}
-         SELECT version FROM w`,
-        [payload, nextVersion, scopeType, scopeId, resourceKey, expectedVersion, ...upkeep]
-      );
-      if (updated.rows.length === 0) {
-        return resourceStateConflict(await readRow(scopeType, scopeId, resourceKey));
-      }
-      return { ok: true, version: nextVersion };
+      return result;
     },
 
     async delete(

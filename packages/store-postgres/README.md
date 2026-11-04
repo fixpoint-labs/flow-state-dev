@@ -137,7 +137,7 @@ The schema uses:
 | `request_items` | `(request_id, item_id)` | Output items produced by a request (one row per item) |
 | `wakes` | `(tenant_key, session_id, entry)` | When pending work in a session falls due, read by the durability sweeper ([Wakes](https://flow-state.dev/docs/advanced/durable-execution#wakes)); indexed on `due_at` |
 
-Every resource state write keeps `resource_index` and `resource_index_built` in step in the same statement, so a database used with `skipSchemaInit: true` must already have them: run `initializeSchema` against it with this version first.
+Every resource state write keeps `resource_index` and `resource_index_built` in step in the same statement. A `set` that lands then runs one more statement, which clears the build markers of indexes covering its key that it did not list: a marker committed while the write waited on a row lock is invisible to the write's own statement, and a build behind it could otherwise finish without the row. That is one extra round trip per successful `set`. Because the write touches both tables, a database used with `skipSchemaInit: true` must already have them: run `initializeSchema` against it with this version first.
 
 ### Instance ownership
 
