@@ -52,7 +52,7 @@ proves it is the matrix itself plus a red run of each control.
 |---|---|
 | **Check** | `labs/claude-code-style/test/contract/` and `labs/teammates/test/contract/`, run by each lab's `pnpm test` (so CI) |
 | **Signal** | Each lab: 5 scenarios × 2 columns (fake, real) pass, except the named known gaps, which fail as expected |
-| **Input** | A scripted model (`createMockModelResolver`) and harness-manager's scripted coder; the asks are plain sentences no worker file names. Another ask with the same shape passes |
+| **Input** | A scripted step model (`labs/test-support/contract.ts`) and harness-manager's scripted coder; the asks are plain sentences no worker file names. Another ask with the same shape passes |
 | **Anti-game** | No assertion on item ids, timings or raw item shapes; the two columns share every assertion, so neither can be written to its own column's output |
 | **Controls that must fail** | One per scenario on the real column, each a one-line mutation of the package or host: answerAgain off (mid-turn result), the error item dropped from the stream (failed turn, once its gap closes), the hold's prompt dropped (held question), the abort not sent (stop), the fetch plug left in (lapsed feed); and one on the fake column (its hold drawn without a prompt). The implementation PR shows each red run |
 
@@ -93,7 +93,7 @@ flowchart LR
 
 | Scenario | Claude Code-style | Teammates |
 |---|---|---|
-| **Mid-turn result** | A background task settles while the main turn runs: a result entry with `duringTurn: true`, then text after it in that turn | Chief of Staff's task settles: a `result` entry under the worker that ran it, and the task row reads `done` |
+| **Mid-turn result** | A background task settles while the main turn runs: a result entry with `duringTurn: true`, then text after it in that turn | Chief of Staff's coding task waits for review; once accepted, a `result` entry under the worker that ran it, and the task row reads `done` (Teammates takes a result as a turn of its own) |
 | **Failed turn** | The model call fails: the thread stops running and shows the failure | Same, in the conversation |
 | **Held question and answer** | A thread's task holds on a question: `waitingOn` names it; `sayInThread` answers; the hold clears and the task runs on | A task holds on a question: `waiting` names it; `answerTask` answers; it clears |
 | **Stop** | `interrupt` during a running turn: the thread stops running | `taskActions(s).cancel` on a running task: it reads `cancelled` (Teammates has no turn stop until FIX-2375) |
@@ -108,8 +108,9 @@ flowchart LR
   adapter contradicts.
 - The goal checks under `goals/claude-code-style-lab/` and `goals/teammates-lab/`, which still
   prove the labs on a real model in a browser.
-- Every package. Nothing in `@flow-state-dev/testing` or the engine changes: `createInProcessFetch`
-  and `createMockModelResolver` already do what the host needs.
+- Every package. Nothing in `@flow-state-dev/testing` or the engine changes. The one shared
+  test piece, a step-capable scripted model and a plug on the fetch, lives in
+  `labs/test-support/contract.ts`, with no imports, so both labs load it.
 - The served labs: same flows, same store, same environment variables.
 
 ## What's already here, and the debt
@@ -117,7 +118,7 @@ flowchart LR
 | Already here | What this does with it |
 |---|---|
 | `createInProcessFetch` (engine), used by Kitchen Sink's and workforce's tests | **Builds on**: the real adapters' client fetcher |
-| `createMockModelResolver` / `mockGenerator` (testing), used by workforce's `conversation-board-harness.ts` | **Builds on**: scripts the workers' turns and tool calls |
+| `createMockModelResolver` / `mockGenerator` (testing) | **Leaves alone**: it runs a turn's whole tool loop in one call, so a script can't wait between steps (file a task, wait for it to settle, then write). The labs' scripted model answers one step per call (`generateStep`), which the framework's own tool loop drives |
 | harness-manager's scripted coder (`scriptedStepMs`) | **Builds on**: coding tasks with no model or sign-in |
 | `openTeammates(options)` in `labs/teammates/host.mts` | **Extends**: an optional `modelResolver` |
 | Claude Code-style's host, inline in `fsdev.config.mts` | **Replaces** with `openLab(options)` in `host.mts`; the config keeps the environment reads |
