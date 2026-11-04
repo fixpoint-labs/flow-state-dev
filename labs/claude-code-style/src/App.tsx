@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { LabAdapter, ProjectRow, SessionRow } from "./adapter";
+import type { LabAdapter, ProjectRow, SessionRow, TaskRow } from "./adapter";
 import { PaneResizer } from "./components/PaneResizer";
 import { ProjectPicker } from "./components/ProjectPicker";
 import { SheetArea, SheetProvider } from "./components/Sheet";
@@ -23,7 +23,9 @@ import { modeOfWorker, type ModeId } from "./modes";
  * and stays across reloads (`usePaneWidth`). The app opens in the Sessions view on
  * *New session*, which asks for a project before the composer opens, unless
  * the page's address names what was open (`lib/address`): a reload, a link and
- * Back reopen the view, the session and the task open in its pane.
+ * Back reopen the view, the session and the task open in its pane. A line in
+ * the main thread that names a task opens it too, the same way: one open task
+ * per session, whichever side it was opened from.
  *
  * Keys (`useLabKeys`): ⌘K switches to any session, Alt+↑/↓ steps through the
  * view's sessions, `/` puts the cursor in the composer, `?` lists the keys.
@@ -146,6 +148,14 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const inView = sessions.filter((s) => modeOfWorker(s.worker)?.id === view);
 
   const selected = inView.find((s) => s.id === selectedId);
+  // The open session's task rows, read once for the main thread and its pane (FIX-2399 E1). Each read
+  // carries the session it was read for, so a switch never hands one session the last one's rows.
+  const read = useWatch(
+    (emit: (read: { sessionId: string; rows: TaskRow[] }) => void) =>
+      selected === undefined ? () => undefined : adapter.watchTasks(selected.id, (rows) => emit({ sessionId: selected.id, rows })),
+    [adapter, selected?.id],
+  );
+  const taskRows = selected !== undefined && read?.sessionId === selected.id ? read.rows : undefined;
   useLabKeys({
     palette: () => setSwitching((open) => !open),
     step: (by) => {
@@ -179,6 +189,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
               adapter={adapter}
               session={selected}
               project={projects.find((p) => p.id === selected.projectId)}
+              tasks={taskRows}
               onOpenThread={(taskId) => openTaskOf(selected.id, taskId)}
             />
           ) : (
@@ -200,6 +211,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
               key={selected.id}
               adapter={adapter}
               sessionId={selected.id}
+              tasks={taskRows}
               openId={openTask[selected.id]}
               onOpen={(taskId) => openTaskOf(selected.id, taskId)}
               onMissing={() => dropMissing(selected.id)}
@@ -210,6 +222,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
               key={selected.id}
               adapter={adapter}
               sessionId={selected.id}
+              tasks={taskRows}
               openId={openTask[selected.id]}
               onOpen={(taskId) => openTaskOf(selected.id, taskId)}
               onMissing={() => dropMissing(selected.id)}

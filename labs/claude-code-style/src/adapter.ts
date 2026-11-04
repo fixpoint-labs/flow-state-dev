@@ -60,7 +60,7 @@ import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
 import { projectIdOf, refuseExisting } from "./lib/new-project";
 import { waitingOnYou } from "./lib/columns";
 import { resultSummary } from "./lib/result-summary";
-import { toolRun, type ToolCallOf, type ToolRun } from "./lib/tool-steps";
+import { filedTaskOf, toolRun, type ToolCallOf, type ToolRun } from "./lib/tool-steps";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
@@ -369,12 +369,8 @@ function callOf(item: Item): ToolCallOf {
   return { id: item.id, name: item.toolCall?.name ?? item.blockName ?? "tool", args, status, ...(status === "done" ? { output: item.output } : {}) };
 }
 
-/** The task a `createTask` call filed, from its output, or undefined for any other tool or a refused call. */
-function filedTaskOf(item: Item): string | undefined {
-  if (item.blockName !== "createTask") return undefined;
-  const output = item.output as { ok?: boolean; taskId?: unknown } | undefined;
-  return output?.ok === true && typeof output.taskId === "string" ? output.taskId : undefined;
-}
+/** The task a `createTask` item filed (`filedTaskOf`, the rule its start line reads too), or undefined. */
+const filedTaskOfItem = (item: Item): string | undefined => (item.type === "tool_output" ? filedTaskOf(callOf(item)) : undefined);
 
 /**
  * A thread's entries, from its items in order. A result is the line the main session took a task's ending as,
@@ -386,12 +382,12 @@ function filedTaskOf(item: Item): string | undefined {
 export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[] {
   // A turn a user's line started holds that line; a notice's own turn holds none.
   const userTurns = new Set(items.filter((item) => item.type === "message" && item.role === "user").map((item) => item.requestId));
-  const filingTurns = new Set(items.filter((item) => filedTaskOf(item) !== undefined).map((item) => item.requestId));
+  const filingTurns = new Set(items.filter((item) => filedTaskOfItem(item) !== undefined).map((item) => item.requestId));
   const entries: ThreadEntry[] = [];
   const runs = new Map<string, ToolCallOf[]>();
   for (const item of items) {
     const requestId = item.requestId;
-    const filed = threads ? filedTaskOf(item) : undefined;
+    const filed = threads ? filedTaskOfItem(item) : undefined;
     if (filed !== undefined) {
       entries.push({ kind: "thread", id: item.id, taskId: filed, requestId });
       continue;
@@ -1009,7 +1005,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
     // so every notice on them is the board's, and a reply streaming in the session never wakes it.
     watchTasks: (sessionId, onChange) =>
       onNotice(fsd, BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })), () => true, () => boardOf(sessionId), onChange, TASKS_EVERY_MS),
-    // Shown only inside the tasks pane or the threads board, whose watch keeps `runSessionOf` current.
+    // Shown only inside the tasks pane or the threads board, whose rows the app's `watchTasks` reads, which keeps `runSessionOf` current.
     watchTaskWork: (_sessionId, taskId, onChange) => {
       // The task's run session is known once the board has listed it, and a re-run moves it: follow
       // whichever session the board names now, from the moment a list names it, and show no work

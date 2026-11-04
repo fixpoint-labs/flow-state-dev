@@ -458,6 +458,58 @@ describe("the session-mode screen", () => {
     expect(screen.getByRole("dialog", { name: "Work: Research Acme" })).toBeTruthy();
   });
 
+  it("opens a task from its result line in the pane's sheet, and opens Done to show its row marked", async () => {
+    render(<App adapter={fast()} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    const result = await within(thread()).findByRole("region", { name: "Background result: Research Acme" });
+    await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"));
+    const done = within(pane()).getByText(/Done · 1/).closest("details")!;
+    expect(done.open).toBe(false);
+
+    fireEvent.click(within(result).getByRole("button", { name: "Open task" }));
+    expect(screen.getByRole("dialog", { name: "Work: Research Acme" })).toBeTruthy();
+    // One selection: the pane marks the same row, and its shut Done group opens to show it.
+    await waitFor(() => expect(done.open).toBe(true));
+    expect(within(done).getByRole("button", { name: /Research Acme/ }).getAttribute("aria-expanded")).toBe("true");
+    // The fold still opens to the reply.
+    fireEvent.click(within(result).getByRole("button", { name: /Research Acme/ }));
+    expect(within(result).getByRole("button", { name: /Research Acme/ }).getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("opens a task from the line where the main session started it, with the task's status on its dot", async () => {
+    render(<App adapter={fast()} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("in_progress"));
+    const start = within(thread())
+      .getAllByText(/Start a task: Research Globex/)
+      .map((el) => el.closest("[data-task-id]") as HTMLElement | null)
+      .find((el) => el !== null)!;
+    expect(start.querySelector("[data-task-dot]")!.getAttribute("aria-label")).toBe("running");
+    fireEvent.click(within(start).getByRole("button", { name: "Open task" }));
+    expect(screen.getByRole("dialog", { name: "Work: Research Globex" })).toBeTruthy();
+    expect(row("Research Globex").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("reads a session's task rows once, for the main thread and the pane together, in either mode", async () => {
+    const lab = fast();
+    const reads: string[] = [];
+    const counted = { ...lab, watchTasks: (sessionId: string, onChange: (rows: never[]) => void) => (reads.push(sessionId), lab.watchTasks(sessionId, onChange)) };
+    render(<App adapter={counted as typeof lab} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await within(thread()).findByRole("region", { name: "Background result: Research Acme" });
+    // Threads mode: its main thread draws cards from the rows its board lists.
+    fireEvent.click(within(screen.getByRole("tablist", { name: "View" })).getByRole("tab", { name: "Projects" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ New session" }));
+    await pick();
+    await ask("Research three vendors for a status page, one thread each.");
+    await waitFor(() => expect(within(thread()).getAllByRole("region", { name: /^Task: / }).length).toBeGreaterThan(0));
+    expect(new Set(reads).size).toBe(2);
+    expect(reads).toHaveLength(2);
+  });
+
   it("queues a line sent while a turn runs, and runs it after", async () => {
     render(<App adapter={createFakeLab({ speed: 0.2 })} />);
     await pick();

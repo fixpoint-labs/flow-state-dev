@@ -128,6 +128,24 @@ describe("the page's address", () => {
     expect(params().get("task")).toBeTruthy();
   });
 
+  it("names a task opened from the main thread in the address, as a pick in the pane does: Back closes it, a reload reopens it", async () => {
+    const adapter = createFakeLab({ speed: 0.01 });
+    render(<App adapter={adapter} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    const result = await within(thread()).findByRole("region", { name: "Background result: Research Acme" });
+    const open = await within(result).findByRole("button", { name: "Open task" });
+    fireEvent.click(open);
+    expect(screen.getByRole("dialog", { name: "Work: Research Acme" })).toBeTruthy();
+    await waitFor(() => expect(params().get("task")).toBe(result.dataset.taskId));
+
+    reload(adapter);
+    expect(await screen.findByRole("dialog", { name: "Work: Research Acme" })).toBeTruthy();
+    await back();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Work: Research Acme" })).toBeNull());
+    expect(params().has("task")).toBe(false);
+  });
+
   it("opens the default screen on a link whose session is gone, and drops the dead id from the address", async () => {
     window.history.replaceState(null, "", "/?session=session-gone&task=task-gone");
     render(<App adapter={createFakeLab({ speed: 0.01 })} />);

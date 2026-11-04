@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LabAdapter, TaskRow, TaskStatus } from "../adapter";
 import { TASK_STATUS } from "../lib/task-status";
 import { useMissing, useWatch } from "../lib/use-watch";
@@ -21,24 +21,28 @@ const FINISHED: ReadonlySet<TaskStatus> = new Set(["completed", "errored", "canc
  * task on its board (FIX-2382 D1, which amends FIX-2153 D2's read-only pane):
  * Cancel, Steer, Release or Retry, by its status. Asking the main session to
  * stop or steer a task still works too. Running and waiting tasks show as
- * cards; finished ones fold into a *Done* group, collapsed until you open it.
+ * cards; finished ones fold into a *Done* group, collapsed until you open it,
+ * or until the open task is one of them: then it opens, and the marked row
+ * scrolls into view, wherever the task was opened from.
  */
 export function TasksPane({
   adapter,
   sessionId,
+  tasks: listed,
   openId,
   onOpen,
   onMissing,
 }: {
   adapter: LabAdapter;
   sessionId: string;
+  /** The session's task rows, as the app reads them; `undefined` until read. */
+  tasks: TaskRow[] | undefined;
   /** The task whose sheet is open, kept by the app so the page's address can name it. */
   openId: string | undefined;
   onOpen: (taskId: string | undefined) => void;
   /** `openId` names no task of this session's, once its tasks are read. */
   onMissing: () => void;
 }) {
-  const listed = useWatch((emit: (rows: TaskRow[]) => void) => adapter.watchTasks(sessionId, emit), [adapter, sessionId]);
   const tasks = listed ?? [];
   const close = useCallback(() => onOpen(undefined), [onOpen]);
   const open = tasks.find((t) => t.id === openId);
@@ -46,6 +50,17 @@ export function TasksPane({
   const active = tasks.filter((t) => !FINISHED.has(t.status));
   const done = tasks.filter((t) => FINISHED.has(t.status));
   const toggle = (id: string) => onOpen(openId === id ? undefined : id);
+  // Done opens when the open task is in it, however it was opened; you can still shut it.
+  const [doneOpen, setDoneOpen] = useState(false);
+  const openInDone = done.some((t) => t.id === openId) ? openId : undefined;
+  useEffect(() => {
+    if (openInDone !== undefined) setDoneOpen(true);
+  }, [openInDone]);
+  // The marked row scrolls into view once it is drawn.
+  const list = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    list.current?.querySelector('[aria-expanded="true"]')?.scrollIntoView?.({ block: "nearest" });
+  }, [openId, doneOpen]);
 
   return (
     <aside aria-label="Background tasks" className="flex h-full min-h-0 flex-col bg-inspector">
@@ -57,7 +72,7 @@ export function TasksPane({
           None yet. The main session starts one when a piece of work would take a while.
         </p>
       ) : (
-        <div className="flex min-h-0 flex-col gap-3 overflow-y-auto px-3">
+        <div ref={list} className="flex min-h-0 flex-col gap-3 overflow-y-auto px-3">
           {active.length > 0 ? (
             <ul className="flex flex-col gap-2">
               {active.map((task) => (
@@ -68,7 +83,7 @@ export function TasksPane({
             </ul>
           ) : null}
           {done.length > 0 ? (
-            <details className="group">
+            <details className="group" open={doneOpen} onToggle={(e) => setDoneOpen(e.currentTarget.open)}>
               <summary className="cursor-pointer list-none font-mono text-[10px] tracking-widest text-muted-foreground uppercase select-none hover:text-foreground">
                 <span className="inline-block transition-transform group-open:rotate-90">›</span> Done · {done.length}
               </summary>

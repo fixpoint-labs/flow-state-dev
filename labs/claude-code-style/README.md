@@ -16,7 +16,11 @@ needs is a gap filed against the package.
   so a question about the code is answered in the same turn, and a code change goes to `desk.coder`.
   A background result shows as one line, its title and status, at the point the main session took
   it, even while its turn is still running. Click it to read the task's reply; the main session
-  adds only what's new rather than repeating it. Tool calls read as plain words ("Waiting for your
+  adds only what's new rather than repeating it. *Open task* on the line opens the task's sheet,
+  the same one its row in the pane opens, and so does *Open task* on the line where the main
+  session started the task. The dot on either line shows the task's status now: a task retried
+  after it failed reads "failed · now running", since the line's words keep what it reported.
+  A line from a task the board doesn't list has no *Open task*. Tool calls read as plain words ("Waiting for your
   answer", "Sent for review"). Enter sends; Cmd+Enter (Ctrl+Enter) sends from every box in the lab.
 - **The *Coder* chip** beside Send picks who makes a code change you ask for, in either mode:
   *Auto* (Claude Code, as above), *Plan first* (Claude Code in plan mode, which reads, changes
@@ -27,7 +31,8 @@ needs is a gap filed against the package.
   by its status: *Cancel* (it asks once, since tasks waiting on it go too) and a *Steer* box while
   it runs or waits, *Release* when it is held, *Retry* once it failed or was cancelled. A failed
   task shows its error. Each action is the board's own, and a refusal shows in the board's words.
-  You can still ask the main session to stop or steer a task.
+  You can still ask the main session to stop or steer a task. The open task's row is marked,
+  whether you opened it here or from the main thread; *Done* opens to show it when it is finished.
 - **Keys:** ⌘K (Ctrl+K) finds any session by its title, in either view, or starts a new one.
   Alt+↑ and Alt+↓ move to the previous or next session in the view. `/` puts the cursor in the
   composer, and `?` lists every key. Opening a session puts the cursor in its composer. The view
@@ -40,7 +45,8 @@ threads, each a task in a session of its own, and the right pane is the status b
 
 - **Center:** your line is marked *Sent to a task*, and each thread is a compact card where the
   lead filed it, with *View task*, *Answer* when it asks you something, and *Resolve* and
-  *Request changes* when it is ready for review.
+  *Request changes* when it is ready for review. A result line's *Open task* opens the thread's
+  view, as *View task* does.
 - **Right:** the board groups threads by what you owe them: *Pinned*, *Working*, *Waiting on you*,
   *Ready for review* and *Resolved*, collapsed to a count. A column is read from the task's
   status and what it waits on, never a mark the lab keeps. A failed thread waits on you; its view

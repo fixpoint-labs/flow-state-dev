@@ -21,18 +21,20 @@ const rowNote = (task: TaskRow) =>
 export function ThreadsBoard({
   adapter,
   sessionId,
+  tasks: listed,
   openId,
   onOpen,
   onMissing,
 }: {
   adapter: LabAdapter;
   sessionId: string;
+  /** The session's task rows, as the app reads them; `undefined` until read. */
+  tasks: TaskRow[] | undefined;
   openId: string | undefined;
   onOpen: (taskId: string | undefined) => void;
   /** `openId` names no thread of this session's, once its rows are read. */
   onMissing: () => void;
 }) {
-  const listed = useWatch((emit: (rows: TaskRow[]) => void) => adapter.watchTasks(sessionId, emit), [adapter, sessionId]);
   const tasks = listed ?? [];
   useMissing(listed, openId, onMissing);
   const pins = useWatch((emit: (ids: string[]) => void) => adapter.watchPins(emit), [adapter]) ?? [];
