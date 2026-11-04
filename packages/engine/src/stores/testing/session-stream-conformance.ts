@@ -1125,6 +1125,22 @@ export function createSessionStreamConformanceTests(
       expect(counted.reads() - atOpen).toBeGreaterThanOrEqual(3);
     });
 
+    // A store that brings its own bus (Postgres) and can't hear other
+    // processes on it (no tail pool: PGlite here, or a Vercel deployment's
+    // pool) says so, and its views keep the timed read.
+    it("keeps reading each interval on the store's own bus when that bus doesn't cross", async () => {
+      const stores = await createStores();
+      if (stores.bus === undefined || stores.bus.crossesProcesses) return;
+      const counted = countSessionReads(stores, "s1");
+      const r = router(counted.stores);
+      await seedSession(stores, "s1");
+      const live = await stream(r, "s1");
+      await live.waitFor((e) => e.type === "session.runs");
+      const atOpen = counted.reads();
+      await delay(FAST_TIMINGS.intervalMs * 6);
+      expect(counted.reads() - atOpen).toBeGreaterThanOrEqual(3);
+    });
+
     it("reads nothing while the session is idle, on a bus that crosses processes (FIX-2426)", async () => {
       const stores = await createStores();
       const counted = countSessionReads({ ...stores, bus: crossingBus() }, "s1");
