@@ -91,12 +91,17 @@ const labFlow = defineFlow({
  * The same blocks with a host's repository check: a stand-in that answers a
  * repository naming `unusable` as no run could check it out, and every other
  * as a worktree. Counts its calls, so a test sees the write asked it.
+ * `brokenSince` holds repositories that went bad after a test used them, and
+ * `hostDown` ones whose check throws, as a git that timed out does.
  */
 const hostChecks: string[] = [];
+const brokenSince = new Set<string>();
+const hostDown = new Set<string>();
 const checkedBlocks = defineProjectBlocks({
   checkRepository: async (repository) => {
     hostChecks.push(repository);
-    return repository.includes("unusable")
+    if (hostDown.has(repository)) throw new Error("git rev-parse timed out");
+    return repository.includes("unusable") || brokenSince.has(repository)
       ? { usable: false, problem: "/srv/unusable does not ignore the directory \".fsdev/ask\". Add `**/.fsdev/` to that repository's .gitignore." }
       : { usable: true, how: "worktree" };
   }
@@ -550,6 +555,31 @@ describe("a project's files", () => {
       const answer = await h.ok("alice", "checked", lab, "checkRepository", { repository: "/srv/a-path" });
       expect(answer).toMatchObject({ usable: false, problem: expect.stringContaining("is a path, not a remote") });
       expect(hostChecks.length).toBe(asked);
+    });
+
+    it("hands a re-sent create its row back even after the repository went bad, shared or private", async () => {
+      const h = await boot();
+      const lab = await h.openSession("alice", "checked");
+      for (const visibility of ["shared", "private"] as const) {
+        const repository = `file:///srv/later-${visibility}`;
+        const input = { id: `later-${visibility}`, title: "Later", visibility, repository };
+        expect((await h.ok("alice", "checked", lab, "createProject", input)).created).toBe(true);
+        brokenSince.add(repository);
+        const again = await h.ok("alice", "checked", lab, "createProject", input);
+        expect(again.created).toBe(false);
+        expect(again.project.repository).toBe(repository);
+      }
+    });
+
+    it("fails the write with the host's own error when the check throws, and writes nothing", async () => {
+      const h = await boot();
+      const lab = await h.openSession("alice", "checked");
+      hostDown.add("file:///srv/slow");
+      const create = await h.act("alice", "checked", lab, "createProject", { id: "slow", title: "Slow", repository: "file:///srv/slow" });
+      expect(create.settled).not.toBe("completed");
+      expect(refusal(create)).toContain("timed out");
+      expect(refusal(create)).not.toContain("repository-unusable");
+      expect((await h.inspectRow("slow")).row).toBeNull();
     });
 
     it("offers no checkRepository action and asks nothing when the host gives no check", () => {

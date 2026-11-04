@@ -63,6 +63,7 @@ import { ModeRailHeader, RAIL_THEME } from "@/components/mode-rail-header";
 import { modeById } from "@/lib/modes";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { ChatAgentMessage } from "@/components/chat-agent/message";
+import { ChatAgentFailedTurn, FailedTurnRetryProvider, useFailedTurnRetry } from "@/components/chat-agent/failed-turn";
 import { cn } from "@/lib/utils";
 import { railSessions } from "@/lib/rail-sessions";
 import { COORDINATOR_FLOWS, defaultConversation, isCoordinatorFlow, WORKER_FLOWS, SHELL_FLOW } from "@/lib/workforce-shell";
@@ -79,6 +80,9 @@ const chatAgentRenderers: RendererRegistry = {
   ...chatAssistantRenderers,
   message: ChatAgentMessage,
   block_trace: AgentResponseCard,
+  // A failed turn's reason with Retry; which request gets Retry is the chat
+  // panel's call, handed down through `FailedTurnRetryProvider`.
+  error: ChatAgentFailedTurn,
 };
 
 
@@ -302,6 +306,7 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
     autoResume: true,
     live: pickedLive,
   });
+  const pickedRetry = useFailedTurnRetry(pickedSession);
   // A composer settles a send on that request's own status, read from the
   // picked flow, rather than on the session's stream closing.
   const pickedAddress = picked?.address;
@@ -563,6 +568,7 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
         onBack={() => setPicked(null)}
         conversation={
           isCoordinatorFlow(picked.kind) ? null : (
+          <FailedTurnRetryProvider value={pickedRetry.retryFor}>
           <Conversation className="min-h-0 flex-1" data-testid="conversation">
             <ConversationBody
               items={pickedSession.items}
@@ -570,12 +576,13 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
               isFinishing={pickedSession.isFinishing}
               statusMessage={pickedSession.statusMessage}
               isLoading={pickedSession.isLoading}
-              error={pickedSession.error}
+              error={pickedRetry.shownError}
               emptyTitle="Nothing here yet"
               emptyDescription={`This ${picked.kind} session has no turns yet.`}
             />
             <ConversationScrollButton />
           </Conversation>
+          </FailedTurnRetryProvider>
           )
         }
       />
@@ -969,11 +976,13 @@ function ChatPanel({
   onSetFeatures,
   onSubmit,
 }: ChatPanelProps) {
+  const { retryFor, shownError } = useFailedTurnRetry(session);
   return (
     // Bridge the session's streaming resume to the inline approval cards
     // (the ui Approval renderer) so approving/rejecting a suspension streams the
     // continuation into the chat live, without a page refresh.
     <SuspensionResolverProvider resolve={session.resumeSuspension}>
+    <FailedTurnRetryProvider value={retryFor}>
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <Conversation className="min-h-0 flex-1" data-testid="conversation">
         <ConversationBody
@@ -982,7 +991,9 @@ function ChatPanel({
           isFinishing={session.isFinishing}
           statusMessage={session.statusMessage}
           isLoading={conversationLoading}
-          error={session.error}
+          // A failed turn shows as its own line in the stream; this box is for
+          // errors no item carries, such as a refused send.
+          error={shownError}
         />
         <ConversationScrollButton />
       </Conversation>
@@ -1031,6 +1042,7 @@ function ChatPanel({
         </div>
       </div>
     </section>
+    </FailedTurnRetryProvider>
     </SuspensionResolverProvider>
   );
 }

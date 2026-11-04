@@ -122,9 +122,11 @@
     // The Teammates lab's byte copy of the registry's connection screen; its
     // backoff export is for apps that time their own retries.
     "labs/teammates/src/components/flow-state/connection-screen.tsx",
-    // Kitchen Sink's and Shift Manager's byte-identical copies of the registry's
-    // error.tsx, whose `ErrorBody` export is for `request-recovery`, which neither draws yet.
-    "apps/kitchen-sink/components/flow-state/error.tsx",
+    // Kitchen Sink's byte copy of the registry's request-recovery: its failed-turn
+    // line draws `RequestRecovery`; `INTERRUPTED_REASON` is for apps that word their own.
+    "apps/kitchen-sink/components/flow-state/request-recovery.tsx",
+    // Shift Manager's byte-identical copy of the registry's error.tsx, whose
+    // `ErrorBody` export is for `request-recovery`, which it doesn't draw yet.
     "packages/shift-manager/src/components/flow-state/error.tsx",
     // Kitchen Sink's copy of the registry's run-changes, which the registry
     // drift test requires installed; its Changes section imports it later.

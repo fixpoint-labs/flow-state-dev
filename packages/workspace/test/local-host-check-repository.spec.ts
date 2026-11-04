@@ -5,7 +5,7 @@
  * before the first run fails.
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -37,7 +37,7 @@ function host(options: { listed?: string[]; allow?: string[] } = {}) {
 describe("checkRepository", () => {
   it("answers worktree for a listed repository that ignores the directory", async () => {
     const repo = repository();
-    await expect(host({ listed: [repo] }).checkRepository!(pathToFileURL(repo).href, { ignored: IGNORED })).resolves.toEqual({
+    await expect(host({ listed: [repo] }).checkRepository!(repo, { ignored: IGNORED })).resolves.toEqual({
       usable: true,
       how: "worktree",
     });
@@ -50,7 +50,7 @@ describe("checkRepository", () => {
 
   it("refuses a repository that doesn't ignore the directory, naming the rule to add", async () => {
     const repo = repository(false);
-    const answer = await host({ listed: [repo] }).checkRepository!(pathToFileURL(repo).href, { ignored: IGNORED });
+    const answer = await host({ listed: [repo] }).checkRepository!(repo, { ignored: IGNORED });
     expect(answer.usable).toBe(false);
     expect(answer).toMatchObject({ problem: expect.stringContaining("Add `**/.fsdev/`") });
   });
@@ -62,7 +62,7 @@ describe("checkRepository", () => {
     git(repo, "add", "-A");
     git(repo, "commit", "-q", "-m", "tracked");
     writeFileSync(join(repo, ".gitignore"), "**/.fsdev/\n");
-    const answer = await host({ listed: [repo] }).checkRepository!(pathToFileURL(repo).href, { ignored: IGNORED });
+    const answer = await host({ listed: [repo] }).checkRepository!(repo, { ignored: IGNORED });
     expect(answer).toMatchObject({ usable: false, problem: expect.stringContaining("already tracks files under .fsdev/ask") });
   });
 
@@ -101,7 +101,7 @@ describe("checkRepository", () => {
   it("refuses a rule that is only in uncommitted changes, saying to commit it", async () => {
     const repo = repository(false);
     writeFileSync(join(repo, ".gitignore"), "**/.fsdev/\n");
-    const answer = await host({ listed: [repo] }).checkRepository!(pathToFileURL(repo).href, { ignored: IGNORED });
+    const answer = await host({ listed: [repo] }).checkRepository!(repo, { ignored: IGNORED });
     expect(answer.usable).toBe(false);
     expect(answer).toMatchObject({ problem: expect.stringContaining("Commit the .gitignore change") });
   });
@@ -109,7 +109,7 @@ describe("checkRepository", () => {
   it("answers usable for a committed rule, whatever the working tree has done to it since", async () => {
     const repo = repository();
     writeFileSync(join(repo, ".gitignore"), "");
-    await expect(host({ listed: [repo] }).checkRepository!(pathToFileURL(repo).href, { ignored: IGNORED })).resolves.toEqual({
+    await expect(host({ listed: [repo] }).checkRepository!(repo, { ignored: IGNORED })).resolves.toEqual({
       usable: true,
       how: "worktree",
     });
@@ -120,7 +120,7 @@ describe("checkRepository", () => {
     writeFileSync(join(repo, ".gitignore"), "/.fsdev/\n");
     git(repo, "add", "-A");
     git(repo, "commit", "-q", "-m", "rule");
-    await expect(host({ listed: [repo] }).checkRepository!(pathToFileURL(repo).href, { ignored: IGNORED })).resolves.toEqual({
+    await expect(host({ listed: [repo] }).checkRepository!(repo, { ignored: IGNORED })).resolves.toEqual({
       usable: true,
       how: "worktree",
     });
@@ -130,8 +130,43 @@ describe("checkRepository", () => {
     const dir = tempDir("check-empty");
     execFileSync("git", ["init", "-q", "-b", "main", dir]);
     writeFileSync(join(dir, ".gitignore"), "**/.fsdev/\n");
-    const answer = await host({ listed: [dir] }).checkRepository!(pathToFileURL(dir).href, { ignored: IGNORED });
+    const answer = await host({ listed: [dir] }).checkRepository!(dir, { ignored: IGNORED });
     expect(answer.usable).toBe(false);
     expect(answer).toMatchObject({ problem: expect.stringContaining("no commit yet") });
+  });
+  // `how` is the checkout a provision of the same string makes: it lists only a resolved absolute path.
+  it("answers clone for a listed repository named by a file:// URL or a symlink, as a provision would", async () => {
+    const repo = repository();
+    const link = join(tempDir("check-link"), "repo");
+    symlinkSync(repo, link);
+    const h = host({ listed: [repo] });
+    await expect(h.checkRepository!(pathToFileURL(repo).href, { ignored: IGNORED })).resolves.toEqual({ usable: true, how: "clone" });
+    await expect(h.checkRepository!(pathToFileURL(link).href, { ignored: IGNORED })).resolves.toEqual({ usable: true, how: "clone" });
+  });
+
+  it("checks an unlisted bare repository's commit and committed rule, as its clone would get them", async () => {
+    const empty = tempDir("check-bare-empty");
+    execFileSync("git", ["init", "-q", "--bare", empty]);
+    await expect(host().checkRepository!(pathToFileURL(empty).href, { ignored: IGNORED })).resolves.toMatchObject({
+      usable: false,
+      problem: expect.stringContaining("no commit yet"),
+    });
+    const bare = tempDir("check-bare-unignored");
+    execFileSync("git", ["clone", "-q", "--bare", repository(false), bare]);
+    await expect(host().checkRepository!(pathToFileURL(bare).href, { ignored: IGNORED })).resolves.toMatchObject({
+      usable: false,
+      problem: expect.stringContaining("Add `**/.fsdev/`"),
+    });
+    const good = tempDir("check-bare-good");
+    execFileSync("git", ["clone", "-q", "--bare", repository(), good]);
+    await expect(host().checkRepository!(pathToFileURL(good).href, { ignored: IGNORED })).resolves.toEqual({ usable: true, how: "clone" });
+  });
+
+  // A worktree shares the repository's info/exclude; a clone starts without it.
+  it("counts a rule in info/exclude for a listed repository, and not for a clone", async () => {
+    const repo = repository(false);
+    writeFileSync(join(repo, ".git", "info", "exclude"), "**/.fsdev/\n");
+    await expect(host({ listed: [repo] }).checkRepository!(repo, { ignored: IGNORED })).resolves.toEqual({ usable: true, how: "worktree" });
+    await expect(host().checkRepository!(pathToFileURL(repo).href, { ignored: IGNORED })).resolves.toMatchObject({ usable: false });
   });
 });
