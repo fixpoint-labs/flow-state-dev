@@ -126,7 +126,7 @@ import {
 } from "../conversation-board/task-settled";
 import { delegateAnswerMetadata } from "../conversation-board/delegate-answer";
 import { WORKER_TASK_ENTRY } from "../worker-task-entry";
-import { RESPOND_ACTION } from "../worker-door";
+import { doorTask, RESPOND_ACTION } from "../worker-door";
 import { declareBuiltInRoles, markRolePiece } from "../worker-roles";
 import { reportRescuedFailure } from "../error-reporter/rescued";
 import { verifiedWorkerOf, workerConfigOf } from "../workers/verified-worker";
@@ -1733,7 +1733,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       ...sessionBoard.actions,
       // The session names its worker, so a turn whose input carries any other key is refused.
       [RESPOND_ACTION]: {
-        inputSchema: doorInputSchema.strict(),
+        ...doorTask(doorInputSchema.strict()),
         block: door,
         userMessage: (input: DoorInput) => input.message,
         concurrency: REPLY_CONCURRENCY

@@ -104,7 +104,7 @@ function goalOf(prompt: string): string {
  * What the coder's scripted harness does in its checkout, with the harness
  * bugs planted.
  */
-export function plantedCoderRun(run: StubRun): void {
+export async function plantedCoderRun(run: StubRun): Promise<void> {
   const goal = goalOf(run.prompt);
   const attempt = (attemptsByGoal.get(goal) ?? 0) + 1;
   attemptsByGoal.set(goal, attempt);
@@ -115,7 +115,7 @@ export function plantedCoderRun(run: StubRun): void {
     throw new Error("The coder's checkout was locked by another process");
   }
   if (run.prompt.includes("[gives-up]")) return;
-  commitScriptedWork(run);
+  await commitScriptedWork(run);
 }
 
 /** The status the coder's harness reports for a run: errored for a run that gave up. */

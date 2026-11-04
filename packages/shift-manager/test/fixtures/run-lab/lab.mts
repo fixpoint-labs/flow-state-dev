@@ -87,7 +87,7 @@ import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { hearingDoor } from "./hearing-door.mts";
+import { hearingDoor, untaskedHearingDoor } from "./hearing-door.mts";
 
 /** The tree this Lab reads. */
 const RUN_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce");
@@ -264,8 +264,11 @@ async function readTree() {
   return roster;
 }
 
-/** Build, open and hand back the Lab, with its tasks filed on the lead's conversation. */
-export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean } = {}) {
+/**
+ * Build, open and hand back the Lab, with its tasks filed on the lead's conversation.
+ * With `untaskedDoors`, the delegates' flows take lines through a door that keeps no task id.
+ */
+export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean; untaskedDoors?: boolean } = {}) {
   const asks = (askGate = gate());
   const orgId = DEFAULT_ORG_ID;
   const tree = await readTree();
@@ -325,7 +328,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
             } : {}),
         ...workerMessagesResources,
       },
-      actions: { ...hearingDoor },
+      actions: { ...(options.untaskedDoors === true ? untaskedHearingDoor : hearingDoor) },
       internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: flow }) } },
       task: { actions: { work: workerTaskEntry({ name: `run-lab-${flow}-task`, turn: scriptedRun }) } },
     } as never);

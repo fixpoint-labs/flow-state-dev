@@ -37,7 +37,7 @@ import {
   type ReportRow
 } from "./reports";
 import type { ErrorReporter, FinalFailureEvent } from "./reporter";
-import { RESPOND_ACTION } from "../worker-door";
+import { doorTask, RESPOND_ACTION } from "../worker-door";
 import { declareBuiltInRoles } from "../worker-roles";
 
 export { ERROR_REPORTER_FLOW, ERROR_REPORTER_INTAKE_FLOW };
@@ -717,7 +717,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     session,
     resources: { ...(turn.bound.resources ?? {}), ...errorReportsResources, ...workerMessagesResources },
     actions: {
-      [RESPOND_ACTION]: { inputSchema: turn.inputSchema.strict(), block: door, userMessage: (input: { message: string }) => input.message },
+      [RESPOND_ACTION]: { ...doorTask(turn.inputSchema.strict()), block: door, userMessage: (input: { message: string }) => input.message },
       // Public so its preview is answerable from Inbox (a dispatched run is never reopened from outside).
       // It takes no input, runs only in a report's own session, and only for the operator.
       [REPORT_ENTRY]: { inputSchema: reportInputSchema, block: report, onErrored: releaseClaim },
