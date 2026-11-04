@@ -2,7 +2,8 @@
  * The config screens (FIX-2534 D1): five fixed kinds, code only, no model.
  *
  * `sender` and `own` run on every subscription; `labels`, `words` and `allow`
- * run when a subscription lists them, and every one it lists must pass.
+ * run when a subscription lists them, and every one it lists must pass, two
+ * of one kind included.
  *
  * - `sender` fails closed (epic Q1): members and collaborators pass, a bot
  *   passes when the service lists it, and an outsider (or a sender of unknown
@@ -32,7 +33,7 @@ export type ScreenVerdict = z.infer<typeof screenVerdictSchema>;
 export const screenVerdictsSchema = z.object({ verdicts: z.array(screenVerdictSchema) });
 
 /** A subscription the index nominated: its id, and what the screens read of it. */
-export const candidateSchema = z.object({ subscription: z.string().min(1), entry: indexEntrySchema });
+const candidateSchema = z.object({ subscription: z.string().min(1), entry: indexEntrySchema });
 
 export type Candidate = z.infer<typeof candidateSchema>;
 
@@ -42,7 +43,12 @@ export const screeningSchema = z.object({
   /** Every subscription the selection nominated: each gets a verdict, or is refused for having none. */
   nominated: z.array(candidateSchema),
   pending: z.array(candidateSchema),
-  verdicts: z.array(screenVerdictSchema)
+  verdicts: z.array(screenVerdictSchema),
+  /**
+   * The subscriptions to the thread this event closes, whatever kinds they
+   * hear and whatever the screens make of it: each ends (ER-7 as amended).
+   */
+  closing: z.array(candidateSchema).default([])
 });
 
 export type Screening = z.infer<typeof screeningSchema>;
@@ -64,22 +70,23 @@ export function screenRefusal(kind: ScreenKind, event: SubscriptionEvent, entry:
     }
     case "own":
       return entry.self !== undefined && event.sender.id === entry.self ? "the subscriber's own action" : undefined;
-    case "labels": {
-      const listed = entry.screens.find((s) => s.screen === "labels");
-      if (listed === undefined || listed.screen !== "labels") return undefined;
-      return listed.any.some((label) => event.labels.includes(label)) ? undefined : `none of the labels ${listed.any.join(", ")}`;
-    }
+    case "labels":
+      for (const listed of entry.screens) {
+        if (listed.screen === "labels" && !listed.any.some((label) => event.labels.includes(label))) return `none of the labels ${listed.any.join(", ")}`;
+      }
+      return undefined;
     case "words": {
-      const listed = entry.screens.find((s) => s.screen === "words");
-      if (listed === undefined || listed.screen !== "words") return undefined;
       const body = `${event.title}\n${event.text}`.toLowerCase();
-      return listed.any.some((word) => body.includes(word.toLowerCase())) ? undefined : `none of the words ${listed.any.join(", ")}`;
+      for (const listed of entry.screens) {
+        if (listed.screen === "words" && !listed.any.some((word) => body.includes(word.toLowerCase()))) return `none of the words ${listed.any.join(", ")}`;
+      }
+      return undefined;
     }
-    case "allow": {
-      const listed = entry.screens.find((s) => s.screen === "allow");
-      if (listed === undefined || listed.screen !== "allow") return undefined;
-      return listed.ids.includes(event.sender.id) ? undefined : `"${event.sender.id}" isn't an allowed sender`;
-    }
+    case "allow":
+      for (const listed of entry.screens) {
+        if (listed.screen === "allow" && !listed.ids.includes(event.sender.id)) return `"${event.sender.id}" isn't an allowed sender`;
+      }
+      return undefined;
   }
 }
 
@@ -128,14 +135,4 @@ export function configScreenChain(options: ScreenOptions) {
     .stepIf(undecided, screenStep("words", options))
     .stepIf(undecided, screenStep("allow", options))
     .stepIf(undecided, passRest);
-}
-
-/**
- * Whether the config screens decided `verdict` (the kill line's count): a
- * refusal always, and a pass when the subscription listed a screen of its own.
- * A pass on a subscription that listed none is open: only its sentence says
- * what it wants, which is what a later screen (FIX-2537's Jev) would read.
- */
-export function decidedByConfig(verdict: ScreenVerdict, entry: IndexEntry): boolean {
-  return !verdict.pass || entry.screens.length > 0;
 }

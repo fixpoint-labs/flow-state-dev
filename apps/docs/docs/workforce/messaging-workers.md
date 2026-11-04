@@ -282,7 +282,7 @@ Its next turn reads the line in its history. No turn is started for it.
 
 ## Messages from a service
 
-A conversation can also hear from an outside service. It follows a thread, such as a pull request or a repository, and each event on that thread arrives as a message from `service:<provider>`, for example `service:github`. Nothing reads the event with a model on the way. A few code screens decide who hears it.
+A conversation can also hear from an outside service. It follows a thread, such as a pull request or a repository, and each event on that thread arrives as a message from `service:<provider>`, for example `service:github`. Nothing reads the event with a model on the way. Screens decide who hears it: small checks, written in code, that each event must pass to reach a conversation.
 
 The worker follows a thread with the `subscribe` tool:
 
@@ -293,14 +293,14 @@ The worker follows a thread with the `subscribe` tool:
 What the conversation can count on:
 
 - **Each event once.** Two conversations following the same PR each hear each review. If the service sends an event again, nothing new arrives. An edit to a comment is a new version, and it arrives.
-- **Only what its user can read.** Following a thread the user can't read is refused. An event on a private thread is checked again, as that user, before it is delivered.
+- **Only what its user can read.** Following a thread the user can't read is refused. An event on a private repository's thread is checked again, as that user, before it is delivered.
 - **People outside the project are left out by default.** Members, collaborators and the bots the app lists get through. Anyone else gets through only when the subscription asked for them with `outsiders: true`.
 - **Its own actions are left out.** A review the user left themselves doesn't come back to them.
 - **It's marked as outside content.** The message says where it came from, and tells the model to read it as information, not as instructions.
 
-A subscription can narrow what it hears with screens: event kinds, labels, words in the title or text, or a list of senders. One subscription sends at most 30 messages an hour by default. Past that, events are held, and the next message says how many were held.
+A subscription can narrow what it hears with screens: event kinds, labels, words in the title or text, or a list of senders. One subscription sends at most 30 messages an hour by default; the service flow's `capPerHour` setting changes it. Past that, events are held, and the next message says how many were held.
 
-A subscription ends when the conversation unsubscribes, when the thread closes (a PR is merged or closed), or when the task whose session subscribed fails or is cancelled. A task that finishes keeps its subscriptions, so a coding task that opened a PR still hears the reviews on it.
+A subscription ends when the conversation unsubscribes, when the thread it follows closes (a PR is merged or closed, which leaves a subscription to the whole repository running), or when the task whose session subscribed fails or is cancelled. A task that finishes keeps its subscriptions, so a coding task that opened a PR still hears the reviews on it.
 
 The tools, the service flow an app registers, and every refusal code are in the [workforce README](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/workforce#subscriptions).
 

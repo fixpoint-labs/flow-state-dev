@@ -18,6 +18,7 @@
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { retryOnConflict } from "../projects/cas-retry";
 import { TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
 import { SUBSCRIPTION_TOOLS } from "./keys";
 import {
@@ -86,7 +87,8 @@ const indexEntryOf = (row: SubscriptionRow): IndexEntry => ({
   ...(row.outsiders === true ? { outsiders: true as const } : {}),
   ...(row.self === undefined ? {} : { self: row.self }),
   userId: row.userId,
-  orgId: row.orgId
+  orgId: row.orgId,
+  ...(row.tenantId === undefined ? {} : { tenantId: row.tenantId })
 });
 
 /**
@@ -109,7 +111,7 @@ export async function subscribe(ctx: BlockContext, providers: readonly Subscript
   }
   if (!(await provider.canRead(thread, ctx))) return { refused: `not_readable: you can't read "${thread}", so you can't follow it.` };
 
-  const identity = ctx.session.identity as { id: string; userId?: string; orgId?: string };
+  const identity = ctx.session.identity as { id: string; userId?: string; orgId?: string; tenantId?: string };
   if (identity.userId === undefined || identity.orgId === undefined) {
     return { refused: "no_identity: a subscription needs a session that names its user and organization." };
   }
@@ -134,6 +136,8 @@ export async function subscribe(ctx: BlockContext, providers: readonly Subscript
     ...(typeof taskId === "string" && taskId.length > 0 ? { taskId } : {}),
     userId: identity.userId,
     orgId: identity.orgId,
+    // The tenant its session runs under, so its deliveries reach that session.
+    ...(identity.tenantId === undefined || identity.tenantId.length === 0 ? {} : { tenantId: identity.tenantId }),
     enabled: true,
     at: Date.now()
   };
@@ -141,8 +145,10 @@ export async function subscribe(ctx: BlockContext, providers: readonly Subscript
   const ref = await subscriptionsOf(ctx).getOrCreate(id, row);
   await ref.setState(row);
   await subscriptionCursorsOf(ctx).getOrCreate(id, { seen: [], window: { start: 0, sent: 0 }, held: 0 });
+  // Other users' subscribes to this thread may write at once: `updateState`
+  // runs again against the row that won, so every entry lands.
   const index = await subscriptionIndexOf(ctx).getOrCreate(indexKeyOf(thread), { subscriptions: {} });
-  await index.updateState((current) => ({ subscriptions: { ...current.subscriptions, [id]: indexEntryOf(row) } }));
+  await retryOnConflict(() => index.updateState((current) => ({ subscriptions: { ...current.subscriptions, [id]: indexEntryOf(row) } })));
   return { id };
 }
 
@@ -160,10 +166,12 @@ export async function unsubscribe(ctx: BlockContext, id: string, reason: Subscri
   // Out of the index even when the row was already off: a stop between the two writes leaves it there.
   const index = await subscriptionIndexOf(ctx).getOptional(indexKeyOf(row.thread));
   if (index?.state.subscriptions[id] !== undefined) {
-    await index.updateState((current) => {
-      const { [id]: _gone, ...rest } = current.subscriptions;
-      return { subscriptions: rest };
-    });
+    await retryOnConflict(() =>
+      index.updateState((current) => {
+        const { [id]: _gone, ...rest } = current.subscriptions;
+        return { subscriptions: rest };
+      })
+    );
   }
   return row.enabled;
 }
@@ -176,6 +184,8 @@ export async function unsubscribe(ctx: BlockContext, id: string, reason: Subscri
 export async function endTaskSubscriptions(ctx: BlockContext, taskId: string, ending: "errored" | "cancelled"): Promise<number> {
   const reason: SubscriptionEnd = ending === "errored" ? "task_errored" : "task_cancelled";
   let ended = 0;
+  // Every subscription in the cell: the collection filters by key prefix only,
+  // and a subscription's key names its session and thread, not its task.
   for (const ref of await subscriptionsOf(ctx).list()) {
     if (ref.state.taskId === taskId && ref.state.enabled && (await unsubscribe(ctx, ref.state.id, reason))) ended += 1;
   }

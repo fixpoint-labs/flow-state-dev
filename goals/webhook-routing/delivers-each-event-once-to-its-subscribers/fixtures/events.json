@@ -2621,23 +2621,23 @@
    "provider": "github",
    "threads": [
     "github:acme/api",
-    "github:acme/api#413"
+    "github:acme/api#415"
    ],
-   "kind": "pull_request",
+   "kind": "review",
    "object": {
-    "id": "api#413-pull_request-100",
+    "id": "api#415-review-1",
     "version": 1
    },
    "sender": {
-    "id": "spam-bot",
-    "name": "Spam Bot",
-    "role": "bot"
+    "id": "octocat",
+    "name": "The Octocat",
+    "role": "member"
    },
    "audience": "public",
-   "title": "pull_request on api#413",
+   "title": "review on #415",
    "text": "Ran the benchmark: 12% faster.",
    "labels": [],
-   "url": "https://github.com/acme/api#413",
+   "url": "https://github.com/acme/api#415",
    "received": 1762272100000,
    "at": 1762272099500,
    "deliveryId": "delivery-100"
@@ -2876,25 +2876,23 @@
    "provider": "github",
    "threads": [
     "github:acme/api",
-    "github:acme/api#412"
+    "github:acme/api#416"
    ],
-   "kind": "check",
+   "kind": "comment",
    "object": {
-    "id": "api#412-check-110",
+    "id": "api#416-comment-1",
     "version": 1
    },
    "sender": {
-    "id": "octocat",
-    "name": "The Octocat",
-    "role": "member"
+    "id": "hubot",
+    "name": "Hubot",
+    "role": "collaborator"
    },
    "audience": "public",
-   "title": "check on api#412",
-   "text": "This will panic on a nil config.",
-   "labels": [
-    "docs"
-   ],
-   "url": "https://github.com/acme/api#412",
+   "title": "comment on #416",
+   "text": "Looks good to me.",
+   "labels": [],
+   "url": "https://github.com/acme/api#416",
    "received": 1762272110000,
    "at": 1762272109500,
    "deliveryId": "delivery-110"
@@ -5977,30 +5975,28 @@
   {
    "provider": "github",
    "threads": [
-    "github:acme/private-api",
-    "github:acme/private-api#7"
+    "github:acme/api",
+    "github:acme/api#415"
    ],
-   "kind": "issue",
+   "kind": "pull_request",
    "object": {
-    "id": "private#7-issue-230",
+    "id": "api#415-close",
     "version": 1
    },
    "sender": {
-    "id": "bob-gh",
-    "name": "Bob",
+    "id": "octocat",
+    "name": "The Octocat",
     "role": "member"
    },
-   "audience": "private",
-   "title": "issue on private#7",
-   "text": "The worker can crash under load.",
-   "labels": [
-    "bug",
-    "security"
-   ],
-   "url": "https://github.com/acme/private#7",
+   "audience": "public",
+   "title": "#415 closed",
+   "text": "Closed without merging.",
+   "labels": [],
+   "url": "https://github.com/acme/api#415",
    "received": 1762272230000,
    "at": 1762272229500,
-   "deliveryId": "delivery-230"
+   "deliveryId": "delivery-230",
+   "closes": true
   },
   {
    "provider": "github",
@@ -6769,28 +6765,28 @@
   {
    "provider": "github",
    "threads": [
-    "github:acme/web"
+    "github:acme/api",
+    "github:acme/api#416"
    ],
-   "kind": "review",
+   "kind": "pull_request",
    "object": {
-    "id": "web-issue-review-260",
+    "id": "api#416-merge",
     "version": 1
    },
    "sender": {
-    "id": "octocat",
-    "name": "The Octocat",
+    "id": "alice-gh",
+    "name": "Alice",
     "role": "member"
    },
    "audience": "public",
-   "title": "review on web-issue",
-   "text": "Nit: rename the handler.",
-   "labels": [
-    "security"
-   ],
-   "url": "https://github.com/acme/web-issue",
+   "title": "#416 merged",
+   "text": "Merged into main.",
+   "labels": [],
+   "url": "https://github.com/acme/api#416",
    "received": 1762272260000,
    "at": 1762272259500,
-   "deliveryId": "delivery-260"
+   "deliveryId": "delivery-260",
+   "closes": true
   },
   {
    "provider": "github",
@@ -7034,11 +7030,11 @@
    "provider": "github",
    "threads": [
     "github:acme/api",
-    "github:acme/api#412"
+    "github:acme/api#415"
    ],
-   "kind": "check",
+   "kind": "review",
    "object": {
-    "id": "api#412-check-270",
+    "id": "api#415-review-2",
     "version": 1
    },
    "sender": {
@@ -7047,12 +7043,10 @@
     "role": "member"
    },
    "audience": "public",
-   "title": "check on api#412",
-   "text": "Looks good to me.",
-   "labels": [
-    "release"
-   ],
-   "url": "https://github.com/acme/api#412",
+   "title": "review on #415",
+   "text": "Ran the benchmark again, after the close.",
+   "labels": [],
+   "url": "https://github.com/acme/api#415",
    "received": 1762272270000,
    "at": 1762272269500,
    "deliveryId": "delivery-270"
@@ -7290,25 +7284,24 @@
   {
    "provider": "github",
    "threads": [
-    "github:acme/web"
+    "github:acme/api",
+    "github:acme/api#416"
    ],
-   "kind": "pull_request",
+   "kind": "comment",
    "object": {
-    "id": "web-issue-pull_request-280",
+    "id": "api#416-comment-2",
     "version": 1
    },
    "sender": {
-    "id": "codex",
-    "name": "Codex",
-    "role": "bot"
+    "id": "hubot",
+    "name": "Hubot",
+    "role": "collaborator"
    },
    "audience": "public",
-   "title": "pull_request on web-issue",
-   "text": "The old endpoint is deprecated; please migrate.",
-   "labels": [
-    "bug"
-   ],
-   "url": "https://github.com/acme/web-issue",
+   "title": "comment on #416",
+   "text": "A late note.",
+   "labels": [],
+   "url": "https://github.com/acme/api#416",
    "received": 1762272280000,
    "at": 1762272279500,
    "deliveryId": "delivery-280"

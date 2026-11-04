@@ -16,8 +16,9 @@
  *   an outsider's (the screens fail closed, epic Q1).
  * - `audience`: `private` when the thread is not public. A private event is
  *   checked again, as its subscriber, before it is delivered (ER-4).
- * - `closes`: the thread closed with this event (a PR merged or closed). Its
- *   subscriptions end once it is delivered (ER-7 as amended).
+ * - `closes`: the last and narrowest of `threads` closed with this event (a PR
+ *   merged or closed); the wider ones stay open. The subscriptions to that
+ *   thread end, whether or not it reached them (ER-7 as amended).
  */
 import { z } from "zod";
 
@@ -54,7 +55,7 @@ export const subscriptionEventSchema = z
     at: z.number(),
     /** The provider's delivery id: provenance only, never a dedupe key. */
     deliveryId: z.string().min(1).optional(),
-    /** The thread closed with this event. */
+    /** The last and narrowest of `threads` closed with this event. */
     closes: z.literal(true).optional()
   })
   .strict();

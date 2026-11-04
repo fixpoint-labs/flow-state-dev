@@ -8,10 +8,11 @@
  * must hear them too (one dedupe key would starve it), a redelivery must add
  * nothing, and one user's private repo must never reach another user.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { bootSubscriptionsHost, event, revoked, type SubscriptionsHost } from "./subscriptions-harness";
 
 const PR = "github:acme/api#412";
+const REPO = "github:acme/api";
 
 async function withHost(run: (host: SubscriptionsHost) => Promise<void>, options: Parameters<typeof bootSubscriptionsHost>[0] = {}) {
   const host = bootSubscriptionsHost(options);
@@ -127,18 +128,33 @@ describe("the config screens", () => {
       expect((await host.heard(allow))[0]).toContain("PANIC");
     }));
 
-  it("return one verdict per nominated subscription, and report the share the config screens decided", () =>
+  it("apply every listed screen of one kind: two words screens both must pass", () =>
+    withHost(async (host) => {
+      const both = await host.follower("alice");
+      await host.subscribe("alice", both, {
+        thread: PR,
+        screens: [
+          { screen: "words", any: ["panic"] },
+          { screen: "words", any: ["crash"] }
+        ]
+      });
+      await host.route(event({ text: "This will panic." }));
+      expect(await host.heard(both)).toEqual([]);
+      await host.route(event({ text: "This will panic, then crash." }));
+      expect(await host.heard(both)).toHaveLength(1);
+    }));
+
+  it("return one verdict per nominated subscription, and no share: the routed output is bounded production output", () =>
     withHost(async (host) => {
       const listed = await host.follower("alice");
       const open = await host.follower("alice");
       await host.subscribe("alice", listed, { thread: PR, screens: [{ screen: "words", any: ["panic"] }] });
       await host.subscribe("alice", open, { thread: PR });
       const routed = await host.route(event({ text: "no match here" }));
-      const output = routed.output as { verdicts: Array<{ subscription: string; pass: boolean; reason: string }>; selected: number; decidedByConfig: number };
-      expect(output.verdicts).toHaveLength(2);
+      const output = routed.output as Record<string, unknown> & { verdicts: Array<{ pass: boolean }>; verdictsCut: number };
       expect(output.verdicts.map((v) => v.pass).sort()).toEqual([false, true]);
-      // The words screen refused one: decided. The other passed with nothing but its sentence: open.
-      expect([output.selected, output.decidedByConfig]).toEqual([2, 1]);
+      expect(output.verdictsCut).toBe(0);
+      expect(Object.keys(output).sort()).toEqual(["ownerRuns", "verdicts", "verdictsCut"]);
     }));
 });
 
@@ -168,6 +184,16 @@ describe("who hears what", () => {
       } finally {
         revoked.delete("alice");
       }
+    }));
+
+  it("delivers under the subscribing session's tenant: the row, the index and the owner run carry it", () =>
+    withHost(async (host) => {
+      const one = await host.followerInTenant("alice", "tenant-a");
+      expect(await host.subscribe("alice", one, { thread: PR }, "tenant-a")).toHaveProperty("id");
+      expect((await host.subscriptionRows("alice"))[0]).toMatchObject({ tenantId: "tenant-a" });
+      const routed = await host.route(event({ text: "for the tenant" }));
+      expect(routed.ownerRuns.map((run) => run.run.owner.tenantId)).toEqual(["tenant-a"]);
+      expect((await host.serviceRows("alice")).map((row) => [row.toSession, row.status])).toEqual([[one, "delivered"]]);
     }));
 
   it("refuses a sentence with no thread, and a thread of another provider", () =>
@@ -201,6 +227,49 @@ describe("a subscription's end", () => {
       expect(heard[0]).toContain("Merged.");
       expect((await host.subscriptionRows("alice")).map((row) => [row.enabled, row.endedReason])).toEqual([[false, "thread_closed"]]);
     }));
+
+  it("ends only the subscriptions to the thread that closed: one to the whole repo keeps hearing it", () =>
+    withHost(async (host) => {
+      const pr = await host.follower("alice");
+      const repo = await host.follower("alice");
+      await host.subscribe("alice", pr, { thread: PR });
+      await host.subscribe("alice", repo, { thread: REPO });
+      await host.route(event({ kind: "pull_request", text: "Merged.", closes: true }));
+      await host.route(event({ threads: [REPO, "github:acme/api#500"], text: "a review on another PR" }));
+      expect(await host.heard(repo)).toHaveLength(2);
+      const rows = await host.subscriptionRows("alice");
+      expect(Object.fromEntries(rows.map((row) => [row.thread, row.enabled]))).toEqual({ [REPO]: true, [PR]: false });
+    }));
+
+  it("ends on its thread's closing even when the closing event doesn't reach it: another kind, a screen, its own action, the cap", () =>
+    withHost(
+      async (host) => {
+        const kinds = await host.follower("alice");
+        const words = await host.follower("alice");
+        const own = await host.follower("alice");
+        const capped = await host.follower("bob");
+        await host.subscribe("alice", kinds, { thread: PR, kinds: ["review"] });
+        await host.subscribe("alice", words, { thread: PR, screens: [{ screen: "words", any: ["benchmark"] }] });
+        await host.subscribe("alice", own, { thread: PR, kinds: ["pull_request"] });
+        await host.subscribe("bob", capped, { thread: PR });
+        // Bob's subscription spends its one message of the hour.
+        await host.route(event({ text: "a first review" }));
+        // Alice merges the PR herself.
+        await host.route(event({ kind: "pull_request", text: "Merged.", closes: true, sender: { id: "alice-gh", name: "Alice", role: "member" } }));
+        for (const user of ["alice", "bob"]) {
+          expect((await host.subscriptionRows(user)).map((row) => [row.enabled, row.endedReason])).toEqual(
+            (await host.subscriptionRows(user)).map(() => [false, "thread_closed"])
+          );
+        }
+        expect(await host.subscriptionRows("alice")).toHaveLength(3);
+        // Nothing reaches them after: the hour's slots aren't spent for alice's `words` and `own`, so only the end stops them.
+        const before = await Promise.all([kinds, words, own, capped].map((session) => host.heard(session)));
+        await host.route(event({ text: "a late review that mentions the benchmark" }));
+        expect(await Promise.all([kinds, words, own, capped].map((session) => host.heard(session)))).toEqual(before);
+        expect(before.map((heard) => heard.length)).toEqual([1, 0, 0, 1]);
+      },
+      { service: { capPerHour: 1 } }
+    ));
 });
 
 describe("the cap", () => {
@@ -219,4 +288,55 @@ describe("the cap", () => {
       },
       { service: { capPerHour: 2 } }
     ));
+
+  it("holds all but one of five events that arrive at once, with a cap of one: the slot is taken in one write", () =>
+    withHost(
+      async (host) => {
+        const one = await host.follower("alice");
+        await host.subscribe("alice", one, { thread: PR });
+        const burst = await Promise.all(Array.from({ length: 5 }, (_, i) => host.route(event({ text: `burst ${i}` }))));
+        const acts = await Promise.all(burst.map(async (routed) => ((await routed.ownerRuns[0]!.finished!).output as { act: string }).act));
+        expect(acts.sort()).toEqual(["held", "held", "held", "held", "sent"]);
+        expect(await host.heard(one)).toHaveLength(1);
+        const cursor = await host.cursorOf("alice", (await host.subscriptionRows("alice"))[0]!.id);
+        expect([cursor.window.sent, cursor.held]).toEqual([1, 4]);
+      },
+      { service: { capPerHour: 1 } }
+    ));
+
+  it("rolls the hour over when only holds came since the window opened", () =>
+    withHost(
+      async (host) => {
+        const one = await host.follower("alice");
+        await host.subscribe("alice", one, { thread: PR });
+        await host.route(event({ text: "sent" }));
+        await host.route(event({ text: "held one" }));
+        await host.route(event({ text: "held two" }));
+        expect(await host.heard(one)).toHaveLength(1);
+        const real = Date.now;
+        const later = vi.spyOn(Date, "now").mockImplementation(() => real() + 61 * 60 * 1000);
+        try {
+          await host.route(event({ text: "an hour on" }));
+        } finally {
+          later.mockRestore();
+        }
+        const heard = await host.heard(one);
+        expect(heard).toHaveLength(2);
+        expect(heard[1]).toContain("2 earlier events were held");
+      },
+      { service: { capPerHour: 1 } }
+    ));
+});
+
+describe("the thread index", () => {
+  it("keeps both of two users' subscriptions to one PR made at once", () =>
+    withHost(async (host) => {
+      const alice = await host.follower("alice");
+      const bob = await host.follower("bob");
+      const subscribed = await Promise.all([host.subscribe("alice", alice, { thread: PR }), host.subscribe("bob", bob, { thread: PR })]);
+      for (const outcome of subscribed) expect(outcome).toHaveProperty("id");
+      await host.route(event({ text: "both hear it" }));
+      expect(await host.heard(alice)).toHaveLength(1);
+      expect(await host.heard(bob)).toHaveLength(1);
+    }));
 });

@@ -56,7 +56,7 @@ export const SCREEN_KINDS = ["sender", "own", "labels", "words", "allow"] as con
 export type ScreenKind = (typeof SCREEN_KINDS)[number];
 
 /** What the service's screens read of one subscription: in its row, and mirrored in the thread index. */
-export const screenSettingsSchema = z.object({
+const screenSettingsSchema = z.object({
   provider: z.string().min(1),
   thread: z.string().min(1),
   kinds: z.array(z.string().min(1)).optional(),
@@ -66,8 +66,6 @@ export const screenSettingsSchema = z.object({
   /** The subscriber's own id at the provider, for `own`. */
   self: z.string().min(1).optional()
 });
-
-export type ScreenSettings = z.infer<typeof screenSettingsSchema>;
 
 /** One subscription. Server-written: the session, worker, task and user come from the subscribing turn, never from the tool's input. */
 export const subscriptionRowSchema = screenSettingsSchema.extend({
@@ -85,6 +83,8 @@ export const subscriptionRowSchema = screenSettingsSchema.extend({
   userId: z.string().min(1),
   /** The organization it was made in: the host's owner-run check reads it. */
   orgId: z.string().min(1),
+  /** The tenant the subscribing session ran under, when there was one: its deliveries run under it, and the host's owner-run check reads it. */
+  tenantId: z.string().min(1).optional(),
   /** `false` once it ended. The host's owner-run check reads it as off. */
   enabled: z.boolean(),
   /** Why it ended: `unsubscribed`, `thread_closed`, `task_errored`, `task_cancelled`. */
@@ -113,18 +113,23 @@ export type SubscriptionCursor = z.infer<typeof subscriptionCursorSchema>;
 /** One subscription, as the thread index names it: who owns it, and its screen settings. */
 export const indexEntrySchema = screenSettingsSchema.extend({
   userId: z.string().min(1),
-  orgId: z.string().min(1)
+  orgId: z.string().min(1),
+  tenantId: z.string().min(1).optional()
 });
 
 export type IndexEntry = z.infer<typeof indexEntrySchema>;
 
-/** One thread's subscriptions, by subscription id. */
-export const threadIndexRowSchema = z.object({ subscriptions: z.record(indexEntrySchema).default({}) });
+/**
+ * One thread's subscriptions, by subscription id. Two users subscribing to one
+ * thread at once both land: `updateState` re-runs its updater against the row
+ * that won a write race, on every store.
+ */
+const threadIndexRowSchema = z.object({ subscriptions: z.record(indexEntrySchema).default({}) });
 
-export type ThreadIndexRow = z.infer<typeof threadIndexRowSchema>;
+type ThreadIndexRow = z.infer<typeof threadIndexRowSchema>;
 
 /** The subscriptions, at `workforce/subscriptions/*` in the user's scope, shared across flows. Server-written. */
-export const subscriptionsCollection = defineResourceCollection({
+const subscriptionsCollection = defineResourceCollection({
   pattern: SUBSCRIPTIONS_PATTERN,
   scope: "user",
   flowIsolation: false,
@@ -133,7 +138,7 @@ export const subscriptionsCollection = defineResourceCollection({
 });
 
 /** The cursors, at `workforce/subscription-cursors/*` in the user's scope. Server-only. */
-export const subscriptionCursorsCollection = defineResourceCollection({
+const subscriptionCursorsCollection = defineResourceCollection({
   pattern: SUBSCRIPTION_CURSORS_PATTERN,
   scope: "user",
   flowIsolation: false,
@@ -142,7 +147,7 @@ export const subscriptionCursorsCollection = defineResourceCollection({
 });
 
 /** The thread index, at `workforce/subscription-index/*` in the org's scope. Server-only. */
-export const subscriptionIndexCollection = defineResourceCollection({
+const subscriptionIndexCollection = defineResourceCollection({
   pattern: SUBSCRIPTION_INDEX_PATTERN,
   scope: "org",
   flowIsolation: false,

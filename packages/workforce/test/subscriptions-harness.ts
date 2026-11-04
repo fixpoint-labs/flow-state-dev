@@ -10,9 +10,10 @@
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockContext, FlowInstance, SubscriptionEvent } from "@flow-state-dev/core/types";
-import { routeServiceEvent, type InboundTransportHost } from "@flow-state-dev/engine";
+import { routeServiceEvent, runAction, type InboundTransportHost } from "@flow-state-dev/engine";
 import { z } from "zod";
 import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
+import { WORKER_MESSAGES_PATTERN } from "../src/messages/log-row";
 import { workerMessagesResources } from "../src/messages/message-log";
 import { messageReceivedEntry } from "../src/messages/message-received-entry";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
@@ -32,18 +33,16 @@ import { workerConfigSchema } from "../src/worker-config";
 import type { WorkerInstallation } from "../src/workers/installation";
 import { boardWorkers, bootBoardHost, ORG, type BoardHostOptions } from "./conversation-board-harness";
 
-export { ORG };
-
 /** Users whose read access to private threads a test has taken away. */
 export const revoked = new Set<string>();
 
 /** Threads a user can read: any public one, and a private one only alice, until her access is revoked. */
-export function readableBy(userId: string, thread: string): boolean {
+function readableBy(userId: string, thread: string): boolean {
   return !thread.includes("/private") || (userId === "alice" && !revoked.has(userId));
 }
 
 /** The GitHub provider the host is built with: read access by {@link readableBy}, the user's GitHub login `<user>-gh`. */
-export const github: SubscriptionProvider = {
+const github: SubscriptionProvider = {
   provider: "github",
   canRead: (thread, ctx: BlockContext) => readableBy((ctx.session.identity as { userId: string }).userId, thread),
   self: (ctx: BlockContext) => `${(ctx.session.identity as { userId: string }).userId}-gh`
@@ -51,9 +50,10 @@ export const github: SubscriptionProvider = {
 
 const doorInput = z.object({ message: z.string() });
 
-function followerFlow(installation: WorkerInstallation) {
+function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined) {
   const tools = subscriptionTools({ providers: [github] });
-  // A task's turn: `[subscribe:<thread>]` subscribes the task's session to it, then `[fail]` fails the task.
+  // A task's turn: `[subscribe:<thread>]` subscribes the task's session to it, `[hold]` waits on the
+  // host's hold, then `[fail]` fails the task.
   const door = handler({
     name: "follower-run",
     inputSchema: doorInput,
@@ -64,6 +64,7 @@ function followerFlow(installation: WorkerInstallation) {
         const outcome = await subscribe(ctx as never, [github], { provider: "github", thread: asked[1]!, interest: "the task's PR" });
         if ("refused" in outcome) throw new Error(outcome.refused);
       }
+      if (input.message.includes("[hold]")) await hold;
       if (input.message.includes("[fail]")) throw new Error("the task failed");
       return "ok";
     }
@@ -87,6 +88,8 @@ function followerFlow(installation: WorkerInstallation) {
 export type SubscriptionsHostOptions = BoardHostOptions & {
   /** The service flow's options beside the provider and the installation. */
   service?: Partial<Omit<SubscriptionServiceOptions, "provider" | "installation" | "kind">>;
+  /** What a `[hold]` task turn waits on. */
+  hold?: Promise<void>;
 };
 
 /** A board host with followers and a GitHub service flow. */
@@ -99,7 +102,7 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   const board = bootBoardHost({
     ...options,
     standard,
-    flows: (installation) => ({ follower: { flow: followerFlow(installation), roles: ["contributor"] }, ...(options.flows?.(installation) ?? {}) }),
+    flows: (installation) => ({ follower: { flow: followerFlow(installation, options.hold), roles: ["contributor"] }, ...(options.flows?.(installation) ?? {}) }),
     plainFlowsOf: (installation): Record<string, FlowInstance> => ({
       "github-service": defineSubscriptionServiceFlow({
         kind: "github-service",
@@ -124,11 +127,37 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     return created.body.session!.id;
   };
 
-  /** Call the subscribe tool as `userId` in `sessionId`, as a model would. */
-  const subscribe = async (userId: string, sessionId: string, input: Record<string, unknown>) =>
-    (await board.act(userId, sessionId, "subscribe", { provider: "github", interest: "what happens on it", ...input }, "follower")).output as
-      | { id: string }
-      | { refused: string };
+  /** A follower conversation for `userId` under `tenantId`, created over HTTP with the tenant header. */
+  const followerInTenant = async (userId: string, tenantId: string) => {
+    const request = new Request("http://localhost/api/flows/follower/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-user": userId, "x-tenant-id": tenantId },
+      body: JSON.stringify({ userId, state: { workerId: "eng.follower" } })
+    });
+    const res = await (await board.router()).POST(request, { params: { path: ["follower", "sessions"] } });
+    const body = (await res.json()) as { session?: { id: string } };
+    if (body.session === undefined) throw new Error(`creating a tenant's follower failed (${res.status}): ${JSON.stringify(body)}`);
+    return body.session.id;
+  };
+
+  /** Call the subscribe tool as `userId` in `sessionId`, as a model would; under `tenantId` when given. */
+  const subscribe = async (userId: string, sessionId: string, input: Record<string, unknown>, tenantId?: string) => {
+    const tool = { provider: "github", interest: "what happens on it", ...input };
+    if (tenantId === undefined) return (await board.act(userId, sessionId, "subscribe", tool, "follower")).output as { id: string } | { refused: string };
+    const runtime = await board.state.getRuntime();
+    const ran = (await runAction({
+      flow: board.instances.follower!,
+      actionName: "subscribe",
+      input: tool,
+      userId,
+      orgId: ORG,
+      tenantId,
+      sessionId,
+      stores: runtime.stores,
+      runtimeConfig: { ...runtime.runtimeConfig }
+    })) as { output?: unknown };
+    return ran.output as { id: string } | { refused: string };
+  };
 
   const unsubscribe = async (userId: string, sessionId: string, id: string) =>
     (await board.act(userId, sessionId, "unsubscribe", { id }, "follower")).output as { ended: string } | { refused: string };
@@ -165,7 +194,16 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     return row?.state as Record<string, any>;
   };
 
-  return { ...board, hostOf, follower, subscribe, unsubscribe, route, heard, subscriptionRows, cursorOf };
+  /** `userId`'s message log rows from the service, from the store. */
+  const serviceRows = async (userId: string) => {
+    const runtime = await board.state.getRuntime();
+    const entries = await runtime.stores.resourceState.getByPrefix("user", `${userId}:~org:${ORG}`, WORKER_MESSAGES_PATTERN.replace("*", ""));
+    return Object.values(entries)
+      .map((value) => value.state as Record<string, any>)
+      .filter((row) => typeof row.from === "string" && row.from.startsWith("service:"));
+  };
+
+  return { ...board, hostOf, follower, followerInTenant, subscribe, unsubscribe, route, heard, subscriptionRows, cursorOf, serviceRows };
 }
 
 export type SubscriptionsHost = ReturnType<typeof bootSubscriptionsHost>;

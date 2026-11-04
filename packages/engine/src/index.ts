@@ -45,6 +45,7 @@ export {
   inMemoryStores,
   resolveOrgStorageKey,
   resolveRequestIncarnation,
+  resolveSharedUserCellKey,
   resolveTraceMaxRequests,
   resolveUserStorageKey,
   runWithCAS,
@@ -241,6 +242,7 @@ export type {
 export {
   fireOwnerRunThrough,
   routeServiceEvent,
+  type MalformedOwnerRun,
   type OwnerRun,
   type OwnerRunFired,
   type OwnerRunRefusal,

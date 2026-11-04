@@ -16,7 +16,7 @@
 import {
   ConcurrencyRejectedError,
   PrincipalResolutionError,
-  resolveUserStorageKey,
+  resolveSharedUserCellKey,
   type InboundRequestEnvelope,
   type InboundTransportHost,
   type ResolvedPrincipal
@@ -112,8 +112,7 @@ export async function handleDispatch(
   // derived the way every other user-scoped read derives it. One derivation
   // for the resolver's read and the fired record, so the record sits beside
   // the row it guards.
-  const userStorageKey = (userId: string, orgId: string) =>
-    resolveUserStorageKey(userId, orgId, { id: flowKind, isolateUserState: false });
+  const userStorageKey = (userId: string, orgId: string) => resolveSharedUserCellKey(userId, orgId, flowKind);
 
   const schedules = (flow as { schedules?: SchedulesConfig }).schedules;
   let schedule: ScheduleConfig | null = schedules?.static?.[scheduleId] ?? null;

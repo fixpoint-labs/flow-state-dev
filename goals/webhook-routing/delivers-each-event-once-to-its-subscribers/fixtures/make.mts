@@ -3,7 +3,8 @@
  * users) and `events.json` (300 normalized GitHub-shaped events, then 40
  * redeliveries), from a fixed seed. Run once and commit the output; the goal
  * reads the JSON, never this script. The subscriptions are frozen before the
- * first share is read (see `goal.md`).
+ * first share is read (see `goal.md`), except the four closing cases at the
+ * end of the list, added afterwards (also in `goal.md`).
  *
  *   pnpm tsx goals/webhook-routing/delivers-each-event-once-to-its-subscribers/fixtures/make.mts
  *
@@ -51,7 +52,12 @@ const subscriptions = [
   { label: "b6", user: "bob", input: { thread: "github:acme/api", kinds: ["check"], screens: [{ screen: "labels", any: ["release"] }], interest: "Release CI on the API." } },
   { label: "b7", user: "bob", input: { thread: "github:acme/api#412", interest: "#412 for a while; unsubscribed halfway." }, unsubscribeAt: 150 },
   { label: "b8", user: "bob", input: { thread: "github:acme/private-api#7", interest: "Alice's private PR, which bob can't read." } },
-  { label: "b9", user: "bob", input: { thread: "github:acme/web", kinds: ["comment"], outsiders: true, interest: "Community comments on web." } }
+  { label: "b9", user: "bob", input: { thread: "github:acme/web", kinds: ["comment"], outsiders: true, interest: "Community comments on web." } },
+  // Added after the freeze: a thread's closing, against what screens it out, and a repo that outlives its PR.
+  { label: "a12", user: "alice", input: { thread: "github:acme/api", interest: "Everything on the API repo, which outlives #414's merge." } },
+  { label: "a13", user: "alice", input: { thread: "github:acme/api#415", kinds: ["review"], interest: "Reviews on #415 until it closes." } },
+  { label: "b10", user: "bob", input: { thread: "github:acme/api#415", screens: [{ screen: "words", any: ["benchmark"] }], interest: "Benchmarks on #415." } },
+  { label: "a14", user: "alice", input: { thread: "github:acme/api#416", interest: "#416, which alice merges herself." } }
 ];
 
 const threadsOf: Record<string, string[]> = {
@@ -64,6 +70,11 @@ const threadsOf: Record<string, string[]> = {
   "private#7": ["github:acme/private-api", "github:acme/private-api#7"]
 };
 const places = Object.keys(threadsOf);
+// Threads only the closing cases' events use, outside `places` so the seeded draws stay as they were.
+const closingThreads: Record<string, string[]> = {
+  "api#415": ["github:acme/api", "github:acme/api#415"],
+  "api#416": ["github:acme/api", "github:acme/api#416"]
+};
 const kinds = ["review", "check", "comment", "pull_request", "issue"];
 const senders = [
   { id: "octocat", name: "The Octocat", role: "member" },
@@ -129,6 +140,26 @@ events[200] = {
   labels: [],
   closes: true
 };
+// The closing cases: one event on each thread before it closes, the close, and one after.
+const on = (i: number, place: string, fields: Record<string, unknown>): void => {
+  events[i] = {
+    ...events[i]!,
+    place,
+    threads: closingThreads[place]!,
+    audience: "public",
+    labels: [],
+    url: `https://github.com/acme/${place}`,
+    ...fields
+  } as Event;
+};
+on(100, "api#415", { kind: "review", object: { id: "api#415-review-1", version: 1 }, sender: senders[0]!, title: "review on #415", text: "Ran the benchmark: 12% faster." });
+on(110, "api#416", { kind: "comment", object: { id: "api#416-comment-1", version: 1 }, sender: senders[1]!, title: "comment on #416", text: "Looks good to me." });
+// Closed by a member, as a `pull_request` with no benchmark in it: a13 (reviews only) and b10 (words) screen it out.
+on(230, "api#415", { kind: "pull_request", object: { id: "api#415-close", version: 1 }, sender: senders[0]!, title: "#415 closed", text: "Closed without merging.", closes: true });
+// Merged by alice herself: her own action, which `own` drops for a14.
+on(260, "api#416", { kind: "pull_request", object: { id: "api#416-merge", version: 1 }, sender: senders[6]!, title: "#416 merged", text: "Merged into main.", closes: true });
+on(270, "api#415", { kind: "review", object: { id: "api#415-review-2", version: 1 }, sender: senders[0]!, title: "review on #415", text: "Ran the benchmark again, after the close." });
+on(280, "api#416", { kind: "comment", object: { id: "api#416-comment-2", version: 1 }, sender: senders[1]!, title: "comment on #416", text: "A late note." });
 // 40 redeliveries of events already sent: same object and version, a new delivery id.
 const redeliveries = Array.from({ length: 40 }, (_, n) => {
   const original = events[Math.floor(rand() * events.length)]!;

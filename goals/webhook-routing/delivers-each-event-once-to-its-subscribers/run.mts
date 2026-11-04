@@ -44,6 +44,22 @@ const PATCHES: Record<string, ModulePatch[]> = {
       to: "@${object.version}"
     }
   ],
+  // A thread's closing ends only the subscriptions the closing event reached: the end-only runs are dropped.
+  "close-gated": [
+    {
+      module: "packages/workforce/src/subscriptions/service-flow.ts",
+      from: String.raw`for \(const candidate of closing\) if \(!delivered\.has\(candidate\.subscription\)\) ownerRuns\.push\(runFor\(candidate, true\)\);`,
+      to: ""
+    }
+  ],
+  // A closing event ends every subscription it reaches, the whole repo's too.
+  "close-whole": [
+    {
+      module: "packages/workforce/src/subscriptions/service-flow.ts",
+      from: String.raw`const closes = closedThreadOf\(event\) === row\.thread;`,
+      to: "const closes = event.closes === true;"
+    }
+  ],
   // The sender screen fails open: an outsider passes every subscription.
   "fail-open": [
     {
@@ -238,8 +254,13 @@ for (const sub of SUBSCRIPTIONS) {
   else refusedAtSubscribe.set(sub.label, String(outcome.output?.refused ?? JSON.stringify(outcome.error)));
 }
 
+// The share, derived here from the verdicts routing returns: production output carries no share.
+const labelOf = new Map<string, string>();
+const screensOf = (subscription: string) => SUBSCRIPTIONS.find((s) => s.label === labelOf.get(subscription))?.input.screens?.length ?? 0;
 let selected = 0;
 let decided = 0;
+let verdictsCut = 0;
+let unlabelled = 0;
 const route = async (event: SubscriptionEvent) => {
   const routed = await routeServiceEvent(host, {
     flowKind: "github-service",
@@ -250,15 +271,22 @@ const route = async (event: SubscriptionEvent) => {
   if (routed.error !== undefined) throw new Error(`routing failed: ${JSON.stringify(routed.error)}`);
   await Promise.all(routed.ownerRuns.map((run) => run.finished));
   await settled();
-  return routed.output as { selected: number; decidedByConfig: number };
+  return routed.output as { verdicts: Array<{ subscription: string; pass: boolean; reason: string }>; verdictsCut: number };
 };
+for (const [label, id] of subscriptionIds) labelOf.set(id, label);
 for (const [i, event] of EVENTS.entries()) {
   for (const sub of SUBSCRIPTIONS) {
     if (sub.unsubscribeAt === i) await act(sub.user, sessions.get(sub.label)!, "unsubscribe", { id: subscriptionIds.get(sub.label) });
   }
   const output = await route(event);
-  selected += output.selected;
-  decided += output.decidedByConfig;
+  verdictsCut += output.verdictsCut;
+  for (const verdict of output.verdicts) {
+    if (!labelOf.has(verdict.subscription)) unlabelled += 1;
+    selected += 1;
+    // Decided by config: a screen's refusal, or a pass on a subscription that listed a screen of its own.
+    // A refusal for having no verdict decided nothing; a pass on one that listed none is open.
+    if (verdict.pass ? screensOf(verdict.subscription) > 0 : verdict.reason !== "no verdict") decided += 1;
+  }
 }
 for (const event of REDELIVERIES) await route(event);
 
@@ -293,26 +321,27 @@ function expectedFor(sub: FixtureSubscription): string[] {
   if (!readable(sub.user, sub.input.thread)) return [];
   const seen = new Set<string>();
   const out: string[] = [];
-  let live = true;
   for (const [i, e] of EVENTS.entries()) {
-    if (sub.unsubscribeAt !== undefined && i >= sub.unsubscribeAt) live = false;
-    if (!live) break;
+    if (sub.unsubscribeAt !== undefined && i >= sub.unsubscribeAt) break;
     if (!e.threads.includes(sub.input.thread)) continue;
-    if (sub.input.kinds !== undefined && !sub.input.kinds.includes(e.kind)) continue;
     const role = e.sender.role;
     const senderOk = role === "member" || role === "collaborator" || (role === "bot" ? BOTS.includes(e.sender.id) : sub.input.outsiders === true);
-    if (!senderOk || e.sender.id === `${sub.user}-gh`) continue;
     const listed = sub.input.screens ?? [];
     const body = `${e.title}\n${e.text}`.toLowerCase();
-    const ok = listed.every((s) =>
-      s.screen === "labels" ? s.any!.some((l) => e.labels.includes(l)) : s.screen === "words" ? s.any!.some((w) => body.includes(w.toLowerCase())) : s.ids!.includes(e.sender.id)
-    );
-    if (!ok) continue;
+    const reaches =
+      (sub.input.kinds === undefined || sub.input.kinds.includes(e.kind)) &&
+      senderOk &&
+      e.sender.id !== `${sub.user}-gh` &&
+      listed.every((s) =>
+        s.screen === "labels" ? s.any!.some((l) => e.labels.includes(l)) : s.screen === "words" ? s.any!.some((w) => body.includes(w.toLowerCase())) : s.ids!.includes(e.sender.id)
+      );
     const key = `${e.object.id}@${e.object.version}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(key);
-    if (e.closes === true) live = false;
+    if (reaches && !seen.has(key)) {
+      seen.add(key);
+      out.push(key);
+    }
+    // The thread it follows closed (the event's narrowest thread): it ends, whether or not the closing event reached it.
+    if (e.closes === true && e.threads.at(-1) === sub.input.thread) break;
   }
   return out;
 }
@@ -360,13 +389,18 @@ await runGoal(async (failures, tell) => {
   tell.over("c · model resolutions", modelCalls, { emptyIs: "the claim: nothing on this path asks a model" });
   if (modelCalls.length > 0) failures.push(`c: ${modelCalls.length} model call(s): ${modelCalls[0]}`);
 
-  // (d) 0 deliveries after a subscription ended: b7 unsubscribed at event 150; a11's thread closed at event 200.
+  // (d) 0 deliveries after a subscription ended: b7 unsubscribed at event 150; a11's thread closed at event 200;
+  // #415 closed at 230 with an event a13's kinds and b10's words screen out; alice merged #416 herself at 260.
   const indexOf = (key: string) => EVENTS.findIndex((e) => `${e.object.id}@${e.object.version}` === key);
-  for (const [label, end] of [["b7", 150], ["a11", 201]] as const) {
+  for (const [label, end] of [["b7", 150], ["a11", 201], ["a13", 231], ["b10", 231], ["a14", 261]] as const) {
     const after = landed.filter((l) => l.session === sessions.get(label) && indexOf(l.key) >= end);
     tell.over(`d · ${label}'s deliveries before its end`, landed.filter((l) => l.session === sessions.get(label) && indexOf(l.key) < end));
     if (after.length > 0) failures.push(`d: ${label} got ${after.length} delivery(ies) after it ended`);
   }
+  // A subscription to the whole repo outlives every PR that closes on it.
+  const repoAfter = tell.over("d · a12's deliveries after #414 closed", landed.filter((l) => l.session === sessions.get("a12") && indexOf(l.key) > 200));
+  const wantAfter = expectedFor(SUBSCRIPTIONS.find((s) => s.label === "a12")!).filter((key) => indexOf(key) > 200).length;
+  if (repoAfter.length !== wantAfter) failures.push(`d: a12 (the whole repo) got ${repoAfter.length} delivery(ies) after #414 closed, expected ${wantAfter}`);
 
   // (e) Outsiders refused unless the subscription opted in.
   // An object version only outsiders sent: the fixture's edits can give one version two senders, so a key any member also sent is no outsider's.
@@ -380,7 +414,9 @@ await runGoal(async (failures, tell) => {
   for (const l of leaked.slice(0, 3)) failures.push(`e: outsider event ${l.key} reached a subscription that takes no outsiders`);
   if (leaked.length > 3) failures.push(`e: … ${leaked.length} outsider deliveries in all`);
 
-  // The share the config screens decided, reported on every run.
+  // The share the config screens decided, reported on every run, from every verdict.
+  if (verdictsCut > 0) failures.push(`share: routing cut ${verdictsCut} verdict(s), so the share can't be read whole`);
+  if (unlabelled > 0) failures.push(`share: ${unlabelled} verdict(s) named a subscription the fixture didn't make`);
   const share = selected === 0 ? 0 : decided / selected;
   tell.over("share · nominated subscriptions", Array.from({ length: selected }));
   const line = `SHARE ${share.toFixed(3)} (${decided}/${selected} config-decided of selected)${share < 0.5 ? " · KILL LINE" : ""}`;

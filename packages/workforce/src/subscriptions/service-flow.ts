@@ -7,10 +7,10 @@
  * - **Routing** ({@link SUBSCRIPTION_ROUTE_ENTRY}) runs as the service, in the
  *   org. It reads the thread index for each of the event's threads (it reads
  *   no user's cell), selects by provider and kind, runs the config screens,
- *   and returns one verdict per nominated subscription and an owner run for
- *   each that passed. The host fires those (`routeServiceEvent`), each only
- *   once it has found the subscription's row in its user's cell, naming this
- *   org, and on.
+ *   and returns the verdicts (at most {@link MAX_ROUTED_VERDICTS}) and an owner
+ *   run for each subscription that passed. The host fires those
+ *   (`routeServiceEvent`), each only once it has found the subscription's row
+ *   in its user's cell, naming this org and tenant, and on.
  * - **Delivery** ({@link SUBSCRIPTION_DELIVER_ENTRY}) runs as the
  *   subscription's user. It reads the row again (on, this provider, this
  *   thread), checks a private event's thread is still readable as that user
@@ -18,17 +18,28 @@
  *   holds what is past the cap, and sends one message through `sendMessage`'s
  *   exempt path from `service:<provider>`, under the id
  *   `<object>@<version>:<session>` (epic D4), so a second session on one PR
- *   gets its own message and a repeat in one session lands once. An event
- *   that closes its thread ends the subscription once delivered (ER-7).
+ *   gets its own message and a repeat in one session lands once.
+ * - **A thread's closing** (ER-7 as amended): an event that closes a thread
+ *   (`closes`, the last and narrowest of its `threads`) ends every
+ *   subscription to that thread, and only to that thread: a subscription to
+ *   the whole repo stays. It ends whether or not the closing event passed its
+ *   kinds, screens or cap: routing names an end-only owner run for each one
+ *   the event doesn't reach, and delivery ends the rest once delivered.
+ *
+ * A dispatch the recipient's host lost is left unseen, so the event's next
+ * delivery sends it; nothing here sends it again on its own (a provider that
+ * doesn't redeliver loses it).
  *
  * An ingestion (a verified webhook, a poll) normalizes each event and calls
  * `routeServiceEvent` with the routing entry. FIX-2535 wires GitHub's.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { updateStateWith } from "@flow-state-dev/core/helpers";
 import { subscriptionEventSchema, type BlockContext, type SubscriptionEvent } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { messageLogOf, workerMessagesResources } from "../messages/message-log";
-import { sendMessage } from "../messages/send-message";
+import { sendServiceMessage } from "../messages/send-message";
+import { retryOnConflict } from "../projects/cas-retry";
 import type { WorkerInstallation } from "../workers/installation";
 import { SUBSCRIPTION_DELIVER_ENTRY, SUBSCRIPTION_ROUTE_ENTRY, serviceSender } from "./keys";
 import {
@@ -42,13 +53,16 @@ import {
   type SubscriptionCursor,
   type SubscriptionRow
 } from "./rows";
-import { configScreenChain, decidedByConfig, screenVerdictSchema, screeningSchema, type Candidate, type Screening } from "./screens";
+import { configScreenChain, screenVerdictSchema, screeningSchema, type Screening } from "./screens";
 import { unsubscribe, type SubscriptionProvider } from "./subscribe";
 
 /** The default cap: the most messages one subscription sends in an hour. */
 export const DEFAULT_SUBSCRIPTION_CAP_PER_HOUR = 30;
 
 const HOUR_MS = 60 * 60 * 1000;
+
+/** The most verdicts routing records of one event; past it, only their count. */
+const MAX_ROUTED_VERDICTS = 100;
 
 /** What a service flow is built with. */
 export interface SubscriptionServiceOptions {
@@ -63,19 +77,25 @@ export interface SubscriptionServiceOptions {
   readonly capPerHour?: number;
 }
 
-/** What the routing entry returns: the verdicts, the share the config screens decided, and the owner runs for the host. */
-export const routedSchema = z.object({
+const deliverInputSchema = z.object({
+  subscription: z.string().min(1),
+  event: subscriptionEventSchema,
+  /** The event closes this subscription's thread but doesn't reach it: end it, deliver nothing. */
+  endOnly: z.literal(true).optional()
+});
+
+/** What the routing entry returns: the verdicts, and the owner runs for the host. */
+const routedSchema = z.object({
+  /** One per nominated subscription, the first {@link MAX_ROUTED_VERDICTS}. */
   verdicts: z.array(screenVerdictSchema),
-  /** Subscriptions the selection nominated. */
-  selected: z.number().int(),
-  /** Of those, the ones the config screens decided ({@link decidedByConfig}). */
-  decidedByConfig: z.number().int(),
+  /** Verdicts past the bound, counted and not recorded. */
+  verdictsCut: z.number().int().min(0),
   ownerRuns: z.array(
     z.object({
       flowKind: z.string(),
       entry: z.string(),
-      input: z.object({ subscription: z.string(), event: subscriptionEventSchema }),
-      owner: z.object({ userId: z.string(), orgId: z.string() }),
+      input: deliverInputSchema,
+      owner: z.object({ userId: z.string(), orgId: z.string(), tenantId: z.string().optional() }),
       rowKey: z.string()
     })
   )
@@ -83,12 +103,12 @@ export const routedSchema = z.object({
 
 export type Routed = z.infer<typeof routedSchema>;
 
-const deliverInputSchema = z.object({ subscription: z.string().min(1), event: subscriptionEventSchema });
-
 const deliveredSchema = z.object({
   act: z.enum(["sent", "unsent", "seen", "held", "ended", "refused"]),
   reason: z.string().optional()
 });
+
+type Delivered = z.infer<typeof deliveredSchema>;
 
 /** A delivery's message id: one object, at one version, for one session (epic D4). */
 export function deliveryMessageId(object: SubscriptionEvent["object"], sessionId: string): string {
@@ -104,6 +124,9 @@ export function deliveryText(event: SubscriptionEvent, thread: string, held: num
     `${event.title}\n${event.text}\n${event.url}${heldLine}`
   );
 }
+
+/** The thread an event closes: the narrowest it names, when it closes one. */
+const closedThreadOf = (event: SubscriptionEvent): string | undefined => (event.closes === true ? event.threads.at(-1) : undefined);
 
 /** Whether a cursor saw `object` at this version or a later one. */
 function seenBefore(cursor: SubscriptionCursor, object: SubscriptionEvent["object"]): boolean {
@@ -124,7 +147,11 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
 
   // ---- routing, as the service ---------------------------------------------
 
-  /** The subscriptions the index names on one of the event's threads, of this provider, hearing this kind. */
+  /**
+   * The subscriptions the index names on one of the event's threads, of this
+   * provider, hearing this kind; and, apart, every one on the thread the event
+   * closes, whatever it hears.
+   */
   const nominate = handler({
     name: "subscription-nominate",
     inputSchema: subscriptionEventSchema,
@@ -133,18 +160,21 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     execute: async (event, rawCtx): Promise<Screening> => {
       const ctx = rawCtx as unknown as BlockContext;
       const index = subscriptionIndexOf(ctx);
-      const pending: Candidate[] = [];
+      const closed = closedThreadOf(event);
+      const pending: Screening["pending"] = [];
+      const closing: Screening["closing"] = [];
       const named = new Set<string>();
       for (const thread of event.threads) {
         const row = await index.getOptional(indexKeyOf(thread));
         for (const [subscription, entry] of Object.entries(row?.state.subscriptions ?? {})) {
           if (named.has(subscription) || entry.provider !== event.provider || entry.thread !== thread) continue;
-          if (entry.kinds !== undefined && !entry.kinds.includes(event.kind)) continue;
           named.add(subscription);
+          if (thread === closed) closing.push({ subscription, entry });
+          if (entry.kinds !== undefined && !entry.kinds.includes(event.kind)) continue;
           pending.push({ subscription, entry });
         }
       }
-      return { event, nominated: pending, pending, verdicts: [] };
+      return { event, nominated: pending, pending, verdicts: [], closing };
     }
   });
 
@@ -152,10 +182,21 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     name: "subscription-routed",
     inputSchema: screeningSchema,
     outputSchema: routedSchema,
-    execute: async ({ event, verdicts, nominated }): Promise<Routed> => {
+    execute: async ({ event, verdicts, nominated, closing }): Promise<Routed> => {
       const ownerRuns: Routed["ownerRuns"] = [];
-      const all: Routed["verdicts"] = [];
-      let decided = 0;
+      const recorded: Routed["verdicts"] = [];
+      const delivered = new Set<string>();
+      const runFor = (candidate: Screening["pending"][number], endOnly: boolean): Routed["ownerRuns"][number] => ({
+        flowKind: options.kind,
+        entry: SUBSCRIPTION_DELIVER_ENTRY,
+        input: { subscription: candidate.subscription, event, ...(endOnly ? { endOnly: true as const } : {}) },
+        owner: {
+          userId: candidate.entry.userId,
+          orgId: candidate.entry.orgId,
+          ...(candidate.entry.tenantId === undefined ? {} : { tenantId: candidate.entry.tenantId })
+        },
+        rowKey: subscriptionRowKey(candidate.subscription)
+      });
       for (const candidate of nominated) {
         // A subscription with no verdict is refused.
         const verdict = verdicts.find((v) => v.subscription === candidate.subscription) ?? {
@@ -163,18 +204,14 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
           pass: false,
           reason: "no verdict"
         };
-        all.push(verdict);
-        if (decidedByConfig(verdict, candidate.entry)) decided += 1;
+        if (recorded.length < MAX_ROUTED_VERDICTS) recorded.push(verdict);
         if (!verdict.pass) continue;
-        ownerRuns.push({
-          flowKind: options.kind,
-          entry: SUBSCRIPTION_DELIVER_ENTRY,
-          input: { subscription: candidate.subscription, event },
-          owner: { userId: candidate.entry.userId, orgId: candidate.entry.orgId },
-          rowKey: subscriptionRowKey(candidate.subscription)
-        });
+        delivered.add(candidate.subscription);
+        ownerRuns.push(runFor(candidate, false));
       }
-      return { verdicts: all, selected: nominated.length, decidedByConfig: decided, ownerRuns };
+      // The closed thread's subscriptions the event doesn't reach still end.
+      for (const candidate of closing) if (!delivered.has(candidate.subscription)) ownerRuns.push(runFor(candidate, true));
+      return { verdicts: recorded, verdictsCut: nominated.length - recorded.length, ownerRuns };
     }
   });
 
@@ -186,66 +223,90 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
 
   // ---- delivery, as the subscriber -----------------------------------------
 
+  /** Deliver `event` on `row`, past its kinds, its private thread's read check, its cursor and its cap. */
+  const deliverToRow = async (ctx: BlockContext, subscription: string, row: SubscriptionRow, event: SubscriptionEvent): Promise<Delivered> => {
+    if (row.kinds !== undefined && !row.kinds.includes(event.kind)) return { act: "refused", reason: "not a kind it hears" };
+    // A private thread is read again as this user before anything of it reaches them (ER-4).
+    if (event.audience === "private" && !(await provider.canRead(row.thread, ctx))) {
+      return { act: "refused", reason: "the thread is no longer readable" };
+    }
+
+    // One write takes a slot under the cap, or holds the event past it: two
+    // deliveries at once can't both take the last slot.
+    const cursorRef = await subscriptionCursorsOf(ctx).getOrCreate(subscription, { seen: [], window: { start: 0, sent: 0 }, held: 0 });
+    type Taken = "seen" | "held" | { readonly start: number; readonly held: number };
+    // A burst on one subscription contends on its cursor past the engine's own retries.
+    const slot =
+      (await retryOnConflict(() =>
+        updateStateWith<SubscriptionCursor, Taken>(cursorRef, (c) => {
+          if (seenBefore(c, event.object)) return { state: c, result: "seen" };
+          const now = Date.now();
+          const window = now - c.window.start >= HOUR_MS ? { start: now, sent: 0 } : c.window;
+          if (window.sent >= cap) return { state: { ...c, seen: withSeen(c, event.object), window, held: c.held + 1 }, result: "held" };
+          return { state: { ...c, window: { start: window.start, sent: window.sent + 1 }, held: 0 }, result: { start: window.start, held: c.held } };
+        })
+      )) ?? "seen";
+    if (slot === "seen" || slot === "held") return { act: slot };
+
+    const id = deliveryMessageId(event.object, row.sessionId);
+    const sent = await sendServiceMessage(
+      ctx,
+      installation,
+      options.kind,
+      {
+        sender: serviceSender(row.provider),
+        to: { sessionId: row.sessionId, flow: row.flow, worker: row.worker },
+        text: deliveryText(event, row.thread, slot.held),
+        id
+      },
+      "subscription-deliver"
+    );
+    // A service flow carries no pass that sends again, so a dispatch the host
+    // didn't take (lost, or turned away for now) is left unseen and its slot
+    // given back: the next delivery of this event (a redelivery, a poll) sends
+    // it again under the same id, which lands once. A final refusal is seen:
+    // sending again can't help.
+    const logged = sent.ok && sent.requestId === undefined ? (await messageLogOf(ctx).getOptional(id))?.state : undefined;
+    if (logged !== undefined && logged.status === "unconfirmed" && logged.takenBy === undefined) {
+      await retryOnConflict(() =>
+        cursorRef.updateState((c) => ({
+          ...c,
+          window: c.window.start === slot.start ? { start: c.window.start, sent: Math.max(0, c.window.sent - 1) } : c.window,
+          held: c.held + slot.held
+        }))
+      );
+      return { act: "unsent", reason: logged.reason ?? "the host didn't take it" };
+    }
+    // Seen once sent: a stop before this sends again under the same id, which lands once.
+    await retryOnConflict(() => cursorRef.updateState((c) => ({ ...c, seen: withSeen(c, event.object), held: sent.ok ? c.held : c.held + slot.held })));
+    return sent.ok ? { act: "sent" } : { act: "refused", reason: sent.error };
+  };
+
   const deliver = handler({
     name: "subscription-deliver",
     inputSchema: deliverInputSchema,
     outputSchema: deliveredSchema,
     resources: { ...subscriptionResources, ...workerMessagesResources },
-    execute: async ({ subscription, event }, rawCtx) => {
+    execute: async ({ subscription, event, endOnly }, rawCtx): Promise<Delivered> => {
       const ctx = rawCtx as unknown as BlockContext;
       const identity = ctx.session.identity as { userId?: string; orgId?: string };
       // The row decides: this user's, this org's, on, and on this event's thread.
       const row: SubscriptionRow | undefined = (await subscriptionsOf(ctx).getOptional(subscription))?.state;
-      if (row === undefined || !row.enabled) return { act: "ended" as const };
-      if (row.userId !== identity.userId || row.orgId !== identity.orgId) return { act: "refused" as const, reason: "another user's subscription" };
+      if (row === undefined || !row.enabled) return { act: "ended" };
+      if (row.userId !== identity.userId || row.orgId !== identity.orgId) return { act: "refused", reason: "another user's subscription" };
       if (row.provider !== event.provider || row.provider !== provider.provider || !event.threads.includes(row.thread)) {
-        return { act: "refused" as const, reason: "not this subscription's thread" };
+        return { act: "refused", reason: "not this subscription's thread" };
       }
-      if (row.kinds !== undefined && !row.kinds.includes(event.kind)) return { act: "refused" as const, reason: "not a kind it hears" };
-      // A private thread is read again as this user before anything of it reaches them (ER-4).
-      if (event.audience === "private" && !(await provider.canRead(row.thread, ctx))) {
-        return { act: "refused" as const, reason: "the thread is no longer readable" };
+      const closes = closedThreadOf(event) === row.thread;
+      if (endOnly === true && !closes) return { act: "refused", reason: "the event doesn't close this subscription's thread" };
+      const delivered = endOnly === true ? undefined : await deliverToRow(ctx, subscription, row, event);
+      // The thread closed: the subscription ends whatever became of the event,
+      // except a send the host lost, which the event's next delivery sends first.
+      if (closes && delivered?.act !== "unsent") {
+        await unsubscribe(ctx, subscription, "thread_closed");
+        return delivered ?? { act: "ended" };
       }
-
-      const cursorRef = await subscriptionCursorsOf(ctx).getOrCreate(subscription, { seen: [], window: { start: 0, sent: 0 }, held: 0 });
-      const cursor = cursorRef.state;
-      if (seenBefore(cursor, event.object)) return { act: "seen" as const };
-      const now = Date.now();
-      const window = now - cursor.window.start >= HOUR_MS ? { start: now, sent: 0 } : cursor.window;
-      if (window.sent >= cap) {
-        await cursorRef.updateState((c) => ({ ...c, seen: withSeen(c, event.object), window, held: c.held + 1 }));
-        return { act: "held" as const };
-      }
-
-      const id = deliveryMessageId(event.object, row.sessionId);
-      const sent = await sendMessage(
-        ctx,
-        installation,
-        options.kind,
-        { to: { session: row.sessionId }, text: deliveryText(event, row.thread, cursor.held) },
-        "subscription-deliver",
-        {
-          id,
-          exempt: true,
-          service: { sender: serviceSender(row.provider), to: { sessionId: row.sessionId, flow: row.flow, worker: row.worker } }
-        }
-      );
-      // A service flow carries no pass that sends again, so a dispatch the host
-      // didn't take (lost, or turned away for now) is left unseen: the next
-      // delivery of this event (a redelivery, a poll) sends it again under the
-      // same id, which lands once. A final refusal is seen: sending again can't help.
-      const logged = sent.ok && sent.requestId === undefined ? (await messageLogOf(ctx).getOptional(id))?.state : undefined;
-      const untaken = logged !== undefined && logged.status === "unconfirmed" && logged.takenBy === undefined;
-      if (untaken) return { act: "unsent" as const, reason: logged.reason ?? "the host didn't take it" };
-      // Seen once sent: a stop before this sends again under the same id, which lands once.
-      await cursorRef.updateState((c) => ({
-        ...c,
-        seen: withSeen(c, event.object),
-        window: { start: window.start, sent: window.sent + 1 },
-        held: sent.ok ? 0 : c.held
-      }));
-      if (event.closes === true) await unsubscribe(ctx, subscription, "thread_closed");
-      return sent.ok ? { act: "sent" as const } : { act: "refused" as const, reason: sent.error };
+      return delivered!;
     }
   });
 

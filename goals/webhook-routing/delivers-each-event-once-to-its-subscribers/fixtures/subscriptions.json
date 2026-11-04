@@ -256,5 +256,48 @@
       "outsiders": true,
       "interest": "Community comments on web."
     }
+  },
+  {
+    "label": "a12",
+    "user": "alice",
+    "input": {
+      "thread": "github:acme/api",
+      "interest": "Everything on the API repo, which outlives #414's merge."
+    }
+  },
+  {
+    "label": "a13",
+    "user": "alice",
+    "input": {
+      "thread": "github:acme/api#415",
+      "kinds": [
+        "review"
+      ],
+      "interest": "Reviews on #415 until it closes."
+    }
+  },
+  {
+    "label": "b10",
+    "user": "bob",
+    "input": {
+      "thread": "github:acme/api#415",
+      "screens": [
+        {
+          "screen": "words",
+          "any": [
+            "benchmark"
+          ]
+        }
+      ],
+      "interest": "Benchmarks on #415."
+    }
+  },
+  {
+    "label": "a14",
+    "user": "alice",
+    "input": {
+      "thread": "github:acme/api#416",
+      "interest": "#416, which alice merges herself."
+    }
   }
 ]

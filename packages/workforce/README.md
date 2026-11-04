@@ -2650,7 +2650,7 @@ A worker's conversation can follow a thread on an outside service, such as a pul
 issue or a whole repository. Each event on that thread then reaches the conversation once, as a
 message from the service. No model reads the event on the way: code screens decide who hears it.
 
-Three pieces work together:
+An app wires up three things:
 
 - **The tools.** `subscriptionTools({ providers })` returns two handler blocks, `subscribe` and
   `unsubscribe`, for a worker's model (or an action) in the conversation that should hear.
@@ -2698,17 +2698,19 @@ The `subscribe` input is `{ provider, thread, kinds?, screens?, outsiders?, inte
 - `thread` is one of the thread keys events carry. A PR's events carry its repository's key and
   its own (`github:acme/api`, then `github:acme/api#412`), so following the repository hears all its PRs.
 - `kinds` limits which events are heard, by their `kind`. Leave it out to hear every event.
-- `screens` lists screens that must all pass: `{ screen: "labels", any }` (the event carries one of
-  these labels), `{ screen: "words", any }` (the title or text contains one, in any case) and
-  `{ screen: "allow", ids }` (only these senders).
+- `screens` lists screens that must all pass, two of one kind included: `{ screen: "labels", any }`
+  (the event carries one of these labels), `{ screen: "words", any }` (the title or text contains
+  one, in any case) and `{ screen: "allow", ids }` (only these senders). Two screens run on every
+  subscription before these, and aren't listed: `sender` (the `outsiders` rule below) and `own`
+  (the user's own actions, by the provider's `self`, are dropped).
 - `outsiders: true` also lets in people outside the project. Without it, only members,
   collaborators and the service flow's `trustedBots` get through, and a sender of unknown role
   counts as an outsider.
-- `interest` is kept with the subscription, for screens that read it.
+- `interest` is stored with the subscription. Nothing reads it yet: no screen today decides by it.
 
 It answers `{ id }`. A second `subscribe` from the same conversation for the same `thread` updates that
 subscription. A refusal answers `{ refused }`, starting with a code: `not_a_worker`, `no_thread`
-(a sentence alone selects nothing), `no_provider`, `wrong_provider` (the key isn't that
+(`thread` is empty: the `interest` sentence doesn't pick a thread), `no_provider`, `wrong_provider` (the key isn't that
 provider's), `not_readable` (the user can't read the thread) or `no_session`.
 
 `unsubscribe` takes `{ id }` and answers `{ ended: id }`, or `{ refused: "not_yours: …" }` for an id
@@ -2723,25 +2725,33 @@ not as instructions, followed by the event's title, text and link.
 - **Once per conversation.** Two conversations following one PR each hear each event. A redelivery,
   or the same version of an object seen again, adds nothing; a new version is a new event.
 - **Only what the user can read.** A thread the user can't read is refused at `subscribe`, and an
-  event on a private thread is checked again, as that user, before it reaches them.
-- **A cap.** One subscription sends at most `capPerHour` messages an hour (30 by default). Past it,
-  events are held and counted, and the next message that goes out says how many were held.
+  event on a private repository's thread is checked again, as that user, before it reaches them.
+- **A cap.** One subscription sends at most `capPerHour` messages an hour (30 by default), however
+  many events arrive at once. Past it, events are held and counted, and the next message that goes
+  out says how many were held.
+- **Under its session's tenant.** A subscription made in a tenant's conversation is delivered under
+  that tenant.
 
 ### When a subscription ends
 
 - When its conversation calls `unsubscribe`.
-- When an event closes its thread (`closes: true`, as a merged or closed PR sends it), after that
-  event is delivered.
+- When an event closes the thread it follows, as a merged or closed PR does. A closing event
+  (`closes: true`) closes the last and narrowest of its `threads`, so it ends the subscriptions to
+  that PR and leaves the ones to the whole repository. It ends them whether or not the closing
+  event reached them (another event kind, a screen, the user's own merge, the cap), after
+  delivering it to the ones it did reach.
 - When the task whose session subscribed fails or is cancelled. A task that completes keeps its
   subscriptions, so a coding task still hears the reviews on the PR it opened.
 
 ### The routing's answer
 
 `routeServiceEvent` returns the routing entry's output, with `ownerRuns` (one per subscription that
-passed, each with its `finished` result) beside it. The output carries one verdict per subscription
-the event's threads named, `{ subscription, pass, reason }`, plus `selected` (how many were named)
-and `decidedByConfig` (how many of them the screens decided: every refusal, and every pass on a
-subscription that listed a screen).
+passed, and one per subscription its closing event ends, each with its `finished` result) beside
+it. The output carries a verdict per subscription the event's threads named, `{ subscription,
+pass, reason }`, the first 100 of them, and `verdictsCut`, how many more there were.
+
+A delivery the recipient's host lost is left unseen, so the event's next delivery (a redelivery
+from the provider, a poll) sends it. Nothing sends it again on its own.
 
 ## Error Reporter
 
@@ -2836,7 +2846,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `discoverWorkforceCode(root)` | Walk `flows/workers/` and `blocks/` one level deep, every `resources/` folder the convention reads, every `blocks/` folder inside the team tree, and every package's `blocks/` folder, returning what they hold on `files`, `resourceModules`, `workerBlocks` and `packageBlocks` — each ordered by path — plus the `searched` patterns. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
 | `renderWorkforceCode(files, modules, workerBlocks?, packageBlocks?)` | Render a discovery's `files`, `resourceModules`, `workerBlocks` and `packageBlocks` as a module of static imports exporting `workerFlows`, `blocks`, `resourceModules`, `workerBlocks` and `packageBlocks`. Pass all four: the last two default to `[]`, so omitting one renders an empty map and reports nothing. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
 | `hireWorkforce(installation, { taskChainLimit?, messages? })` | The flows to register for an installation: one copy of each worker flow, under its name, and the roster flow (`workforce-roster`) with `hire`, `fork`, `edit` and `fire`. Throws, naming every problem, when a worker flow misses the contract or doesn't declare the installation's session, or when a standard worker would be refused on its first turn; nothing is registered. `taskChainLimit` is the most tasks one top task may have under it, at any depth (100 when omitted); a value that isn't a whole number of at least 1 throws. `messages: { budget?, perTurn? }` limits [worker messages](#worker-messages) (6 and 3 when omitted), under the same rule. |
-| `SEND_MESSAGE_TOOL` / `MESSAGE_RECEIVED_ENTRY` / `RECEIVED_MESSAGE_COMPONENT` / `WORKER_MESSAGES_RESOURCE` / `WORKER_MESSAGES_PATTERN` / `workerMessageRowSchema` / `WorkerMessageRow` / `MAX_MESSAGE_CHARS` / `DEFAULT_MESSAGE_BUDGET` / `DEFAULT_MESSAGES_PER_TURN` / `sendMessageInputSchema` | [Worker messages](#worker-messages): the tool's name (`"sendMessage"`), the entry a message arrives on (`"onMessageReceived"`), the component item type a received message is drawn by (`"workforce:received"`), the log's accessor and pattern and its row schema, the 8,000-character cap, the default limits (6 and 3), and the tool's input schema. Also exported: `MESSAGE_STATUSES`, `MessageAddress`, `workerMessagesCollection` and `workerMessagesResources` (the log as a flow resource), and `sendMessage(ctx, installation, flowKind, { to, text, inReplyTo? }, from, { id?, replyRequested?, exempt?, noAnswer? })`, the send the tool runs, answering a `SendOutcome` (`{ ok: true, id, requestId? }` or `{ ok: false, error }`); its input type is `SendMessageInput`, where `to` is a worker's id, `{ task }` or `{ session }`. `replyRequested: {}` asks for a reply and `{ deadlineAt }` adds the deadline a waiting sender stops at (the tool's `wait` parks on it; the bare helper doesn't wait). `exempt: true` spends no budget, for the server's own messages, and `noAnswer: true` marks the framework's "no answer"; neither is for a model's input. `service: { sender, to: { sessionId, flow, worker } }` sends a service's delivery (see [Subscriptions](#subscriptions)): `sender` stands where the sending worker would and the message goes to `to`, with no roster check; it takes `exempt` and an `id`. Pass a server-chosen `id` to make a repeated send one message: when its row already exists, the repeat writes nothing, spends no budget and answers `{ ok: true, id }`. The tool never passes one. `checkTaskTarget` / `checkTargetSession` / `MessageTarget` / `TargetCheck` / `CheckedTarget`: see [Addressing a task or a conversation](#addressing-a-task-or-a-conversation). |
+| `SEND_MESSAGE_TOOL` / `MESSAGE_RECEIVED_ENTRY` / `RECEIVED_MESSAGE_COMPONENT` / `WORKER_MESSAGES_RESOURCE` / `WORKER_MESSAGES_PATTERN` / `workerMessageRowSchema` / `WorkerMessageRow` / `MAX_MESSAGE_CHARS` / `DEFAULT_MESSAGE_BUDGET` / `DEFAULT_MESSAGES_PER_TURN` / `sendMessageInputSchema` | [Worker messages](#worker-messages): the tool's name (`"sendMessage"`), the entry a message arrives on (`"onMessageReceived"`), the component item type a received message is drawn by (`"workforce:received"`), the log's accessor and pattern and its row schema, the 8,000-character cap, the default limits (6 and 3), and the tool's input schema. Also exported: `MESSAGE_STATUSES`, `MessageAddress`, `workerMessagesCollection` and `workerMessagesResources` (the log as a flow resource), and `sendMessage(ctx, installation, flowKind, { to, text, inReplyTo? }, from, { id?, replyRequested?, exempt?, noAnswer? })`, the send the tool runs, answering a `SendOutcome` (`{ ok: true, id, requestId? }` or `{ ok: false, error }`); its input type is `SendMessageInput`, where `to` is a worker's id, `{ task }` or `{ session }`. `replyRequested: {}` asks for a reply and `{ deadlineAt }` adds the deadline a waiting sender stops at (the tool's `wait` parks on it; the bare helper doesn't wait). `exempt: true` spends no budget, for the server's own messages, and `noAnswer: true` marks the framework's "no answer"; neither is for a model's input. Pass a server-chosen `id` to make a repeated send one message: when its row already exists, the repeat writes nothing, spends no budget and answers `{ ok: true, id }`. The tool never passes one. `checkTaskTarget` / `checkTargetSession` / `MessageTarget` / `TargetCheck` / `CheckedTarget`: see [Addressing a task or a conversation](#addressing-a-task-or-a-conversation). |
 | `messageReceivedEntry({ installation, flowKind, turn?, hears? })` / `MessageHearing` | The `onMessageReceived` internal entry every worker flow carries (see [Worker messages](#worker-messages)). `turn` runs with a `MessageReceived` after the message lands; left out, nothing runs, the request outputs `{ turnless: true }`, and a send with `wait: true` or `replyRequested` to the flow's workers is refused up front with `no_reply`. Where the sender can't tell (an entry built by an older copy of this package), the message is sent and its answer is the framework's "no answer". `hears: "task-sessions"` (`MessageHearing`) makes the flow's workers hear only in their tasks' sessions, refusing a message by name with `task_sessions_only`. The session factory's `entries(turn)` includes one. |
 | `subscriptionTools({ providers })` / `subscribe(ctx, providers, input)` / `unsubscribe(ctx, id, reason)` / `endTaskSubscriptions(ctx, taskId, ending)` / `subscribeInputSchema` / `SubscriptionProvider` | [Subscriptions](#subscriptions): the two tools as handler blocks, and the functions they and a task's ending call. `SubscriptionProvider` is `{ provider, canRead(thread, ctx), self?(ctx) }`. |
 | `defineSubscriptionServiceFlow({ kind, provider, installation, trustedBots?, capPerHour? })` / `SUBSCRIPTION_ROUTE_ENTRY` / `SUBSCRIPTION_DELIVER_ENTRY` / `DEFAULT_SUBSCRIPTION_CAP_PER_HOUR` | A provider's service flow: the routing entry an ingestion calls through the engine's `routeServiceEvent`, as the service, and the delivery entry the host runs as each subscriber. The cap is 30 an hour by default. |

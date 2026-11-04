@@ -48,4 +48,26 @@ describe("a task's subscriptions", () => {
       await host.dispose();
     }
   });
+
+  it("end when the task was cancelled while it worked, and its session hears nothing more", async () => {
+    let open!: () => void;
+    const host = bootSubscriptionsHost({ hold: new Promise<void>((resolve) => (open = resolve)) });
+    try {
+      const conv = await host.conversation("alice", "lead");
+      const filed = await host.act("alice", conv, "createTask_tasks", { goal: `open the PR [subscribe:${PR}] [hold]`, assignee: "eng.follower" });
+      expect(filed.error, messageOf(filed.error)).toBeUndefined();
+      for (let i = 0; i < 500 && (await host.subscriptionRows("alice")).length === 0; i += 1) await new Promise((resolve) => setTimeout(resolve, 10));
+      const [row] = await host.subscriptionRows("alice");
+      expect(row).toMatchObject({ enabled: true, taskId: expect.any(String) });
+      const cancelled = await host.act("alice", conv, "updateTask_tasks", { id: row!.taskId, status: "cancelled" });
+      expect(cancelled.error, messageOf(cancelled.error)).toBeUndefined();
+      open();
+      await host.settled();
+      expect((await host.subscriptionRows("alice")).map((r) => [r.enabled, r.endedReason])).toEqual([[false, "task_cancelled"]]);
+      await host.route(event({ text: "a review after the cancel" }));
+      expect(await host.heard(row!.sessionId)).toEqual([]);
+    } finally {
+      await host.dispose();
+    }
+  });
 });
