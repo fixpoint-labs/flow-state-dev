@@ -9,6 +9,8 @@
  *
  * A scenario that names a hold (`holdBeforeAnswer`) is held before its model
  * runs, so a page can be seen showing a worker as working before it answers.
+ * The `fail-once` scenario's first assistant call throws (`failsOnce`), so a
+ * page can show a failed turn and retry it.
  *
  * This is an app-local test seam, not deployment glue, gated by an explicit
  * env flag. It lives in `lib/` beside the script it plays (`e2e-mock-script.ts`)
@@ -19,6 +21,8 @@ import { createMockModelResolver } from "@flow-state-dev/testing";
 import type { ModelResolver } from "@flow-state-dev/core";
 import {
   holdBeforeAnswer,
+  failsOnce,
+  FAIL_ONCE_REASON,
   assistantMock,
   skillClassifierMock,
   autoTitleMock,
@@ -47,6 +51,7 @@ export function createKitchenSinkTestModelResolver(): ModelResolver {
     const model = scripted(modelId, blockName, options);
     if (blockName === undefined) return model;
     const hold = (messages: unknown) => {
+      if (failsOnce(blockName, messages)) throw new Error(FAIL_ONCE_REASON);
       const ms = holdBeforeAnswer(blockName, messages);
       return ms > 0 ? new Promise<void>((resolve) => setTimeout(resolve, ms)) : undefined;
     };
