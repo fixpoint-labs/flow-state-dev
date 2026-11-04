@@ -58,3 +58,5 @@ each runs only the leg it must fail):
 | 2026-11-04 | 5f73870d + the same-port restart | n/a | FAIL (control `never-quiet`) | quiet only: 2 reads of the row while its lease had lapsed (by 124 s) read `working · 4m 3s`, never quiet |
 | 2026-11-04 | 5f73870d + the same-port restart | n/a | PASS | clock 1 s against 1 s since the retry's run started, then 5 s; alive 80 reads over 240 s, all working, 7 lease deadlines; quiet `quiet for 4m` 243 s after the kill, lease lapsed 126 s before |
 | 2026-11-04 | 46856a3c | n/a | FAIL (control `task-clock`) | clock only, as above |
+| 2026-11-04 | 2d5b2b75 | n/a | PASS | clock 1 s against 1 s, then 5 s; alive 80 reads over 240 s, all working, 6 lease deadlines; quiet `quiet for 4m` on the first read as the server answered, lease lapsed 125 s before |
+| 2026-11-04 | 2d5b2b75 | n/a | FAIL (control `never-quiet`) | quiet only: 217 fresh reads of a row lapsed by up to 180 s read `working · …`, last `5m 0s`; the board took it back 58.3 s after the server answered |
