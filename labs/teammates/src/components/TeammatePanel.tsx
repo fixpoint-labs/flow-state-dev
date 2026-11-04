@@ -32,7 +32,7 @@ function StatusDot({ task }: { task: BoardTask }) {
         : task.status === "failed"
           ? "bg-destructive"
           : "border border-muted-foreground/60";
-  return <span aria-hidden className={cn("mt-[5px] size-2 shrink-0 rounded-full", look)} />;
+  return <span aria-hidden data-task-dot className={cn("mt-[5px] size-2 shrink-0 rounded-full", look)} />;
 }
 
 /** A teammate's tasks, split for the panel: the running ones, then each ending's, in filing order. */
@@ -95,6 +95,8 @@ export function TeammatePanel({
           className={cn(
             "flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none",
             t.id === openTask && "bg-accent",
+            // A stale feed greys the whole row, dot included: STALE_CLASS only reaches descendants.
+            stale && STALE_CLASS,
           )}
         >
           <StatusDot task={t} />
@@ -103,7 +105,7 @@ export function TeammatePanel({
               {coding ? <TerminalIcon aria-hidden className="mr-1 mb-0.5 inline size-3 text-muted-foreground" /> : null}
               {line}
             </span>
-            <span className={cn("block truncate text-xs", t.status === "failed" ? "text-destructive" : "text-muted-foreground", stale && STALE_CLASS)} data-status>
+            <span className={cn("block truncate text-xs", t.status === "failed" ? "text-destructive" : "text-muted-foreground")} data-status>
               {[t.waiting ? "waiting on you" : t.status, runsOn(t)].filter(Boolean).join(" · ")}
             </span>
           </span>
@@ -158,11 +160,12 @@ export function TeammatePanel({
           </div>
           {tasks.length === 0 ? <p className="px-4 text-xs text-muted-foreground">{worker.name} hasn't started any tasks yet.</p> : null}
           <CodingSpend tasks={tasks.filter((t) => isCoding(t.to))} />
+          <div className="space-y-1">
           {active.length > 0 ? <ul aria-label="Active" className="space-y-px px-2">{active.map(row)}</ul> : null}
           {ended.map((group) => {
             const open = opened[group.status] ?? false;
             return (
-              <div key={group.status} className={cn(active.length > 0 || group !== ended[0] ? "mt-1" : undefined)}>
+              <div key={group.status}>
                 <button
                   type="button"
                   aria-expanded={open}
@@ -183,6 +186,7 @@ export function TeammatePanel({
               </div>
             );
           })}
+          </div>
         </section>
         <section aria-labelledby="routines-heading">
           <div id="routines-heading" className={cn(HEADING, "px-4 pt-4 pb-2")}>

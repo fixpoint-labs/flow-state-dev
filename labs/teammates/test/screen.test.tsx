@@ -250,9 +250,12 @@ describe("the teammates screen", () => {
     const groups = () => [...side.querySelectorAll("button[aria-expanded]")].map((b) => b.getAttribute("aria-label"));
     // Ended tasks are folded: their groups show counts, and none of their rows.
     await waitFor(() => expect(groups()).toEqual(["Done (2)", "Failed (1)", "Cancelled (1)"]));
+    const folded = () => [...side.querySelectorAll("button[aria-expanded]")].map((b) => b.getAttribute("aria-expanded"));
+    expect(folded()).toEqual(["false", "false", "false"]);
     expect(within(side).queryByRole("button", { name: "Asked researcher to look up the launch date" })).toBeNull();
     // Opening a group shows its rows, and only its own.
     fireEvent.click(within(side).getByRole("button", { name: /^Done \(2\)/ }));
+    expect(folded()).toEqual(["true", "false", "false"]);
     const done = within(side).getByRole("list", { name: "Done" });
     expect(within(done).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Asked researcher to look up the launch date", "Asked researcher to find a customer quote"]);
     expect(within(side).queryByRole("button", { name: "Asked researcher to check the beta numbers" })).toBeNull();
