@@ -4,7 +4,7 @@
 
 The calls that sit above any single child: what was chosen, what lost, why, and what each locks
 in for the ten children and the closure. D1 to D3 are the owner's, made before this spec was
-written. D4 and D5 are engineering calls. Q1 is open.
+written. D4 and D5 are engineering calls. Q1 is the owner's, answered on Nov 4.
 
 <a name="d1"></a>
 ## D1 · New layers are on by default for every workforce worker, each with its own opt-out
@@ -73,43 +73,28 @@ gets the defaults.
 Engineering, not asked: one list of checks is the only answer the compose rule allows.
 
 <a name="q1"></a>
-## Q1 · Open · Should the proof reach every layer the epic builds?
+## Q1 · Resolved · The proof reaches every layer the epic builds: three more asks in the closure
 
-**Plain terms.** The proof has four asks: the date, a multi-file question, a coder's checks, a
-cited source. Three things in the set are reached by none of them: answer sizing and the skills
-index (both FIX-2498 sections now) and the structured summary (FIX-2500). Under the kill line,
-a section with no ask can't be cut at the cut run, and can't be proven at the wrap. It ships
-unmeasured, which is what D2 exists to stop.
+**The owner's call, Nov 4 (in session).** FIX-2541's scripts gain three asks beside the four
+they had: **(1)** a one-line question gets a short answer; **(2)** a worker holding a skill that
+fits loads it without a slash; **(3)** a decision made before a summary fold is still used after
+it, in the two labs, where conversations run long. Each runs 3 times and passes on 3 of 3, with
+a control that fails on today's `main` ([ER-7](#who-owns-what)). Still `fsdev run`, still no
+eval apparatus ([D2](#d2)).
 
-**The trade-off.** Three more asserts in the same scripts is adding to the proof, which is
-your call. Moving the summary and the skills index out of the epic loses "keeps the thread" and
-"sees its skills" from the epic's description, and leaves sizing unproven.
+| | |
+|---|---|
+| **Instead of** | Moving FIX-2500 and FIX-2498's skills-index section to *Not doing*, the alternative argued in the [second look](https://github.com/fixpoint-labs/flow-state-dev/pull/4672#issuecomment-6631454763) |
+| **Because** | Under the kill line a layer no ask reaches can be neither cut at the cut run nor proven at the wrap, so it ships unmeasured, which is what D2 exists to stop. The owner kept "keeps the thread" and "sees its skills" in the outcome |
+| **Locks in** | FIX-2500 and the skills-index section stay in scope, and are now cuttable and provable: the cut run cancels either one whose ask already passes ([ER-6](#who-owns-what)), and the wrap proves the rest. Answer sizing, in FIX-2498's behaviour section, gets its own ask. FIX-2541's spec and Linear description carry the seven asks. The seeded long conversation is the larger part of the cost, two to three days rather than one |
 
-**My recommendation: add three asserts to the same scripts.** A one-line question gets a short
-answer. A worker holding a skill that fits loads it without a slash. A decision made before a
-summary fold is still used after it, in the two labs, where conversations run long. Still
-`fsdev run`, still no eval apparatus.
+**What would change my mind:** compaction or skills dropped from the outcome on purpose. Then
+they move to *Not doing*, and their asks go with them.
 
-**The other option, argued in the [second look](https://github.com/fixpoint-labs/flow-state-dev/pull/4672#issuecomment-6631454763):
-move FIX-2500 and the skills-index section out.** Growing the proof to fit what was planned is
-backwards; the sizing and fold asserts are the most brittle model-behaviour checks in the set,
-and the index reverses the skills switches' "zero configuration costs nothing" rule, the
-costliest default flip here with the weakest case. Both stay available opt-in (the switches and
-`historySummary` exist), sizing is proven by the closure's sweep, and either comes back when a
-real ask shows the need. **Price:** saves both specs and builds, the index's per-turn tokens on
-every worker and the summary's extra model call per fold; costs "keeps the thread" and "sees
-its skills" from the epic's promise, and sizing stays without a scripted ask.
+![Q1, decided: three more asserts in FIX-2541's scripts, chosen, beside moving the summary and skills index out. Decides it: a layer with no ask can neither be cut nor proven. Price: two to three days more proof. Flips if compaction and skills were dropped from the outcome on purpose](figures/open-proof-reach.svg)
 
-**What would change my mind:** if you dropped compaction and skills from the outcome on purpose.
-Then take the other option.
-
-**What being wrong costs.** Recommended and unneeded: three asserts, two of them quick; the
-seeded long conversation is the larger part, two to three days rather than one. Not taken and
-needed: two layers ship that every worker pays for and nobody showed to help. With compaction on
-by default, that pay includes one extra model call per worker every time its summary folds, on
-top of the index's per-turn tokens.
-
-![Q1, whether the proof reaches every layer: three more asserts, recommended, beside moving the summary and skills index out. Decides it: a layer with no ask can neither be cut nor proven. Price: more proof to write, which is the owner's call. Flips if compaction and skills were dropped from the outcome on purpose](figures/open-proof-reach.svg)
+It comes down to the first row: a layer no ask reaches can't be cut, so the summary and the
+index stay, each with an ask of its own.
 
 ## Who owns what
 
@@ -194,5 +179,7 @@ and Codex's [review of DECISIONS.md](https://github.com/fixpoint-labs/flow-state
   run; Q1 raised.
 - **Review round 1 (Nov 4)** — analysed; two children folded; the calls above.
 - **Review round 2 (Nov 4)** — the second look and Codex folded; Q1's alternative priced.
+- **Merged (Nov 4).** The owner then answered [Q1](#q1): three more asks in the closure; FIX-2500
+  and the skills index stay. Folded by a follow-up amendment PR.
 
-**Open: [Q1](#q1).**
+**Open:** none.
