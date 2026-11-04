@@ -1,7 +1,7 @@
 /**
  * Goal check: the Claude Code-style lab checks a project's repository when the
- * project is made. A folder that is not a git repository, and a repository that
- * doesn't ignore `.fsdev/`, are refused `repository-unusable` by the server,
+ * project is made. A folder that is not a git repository, a repository that
+ * doesn't ignore `.fsdev/`, and one whose rule isn't committed yet, are refused `repository-unusable` by the server,
  * and the picker shows each problem before Create is pressed, with Create off.
  * A repository the lab lists is made, and the picker says its runs work in
  * worktrees.
@@ -13,8 +13,8 @@
  *
  * Control (`GOAL_CONTROL=<name>`, same command):
  *   - `no-repository-check`: the lab's projects flow is built with no
- *     repository check (`fsdev.config.mts` reads it). Must FAIL refused: both
- *     projects are made.
+ *     repository check (`fsdev.config.mts` reads it). Must FAIL refused: all
+ *     three projects are made.
  *
  * Run: pnpm tsx goals/claude-code-style-lab/checks-the-repository-first/run.mts
  */
@@ -26,7 +26,7 @@ import { goalTmpDir, loadFixture, runGoal, stopProcessGroup } from "../../lib/in
 import { launchChromium } from "../../lib/playwright.mts";
 import { git, labCheckout, makeRepository, startLab } from "../lab.mts";
 
-const fixture = loadFixture<{ plainProject: string; unignoredProject: string; goodProject: string }>(import.meta.url);
+const fixture = loadFixture<{ plainProject: string; unignoredProject: string; uncommittedProject: string; goodProject: string }>(import.meta.url);
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 if (CONTROL !== "" && CONTROL !== "no-repository-check") throw new Error(`setup: no control named ${CONTROL}`);
 const USER = "u_goal";
@@ -52,11 +52,19 @@ await runGoal(async (failures, tell) => {
     writeFileSync(join(unignored, "README.md"), "# No ignore rule\n");
     git(unignored, "add", ".");
     git(unignored, "-c", "user.email=goal@example.com", "-c", "user.name=goal", "commit", "-q", "-m", "start");
+    // The rule written but not committed: a run's checkout is cut from the commit, which lacks it.
+    const uncommitted = join(scratch, "half-done");
+    mkdirSync(uncommitted, { recursive: true });
+    git(uncommitted, "init", "-q", "-b", "main");
+    writeFileSync(join(uncommitted, "README.md"), "# Rule not committed\n");
+    git(uncommitted, "add", ".");
+    git(uncommitted, "-c", "user.email=goal@example.com", "-c", "user.name=goal", "commit", "-q", "-m", "start");
+    writeFileSync(join(uncommitted, ".gitignore"), "**/.fsdev/\n");
     const good = makeRepository(join(scratch, "ready-repo"));
 
     lab = await startLab(join(scratch, "data"), USER, {
       CLAUDE_CODE_STYLE_HARNESS: "stub",
-      CLAUDE_CODE_STYLE_REPOSITORIES: [unignored, good].join(":"),
+      CLAUDE_CODE_STYLE_REPOSITORIES: [unignored, uncommitted, good].join(":"),
       GOAL_CONTROL: CONTROL,
       AI_GATEWAY_API_KEY: "",
       OPENAI_API_KEY: "",
@@ -74,7 +82,7 @@ await runGoal(async (failures, tell) => {
     const listed = async (): Promise<string[]> => ((await act("listProjects", {})).output?.projects ?? []).map((p: { id: string }) => p.id);
 
     // ── refused: the server refuses both unusable repositories, and lists neither.
-    for (const [name, folder] of [[fixture.plainProject, plain], [fixture.unignoredProject, unignored]] as const) {
+    for (const [name, folder] of [[fixture.plainProject, plain], [fixture.unignoredProject, unignored], [fixture.uncommittedProject, uncommitted]] as const) {
       const made = await act("createProject", { id: idOf(name), title: name, visibility: "private", repository: pathToFileURL(folder).href });
       const words = tell.over(`refused · ${name}: the refusal`, made.error === undefined ? [] : [made.error])[0] ?? "";
       if (made.status === "completed" || !words.includes("repository-unusable")) {
@@ -82,7 +90,7 @@ await runGoal(async (failures, tell) => {
       } else notes.push(`refused: ${name}: ${JSON.stringify(words.slice(0, 90))}`);
     }
     const afterRefusals = await listed();
-    for (const name of [fixture.plainProject, fixture.unignoredProject]) {
+    for (const name of [fixture.plainProject, fixture.unignoredProject, fixture.uncommittedProject]) {
       if (afterRefusals.includes(idOf(name))) failures.push(`refused: listProjects holds ${idOf(name)}`);
     }
 
@@ -103,6 +111,7 @@ await runGoal(async (failures, tell) => {
     for (const [name, folder, expected] of [
       [fixture.plainProject, plain, "is not a git repository"],
       [fixture.unignoredProject, unignored, "**/.fsdev/"],
+      [fixture.uncommittedProject, uncommitted, "Commit the .gitignore change"],
     ] as const) {
       await typeIn(name, folder);
       const problem = form.getByTestId("repository-problem");

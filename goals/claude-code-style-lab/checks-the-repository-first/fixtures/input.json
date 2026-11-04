@@ -1,5 +1,6 @@
 {
   "plainProject": "Loose files",
   "unignoredProject": "Bare checkout",
-  "goodProject": "Ready repo"
+  "goodProject": "Ready repo",
+  "uncommittedProject": "Half done"
 }

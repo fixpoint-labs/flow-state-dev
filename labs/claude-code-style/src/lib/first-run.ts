@@ -37,5 +37,5 @@ export const EMPTY_PANE: Record<"tasks" | "board", string> = {
 export function repositoryDisclosure(how: "worktree" | "clone"): string {
   return how === "worktree"
     ? "Coding runs work in their own git worktrees of this repository, each on its own branch. Your checkout and the branch it is on are never changed."
-    : "Coding runs work in a clone of this repository under the lab's data folder, each on its own branch. The repository itself is only read.";
+    : "Coding runs work in a clone of this repository under the lab's data folder, each on its own branch. The repository itself is only read. A remote's reach is checked on the first run.";
 }
