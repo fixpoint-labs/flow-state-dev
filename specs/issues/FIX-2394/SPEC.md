@@ -1,4 +1,4 @@
-# FIX-2394 · Task time, progress and stall signals
+# FIX-2394 · Task time and stall signals
 
 **Spec** · [Decisions](DECISIONS.md)
 
@@ -7,10 +7,10 @@
 | Someone who… | Today | After |
 |---|---|---|
 | **watches a running task**, either lab | `running · "editing Login.tsx"`, no time | `working · 4m 12s · "editing Login.tsx"`, ticking |
-| **has a task whose run died without ending its row** (FIX-2032) | `running`, forever | Amber `quiet for 40m`. The clock returns once the board takes the row back |
-| **retried a failed task** | No clock | The clock restarts with the new attempt ([D2](DECISIONS.md#d2)) |
-| **has a run in one long step** | `running` | `working · 9m 40s`, never `quiet`: the run is alive ([open](DECISIONS.md#open)) |
-| **scans a pane's header** | `Background tasks · 3` | `2 running · 1 waiting · 1 failed · 28 done`, the same in both labs |
+| **has a task whose run died without ending its row** (FIX-2032) | `running`, forever | Amber `quiet for 40m`, until the board takes the row back |
+| **retried a failed task** | No clock | The clock restarts with the attempt ([D2](DECISIONS.md#d2)) |
+| **has a run in one long step** | `running` | `working · 9m 40s`, never `quiet` ([open](DECISIONS.md#open)) |
+| **scans a pane's header** | `Background tasks · 3` | `2 running · 1 waiting · 1 failed · 28 done`, both labs |
 | **looks at a finished task** | No time on Claude Code-style's *Done* rows | `12m ago` |
 
 ## The goal, and how we'll know it's met
@@ -21,19 +21,19 @@ long each running task has worked on this attempt, without opening it or asking 
 | Is it the right goal? | |
 |---|---|
 | **The real need** | R-28: "A task running 40 seconds looks the same as one stuck for 18 of its 20 minutes" |
-| **Smaller, and rejected** | `updated 3m ago` on running rows. A running request rewrites its row about every 40 s (its lease heartbeat, [POC](poc/row-fields/)), so every healthy row would read `now` |
-| **Bigger, and not this issue's** | The `n/m` steps pill: no row carries a step count, so it waits for FIX-2164 ([D1](DECISIONS.md#d1)). A *no progress* badge for a live but stuck run ([open](DECISIONS.md#open)). `of 20:00`: a task has no time budget |
-| **Not done if** | A healthy running row reads `quiet` · a row with no live run reads `working` past the threshold · a retried task's clock counts its earlier attempts · the labs word a row differently, or keep their own copy |
+| **Smaller, and rejected** | `updated 3m ago` on running rows. The lease heartbeat rewrites a running row about every 40 s ([POC](poc/row-fields/)), so it always reads `now` |
+| **Not this issue's** | The `n/m` steps pill (FIX-2164, [D1](DECISIONS.md#d1)). A *no progress* badge ([open](DECISIONS.md#open)). `of 20:00`: a task has no time budget |
+| **Not done if** | A healthy row reads `quiet` · a row with no live run reads `working` past the threshold · a retried task's clock counts earlier attempts · the labs word a row differently or keep their own copy |
 
 ```mermaid
 flowchart LR
-  L["each lab · fsdev dev · scripted coder"] --> C["clock · a retried task"]
+  L["one goal module · each lab · scripted coder"] --> C["clock · a retried task"]
   L --> A["alive · one 4-minute step"]
   L --> Q["quiet · host killed, restarted"]
   C --> P["page vs listTasks rows · PASS"]
   A --> P
   Q --> P
-  X["control · threshold 10 s"] -.-> A
+  X["control · quiet from a 10 s age"] -.-> A
   A -.->|"under the control"| F["must FAIL · a live run reads quiet"]
 ```
 
@@ -42,91 +42,99 @@ exists to avoid: a live run called quiet.
 
 | How we verify | |
 |---|---|
-| **Goal checks** | `goals/claude-code-style-lab/tells-a-stopped-task-from-a-working-one` and `goals/teammates-lab/tells-a-stopped-task-from-a-working-one`: the lab under `fsdev dev` on a fresh store, coding tasks on harness-manager's scripted coder, filed through the board's `createTask`. Model: n/a |
-| **Signal** | **clock**: a cancelled-then-retried task reads `working · …` within 5 s of `now − run.startedAt` from `listTasks`, and moves on 10 s later. **alive**: a run in one 4-minute step never reads `quiet` while `in_progress`. **quiet**: SIGKILL the host mid-run, hold it down 4 minutes, serve again on the same store; within 30 s, before `attempts` changes, the row reads `quiet for` ≥ 4m in the warning tone, then `working` once the board takes it back. **counts**: the header equals `listTasks` counted by `taskRowView` state, one task waiting on a review |
-| **Anti-game** | Read the page, never the adapter, the fake or React state. A row taken back before the page was read is CAN'T TELL |
-| **Controls that must fail** | Planted in the lab's installed `task-signals` and put back (ER-6): `hair-trigger` (10 s threshold) fails **alive** · `never-quiet` fails **quiet** · `task-clock` (the task's own `startedAt`) fails **clock** · `raw-status` (counts from stored status) fails **counts** |
+| **Goal checks** | One module, `goals/lib/task-signals.mts`, taking the lab as a parameter, behind `goals/claude-code-style-lab/tells-a-stopped-task-from-a-working-one` and `goals/teammates-lab/tells-a-stopped-task-from-a-working-one`: `fsdev dev`, a fresh store, the scripted coder, tasks filed through `createTask`. Model: n/a. About ten minutes a lab; run on `main`, not on every PR |
+| **Signal** | **clock**: a retried task reads `working · …` within 5 s of `now − run.startedAt`, and moves on. **alive**: a run in one 4-minute step never reads `quiet`. **quiet**: SIGKILL the host mid-run, keep it down 4 minutes, serve again; before `attempts` changes, the row reads `quiet for` ≥ 4m |
+| **Anti-game** | Read the page, never the adapter or React state. A row taken back before the read is CAN'T TELL |
+| **Controls that must fail** | One per signal, planted in the lab's copy of `taskSignal` and put back (ER-6); each re-runs only its leg: `quiet-from-age` (quiet once `updatedAt` is 10 s old) fails **alive** · `never-quiet` fails **quiet** · `task-clock` (the task's `startedAt`) fails **clock** |
+
+The counts and formats are pure, so the registry item's unit tests cover them.
 
 ## What changes
 
 ![What changes: before, running with no time; after, a working clock, amber quiet, an ended age and counts, from one registry item](figures/what-changes.svg)
 
-Both labs draw the same signals from one registry item, which reads only what a `listTasks` row
-already carries. No orchestration or harness code changes.
+Both labs draw the same signals from one registry item. It reads `run.startedAt` and `updatedAt`,
+which a `listTasks` row carries today, and `leaseUntil`, which the board's action adds. No harness
+code changes.
 
-**`task-signals`**, a new `packages/ui/registry` item, installed in both labs like `spend` (epic D4):
+- **Orchestration, the board's `listTasks` action:** each row also carries `leaseUntil`, beside
+  `updatedAt` and `spend`, as a client read only; the model's tool stays as it is. That lets
+  *quiet* be the board's own `leaseLapsed`, with no third liveness rule and no threshold
+  ([owners](DECISIONS.md#owners-with-4717)). It needs a `patch` changeset and a line in the README.
 
-- **Clock.** A `running` row reads `working · ` plus `spend`'s `durationText(now − run.startedAt)`.
-- **Quiet.** A `running` row with `updatedAt` older than three minutes (1.5 × the default lease)
-  reads `quiet for 7m` in place of the clock. The item returns the signal and its words. Each
-  lab's one tone helper (`task-state.ts`, `task-status.ts`) colours it in the warning tone. Never on a row kept open on its
-  filed tasks (`keptOpenBy`: no lease), and never while the feed is stale.
-- **Ended.** `done`, `failed` and `cancelled` rows read `12m ago`.
-- **Count.** `taskCounts(states)` returns running, waiting, failed and done, without zeros.
+**`task-signals`**, a new `packages/ui/registry` item, installed in both labs like `spend` (epic
+D4). One pure entry, `taskSignal(view, run, now, { stale })`, the way `spendLine` is; `TaskTime`
+is a thin component over it, and `taskCounts(views)` sits beside it:
+
+- **Clock.** A `running` row: `working · ` plus `durationText(now − run.startedAt)`.
+- **Quiet.** A `running` row where `leaseLapsed` holds (imported from the browser-safe
+  `@flow-state-dev/orchestration/tasks`) reads `quiet for 7m`, counted from `updatedAt`. A
+  kept-open row has no lease, so it never reads quiet. Nor does any row while the feed is stale.
+  `taskSignal` returns a `quiet` kind, and each lab's tone helper maps it.
+- **Ended.** `done`, `failed` and `cancelled` rows: `12m ago`.
+- **Count.** Running, waiting, failed and done, without zeros.
 
 ```diff
  // labs/claude-code-style/src/components/TaskCard.tsx
 -  {status.label}
-+  <TaskTime row={task} now={now} stale={stale} />
-   {task.statusNote ? ` · "${task.statusNote}"` : ""}
++  <TaskTime view={task.view} run={task.run} now={now} stale={stale} />
  // labs/claude-code-style/src/components/TasksPane.tsx
 -  Background tasks · {active.length}
-+  Background tasks · {taskCounts(tasks.map((t) => t.state))}
++  Background tasks · {taskCounts(tasks.map((t) => t.view))}
 ```
 
-- **Claude Code-style.** `TaskRow` gains `state` (`taskRowView`, ER-4), `runStartedAt` and
-  `keptOpen`. `TaskCard`, `TaskDoneRow` and `ThreadsBoard` draw `TaskTime`. `ThreadsBoard`'s
-  `age(updatedAt)` goes, since it always read `now` on running rows.
-- **Teammates.** `BoardTask` gains the same fields. The panel's running rows and heading draw the
-  item. `lib/task-state.ts` (FIX-2395) stays the one place that picks a row's word and tone, and it
-  reads the item's signal for *quiet*. If #4717 lands a running-row clock or a per-state count of
-  its own first, this change replaces them in the same PR (ER-3). The owners are in
-  [DECISIONS](DECISIONS.md#owners-with-4717).
-- **Docs:** a `task-signals` row in `packages/ui/README.md`'s registry table; both lab READMEs say
-  what a row's time and *quiet* mean. No site page describes these rows.
+- **The adapters** compute `taskRowView` once per row and keep it (ER-4). Beside it they keep the
+  row's `run.startedAt` and `leaseUntil`, which the view doesn't carry. No second `state` field.
+- **Claude Code-style:** `TaskCard`, `TaskDoneRow` and `ThreadsBoard` draw `TaskTime`.
+  `ThreadsBoard`'s `age(updatedAt)` goes.
+- **Teammates:** `TeammatePanel`'s rows draw `TaskTime`, and its heading gets the count beside
+  FIX-2395's `Tasks (N)`. FIX-2395's `taskState` gains the warning tone for the `quiet` kind
+  ([owners](DECISIONS.md#owners-with-4717)).
+- **Docs:** a row in `packages/ui/README.md`'s registry table; the orchestration README names
+  `leaseUntil` on the action's rows. Both lab READMEs say what *quiet* means.
 
 ## What stays as it is
 
-- Every orchestration, workforce and harness-manager file, and `taskRowView`.
-- Claude Code-style's turn timer (`Thread.tsx`), and Teammates' status-line `age` (FIX-2397's).
+- The model's `listTasks` tool, `leaseLapsed`, `taskRowView`, and every workforce and
+  harness-manager file.
+- FIX-2395's order, grouping and `taskState` word and tone helper. Claude Code-style's turn timer.
 
 ## What's already here, and the debt
 
 | Already here | What this does with it |
 |---|---|
-| `listTasks` rows: `updatedAt`, `run.startedAt`, `keptOpenBy` | **Builds on.** The [POC](poc/row-fields/) re-derives them |
-| The lease heartbeat (`startLeaseRenewal`, lease ÷ 3) | **Builds on.** It is why `updatedAt` means *alive* |
-| `taskRowView` (FIX-2379), `spend`'s `durationText` | **Reused** for state and format |
-| #4717 (FIX-2395): a running-row clock, a heading count, `task-state.ts` | **Owners split** ([DECISIONS](DECISIONS.md#owners-with-4717)): clock, quiet and counts here; word and tone there |
-| #4717 D1: task-level `createdAt`, `startedAt`, `completedAt` on `listTasks` rows | **Correct, and not a dependency of the signals.** They are absent today (the POC). Only the `task-clock` control reads `startedAt` from them |
-| FIX-2168 (start and end on rows) · FIX-2164 (steps) | Closed by #4717 D1 · left to it ([D1](DECISIONS.md#d1)) |
+| `listTasks` rows: `updatedAt`, `run.startedAt`; no `leaseUntil` | **Builds on**, and **extends** with `leaseUntil`. The [POC](poc/row-fields/) shows what is there |
+| `leaseLapsed` (`tasks/collection/internal.ts`), the board's claim and fence rule | **Reused** as *quiet*, so a lab and the board agree on when a row has no live run |
+| `taskRowView`, `spend`'s `durationText` | **Reused** |
+| FIX-2395 (#4717): `taskState`, `Tasks (N)`, task-level times | **Extends** `taskState` with one tone; the rest is left as it is ([owners](DECISIONS.md#owners-with-4717)) |
+| FIX-2168 · FIX-2164 | Closed by #4717 D1 · left to it ([D1](DECISIONS.md#d1)) |
 
-**The job is *say a thing has gone silent*, and this is the fourth way, each on its own noun.**
-Searches for `stuck`, `stall`, `stale`, `quiet` and `lastActive` found the engine's stale-request
-sweeper (a request), `useSession`'s `isStuck` with `stuck-request-banner` (the page's request) and
-`isFeedStale` (the server). None reads a task row. *Quiet* borrows the sweeper's rule: threshold
-at least twice the heartbeat.
+**Saying something has gone quiet: this is the fourth way, and each way is about a different
+thing.** The engine's stale-request sweeper is about a request; `isStuck` with
+`stuck-request-banner` is about the page's own request; `isFeedStale` is about the server. Searches
+for `stuck`, `stall`, `stale`, `quiet` and `lastActive` found nothing that reads a task row
+for a person. The board's own `leaseLapsed` does, for claiming, so *quiet* reuses it.
 
 | Debt | |
 |---|---|
-| **Removes** | FIX-2395's lab-local clock; `ThreadsBoard`'s misleading `age` on task rows |
-| **Adds** | One registry item. A board with a longer lease reads `quiet` early. Rows don't publish their lease, and no lab sets one, so this is accepted by design |
-| **Leaves** | The unfed `steps` field (FIX-2164). A live-but-stuck badge (filed only if the open fork goes that way) |
+| **Removes** | `ThreadsBoard`'s `age` on task rows, which always read `now` on running ones |
+| **Adds** | One registry item, and one client-read field on the board's action |
+| **Leaves** | The unfed `steps` field (FIX-2164) |
 
-**Net: neutral.**
+**Net: up slightly, by design.** It adds one item and one field, and none of it is a second way to do something.
 
 ## Sign off
 
 - **The goal**: tell a working task from a stopped one, with this attempt's time, in both labs.
   *If wrong:* the item and two labs' rows revert.
-- **Debt, neutral**: adds one registry item; removes a lab copy and a misleading age. *If wrong:*
-  the next app copies it a third time.
-- **Open** · [*quiet* means the run stopped answering, not *no progress*](DECISIONS.md#open)
-  (recommended). *If wrong:* a live but stuck run shows only a long clock.
+- **Debt, up slightly**: adds one registry item and one row field; removes a misleading age. *If wrong:* the next app
+  copies it a third time.
+- **Open** · [*quiet* means the run stopped answering](DECISIONS.md#open) (recommended). *If
+  wrong:* a live but stuck run shows only a long clock.
 - **D1** · [time and stall now; the pill stays FIX-2164's](DECISIONS.md#d1). *If wrong:* the pill
   lands one issue later.
 - **D2** · [the clock starts at this attempt's run](DECISIONS.md#d2). *If wrong:* a retried task
   reads short by its earlier attempts.
 
-Feature · `labs/claude-code-style`, `labs/teammates`, `packages/ui` registry · S · epic FIX-2369
+Feature · `labs/claude-code-style`, `labs/teammates`, `packages/ui` registry, one `listTasks` field · S · epic FIX-2369
 wave 3 · after FIX-2399 and FIX-2397 · one PR for both labs

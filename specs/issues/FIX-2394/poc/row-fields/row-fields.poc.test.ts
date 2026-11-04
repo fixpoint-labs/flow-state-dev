@@ -3,20 +3,19 @@
  *
  * The spec's scope rests on what a task row from the board's `listTasks`
  * action carries today, the read both labs draw their task lists from. This
- * re-derives those facts from the real action, with a totality assertion: the
- * row's keys are exactly the known list, so a field nobody named (a start
- * time, a step count) fails the run instead of passing unnoticed.
+ * re-derives those facts from the real action, asserting named absences
+ * (not a full key list, so fields other issues add don't break it):
  *
  *   1. A running row carries `updatedAt` and its run link's `startedAt`, and no
- *      task-level `startedAt`, `completedAt` or `createdAt`. So `taskRowView`'s
- *      `times.startedAt` reads null on it, and the attempt's clock is the run's.
+ *      `leaseUntil`, no task-level `startedAt`, `completedAt` or `createdAt`.
+ *      So `taskRowView`'s `times.startedAt` reads null on it, and *quiet* as
+ *      `leaseLapsed` needs `leaseUntil` added to the row.
  *   2. A finished row carries no `completedAt` either.
- *   3. A lease renewal, the running request's heartbeat, moves `updatedAt`:
- *      on a running row, `updatedAt` says the run is alive, not that it moved.
+ *   3. A lease renewal, the running request's heartbeat, moves `updatedAt`.
  *   4. No row carries step progress (done of total).
  *
- * Negative control: `POC_PLANT=1` adds a `steps` key to each listed row before
- * the totality assertion, which must then fail.
+ * Negative control: `POC_PLANT=1` adds a `steps` key to each listed row, and
+ * the absence assertion must then fail.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runForTest } from "@flow-state-dev/testing";
@@ -25,11 +24,8 @@ import { ticketForClaim } from "../../src/tasks";
 import { taskRowView } from "../../src/inbox";
 import { buildDelegationCtx, ownStateResolver } from "./delegation-ctx";
 
-/** Every key the action's row may carry today, from its output schema. */
-const KNOWN_KEYS = new Set([
-  "id", "goal", "title", "status", "assignee", "attempts", "statusNote", "filedByTask", "run",
-  "spend", "updatedAt", "waitedOn", "keptOpenBy", "holds", "current",
-]);
+/** What the spec says a row does not carry today. */
+const ABSENT = ["leaseUntil", "steps", "progress", "stepsDone", "stepsTotal"];
 
 async function listed(ctx: unknown): Promise<Array<Record<string, any>>> {
   const actions = taskToolActions("desk", ownStateResolver);
@@ -39,14 +35,14 @@ async function listed(ctx: unknown): Promise<Array<Record<string, any>>> {
   return out.tasks;
 }
 
-function onlyKnownKeys(row: Record<string, unknown>): void {
-  for (const key of Object.keys(row)) expect(KNOWN_KEYS.has(key), `unlisted key on a listTasks row: ${key}`).toBe(true);
+function noneOfAbsent(row: Record<string, unknown>): void {
+  for (const key of ABSENT) expect(key in row, `listTasks row carries ${key}`).toBe(false);
 }
 
 afterEach(() => vi.useRealTimers());
 
 describe("FIX-2394 · what a listTasks row carries", () => {
-  it("a running row: updatedAt and run.startedAt, no task-level times, no steps; a renewal moves updatedAt", async () => {
+  it("a running row: updatedAt and run.startedAt, no leaseUntil, no task-level times, no steps; a renewal moves updatedAt", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(1_000_000);
     const { ctx } = buildDelegationCtx({ self: false });
@@ -59,10 +55,10 @@ describe("FIX-2394 · what a listTasks row carries", () => {
     expect(ref.get("t_run")!.startedAt).toBe(1_010_000); // stored on the task...
 
     const [row] = await listed(ctx);
-    onlyKnownKeys(row!);
+    noneOfAbsent(row!);
     expect(row!.run.startedAt).toBe(1_010_000); // ...published only through the run link
     expect(row!.updatedAt).toBe(1_010_000);
-    for (const key of ["startedAt", "completedAt", "createdAt", "steps", "progress"]) expect(key in row!).toBe(false);
+    for (const key of ["startedAt", "completedAt", "createdAt"]) expect(key in row!).toBe(false);
     expect(taskRowView({ ...row!, board: "desk" } as never).times).toEqual({ createdAt: null, updatedAt: 1_010_000, startedAt: null, completedAt: null });
 
     // The heartbeat: a renewal 40s later, with nothing else written, moves updatedAt.
@@ -83,7 +79,7 @@ describe("FIX-2394 · what a listTasks row carries", () => {
     expect(ref.get("t_done")!.completedAt).toBeTypeOf("number");
     const [row] = await listed(ctx);
     expect(row!.status).toBe("completed");
-    onlyKnownKeys(row!);
+    noneOfAbsent(row!);
     expect("completedAt" in row!).toBe(false);
   });
 });

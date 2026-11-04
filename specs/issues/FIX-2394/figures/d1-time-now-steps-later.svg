@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1: ship time and stall signals now and leave the steps pill to FIX-2164, chosen, instead of building a step count here. It comes down to the first row: no task row carries a step count today, the POC shows it, and FIX-2164 may close without a package change once its check-first runs. The price is the second row: the Claude Code-style lab&#x27;s steps pill stays unfed until FIX-2164 lands. The third row is a tie: both show a running task&#x27;s time. Locks in: no orchestration or harness change here; the pill is FIX-2164&#x27;s. Flips if: the run&#x27;s plan rows can&#x27;t be read and FIX-2164 is dropped."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1: ship time and stall signals now and leave the steps pill to FIX-2164, chosen, instead of building a step count here. It comes down to the first row: no task row carries a step count today, the POC shows it, and FIX-2164 may close without a package change once its check-first runs. The price is the second row: the Claude Code-style lab&#x27;s steps pill stays unfed until FIX-2164 lands. The third row is a tie: both show a running task&#x27;s time. Locks in: no step field here; the pill is FIX-2164&#x27;s. Flips if: the run&#x27;s plan rows can&#x27;t be read and FIX-2164 is dropped."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -83,7 +83,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">No orchestration or harness change here</text>
+    <text class="t-b" x="32" y="371">No step field here; one lease field on the row</text>
     <text class="t-s" x="32" y="389">FIX-2164 owns the pill and its field</text>
   </g>
   <g id="flips-if">

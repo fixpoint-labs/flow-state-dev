@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="Open fork: what quiet means on a running task. Recommended: its run stopped answering, read from the row&#x27;s last write, which the running request renews about every 40 seconds. Instead of: no visible progress, which needs a new row field each run writes on every step. It comes down to the first row, what ships with no package change: the recommended reading ships in the labs now; the other needs orchestration and harness-manager to write a step time. The price is the second row: a run that is alive but stuck in one long step is not flagged, and its working clock is what shows it. The third row is a tie: both flag a run that died without ending its row. Locks in: quiet means the run is gone, not slow. Flips if: the stuck runs Jake hits are alive but going nowhere."
+<svg viewBox="0 0 940 420" role="img" aria-label="Open fork: what quiet means on a running task. Recommended: its run stopped answering, which is the board&#x27;s own leaseLapsed rule. Instead of: no visible progress, which needs a new row field each run writes on every step. It comes down to the first row, new writes: the recommended reading uses the lease the board already keeps; the other needs orchestration and every harness to write a step time. The price is the second row: a run that is alive but stuck in one long step is not flagged, and its working clock is what shows it. The third row is a tie: both flag a run that died without ending its row. Locks in: quiet means the run is gone, not slow. Flips if: the stuck runs Jake hits are alive but going nowhere."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -49,14 +49,14 @@
   <g id="row-decides">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">SHIPS WITH NO</text>
-    <text class="t-lbl" x="32" y="169">PACKAGE CHANGE</text>
+    <text class="t-lbl" x="32" y="156">NEEDS NEW WRITES</text>
+    <text class="t-lbl" x="32" y="169">FROM EVERY RUN</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Yes, labs only</text>
-    <text class="t-s" x="248" y="179">the row&#x27;s updatedAt is its run&#x27;s heartbeat</text>
+    <text class="t-b" x="248" y="161">No</text>
+    <text class="t-s" x="248" y="179">the board&#x27;s own lease, read off the row</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">No</text>
+    <text class="t-b" x="612" y="161">Yes</text>
     <text class="t-s" x="612" y="179">a step time each run writes: orchestration + harness</text>
   </g>
   <g id="row-1">
@@ -75,7 +75,7 @@
     <text class="t-lbl" x="32" y="293">LEAVING ITS ROW</text>
     <text class="mark tie" x="228" y="282">=</text>
     <text class="t-b" x="248" y="281">Flagged</text>
-    <text class="t-s" x="248" y="299">no heartbeat past the lease</text>
+    <text class="t-s" x="248" y="299">its lease lapsed: leaseLapsed</text>
     <text class="mark tie" x="592" y="282">=</text>
     <text class="t-b" x="612" y="281">Flagged</text>
     <text class="t-s" x="612" y="299">no step either</text>
