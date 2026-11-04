@@ -1,5 +1,5 @@
 ---
-"@flow-state-dev/harness-manager": patch
+"@flow-state-dev/harness-manager": minor
 "@flow-state-dev/shift-manager": patch
 ---
 
