@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionSummary, WireNotice, WireTopic } from "@flow-state-dev/client";
 import { App } from "../src/App";
 import { LabProvider, useLab } from "../src/lib/lab-data";
-import { inboxSection, readerSessionId, type LabSnapshot } from "../src/lib/reads";
+import { inboxSection, PROJECT_READER_FLOW, readerSessionId, type LabSnapshot } from "../src/lib/reads";
 import type { LoadedSnapshot } from "../src/lib/derive";
 import { heard, heardSessionIds, SNAPSHOT_POLL_MS } from "../src/lib/snapshot-subscribe";
 import { clockTime } from "../src/components/ui";
@@ -143,6 +143,13 @@ describe("what the snapshot hears", () => {
     // task-1's writes reach conv-1 as `run`. sub-1's reach only task-1, which is left out, so it is heard itself.
     expect(heardSessionIds(listed, USER)).toEqual(["conv-1", "orphan-run", "sub-1"]);
   });
+
+  it("leaves out the roster session Schedules reads through, even when its id was generated", () => {
+    // Workforce's client opens a roster session without an id; the project reader reuses it, and
+    // Schedules runs an action on it after every read. Hearing it would make each read start the next.
+    const listed = [session("conv-1"), session("roster-generated-7f3a", PROJECT_READER_FLOW)];
+    expect(heardSessionIds(listed, USER)).toEqual(["conv-1"]);
+  });
 });
 
 function Probe({ seen }: { seen: { asking?: boolean; refresh?: () => Promise<void> } }) {
@@ -185,6 +192,26 @@ describe("the provider's subscription", () => {
     await hear(null);
     await settle();
     expect(reads).toBe(before + 2);
+  });
+
+  it("drops unheard notices before they coalesce, so two different ones waiting behind a read start no read", async () => {
+    render(
+      <LabProvider connection={{ userId: USER }}>
+        <Probe seen={{}} />
+      </LabProvider>,
+    );
+    await waitFor(() => expect(live()).toHaveLength(1));
+    await settle();
+    const before = reads;
+    holdNext = true;
+    await hear(notice({ scope: "session", id: "conv-1" }, "request"));
+    await waitFor(() => expect(held).toBeDefined());
+    // Two streams' items, different topics: merged, they would read as `null`.
+    await hear(notice({ scope: "session", id: "conv-1" }, "items"));
+    await hear(notice({ scope: "session", id: "conv-2" }, "items"));
+    await act(async () => held!.land());
+    await settle();
+    expect(reads).toBe(before + 1);
   });
 
   it("keeps its subscription across a read that lists the same sessions, and adds a session the read newly lists", async () => {

@@ -28,7 +28,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSubscription } from "@flow-state-dev/react";
 import type { ResumeAction } from "@flow-state-dev/core/types";
-import type { Client, WireNotice } from "@flow-state-dev/client";
+import type { Client } from "@flow-state-dev/client";
 import type { InboxAnswer, InboxHold } from "@flow-state-dev/orchestration/inbox";
 import { isFeedStale, type ConnectionFeedState } from "../components/flow-state/connection-banner";
 import { retryDelayMs } from "../components/flow-state/connection-screen";
@@ -179,13 +179,25 @@ export function LabProvider({ connection, children }: { connection: Connection; 
   // between the read and it is not lost.
   const listed = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.sessions : undefined;
   const topics = useMemo(() => snapshotTopics(listed === undefined ? [] : heardSessionIds(listed, client.userId)), [listed, client.userId]);
-  const onNotice = useCallback(
-    async (notice: WireNotice | null) => {
-      if (notice === null || heard(notice)) await readLab(false);
-    },
-    [readLab],
+  // Notices the snapshot doesn't hear are dropped before `useSubscription`
+  // coalesces them: two different unheard notices waiting together would
+  // otherwise merge into `null` and read the whole Lab.
+  const heardOnly = useMemo<Pick<Client, "subscribe">>(
+    () => ({
+      subscribe: (wanted, options) =>
+        client.subscribe(wanted, {
+          ...options,
+          onChange: (notice) => {
+            if (notice === null || heard(notice)) options.onChange(notice);
+          },
+        }),
+    }),
+    [client],
   );
-  useSubscription(topics, onNotice, { client, pollIntervalMs: SNAPSHOT_POLL_MS, enabled: listed !== undefined });
+  const onNotice = useCallback(async () => {
+    await readLab(false);
+  }, [readLab]);
+  useSubscription(topics, onNotice, { client: heardOnly, pollIntervalMs: SNAPSHOT_POLL_MS, enabled: listed !== undefined });
 
   const reportFeed = useCallback<ReportFeed>((key, state) => {
     setFeeds((last) => {

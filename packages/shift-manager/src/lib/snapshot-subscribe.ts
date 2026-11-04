@@ -24,7 +24,7 @@
  */
 import { topic, type SessionSummary, type WireNotice, type WireTopic } from "@flow-state-dev/client";
 import { USAGE_SESSION_PREFIX } from "./ids";
-import { readerSessionId } from "./reads";
+import { PROJECT_READER_FLOW, readerSessionId } from "./reads";
 
 /**
  * The pace the snapshot reads at wherever push can miss a change: no push, the
@@ -44,9 +44,19 @@ const READ_PREFIXES = {
   org: ["inventory/workers", "projects"],
 } as const;
 
-/** Whether `session` is one Shift Manager opens for itself: a flow's reading session, or the usage session. */
-function isOwnSession(session: Pick<SessionSummary, "id" | "flowKind">, userId: string): boolean {
-  return session.id === readerSessionId(userId, session.flowKind) || session.id.startsWith(`${USAGE_SESSION_PREFIX}-`);
+/**
+ * Whether `session` is one Shift Manager reads through: a flow's reading
+ * session, the usage session, or the roster session the project reader picks
+ * (`projectReaderOf`), which may carry a generated id. Schedules and Usage run
+ * an action on these after every snapshot read, so hearing them would make
+ * each read start the next.
+ */
+function isOwnSession(session: Pick<SessionSummary, "id" | "flowKind">, userId: string, projectReader: string | null): boolean {
+  return (
+    session.id === readerSessionId(userId, session.flowKind) ||
+    session.id === projectReader ||
+    session.id.startsWith(`${USAGE_SESSION_PREFIX}-`)
+  );
 }
 
 /**
@@ -56,7 +66,9 @@ function isOwnSession(session: Pick<SessionSummary, "id" | "flowKind">, userId: 
  * direct parent, so a run whose parent is itself left out is subscribed.
  */
 export function heardSessionIds(sessions: readonly SessionSummary[], userId: string): string[] {
-  const parentOf = new Map(sessions.filter((session) => !isOwnSession(session, userId)).map((session) => [session.id, session.parentSessionId]));
+  // The session `projectReaderOf` (`projects.ts`) picks, found the same way; not imported, since `projects.ts` imports the provider.
+  const projectReader = sessions.find((session) => session.parentSessionId == null && session.flowKind === PROJECT_READER_FLOW)?.id ?? null;
+  const parentOf = new Map(sessions.filter((session) => !isOwnSession(session, userId, projectReader)).map((session) => [session.id, session.parentSessionId]));
   const decided = new Map<string, boolean>();
   const subscribed = (id: string, path: ReadonlySet<string>): boolean => {
     const known = decided.get(id);
