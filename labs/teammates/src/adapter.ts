@@ -50,7 +50,7 @@ import {
   type RosterEntry,
   type WorkforceClient,
 } from "@flow-state-dev/workforce/browser";
-import { isTerminalStatus, parseNotice, taskSpendView } from "@flow-state-dev/orchestration/tasks";
+import { isTerminalStatus, parseNotice, taskSpendView, taskSpendViewSchema } from "@flow-state-dev/orchestration/tasks";
 import { createInboxClient, inboxItems, taskRowView, type InboxAnswer, type InboxHold, type InboxRow } from "@flow-state-dev/orchestration/inbox";
 import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import { CODER_FLOW } from "./lib/coder-flow";
@@ -414,10 +414,17 @@ function boardRows(items: readonly Item[]): Map<string, Record<string, any>> {
   return rows;
 }
 
-/** What a row's spend says ran it: the harness and model its run reported, or nothing. */
+/**
+ * What a row's spend says ran it: the harness and model its run reported, or nothing.
+ *
+ * A row reaches here in one of two shapes: the stored ledger (`spend.requests`), as a
+ * `task-change` item carries it, or the view the board's `listTasks` read already folded
+ * (`taskSpendViewSchema`). Folding a view again would read as nothing spent.
+ */
 function spendOf(row: Record<string, any>): { harness?: string; model?: string } {
   try {
-    const view = taskSpendView(row as never);
+    const folded = taskSpendViewSchema.safeParse(row.spend);
+    const view = folded.success ? folded.data : taskSpendView(row as never);
     return { ...(view?.harness == null ? {} : { harness: view.harness }), ...(view?.model == null ? {} : { model: view.model }) };
   } catch {
     return {};

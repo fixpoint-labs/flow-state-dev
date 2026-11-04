@@ -153,6 +153,32 @@ describe("a coding task's run, while it runs", () => {
   });
 });
 
+describe("what a task's runs spent, as the board read folds it", () => {
+  it("keeps the harness and model the read reports: its `spend` is already a folded view", async () => {
+    const item = filed("completed");
+    const push = fakeSubscribe();
+    const client = {
+      subscribe: push.subscribe,
+      sessions: {
+        state: async () => ({ at: 1, sessionCreatedAt: 1, items: [item], pagination: { hasMore: false, nextOffset: 1 } }),
+        stream: () => ({ close() {} }),
+        get: async () => ({ id: "wks_1", flowKind: "agent" }),
+      },
+      flow: () => ({
+        read: async () => ({
+          ok: true,
+          tasks: [{ ...item.data.task, spend: { harness: "codex", model: "gpt-5.5-codex", inputTokens: 10, outputTokens: 5, costUsd: null, unreported: false, live: false } }],
+        }),
+      }),
+    } as unknown as Client;
+    let tasks: BoardTask[] = [];
+    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
+    await until(() => tasks[0]?.model !== undefined);
+    stop();
+    expect(tasks[0]).toMatchObject({ harness: "Codex", model: "gpt-5.5-codex" });
+  });
+});
+
 describe("a board read still in flight when the watch stops", () => {
   it("shows nothing and follows no run once it lands", async () => {
     const item = filed("in_progress");
