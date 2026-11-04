@@ -25,7 +25,7 @@
 
 | | End minus start, ended only (chosen) | A live clock while it runs |
 |---|---|---|
-| Source | the run link's `startedAt` (`BoardTask.runStartedAt`, the field FIX-2394 adds) to the task's `completedAt` (FIX-2395) | the same plus a ticking timer |
+| Source | the run link's `startedAt` (the row's `run`, which FIX-2394's adapters keep on `BoardTask`) to the task's `completedAt` (FIX-2395) | the same plus a ticking timer |
 | Re-renders | none | one a second per open popup |
 | Wrong value risk | none from retries: an attempt's own start | clock skew between browser and server |
 
