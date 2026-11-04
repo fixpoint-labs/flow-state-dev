@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 440" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What is in the box. Built once, in three packages: workforce's default worker layer as named sections in a fixed order, identity which exists, then behaviour, environment, skills index and a summary of earlier turns, each on by default with its own opt-out; core's optional when-to-use line on a tool, shown only when the tool is held; harness-manager's one coding brief, which carries the worker's instructions, the task, the conventions and the checks, appended to the harness's own preset. Composed in by each of four apps: the persona in WORKER.md, extra environment fields, guidance on its own tools, and the checks its repo runs. Replaced in one line: any section, turned off. Not built here, below a fence: the per-app content pass, Teammates self-learning, an eval apparatus, compaction mechanics, harness routing, and a generator-level opt-out of tool guidance.">
+     aria-label="What is in the box. Built once, in three packages: workforce's default worker layer as named sections in a fixed order, identity which exists, then behaviour, environment, skills index and a summary of earlier turns, each on by default with its own opt-out in one worker-config shape; core's optional guidance field on a tool, rendered in the same tools list, which shows only the tools a worker holds; harness-manager's one coding brief, which carries the worker's instructions, the task, the conventions and the checks commandCheck runs, appended to the harness's own preset. Composed in by each of four apps: the persona in WORKER.md, extra environment fields, guidance on its own tools, and the checks its repo runs. Replaced in one line: any section, turned off. Not built here, below a fence: the per-app content pass, Teammates self-learning, an eval apparatus, compaction mechanics, harness routing, and a generator-level opt-out of tool guidance.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -35,25 +35,26 @@
     <text class="t-b" x="44" y="114">2  behaviour: finish with evidence, size it</text>
     <text class="t-m" x="370" y="114">FIX-2498</text>
     <text class="t-b" x="44" y="136">3  environment: date, user, project, surface</text>
-    <text class="t-m" x="370" y="136">FIX-2497</text>
+    <text class="t-m" x="370" y="136">FIX-2498</text>
     <text class="t-b" x="44" y="158">4  the skills it holds, loaded on demand</text>
-    <text class="t-m" x="370" y="158">FIX-2501</text>
+    <text class="t-m" x="370" y="158">FIX-2498</text>
     <text class="t-b" x="44" y="180">5  a summary of earlier turns, in fixed parts</text>
     <text class="t-m" x="370" y="180">FIX-2500</text>
-    <text class="t-s" x="44" y="203">each a named section · on by default · its own opt-out</text>
+    <text class="t-s" x="44" y="203">each a named section · on by default · one opt-out shape in worker config</text>
     <rect class="pkg" x="484" y="52" width="204" height="162" rx="5"/>
     <text class="t-lbl" x="496" y="70">CORE</text>
-    <text class="t-b" x="496" y="92">A when-to-use line</text>
+    <text class="t-b" x="496" y="92">A guidance field</text>
     <text class="t-b" x="496" y="110">on a tool</text>
-    <text class="t-s" x="496" y="134">shown only when it is held</text>
-    <text class="t-s" x="496" y="152">a tool with none prints as today</text>
+    <text class="t-s" x="496" y="134">in the same tools list,</text>
+    <text class="t-s" x="496" y="152">which shows held tools only</text>
+    <text class="t-s" x="496" y="170">a tool with none prints as today</text>
     <text class="t-m" x="496" y="203">FIX-2499</text>
     <rect class="pkg" x="704" y="52" width="204" height="162" rx="5"/>
     <text class="t-lbl" x="716" y="70">HARNESS-MANAGER</text>
     <text class="t-b" x="716" y="92">One coding brief</text>
     <text class="t-s" x="716" y="116">the worker's instructions</text>
     <text class="t-s" x="716" y="134">the task and the conventions</text>
-    <text class="t-s" x="716" y="152">the checks FIX-2387 runs</text>
+    <text class="t-s" x="716" y="152">the checks commandCheck runs</text>
     <text class="t-s" x="716" y="170">appended to the harness preset</text>
     <text class="t-m" x="716" y="203">FIX-2502</text>
   </g>

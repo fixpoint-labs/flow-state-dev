@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 322" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: eight rules, each with one owner. FIX-2498 owns that every layer is a named section; FIX-2499 owns core gaining mechanism, not defaults; each child owns deleting the patch its layer replaces; FIX-2502 owns one list of checks; FIX-2494 owns appending to a harness preset; the coordinator owns holding the layers for the cut run and the consumed issues; the closure FIX-2541 owns how its scripts assert, and checks three other rules.">
+     aria-label="Who owns what: eight rules, each with one owner. FIX-2498 owns that every layer is a named section with one opt-out shape, and FIX-2500 and the closure use it; FIX-2499 owns core gaining mechanism, not defaults; each child owns deleting the patch its layer replaces; FIX-2502 owns one list of checks, taken from commandCheck; FIX-2494 owns appending to a harness preset; the coordinator owns holding the layers for the cut run and the consumed issues; the closure FIX-2541 owns how its scripts assert, three runs each, and checks three other rules.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; }
@@ -18,52 +18,52 @@
   <rect class="bg" x="0" y="0" width="940" height="322"/>
   <text class="t-lbl" x="16" y="20">WHO OWNS WHAT · ONE OWNER PER RULE · COLUMNS ARE FIX- ISSUES · EACH = EVERY CHILD · COORD. = THE COORDINATOR</text>
   <g id="columns">
-    <text class="t-col" x="376" y="46">2498</text>
-    <text class="t-col" x="456" y="46">2499</text>
-    <text class="t-col" x="536" y="46">2502</text>
-    <text class="t-col" x="616" y="46">2494</text>
-    <text class="t-col" x="696" y="46">each</text>
-    <text class="t-col" x="776" y="46">coord.</text>
-    <text class="t-col" x="856" y="46">2541</text>
+    <text class="t-col" x="336" y="46">2498</text>
+    <text class="t-col" x="410" y="46">2499</text>
+    <text class="t-col" x="484" y="46">2500</text>
+    <text class="t-col" x="558" y="46">2502</text>
+    <text class="t-col" x="632" y="46">2494</text>
+    <text class="t-col" x="706" y="46">each</text>
+    <text class="t-col" x="780" y="46">coord.</text>
+    <text class="t-col" x="854" y="46">2541</text>
   </g>
   <g id="er1">
-    <text class="t-row" x="16" y="76">ER-1 every layer is a named section</text>
-    <rect class="own" x="370" y="58" width="70" height="26" rx="3"/><text class="t-own" x="376" y="75">OWNS</text>
-    <rect class="use" x="690" y="58" width="70" height="26" rx="3"/><text class="t-use" x="696" y="75">uses</text>
-    <rect class="use" x="850" y="58" width="70" height="26" rx="3"/><text class="t-use" x="856" y="75">uses</text>
+    <text class="t-row" x="16" y="76">ER-1 a named section, one opt-out shape</text>
+    <rect class="own" x="330" y="58" width="66" height="26" rx="3"/><text class="t-own" x="336" y="75">OWNS</text>
+    <rect class="use" x="478" y="58" width="66" height="26" rx="3"/><text class="t-use" x="484" y="75">uses</text>
+    <rect class="use" x="848" y="58" width="66" height="26" rx="3"/><text class="t-use" x="854" y="75">uses</text>
   </g>
   <g id="er2">
     <text class="t-row" x="16" y="108">ER-2 core gains mechanism, not defaults</text>
-    <rect class="own" x="450" y="90" width="70" height="26" rx="3"/><text class="t-own" x="456" y="107">OWNS</text>
-    <rect class="use" x="690" y="90" width="70" height="26" rx="3"/><text class="t-use" x="696" y="107">uses</text>
+    <rect class="own" x="404" y="90" width="66" height="26" rx="3"/><text class="t-own" x="410" y="107">OWNS</text>
   </g>
   <g id="er3">
     <text class="t-row" x="16" y="140">ER-3 delete the patch a layer replaces</text>
-    <rect class="own" x="690" y="122" width="70" height="26" rx="3"/><text class="t-own" x="696" y="139">OWNS</text>
-    <rect class="use" x="850" y="122" width="70" height="26" rx="3"/><text class="t-use" x="856" y="139">uses</text>
+    <rect class="own" x="700" y="122" width="66" height="26" rx="3"/><text class="t-own" x="706" y="139">OWNS</text>
+    <rect class="use" x="848" y="122" width="66" height="26" rx="3"/><text class="t-use" x="854" y="139">uses</text>
   </g>
   <g id="er4">
-    <text class="t-row" x="16" y="172">ER-4 one list of checks; report isn't verdict</text>
-    <rect class="own" x="530" y="154" width="70" height="26" rx="3"/><text class="t-own" x="536" y="171">OWNS</text>
-    <rect class="use" x="610" y="154" width="70" height="26" rx="3"/><text class="t-use" x="616" y="171">uses</text>
-    <rect class="use" x="850" y="154" width="70" height="26" rx="3"/><text class="t-use" x="856" y="171">uses</text>
+    <text class="t-row" x="16" y="172">ER-4 checks come from commandCheck</text>
+    <rect class="own" x="552" y="154" width="66" height="26" rx="3"/><text class="t-own" x="558" y="171">OWNS</text>
+    <rect class="use" x="626" y="154" width="66" height="26" rx="3"/><text class="t-use" x="632" y="171">uses</text>
+    <rect class="use" x="848" y="154" width="66" height="26" rx="3"/><text class="t-use" x="854" y="171">uses</text>
   </g>
   <g id="er5">
     <text class="t-row" x="16" y="204">ER-5 append to a harness preset</text>
-    <rect class="use" x="530" y="186" width="70" height="26" rx="3"/><text class="t-use" x="536" y="203">uses</text>
-    <rect class="own" x="610" y="186" width="70" height="26" rx="3"/><text class="t-own" x="616" y="203">OWNS</text>
+    <rect class="use" x="552" y="186" width="66" height="26" rx="3"/><text class="t-use" x="558" y="203">uses</text>
+    <rect class="own" x="626" y="186" width="66" height="26" rx="3"/><text class="t-own" x="632" y="203">OWNS</text>
   </g>
   <g id="er6">
     <text class="t-row" x="16" y="236">ER-6 nothing built before the cut run</text>
-    <rect class="use" x="690" y="218" width="70" height="26" rx="3"/><text class="t-use" x="696" y="235">uses</text>
-    <rect class="own" x="770" y="218" width="70" height="26" rx="3"/><text class="t-own" x="776" y="235">OWNS</text>
+    <rect class="use" x="700" y="218" width="66" height="26" rx="3"/><text class="t-use" x="706" y="235">uses</text>
+    <rect class="own" x="774" y="218" width="66" height="26" rx="3"/><text class="t-own" x="780" y="235">OWNS</text>
   </g>
   <g id="er7">
-    <text class="t-row" x="16" y="268">ER-7 scripts assert on the answer</text>
-    <rect class="own" x="850" y="250" width="70" height="26" rx="3"/><text class="t-own" x="856" y="267">OWNS</text>
+    <text class="t-row" x="16" y="268">ER-7 assert on the answer, 3 of 3 runs</text>
+    <rect class="own" x="848" y="250" width="66" height="26" rx="3"/><text class="t-own" x="854" y="267">OWNS</text>
   </g>
   <g id="er8">
     <text class="t-row" x="16" y="300">ER-8 consumed issues stay where they are</text>
-    <rect class="own" x="770" y="282" width="70" height="26" rx="3"/><text class="t-own" x="776" y="299">OWNS</text>
+    <rect class="own" x="774" y="282" width="66" height="26" rx="3"/><text class="t-own" x="780" y="299">OWNS</text>
   </g>
 </svg>
