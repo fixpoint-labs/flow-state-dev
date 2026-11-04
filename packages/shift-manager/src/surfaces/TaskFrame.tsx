@@ -27,10 +27,12 @@ import { distinctTitle, legacyTaskDraftKey, taskDraftKey } from "../lib/tasks";
 import { TurnComposer } from "../components/TurnComposer";
 import type { Gaps } from "../gaps";
 import { TaskSession } from "./TaskSession";
+import { cn } from "../lib/utils";
+import { STALE_CLASS } from "../components/flow-state/connection-banner";
 
 export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
   const task = useTask();
-  const { snapshot } = useLab();
+  const { snapshot, stale } = useLab();
   const { row, boardRef, taskId } = task;
   const stoppable = task.run.kind === "open" && task.status === "in_progress" && task.interrupt.kind !== "pending";
   const keys = useInterruptKeys({ enabled: stoppable, onInterrupt: () => void task.requestInterrupt() });
@@ -72,10 +74,10 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
           </RouteLink>
         </p>
         <ScreenTitle testId="task-title">{row?.title ?? taskId}</ScreenTitle>
-        <p className="text-xs text-muted-foreground" data-testid="task-status">
+        <p className={cn("text-xs text-muted-foreground", stale && STALE_CLASS)} data-testid="task-status">
           {row === undefined ? "Not on this board yet." : `${row.status} · ${columnFor(row.status)}`}
           {worker === null ? "" : ` · ${worker}`}
-          {row !== undefined && row.status === "in_progress" && row.startedAt !== null ? <Elapsed since={row.startedAt} /> : null}
+          {row !== undefined && row.status === "in_progress" && row.startedAt !== null ? <Elapsed since={row.startedAt} running={!stale} /> : null}
           {row?.run == null ? "" : ` · attempt ${row.run.attempt}`}
         </p>
         {task.rowFailure === undefined ? null : (
@@ -107,13 +109,14 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
   );
 }
 
-/** Elapsed time from the row's start, by a clock rather than a read (BR-4). */
-function Elapsed({ since }: { since: number }) {
+/** Elapsed time from the row's start, by a clock rather than a read (BR-4), stopped while the server is gone. */
+function Elapsed({ since, running }: { since: number; running: boolean }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    if (!running) return;
     const timer = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(timer);
-  }, []);
+  }, [running]);
   return <span data-testid="task-elapsed"> · running {waited(since, now)}</span>;
 }
 

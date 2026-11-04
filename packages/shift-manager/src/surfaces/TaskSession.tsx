@@ -18,6 +18,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
+import type { SessionConnectionState } from "@flow-state-dev/client";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useFlowContext, useJumpToLatest } from "@flow-state-dev/react";
 import { AskCard } from "../components/AskCard";
 import { shiftManagerRenderers } from "../components/ToolLine";
@@ -25,6 +26,7 @@ import { SessionItemsProvider } from "../components/flow-state/session-items-con
 import { EmptyState, JumpToLatestButton, LoadEarlierButton, SectionFailure } from "../components/ui";
 import { asksOfTask, waitsOnYou } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
+import { useReportFeedState } from "../lib/feed-health";
 import { collectionOfBoard, describeFailure, type Ask, type Failure } from "../lib/reads";
 import { RouteLink } from "../components/RouteLink";
 import { followRequest, followSessionItems, readRunRecord, readTaskClaims, taskItems, type OpenRun, type SessionItems } from "../lib/run";
@@ -110,11 +112,15 @@ function RunItems({ run }: { run: OpenRun }) {
   const [attempt, setAttempt] = useState(0);
   const feed = useJumpToLatest();
   const { reportStatus } = task;
+  // The feed's connection, for the page's bar and stale styling.
+  const [feedState, setFeedState] = useState<SessionConnectionState | undefined>(undefined);
+  useReportFeedState(feedState);
 
   useEffect(() => {
     let closed = false;
     setStored(undefined);
     setFailure(undefined);
+    setFeedState(undefined);
     const stop = followSessionItems(client, run.sessionId, {
       onRead: (read) => {
         if (closed) return;
@@ -123,6 +129,9 @@ function RunItems({ run }: { run: OpenRun }) {
       },
       onFailure: (why) => {
         if (!closed) setFailure(why);
+      },
+      onState: (state) => {
+        if (!closed) setFeedState(state);
       },
     });
     return () => {

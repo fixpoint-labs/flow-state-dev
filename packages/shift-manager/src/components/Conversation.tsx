@@ -31,6 +31,8 @@ import { knownWorkers, senderOf, useWorkerConversation } from "../lib/conversati
 import { workerLabel } from "../lib/derive";
 import { SessionScope } from "./TaskBoardMeta";
 import { useLab } from "../lib/lab-data";
+import { cn } from "../lib/utils";
+import { STALE_CLASS } from "./flow-state/connection-banner";
 import type { Worker } from "../lib/reads";
 import { sendTurn } from "../lib/send";
 import { clockTime } from "../lib/shell";
@@ -123,7 +125,7 @@ export function Conversation({
   /** Why nothing can be sent here, whatever the worker: the session is read, never written to. */
   readOnly?: string;
 }) {
-  const { client, refresh, answered, snapshot } = useLab();
+  const { client, refresh, answered, snapshot, stale } = useLab();
   const conversation = useWorkerConversation(worker, sessions, session);
   const inventory = snapshot !== undefined && "inventory" in snapshot && snapshot.inventory?.ok ? snapshot.inventory.value.workers : undefined;
   const known = useMemo(() => knownWorkers(inventory ?? [], sessions), [inventory, sessions]);
@@ -288,7 +290,8 @@ export function Conversation({
         )}
         {working ? (
           // v2's thinking line (v2:167-169), saying only what is true: the worker has the line.
-          <p className="flex items-center gap-2 font-mono text-[11.5px] font-medium text-muted-foreground" data-testid={`${testId}-working`}>
+          // Greyed while the server is gone: the worker had the line when it last said so.
+          <p className={cn("flex items-center gap-2 font-mono text-[11.5px] font-medium text-muted-foreground", stale && STALE_CLASS)} data-testid={`${testId}-working`}>
             <span className="size-[7px] shrink-0 bg-info" data-look="working" aria-hidden />
             {name} is working on it…
           </p>
