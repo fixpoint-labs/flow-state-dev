@@ -1,6 +1,6 @@
 # claude-code-style-lab › it reads project files
 
-**Issue:** FIX-2285 (epic FIX-2152)
+**Issue:** FIX-2285 (epic FIX-2152); the tool-line signals FIX-2393 (epic FIX-2369)
 
 **Outcome:** In the Claude Code-style lab, a member asks the main session a question about the
 project's code, and gets the answer from the project's files in the same turn. No task is filed
@@ -34,6 +34,12 @@ with a second user in its members.
   - *no value*: the reply doesn't contain the value.
   - *read refused*: the turn holds a read tool call whose result is refused `not-a-member`.
 
+- **Tool lines**, graded on the lab's own entries (its adapter's `entriesOf` over the turn's
+  items, the lines the thread draws):
+  - *lines name the file* (leg 1): a tool line of either turn names the file the value lives in.
+  - *refusal reads failed* (legs 2 and 3): a tool line of the turn says `(failed)` and is a failed
+    step. Graded only when the turn made a read call, which *read refused* already requires.
+
 Each leg passes in every one of `GOAL_RUNS` (3) fresh runs.
 
 **Anti-game:** Leg 1 asserts nothing on the tool calls or their results: only the reply, the boards
@@ -52,6 +58,9 @@ runs, so no `ANTHROPIC_API_KEY` is needed.
 **Controls:**
 - `GOAL_CONTROL=no-read`: `desk.main`'s `WORKER.md` names no `projectSource` preset (rewritten for
   the run and restored after). Leg 1 must FAIL on *value named* or *0 tasks*.
+- `GOAL_CONTROL=old-lines`: the tool lines are graded as the lab's old `lib/tool-line.ts` drew
+  them (read from the last commit that had it): one fixed phrase per tool, never failed. *lines
+  name the file* and *refusal reads failed* must FAIL.
 - `GOAL_CONTROL=no-gate`: the run source's membership check on the project path
   (`mayWorkOn` in `packages/workforce/src/projects/run-project.ts`) is patched out as the server
   loads it, and the run fails if the patch never reached the code. Leg 3 must FAIL on *no value*.

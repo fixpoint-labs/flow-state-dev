@@ -3,9 +3,10 @@ import { useState } from "react";
 import { defaultRehypePlugins } from "streamdown";
 import type { ThreadEntry } from "../adapter";
 import { TASK_STATUS } from "../lib/task-status";
-import { toolLine } from "../lib/tool-line";
+import type { ToolRun } from "../lib/tool-steps";
 import { cn } from "../lib/utils";
 import { MessageResponse } from "./flow-state/message";
+import { composeToolCallsLabel, toolRunOpen, type ToolStepState } from "./flow-state/tool-grouping";
 
 /**
  * Streamdown's own pipeline without `raw`: agent text is Markdown, and any
@@ -24,8 +25,8 @@ function AgentMarkdown({ text, className }: { text: string; className?: string }
 
 /**
  * One entry of a thread. Your lines sit in a box on the right; the main
- * session's text is Markdown; a tool call is one line in plain words
- * (`toolLine`); a background result is one collapsed line at the point the main
+ * session's text is Markdown; a run of tool calls is one line in plain words
+ * that opens to a line per call (`ToolRunLine`); a background result is one collapsed line at the point the main
  * session took it, which opens to the task's reply; a thread in threads mode is
  * a card (`ThreadCard`, which the main thread draws). `mark` is the feed's
  * mark for your line (`useJumpToLatest`'s `mine`), so a line you send rises to
@@ -50,18 +51,14 @@ export function Entry({ entry, mark }: { entry: ThreadEntry; mark?: SentLineMark
         </div>
       );
     case "tool":
-      return (
-        <div className="font-mono text-xs text-muted-foreground" data-entry="tool">
-          ▸ {toolLine(entry.name)}
-        </div>
-      );
+      return <ToolRunLine run={entry} />;
     case "result":
       return <ResultLine entry={entry} />;
     case "thread":
       // The main thread draws a thread card from its task row; elsewhere it is the call it was.
       return (
         <div className="font-mono text-xs text-muted-foreground" data-entry="tool">
-          ▸ {toolLine("createTask")}
+          ▸ {composeToolCallsLabel([{ name: "createTask" }])}
         </div>
       );
     case "interrupted":
@@ -71,6 +68,42 @@ export function Entry({ entry, mark }: { entry: ThreadEntry; mark?: SentLineMark
         </div>
       );
   }
+}
+
+/** A failed step reads "(failed)" in words, and in the lab's red. */
+const stepTone = (state: ToolStepState) => (state === "error" ? "text-destructive" : "text-muted-foreground");
+
+/**
+ * A run of tool calls: one line, which opens to a line per call. The run
+ * shows open while it is running and folds once it isn't, unless you open
+ * or close it yourself.
+ */
+function ToolRunLine({ run }: { run: ToolRun }) {
+  const [chosen, setChosen] = useState<boolean>();
+  if (run.steps.length === 1) {
+    return (
+      <div className={cn("font-mono text-xs", stepTone(run.state))} data-entry="tool" data-state={run.state}>
+        ▸ {run.label}
+      </div>
+    );
+  }
+  const open = chosen ?? toolRunOpen(run.state);
+  return (
+    <div className="font-mono text-xs" data-entry="tool" data-state={run.state}>
+      <button type="button" aria-expanded={open} onClick={() => setChosen(!open)} className={cn("text-left hover:text-foreground", stepTone(run.state))}>
+        {open ? "▾" : "▸"} {run.label}
+      </button>
+      {open ? (
+        <ul className="mt-1 ml-3 flex flex-col gap-0.5">
+          {run.steps.map((step) => (
+            <li key={step.id} className={stepTone(step.state)} data-step-state={step.state}>
+              {step.line}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
 }
 
 /**

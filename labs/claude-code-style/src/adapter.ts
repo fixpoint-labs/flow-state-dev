@@ -47,6 +47,7 @@ import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
 import { projectIdOf, refuseExisting } from "./lib/new-project";
 import { waitingOnYou } from "./lib/columns";
 import { resultSummary } from "./lib/result-summary";
+import { toolRun, type ToolCallOf, type ToolRun } from "./lib/tool-steps";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
@@ -84,8 +85,8 @@ export type ThreadEntry = (
       sentToThread?: boolean;
     }
   | { kind: "assistant"; id: string; text: string }
-  /** A tool call, by its tool's name; the thread says it in words (`toolLine`). */
-  | { kind: "tool"; id: string; name: string }
+  /** A run of consecutive tool calls in one turn, in words (`toolRun`): one line that opens to a line per call. */
+  | ({ kind: "tool"; id: string } & ToolRun)
   | {
       kind: "result";
       id: string;
@@ -222,6 +223,9 @@ export interface Item {
   data?: Record<string, unknown>;
   /** A message's data a client reads: a task's line names its task here (`parseNotice`, `delegateAnswerOf`). */
   metadata?: Record<string, unknown>;
+  /** A `tool_output` item's: the call it answers, and whether it is still going or threw. */
+  toolCall?: { name?: string; arguments?: string };
+  status?: string;
 }
 
 
@@ -328,6 +332,18 @@ export function reviewStopOf(items: readonly Item[]): ReviewDetail | undefined {
 
 const textOf = (item: Item) => (item.content ?? []).map((part) => part.text ?? "").join("");
 
+/** A `tool_output` item as the call it answers: its tool, its args, its status and its result. */
+function callOf(item: Item): ToolCallOf {
+  let args: unknown;
+  try {
+    args = JSON.parse(item.toolCall?.arguments ?? "{}");
+  } catch {
+    args = {};
+  }
+  const status = item.status === "failed" ? "failed" : item.status === "in_progress" ? "running" : "done";
+  return { id: item.id, name: item.toolCall?.name ?? item.blockName ?? "tool", args, status, ...(status === "done" ? { output: item.output } : {}) };
+}
+
 /** The task a `createTask` call filed, from its output, or undefined for any other tool or a refused call. */
 function filedTaskOf(item: Item): string | undefined {
   if (item.blockName !== "createTask") return undefined;
@@ -347,6 +363,7 @@ export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[
   const userTurns = new Set(items.filter((item) => item.type === "message" && item.role === "user").map((item) => item.requestId));
   const filingTurns = new Set(items.filter((item) => filedTaskOf(item) !== undefined).map((item) => item.requestId));
   const entries: ThreadEntry[] = [];
+  const runs = new Map<string, ToolCallOf[]>();
   for (const item of items) {
     const requestId = item.requestId;
     const filed = threads ? filedTaskOf(item) : undefined;
@@ -355,7 +372,14 @@ export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[
       continue;
     }
     if (item.type === "tool_output") {
-      entries.push({ kind: "tool", id: item.id, name: item.blockName ?? "tool", requestId });
+      // A call right after another of the same turn joins its run.
+      const last = entries[entries.length - 1];
+      const calls = last?.kind === "tool" && last.requestId === requestId ? [...runs.get(last.id)!, callOf(item)] : [callOf(item)];
+      const id = calls.length > 1 ? last!.id : item.id;
+      runs.set(id, calls);
+      const entry: ThreadEntry = { kind: "tool", id, ...toolRun(calls), requestId };
+      if (calls.length > 1) entries[entries.length - 1] = entry;
+      else entries.push(entry);
       continue;
     }
     const text = textOf(item);
