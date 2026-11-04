@@ -225,7 +225,11 @@ function assertRepository(repository: string | null | undefined): void {
   if (problem !== undefined) throw new ProjectRefusedError("invalid-repository", `${problem}.`);
 }
 
-/** Refuse a repository the host says no run could check out. Asked after the value itself passed. */
+/**
+ * Refuse a repository the host says no run could check out. Asked after the
+ * value itself passed. A check that throws (git timed out, say) fails the
+ * write with its own error: it is neither a refusal nor a pass.
+ */
 async function assertRepositoryUsable(check: RepositoryCheck | undefined, repository: string | null | undefined): Promise<void> {
   if (check === undefined || repository == null) return;
   const answer = await check(repository);
@@ -253,7 +257,6 @@ function defineWriteProject(offered: readonly string[], check: RepositoryCheck |
       const problem = projectIdProblem(input.id);
       if (problem !== undefined) throw new ProjectRefusedError("invalid-project-id", `${problem}.`);
       assertRepository(input.repository);
-      await assertRepositoryUsable(check, input.repository);
       const mcpServers = checkedMcpServers(input.mcpServers ?? [], offered);
       const checks = checkedChecks(input.checks ?? []);
       const owner = ctx.session.identity.userId;
@@ -261,7 +264,7 @@ function defineWriteProject(offered: readonly string[], check: RepositoryCheck |
         throw new Error("createProject needs a session with an owner: the owner is the session's user.");
       }
       const visibility: ProjectVisibility = input.visibility ?? "shared";
-      if (visibility === "private") return writePrivateProject(ctx, input, owner, mcpServers, checks);
+      if (visibility === "private") return writePrivateProject(ctx, input, owner, mcpServers, checks, check);
       const { projects } = refsOf(ctx);
 
       const heldBy = (row: ProjectRow): CreateProjectOutput => {
@@ -274,6 +277,8 @@ function defineWriteProject(offered: readonly string[], check: RepositoryCheck |
 
       const existing = await projects.getOptional(input.id);
       if (existing !== undefined) return heldBy(existing.state as ProjectRow);
+      // Only a create that makes a row asks the host: a re-sent create hands its row back whatever the repository is now.
+      await assertRepositoryUsable(check, input.repository);
 
       const row: ProjectRow = projectRowSchema.parse({
         id: input.id,
@@ -310,7 +315,8 @@ async function writePrivateProject(
   input: CreateProjectInput,
   owner: string,
   mcpServers: string[],
-  checks: string[]
+  checks: string[],
+  check: RepositoryCheck | undefined
 ): Promise<CreateProjectOutput> {
   const others = unique(input.members ?? []).filter((member) => member !== owner);
   if (others.length > 0) {
@@ -328,6 +334,7 @@ async function writePrivateProject(
   });
   const existing = await projects.getOptional(input.id);
   if (existing !== undefined) return done(existing.state, false);
+  await assertRepositoryUsable(check, input.repository);
   const row: ProjectRow = projectRowSchema.parse({
     id: input.id,
     title: input.title,
@@ -359,17 +366,17 @@ async function writePrivateProject(
  */
 function defineSetRepository(check: RepositoryCheck | undefined) {
   return handler({
-  name: "project-set-repository",
-  inputSchema: setRepositoryInputSchema,
-  outputSchema: setRepositoryOutputSchema,
-  resources: WRITE_RESOURCES,
-  execute: async (input, ctx) => {
-    const row = await projectRowToChange(ctx, input.project, "repository");
-    assertRepository(input.repository);
-    await assertRepositoryUsable(check, input.repository);
-    await retryOnConflict(() => row.updateState((state) => ({ ...state, repository: input.repository })));
-    return { project: projectRowSchema.parse(row.state) };
-  }
+    name: "project-set-repository",
+    inputSchema: setRepositoryInputSchema,
+    outputSchema: setRepositoryOutputSchema,
+    resources: WRITE_RESOURCES,
+    execute: async (input, ctx) => {
+      const row = await projectRowToChange(ctx, input.project, "repository");
+      assertRepository(input.repository);
+      await assertRepositoryUsable(check, input.repository);
+      await retryOnConflict(() => row.updateState((state) => ({ ...state, repository: input.repository })));
+      return { project: projectRowSchema.parse(row.state) };
+    }
   });
 }
 
