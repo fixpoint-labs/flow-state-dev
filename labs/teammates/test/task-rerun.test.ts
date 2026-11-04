@@ -159,3 +159,58 @@ describe("a task's brief, which the board's list read leaves out", () => {
     expect(tasks[0]).toMatchObject({ boardStatus: "cancelled", context: failedRow.context, labels: ["docs"], priority: 2 });
   });
 });
+
+describe("a task retried after its run ended", () => {
+  it("follows the new attempt's run, so the first attempt's error doesn't stay beside the retry's result", async () => {
+    // Attempt 1 failed on run_1; Retry ran it again as attempt 2 on run_2, which finished.
+    const failed = { ...failedRow, attempts: 1, run: { sessionId: "run_1" } };
+    const fixed = { ...failedRow, status: "completed", error: undefined, attempts: 2, run: { sessionId: "run_2" }, output: { answer: "Fixed it." } };
+    const change = (task: Record<string, unknown>, at: number) => ({
+      id: `task-change:board/task_1#${at}`,
+      requestId: `req_${at}`,
+      type: "component",
+      component: "task-change",
+      ts: at,
+      itemIndex: 0,
+      status: "completed",
+      data: { collectionId: "tasks", taskId: "task_1", kind: "updated", task },
+    });
+    const history: Record<string, unknown[]> = { wks_cos: [change(failed, 1)], run_1: [change(failed, 1)], run_2: [change(fixed, 2)] };
+    const { output: _, error: __, ...fixedListed } = fixed;
+    let listed: Record<string, unknown> = { ...failed, error: undefined };
+    const subscriptions: Array<(notice: unknown) => void> = [];
+    const client = {
+      subscribe: (_topics: unknown, options: { onChange: (notice: unknown) => void }) => (subscriptions.push(options.onChange), { close() {} }),
+      sessions: {
+        state: async (id: string) => ({ at: 1, sessionCreatedAt: 1, items: history[id] ?? [], pagination: { hasMore: false, nextOffset: (history[id] ?? []).length } }),
+        stream: () => ({ close() {} }),
+        get: async (id: string) => ({ id, flowKind: "agent" }),
+      },
+      flow: () => ({ read: async () => ({ ok: true, tasks: [listed] }) }),
+    } as unknown as Client;
+    let tasks: ReturnType<typeof toBoardTask>[] = [];
+    const until = async (check: () => boolean) => {
+      for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 20));
+    };
+    const stop = createLabAdapter(client).watchTasks("wks_cos", (next) => (tasks = next));
+    await until(() => tasks[0]?.error === failedRow.error && subscriptions.length > 0);
+    expect(tasks[0]).toMatchObject({ boardStatus: "errored", error: failedRow.error });
+
+    // Retried: attempt 2 claimed the row on run_2, whose own copy says it finished.
+    const notice = () => {
+      for (const hear of subscriptions) hear({ topic: { scope: "session", id: "wks_cos", resource: "tasks" }, kind: "board" });
+    };
+    listed = { ...fixedListed, status: "in_progress", updatedAt: 8 };
+    notice();
+    await until(() => tasks[0]?.boardStatus === "in_progress");
+    await new Promise((r) => setTimeout(r, 100));
+    expect(tasks[0]!.error).toBeUndefined();
+
+    listed = { ...fixedListed, updatedAt: 9 };
+    notice();
+    await until(() => tasks[0]?.result === "Fixed it.");
+    stop();
+    expect(tasks[0]).toMatchObject({ boardStatus: "completed", result: "Fixed it." });
+    expect(tasks[0]!.error).toBeUndefined();
+  });
+});
