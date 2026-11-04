@@ -83,6 +83,10 @@ Both labs stop a turn the same way and say so the same way, from one shared line
   and the conversation takes `useInterruptKeys` (FIX-2413) on the document.
 - **Claude Code-style** keeps its verb, button and keys. Its thread's one request read widens from
   running turns to recent turns with their status, so it sees `aborted`.
+- **Each lab's host can be built by a test.** The Claude Code-style host moves from `fsdev.config.mts`
+  into `host.mts` as `openLab(options)`, and Teammates' `openTeammates(options)` takes an optional
+  `modelResolver`, so the adapter tests run each host in process with `createMockModelResolver`.
+  FIX-2406 (#4719) builds on both rather than adding them again.
 
 The call site, in the Claude Code-style lab's `Entry.tsx`:
 
