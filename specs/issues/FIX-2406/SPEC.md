@@ -131,8 +131,8 @@ flowchart LR
 - **Neither lab shows a failed turn.** FIX-2370's spec named "both lab adapters map `type: "error"`
   items to an error entry" as later app slices; FIX-2370 is Done, but Claude Code-style's adapter
   reads only `message` and `tool_output` items, and Teammates' leaves `error` unprojected. The
-  failed-turn row's real column starts as a known gap. Who builds the slice is the one open call
-  below.
+  failed-turn row's real column starts as a known gap naming
+  [FIX-2550](https://linear.app/fixpoint-labs/issue/FIX-2550), filed for that slice.
 - **Claude Code-style's fake draws an "interrupted" line the real adapter never emits.** FIX-2375
   (stop a running turn, with feedback) adds it; the stop row's real column carries that as a
   known gap.
@@ -151,7 +151,7 @@ only. *If wrong:* the matrix costs CI time without catching drift; it is deleted
   keep in step with the workers' tools. **The one to weigh.**
 - **[D2](DECISIONS.md#d2) · a gap between fake and real is a test marked to fail, naming its
   issue.** *If wrong:* a gap nobody owns sits marked forever.
-- **Open:** who builds the labs' failed-turn slice ([Open](DECISIONS.md#open)).
+- **Open:** none. The labs' failed-turn slice is filed as FIX-2550 ([settled](DECISIONS.md#open)).
 
 Feature · `labs/claude-code-style`, `labs/teammates` (private) · M · child of
 [FIX-2369](https://linear.app/fixpoint-labs/issue/FIX-2369), wave 4

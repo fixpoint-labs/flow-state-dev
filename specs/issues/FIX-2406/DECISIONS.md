@@ -70,26 +70,15 @@ slow scenarios move to recordings captured from this same host, refreshed by one
 | Only the real column; delete the fakes | The fakes are the screen tests' fixtures, and they stay useful once they're held to the real adapter |
 
 <a name="open"></a>
-## Open
+## Open / settled
 
-### Need your sign-off: who builds the labs' failed-turn slice
+**Settled: the labs' failed-turn slice is its own issue, [FIX-2550](https://linear.app/fixpoint-labs/issue/FIX-2550)**
+(a FIX-2369 child, related to FIX-2370, blocking the closure FIX-2425). FIX-2370 planned "both lab
+adapters show a failed turn" as later slices. FIX-2370 is Done, but neither lab ever shipped that,
+and the turn just stops. Filing it keeps this PR test-only. The failed-turn row's real column is
+marked `it.fails` naming FIX-2550, and FIX-2550's PR removes that mark.
 
-**Plain terms.** FIX-2370 shipped the failed-turn line for Kitchen Sink and the shared component,
-and planned "both lab adapters show a failed turn" as later slices. FIX-2370 is Done, but neither
-lab shows a failed turn: the turn just stops. This matrix makes that visible.
-
-**The trade-off.** Building it here makes this PR a feature as well as a test, and puts screen
-work into the one PR the epic kept for tests. Filing it keeps this PR test-only, and the
-failed-turn row's real column starts marked to fail with the new issue's id.
-
-**My recommendation:** file a new issue, "the labs show a failed turn" (FIX-2370's planned lab
-slices), as a FIX-2369 child; this PR marks the row against it. It can start now, in parallel.
-
-**What would change my mind:** if the closure (FIX-2425) is close and nobody else will pick it
-up soon, folding it in here is one fewer PR to land.
-
-**What being wrong costs:** filing it: one more issue and PR, and a red mark that lasts until it
-lands. Folding it in: a larger PR here, with UI review on a test PR.
+Open: none.
 
 ## Analysis
 
@@ -98,10 +87,11 @@ lands. Folding it in: a larger PR here, with UI review on a test PR.
 - **Reuse:** every runtime piece exists (`createInProcessFetch`, `createMockModelResolver`, the
   scripted coder, `openTeammates`); the one addition is Claude Code-style's host factory.
 - **Right goal:** the issue's own evidence (the fakes' queued, error and hold behaviour) is what
-  the matrix catches; checking the failed-turn row found a real gap (Open, above).
+  the matrix catches; checking the failed-turn row found a real gap, filed as FIX-2550.
 - **Size:** test code plus one host extraction; no package changes.
 
 ## How it got here
 
 - Drafted 2026-11-04 from the issue, the epic's build order, and both labs' adapters and fakes
   on `main` at `c904dc3c`.
+- The failed-turn gap was filed as FIX-2550, so this PR stays test-only.
