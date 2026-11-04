@@ -49,7 +49,7 @@
  */
 import { handler, sequencer } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import { taskSettledEntry as orchestrationTaskSettledEntry, runningTaskOf } from "@flow-state-dev/orchestration";
+import { taskSettledEntry as orchestrationTaskSettledEntry } from "@flow-state-dev/orchestration";
 import {
   clearNotice,
   decideNotice,
@@ -68,11 +68,10 @@ import { filedByTurn, routedBriefOf, routedBriefSchema } from "../coordinator/ro
 import { triggerPass, wakeIfStartable } from "./board";
 import { deleteChain, taskChainOf, taskChainResources } from "./chain";
 import { filingSessionIdOf } from "./filing-session";
-import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources, ownConversationLedger } from "./ledger";
-import { boardAboveOf } from "./board-above";
+import { CONVERSATION_LEDGER_ID, ownConversationLedger } from "./ledger";
 import { sendTaskReport } from "./report-owed";
 import { noteTaskAnswer } from "@flow-state-dev/orchestration/task-board";
-import { admitOwnTask } from "./task-admission";
+import { admitOwnTask, markAdmittedTask } from "./task-admission";
 import { anotherTurnWaitsOnItsPlan } from "./plan";
 import { noteTaskEndingRead, taskEndingReadsStateSchema } from "./task-ending-read";
 import { delegateAnswerMetadata } from "./delegate-answer";
@@ -305,30 +304,6 @@ const line = handler({
   }
 });
 
-/**
- * In a task session, the request a piece's notice runs is the waiting task's
- * (FIX-2531): mark the entry's scope with it, so the line and the turn's reply
- * are stored under it and the task's view reads them after a reload. A notice
- * never passes the door, so the door's stamp doesn't reach it. Its own step,
- * after the admission (which makes this request the task's) and before the
- * line: a scope reads the mark when it opens. Outside a task session, and when
- * nothing was admitted, it marks nothing.
- */
-const markTask = handler({
-  name: "conversation-task-settled-mark-task",
-  transient: true,
-  inputSchema: z.unknown(),
-  resources: { ...conversationLedgerResources },
-  execute: async (_input, rawCtx) => {
-    const ctx = rawCtx as unknown as BlockContext;
-    const running = await runningTaskOf(async (c) => {
-      const partition = boardAboveOf(c);
-      return partition === undefined ? undefined : conversationLedgerAt(c, partition);
-    }, ctx);
-    if (running !== undefined) ctx._markTaskScope?.(running.row.id);
-  }
-});
-
 /** Run the board's pass in this conversation: one at a time, never inline. */
 const runPass = handler({
   name: "conversation-task-run-pass",
@@ -481,7 +456,8 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     // runs for the task, and the task is checked at its end, after any turn
     // this notice wakes, with that turn's answer. First, before any await.
     .tap(admitOwnTask("conversation-task-settled-admission", true))
-    .tap(markTask)
+    // In a task session, the line and the woken turn's reply are the waiting task's.
+    .tap(markAdmittedTask("conversation-task-settled-mark-task"))
     .step(settle)
     .tapIf((settled: Settled) => settled.act === "run-board", runPass);
   if (options.onRouted !== undefined) {
