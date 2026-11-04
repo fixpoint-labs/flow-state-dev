@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { noticeMetadata, noticeText, type TaskNotice } from "@flow-state-dev/orchestration/tasks";
 import { delegateAnswerMetadata } from "@flow-state-dev/workforce/browser";
-import { destinationOf, exchangeOf, toBoardTask, toEntries, toSteps } from "../src/adapter";
+import { destinationOf, exchangeOf, toBoardTask, toEntries, toSteps, type ConversationEntry } from "../src/adapter";
 import { answerIn } from "../src/components/Popups";
 
 const CODER = "teammates.claude-code";
@@ -90,7 +90,7 @@ describe("a session's steps in a popup", () => {
     const refused = send("m3", { to: "teammates.writer", text: "Hi." }, { ok: false, error: "no_worker: Nothing was sent." });
     expect(toSteps([waited, refused])).toEqual([
       { id: "m2", kind: "sent", text: "Draft it?", to: "teammates.writer" },
-      { id: "m3", kind: "tool", tool: "sendMessage", text: "Used sendMessage" },
+      { id: "m3", kind: "tool", tool: "sendMessage", text: "Message teammates.writer", state: "error" },
     ]);
   });
 });
@@ -138,5 +138,51 @@ describe("the turn a message's popup shows", () => {
   it("follows the turn that took a message over after its first taker died", () => {
     const items = [receipt("c1", "r1"), receipt("c2", "r2"), said("a2", "r2", "Nov 12")];
     expect(exchangeOf(items, "msg_1").map((s) => s.id)).toEqual(["c2", "a2"]);
+  });
+});
+
+// FIX-2393: a worker's tool steps show in the conversation during its turn, not only in a popup.
+describe("a worker's tool steps in its conversation", () => {
+  const call = (id: string, name: string, args: Record<string, unknown>, status: string, output?: unknown, requestId = "r1") =>
+    ({ id, type: "tool_output", status, requestId, toolCall: { name, arguments: JSON.stringify(args) }, ...(output === undefined ? {} : { output }) });
+  const read = (id: string, path: string, status = "completed", requestId = "r1") =>
+    call(id, "readProjectSource", { path }, status, status === "completed" ? { kind: "read", status: "ok", path, content: "x" } : undefined, requestId);
+  const steps = (entries: ConversationEntry[]) => entries.filter((e): e is Extract<ConversationEntry, { kind: "steps" }> => e.kind === "steps");
+
+  it("shows the run open while a step runs, naming the file in flight", () => {
+    const [run] = steps(toEntries([read("t1", "docs/launch.md"), read("t2", "src/config/release.ts", "in_progress")], new Set()));
+    expect(run).toMatchObject({ state: "running", open: true, label: "Read src/config/release.ts…" });
+    expect(run!.steps.map((s) => s.text)).toEqual(["Read docs/launch.md", "Read src/config/release.ts"]);
+  });
+
+  it("folds the run once its steps are done, summed up in the registry's words", () => {
+    const grep = call("t3", "grepProjectSource", { pattern: "LAUNCH" }, "completed", { kind: "grep", matches: [{ path: "a", line: 1, text: "x" }] });
+    const [run] = steps(toEntries([read("t1", "docs/launch.md"), read("t2", "src/release.ts"), grep], new Set()));
+    expect(run).toMatchObject({ state: "completed", open: false });
+    expect(run!.label).toBe("Read 2 files and searched the code");
+  });
+
+  it("says a refused read failed, in words, and the run with it", () => {
+    const refused = call("t1", "readProjectSource", { path: "secret.md" }, "completed", { kind: "refused", reason: "no-project", message: "No project." });
+    const [run] = steps(toEntries([refused], new Set()));
+    expect(run).toMatchObject({ state: "error", open: false, label: "Read secret.md (failed)" });
+  });
+
+  it("starts a new run for a new turn, and for a call after a line the worker wrote", () => {
+    const said = { id: "a1", type: "message", role: "assistant", status: "completed", requestId: "r1", content: [{ type: "output_text", text: "Looking." }] };
+    const entries = toEntries([read("t1", "a.md"), said, read("t2", "b.md"), read("t3", "c.md", "completed", "r2")], new Set());
+    expect(entries.map((e) => e.kind)).toEqual(["steps", "assistant", "steps", "steps"]);
+  });
+
+  it("says a step its turn left running failed once the turn is over, so a crashed turn's run doesn't stay open", () => {
+    const items = [read("t1", "a.md"), read("t2", "b.md", "in_progress")];
+    expect(steps(toEntries(items, new Set()))[0]).toMatchObject({ state: "running", open: true });
+    expect(steps(toEntries(items, new Set(), ["r1"]))[0]).toMatchObject({ state: "error", open: false, label: "Read 2 files (1 failed)" });
+  });
+
+  it("keeps a message sent and a task filed as their own lines, never as steps", () => {
+    const sent = call("s1", "sendMessage", { to: "teammates.writer", text: "Draft it." }, "completed", { sent: "msg_1" });
+    const filed = call("c1", "createTask", { title: "Draft the post", assignee: "teammates.writer" }, "completed", { ok: true, taskId: "task_1" });
+    expect(toEntries([sent, filed], new Set()).map((e) => e.kind)).toEqual(["sent", "task"]);
   });
 });

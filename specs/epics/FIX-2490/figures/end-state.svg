@@ -1,0 +1,101 @@
+<svg viewBox="0 0 940 440" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What is in the box. Built once, in three packages: workforce's default worker layer as named sections in a fixed order, identity which exists, then behaviour, environment, skills index and a summary of earlier turns, each on by default with its own opt-out in one worker-config shape; core's optional guidance field on a tool, rendered in the same tools list, which shows only the tools a worker holds; harness-manager's one coding brief, which carries the worker's instructions, the task, the conventions and the checks commandCheck runs, appended to the harness's own preset. Composed in by each of four apps: the persona in WORKER.md, extra environment fields, guidance on its own tools, and the checks its repo runs. Replaced in one line: any section, turned off. Not built here, below a fence: the per-app content pass, Teammates self-learning, an eval apparatus, compaction mechanics, harness routing, and a generator-level opt-out of tool guidance.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg   { fill:var(--surface); }
+    .box  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .pkg  { fill:var(--surface); stroke:var(--code); stroke-width:1; }
+    .app  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .one  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .fence{ stroke:var(--gone); stroke-width:1.6; stroke-dasharray:7 5; }
+    .out  { fill:var(--surface); stroke:var(--rule); stroke-width:1; stroke-dasharray:4 3; }
+    .t-lbl{ fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-cd { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; font-weight:600; }
+    .t-ac { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; font-weight:600; }
+    .t-gn { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; font-weight:600; }
+    .t-b  { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s  { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-m  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="16" width="908" height="214" rx="8"/>
+    <text class="t-cd" x="32" y="38">IN THE BOX · WRITTEN ONCE · EVERY WORKFORCE WORKER GETS IT WITH NO CODE</text>
+    <rect class="pkg" x="32" y="52" width="436" height="162" rx="5"/>
+    <text class="t-lbl" x="44" y="70">WORKFORCE · THE DEFAULT WORKER LAYER, IN ORDER</text>
+    <text class="t-b" x="44" y="92">1  identity and when to ask</text>
+    <text class="t-m" x="300" y="92">exists · FIX-2334</text>
+    <text class="t-b" x="44" y="114">2  behaviour: finish with evidence, size it</text>
+    <text class="t-m" x="370" y="114">FIX-2498</text>
+    <text class="t-b" x="44" y="136">3  environment: date, user, project, surface</text>
+    <text class="t-m" x="370" y="136">FIX-2498</text>
+    <text class="t-b" x="44" y="158">4  the skills it holds, loaded on demand</text>
+    <text class="t-m" x="370" y="158">FIX-2498</text>
+    <text class="t-b" x="44" y="180">5  a summary of earlier turns, in fixed parts</text>
+    <text class="t-m" x="370" y="180">FIX-2500</text>
+    <text class="t-s" x="44" y="203">each a named section · on by default · one opt-out shape in worker config</text>
+    <rect class="pkg" x="484" y="52" width="204" height="162" rx="5"/>
+    <text class="t-lbl" x="496" y="70">CORE</text>
+    <text class="t-b" x="496" y="92">A guidance field</text>
+    <text class="t-b" x="496" y="110">on a tool</text>
+    <text class="t-s" x="496" y="134">in the same tools list,</text>
+    <text class="t-s" x="496" y="152">which shows held tools only</text>
+    <text class="t-s" x="496" y="170">a tool with none prints as today</text>
+    <text class="t-m" x="496" y="203">FIX-2499</text>
+    <rect class="pkg" x="704" y="52" width="204" height="162" rx="5"/>
+    <text class="t-lbl" x="716" y="70">HARNESS-MANAGER</text>
+    <text class="t-b" x="716" y="92">One coding brief</text>
+    <text class="t-s" x="716" y="116">the worker's instructions</text>
+    <text class="t-s" x="716" y="134">the task and the conventions</text>
+    <text class="t-s" x="716" y="152">the checks commandCheck runs</text>
+    <text class="t-s" x="716" y="170">appended to the harness preset</text>
+    <text class="t-m" x="716" y="203">FIX-2502</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="app" x="16" y="244" width="664" height="72" rx="6"/>
+    <text class="t-ac" x="32" y="264">COMPOSED IN · BY EACH OF FOUR APPS</text>
+    <text class="t-b" x="32" y="290">The persona in WORKER.md · extra environment fields</text>
+    <text class="t-s" x="32" y="306">guidance on its own tools · the checks its repo runs</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="one" x="696" y="244" width="228" height="72" rx="6"/>
+    <text class="t-lbl" x="712" y="264">REPLACED IN ONE LINE</text>
+    <text class="t-b" x="712" y="288">Any section, turned off</text>
+    <text class="t-s" x="712" y="306">or all of them: defaults: false</text>
+  </g>
+
+  <g id="fence">
+    <line class="fence" x1="16" y1="336" x2="924" y2="336"/>
+    <text class="t-gn" x="16" y="356">NOT BUILT HERE · THE NOT DOING LIST</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="out" x="16" y="368" width="140" height="58" rx="4"/>
+    <text class="t-s" x="26" y="390">the per-app</text>
+    <text class="t-s" x="26" y="408">content pass</text>
+    <rect class="out" x="169" y="368" width="140" height="58" rx="4"/>
+    <text class="t-s" x="179" y="390">Teammates</text>
+    <text class="t-s" x="179" y="408">self-learning</text>
+    <rect class="out" x="322" y="368" width="140" height="58" rx="4"/>
+    <text class="t-s" x="332" y="390">an eval of about</text>
+    <text class="t-s" x="332" y="408">10 tasks per app</text>
+    <rect class="out" x="475" y="368" width="140" height="58" rx="4"/>
+    <text class="t-s" x="485" y="390">compaction mechanics</text>
+    <text class="t-m" x="485" y="408">FIX-2174</text>
+    <rect class="out" x="628" y="368" width="140" height="58" rx="4"/>
+    <text class="t-s" x="638" y="390">harness routing</text>
+    <text class="t-m" x="638" y="408">FIX-2467</text>
+    <rect class="out" x="781" y="368" width="143" height="58" rx="4"/>
+    <text class="t-s" x="791" y="390">a generator-level</text>
+    <text class="t-s" x="791" y="408">guidance opt-out</text>
+  </g>
+</svg>

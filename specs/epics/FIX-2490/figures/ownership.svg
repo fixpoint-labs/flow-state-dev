@@ -1,0 +1,69 @@
+<svg viewBox="0 0 940 322" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: eight rules, each with one owner. FIX-2498 owns that every layer is a named section with one opt-out shape, and FIX-2500 and the closure use it; FIX-2499 owns core gaining mechanism, not defaults; each child owns deleting the patch its layer replaces; FIX-2502 owns one list of checks, taken from commandCheck; FIX-2494 owns appending to a harness preset; the coordinator owns holding the layers for the cut run and the consumed issues; the closure FIX-2541 owns how its scripts assert, three runs each, and checks three other rules.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; } }
+    .bg    { fill:var(--surface); }
+    .own   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .use   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-row { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-own { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.06em; }
+    .t-use { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="322"/>
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT · ONE OWNER PER RULE · COLUMNS ARE FIX- ISSUES · EACH = EVERY CHILD · COORD. = THE COORDINATOR</text>
+  <g id="columns">
+    <text class="t-col" x="336" y="46">2498</text>
+    <text class="t-col" x="410" y="46">2499</text>
+    <text class="t-col" x="484" y="46">2500</text>
+    <text class="t-col" x="558" y="46">2502</text>
+    <text class="t-col" x="632" y="46">2494</text>
+    <text class="t-col" x="706" y="46">each</text>
+    <text class="t-col" x="780" y="46">coord.</text>
+    <text class="t-col" x="854" y="46">2541</text>
+  </g>
+  <g id="er1">
+    <text class="t-row" x="16" y="76">ER-1 a named section, one opt-out shape</text>
+    <rect class="own" x="330" y="58" width="66" height="26" rx="3"/><text class="t-own" x="336" y="75">OWNS</text>
+    <rect class="use" x="478" y="58" width="66" height="26" rx="3"/><text class="t-use" x="484" y="75">uses</text>
+    <rect class="use" x="848" y="58" width="66" height="26" rx="3"/><text class="t-use" x="854" y="75">uses</text>
+  </g>
+  <g id="er2">
+    <text class="t-row" x="16" y="108">ER-2 core gains mechanism, not defaults</text>
+    <rect class="own" x="404" y="90" width="66" height="26" rx="3"/><text class="t-own" x="410" y="107">OWNS</text>
+  </g>
+  <g id="er3">
+    <text class="t-row" x="16" y="140">ER-3 delete the patch a layer replaces</text>
+    <rect class="own" x="700" y="122" width="66" height="26" rx="3"/><text class="t-own" x="706" y="139">OWNS</text>
+    <rect class="use" x="848" y="122" width="66" height="26" rx="3"/><text class="t-use" x="854" y="139">uses</text>
+  </g>
+  <g id="er4">
+    <text class="t-row" x="16" y="172">ER-4 checks come from commandCheck</text>
+    <rect class="own" x="552" y="154" width="66" height="26" rx="3"/><text class="t-own" x="558" y="171">OWNS</text>
+    <rect class="use" x="626" y="154" width="66" height="26" rx="3"/><text class="t-use" x="632" y="171">uses</text>
+    <rect class="use" x="848" y="154" width="66" height="26" rx="3"/><text class="t-use" x="854" y="171">uses</text>
+  </g>
+  <g id="er5">
+    <text class="t-row" x="16" y="204">ER-5 append to a harness preset</text>
+    <rect class="use" x="552" y="186" width="66" height="26" rx="3"/><text class="t-use" x="558" y="203">uses</text>
+    <rect class="own" x="626" y="186" width="66" height="26" rx="3"/><text class="t-own" x="632" y="203">OWNS</text>
+  </g>
+  <g id="er6">
+    <text class="t-row" x="16" y="236">ER-6 nothing built before the cut run</text>
+    <rect class="use" x="700" y="218" width="66" height="26" rx="3"/><text class="t-use" x="706" y="235">uses</text>
+    <rect class="own" x="774" y="218" width="66" height="26" rx="3"/><text class="t-own" x="780" y="235">OWNS</text>
+  </g>
+  <g id="er7">
+    <text class="t-row" x="16" y="268">ER-7 assert on the answer, 3 of 3 runs</text>
+    <rect class="own" x="848" y="250" width="66" height="26" rx="3"/><text class="t-own" x="854" y="267">OWNS</text>
+  </g>
+  <g id="er8">
+    <text class="t-row" x="16" y="300">ER-8 consumed issues stay where they are</text>
+    <rect class="own" x="774" y="282" width="66" height="26" rx="3"/><text class="t-own" x="780" y="299">OWNS</text>
+  </g>
+</svg>
