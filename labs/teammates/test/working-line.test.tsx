@@ -150,7 +150,9 @@ describe("a running task's feed ends in a live working line", () => {
   it("reads its note, start and run request off the board row the run writes", () => {
     const row = { id: "t-1", status: "in_progress", assignee: "coder.cursor", title: "Fix it", statusNote: "Reading the log", run: { sessionId: "run-1", requestId: "req-1", attempt: 1, startedAt: STARTED } };
     expect(toBoardTask(row)).toMatchObject({ status: "running", note: "Reading the log", startedAt: STARTED, runSessionId: "run-1", runRequestId: "req-1" });
-    // The row's own start wins over its run link's.
-    expect(toBoardTask({ ...row, startedAt: STARTED - 1 }).startedAt).toBe(STARTED - 1);
+    // This attempt's start wins over the task's own, which a retry keeps from its first run.
+    expect(toBoardTask({ ...row, startedAt: STARTED - 1 }).startedAt).toBe(STARTED);
+    // A row with no run link yet falls back to the task's own start.
+    expect(toBoardTask({ ...row, run: undefined, startedAt: STARTED - 1 }).startedAt).toBe(STARTED - 1);
   });
 });

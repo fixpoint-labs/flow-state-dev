@@ -1789,6 +1789,16 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
              * row from another source too keeps the newer copy. Board action only.
              */
             updatedAt: z.number().optional(),
+            /**
+             * When the task was filed, when its run first started, and when it
+             * ended (epoch ms), as the row records them, so a reader can show
+             * how long a task has run and order tasks by when they ended. On
+             * the board's action only, like `spend`; the last two are absent
+             * until they happen.
+             */
+            createdAt: z.number().optional(),
+            startedAt: z.number().optional(),
+            completedAt: z.number().optional(),
             /** A request is waiting on this task's ending (`getTask` with `wait`). */
             waitedOn: z.literal(true).optional(),
             /**
@@ -1830,7 +1840,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
           ...(t.run != null ? { run: t.run } : {}),
           // A client's read, never a model's (FIX-2288): the action carries it, the tool doesn't.
-          ...(claimless ? { spend: taskSpendView(t), updatedAt: t.updatedAt } : {}),
+          ...(claimless ? { spend: taskSpendView(t), updatedAt: t.updatedAt, createdAt: t.createdAt } : {}),
+          ...(claimless && t.startedAt !== undefined ? { startedAt: t.startedAt } : {}),
+          ...(claimless && t.completedAt !== undefined ? { completedAt: t.completedAt } : {}),
           ...(t.wait != null && t.wait.lapsed !== true && !isTerminalStatus(t.status) ? { waitedOn: true as const } : {}),
           ...(claimless && t.leaseUntil != null ? { leaseUntil: t.leaseUntil } : {}),
           ...waitingOf(t),
