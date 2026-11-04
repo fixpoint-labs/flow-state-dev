@@ -81,7 +81,7 @@ flowchart LR
   names this issue as a consumer) for the files; FIX-2395's task times and `lib/task-state.ts`;
   the registry's `durationText` (already copied into the lab) for `2m 14s`; `useDraft`'s
   per-conversation draft for the prefill. Commands are counted from the steps the popup already
-  watches, by the shell flag `toolSubject` already sets (`code`); no tool args are re-parsed.
+  watches, by tool name in the registry's `TOOL_VERB_MAP` ("ran a command"), the vocabulary the step groups already use; no tool args are re-parsed.
 - **Only Claude Code records file touches today.** Codex and Cursor record plans and pull
   requests but not `observed-file-ops`, so their tasks show no file count. Follow-up: FIX-2555
   (D1).
