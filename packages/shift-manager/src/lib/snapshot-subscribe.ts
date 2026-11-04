@@ -45,7 +45,7 @@ const READ_PREFIXES = {
 } as const;
 
 /** Whether `session` is one Shift Manager opens for itself: a flow's reading session, or the usage session. */
-export function isOwnSession(session: Pick<SessionSummary, "id" | "flowKind">, userId: string): boolean {
+function isOwnSession(session: Pick<SessionSummary, "id" | "flowKind">, userId: string): boolean {
   return session.id === readerSessionId(userId, session.flowKind) || session.id.startsWith(`${USAGE_SESSION_PREFIX}-`);
 }
 
