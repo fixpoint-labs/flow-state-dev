@@ -44,7 +44,7 @@ flowchart LR
   C3 --> T
   T -->|"3 of 3 · right date · one turn<br/>checks named and run · source cited<br/>short · skill loaded · decision kept"| P["PASS · the goal is met"]
   C["control · today's main"] -.-> T
-  T -.->|"under the control"| F["must FAIL in every app"]
+  T -.->|"under the control"| F["each ask must FAIL<br/>in an app where it runs"]
 ```
 
 | How we verify | |
@@ -52,10 +52,12 @@ flowchart LR
 | **Goal check** | The closure FIX-2541: four app scripts on `fsdev run`, on one `main` commit after every other child merges. Seven asks in each lab, six in Kitchen Sink and Shift Manager, which skip the fold ([Q1](DECISIONS.md#q1)); each ask runs 3 times ([ER-7](DECISIONS.md#who-owns-what)). That is 78 real-model runs a pass, and the closure makes three: the control, the cut run and the wrap. No eval apparatus ([D2](DECISIONS.md#d2)) |
 | **Signal** | The worker states today's date · a code question that needs several files is answered in one turn · the coder's report names the checks it ran and their result · a knowledge worker cites a source, on an ask that needs several lookups · a one-line question gets a short answer · a worker holding a skill that fits loads it without a slash · in the two labs, a decision made before a summary fold is still used after it |
 | **Sampling** | Each ask runs 3 times and passes only on 3 of 3 ([ER-7](DECISIONS.md#who-owns-what)) |
+| **Preconditions** | An ask that needs a mechanism to fire asserts that it fired before it asserts the answer: the fold ask finds a summary fold in the run record, the skill ask a skill the worker holds. A run where it did not fire fails; it never passes, so it never cuts a layer ([ER-7](DECISIONS.md#who-owns-what)) |
+| **Switches** | On the control and the cut run, the scripts turn on what `main` already has but leaves off: today's `historySummary` fold in both labs, and the skills listing (`skills.activateTool`) with a fitting skill held. So the two asks measure the layer's content, not the switch. At the wrap they set nothing; the defaults must carry it |
 | **The coder leg** | Asserts against the run record's `checks`, which `commandCheck` (on `main`) writes in all four apps; the closure turns on Teammates' checks. Passes when the report names at least one check and each one it names is in `checks` with the outcome it reports. A `null` record fails. On the cut run no brief asks for checks, so this leg is expected to fail there |
-| **The cut run, and the kill line** | The same scripts on `main` after the six bugs merge, before any layer is built. A layer, or a section of FIX-2498, whose ask already passes is cut, except the environment section, which is kept regardless ([ER-6](DECISIONS.md#who-owns-what)) |
+| **The cut run, and the kill line** | The same scripts on `main` after the six bugs merge, before any layer is built. A layer, or a section of FIX-2498, whose ask already passes is cut, except the environment section, which is kept regardless. Where a layer turns an existing switch on by default (the skills index, the summary), a cut drops its content and keeps the flip, since the wrap sets no switch ([ER-6](DECISIONS.md#who-owns-what), [D1](DECISIONS.md#d1)) |
 | **Anti-game** | Assert on the worker's answer, never on a child's own output |
-| **Control that must fail** | Today's `main`: at least one ask fails in every app |
+| **Control that must fail** | Today's `main`: each ask fails, in at least one run of 3, in at least one app where it runs. An ask that never fails there can't show its layer is needed; the closure reports it, and its layer goes to the cut run like any other ([ER-7](DECISIONS.md#who-owns-what)) |
 
 **Lead measure:** the set's goal-proven children, named. None yet.
 
