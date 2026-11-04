@@ -5,7 +5,7 @@
  * is done, and a step whose result says it failed reads "(failed)" in words,
  * drawn in the lab's red. The entry is the adapter's own, over real-shaped items.
  */
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { toEntries, type ConversationEntry } from "../src/adapter";
 import { Entry } from "../src/components/Entry";
@@ -48,5 +48,18 @@ describe("a worker's steps inline", () => {
     const line = draw([read("t1", "docs/a.md", "completed", refused)]).querySelector("[data-step=tool]")!;
     expect(line.textContent).toBe("Read docs/a.md (failed)");
     expect(line.className).toContain("text-destructive");
+  });
+
+  it("keeps a run the person opened by hand open while its state holds", () => {
+    const done = [read("t1", "docs/a.md", "completed", ok("docs/a.md")), read("t2", "docs/b.md", "completed", ok("docs/b.md"))];
+    const entry = (items: unknown[]) => toEntries(items as never, new Set())[0]!;
+    const props = { workerName: "researcher", nameOf: (id: string) => id, lookOf: (id: string) => lookOf({ id, name: id }) };
+    const view = render(<Entry entry={entry(done)} {...props} />);
+    const run = view.container.querySelector("details")!;
+    run.open = true;
+    fireEvent(run, new Event("toggle"));
+    // A new object with the same state, as each feed tick hands one.
+    view.rerender(<Entry entry={entry(done)} {...props} />);
+    expect(view.container.querySelector("details")!.open).toBe(true);
   });
 });

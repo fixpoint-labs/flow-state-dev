@@ -174,6 +174,12 @@ describe("a worker's tool steps in its conversation", () => {
     expect(entries.map((e) => e.kind)).toEqual(["steps", "assistant", "steps", "steps"]);
   });
 
+  it("says a step its turn left running failed once the turn is over, so a crashed turn's run doesn't stay open", () => {
+    const items = [read("t1", "a.md"), read("t2", "b.md", "in_progress")];
+    expect(steps(toEntries(items, new Set()))[0]).toMatchObject({ state: "running", open: true });
+    expect(steps(toEntries(items, new Set(), ["r1"]))[0]).toMatchObject({ state: "error", open: false, label: "Read 2 files (1 failed)" });
+  });
+
   it("keeps a message sent and a task filed as their own lines, never as steps", () => {
     const sent = call("s1", "sendMessage", { to: "teammates.writer", text: "Draft it." }, "completed", { sent: "msg_1" });
     const filed = call("c1", "createTask", { title: "Draft the post", assignee: "teammates.writer" }, "completed", { ok: true, taskId: "task_1" });

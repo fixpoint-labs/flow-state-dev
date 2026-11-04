@@ -617,8 +617,12 @@ function harnessAndModel(spend: { harness?: string; model?: string }, setting: s
   };
 }
 
-/** A conversation's items as the entries the screen draws. */
-export function toEntries(items: readonly Item[], workers: ReadonlySet<string>): ConversationEntry[] {
+/**
+ * A conversation's items as the entries the screen draws. `ended` names the
+ * requests the server lists as over: a step their turn left running (a turn
+ * that crashed mid-call) reads failed, not running for good.
+ */
+export function toEntries(items: readonly Item[], workers: ReadonlySet<string>, ended: readonly string[] = []): ConversationEntry[] {
   const rows = boardRows(items);
   const entries: ConversationEntry[] = [];
   /** The turn the last run of steps belongs to: a run never spans two. */
@@ -658,7 +662,7 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
       entries.push({ kind: "task", id: item.id, taskId: item.output.taskId, title: String(args.title ?? args.goal ?? ""), to: String(args.assignee ?? "") });
     } else if (item.type === "tool_output" && typeof item.toolCall?.name === "string") {
       // Any other call is a step of the turn, inline: a call in a row with the last one, in the same turn, joins its run.
-      const step = toolStep(item);
+      const step = toolStep(item, ended);
       const last = entries[entries.length - 1];
       if (last?.kind === "steps" && runTurn === item.requestId) {
         const steps = [...last.steps, step];
@@ -704,10 +708,14 @@ function sentTo(item: Item): string | undefined {
   return typeof messageId === "string" && typeof to === "string" ? to : undefined;
 }
 
-/** A tool call's status as the registry reads it: a call parked on an approval or a question waits. */
-function callStatus(item: Item): ToolCallStatus {
+/**
+ * A tool call's status as the registry reads it: a call parked on an approval
+ * or a question waits, and one still marked running in a turn that is over
+ * (`ended`) failed.
+ */
+function callStatus(item: Item, ended: readonly string[]): ToolCallStatus {
   if (isSuspensionWait(item as never)) return "waiting";
-  if (item.status === "in_progress") return "running";
+  if (item.status === "in_progress") return ended.includes(item.requestId) ? "failed" : "running";
   // A call that never finished (`incomplete`) did not work.
   return item.status === "completed" ? "done" : "failed";
 }
@@ -719,10 +727,10 @@ function callStatus(item: Item): ToolCallStatus {
  * it stands, a refused call failed as a thrown one is. The same on every
  * harness, since the registry names each one's tools.
  */
-function toolStep(item: Item): SessionStep {
+function toolStep(item: Item, ended: readonly string[] = []): SessionStep {
   const tool: string = item.toolCall.name;
   const args = parseArgs(item);
-  const status = callStatus(item);
+  const status = callStatus(item, ended);
   const output = status === "done" ? item.output : undefined;
   const intent = toolIntent(tool, args);
   const subject = intent === undefined ? toolSubject(tool, args, output) : undefined;
@@ -889,7 +897,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       };
       const stopFeed = watchFeed(sessionId, (next) => next, (next) => {
         items = next;
-        reuse(toEntries(items, workerIds));
+        reuse(toEntries(items, workerIds, ended));
         emit();
       });
       const stopPoll = onNotice(
@@ -901,6 +909,8 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           const answering = requests.filter((r) => !QUIET_ACTIONS.has(r.actionName));
           inProgress = answering.filter((r) => r.status === "in_progress").map((r) => r.id);
           ended = requests.filter((r) => r.status !== "in_progress").map((r) => r.id);
+          // A turn that ended with a call still marked running reads that call failed.
+          reuse(toEntries(items, workerIds, ended));
           emit();
         },
       );
