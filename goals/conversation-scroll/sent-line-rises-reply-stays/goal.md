@@ -36,3 +36,6 @@ The views that never send have b, d and e only.
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-11-04 | dabee4a3 | n/a | PASS | all 42 signals on 8 surfaces. Risen line 16–46px below the feed's top; b drift 0–1px with the arrow shown; e at the end on every drawn frame |
+| 2026-11-04 | dabee4a3 | n/a | FAIL (expected) | `main-rule`: a.short and a.long red on all six sending surfaces (the line 441–709px down, at the bottom edge), every other signal green |
+| 2026-11-04 | dabee4a3 | n/a | FAIL (expected) | `no-reserve`: a.short and a.long red on all six sending surfaces, every other signal green |
