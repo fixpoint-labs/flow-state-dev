@@ -115,7 +115,7 @@ describe("resolveProfileStores · the bus slot (FIX-2426)", () => {
     const { stores } = await resolveProfileStores({ profileName: "default", profile: { primary: lying } });
     expect(stores.bus).toBeDefined();
     expect(stores.bus).not.toBe(undeclared);
-    expect(stores.bus?.crossesProcesses).toBe(false);
+    expect(stores.bus?.crossesProcesses).toBe(true);
   });
 
   it("fails at resolution when the bus slot's adapter doesn't declare `bus`", async () => {

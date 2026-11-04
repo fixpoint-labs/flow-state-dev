@@ -399,7 +399,7 @@ const stores = postgresStores({
 
 ### With no tail pool
 
-`liveTailPool: null`, the `{ pool }` shape without a `liveTailPool`, and the `{ executor }` shape (PGlite) never listen, so the bus reports `crossesProcesses: false` and views use the once-a-second read. The `{ pool }` shape still sends its notices, so views on processes that do listen hear its writes. `vercelPostgresStores` from `@flow-state-dev/vercel/store` passes `liveTailPool: null` and doesn't back the `bus` slot.
+`liveTailPool: null`, the `{ pool }` shape without a `liveTailPool`, and the `{ executor }` shape (PGlite) never listen, so the bus reports `crossesProcesses: false` and views use the once-a-second read. The `{ pool }` shape still sends its notices, so views on processes that do listen hear its writes. `vercelPostgresStores` from `@flow-state-dev/vercel/store` passes `liveTailPool: null` and backs the `bus` slot with this bus, so a deployment's instances say they don't cross and keep the once-a-second read.
 
 `close()` stops the ping and hands the listening connection back before it ends the pools.
 

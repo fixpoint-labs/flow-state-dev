@@ -69,8 +69,10 @@ await serve(flowState, { pushSecret: process.env.FSD_PUSH_SECRET });
 otherwise uses a random key for the process. A notice reaches every process only
 when the change bus crosses processes: the `bus` slot of the stores profile you
 hand `createFlowState` must hold a bus that hands a change made in one process to
-the others (see the engine README's *Change bus* section). On the default
-in-memory bus, clients keep reading on their timer between notices.
+the others (see the engine README's *Change bus* section). The default
+in-memory bus is for an app served by one process: clients stop their timers
+while their socket is up, and a change another process writes reaches an open
+page only at its next read.
 
 ## Serving a built `FlowApiRouter` directly
 
