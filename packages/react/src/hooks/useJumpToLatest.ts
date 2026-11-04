@@ -123,7 +123,8 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
   // Before paint, so the first frame of a feed that opens at the end is already there.
   useLayoutEffect(() => {
     if (node === null) return;
-    // Armed by `sent`: the next of the person's lines the feed shows rises, once.
+    // Armed by `sent`: the next of the person's lines the feed shows rises, once. A send that fails before its
+    // line draws stays armed until the person scrolls; the hook is told of no failure to disarm it on.
     let waiting = false;
     // The person's lines the feed has shown already, by key: none of them is the one a send waits for.
     const shown = new Set<string>();
@@ -144,9 +145,18 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
     };
     /** The newest of the person's lines not shown before. */
     const unshown = () => marked().reverse().find((el) => !shown.has(el.getAttribute(MINE)!));
-    const contentHeight = () => node.scrollHeight - space;
-    const near = () => contentHeight() - node.scrollTop - node.clientHeight <= AT_END_SLACK;
     const topOf = (el: HTMLElement) => el.getBoundingClientRect().top - node.getBoundingClientRect().top - node.clientTop + node.scrollTop;
+    /** How tall the content is, without the kept space. */
+    const contentHeight = () => {
+      const height = node.scrollHeight - space;
+      if (height > node.clientHeight) return height;
+      // Shorter than the view, `scrollHeight` is the view's height: measure where the content ends.
+      let end = 0;
+      for (const child of Array.from(node.children) as HTMLElement[]) end = Math.max(end, topOf(child) + child.getBoundingClientRect().height);
+      const below = padding?.px ?? (Number.parseFloat(getComputedStyle(node).paddingBottom) || 0);
+      return Math.min(height, end + below);
+    };
+    const near = () => contentHeight() - node.scrollTop - node.clientHeight <= AT_END_SLACK;
 
     /** A line of the person's drawn while nothing waits for one counts as shown two frames on: long enough for a send learned of in an effect to claim it. */
     const settleLater = () => {
@@ -225,6 +235,9 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
       lastTop = node.scrollTop;
       if (gliding === undefined) setAtEnd(near());
     };
+    // The person's lines already drawn when the element attaches, such as a feed that opens at its start or a
+    // replaced element, came before any send this element sees.
+    showAll();
     onChange();
 
     const onScroll = () => {
@@ -245,7 +258,10 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
       gliding = undefined;
       held = true;
     };
+    // Not a key typed into a text field the feed holds, such as a composer that scrolls with it.
     const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.isContentEditable || target.matches("input, textarea, select")) return;
       if (SCROLL_KEYS.has(event.key)) theirs();
     };
     // Only a press on the element itself, not on what it holds: its scrollbar.

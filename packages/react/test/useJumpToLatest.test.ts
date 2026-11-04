@@ -7,7 +7,7 @@
  * person sends rises to near the top, with space kept under it, so its reply
  * streams in where they can read it instead of below the fold.
  */
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { useJumpToLatest, type JumpToLatest } from "../src/hooks/useJumpToLatest";
@@ -34,12 +34,15 @@ function Feed({
   elementKey,
   mine = [],
   status,
+  composer,
 }: {
   lines: number;
   /** The lines, by index, that are the person's own: marked with {@link JumpToLatest.mine}. */
   mine?: number[];
   /** A line that isn't anyone's, drawn last, such as "… is answering". */
   status?: boolean;
+  /** A text field inside the feed, after its lines, such as a composer that scrolls with the conversation. */
+  composer?: boolean;
   startAtEnd?: boolean;
   /** What the feed shows; a change is a different thing to open at the end of. */
   resetKey?: string;
@@ -57,6 +60,7 @@ function Feed({
     },
     ...Array.from({ length: lines }, (_, i) => createElement("p", { key: i, ...(mine.includes(i) ? feed.mine(`line ${i}`) : {}) }, `line ${i}`)),
     status ? createElement("p", { key: "status" }, "answering") : null,
+    composer ? createElement("textarea", { key: "composer", "aria-label": "composer" }) : null,
   );
 }
 
@@ -281,6 +285,59 @@ describe("sending a line", () => {
     await settle();
     expect(moves).toEqual([]);
     expect(screen.getByTestId("feed").scrollTop).toBe(200);
+  });
+
+  it("counts a scroll key pressed on the feed as theirs: the line does not rise", async () => {
+    const { rerender } = await opened(20);
+    scrollTo(0);
+    act(() => feed.sent());
+    fireEvent.keyDown(screen.getByTestId("feed"), { key: " " });
+    moves.length = 0;
+    rerender(feedElement({ lines: 21, mine: [20] }));
+    await settle();
+    expect(moves).toEqual([]);
+  });
+
+  it("does not count typing in a text field inside the feed as a scroll: a space typed there leaves the line to rise", async () => {
+    const { rerender } = await opened(20, { composer: true });
+    scrollTo(0);
+    act(() => feed.sent());
+    fireEvent.keyDown(screen.getByLabelText("composer"), { key: " " });
+    rerender(feedElement({ lines: 21, mine: [20], composer: true }));
+    await settle();
+    expect(nearTop(20)).toBe(true);
+  });
+
+  it("brings the line near the top in a conversation still shorter than the view", async () => {
+    const { rerender } = await opened(1);
+    act(() => feed.sent());
+    rerender(feedElement({ lines: 2, mine: [1] }));
+    await settle();
+    // Its gap above it, as in a feed that overflows: the space is sized from where the content ends, not from the view.
+    expect(lineTop(1)).toBe(16);
+  });
+
+  it("brings up the new line, not one of the person's drawn before a feed that opens at its start mounted", async () => {
+    const { rerender } = await opened(5, { startAtEnd: false, mine: [1] });
+    await nextFrame();
+    await nextFrame();
+    act(() => feed.sent());
+    rerender(feedElement({ lines: 6, startAtEnd: false, mine: [1, 5] }));
+    await settle();
+    expect(nearTop(5)).toBe(true);
+  });
+
+  it("brings up the new line, not an earlier one of the person's, after the scrolling element is replaced", async () => {
+    const { rerender } = await opened(20, { elementKey: "one", mine: [10] });
+    rerender(feedElement({ lines: 20, elementKey: "two", mine: [10] }));
+    await settle();
+    await nextFrame();
+    await nextFrame();
+    scrollTo(0);
+    act(() => feed.sent());
+    rerender(feedElement({ lines: 21, elementKey: "two", mine: [10, 20] }));
+    await settle();
+    expect(nearTop(20)).toBe(true);
   });
 
   it("counts a scroll the person makes with the wheel as theirs: the view is no longer at the end", async () => {

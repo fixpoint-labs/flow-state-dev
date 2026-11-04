@@ -219,7 +219,7 @@ function RunItems({ run }: { run: OpenRun }) {
               data-testid="session-item"
               data-item-id={item.id}
               data-item-type={item.type}
-              {...(item.type === "message" && (item as { role?: string }).role === "user" ? feed.mine(item.id) : {})}
+              {...(item.type === "message" && item.role === "user" ? feed.mine(item.id) : {})}
             >
               {item.type === "suspension" ? (
                 <PendingAsk ask={asks.find((ask) => ask.item.suspensionId === item.suspensionId)} />

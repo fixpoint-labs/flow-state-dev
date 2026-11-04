@@ -172,9 +172,8 @@ const goal = (page: Page, call: string, arg?: string) =>
 /** Sample `scrollTop` every 50ms until the reply ends: how far it moved from `from`. */
 async function driftUntilDone(page: Page, feed: string, from: number): Promise<{ drift: number; last: Read }> {
   let drift = 0;
-  let last = await must(page, feed);
   for (const until = Date.now() + 20_000; Date.now() < until; ) {
-    last = await must(page, feed);
+    const last = await must(page, feed);
     drift = Math.max(drift, Math.abs(last.top - from));
     if (!(await busy(page))) break;
     await page.waitForTimeout(50);
