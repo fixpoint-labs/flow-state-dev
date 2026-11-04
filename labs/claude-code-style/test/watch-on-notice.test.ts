@@ -45,10 +45,17 @@ function host() {
   /** Held reads of the pins, released by the case. */
   let holdPins: Promise<void> | undefined;
   let pinsFailing = 0;
+  /** Calls to fail next, by `METHOD path`, each with how many more times. */
+  const failing = new Map<string, number>();
   const fetcher = (async (url: string, init?: RequestInit) => {
     const path = new URL(url, "http://x").pathname;
     const method = init?.method ?? "GET";
     calls.push(`${method} ${path}`);
+    const left = failing.get(`${method} ${path}`) ?? 0;
+    if (left > 0) {
+      failing.set(`${method} ${path}`, left - 1);
+      return json({ error: "down" }, 503);
+    }
     if (path === "/api/flows/sessions") return json({ sessions: [{ id: "pins_s", flowKind: "pins", updatedAt: 1 }] });
     if (path.endsWith("/reads/listPins")) {
       await holdPins;
@@ -94,6 +101,8 @@ function host() {
     },
     pin: (ids: string[]) => void (pinned = ids),
     failPinReads: (n: number) => void (pinsFailing = n),
+    /** Fail the next `n` calls of `METHOD path`. */
+    fail: (call: string, n = 1) => void failing.set(call, n),
     run: (requests: unknown[]) => void (running = requests),
     list: (tasks: unknown[]) => void (board = tasks),
     holdPinReads: () => {
@@ -164,6 +173,19 @@ describe("watchSessions", () => {
     await until(() => seen.at(-1)!.length === 1);
   });
 
+  it("reads a row again on its own when its board couldn't be read, rather than showing nothing waiting as if read", async () => {
+    listed.set("desk.main", [{ id: "s1", updatedAt: 1 }]);
+    const h = host();
+    // A task that failed waits on you to retry it.
+    h.list([{ id: "t1", goal: "Fix it", status: "errored" }]);
+    h.fail("POST /api/flows/f/s1/reads/listTasks_tasks");
+    const seen: SessionRow[][] = [];
+    stops.push(createWiredLab(h.client).watchSessions((rows) => seen.push(rows)));
+    await until(() => h.count("/reads/listTasks_tasks") >= 1 && seen.length >= 1);
+    // No notice comes: the row's own retry reads the board again.
+    await until(() => seen.at(-1)!.find((row) => row.id === "s1")?.waiting === 1);
+  });
+
   it("lists again on its own after a first listing that failed, with no notice to wake it", async () => {
     listed.set("desk.main", [{ id: "s1", updatedAt: 1 }]);
     listings.failing = 1;
@@ -221,6 +243,17 @@ describe("watchSessions", () => {
   });
 });
 
+describe("watchThread after a failed lookup", () => {
+  it("asks again whether the session is threads mode's, rather than failing every retry on the same lookup", async () => {
+    const h = host();
+    h.fail("GET /api/flows/sessions/s1");
+    const views: ThreadView[] = [];
+    stops.push(createWiredLab(h.client).watchThread("s1", (view) => views.push(view)));
+    // The running-turn read needs the session's mode; the first lookup failed and nothing notifies.
+    await until(() => views.length > 0);
+  });
+});
+
 describe("watchTaskWork", () => {
   it("follows the run's session as soon as the board's read names it, with no clock between", async () => {
     const h = host();
@@ -274,6 +307,16 @@ describe("watchPins", () => {
     stops.push(createWiredLab(h.client).watchPins((ids) => seen.push(ids)));
     await until(() => h.count("/reads/listPins") === 1);
     expect(seen).toEqual([]);
+    await until(() => seen.length === 1);
+    expect(seen[0]).toEqual(["t1"]);
+  });
+
+  it("finds your pins session again after the first lookup failed, rather than failing every retry on the same lookup", async () => {
+    const h = host();
+    h.pin(["t1"]);
+    h.fail("GET /api/flows/sessions");
+    const seen: string[][] = [];
+    stops.push(createWiredLab(h.client).watchPins((ids) => seen.push(ids)));
     await until(() => seen.length === 1);
     expect(seen[0]).toEqual(["t1"]);
   });

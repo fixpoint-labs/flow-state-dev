@@ -32,6 +32,7 @@ import type {
   Unsubscribe,
 } from "../src/adapter";
 import { waitingOnYou } from "../src/lib/columns";
+import { toolRun } from "../src/lib/tool-steps";
 import { modeById, modeOfWorker, type ModeId } from "../src/modes";
 
 /** How the fake keeps time. Tests pass `speed` to run the script fast. */
@@ -210,7 +211,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
   const file = (s: FixtureSession, title: string, goal: string, note: string): Step[1] => () => {
     const task = startTask(title, goal, note, { assignee: "desk.researcher", spend: spent(RESEARCH_MODEL, 1200, 300, true) });
     s.tasks = [...s.tasks, task];
-    push(s, { kind: "tool", id: nextId("tool"), name: "createTask" });
+    push(s, { kind: "tool", id: nextId("tool"), ...toolRun([{ id: "c", name: "createTask", args: { title, goal }, status: "done", output: { ok: true, taskId: task.id } }]) });
   };
 
   const progress = (s: FixtureSession, title: string, note: string) => () =>
@@ -254,7 +255,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
         push(s, { kind: "assistant", id: nextId("a"), text: `"${task.title}" had already finished, so there was nothing to stop.` });
         return;
       }
-      push(s, { kind: "tool", id: nextId("tool"), name: "updateTask" });
+      push(s, { kind: "tool", id: nextId("tool"), ...toolRun([{ id: "c", name: "updateTask", args: { taskId: task.id, status: "cancelled" }, status: "done", output: { ok: true } }]) });
       setTask(s, task.id, { status: "cancelled", statusNote: undefined, waitingOn: undefined });
       push(s, { kind: "assistant", id: nextId("a"), text: `Stopped "${task.title}". The summary covers what is done so far.` });
     }],

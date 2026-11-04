@@ -186,12 +186,19 @@ export function claudeCodeHarness({ mcpTools, ...feeds }: HarnessFeeds): Harness
     ...CLAUDE_CODE_REPO_OPTIONS,
     detached: true,
     recordWork: true,
-    allowedTools: ["Read", "Write", "Edit", "Bash"],
+    allowedTools: ["Read", "Write", "Edit", "Bash", "Grep", "Glob"],
     permissionMode: "acceptEdits",
-    systemPrompt:
-      "You are a coding agent working in the directory you have been placed in. " +
-      "Do what your instructions and your brief say, then commit your work with git. " +
-      "Do nothing else.",
+    // A string replaces Claude Code's preset (goals/claude-code-harness/it-keeps-its-own-plan).
+    systemPrompt: {
+      type: "preset",
+      preset: "claude_code",
+      append:
+        "You are working in a checkout the Lab placed you in for one task. " +
+        "Do what your instructions and your brief ask, and keep to that task. " +
+        "When the work is done, commit it with git: the task is finished only when its commit is there. " +
+        "End with a short report: what you changed, and what you checked (the commands or tests you ran and what they showed), " +
+        "or what you could not check and why.",
+    },
   } as never) as unknown as HarnessBlock;
 }
 
