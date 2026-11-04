@@ -125,6 +125,11 @@
     // Kitchen Sink's copy of the registry's run-checks, which the registry
     // drift test requires installed; its turn notice imports it later.
     "apps/kitchen-sink/components/flow-state/run-checks.tsx",
+    // The labs' and Shift Manager's copies of the registry's run-checks: their
+    // review-hold copies draw RunChecks; `runCheckPassed` is for apps that count apart.
+    "labs/claude-code-style/src/components/flow-state/run-checks.tsx",
+    "labs/teammates/src/components/flow-state/run-checks.tsx",
+    "packages/shift-manager/src/components/flow-state/run-checks.tsx",
     // Kitchen Sink's byte copy of the registry's spend: its harness session draws
     // the line; the copy's other formatters are for apps that show them apart.
     "apps/kitchen-sink/components/flow-state/spend.tsx",
