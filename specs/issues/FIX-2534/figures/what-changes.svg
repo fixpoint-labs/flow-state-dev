@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Today: a webhook binding names one session per event, and nothing dedupes. After: in the service's own request, in the org, the event is normalized, the thread index nominates the subscriptions that follow one of its threads, and the config screens run: sender, own, labels, words, senders. Custom and Jev screens, from FIX-2537, come after them. A fence follows: each subscription that passed is handed to its own request, which runs as that subscription's user. There the subscription is checked as still live, the cursor drops a version already seen, the cap is checked, and one message per session is sent through sendMessage's exempt path, from service:github, with the id object at version for that session. Two sessions on one PR each get one message."
+<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Today: a webhook binding names one session per event, and nothing dedupes. After: in the service's own request, in the org, the event is normalized, the thread index nominates the subscriptions that follow one of its threads, and the config screens run: sender, own, labels, words, allow. Custom and Jev screens, from FIX-2537, come after them. A fence follows: each subscription that passed is handed to its own request, which runs as that subscription's user. There the subscription is checked as still live, the cursor drops a version already seen, the cap is checked, and one message per session is sent through sendMessage's exempt path, from service:github, with the id object at version for that session. Two sessions on one PR each get one message."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -57,7 +57,7 @@
   <rect class="new" x="220" y="194" width="170" height="86" rx="5"/>
   <text class="t-b" x="232" y="214">config screens</text>
   <text class="t-s" x="232" y="232">sender · own, always</text>
-  <text class="t-s" x="232" y="248">labels · words · senders</text>
+  <text class="t-s" x="232" y="248">labels · words · allow</text>
   <text class="t-s" x="232" y="266">0 tokens · the share</text>
 
   <rect class="later" x="410" y="194" width="160" height="86" rx="5"/>

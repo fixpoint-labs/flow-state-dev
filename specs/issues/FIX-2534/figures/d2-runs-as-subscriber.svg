@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 488" role="img" aria-label="D2: how does an event the service received reach a user&#x27;s session? Chosen: a run as the subscriber. Instead of: the service writing each user&#x27;s message log as itself. It comes down to the first row, a private repo and a second user: in a run as the subscriber, user B&#x27;s run can&#x27;t read user A&#x27;s rows because the principal comes from the row&#x27;s storage cell; a service identity is one recipient-check bug from a leak. The engine row is a cost on both sides: a new door that starts a request as a row&#x27;s owner, against the framework&#x27;s first write across users. Cost per event: one request per delivered session, against one request in all. Push and poll: one delivery path, since a poll already runs as the owner, against two. Locks in a door that starts a request as a row&#x27;s owner. Flips if the store itself refuses a cross-user write outside one named row."
+<svg viewBox="0 0 940 488" role="img" aria-label="D2: how does an event the service received reach a user&#x27;s session? Chosen: a run as the subscriber. Instead of: the service writing each user&#x27;s message log as itself. It comes down to the first row, a private repo and a second user: in a run as the subscriber, user B&#x27;s run can&#x27;t read user A&#x27;s rows because the principal comes from the row&#x27;s storage cell; a service identity is one recipient-check bug from a leak. The host row is a cost on both sides: a second host-side fire beside fireWakeThrough that starts a request as a row&#x27;s owner, with no new RequestHost verb, against the framework&#x27;s first write across users. Cost per event: one request per delivered session, against one request in all. Push and poll: one delivery path, since a poll already runs as the owner, against two. Locks in a host fire that starts a request as a row&#x27;s owner, with no RequestHost verb. Flips if the store itself refuses a cross-user write outside one named row."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -63,10 +63,10 @@
     <text class="t-s" x="612" y="179">a service identity writes every user</text>
   </g>
   <g id="row-1">
-    <text class="t-lbl" x="32" y="222">THE ENGINE</text>
+    <text class="t-lbl" x="32" y="222">THE HOST</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">A new door</text>
-    <text class="t-s" x="248" y="241">start a request as a row&#x27;s owner</text>
+    <text class="t-b" x="248" y="223">A second fire</text>
+    <text class="t-s" x="248" y="241">beside fireWakeThrough · no new verb</text>
     <text class="mark minus" x="592" y="224">−</text>
     <text class="t-b" x="612" y="223">A write across users</text>
     <text class="t-s" x="612" y="241">the first one in the framework</text>
@@ -96,8 +96,8 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="398" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="419">LOCKS IN</text>
-    <text class="t-b" x="32" y="439">A door that starts a request as a row&#x27;s owner</text>
-    <text class="t-s" x="32" y="457">security-sensitive; later features will want it</text>
+    <text class="t-b" x="32" y="439">A host fire that starts a request as a row&#x27;s owner</text>
+    <text class="t-s" x="32" y="457">no RequestHost verb; later features will want it</text>
   </g>
 
   <g id="flips-if">
