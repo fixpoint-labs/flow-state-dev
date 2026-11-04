@@ -6,6 +6,7 @@ import { TASK_STATUS } from "../lib/task-status";
 import type { ToolRun } from "../lib/tool-steps";
 import { cn } from "../lib/utils";
 import { MessageResponse } from "./flow-state/message";
+import { RequestRecovery } from "./flow-state/request-recovery";
 import { composeToolCallsLabel, toolRunOpen, type ToolStepState } from "./flow-state/tool-grouping";
 
 /**
@@ -28,11 +29,14 @@ function AgentMarkdown({ text, className }: { text: string; className?: string }
  * session's text is Markdown; a run of tool calls is one line in plain words
  * that opens to a line per call (`ToolRunLine`); a background result is one collapsed line at the point the main
  * session took it, which opens to the task's reply; a thread in threads mode is
- * a card (`ThreadCard`, which the main thread draws). `mark` is the feed's
+ * a card (`ThreadCard`, which the main thread draws). A failed turn is the
+ * registry's `request-recovery` line, with its reason; `onRetry` draws its
+ * Retry, so pass it only for the newest turn while nothing runs. A reply its
+ * turn never finished is marked incomplete. `mark` is the feed's
  * mark for your line (`useJumpToLatest`'s `mine`), so a line you send rises to
  * near the top of the feed.
  */
-export function Entry({ entry, mark }: { entry: ThreadEntry; mark?: SentLineMark }) {
+export function Entry({ entry, mark, onRetry }: { entry: ThreadEntry; mark?: SentLineMark; onRetry?: () => Promise<void> }) {
   switch (entry.kind) {
     case "user":
       return (
@@ -46,8 +50,9 @@ export function Entry({ entry, mark }: { entry: ThreadEntry; mark?: SentLineMark
       );
     case "assistant":
       return (
-        <div data-entry="assistant">
+        <div data-entry="assistant" data-incomplete={entry.incomplete ? "true" : undefined}>
           <AgentMarkdown text={entry.text} />
+          {entry.incomplete ? <span className="mt-1 block text-xs text-muted-foreground">Incomplete</span> : null}
         </div>
       );
     case "tool":
@@ -65,6 +70,12 @@ export function Entry({ entry, mark }: { entry: ThreadEntry; mark?: SentLineMark
       return (
         <div className="text-xs text-muted-foreground" data-entry="interrupted">
           Interrupted. Background tasks keep running.
+        </div>
+      );
+    case "failed":
+      return (
+        <div data-entry="failed">
+          <RequestRecovery who="The main session" reason={entry.reason} code={entry.code} details={entry.details} onRetry={onRetry} />
         </div>
       );
   }

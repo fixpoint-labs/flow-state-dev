@@ -49,6 +49,7 @@ export function Thread({
   const count = view?.entries.length ?? 0;
   const feed = useJumpToLatest({ resetKey: session.id });
   // On the document, so the keys work wherever focus is; a sheet's Esc arrives already spent.
+  const retryOf = (requestId: string) => () => adapter.retry(session.id, requestId);
   const keys = useInterruptKeys({
     enabled: running && session.projectId !== null,
     onInterrupt: () => void adapter.interrupt(session.id),
@@ -92,7 +93,12 @@ export function Thread({
               ) : (
                 // The request an entry came in on, so a check can tell which turn it landed in.
                 <div key={entry.id} className="contents" data-request-id={entry.requestId}>
-                  <Entry entry={entry} mark={entry.kind === "user" ? feed.mine(entry.id) : undefined} />
+                  <Entry
+                    entry={entry}
+                    mark={entry.kind === "user" ? feed.mine(entry.id) : undefined}
+                    // Retry only the newest turn, and not while one runs: the engine retries a failed request as a new one.
+                    onRetry={entry.kind === "failed" && entry.latest && !running && entry.requestId !== undefined ? retryOf(entry.requestId) : undefined}
+                  />
                 </div>
               ),
             )}

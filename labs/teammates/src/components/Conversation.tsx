@@ -189,6 +189,8 @@ export function Conversation({
                     onOpenMessage={openMessage}
                     onOpenTask={openTask}
                     {...(entry.kind === "approval" ? { onAnswer: (approve: boolean) => adapter.answerApproval(sessionId, entry, approve) } : {})}
+                    // Retry only the newest turn, and not while one runs: the engine runs a failed request again as a new one.
+                    {...(entry.kind === "failed" && entry.latest && !running ? { onRetry: () => adapter.retry(sessionId, entry.requestId) } : {})}
                   />
                 )}
               </div>

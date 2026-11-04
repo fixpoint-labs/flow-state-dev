@@ -16,7 +16,8 @@
  * the judge's verdict.
  *
  * In either mode, an ask that says "stop" or "cancel" while a task runs makes
- * the main session cancel it. A line sent while a turn runs waits, and runs
+ * the main session cancel it. `failTurn` fails the running turn, as an
+ * engine `error` item would; Retry runs that turn's line again. A line sent while a turn runs waits, and runs
  * when the turn ends.
  */
 import type {
@@ -49,6 +50,10 @@ export interface FakeLab extends LabAdapter {
   setConnection(state: ConnectionState): void;
   /** The open task titled `title`, in any session, fails with `error`, as its run would. */
   fail(title: string, error: string): void;
+  /** The running turn of session `sessionId` fails with `reason`: a reply under way is left incomplete. */
+  failTurn(sessionId: string, reason: string): void;
+  /** Each `retry` the screen made, in order. */
+  readonly retries: { sessionId: string; requestId: string }[];
 }
 
 interface FixtureTask extends TaskRow {
@@ -417,7 +422,23 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     return task;
   };
 
+  const retries: { sessionId: string; requestId: string }[] = [];
+
   return {
+    retries,
+    failTurn(sessionId, reason) {
+      const s = session(sessionId);
+      if (!s.running) return;
+      for (const t of s.timers) clearTimeout(t);
+      s.timers = [];
+      // The turn's line names it, so Retry can run it again; an older failure is no longer the newest turn.
+      const line = [...s.entries].reverse().find((e) => e.kind === "user");
+      const requestId = `turn-${line?.id ?? nextId("r")}`;
+      const last = s.entries[s.entries.length - 1];
+      s.entries = s.entries.map((e) => (e.kind === "failed" ? { ...e, latest: false } : e === last && e.kind === "assistant" ? { ...e, incomplete: true } : e));
+      push(s, { kind: "failed", id: nextId("f"), reason, latest: true, requestId });
+      endTurn(s);
+    },
     setConnection(state) {
       connection = state;
       notify();
@@ -473,6 +494,15 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       s.timers = [];
       push(s, { kind: "interrupted", id: nextId("i") });
       endTurn(s);
+    },
+
+    async retry(sessionId, requestId) {
+      retries.push({ sessionId, requestId });
+      const s = session(sessionId);
+      const line = s.entries.find((e) => e.kind === "user" && `turn-${e.id}` === requestId);
+      if (line?.kind !== "user") throw new Error(`No failed turn "${requestId}" to retry.`);
+      s.entries = s.entries.map((e) => (e.kind === "failed" ? { ...e, latest: false } : e));
+      turn(s, line.text, line.id);
     },
 
     watchThread(sessionId, onChange) {

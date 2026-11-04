@@ -18,6 +18,8 @@
  * answers one request at a time: a line you send, or a message from another
  * worker, waits while the worker is answering, and runs when it is done.
  * Chief of Staff's conversation starts past the 50-turn history window.
+ * `failTurn` leaves a failed turn in a conversation, as an engine `error` item
+ * would; Retry runs that turn's line again.
  */
 import type { SessionConnectionState } from "@flow-state-dev/client";
 import {
@@ -59,6 +61,10 @@ export interface FixtureOptions {
 export interface FixtureLab extends LabAdapter {
   /** Every conversation's feed reports `state` from now on. */
   setConnection(state: SessionConnectionState): void;
+  /** The newest turn of conversation `sessionId` failed with `reason`: a reply under way is left incomplete. */
+  failTurn(sessionId: string, reason: string): void;
+  /** Each `retry` the screen made, in order. */
+  readonly retries: { sessionId: string; requestId: string }[];
 }
 
 /**
@@ -463,10 +469,33 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
     now() - 2 * 60 * MINUTE,
   );
 
+  const retries: { sessionId: string; requestId: string }[] = [];
+
   return {
     setConnection(state) {
       connection = state;
       notify();
+    },
+    retries,
+    failTurn(sessionId, reason) {
+      const w = bySession(sessionId);
+      if (!w) throw new Error(`no conversation ${sessionId}`);
+      // The turn's line names it, so Retry can run it again; an older failure is no longer the newest turn.
+      const line = [...w.entries].reverse().find((e) => e.kind === "user");
+      const last = w.entries[w.entries.length - 1];
+      w.entries = w.entries.map((e) =>
+        e.kind === "failed" ? { ...e, latest: false } : e === last && e.kind === "assistant" ? { kind: "assistant", id: e.id, text: e.text, incomplete: true } : e,
+      );
+      push(w, { kind: "failed", id: nextId("f"), requestId: `turn-${line?.id ?? nextId("r")}`, reason, latest: true });
+    },
+    async retry(sessionId, requestId) {
+      retries.push({ sessionId, requestId });
+      const w = bySession(sessionId);
+      const line = w?.entries.find((e) => e.kind === "user" && `turn-${e.id}` === requestId);
+      if (!w || line?.kind !== "user") throw new Error(`No failed turn "${requestId}" to retry.`);
+      w.entries = w.entries.map((e) => (e.kind === "failed" ? { ...e, latest: false } : e));
+      w.queue.push({ kind: "user", entryId: line.id, text: line.text });
+      startNext(w);
     },
 
     async listWorkers() {
