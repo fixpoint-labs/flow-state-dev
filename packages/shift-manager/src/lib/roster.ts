@@ -59,7 +59,7 @@ export function useRoster(readAt: number | undefined): RosterRead {
 
 /**
  * The user's own workers as rows beside the inventory's: each on the flow
- * it names, with that flow's door and rules flag, grouped and named the way an inventory
+ * it names, with that flow's door and its rules and task flags, grouped and named the way an inventory
  * row is.
  */
 function ownWorkers(entries: readonly RosterEntry[], inventory: readonly Worker[]): Worker[] {
@@ -70,8 +70,16 @@ function ownWorkers(entries: readonly RosterEntry[], inventory: readonly Worker[
       kind: entry.flow,
       door: inventory.find((worker) => worker.kind === entry.flow)?.door ?? null,
       rules: inventory.find((worker) => worker.kind === entry.flow)?.rules ?? false,
+      doorTakesTask: inventory.find((worker) => worker.kind === entry.flow)?.doorTakesTask ?? false,
       ...workerNames(entry.id, entry.name, entry.teamName),
+      ...harnessOf(entry),
     }));
+}
+
+/** The harness a roster entry's settings name, as a {@link Worker} field; nothing when it names none. */
+function harnessOf(entry: RosterEntry | undefined): Pick<Worker, "harness"> {
+  const harness = entry?.settings?.harness;
+  return typeof harness === "string" ? { harness } : {};
 }
 
 /** A standard worker the roster lists and the inventory hasn't registered, as a row. */
@@ -89,7 +97,11 @@ function standardWorkers(entries: readonly RosterEntry[], inventory: readonly Wo
  */
 export function withRoster(snapshot: LoadedSnapshot, read: RosterRead): { snapshot: LoadedSnapshot; workers: Worker[]; own: Worker[] } {
   const entries = read !== undefined && "entries" in read ? read.entries : [];
-  const inventoryWorkers = snapshot.inventory.ok ? snapshot.inventory.value.workers : [];
+  // A declared worker's harness rides on its roster entry, not on its inventory row.
+  const inventoryWorkers = (snapshot.inventory.ok ? snapshot.inventory.value.workers : []).map((worker) => ({
+    ...worker,
+    ...harnessOf(entries.find((entry) => entry.id === worker.id)),
+  }));
   const own = ownWorkers(entries, inventoryWorkers);
   const extra = snapshot.inventory.ok ? own : [...standardWorkers(entries, inventoryWorkers), ...own];
   const workers = [...inventoryWorkers, ...extra];

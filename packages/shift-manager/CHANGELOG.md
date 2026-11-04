@@ -1,5 +1,31 @@
 # @flow-state-dev/shift-manager
 
+## 0.2.0
+
+### Minor Changes
+
+- 996332f: A conversation board's browser read now carries each row's `spend`, the stored ledger of what its runs spent. Fold it with `taskRowView` for the row's harness, model, tokens and cost. Shift Manager draws it: the task inspector's _Harness · tokens · cost_ section shows the spend line, and the Tasks COST column shows the vendor's charge, with no figure for a run billed by subscription (FIX-2398).
+
+### Patch Changes
+
+- 5bf8332: `listProjects` lists each project's `brief`, and its `forCoding` line no longer makes a coordinator ask which project when every project with a repository shares one: they reach the same code, so it files the task in the one that fits and says which. Shift Manager's coordinator reads "have Cursor (Codex, Claude) do it" as the coding agent its coder runs on, which each coder's description now names, and finds unknown names like "the super app" through the coder instead of asking (FIX-2487).
+- 9a355b2: `@flow-state-dev/react` exports `useInterruptKeys`, `createInterruptKeys` and `interruptChordLabel`, a keyboard stop for long-running work. One Esc never stops anything. A second Esc within 1.5 s does, and so does Cmd/Ctrl+. at once. An Esc typed in a text field, or one already used to close a dialog, never counts (FIX-2413).
+
+  `@flow-state-dev/engine`: the request status route's `completedAtMs` is now set for aborted and failed requests, from the time they stopped. It was set only for requests that completed. A replayed or resumed stream's terminal event for an aborted request is now dated when the request was aborted, not when its record was last written.
+
+  `@flow-state-dev/shift-manager`: one Esc on a task no longer interrupts its run. Press Esc twice or Cmd/Ctrl+. instead. Esc in the composer is the composer's. An interrupted run now says when it stopped.
+
+- 1a05796: A coordinator's routing record now carries `answeredItself: true` when its own turn answered the post and tried no delegate. Shift Manager draws no "routed" note for such a record, so a reply the coordinator answered itself no longer ends with "the coordinator handed it to no delegate". The note still shows when the post went to a worker, when a worker was tried and missed, and when a round's delegates never answered (FIX-2488).
+- ee3f51c: Roster shows the coding harness a worker runs on when its worker flow shows a `harness` setting (`showSettings`), such as a coder hired on Cursor, Codex or Claude Code. A worker that names none still shows a dash (FIX-2486).
+- 05a8905: Shift Manager's coder can be Codex or Cursor as well as Claude Code (`DEVFORCE_LAB_HARNESS=codex` or `cursor`). One run may now take 20 minutes by default, and `DEVFORCE_LAB_RUN_MINUTES` sets it (FIX-2390).
+- 8469809: Pages served by `fsdev dev --app` can now run under a sub-route behind a proxy. `@flow-state-dev/devtool/react` exports `readBasePath()`, the prefix a page is served under, read from its `<base href>` (`""` at the root of its origin). Shift Manager's pages build with relative asset URLs and keep their links, history entries and API calls under that prefix, so the same build serves at `/` and at a proxy's `/shift-manager/` (FIX-2485).
+- Updated dependencies [e0daf6e]
+- Updated dependencies [70f09b5]
+- Updated dependencies [cc0ab62]
+- Updated dependencies [8469809]
+  - @flow-state-dev/fsdev@0.4.0
+  - @flow-state-dev/devtool@0.3.1
+
 ## 0.1.0
 
 ### Minor Changes

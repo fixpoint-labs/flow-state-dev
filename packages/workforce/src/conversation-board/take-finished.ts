@@ -41,6 +41,7 @@ import { takeOwedNotice } from "@flow-state-dev/orchestration";
 import {
   decideNotice,
   isTerminalStatus,
+  noticeMetadata,
   noticeText,
   owedNotices,
   owesAnyNotice,
@@ -123,7 +124,10 @@ export const takeFinishedTasks = handler({
         // The answer again reads the ending as its getTask read (FIX-2345).
         await noteTaskEndingRead(ctx, ref, row, notice);
         const line = noticeText(notice, row);
-        ctx.emit.message(line, row.assignee !== undefined ? { agentName: row.assignee } : {});
+        ctx.emit.message(line, {
+          ...(row.assignee !== undefined ? { agentName: row.assignee } : {}),
+          metadata: noticeMetadata(notice, row)
+        });
         finished.push({
           taskId: row.id,
           ending: notice.ending as FinishedTask["ending"],

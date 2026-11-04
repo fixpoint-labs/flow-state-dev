@@ -160,10 +160,11 @@ describe("taskToolActions with a roster (T1)", () => {
     }
   });
 
-  it("names the same four actions either way", async () => {
+  it("names the same five actions either way", async () => {
     const h = await host(new Set());
     try {
-      expect(Object.keys(h.handleForm)).toHaveLength(4);
+      // The filer's four and a person's retry (FIX-2383).
+      expect(Object.keys(h.handleForm)).toHaveLength(5);
     } finally {
       await h.dispose();
     }

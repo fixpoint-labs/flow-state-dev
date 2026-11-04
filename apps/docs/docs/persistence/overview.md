@@ -10,6 +10,15 @@ flow-state.dev stores three categories of data: **scope state** (session, user, 
 
 You declare stores on `createFlowState` as a map of named profiles. A profile maps capability slots (typed containers for a category of storage) to adapters. Every adapter below backs the required `primary` slot — the catch-all state store for sessions, requests, users, orgs, checkpoints, content, traces, and [wakes](../advanced/durable-execution.md#wakes). The `blobs`, `queue`, and `scheduler` slots exist in the type but are forward-compatible: no backing store ships for them in Phase 1, so declaring them is a no-op.
 
+The `bus` slot carries change notices. Every request and session write sends one, and an open session stream (`GET /sessions/:id/stream`) reads the store when one arrives. Leave the slot out and the primary backs it if its adapter can; otherwise the bus is in memory and reaches only the process that wrote. That decides what an open view costs:
+
+| Bus | What an open session view reads |
+|---|---|
+| Crosses processes | Only after a change, at most once a second. A view of a quiet session costs the store nothing |
+| In memory | After a change, and also about once a second, so a reply written by another process still arrives |
+
+The Postgres adapter backs `bus` (see [Postgres](#postgres)). The in-memory, file and SQLite adapters don't, so their profiles run the in-memory bus, and views use the once-a-second read.
+
 | Adapter | Persistence | When to use |
 |---------|------------|-------------|
 | **In-memory** (default) | None — data is lost on restart | Development, testing, demos |
@@ -66,6 +75,8 @@ const flowstate = createFlowState({
 ```
 
 On Vercel, use `vercelPostgresStores()` from `@flow-state-dev/vercel/store` instead — it bakes in the pool tuning and Neon client swap.
+
+With more than one process on one database (a web process and BullMQ workers, or several web processes), a session view open on one process sees a change saved on another as soon as it is saved, and a view of a quiet session costs the database nothing. You don't configure anything for this: the Postgres adapter backs the `bus` slot, and each process with an open view holds one listening connection and pings itself through it every 2 seconds. When the ping stops coming back, because a transaction pooler doesn't deliver `LISTEN` notifications or the connection dropped, views on that process go back to the once-a-second read until it recovers, and nothing is missed. `vercelPostgresStores()` doesn't back `bus`, so views there use the once-a-second read. The [package README](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/store-postgres#cross-process-notices) covers the connection, the pooler warning and `liveTailPool: null`.
 
 Postgres provides the concurrency safety that compare-and-swap relies on. Compare-and-swap means a write carries the version it expects to find, and the store applies it only if that version is still current — so a write built on a stale read is refused instead of silently overwriting someone else's.
 
@@ -312,6 +323,21 @@ async function* subscribeToEvents(requestId, options) {
 }
 ```
 
+### Bus
+
+A store that can carry notices between processes backs the `bus` slot: it declares `"bus"` in its adapter's `capabilities` and resolves `{ bus }`, an object with four members.
+
+| Member | What it must do |
+|---|---|
+| `publish(notice)` | Send `{ topic, kind, origin? }` to every process's subscribers of that topic. The engine calls it only once the write can be read. A failure must not fail the write |
+| `subscribe(topic, listener)` | Hear the notices under `topic`, and return the unsubscribe. A subscriber to a scope's topic hears every notice under the scope; one narrowed to a resource hears only that resource's |
+| `crossesProcesses` | `true` only while a notice published in another process reaches this one. While it is `true`, the session stream stops its once-a-second read, so a wrong `true` is a view that stops updating |
+| `onCrossingChange(listener)` | Called on each change of `crossesProcesses`. A change to `false` puts waiting views back on the once-a-second read |
+
+A topic is `{ scope, id, tenantId, resource? }`, with `tenantId` always present (`""` for a single-tenant app), so derive channel names from all of it and no tenant hears another's notices. A notice never carries rows. Notices are at most once: a bus that loses its connection and gets it back sends each subscriber one `resync` notice, and the subscriber reads again. `createInMemoryBus()` from `@flow-state-dev/engine` does the in-process fan-out, so an adapter can deliver what it hears through it.
+
+If you pass a `StoreRegistry` you built yourself, set `bus` on it to use your own; the engine wraps the request and session stores so every write publishes.
+
 ### Incremental items storage
 
 Backed adapters store items incrementally rather than inside the request record's JSONB column. The SQLite and Postgres adapters write one row per item into a dedicated child table (`request_items`); the filesystem store appends items and events to an append-only log instead. `RequestStore.persistItems` and `get` keep the same shape either way, so a flow author sees no difference. An operator does — see [Persistence cost model](/docs/server/setup#persistence-cost-model) for how each backend stores its data.
@@ -386,7 +412,7 @@ Pick by where you run — there's no single "recommended stack":
 - **Local dev** — in-memory (default), or the filesystem store when you want data to survive restarts. Zero setup.
 - **Single server** (Railway, Fly, a VPS) — SQLite or Postgres, for durable concurrency-safe writes. The filesystem store is fine for very low concurrency, but its per-request event log doesn't hold up under real load — reach for SQLite instead.
 - **Multiple servers / cloud** — Postgres. You need a shared store with real concurrency semantics and cross-instance live tail (Postgres uses `LISTEN/NOTIFY`). `LISTEN/NOTIFY` is a wake-up signal with a real fan-out ceiling; at high event volume, put streaming on Redis or NATS behind the same `subscribeToEvents` interface.
-- **Serverless / edge** — Postgres over an HTTP driver (e.g. a Neon/Supabase pooler). `LISTEN/NOTIFY` doesn't survive transaction poolers, so use an HTTP-based service (e.g. Upstash) for live updates.
+- **Serverless / edge** — Postgres through a pooled endpoint (e.g. Neon or Supabase), with `vercelPostgresStores()` on Vercel. A transaction pooler doesn't deliver `LISTEN` notifications, so session views there use the once-a-second read. On a long-lived host behind a pooler, pass `liveTailPool` a direct connection string to get changes across processes as they are saved; see [Postgres](#postgres).
 - **Special requirements** — implement a custom store against the `StoreAdapter` interface.
 
 ### Resource vs. app-owned tables

@@ -26,11 +26,17 @@ import {
   type PlanPanelInput,
 } from "@/lib/harness-turn";
 
-const blank: HarnessTurnRecord = { asked: null, confirmed: null, failure: null, stopped: null, error: null, at: 1, steered: null };
+const blank: HarnessTurnRecord = { asked: null, confirmed: null, failure: null, stopped: null, error: null, at: 1, steered: null, base: null, head: null, checks: null, spend: null, endedAt: null, waitsOnApproval: null, setup: null };
 
 describe("turnNotice", () => {
   it("says nothing while the turn runs", () => {
     expect(turnNotice({ ...blank, asked: "c1" }, "running", "c1")).toBeNull();
+  });
+
+  it("a turn suspended on the user's answer waits on them, with the session's conversation (FIX-2432)", () => {
+    // Its record already holds the confirmed conversation: still waiting, never "continued".
+    const waiting = { ...blank, asked: "c1", confirmed: "c1", waitsOnApproval: true };
+    expect(turnNotice(waiting, "waiting", "c1")).toEqual({ kind: "waiting", conversation: "c1" });
   });
 
   it("a stop is a stop, even before a confirmation and with a refusal-shaped failure (BR-9)", () => {
@@ -77,7 +83,7 @@ describe("latestTurn", () => {
   it("runs while streaming, or until the summary names the turn; then reads the summary", () => {
     expect(latestTurn({ items: [msg("r2")], streaming: true, request: { id: "r2", status: "completed" } })?.status).toBe("running");
     expect(latestTurn({ items: [msg("r2")], streaming: false, request: { id: "r1", status: "completed" } })?.status).toBe("running");
-    for (const [status, want] of [["incomplete", "completed"], ["failed", "failed"], ["interrupted", "failed"], ["aborted", "stopped"], ["suspended", "running"]] as const) {
+    for (const [status, want] of [["incomplete", "completed"], ["failed", "failed"], ["interrupted", "failed"], ["aborted", "stopped"], ["suspended", "waiting"]] as const) {
       expect(latestTurn({ items: [msg("r2")], streaming: false, request: { id: "r2", status } })?.status).toBe(want);
     }
   });

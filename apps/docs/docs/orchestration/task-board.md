@@ -704,7 +704,7 @@ The count rises while the run works. The request working the task writes what it
 
 ## Changing tasks from outside a run
 
-Workers change tasks while a board drains. Sometimes a person needs to as well: cancel a task nobody needs, hold or release one, edit one before it starts, or answer its question. `taskToolActions` gives your flow the filer's four task tools, as actions any caller of the flow can run:
+Workers change tasks while a board drains. Sometimes a person needs to as well: cancel a task nobody needs, hold or release one, edit one before it starts, answer its question, or retry one that failed. `taskToolActions` gives your flow the filer's four task tools, plus a retry, as actions any caller of the flow can run:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -723,11 +723,29 @@ defineFlow({
 });
 ```
 
-The actions are named for the board's collection: `createTask_todos`, `getTask_todos`, `listTasks_todos` and `updateTask_todos`. A character outside letters, digits, `_` and `-` becomes `_`, so a collection `eng.work` gives `updateTask_eng_work`. Each action carries the board's capability, so the flow doesn't have to declare the collection itself.
+The actions are named for the board's collection: `createTask_todos`, `getTask_todos`, `listTasks_todos`, `updateTask_todos` and `retryTask_todos`. A character outside letters, digits, `_` and `-` becomes `_`, so a collection `eng.work` gives `updateTask_eng_work`. Each action carries the board's capability, so the flow doesn't have to declare the collection itself.
 
 Pass a roster and the actions check assignees the way the model's tools do: `taskToolActions(board, roster)`, or `taskToolActions(collectionId, resolve, roster)`. A `createTask` or `updateTask` naming someone the roster doesn't is answered `{ ok: false, error: "unknown_assignee: …" }` and writes nothing. The roster can also be a function of the running block's context, `(ctx) => roster`, read on every call that checks an assignee, for a board whose team changes from one session to the next. `createTaskToolsCapability(resolve, roster)` takes the same function. Without a roster, any assignee is accepted.
 
 Each one runs the same block the model's tool does, so every rule in [the field table](#what-updatetask-can-change-and-when) holds for a screen as for a model. A move the task can't make comes back as `{ ok: false, error }` and writes nothing. None of them claims a task, drains the board or finishes a task. A cancel lands on a task a worker is still running, and the worker's own result is declined when it arrives.
+
+`retryTask` takes `{ id }` and puts a task that failed or was cancelled back to `pending`. It stays the same task, with the same id, messages, output so far, items and spend. A failure's error reaches the next attempt as `feedback`; a cancel's reason doesn't. The next claim starts a new attempt.
+
+The retry counts in the task's `retryLedger`, alongside the board's own [retries](#bounding-the-retries). A task with tries left keeps them, and a task with none gets one more. A retry cancels no dependents and sends the filer no notice; the filer hears when the task next ends. A dependent the failure cancelled stays cancelled until you retry it too, and then it waits for its dependency again. On a Workforce conversation's board, a retried task starts right away, as a released one does.
+
+A retry that can't happen answers `{ ok: false, error, taskId }` and writes nothing. The error starts with its code:
+
+| Code | Meaning |
+|---|---|
+| `task_finished` | The task completed. A completed task never reopens: file a follow-up with `createTask({ followUpOf })`. |
+| `not_finished` | The task is still open. |
+| `dependency_ended` | A task it depends on failed or was cancelled. Retry that one first. |
+| `settling` | The task's last ending is still being passed on. Try again in a moment. |
+| `retry_budget_spent` | The board's `maxTotalRetries` is spent, on a collection that enforces it. |
+| `task_not_found` | No such task, or one the caller can't reach. |
+| `retry_not_supported` | The board's collection has no retry. |
+
+Retry exists only as an action. A model's task tools are the four above, so a model that wants more work done files a follow-up.
 
 The board needs a collection that outlives a request, built with `defineTaskCollection`. `taskToolActions` throws for a board on any other backing, because a later action could never find its tasks.
 
@@ -755,6 +773,8 @@ await createInboxClient(client).answer(items[0], { approved: true });
 `inboxItems` returns one item per task that waits on the user, however many questions it has, with its `holds` oldest first. A stop in that task's run lists under the task, never a second time on its own. A suspension no open task's run holds, such as a user's ask in a session of their own, is an item by itself. An item is `answerable` when one of its questions is.
 
 The answer is typed by what the question asks: an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, and a confirm `{ done, note? }`. The client sends each where it belongs: a stop to the [answer call](/docs/api/client#answerbody), and a question or a confirm to its board's `updateTask` action, as the signed-in user. There a question's `text` becomes the `message`, and a confirm's `note` becomes the `message` beside `done`. The package README's [Inbox section](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/orchestration/README.md#inbox) has the full call list.
+
+To draw a task's own card or row, `taskRowView(row, holds?)` from the same entry gives one display state for it: `queued`, `held`, `running`, `waiting`, `failed`, `done` or `cancelled`. A task that waits on the user reads `waiting` whatever its stored status, and its `hold` says what it asks. Pass the row's Inbox item's `holds` if you have them, since they also say where each answer goes. Without them the view reads the row's own holds. The view also carries the task's spend, harness, model and times.
 
 ## Assignees that dispatch {#assignees-that-dispatch}
 

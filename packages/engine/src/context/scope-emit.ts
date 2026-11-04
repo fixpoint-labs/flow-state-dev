@@ -82,6 +82,12 @@ export async function emitStateChangeItem(options: {
  * When `transientKeys` is provided and non-empty, patches that touch only
  * transient keys are persisted to the in-memory container but suppressed from
  * SSE emits. When `transientKeys` is absent or empty, no filtering is applied.
+ *
+ * `onCommitted`, when given, runs once after every committed mutation, before
+ * the emit and whether or not the response can emit: the session, user and
+ * org scopes publish their change notice through it (FIX-1506), so a write
+ * from a run no stream follows still reaches other views. Request and
+ * block-instance state pass none, and publish nothing.
  */
 export function wrapStateOpsWithEmit<TState extends JsonObject>(options: {
   scope: StateChangeItem["scope"];
@@ -94,6 +100,7 @@ export function wrapStateOpsWithEmit<TState extends JsonObject>(options: {
   transient: boolean;
   transientKeys?: Set<string>;
   blockInstanceId?: string;
+  onCommitted?: () => void;
 }): Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState"> {
   const transientKeys = options.transientKeys ?? new Set<string>();
   const useTransientFiltering = transientKeys.size > 0;
@@ -149,6 +156,7 @@ export function wrapStateOpsWithEmit<TState extends JsonObject>(options: {
         updater?: (current: TState[keyof TState]) => TState[keyof TState]
       ) => Promise<boolean>)(updatesOrKey, updater);
       if (!committed) return false;
+      options.onCommitted?.();
       const version = options.container.getVersion();
       if (typeof updatesOrKey === "string") {
         if (useTransientFiltering && isTransientKey(updatesOrKey)) return true;
@@ -190,6 +198,7 @@ export function wrapStateOpsWithEmit<TState extends JsonObject>(options: {
     async setState(nextState: TState) {
       const committed = await options.baseOps.setState(nextState);
       if (!committed) return false;
+      options.onCommitted?.();
       const { filtered, hasNonTransient } = filterTransientFromDelta(
         nextState as Record<string, unknown>
       );
@@ -200,6 +209,7 @@ export function wrapStateOpsWithEmit<TState extends JsonObject>(options: {
     async incState(increments: Record<string, number>) {
       const committed = await options.baseOps.incState(increments);
       if (!committed) return false;
+      options.onCommitted?.();
       const { filtered, hasNonTransient } = filterTransientFromDelta(increments);
       if (!hasNonTransient) return true;
       await emit({ operation: "increment", delta: filtered });
@@ -208,6 +218,7 @@ export function wrapStateOpsWithEmit<TState extends JsonObject>(options: {
     async pushState(field: string, value: unknown) {
       const committed = await options.baseOps.pushState(field, value);
       if (!committed) return false;
+      options.onCommitted?.();
       if (useTransientFiltering && isTransientKey(field)) return true;
       await emit({ operation: "push", path: field, delta: value });
       return true;
@@ -215,6 +226,7 @@ export function wrapStateOpsWithEmit<TState extends JsonObject>(options: {
     async setStateRecord(field: string, key: string, value: unknown) {
       const committed = await options.baseOps.setStateRecord(field, key, value);
       if (!committed) return false;
+      options.onCommitted?.();
       if (useTransientFiltering && isTransientKey(field)) return true;
       await emit({
         operation: "patch",
@@ -226,6 +238,7 @@ export function wrapStateOpsWithEmit<TState extends JsonObject>(options: {
     async deleteStateRecord(field: string, key: string) {
       const committed = await options.baseOps.deleteStateRecord(field, key);
       if (!committed) return false;
+      options.onCommitted?.();
       if (useTransientFiltering && isTransientKey(field)) return true;
       await emit({
         operation: "delete_key",
@@ -240,6 +253,7 @@ export function wrapStateOpsWithEmit<TState extends JsonObject>(options: {
         : undefined;
       const committed = await options.baseOps.atomicState(mutator);
       if (!committed) return false;
+      options.onCommitted?.();
       if (useTransientFiltering && before !== undefined) {
         const after = options.container.read() as Record<string, unknown>;
         const allKeys = new Set<string>([

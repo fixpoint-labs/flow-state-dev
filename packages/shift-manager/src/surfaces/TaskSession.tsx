@@ -5,8 +5,10 @@
  * One read of the run session's stored items, then one stream: the run's
  * request, through the flow its session names. Mounted only while the tab is
  * open, so a user reading Brief pays for no stream. A session shared with
- * other tasks shows only the items stamped with this task's id, and the lines
- * its composer sent with their replies (FIX-2009), and says so.
+ * other tasks shows only the items stamped with this task's id (a line its
+ * composer sent, and the reply, carry the stamp when the door takes the task),
+ * and the lines it sent to a door that keeps no task id, with their replies
+ * (FIX-2009), and says so.
  *
  * Each item is drawn by Shift Manager's copy of the registry's item components
  * (`chatAssistantRenderers`: message, reasoning, tool, status, error, task
@@ -23,7 +25,7 @@ import { EmptyState, JumpToLatestButton, SectionFailure } from "../components/ui
 import { asksOfTask, waitsOnYou } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { collectionOfBoard, describeFailure, type Ask, type Failure } from "../lib/reads";
-import { navigate } from "../lib/routes";
+import { RouteLink } from "../components/RouteLink";
 import { followRequest, mergeItems, readSessionItems, RunReadError, taskItems, type OpenRun } from "../lib/run";
 import { useTask } from "../lib/task";
 
@@ -79,9 +81,9 @@ export function TaskSession() {
       {waiting ? (
         <div className="mx-4 mt-3 border px-3 py-2 text-xs" data-testid="session-waiting">
           <p className="font-medium">This task is waiting on you.</p>
-          <button type="button" className="mt-1 underline" onClick={() => navigate({ level: "inbox", item: null })}>
+          <RouteLink to={{ level: "inbox", item: null }} className="mt-1 inline-block underline">
             Answer it in Inbox
-          </button>
+          </RouteLink>
         </div>
       ) : null}
       {body}
@@ -178,7 +180,8 @@ function RunItems({ run }: { run: OpenRun }) {
   // a keyed snapshot shows its latest version only, and a container with its
   // own renderer draws the items it owns.
   const { renderers } = useFlowContext();
-  const sentSet = useMemo(() => new Set(sent), [sent]);
+  const { unstamped } = task;
+  const sentSet = useMemo(() => new Set(unstamped), [unstamped]);
   const shown = useMemo(() => {
     if (stored === undefined) return undefined;
     const mine = taskItems(stored.items, collectionOfBoard(task.boardRef), task.taskId, sentSet);
@@ -211,7 +214,13 @@ function RunItems({ run }: { run: OpenRun }) {
       <SessionItemsProvider value={stored.items}>
         <ol className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 py-4" data-testid="session-items">
           {shown.items.map((item) => (
-            <li key={`${item.requestId}/${item.id}`} data-testid="session-item" data-item-id={item.id} data-item-type={item.type}>
+            <li
+              key={`${item.requestId}/${item.id}`}
+              data-testid="session-item"
+              data-item-id={item.id}
+              data-item-type={item.type}
+              {...(item.type === "message" && item.role === "user" ? feed.mine(item.id) : {})}
+            >
               {item.type === "suspension" ? (
                 <PendingAsk ask={asks.find((ask) => ask.item.suspensionId === item.suspensionId)} />
               ) : (
@@ -247,9 +256,9 @@ function RunItems({ run }: { run: OpenRun }) {
 function PendingAsk({ ask }: { ask: Ask | undefined }) {
   if (ask === undefined) {
     return (
-      <button type="button" className="text-sm underline" onClick={() => navigate({ level: "inbox", item: null })}>
+      <RouteLink to={{ level: "inbox", item: null }} className="text-sm underline">
         Waiting on you: answer it in Inbox
-      </button>
+      </RouteLink>
     );
   }
   return (

@@ -56,6 +56,7 @@ import {
   defaultOrder,
   denyRetry,
   grantRetry,
+  retryWrite,
   isClaimable,
   listTasks,
   retryBudgetExhaustedError,
@@ -108,6 +109,12 @@ export interface StateBackedOptions extends TaskCapOptions {
    * to publish lifecycle changes onto the framework item stream.
    */
   onChange?: (event: TaskChangeEvent) => void;
+  /**
+   * Fired after a committed write that is no lifecycle change, so emits no
+   * `task-change` (a run's spend, a cleared marker): with `onChange`, every
+   * write that changes a row reaches one of the two (FIX-2429).
+   */
+  onWrite?: (task: Task) => void;
   /**
    * Item-log accessor for `TaskHandle.items()` (FIX-480). Reads the
    * response's persistent item buffer at call time so synthesizer
@@ -200,7 +207,8 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
 
   const emit = createTaskChangeEmitter<TInput, TOutput>(
     options.collectionId,
-    onChange
+    onChange,
+    options.onWrite
   );
 
   /**
@@ -406,9 +414,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
 
     if (outcome === undefined) return { outcome: "unchanged" };
     if (outcome.kind === "declined") return outcome.verdict;
-    if (outcome.changeKind !== null) {
-      emit(outcome.changeKind, outcome.task, outcome.prevStatus);
-    }
+    emit(outcome.changeKind, outcome.task, outcome.prevStatus);
     // The ending's own pass pays the cascade it owes (FIX-2080 D2).
     await payCascadeAfterWrite(cascadeWrites, outcome.task as Task);
     return { outcome: "recorded" };
@@ -486,9 +492,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     if (outcome === undefined || outcome.kind === "unchanged") return { outcome: "unchanged" };
     if (outcome.kind === "declined") return outcome.verdict;
     const changeKind = typeof kind === "function" ? kind(outcome.prev, outcome.task) : kind;
-    if (changeKind !== null) {
-      emit(changeKind, outcome.task, outcome.prev.status !== outcome.task.status ? outcome.prev.status : undefined);
-    }
+    emit(changeKind, outcome.task, outcome.prev.status !== outcome.task.status ? outcome.prev.status : undefined);
     return { outcome: "recorded" };
   }
 
@@ -900,6 +904,31 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
 
     async patchSettings(id, settings) {
       return writeSettings(id, settings);
+    },
+
+    async retry(id) {
+      // One rule for the decline and the patch, both read off the same committed map (FIX-2383).
+      const decide = (task: Task<TInput, TOutput>, tasks: Readonly<Record<string, Task<TInput, TOutput>>>) =>
+        retryWrite(
+          task as Task,
+          (other) => ownTask(tasks, other) as Task | undefined,
+          // The board's budget, against the committed ledger, as `fail()` reads it.
+          () => maxTotalRetries !== undefined && sumGrantedRetries(Object.values(tasks) as Task[]) >= maxTotalRetries
+        );
+      return patchOne(
+        id,
+        "retry_requested",
+        (task, tasks) => {
+          const decided = decide(task, tasks);
+          return "decline" in decided ? undefined : (decided.patch as Partial<Task<TInput, TOutput>>);
+        },
+        {
+          decline: (task, tasks) => {
+            const decided = decide(task, tasks);
+            return "decline" in decided ? decided.decline : undefined;
+          },
+        }
+      );
     },
 
     async steer(id, input) {

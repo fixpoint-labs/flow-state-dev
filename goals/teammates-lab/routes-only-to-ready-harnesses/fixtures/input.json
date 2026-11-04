@@ -1,0 +1,9 @@
+{
+  "lead": "teammates.chief-of-staff",
+  "codexWorker": "teammates.codex",
+  "asks": [
+    "Have Codex add a line to the README that says the team meets on Thursdays.",
+    "Get Codex to add one line to README.md: \"Questions go to the #team channel.\""
+  ],
+  "remedy": "codex login"
+}

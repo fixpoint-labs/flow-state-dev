@@ -19,6 +19,12 @@ export type TaskChangeKind =
   | "completed"
   | "errored"
   | "retried"
+  /**
+   * A failed or cancelled task was put back to waiting by a person or an app
+   * (FIX-2383): not an ending, unlike `retried`. It starts again as any
+   * waiting task does.
+   */
+  | "retry_requested"
   /** A task that hadn't started was held: it won't start until released (FIX-2080). */
   | "held"
   /** A held task was released: it starts once its dependencies have finished (FIX-2080). */
@@ -68,17 +74,26 @@ export interface TaskChangeEvent<TInput = unknown, TOutput = unknown> {
 }
 
 /**
- * Build the `emit` a collection backing calls after every successful mutation.
+ * Build the `emit` a collection backing calls after every committed write of a
+ * row, whatever it changed.
  *
- * Both backings publish the identical envelope; only how they resolve the task
- * differs. A no-op when the caller supplied no `onChange`, so call sites stay
- * unconditional.
+ * A write with a `kind` is a lifecycle change: `onChange` gets the event (the
+ * `task-change` item). A write with kind `null` changes the row without being
+ * one (a run's spend, a cleared marker, steers taken): only `onWrite` hears of
+ * it (FIX-2429), so a view of the board still reads again. Both backings
+ * publish the identical envelope; only how they resolve the task differs.
+ * Absent callbacks are no-ops, so call sites stay unconditional.
  */
 export function createTaskChangeEmitter<TInput, TOutput>(
   collectionId: string,
-  onChange: ((event: TaskChangeEvent) => void) | undefined
-): (kind: TaskChangeKind, task: Task<TInput, TOutput>, prevStatus?: TaskStatus) => void {
+  onChange: ((event: TaskChangeEvent) => void) | undefined,
+  onWrite?: (task: Task) => void
+): (kind: TaskChangeKind | null, task: Task<TInput, TOutput>, prevStatus?: TaskStatus) => void {
   return (kind, task, prevStatus) => {
+    if (kind === null) {
+      onWrite?.(task as Task);
+      return;
+    }
     if (onChange === undefined) return;
     onChange({
       collectionId,

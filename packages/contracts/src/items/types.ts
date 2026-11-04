@@ -460,6 +460,15 @@ export type MessageItem = OutputItemBase & {
    * persisted snapshot — this is a deliberate trade-off (see FIX-479).
    */
   content: Content[];
+  /**
+   * Structured data a handler attached to the message with
+   * `ctx.emit.message(text, { metadata })`, for a client to read instead of
+   * parsing `content`. Opaque to the engine and never sent to a model: the
+   * package that emits the message owns the keys it writes, and exports the
+   * reader for them. Absent when nothing was attached, and on every
+   * generator-emitted message.
+   */
+  metadata?: Record<string, unknown>;
 };
 
 export type ReasoningItem = OutputItemBase & {
@@ -616,6 +625,10 @@ export type StateSnapshotItem = OutputItemBase & {
   /** When true, this is the final emission for the sequencer run; the
    *  durability provider should `delete` rather than `write`. */
   terminal?: boolean;
+  /** Set when written as a suspension passed through the sequencer: the id of
+   *  the wait, whose state as it stood there this holds, with the waiting
+   *  step's writes before it. Absent on step-boundary snapshots. */
+  suspensionId?: string;
 };
 
 /**

@@ -1,5 +1,54 @@
 # @flow-state-dev/harness-manager
 
+## 0.4.0
+
+### Minor Changes
+
+- 151309c: Harness readiness: which coding harnesses can run on this machine, and what to do about one that can't. Core adds the neutral `HarnessReadiness` and `HarnessReadinessCheck`. Each integration ships a check: `checkClaudeCodeReadiness`, `checkCodexReadiness` and `checkCursorReadiness`, each with its sign-in remedy. `@flow-state-dev/harness-manager` adds `harnessReadiness(slots)`, which checks once and re-checks on request. It also adds `harnessReadinessAction` for a read with Re-check, `harnessReadinessCapability` for the coordinator's context, `formatHarnessReadiness` for the start log, and `refusal(harness)` for a coding flow's pre-start gate (FIX-2391).
+- A coding run can be told which tracker issue it is for. A harness session takes `state.issue` at create, fixed like the model, and hands it to the workspace as `place.issue`. On a board read from the claim, a task names its issue with `harnessFeature: { issue }`, and the phase is now optional. The run's branch leads with the issue, and a run already under way keeps its recorded branch. The new `issueSpec` option on `harnessSessionFlow` and `harnessManager` opens the brief with the issue's spec from the run's checkout. It is off by default. Phases see the issue as `trackerIssue` (FIX-2388).
+- 9622803: `@flow-state-dev/harness-manager` reads what a coding run changed (FIX-2384). A `reviewChanges` stop's data carries each changed file and its added and removed lines (`files`, `fileCount`, `added`, `removed`), and its prompt names them. `harnessRunChangesRead({ board, uses })` is a flow read, stored nowhere, that answers a board run's files or one file's patch from the run's own session. `harnessSessionFlow` records each turn's `base` and `head` commits and declares a `changes` read for one turn's files or patch. New exports: `harnessRunChangesRead`, `HarnessRunChangesRefused`, `harnessRunChangesInputSchema`, `harnessRunChangesOutputSchema`, `harnessTurnChangesInputSchema`, `runChangesSchema`, `runDiffSchema`, `runFilePatchSchema`, `MAX_DIFF_FILES`, `MAX_PATCH_CHARS`, and the `RunChanges`, `RunDiff`, `RunDiffFile` and `RunFilePatch` types.
+- cc0ab62: Choose where a coding session starts, and remove what it left on disk (FIX-2419).
+
+  - `@flow-state-dev/workspace`: a `baseRef` naming a pinned remote's branch (`origin/main`) in a listed repository is fetched before the cut, and refused as `remote-unreadable` when the fetch fails. `PlaceRequest.existing` checks a branch out instead of cutting one, making it from the remote's when absent (`no-such-branch` when there is none). `localWorkspaceHost` gains `list()` and `remove(target, { deleteBranch?, force? })`, the one removal path, which refuses uncommitted work (`uncommitted-work`), a place mid-provision (`place-busy`) and, unless forced, deleting a branch that holds the only copy of a commit, or removing a detached HEAD that does (`unique-commits`). `pullRequestHead` resolves a same-repository pull request to its head branch. `occupyWorktree` holds a worktree in use (`<dir>.lock`), and `remove` refuses one a run holds (`in-use`); `checkedOutBranch` reads the branch a worktree is on.
+  - `@flow-state-dev/harness-manager`: harness session state gains `start` (`{ base } | { branch } | { pullRequest } | { worktreeOf }`, fixed at create like `model`) and a server-owned `workspace` record. `HarnessSessionWorkspace.provision(place, { start })` may return `{ path, branch }`; the turn-end pull-request check reads the recorded branch. A `removeWorktree` action, refused while a turn runs, calls the workspace's optional `remove`. `resolveHarnessSessionStart` maps a start to a workspace host's request. `{ worktreeOf: sessionId }` attaches a session to another session's worktree and branch: refused at create (404) when that worktree isn't there in the caller's tenant and at its turn when it isn't in the user's own list of worktrees, each turn holds the same in-use lock as the owner's, only the owner may `removeWorktree`, and an attached turn that leaves the worktree on another branch is recorded as failed. The workspace record carries `owner`.
+  - `@flow-state-dev/fsdev`: `fsdev worktrees <root>` lists a workspace host's worktrees and removes one with `--remove`.
+
+- ddf60c8: `taskSpendView` gains `costUsd`: the sum of the charges vendors reported for the task, or `null` when none did (a subscription run reports none). `requestSpendView` reads one request's spend the same way. `harnessSessionFlow` records what each turn spent on its turn record (`spend`, in `taskSpendView`'s shape, and `endedAt`), hands harnesses an `onUsage` feed that records subscription windows in the user's usage record, and carries a `harnessUsage` action that reads it, with optional `usageReaders` (FIX-2398).
+- cc0ab62: A coding run now says where its work went (FIX-2386). A harness session's `state.workspace` is `{ worktree }`, the key of its worktree's row in the user's `worktrees` list, which owns the path, branch, base, commit count and state; the copies of the path, branch and owner it held before are gone, and a stored record with them reads as `{ worktree: null }` until its next turn. `HarnessSessionProvisioned` no longer takes `branch`. A task's output gains `baseCommit`, `path` and `commitsVerified`. `workPlace` reads a task's output or a worktree row and returns the branch, the count, the worktree's name and state, whose it is for an attached session, and shell-quoted `git switch`, `cd` and `git log baseCommit..branch` commands. The UI registry gains a `work-place` component that draws them.
+- cb395b2: `localWorkspaceHost({ setup: { command, env? } })` runs a setup command, such as `pnpm install`, in each new repository checkout before handing it over. It runs again on later provisions until it succeeds, and it counts against `provisionTimeoutMs`. `PlaceRequest.onSetup` is called when it starts, and `WorkspacePlace.setup` reports `done`, or `failed` with the tail of the output. A failure doesn't refuse the provision. In harness-manager, `WorkspaceConfig.setup` is passed through to the host, and task-board runs show the setup on their stream. The session flow's `provision(place, request)` may return `{ path, setup }` and pass `request.onSetup` to the host, and the turn record gains `setup` (FIX-2420).
+- cc0ab62: Add a shared list of worktrees (FIX-2439).
+
+  - `@flow-state-dev/workspace`: `worktreesCollection` is a user-scoped, `llmReadable` collection with one row per worktree a host made. A row holds `name`, `path`, `branch`, `repo`, `baseCommit`, `owner`, `attached`, `state`, `commits`, `lastTurnAt` and `pullRequests`. To have the host write rows, give it the collection: `PlaceRequest.worktrees` writes `provisioning`, then `ready`; the new `host.attach` adds a session or run to `attached` (`{ kind, id, lastTurnAt }`); the new `host.recordCheckout` writes the branch and commit count together at a turn's end and returns what it read; and `RemoveOptions.worktrees` marks the row `removed`. `recordBranchPullRequests` takes `worktree: { collection, key }`. `WorkspacePlace.worktree` is the row's key.
+  - `@flow-state-dev/harness-manager`: the session flow declares the collection and passes it to `HarnessSessionWorkspace`: on `provision` and `remove`, and on the new optional `attach` and `recordCheckout`. It stores the row's key as `state.workspace.worktree`, and marks `worktrees` read-only to the model's resource tools. The board manager writes a row for each run's checkout.
+
+### Patch Changes
+
+- 4578042: A phase's `isDone` now gets `baseCommit`: the commit the run's branch was cut at, from the run's record (`null` with no recorded base or a files-only run). A phase can compare the checkout against it to tell whether the run changed anything (FIX-2387).
+- 7a200b3: `reviewDetail` reads a review stop's data (branch, commit count, commit subjects, the judge's verdict) from the browser entry `@flow-state-dev/harness-manager/browser`, as the props the ui registry's `review-hold` card takes (FIX-2380).
+- 9632f7d: `harnessSessionFlow({ approveTools: true })` makes a session turn's tool call that isn't pre-allowed wait for the user as an approval stop, then resumes the same conversation on Allow, Allow for this run (for the rest of the turn), or Deny, composing the manager's approval pieces (FIX-2432).
+- 1fb64c9: `harnessManager({ approveTools: true })` makes a run's tool call that isn't pre-allowed wait for a person's approval as the task's hold, then resumes the same coding session on Allow, Allow for this run, or Deny; claude-code's `onToolApproval` gains a `held` decision, and react's `useApproval` gains `approveWith`, `rejectWith` and `approveOptionsOf` (FIX-2389).
+- Updated dependencies [e0daf6e]
+- Updated dependencies [b9e6dd0]
+- Updated dependencies [151309c]
+- Updated dependencies [488b203]
+- Updated dependencies [824ce87]
+- Updated dependencies [8be6d45]
+- Updated dependencies [29579d4]
+- Updated dependencies [147d923]
+- Updated dependencies [cc0ab62]
+- Updated dependencies [0554e0b]
+- Updated dependencies [7d92efe]
+- Updated dependencies [387bee2]
+- Updated dependencies [6c4a3b3]
+- Updated dependencies [3aced5b]
+- Updated dependencies [ddf60c8]
+- Updated dependencies [cb395b2]
+- Updated dependencies [cc0ab62]
+  - @flow-state-dev/core@0.4.0
+  - @flow-state-dev/client@0.4.0
+  - @flow-state-dev/workspace@0.3.0
+  - @flow-state-dev/orchestration@0.5.0
+
 ## 0.3.0
 
 ### Minor Changes

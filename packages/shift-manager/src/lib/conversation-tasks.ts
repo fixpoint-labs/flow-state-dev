@@ -5,9 +5,26 @@
  * an action (FIX-2286), so a panel polling it stores no request per look; a
  * refusal comes back as an `ActionRefused` carrying its reason.
  */
-import { ClientHttpError, type Client } from "@flow-state-dev/client";
+import { ClientHttpError, topic, type Client, type WireTopic } from "@flow-state-dev/client";
 import { ActionRefused } from "./action";
-import { describeFailure } from "./reads";
+import { CONVERSATION_BOARD_COLLECTION, describeFailure } from "./reads";
+
+/** The plan ledger's id (Workforce's `PLAN_LEDGER_ID`, pinned): a planning worker's own steps. */
+const PLAN_COLLECTION = "plan";
+
+/**
+ * The topics a view of the conversation's `listTasks` read subscribes
+ * (FIX-2429): the conversation's session, narrowed to each ledger the read
+ * returns. The read merges the board with the plan ledger, so its views hear
+ * both; a flow with no planning worker never publishes on `plan`. Narrowed,
+ * so a reply streaming in the conversation never wakes the view.
+ */
+export function conversationBoardTopics(sessionId: string): WireTopic[] {
+  return [
+    topic.session(sessionId, { resource: CONVERSATION_BOARD_COLLECTION }),
+    topic.session(sessionId, { resource: PLAN_COLLECTION }),
+  ];
+}
 
 /**
  * The read a coordinator conversation lists its tasks by: the task tools'

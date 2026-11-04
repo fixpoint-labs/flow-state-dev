@@ -76,7 +76,9 @@ custom) mount alongside it via the `adapters` option — see
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/api/flows` | List registered flows |
-| GET | `/api/flows/capabilities` | Feature flags |
+| GET | `/api/flows/capabilities` | `{ userStream: false, push }`: `push` is `{ transport: "websocket" }` once a host turns push delivery on (`serve()`), else `null` |
+| POST | `/api/flows/users/:userId/stream` | Push mint (FIX-2428): checks each topic, answers a 30 s ticket for the granted ones |
+| GET | `/api/flows/users/:userId/stream` | The push socket, taken as an upgrade by the host; a plain GET answers 426 |
 | POST | `/api/flows/:flowId/actions/:action` | Execute action (new session) |
 | POST | `/api/flows/:flowId/:sessionId/actions/:action` | Execute action (existing session) |
 | GET | `/api/flows/:flowId/requests/:requestId/stream` | SSE request stream |

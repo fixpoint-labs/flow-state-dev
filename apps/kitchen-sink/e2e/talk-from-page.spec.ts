@@ -45,6 +45,9 @@
  * session: one session stream, for the conversation, and none for the
  * assistant). That one is read before any reload, on purpose: what it
  * checks is the page keeping up by itself.
+ *
+ * And by `specs/issues/FIX-2417/SPEC.md`: a picked panel's header names the
+ * session's worker and its kind, and Back closes it onto the assistant.
  */
 import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
@@ -203,13 +206,13 @@ function answersTo(drawn: Array<{ label: string; text: string }>, mark: string) 
  * and drawn, or `undefined` when it has none. A delegate keeps one session per
  * conversation: the run the conversation started, created naming the worker.
  *
- * Reloads first, so nothing is picked, then waits for the copy's list to load
- * and the session to draw its first turn: a turn counted as missing is read
- * off a loaded session, never off one still fetching.
+ * Loads the page afresh first, on no conversation's address, so nothing is
+ * picked, then waits for the copy's list to load and the session to draw its
+ * first turn: a turn counted as missing is read off a loaded session, never
+ * off one still fetching.
  */
 async function delegateSessionOf(page: Page, worker: string): Promise<Locator | undefined> {
-  await page.reload();
-  await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
+  await openShell(page);
   const parent = await conversationId(page);
   const runs = (await sessionsOf(page, worker, true)).filter((s) => s.parentSessionId === parent);
   expect(runs.length, `${worker} has ${runs.length} sessions for the conversation with ${COORDINATOR}`).toBeLessThanOrEqual(1);
@@ -245,6 +248,24 @@ test("a line posted to support.help shows as devuser, and is still there after a
   await expect(kept.getByTestId("coordinator-line-label")).toHaveText("devuser");
 });
 
+test("a picked panel names its worker and kind, and Back returns to the assistant", async ({
+  page,
+  consoleErrors: _consoleErrors,
+}) => {
+  const panel = await openHelpDesk(page);
+  await expect(panel.getByTestId("picked-header-worker")).toHaveText(COORDINATOR);
+  await expect(panel.getByTestId("picked-header-flow")).toHaveText("coordinator");
+
+  await panel.getByRole("button", { name: "Back to assistant" }).click();
+  await expect(picked(page)).toHaveCount(0);
+  await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
+
+  await rosterRow(page, "support.devices").getByTestId("roster-talk").click();
+  const worker = picked(page);
+  await expect(worker.getByTestId("picked-header-worker")).toHaveText("support.devices");
+  await expect(worker.getByTestId("picked-header-flow")).toHaveText("agent worker");
+});
+
 /**
  * The reply to `message` in a worker conversation: the assistant message drawn
  * in the same request as it. "Talk" reopens the person's one conversation with
@@ -258,7 +279,7 @@ const replyTo = (conversation: Locator, message: string): Locator =>
     .locator('[data-message-role="assistant"]')
     .filter({ hasText: "[reply:talk-to-worker]" });
 
-test("a new support.devices conversation keeps the message and the reply across a reload", async ({
+test("a new support.devices conversation is still open across a reload, with the message and the reply", async ({
   page,
   consoleErrors: _consoleErrors,
 }) => {
@@ -280,9 +301,9 @@ test("a new support.devices conversation keeps the message and the reply across 
   expect(sessionId).toBeTruthy();
   expect((await sessionsOf(page, "support.devices")).map((s) => s.id)).toContain(sessionId);
 
+  // The reload reopens it by itself: the page's address names it.
+  expect(new URL(page.url()).searchParams.get("session")).toBe(sessionId);
   await page.reload();
-  await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
-  await (await openWorkerCopy(page)).locator(`[data-session-id="${sessionId}"]`).click();
   const kept = picked(page);
   await expect(kept.getByText(message, { exact: true })).toBeVisible();
   await expect(replyTo(kept, message)).toBeVisible();

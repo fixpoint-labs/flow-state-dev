@@ -1,8 +1,9 @@
-import { useCallback } from "react";
-import type { LabAdapter, TalkRow } from "../adapter";
+import { useCallback, useEffect, useState } from "react";
+import type { BoardTask, LabAdapter, TalkRow } from "../adapter";
 import type { Look } from "../lib/looks";
 import { useWatch } from "../lib/use-watch";
 import { Avatar } from "./Avatar";
+import { ReviewHold } from "./flow-state/review-hold";
 import { SessionPopup, Steps } from "./SessionPopup";
 
 /** What a popup shows: a task one conversation filed, or one message a worker sent. */
@@ -45,31 +46,40 @@ export const answerIn = (talk: readonly TalkRow[], messageId: string): AnswerSta
 };
 
 /** The open popup, live: it reads what it shows by itself, so it stays current while the work goes on. */
-export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, onClose }: {
+export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, onClose, onMissing }: {
   adapter: LabAdapter;
   popup: Popup;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
   onClose: () => void;
+  /** A task popup's conversation holds no such task, once its tasks are read: a link to a task that is gone. */
+  onMissing?: () => void;
 }) {
   return popup.kind === "task" ? (
-    <TaskPopup adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} onClose={onClose} />
+    // Keyed by conversation: a switch never judges the task against the last conversation's rows.
+    <TaskPopup key={popup.sessionId} adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} onClose={onClose} onMissing={onMissing} />
   ) : (
     <MessagePopup adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} onClose={onClose} />
   );
 }
 
 /** A task's run session and its result. */
-function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, onClose }: {
+function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, onClose, onMissing }: {
   adapter: LabAdapter;
   popup: Extract<Popup, { kind: "task" }>;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
   onClose: () => void;
+  onMissing?: () => void;
 }) {
-  const task = (useWatch(adapter.watchTasks, popup.sessionId) ?? []).find((t) => t.id === popup.taskId);
+  const tasks = useWatch(adapter.watchTasks, popup.sessionId);
+  const task = tasks?.find((t) => t.id === popup.taskId);
+  const missing = tasks !== undefined && task === undefined;
+  useEffect(() => {
+    if (missing) onMissing?.();
+  }, [missing, onMissing]);
   const steps = useWatch(adapter.watchRun, task?.runSessionId) ?? [];
   const line = task ? taskLine(task, isCoding(task.to), nameOf) : "Task";
   // A teammate's task carries its look; a coding task is nobody's.
@@ -88,6 +98,8 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, onClose }: {
   return (
     <SessionPopup label={line} title={title} status={task?.status} onClose={onClose}>
       {/* The result leads; how the run got there is below it. */}
+      {task?.waiting?.kind === "review" ? <TaskReview adapter={adapter} sessionId={popup.sessionId} task={task} /> : null}
+      {task?.waiting?.kind === "question" ? <TaskQuestion adapter={adapter} sessionId={popup.sessionId} task={task} /> : null}
       {task?.result ? (
         <section aria-label="Result" data-step="result" className="rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-2 text-sm whitespace-pre-wrap">
           {task.result}
@@ -95,6 +107,82 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, onClose }: {
       ) : null}
       <Steps steps={steps} nameOf={nameOf} empty={starting} />
     </SessionPopup>
+  );
+}
+
+/** A coding run's review, with the registry's card: its commits and the judge's verdict, and Accept or Ask for changes. */
+function TaskReview({ adapter, sessionId, task }: { adapter: LabAdapter; sessionId: string; task: BoardTask }) {
+  const review = useWatch(adapter.watchReview, task.runSessionId);
+  return (
+    <ReviewHold
+      review={review}
+      prompt={review === undefined ? task.waiting?.prompt : undefined}
+      answer={(answer) => adapter.answerTask(sessionId, task.id, answer)}
+      unanswerable={task.waiting?.unanswerable ?? null}
+    />
+  );
+}
+
+/** A question the task's run asked you, with a box for your answer; the run goes on with it. */
+function TaskQuestion({ adapter, sessionId, task }: { adapter: LabAdapter; sessionId: string; task: BoardTask }) {
+  const [words, setWords] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const unanswerable = task.waiting?.unanswerable ?? null;
+  const send = async () => {
+    const text = words.trim();
+    if (text === "" || pending) return;
+    setPending(true);
+    setError(null);
+    try {
+      await adapter.answerTask(sessionId, task.id, { text });
+      setWords("");
+    } catch (failed) {
+      setError(failed instanceof Error ? failed.message : String(failed));
+    } finally {
+      setPending(false);
+    }
+  };
+  return (
+    <section aria-label="Waiting on you" data-step="question" className="rounded-md border border-warning/60 bg-warning/10 px-3 py-2 text-sm">
+      <div className="font-semibold">Waiting on you</div>
+      <p className="mt-0.5 whitespace-pre-wrap">{task.waiting?.prompt}</p>
+      {unanswerable !== null ? (
+        <p className="mt-1.5 text-xs text-muted-foreground">{unanswerable}</p>
+      ) : (
+        <div className="mt-2 flex flex-col gap-1.5">
+          <textarea
+            aria-label="Your answer"
+            value={words}
+            rows={2}
+            disabled={pending}
+            onChange={(e) => setWords(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+            className="w-full rounded-md border border-border bg-background p-2 text-xs"
+          />
+          <div>
+            <button
+              type="button"
+              disabled={pending || words.trim() === ""}
+              onClick={() => void send()}
+              className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Answer
+            </button>
+          </div>
+          {error === null ? null : (
+            <p role="alert" className="text-xs text-destructive">
+              {error}
+            </p>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 

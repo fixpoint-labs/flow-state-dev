@@ -23,12 +23,21 @@
  *     clears when another request's stream closes).
  *   - leave the composer unkeyed by session: the switching-picks case fails
  *     (the first worker's draft is still there).
+ *
+ * The header and the markdown lines (`specs/issues/FIX-2417/SPEC.md`), with
+ * their red states produced:
+ *   - name the header from the picked kind rather than the session's
+ *     `workerId`: the names-the-worker cases fail.
+ *   - drop Back's handler: the Back cases fail.
+ *   - draw every line's body pre-wrapped again: the markdown case fails.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { PickedSessionPanel } from "../components/picked-session-panel";
-import { SESSION_DRAFT_STORAGE_PREFIX } from "../lib/use-session-draft";
+import { SESSION_DRAFT } from "../lib/session-draft";
+
+const SESSION_DRAFT_STORAGE_PREFIX = `${SESSION_DRAFT}:`;
 
 afterEach(() => {
   cleanup();
@@ -48,6 +57,7 @@ function session(
     isStreaming?: boolean;
     isStuck?: boolean;
     isLoading?: boolean;
+    detail?: { id: string; state: Record<string, unknown> } | null;
     sendAction?: ReturnType<typeof vi.fn>;
   } = {},
 ) {
@@ -65,6 +75,7 @@ function session(
     isStuck: over.isStuck ?? false,
     isFinishing: false,
     isLoading: over.isLoading ?? false,
+    detail: over.detail ?? null,
     statusMessage: "",
     error: null,
     sendAction: over.sendAction ?? vi.fn(async () => ({ status: "in_progress", request: { id: "req-1" } })),
@@ -92,20 +103,57 @@ const delegateRun = (id: string, worker: string, status?: string): Run => ({
 /** The server's answer for each request id; anything unlisted is still running. */
 let statuses: Record<string, string> = {};
 const requestStatus = vi.fn(async (id: string) => statuses[id] ?? "in_progress");
+/** The page's close: what Back is wired to. */
+const onBack = vi.fn();
 afterEach(() => {
   statuses = {};
   requestStatus.mockClear();
+  onBack.mockClear();
 });
 
 function panel(kind: string, s: never) {
   return render(
-    <PickedSessionPanel session={s} kind={kind} user="devuser" requestStatus={requestStatus} conversation={<div data-testid="stream-items" />} />,
+    <PickedSessionPanel session={s} flow={kind} user="devuser" requestStatus={requestStatus} onBack={onBack} conversation={<div data-testid="stream-items" />} />,
   );
 }
 
 async function type(label: string, text: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value: text } });
 }
+
+/** A loaded detail for `sess-a`, naming its worker the way Workforce stores it. */
+const named = (worker: string, id = "sess-a") => ({ id, state: { workerId: worker } });
+
+describe("the header", () => {
+  const worker = () => screen.queryByTestId("picked-header-worker")?.textContent ?? null;
+  const kindLabel = () => screen.getByTestId("picked-header-flow").textContent;
+
+  it.each([
+    ["coordinator", "support.help", "coordinator"],
+    ["agent", "support.devices", "agent worker"],
+  ])("a %s panel names the session's own worker and its kind", (kind, id, label) => {
+    panel(kind, session({ detail: named(id) }));
+    expect(worker()).toBe(id);
+    expect(kindLabel()).toBe(label);
+  });
+
+  it.each(["coordinator", "agent"])("a %s panel shows only the kind until the session detail loads", (kind) => {
+    panel(kind, session({ detail: null }));
+    expect(worker()).toBeNull();
+    expect(kindLabel()).toBe(kind === "agent" ? "agent worker" : "coordinator");
+  });
+
+  it("does not name the next pick after the last pick's worker while its detail loads", () => {
+    panel("agent", session({ sessionId: "sess-b", detail: named("support.devices", "sess-a") }));
+    expect(worker()).toBeNull();
+  });
+
+  it.each(["coordinator", "agent"])("Back on a %s panel calls the page's close", (kind) => {
+    panel(kind, session({ detail: named("support.help") }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to assistant" }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("a coordinator's panel", () => {
   it("shows the lines oldest first: a delegate's answer under its name, the user's post under theirs, the coordinator's own word under it", () => {
@@ -127,6 +175,26 @@ describe("a coordinator's panel", () => {
     expect(labels).toEqual(["devuser", "support.devices", "coordinator"]);
     // The stream is not drawn for a coordinator: its lines are.
     expect(screen.queryByTestId("stream-items")).toBeNull();
+  });
+
+  it("renders a delegate's answer as markdown and keeps the user's post as typed", () => {
+    panel(
+      "coordinator",
+      session({
+        items: [
+          line("1", "is **this** bold?"),
+          line("2", "It is **not** yet.\n\n- one\n- two", { agentName: "support.devices" }),
+        ],
+      }),
+    );
+    const [mine, theirs] = screen.getAllByTestId("coordinator-line-body");
+    // The user's own post reads as typed: no markup, asterisks kept.
+    expect(mine!.textContent).toBe("is **this** bold?");
+    expect(mine!.querySelector('[data-streamdown="strong"]')).toBeNull();
+    // The delegate's answer is drawn the way an assistant reply is.
+    expect(theirs!.querySelector('[data-streamdown="strong"]')?.textContent).toBe("not");
+    expect(Array.from(theirs!.querySelectorAll("li")).map((li) => li.textContent)).toEqual(["one", "two"]);
+    expect(theirs!.textContent).not.toContain("**");
   });
 
   it("shows a loader and no empty copy while the session snapshot is loading", () => {
@@ -184,9 +252,9 @@ describe("a coordinator's panel", () => {
           sendAction,
           items: [{ id: "e", type: "error", requestId: "req-refused", message: "No post is being routed in this request." }],
         })}
-        kind="coordinator"
+        flow="coordinator"
         user="devuser"
-        requestStatus={requestStatus}
+        requestStatus={requestStatus} onBack={onBack}
         conversation={null}
       />,
     );
@@ -211,9 +279,9 @@ describe("a coordinator's panel", () => {
           sendAction,
           items: [line("k", "please keep me")],
         })}
-        kind="coordinator"
+        flow="coordinator"
         user="devuser"
-        requestStatus={requestStatus}
+        requestStatus={requestStatus} onBack={onBack}
         conversation={null}
       />,
     );
@@ -275,9 +343,9 @@ describe("a send settles on its own request", () => {
     view.rerender(
       <PickedSessionPanel
         session={session({ sendAction, isStreaming: false })}
-        kind="coordinator"
+        flow="coordinator"
         user="devuser"
-        requestStatus={requestStatus}
+        requestStatus={requestStatus} onBack={onBack}
       />,
     );
     // This send is still running, so nothing settles.
@@ -311,7 +379,7 @@ describe("switching picks", () => {
     const view = panel("agent", session({ sessionId: "sess-a", sendAction }));
     await type("Message this worker", "meant for the first worker");
 
-    view.rerender(<PickedSessionPanel session={session({ sessionId: "sess-b", sendAction })} kind="agent" user="devuser" requestStatus={requestStatus} />);
+    view.rerender(<PickedSessionPanel session={session({ sessionId: "sess-b", sendAction })} flow="agent" user="devuser" requestStatus={requestStatus} onBack={onBack} />);
     expect((screen.getByLabelText("Message this worker") as HTMLTextAreaElement).value).toBe("");
     expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
   });
@@ -346,7 +414,7 @@ describe("a worker's panel", () => {
 describe("who is working", () => {
   const rows = () => screen.queryAllByTestId("working-row").map((el) => el.textContent);
   const rerender = (view: ReturnType<typeof panel>, kind: string, s: never) =>
-    view.rerender(<PickedSessionPanel session={s} kind={kind} user="devuser" requestStatus={requestStatus} conversation={null} />);
+    view.rerender(<PickedSessionPanel session={s} flow={kind} user="devuser" requestStatus={requestStatus} onBack={onBack} conversation={null} />);
 
   it.each(["coordinator", "agent"])("a %s panel names each unfinished run by the delegate it was handed to, else its flow", (kind) => {
     panel(kind, session({ childSessions: [delegateRun("run-1", "support.devices", "active"), { id: "run-2", flowId: "agent", status: "active" }] }));

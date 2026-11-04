@@ -7,6 +7,8 @@
     "install:all": "pnpm install",
     "build": "turbo run build && pnpm build:assets",
     "build:assets": "pnpm --filter @flow-state-dev/devtool build:assets",
+    "dev": "node apps/super-app/run.mjs dev",
+    "serve": "node apps/super-app/run.mjs serve",
     "typecheck": "turbo run typecheck && node scripts/validate-package-boundaries.mjs && node scripts/validate-updater-purity.mjs && node scripts/validate-side-chain-vocabulary.mjs && node scripts/validate-test-typecheck.mjs && pnpm --filter @flow-state-dev/goals guard:control-shape",
     "lint": "eslint --cache --cache-location node_modules/.cache/eslint/ .",
     "prepare": "husky",
@@ -38,7 +40,7 @@
       "better-sqlite3"
     ],
     "overrides": {
-      "@anthropic-ai/claude-agent-sdk": "^0.3.234"
+      "@anthropic-ai/claude-agent-sdk": "^0.3.316"
     }
   },
   "devDependencies": {

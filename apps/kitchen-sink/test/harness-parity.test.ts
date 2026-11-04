@@ -73,7 +73,7 @@ const HARNESSES = [
   {
     mode: "claude-code",
     prompt: "[bash] do some work",
-    flow: () => claudeCodeSessionFlow({ resolveClaudeAgent: scriptedClaudeCode() }),
+    flow: () => claudeCodeSessionFlow({ resolveClaudeAgent: scriptedClaudeCode(), approveTools: false }),
   },
   {
     mode: "codex",

@@ -3,20 +3,20 @@
  *
  * The session is the worker's derived address: `ensureWorkerSession({ worker })`
  * opens it, and another worker's message lands there. A session at any other
- * id is not this view's. Items are read when the view opens, after each
- * line, and every {@link MESSAGES_POLL_MS} while it is open (another worker's
- * message can land at any time), never on the snapshot's refresh. Nothing is
- * sent until the first read has landed, and a session a line opened here
- * holds nothing the user hasn't seen. A failed later read keeps the last one
- * on screen; only a failed first read shows.
+ * id is not this view's. Items are read when the view opens and then
+ * followed on the session stream (`followSessionItems`): a line sent here,
+ * a reply, another worker's message, each shows as it is stored, from any
+ * process, and nothing is read on a clock or on the snapshot's refresh
+ * (FIX-2466). Nothing is sent until the first read has landed, and a session
+ * a line opened here holds nothing the user hasn't seen. A lapse after the
+ * first read keeps it on screen; only a failed first read shows.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { COORDINATOR_FLOW, deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
-import { MESSAGES_POLL_MS } from "./messages";
 import { describeFailure, workerOf, type Failure, type Worker } from "./reads";
-import { readSessionItems, RunReadError, type SessionItems } from "./run";
+import { followSessionItems, type SessionItems } from "./run";
 import { useWorkforce } from "./workforce";
 
 /** The flow a coordinator worker runs on, whose conversations carry its delegates' answers. */
@@ -110,7 +110,7 @@ export interface WorkerConversation {
   read: SessionItems | undefined;
   /** Why the first read failed; cleared by the next that succeeds. A failed later read keeps the last one. */
   failure: Failure | undefined;
-  /** Read the session again. */
+  /** Follow the session again after a failed first read (Retry). A live follow already brings every change. */
   reread(): void;
   /** The conversation's address is still being worked out: nothing is sent until it is. */
   resolving: boolean;
@@ -130,31 +130,37 @@ export function useWorkerConversation(worker: Worker, sessions: readonly Session
   // on screen until the new one lands.
   const [stored, setStored] = useState<{ sessionId: string; read: SessionItems } | undefined>(undefined);
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
-  const [reads, setReads] = useState(0);
+  // Bumped to follow again: only a follow whose first read failed needs it.
+  const [follows, setFollows] = useState(0);
+  const failed = useRef(false);
 
   useEffect(() => {
     if (sessionId === null) return;
     let closed = false;
-    let next: ReturnType<typeof setTimeout> | undefined;
-    readSessionItems(client, sessionId)
-      .then((read) => {
+    failed.current = false;
+    const stop = followSessionItems(client, sessionId, {
+      onRead: (read) => {
         if (closed) return;
+        failed.current = false;
         setStored({ sessionId, read });
         setFailure(undefined);
-      })
-      .catch((error: unknown) => {
-        if (!closed) setFailure(error instanceof RunReadError ? error.failure : describeFailure(error));
-      })
-      .finally(() => {
-        if (!closed) next = setTimeout(() => setReads((n) => n + 1), MESSAGES_POLL_MS);
-      });
+      },
+      onFailure: (why) => {
+        if (closed) return;
+        failed.current = true;
+        setFailure(why);
+      },
+    });
     return () => {
       closed = true;
-      if (next !== undefined) clearTimeout(next);
+      stop();
     };
-  }, [client, sessionId, reads]);
+  }, [client, sessionId, follows]);
 
-  const reread = useCallback(() => setReads((n) => n + 1), []);
+  // The stream already brings every item stored, a line just sent included; only a failed follow reads again.
+  const reread = useCallback(() => {
+    if (failed.current) setFollows((n) => n + 1);
+  }, []);
   const ensure = useCallback(async () => {
     if (sessionId !== null) return sessionId;
     const session = await workforce.ensureWorkerSession({ worker: worker.id });

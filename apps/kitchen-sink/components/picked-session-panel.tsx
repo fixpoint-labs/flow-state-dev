@@ -7,12 +7,19 @@
  * Every composer here calls an action the picked flow already declares, on the
  * picked session's own address — nothing is added for the page. A coordinator
  * is posted to through its door (`COORDINATOR_ASK`), with the post only: who
- * posted is the session's own user. A worker is sent the action its kind
- * answers with (`WORKER_ASKS`); a kind with none shows its reason and no
+ * posted is the session's own user. A worker is sent the action its flow
+ * answers with (`WORKER_ASKS`); a flow with none shows its reason and no
  * composer.
  *
+ * Both panels open on a header naming who this is: the session's worker, read
+ * off its readonly `workerId`, and what it is (a coordinator, or a worker on
+ * its worker flow), with a way back
+ * to the assistant.
+ *
  * A coordinator's panel shows its lines: the user's posts, under the
- * user's name, and each delegate's answer, under the delegate's. It reads
+ * user's name, and each delegate's answer, under the delegate's. A line the
+ * user didn't write renders as markdown, the way the assistant's own reply
+ * does; the user's posts stay as typed. It reads
  * the session's kept messages and nothing else: the routing records beside
  * them are bookkeeping, not lines. Only what the server kept is drawn. There
  * is no optimistic copy of the user's line or message, so what shows after
@@ -26,11 +33,13 @@
  * read again, the rows it still has say `was working at the last check`.
  */
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import type { useSession } from "@flow-state-dev/react";
+import { clearDraft, useDraft, type useSession } from "@flow-state-dev/react";
+import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { MessageResponse } from "@/components/flow-state/message";
 import { SessionConversationLoading } from "@/components/session-conversation-loading";
-import { clearSessionDraftStorage, useSessionDraft } from "@/lib/use-session-draft";
+import { SESSION_DRAFT } from "@/lib/session-draft";
 import { COORDINATOR_ASK, delegateOfRun, isCoordinatorFlow, workerAskFor } from "@/lib/workforce-shell";
 
 type Session = ReturnType<typeof useSession>;
@@ -44,6 +53,8 @@ interface CoordinatorLine {
   /** A delegate's worker id, the user's id, or, for the coordinator's own word, the coordinator. */
   label: string;
   body: string;
+  /** Whether the user wrote it: drawn as typed, where any other line renders as markdown. */
+  fromUser: boolean;
 }
 
 /**
@@ -67,8 +78,9 @@ function coordinatorLines(items: Session["items"], user: string): CoordinatorLin
     };
     if (message.type !== "message" || message.transient === true || typeof message.id !== "string") return [];
     const body = (message.content ?? []).map((part) => part.text ?? "").join("");
-    const label = message.agentName ?? (message.role === "user" ? user : "coordinator");
-    return [{ id: message.id, label, body }];
+    const fromUser = message.agentName === undefined && message.role === "user";
+    const label = message.agentName ?? (fromUser ? user : "coordinator");
+    return [{ id: message.id, label, body, fromUser }];
   });
 }
 
@@ -76,32 +88,36 @@ function coordinatorLines(items: Session["items"], user: string): CoordinatorLin
  * The picked session's panel.
  *
  * @param session The picked session, as `useSession` returns it.
- * @param kind The picked flow's kind: a coordinator kind or a worker kind.
+ * @param flow The picked flow: a coordinator flow or a worker flow.
  * @param user The name the user's own posts are drawn under, on a coordinator.
  * @param requestStatus Reads a sent request's own status, so a send settles
  *   on its request and not on whatever the session's stream did.
  * @param conversation The session's item stream, drawn for a worker. A
  *   coordinator draws its lines instead, so the page need not build one for it.
+ * @param onBack Closes the panel, back onto the assistant's open session.
  */
 export function PickedSessionPanel({
   session,
-  kind,
+  flow,
   user,
   requestStatus,
   conversation,
+  onBack,
 }: {
   session: Session;
-  kind: string;
+  flow: string;
   user: string;
   requestStatus: RequestStatusLookup;
   conversation?: ReactNode;
+  onBack: () => void;
 }) {
   // Each composer is keyed by the session it talks to, so a draft, a pending
   // send or a failure never carries over to the next pick.
   const composerKey = session.sessionId ?? "none";
-  if (isCoordinatorFlow(kind)) {
+  if (isCoordinatorFlow(flow)) {
     return (
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden" data-testid="picked-session">
+        <PickedHeader session={session} flow={flow} onBack={onBack} />
         <CoordinatorTranscript session={session} user={user} />
         <WorkingRows session={session} />
         <Composer
@@ -116,14 +132,15 @@ export function PickedSessionPanel({
     );
   }
 
-  const ask = workerAskFor(kind);
+  const ask = workerAskFor(flow);
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden" data-testid="picked-session">
+      <PickedHeader session={session} flow={flow} onBack={onBack} />
       {conversation}
       <WorkingRows session={session} />
       {ask === undefined || "none" in ask ? (
         <p className="border-t px-4 py-3 text-xs text-muted-foreground" data-testid="picked-read-only">
-          {ask?.none ?? `This ${kind} worker takes no messages from this page.`}
+          {ask?.none ?? `This ${flow} worker takes no messages from this page.`}
         </p>
       ) : (
         <Composer
@@ -136,6 +153,35 @@ export function PickedSessionPanel({
         />
       )}
     </section>
+  );
+}
+
+/**
+ * Who the panel talks to, and the way back. The name is the session's own
+ * `workerId`, the id the roster and the rail show; it is read from the loaded
+ * detail of this session only, so until that lands, or while the last pick's
+ * detail is still held, only the flow shows.
+ */
+function PickedHeader({ session, flow, onBack }: { session: Session; flow: string; onBack: () => void }) {
+  const detail = session.detail;
+  const named = detail?.id === session.sessionId ? detail?.state?.[WORKER_ID_STATE_KEY] : undefined;
+  const worker = typeof named === "string" && named.length > 0 ? named : null;
+  return (
+    <header className="flex items-center gap-3 border-b px-3 py-2 sm:px-4" data-testid="picked-header">
+      <div className="flex min-w-0 flex-1 items-baseline gap-2">
+        {worker !== null && (
+          <h2 className="truncate text-sm font-medium" data-testid="picked-header-worker">
+            {worker}
+          </h2>
+        )}
+        <span className="text-xs text-muted-foreground" data-testid="picked-header-flow">
+          {isCoordinatorFlow(flow) ? flow : `${flow} worker`}
+        </span>
+      </div>
+      <Button type="button" variant="ghost" size="sm" onClick={onBack}>
+        Back to assistant
+      </Button>
+    </header>
   );
 }
 
@@ -154,9 +200,15 @@ function CoordinatorTranscript({ session, user }: { session: Session; user: stri
                 <span className="text-xs font-medium text-muted-foreground" data-testid="coordinator-line-label">
                   {line.label}
                 </span>
-                <span className="whitespace-pre-wrap text-sm" data-testid="coordinator-line-body">
-                  {line.body}
-                </span>
+                {line.fromUser ? (
+                  <span className="whitespace-pre-wrap text-sm" data-testid="coordinator-line-body">
+                    {line.body}
+                  </span>
+                ) : (
+                  <div className="text-sm" data-testid="coordinator-line-body">
+                    <MessageResponse>{line.body}</MessageResponse>
+                  </div>
+                )}
               </li>
             ))}
           </ol>
@@ -213,7 +265,7 @@ function Composer({
   placeholder: string;
   send: (text: string) => Promise<{ request: { id: string } }>;
 }) {
-  const [draft, setDraft] = useSessionDraft(session.sessionId);
+  const [draft, setDraft] = useDraft(SESSION_DRAFT, session.sessionId);
   const [pending, setPending] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -288,8 +340,8 @@ function Composer({
       const response = await send(text);
       // Storage clears when the door accepts the send so a reload mid-request
       // does not restore text the server already took, unless the user revised
-      // the draft while the POST was in flight.
-      if (draftRef.current.trim() === text) clearSessionDraftStorage(session.sessionId);
+      // the draft while the POST was in flight (or reopened the panel and typed).
+      clearDraft(SESSION_DRAFT, session.sessionId, text);
       setPending(response.request.id);
     } catch (cause) {
       setFailure(cause instanceof Error ? cause.message : String(cause));

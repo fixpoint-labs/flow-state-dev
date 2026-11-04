@@ -443,7 +443,11 @@ export interface ClaudeAgentQueryOptions {
   mcpServers?: Record<string, unknown>;
   /** Use only `mcpServers`: no `.mcp.json`, settings-file or plugin servers. */
   strictMcpConfig?: boolean;
-  /** Extra settings for the run, forwarded verbatim; set only to keep claude.ai connectors out. */
+  /**
+   * Settings for the run, above every loaded source: the host's own
+   * (`ClaudeCodeAgentOptions.settings`), with `mcpTools`' connector switch
+   * merged in when it is set.
+   */
   settings?: Record<string, unknown>;
   /** Forwarded to the SDK so an aborted `ctx.signal` stops the run. */
   abortController?: AbortController;
@@ -496,7 +500,7 @@ export type SdkCanUseTool = (
 /** A tool-approval decision in the SDK's `canUseTool` vocabulary. */
 export type SdkToolDecision =
   | { behavior: "allow"; updatedInput: unknown }
-  | { behavior: "deny"; message: string };
+  | { behavior: "deny"; message: string; interrupt?: boolean };
 
 /**
  * Host hook resolving the SDK `query` for a given block invocation. Accepts the
@@ -518,7 +522,17 @@ export interface ToolApprovalRequest {
   signal?: AbortSignal;
 }
 
-/** A decision returned by {@link ClaudeCodeAgentOptions.onToolApproval}. */
+/**
+ * A decision returned by {@link ClaudeCodeAgentOptions.onToolApproval}.
+ *
+ * - `allow` runs the call, with `updatedInput` when given.
+ * - `deny` refuses it; the model is told, with `message`, and the turn goes on.
+ * - `held` refuses it for now, because a person decides it outside this run
+ *   (a harness manager stops the run and resumes its session after the
+ *   answer). The call does not run, the turn stops (the SDK's `interrupt`),
+ *   and it is recorded as waiting on a person, not as denied.
+ */
 export type ToolApprovalDecision =
   | { decision: "allow"; updatedInput?: unknown }
-  | { decision: "deny"; message?: string };
+  | { decision: "deny"; message?: string }
+  | { decision: "held"; message?: string };

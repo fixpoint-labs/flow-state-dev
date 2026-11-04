@@ -52,6 +52,14 @@ describe("tool calls as quiet lines", () => {
     expect(screen.getByRole("button", { name: /^pnpm test$/ })).toBeTruthy();
   });
 
+  // A workforce tool refuses with a result, not a throw; it must not read as done.
+  it("says a call failed when its result says it was refused", () => {
+    const refused = { kind: "refused", reason: "not-a-member", message: "You are not on this project." };
+    render(<Tool item={toolItem({ name: "readProjectSource", args: { path: "src/a.ts" }, output: refused })} />);
+    expect(screen.getByTestId("tool-group").getAttribute("data-state-kind")).toBe("error");
+    expect(screen.getByRole("button", { name: /^Read src\/a\.ts \(failed\)/ })).toBeTruthy();
+  });
+
   it("says a call failed in words, since there is no badge", () => {
     render(<ToolGroup items={[bash("List files"), bash("Run the unit tests", "failed")]} />);
     const line = screen.getByTestId("tool-group");

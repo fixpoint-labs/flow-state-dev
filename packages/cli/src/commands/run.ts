@@ -21,6 +21,7 @@ import {
   resolveInProcessPrincipal,
   createModelResolver,
   resolveDurabilityProvider,
+  withChangeBus,
   createResponseEmitter,
   type ExecutionResult,
   type RequestStreamEventWithId,
@@ -334,6 +335,10 @@ export async function executeRunCommand(
       }
       baseRuntimeConfig = { durabilityProvider: resolveDurabilityProvider({ stores }) };
     }
+    // The session and request writes run makes beside runAction publish on the
+    // bus too (FIX-2426), so a view elsewhere on these stores hears them. In
+    // place: the stores above are these same objects.
+    stores = withChangeBus(stores);
 
     // 2. Validate action exists on flow
     const actionConfig = flow.actions[actionName];

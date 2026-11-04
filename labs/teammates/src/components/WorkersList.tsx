@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import type { LabAdapter, NewTeammate, WorkerRow } from "../adapter";
-import { runsOn, taskLabel, type Popup } from "./Popups";
 import type { Look } from "../lib/looks";
 import { statusLine } from "../lib/status";
 import { useSeen } from "../lib/unread";
 import { useNow, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
+import { isFeedStale, STALE_CLASS } from "./flow-state/connection-banner";
 import { HireForm } from "./TeammateForms";
 
 /** The entries that count toward unread: everything but your own lines. */
@@ -15,39 +15,38 @@ const unreadable = (entries: { kind: string }[]) => entries.filter((e) => e.kind
 /**
  * The left pane: one row per teammate, never a list of sessions. Each row is
  * the teammate's icon on its color, its name, what it is doing, a dot while it answers, and how many
- * new entries its conversation has since you last looked. Under them, the
- * coding tasks the teammates started, as background items that open their
- * runs in a popup. At the foot, hire a teammate of your own.
+ * new entries its conversation has since you last looked. At the foot, hire
+ * a teammate of your own. A teammate's tasks are in its panel, on the right.
  */
 export function WorkersList({
   adapter,
   workers,
   sessions,
   selected,
-  openTask,
   nameOf,
   lookOf,
   isCoding,
   onSelect,
-  onOpen,
   onHire,
+  hiring,
+  onHiring,
 }: {
   adapter: LabAdapter;
   /** The teammates: the workers you can talk to. */
   workers: WorkerRow[];
   sessions: Record<string, string>;
   selected: string | undefined;
-  /** The task open in the popup, if one is. */
-  openTask: string | undefined;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
   onSelect: (worker: string) => void;
-  onOpen: (popup: Popup) => void;
   onHire: (teammate: NewTeammate) => Promise<void>;
+  /** The hire form is open; the switcher's *Hire a teammate* opens it too. */
+  hiring: boolean;
+  onHiring: (open: boolean) => void;
 }) {
   const [seen, markSeen] = useSeen();
-  const [hiring, setHiring] = useState(false);
+  const setHiring = onHiring;
   return (
     <nav aria-label="Workers" className="flex h-full min-h-0 flex-col bg-sidebar">
       <div className="px-4 pt-4 pb-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">Teammates</div>
@@ -69,14 +68,6 @@ export function WorkersList({
               />
             </li>
           ))}
-        </ul>
-        <div id="background" className="px-4 pt-4 pb-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">Background</div>
-        <ul aria-labelledby="background">
-          {workers
-            .filter((w) => sessions[w.id])
-            .map((w) => (
-              <BackgroundItems key={w.id} adapter={adapter} sessionId={sessions[w.id]} isCoding={isCoding} openTask={openTask} onOpen={onOpen} />
-            ))}
         </ul>
       </div>
       <div className="flex flex-col gap-2 px-4 py-3 text-xs text-muted-foreground">
@@ -122,7 +113,9 @@ function WorkerItem({
   onSelect: () => void;
   onSeen: (count: number) => void;
 }) {
-  const now = useNow();
+  // A row whose conversation's feed lost the server greys its status, and its age stops.
+  const stale = useStale(adapter, sessionId);
+  const now = useNow(undefined, !stale);
   const activity = useWatch(adapter.watchActivity, worker.id);
   const talk = useWatch(adapter.watchTalk, worker.id) ?? [];
   const view = useWatch(adapter.watchConversation, sessionId);
@@ -146,11 +139,11 @@ function WorkerItem({
       <Avatar look={look} />
       <span className="min-w-0 flex-1">
         <span className={cn("block truncate text-sm", (selected || unread > 0) && "font-semibold")}>{worker.name}</span>
-        <span className="block truncate text-xs text-muted-foreground" data-status>
+        <span className={cn("block truncate text-xs text-muted-foreground", stale && STALE_CLASS)} data-status>
           {status}
         </span>
       </span>
-      <span className="flex flex-col items-end gap-1">
+      <span className={cn("flex flex-col items-end gap-1", stale && STALE_CLASS)}>
         <span aria-label={activity?.running ? "answering" : undefined} className={cn("size-2 rounded-full", activity?.running ? "animate-pulse bg-info" : "bg-transparent")} />
         {unread > 0 ? (
           <span aria-label={`${unread} unread`} className="min-w-5 rounded-full bg-primary px-1.5 text-center font-mono text-[10px] font-bold text-primary-foreground">
@@ -162,36 +155,8 @@ function WorkerItem({
   );
 }
 
-/** The coding tasks one teammate's conversation started, one background item each. */
-function BackgroundItems({
-  adapter,
-  sessionId,
-  isCoding,
-  openTask,
-  onOpen,
-}: {
-  adapter: LabAdapter;
-  sessionId: string;
-  isCoding: (id: string) => boolean;
-  openTask: string | undefined;
-  onOpen: (popup: Popup) => void;
-}) {
-  const tasks = (useWatch(adapter.watchTasks, sessionId) ?? []).filter((t) => isCoding(t.to));
-  return tasks.map((t) => (
-    <li key={t.id}>
-      <button
-        type="button"
-        aria-current={t.id === openTask ? "true" : undefined}
-        aria-label={taskLabel(`Coding task: ${t.title}`, t)}
-        data-background={t.status}
-        onClick={() => onOpen({ kind: "task", sessionId, taskId: t.id })}
-        className={cn("flex w-full flex-col border-l-2 border-transparent px-4 py-1.5 text-left hover:bg-accent", t.id === openTask && "border-primary bg-accent")}
-      >
-        <span className="block truncate font-mono text-xs">⚙ {t.title}</span>
-        <span className="block truncate text-xs text-muted-foreground" data-status>
-          {[t.status, runsOn(t)].filter(Boolean).join(" · ")}
-        </span>
-      </button>
-    </li>
-  ));
+/** Whether a conversation's feed has lost the server, so what it last said may be out of date. */
+export function useStale(adapter: LabAdapter, sessionId: string | undefined): boolean {
+  const connection = useWatch(adapter.watchConnection, sessionId);
+  return connection !== undefined && isFeedStale(connection);
 }

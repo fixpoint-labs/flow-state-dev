@@ -286,11 +286,3 @@ export function commitAll(checkout: string, message: string): void {
   git(checkout, "add", "-A");
   git(checkout, "-c", "user.email=devforce-lab@example.test", "-c", "user.name=DevForce Lab", "commit", "-m", message);
 }
-
-/**
- * Whether a checkout has anything to commit: a change, staged or not, or a
- * file git doesn't track yet.
- */
-export function hasChanges(checkout: string): boolean {
-  return git(checkout, "status", "--porcelain").trim() !== "";
-}

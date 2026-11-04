@@ -47,6 +47,15 @@ beforeAll(() => {
   stateHome = join(scratch, "state");
   execFileSync("git", ["init", "-q", "-b", "main", repo]);
   writeFileSync(join(repo, "README.md"), "hello\n");
+  writeFileSync(
+    join(repo, "check.mjs"),
+    [
+      `import { existsSync } from "node:fs";`,
+      `if (!existsSync(".set-up")) { console.error("SETUP-MARKER missing"); process.exit(5); }`,
+      `console.error("CHECK-MARKER: red on purpose"); process.exit(3);`,
+    ].join("\n"),
+  );
+  writeFileSync(join(repo, ".gitignore"), ".set-up\n");
   git(repo, "add", ".");
   git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
   scriptedPauses.stepMs = 0;
@@ -95,7 +104,7 @@ async function turn(
   extra: Record<string, unknown> = {},
 ) {
   return testFlow({
-    flow: claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve }),
+    flow: claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve, approveTools: false }),
     action: "turn",
     userId: "u",
     sessionId,
@@ -319,8 +328,8 @@ describe("where a session works (V6)", () => {
 
   it("asks for no sandbox: Kitchen Sink confines no run", async () => {
     // Kitchen Sink is a showcase meant for a machine that allows any edits, so
-    // it hands the SDK no sandbox at all. With `bypassPermissions` beside it,
-    // nothing confines the run — the worktree is where it works, not a fence.
+    // it hands the SDK no sandbox at all. A call the user allows is not
+    // confined — the worktree is where it works, not a fence.
     const stores = createInMemoryStores();
     const recorder = recorded();
     await turn(stores, recorder, "s-unfenced", "hello");
@@ -345,6 +354,42 @@ describe("where a session works (V6)", () => {
     expect(env!.PATH).toBe(process.env.PATH);
   });
 
+  it("untrusted, the run loads nothing from the repository and gets no named key (FIX-2421)", async () => {
+    vi.stubEnv("KITCHEN_SINK_HARNESS_PASS", "KITCHEN_SINK_NAMED_KEY");
+    vi.stubEnv("KITCHEN_SINK_NAMED_KEY", "named-but-not-trusted");
+    const stores = createInMemoryStores();
+    const recorder = recorded();
+    await turn(stores, recorder, "s-untrusted", "hello");
+    const run = recorder.runs[0]!;
+    expect(run.settingSources).toEqual([]);
+    expect(run.settings).toBeUndefined();
+    expect((run.env as Record<string, string | undefined>).KITCHEN_SINK_NAMED_KEY).toBeUndefined();
+  });
+
+  it("trusted, the run loads the repository's project settings with every hook off, and gets the named key (FIX-2421 D1)", async () => {
+    vi.stubEnv("KITCHEN_SINK_HARNESS_TRUSTED", "1");
+    vi.stubEnv("KITCHEN_SINK_HARNESS_PASS", "KITCHEN_SINK_NAMED_KEY");
+    vi.stubEnv("KITCHEN_SINK_NAMED_KEY", "the-operator-named-this");
+    vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "still-not-named");
+    const stores = createInMemoryStores();
+    const recorder = recorded();
+    await turn(stores, recorder, "s-trusted", "hello");
+    const run = recorder.runs[0]!;
+    // Never `user`: the operator's own settings stay out of a trusted run too.
+    expect(run.settingSources).toEqual(["project"]);
+    expect(run.settings).toMatchObject({ disableAllHooks: true });
+    const env = run.env as Record<string, string | undefined>;
+    expect(env.KITCHEN_SINK_NAMED_KEY).toBe("the-operator-named-this");
+    expect(env.KITCHEN_SINK_PLANTED_SECRET).toBeUndefined();
+  });
+
+  it("a turn's input that claims trust changes nothing: only the server's setting decides (FIX-2421, BP-031)", async () => {
+    const stores = createInMemoryStores();
+    const recorder = recorded();
+    await turn(stores, recorder, "s-claims-trust", "hello", { trusted: true, settingSources: ["project"] });
+    expect(recorder.runs[0]!.settingSources).toEqual([]);
+  });
+
   it("a deleted session leaves its worktree and branch (BR-23a)", async () => {
     const stores = createInMemoryStores();
     const recorder = recorded();
@@ -364,8 +409,32 @@ describe("where a session works (V6)", () => {
     // Modes off at the next start.
     vi.stubEnv("VERCEL", "1");
     resetModeAvailabilityForTests();
-    const flows = await availableHarnessFlows({ "claude-code": () => claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve }) });
+    const flows = await availableHarnessFlows({ "claude-code": () => claudeCodeSessionFlow({ resolveClaudeAgent: recorder.resolve, approveTools: false }) });
     expect(flows["claude-code"]).toBeUndefined();
     expect((await stores.session.get("s-kept"))?.state).toMatchObject({ binding: { confirmed: expect.stringMatching(/^scripted-/) } });
   });
+});
+
+describe("the host's setup and checks", () => {
+  it("runs setup in the fresh worktree, then records the checks, red ones included", async () => {
+    vi.stubEnv("KITCHEN_SINK_HARNESS_SETUP", `${process.execPath} -e "require('node:fs').writeFileSync('.set-up', '')"`);
+    vi.stubEnv("KITCHEN_SINK_HARNESS_CHECKS", `${process.execPath} check.mjs`);
+    const stores = createInMemoryStores();
+    const result = await turn(stores, recorded(), "s-setup-checks", "Say hello.");
+    expect(result.error).toBeUndefined();
+    const record = (await stateOf(stores, "s-setup-checks")).turns?.[result.requestId];
+    expect(record?.setup).toEqual({ state: "done", tail: null });
+    expect(record?.checks).toHaveLength(1);
+    expect(record?.checks?.[0]?.exitCode).toBe(3);
+    expect(record?.checks?.[0]?.tail).toContain("CHECK-MARKER");
+    expect(record?.error ?? null).toBeNull();
+  }, 60_000);
+
+  it("runs no check and no setup when neither is set", async () => {
+    const stores = createInMemoryStores();
+    const result = await turn(stores, recorded(), "s-no-commands", "Say hello.");
+    const record = (await stateOf(stores, "s-no-commands")).turns?.[result.requestId];
+    expect(record?.setup ?? null).toBeNull();
+    expect(record?.checks ?? null).toBeNull();
+  }, 60_000);
 });

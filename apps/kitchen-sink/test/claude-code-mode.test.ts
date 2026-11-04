@@ -1,8 +1,9 @@
 /**
  * Claude Code mode's own check (`specs/issues/FIX-1915/PLAN.md` V9; BR-23):
  * each reason this host can't run it disables the mode with that reason, the
- * missing sign-in included, and the sign-in is probed over the environment the
- * run is handed.
+ * missing sign-in included (the Claude Code package's readiness check, its
+ * reason and remedy shown as written), checked over the environment the run
+ * is handed.
  *
  * Red state produced before this was trusted: report a host with no sign-in
  * as available, and the sign-in case fails.
@@ -13,7 +14,7 @@ import { claudeCodeModeCheck, type ClaudeCodeHostChecks } from "@/lib/claude-cod
 
 const able: ClaudeCodeHostChecks = {
   isRoot: () => false,
-  probe: async () => ({ status: "signed-in", account: { email: "a@b" } }) as never,
+  readiness: async () => ({ ready: true }),
   makeRoot: () => undefined,
 };
 
@@ -42,67 +43,30 @@ describe("Claude Code mode's check (V9)", () => {
     expect(made).toMatchObject({ available: false, reason: expect.stringContaining("EACCES") });
   });
 
-  it("is unavailable without the SDK", async () => {
-    const result = await check({ probe: async () => ({ status: "sdk-missing", reason: "not found" }) as never });
-    expect(result).toMatchObject({ available: false, reason: expect.stringContaining("SDK is not installed") });
-  });
-
-  it("is unavailable when Claude Code is not signed in", async () => {
-    const result = await check({ probe: async () => ({ status: "none", reason: "no credential" }) as never });
-    expect(result).toMatchObject({ available: false, reason: expect.stringContaining("not signed in") });
-  });
-
-  // The gate keeps its answer until restart, so one slow start of Claude Code
-  // would otherwise tell a signed-in person they are not signed in.
-  it("asks again when Claude Code did not answer in time, and goes by the second answer", async () => {
-    let asked = 0;
+  // The sign-in leg is the Claude Code package's readiness check (asking again
+  // when Claude Code is slow is tested there): the mode shows its answer as written.
+  it("is unavailable with the package's reason and remedy when Claude Code isn't ready", async () => {
     const result = await check({
-      probe: async () => {
-        asked += 1;
-        return (asked === 1
-          ? { status: "none", reason: "Claude Code did not report an account within 10000 ms", unanswered: true }
-          : { status: "account", email: "a@b" }) as never;
-      },
+      readiness: async () => ({ ready: false, reason: "Claude Code has no credential: none", remedy: "Run `claude` and sign in" }),
     });
-    expect(asked).toBe(2);
-    expect(result).toEqual({ available: true });
+    expect(result).toEqual({ available: false, reason: "Claude Code has no credential: none", remedy: "Run `claude` and sign in" });
   });
 
-  it("says Claude Code did not answer, not that nobody is signed in, when both asks time out", async () => {
+  it("offers no remedy when Claude Code didn't answer, so its sign-in is unknown", async () => {
     const result = await check({
-      probe: async () => ({ status: "none", reason: "Claude Code did not report an account within 10000 ms", unanswered: true }) as never,
+      readiness: async () => ({ ready: false, reason: "Claude Code did not report an account, so Claude Code's sign-in is unknown", unanswered: true }),
     });
-    expect(result).toMatchObject({ available: false, reason: expect.stringContaining("did not report an account") });
-    expect((result as { reason: string }).reason).not.toContain("not signed in");
+    expect(result).toEqual({ available: false, reason: "Claude Code did not report an account, so Claude Code's sign-in is unknown" });
   });
 
-  it("says its sign-in is unknown, not that nobody is signed in, when the probe itself failed", async () => {
-    const result = await check({
-      probe: async () => ({ status: "none", reason: "Claude Code could not be asked for its account: spawn failed", unanswered: true }) as never,
-    });
-    expect(result).toMatchObject({ available: false, reason: expect.stringContaining("could not be asked for its account: spawn failed") });
-    expect((result as { reason: string }).reason).not.toContain("not signed in");
-  });
-
-  it("does not ask again when Claude Code answered that there is no sign-in", async () => {
-    let asked = 0;
-    await check({
-      probe: async () => {
-        asked += 1;
-        return { status: "none", reason: "no credential" } as never;
-      },
-    });
-    expect(asked).toBe(1);
-  });
-
-  it("probes the sign-in over the environment the run is handed", async () => {
+  it("checks readiness over the environment the run is handed", async () => {
     vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "x");
     vi.stubEnv("ANTHROPIC_API_KEY", "key");
     const seen: Record<string, string>[] = [];
     await check({
-      probe: async (env) => {
+      readiness: async (env) => {
         seen.push(env);
-        return { status: "signed-in" } as never;
+        return { ready: true };
       },
     });
     expect(seen[0]?.ANTHROPIC_API_KEY).toBe("key");

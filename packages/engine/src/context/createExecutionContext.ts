@@ -1,6 +1,7 @@
 import { WRITES_OUTLIVE_ABORT, attachRequestEndRegistry, createRequestEndRegistry, type WritesOutliveAbort } from "../execution/request-end-hooks";
 import { createRequestSpendLedger, isInterruptedEndingHeld, loggedSpendOf, sumSpend } from "../execution/request-spend-ledger";
 import { isOrgAttributed, UnattributedOrgError } from "./org-attribution";
+import { createBoardNoticeSeam } from "../bus/board-notice";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type {
   AnyResourceRef,
@@ -46,7 +47,7 @@ import type {
 } from "@flow-state-dev/core/items";
 import type { BlockValueInternal, RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
-import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockOutputHint, EmitMessageOptions, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import {
   createScopePersist,
@@ -84,7 +85,7 @@ function waitedByStamp(source: string | undefined, metadata: unknown) {
 import { ensureSessionRecord, refuseReadonlyStateChange } from "./session-birth";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
-import { isTraceObservabilityEnabled, errorDetailsWithCause, estimateTokenCounter, isValidOrgId } from "@flow-state-dev/core";
+import { isTraceObservabilityEnabled, errorDetailsWithCause, estimateTokenCounter, isValidOrgId, buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
 import { cloneValue, getTransientKeys, getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
@@ -98,6 +99,7 @@ import {
 } from "../errors/error-capture";
 import { SuspensionError, SuspensionRejectedError, SuspensionTimeoutError, resolveAllowedActions, type SuspendOptions } from "@flow-state-dev/core";
 import {
+  BOARD_NOTICE_SEAM,
   DISPATCH_SEAM,
   REQUEST_RESUME_SEAM,
   REQUEST_SPEND_SEAM,
@@ -109,6 +111,7 @@ import {
   type RequestSpendSeam,
   type SuspendForUser
 } from "@flow-state-dev/core/types";
+import { matchesPattern } from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
 import {
   resolveUserStorageKey,
@@ -156,6 +159,7 @@ import {
   LLM_AUDIENCE_TYPES,
 } from "./history";
 import { shouldPersistScopeChange, wrapStateOpsWithEmit } from "./scope-emit";
+import { noticePathFor, publishScopeChange } from "../bus/scope-changes";
 import {
   createScopeResourceRegistry,
   normalizeScopeResources,
@@ -286,12 +290,12 @@ type EmissionContext = {
 function createEmitMessage(
   emCtx: EmissionContext
 ): {
-  (text: string, options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }): void;
-  (content: Content[], options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }): void;
+  (text: string, options?: EmitMessageOptions): void;
+  (content: Content[], options?: EmitMessageOptions): void;
 } {
   return function emitMessage(
     textOrContent: string | Content[],
-    options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean }
+    options?: EmitMessageOptions
   ): void {
     const content: Content[] =
       typeof textOrContent === "string"
@@ -313,7 +317,8 @@ function createEmitMessage(
       itemVisibility: options?.itemVisibility ?? emCtx.itemVisibility,
       agentName: options?.agentName ?? emCtx.agentName,
       role: "assistant",
-      content
+      content,
+      ...(options?.metadata !== undefined ? { metadata: options.metadata } : {})
     };
 
     void emCtx.response.emitItemAdded(item);
@@ -428,7 +433,7 @@ function createEmitMessageAwaited(
   emCtx: EmissionContext
 ): (
   text: string,
-  options?: { itemVisibility?: ItemVisibility; agentName?: string; transient?: boolean; role?: "user" | "assistant" }
+  options?: EmitMessageOptions & { role?: "user" | "assistant" }
 ) => Promise<void> {
   return async function emitMessageAwaited(text, options): Promise<void> {
     const itemIndex = emCtx.nextItemIndex();
@@ -446,7 +451,8 @@ function createEmitMessageAwaited(
       itemVisibility: options?.itemVisibility ?? emCtx.itemVisibility,
       agentName: options?.agentName ?? emCtx.agentName,
       role: options?.role ?? "assistant",
-      content: [{ type: "output_text", text }]
+      content: [{ type: "output_text", text }],
+      ...(options?.metadata !== undefined ? { metadata: options.metadata } : {})
     };
     await emCtx.response.emitItemAdded(item);
     await emCtx.response.emitItemDone(item);
@@ -1138,6 +1144,8 @@ export async function createExecutionContext<
   // `tenantMatches` is strict equality), so the option and the resolved value
   // cannot differ. Org is the one identity field whose check permits a
   // difference, which is why it is the one that had to change.
+  const boardNoticeSeam =
+    stores.bus !== undefined ? createBoardNoticeSeam(stores.bus, { requestId, tenantId: options.tenantId }) : undefined;
   const requestHostBuild =
     options.requestHost !== undefined
       ? createRequestHost({
@@ -2594,15 +2602,59 @@ export async function createExecutionContext<
   const cascadeController = createCascadeController();
   const reactiveCtxRef: { current: ExecutionContext | undefined } = { current: undefined };
 
+  /**
+   * Publish that `scope` changed, naming this request (FIX-1506). The topic's
+   * id is the bare session id, the user id or the org id, under the tenant.
+   */
+  function publishScopeNotice(scope: "session" | "user" | "org", kind: "state" | "resource", resource?: string): void {
+    publishScopeChange(stores.bus, {
+      scope,
+      id: scope === "session" ? sessionId : scope === "user" ? userId : orgRef.current?.orgId ?? resolvedOrgId,
+      tenantId: options.tenantId,
+      kind,
+      ...(resource !== undefined ? { resource } : {}),
+      requestId: requestRef.current.id
+    });
+  }
+
   function makeResourceChangeHandler(scope: "session" | "user" | "org") {
     const scopeConfigs =
       scope === "session" ? sessionResourceConfigs : scope === "user" ? userResourceConfigs : orgResourceConfigs;
     const hasReactive = Object.values(scopeConfigs).some((c) => c.reactTo !== undefined);
+    const scopeStorageKeys = resourceStorageKeys(scopeConfigs);
+
+    // FIX-1506: the resources whose change another session's view may read —
+    // every resource with a `client` config, and every resource of a scope
+    // that declares `client.derived` (a derived value may read any of them).
+    // Their changes publish on the scope's topic, stream or not.
+    const scopeClient = scope === "session" ? flow.session?.client : scope === "user" ? flow.user?.client : flow.org?.client;
+    const everyResourcePublishes = Object.keys(scopeClient?.derived ?? {}).length > 0;
+    const publishedSingleKeys = new Set<string>();
+    const publishedCollections: ResourceCollectionConfig[] = [];
+    for (const [accessor, cfg] of Object.entries(scopeConfigs)) {
+      if (!everyResourcePublishes && cfg.client === undefined) continue;
+      if (isCollectionConfig(cfg)) publishedCollections.push(cfg);
+      else publishedSingleKeys.add(scopeStorageKeys[accessor] ?? accessor);
+    }
+    const publishesAny = publishedSingleKeys.size > 0 || publishedCollections.length > 0;
+    /**
+     * Publish a change at `resourcePath` when another view may read it: on
+     * the topic narrowed to the path, or on the bare scope topic when the
+     * path is a row only its owner may read (`noticePathFor`).
+     */
+    const publishChange = (resourcePath: string): void => {
+      if (publishedSingleKeys.has(resourcePath)) return publishScopeNotice(scope, "resource", resourcePath);
+      const holders = publishedCollections.filter((cfg) => matchesPattern(cfg.pattern, resourcePath));
+      if (holders.length === 0) return;
+      const named = holders.some((cfg) => noticePathFor(cfg, resourcePath) !== undefined);
+      publishScopeNotice(scope, "resource", named ? resourcePath : undefined);
+    };
 
     // Only wire a handler when there is something to do: a live emitter
-    // (FIX-739 streaming) and/or a `reactTo` binding (FIX-751). Reactive-only
-    // resources still dispatch even with no emitter present.
-    if (!emitter && !hasReactive) return undefined;
+    // (FIX-739 streaming), a `reactTo` binding (FIX-751), and/or a resource
+    // to publish on a bus (FIX-1506). Reactive-only resources still dispatch
+    // even with no emitter present.
+    if (!emitter && !hasReactive && !(stores.bus !== undefined && publishesAny)) return undefined;
 
     const dispatchReactive = hasReactive
       ? createReactiveDispatcher({
@@ -2622,7 +2674,6 @@ export async function createExecutionContext<
     // fires the seam only because it declares `reactTo` (FIX-751, non-live) must
     // NOT emit — that would leak a client item for a resource with no client
     // projection. Precompute those storage keys once and skip the emit for them.
-    const scopeStorageKeys = resourceStorageKeys(scopeConfigs);
     const nonStreamingSingleKeys = new Set<string>();
     for (const [accessor, cfg] of Object.entries(scopeConfigs)) {
       if (!isCollectionConfig(cfg) && cfg.client?.live !== true) {
@@ -2649,6 +2700,8 @@ export async function createExecutionContext<
           delta: projection?.delta
         });
       }
+      // FIX-1506: beside the emit, a notice for other sessions' views.
+      publishChange(resourcePath);
       // FIX-751 reactive dispatch is awaited inline — it runs the bound block
       // as part of the mutating turn, and a block failure propagates out.
       if (dispatchReactive !== undefined) {
@@ -2838,7 +2891,10 @@ export async function createExecutionContext<
         blockInstanceId: "runtime",
         phase: "main" as const
       }),
-      transient: transientStateChanges
+      transient: transientStateChanges,
+      // FIX-1506: session, user and org writes publish on their scope's topic,
+      // stream or not; request state publishes nothing.
+      ...(scope === "request" ? {} : { onCommitted: () => publishScopeNotice(scope, "state") })
     });
   }
 
@@ -3167,8 +3223,8 @@ export async function createExecutionContext<
   // that run's to hand on, so it is carried rather than recovered.
   const loggedSpend = loggedSpendOf(requestRecord.items ?? [], requestRecord.spentThroughItemIndex ?? -1);
   const requestSpendLedger = interruptedEndingLive
-    ? createRequestSpendLedger(sumSpend(requestRecord.spentByModel ?? {}, loggedSpend.byModel))
-    : createRequestSpendLedger(requestRecord.spentByModel, loggedSpend.byModel, loggedSpend.harnessRuns);
+    ? createRequestSpendLedger(sumSpend(requestRecord.spentByModel ?? {}, loggedSpend.byModel), {}, [], [...(requestRecord.spentHarnessRuns ?? []), ...loggedSpend.harnessRuns])
+    : createRequestSpendLedger(requestRecord.spentByModel, loggedSpend.byModel, loggedSpend.harnessRuns, requestRecord.spentHarnessRuns);
   const requestEndRegistry = createRequestEndRegistry(() => requestSpendLedger.takeSinceLastEnding());
   // How this request resumed (FIX-2129), read when a block asks: the
   // resolution is filled in at the checkpoint read, after this context is built.
@@ -3213,6 +3269,7 @@ export async function createExecutionContext<
       phase: "main" as const
     }),
     nextItemIndex: () => reserveItemIndex(),
+    taskId: options.requestTaskId,
   };
 
   // Request-level trace emitters used by `_runtimeHooks` (router decisions,
@@ -3684,6 +3741,52 @@ export async function createExecutionContext<
       ) as unknown as StateRef<TState>;
     };
 
+    // A state write made before the gate this continuation waits at applies
+    // once (FIX-2444). The resume runs the code up to that gate again (the
+    // waiting block, its connector, a sequencer's own `.map`) on top of the
+    // checkpoint the sequencer wrote at the suspension, which already holds
+    // every write that code made before it stopped. The checkpoint names the
+    // gate it was taken at, so when the re-run reaches that gate the restored
+    // sequencer's state is replaced by the checkpoint: what the re-run wrote
+    // again is dropped, and transient fields (which no checkpoint holds) keep
+    // what the re-run wrote. A checkpoint from an earlier gate (a crash before
+    // the later gate's was saved) settles at that earlier gate, so the writes
+    // between the two, which it lacks, are made once after it. Code that never
+    // reaches the gate (a branch the restored state skips) keeps its writes.
+    // Any other state, such as a handler's own `ctx.self`, is not in the
+    // checkpoint and is left alone.
+    const settleReplayedState = async (gateSuspensionId: string): Promise<void> => {
+      const resumeState = (rootContext as { _resumeState?: { state?: Record<string, unknown>; restored?: Record<string, unknown>; suspensionId?: string; blockInstanceId?: string } })._resumeState;
+      // A checkpoint from a step boundary (one written before checkpoints were
+      // taken at the wait) names no gate and lacks the waiting step's writes:
+      // the re-run's are the only copy, so they stay.
+      if (resumeState?.restored === undefined || resumeState.suspensionId !== gateSuspensionId) return;
+      const restoredId = resumeState.blockInstanceId ?? buildBlockInstanceId(requestRef.current.id, ROOT_BLOCK_PATH, 0);
+      for (let node = parentChain; node !== undefined; node = node.previous) {
+        if (node.parent.instanceId === restoredId && node.parentStateContainer !== undefined) {
+          // Replace, not merge, key by key: a field the checkpoint holds
+          // takes its value there; a field only the restore's schema defaults
+          // filled (one added to the schema later, or one the step removed
+          // before the wait) follows the re-run, present or removed; a field
+          // in neither is something the re-run added, and is dropped.
+          // Transient fields, which no checkpoint holds, follow the re-run.
+          const stateRef = buildStateRef(node);
+          const current = stateRef.state as Record<string, unknown>;
+          const saved = resumeState.state ?? {};
+          const settled: Record<string, unknown> = { ...saved };
+          for (const key of Object.keys(resumeState.restored)) {
+            if (!(key in saved) && key in current) settled[key] = current[key];
+          }
+          for (const key of getTransientKeys(node.parent.stateSchema)) {
+            if (key in current) settled[key] = current[key];
+            else delete settled[key];
+          }
+          await stateRef.setState(settled);
+          return;
+        }
+      }
+    };
+
     const context: ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState> = {
       flow,
       actionName: options.actionName,
@@ -3704,6 +3807,9 @@ export async function createExecutionContext<
       ...(requestHostBuild !== undefined
         ? { requestHost: requestHostBuild.host, [DISPATCH_SEAM]: requestHostBuild.seam }
         : {}),
+      // A task board's change reaches this run's bus (FIX-2429), under the
+      // request's tenant. No bus (a registry no entry wrapped): no seam.
+      ...(boardNoticeSeam !== undefined ? { [BOARD_NOTICE_SEAM]: boardNoticeSeam } : {}),
       settings: options.settings ?? {},
       request: requestHandle,
       session: sessionHandle,
@@ -3887,6 +3993,7 @@ export async function createExecutionContext<
           if (consumed < resolved.length) {
             resolvedResumeCursor.set(callerLogicalId, consumed + 1);
             const entry = resolved[consumed];
+            await settleReplayedState(entry.suspensionId);
             // A user's stop replays as the stop, never as an answer
             // (FIX-2129): a crash after its resolution was logged must not
             // read it as approved. The run ends here, as the live stop does.
@@ -3933,6 +4040,7 @@ export async function createExecutionContext<
 
           if (isResolvingGate) {
             resolvedResumeCursor.set(callerLogicalId, position + 1);
+            await settleReplayedState(resumeCtx.suspensionId);
             // A task's run stopped while it waited for a user ends here
             // (FIX-2129, `stopsAtItsGate`): the claim gate ahead of it has
             // read the stop, and no block runs past the gate. The stop is
@@ -4127,8 +4235,9 @@ export async function createExecutionContext<
         // enclosing sequencer node before constructing the steps that emit, so
         // those steps' chains see the mark here. Re-resolved per scope (not
         // copied from the parent emCtx) because the mark lands after the
-        // parent scope's emCtx was built.
-        let resolvedTaskId: string | undefined;
+        // parent scope's emCtx was built. With no mark on the chain, the scope
+        // runs the request's task (the action's `taskOf`), if it names one.
+        let resolvedTaskId: string | undefined = options.requestTaskId;
         for (let node: ExecutionParentNode | undefined = childChain; node !== undefined; node = node.previous) {
           if (node.scopeTaskId !== undefined) {
             resolvedTaskId = node.scopeTaskId;
@@ -4191,15 +4300,21 @@ export async function createExecutionContext<
         // What this block's own harness runs spent also goes on its completed
         // trace, so a continuation after the process died can hand it on (FIX-2145).
         // A run that reports as it goes (FIX-2288) is listed once, at its latest report.
+        // A report with no run id is a settled run of its own, so it is given
+        // an id here: the ledger and the trace then name it alike, and a reader
+        // that recorded it can tell it from another run after a continuation
+        // recovers it from the trace.
         const harnessSpendOfBlock: HarnessRunSpend[] = [];
         (childContext as { [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM] = {
-          reportHarnessRun(run) {
+          reportHarnessRun(report) {
+            const run = report.runId === undefined ? { ...report, runId: generateId("settled") } : report;
             requestSpendLedger.reportHarnessRun(run);
-            const at = run.runId === undefined ? -1 : harnessSpendOfBlock.findIndex((reported) => reported.runId === run.runId);
+            const at = harnessSpendOfBlock.findIndex((reported) => reported.runId === run.runId);
             if (at >= 0) harnessSpendOfBlock.splice(at, 1);
             harnessSpendOfBlock.push({ ...run });
           },
-          pending: () => requestSpendLedger.pending()
+          pending: () => requestSpendLedger.pending(),
+          total: () => requestSpendLedger.total()
         };
         (childContext as { [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined })[REQUEST_RESUME_SEAM] = readResume;
         // FIX-663: re-attach the background signal on every scope so nested
