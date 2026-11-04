@@ -51,7 +51,7 @@
 
 - **E1 · Files are the recorded rows**, one per path as the recorder keys them; a truncated read
   says `200+ files`.
-- **E2 · Commands counted** from shell steps (`code: true`) that ran, done or failed, not ones
+- **E2 · Commands counted** from steps whose tool the registry calls running a command, done or failed, not ones
   still running.
 - **E3 · Chips show the file's name**, the full path as their title; past eight, a `+N more` chip.
 - **E4 · Copy copies the result, else the error.** A task with neither shows no Copy.
