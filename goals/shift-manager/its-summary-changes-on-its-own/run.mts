@@ -26,7 +26,7 @@
  * Controls (each runs this file again with a scratch patch applied as it loads):
  *   GOAL_CONTROL=no-subscribe   the provider subscribes nothing: a must FAIL.
  *   GOAL_CONTROL=every-kind     the provider reads on every notice of a session, items too: c must FAIL.
- *   GOAL_CONTROL=own-sessions   the provider hears its own reading and usage sessions: b must FAIL.
+ *   GOAL_CONTROL=own-sessions   the provider hears its own reading, roster and usage sessions: b must FAIL.
  *   GOAL_CONTROL=no-poll        the provider keeps no fallback timer: d must FAIL.
  */
 import { spawnSync } from "node:child_process";
@@ -94,15 +94,15 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string; mustFail:
     legs: "c",
     mustFail: "c:as-short",
   },
-  // Shift Manager's own reading and usage sessions are heard like any other.
   // The subscription keeps no fallback timer: where push can miss a change, nothing reads.
   "no-poll": {
     patches: [{ module: LAB_DATA, from: String.raw`pollIntervalMs: SNAPSHOT_POLL_MS, `, to: "" }],
     legs: "d",
     mustFail: "d:ask-within-poll",
   },
+  // Shift Manager's own reading, roster and usage sessions are heard like any other.
   "own-sessions": {
-    patches: [{ module: SUBSCRIBE, from: String.raw`return session\.id === readerSessionId\(userId, session\.flowKind\) \|\| session\.id\.startsWith\(\`\$\{USAGE_SESSION_PREFIX\}-\`\);`, to: "return false;" }],
+    patches: [{ module: SUBSCRIBE, from: String.raw`session\.id === readerSessionId\(userId, session\.flowKind\) \|\|[\s\S]*?\$\{USAGE_SESSION_PREFIX\}-\`\)`, to: "false" }],
     legs: "b",
     mustFail: "b:idle-0-reads",
   },
