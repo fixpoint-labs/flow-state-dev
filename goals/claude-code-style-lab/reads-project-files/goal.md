@@ -77,3 +77,5 @@ runs, so no `ANTHROPIC_API_KEY` is needed.
 | 2026-10-30 | 863a0e13 | openai/gpt-5.4 | PASS | Closure run (FIX-2156). 3 of 3 |
 | 2026-10-30 | 07753056 | openai/gpt-5.4 | PASS | Closure re-run after #4262. 3 of 3; leg 1 two read calls, 0 tasks |
 | 2026-10-30 | 07753056 | openai/gpt-5.4 | FAIL (control `no-gate`) | Leg 3 *no value* and *read refused*, all 3 runs |
+| 2026-11-04 | 5b8d9063 | openai/gpt-5.4 | PASS | FIX-2393 tool-line signals. 3 of 3; leg 1 2-3 read calls, every line named what it read (runs 1-2 read the value's file, run 3 found it by search alone); legs 2-3 each refused and read "(failed)" |
+| 2026-11-04 | 5b8d9063 | openai/gpt-5.4 | FAIL (control `old-lines`) | leg 1 *lines name what was read* ("Searched the project", "Listed the project's files"); legs 2-3 *refusal reads failed* (no line said failed) |
