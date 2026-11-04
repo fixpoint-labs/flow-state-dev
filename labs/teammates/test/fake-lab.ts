@@ -61,10 +61,14 @@ export interface FixtureLab extends LabAdapter {
   setConnection(state: SessionConnectionState): void;
 }
 
-/** Each coding worker's harness, by name, and the model its run reports, if it reports one. */
-const HARNESS: Record<string, { name: string; model?: string }> = {
-  "claude-code": { name: "Claude Code" },
-  codex: { name: "Codex", model: "gpt-5.5-codex" },
+/**
+ * Each coding worker's harness, by name, the model its run reports, if it
+ * reports one, and what its run spent once it has run its check: Codex on an
+ * API key reports a charge; Claude Code on a subscription reports tokens only.
+ */
+const HARNESS: Record<string, { name: string; model?: string; spent?: { inputTokens: number; outputTokens: number; costUsd: number | null } }> = {
+  "claude-code": { name: "Claude Code", spent: { inputTokens: 8_000, outputTokens: 1_200, costUsd: null } },
+  codex: { name: "Codex", model: "gpt-5.5-codex", spent: { inputTokens: 12_400, outputTokens: 2_300, costUsd: 0.42 } },
   cursor: { name: "Cursor" },
 };
 
@@ -276,6 +280,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       return;
     }
     const model = HARNESS[harness]!.model;
+    const spent = HARNESS[harness]!.spent;
     const calls = RUN_TOOLS[harness]!;
     const call = (which: "read" | "edit" | "check") => report(task.id, harness, tool(...calls[which]));
     const sleep = async (ms: number) => {
@@ -308,6 +313,8 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       call("edit")();
       await sleep(800);
       call("check")();
+      // What the run spent, as the row's folded view reads it once the run has reported.
+      if (spent !== undefined) updateTask(task.id, { spend: { harness, model: model ?? null, ...spent, unreported: false, live: false } });
       for (let commits = 1; options.review; commits++) {
         reviews.set(task.runSessionId!, {
           branch: `teammates/${task.id}--change`,

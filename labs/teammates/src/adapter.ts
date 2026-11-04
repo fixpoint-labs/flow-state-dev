@@ -68,7 +68,7 @@ import {
   type RosterEntry,
   type WorkforceClient,
 } from "@flow-state-dev/workforce/browser";
-import { isTerminalStatus, parseNotice, taskSpendView, taskSpendViewSchema } from "@flow-state-dev/orchestration/tasks";
+import { isTerminalStatus, parseNotice, taskSpendView, taskSpendViewSchema, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import {
   createInboxClient,
   inboxItems,
@@ -160,6 +160,8 @@ export interface BoardTask {
   harness?: string;
   /** The model its run reported, when it reported one; never guessed. */
   model?: string;
+  /** What its runs spent, as orchestration folds a row's spend (`taskSpendView`); absent before any ran. */
+  spend?: TaskSpendView;
   /** What it waits on you for, while something does: its oldest open hold. */
   waiting?: TaskWaiting;
 }
@@ -581,20 +583,24 @@ function boardRows(items: readonly Item[]): Map<string, Record<string, any>> {
 }
 
 /**
- * What a row's spend says ran it: the harness and model its run reported, or nothing.
+ * A row's spend as a view, or nothing when it has none or it can't be read.
  *
  * A row reaches here in one of two shapes: the stored ledger (`spend.requests`), as a
  * `task-change` item carries it, or the view the board's `listTasks` read already folded
  * (`taskSpendViewSchema`). Folding a view again would read as nothing spent.
  */
-function spendOf(row: Record<string, any>): { harness?: string; model?: string } {
+function spendViewOf(row: Record<string, any>): TaskSpendView | null {
   try {
     const folded = taskSpendViewSchema.safeParse(row.spend);
-    const view = folded.success ? folded.data : taskSpendView(row as never);
-    return { ...(view?.harness == null ? {} : { harness: view.harness }), ...(view?.model == null ? {} : { model: view.model }) };
+    return folded.success ? folded.data : taskSpendView(row as never);
   } catch {
-    return {};
+    return null;
   }
+}
+
+/** What a row's spend says ran it: the harness and model its run reported, or nothing. */
+function spendOf(view: TaskSpendView | null): { harness?: string; model?: string } {
+  return { ...(view?.harness == null ? {} : { harness: view.harness }), ...(view?.model == null ? {} : { model: view.model }) };
 }
 
 /**
@@ -611,6 +617,7 @@ export function toBoardTask(
   const status: BoardTask["status"] =
     row.status === "completed" ? "done" : row.status === "errored" ? "failed" : row.status === "cancelled" ? "cancelled" : "running";
   const answer = typeof row.output?.answer === "string" ? row.output.answer : undefined;
+  const spend = spendViewOf(row);
   return {
     id: row.id,
     to: row.assignee ?? "",
@@ -624,7 +631,8 @@ export function toBoardTask(
     ...(Array.isArray(row.labels) ? { labels: row.labels.filter((label: unknown): label is string => typeof label === "string") } : {}),
     ...(typeof row.priority === "number" ? { priority: row.priority } : {}),
     ...(typeof row.run?.sessionId === "string" ? { runSessionId: row.run.sessionId } : {}),
-    ...harnessAndModel(spendOf(row), harnessOf(row.assignee ?? "")),
+    ...harnessAndModel(spendOf(spend), harnessOf(row.assignee ?? "")),
+    ...(spend === null ? {} : { spend }),
     ...waitingOf(row, holds),
   };
 }

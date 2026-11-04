@@ -5,6 +5,7 @@ import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { STALE_CLASS } from "./flow-state/connection-banner";
+import { costAmount, tokenCount } from "./flow-state/spend";
 import { runsOn, taskLabel, taskLine, type Popup } from "./Popups";
 import { InstructionsForm } from "./TeammateForms";
 import { useStale } from "./WorkersList";
@@ -135,6 +136,7 @@ export function TeammatePanel({
             Tasks
           </div>
           {tasks.length === 0 ? <p className="px-4 text-xs text-muted-foreground">{worker.name} hasn't started any tasks yet.</p> : null}
+          <CodingSpend tasks={tasks.filter((t) => isCoding(t.to))} />
           {active.length > 0 ? <ul aria-label="Active">{active.map(row)}</ul> : null}
           {ended.map((group) => {
             const open = opened[group.status] ?? false;
@@ -166,5 +168,25 @@ export function TeammatePanel({
         </section>
       </div>
     </aside>
+  );
+}
+
+/**
+ * What this conversation's coding tasks spent, all together: their tokens, and
+ * the charges vendors reported. Each task's own count is its row's folded view;
+ * a task whose runs reported nothing adds nothing, and a subscription run adds
+ * tokens but no charge. Nothing shows until a coding task has reported spend.
+ */
+function CodingSpend({ tasks }: { tasks: readonly BoardTask[] }) {
+  const spent = tasks.flatMap((t) => (t.spend === undefined ? [] : [t.spend]));
+  if (spent.length === 0) return null;
+  const tokens = spent.reduce((sum, s) => sum + (s.inputTokens ?? 0) + (s.outputTokens ?? 0), 0);
+  const charged = spent.filter((s) => s.costUsd != null);
+  const cost = charged.reduce((sum, s) => sum + (s.costUsd ?? 0), 0);
+  const line = [`Coding tasks: ${tokenCount(tokens)} tokens`, charged.length === 0 ? null : costAmount(cost)].filter(Boolean).join(" · ");
+  return (
+    <p className="px-4 pb-2 font-mono text-[10px] text-muted-foreground" data-coding-spend>
+      {line}
+    </p>
   );
 }
