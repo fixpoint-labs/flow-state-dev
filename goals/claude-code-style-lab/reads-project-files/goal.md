@@ -36,8 +36,10 @@ with a second user in its members.
 
 - **Tool lines**, graded on the lab's own entries (its adapter's `entriesOf` over the turn's
   items, the lines the thread draws):
-  - *lines name the file* (leg 1): a tool line of either turn names the file the value lives in,
-    by its path or the tail a long path is shortened to (`…/billing/ledger/codes.ts`).
+  - *lines name what was read* (leg 1): every project read's line names what it read: a read its
+    file (the path, or the tail a long path is shortened to, `…/billing/ledger/codes.ts`), a
+    search its pattern, a listing its pattern. A turn may find the value by a search alone, so
+    the value's own file is noted when a line names it, not required.
   - *refusal reads failed* (legs 2 and 3): a tool line of the turn says `(failed)` and is a failed
     step. Graded only when the turn made a read call, which *read refused* already requires.
 
@@ -61,7 +63,7 @@ runs, so no `ANTHROPIC_API_KEY` is needed.
   the run and restored after). Leg 1 must FAIL on *value named* or *0 tasks*.
 - `GOAL_CONTROL=old-lines`: the tool lines are graded as the lab's old `lib/tool-line.ts` drew
   them (read from the last commit that had it): one fixed phrase per tool, never failed. *lines
-  name the file* and *refusal reads failed* must FAIL.
+  name what was read* and *refusal reads failed* must FAIL.
 - `GOAL_CONTROL=no-gate`: the run source's membership check on the project path
   (`mayWorkOn` in `packages/workforce/src/projects/run-project.ts`) is patched out as the server
   loads it, and the run fails if the patch never reached the code. Leg 3 must FAIL on *no value*.
