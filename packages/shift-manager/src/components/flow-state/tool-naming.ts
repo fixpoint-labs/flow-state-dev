@@ -108,7 +108,7 @@ function lineRange(args: Fields): string | undefined {
 /**
  * How a workforce or task tool says what it did, from its args and, once the
  * call is done, its result. Never an id: a task or message id means nothing to
- * the person reading, so a task is named by its title, else its goal.
+ * the user reading, so a task is named by its title, else its goal.
  */
 const WORK_TOOLS: Record<string, (args: Fields, output: Fields | undefined) => string> = {
   readProjectSource: (args, output) => {
