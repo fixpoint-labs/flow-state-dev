@@ -35,6 +35,22 @@
   and stops while the feed is stale, as the status line's age does.
 - The failure reason is the row's `error`, cut to one line with `truncate`; the popup has the whole.
 
+## Notes from review
+
+Round 1 (#4717). None changes the approach.
+
+- **Architect cross-spec check:** `lib/task-state.ts` owns a task's tone for the panel row,
+  `TaskCard` and FIX-2396's popup; the times on `BoardTask` are this spec's, and FIX-2396's
+  duration derives from them. Folded into *What changes*.
+- **Nested `BoardTask.times` (Cursor):** kept flat, three optional fields beside the row's other
+  flat fields (`spend`, `waiting`); `toBoardTask` is still the one place they're read from the row
+  view. FIX-2396 has been told the flat names.
+- **The word and tone helper beside `taskLine` in `Popups.tsx` (Cursor):** kept as its own module,
+  since three components read it (panel, card, popup) and `Popups.tsx` is FIX-2396's hot file.
+  It reads `BoardTask.waiting`, which is FIX-2379's row view; it adds no vocabulary.
+- **Where the orchestration check lives (Cursor):** in `list-tasks-spend.test.ts`, beside
+  `updatedAt`'s, as the reviewer suggests.
+
 ## How it got here
 
 - **Drafted (Nov 4):** the issue's *Background* list had already moved to the panel (FIX-2525), so

@@ -49,6 +49,17 @@ level. This spec does Teammates; FIX-2549 carries the other two.
   once per new need or ending, never for what was already there when the page loaded.
 - **Cancelled tasks** don't flash: you or a teammate withdrew them.
 
+## Notes from review
+
+Round 1 (#4717). None changes the approach.
+
+- **One predicate for "needs you" (Cursor):** yes. `status.ts` exports it, and the status line,
+  the badge, the title and the notifier all read it. `lib/attention.ts` holds only the title,
+  the notifier's once-only rule, the permission and the toggle's storage.
+- **Aggregate in `WorkersList` instead of rows reporting up (Cursor):** each row already holds its
+  teammate's watches (hooks per row), so the list would have to open them a second time to count.
+  The row reports what it read; the list only sums.
+
 ## How it got here
 
 - **Drafted (Nov 4).** Stacked on FIX-2395, whose row times the ending line reads.

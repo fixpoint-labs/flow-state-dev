@@ -54,7 +54,11 @@ model's tool. The lab's adapter test confirms `toBoardTask` passes them through.
   Heading count. A running row shows its elapsed time; a failed row its reason, one line
   ([D2](DECISIONS.md#d2)).
 - **One helper for a task's word and tone** (`lib/task-state.ts`), read by the panel row and
-  `TaskCard`, so the two can't drift.
+  `TaskCard`, so the two can't drift. It is the lab's only owner of a task's tone: FIX-2396's task
+  popup reads it too, rather than deciding a fourth time. Its words are a row's short subline
+  (`waiting on you`, `failed`); the worker status line's sentences are FIX-2397's.
+- **This spec owns a task's times on `BoardTask`.** FIX-2396's run duration derives from
+  `startedAt` and `completedAt` here; it reads no time a second way.
 - **Docs:** the lab README's *Right* paragraph describes the new grouping. The orchestration README
   names the three times on the action's rows. No site page describes the panel. Changeset:
   `patch` for `@flow-state-dev/orchestration` (a client reading the action sees new fields).
