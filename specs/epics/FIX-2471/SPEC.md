@@ -76,18 +76,18 @@ An app gets the box by mounting one flow per provider.
 **Docs:** the GitHub webhook guide teaches subscribe and `webhook-transport.md` drops `sessionId`,
 both published by child 2.
 
-## The set · as of 2026-11-03
+## The set · as of 2026-11-04
 
-Filed after this gate; live state will be in Linear.
+Filed at this gate; live state is in Linear.
 
 | Child | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| FIX-XXX · subscriptions, config screens, delivery | Event shape, collection, tools, the chain with its sender check ([Q1](DECISIONS.md#q1)) and contract (Q2), delivery, task endings, both dedupes | The seam | Not filed |
-| FIX-XXX · GitHub flow, retire `sessionId` | Binding, normalization, thread keys, versions, PR-open subscribe ([Q5](DECISIONS.md#q5)) | The first provider | Not filed |
-| FIX-XXX · polling | Per-user schedule rows, the 5-minute floor | Localhost | Not filed |
-| FIX-XXX · custom and Jev screens | Custom screen blocks; one evaluator call per event | Fuzzy interests, priced | Not filed |
-| FIX-XXX · explicit vs inferred work | `off`, `observe`, `auto` on forwarded unmatched kinds | Not routing; the owner kept it | Not filed |
-| FIX-XXX · closure · **required** | The four legs, each team's journey | Runs the whole set | Not filed |
+| [FIX-2534](https://linear.app/fixpoint-labs/issue/FIX-2534) · subscriptions, config screens, delivery | Event shape, collection, tools, the chain with its sender check ([Q1](DECISIONS.md#q1)) and contract (Q2), delivery, task endings, both dedupes | The seam | Ready to Spec |
+| [FIX-2535](https://linear.app/fixpoint-labs/issue/FIX-2535) · GitHub flow, retire `sessionId` | Binding, normalization, thread keys, versions, PR-open subscribe ([Q5](DECISIONS.md#q5)) | The first provider | Ready to Spec |
+| [FIX-2536](https://linear.app/fixpoint-labs/issue/FIX-2536) · polling | Per-user schedule rows, the 5-minute floor | Localhost | Ready to Spec |
+| [FIX-2537](https://linear.app/fixpoint-labs/issue/FIX-2537) · custom and Jev screens | Custom screen blocks; one evaluator call per event | Fuzzy interests, priced | Ready to Spec |
+| [FIX-2538](https://linear.app/fixpoint-labs/issue/FIX-2538) · explicit vs inferred work | `off`, `observe`, `auto` on forwarded unmatched kinds | Not routing; the owner kept it | Ready to Spec |
+| [FIX-2539](https://linear.app/fixpoint-labs/issue/FIX-2539) · closure · **required** | The four legs, each team's journey | Runs the whole set | Ready to Spec |
 
 Down from [seven](DECISIONS.md#how-it-got-here). If five is four, cut child 5.
 
@@ -96,16 +96,14 @@ Down from [seven](DECISIONS.md#how-it-got-here). If five is four, cut child 5.
 ```mermaid
 flowchart LR
   M["FIX-2070 · Messages epic · sendMessage"] -.->|"edits the same function"| A
-  A["FIX-XXX · subscriptions, config screens, delivery"] -->|"the event shape, the collection, the tools"| B["FIX-XXX · GitHub flow, retire sessionId"]
-  A -->|"the subscription row"| C["FIX-XXX · polling"]
-  A -->|"the screen chain and its contract"| D["FIX-XXX · custom and Jev screens"]
-  A -->|"forwarded unmatched kinds"| E["FIX-XXX · explicit vs inferred work"]
-  B --> P["FIX-XXX · closure · required"]
+  A["FIX-2534 · subscriptions, config screens, delivery"] -->|"the event shape, the collection, the tools"| B["FIX-2535 · GitHub flow, retire sessionId"]
+  A -->|"the subscription row"| C["FIX-2536 · polling"]
+  A -->|"the screen chain and its contract"| D["FIX-2537 · custom and Jev screens"]
+  A -->|"forwarded unmatched kinds"| E["FIX-2538 · explicit vs inferred work"]
+  B --> P["FIX-2539 · closure · required"]
   C --> P
   D --> P
   E --> P
-  classDef proposed stroke-dasharray:4 3
-  class A,B,C,D,E,P proposed
 ```
 
 Child 1 goes first, then 2 to 5 in parallel; FIX-2070 is another epic's input.
@@ -155,7 +153,8 @@ creeps back.
 3. **[D9](DECISIONS.md#d9) · Delivery is `sendMessage`'s exempt path.** If wrong: two sets of
    recipient rules.
 
-**Open, recommended:** [Q1](DECISIONS.md#q1) fail closed · [Q3](DECISIONS.md#q3) a held task ·
-[Q4](DECISIONS.md#q4) no Slack flow · [Q5](DECISIONS.md#q5) GitHub only.
+**Decided by the owner at merge, Nov 4:** [Q1](DECISIONS.md#q1) fail closed ·
+[Q3](DECISIONS.md#q3) a held task that runs nothing · [Q4](DECISIONS.md#q4) no Slack flow ·
+[Q5](DECISIONS.md#q5) GitHub only.
 
 Epic · 5 children and a closure · Inbound Transports & Reactive Flows · Webhooks / Workforce

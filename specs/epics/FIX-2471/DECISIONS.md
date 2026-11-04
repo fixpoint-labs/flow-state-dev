@@ -12,7 +12,7 @@ flowchart TD
   D5 -.->|"rejected · content crosses users"| X5["one app token at org scope"]
   E --> D9["D9 · delivery is sendMessage's exempt path, labelled"]
   D9 -.->|"rejected · two sets of recipient rules"| X9["a new sender kind"]
-  E --> O["open · Q1 screening default · Q3 what observe writes · Q4 Slack · Q5 sessionId's scope"]
+  E --> O["owner at merge, Nov 4 · Q1 fail closed · Q3 a held task · Q4 no Slack flow · Q5 GitHub only"]
   E --> G["decided earlier · D2–D4, D6–D8, D10, D11"]
 ```
 
@@ -60,58 +60,63 @@ It comes down to where recipient rules live: a second sender kind keeps a second
 <a name="open"></a>
 ## Open
 
-Q2, the screen contract, is settled at child 1's spec gate.
+None at this altitude. Q2, the screen contract, is settled at FIX-2534's spec gate.
+
+<a name="decided-at-merge"></a>
+## Decided by the owner at merge, Nov 4
+
+The owner merged #4515 with these four written as recommendations; the merge decided them.
 
 <a name="q1"></a>
-### Q1 · Fail closed or fail open: who gets through a screen by default?
+### Q1 · Fail closed: who gets through a screen by default · owner, Nov 4
 
 - **In plain terms:** does a coding task hear an outsider's comment on a public repo? Child 1
   needs the answer.
 - **The trade-off:** fail open puts unscreened outside text into a coding task's context.
-- **My recommendation: fail closed.** Members, collaborators and listed bots pass; outsiders need
+- **Decided: fail closed.** Members, collaborators and listed bots pass; outsiders need
   an opt-in.
 - **What would change my mind:** an app whose core job is triaging outsiders' issues.
 - **If wrong:** that app hears nothing until it opts in.
 
-![Q1: fail closed, recommended, beside fail open; decided by an outsider's comment](figures/open-screening-default.svg)
+![Q1: fail closed, chosen, beside fail open; decided by an outsider's comment](figures/q1-screening-default.svg)
 
 <a name="q3"></a>
-### Q3 · In `observe`, a held task or an Inbox item with no task?
+### Q3 · In `observe`, a held task, not an Inbox item with no task · owner, Nov 4
 
 - **In plain terms:** the Inbox lists only task-row holds (`orchestration/src/inbox/check.ts`),
   so a taskless item is a new source.
 - **The trade-off:** A adds that source and files nothing (the owner's wording); B files the task
   held on a confirm, and nothing runs until a person says yes.
-- **My recommendation: B.** The Inbox stays as it is; "files nothing" becomes "runs nothing".
+- **Decided: B.** The Inbox stays as it is; "files nothing" becomes "runs nothing".
 - **What would change my mind:** held rows cluttering the board for people who never accept.
 - **If wrong:** rows nobody accepts, or under A, a second Inbox source.
 
-![Q3: a held task, recommended, beside an Inbox item with no task; decided by the Inbox as it is](figures/open-observe-writes.svg)
+![Q3: a held task, chosen, beside an Inbox item with no task; decided by the Inbox as it is](figures/q3-observe-writes.svg)
 
 <a name="q4"></a>
-### Q4 · Build the Slack flow now, or prove the event shape without it?
+### Q4 · No Slack flow; the event shape is proved without it · owner, Nov 4
 
 - **In plain terms:** the Slack child proved the event isn't GitHub-shaped; child 1 checks that
   against Slack's payload, and the closure keeps Slack-shaped fixtures.
 - **The trade-off:** that proof with no second flow, against Slack routing at wrap.
-- **My recommendation: Not doing.** The #support journey becomes a GitHub one.
+- **Decided: Not doing.** The #support journey becomes a GitHub one.
 - **What would change my mind:** a committed user needing Slack this quarter (one more child).
 - **If wrong:** that user waits for its own epic.
 
-![Q4: no Slack flow, recommended, beside building it; decided by proving the event's shape](figures/open-slack.svg)
+![Q4: no Slack flow, chosen, beside building it; decided by proving the event's shape](figures/q4-slack.svg)
 
 <a name="q5"></a>
-### Q5 · Retire `sessionId` for every provider, or only where a service flow routes?
+### Q5 · Retire `sessionId` only where a service flow routes · owner, Nov 4
 
 - **In plain terms:** the Stripe and Slack guides and `keeping-a-flow-running.md` also set
   `sessionId`, and no flow replaces them.
 - **The trade-off:** a Stripe customer keeps one session, against one way to route.
-- **My recommendation: only where a flow routes.** GitHub loses it; Stripe, Slack and custom
+- **Decided: only where a flow routes.** GitHub loses it; Stripe, Slack and custom
   bindings keep it.
 - **What would change my mind:** every provider in the guides getting a flow.
 - **If wrong:** two ways to route, or each Stripe event in a fresh session.
 
-![Q5: retire only where a flow routes, recommended, beside everywhere; decided by a Stripe customer's events](figures/open-sessionid-scope.svg)
+![Q5: retire only where a flow routes, chosen, beside everywhere; decided by a Stripe customer's events](figures/q5-sessionid-scope.svg)
 
 <details>
 <summary><b>Decided earlier, not on the sign-off</b> · D2–D4, D6–D8, D10, D11</summary>
@@ -191,6 +196,9 @@ child 1's gate · [D9](#d9)'s exempt path · [D10](#d10)'s rows · the 5× bar's
 `sessionId`'s retirement in the GitHub child · the reuse calls in
 [SPEC](SPEC.md#whats-already-here-and-the-debt)'s Adds table.
 
+Owner, Nov 4, by merging: [Q1](#q1) fail closed · [Q3](#q3) a held task · [Q4](#q4) no Slack
+flow · [Q5](#q5) GitHub only.
+
 ## What the end-state POC showed
 
 None built.
@@ -201,3 +209,5 @@ None built.
 - **Owner (Nov 2).** D5, D7's order, D9, D10's cadence, D11, the 5× bar.
 - **Review (Nov 2–3).** The EM calls above. Seven children became five (`sessionId` into the
   GitHub child, Slack out). Q1, Q3, Q4 opened, then Q5 from the guides.
+- **Merged (Nov 4).** The owner merged #4515 with Q1, Q3, Q4 and Q5 as recommended, which
+  decided them. The set was filed as FIX-2534 to FIX-2539.
