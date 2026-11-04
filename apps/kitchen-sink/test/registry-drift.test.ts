@@ -3,7 +3,8 @@
  *
  * `compareRegistryCopies` does the walk. This file only states this app's
  * scope: stories are not installed, and neither are the two `generative/`
- * components, the connection bar and screen, or the request-recovery line.
+ * components, the connection bar and screen, the request-recovery line, or
+ * the task action row.
  * `compared.length` fails a walk that passes by comparing less.
  */
 import { dirname, join } from "node:path";
@@ -26,12 +27,14 @@ const kitchenSinkTargetDir = join(testDir, "../components/flow-state");
 /**
  * Kitchen Sink follows sessions through `useSession`, so it draws neither the
  * connection bar nor the first-read screen. The request-recovery line is not
- * installed here either. An installed copy nothing imports is dead code.
+ * installed here either, nor the task action row, which no screen here
+ * opens a task to draw. An installed copy nothing imports is dead code.
  */
 const NOT_INSTALLED_COMPONENTS = new Set([
   "connection-banner.tsx",
   "connection-screen.tsx",
   "request-recovery.tsx",
+  "task-actions.tsx",
 ]);
 
 const drift = () =>
@@ -46,8 +49,8 @@ describe("kitchen-sink registry drift (FIX-1477 V8)", () => {
     const { compared, mismatches } = drift();
 
     // 42 of the registry's component-directory files (all non-`.stories.tsx`
-    // files outside `generative/`, less the two connection components and the
-    // request-recovery line) are installed here. If that count moves,
+    // files outside `generative/`, less the two connection components, the
+    // request-recovery line and the task action row) are installed here. If that count moves,
     // this test's scope moved with it and needs re-reading before trusting a
     // green result.
     expect(compared.length).toBe(42);
