@@ -129,6 +129,22 @@ describe("followSessionItems", () => {
     }
   });
 
+  it("reports the feed's connection as it moves, once per change, so the page's bar can say the server is gone", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const h = host([], { failState: true });
+      const states: string[] = [];
+      stops.push(followSessionItems(h.client, "s1", { onRead: () => {}, onFailure: () => {}, onState: (state) => states.push(state) }));
+      await vi.advanceTimersByTimeAsync(60_000);
+      // It starts connecting and ends stopped once the feed gives up; no state is reported twice in a row.
+      expect(states[0]).toBe("connecting");
+      expect(states.at(-1)).toBe("stopped");
+      expect(states.filter((state, i) => state === states[i - 1])).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("says why when the first read fails", async () => {
     const h = host([], { failState: true });
     const failures: Failure[] = [];

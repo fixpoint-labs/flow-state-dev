@@ -7,12 +7,24 @@
  * hired a worker), and on Retry. Never on a route or tab change, so moving
  * around the app costs no reads. Inbox, the Stream's asks, the sidebar counts
  * and the Tasks list all come from the same snapshot.
+ *
+ * A refresh that can't reach the Lab after a good read keeps the last good
+ * snapshot on screen (FIX-2373 D2), reports the read `lapsed`, and reads again
+ * on its own at 2, 4, 8… seconds until one lands. Only a first read that fails,
+ * or a refusal, swaps the shell for a full-screen page.
+ *
+ * The connection bar reads one state for the page: the worst of the snapshot
+ * read's and those of the session feeds on screen, which report theirs with
+ * `useReportFeedState` (`feed-health.ts`).
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import type { Client } from "@flow-state-dev/client";
 import type { InboxAnswer, InboxHold } from "@flow-state-dev/orchestration/inbox";
+import { isFeedStale, type ConnectionFeedState } from "../components/flow-state/connection-banner";
+import { retryDelayMs } from "../components/flow-state/connection-screen";
 import { connect, type Connection } from "./connection";
+import { FeedHealthContext, worstFeedState, type ReportFeed } from "./feed-health";
 import { createLabReader, type Ask, type LabReader, type LabSnapshot } from "./reads";
 
 /** What a surface reads from the provider. */
@@ -25,6 +37,13 @@ export type LabData = {
   /** `undefined` until the first refresh lands. */
   snapshot: LabSnapshot | undefined;
   refreshing: boolean;
+  /**
+   * The page's connection health: the worst of the snapshot read's state and every
+   * session feed on screen, ordered `stopped` › `lapsed` › the rest.
+   */
+  health: ConnectionFeedState;
+  /** The page's connection is lapsed or stopped: what is drawn is the last the server said. */
+  stale: boolean;
   /** Read everything again. */
   refresh(): Promise<void>;
   /** Answer an ask; on success, refresh so it leaves every surface together. */
@@ -79,11 +98,17 @@ export function LabProvider({ connection, children }: { connection: Connection; 
   const reader = useMemo(() => createLabReader(client), [client]);
   const [snapshot, setSnapshot] = useState<LabSnapshot | undefined>(undefined);
   const [refreshing, setRefreshing] = useState(false);
+  // Refreshes in a row that couldn't reach the Lab after a good read. The snapshot stays; the read is `lapsed`.
+  const [lapses, setLapses] = useState(0);
+  const [feeds, setFeeds] = useState<ReadonlyMap<string, ConnectionFeedState>>(new Map());
   const [answered, setAnswered] = useState<LabData["answered"]>(undefined);
+  // The snapshot on screen is a good read of this client's Lab: a later unreachable one doesn't replace it.
+  const loaded = useRef(false);
   // The client a following answer was given: once they change or the provider unmounts, it stops.
   const current = useRef<Client | null>(client);
   useEffect(() => {
     current.current = client;
+    loaded.current = false;
     return () => {
       current.current = null;
     };
@@ -98,7 +123,15 @@ export function LabProvider({ connection, children }: { connection: Connection; 
     setRefreshing(true);
     try {
       const next = await reader.read();
-      if (mine === generation.current) setSnapshot(next);
+      if (mine !== generation.current) return;
+      if (next.unreachable !== undefined && loaded.current) {
+        // After a good read, keep it: the route, the open task and a draft stay, and the bar says why it is old.
+        setLapses((n) => n + 1);
+        return;
+      }
+      loaded.current = next.refused === undefined && next.unreachable === undefined;
+      setSnapshot(next);
+      setLapses(0);
     } finally {
       if (mine === generation.current) setRefreshing(false);
     }
@@ -107,6 +140,26 @@ export function LabProvider({ connection, children }: { connection: Connection; 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // While the read is lapsed, read again on its own, further apart after each failure.
+  useEffect(() => {
+    if (lapses === 0) return;
+    const timer = setTimeout(() => void refresh(), retryDelayMs(lapses - 1));
+    return () => clearTimeout(timer);
+  }, [lapses, refresh]);
+
+  const reportFeed = useCallback<ReportFeed>((key, state) => {
+    setFeeds((last) => {
+      if ((last.get(key) ?? null) === state) return last;
+      const next = new Map(last);
+      if (state === null) next.delete(key);
+      else next.set(key, state);
+      return next;
+    });
+  }, []);
+  const read: ConnectionFeedState = lapses > 0 ? "lapsed" : snapshot === undefined ? "connecting" : "live";
+  const health = worstFeedState([read, ...feeds.values()]);
+  const stale = isFeedStale(health);
 
   const answer = useCallback<LabData["answer"]>(
     async (ask, value) => {
@@ -135,10 +188,14 @@ export function LabProvider({ connection, children }: { connection: Connection; 
   );
 
   const value = useMemo<LabData>(
-    () => ({ connection, client, reader, snapshot, refreshing, refresh, answer, answerOne, answered }),
-    [connection, client, reader, snapshot, refreshing, refresh, answer, answerOne, answered],
+    () => ({ connection, client, reader, snapshot, refreshing, health, stale, refresh, answer, answerOne, answered }),
+    [connection, client, reader, snapshot, refreshing, health, stale, refresh, answer, answerOne, answered],
   );
-  return <LabContext.Provider value={value}>{children}</LabContext.Provider>;
+  return (
+    <LabContext.Provider value={value}>
+      <FeedHealthContext.Provider value={reportFeed}>{children}</FeedHealthContext.Provider>
+    </LabContext.Provider>
+  );
 }
 
 /** The Lab's data. Throws outside a {@link LabProvider}. */

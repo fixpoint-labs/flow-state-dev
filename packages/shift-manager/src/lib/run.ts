@@ -15,7 +15,7 @@
  * What the run recorded (its plan, files and pull requests) is the one read
  * that is not here: `readRecordedWork` from `@flow-state-dev/harness-manager/browser`.
  */
-import { compareItemOrder, sessionFeed } from "@flow-state-dev/client";
+import { compareItemOrder, sessionFeed, type SessionConnectionState } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
 import type { RequestStatus } from "@flow-state-dev/core/types";
 import type { Client } from "@flow-state-dev/client";
@@ -133,6 +133,8 @@ export type SessionItemsFollower = {
   onRead(read: SessionItems): void;
   /** The first read failed. Said only until one succeeds: a lapse after that keeps what was read. */
   onFailure(failure: Failure): void;
+  /** The feed's connection moved (`sessionFeed`'s `state`), for the page's connection bar. */
+  onState?(state: SessionConnectionState): void;
 };
 
 /**
@@ -148,7 +150,12 @@ export function followSessionItems(client: Pick<Client, "sessions">, sessionId: 
   const feed = sessionFeed(client, sessionId);
   let last: readonly OutputItem[] | undefined;
   let read = false;
+  let lastState: SessionConnectionState | undefined;
   const stop = feed.subscribe(({ items, hasEarlier, state, error }) => {
+    if (state !== lastState) {
+      lastState = state;
+      to.onState?.(state);
+    }
     // Before the history lands the feed publishes only its read's failures: a try that failed, or
     // the feed giving up (`stopped`, its items empty), neither of which is an empty session. Its
     // first publish with no error is the history read landing, empty or not, whatever the stream
