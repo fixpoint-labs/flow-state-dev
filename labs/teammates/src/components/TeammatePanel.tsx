@@ -21,19 +21,12 @@ const ENDED = [
   { status: "cancelled", label: "Cancelled" },
 ] as const;
 
-/** A task's status dot: running pulses, and each ending has its own color. A task waiting on you reads as a warning. */
-function StatusDot({ task }: { task: BoardTask }) {
-  const look = task.waiting
-    ? "bg-warning"
-    : task.status === "running"
-      ? "animate-pulse bg-info"
-      : task.status === "done"
-        ? "bg-success"
-        : task.status === "failed"
-          ? "bg-destructive"
-          : "border border-muted-foreground/60";
-  return <span aria-hidden data-task-dot className={cn("mt-[5px] size-2 shrink-0 rounded-full", look)} />;
-}
+const STATUS_DOT = {
+  running: "animate-pulse bg-info",
+  done: "bg-success",
+  failed: "bg-destructive",
+  cancelled: "border border-muted-foreground/60",
+} satisfies Record<BoardTask["status"], string>;
 
 /** A teammate's tasks, split for the panel: the running ones, then each ending's, in filing order. */
 function groupTasks(tasks: readonly BoardTask[]) {
@@ -99,7 +92,7 @@ export function TeammatePanel({
             stale && STALE_CLASS,
           )}
         >
-          <StatusDot task={t} />
+          <span aria-hidden data-task-dot className={cn("mt-[5px] size-2 shrink-0 rounded-full", t.waiting ? "bg-warning" : STATUS_DOT[t.status])} />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="line-clamp-2 text-[13px] leading-snug" title={line}>
               {coding ? <TerminalIcon aria-hidden className="mr-1 mb-0.5 inline size-3 text-muted-foreground" /> : null}
