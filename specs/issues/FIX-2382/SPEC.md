@@ -5,7 +5,8 @@
 Child of epic [FIX-2369](../../epics/FIX-2369/SPEC.md) (merged #4358). It is the buttons half of
 FIX-2381, whose calls are on `main`: `inbox.board(at).cancel / steer / release / retry / refile`
 ([spec](../FIX-2381/SPEC.md), merged #4373; package and Shift Manager's `taskActions` getter
-merged, #4643). It amends [FIX-2153 D2](../FIX-2153/DECISIONS.md), which kept the Claude
+merged, #4643). The buttons go in the opened task, not on the cards in a list
+([D1](DECISIONS.md#d1)), whatever the issue title says. It amends [FIX-2153 D2](../FIX-2153/DECISIONS.md), which kept the Claude
 Code-style lab's tasks pane read only ([D1](DECISIONS.md#d1)).
 
 ## Who feels it, before and after
@@ -53,7 +54,8 @@ flowchart LR
 ```
 
 **How we verify.** One goal check per app, driven in a browser by clicks and graded on the
-board's rows and the run's request record, never on the page's words:
+board's rows and the run's request record. The page is checked only for the board's own refusal
+words:
 
 - **Teammates lab** (a harness-manager run, so this is where *the run stops* is proved): in a
   coding task's popup, Steer it (its row's steers hold the words), Cancel it (the row reads

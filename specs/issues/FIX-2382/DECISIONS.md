@@ -29,7 +29,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Keeping [FIX-2153 D2](../FIX-2153/DECISIONS.md) (stop or steer by asking the main session) · buttons on each task card · each app's own buttons |
 | **Because** | FIX-2153 D2 kept the pane read only so the lab would prove the main session can act on its tasks, and named this request as what would change its mind ("Jake wanting the pane to be a control surface too"); this issue is that request. The proof stays: the lab's script step 5 still has the main session cancel and steer. A card in all three apps is already one button that opens the task, and a button inside it is invalid markup. One component, because the epic's D4 puts UI two apps need in the registry |
-| **Locks in** | The registry name `task-actions`. The lab is a control surface as well as a conversation: a person can change a task without the main session knowing until its notice. A person opens a task to act on it, one click more than a card button; a card button later reuses the component |
+| **Locks in** | The registry name `task-actions`. The lab is a control surface as well as a conversation: a person can change a task without the main session knowing until its notice. A person opens a task to act on it, one click more than a card button |
 
 It comes down to the way of working FIX-2153 chose: a model turn per stop is the cost this issue
 exists to remove.
@@ -126,5 +126,12 @@ folding three findings.
   over FIX-2381's calls, placed in the opened task; drafted from the issue, the epic's decisions
   and build order, and `main` at `f3b19ba4`.
 - **Analysis** — D1 took on the FIX-2153 D2 amendment; D3 names the dependents a cancel takes.
+
+## Notes from review
+
+- "E6's full stack DAG is release mechanics. Epic FIX-2369 build order may be enough here." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/4677#discussion_r4468034834))
+- Implementer heads-up from cursor's review: avoid an extra `listTasks`/`getTask` per button; use bounded waits for the Teammates cancel leg (one steer poll plus slack); Shift Manager's header already uses `data-testid="task-actions"`, so the component needs distinct test ids. ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/4677#pullrequestreview-5769059826))
+
+These are inputs, not instructions.
 
 **Open: none.**
