@@ -43,8 +43,8 @@ request read FIX-2375 widens.
 | | |
 |---|---|
 | **Instead of** | Type ahead only: the composer stays open, but Send waits for the turn to end · or keep `run` on `queue` |
-| **Because** | The chat-agent flow already queues a second `run` ("queues behind the first (FIFO) instead of being dropped"). The page can't use it: `sendAction` leaves the running turn's stream, so the page locks the composer instead. React's `useHarnessLines` already sends a mid-turn turn through the client and follows it once the running turn ends; Kitchen Sink's harness modes ship on it. Its input is fixed at `{ prompt }` and it doesn't say what waits, so it gains `input` and `waiting`. Under `queue` a waiting run fails after 30 seconds (503), and a Flow State turn often runs longer; `defer` waits with no limit, as the hook's docs ask |
-| **Locks in** | Two public additions to `useHarnessLines` (`input`, `waiting`), so a changeset for `@flow-state-dev/react`. Flow State's `run` waits as long as the turn ahead takes; a 33rd waiting run on one session is refused (409), and a turn that never ends holds every line behind it until it is stopped. That holds for every caller of `run`, not only the composer. In this repo they are the Flow State page's composer and its voice input (`useVoice`, `action: "run"`, `page.tsx`), and `fsdev run chat-agent run`, which sends one line. A caller that relied on a 503 at 30 seconds now waits; none in the repo did. Under `FSD_BULLMQ_DISPATCH=1` the BullMQ worker runs `defer` too (`packages/bullmq/src/worker.ts`) |
+| **Because** | The chat-agent flow already queues a second `run` ("queues behind the first (FIFO) instead of being dropped"). The page can't use it: `sendAction` leaves the running turn's stream, so the page locks the composer instead. React's `useHarnessLines` already sends a mid-turn turn through the client and follows it once the running turn ends; Kitchen Sink's harness modes ship on it. Its input is fixed at `{ prompt }` and it doesn't say what waits, so it gains `input` and `waiting`. Under `queue` a waiting run fails after 30 seconds (503), and a Flow State turn often runs longer; `defer` waits with no limit, as the hook's docs ask. But `defer` runs waiting requests one at a time, not in order: on BullMQ two waiting jobs each retry on their own jittered delay and the first to find the key free wins (`packages/bullmq/src/worker.ts`, `claimWhenFree`); in memory the order rides on the order waiters registered, which nothing promises. So the hook keeps one waiting turn on the server at a time: a later line waits in the page, in order, and is sent when the one before it starts. Order then holds on every backend. That also fixes the harness modes, which send waiting turns the same way today |
+| **Locks in** | Two public additions to `useHarnessLines` (`input`, `waiting`), so a changeset for `@flow-state-dev/react`. Flow State's `run` waits as long as the turn ahead takes; a 33rd waiting run on one session is refused (409), and a turn that never ends holds every line behind it until it is stopped. That holds for every caller of `run`, not only the composer. In this repo they are the Flow State page's composer and its voice input (`useVoice`, `action: "run"`, `page.tsx`), and `fsdev run chat-agent run`, which sends one line. A caller that relied on a 503 at 30 seconds now waits; none in the repo did. A third line and later ones live in the page until the line before them starts, so a reload or a closed tab loses them; the server-side line it already sent survives. Under `FSD_BULLMQ_DISPATCH=1` the BullMQ worker runs `defer` too (`packages/bullmq/src/worker.ts`) |
 
 ![D2: queue through useHarnessLines with run on defer, chosen, beside type-ahead only and keeping queue. Decides it: a turn longer than 30 seconds. Price: two public options on a react hook. Flips if Flow State turns never ran past 30 seconds](figures/d2-kitchen-sink-queues.svg)
 
@@ -83,6 +83,7 @@ stays, and only the page changes.
 | Derive `queued` from `sessionFeed`'s `runs`, as the issue suggests | `runs` are child sessions (background work), never the session's own turns |
 | Derive `queued` from an `in_progress` request with no user item yet | Under `hold` that window is a few milliseconds, not a state. Under `queue` or `defer` the stub record is `in_progress` too, with nothing that says it hasn't started |
 | A new hook for plain chats beside `useHarnessLines` | A second way to do the hook's job. Extend it, and rename it later |
+| Make `defer` first-in, first-out in the engine | Waiting defers would need a line of their own on every backend, BullMQ's included: an engine change for an order one page needs. Sending one at a time gets it with no engine change |
 | Send Flow State's mid-turn line through `sendAction` | It closes the running turn's stream: the answer the person is watching stops updating |
 
 ## Analysis
@@ -101,6 +102,9 @@ derivation (D1); Kitchen Sink's half extends an existing react hook rather than 
   Code-style *queues a line sent while a turn runs* passes on this spec's base.
 - **A `queue` wait fails at 30 seconds** — **CONFIRMED** by read: `QUEUE_WAIT_TIMEOUT_MS = 30_000`
   in `engine/src/transports/concurrency/lease-backend.ts`, not configurable per action.
+- **Two waiting `defer` requests can start out of order** — **CONFIRMED** by read (Codex, PR #4732):
+  `deferredAdmission` claims only a free key and retries (`arbiter.ts`); BullMQ requeues each job
+  with jitter (`worker.ts`, `claimWhenFree`). The concurrency page promises one at a time, not order.
 
 ## Notes from review
 
@@ -120,5 +124,7 @@ For the implementer; recorded, not baked into the design.
 - **Draft** — framed as a promise the labs can't keep and a queue Kitchen Sink can't reach; the labs
   tell the truth and Kitchen Sink queues through `useHarnessLines`; built on the door's `hold`, the
   engine's `defer`, and the request read FIX-2375 widens.
+- **Review round 2 (Codex)** — `defer` doesn't keep two waiting lines in order, so the hook sends one
+  waiting turn at a time (D2); leg c sends two lines.
 
 **Open: none.**
