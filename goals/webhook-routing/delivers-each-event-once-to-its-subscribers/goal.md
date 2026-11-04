@@ -22,6 +22,6 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
-| 2026-11-04 | e539616a+ (uncommitted run) | n/a | FAIL (expected) | `GOAL_CONTROL=one-key`: (a) only, 10 sessions short (a2 got 3 of 22, b7 0 of 13); CAN'T TELL on d · b7 (read 0). Nothing in (b), (c), (e). |
-| 2026-11-04 | e539616a+ (uncommitted run) | n/a | FAIL (expected) | `GOAL_CONTROL=fail-open`: (e) 4 lines, outsider events reached subscriptions without the opt-in; (a) 14 sessions with extra rows. SHARE 0.826. |
-| 2026-11-04 | e539616a+ (uncommitted run) | n/a | PASS | 236 deliveries matched the oracle over 20 subscriptions, 300 events and 40 redeliveries; reads in the service's requests 593, user-cell reads in requests 1486, cross-user 0; model resolutions 0; d floors 13 and 13; outsider events 75, 20 delivered to opted-in subscriptions. **SHARE 0.867 (1014/1170)**, over the kill line. |
+| 2026-11-04 | da4a4bb2 | n/a | FAIL (expected) | `GOAL_CONTROL=one-key`: (a) only, 10 sessions short (a2 got 3 of 22, b7 0 of 13); CAN'T TELL on d · b7 (read 0). Nothing in (b), (c), (e). |
+| 2026-11-04 | da4a4bb2 | n/a | FAIL (expected) | `GOAL_CONTROL=fail-open`: (e) 4 lines, outsider events reached subscriptions without the opt-in; (a) 14 sessions with extra rows. SHARE 0.826. |
+| 2026-11-04 | da4a4bb2 | n/a | PASS | 236 deliveries matched the oracle over 20 subscriptions, 300 events and 40 redeliveries; reads in the service's requests 593, user-cell reads in requests 1486, cross-user 0; model resolutions 0; d floors 13 and 13; outsider events 75, 20 delivered to opted-in subscriptions. **SHARE 0.867 (1014/1170)**, over the kill line. |
