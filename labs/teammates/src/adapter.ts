@@ -25,10 +25,9 @@
  * | `watchTasks`        | the board's rows, as the conversation's stream carries each one (`task-change`) |
  * |                     | and the board's `listTasks` read (`taskActionName`), on each notice of the     |
  * |                     | conversation's board                                                          |
- * |                     | and `taskSpendView` on a row, for the harness and model its run reported      |
  * |                     | and each linked run's session, where the run writes its row (its holds)      |
  * |                     | and `taskRowView` with the Inbox's holds (`inboxItems`), for what it waits on |
- * |                     | you for                                                                      |
+ * |                     | you for, and what its runs spent (the harness and model they reported)       |
  * | `answerTask`        | the Inbox client's `answerOne`, on the task's open question or review         |
  * | `taskActions`       | the Inbox client's `board(at)` on the conversation that filed the task, its   |
  * |                     | `"tasks"` board: cancel, steer, release, retry, and `refile` for a re-run      |
@@ -68,7 +67,7 @@ import {
   type RosterEntry,
   type WorkforceClient,
 } from "@flow-state-dev/workforce/browser";
-import { isTerminalStatus, parseNotice, taskSpendView, taskSpendViewSchema, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
+import { isTerminalStatus, parseNotice, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import {
   createInboxClient,
   inboxItems,
@@ -79,6 +78,7 @@ import {
   type InboxRow,
   type RefileOverrides,
   type RefileRow,
+  type TaskRowView,
 } from "@flow-state-dev/orchestration/inbox";
 import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import { CODER_FLOW } from "./lib/coder-flow";
@@ -160,7 +160,7 @@ export interface BoardTask {
   harness?: string;
   /** The model its run reported, when it reported one; never guessed. */
   model?: string;
-  /** What its runs spent, as orchestration folds a row's spend (`taskSpendView`); absent before any ran. */
+  /** What its runs spent, as orchestration's task-row view folds it (`taskRowView`); absent before any ran. */
   spend?: TaskSpendView;
   /** What it waits on you for, while something does: its oldest open hold. */
   waiting?: TaskWaiting;
@@ -582,22 +582,6 @@ function boardRows(items: readonly Item[]): Map<string, Record<string, any>> {
   return rows;
 }
 
-/**
- * A row's spend as a view, or nothing when it has none or it can't be read.
- *
- * A row reaches here in one of two shapes: the stored ledger (`spend.requests`), as a
- * `task-change` item carries it, or the view the board's `listTasks` read already folded
- * (`taskSpendViewSchema`). Folding a view again would read as nothing spent.
- */
-function spendViewOf(row: Record<string, any>): TaskSpendView | null {
-  try {
-    const folded = taskSpendViewSchema.safeParse(row.spend);
-    return folded.success ? folded.data : taskSpendView(row as never);
-  } catch {
-    return null;
-  }
-}
-
 /** What a row's spend says ran it: the harness and model its run reported, or nothing. */
 function spendOf(view: TaskSpendView | null): { harness?: string; model?: string } {
   return { ...(view?.harness == null ? {} : { harness: view.harness }), ...(view?.model == null ? {} : { model: view.model }) };
@@ -617,7 +601,9 @@ export function toBoardTask(
   const status: BoardTask["status"] =
     row.status === "completed" ? "done" : row.status === "errored" ? "failed" : row.status === "cancelled" ? "cancelled" : "running";
   const answer = typeof row.output?.answer === "string" ? row.output.answer : undefined;
-  const spend = spendViewOf(row);
+  // One read of the row as orchestration's task-row view: its folded spend, and its oldest open hold.
+  const view = typeof row.id === "string" && typeof row.status === "string" ? taskRowView({ ...row, board: row.board ?? "" } as InboxRow, holds) : null;
+  const spend = view?.spend ?? null;
   return {
     id: row.id,
     to: row.assignee ?? "",
@@ -633,7 +619,7 @@ export function toBoardTask(
     ...(typeof row.run?.sessionId === "string" ? { runSessionId: row.run.sessionId } : {}),
     ...harnessAndModel(spendOf(spend), harnessOf(row.assignee ?? "")),
     ...(spend === null ? {} : { spend }),
-    ...waitingOf(row, holds),
+    ...waitingOf(view),
   };
 }
 
@@ -654,9 +640,8 @@ export function rerunOverrides(task: BoardTask, worker: string): RefileOverrides
 }
 
 /** What a row waits on you for, as `taskRowView` reads it: its oldest open hold, or nothing. */
-function waitingOf(row: Record<string, any>, holds: readonly InboxHold[] | undefined): { waiting?: TaskWaiting } {
-  if (typeof row.id !== "string" || typeof row.status !== "string") return {};
-  const hold = taskRowView({ ...row, board: row.board ?? "" } as InboxRow, holds).hold;
+function waitingOf(view: TaskRowView | null): { waiting?: TaskWaiting } {
+  const hold = view?.hold ?? null;
   if (hold === null) return {};
   const kind = hold.ask.kind === "question" || hold.ask.kind === "review" ? hold.ask.kind : "other";
   return { waiting: { kind, prompt: hold.ask.prompt, unanswerable: hold.unanswerable } };

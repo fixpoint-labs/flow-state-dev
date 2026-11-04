@@ -175,18 +175,28 @@ export function TeammatePanel({
  * What this conversation's coding tasks spent, all together: their tokens, and
  * the charges vendors reported. Each task's own count is its row's folded view;
  * a task whose runs reported nothing adds nothing, and a subscription run adds
- * tokens but no charge. Nothing shows until a coding task has reported spend.
+ * tokens but no charge. A total missing a count reads as partial. Nothing shows
+ * until a coding task has reported spend. (The registry's line never sums; this
+ * total is the panel's own.)
  */
 function CodingSpend({ tasks }: { tasks: readonly BoardTask[] }) {
-  const spent = tasks.flatMap((t) => (t.spend === undefined ? [] : [t.spend]));
-  if (spent.length === 0) return null;
-  const tokens = spent.reduce((sum, s) => sum + (s.inputTokens ?? 0) + (s.outputTokens ?? 0), 0);
-  const charged = spent.filter((s) => s.costUsd != null);
-  const cost = charged.reduce((sum, s) => sum + (s.costUsd ?? 0), 0);
-  const line = [`Coding tasks: ${tokenCount(tokens)} tokens`, charged.length === 0 ? null : costAmount(cost)].filter(Boolean).join(" · ");
+  const line = codingSpendLine(tasks);
+  if (line === "") return null;
   return (
     <p className="px-4 pb-2 font-mono text-[10px] text-muted-foreground" data-coding-spend>
       {line}
     </p>
   );
+}
+
+/** {@link CodingSpend}'s line, or `""` when no task has reported spend. Exported for its tests. */
+export function codingSpendLine(tasks: readonly BoardTask[]): string {
+  const spent = tasks.flatMap((t) => (t.spend === undefined ? [] : [t.spend]));
+  if (spent.length === 0) return "";
+  const tokens = spent.reduce((sum, s) => sum + (s.inputTokens ?? 0) + (s.outputTokens ?? 0), 0);
+  const charged = spent.filter((s) => s.costUsd != null);
+  const cost = charged.reduce((sum, s) => sum + (s.costUsd ?? 0), 0);
+  // Some count still missing, or a source not yet reported: the total is a floor, and says so, as each task's line does.
+  const partial = spent.some((s) => s.unreported || s.inputTokens === null || s.outputTokens === null) ? " (partial)" : "";
+  return [`Coding tasks: ${tokenCount(tokens)} tokens${partial}`, charged.length === 0 ? null : costAmount(cost)].filter(Boolean).join(" · ");
 }

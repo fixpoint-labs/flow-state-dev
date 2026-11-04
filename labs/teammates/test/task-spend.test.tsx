@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { spendAfterWrite } from "@flow-state-dev/orchestration/tasks";
 import { toBoardTask } from "../src/adapter";
 import { App } from "../src/App";
+import { codingSpendLine } from "../src/components/TeammatePanel";
 import { createFixtureLab } from "./fake-lab";
 
 afterEach(() => {
@@ -85,5 +86,26 @@ describe("a board row's spend, as the adapter reads it", () => {
   it("reads none off a row that never ran, or one whose ledger can't be read", () => {
     expect(toBoardTask({ id: "t1", status: "pending", assignee: "teammates.codex", title: "t" }).spend).toBeUndefined();
     expect(toBoardTask({ id: "t2", status: "completed", assignee: "teammates.codex", title: "t", spend: { requests: "not a list" } }).spend).toBeUndefined();
+  });
+});
+
+describe("the panel's coding-task total", () => {
+  const view = (inputTokens: number | null, outputTokens: number | null, costUsd: number | null, unreported = false) => ({
+    harness: "codex",
+    model: "gpt-5.5-codex",
+    inputTokens,
+    outputTokens,
+    costUsd,
+    unreported,
+    live: false,
+  });
+  const task = (spend?: ReturnType<typeof view>) => toBoardTask({ id: "t", status: "completed", assignee: "teammates.codex", title: "t", ...(spend ? { spend } : {}) });
+
+  it("says partial when a task's count is still missing a source, so a floor never reads as the whole", () => {
+    expect(codingSpendLine([task(view(1_000, 200, 0.1)), task(view(2_000, null, null, true))])).toBe("Coding tasks: 3.2k tokens (partial) · $0.10");
+  });
+
+  it("is empty until some task reports spend", () => {
+    expect(codingSpendLine([task()])).toBe("");
   });
 });
