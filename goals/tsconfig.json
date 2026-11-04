@@ -8,7 +8,13 @@
     "composite": false,
     "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
-    "types": ["node"]
+    "types": ["node"],
+    // Runners import Shift Manager's `src/lib`, which reaches its registry
+    // copies; those import `@/…` (its components.json aliases). Same mapping
+    // as packages/shift-manager/tsconfig.json, and the same cost: setting
+    // `paths` replaces the base's source mappings, so workspace packages
+    // resolve through their package exports (built first by turbo's `^build`).
+    "paths": { "@/*": ["../packages/shift-manager/src/*"] }
   },
   "include": ["lib/**/*.mts", "**/run.mts", "_template/*.mts", "harness-manager/host.mts"],
   "exclude": ["node_modules", "**/harness.mts"]
