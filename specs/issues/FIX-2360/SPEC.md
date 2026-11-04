@@ -160,7 +160,7 @@ new way. It changes the closest one.
 
 | Adds | Considered first | Why it doesn't fit, or how it's composed |
 |---|---|---|
-| Room kept at the feed's end | The feed's own bottom padding in each app | Each app would compute it, four times. The hook already measures the feed |
+| Room kept at the feed's end | The feed's own bottom padding in each app; the ui registry's `RequestGroupRenderer`, which already gives the last request group a `min-height` (`70dvh`) for the same reason | Each app would compute it, four times. The hook already measures the feed. The registry's tail `min-height` is the same technique in a copied component the four apps don't render, so it is the precedent, not a piece to import |
 | A way for the app to mark its line | The hook's `bringNext` guess (first element added after `sent()`) | The Teammates lab adds *"… is answering"* first, and Shift Manager draws the line only on a re-read, so the guess picks the wrong element |
 | User-scroll detection by input (wheel, touch, keys, pointer) | The current scroll-direction test | A downward scroll by the person reads as the hook's own move |
 
