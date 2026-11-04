@@ -215,7 +215,7 @@ return (
 
 | Option / return | Type | Notes |
 |----------|------|-------|
-| `options.resetKey` | `string \| null` | What the feed shows, such as a session id. A change opens the feed at its end again, with no animation. |
+| `options.resetKey` | `string \| null` | What the feed shows, such as a session id. A change opens the feed at its end again, with no animation. A key that arrives where there was none (`null`) while a send waits for its line doesn't reopen the feed: that conversation is the one the send created, and the line still rises. |
 | `options.startAtEnd` | `boolean` | Open at the end. Default `true`; `false` opens where the element starts, for a feed with a lead above its turns, and ignores `resetKey` changes. |
 | `ref` | `(node: HTMLElement \| null) => void` | Attach to the scrolling element. |
 | `mine(key)` | `(key: string) => SentLineMark` | Returns `{ "data-sent-line": key }`. Spread it on each of the person's own lines. `key` should stay the same while the line redraws, such as its id. Put it on an element with a box of its own, not a `display: contents` wrapper. |

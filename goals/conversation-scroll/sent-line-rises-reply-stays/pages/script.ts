@@ -109,6 +109,11 @@ export const script = {
       }, ECHO_MS);
     });
   },
+  /** A conversation with nothing in it yet, as one a first line opens. */
+  create(key: string): void {
+    conversations.set(key, { key, lines: [], running: false });
+    changed();
+  },
   get open(): string {
     return open;
   },

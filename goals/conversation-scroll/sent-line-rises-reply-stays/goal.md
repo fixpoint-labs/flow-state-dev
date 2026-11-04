@@ -7,7 +7,7 @@
 **Input:** each app's own conversation views, built by the app's own Vite config from a scratch copy of its source, with the goal's page (`pages/`) as the entry. The page mounts the app's real components with the app's stylesheet, and replaces only the data source with a script (`pages/script.ts`): two conversations of 28 earlier lines each, a send that lands the person's line 150 ms later (as a server's echo does), then a reply that streams one sentence every 70 ms. A short reply is two chunks; a long one is 72 sentences, a few screens. A line that isn't the person's is a 30-sentence block.
 
 - **DevTool**: `StreamView`. Each line sent is a request named by the line, as the panel dispatches an action; a send counts in `sends` first and its request lands after. A switch remounts the workspace by the session's key, as the panel does.
-- **Shift Manager**: `Conversation` (sends through its own composer) and `TaskSession`. Its reads, the task and the send (`src/lib/{lab-data,conversation,send,task,run}`) are swapped at build time for `pages/shift-manager/fakes/`, which keep every other export of the real module. The task session's composer is the task frame's, so a send is counted in the task's `sent`, as that composer does.
+- **Shift Manager**: `Conversation` (sends through its own composer) and `TaskSession`. A second `Conversation` (`first-send`) has no conversation until its first line opens one: `ensure` sets the new session's id before the line lands, as the real one does. Its reads, the task and the send (`src/lib/{lab-data,conversation,send,task,run}`) are swapped at build time for `pages/shift-manager/fakes/`, which keep every other export of the real module. The task session's composer is the task frame's, so a send is counted in the task's `sent`, as that composer does.
 - **Claude Code-style**: `Thread` and `ThreadView` (send through their own composers) and `Sheet`, the task panel, which never sends.
 - **Teammates**: `Conversation` (sends through its own composer) and `SessionPopup`, which never sends.
 
@@ -19,8 +19,9 @@
 - **c**: a wheel turn over the feed mid-reply, then `scrollTop` moves no more than 1 px for the rest of the reply.
 - **d**: at the end (reached by the arrow), a line that isn't the person's lands: `scrollTop` stays, and the arrow shows.
 - **e**: from scrolled up, a switch to the other conversation: every frame that draws it, for 40 frames, is at its end (2 px).
+- **f** (`first-send` only): a first line into a conversation the send creates, with a long reply: the line lands 0 to 48 px below the feed's top, then `scrollTop` moves no more than 1 px as the reply grows past the bottom edge, and the arrow shows.
 
-The views that never send have b, d and e only.
+The views that never send have b, d and e only; `first-send` has f only.
 
 **Anti-game:** nothing reads the hook's return values or counts `scrollTo` calls. The line is found by a fresh token in its text. Each app builds from its own config, so its own CSS lays the feed out. The page replaces data, not views.
 
@@ -30,8 +31,9 @@ The views that never send have b, d and e only.
 
 **Controls:** `GOAL_CONTROL=<name>` on the same command. Each serves `useJumpToLatest` patched in every page's build (`build.mts`), and must fail exactly its own signals on every surface that has them; any other red, or one of its signals green, is reported as `WRONG:`.
 
-- `main-rule`: the hook as it was on `main` before this change (581142fb), plus a `mine` that only sets the attribute. A send goes to the end. Must fail **a.short** and **a.long** on all six surfaces that send.
-- `no-reserve`: the hook keeps no space under the sent line. Must fail **a.short** and **a.long** on all six surfaces that send. The spec expected the short reply only; the person's line lands before its reply starts, so with no space it can't rise under either length.
+- `main-rule`: the hook as it was on `main` before this change (581142fb), plus a `mine` that only sets the attribute. A send goes to the end. Must fail **a.short** and **a.long** on all six surfaces that send, and **f**: the first send's conversation reopens at its end and the reply scrolls the view.
+- `no-reserve`: the hook keeps no space under the sent line. Must fail **a.short** and **a.long** on all six surfaces that send. The spec expected the short reply only; the person's line lands before its reply starts, so with no space it can't rise under either length. Must fail **f** too: with no space under it, the first line can't rise (64 px down against 44 px).
+- `key-reset`: the hook reopens the feed when a key arrives where there was none while a send waits, as a switch does. Must fail **f**.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -41,3 +43,7 @@ The views that never send have b, d and e only.
 | 2026-11-04 | dabee4a3 | n/a | FAIL (expected) | `no-reserve`: a.short and a.long red on all six sending surfaces, every other signal green |
 | 2026-11-04 | b9a505ad + working tree | n/a | PASS | all 42 signals on 8 surfaces after the short-feed space, attach-time shown lines and typed-key fixes. Risen line 16–33px below the feed's top |
 | 2026-11-04 | (same tree) | n/a | FAIL (expected) | `no-reserve`: a.short and a.long red on all six sending surfaces (441–709px down), no `WRONG:` |
+| 2026-11-04 | a3e122cb + working tree | n/a | PASS | all 43 signals on 9 surfaces, with the new `shift-manager/first-send` leg: the first line 44px below the feed's top, scrollTop moved 0px while the long reply grew, arrow shown |
+| 2026-11-04 | (same tree) | n/a | FAIL (expected) | `key-reset`: f red (the line 64px down, scrollTop moved 19px as the reply grew), no `WRONG:` |
+| 2026-11-04 | (same tree) | n/a | FAIL (expected) | `main-rule`: a.short and a.long red on all six sending surfaces, f red (64px, moved 19px), no other red |
+| 2026-11-04 | (same tree) | n/a | FAIL (expected) | `no-reserve`: a.short and a.long red on all six sending surfaces, f red (64px), no other red |

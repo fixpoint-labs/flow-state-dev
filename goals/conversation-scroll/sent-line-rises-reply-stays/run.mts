@@ -10,6 +10,7 @@
  *   devtool/stream                   DevTool's stream view
  *   shift-manager/conversation       Shift Manager's conversation
  *   shift-manager/task-session       a task's Session tab
+ *   shift-manager/first-send         a first line into a conversation the send creates (f only)
  *   claude-code-style/thread         the Claude Code-style lab's main thread
  *   claude-code-style/task-thread    a task's thread
  *   claude-code-style/task-panel     the task panel's sheet (never sends: b, d, e)
@@ -24,9 +25,11 @@
  *   c        a wheel scroll mid-reply, then no move for the rest of it
  *   d        a line that isn't the person's lands: `scrollTop` stays, and the arrow shows
  *   e        a switch to the other conversation is at its end on every frame it is drawn, from the first
+ *   f        a first send that creates its conversation: the line lands near the top, and the long reply
+ *            grows past the bottom edge with `scrollTop` moving no more than 1px, and the arrow shows
  *
  * Run:     PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/conversation-scroll/sent-line-rises-reply-stays/run.mts
- * Control: GOAL_CONTROL=main-rule | no-reserve, same command (goal.md → Controls).
+ * Control: GOAL_CONTROL=main-rule | no-reserve | key-reset, same command (goal.md → Controls).
  */
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
@@ -45,12 +48,14 @@ const NEAR_TOP = 48;
 
 // ---- the controls ----------------------------------------------------------------
 
-type Signal = "a.short" | "a.long" | "b" | "c" | "d" | "e";
+type Signal = "a.short" | "a.long" | "b" | "c" | "d" | "e" | "f";
 /** Each control serves the hook patched (`build.mts`) and must fail exactly these signals, on every surface that has them. */
 const CONTROLS: Record<string, { why: string; fails: Signal[] }> = {
-  "main-rule": { why: "useJumpToLatest as it was before this change (581142fb): a send goes to the end", fails: ["a.short", "a.long"] },
+  "main-rule": { why: "useJumpToLatest as it was before this change (581142fb): a send goes to the end", fails: ["a.short", "a.long", "f"] },
   // The person's line lands before its reply starts, so with no space it can't reach the top under either length.
-  "no-reserve": { why: "useJumpToLatest keeps no space under the sent line", fails: ["a.short", "a.long"] },
+  "no-reserve": { why: "useJumpToLatest keeps no space under the sent line", fails: ["a.short", "a.long", "f"] },
+  // The conversation's id arriving before its first line reopens the feed, as if switched to: the reply scrolls as history.
+  "key-reset": { why: "useJumpToLatest reopens on a key that arrives while a send waits", fails: ["f"] },
 };
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(CONTROLS).join(", ")}`);
@@ -67,10 +72,19 @@ const APPS: App[] = [
 
 /** How a surface sends: through its own composer, or as the app learns of a send from elsewhere (`goal.send`). */
 type Send = { composer: string; key: string } | "goal" | "none";
-type Surface = { id: string; app: string; query: string; feed: string; send: Send };
+/** `first`: the send creates the conversation, so the feed's key arrives after the send and before its line. */
+type Surface = { id: string; app: string; query: string; feed: string; send: Send; first?: true };
 const SURFACES: Surface[] = [
   { id: "devtool/stream", app: "devtool", query: "stream", feed: ".overflow-auto.bg-fs-surface", send: "goal" },
   { id: "shift-manager/conversation", app: "shift-manager", query: "conversation", feed: '[data-testid="conversation-feed"]', send: { composer: '[data-testid="conversation-composer-input"]', key: "Enter" } },
+  {
+    id: "shift-manager/first-send",
+    app: "shift-manager",
+    query: "first-send",
+    feed: '[data-testid="conversation-feed"]',
+    send: { composer: '[data-testid="conversation-composer-input"]', key: "Enter" },
+    first: true,
+  },
   { id: "shift-manager/task-session", app: "shift-manager", query: "task-session", feed: '[data-testid="session"]', send: "goal" },
   { id: "claude-code-style/thread", app: "claude-code-style", query: "thread", feed: 'main[aria-label="Main thread"] .overflow-y-auto', send: { composer: '[aria-label="Message the main session"]', key: "Enter" } },
   { id: "claude-code-style/task-thread", app: "claude-code-style", query: "task-thread", feed: "aside .overflow-y-auto", send: { composer: '[aria-label="Message this task"]', key: "ControlOrMeta+Enter" } },
@@ -221,6 +235,22 @@ async function runSurface(browser: Browser, origin: string, surface: Surface): P
     await settled(page, surface.feed);
     const stamp = Date.now().toString(36);
 
+    if (surface.first) {
+      // f: the first line, into a conversation that doesn't exist until the send opens it; a reply of a few screens.
+      await goal(page, "reply", "long");
+      const first = `goal line ${stamp} first`;
+      await send(page, surface, first);
+      const r = await landed(page, surface, first);
+      const { drift, last } = await driftUntilDone(page, surface.feed, r.top);
+      const below = last.height - last.top - last.view > 40;
+      grade(
+        "f",
+        nearTop(r) && drift <= 1 && last.arrow && below,
+        `landed: ${where(r)}; scrollTop moved ${drift.toFixed(1)}px while the reply grew; ${below ? "content below the view" : "no content below the view"}; arrow ${last.arrow ? "shown" : "not shown"}`,
+      );
+      return out;
+    }
+
     if (surface.send !== "none") {
       // a.short: from the end, a two-line reply.
       await goal(page, "reply", "short");
@@ -335,7 +365,7 @@ await runGoal(async (failures) => {
         failures.push(`${surface.id} setup: ${(error as Error).message.slice(0, 600)}`);
         continue;
       }
-      const signals: Signal[] = surface.send === "none" ? ["b", "d", "e"] : ["a.short", "a.long", "b", "c", "d", "e"];
+      const signals: Signal[] = surface.first ? ["f"] : surface.send === "none" ? ["b", "d", "e"] : ["a.short", "a.long", "b", "c", "d", "e"];
       for (const signal of signals) {
         const v = verdicts.get(signal) ?? { pass: false, note: "never ran" };
         const line = `${surface.id} ${signal} ${v.pass ? "PASS" : "FAIL"} ${v.note}`;

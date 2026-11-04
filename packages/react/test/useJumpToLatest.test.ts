@@ -44,8 +44,8 @@ function Feed({
   /** A text field inside the feed, after its lines, such as a composer that scrolls with the conversation. */
   composer?: boolean;
   startAtEnd?: boolean;
-  /** What the feed shows; a change is a different thing to open at the end of. */
-  resetKey?: string;
+  /** What the feed shows; a change is a different thing to open at the end of. `null`: no conversation yet. */
+  resetKey?: string | null;
   /** A new value replaces the scrolling element itself, with the same content. */
   elementKey?: string;
 }) {
@@ -367,6 +367,19 @@ describe("sending a line", () => {
     expect(screen.getByTestId("feed").scrollTop).toBe(30 * LINE - VIEW);
   });
 
+  it("brings up the first line of a conversation the send itself creates, though the key arrives before the line", async () => {
+    // Nothing to show yet (`null`), then the send opens the conversation: its id lands before its first line does.
+    const { rerender } = await opened(20, { resetKey: null });
+    act(() => feed.sent());
+    rerender(feedElement({ lines: 20, resetKey: "created" }));
+    await settle();
+    rerender(feedElement({ lines: 21, mine: [20], resetKey: "created" }));
+    await settle();
+    expect(moves.at(-1)?.behavior).toBe("smooth");
+    expect(nearTop(20)).toBe(true);
+    expect(space(screen.getByTestId("feed"))).toBeGreaterThan(0);
+  });
+
   it("drops the space on switching to another conversation, which opens at its end", async () => {
     const { rerender } = await opened(20, { resetKey: "a" });
     act(() => feed.sent());
@@ -426,6 +439,15 @@ describe("opening a conversation", () => {
     await nextFrame();
     await nextFrame();
     rerender(feedElement({ lines: 30, resetKey: "b" }));
+    await settle();
+    expect(screen.getByTestId("feed").scrollTop).toBe(30 * LINE - VIEW);
+    expect(moves.every((m) => m.behavior === "instant")).toBe(true);
+  });
+
+  it("opens at the end of a conversation that arrives where there was none, when no send waits for it", async () => {
+    const { rerender } = await opened(20, { resetKey: null });
+    scrollTo(0);
+    rerender(feedElement({ lines: 30, resetKey: "found" }));
     await settle();
     expect(screen.getByTestId("feed").scrollTop).toBe(30 * LINE - VIEW);
     expect(moves.every((m) => m.behavior === "instant")).toBe(true);

@@ -49,7 +49,9 @@ export type JumpToLatestOptions = {
    * What the feed shows, such as a session id. When it changes, a feed that
    * starts at the end opens at the end again, instantly, whatever the reader
    * had scrolled to in the last one. Replacing the scrolling element with the
-   * same key leaves the reader where they were.
+   * same key leaves the reader where they were. A key that arrives where there
+   * was none (`null`) while a send waits for its line is the conversation that
+   * send created: the line still rises.
    */
   resetKey?: string | null;
 };
@@ -89,7 +91,7 @@ function scrollToTop(el: HTMLElement, top: number, behavior: "instant" | "smooth
 const mine = (key: string): SentLineMark => ({ [MINE]: key });
 
 /** What the scrolling element's hook does, for the calls that come from outside its effect. */
-type Feed = { sent: () => void; jump: () => void; reset: () => void };
+type Feed = { sent: () => void; jump: () => void; reset: () => void; waiting: () => boolean };
 
 /**
  * Keep the scrolling element `ref` is attached to where the reader put it,
@@ -310,6 +312,7 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
         dropSpace();
         scrollToTop(node, node.scrollHeight, "instant");
       },
+      waiting: () => waiting,
     };
     return () => {
       feed.current = undefined;
@@ -332,8 +335,11 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
   const shownKey = useRef(options.resetKey);
   useLayoutEffect(() => {
     if (shownKey.current === options.resetKey) return;
+    const was = shownKey.current;
     shownKey.current = options.resetKey;
     if (!startAtEnd) return;
+    // No conversation, then one, while a send waits: the send created it, and its line is still to rise.
+    if (was == null && feed.current?.waiting()) return;
     opening.current = true;
     setAtEnd(true);
     // Not closed here: what the element holds may still be the last conversation. The new one's content closes it.

@@ -428,7 +428,7 @@ return (
 - `atEnd`: `false` when there is content below the view (more than 32 px). Show a jump-to-latest button then.
 - `jump()`: scrolls smoothly to the end of the content.
 - `startAtEnd` (default `true`): `false` opens where the element starts, such as a feed with a lead above its turns. Such a feed ignores `resetKey` changes.
-- `resetKey`: what the feed shows, such as a session id. A change opens the feed at its end again. Replacing the scrolling element under the same key leaves the reader where they were.
+- `resetKey`: what the feed shows, such as a session id. A change opens the feed at its end again. Replacing the scrolling element under the same key leaves the reader where they were. A key that arrives where there was none (`null`) while a send waits for its line is the conversation that send created: the feed doesn't reopen, and the line still rises.
 
 So the line can reach the top under a short reply, the hook keeps space at the end of the feed, as bottom padding on the scrolling element. The space shrinks as the reply grows and is gone once the reply fills the view. Otherwise it stays until the next send, or until the feed opens or switches, so a short reply has blank space under it. `atEnd` and `jump()` ignore the space.
 

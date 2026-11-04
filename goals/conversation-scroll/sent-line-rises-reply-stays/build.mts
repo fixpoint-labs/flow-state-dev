@@ -43,6 +43,12 @@ function patchedHook(): string | undefined {
     if (!source.includes(from)) throw new Error(`no-reserve: the hook has no "${from}"`);
     return source.replace(from, "return;");
   }
+  if (control === "key-reset") {
+    const source = readFileSync(HOOK, "utf8");
+    const from = "if (was == null && feed.current?.waiting()) return;";
+    if (!source.includes(from)) throw new Error(`key-reset: the hook has no "${from}"`);
+    return source.replace(from, "");
+  }
   return undefined;
 }
 
