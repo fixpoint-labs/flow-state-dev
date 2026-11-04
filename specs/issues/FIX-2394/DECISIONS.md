@@ -62,6 +62,18 @@ It comes down to the row: no step count exists, and FIX-2164 may not need to add
 
 It comes down to a retried task: the task's clock counts failed attempts as this one's work.
 
+<a name="owners-with-4717"></a>
+## Owners, with #4717 (FIX-2395, FIX-2397)
+
+FSD Architect's coherence check on this PR found three overlaps. Each one now has a single owner.
+
+| What | Owner | The other spec |
+|---|---|---|
+| A running row's clock, and *quiet* | `task-signals` (here), from `run.startedAt` ([D2](#d2)) | #4717 drops its running-row timer. If it lands one first, this PR replaces it |
+| Per-state counts in a heading | `task-signals`' `taskCounts` (here) | #4717's heading shows the item's count. A plain total like `Tasks (32)` can stay beside it |
+| A row's word and tone | `lib/task-state.ts` (#4717) in Teammates; `lib/task-status.ts` in Claude Code-style | Each reads the item's signal for the warning tone of *quiet*. The item picks no tone itself |
+| Task-level times on `listTasks` rows | #4717 D1 | Right: they are null today (the POC). The signals here read `updatedAt` and `run.startedAt`, which rows already carry. Only the `task-clock` control needs #4717 D1 |
+
 ## Decided, not asked
 
 - **A registry item, `task-signals`** (epic D4). It is display, so it doesn't go in a package export.
@@ -114,3 +126,6 @@ Weigh it accordingly.
 - **Draft** — the issue's two halves were split on what a `listTasks` row carries, checked by a
   POC. The heartbeat finding re-framed *quiet*. The clock ships from the run link, the pill stays
   FIX-2164's, and one registry item serves both labs.
+- **Review, round 1** — FSD Architect's coherence check against #4717 gave each overlap one owner
+  ([Owners](#owners-with-4717)). It confirmed #4717 D1's null-times claim and narrowed this spec's
+  dependency on it to one control.

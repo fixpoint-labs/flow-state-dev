@@ -76,8 +76,11 @@ already carries. No orchestration or harness code changes.
 - **Claude Code-style.** `TaskRow` gains `state` (`taskRowView`, ER-4), `runStartedAt` and
   `keptOpen`. `TaskCard`, `TaskDoneRow` and `ThreadsBoard` draw `TaskTime`. `ThreadsBoard`'s
   `age(updatedAt)` goes, since it always read `now` on running rows.
-- **Teammates.** `BoardTask` gains the same fields. FIX-2395's panel row and heading draw the item.
-  FIX-2395's own elapsed time is deleted (ER-3).
+- **Teammates.** `BoardTask` gains the same fields. The panel's running rows and heading draw the
+  item. `lib/task-state.ts` (FIX-2395) stays the one place that picks a row's word and tone, and it
+  reads the item's signal for *quiet*. If #4717 lands a running-row clock or a per-state count of
+  its own first, this change replaces them in the same PR (ER-3). The owners are in
+  [DECISIONS](DECISIONS.md#owners-with-4717).
 - **Docs:** a `task-signals` row in `packages/ui/README.md`'s registry table; both lab READMEs say
   what a row's time and *quiet* mean. No site page describes these rows.
 
@@ -93,8 +96,9 @@ already carries. No orchestration or harness code changes.
 | `listTasks` rows: `updatedAt`, `run.startedAt`, `keptOpenBy` | **Builds on.** The [POC](poc/row-fields/) re-derives them |
 | The lease heartbeat (`startLeaseRenewal`, lease ÷ 3) | **Builds on.** It is why `updatedAt` means *alive* |
 | `taskRowView` (FIX-2379), `spend`'s `durationText` | **Reused** for state and format |
-| FIX-2395's Teammates elapsed time (#4717) | **Superseded**: lifted, and started at the attempt ([D2](DECISIONS.md#d2)) |
-| FIX-2168 (start and end on rows) · FIX-2164 (steps) | Not needed (FIX-2395 adds those fields) · left to it ([D1](DECISIONS.md#d1)) |
+| #4717 (FIX-2395): a running-row clock, a heading count, `task-state.ts` | **Owners split** ([DECISIONS](DECISIONS.md#owners-with-4717)): clock, quiet and counts here; word and tone there |
+| #4717 D1: task-level `createdAt`, `startedAt`, `completedAt` on `listTasks` rows | **Correct, and not a dependency of the signals.** They are absent today (the POC). Only the `task-clock` control reads `startedAt` from them |
+| FIX-2168 (start and end on rows) · FIX-2164 (steps) | Closed by #4717 D1 · left to it ([D1](DECISIONS.md#d1)) |
 
 **The job is *say a thing has gone silent*, and this is the fourth way, each on its own noun.**
 Searches for `stuck`, `stall`, `stale`, `quiet` and `lastActive` found the engine's stale-request
