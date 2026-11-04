@@ -3,8 +3,9 @@
  * New content never moves a conversation: the reader may be reading, at the
  * end or further up, and a reply streaming in used to drag them along. What
  * arrives below turns `atEnd` off so the app can offer a jump to it. Opening a
- * conversation still lands at its end, with nothing animating, and a line the
- * person sends takes them to the end with it.
+ * conversation still lands at its end, with nothing animating. A line the
+ * person sends rises to near the top, with room kept under it, so its reply
+ * streams in where they can read it instead of below the fold.
  */
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { createElement } from "react";
@@ -31,8 +32,14 @@ function Feed({
   startAtEnd,
   resetKey,
   elementKey,
+  mine = [],
+  status,
 }: {
   lines: number;
+  /** The lines, by index, that are the person's own: marked with {@link JumpToLatest.mine}. */
+  mine?: number[];
+  /** A line that isn't anyone's, drawn last, such as "… is answering". */
+  status?: boolean;
   startAtEnd?: boolean;
   /** What the feed shows; a change is a different thing to open at the end of. */
   resetKey?: string;
@@ -48,7 +55,8 @@ function Feed({
       "data-testid": "feed",
       ref: (node: HTMLDivElement | null) => ref(node && layOut(node)),
     },
-    Array.from({ length: lines }, (_, i) => createElement("p", { key: i }, `line ${i}`)),
+    ...Array.from({ length: lines }, (_, i) => createElement("p", { key: i, ...(mine.includes(i) ? feed.mine(`line ${i}`) : {}) }, `line ${i}`)),
+    status ? createElement("p", { key: "status" }, "answering") : null,
   );
 }
 
@@ -58,7 +66,7 @@ function layOut(node: HTMLElement): HTMLElement {
   let top = 0;
   Object.defineProperties(node, {
     clientHeight: { get: () => VIEW },
-    scrollHeight: { get: () => Math.max(VIEW, node.querySelectorAll("p").length * LINE) },
+    scrollHeight: { get: () => Math.max(VIEW, node.querySelectorAll("p").length * LINE + room(node)) },
     scrollTop: { get: () => top, set: (v: number) => (top = Math.max(0, Math.min(v, node.scrollHeight - VIEW))) },
   });
   // A smooth scroll lands at once here: what the tests read is how it was asked for.
@@ -67,6 +75,29 @@ function layOut(node: HTMLElement): HTMLElement {
     node.scrollTop = options.top ?? 0;
   }) as typeof node.scrollTo;
   return node;
+}
+
+/** The space the hook keeps below the last line, as the bottom padding it set. */
+const room = (node: HTMLElement) => Number.parseFloat(node.style.paddingBottom) || 0;
+
+// Each line's box, as a browser lays it out: 40px tall, stacked, moved up by the feed's scroll. The feed's own top is 0.
+HTMLParagraphElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+  const feedNode = this.parentElement!;
+  const top = Array.from(feedNode.querySelectorAll("p")).indexOf(this as HTMLParagraphElement) * LINE - feedNode.scrollTop;
+  return { top, bottom: top + LINE, left: 0, right: 100, width: 100, height: LINE, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
+};
+
+/** Where line `i`'s top sits below the feed's top edge, in pixels. */
+const lineTop = (i: number) => screen.getByText(`line ${i}`).getBoundingClientRect().top;
+
+/** The person turns the wheel over the feed, then the feed scrolls to `top`. */
+function wheelTo(top: number) {
+  const el = screen.getByTestId("feed");
+  act(() => {
+    el.dispatchEvent(new Event("wheel"));
+    el.scrollTop = top;
+    el.dispatchEvent(new Event("scroll"));
+  });
 }
 
 const feedElement = (props: Parameters<typeof Feed>[0]) => createElement(Feed, props);
@@ -124,7 +155,7 @@ describe("new content in a conversation", () => {
     await settle();
     expect(feed.atEnd).toBe(false);
     act(() => feed.jump());
-    expect(moves.at(-1)).toEqual({ behavior: "smooth", top: 23 * LINE });
+    expect(moves.at(-1)).toEqual({ behavior: "smooth", top: 23 * LINE - VIEW });
     expect(screen.getByTestId("feed").scrollTop).toBe(23 * LINE - VIEW);
     expect(feed.atEnd).toBe(true);
     // Back at the end is no promise to follow: the next line still stays below.
@@ -143,36 +174,107 @@ describe("new content in a conversation", () => {
     scrollTo(22 * LINE - VIEW);
     expect(feed.atEnd).toBe(true);
   });
+});
 
-  it("takes the person to the end when they send a line, and brings the line they sent into view", async () => {
+/** The line's top is near the feed's top: below the edge, by no more than the goal check's 48px. */
+const nearTop = (i: number) => {
+  const top = lineTop(i);
+  return top >= 0 && top <= 48;
+};
+
+describe("sending a line", () => {
+  it("brings the line the person sent near the top, wherever they had scrolled to, and keeps room under a short reply", async () => {
     const { rerender } = await opened(20);
     scrollTo(0);
     act(() => feed.sent());
-    expect(moves.at(-1)?.behavior).toBe("smooth");
-    expect(screen.getByTestId("feed").scrollTop).toBe(20 * LINE - VIEW);
-    // The sent line lands below the end it jumped to: brought in.
-    rerender(feedElement({ lines: 21 }));
+    rerender(feedElement({ lines: 21, mine: [20] }));
     await settle();
-    expect(screen.getByTestId("feed").scrollTop).toBe(21 * LINE - VIEW);
-    expect(feed.atEnd).toBe(true);
-    // Then the reply: it stays below.
+    expect(moves.at(-1)?.behavior).toBe("smooth");
+    expect(nearTop(20)).toBe(true);
+    // A reply shorter than the view: the line stays where it rose to, and the room under the reply is not "more below".
     moves.length = 0;
-    rerender(feedElement({ lines: 23 }));
+    rerender(feedElement({ lines: 22, mine: [20] }));
     await settle();
     expect(moves).toEqual([]);
+    expect(nearTop(20)).toBe(true);
+    expect(feed.atEnd).toBe(true);
+  });
+
+  it("does not move as the reply grows past the bottom edge, and offers the jump to it", async () => {
+    const { rerender } = await opened(20);
+    act(() => feed.sent());
+    rerender(feedElement({ lines: 21, mine: [20] }));
+    await settle();
+    const top = screen.getByTestId("feed").scrollTop;
+    moves.length = 0;
+    rerender(feedElement({ lines: 30, mine: [20] }));
+    await settle();
+    expect(moves).toEqual([]);
+    expect(screen.getByTestId("feed").scrollTop).toBe(top);
     expect(feed.atEnd).toBe(false);
   });
 
-  it("counts a sent line that lands already in view as brought in: the reply after it stays below", async () => {
-    const { rerender } = await opened(1);
+  it("jumps to the reply's end, not into the room kept under it", async () => {
+    const { rerender } = await opened(20);
     act(() => feed.sent());
-    rerender(feedElement({ lines: 2 }));
+    rerender(feedElement({ lines: 21, mine: [20] }));
     await settle();
-    moves.length = 0;
-    rerender(feedElement({ lines: 5 }));
+    // No reply yet: all that is under the line is the room.
+    act(() => feed.jump());
+    // The last line's bottom is the view's bottom.
+    expect(lineTop(20) + LINE).toBe(VIEW);
+    expect(feed.atEnd).toBe(true);
+  });
+
+  it("brings up the person's line, not a status row drawn before it", async () => {
+    const { rerender } = await opened(20);
+    act(() => feed.sent());
+    rerender(feedElement({ lines: 20, status: true }));
     await settle();
     expect(moves).toEqual([]);
-    expect(screen.getByTestId("feed").scrollTop).toBe(0);
+    rerender(feedElement({ lines: 21, mine: [20], status: true }));
+    await settle();
+    expect(nearTop(20)).toBe(true);
+  });
+
+  it("brings up a line already drawn when the send is learned of after it, as an effect does", async () => {
+    const { rerender } = await opened(20);
+    rerender(feedElement({ lines: 21, mine: [20] }));
+    act(() => feed.sent());
+    await settle();
+    expect(nearTop(20)).toBe(true);
+  });
+
+  it("does not bring up an earlier line of the person's that was already on screen", async () => {
+    const { rerender } = await opened(21, { mine: [10] });
+    scrollTo(0);
+    act(() => feed.sent());
+    await settle();
+    await nextFrame();
+    expect(moves).toEqual([]);
+    rerender(feedElement({ lines: 22, mine: [10, 21] }));
+    await settle();
+    expect(nearTop(21)).toBe(true);
+  });
+
+  it("does not move once the person scrolls, down as well as up, before the line lands", async () => {
+    const { rerender } = await opened(20);
+    scrollTo(0);
+    act(() => feed.sent());
+    wheelTo(200);
+    moves.length = 0;
+    rerender(feedElement({ lines: 21, mine: [20] }));
+    await settle();
+    expect(moves).toEqual([]);
+    expect(screen.getByTestId("feed").scrollTop).toBe(200);
+  });
+
+  it("counts a scroll the person makes with the wheel as theirs: the view is no longer at the end", async () => {
+    const { rerender } = await opened(20);
+    act(() => feed.sent());
+    rerender(feedElement({ lines: 21, mine: [20] }));
+    await settle();
+    wheelTo(0);
     expect(feed.atEnd).toBe(false);
   });
 
@@ -194,15 +296,17 @@ describe("new content in a conversation", () => {
     expect(screen.getByTestId("feed").scrollTop).toBe(30 * LINE - VIEW);
   });
 
-  it("forgets the line it was to bring in once the reader scrolls up to read", async () => {
-    const { rerender } = await opened(20);
+  it("drops the room on switching to another conversation, which opens at its end", async () => {
+    const { rerender } = await opened(20, { resetKey: "a" });
     act(() => feed.sent());
-    scrollTo(100);
-    moves.length = 0;
-    rerender(feedElement({ lines: 21 }));
+    rerender(feedElement({ lines: 21, mine: [20], resetKey: "a" }));
     await settle();
-    expect(moves).toEqual([]);
-    expect(screen.getByTestId("feed").scrollTop).toBe(100);
+    moves.length = 0;
+    rerender(feedElement({ lines: 30, resetKey: "b" }));
+    await settle();
+    expect(screen.getByTestId("feed").style.paddingBottom).toBe("");
+    expect(screen.getByTestId("feed").scrollTop).toBe(30 * LINE - VIEW);
+    expect(moves.every((m) => m.behavior === "instant")).toBe(true);
   });
 });
 
@@ -264,7 +368,7 @@ describe("opening a conversation", () => {
     expect(screen.getByTestId("feed").scrollTop).toBe(0);
   });
 
-  it("opened at the start, stays there as lines arrive, and goes to the end with the person's own line", async () => {
+  it("opened at the start, stays there as lines arrive, and brings the person's own line near the top", async () => {
     const { rerender } = await opened(5, { startAtEnd: false });
     const el = screen.getByTestId("feed");
     expect(el.scrollTop).toBe(0);
@@ -272,9 +376,9 @@ describe("opening a conversation", () => {
     await settle();
     expect(el.scrollTop).toBe(0);
     act(() => feed.sent());
-    rerender(feedElement({ lines: 7, startAtEnd: false }));
+    rerender(feedElement({ lines: 7, startAtEnd: false, mine: [6] }));
     await settle();
-    expect(el.scrollTop).toBe(7 * LINE - VIEW);
+    expect(nearTop(6)).toBe(true);
   });
 
   it("does not open at the end for a changed key when it opens at the start", async () => {

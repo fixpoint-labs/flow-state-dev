@@ -92,7 +92,7 @@ export function Thread({
               ) : (
                 // The request an entry came in on, so a check can tell which turn it landed in.
                 <div key={entry.id} className="contents" data-request-id={entry.requestId}>
-                  <Entry entry={entry} />
+                  <Entry entry={entry} mark={entry.kind === "user" ? feed.mine(entry.id) : undefined} />
                 </div>
               ),
             )}
