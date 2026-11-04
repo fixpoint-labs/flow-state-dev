@@ -29,6 +29,7 @@
  * or not at all, and a write's marker check cannot interleave with a build's
  * begin or completion. The rule is on `ResourceStateIndexes`.
  */
+import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import {
   assertDeleteExpectedVersion,
@@ -164,13 +165,17 @@ export function createSQLiteResourceStateStore(
       "WHERE scope_type = ? AND scope_id = ? AND collection = ? AND index_name = ?"
   );
   const beginBuildStmt = db.prepare(
-    "INSERT INTO resource_index_built (scope_type, scope_id, collection, index_name, status) " +
-      "VALUES (?, ?, ?, ?, 'building') " +
-      "ON CONFLICT (scope_type, scope_id, collection, index_name) DO UPDATE SET status = 'building'"
+    "INSERT INTO resource_index_built (scope_type, scope_id, collection, index_name, status, build_id) " +
+      "VALUES (?, ?, ?, ?, 'building', ?) " +
+      "ON CONFLICT (scope_type, scope_id, collection, index_name) " +
+      "DO UPDATE SET status = 'building', build_id = excluded.build_id"
   );
+  // Fenced on the build's token, not only the status: a build whose marker a
+  // write cleared must not complete on the marker a later build set.
   const markBuiltStmt = db.prepare(
     "UPDATE resource_index_built SET status = 'built' " +
-      "WHERE scope_type = ? AND scope_id = ? AND collection = ? AND index_name = ? AND status = 'building'"
+      "WHERE scope_type = ? AND scope_id = ? AND collection = ? AND index_name = ? " +
+      "AND status = 'building' AND build_id = ?"
   );
   const findKeysStmt = db.prepare(
     "SELECT resource_key FROM resource_index " +
@@ -213,9 +218,10 @@ export function createSQLiteResourceStateStore(
       scopeId: string,
       collection: string,
       index: string,
+      build: string,
       entries: ResourceIndexBuildEntry[]
     ): boolean => {
-      if (markBuiltStmt.run(scopeType, scopeId, collection, index).changes === 0) return false;
+      if (markBuiltStmt.run(scopeType, scopeId, collection, index, build).changes === 0) return false;
       for (const entry of entries) {
         for (const value of new Set(entry.values)) {
           insertEntryStmt.run(scopeType, scopeId, collection, index, value, entry.key);
@@ -517,12 +523,14 @@ export function createSQLiteResourceStateStore(
         return row.status === "built" ? "built" : "building";
       },
 
-      async beginBuild(scopeType, scopeId, collection, index): Promise<void> {
-        beginBuildStmt.run(scopeType, scopeId, collection, index);
+      async beginBuild(scopeType, scopeId, collection, index): Promise<string> {
+        const build = randomUUID();
+        beginBuildStmt.run(scopeType, scopeId, collection, index, build);
+        return build;
       },
 
-      async completeBuild(scopeType, scopeId, collection, index, entries): Promise<boolean> {
-        return completeBuildTx(scopeType, scopeId, collection, index, entries);
+      async completeBuild(scopeType, scopeId, collection, index, build, entries): Promise<boolean> {
+        return completeBuildTx(scopeType, scopeId, collection, index, build, entries);
       },
 
       async findKeys(scopeType, scopeId, collection, index, value): Promise<string[]> {

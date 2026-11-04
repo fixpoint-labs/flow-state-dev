@@ -442,7 +442,8 @@ const RESOURCE_STATE_INDEXES = [
 // Index entries for resource collections: one row per (row, index, value), so
 // a collection can be looked up by a declared field without reading its rows.
 // Generic on purpose: a new index needs no DDL. The built-marker table records
-// which (scope, collection, index) has finished its first build; `key_regex`
+// which (scope, collection, index) has finished its first build, and `build_id`
+// the token of the build that set it; `key_regex`
 // is the collection pattern as a regular expression, so a write can clear the
 // markers covering its key inside its own statement. Both are kept in step
 // with resource_state by createPostgresResourceStateStore.
@@ -465,6 +466,7 @@ CREATE TABLE IF NOT EXISTS resource_index_built (
   collection    TEXT NOT NULL,
   index_name    TEXT NOT NULL,
   status        TEXT NOT NULL,
+  build_id      TEXT NOT NULL,
   key_regex     TEXT,
   PRIMARY KEY (scope_type, scope_id, collection, index_name)
 );

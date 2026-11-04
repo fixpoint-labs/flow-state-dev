@@ -1343,25 +1343,30 @@ export interface ResourceStateIndexes {
     index: string
   ): Promise<ResourceIndexBuildState>;
 
-  /** Record that a build of `index` has begun in this scope (its state becomes `building`). */
+  /**
+   * Record that a build of `index` has begun in this scope (its state becomes
+   * `building`). Returns the build's token, which `completeBuild` must pass
+   * back: a later `beginBuild` replaces the marker with a new token.
+   */
   beginBuild(
     scopeType: StorageScopeType,
     scopeId: string,
     collection: string,
     index: string
-  ): Promise<void>;
+  ): Promise<string>;
 
   /**
-   * Add `entries` and mark the index `built`, in one commit, only if its
-   * `building` marker is still there. Returns whether it did. When a write
-   * cleared the marker during the scan, nothing is written and the next
-   * lookup builds again.
+   * Add `entries` and mark the index `built`, in one commit, only if the
+   * `building` marker `build` began is still there. Returns whether it did.
+   * When a write cleared that marker during the scan, nothing is written,
+   * even if a later build has begun since; the next lookup builds again.
    */
   completeBuild(
     scopeType: StorageScopeType,
     scopeId: string,
     collection: string,
     index: string,
+    build: string,
     entries: ResourceIndexBuildEntry[]
   ): Promise<boolean>;
 

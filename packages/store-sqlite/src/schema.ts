@@ -425,7 +425,8 @@ CREATE INDEX IF NOT EXISTS idx_resource_state_scope ON resource_state(scope_type
 // Index entries for resource collections: one row per (row, index, value), so
 // a collection can be looked up by a declared field without reading its rows.
 // Generic on purpose: a new index needs no DDL. The built-marker table records
-// which (scope, collection, index) has finished its first build. Both are kept
+// which (scope, collection, index) has finished its first build, and `build_id`
+// the token of the build that set it. Both are kept
 // in step with resource_state by createSQLiteResourceStateStore, inside the
 // row's own transaction.
 const RESOURCE_INDEX_TABLES = `
@@ -445,6 +446,7 @@ CREATE TABLE IF NOT EXISTS resource_index_built (
   collection    TEXT NOT NULL,
   index_name    TEXT NOT NULL,
   status        TEXT NOT NULL,
+  build_id      TEXT NOT NULL,
   PRIMARY KEY (scope_type, scope_id, collection, index_name)
 );
 `;

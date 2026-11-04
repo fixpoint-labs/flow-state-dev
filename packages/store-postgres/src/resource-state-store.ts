@@ -29,6 +29,7 @@
  * transaction and on any executor. The rule is on `ResourceStateIndexes`.
  */
 
+import { randomUUID } from "node:crypto";
 import {
   assertDeleteExpectedVersion,
   assertSetExpectedVersion,
@@ -475,17 +476,19 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
         return row.status === "built" ? "built" : "building";
       },
 
-      async beginBuild(scopeType, scopeId, collection, index): Promise<void> {
+      async beginBuild(scopeType, scopeId, collection, index): Promise<string> {
+        const build = randomUUID();
         await executor.query(
-          `INSERT INTO resource_index_built (scope_type, scope_id, collection, index_name, status, key_regex)
-           VALUES ($1, $2, $3, $4, 'building', $5)
+          `INSERT INTO resource_index_built (scope_type, scope_id, collection, index_name, status, build_id, key_regex)
+           VALUES ($1, $2, $3, $4, 'building', $5, $6)
            ON CONFLICT (scope_type, scope_id, collection, index_name)
-           DO UPDATE SET status = 'building', key_regex = EXCLUDED.key_regex`,
-          [scopeType, scopeId, collection, index, collectionKeyRegex(collection)]
+           DO UPDATE SET status = 'building', build_id = EXCLUDED.build_id, key_regex = EXCLUDED.key_regex`,
+          [scopeType, scopeId, collection, index, build, collectionKeyRegex(collection)]
         );
+        return build;
       },
 
-      async completeBuild(scopeType, scopeId, collection, index, entries): Promise<boolean> {
+      async completeBuild(scopeType, scopeId, collection, index, build, entries): Promise<boolean> {
         const keys: string[] = [];
         const values: string[] = [];
         for (const entry of entries) {
@@ -494,13 +497,14 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
             values.push(value);
           }
         }
-        // The flip and the entries in one statement: both, only if the
-        // building marker survived the scan.
+        // The flip and the entries in one statement: both, only if this
+        // build's marker survived the scan. Fenced on its token, so a build
+        // whose marker a write cleared cannot complete on a later build's.
         const result = await executor.query(
           `WITH f AS (
              UPDATE resource_index_built SET status = 'built'
               WHERE scope_type = $1 AND scope_id = $2 AND collection = $3 AND index_name = $4
-                AND status = 'building'
+                AND status = 'building' AND build_id = $7
              RETURNING 1
            ),
            fsd_entries_added AS (
@@ -511,7 +515,7 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
              ON CONFLICT DO NOTHING
            )
            SELECT 1 FROM f`,
-          [scopeType, scopeId, collection, index, keys, values]
+          [scopeType, scopeId, collection, index, keys, values, build]
         );
         return result.rows.length > 0;
       },

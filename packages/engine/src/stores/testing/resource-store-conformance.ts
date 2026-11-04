@@ -1165,8 +1165,8 @@ function createIndexConformanceTests(options: CreateResourceStateStoreConformanc
 
     /** Mark `BY_ID` of `WORK` built in session s1, with no entries. */
     async function markBuilt(indexes: NonNullable<ResourceStateStore["indexes"]>, collection = WORK): Promise<void> {
-      await indexes.beginBuild("session", "s1", collection, BY_ID);
-      expect(await indexes.completeBuild("session", "s1", collection, BY_ID, [])).toBe(true);
+      const build = await indexes.beginBuild("session", "s1", collection, BY_ID);
+      expect(await indexes.completeBuild("session", "s1", collection, BY_ID, build, [])).toBe(true);
     }
 
     it("implements all four index verbs", async () => {
@@ -1293,10 +1293,10 @@ function createIndexConformanceTests(options: CreateResourceStateStoreConformanc
       await withIndexes(async (store, indexes) => {
         await store.set("session", "s1", "work/live", state(1), 0, byId("a"));
         await store.set("session", "s1", "work/gone", state(1), 0);
-        await indexes.beginBuild("session", "s1", WORK, BY_ID);
+        const build = await indexes.beginBuild("session", "s1", WORK, BY_ID);
         // The build read `work/gone` before this delete landed.
         await store.delete("session", "s1", "work/gone", 1);
-        await indexes.completeBuild("session", "s1", WORK, BY_ID, [{ key: "work/gone", values: ["a"] }]);
+        await indexes.completeBuild("session", "s1", WORK, BY_ID, build, [{ key: "work/gone", values: ["a"] }]);
         expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "a")).toEqual(["work/gone", "work/live"]);
         await store.purgeTombstones("session", "s1");
         expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "a")).toEqual(["work/live"]);
@@ -1306,9 +1306,9 @@ function createIndexConformanceTests(options: CreateResourceStateStoreConformanc
     it("a build moves the index from unbuilt to building to built and adds its entries", async () => {
       await withIndexes(async (store, indexes) => {
         await store.set("session", "s1", "work/legacy", state(1), 0);
-        await indexes.beginBuild("session", "s1", WORK, BY_ID);
+        const build = await indexes.beginBuild("session", "s1", WORK, BY_ID);
         expect(await indexes.state("session", "s1", WORK, BY_ID)).toBe("building");
-        const built = await indexes.completeBuild("session", "s1", WORK, BY_ID, [
+        const built = await indexes.completeBuild("session", "s1", WORK, BY_ID, build, [
           { key: "work/legacy", values: ["a", "b"] }
         ]);
         expect(built).toBe(true);
@@ -1322,10 +1322,10 @@ function createIndexConformanceTests(options: CreateResourceStateStoreConformanc
     it("a build only adds: an entry a live write made during the scan survives it", async () => {
       await withIndexes(async (store, indexes) => {
         await store.set("session", "s1", "work/k", state(1), 0);
-        await indexes.beginBuild("session", "s1", WORK, BY_ID);
+        const build = await indexes.beginBuild("session", "s1", WORK, BY_ID);
         // The build scanned `work/k` at value "old"; this write lands before it completes.
         await store.set("session", "s1", "work/k", state(2), 1, byId("new"));
-        await indexes.completeBuild("session", "s1", WORK, BY_ID, [{ key: "work/k", values: ["old"] }]);
+        await indexes.completeBuild("session", "s1", WORK, BY_ID, build, [{ key: "work/k", values: ["old"] }]);
         expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "new")).toEqual(["work/k"]);
         // The stale entry is allowed: the engine re-checks every hit against its row.
         expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "old")).toEqual(["work/k"]);
@@ -1336,7 +1336,7 @@ function createIndexConformanceTests(options: CreateResourceStateStoreConformanc
       await withIndexes(async (store, indexes) => {
         await store.set("session", "s1", "work/k", state(1), 0);
         expect(
-          await indexes.completeBuild("session", "s1", WORK, BY_ID, [{ key: "work/k", values: ["a"] }])
+          await indexes.completeBuild("session", "s1", WORK, BY_ID, "no-such-build", [{ key: "work/k", values: ["a"] }])
         ).toBe(false);
         expect(await indexes.state("session", "s1", WORK, BY_ID)).toBe("unbuilt");
         expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "a")).toEqual([]);
@@ -1360,12 +1360,27 @@ function createIndexConformanceTests(options: CreateResourceStateStoreConformanc
 
     it("a write during a build clears the building marker, so the build does not mark itself built", async () => {
       await withIndexes(async (store, indexes) => {
-        await indexes.beginBuild("session", "s1", WORK, BY_ID);
+        const build = await indexes.beginBuild("session", "s1", WORK, BY_ID);
         // Its scan missed this row, and this writer knows no index.
         await store.set("session", "s1", "work/late", state(1), 0);
         expect(await indexes.state("session", "s1", WORK, BY_ID)).toBe("unbuilt");
-        expect(await indexes.completeBuild("session", "s1", WORK, BY_ID, [])).toBe(false);
+        expect(await indexes.completeBuild("session", "s1", WORK, BY_ID, build, [])).toBe(false);
         expect(await indexes.state("session", "s1", WORK, BY_ID)).toBe("unbuilt");
+      });
+    });
+
+    it("a build a write invalidated cannot complete on a later build's marker", async () => {
+      await withIndexes(async (store, indexes) => {
+        const first = await indexes.beginBuild("session", "s1", WORK, BY_ID);
+        // The first build scanned an empty collection; this write clears its marker.
+        await store.set("session", "s1", "work/late", state(1), 0);
+        const second = await indexes.beginBuild("session", "s1", WORK, BY_ID);
+        expect(await indexes.completeBuild("session", "s1", WORK, BY_ID, first, [])).toBe(false);
+        expect(await indexes.state("session", "s1", WORK, BY_ID)).toBe("building");
+        expect(
+          await indexes.completeBuild("session", "s1", WORK, BY_ID, second, [{ key: "work/late", values: ["a"] }])
+        ).toBe(true);
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "a")).toEqual(["work/late"]);
       });
     });
 

@@ -1115,8 +1115,8 @@ type ResourceIndexEntry = { collection: string; index: string; values: string[] 
 
 interface ResourceStateIndexes {
   state(scopeType, scopeId, collection, index): Promise<"unbuilt" | "building" | "built">;
-  beginBuild(scopeType, scopeId, collection, index): Promise<void>;
-  completeBuild(scopeType, scopeId, collection, index, entries: { key: string; values: string[] }[]): Promise<boolean>;
+  beginBuild(scopeType, scopeId, collection, index): Promise<string>;
+  completeBuild(scopeType, scopeId, collection, index, build: string, entries: { key: string; values: string[] }[]): Promise<boolean>;
   findKeys(scopeType, scopeId, collection, index, value): Promise<string[]>;
 }
 ```
@@ -1130,8 +1130,8 @@ Entries may be stale but never missing, because a reader checks every hit agains
 | `set` that lands | The key's entries become exactly the ones it lists, in the row's own commit. The build marker of every index whose collection pattern covers the key, and that the call does not list, is cleared, so the next lookup rebuilds it |
 | `set` that conflicts | Changes no entry and clears no marker |
 | `delete`, `deleteAll`, `purgeTombstones` | Remove the entries of the rows they tombstone or reclaim. Markers stay |
-| `beginBuild` | Marks the index `building` in that scope |
-| `completeBuild` | Adds the entries and marks the index `built`, in one commit, only if its `building` marker is still there. Returns whether it did. It only adds, never replaces, because a live write may land during the scan |
+| `beginBuild` | Marks the index `building` in that scope and returns the build's token. A later `beginBuild` replaces the marker with a new token |
+| `completeBuild` | Adds the entries and marks the index `built`, in one commit, only if the `building` marker its token names is still there. Returns whether it did. It only adds, never replaces, because a live write may land during the scan |
 | `findKeys` | The keys with an entry of that value, in ascending order |
 
 Each scope's entries and markers are its own. **Writing an adapter:** implement all four verbs or none. Commit a row and its entries together: SQLite runs both in one transaction, and Postgres puts the entry upkeep in the write's own statement. Pass `indexes: true` to `createResourceStateStoreConformanceTests` to run the index cases against your store.
