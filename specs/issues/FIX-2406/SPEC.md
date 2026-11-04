@@ -79,7 +79,9 @@ flowchart LR
 - **Claude Code-style gets a host factory.** Its whole host is inline in `fsdev.config.mts`
   today, with top-level `await` and environment reads, so no test can build it. It moves into
   `host.mts` as `openLab(options)`, the shape Teammates already has in `openTeammates`; the config
-  reads the environment and calls it. Served behaviour is unchanged.
+  reads the environment and calls it. Served behaviour is unchanged. FIX-2375 (#4732) calls for
+  the same extraction and the same `modelResolver` option: whichever lands first owns them, and
+  the other builds on it rather than adding them again.
 - **Both factories take an optional `modelResolver` and a store.** A test passes the scripted
   model and a temporary SQLite file; the served lab passes neither and behaves as today.
 - **One scenario list per lab, two columns.** Each lab's `test/contract/` holds the five
@@ -120,8 +122,8 @@ flowchart LR
 | `createInProcessFetch` (engine), used by Kitchen Sink's and workforce's tests | **Builds on**: the real adapters' client fetcher |
 | `createMockModelResolver` / `mockGenerator` (testing) | **Leaves alone**: it runs a turn's whole tool loop in one call, so a script can't wait between steps (file a task, wait for it to settle, then write). The labs' scripted model answers one step per call (`generateStep`), which the framework's own tool loop drives |
 | harness-manager's scripted coder (`scriptedStepMs`) | **Builds on**: coding tasks with no model or sign-in |
-| `openTeammates(options)` in `labs/teammates/host.mts` | **Extends**: an optional `modelResolver` |
-| Claude Code-style's host, inline in `fsdev.config.mts` | **Replaces** with `openLab(options)` in `host.mts`; the config keeps the environment reads |
+| `openTeammates(options)` in `labs/teammates/host.mts` | **Extends**: an optional `modelResolver`, shared with FIX-2375; whichever lands first adds it, the other builds on it |
+| Claude Code-style's host, inline in `fsdev.config.mts` | **Replaces** with `openLab(options)` in `host.mts`; the config keeps the environment reads. Shared with FIX-2375; whichever lands first does the move, the other builds on it |
 | The fakes, `test/fake-lab.ts` in each lab | **Extends**: each becomes a column of the matrix; corrected where it contradicts the real adapter |
 | The labs' existing wired tests (`watch-thread`, `watch-on-notice`, …) over hand-written fetchers | **Leaves alone**: they pin one read each; the matrix pins scenarios end to end |
 | Something that already runs one scenario on fake and real | **None found**: searched `labs/*/test` and `goals/` for a test importing both `fake-lab` and the adapter's wired constructor, and for `createInProcessFetch` under `labs/` |
@@ -137,7 +139,11 @@ flowchart LR
 - **Claude Code-style's fake draws an "interrupted" line the real adapter never emits.** FIX-2375
   (stop a running turn, with feedback) adds it; the stop row's real column carries that as a
   known gap.
-- Mid-turn sends (`queued`) are out of the matrix: FIX-2376 makes them real, and adds its row.
+- Mid-turn sends (`queued`) are out of the matrix: FIX-2376 found a lab line is never queued and
+  drops the field.
+- FIX-2375's and FIX-2376's adapter checks (`stop-turn.test.ts`, FIX-2376's leg a) are this
+  matrix's *stop* and *mid-turn* scenarios. They fold in here rather than being written again;
+  each of those PRs turns its row from a known gap into a plain test.
 
 **Net:** pays down one piece (Claude Code-style's untestable inline host) and adds test code
 only. *If wrong:* the matrix costs CI time without catching drift; it is deleted in one PR.
