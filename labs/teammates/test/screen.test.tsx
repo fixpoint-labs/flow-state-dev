@@ -247,9 +247,9 @@ describe("the teammates screen", () => {
     const tasks = [ended("t-1", "Look up the launch date", "done"), ended("t-2", "Check the beta numbers", "failed"), ended("t-3", "Find a customer quote", "done"), ended("t-4", "Pull the survey", "cancelled")];
     render(<App adapter={fast({ tasks })} />);
     const side = await screen.findByRole("complementary", { name: "Chief of Staff's panel" });
-    const groups = () => [...side.querySelectorAll("button[aria-expanded]")].map((b) => b.textContent);
+    const groups = () => [...side.querySelectorAll("button[aria-expanded]")].map((b) => b.getAttribute("aria-label"));
     // Ended tasks are folded: their groups show counts, and none of their rows.
-    await waitFor(() => expect(groups()).toEqual(["Done (2)▸", "Failed (1)▸", "Cancelled (1)▸"]));
+    await waitFor(() => expect(groups()).toEqual(["Done (2)", "Failed (1)", "Cancelled (1)"]));
     expect(within(side).queryByRole("button", { name: "Asked researcher to look up the launch date" })).toBeNull();
     // Opening a group shows its rows, and only its own.
     fireEvent.click(within(side).getByRole("button", { name: /^Done \(2\)/ }));
