@@ -19,9 +19,18 @@ export const git = (cwd: string, ...args: string[]) => execFileSync("git", args,
 /** The lab checkout's state outside the goal's own scratch: a run must leave it as it was. */
 export const labCheckout = () => git(REPO_ROOT, "status", "--porcelain", "--", "labs/claude-code-style");
 
-/** The lab, served for `user` from a fresh data folder; `app` is what `--app` serves (default: the package's built pages). */
-export async function startLab(data: string, user: string, env: Record<string, string>, app = "@flow-state-dev/claude-code-style"): Promise<{ origin: string; child: ChildProcess; log: () => string }> {
-  const port = 45_000 + Math.floor(Math.random() * 10_000);
+/**
+ * The lab, served for `user` from a fresh data folder; `app` is what `--app` serves (default: the
+ * package's built pages), and `port` the port to serve on (default: a random one; pass the last one
+ * to serve again where an open page still looks).
+ */
+export async function startLab(
+  data: string,
+  user: string,
+  env: Record<string, string>,
+  app = "@flow-state-dev/claude-code-style",
+  port = 45_000 + Math.floor(Math.random() * 10_000),
+): Promise<{ origin: string; child: ChildProcess; log: () => string }> {
   const origin = `http://127.0.0.1:${port}`;
   await refuseIfAnswering(origin);
   let log = "";

@@ -18,33 +18,20 @@ import { boardOf, buildPages, LAB, makeRepository, openSessionOn, startLab } fro
 
 const USER = "u_goal";
 const repo = makeRepository(join(goalTmpDir("claude-code-style-task-signals-repo"), "repo"), { "NOTES.md": "# Notes\n" });
-/** The session the tasks are filed on, and the page's address that reopens it, once opened. */
-let opened: { session: string; search: string } | undefined;
 
 await runTaskSignals({
   name: "claude-code-style",
   itemFile: join(LAB, "src", "components", "flow-state", "task-signals.tsx"),
   build: buildPages,
-  serve: async (data) => {
-    const lab = await startLab(data, USER, {
-      CLAUDE_CODE_STYLE_HARNESS: "stub",
-      CLAUDE_CODE_STYLE_HARNESS_STEP_MS: String(STEP_MS),
-      CLAUDE_CODE_STYLE_REPOSITORIES: repo,
-      ...NO_MODEL,
-    });
+  serve: async (data, port) => {
+    const env = { CLAUDE_CODE_STYLE_HARNESS: "stub", CLAUDE_CODE_STYLE_HARNESS_STEP_MS: String(STEP_MS), CLAUDE_CODE_STYLE_REPOSITORIES: repo, ...NO_MODEL };
+    const lab = port === undefined ? await startLab(data, USER, env) : await startLab(data, USER, env, undefined, port);
     return { origin: lab.origin, child: lab.child };
   },
   open: async (page: Page, origin: string) => {
     const fsd = createClient({ userId: USER, baseUrl: origin });
-    if (opened === undefined) {
-      await page.goto(origin);
-      const session = await openSessionOn(page, fsd, USER, "Task signals", repo);
-      opened = { session, search: new URL(page.url()).search };
-    } else {
-      // After a restart: the same session, by its address, on the server's new origin.
-      await page.goto(`${origin}/${opened.search}`);
-    }
-    const { session } = opened;
+    await page.goto(origin);
+    const session = await openSessionOn(page, fsd, USER, "Task signals", repo);
     const board = boardOf(fsd);
     const pane = page.getByRole("complementary", { name: "Background tasks" });
     return {
@@ -55,6 +42,8 @@ await runTaskSignals({
         const card = pane.locator("button[data-task-status]").filter({ hasText: title }).first();
         return (await card.count()) === 0 ? undefined : ((await card.textContent()) ?? undefined);
       },
+      // The pane marks nothing stale: its rows are re-read every two seconds, and a read that fails keeps the last.
+      stale: async () => false,
     };
   },
 });

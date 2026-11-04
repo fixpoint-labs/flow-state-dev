@@ -18,10 +18,15 @@
  *   renewing, reads `working` on every read of the page for those four
  *   minutes, and never `quiet`.
  * - **quiet**: the host is killed mid-run (SIGKILL to its process group),
- *   kept down {@link DOWN_MS}, and served again on the same store. Before the
- *   board takes the row back (its `attempts` changes, or its lease is no longer
- *   lapsed), the row reads `quiet for` at least four minutes. A row taken back
- *   before the page could be read is CAN'T TELL, not PASS.
+ *   kept down {@link DOWN_MS}, and served again on the same store and port,
+ *   so the page left open reads it again as a person's would; a page whose
+ *   feed gave up on the server while it was down is reloaded once. Reading
+ *   starts while the server starts, since the board takes a lapsed row back
+ *   soon after. Before it does (the row's `attempts` changes, or its lease is
+ *   no longer lapsed), the row reads `quiet for` at least four minutes. A
+ *   read of a row the page marks stale says nothing of the run and isn't
+ *   counted; a row taken back before the page showed it fresh is CAN'T TELL,
+ *   not PASS.
  *
  * Controls (`GOAL_CONTROL=<name>`), planted in the lab's copy of `taskSignal`
  * for the run and put back; each re-runs only the leg it must fail:
@@ -63,6 +68,8 @@ export interface LabBoard {
   act(tool: "updateTask" | "retryTask", input: Record<string, unknown>): Promise<unknown>;
   /** The words the page shows on the row titled `title`, or undefined when it shows no such row. */
   words(title: string): Promise<string | undefined>;
+  /** Whether the page marks the row titled `title` stale (its feed lost the server): its words then say nothing of the run. */
+  stale(title: string): Promise<boolean>;
 }
 
 /** What a lab hands this module. */
@@ -73,9 +80,12 @@ export interface SignalsLab {
   itemFile: string;
   /** Build the lab's pages from its source as it stands. */
   build(): void;
-  /** Serve the lab on the store under `data` (kept across a restart), every coding task on the scripted coder. */
-  serve(data: string): Promise<{ origin: string; child: ChildProcess }>;
-  /** Open the page where the board's rows show, on `origin`; called again after a restart, on the new origin. */
+  /**
+   * Serve the lab on the store under `data` (kept across a restart), every coding task on the
+   * scripted coder; on `port` when given (a restart serves where the open page looks).
+   */
+  serve(data: string, port?: number): Promise<{ origin: string; child: ChildProcess }>;
+  /** Open the page where the board's rows show, on `origin`. */
   open(page: Page, origin: string): Promise<LabBoard>;
 }
 
@@ -146,6 +156,8 @@ export async function runTaskSignals(lab: SignalsLab): Promise<void> {
     const data = `${scratch}/data`;
     const unplant = plant(plants, control);
     let served: { origin: string; child: ChildProcess } | undefined;
+    /** The restarted server while it starts, so it is stopped however the run ends. */
+    let serving: Promise<{ origin: string; child: ChildProcess }> | undefined;
     const browser = await launchChromium();
     try {
       try {
@@ -157,7 +169,7 @@ export async function runTaskSignals(lab: SignalsLab): Promise<void> {
       served = await lab.serve(data);
       const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
       page.setDefaultTimeout(30_000);
-      let board = await lab.open(page, served.origin);
+      const board = await lab.open(page, served.origin);
       const row = async (id: string) => (await board.rows()).find((t) => t.id === id);
       const runningRow = (id: string, after?: number) =>
         until(async () => {
@@ -234,26 +246,56 @@ export async function runTaskSignals(lab: SignalsLab): Promise<void> {
         const before = await row(id);
         say(`quiet: killing the host mid-run (${title}, attempt ${attempts}), down ${DOWN_MS / 1000}s`);
         const killedAt = Date.now();
-        served = await crashAndRestart(served.child, async () => {
+        const port = Number(new URL(served.origin).port);
+        await crashAndRestart(served.child, async () => {
           await sleep(DOWN_MS);
-          return lab.serve(data);
+          // The killed server's port can take a moment to free: one more try on it, a little later.
+          serving = lab.serve(data, port).catch(async (cause) => {
+            say(`quiet: the restart on port ${port} failed (${String(cause).split("\n")[0]}); trying again`);
+            await sleep(5_000);
+            return lab.serve(data, port);
+          });
         });
-        board = await lab.open(page, served.origin);
-        const reads: { words: string | undefined; lapsedForS: number }[] = [];
+        // The server is starting: read from the moment it answers, while `serving` waits for it to settle.
+        const reads: { words: string; lapsedForS: number }[] = [];
         let verdict: "quiet" | "taken" | undefined;
         let lastWords: string | undefined;
-        for (const end = Date.now() + 90_000; Date.now() < end && verdict === undefined; await sleep(1_000)) {
+        let reloaded = false;
+        let staleReads = 0;
+        let answeredAt: number | undefined;
+        for (const end = Date.now() + 150_000; Date.now() < end && verdict === undefined; await sleep(250)) {
+          const r = await row(id).catch(() => null);
+          if (r === null) continue; // not answering yet
+          if (answeredAt === undefined) {
+            answeredAt = Date.now();
+            say(`quiet: the server answers ${Math.round((answeredAt - killedAt) / 1000)}s after the kill`);
+          }
           const words = await board.words(title);
-          const r = await row(id);
+          const stale = await board.stale(title);
           const now = Date.now();
           // Read the page only against a row the board still holds as this attempt's, with its lease lapsed.
           if (r === undefined || r.status !== "in_progress" || r.attempts !== attempts || !leaseLapsed(r, now)) {
             verdict = "taken";
-            notes.push(`quiet: the board took the row back (${r?.status}, attempt ${r?.attempts}, lease ${r?.leaseUntil === undefined ? "none" : new Date(r.leaseUntil).toISOString()}) after ${reads.length} read(s)`);
+            const taken = `the board took the row back ${((now - answeredAt) / 1000).toFixed(1)}s after the server answered (${r?.status}, attempt ${r?.attempts}, lease ${r?.leaseUntil === undefined ? "none" : new Date(r.leaseUntil).toISOString()}), after ${reads.length} fresh read(s) and ${staleReads} stale`;
+            say(`quiet: ${taken}`);
+            notes.push(`quiet: ${taken}`);
             break;
+          }
+          // A page that doesn't show the row yet, or shows it stale, has read nothing of the run.
+          if (words === undefined) continue;
+          if (stale) {
+            staleReads += 1;
+            // A feed that gave up while the server was down: reload once, as a person would.
+            if (!reloaded) {
+              reloaded = true;
+              say(`quiet: the page marks the row stale ${((now - answeredAt) / 1000).toFixed(1)}s after the server answered; reloading`);
+              await page.reload().catch(() => undefined);
+            }
+            continue;
           }
           lastWords = words;
           reads.push({ words, lapsedForS: Math.round((now - r.leaseUntil) / 1000) });
+          say(`quiet: fresh read ${((now - answeredAt) / 1000).toFixed(1)}s after the server answered: ${JSON.stringify(words)}`);
           const minutes = quietMinutesOf(words);
           if (minutes !== undefined) {
             verdict = "quiet";
@@ -261,7 +303,8 @@ export async function runTaskSignals(lab: SignalsLab): Promise<void> {
             else notes.push(`quiet: ${JSON.stringify(words)} ${Math.round((now - killedAt) / 1000)}s after the kill, the board's lease lapsed ${reads.at(-1)!.lapsedForS}s before`);
           }
         }
-        tell.over("quiet · reads while the board still held the lapsed row", reads);
+        served = await serving!;
+        tell.over("quiet · fresh reads of the row while the board still held it lapsed", reads);
         if (verdict !== "quiet" && reads.length > 0) failures.push(`quiet: over ${reads.length} read(s) of a row whose lease had lapsed (by ${reads.at(-1)!.lapsedForS}s), the page never read quiet; last ${JSON.stringify(lastWords)} (before the kill: updatedAt ${before?.updatedAt}, leaseUntil ${before?.leaseUntil})`);
       }
 
@@ -272,6 +315,8 @@ export async function runTaskSignals(lab: SignalsLab): Promise<void> {
     } finally {
       await browser.close().catch(() => {});
       if (served !== undefined) stopProcessGroup(served.child, "SIGKILL");
+      const restarted = await serving?.catch(() => undefined);
+      if (restarted !== undefined) stopProcessGroup(restarted.child, "SIGKILL");
       // A control's pages go: the lab's built pages are its source's again.
       if (control !== "") lab.build();
     }

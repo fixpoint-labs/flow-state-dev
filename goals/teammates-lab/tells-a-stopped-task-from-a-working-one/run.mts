@@ -40,9 +40,10 @@ await runTaskSignals({
   name: "teammates",
   itemFile: repoPath("labs", "teammates", "src", "components", "flow-state", "task-signals.tsx"),
   build: () => execFileSync("pnpm", ["--filter", "@flow-state-dev/teammates", "build"], { cwd: REPO_ROOT, stdio: "ignore" }),
-  serve: async (data) => {
+  serve: async (data, port) => {
     mkdirSync(data, { recursive: true });
-    return startTeammates(data, USER, { GOAL_HARNESS: "stub", GOAL_HARNESS_STEP_MS: String(STEP_MS), ...NO_MODEL }, workdir);
+    const env = { GOAL_HARNESS: "stub", GOAL_HARNESS_STEP_MS: String(STEP_MS), ...NO_MODEL };
+    return port === undefined ? startTeammates(data, USER, env, workdir) : startTeammates(data, USER, env, workdir, undefined, port);
   },
   open: async (page: Page, origin: string) => {
     const fsd = createClient({ userId: USER, baseUrl: origin });
@@ -75,6 +76,11 @@ await runTaskSignals({
       words: async (title) => {
         const row = panel.locator("li button").filter({ hasText: title }).first();
         return (await row.count()) === 0 ? undefined : ((await row.textContent()) ?? undefined);
+      },
+      // The panel greys a row's words (the registry's STALE_CLASS) while its feed has lost the server.
+      stale: async (title) => {
+        const words = panel.locator("li button").filter({ hasText: title }).first().locator("[data-status]");
+        return (await words.count()) > 0 && /\bgrayscale\b/.test((await words.getAttribute("class")) ?? "");
       },
     };
   },
