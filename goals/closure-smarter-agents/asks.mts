@@ -55,7 +55,7 @@ export function checksFrom(recorded: unknown): Turn["checks"] {
  * read, a source looked at or a skill loaded. A call with no `ok` is not
  * known to have succeeded, so it does not count either.
  */
-export function succeeded(turn: Turn): Turn["tools"] {
+function succeeded(turn: Turn): Turn["tools"] {
   return turn.tools.filter((t) => t.ok === true);
 }
 
