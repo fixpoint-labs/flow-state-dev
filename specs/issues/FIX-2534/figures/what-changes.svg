@@ -1,0 +1,103 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Today: a webhook binding names one session per event, and nothing dedupes. After: in the service's own request, in the org, the event is normalized, the thread index nominates the subscriptions that follow one of its threads, and the config screens run: sender, own, labels, words, allow. Custom and Jev screens, from FIX-2537, come after them. A fence follows: each subscription that passed is handed to its own request, which runs as that subscription's user. There the subscription is checked as still live, the cursor drops a version already seen, the cap is checked, and one message per session is sent through sendMessage's exempt path, from service:github, with the id object at version for that session. Two sessions on one PR each get one message."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .band  { fill:var(--surface-2); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .later { fill:var(--surface); stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:5 4; }
+    .old   { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .fence { stroke:var(--accent); stroke-width:3; }
+    .arrow { stroke:var(--ink-2); stroke-width:1.3; fill:none; }
+    .head  { fill:var(--ink-2); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; font-weight:600; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:12px; font-weight:600; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <!-- today -->
+  <rect class="band" x="16" y="14" width="908" height="78" rx="6"/>
+  <text class="t-lbl" x="32" y="34">TODAY</text>
+  <rect class="box" x="120" y="34" width="150" height="44" rx="5"/>
+  <text class="t-b" x="132" y="53">webhook</text>
+  <text class="t-s" x="132" y="69">signed, one per delivery</text>
+  <rect class="old" x="320" y="34" width="210" height="44" rx="5"/>
+  <text class="t-gone" x="332" y="53">binding names a session</text>
+  <text class="t-s" x="332" y="69">sessionId(event), one only</text>
+  <rect class="box" x="580" y="34" width="150" height="44" rx="5"/>
+  <text class="t-b" x="592" y="53">one session</text>
+  <text class="t-s" x="592" y="69">no dedupe, no screens</text>
+  <line class="arrow" x1="270" y1="56" x2="314" y2="56"/><path class="head" d="M318 56 l-7 -4 v8 z"/>
+  <line class="arrow" x1="530" y1="56" x2="574" y2="56"/><path class="head" d="M578 56 l-7 -4 v8 z"/>
+
+  <!-- after: labels -->
+  <text class="t-lbl" x="32" y="122">AFTER</text>
+  <text class="t-acc" x="32" y="142">AS THE SERVICE · IN THE ORG · NO USER CONTENT</text>
+  <text class="t-acc" x="610" y="142">AS EACH SUBSCRIBER</text>
+
+  <!-- service side -->
+  <rect class="new" x="32" y="158" width="160" height="50" rx="5"/>
+  <text class="t-b" x="44" y="178">normalized event</text>
+  <text class="t-s" x="44" y="195">push or poll, one shape</text>
+
+  <rect class="new" x="32" y="230" width="160" height="50" rx="5"/>
+  <text class="t-b" x="44" y="250">thread index</text>
+  <text class="t-s" x="44" y="267">nominates subscriptions</text>
+
+  <rect class="new" x="220" y="194" width="170" height="86" rx="5"/>
+  <text class="t-b" x="232" y="214">config screens</text>
+  <text class="t-s" x="232" y="232">sender · own, always</text>
+  <text class="t-s" x="232" y="248">labels · words · allow</text>
+  <text class="t-s" x="232" y="266">0 tokens · the share</text>
+
+  <rect class="later" x="410" y="194" width="160" height="86" rx="5"/>
+  <text class="t-b" x="422" y="214">custom · Jev</text>
+  <text class="t-s" x="422" y="232">FIX-2537</text>
+  <text class="t-s" x="422" y="248">one verdict shape</text>
+  <text class="t-s" x="422" y="266">≤ 1 evaluator call</text>
+
+  <line class="arrow" x1="112" y1="208" x2="112" y2="224"/><path class="head" d="M112 228 l-4 -7 h8 z"/>
+  <line class="arrow" x1="192" y1="255" x2="214" y2="255"/><path class="head" d="M218 255 l-7 -4 v8 z"/>
+  <line class="arrow" x1="390" y1="237" x2="404" y2="237"/><path class="head" d="M408 237 l-7 -4 v8 z"/>
+
+  <!-- the fence -->
+  <line class="fence" x1="592" y1="150" x2="592" y2="386"/>
+  <text class="t-acc" x="370" y="318">ONE REQUEST PER PASSING</text>
+  <text class="t-acc" x="370" y="332">SUBSCRIPTION, AS ITS USER</text>
+  <line class="arrow" x1="570" y1="237" x2="604" y2="196"/><path class="head" d="M607 192 l-8 1 l5 6 z"/>
+  <line class="arrow" x1="570" y1="250" x2="604" y2="300"/><path class="head" d="M607 304 l-1 -8 l-6 5 z"/>
+
+  <!-- subscriber side -->
+  <rect class="new" x="610" y="158" width="150" height="66" rx="5"/>
+  <text class="t-b" x="622" y="178">user A · session 1</text>
+  <text class="t-s" x="622" y="195">live · cursor · cap</text>
+  <text class="t-s" x="622" y="211">id 4711@3:session-1</text>
+
+  <rect class="new" x="610" y="268" width="150" height="66" rx="5"/>
+  <text class="t-b" x="622" y="288">user A · session 2</text>
+  <text class="t-s" x="622" y="305">same PR, own cursor</text>
+  <text class="t-s" x="622" y="321">id 4711@3:session-2</text>
+
+  <rect class="box" x="780" y="158" width="130" height="176" rx="5"/>
+  <text class="t-b" x="792" y="180">sendMessage</text>
+  <text class="t-s" x="792" y="198">exempt path</text>
+  <text class="t-s" x="792" y="222">from service:github</text>
+  <text class="t-s" x="792" y="240">outside content</text>
+  <text class="t-s" x="792" y="264">one message</text>
+  <text class="t-s" x="792" y="282">per session</text>
+  <line class="arrow" x1="760" y1="191" x2="774" y2="191"/><path class="head" d="M778 191 l-7 -4 v8 z"/>
+  <line class="arrow" x1="760" y1="301" x2="774" y2="301"/><path class="head" d="M778 301 l-7 -4 v8 z"/>
+
+  <text class="t-s" x="610" y="360">A redelivery or a poll of version 3 stops at the cursor.</text>
+  <text class="t-s" x="610" y="376">User B never runs here: B has no subscription that passed.</text>
+</svg>
