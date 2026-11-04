@@ -5,7 +5,7 @@
  * before the first run fails.
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -168,5 +168,37 @@ describe("checkRepository", () => {
     writeFileSync(join(repo, ".git", "info", "exclude"), "**/.fsdev/\n");
     await expect(host({ listed: [repo] }).checkRepository!(repo, { ignored: IGNORED })).resolves.toEqual({ usable: true, how: "worktree" });
     await expect(host().checkRepository!(pathToFileURL(repo).href, { ignored: IGNORED })).resolves.toMatchObject({ usable: false });
+  });
+
+  it("refuses a file:// URL naming a folder inside a repository, which a clone can't read", async () => {
+    const repo = repository();
+    mkdirSync(join(repo, "docs"));
+    writeFileSync(join(repo, "docs", "a.md"), "a\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", "docs");
+    const answer = await host().checkRepository!(pathToFileURL(join(repo, "docs")).href, { ignored: IGNORED });
+    expect(answer).toMatchObject({ usable: false, problem: expect.stringContaining("is inside the repository at") });
+  });
+
+  it("refuses an unlisted repository on a detached HEAD, which has no default branch to clone", async () => {
+    const repo = repository();
+    git(repo, "checkout", "-q", "--detach");
+    const answer = await host().checkRepository!(pathToFileURL(repo).href, { ignored: IGNORED });
+    expect(answer).toMatchObject({ usable: false, problem: expect.stringContaining("no default branch") });
+  });
+
+  it("runs no fsmonitor program an unlisted repository configures", async () => {
+    const sentinel = join(tempDir("sentinel"), "ran");
+    const script = join(tempDir("monitor"), "monitor.sh");
+    writeFileSync(script, `#!/bin/sh\ntouch ${sentinel}\n`);
+    chmodSync(script, 0o755);
+    // One that passes, and one whose rule is only uncommitted, so the working tree is read too.
+    const good = repository();
+    const uncommitted = repository(false);
+    writeFileSync(join(uncommitted, ".gitignore"), "**/.fsdev/\n");
+    for (const repo of [good, uncommitted]) git(repo, "config", "core.fsmonitor", script);
+    await expect(host().checkRepository!(pathToFileURL(good).href, { ignored: IGNORED })).resolves.toEqual({ usable: true, how: "clone" });
+    await expect(host().checkRepository!(pathToFileURL(uncommitted).href, { ignored: IGNORED })).resolves.toMatchObject({ usable: false });
+    expect(existsSync(sentinel)).toBe(false);
   });
 });
