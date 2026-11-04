@@ -46,6 +46,7 @@ import {
 import { FILED_HOP, FILED_MARKER, FILED_PROJECT, PIECE_OF, SPLIT_MARKER } from "./board-entries";
 import { filedCascadeOver } from "./cascade";
 import { filingSessionIdOf } from "./filing-session";
+import { boardAboveOf } from "./board-above";
 import { withoutReportMarkers } from "./report-owed";
 import { conversationDelivery } from "./delivery";
 
@@ -79,6 +80,8 @@ export const CONVERSATION_BOARD_CLIENT_FIELDS = [
   "id",
   "title",
   "goal",
+  // The rest of the brief, beside the goal: a re-file from a browser's row copies it (FIX-2381 D3).
+  "context",
   "status",
   "assignee",
   "run",
@@ -160,6 +163,15 @@ export async function conversationLedgerAt(
     partition,
     immutableAssignee: hasFrozenLedgerAssignee(conversationLedger)
   });
+}
+
+/**
+ * The ledger this session's task is on: the board above it (`./board-above`),
+ * server-set state. `undefined` in a session that works no conversation's task.
+ */
+export async function ledgerAboveOf(ctx: BlockContext): Promise<TaskCollectionRef | undefined> {
+  const partition = boardAboveOf(ctx);
+  return partition === undefined ? undefined : conversationLedgerAt(ctx, partition);
 }
 
 /** The running session's own board: the ledger at its own partition. */

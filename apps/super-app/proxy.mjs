@@ -180,12 +180,11 @@ export function createProxy({ apps, auth, status, devtoolDir }) {
         const out = withoutHopHeaders(up.headers);
         if (typeof out.location === "string") out.location = publicLocation(out.location, app);
         const page = String(out["content-type"] ?? "").includes("text/html") && out["content-encoding"] === undefined;
-        const button = buttonScript(app);
         if (app.kind === "next" && page) {
           // A streamed page keeps arriving while the app renders it: write the button in as it passes.
           delete out["content-length"];
           res.writeHead(up.statusCode ?? 502, out);
-          up.pipe(bodyCloseInjector(button)).pipe(res);
+          up.pipe(bodyCloseInjector(buttonScript(app))).pipe(res);
           return;
         }
         if (!(app.kind === "spa" && page)) {
@@ -197,7 +196,7 @@ export function createProxy({ apps, auth, status, devtoolDir }) {
         up.on("data", (c) => chunks.push(c));
         up.on("end", () => {
           const rebased = Buffer.concat(chunks).toString("utf8").replace(/<base href="\/"\s*\/?>/i, `<base href="${app.prefix}/">`);
-          const body = Buffer.from(insertBeforeBodyClose(rebased, button));
+          const body = Buffer.from(insertBeforeBodyClose(rebased, buttonScript(app)));
           delete out["content-length"];
           delete out["transfer-encoding"];
           res.writeHead(up.statusCode ?? 200, { ...out, "content-length": body.length });

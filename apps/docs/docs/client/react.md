@@ -145,6 +145,16 @@ const working = conversation.childSessions.filter((run) => run.status === "activ
 
 A live view holds a connection open while it is mounted, and the server reads the session about once a second for it. Leave `live` off for a view only one person writes to; the request stream already carries everything there. If the server doesn't offer the stream, or refuses it when the view first connects, the view behaves as if you hadn't asked, with no error. A dropped connection reconnects on its own and fills in what it missed. Access is checked when a connection opens, and the server closes each one after at most 15 minutes, so revoking someone's access to the session takes effect within 15 minutes.
 
+A live view also hears what other sessions change in the scopes it reads: the state and resources of its session, its user and its organization. Someone saves an org setting in another tab, or a worker with no browser attached adds a row to an org collection, and the view reads again. `useClientData` then shows the new state, a `client.derived` value over the scope's resources included, and `useResourceCollectionList` and the other resource hooks read their collection again as they do for the view's own changes:
+
+```tsx
+const session = useSession(sessionId, { flowKind: "desk", live: true });
+const { org } = useClientData(session, { org: ["plan"] });  // updates when anyone changes the plan
+const licenses = useResourceCollectionList(session, "licenses");  // and when anyone adds a license
+```
+
+On a state change the view reads its state again without its item history, so the cost doesn't grow with the conversation. A change this view made itself, while its request is still streaming, is already on screen and costs no extra read. A change that request makes after its stream has closed, such as from an `onFinished` hook, is read like anyone else's. A user's own state reaches only that user's views. On a host that pushes, such as `serve()` from `@flow-state-dev/node`, the change shows within about a second of being saved. On a host that can't push, such as Vercel or Next.js, the view reads its state every few seconds instead. [Keeping a screen current](/guides/realtime) has the details per host.
+
 Once the stream is open, a drop the first reconnect recovers from, such as the server's routine close, shows no change. If that reconnect fails, `session.childSessionsStale` turns `true`, and `session.items` stays as it is, with no error, missing what others write. A connection that gets through clears the flag and fills in what was missed. A reconnect is refused when the session is deleted while the view is open, when the reader's access is revoked, or when a new session takes its id. The flag then stays `true` and the view stops hearing other writers. If a new session has taken the id and the reader can open it, the next snapshot the view reads, from `refresh()` for example, moves the view onto that session and clears the flag. Otherwise `refresh()` sets `error` and the flag stays.
 
 ### Reading again when something changes: `useSubscription`
@@ -160,12 +170,18 @@ const refresh = useCallback(
   [sessionId],
 );
 
-useSubscription([topic.session(sessionId)], refresh, { pollIntervalMs: 3000 });
+useSubscription(
+  [topic.session(sessionId, { resource: "tasks" }), topic.session(sessionId, { resource: "plan" })],
+  refresh,
+  { pollIntervalMs: 3000 },
+);
 ```
+
+The topics are narrowed to the two boards `listTasks_tasks` returns (the conversation's tasks and its planning worker's steps), so a reply streaming in the session doesn't wake the read; a task that settles in another session still does (see [Task boards](/guides/realtime#task-boards)).
 
 On the Node host the read runs as soon as the change is saved, over a WebSocket; on a host with no push it runs every `pollIntervalMs`. A burst of changes runs it once more after the read in flight finishes, not once per change. The read gets the notice that woke it (`{ topic, kind, origin? }`), or `null` when the screen should read everything again: after a connect or a reconnect, on a timer tick, and when push starts or stops reaching every server process. Act on `kind` when the screen only cares about some changes, and read everything on `null`. Leave `pollIntervalMs` out for no timer. `enabled: false` subscribes nothing.
 
-The hook doesn't read on mount; keep the first read where the screen already makes it. It uses the provider's client, so the provider's `fetcher` signs the socket in. See [`fsd.subscribe`](/docs/api/client#fsdsubscribetopics-options) for which topics a caller hears.
+The hook doesn't read on mount; keep the first read where the screen already makes it. It uses the provider's client, so the provider's `fetcher` signs the socket in. An app that builds its own client passes it as `client` instead. See [`fsd.subscribe`](/docs/api/client#fsdsubscribetopics-options) for which topics a caller hears.
 
 ### Background work
 

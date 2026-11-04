@@ -42,22 +42,23 @@ if(document.readyState==="complete")later();else addEventListener("load",later);
 }
 
 /**
- * `html` with `snippet` just before its `</body>`; appended when it has none.
+ * `html` with `snippet` just before its `</body>`. A document with no `</body>`
+ * (a fragment, an error body) comes back as it was: the button belongs in pages.
  *
  * @param {string} html
  * @param {string} snippet
  */
 export function insertBeforeBodyClose(html, snippet) {
   const at = html.search(CLOSE_BODY);
-  return at === -1 ? html + snippet : html.slice(0, at) + snippet + html.slice(at);
+  return at === -1 ? html : html.slice(0, at) + snippet + html.slice(at);
 }
 
 /**
  * A stream transform that writes `snippet` before the first `</body>` of an
  * HTML stream, for a response that can't be buffered (a streamed page keeps
  * arriving for as long as the app is rendering it). A page with no `</body>`
- * gets it at the end. The last few characters are held back between chunks, so a
- * tag split across two of them is still found.
+ * is passed through as it was. The last few characters are held back between
+ * chunks, so a tag split across two of them is still found.
  *
  * @param {string} snippet
  * @returns {Transform}
@@ -69,7 +70,8 @@ export function bodyCloseInjector(snippet) {
   let done = false;
   return new Transform({
     transform(chunk, _encoding, callback) {
-      if (done) return callback(null, chunk);
+      // Still through the decoder: a character split across chunks is rejoined, not cut in two.
+      if (done) return callback(null, decoder.write(chunk));
       const text = held + decoder.write(chunk);
       const at = text.search(CLOSE_BODY);
       if (at !== -1) {
@@ -82,7 +84,7 @@ export function bodyCloseInjector(snippet) {
     },
     flush(callback) {
       const rest = held + decoder.end();
-      callback(null, done ? rest : rest + snippet);
+      callback(null, rest);
     },
   });
 }

@@ -48,4 +48,21 @@ describe("listTasks and a task's spend", () => {
     expect(told.tasks).toHaveLength(2);
     for (const row of told.tasks) expect("spend" in row).toBe(false);
   });
+
+  // A client that also holds a row from another source (a run's own session) compares the two
+  // by version (FIX-2429): the action names when the row was last written, as the row records it.
+  it("answers each row's updatedAt on the action, and leaves it off the tool", async () => {
+    const { ctx } = buildDelegationCtx({ self: false });
+    const ref = (await ownStateResolver(ctx as never))!;
+    await ref.createTask({ id: "t_one", goal: "Fix the login form" });
+    const stored = ref.get("t_one")!;
+
+    const actions = taskToolActions("desk", ownStateResolver);
+    const caller = { ...(ctx as object), user: { identity: { userId: "u1" } } };
+    const acted = (await runForTest(actions["listTasks_desk"]!.block as never, {} as never, caller as never)) as { tasks: Array<Record<string, unknown>> };
+    expect(acted.tasks[0]!.updatedAt).toBe(stored.updatedAt);
+
+    const told = (await runForTest(toolNamed(buildTaskToolsList(ownStateResolver), "listTasks"), {} as never, ctx)) as { tasks: Array<Record<string, unknown>> };
+    for (const row of told.tasks) expect("updatedAt" in row).toBe(false);
+  });
 });

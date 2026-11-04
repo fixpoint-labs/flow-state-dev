@@ -86,6 +86,8 @@ The support team is one coordinator and four specialists, declared in files rath
 
 Open `support.help` in the rail (under Coordinators) and ask a question. The coordinator sends each post to the one specialist whose job fits it: `support.devices` for printers, laptops, phones and wifi, `support.accounts` for sign-in and billing, `support.fsd` for questions about building with flow-state-dev, and `support.general` for anything else. You see which specialist is working on it, then its answer as a line under its name, without reloading.
 
+The panel's header names who you are talking to and what kind of worker it is, whether you opened the coordinator or used **Talk** on a specialist. **Back to assistant** closes it. A specialist's answer renders as markdown, the way the assistant's replies do, and your own posts show as you typed them.
+
 The rail shows your own conversation with `support.help`. Every user has one, and nobody else reads it.
 
 Each specialist is a `WORKER.md` under `workforce/teams/support/workers/`. Its `description:` is its job, and it is what the coordinator reads to decide who answers:

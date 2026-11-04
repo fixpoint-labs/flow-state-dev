@@ -10,7 +10,9 @@
  * A Lab that refuses the first read for want of a verified organization, or
  * that names no organization for the user, gets the refusal screen and
  * nothing else (BR-3): the sidebar, the tree and every other read wait behind
- * it.
+ * it. A first read that can't reach the Lab gets the couldn't-reach screen,
+ * which reads again on its own. Once a read has landed, a later failure keeps
+ * the shell and draws the connection bar above it instead (FIX-2373).
  */
 import { useEffect, useState } from "react";
 import { GAPS, type Gaps } from "./gaps";
@@ -18,7 +20,8 @@ import type { ThemeLook } from "./lib/theme";
 import type { Connection } from "./lib/connection";
 import type { LoadedSnapshot } from "./lib/derive";
 import { LabProvider, useLab } from "./lib/lab-data";
-import type { Failure } from "./lib/reads";
+import { ConnectionBanner } from "./components/flow-state/connection-banner";
+import { ConnectionScreen } from "./components/flow-state/connection-screen";
 import { ResourceView } from "./surfaces/Resource";
 import { useRoute, type Route } from "./lib/routes";
 import { ShiftCoordinatorPanel, ShiftCoordinatorView } from "./surfaces/ShiftCoordinator";
@@ -54,51 +57,8 @@ export function App({ connection, gaps = GAPS, devtoolUrl, look }: { connection:
   );
 }
 
-/**
- * The screen a Lab gets when Shift Manager has no organization to open it under, and
- * the only one: the Lab refused the first read, or served nothing that names
- * the user's organization.
- */
-function Refusal({ failure }: { failure: Failure }) {
-  return (
-    <main className="flex h-screen items-center justify-center p-6" data-testid="refusal">
-      <div className="max-w-md">
-        <h1 className="text-lg font-semibold">This Lab won't let Shift Manager in</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {failure.httpStatus === undefined
-            ? "Shift Manager opens a Lab only under an organization, and this Lab doesn't say which one you're in. Shift Manager shows nothing from the Lab until it does."
-            : "The Lab's server refused the first read because the request carried no verified organization. Shift Manager shows nothing from the Lab until it does. Check that the Lab's config hands Shift Manager a credential (its devtool block) and that Shift Manager is opened on the address its start script printed."}
-        </p>
-        <p className="mt-3 bg-muted px-3 py-2 font-mono text-xs" data-testid="refusal-message">
-          {failure.httpStatus === undefined ? failure.message : `${failure.httpStatus} · ${failure.message}`}
-        </p>
-      </div>
-    </main>
-  );
-}
-
-/** The screen a first read that failed for another reason gets: what the Lab answered, and Retry. */
-function Unreachable({ failure, onRetry }: { failure: Failure; onRetry: () => void }) {
-  return (
-    <main className="flex h-screen items-center justify-center p-6" data-testid="unreachable">
-      <div className="max-w-md">
-        <h1 className="text-lg font-semibold">Shift Manager couldn't reach the Lab</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          The first read failed before the Lab said who you are. Check that the Lab's server is running, then retry.
-        </p>
-        <p className="mt-3 bg-muted px-3 py-2 font-mono text-xs" data-testid="unreachable-message">
-          {failure.httpStatus === undefined ? failure.message : `${failure.httpStatus} · ${failure.message}`}
-        </p>
-        <button type="button" onClick={onRetry} className="mt-3 border px-3 py-1.5 text-sm" data-testid="unreachable-retry">
-          Retry
-        </button>
-      </div>
-    </main>
-  );
-}
-
 function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | undefined; look: ThemeLook | undefined }) {
-  const { snapshot, refresh, client } = useLab();
+  const { snapshot, refresh, client, health } = useLab();
   const route = useRoute();
   // Null is closed; "" opens Jump to, MESSAGE_PREFIX opens it already in message mode.
   const [jumping, setJumping] = useState<string | null>(null);
@@ -129,8 +89,22 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
   if (snapshot === undefined) {
     return <p className="p-6 text-sm text-muted-foreground" data-testid="loading">Reading the Lab…</p>;
   }
-  if (snapshot.refused !== undefined) return <Refusal failure={snapshot.refused} />;
-  if (snapshot.unreachable !== undefined) return <Unreachable failure={snapshot.unreachable} onRetry={() => void refresh()} />;
+  if (snapshot.refused !== undefined) {
+    return (
+      <ConnectionScreen kind="refused" title="This Lab won't let Shift Manager in" failure={snapshot.refused}>
+        {snapshot.refused.httpStatus === undefined
+          ? "Shift Manager opens a Lab only under an organization, and this Lab doesn't say which one you're in. Shift Manager shows nothing from the Lab until it does."
+          : "The Lab's server refused the first read because the request carried no verified organization. Shift Manager shows nothing from the Lab until it does. Check that the Lab's config hands Shift Manager a credential (its devtool block) and that Shift Manager is opened on the address its start script printed."}
+      </ConnectionScreen>
+    );
+  }
+  if (snapshot.unreachable !== undefined) {
+    return (
+      <ConnectionScreen kind="unreachable" title="Shift Manager couldn't reach the Lab" failure={snapshot.unreachable} onRetry={refresh}>
+        The first read failed before the Lab said who you are. Check that the Lab's server is running, then retry.
+      </ConnectionScreen>
+    );
+  }
 
   const levels = (
     <>
@@ -141,23 +115,26 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
     </>
   );
   return (
-    <div className="flex h-dvh min-h-0 min-w-[900px]" data-testid="shell">
-      <Sidebar route={route} gaps={gaps} onJump={() => setJumping("")} look={look} collapsed={panels.navCollapsed} onToggle={toggleNav} />
-      {route.level === "task" ? (
-        // The task screen and its inspector read one row and one run.
-        <TaskProvider
-          key={`${route.boardRef}/${route.taskId}`}
-          snapshot={snapshot}
-          boardRef={route.boardRef}
-          taskId={route.taskId}
-          devtoolUrl={devtoolUrl}
-        >
-          {levels}
-        </TaskProvider>
-      ) : (
-        levels
-      )}
-      {jumping !== null ? <JumpTo snapshot={snapshot} gaps={gaps} client={client} initialQuery={jumping} onClose={() => setJumping(null)} /> : null}
+    <div className="flex h-dvh min-h-0 min-w-[900px] flex-col" data-testid="shell">
+      <ConnectionBanner feed={{ state: health }} className="pb-2" />
+      <div className="flex min-h-0 flex-1">
+        <Sidebar route={route} gaps={gaps} onJump={() => setJumping("")} look={look} collapsed={panels.navCollapsed} onToggle={toggleNav} />
+        {route.level === "task" ? (
+          // The task screen and its inspector read one row and one run.
+          <TaskProvider
+            key={`${route.boardRef}/${route.taskId}`}
+            snapshot={snapshot}
+            boardRef={route.boardRef}
+            taskId={route.taskId}
+            devtoolUrl={devtoolUrl}
+          >
+            {levels}
+          </TaskProvider>
+        ) : (
+          levels
+        )}
+        {jumping !== null ? <JumpTo snapshot={snapshot} gaps={gaps} client={client} initialQuery={jumping} onClose={() => setJumping(null)} /> : null}
+      </div>
     </div>
   );
 }

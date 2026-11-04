@@ -151,7 +151,8 @@ export function StreamView({
         const isLast = groupIndex === filteredGroups.length - 1;
         const isActive = isLast && streamStatus === "streaming";
         return (
-          <div key={group.requestId}>
+          // Each request is a send's: the one the person just sent is what rises to the top.
+          <div key={group.requestId} {...feed.mine(group.requestId)}>
             <RequestSeparator
               requestId={group.requestId}
               action={group.action}

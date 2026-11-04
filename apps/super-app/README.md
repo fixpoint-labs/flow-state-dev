@@ -87,6 +87,17 @@ see its README. They load `.env.local` the way they do standalone.
 - An app that stops leaves the rest running: its route answers `502` and the
   landing page marks it stopped. Log lines carry the app's id.
 
+## Restarting
+
+Quitting with Ctrl-C (or closing the terminal) stops the proxy and every app. If
+a run was killed instead and left something listening, the next start takes the
+port back: anything on the proxy's or an app's port that is running from this
+checkout is stopped, along with what it started, and the start says so. A
+process from anywhere else is left alone: that app is marked stopped (or, for the
+proxy's own port, the start refuses) with a message naming the holder. Finding
+the holder needs `lsof`; without it the start behaves as before and fails on the
+port.
+
 ## Limits
 
 - The labs run as `fsdev dev --app`, the way they run standalone. Each one still
@@ -98,6 +109,9 @@ see its README. They load `.env.local` the way they do standalone.
   browser refresh loads the new build. Vite's dev client loads from absolute
   paths that can't live under a prefix. Kitchen Sink keeps `next dev` HMR. A
   lab's server side (its flows and config) isn't watched: that needs a restart.
+- The button is an inline script, so a `Content-Security-Policy` an app sets
+  that forbids inline scripts would stop it showing, with no error on the page.
+  None of the hosted apps sets one.
 - Kitchen Sink's Bull Board (`REDIS_URL` set) mounts at `/api/admin/queues`
   without the prefix and isn't reachable through the proxy.
 - A lab page's relative URLs resolve against its `<base href>`, so a

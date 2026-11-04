@@ -75,6 +75,15 @@ export const workerInventoryRowSchema = z.object({
    */
   door: z.string().nullable().default(null),
   /**
+   * Whether the door takes an optional `taskId`, the task a line is sent
+   * from, and stamps it on the line and the reply (its `respond` declares
+   * `taskOf`, through `doorTask`). An app sends the key only when this is
+   * `true`: a strict door refuses a key it doesn't declare. Defaulted so a row
+   * written before the field reads as not taking one (BP-030); the next boot
+   * rewrites it.
+   */
+  doorTakesTask: z.boolean().default(false),
+  /**
    * The worker's display name (its `WORKER.md` `name:`), for people only; ids
    * stay the wiring. `null` when it names none, and on a row written before
    * the field (BP-023, BP-030): a view shows the id instead.
@@ -139,7 +148,7 @@ const SHARED_ACROSS_FLOWS = false;
  * schema declares today, named rather than defaulted (BP-015). A key a later
  * change adds to a row stays server-side until it is added here too.
  */
-const WORKER_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "rules", "name", "teamName", "hired", "incarnation"] as const;
+const WORKER_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "rules", "doorTakesTask", "name", "teamName", "hired", "incarnation"] as const;
 
 /**
  * The worker inventory — one row per registered worker, at `inventory/workers/*`.

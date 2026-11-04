@@ -75,7 +75,7 @@ store. One command builds the pages and serves them with the lab's workers:
 pnpm --filter @flow-state-dev/claude-code-style dev
 ```
 
-That builds the pages and serves them on `fsdev dev`, from the repository root:
+It is the same as running these two from the repository root:
 
 ```bash
 pnpm --filter @flow-state-dev/claude-code-style build
@@ -150,6 +150,14 @@ a package call:
 | A coding thread's review card | the `data` of the review stop (`suspension` item) in the thread's run session: branch, commits, subjects and the judge's verdict |
 | *Not reviewed* | a finished coding thread's output, `review: "deadline"`, through `getTask_tasks` |
 | Answering in a thread | the Inbox client's `answerHold` on its open question; with none, `updateTask_tasks` with your line as a steer |
+| Pins | the `pins` flow's `listPins` read, so reading them stores nothing |
+
+The thread and a task's work follow their session's stream. The rest reads when something changes,
+through `client.subscribe`: a row of the sessions list on its session's notices (a turn, a board
+change, a resource), the thread's running turn on a request notice, and pins on a change to your
+user state. A session you open in another tab joins the list at the next reload. On a host whose
+push can miss a change, such as the SQLite store the lab runs on, each also reads at its old pace:
+the list and pins every 3 seconds, the running turn every 1.5.
 | *Resolve* and *Request changes* | the Inbox client's `answerHold` on its review: `{ verdict: "accepted" }` or `{ verdict: "revise", words }` |
 | *Pin* and *Unpin* | the lab's `pins` flow (`workforce/flows/pins.mts`), your own user state |
 

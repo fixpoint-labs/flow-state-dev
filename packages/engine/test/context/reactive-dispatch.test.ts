@@ -415,6 +415,22 @@ describe("reactive dispatch: non-live single streaming + updateState aliasing", 
     expect(items.some((i) => i.type === "resource_change")).toBe(false);
   });
 
+  it("a non-live single with a client config emits no resource_change on the writer's stream", async () => {
+    // FIX-1506: its change now reaches the seam (to publish for other
+    // sessions), and the writer's own stream stays as it was.
+    const doc = defineResource({
+      scope: "session",
+      stateSchema: docSchema,
+      client: { expose: ["status"] },
+    });
+
+    const { ctx, items } = await createCtx({ doc });
+    await (ctx.resources.doc as any).patchState({ status: "published" });
+
+    expect((ctx.resources.doc as any).state).toMatchObject({ status: "published" });
+    expect(items.some((i) => i.type === "resource_change")).toBe(false);
+  });
+
   it("updateState gives the updater a fresh clone so prevState is not aliased", async () => {
     const seen: ResourceChange[] = [];
     const onUpdate = handler({

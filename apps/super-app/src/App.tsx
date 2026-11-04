@@ -23,16 +23,28 @@ const OPENED_WITH = {
   session: readSessionAddress(),
 };
 
-/** The hosted apps, kept current. `undefined` until the first answer. */
-function useApps(): HostedApp[] | undefined {
+/**
+ * The hosted apps, kept current: `apps` is `undefined` until the first answer,
+ * and `failed` says the last read didn't get one (the list on screen, if any,
+ * is the last good one). A failed read is tried again at the next poll.
+ */
+function useApps(): { apps: HostedApp[] | undefined; failed: boolean } {
   const [apps, setApps] = useState<HostedApp[]>();
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     let live = true;
     const read = () =>
       fetch("/devtool/apps.json", { cache: "no-store" })
-        .then((res) => (res.ok ? (res.json() as Promise<HostedApp[]>) : undefined))
-        .then((next) => live && next !== undefined && setApps(next))
-        .catch(() => {});
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json() as Promise<HostedApp[]>;
+        })
+        .then((next) => {
+          if (!live) return;
+          setApps(next);
+          setFailed(false);
+        })
+        .catch(() => live && setFailed(true));
     void read();
     const timer = setInterval(read, STATUS_POLL_MS);
     return () => {
@@ -40,7 +52,7 @@ function useApps(): HostedApp[] | undefined {
       clearInterval(timer);
     };
   }, []);
-  return apps;
+  return { apps, failed };
 }
 
 /**
@@ -69,7 +81,7 @@ function useConnection(app: HostedApp | undefined, running: boolean): InjectedCo
 }
 
 export function App() {
-  const apps = useApps();
+  const { apps, failed } = useApps();
   const [picked, setPicked] = useState(OPENED_WITH.app);
   const app = apps?.find((a) => a.id === picked) ?? apps?.find((a) => a.status === "running") ?? apps?.[0];
   const running = app?.status === "running";
@@ -80,6 +92,11 @@ export function App() {
     // The session in the address belongs to the app it was opened with.
     window.history.replaceState(null, "", `${window.location.pathname}?app=${encodeURIComponent(id)}`);
   };
+  // An `?app=` that names no hosted app falls back to another: the tabs and the address follow it, rather than disagree.
+  const fallbackId = picked !== null && apps !== undefined && app !== undefined && app.id !== picked ? app.id : undefined;
+  useEffect(() => {
+    if (fallbackId !== undefined) pick(fallbackId);
+  }, [fallbackId]);
 
   return (
     <div className="shell">
@@ -103,7 +120,7 @@ export function App() {
       </nav>
       <div className="stage">
         {apps === undefined ? (
-          <p className="notice">Loading…</p>
+          <p className="notice">{failed ? "Couldn't read the list of apps from this server. Trying again…" : "Loading…"}</p>
         ) : app === undefined ? (
           <p className="notice">No apps are hosted.</p>
         ) : !running ? (

@@ -419,6 +419,18 @@ declares with `userMessage` and a `{ message }` input. `openInventory` writes it
 [inventory row](#the-inventory) as `door`. Every worker flow has exactly one: a flow with none, or
 with two, is refused when `hireWorkforce` checks its worker flows, naming the flow.
 
+A door may also take an optional `taskId`: the task a user's line was sent from. The engine stamps
+it on the line and on everything the turn emits, so the task's view finds both by `item.taskId`
+after a reload. The built-in doors (`agent`, the coordinator, the error reporter) take it. A door of
+your own opts in by spreading `doorTask(inputSchema)` into `respond`, which adds the key to the
+input and the matching `taskOf` together. The inventory row says which doors take it, as
+`doorTakesTask`; send the key only to those, since a strict door refuses a key it doesn't declare.
+The id only labels the turn: a steer still picks the session's open task itself.
+
+```ts
+respond: { ...doorTask(inputSchema), block: runTurn, userMessage: (input) => input.message },
+```
+
 ### The documents a worker may touch
 
 A `WORKER.md` may list the [file-declared documents](#reading-documents-from-files) that worker is
@@ -629,6 +641,7 @@ through `defineAgentWorkerFlow({ skills })`. It sees the earlier turns of the co
 in, up to the session's history window (the last 50 by default), and nothing from any other
 conversation. `workerFlows` is therefore optional. A `flow:` that is present but empty or whitespace-only
 refuses, because it names no flow — only an absent key means the built-in.
+
 A turn on `agent` has `maxSteps` model steps (default 8, the generator's own), and the last one offers no tools,
 so a worker still looking things up when its steps run out answers in text with what it found
 (every turn: user messages, worker messages, tasks).
@@ -1424,7 +1437,7 @@ where it is when a later roster no longer names the worker. The rows are the sta
 
 | Factory | One row per | Fields |
 |---------|-------------|--------|
-| `defineWorkerInventoryCollection()` | registered worker, at `inventory/workers/<id>` | `id`, `kind` (the worker flow the standard worker runs on), `door` (the action that takes a user's message, or `null`), `rules` (whether its flow declares the standing rules action), `hired` and `incarnation` (`false` and `null` on every row `openInventory` writes, since it lists only standard workers) |
+| `defineWorkerInventoryCollection()` | registered worker, at `inventory/workers/<id>` | `id`, `kind` (the worker flow the standard worker runs on), `door` (the action that takes a user's message, or `null`), `doorTakesTask` (whether that door takes a `taskId`, `false` on older rows), `rules` (whether its flow declares the standing rules action), `hired` and `incarnation` (`false` and `null` on every row `openInventory` writes, since it lists only standard workers) |
 
 The collection is readable by a browser through the ordinary collection read
 (`listCollectionItems` from `@flow-state-dev/client`), from any session whose flow declares it: the
@@ -2785,7 +2798,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `workerUsageAction(installation)` / `WORKER_USAGE_ACTION` | The `workerUsage` query (see [Worker usage](#worker-usage)) and its action name, `"workerUsage"`. |
 | `WorkerUsageRow` / `WorkerSourceSpend` | One worker's row for a period, and one source's spend in it. |
 | `workerUsageCollection` / `WORKER_USAGE_RESOURCE` / `WORKER_USAGE_DEFAULT_DAYS` / `WORKER_USAGE_MAX_DAYS` | The user-scoped `worker-usage/**` collection `installation.resources` carries, its accessor key, and the query's default (7) and longest (90) period in days. |
-| `workerDoorOf(worker)` / `WorkerDoor` | A hired worker's door: `respond`, the public action its worker flow declares with `userMessage` and a `{ message }` input. Returns `{ door, problem? }`. `door` is `"respond"`, or `null` with `problem` saying what to fix when the flow has none, a second, or its door under another name. `openInventory` writes it on the worker's row. Such a flow is refused when hired, so a hired worker's door is always `respond`. |
+| `workerDoorOf(worker)` / `WorkerDoor` | A hired worker's door: `respond`, the public action its worker flow declares with `userMessage` and a `{ message }` input. Returns `{ door, takesTask, problem? }`. `door` is `"respond"`, or `null` with `problem` saying what to fix when the flow has none, a second, or its door under another name. `takesTask` is `true` when the door accepts and keeps a `taskId` and names it as the turn's task (see `doorTask`). `openInventory` writes both on the worker's row, as `door` and `doorTakesTask`. Such a flow is refused when hired, so a hired worker's door is always `respond`. |
 
 ## Error Semantics
 

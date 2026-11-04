@@ -106,6 +106,7 @@ import {
   waitOnTask,
 } from "../tasks/helpers/wait-on-task";
 import { cancelAndResume } from "../tasks/helpers/user-stop";
+import { taskToolSuffix } from "./task-tool-suffix";
 
 /** A filing's question as the board keeps it: a plain string is a question. */
 function askOf(question: string | { kind: "question" | "confirm"; prompt: string; onNo?: "cancel" | "continue" }): QuestionInit {
@@ -1792,6 +1793,13 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
              * of its own. On the board's action only: a model's tool reads none.
              */
             spend: taskSpendViewSchema.nullable().optional(),
+            /**
+             * When the row was last written (epoch ms), as the row records it
+             * (FIX-2429), so a client that holds the row from another source
+             * too (a run's own session) keeps the newer copy. On the board's
+             * action only, like `spend`.
+             */
+            updatedAt: z.number().optional(),
             /** A request is waiting on this task's ending (`getTask` with `wait`). */
             waitedOn: z.literal(true).optional(),
             ...waitingShape,
@@ -1826,7 +1834,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
           ...(t.run != null ? { run: t.run } : {}),
           // A client's read, never a model's (FIX-2288): the action carries it, the tool doesn't.
-          ...(claimless ? { spend: taskSpendView(t) } : {}),
+          ...(claimless ? { spend: taskSpendView(t), updatedAt: t.updatedAt } : {}),
           ...(t.wait != null && t.wait.lapsed !== true && !isTerminalStatus(t.status) ? { waitedOn: true as const } : {}),
           ...waitingOf(t),
           ...withCurrentId(currentFor(t, latest.get(t.followUpOf ?? t.id))),
@@ -2227,19 +2235,8 @@ export function taskToolsForTurn(
 // The task tools as flow actions
 // ---------------------------------------------------------------------------
 
-/**
- * The qualifier that makes one board's task tools distinct from
- * another's: the board's collection id with every character a provider does
- * not allow in a tool name (`[a-zA-Z0-9_-]`) turned into `_`. So
- * `eng.feature.work`'s tools are `updateTask_eng_feature_work`.
- *
- * **Pinned.** It is the name a model is told about on a dotted board and the
- * name an action carries under {@link taskToolActions}, and the DevTool scopes
- * a row's actions to its board by it.
- */
-export function taskToolSuffix(collectionId: string): string {
-  return collectionId.replace(/[^a-zA-Z0-9_-]/g, "_");
-}
+// The board qualifier lives in a leaf module, so `./inbox` names a board's actions without this runtime.
+export { taskToolSuffix };
 
 /**
  * What {@link taskToolActions} reads off a board handle. Structural, so this

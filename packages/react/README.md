@@ -106,6 +106,8 @@ const session = useSession(sessionId, {
 
 `live: true` makes the view hear requests it didn't send, for a session with more than one writer (a conversation other participants answer in, the same conversation in two tabs). The hook opens one session stream after its first snapshot: each finished item from any request joins `items` about a second after the server saves it, and `childSessions` is re-read when a run is dispatched, even one still waiting its turn, and again when the run finishes. Items are keyed by request and id together, so two requests that each save an item with the same id both appear in `items`. An item one request emits more than once under the same id, such as a keyed component, shows its latest copy, whatever order the copies arrive in. Default `false`; a server without the stream, or one that refuses it when the view first connects, leaves the view as it would be without `live`, with no error. Once the stream is open, a drop the first reconnect recovers from, such as the server's routine close, shows no change. If that reconnect fails, `childSessionsStale` is raised and `items` stays as it is, with no error, until a connection gets through. A reconnect is refused when the session is deleted while the view is open, when the reader's access is revoked, or when a new session takes its id. The flag then stays raised until a snapshot read, such as `refresh()`, finds a new session under the id that the reader can open, and moves the view onto it.
 
+A live view also hears what other sessions change in the scopes it reads. After its first snapshot it subscribes its session's, user's and organization's topics through `client.subscribe`. A state change, to the session's, the user's or the organization's state, reads state again without the item history, so `useClientData` shows it, `client.derived` values included. A resource change is added to `resourceChanges` and the resource hooks read again. If the snapshot includes that resource, or the scope has client data, the view also re-reads state. A change this view's own request made is skipped while the view's own stream for that request is open; once that stream closes (the request ended, the connection dropped, or another stream replaced it), the request's changes are heard again. The view also reads once on each connect and reconnect, and every few seconds on a host that can't push.
+
 Returns:
 - `detail` — Session metadata
 - `snapshot` — Current state snapshot with clientData
@@ -252,20 +254,24 @@ Low-level hook for direct action execution without session management.
 ### `useSubscription(topics, read, options?)`
 
 Runs `read` again when something under `topics` changes, through the provider's
-client and `fsd.subscribe`. One read runs at a time and at most one more waits,
+client (or `options.client`, a client you built yourself) and `fsd.subscribe`. One read runs at a time and at most one more waits,
 so a burst of changes is one more read. `read` gets the notice that woke it, or
 `null` when the screen should read everything again: after a connect or a
 reconnect, on a timer tick, and when push starts or stops reaching every server
 process. It also gets `null` when several changes arrived during one read (one
-follow-up read covers them all). It doesn't read on mount.
+follow-up read covers them all). It doesn't read on mount. Its second argument is an
+`AbortSignal`, aborted when the subscription ends (the screen unmounts, or its topics
+or options change): a read that awaits checks `signal.aborted` before it sets state or
+starts more work, since a read already running when the screen goes away still finishes.
 
 ```tsx
 import { topic } from "@flow-state-dev/client";
 
-useSubscription([topic.session(sessionId)], refresh, { pollIntervalMs: 3000 });
+useSubscription([topic.session(sessionId, { resource: "tasks" })], refresh, { pollIntervalMs: 3000 });
 ```
 
-`pollIntervalMs` reads on a timer wherever push can miss a change (a host with
+Narrow a session topic to the resource or task board the read shows, so a reply
+streaming in the session doesn't wake it. `pollIntervalMs` reads on a timer wherever push can miss a change (a host with
 no push, a socket that is down); omit it for no timer. `enabled: false`
 subscribes nothing. For a session's own items, use `useSession({ live: true })`.
 
@@ -396,25 +402,45 @@ Explicit `onApprove`/`onReject` props still take precedence; with neither a prov
 
 ### `useJumpToLatest(options?)`
 
-Keeps a conversation where the reader put it, and offers the way to its newest content. Attach `ref` to the scrolling element.
+Scrolls a conversation the way ChatGPT and Claude do. A line the person sends rises to near the top of the view and its reply streams in below it. After that, the view stays where it is until the reader moves it. Attach `ref` to the scrolling element, mark each of the person's own lines with `mine(key)`, and call `sent()` when they send.
 
 ```tsx
 const feed = useJumpToLatest({ resetKey: sessionId });
 return (
-  <div ref={feed.ref} className="overflow-y-auto">
-    {/* the turns */}
+  <>
+    <div ref={feed.ref} className="overflow-y-auto">
+      {lines.map((line) => (
+        <div key={line.id} {...(line.role === "user" ? feed.mine(line.id) : {})}>
+          {line.text}
+        </div>
+      ))}
+    </div>
     {feed.atEnd ? null : <button onClick={feed.jump}>Jump to latest</button>}
-  </div>
+    <Composer
+      onSend={(text) => {
+        feed.sent();
+        return send(text);
+      }}
+    />
+  </>
 );
 ```
 
-New content never scrolls the feed, even when the reader is at the end, because they may be reading. When something arrives below what is on screen, `atEnd` turns `false`: show a jump-to-latest button that calls `jump()`. It turns `true` again once the reader is back at the end.
+- `ref`: attach to the scrolling element.
+- `mine(key)`: returns `{ "data-sent-line": key }` (typed `SentLineMark`). Spread it on each of the person's lines. `key` names the line and should stay the same while it redraws, such as its id. Put it on an element with a box of its own, not on a `display: contents` wrapper.
+- `sent()`: call when the person sends a line. When their line lands, it scrolls smoothly to near the top of the feed, once, from wherever the reader was. Calling it after the line is already drawn works too, for an app that learns of the send in an effect: the newest marked line the feed had not shown before is the one that rises. Called before the scrolling element mounts, such as from a view that shows an empty state until the first line, the line still rises when the feed mounts with it, with space kept below it for the reply.
+- `atEnd`: `false` when there is content below the view (more than 32 px). Show a jump-to-latest button then.
+- `jump()`: scrolls smoothly to the end of the content.
+- `startAtEnd` (default `true`): `false` opens where the element starts, such as a feed with a lead above its turns. A `resetKey` change doesn't reopen such a feed at its end.
+- `resetKey`: what the feed shows, such as a session id. A change to a different conversation opens the feed at its end again (with `startAtEnd` on) and, with either setting, drops the space kept for the last conversation and cancels a rise that hasn't happened yet. Replacing the scrolling element under the same key leaves the reader where they were. The one exception is a send that creates the conversation: when `resetKey` goes from `null` to a key after `sent()`, the feed doesn't reopen and keeps its space, a line that hasn't risen yet rises when it lands, and one that already rose stays where it is.
 
-A feed that opens is already at its end on the first frame: on mount, when `resetKey` changes (switching to another session), and when its first read fills it. Nothing animates there.
+So the line can reach the top under a short reply, the hook keeps space at the end of the feed, as bottom padding on the scrolling element. The space shrinks as the reply grows and is gone once the reply fills the view. Otherwise it stays until the next send, or until `resetKey` switches to a different conversation (with either `startAtEnd` setting), so a short reply has blank space under it. `atEnd` and `jump()` ignore the space.
 
-- `startAtEnd` (default `true`): `false` opens where the element starts, such as a feed with a lead above its turns.
-- `jump()`: to the end, smoothly.
-- `sent()`: call when the person sends a line. It jumps to the end and brings the next content that lands below into view, which is the line they sent. What arrives after that stays below.
+A reply growing past the bottom edge never moves the view: `atEnd` turns `false` and the button appears. Content that isn't the person's line, such as another participant's message or a tool result, never moves it either. A feed that never calls `mine` or `sent` behaves this way throughout: the view stays put and the button shows when there is more below.
+
+Any scroll by the person cancels a rise that hasn't happened yet: the wheel, touch, a press on the scrollbar, or a scroll key (arrows, Page Up/Down, Home, End, Space) pressed on the feed. Keys typed into an input, textarea, select or editable element inside the feed don't count.
+
+With `startAtEnd` on, a feed that opens is already at its end on the first frame, with nothing animating: on mount, when `resetKey` changes, and when content first fills a feed that was empty, such as a conversation that loads after the feed mounts.
 
 ### `useDraft(namespace, id)`
 
@@ -681,11 +707,11 @@ import { BoardList } from "@flow-state-dev/react";
 
 It reads the same rows `BoardColumns` does, through the same `sessionId`, `boardRef`, `client` and `limit`, and labels a row the same way, with the assignee beside it when there is one. Nothing is hidden: a finished or cancelled task stays in the list, and a status the component does not recognise shows as its own word. A row without a `createdAt` follows the dated ones, in read order.
 
-`live` re-reads the board whenever the session named by `sessionId` records a change to it. Pass the id of the session whose runs write to the board. A change made in a different session shows after the list remounts, or the next time this session changes the board. With `live` off, the default, it reads on mount like the other panels. If the server doesn't offer the session stream, or refuses it, the list reads once and shows no error.
+`Roster` and `BoardColumns` take `live` too: the panel reads its collection again whenever any session changes it, heard through `client.subscribe`. A live panel makes one extra read on mount. A client that can only read takes no `live`.
 
-Each live list opens its own connection to its session's stream while mounted, so a page that also calls `useSession(..., { live: true })` on that session holds two.
+On `BoardList`, `live` re-reads the board whenever a task on it changes, in any session and on any server process: it subscribes `topic.session(sessionId, { resource: boardRef })`, where every board change is announced on the session that filed the task. Pass the id of the session that files the tasks, usually the conversation. A reply streaming in that session doesn't make it read. Where push can miss a change (a host with no push, a socket that is down) it reads every 3 s instead. With `live` off, the default, it reads on mount like the other panels.
 
-The read and the live stream go through one `client`, so the stream carries the read's credential to the read's origin. Any client from `createClient` works. A client that can only read (it has `resources.listCollectionItems` but no `sessions.stream`) takes no `live`, and TypeScript rejects that pair.
+The read and the live subscription go through one `client`, so the subscription carries the read's credential to the read's origin. Any client from `createClient` works, and every subscription on it shares one connection. A client that can only read (it has `resources.listCollectionItems` but no `subscribe`) takes no `live`, and TypeScript rejects that pair.
 
 The list renders the `<li>` for every row and puts the task's id on it (`data-task-id`), so a `row` slot returns the body that goes inside one.
 

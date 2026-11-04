@@ -13,6 +13,11 @@
  * board, as the user. The answer is typed by what the hold asks
  * ({@link InboxAnswerFor}).
  *
+ * **A board's task actions.** `board(at)` on the same client binds one board
+ * and cancels, steers, releases, retries and re-files its tasks through the
+ * board's own actions (FIX-2381). {@link taskActionName} is the one place an
+ * app gets a board action's name, for a reader that builds a row's holder.
+ *
  * **Where an item comes from.** A task run's stop lists under its row, never
  * from the run's session on its own. A suspension the reader found in a
  * session lists on its own only when no open row's run holds it.
@@ -22,7 +27,16 @@
  * `listTasks`; both hand them to {@link inboxItems}, the only function that
  * builds an item (the task-surface sweep fails one built anywhere else).
  */
-export { createInboxClient, type InboxClient } from "./client";
+export {
+  createInboxClient,
+  taskActionName,
+  type BoardActions,
+  type BoardAt,
+  type InboxClient,
+  type RefileOverrides,
+  type RefileRow,
+  type TaskActionTool,
+} from "./client";
 export { inboxItems } from "./list";
 // One task row as a person sees it: the one status and waiting-on vocabulary (FIX-2379).
 export { taskRowView, type TaskRowState, type TaskRowView, type TaskViewRow } from "./row-view";

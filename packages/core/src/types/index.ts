@@ -111,6 +111,10 @@ export type { RequestResume } from "./request-resume";
 export { suspendForUserOn } from "./suspend-for-user";
 export type { ApprovalAnswer, UserAnswer, SuspendForUser, SuspendForUserCancelled, SuspendForUserContext, SuspendForUserOptions } from "./suspend-for-user";
 
+/** The board-notice seam (FIX-2429): a task board's change reaches the change bus. */
+export { BOARD_NOTICE_SEAM, publishBoardChange } from "./board-notice";
+export type { BoardChange, BoardNoticeSeam } from "./board-notice";
+
 /** The request-end seam (FIX-2077): a framework package's hook after a request's last drain. */
 export {
   REQUEST_END_SEAM,

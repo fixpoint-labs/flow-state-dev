@@ -491,7 +491,7 @@ The topics come from `topic`, which `@flow-state-dev/client` and `@flow-state-de
 
 Each takes an optional `{ resource }` to watch one resource under the scope. A topic without one also hears changes narrowed to a resource under it. User and org topics name no id: the server fills them in from the signed-in caller, so a client can't ask for someone else's.
 
-A notice's `kind` is `"items"`, `"request"`, `"run"` or `"resync"`; `origin.requestId` names the request that made the change, when a request did.
+A notice's `kind` is `"items"`, `"request"`, `"run"`, `"state"`, `"resource"`, `"board"` (a task on one of the session's boards changed, on a topic narrowed to the board's id) or `"resync"`; `origin.requestId` names the request that made the change, when a request did.
 
 **On a host with push** (`serve()` from `@flow-state-dev/node`, `fsdev dev` and `fsdev serve`), the client opens one WebSocket, shared by every `subscribe` call on that client. It asks the server for each topic first, through the client's own `fetcher`, so a bearer token your fetcher adds is what proves who the socket is. A topic the caller may not read is left out, the same way a session that doesn't exist is: `onChange` never hears about it, and with `pollIntervalMs` the client asks for it again at each tick, so access given back recovers without a remount. Each connect and reconnect calls `onChange(null)` once. The server closes a socket after an hour and the client reconnects, which checks every topic again.
 

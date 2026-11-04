@@ -15,7 +15,7 @@
  * What the run recorded (its plan, files and pull requests) is the one read
  * that is not here: `readRecordedWork` from `@flow-state-dev/harness-manager/browser`.
  */
-import { compareItemOrder } from "@flow-state-dev/client";
+import { compareItemOrder, sessionFeed, type SessionConnectionState } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
 import type { RequestStatus } from "@flow-state-dev/core/types";
 import type { Client } from "@flow-state-dev/client";
@@ -76,8 +76,13 @@ const ITEM_PAGE = 200;
 /** How many pages the Session reads before it says there is more than it shows. */
 const ITEM_PAGES = 5;
 
-/** A session's stored items, oldest first, and whether there were more than were read. */
-export type SessionItems = { items: OutputItem[]; truncated: boolean };
+/**
+ * A session's stored items, oldest first, and whether there were more than were
+ * read. A followed session ({@link followSessionItems}) also carries
+ * `loadEarlier` while it holds older items: each call adds the page before the
+ * first item, and the follower hears the longer list.
+ */
+export type SessionItems = { items: OutputItem[]; truncated: boolean; loadEarlier?: () => Promise<void> };
 
 /**
  * The run session's stored items, oldest first. At most {@link ITEM_PAGES}
@@ -97,6 +102,84 @@ export async function readSessionItems(client: Client, sessionId: string): Promi
     fail(error);
   }
   return { items: items.sort(compareItemOrder), truncated: true };
+}
+
+/** Pages of components {@link readTaskClaims} reads at most. */
+const CLAIM_PAGES = 50;
+
+/**
+ * The board's `task-change` items for `collectionId` in the session, read on
+ * their own. Which task ids belong to a board is learned from these, so a
+ * view that holds only the session's newest items (its first item comes after
+ * the task was claimed) still attributes the task's newer steps to it.
+ */
+export async function readTaskClaims(client: Pick<Client, "sessions">, sessionId: string, collectionId: string): Promise<OutputItem[]> {
+  const claims: OutputItem[] = [];
+  for (let offset = 0, page = 0; page < CLAIM_PAGES; page += 1) {
+    const state = await client.sessions.state(sessionId, { includeItems: true, itemTypes: ["component"], offset, limit: ITEM_PAGE });
+    for (const item of state.items ?? []) {
+      const data = (item as { component?: string; data?: { collectionId?: string } }).data;
+      if ((item as { component?: string }).component === "task-change" && data?.collectionId === collectionId) claims.push(item);
+    }
+    if (state.pagination?.hasMore !== true) break;
+    offset = state.pagination.nextOffset ?? offset + ITEM_PAGE;
+  }
+  return claims;
+}
+
+/** Where {@link followSessionItems} reports to. */
+export type SessionItemsFollower = {
+  /** The session's items now, oldest first: the first read, then again each time the stream brings one. */
+  onRead(read: SessionItems): void;
+  /** The first read failed. Said only until one succeeds: a lapse after that keeps what was read. */
+  onFailure(failure: Failure): void;
+  /** The feed's connection moved (`sessionFeed`'s `state`), for the page's connection bar. */
+  onState?(state: SessionConnectionState): void;
+};
+
+/**
+ * Follow a session's stored items, through the client's `sessionFeed`: its
+ * newest items once, then each finished item from the session stream, which
+ * the bus wakes on another process's write and which reads only what changed
+ * where the bus can't cross. Nothing is read on a clock, and a reply costs no
+ * more reads however long it is. `truncated` says the session holds items
+ * older than the first one read, and `loadEarlier` reaches them a page at a
+ * time. Returns the stop.
+ */
+export function followSessionItems(client: Pick<Client, "sessions">, sessionId: string, to: SessionItemsFollower): () => void {
+  const feed = sessionFeed(client, sessionId);
+  let last: readonly OutputItem[] | undefined;
+  let read = false;
+  let lastState: SessionConnectionState | undefined;
+  const stop = feed.subscribe(({ items, hasEarlier, state, error }) => {
+    if (state !== lastState) {
+      lastState = state;
+      to.onState?.(state);
+    }
+    // Before the history lands the feed publishes only its read's failures: a try that failed, or
+    // the feed giving up (`stopped`, its items empty), neither of which is an empty session. Its
+    // first publish with no error is the history read landing, empty or not, whatever the stream
+    // does after: the stream stays `connecting` until it names the session's runs, which a stream
+    // that keeps failing never does.
+    if (!read) {
+      if (error !== null) {
+        to.onFailure(describeFailure(error));
+        return;
+      }
+    } else if ((items.length === 0 && state === "connecting") || items === last) {
+      // A feed that starts over (its stream lapsed) empties itself until its history is read again;
+      // what was shown stays. A change of connection state alone moves nothing: the feed hands back
+      // the same `items` array until an item changes.
+      return;
+    }
+    last = items;
+    read = true;
+    to.onRead({ items: [...items], truncated: hasEarlier, ...(hasEarlier ? { loadEarlier: () => feed.loadEarlier() } : {}) });
+  });
+  return () => {
+    stop();
+    feed.close();
+  };
 }
 
 /** Where a live request stream reports to. */

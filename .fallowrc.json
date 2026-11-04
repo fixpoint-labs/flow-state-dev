@@ -70,9 +70,9 @@
   // Not analyzed. Specs and their PoCs aren't workspace code, and
   // `goals/_template` is copied to start a new goal. The rest runs somewhere
   // else, so its imports resolve against that place's paths and dependencies:
-  // goal harnesses and hosts run inside kitchen-sink, install-fsd templates are
-  // copied into a user's project, and packed-install fixtures run against a
-  // packed install.
+  // goal harnesses and hosts run inside kitchen-sink, goal pages build inside an
+  // app's scratch copy, install-fsd templates are copied into a user's project,
+  // and packed-install fixtures run against a packed install.
   "ignorePatterns": [
     "!.omp/**",
     "spec-poc/**",
@@ -84,6 +84,8 @@
     "goals/_template/**",
     "goals/*/*/harness*.mts",
     "goals/*/*/host/**",
+    // Goal pages copied into an app's scratch tree and built there by its Vite.
+    "goals/*/*/pages/**",
     // flow-state.build is a static page: its HTML loads the stylesheet, which no import reaches.
     "apps/build-site/public/**"
   ],
@@ -100,6 +102,8 @@
     "labs/claude-code-style/src/components/flow-state/review-hold.tsx",
     // Its copy of the registry's spend, as `fsdev ui add spend` installed it.
     "labs/claude-code-style/src/components/flow-state/spend.tsx",
+    // and of the registry's tool grouping, which its tool lines read.
+    "labs/claude-code-style/src/components/flow-state/tool-grouping.ts",
     // The stock shadcn copies the Teammates lab and Shift Manager palettes are built on.
     "labs/teammates/src/components/ui/**",
     "packages/shift-manager/src/components/ui/command.tsx",
@@ -134,6 +138,15 @@
     // Shift Manager's byte copy of the registry's spend: it draws the line and the
     // charge; the copy's other formatters are for apps that show them apart.
     "packages/shift-manager/src/components/flow-state/spend.tsx"
+  ],
+
+  // One named export, not a whole file. Kitchen Sink's and Shift Manager's byte
+  // copies of the registry's tool-grouping carry `toolRunOpen`, the open-while-running
+  // rule the labs follow (specs/issues/FIX-2393/SPEC.md, "One step-run state"); the
+  // registry's own ToolGroup keeps its `defaultOpen` prop, so neither app calls it.
+  "ignoreExports": [
+    { "file": "apps/kitchen-sink/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen"] },
+    { "file": "packages/shift-manager/src/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen"] }
   ],
 
   // Dead code fails `fallow audit` at its default severity. Complexity reports

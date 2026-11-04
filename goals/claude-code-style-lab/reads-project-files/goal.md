@@ -1,6 +1,6 @@
 # claude-code-style-lab › it reads project files
 
-**Issue:** FIX-2285 (epic FIX-2152)
+**Issue:** FIX-2285 (epic FIX-2152); the tool-line signals FIX-2393 (epic FIX-2369)
 
 **Outcome:** In the Claude Code-style lab, a member asks the main session a question about the
 project's code, and gets the answer from the project's files in the same turn. No task is filed
@@ -34,6 +34,15 @@ with a second user in its members.
   - *no value*: the reply doesn't contain the value.
   - *read refused*: the turn holds a read tool call whose result is refused `not-a-member`.
 
+- **Tool lines**, graded on the lab's own entries (its adapter's `entriesOf` over the turn's
+  items, the lines the thread draws):
+  - *lines name what was read* (leg 1): every project read's line names what it read: a read its
+    file (the path, or the tail a long path is shortened to, `…/billing/ledger/codes.ts`), a
+    search its pattern, a listing its pattern. A turn may find the value by a search alone, so
+    the value's own file is noted when a line names it, not required.
+  - *refusal reads failed* (legs 2 and 3): a tool line of the turn says `(failed)` and is a failed
+    step. A turn with no read call fails it, as it fails *read refused*.
+
 Each leg passes in every one of `GOAL_RUNS` (3) fresh runs.
 
 **Anti-game:** Leg 1 asserts nothing on the tool calls or their results: only the reply, the boards
@@ -52,6 +61,9 @@ runs, so no `ANTHROPIC_API_KEY` is needed.
 **Controls:**
 - `GOAL_CONTROL=no-read`: `desk.main`'s `WORKER.md` names no `projectSource` preset (rewritten for
   the run and restored after). Leg 1 must FAIL on *value named* or *0 tasks*.
+- `GOAL_CONTROL=old-lines`: the tool lines are graded as the lab's old `lib/tool-line.ts` drew
+  them (read from the last commit that had it): one fixed phrase per tool, never failed. *lines
+  name what was read* and *refusal reads failed* must FAIL.
 - `GOAL_CONTROL=no-gate`: the run source's membership check on the project path
   (`mayWorkOn` in `packages/workforce/src/projects/run-project.ts`) is patched out as the server
   loads it, and the run fails if the patch never reached the code. Leg 3 must FAIL on *no value*.
@@ -65,3 +77,5 @@ runs, so no `ANTHROPIC_API_KEY` is needed.
 | 2026-10-30 | 863a0e13 | openai/gpt-5.4 | PASS | Closure run (FIX-2156). 3 of 3 |
 | 2026-10-30 | 07753056 | openai/gpt-5.4 | PASS | Closure re-run after #4262. 3 of 3; leg 1 two read calls, 0 tasks |
 | 2026-10-30 | 07753056 | openai/gpt-5.4 | FAIL (control `no-gate`) | Leg 3 *no value* and *read refused*, all 3 runs |
+| 2026-11-04 | 5b8d9063 | openai/gpt-5.4 | PASS | FIX-2393 tool-line signals. 3 of 3; leg 1 2-3 read calls, every line named what it read (runs 1-2 read the value's file, run 3 found it by search alone); legs 2-3 each refused and read "(failed)" |
+| 2026-11-04 | 5b8d9063 | openai/gpt-5.4 | FAIL (control `old-lines`) | leg 1 *lines name what was read* ("Searched the project", "Listed the project's files"); legs 2-3 *refusal reads failed* (no line said failed) |

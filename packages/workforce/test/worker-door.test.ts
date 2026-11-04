@@ -90,12 +90,12 @@ describe("a worker's door (BR-1, BR-2)", () => {
   it("is `respond` on the built-in agent worker flow", () => {
     const [worker] = mintWorkers([record("eng.lead")], { workerFlows: flows });
     expect(worker!.kind).toBe("agent");
-    expect(workerDoorOf(worker!)).toEqual({ door: "respond" });
+    expect(workerDoorOf(worker!).door).toBe("respond");
   });
 
   it("is `respond` on a worker flow of an app's own", () => {
     const [worker] = mintWorkers([record("eng.desk", "desk")], { workerFlows: flows });
-    expect(workerDoorOf(worker!)).toEqual({ door: "respond" });
+    expect(workerDoorOf(worker!).door).toBe("respond");
   });
 
   // An app sends a user's line to `respond` on any worker without reading
@@ -139,8 +139,8 @@ describe("a worker's door (BR-1, BR-2)", () => {
     expect(sent).toEqual([
       {
         workers: [
-          { id: "eng.desk", kind: "desk", door: "respond", rules: false, hired: false, incarnation: null, name: null, teamName: null },
-          { id: "eng.lead", kind: "agent", door: "respond", rules: true, hired: false, incarnation: null, name: null, teamName: null },
+          { id: "eng.desk", kind: "desk", door: "respond", doorTakesTask: false, rules: false, hired: false, incarnation: null, name: null, teamName: null },
+          { id: "eng.lead", kind: "agent", door: "respond", doorTakesTask: true, rules: true, hired: false, incarnation: null, name: null, teamName: null },
         ],
       },
     ]);

@@ -12,6 +12,7 @@
  * from here.
  */
 import { handler } from "@flow-state-dev/core";
+import { doorTask } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 /** What a fixture worker says when it hears `message`. */
@@ -29,8 +30,18 @@ const hear = handler({
   },
 });
 
-/** One door, `respond`. Spread into a fixture's `actions`. */
+/** One door, `respond`, which takes the task a line is sent from. Spread into a fixture's `actions`. */
 export const hearingDoor = {
+  respond: {
+    block: hear,
+    ...doorTask(messageInput),
+    userMessage: (input: { message: string }) => input.message,
+    description: "A user's line into this worker's session.",
+  },
+};
+
+/** The same door without `doorTask`: it takes no task id, as an app's own door that hasn't opted in. */
+export const untaskedHearingDoor = {
   respond: {
     block: hear,
     inputSchema: messageInput,

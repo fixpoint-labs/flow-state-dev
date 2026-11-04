@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import type { LabAdapter, NewTeammate, WorkerRow } from "../adapter";
-import { runsOn, taskLabel, type Popup } from "./Popups";
 import type { Look } from "../lib/looks";
 import { statusLine } from "../lib/status";
 import { useSeen } from "../lib/unread";
@@ -16,21 +15,18 @@ const unreadable = (entries: { kind: string }[]) => entries.filter((e) => e.kind
 /**
  * The left pane: one row per teammate, never a list of sessions. Each row is
  * the teammate's icon on its color, its name, what it is doing, a dot while it answers, and how many
- * new entries its conversation has since you last looked. Under them, the
- * coding tasks the teammates started, as background items that open their
- * runs in a popup. At the foot, hire a teammate of your own.
+ * new entries its conversation has since you last looked. At the foot, hire
+ * a teammate of your own. A teammate's tasks are in its panel, on the right.
  */
 export function WorkersList({
   adapter,
   workers,
   sessions,
   selected,
-  openTask,
   nameOf,
   lookOf,
   isCoding,
   onSelect,
-  onOpen,
   onHire,
   hiring,
   onHiring,
@@ -40,13 +36,10 @@ export function WorkersList({
   workers: WorkerRow[];
   sessions: Record<string, string>;
   selected: string | undefined;
-  /** The task open in the popup, if one is. */
-  openTask: string | undefined;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
   onSelect: (worker: string) => void;
-  onOpen: (popup: Popup) => void;
   onHire: (teammate: NewTeammate) => Promise<void>;
   /** The hire form is open; the switcher's *Hire a teammate* opens it too. */
   hiring: boolean;
@@ -75,14 +68,6 @@ export function WorkersList({
               />
             </li>
           ))}
-        </ul>
-        <div id="background" className="px-4 pt-4 pb-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">Background</div>
-        <ul aria-labelledby="background">
-          {workers
-            .filter((w) => sessions[w.id])
-            .map((w) => (
-              <BackgroundItems key={w.id} adapter={adapter} sessionId={sessions[w.id]} isCoding={isCoding} openTask={openTask} onOpen={onOpen} />
-            ))}
         </ul>
       </div>
       <div className="flex flex-col gap-2 px-4 py-3 text-xs text-muted-foreground">
@@ -170,43 +155,8 @@ function WorkerItem({
   );
 }
 
-/** The coding tasks one teammate's conversation started, one background item each. */
-function BackgroundItems({
-  adapter,
-  sessionId,
-  isCoding,
-  openTask,
-  onOpen,
-}: {
-  adapter: LabAdapter;
-  sessionId: string;
-  isCoding: (id: string) => boolean;
-  openTask: string | undefined;
-  onOpen: (popup: Popup) => void;
-}) {
-  const tasks = (useWatch(adapter.watchTasks, sessionId) ?? []).filter((t) => isCoding(t.to));
-  const stale = useStale(adapter, sessionId);
-  return tasks.map((t) => (
-    <li key={t.id}>
-      <button
-        type="button"
-        aria-current={t.id === openTask ? "true" : undefined}
-        aria-label={taskLabel(`Coding task: ${t.title}`, t)}
-        data-background={t.status}
-        onClick={() => onOpen({ kind: "task", sessionId, taskId: t.id })}
-        className={cn("flex w-full flex-col border-l-2 border-transparent px-4 py-1.5 text-left hover:bg-accent", t.id === openTask && "border-primary bg-accent")}
-      >
-        <span className="block truncate font-mono text-xs">⚙ {t.title}</span>
-        <span className={cn("block truncate text-xs text-muted-foreground", stale && STALE_CLASS)} data-status>
-          {[t.status, runsOn(t)].filter(Boolean).join(" · ")}
-        </span>
-      </button>
-    </li>
-  ));
-}
-
 /** Whether a conversation's feed has lost the server, so what it last said may be out of date. */
-function useStale(adapter: LabAdapter, sessionId: string | undefined): boolean {
+export function useStale(adapter: LabAdapter, sessionId: string | undefined): boolean {
   const connection = useWatch(adapter.watchConnection, sessionId);
   return connection !== undefined && isFeedStale(connection);
 }

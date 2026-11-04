@@ -2,30 +2,38 @@
  * A task's Session tab (S3, BR-5 to BR-10): the items of the run the task's
  * row names, in stored order, live while the tab is open.
  *
- * One read of the run session's stored items, then one stream: the run's
- * request, through the flow its session names. Mounted only while the tab is
- * open, so a user reading Brief pays for no stream. A session shared with
- * other tasks shows only the items stamped with this task's id, and the lines
- * its composer sent with their replies (FIX-2009), and says so.
+ * The run session's feed: its newest items, then each item its stream brings,
+ * with *Load earlier* while it holds older ones. The run's request, through the
+ * flow its session names, reports the run's status. Mounted only while the tab
+ * is open, so a user reading Brief pays for no stream. A session shared with
+ * other tasks shows only the items stamped with this task's id (a line its
+ * composer sent, and the reply, carry the stamp when the door takes the task),
+ * and the lines it sent to a door that keeps no task id, with their replies
+ * (FIX-2009), and says so.
  *
  * Each item is drawn by Shift Manager's copy of the registry's item components
  * (`chatAssistantRenderers`: message, reasoning, tool, status, error, task
  * plan), the same copies the design system skins. An ask the run raised and
  * that still waits is drawn inline, with the one ask card Inbox uses.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
+import type { SessionConnectionState } from "@flow-state-dev/client";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useFlowContext, useJumpToLatest } from "@flow-state-dev/react";
 import { AskCard } from "../components/AskCard";
 import { shiftManagerRenderers } from "../components/ToolLine";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
-import { EmptyState, JumpToLatestButton, SectionFailure } from "../components/ui";
+import { EmptyState, JumpToLatestButton, LoadEarlierButton, SectionFailure } from "../components/ui";
 import { asksOfTask, waitsOnYou } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
+import { useReportFeedState } from "../lib/feed-health";
 import { collectionOfBoard, describeFailure, type Ask, type Failure } from "../lib/reads";
 import { RouteLink } from "../components/RouteLink";
-import { followRequest, mergeItems, readSessionItems, RunReadError, taskItems, type OpenRun } from "../lib/run";
+import { followRequest, followSessionItems, readRunRecord, readTaskClaims, taskItems, type OpenRun, type SessionItems } from "../lib/run";
 import { useTask } from "../lib/task";
+
+/** How long after a dropped status stream a run still going is followed again. */
+const STATUS_FOLLOW_AGAIN_MS = 3_000;
 
 export function TaskSession() {
   const task = useTask();
@@ -89,57 +97,106 @@ export function TaskSession() {
   );
 }
 
-/** The open run's items: one stored read, then its request's stream. */
+/**
+ * The open run's items, through the run session's feed: its newest items once,
+ * then each item the session stream brings, a reply to a line sent from the
+ * composer included. The feed reconnects on its own, so a dropped stream keeps
+ * what is shown. The run's request stream reports only its status.
+ */
 function RunItems({ run }: { run: OpenRun }) {
   const { client, snapshot } = useLab();
   const task = useTask();
   const asks = asksOfTask(snapshot, task.row);
-  const [stored, setStored] = useState<{ items: OutputItem[]; truncated: boolean } | undefined>(undefined);
+  const [stored, setStored] = useState<SessionItems | undefined>(undefined);
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
   const [attempt, setAttempt] = useState(0);
   const feed = useJumpToLatest();
   const { reportStatus } = task;
-
-  /** Merge items into what is held; nothing until the first read lands. */
-  const mergeIn = useCallback(
-    (items: readonly OutputItem[]) => setStored((held) => (held === undefined ? held : { ...held, items: mergeItems(held.items, items) })),
-    [],
-  );
-  const failWith = useCallback((error: unknown) => setFailure(error instanceof RunReadError ? error.failure : describeFailure(error)), []);
+  // The feed's connection, for the page's bar and stale styling.
+  const [feedState, setFeedState] = useState<SessionConnectionState | undefined>(undefined);
+  useReportFeedState(feedState);
 
   useEffect(() => {
     let closed = false;
-    let stream: { close(): void } | undefined;
     setStored(undefined);
     setFailure(undefined);
-    readSessionItems(client, run.sessionId)
-      .then((read) => {
+    setFeedState(undefined);
+    const stop = followSessionItems(client, run.sessionId, {
+      onRead: (read) => {
         if (closed) return;
         setStored(read);
-        stream = followRequest(client, run, {
-          onItem: (item) => mergeIn([item]),
-          onStatus: reportStatus,
-          onError: (f) => {
-            if (!closed) setFailure(f);
-          },
-        });
-      })
-      .catch((error: unknown) => {
-        if (!closed) failWith(error);
-      });
+        setFailure(undefined);
+      },
+      onFailure: (why) => {
+        if (!closed) setFailure(why);
+      },
+      onState: (state) => {
+        if (!closed) setFeedState(state);
+      },
+    });
     return () => {
       closed = true;
-      stream?.close();
+      stop();
     };
-  }, [client, run, attempt, reportStatus, mergeIn, failWith]);
+  }, [client, run.sessionId, attempt]);
 
-  // Follow each request in `sent` once the first read has landed, so its replay has
-  // something to merge into, and re-read the session once when it leaves in_progress.
-  // A settled request is never followed again: a new send reopens only the open ones.
-  const { sent } = task;
+  // The run's status, from its request stream. That stream doesn't reconnect: when it drops, the
+  // run's record is read, and a run still going is followed again after a pause. The items stay.
+  const [statusFollows, setStatusFollows] = useState(0);
+  useEffect(() => {
+    let closed = false;
+    let again: ReturnType<typeof setTimeout> | undefined;
+    const followAgain = () => {
+      if (!closed) again = setTimeout(() => setStatusFollows((n) => n + 1), STATUS_FOLLOW_AGAIN_MS);
+    };
+    const stream = followRequest(client, run, {
+      // The items come from the session feed.
+      onItem: () => {},
+      onStatus: reportStatus,
+      onError: () => {
+        readRunRecord(client, run).then((record) => {
+          if (closed) return;
+          reportStatus(record.status, record.endedAtMs);
+          if (record.status === "in_progress") followAgain();
+        }, followAgain);
+      },
+    });
+    return () => {
+      closed = true;
+      clearTimeout(again);
+      stream.close();
+    };
+  }, [client, run, reportStatus, statusFollows]);
+
+  // A window that starts after the task was claimed holds no `task-change` naming it, and the
+  // attribution would drop every step: read the board's claims in this session on their own.
+  const collection = collectionOfBoard(task.boardRef);
+  const windowed = stored?.truncated === true;
+  const [claims, setClaims] = useState<readonly OutputItem[]>([]);
+  // Its own failure: a feed update must not clear it while the steps it hides are still hidden.
+  const [claimsFailure, setClaimsFailure] = useState<Failure | undefined>(undefined);
+  useEffect(() => {
+    setClaims([]);
+    setClaimsFailure(undefined);
+    if (!windowed) return;
+    let closed = false;
+    readTaskClaims(client, run.sessionId, collection).then(
+      (read) => {
+        if (!closed) setClaims(read);
+      },
+      (error: unknown) => {
+        if (!closed) setClaimsFailure(describeFailure(error));
+      },
+    );
+    return () => {
+      closed = true;
+    };
+  }, [client, run.sessionId, collection, windowed, attempt]);
+
   // Each line sent from the task's composer takes the session to its end, to show it. An effect, not a
   // call in the send handler as in `Conversation`, because the composer lives in `TaskFrame`. Only growth
   // is a send: `sent` empties when the task changes.
+  const { sent } = task;
   const showSent = feed.sent;
   const sentSeen = useRef(sent.length);
   useEffect(() => {
@@ -147,49 +204,28 @@ function RunItems({ run }: { run: OpenRun }) {
     sentSeen.current = sent.length;
     if (grew) showSent();
   }, [sent.length, showSent]);
-  const loaded = stored !== undefined;
-  const settled = useRef(new Set<string>());
-  useEffect(() => {
-    if (!loaded) return;
-    let closed = false;
-    const streams = sent.filter((requestId) => !settled.current.has(requestId)).map((requestId) => {
-      const settle = () => {
-        if (closed || settled.current.has(requestId)) return;
-        settled.current.add(requestId);
-        // Merged even if a newer send has re-run this effect since: the request
-        // counts as settled, so no later follower brings its items.
-        readSessionItems(client, run.sessionId).then((read) => mergeIn(read.items), failWith);
-      };
-      return followRequest(client, { flowId: run.flowId, requestId }, {
-        onItem: (item) => mergeIn([item]),
-        onStatus: (status) => {
-          if (status !== "in_progress") settle();
-        },
-        onError: settle,
-      });
-    });
-    return () => {
-      closed = true;
-      for (const stream of streams) stream.close();
-    };
-  }, [client, run, sent, loaded, mergeIn, failWith]);
 
   // This task's items, then the same render filters `ItemsRenderer` applies:
   // a keyed snapshot shows its latest version only, and a container with its
   // own renderer draws the items it owns.
   const { renderers } = useFlowContext();
-  const sentSet = useMemo(() => new Set(sent), [sent]);
+  const { unstamped } = task;
+  const sentSet = useMemo(() => new Set(unstamped), [unstamped]);
   const shown = useMemo(() => {
     if (stored === undefined) return undefined;
-    const mine = taskItems(stored.items, collectionOfBoard(task.boardRef), task.taskId, sentSet);
-    const items = buildItemRenderStream(mine.items, renderers).flatMap((segment) => (segment.kind === "item" ? [segment.item] : segment.items));
+    // The claims only teach the attribution which tasks are this board's; they are never drawn.
+    const keys = new Set(stored.items.map((item) => `${item.requestId}/${item.id}`));
+    const held = [...claims.filter((item) => !keys.has(`${item.requestId}/${item.id}`)), ...stored.items];
+    const mine = taskItems(held, collection, task.taskId, sentSet);
+    const items = buildItemRenderStream(mine.items.filter((item) => keys.has(`${item.requestId}/${item.id}`)), renderers).flatMap((segment) => (segment.kind === "item" ? [segment.item] : segment.items));
     return { items, shared: mine.shared };
-  }, [stored, task.boardRef, task.taskId, sentSet, renderers]);
+  }, [stored, claims, collection, task.taskId, sentSet, renderers]);
 
-  if (failure !== undefined) {
+  const shownFailure = failure ?? claimsFailure;
+  if (shownFailure !== undefined) {
     return (
       <div className="p-4">
-        <SectionFailure what="This run's session" failure={failure} onRetry={() => setAttempt((n) => n + 1)} testId="session-failure" />
+        <SectionFailure what="This run's session" failure={shownFailure} onRetry={() => setAttempt((n) => n + 1)} testId="session-failure" />
       </div>
     );
   }
@@ -202,16 +238,18 @@ function RunItems({ run }: { run: OpenRun }) {
           This worker keeps one session for several tasks. Only this task's steps, and the messages you send from here, are shown.
         </p>
       ) : null}
-      {stored?.truncated === true ? (
-        <p className="px-4 pt-3 text-xs text-muted-foreground" data-testid="session-truncated">
-          More than shown: this session holds more steps than one read returns.
-        </p>
-      ) : null}
+      <LoadEarlierButton load={stored.loadEarlier} testId="session-load-earlier" />
       {/* The whole session, not only this task's items: the task plan card reads every task change in it. */}
       <SessionItemsProvider value={stored.items}>
         <ol className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 py-4" data-testid="session-items">
           {shown.items.map((item) => (
-            <li key={`${item.requestId}/${item.id}`} data-testid="session-item" data-item-id={item.id} data-item-type={item.type}>
+            <li
+              key={`${item.requestId}/${item.id}`}
+              data-testid="session-item"
+              data-item-id={item.id}
+              data-item-type={item.type}
+              {...(item.type === "message" && item.role === "user" ? feed.mine(item.id) : {})}
+            >
               {item.type === "suspension" ? (
                 <PendingAsk ask={asks.find((ask) => ask.item.suspensionId === item.suspensionId)} />
               ) : (

@@ -29,17 +29,21 @@ function TaskList({ sessionId }: { sessionId: string }) {
   );
 
   useEffect(() => void refresh(), [refresh]); // the first read
-  useSubscription([topic.session(sessionId)], refresh, { pollIntervalMs: 3000 });
+  useSubscription(
+    [topic.session(sessionId, { resource: "tasks" }), topic.session(sessionId, { resource: "plan" })],
+    refresh,
+    { pollIntervalMs: 3000 },
+  );
 
   return <ul>{tasks.map((task) => <li key={task.id}>{task.title}</li>)}</ul>;
 }
 ```
 
-On the Node host, `refresh` runs as soon as the change is saved: the server sends the notice once the change can be read, and no timer is involved, so the delay is the network and your read. A burst of changes runs it once more after the read in flight finishes, not once per change. The hook doesn't read on mount, so keep the first read where your screen already makes it.
+On the Node host, `refresh` runs as soon as the change is saved: the server sends the notice once the change can be read, and no timer is involved, so the delay is the network and your read. A burst of changes runs it once more after the read in flight finishes, not once per change. The hook doesn't read on mount, so keep the first read where your screen already makes it. It subscribes through the provider's client; an app that builds its own client, with its own `fetcher`, passes it as `client` so the socket signs in the same way.
 
 | Topic | What changes it covers |
 |-------|------------------------|
-| `topic.session(id)` | One session: its requests, their items, and runs started under it. |
+| `topic.session(id)` | One session: its requests, their items, runs started under it, and changes to its task boards. |
 | `topic.user()` | The signed-in user's own scope. |
 | `topic.org()` | The signed-in user's organization. |
 
@@ -56,7 +60,25 @@ useSubscription([topic.session(sessionId)], (notice) => {
 });
 ```
 
-`kind` is `"items"`, `"request"`, `"run"` or `"resync"`. Read everything on `null` and on `"resync"`: the screen may have missed something.
+`kind` is `"items"`, `"request"`, `"run"`, `"state"`, `"resource"`, `"board"` or `"resync"`. `"state"` means the scope's state was written, and `"resource"` that a resource under it was, with the resource's path in `topic.resource`. `"board"` means a task on one of the session's task boards changed, with the board's id in `topic.resource` (see [Task boards](#task-boards)). `origin.requestId` names the request that made the change, when one did. Read everything on `null` and on `"resync"`: the screen may have missed something.
+
+Narrowing the topic does the same job with less code. A screen subscribed to `topic.session(id, { resource: "tasks" })` only hears changes to that board, so a long reply never wakes it.
+
+## Task boards
+
+A task board's change is announced on the session that filed the task, narrowed to the board, whichever session or process made the change. A conversation's delegate settles its task in a task session of its own, and the conversation's board screen still hears of it at once. Subscribe the conversation's topic narrowed to each board your read returns:
+
+```ts
+useSubscription(
+  [topic.session(conversationId, { resource: "tasks" }), topic.session(conversationId, { resource: "plan" })],
+  refresh,
+  { pollIntervalMs: 3000 },
+);
+```
+
+Workforce's `listTasks_tasks` read returns the conversation's board and its planning worker's own steps, which sit on the `plan` board, so a screen of that read subscribes both. Subscribing `plan` is harmless when the flow has no planning worker.
+
+`BoardList` with `live` does this for you, for the one board it draws. Its `client` needs `subscribe` (see [A board as a list](/docs/workforce/ui#a-board-as-a-list)).
 
 ## Outside React
 
@@ -105,6 +127,10 @@ await serve(flowstate, {
 Each topic is checked on the server when the connection opens, with the same check the matching read uses. The client asks through its own `fetcher`, so a bearer token your fetcher adds signs the connection in, and so does a cookie. A topic the caller may not read is left out, exactly as a session that doesn't exist is, and the screen never hears of it. With `pollIntervalMs`, the client asks for it again at each tick, so access given back starts working without a reload.
 
 An open connection is not checked again. If someone loses access while their tab stays open, their reads are refused at once, and the connection can still say that something changed, never what, until it reconnects. The server closes every connection after an hour, and the reconnect checks again.
+
+## State and resources other sessions change
+
+You don't need a subscription for a session's own state, or for its user's, its organization's, or their resources. `useSession(sessionId, { live: true })` subscribes the session, user and org topics for you, and the hooks built on it (`useClientData`, `useResourceCollectionList`, `useResource` and the rest) read again on a change from any session. It skips a change its own request made, since that request's stream already carried it. The workforce panels `Roster` and `BoardColumns` do the same with `live`. Reach for `useSubscription` for a read those hooks don't make, such as a flow read.
 
 ## Following a session's own items
 

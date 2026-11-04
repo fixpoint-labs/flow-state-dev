@@ -93,6 +93,13 @@ export type CreateExecutionContextOptions<
    */
   resumeContext?: ResumeContext;
   input?: unknown;
+  /**
+   * The task the request is for, from the action's `taskOf`. Every scope
+   * that no nearer `_markTaskScope` mark covers stamps it as `taskId` on the
+   * items it emits. Set by `runAction` from the parsed input, never from
+   * `metadata`.
+   */
+  requestTaskId?: string;
   signal?: AbortSignal;
   /**
    * Background-work abort signal (FIX-663). Attached to every context as

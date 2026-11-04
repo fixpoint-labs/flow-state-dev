@@ -182,7 +182,7 @@ describe("useSubscription", () => {
       await Promise.resolve();
     });
     expect(first).not.toHaveBeenCalled();
-    expect(second).toHaveBeenCalledWith(null);
+    expect(second).toHaveBeenCalledWith(null, expect.any(AbortSignal));
   });
 
   it("subscribes again when the topics change, and closes the old one", () => {
@@ -200,6 +200,48 @@ describe("useSubscription", () => {
     renderHook(() => useSubscription([S1], () => {}, { enabled: false }));
     renderHook(() => useSubscription([], () => {}));
     expect(subscriptions).toEqual([]);
+  });
+
+  it("subscribes through a host's own client when it passes one, so the socket carries that client's credential", () => {
+    const own: Array<readonly WireTopic[]> = [];
+    const client = {
+      subscribe: (topics: readonly WireTopic[]) => {
+        own.push(topics);
+        return { close() {} };
+      }
+    };
+    renderHook(() => useSubscription([S1], () => {}, { client }));
+    expect(own).toEqual([[S1]]);
+    expect(subscriptions).toEqual([]);
+  });
+
+  it("aborts the signal a running read holds when the hook unmounts, so it can drop what it read", async () => {
+    const signals: AbortSignal[] = [];
+    let release: (() => void) | undefined;
+    const read = (_n: WireNotice | null, signal: AbortSignal) => {
+      signals.push(signal);
+      return new Promise<void>((resolve) => (release = resolve));
+    };
+    const { unmount } = renderHook(() => useSubscription([S1], read));
+    act(() => subscriptions[0]!.options.onChange(notice("items")));
+    expect(signals).toHaveLength(1);
+    expect(signals[0]!.aborted).toBe(false);
+    unmount();
+    // The read resumes after the hook is gone: its signal says so.
+    release?.();
+    expect(signals[0]!.aborted).toBe(true);
+  });
+
+  it("aborts a running read's signal when the topics change", () => {
+    const signals: AbortSignal[] = [];
+    const read = (_n: WireNotice | null, signal: AbortSignal) => {
+      signals.push(signal);
+      return new Promise<void>(() => {});
+    };
+    const { rerender } = renderHook(({ at }) => useSubscription([at], read), { initialProps: { at: S1 } });
+    act(() => subscriptions[0]!.options.onChange(notice("items")));
+    rerender({ at: topic.session("s2") });
+    expect(signals[0]!.aborted).toBe(true);
   });
 
   it("drops a waiting read on unmount", async () => {
