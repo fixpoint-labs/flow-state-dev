@@ -25,9 +25,10 @@ the card's words on the page against the board's own `listTasks` row.
   down 4 minutes, and served again on the same store. Before the board takes the row back (its
   `attempts` changes or its lease is no longer lapsed), the card reads `quiet for` at least 4m.
   The server comes back on the same port, so the page left open reads it again; a page that
-  marks the row stale is reloaded once, and a stale read isn't counted. The board takes the
-  lapsed row back about a second after the server answers, so reading starts as the server
-  starts.
+  marks the row stale is reloaded once, and a stale read isn't counted. The server is served
+  with a silent request taken as interrupted after 5 minutes (the 4 down plus one), not the
+  engine's one, so the board takes the lapsed row back about a minute after the server answers
+  rather than within a second; reading still starts as the server starts.
 
 **Anti-game:** read the page, never the adapter, the test double or React state. Every read is
 compared with the board's row. A row the board took back before the page could be read is CAN'T

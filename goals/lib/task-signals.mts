@@ -20,9 +20,9 @@
  * - **quiet**: the host is killed mid-run (SIGKILL to its process group),
  *   kept down {@link DOWN_MS}, and served again on the same store and port,
  *   so the page left open reads it again as a person's would; a page whose
- *   feed gave up on the server while it was down is reloaded once. Reading
- *   starts while the server starts, since the board takes a lapsed row back
- *   soon after. Before it does (the row's `attempts` changes, or its lease is
+ *   feed gave up on the server while it was down is reloaded once. The server
+ *   is served with {@link STALE_THRESHOLD_MS}, so the board takes the lapsed
+ *   row back about a minute after it answers, not at once. Before it does (the row's `attempts` changes, or its lease is
  *   no longer lapsed), the row reads `quiet for` at least four minutes. A
  *   read of a row the page marks stale says nothing of the run and isn't
  *   counted; a row taken back before the page showed it fresh is CAN'T TELL,
@@ -49,6 +49,16 @@ import { runGoal } from "./verdict.mts";
 export const STEP_MS = 240_000;
 /** How long the quiet leg keeps the host down. */
 export const DOWN_MS = 240_000;
+/**
+ * How long a request's heartbeat may be silent before the server takes it as
+ * interrupted, which is what wakes the board to take a dead run's row back.
+ * At the engine's default (one minute) the restarted server's first sweep does
+ * that within a second or so of answering, too soon for a page to read the row
+ * reliably; at the time the host is down plus a minute, the first sweep leaves
+ * it and a later one, about a minute on, takes it. The row's lease, which
+ * quiet reads, is untouched.
+ */
+export const STALE_THRESHOLD_MS = DOWN_MS + 60_000;
 /** How far the page's clock may be from now − the run's start. */
 export const CLOCK_SLACK_MS = 5_000;
 /** How long the page has to show what the board's row reads. */

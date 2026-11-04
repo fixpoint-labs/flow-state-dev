@@ -12,7 +12,7 @@
 import { join } from "node:path";
 import { createClient } from "@flow-state-dev/client";
 import type { Page } from "playwright";
-import { NO_MODEL, runTaskSignals, STEP_MS } from "../../lib/task-signals.mts";
+import { NO_MODEL, runTaskSignals, STALE_THRESHOLD_MS, STEP_MS } from "../../lib/task-signals.mts";
 import { goalTmpDir } from "../../lib/index.mts";
 import { boardOf, buildPages, LAB, makeRepository, openSessionOn, startLab } from "../lab.mts";
 
@@ -24,7 +24,7 @@ await runTaskSignals({
   itemFile: join(LAB, "src", "components", "flow-state", "task-signals.tsx"),
   build: buildPages,
   serve: async (data, port) => {
-    const env = { CLAUDE_CODE_STYLE_HARNESS: "stub", CLAUDE_CODE_STYLE_HARNESS_STEP_MS: String(STEP_MS), CLAUDE_CODE_STYLE_REPOSITORIES: repo, ...NO_MODEL };
+    const env = { CLAUDE_CODE_STYLE_HARNESS: "stub", CLAUDE_CODE_STYLE_HARNESS_STEP_MS: String(STEP_MS), CLAUDE_CODE_STYLE_STALE_THRESHOLD_MS: String(STALE_THRESHOLD_MS), CLAUDE_CODE_STYLE_REPOSITORIES: repo, ...NO_MODEL };
     const lab = port === undefined ? await startLab(data, USER, env) : await startLab(data, USER, env, undefined, port);
     return { origin: lab.origin, child: lab.child };
   },

@@ -17,7 +17,7 @@ import { taskActionName } from "@flow-state-dev/orchestration/inbox";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import type { Page } from "playwright";
 import { goalTmpDir, REPO_ROOT, repoPath } from "../../lib/index.mts";
-import { NO_MODEL, runTaskSignals, STEP_MS } from "../../lib/task-signals.mts";
+import { NO_MODEL, runTaskSignals, STALE_THRESHOLD_MS, STEP_MS } from "../../lib/task-signals.mts";
 import { startTeammates } from "../lab.mts";
 
 const USER = "u_goal";
@@ -42,7 +42,7 @@ await runTaskSignals({
   build: () => execFileSync("pnpm", ["--filter", "@flow-state-dev/teammates", "build"], { cwd: REPO_ROOT, stdio: "ignore" }),
   serve: async (data, port) => {
     mkdirSync(data, { recursive: true });
-    const env = { GOAL_HARNESS: "stub", GOAL_HARNESS_STEP_MS: String(STEP_MS), ...NO_MODEL };
+    const env = { GOAL_HARNESS: "stub", GOAL_HARNESS_STEP_MS: String(STEP_MS), GOAL_STALE_THRESHOLD_MS: String(STALE_THRESHOLD_MS), ...NO_MODEL };
     return port === undefined ? startTeammates(data, USER, env, workdir) : startTeammates(data, USER, env, workdir, undefined, port);
   },
   open: async (page: Page, origin: string) => {
