@@ -55,6 +55,20 @@ describe("a subscribed session hears each event once", () => {
       expect(await host.heard(one)).toHaveLength(2);
     }));
 
+  it("lands on the next delivery of the event when the recipient's host lost the first: a lost dispatch isn't seen", () =>
+    withHost(async (host) => {
+      const one = await host.follower("alice");
+      await host.subscribe("alice", one, { thread: PR });
+      const review = event({ text: "lost the first time" });
+      const lost = await host.loseDispatches("onMessageReceived");
+      await host.route(review);
+      lost.restore();
+      expect(lost.lost()).toBeGreaterThan(0);
+      expect(await host.heard(one)).toEqual([]);
+      await host.route({ ...review, deliveryId: "redelivered" });
+      expect(await host.heard(one)).toHaveLength(1);
+    }));
+
   it("hears nothing on a thread it didn't subscribe to, or of a kind it didn't list", () =>
     withHost(async (host) => {
       const one = await host.follower("alice");

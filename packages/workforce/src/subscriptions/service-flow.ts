@@ -27,7 +27,7 @@
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { subscriptionEventSchema, type BlockContext, type SubscriptionEvent } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { workerMessagesResources } from "../messages/message-log";
+import { messageLogOf, workerMessagesResources } from "../messages/message-log";
 import { sendMessage } from "../messages/send-message";
 import type { WorkerInstallation } from "../workers/installation";
 import { SUBSCRIPTION_DELIVER_ENTRY, SUBSCRIPTION_ROUTE_ENTRY, serviceSender } from "./keys";
@@ -86,7 +86,7 @@ export type Routed = z.infer<typeof routedSchema>;
 const deliverInputSchema = z.object({ subscription: z.string().min(1), event: subscriptionEventSchema });
 
 const deliveredSchema = z.object({
-  act: z.enum(["sent", "seen", "held", "ended", "refused"]),
+  act: z.enum(["sent", "unsent", "seen", "held", "ended", "refused"]),
   reason: z.string().optional()
 });
 
@@ -217,6 +217,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         return { act: "held" as const };
       }
 
+      const id = deliveryMessageId(event.object, row.sessionId);
       const sent = await sendMessage(
         ctx,
         installation,
@@ -224,11 +225,18 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         { to: { session: row.sessionId }, text: deliveryText(event, row.thread, cursor.held) },
         "subscription-deliver",
         {
-          id: deliveryMessageId(event.object, row.sessionId),
+          id,
           exempt: true,
           service: { sender: serviceSender(row.provider), to: { sessionId: row.sessionId, flow: row.flow, worker: row.worker } }
         }
       );
+      // A service flow carries no pass that sends again, so a dispatch the host
+      // didn't take (lost, or turned away for now) is left unseen: the next
+      // delivery of this event (a redelivery, a poll) sends it again under the
+      // same id, which lands once. A final refusal is seen: sending again can't help.
+      const logged = sent.ok && sent.requestId === undefined ? (await messageLogOf(ctx).getOptional(id))?.state : undefined;
+      const untaken = logged !== undefined && logged.status === "unconfirmed" && logged.takenBy === undefined;
+      if (untaken) return { act: "unsent" as const, reason: logged.reason ?? "the host didn't take it" };
       // Seen once sent: a stop before this sends again under the same id, which lands once.
       await cursorRef.updateState((c) => ({
         ...c,

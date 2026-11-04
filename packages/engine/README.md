@@ -631,6 +631,22 @@ new session a new id.
 A store adapter shows it serves the stream with
 `createSessionStreamConformanceTests`, from `@flow-state-dev/engine/testing`.
 
+### Runs as a row's owner
+
+`fireOwnerRunThrough(host, run)` starts an internal entry as the user whose storage cell holds a
+row. `run` is `{ flowKind, entry, input, owner: { userId, orgId, tenantId? }, rowKey }`. The owner
+only says which cell to look in. The run starts only when that user's cell holds the row at
+`rowKey` (a non-isolated, user-scoped collection's full key), the row's `orgId` is the owner's, and
+the row isn't `enabled: false`. Otherwise it answers `{ fired: false, refused }` with `no_row`,
+`other_org` or `disabled`, and nothing runs. A run that starts answers `{ fired: true, requestId,
+finished }`, in a session of its own.
+
+`routeServiceEvent(host, { flowKind, entry, input, principal })` runs a service flow's internal
+entry as the service's own principal, then fires each run its output lists in `ownerRuns` through
+`fireOwnerRunThrough`. It answers `{ output, error?, ownerRuns }`, where each owner run carries
+`refused` or `finished`. Workforce's subscriptions use it (`SUBSCRIPTION_ROUTE_ENTRY`). Reach the
+host from an inbound transport adapter's `createBindings(host)`.
+
 ## Change bus
 
 A change notice says that something under a topic changed, never what. Whoever
