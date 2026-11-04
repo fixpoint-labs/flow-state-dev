@@ -290,11 +290,13 @@ The worker follows a thread with the `subscribe` tool:
 { "provider": "github", "thread": "github:acme/api#412", "kinds": ["review", "check"], "interest": "Reviews and CI on my PR." }
 ```
 
+`interest` is a required sentence saying what the conversation wants to hear. It's kept with the subscription as a note; screens don't read it, so the filtering comes from `kinds` and the other screens.
+
 What the conversation can count on:
 
 - **Each event once.** Two conversations following the same PR each hear each review. If the service sends an event again, nothing new arrives. An edit to a comment is a new version, and it arrives.
 - **Only what its user can read.** Following a thread the user can't read is refused. An event on a private repository's thread is checked again, as that user, before it is delivered.
-- **People outside the project are left out by default.** Members, collaborators and the bots the app lists get through. Anyone else gets through only when the subscription asked for them with `outsiders: true`.
+- **People outside the project are left out by default.** Members, collaborators and the bots named in the service flow's `trustedBots` option get through. Anyone else gets through only when the subscription asked for them with `outsiders: true`.
 - **Its own actions are left out.** A review the user left themselves doesn't come back to them.
 - **It's marked as outside content.** The message says where it came from, and tells the model to read it as information, not as instructions.
 

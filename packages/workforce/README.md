@@ -2648,9 +2648,10 @@ messaging it](https://flow-state.dev/docs/workforce/messaging-workers#consulting
 
 A worker's conversation can follow a thread on an outside service, such as a pull request, an
 issue or a whole repository. Each event on that thread then reaches the conversation once, as a
-message from the service. No model reads the event on the way: code screens decide who hears it.
+message from the service. No model reads the event on the way: checks written in code (screens)
+decide who hears it.
 
-An app wires up three things:
+To wire up subscriptions, an app provides:
 
 - **The tools.** `subscriptionTools({ providers })` returns two handler blocks, `subscribe` and
   `unsubscribe`, for a worker's model (or an action) in the conversation that should hear.
@@ -2706,7 +2707,9 @@ The `subscribe` input is `{ provider, thread, kinds?, screens?, outsiders?, inte
 - `outsiders: true` also lets in people outside the project. Without it, only members,
   collaborators and the service flow's `trustedBots` get through, and a sender of unknown role
   counts as an outsider.
-- `interest` is stored with the subscription. Nothing reads it yet: no screen today decides by it.
+- `interest` is required: one sentence (up to 500 characters) saying what the conversation wants
+  to hear. It is kept with the subscription as a record of why it was made. No screen reads it, so
+  it doesn't change what is delivered; use `kinds` and `screens` for that.
 
 It answers `{ id }`. A second `subscribe` from the same conversation for the same `thread` updates that
 subscription. A refusal answers `{ refused }`, starting with a code: `not_a_worker`, `no_thread`
@@ -2750,8 +2753,9 @@ passed, and one per subscription its closing event ends, each with its `finished
 it. The output carries a verdict per subscription the event's threads named, `{ subscription,
 pass, reason }`, the first 100 of them, and `verdictsCut`, how many more there were.
 
-A delivery the recipient's host lost is left unseen, so the event's next delivery (a redelivery
-from the provider, a poll) sends it. Nothing sends it again on its own.
+A delivery the recipient's host loses is sent on the event's next delivery: a redelivery from the
+provider, or a poll. Nothing retries it on its own: without a redelivery or a poll, it
+isn't sent.
 
 ## Error Reporter
 
