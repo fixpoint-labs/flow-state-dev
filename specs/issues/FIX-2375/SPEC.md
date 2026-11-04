@@ -41,7 +41,7 @@ in process. No test fake and no recorded responses are involved.
 
 | How we verify | |
 |---|---|
-| **Goal check** | One test file per lab, `labs/claude-code-style/test/stop-turn.test.ts` and `labs/teammates/test/stop-turn.test.ts`, run by the implementer before the PR is ready, verdict in the PR. They drive the real `createWiredLab` / `createLabAdapter` against the lab's own host in process (`createInProcessFetch` + `createMockModelResolver`), the harness FIX-2406's D1 chose, so the server writes the `aborted` status the adapter reads. No recorded `/requests` fixtures: a recording could pass on a shape the server stopped writing. The Claude Code-style host moves from `fsdev.config.mts` into `host.mts` as `openLab(options)` here (the debt FIX-2406 names), and FIX-2406 builds on it. These two files become FIX-2406's *stop* scenario when its matrix lands; they are not a second harness. Then **one browser pass per lab** with a real model: ask for something that files a task, press Stop, read the thread. If no browser is available, hand it to `fsd-qa` over the mailbox |
+| **Goal check** | The *stop* row of each lab's `test/contract/contract.test.ts` (FIX-2406's matrix), run by the implementer before the PR is ready, verdict in the PR. They drive the real `createWiredLab` / `createLabAdapter` against the lab's own host in process (`createInProcessFetch` + `createMockModelResolver`), the harness FIX-2406's D1 chose, so the server writes the `aborted` status the adapter reads. No recorded `/requests` fixtures: a recording could pass on a shape the server stopped writing. FIX-2406's implementation already carries this harness and a *stop* row per lab (`test/contract/contract.test.ts`, the Claude Code-style row marked `it.fails` against FIX-2375), so this slice stacks on it and turns those rows into plain passing tests instead of adding a second test file. Then **one browser pass per lab** with a real model: ask for something that files a task, press Stop, read the thread. If no browser is available, hand it to `fsd-qa` over the mailbox |
 | **Signal** | (1) `interrupt` posts `…/requests/<id>/abort` once for each running turn, and none for a `dispatch` request. (2) The view says it is stopping from that call until the requests read shows the turn ended. (3) Once that read shows the turn `aborted`, exactly one `stopped` entry follows the last entry of that request. (4) The view's `backgroundRunning` is 2 while the session stream's `session.runs` names two runs, 0 once it names zero, and `null` before the stream has named them. (5) In Teammates, a `completed` request gets no entry. Browser: the line reads *Interrupted by you · 1 background task still running · View* |
 | **Input** | A scripted turn `r1` that files two board tasks and then waits, stopped through the adapter's `interrupt`; the host writes `r1` `aborted` and the stream names the two runs until they settle. A correct adapter must also pass with the stopped turn being the older of two (a newer `completed` turn after it), where the entry still lands after `r1`'s items. In Teammates, a line sent after Stop is pressed starts its own turn: it gets no abort, reads running, and `stopping` clears once `r1` ends |
 | **Anti-game** | Never assert on `test/fake-lab.ts` output: the fake already draws this line, which is how the dead entry went unnoticed. The request statuses come from the `/requests` response, not from a hand-built entry. No assertion on copy beyond the browser pass |
@@ -83,10 +83,9 @@ Both labs stop a turn the same way and say so the same way, from one shared line
   and the conversation takes `useInterruptKeys` (FIX-2413) on the document.
 - **Claude Code-style** keeps its verb, button and keys. Its thread's one request read widens from
   running turns to recent turns with their status, so it sees `aborted`.
-- **Each lab's host can be built by a test.** The Claude Code-style host moves from `fsdev.config.mts`
-  into `host.mts` as `openLab(options)`, and Teammates' `openTeammates(options)` takes an optional
-  `modelResolver`, so the adapter tests run each host in process with `createMockModelResolver`.
-  FIX-2406 (#4719) builds on both rather than adding them again.
+- **Each lab's host can be built by a test.** `openLab(options)` (Claude Code-style) and an optional
+  `modelResolver` on `openTeammates(options)`. FIX-2406's implementation already adds both; this
+  slice stacks on it. Whichever lands first owns them, and the other reuses them.
 
 The call site, in the Claude Code-style lab's `Entry.tsx`:
 
