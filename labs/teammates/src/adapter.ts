@@ -32,6 +32,8 @@
  * |                     | named by the UI registry's `tool-naming` (`components/flow-state/`)           |
  * | `watchExchange`     | the receiving worker's conversation: the turn that read one message          |
  *
+ * `watchTalk` and `watchTasks`' board read still read on a clock (`poll`); every other watch reads on a change.
+ *
  * A received message is drawn from its own item (`workforce:received`), which
  * carries its message id, so the pending line joins the log to the
  * conversation by id (gap G2, shipped with FIX-2070).

@@ -132,7 +132,8 @@ export function followSessionItems(client: Pick<Client, "sessions">, sessionId: 
       }
     } else if ((items.length === 0 && state === "connecting") || items === last) {
       // A feed that starts over (its stream lapsed) empties itself until its history is read again;
-      // what was shown stays. A change of connection state alone moves nothing.
+      // what was shown stays. A change of connection state alone moves nothing: the feed hands back
+      // the same `items` array until an item changes.
       return;
     }
     last = items;

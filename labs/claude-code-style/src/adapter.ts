@@ -26,6 +26,8 @@
  * | `requestChanges`| the same answer with `{ verdict: "revise", words }`                        |
  * | `watchPins`, `pin`, `unpin` | the lab's `pins` flow, your own user state; `watchPins` is its |
  * |                 | `listPins` read, again on each state notice of your user topic             |
+ *
+ * Every watch but `watchTasks` reads on a change; `watchTasks` still reads on a clock (`every`).
  */
 import { createClient, sessionFeed, topic, type Client, type SessionConnectionState, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
@@ -778,6 +780,8 @@ export function createWiredLab(fsd: Client): LabAdapter {
       };
       // One read at a time; what arrives meanwhile waits for the next.
       const pump = async (): Promise<void> => {
+        // Nothing is lost by returning: a wake while a pass runs has already set `relist` or `dirty`,
+        // and the running loop checks both again before it stops.
         if (running) return;
         running = true;
         while (live && (relist || dirty.size > 0)) {
