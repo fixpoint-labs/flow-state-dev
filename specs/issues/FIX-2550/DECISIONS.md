@@ -39,9 +39,11 @@ The two below are what the labs' code had to add.
 - **E2 · Incomplete** is a small muted *Incomplete* under the half reply, in each lab's own entry
   markup. It is a mark on an existing entry, not a second failure line.
 - **E3 · No startup key warning.** FIX-2370's slice text also asked each lab's host to log one
-  when no model key is set. The failed-turn line now names the missing key in the engine's own
-  words at the moment it matters, and FIX-2406 is moving the Claude Code-style host into
-  `host.mts`. Left out to keep this one PR off that file.
+  when no model key is set. The failed-turn line now carries the provider's own reason at the
+  moment it matters (the AI Gateway's says "set the AI_GATEWAY_API_KEY environment variable"),
+  and FIX-2406 is moving the Claude Code-style host into `host.mts`. Left out to keep this one PR
+  off that file. That gateway message arrives with terminal colour codes in its text, which
+  every surface that shows an error would print; that is a package fix, filed on its own.
 - **E4 · A task's own run** (the task view in Claude Code-style) shows its failure line too, with
   no Retry: a failed task is retried from its row, which already has the button.
 - **E5 · Wording.** The line's words are the component's; neither lab adds copy that names a role.
