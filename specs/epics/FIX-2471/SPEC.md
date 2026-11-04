@@ -153,8 +153,7 @@ creeps back.
 3. **[D9](DECISIONS.md#d9) · Delivery is `sendMessage`'s exempt path.** If wrong: two sets of
    recipient rules.
 
-**Decided by the owner at merge, Nov 4:** [Q1](DECISIONS.md#q1) fail closed ·
-[Q3](DECISIONS.md#q3) a held task that runs nothing · [Q4](DECISIONS.md#q4) no Slack flow ·
-[Q5](DECISIONS.md#q5) GitHub only.
+**Open: none.** Decided at merge: [Q1](DECISIONS.md#q1) · [Q3](DECISIONS.md#q3) ·
+[Q4](DECISIONS.md#q4) · [Q5](DECISIONS.md#q5).
 
 Epic · 5 children and a closure · Inbound Transports & Reactive Flows · Webhooks / Workforce

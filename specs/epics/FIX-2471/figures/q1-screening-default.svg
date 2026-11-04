@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="Q1, decided by the owner on Nov 4: who gets through a subscription&#x27;s screen by default. Chosen: fail closed, so org members, repo collaborators and the bots the app lists pass. Instead of: fail open, anyone the thread shows. It comes down to the first row, an outsider commenting on a public repo: fail closed refuses it before any model sees it; fail open lands it in a coding task&#x27;s context unscreened. The price is the second row: an app that triages outsiders&#x27; issues opts in per subscription, in one line, where fail open needs nothing. Third row, a tie: the check costs zero tokens either way. Locks in: child 1 ships the sender check this way, so it is decided at this gate. Flips if most apps we serve triage outsiders."
+<svg viewBox="0 0 940 420" role="img" aria-label="Q1, decided by the owner on Nov 4: who gets through a subscription&#x27;s screen by default. Chosen: fail closed, so org members, repo collaborators and the bots the app lists pass. Instead of: fail open, anyone the thread shows. It comes down to the first row, an outsider commenting on a public repo: fail closed refuses it before any model sees it; fail open lands it in a coding task&#x27;s context unscreened. The price is the second row: an app that triages outsiders&#x27; issues opts in per subscription, in one line, where fail open needs nothing. Third row, a tie: the check costs zero tokens either way. Locks in: child 1 ships the sender check this way, so it is decided at the epic, not in a child. Flips if most apps we serve triage outsiders."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -90,7 +90,7 @@
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
     <text class="t-b" x="32" y="371">Child 1 ships the sender check this way</text>
-    <text class="t-s" x="32" y="389">so it is decided at this gate, not in a child</text>
+    <text class="t-s" x="32" y="389">decided at the epic, not in a child</text>
   </g>
 
   <g id="flips-if">
