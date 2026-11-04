@@ -19,8 +19,9 @@ A session list that goes stale is how a failed or waiting run gets missed. The p
 
 **In every Kitchen Sink mode, the session rail shows a session started anywhere on the same server,
 and each listed session's latest turn state (running, waiting on you, interrupted, failed, done),
-within a second of the change, with no reload and no timer while push is up; a session another
-process wrote shows when the tab comes back into view.**
+with no reload: within a second where the host serves push, and within the client's fallback
+timer (3 s) where it doesn't, as Kitchen Sink under Next; a session another process wrote shows
+when the tab comes back into view.**
 
 | Is it the right goal? | |
 |---|---|
@@ -31,14 +32,14 @@ process wrote shows when the tab comes back into view.**
 
 ```mermaid
 flowchart LR
-  A["Kitchen Sink · test mode · scripted Claude Code"] --> L1["leg a · a second client creates a session"]
+  A["Node host over push · Kitchen Sink on its timer"] --> L1["leg a · a second client creates a session"]
   A --> L2["leg b · another tab runs a slow turn, then a failing one"]
   A --> L3["leg c · a session no notice names · the tab is hidden, then shown"]
   L1 --> T["what the watching tab's rail shows · and how often it reads"]
   L2 --> T
   L3 --> T
-  T -->|"a, b within 1 s, no reload · b no read per item · c on show"| P["PASS · goal met"]
-  C["controls · no-user-notice · no-show-read"] -.-> L1
+  T -->|"a, b within 1 s over push, 4 s on Kitchen Sink · c on show"| P["PASS · goal met"]
+  C["control · user-topic notice removed · show read removed"] -.-> L1
   T -.->|"under a control"| F["must FAIL"]
 ```
 
@@ -46,11 +47,11 @@ The check reads what the rail draws and counts its listing reads, not calls to `
 
 | How we verify | |
 |---|---|
-| **Goal check** | A Kitchen Sink browser test for legs a and b (`apps/kitchen-sink/e2e/`, beside `claude-code-mode.spec.ts`), and a `@flow-state-dev/react` test for leg c. Model `n/a`: the scripted Claude Code runs the turns. Run by the implementer at completion; verdict on the implementation PR |
-| **Signal** | (a) A session a second client creates is a row in the watching tab's Claude Code rail within 1 s, with no reload. (b) That row reads *running* within 1 s of a `[slow]` turn starting in another tab, and *failed*, marked as needing you, within 1 s of a `[fail]` turn ending. During the slow turn's reply the rail makes no more listing reads than during a two-item reply. (c) A session created while no notice can reach the hook is in its rows within 1 s of the page becoming visible |
-| **Input** | Two browser pages on one server in test mode, the second the "other tab". A different valid input: the rail of another user hears nothing and makes no read when this user's session changes |
-| **Anti-game** | Assert on the rail's rows and their marks in the page, and on listing requests counted at the network, not on notices published. The failing turn is the scripted harness's real failure path, not a status written by the test |
-| **Control that must fail** | `GOAL_CONTROL=no-user-notice` (session and request writes publish nothing on the owner's user topic): legs a and b must FAIL. `GOAL_CONTROL=no-show-read` (the hook ignores the page becoming visible): leg c must FAIL. Today's `main`: legs a and b fail |
+| **Goal check** | Over push: a Node host test (`packages/node/test/live-session-list.test.ts`), two real clients on a served port. In Kitchen Sink: a browser test (`apps/kitchen-sink/e2e/live-session-list.spec.ts`) for legs a and b on the scripted Claude Code. Leg c: a `@flow-state-dev/react` test. Model `n/a`. Run by the implementer at completion; verdict on the implementation PR |
+| **Signal** | (a) A session a second client creates is a row in the watcher's listing within 1 s over push, and a row in the Kitchen Sink rail within 4 s (timer plus a read), with no reload. (b) That row reads *running* while a turn runs and *failed*, marked as needing you, after a failing turn, within the same bounds. (c) A session created while no notice can reach the hook is in its rows when the page becomes visible |
+| **Input** | Two clients of one user on one server (Node: in-process; Kitchen Sink: two browser pages in test mode). A different valid input: another user's watcher hears nothing and reads nothing when this user's session changes |
+| **Anti-game** | Assert on the listing the watcher reads and on the rail's rows and marks in the page, not on notices published. The failing turn is the flow's real failure path (a throwing handler; the scripted harness's `[fail]`), not a status written by the test |
+| **Control that must fail** | The bus's user-topic notice removed: the Node goal check FAILS (nothing within 1 s). The hook's visibility read removed: leg c FAILS. Kitchen Sink under Next has no push, so its rail is timer-driven and no notice control can fail it; its red state is today's `main`, whose harness rail reads once |
 
 ## What changes
 
