@@ -86,7 +86,8 @@ flowchart LR
   requests but not `observed-file-ops`, so their tasks show no file count. Follow-up: FIX-2555
   (D1).
 - **The duration's start.** The board keeps a task's first `startedAt` across a retry; the run
-  link's `startedAt` is this attempt's, and the line times from it (`BoardTask.runStartedAt`,
-  named as FIX-2394 names it, so the row's clock and the popup agree after a retry) to the
-  task's `completedAt` from FIX-2395 (D2).
+  link's `startedAt` is this attempt's, and the line times from it (`task.run.startedAt`, the
+  same run FIX-2394's adapters keep and its `TaskTime` reads, so the row's clock and the popup
+  agree after a retry, with no second copy on `BoardTask`) to the task's `completedAt` from
+  FIX-2395 (D2).
 - **FIX-2349** fixed this popup's wrong FAILED header; nothing here touches the header status.
