@@ -101,6 +101,14 @@ function oldToolLine() {
   return oldLines;
 }
 
+/**
+ * Whether a line names the file at `path`: the whole path, or the tail a long
+ * one is shortened to on a line ("…/billing/ledger/codes.ts").
+ */
+function namesFile(line: string, path: string): boolean {
+  return line.split(/\s+/).some((word) => word === path || (word.startsWith("…/") && path.endsWith(word.slice(1))));
+}
+
 /** The last commit whose lab still drew its own tool lines (`lib/tool-line.ts`). */
 const OLD_LINES_COMMIT = "f3b19ba46051525ebf31268a95050ddd30c9e82b";
 
@@ -252,7 +260,7 @@ async function oneRun(n: number, failures: string[], notes: string[]): Promise<v
     const first = await ask(me.fsd, mine, fixture.question);
     const second = await ask(me.fsd, mine, fixture.follow);
     if (!first.reply.includes(value)) fail(`leg 1 · value named: the reply doesn't name ${value}: ${JSON.stringify(first.reply.slice(0, 300))}`);
-    const named = [...first.lines, ...second.lines].filter((line) => line.line.includes(fixture.path));
+    const named = [...first.lines, ...second.lines].filter((line) => namesFile(line.line, fixture.path));
     if (named.length === 0) {
       fail(`leg 1 · lines name the file: no tool line names ${fixture.path}: ${JSON.stringify([...first.lines, ...second.lines].map((l) => l.line)).slice(0, 300)}`);
     }

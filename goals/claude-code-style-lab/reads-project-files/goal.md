@@ -36,7 +36,8 @@ with a second user in its members.
 
 - **Tool lines**, graded on the lab's own entries (its adapter's `entriesOf` over the turn's
   items, the lines the thread draws):
-  - *lines name the file* (leg 1): a tool line of either turn names the file the value lives in.
+  - *lines name the file* (leg 1): a tool line of either turn names the file the value lives in,
+    by its path or the tail a long path is shortened to (`…/billing/ledger/codes.ts`).
   - *refusal reads failed* (legs 2 and 3): a tool line of the turn says `(failed)` and is a failed
     step. Graded only when the turn made a read call, which *read refused* already requires.
 
