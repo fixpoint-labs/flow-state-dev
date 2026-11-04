@@ -1,6 +1,12 @@
 # Flow State
 
-Flow State gives you a working app with a full agentic backend already in place: workers that take on tasks, a task board they share with you, state and memory kept in your own stores, output streamed to the browser as it is written, and models from any provider, on a direct key (OpenAI, Anthropic, Google) or through a gateway (Vercel AI Gateway, OpenRouter). Workers can also hand work to the coding agents you already use, Claude Code, Codex and Cursor, on the sign-ins you already have, including a Claude or ChatGPT subscription. Flow State coordinates those agents, so it works as a harness over them. What each worker does is a **flow**, the steps it runs, written in TypeScript you can read and edit. Use the flows as they are, or change them to fit how you work.
+Flow State gives you a working app with a full agentic backend already in place:
+
+- Workers that take on tasks, and a task board they share with you.
+- State and memory kept in your own stores, with output streamed to the browser as it is written.
+- Models from any provider, on a direct key (OpenAI, Anthropic, Google) or through a gateway (Vercel AI Gateway, OpenRouter).
+- Hand-offs to the coding agents you already use, Claude Code, Codex and Cursor, on the sign-ins you already have, including a Claude or ChatGPT subscription. Flow State coordinates those agents, so it works as a harness over them.
+- Flows, the steps each worker runs, written in TypeScript you can read and edit. Use them as they are, or change them to fit how you work.
 
 You own the code. You pick the model for each step and keep the data in systems you run. Where a step doesn't need a model, it runs as plain code.
 
@@ -29,19 +35,20 @@ You need Node.js 22.18 or newer and pnpm 10.4.1 (`corepack enable && corepack pr
 git clone https://github.com/fixpoint-labs/flow-state-dev
 cd flow-state-dev
 pnpm install
+pnpm build:assets   # one time: builds the DevTool
 
 pnpm --filter @flow-state-dev/teammates dev
 # or
 pnpm --filter @flow-state-dev/claude-code-style dev
 ```
 
-Each command builds the starter's pages and serves them with its backend. Open the address it prints as `App:` (`http://localhost:4200` by default). It also prints a `DevTool:` address, a browser inspector that shows every run, item and state change as it happens.
+Each command builds the starter's pages and serves them with its backend. Open the address it prints as `App:` (`http://localhost:4200` by default). The `DevTool:` line gives the address of a browser inspector that shows every run, item and state change as it happens. It reads `not served` until `pnpm build:assets` has run.
 
 Set keys in your shell or in a `.env.local` at the repository root:
 
 | Key | Needed for |
 | --- | --- |
-| One model key: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `AI_GATEWAY_API_KEY` or `OPENROUTER_API_KEY` | The model every worker answers on. A direct key is used before a gateway key. Both starters default to OpenAI models, so `OPENAI_API_KEY` or `AI_GATEWAY_API_KEY` works as is. For another provider's key, add that provider's package to the starter and set its model (`TEAMMATES_MODEL` or `CLAUDE_CODE_STYLE_MODEL`) to one of that provider's models. Teammates' helper model stays `openai/gpt-6-luna`, so it also needs an OpenAI or gateway key. See [Setting up models](https://flow-state.dev/docs/getting-started/setting-up-models). |
+| One model key: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `AI_GATEWAY_API_KEY` or `OPENROUTER_API_KEY` | The model every worker answers on. Both starters default to OpenAI models (Teammates' helper calls always use one), so `OPENAI_API_KEY` or `AI_GATEWAY_API_KEY` works as is. For another provider, install its package at the repository root, such as `pnpm add -w @ai-sdk/anthropic` (or `@ai-sdk/google`, `@openrouter/ai-sdk-provider`), and change the model setting. See [Setting up models](https://flow-state.dev/docs/getting-started/setting-up-models) and each starter's Run it section ([Teammates](labs/teammates/README.md#run-it), [Claude Code-style](labs/claude-code-style/README.md#run-it)). |
 | Claude Code signed in (an API key or a Claude subscription), or `ANTHROPIC_API_KEY` | Coding tasks on Claude Code. The Claude Code-style starter's default coder runs on it. |
 | Codex signed in (`codex login`, with an API key or a ChatGPT sign-in), or `CODEX_API_KEY` | Coding tasks on Codex. |
 | Cursor signed in, or `CURSOR_API_KEY` | Coding tasks on Cursor. Teammates' default coder runs on it. |
