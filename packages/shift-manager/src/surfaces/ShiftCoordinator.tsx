@@ -22,7 +22,7 @@
  * registry's cards (the ask's Approve and Reject, the messages) are drawn as
  * the registry draws them.
  */
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Settings } from "lucide-react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { AskCard } from "../components/AskCard";
@@ -34,6 +34,9 @@ import { useSessionItems } from "../components/flow-state/session-items-context"
 import { ItemRenderer } from "@flow-state-dev/react";
 import { Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
 import { clearHandedLine, useHandedLine } from "../lib/outbox";
+import { readDelegates } from "../lib/delegates";
+import { starterLines, type StarterDelegate } from "../lib/first-run";
+import { useWorkforce } from "../lib/workforce";
 import { shiftCoordinatorOf, inboxItemIdOf, workerLabel, workerStates, shiftSummary, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
@@ -288,6 +291,7 @@ function Talk({
   // A line the palette handed over is sent by this screen's composer, and is dropped if it is never taken.
   const handed = useHandedLine();
   useEffect(() => clearHandedLine, []);
+  const starters = useStarterLines(worker, sessions);
   return (
     <Conversation
       testId="shift-coordinator"
@@ -300,11 +304,39 @@ function Talk({
       startWork={startShiftCoordinatorWork}
       autoSend={handed}
       onAutoSend={clearHandedLine}
+      starters={starters}
       renderItem={renderAsk}
       scale="shift-coordinator"
       startAtEnd
     />
   );
+}
+
+/**
+ * The lines the empty conversation offers, from the delegates the coordinator
+ * answers for it (the DELEGATES panel's read), by their roster names. Before
+ * there is a conversation there are no delegates to read, so the lines name
+ * nobody; a read that fails does the same.
+ */
+function useStarterLines(worker: Worker, sessions: readonly SessionSummary[]): string[] {
+  const { client } = useLab();
+  const workforce = useWorkforce();
+  const sessionId = useConversationSession(worker, sessions);
+  const [delegates, setDelegates] = useState<readonly StarterDelegate[]>([]);
+  useEffect(() => {
+    if (sessionId === null || worker.kind !== COORDINATOR_FLOW) return setDelegates([]);
+    let closed = false;
+    Promise.all([readDelegates(client, worker.kind, sessionId), workforce.roster()])
+      .then(([list, roster]) => {
+        const names = new Map(roster.map((entry) => [entry.id, entry.name ?? workerLabel(entry.id)]));
+        if (!closed) setDelegates(list.delegates.map((d) => ({ worker: d.worker, name: names.get(d.worker) ?? workerLabel(d.worker) })));
+      })
+      .catch(() => !closed && setDelegates([]));
+    return () => {
+      closed = true;
+    };
+  }, [client, workforce, worker.kind, sessionId]);
+  return starterLines(delegates);
 }
 
 /**
