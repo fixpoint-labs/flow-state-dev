@@ -1,225 +1,159 @@
-# @flow-state-dev
+# flow-state-dev
 
-**Build AI workflows with blocks. Get streaming, state, retries, and type safety for free.**
+flow-state-dev is a TypeScript framework for agents and agentic systems. You write typed, composable **blocks**. The framework runs them, streams items over SSE with resume, holds state in four scopes (request, session, user, org), and turns a flow into an HTTP API.
+
+With the core packages you can ship a streaming chat or an agent with tools. Memory, patterns, a task board and coding-agent integrations compose on the same primitives when you need them. None of them are required.
+
+It's for TypeScript developers who are building AI features and would rather compose small typed pieces than adopt a framework that decides how an agent is shaped. If you want a no-code builder, or a Python stack, this isn't it.
+
+## What a flow looks like
 
 ```ts
 import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+import { z } from "zod";
 
+const inputSchema = z.object({ message: z.string() });
+const sessionStateSchema = z.object({ messageCount: z.number().default(0) });
+
+// Calls the model. History is loaded from the session.
 const chat = generator({
   name: "chat",
   model: "openai/gpt-6-luna",
   prompt: "You are a helpful assistant.",
-  inputSchema: z.object({ message: z.string() }),
+  inputSchema,
   history: true,
   user: (input) => input.message,
+  itemVisibility: { client: true, history: true },
 });
 
-const trackUsage = handler({
-  name: "track-usage",
-  sessionStateSchema: z.object({ messageCount: z.number().default(0) }),
-  execute: async (input, ctx) => {
+// Plain code. Runs after the model, bumps a counter in session state.
+const countMessage = handler({
+  name: "count-message",
+  inputSchema: z.string(),
+  sessionStateSchema,
+  execute: async (_input, ctx) => {
     await ctx.session.incState({ messageCount: 1 });
-    return input;
   },
 });
 
-const pipeline = sequencer({ name: "chat-pipeline" })
+const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
   .step(chat)
-  .step(trackUsage);
+  .tap(countMessage);
 
 export default defineFlow({
   kind: "my-app",
   actions: {
-    chat: { block: pipeline, userMessage: (i) => i.message },
+    chat: { block: pipeline, userMessage: (input) => input.message },
   },
-  session: { stateSchema: z.object({ messageCount: z.number().default(0) }) },
+  session: {
+    stateSchema: sessionStateSchema,
+    client: { expose: ["messageCount"] },
+  },
 })();
 ```
 
-That's a streaming chat with conversation history, session state, and atomic counters. No transport wiring. No SSE plumbing. No retry logic. The framework handles all of it.
+That is a streaming chat with conversation history and a session counter. Mount the flow on a server and it answers over HTTP; there are no routes to write.
 
-## What you get
+Every block is one of five kinds, and any block can be used as a tool.
 
-**Five block kinds. Infinite compositions.**
+| Kind | What it does |
+| --- | --- |
+| **Generator** | Calls a model. Handles prompt assembly, tool loops, and streaming. |
+| **Evaluator** | Asks a model typed questions (which option, what score, yes or no) and returns typed answers. |
+| **Handler** | Deterministic code: validate, transform, change state, implement a tool. |
+| **Sequencer** | Chains blocks: steps, parallel work, loops, rescue. A sequencer is itself a block. |
+| **Router** | Picks one child block at runtime. |
 
-| Block | What it does |
-|-------|-------------|
-| **handler** | Pure logic — validate, transform, mutate state, implement tools |
-| **generator** | Call an LLM with managed tool loops, streaming, and structured output repair |
-| **sequencer** | Compose blocks into pipelines with `.step()`, `.parallel()`, `.rescue()`, `.forEach()`, and 10 more DSL methods |
-| **router** | Dispatch to different pipelines at runtime based on input or state |
+## Get started in your own project
 
-Any block or sequence of blocks can be used as a tool. A single tool call can trigger an entire multi-step pipeline — your AI's tools can be as sophisticated as any other part of your workflow.
+You need Node.js 22.18 or newer, a package manager, and an API key for OpenAI, Anthropic, or Google.
 
-**Scoped state that scales.** Four isolation levels — request, session, user, org — each with atomic operations (`patchState`, `incState`, `pushState`, `atomicState`). Every block declares only the state fields it needs. Type-safe all the way down.
+**Add it to an existing Next.js App Router or Node project.** Ask a coding assistant to run the [`install-fsd`](plugins/flow-state-dev/skills/install-fsd/SKILL.md) skill from your project directory. It inspects the project, shows you the list of files it will write, and leaves a dirty working tree for you to review. Or wire it by hand: [Existing project](https://flow-state.dev/docs/getting-started/existing-project).
 
-**Resumable streaming out of the box.** Items stream over SSE as blocks execute. Disconnect mid-response? Reconnect with a sequence cursor and pick up exactly where you left off. No data loss. No duplicate events.
-
-**Resources: hybrid memory and filesystem.** Each resource combines rich text content with structured atomic state — like files that carry metadata. An artifact can hold a document's full text alongside its title, tags, and timestamps. Scoped to sessions, users, or orgs. Projections derive client-safe views from state and resources, giving the frontend exactly the shape it needs without manual data wiring.
-
-**First-class error handling.** Retry policies per block. Type-based rescue routing. Non-aborting work queues for side-chain operations. Normalized error model with codes, scopes, and retry signals.
-
-**Full-stack type safety.** Define a schema once in Zod. It validates at runtime, infers at compile time, and flows from server blocks through the client SDK to React hooks. One type system, zero glue code.
-
-## The developer experience
-
-**Flows are full APIs.** Register a flow and you get action execution, session management, SSE streaming, and state snapshots — zero route wiring:
-
-**Server** — Three lines to a complete API:
-
-```ts
-const registry = createFlowRegistry();
-registry.register(myFlow);
-export const { GET, POST, DELETE } = createFlowApiRouter({ registry });
-```
-
-**Client** — Connect from anywhere, framework handles SSE and state sync:
-
-```ts
-const fsd = createClient({ baseUrl: "http://localhost:3000", userId: "user_1" });
-await fsd.flow("my-app").send("chat", { message: "Hello" });
-```
-
-**React** — Hooks that wire streaming, items, and clientData to your UI:
-
-```tsx
-<FlowProvider flowKind="my-app" userId="user_1">
-  <ChatUI />
-</FlowProvider>
-
-function ChatUI() {
-  const flow = useFlow({ autoCreateSession: true });
-  const session = useSession(flow.activeSessionId);
-
-  return (
-    <>
-      {session.items.map(item => <ItemRenderer key={item.id} item={item} />)}
-      <button onClick={() => session.sendAction("chat", { message: "Hi" })}>
-        Send
-      </button>
-    </>
-  );
-}
-```
-
-**Testing** — Deterministic tests with generator mocks, no real LLM calls:
-
-```ts
-import { testBlock, testItems } from "@flow-state-dev/testing";
-
-const result = await testBlock(pipeline, {
-  input: { message: "Hello" },
-  session: { state: { messageCount: 0 } },
-  generators: { "chat": mockGenerator({ script: [{ text: "Hi there!" }] }) },
-});
-
-const items = testItems(result.items);
-expect(items.messages()).toHaveLength(1);
-expect(result.output).toBeDefined();
-```
-
-**Built for an ecosystem.** Blocks and flows are portable. Share a tool block, a validation handler, or a complete agentic flow across projects. The uniform block contract means community blocks compose with yours out of the box.
-
-## When this framework is for you
-
-- You're building AI-powered features and tired of reinventing orchestration, streaming, and state management every time.
-- You want composable primitives, not a rigid agent framework that prescribes how you structure your AI.
-- You want tools that can be as powerful as your workflows — multi-step pipelines, not just function wrappers.
-- You want your AI to have a real workspace: persistent resources with rich content and typed state, not just chat history.
-- You care about execution semantics — retry, rescue, lifecycle hooks — being explicit and testable, not hidden in application glue.
-- You want one coherent stack across server, client, React, CLI, and tests.
-
-## Packages
-
-| Package | Purpose |
-|---------|---------|
-| [`@flow-state-dev/core`](packages/core) | Block builders, flow definitions, type contracts, item taxonomy |
-| [`@flow-state-dev/engine`](packages/engine) | Execution runtime, stores, SSE streaming, HTTP routes |
-| [`@flow-state-dev/client`](packages/client) | Isomorphic API client — actions, sessions, streams |
-| [`@flow-state-dev/react`](packages/react) | React hooks and renderers |
-| [`@flow-state-dev/testing`](packages/testing) | Test harnesses and generator mocks |
-| [`@flow-state-dev/fsdev`](packages/cli) | Terminal interface (`fsdev run`, `fsdev dev`) |
-| [`@flow-state-dev/devtool`](packages/devtool) | Pre-built DevTool assets for `fsdev dev` |
-| [`apps/devtool`](apps/devtool) | DevTool source app |
-
-## Get started
-
-If you have a project of your own, ask a coding assistant to run the `install-fsd` skill, or follow [Existing project](https://flow-state.dev/docs/getting-started/existing-project) by hand.
-
-If you are contributing to this repository, clone it and install from the root:
+**Build a chat from scratch.** The [Quick Start](https://flow-state.dev/docs/getting-started/quick-start) takes about five minutes. The installs are:
 
 ```bash
-# Prerequisites: Node.js >=22, pnpm@10.4.1
+pnpm add @flow-state-dev/core @flow-state-dev/engine @flow-state-dev/next @flow-state-dev/react zod
+pnpm add -D @flow-state-dev/fsdev
+
+# plus the SDK for the provider you have a key for
+pnpm add @ai-sdk/openai   # or @ai-sdk/anthropic, @ai-sdk/google
+```
+
+Set the matching key (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GOOGLE_GENERATIVE_AI_API_KEY`) in your shell or `.env.local`.
+
+**Try a flow.** With a flow under `src/flows/` or `flows/`, the `fsdev` command runs it without a server or a UI:
+
+```bash
+pnpm exec fsdev run my-app chat -i '{"message": "Hello!"}'   # NDJSON events on stdout
+pnpm exec fsdev dev                                          # HTTP API plus the DevTool on port 4200
+```
+
+The DevTool is a browser inspector: it lists sessions, streams items as they arrive, and dispatches actions. See the [CLI](https://flow-state.dev/docs/cli/overview) and [DevTool](https://flow-state.dev/docs/devtool/overview) docs.
+
+## What's in the box
+
+Everything is published under `@flow-state-dev/`. Install only what you use.
+
+| Group | Packages |
+| --- | --- |
+| **Core** | [`core`](packages/core) (block builders, flows, types), [`engine`](packages/engine) (runtime, stores, SSE, HTTP routes), [`client`](packages/client) (isomorphic API client), [`react`](packages/react) (hooks and renderers) |
+| **Hosting** | [`next`](packages/next), [`vercel`](packages/vercel), and [`node`](packages/node) mount a flow server. [`bullmq`](packages/bullmq) adds durable background jobs and cron for long-lived hosts. See [host adapters](https://flow-state.dev/docs/server/host-adapters) |
+| **Tooling** | [`fsdev`](packages/cli) (the CLI), [`devtool`](packages/devtool) (assets served by `fsdev dev`), [`testing`](packages/testing) (harnesses and generator mocks) |
+| **Persistence** | [`store-sqlite`](packages/store-sqlite) and [`store-postgres`](packages/store-postgres). See [Persistence](https://flow-state.dev/docs/persistence/overview) |
+| **Building blocks** | [`memory`](packages/memory) (cross-turn memory), [`tools`](packages/tools) (reusable tool blocks), [`patterns`](packages/patterns) (supervisor, debate, plan-and-execute and others) |
+| **Task boards and teams** | [`orchestration`](packages/orchestration) (tasks, dispatchers, task board, skills runtime), [`workforce`](packages/workforce) (workers built from records), [`workspace`](packages/workspace) (project files into a directory an agent works in), [`harness-manager`](packages/harness-manager) (turn a task into a supervised coding run), [`shift-manager`](packages/shift-manager) (browser app for working a task board) |
+| **Coding agents** | [`claude-code`](packages/claude-code), [`codex`](packages/codex), and [`cursor`](packages/cursor) run each vendor's coding agent as a block. See [coding agents](https://flow-state.dev/docs/tools/coding-agents) |
+| **Other transports** | [`mcp`](packages/mcp) (serve flows over MCP), [`scheduled`](packages/scheduled) (scheduled actions), [`voice-openai`](packages/voice-openai) (OpenAI voice) |
+
+[`contracts`](packages/contracts) holds the shared item types and is re-exported by `core`. You rarely import it directly.
+
+## See it working
+
+- **[Documentation](https://flow-state.dev/docs/intro)**: concepts, guides, and API reference.
+- **[`examples/hello-chat`](examples/hello-chat)**: the smallest complete flow, with React usage and tests. Start here.
+- **[`examples/knowledge-base`](examples/knowledge-base)**: a frozen reference app, a personal wiki served as a secured MCP server.
+- **[`apps/kitchen-sink`](apps/kitchen-sink)**: the reference app. It hosts a support desk built on Workforce and a mode for each coding agent. It needs an `AI_GATEWAY_API_KEY`; run instructions are in its [README](apps/kitchen-sink/README.md).
+
+## Developing flow-state-dev itself
+
+This section is for contributing to the framework. If you only want to use it, you're done above.
+
+You need Node.js 22 or newer and pnpm 10.4.1 (`corepack enable && corepack prepare pnpm@10.4.1`).
+
+```bash
+git clone https://github.com/fixpoint-labs/flow-state-dev
+cd flow-state-dev
 pnpm install
+pnpm packages:build   # emits dist/*.d.ts so your editor resolves workspace imports
 pnpm typecheck
 pnpm test
+pnpm lint
 ```
 
-## Apps and Examples
+These should pass on a fresh clone. `pnpm install` also installs a pre-push hook that runs `pnpm lint` and two vocabulary checks, and blocks the push if any fails. The first lint run takes about a minute; later runs reuse a cache.
 
-Two directories, different purposes:
-
-- `apps/*` — full reference applications we maintain, test against, and use for day-to-day feature work. Larger in scope; multiple flows; polished UI.
-- `examples/*` — minimal, focused, pedagogical. Each example fits in a single README section.
-
-**[apps/kitchen-sink](apps/kitchen-sink)** — Reference app. Hosts the `chat-agent` flow (handler + generator + router + sequencer, resources, clientData, capabilities, tool-use) and everything the framework can do in a full Next.js UI.
-
-**[examples/hello-chat](examples/hello-chat)** — Minimal chat flow. Generator + handler + sequencer in ~50 lines. Start here.
-
-## Architecture
-
-The framework ships as six packages with strict dependency boundaries:
+Apps and examples run against package source, so editing a package shows up in a running app without a rebuild.
 
 ```
-core ← engine ← testing
-core ← client ← react ← apps/devtool
+packages/   published packages
+apps/       docs site, DevTool source, kitchen-sink, and other maintained apps
+examples/   small, copy-able examples
+labs/       applications built on the framework, still being worked out
+plugins/    the flow-state-dev plugin, including the install-fsd skill
+docs/       architecture reference and contributor guides
 ```
 
-- `engine` never depends on `client` or `react`
-- `react` wraps `client` — no transport logic in the UI layer
-- `apps/devtool` uses only public APIs
+Where to read next:
 
-Request lifecycle:
-```
-POST /api/flows/{kind}/actions/{action}
-  → 202 Accepted (async execution)
-  → SSE stream: items, content deltas, status events
-  → request.completed
-  → Client refetches state snapshot
-```
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): how to submit a change
+- [`AGENTS.md`](AGENTS.md): the working protocol and code style, for people and coding agents
+- [`docs/philosophy.md`](docs/philosophy.md): the principles behind design decisions
+- [`docs/architecture/overview.md`](docs/architecture/overview.md): packages and how a request flows through them
+- [`docs/contributing/development-setup.md`](docs/contributing/development-setup.md): monorepo workflow, builds, tests, releases
+- [`docs/contributing/best-practices.md`](docs/contributing/best-practices.md): implementation standards
 
-Resume after disconnect: `Last-Event-ID` or `starting_after` query param replays events from the sequence cursor.
-
-## Documentation
-
-**Architecture** (`docs/architecture/`):
-- [Overview](docs/architecture/overview.md) — System architecture, data flow, core abstractions
-- [Blocks](docs/architecture/blocks.md) — Handler, generator, evaluator, sequencer, router deep dive
-- [Flows and Actions](docs/architecture/flows-and-actions.md) — defineFlow, actions, lifecycle hooks
-- [State and Scopes](docs/architecture/state-and-scopes.md) — Four scopes, atomic ops, CAS concurrency
-- [Streaming](docs/architecture/streaming.md) — Item/content model, SSE protocol, resume semantics
-- [Execution and Errors](docs/architecture/execution-and-errors.md) — Retry, rescue, work queue
-- [Resources and Client Data](docs/architecture/resources-and-client-data.md) — Typed data containers and derived client views
-- [Sequencer DSL](docs/architecture/sequencer-dsl.md) — Full method reference
-- [Server and Client](docs/architecture/server-and-client.md) — Routes, transport, React hooks
-
-**Contributing** (`docs/contributing/`):
-- [Best Practices](docs/contributing/best-practices.md) — Implementation standards
-- [Architecture Reference](docs/contributing/architecture-reference.md) — Locked contracts
-- [Development Setup](docs/contributing/development-setup.md) — Monorepo workflow
-- [Wave Process](docs/contributing/wave-process.md) — Wave execution protocol
-
-## Current status
-
-Phase 1 (Foundation) — Waves 1.a through 1.m are complete. Core contracts, block builders, server runtime, client transport, React bindings, testing utilities, the CLI and the devtool are all implemented and tested. Remaining: 1.n, cross-package validation.
-
-## Contributing
-
-- See [`AGENTS.md`](AGENTS.md) for the process protocol
-- See [`docs/contributing/`](docs/contributing/) for standards and setup
-- Keep implementation standards in `docs/contributing/best-practices.md`
-- See [`CONTRIBUTING.md`](CONTRIBUTING.md) for contribution guidelines
-- See [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) for community standards
+Please read the [Code of Conduct](CODE_OF_CONDUCT.md). To report a vulnerability, follow [`SECURITY.md`](SECURITY.md).
 
 ## Sponsors
 
