@@ -146,6 +146,7 @@ five deep, and each hot file has one open stack at a time. Paths checked on `mai
 Engineering calls, one line each, and one product call from review.
 
 - **FIX-2402, FIX-2404 and FIX-2423 moved to [FIX-2430](https://linear.app/fixpoint-labs/issue/FIX-2430).** Jake, in review: "Move the large one and two which add package changes into a separate epic, and then keep the rest." No closure check needed them, and no remaining child depends on them.
+- **The objective gained a lead measure, a not-doing line and a kill line; FIX-2489, FIX-2516, FIX-2553 and FIX-2552 left the epic.** Jake, 2026-11-04, from an `epic-pm` restraint pass: none of the four serves the goal, and the objective had no kill line. They stay in the project backlog.
 - **D2, D3 and D4 above** are engineering calls. They are recorded, not asked.
 - **The closure does not wait on FIX-1768.** Leg a stops at a reviewed branch; pushing and opening
   a PR is FIX-1768's goal, not this one's. The coordinator removes its blocks relation on FIX-2425. FIX-2274

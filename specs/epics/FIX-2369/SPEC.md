@@ -58,6 +58,14 @@ every day for FSD's own work". It adds restart goals in three apps (FIX-2407) an
 end-to-end checks, all with a real model, to the goal corpus. It does nothing for subsystems
 these apps don't touch.
 
+## Lead measure, not doing, kill line
+
+| | |
+|---|---|
+| **Lead measure** | The children whose own goal check has passed, named, as read off the status table: goal-proven, then merged. A list, not a ratio. A Done count says nothing about the closure's legs |
+| **Not doing** | [What stays as it is](#what-stays-as-it-is), and the goal's *bigger, and not this epic's* row: push, PR opening and review comments are FIX-1768's. Also out, since 2026-11-04, because none serves the goal: FIX-2489 (schedule work from chat), FIX-2516 (attachments in every chat), FIX-2553 (a pull-request badge on session rows), FIX-2552 (sessions started elsewhere join the lab sidebar). They stay in the project backlog ([decided](DECISIONS.md#decided-recorded-so-no-child-reopens-them)) |
+| **Kill line** | If the first closure run shows the coding harness, not the apps, is why a change can't reach a reviewed branch (runs can't commit or run checks reliably), stop app work and redirect to harness reliability |
+
 ## What's in the box
 
 ![In the box: five package areas, built once: client and react, orchestration, harness-manager, workforce and devtool, the ui registry. Composed in by each of four apps: its layout and which pieces it draws. Replaced in one line: a registry component, checks on the project row, a host option. Below a fence, not built here: the push channel, PR and cleanup, a follow-up continuing its root, task timing fields, worktree staleness](figures/end-state.svg)
