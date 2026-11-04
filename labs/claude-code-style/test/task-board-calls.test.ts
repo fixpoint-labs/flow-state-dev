@@ -89,4 +89,28 @@ describe("the adapter's task actions", () => {
     await read();
     expect(lab.sent.filter((s) => s.action === "getTask_tasks")).toEqual([{ flow: "agent", action: "getTask_tasks", input: { id: "t9" }, sessionId: "s1" }]);
   });
+
+  it("asks again for a failed row's error after a read of it failed", async () => {
+    const failed = { id: "t9", goal: "Export invoices", status: "errored", attempts: 2 };
+    let reads = 0;
+    const lab = fakeClient([failed], (sent) => {
+      if (sent.action !== "getTask_tasks") return { ok: true };
+      reads += 1;
+      if (reads === 1) throw new Error("Network error");
+      return { ok: true, task: { ...failed, error: "The export timed out after 30s." } };
+    });
+    const wired = createWiredLab(lab.client);
+    // The first watch's read fails on the dropped getTask, so it shows nothing.
+    const first = wired.watchTasks("s1", () => {});
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    first();
+    expect(reads).toBe(1);
+    const rows = await new Promise<TaskRow[]>((resolve) => {
+      const stop = wired.watchTasks("s1", (next) => {
+        stop();
+        resolve(next);
+      });
+    });
+    expect(rows.find((r) => r.id === "t9")?.error).toBe("The export timed out after 30s.");
+  });
 });

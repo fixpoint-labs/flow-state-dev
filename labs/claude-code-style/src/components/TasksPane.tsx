@@ -120,7 +120,7 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
         </>
       }
       onClose={onClose}
-      footer={<TaskActions id={task.id} status={task.status} actions={actions} steer />}
+      footer={<TaskActions key={task.id} id={task.id} status={task.status} actions={actions} steer />}
     >
       {task.status === "errored" && task.error !== undefined ? (
         <div role="alert" className="mb-3 flex flex-col gap-1 border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">

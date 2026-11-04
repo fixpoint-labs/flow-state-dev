@@ -103,7 +103,7 @@ export function ThreadView({
       )}
       {/* No Steer box: the composer below steers the task. */}
       <div className="px-4 pt-2 empty:hidden">
-        <TaskActions id={task.id} status={task.status} actions={actions} />
+        <TaskActions key={task.id} id={task.id} status={task.status} actions={actions} />
       </div>
       {task.status === "errored" && task.error !== undefined ? (
         <div role="alert" className="mx-4 mt-2 flex flex-col gap-1 border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">

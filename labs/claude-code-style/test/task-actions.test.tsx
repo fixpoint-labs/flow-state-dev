@@ -75,6 +75,17 @@ describe("the tasks pane's sheet", () => {
     await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("in_progress"));
   });
 
+  it("starts the row afresh when another task is opened, so a draft or a confirm never moves to it", async () => {
+    await vendorSession();
+    fireEvent.click(row("Research Globex"));
+    fireEvent.change(within(sheet("Research Globex")).getByRole("textbox", { name: "Steer this task" }), { target: { value: "Meant for Globex." } });
+    fireEvent.click(row("Research Acme"));
+    await screen.findByRole("dialog", { name: "Work: Research Acme" });
+    fireEvent.click(row("Research Globex"));
+    const box = within(sheet("Research Globex")).getByRole("textbox", { name: "Steer this task" }) as HTMLTextAreaElement | HTMLInputElement;
+    expect(box.value).toBe("");
+  });
+
   it("offers no action on a completed task", async () => {
     await vendorSession();
     const done = within(pane()).getByText(/Done · 1/).closest("details")!;

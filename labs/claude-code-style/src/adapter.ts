@@ -740,15 +740,16 @@ export function createWiredLab(fsd: Client): LabAdapter {
   const errors = new Map<string, Promise<string | undefined>>();
   const errorOf = (sessionId: string, task: Listed) => {
     const key = `${task.id}#${task.attempts ?? 0}`;
-    if (!errors.has(key)) {
-      errors.set(
+    return (
+      errors.get(key) ??
+      keptUnlessFailed(
+        errors,
         key,
         flowOfSession(sessionId)
           .then((flow) => run(flow, sessionId, taskActionName("getTask", TASKS_BOARD), { id: task.id }))
           .then((read) => (typeof read.task?.error === "string" ? (read.task.error as string) : undefined)),
-      );
-    }
-    return errors.get(key)!;
+      )
+    );
   };
 
   /** Session `sessionId`'s board, bound once its flow is known: every task change goes through it. */
