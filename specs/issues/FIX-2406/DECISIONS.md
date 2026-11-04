@@ -25,7 +25,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Recorded items and requests replayed into the adapter; or a small flow set built for the test |
-| **Because** | The failures the issue names are package changes: a notice's text, a hold's shape, a request's status. Only a run through the real packages produces the new shape; a recording keeps producing the old one until someone re-records it. A hand-built flow set is a second fake. The lab's own host (its workers, flows and store) with `createMockModelResolver` in place of the model, behind `createInProcessFetch`, is the served lab minus the model and the port |
+| **Because** | The failures the issue names are package changes: a notice's text, a hold's shape, a request's status. Only a run through the real packages produces the new shape; a recording keeps producing the old one until someone re-records it. A hand-built flow set is a second fake. The lab's own host (its workers, flows and store) with a scripted model in place of the provider, behind `createInProcessFetch`, is the served lab minus the model and the port |
 | **Locks in** | Each lab keeps a host factory a test can call (`openLab`, `openTeammates`) with an optional `modelResolver`. The scripts name the workers' tool calls, so renaming a workforce tool means editing the scripts in the same PR, which is the point |
 
 | | Own host, in process (chosen) | Recordings | Hand-built flows |
@@ -84,11 +84,21 @@ Open: none.
 
 2026-11-04, read against `main` at `c904dc3c`. Verdict: right approach, right size.
 
-- **Reuse:** every runtime piece exists (`createInProcessFetch`, `createMockModelResolver`, the
+- **Reuse:** every runtime piece exists (`createInProcessFetch`, the step-level model hooks, the
   scripted coder, `openTeammates`); the one addition is Claude Code-style's host factory.
 - **Right goal:** the issue's own evidence (the fakes' queued, error and hold behaviour) is what
   the matrix catches; checking the failed-turn row found a real gap, filed as FIX-2550.
 - **Size:** test code plus one host extraction; no package changes.
+
+## Notes from building it
+
+- In process there is no push socket, so `client.subscribe` reads on its 1.5 s timer. A turn
+  shorter than that can end unseen by the running-turn read; the mid-turn script runs on for 3 s
+  after the task settles.
+- The Teammates adapter draws a worker's line as a result only once it knows the workers' names,
+  from `listWorkers`, which the screen calls first; the tests call it too.
+- A Teammates hold is answerable once the adapter has read its run session's flow
+  (`waiting.unanswerable === null`); answering before that is refused.
 
 ## How it got here
 
