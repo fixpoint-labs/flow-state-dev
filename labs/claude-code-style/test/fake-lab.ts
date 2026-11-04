@@ -89,6 +89,7 @@ const CODE_REVIEW: ReviewDetail = {
     confidence: 0.91,
     reason: "The CHANGELOG gains one line naming Vendor C and why; nothing else in the repository changed, and the line follows the file's existing format.",
   },
+  checks: null,
 };
 
 /** The run's last words, as a real one ends: a long path and its branch, unbroken. */
