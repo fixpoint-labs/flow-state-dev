@@ -12,8 +12,8 @@
  *   through again.
  */
 
-/** What a step returns: text ends the turn; a call asks the framework to run that tool. */
-export type ScriptedStep = { text: string } | { call: { name: string; args: unknown } };
+/** What a step returns: text or a structured output ends the turn; a call asks the framework to run that tool. */
+export type ScriptedStep = { text: string } | { output: unknown } | { call: { name: string; args: unknown } };
 
 /** One step of one block's turn. */
 export interface ScriptedCall {
@@ -37,6 +37,7 @@ interface StepOptions {
 }
 interface StepResult {
   text?: string;
+  structuredOutput?: unknown;
   toolCalls?: { toolCallId: string; toolName: string; args: unknown }[];
   finishReason: string;
 }
@@ -54,6 +55,7 @@ export function scriptedModels(scripts: Record<string, Script>, fallback: Script
     const script = (blockName === undefined ? undefined : scripts[blockName]) ?? fallback;
     const next = await script({ blockName, said, step, ...(signal === undefined ? {} : { signal }) });
     if ("text" in next) return { text: next.text, finishReason: "stop" };
+    if ("output" in next) return { structuredOutput: next.output, finishReason: "stop" };
     return { toolCalls: [{ toolCallId: `call_${++ids}`, toolName: next.call.name, args: next.call.args }], finishReason: "tool-calls" };
   };
   return (modelId, blockName) => ({

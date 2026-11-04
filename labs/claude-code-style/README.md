@@ -132,7 +132,11 @@ task's sheet or thread view splits it into input and output. A count no run has 
 board's `listTasks` rows carry; the lab sums nothing itself.
 
 Both modes are wired. The screen tests run on a test double, `test/fake-lab.ts`, which the app
-never imports.
+never imports. The contract tests in `test/contract/` keep the two honest: five scenarios (a result
+that lands mid-turn, a failed turn, a held question and its answer, a stop, a lapsed connection)
+run against the double and against the real adapter over the lab's own server (`host.mts`), in
+process, with only the model scripted. A scenario the real adapter can't show yet is marked to fail
+with the issue that adds it.
 
 ## How the screen reaches the package
 

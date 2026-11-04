@@ -59,6 +59,8 @@ export interface FixtureOptions {
 export interface FixtureLab extends LabAdapter {
   /** Every conversation's feed reports `state` from now on. */
   setConnection(state: SessionConnectionState): void;
+  /** The next line's turn fails at its model call: the turn ends with no reply, as the real adapter shows it today. */
+  failNextTurn(): void;
 }
 
 /**
@@ -167,6 +169,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
   const notSetUp = new Set(options.notSetUp ?? []);
   let unreachable = options.unreachableReads ?? 0;
   let connection: SessionConnectionState = "live";
+  let failNext = false;
   /** What each run waiting on you is waiting for: the answer it goes on with. */
   const waits = new Map<string, (answer: TaskAnswer) => void>();
   /** Each run's latest review, by its run session. */
@@ -387,7 +390,10 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
     }
     notify();
     let at = 0;
-    for (const [delay, run] of [...script(w, job), [200, () => endTurn(w)] as Step]) {
+    // fake: the real adapter draws no failed turn yet (FIX-2550): a failed turn just ends.
+    const failed = failNext && job.kind === "user";
+    if (failed) failNext = false;
+    for (const [delay, run] of [...(failed ? [] : script(w, job)), [200, () => endTurn(w)] as Step]) {
       at += delay;
       setTimeout(run, at * speed);
     }
@@ -463,6 +469,9 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
   );
 
   return {
+    failNextTurn() {
+      failNext = true;
+    },
     setConnection(state) {
       connection = state;
       notify();

@@ -4,23 +4,9 @@
  *
  *     fsdev dev --config labs/claude-code-style/fsdev.config.mts --app @flow-state-dev/claude-code-style
  *
- * - `desk.main`, the session-mode main worker, is on the built-in `agent`
- *   flow with `answerAgain: true`: a background result that settles while its
- *   turn runs is taken into that turn (epic D2). The lab writes no block for it.
- * - `desk.researcher` and `desk.thread` are on `agent` too; `desk.lead` is on
- *   the built-in `coordinator` flow.
- * - The `agent` flow carries `projectSourceCapability` over the same host the
- *   coding runs use, so a worker whose file names its `read` preset
- *   (`desk.main`, `desk.researcher`) reads the session's project itself, from
- *   the host's clone at the default branch, with no coding run.
- * - `desk.coder` and `desk.thread-coder` are on the lab's one coding flow,
- *   `harness-thread`; only `desk.thread-coder` waits for your review.
- * - `projects` lists and creates the projects a session works in, and `pins`
- *   keeps the threads you pinned.
- * - `harness-readiness` reads which coding harnesses can run on this machine
- *   (harness-manager's `harnessReadiness`, one check per harness from its
- *   integration): logged as a table at start, and returned by its `read`
- *   action, which `{ refresh: true }` reads again.
+ * The server itself (the workers, their flows, the lab's small flows and the
+ * store) is built by `openLab` in `host.mts`; this file reads the settings
+ * below and calls it. The contract tests call `openLab` too, with a scripted model.
  *
  * The host is durable: a thread's review or question waits on you, and a
  * coding run's review needs durable execution.

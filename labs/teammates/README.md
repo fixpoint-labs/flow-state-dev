@@ -191,6 +191,12 @@ task, the run shows its steps, and the result lands in Chief of Staff's conversa
 The goal check drives all of this in a browser:
 [`goals/teammates-lab/a-worker-talks-to-another-while-you-talk`](../../goals/teammates-lab/a-worker-talks-to-another-while-you-talk/goal.md).
 
+The screen tests run on a test double, `test/fake-lab.ts`. The contract tests in `test/contract/`
+run five scenarios (a task's result, a failed turn, a held question and its answer, a cancelled
+task, a lapsed connection) against the double and against the real adapter over the lab's own
+server (`host.mts`), in process, with only the model scripted and coding runs on the scripted
+harness. A scenario the real adapter can't show yet is marked to fail with the issue that adds it.
+
 ## What the screen reads
 
 Everything the screen reads and writes goes through one adapter, `src/adapter.ts`, and each function
