@@ -43,6 +43,7 @@ import {
   WORK_PROJECT_STATE_KEY,
   WORKER_ID_STATE_KEY,
 } from "@flow-state-dev/workforce/browser";
+import { isSuspensionWait } from "@flow-state-dev/core/items";
 import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
 import { projectIdOf, refuseExisting } from "./lib/new-project";
 import { waitingOnYou } from "./lib/columns";
@@ -226,6 +227,8 @@ export interface Item {
   /** A `tool_output` item's: the call it answers, and whether it is still going or threw. */
   toolCall?: { name?: string; arguments?: string };
   status?: string;
+  /** A failed `tool_output` item's error: a `SUSPENSION` one is a call waiting on you (`isSuspensionWait`). */
+  error?: { code?: string };
 }
 
 
@@ -340,7 +343,7 @@ function callOf(item: Item): ToolCallOf {
   } catch {
     args = {};
   }
-  const status = item.status === "failed" ? "failed" : item.status === "in_progress" ? "running" : "done";
+  const status = isSuspensionWait(item) ? "waiting" : item.status === "failed" ? "failed" : item.status === "in_progress" ? "running" : "done";
   return { id: item.id, name: item.toolCall?.name ?? item.blockName ?? "tool", args, status, ...(status === "done" ? { output: item.output } : {}) };
 }
 

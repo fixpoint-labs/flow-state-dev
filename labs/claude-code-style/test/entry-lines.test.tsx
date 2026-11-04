@@ -74,6 +74,18 @@ describe("a tool call in a thread or a task's work", () => {
     expect(empty!.className).not.toMatch(/text-destructive/);
   });
 
+  it("says a call waiting on you is waiting, not failed", async () => {
+    // A worker that stops for your review is recorded as a failed call whose error is the suspension.
+    const { container } = await drawn([
+      { ...call("t1", "suspendForUser", { kind: "review", title: "Check the copy" }, undefined, "r1", "failed"), error: { code: "SUSPENSION", message: "suspended" } },
+    ]);
+    const line = container.querySelector<HTMLElement>('[data-entry="tool"]')!;
+    expect(line.dataset.state).toBe("waiting");
+    expect(line.textContent).toMatch(/\(waiting\)$/);
+    expect(line.textContent).not.toMatch(/failed/);
+    expect(line.className).not.toMatch(/text-destructive/);
+  });
+
   it("folds a finished turn's run of calls into one line, which opens to each call", async () => {
     const { entries, container } = await drawn([
       call("t1", "readProjectSource", { path: "src/a.ts" }, { kind: "read", status: "ok" }),
