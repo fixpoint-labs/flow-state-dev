@@ -7,16 +7,16 @@ deliberately not next. Each epic's own plan owns its checks.
 
 ![The arc](figures/arc.svg)
 
-Day thirty-three. Five bars are closed: the shell's at its closure merge on Oct 4, hand-offs'
+Day thirty-seven. Five bars are closed: the shell's at its closure merge on Oct 4, hand-offs'
 (FIX-1815) at its Oct 11 wrap, the dev Lab's (FIX-1903) at its Oct 14 wrap, FIX-1786's at Linear
 Done on Oct 23, and the labs' (FIX-2152) at its closure merge on Oct 31, eight days after approval.
-FIX-1786's wrap reached this spec on Oct 31, a week after its bar closed. Org primitives runs to the
-now line: its closure merged Oct 6, and the bar closes when the epic wraps. FIX-1765's lane ends in
-a cross on Oct 13, canceled into FIX-1764. Memory's (FIX-1775) ends in a done mark on Oct 9 with no
-bar, and its long-session half was never filed. Coding tasks (FIX-1763), gaps between epics
-(FIX-2273), Workforce over MCP (FIX-2331) and the daily driver (FIX-2369, filed Oct 31 20:19, at
-the now line) carry filing ticks and no approved objective. Three
-lanes stay empty by plan.
+FIX-1786's wrap reached this spec on Oct 31, a week after its bar closed. Two bars run to the now
+line: org primitives, whose closure merged Oct 6 and which closes when the epic wraps, and the daily
+driver (FIX-2369), approved late on Oct 31. FIX-1765's lane ends in a cross on Oct 13, canceled into
+FIX-1764. Memory's (FIX-1775) ends in a done mark on Oct 9 with no bar, and its long-session half was
+never filed. Coding tasks (FIX-1763), gaps between epics (FIX-2273), Workforce over MCP (FIX-2331),
+app follow-ups (FIX-2430, Oct 31), worktrees and sandboxing (FIX-2440, Nov 1) and smarter agents
+(FIX-2490, Nov 2) carry filing ticks and no approved objective. Three lanes stay empty by plan.
 
 ## What each epic consumes and releases
 
