@@ -50,7 +50,7 @@ flowchart LR
 - **Controls that must fail, shown red once in the PR:** count edit calls instead of distinct
   paths; drop the state check so a failed edit counts; colour the result box green
   unconditionally; prefill the composer of the selected conversation rather than the filer's.
-- **By hand:** `pnpm --filter @flow-state-dev/lab-teammates dev`, file a coding task, open its popup
+- **By hand:** `pnpm --filter @flow-state-dev/teammates dev`, file a coding task, open its popup
   when it ends; a screenshot of done and failed goes in the PR.
 
 ## What changes
