@@ -11,7 +11,7 @@ import { describeFailure, type Failure } from "./reads";
 export type { WorkerMessageRow };
 
 /** How often the view reads the log again while it is open. */
-export const MESSAGES_POLL_MS = 5_000;
+const MESSAGES_POLL_MS = 5_000;
 
 /** One exchange: a first message and every answer to it, newest first. */
 export type MessageExchange = {
