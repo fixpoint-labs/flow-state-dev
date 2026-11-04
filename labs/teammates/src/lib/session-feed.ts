@@ -15,6 +15,11 @@ export interface SessionFeed {
   watch(onChange: (items: readonly OutputItem[]) => void): () => void;
   /** Called with the connection's state now and on each change of it. Returns the stop. */
   watchState(onChange: (state: SessionConnectionState) => void): () => void;
+  /**
+   * Called with how many unfinished runs the session stream names, once it has named them and on
+   * each change: its background work. Never called while they are unknown. Returns the stop.
+   */
+  watchRuns(onChange: (count: number | null) => void): () => void;
   /** Keep a send's streamed response, its messages as they are written, until it ends. */
   followResponse(response: Response): void;
   /** The session holds items older than the first one shown. */
@@ -84,6 +89,19 @@ function shared(client: Client, sessionId: string, onClosed: () => void): Sessio
       };
       const stop = feed.subscribe(({ state }) => tell(state));
       tell(feed.getSnapshot().state);
+      return hold(stop);
+    },
+    watchRuns(onChange) {
+      // Starts at unknown: a feed that hasn't named its runs says nothing.
+      let last: number | null = null;
+      const tell = (runs: readonly unknown[] | null) => {
+        const count = runs === null ? null : runs.length;
+        if (count === last) return;
+        last = count;
+        onChange(count);
+      };
+      const stop = feed.subscribe(({ runs }) => tell(runs));
+      tell(feed.getSnapshot().runs);
       return hold(stop);
     },
   };

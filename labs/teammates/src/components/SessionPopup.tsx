@@ -31,7 +31,11 @@ export function SessionPopup({ label, title, status, onClose, children }: {
     const opener = document.activeElement as HTMLElement | null;
     close.current?.focus();
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        // Spent: closing the popup never also counts toward stopping the turn.
+        event.preventDefault();
+        onClose();
+      }
       else if (event.key === "Tab") keepFocusIn(dialog.current, event);
     };
     document.addEventListener("keydown", onKey);

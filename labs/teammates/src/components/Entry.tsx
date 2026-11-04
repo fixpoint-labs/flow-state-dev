@@ -5,6 +5,7 @@ import { Avatar } from "./Avatar";
 import type { AnswerState } from "./Popups";
 import { useSubmit } from "@flow-state-dev/react";
 import { AgentMarkdown } from "./flow-state/message-response";
+import { RequestRecovery } from "./flow-state/request-recovery";
 import { ToolRun } from "./ToolRun";
 
 /**
@@ -18,6 +19,9 @@ import { ToolRun } from "./ToolRun";
  * yes (`suspendForUser` with an approval) is a card with Approve and Deny until
  * you answer. The tool calls a turn makes show inline as it makes them, a run
  * of them as one line that is open while it runs and folds once it is done.
+ * A turn you stopped is the registry's `request-recovery` stopped line, with
+ * the background work still running (`stillRunning`) when the conversation
+ * passes it, and View (`onViewTasks`) to where the tasks are listed.
  * Memoized: a streamed chunk redraws only the entry that changed.
  */
 export const Entry = memo(function Entry({
@@ -30,6 +34,8 @@ export const Entry = memo(function Entry({
   onOpenMessage,
   onOpenTask,
   onAnswer,
+  stillRunning,
+  onViewTasks,
 }: {
   entry: ConversationEntry;
   workerName: string;
@@ -45,8 +51,18 @@ export const Entry = memo(function Entry({
   /** Open the task a result came from. */
   onOpenTask?: (taskId: string) => void;
   onAnswer?: (approve: boolean) => Promise<void>;
+  /** For a stopped turn's line: the background work still running, when this line may say it. */
+  stillRunning?: number;
+  /** Show where the conversation's tasks are listed. */
+  onViewTasks?: () => void;
 }) {
   switch (entry.kind) {
+    case "stopped":
+      return (
+        <div data-entry="stopped">
+          <RequestRecovery stopped stillRunning={stillRunning} onView={onViewTasks} />
+        </div>
+      );
     case "user":
       return (
         <div className="flex justify-end">

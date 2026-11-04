@@ -61,6 +61,8 @@ export interface FixtureLab extends LabAdapter {
   setConnection(state: SessionConnectionState): void;
   /** The next line's turn fails at its model call: the turn ends with no reply, as the real adapter shows it today. */
   failNextTurn(): void;
+  /** The next Stop is refused while its turn runs on, as a server that resumed the turn first refuses it. */
+  refuseNextStop(): void;
 }
 
 /**
@@ -129,6 +131,10 @@ interface FixtureWorker {
   running: boolean;
   lastActiveAt: number;
   queue: Job[];
+  /** Counts turns: a stopped turn's steps still due see a newer count and do nothing. */
+  turn?: number;
+  /** A Stop is under way: from the press until the turn has ended, as the real adapter reads it. */
+  stopping?: boolean;
 }
 
 /** A scripted step: wait, then run. */
@@ -170,6 +176,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
   let unreachable = options.unreachableReads ?? 0;
   let connection: SessionConnectionState = "live";
   let failNext = false;
+  let refuseStop = false;
   /** What each run waiting on you is waiting for: the answer it goes on with. */
   const waits = new Map<string, (answer: TaskAnswer) => void>();
   /** Each run's latest review, by its run session. */
@@ -354,6 +361,15 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       approvals.set(suspensionId, w);
       return [[600, () => push(w, { kind: "approval", id: nextId("ap"), requestId: nextId("req"), suspensionId, text: "Publish the draft to the team page?" })]];
     }
+    // A long turn, as the contract's stop scenario asks: two coding tasks, then work that runs until it is stopped.
+    if (w.row.id === LEAD && /\bboth modules\b/i.test(job.text)) {
+      return [
+        [300, fileTask(w, "Fix module A")],
+        [200, fileTask(w, "Fix module B")],
+        [30_000, say(w, "Written up.")],
+      ];
+    }
+    if (w.row.id === LEAD && /\bmeanwhile\b/i.test(job.text)) return [[30_000, say(w, "Drafted.")]];
     if (w.row.id === LEAD && /\bfix\b/i.test(job.text)) {
       // The coding agent you name, else the default.
       const named = ROSTER.find((r) => r.takesTasks && new RegExp(`\\b${r.name}\\b`, "i").test(job.text));
@@ -389,13 +405,16 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       w.entries = [...w.entries, { kind: "received", id: nextId("r"), messageId: message.id, from: message.from, text: message.text, inReplyTo: message.inReplyTo }];
     }
     notify();
+    const turn = (w.turn = (w.turn ?? 0) + 1);
     let at = 0;
     // fake: the real adapter draws no failed turn yet (FIX-2550): a failed turn just ends.
     const failed = failNext && job.kind === "user";
     if (failed) failNext = false;
     for (const [delay, run] of [...(failed ? [] : script(w, job)), [200, () => endTurn(w)] as Step]) {
       at += delay;
-      setTimeout(run, at * speed);
+      setTimeout(() => {
+        if (w.turn === turn) run();
+      }, at * speed);
     }
   };
 
@@ -469,6 +488,9 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
   );
 
   return {
+    refuseNextStop() {
+      refuseStop = true;
+    },
     failNextTurn() {
       failNext = true;
     },
@@ -498,11 +520,32 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       startNext(w);
     },
 
+    async interrupt(sessionId) {
+      const w = bySession(sessionId);
+      if (!w?.running) return;
+      if (refuseStop) {
+        refuseStop = false;
+        throw new Error("The turn went on before the stop reached it. Press Stop again.");
+      }
+      // As the real adapter draws it: stopping until the turn has ended, then a stopped line after its last entry.
+      w.turn = (w.turn ?? 0) + 1;
+      w.stopping = true;
+      notify();
+      setTimeout(() => {
+        w.stopping = false;
+        const requestId = nextId("req");
+        push(w, { kind: "stopped", id: `stopped:${requestId}`, requestId });
+        endTurn(w);
+      }, 50 * speed);
+    },
+
     watchConversation(sessionId, onChange) {
       return watch(() => {
         const w = bySession(sessionId);
         if (!w) return;
-        onChange({ entries: w.entries, running: w.running });
+        // The real adapter's count is the conversation's unfinished runs: here, its tasks still running.
+        const backgroundRunning = tasks.filter((t) => t.sessionId === sessionId && t.status === "running").length;
+        onChange({ entries: w.entries, running: w.running, stopping: w.stopping === true, backgroundRunning });
       });
     },
 

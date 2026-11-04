@@ -28,6 +28,12 @@ theme so it reads as the app it copies.
   line is drawn the moment it is filed and fills in where it is. Enter sends; Cmd+Enter
   (Ctrl+Enter) sends from every box, including a teammate's instructions, where plain Enter is a
   new line.
+- **Stopping:** while a teammate answers, *Stop* sits beside *Send* and stops every turn it is
+  answering; Esc twice or Cmd+. (Ctrl+.) does the same from anywhere on the page, and one Esc
+  never does. The button reads *Stopping…* until the turn has ended. The conversation then shows
+  *Interrupted by you* after the turn's last line, read from the turn's own record, so a reload
+  keeps it. While the tasks it started still run, the newest such line says how many, with *View*.
+  A Stop the server refuses says why beside the button.
 - **Popup:** a message line or a task line in the conversation opens that piece of work in a popup
   over it: the other worker's session, live. A task's popup also has the task's buttons (below). It closes with Esc, its close button, or
   a click outside it, and the conversation under it keeps its place.
@@ -208,6 +214,7 @@ names the package call it makes.
 | Workers messaging each other | `sendMessage`, the received-message item (`workforce:received`), and the message log |
 | Hiring, changing and firing your own teammates | the workforce client's `hire`, `edit` and `fire`, on the roster flow |
 | Task lines | the conversation board's rows |
+| Stop, and the stopped line | the request's `abort` for each answering turn; the line is the UI registry's `request-recovery` stopped look, installed in `src/components/flow-state/`, after each request the session's requests list as `aborted`, with the session stream's unfinished runs as its count |
 | A teammate's icon and color | its `WORKER.md`'s `icon:` and `color:` lines, declared on the `agent` flow with `settings` and shown on its `roster()` row with `showSettings` |
 | The status line | the conversation's requests (`listSessionRequests`) and items for what it is answering, the board's rows for a running coding task, the message log for a message waiting on a reply |
 | A message's popup | the recipient's session items: the turn whose received-message item carries the message's id |

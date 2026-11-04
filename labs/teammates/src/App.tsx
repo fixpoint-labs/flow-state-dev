@@ -228,6 +228,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
           harnessOf={harnessOf}
           onFire={() => fire(worker.id)}
           onOpen={openPopup}
+          // The panel beside the conversation lists its tasks: View brings that list into sight.
+          onViewTasks={() => document.getElementById("tasks-heading")?.scrollIntoView({ block: "start" })}
         />
       ) : (
         <main aria-label="Conversation" />

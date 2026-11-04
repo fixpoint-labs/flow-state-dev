@@ -1,4 +1,4 @@
-import { clearDraft, isSendKey, useDraft, useSubmit } from "@flow-state-dev/react";
+import { clearDraft, interruptChordLabel, isSendKey, useDraft, useSubmit } from "@flow-state-dev/react";
 import { useRef, type FormEvent, type KeyboardEvent } from "react";
 
 /**
@@ -12,17 +12,33 @@ import { useRef, type FormEvent, type KeyboardEvent } from "react";
  * nothing: the box keeps it and says why, with Retry. A send that lands clears
  * the box, unless something else was typed meanwhile. The draft is kept per
  * conversation across a reload.
+ *
+ * While the worker answers, Stop sits beside Send and stops every turn it is
+ * answering; it reads *Stopping…* until they have ended, and a refused stop
+ * says why beside it.
  */
 export function Composer({
   sessionId,
   workerName,
   running,
+  stopping = false,
+  stopRefused,
+  armed = false,
+  onStop,
   onSend,
 }: {
   /** The conversation it types to; `/` and a switch find its composer by it. */
   sessionId: string;
   workerName: string;
   running: boolean;
+  /** A Stop is under way: the button waits until the turns have ended. */
+  stopping?: boolean;
+  /** Why the server refused the last Stop, shown beside the button. */
+  stopRefused?: string;
+  /** A first Esc is waiting for its second: say so under the box. */
+  armed?: boolean;
+  /** Stop the worker's answering turns. */
+  onStop: () => void;
   /** Resolves once the line has landed; rejects with why it didn't. */
   onSend: (text: string) => Promise<void>;
 }) {
@@ -64,6 +80,16 @@ export function Composer({
             placeholder={`Message ${workerName}…`}
             className="block field-sizing-content max-h-48 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-1 text-sm outline-none placeholder:text-muted-foreground"
           />
+          {running || stopping ? (
+            <button
+              type="button"
+              onClick={onStop}
+              disabled={stopping}
+              className="rounded-full border border-border px-3 py-1 text-sm font-semibold text-destructive hover:bg-accent disabled:opacity-60"
+            >
+              {stopping ? "Stopping…" : "Stop"}
+            </button>
+          ) : null}
           <button
             type="submit"
             disabled={!text.trim() || busy}
@@ -72,6 +98,11 @@ export function Composer({
             {busy ? "Sending…" : "Send"}
           </button>
         </div>
+        {running && stopRefused !== undefined ? (
+          <p role="alert" className="mt-1 text-xs text-destructive">
+            Not stopped: {stopRefused}
+          </p>
+        ) : null}
         {error !== undefined ? (
           <p role="alert" className="mt-1 text-xs text-destructive">
             Not sent: {error} ·{" "}
@@ -80,7 +111,12 @@ export function Composer({
             </button>
           </p>
         ) : null}
-        {running ? <p className="mt-1 text-xs text-muted-foreground">{workerName} is answering · a line you send now waits for it</p> : null}
+        {running ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {workerName} is answering · a line you send now waits for it ·{" "}
+            {armed ? "press Esc again to stop" : `Esc Esc or ${interruptChordLabel()} to stop`}
+          </p>
+        ) : null}
       </div>
     </form>
   );

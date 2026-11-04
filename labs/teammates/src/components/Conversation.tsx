@@ -1,4 +1,4 @@
-import { useJumpToLatest } from "@flow-state-dev/react";
+import { useInterruptKeys, useJumpToLatest } from "@flow-state-dev/react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { ConversationEntry, LabAdapter, WorkerRow } from "../adapter";
 import type { Look } from "../lib/looks";
@@ -42,6 +42,11 @@ function placeholderOf(entry: TaskEntry, harness: string | undefined): TaskLine 
  * the end, and offers *Jump to latest* when you have scrolled up. A task card
  * is drawn at its full size the moment it is filed, before its row arrives,
  * and "is answering" shows only until the turn's answer text starts.
+ *
+ * Stop, beside Send, stops every turn the worker is answering; so do Esc twice
+ * and Cmd/Ctrl+., from anywhere on the page, never one Esc. A stopped turn
+ * leaves its line in the conversation, and the newest one says how much
+ * background work still runs while nothing came after it.
  */
 export function Conversation({
   adapter,
@@ -53,6 +58,7 @@ export function Conversation({
   harnessOf,
   onFire,
   onOpen,
+  onViewTasks,
 }: {
   adapter: LabAdapter;
   worker: WorkerRow;
@@ -66,6 +72,8 @@ export function Conversation({
   onFire: () => Promise<void>;
   /** Open a popup over the thread: a task this conversation filed, or a message it sent. */
   onOpen: (popup: Popup) => void;
+  /** Show where this conversation's tasks are listed. */
+  onViewTasks?: () => void;
 }) {
   const view = useWatch(adapter.watchConversation, sessionId);
   // What the conversation's feed last heard from the server; a stale one greys the status and stops its clock.
@@ -94,6 +102,18 @@ export function Conversation({
   // An answer on screen, written or being written, is the sign it is answering; the line shows only before one starts.
   const answering = running && last?.kind !== "assistant";
   const feed = useJumpToLatest({ resetKey: sessionId });
+  const stopping = view?.stopping ?? false;
+  // Why the server refused the last Stop, shown beside the button until the next one.
+  const [stopRefused, setStopRefused] = useState<string>();
+  const stop = useCallback(() => {
+    setStopRefused(undefined);
+    adapter.interrupt(sessionId).catch((error: unknown) => setStopRefused(error instanceof Error ? error.message : String(error)));
+  }, [adapter, sessionId]);
+  // On the document, so the keys work wherever focus is; a popup's Esc arrives already spent.
+  const keys = useInterruptKeys({ enabled: running && !stopping, onInterrupt: stop, target: "document" });
+  // The count belongs to the newest stopped line, while no later turn has started.
+  const stillRunningFor = (entry: ConversationEntry) =>
+    entry === last && entry.kind === "stopped" && !running ? (view?.backgroundRunning ?? undefined) : undefined;
 
   // Stable, so a memoized line doesn't redraw for a new function.
   const openTask = useCallback((taskId: string) => onOpen({ kind: "task", sessionId, taskId }), [onOpen, sessionId]);
@@ -188,6 +208,8 @@ export function Conversation({
                     answer={entry.kind === "sent" ? answerIn(talk, entry.messageId) : undefined}
                     onOpenMessage={openMessage}
                     onOpenTask={openTask}
+                    stillRunning={stillRunningFor(entry)}
+                    onViewTasks={onViewTasks}
                     {...(entry.kind === "approval" ? { onAnswer: (approve: boolean) => adapter.answerApproval(sessionId, entry, approve) } : {})}
                   />
                 )}
@@ -211,7 +233,15 @@ export function Conversation({
         </div>
         <JumpToLatestButton feed={feed} />
       </div>
-      <Composer sessionId={sessionId} workerName={worker.name} running={running} onSend={(text) => {
+      <Composer
+        sessionId={sessionId}
+        workerName={worker.name}
+        running={running}
+        stopping={stopping}
+        stopRefused={stopRefused}
+        armed={keys.armed}
+        onStop={stop}
+        onSend={(text) => {
           // Your own line takes you to the end, wherever you had scrolled to.
           feed.sent();
           return adapter.send(sessionId, text);
