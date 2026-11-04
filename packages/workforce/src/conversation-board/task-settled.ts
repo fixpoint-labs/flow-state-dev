@@ -48,6 +48,8 @@
  * notice stays owed on its row.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
+import { endTaskSubscriptions } from "../subscriptions/subscribe";
+import { subscriptionResources } from "../subscriptions/rows";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import { taskSettledEntry as orchestrationTaskSettledEntry } from "@flow-state-dev/orchestration";
 import {
@@ -249,6 +251,10 @@ async function reportFailure(ctx: BlockContext, notice: TaskNotice): Promise<voi
  */
 async function beforeAcknowledge(ctx: BlockContext, notice: TaskNotice): Promise<void> {
   await onEnding(ctx, notice);
+  // A task that failed or was cancelled has nobody left to hear its threads:
+  // the subscriptions its session made end (FIX-2534, epic ER-7 as amended).
+  // A completed task's stay, so its session hears its PR until the PR closes.
+  if (notice.ending === "errored" || notice.ending === "cancelled") await endTaskSubscriptions(ctx, notice.taskId, notice.ending);
   await reportFailure(ctx, notice);
 }
 
@@ -403,7 +409,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     outputSchema: settledSchema,
     sessionStateSchema: z.object(conversationBoardStateShape),
     requestStateSchema: taskEndingReadsStateSchema,
-    resources: { ...taskChainResources },
+    resources: { ...taskChainResources, ...subscriptionResources },
     execute: async (notice: TaskNotice, rawCtx): Promise<Settled> => {
       const ctx = rawCtx as unknown as BlockContext;
       if (notice.boardId !== CONVERSATION_LEDGER_ID) return { act: "none" };

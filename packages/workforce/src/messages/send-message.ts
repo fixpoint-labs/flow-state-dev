@@ -270,6 +270,12 @@ function exemptPlace(ctx: BlockContext, given: string | undefined): Place {
  *   the dispatch says the sender waits on it. Set by server code, never by a model.
  * @param options.noAnswer The framework's "no answer" to the message this one
  *   answers (FIX-2310): the row says so, for an app to draw.
+ * @param options.service A service's delivery (FIX-2534, epic D9): `sender`
+ *   (`service:<provider>`) stands where the sending worker would, and the
+ *   message goes to `to`, a live subscription's session, which is its
+ *   recipient check: not the roster's, not `checkTargetSession`'s. Only with
+ *   `exempt` and an `id`. Set by server code from a subscription row, never
+ *   by a model.
  */
 export async function sendMessage(
   ctx: BlockContext,
@@ -282,11 +288,16 @@ export async function sendMessage(
     readonly exempt?: true;
     readonly replyRequested?: { readonly deadlineAt?: number };
     readonly noAnswer?: true;
+    readonly service?: { readonly sender: string; readonly to: { readonly sessionId: string; readonly flow: string; readonly worker: string } };
   } = {}
 ): Promise<SendOutcome> {
   const refuse = (error: string): SendOutcome => ({ ok: false, error });
   const state = (ctx.session.state ?? {}) as Record<string, unknown>;
-  const sender = state[WORKER_ID_STATE_KEY];
+  const service = options.service;
+  if (service !== undefined && (options.exempt !== true || options.id === undefined)) {
+    throw new Error("A service's delivery is the server's own message: it needs `exempt` and an `id`.");
+  }
+  const sender = service?.sender ?? state[WORKER_ID_STATE_KEY];
   if (typeof sender !== "string" || sender.length === 0) return refuse("not_a_worker: this session runs no worker, so it can't send a message.");
   if (input.text.trim().length === 0) return refuse("empty_message: say something.");
   if (input.text.length > MAX_MESSAGE_CHARS) {
@@ -315,24 +326,28 @@ export async function sendMessage(
     return markAnswer(ctx, written, { ok: true, id: written.id });
   }
   const to = input.to;
-  let recipient: RosterWorker;
+  let recipientId: string;
   let destination: MessageAddress;
   let exchange: string | undefined;
-  if (typeof to !== "string") {
+  if (service !== undefined) {
+    // A live subscription's session: the subscription row is the recipient check.
+    recipientId = service.to.worker;
+    destination = { sessionId: service.to.sessionId, flow: service.to.flow };
+  } else if (typeof to !== "string") {
     // A task's session or a conversation, checked on its record (FIX-2160).
     if (input.inReplyTo !== undefined) {
       return refuse("no_such_message: an answer goes to the worker that sent the message, by its id. Leave inReplyTo out, or send to that worker.");
     }
     const checked = "task" in to ? await checkTaskTarget(ctx, installation, to.task) : await checkTargetSession(ctx, installation, to.session, { session: true });
     if (!checked.ok) return refuse(checked.error);
-    recipient = checked.target.worker;
-    destination = { sessionId: checked.target.sessionId, flow: recipient.flow };
+    recipientId = checked.target.worker.id;
+    destination = { sessionId: checked.target.sessionId, flow: checked.target.worker.flow };
   } else {
     // ---- by name: on the roster, and hearing by name ------------------------
     const named = await installation.rosterWorker(ctx as never, to);
     const refused = recipientRefusal(installation, sender, to, named, input.inReplyTo !== undefined);
     if (refused !== undefined || named === undefined) return refuse(refused ?? `no_worker: no worker "${to}" on your roster.`);
-    recipient = named;
+    recipientId = named.id;
     if (input.inReplyTo !== undefined) {
       const answered = (await log.getOptional(input.inReplyTo))?.state;
       if (answered === undefined || answered.to !== sender || answered.from !== to) {
@@ -351,14 +366,14 @@ export async function sendMessage(
       destination = { sessionId: answered.fromSession, flow: answered.fromFlow };
       exchange = answered.exchange;
     } else {
-      destination = filingSessionFor(state, to) ?? (await conversationAddress(ctx, installation, to, recipient.flow, state));
+      destination = filingSessionFor(state, to) ?? (await conversationAddress(ctx, installation, to, named.flow, state));
     }
   }
 
   // ---- a reply request needs a turn to answer it ---------------------------
   // The flow it lands on, which for an answer is the original sender's.
   if (options.replyRequested !== undefined && runsMessageTurn(installation.workerFlows()[destination.flow]?.flow) === false) {
-    return refuse(`${noReplyError(recipient.id)} Nothing was sent.`);
+    return refuse(`${noReplyError(recipientId)} Nothing was sent.`);
   }
 
   // ---- the budget ----------------------------------------------------------
@@ -373,7 +388,7 @@ export async function sendMessage(
   const row: WorkerMessageRow = {
     id,
     from: sender,
-    to: recipient.id,
+    to: recipientId,
     ...(typeof to === "string" ? {} : "task" in to ? { addressedBy: "task" as const, toTask: to.task } : { addressedBy: "session" as const }),
     text: input.text,
     exchange: exchange ?? id,

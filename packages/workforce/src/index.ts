@@ -158,6 +158,7 @@ export * from "./standing-rules";
 export * from "./messages";
 export * from "./error-reporter";
 export * from "./schedules";
+export * from "./subscriptions";
 export {
   defineSessionBoard,
   type SessionBoard,
