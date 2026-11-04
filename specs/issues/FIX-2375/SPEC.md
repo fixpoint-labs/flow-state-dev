@@ -30,7 +30,7 @@ because they stopped it, and what is still running.
 ```mermaid
 flowchart LR
   F["the lab's own host in process · scripted model · a stopped turn, 2 live runs"] --> A["each lab's real adapter"]
-  A --> T["adapter test · labs/*/test/stop-turn.test.ts"]
+  A --> T["stop row · labs/*/test/contract/contract.test.ts"]
   T -->|"Stopping, then Interrupted by you, count 2"| P["PASS"]
   C["control · the aborted mapping removed, or today's main"] -.-> A
   A -.->|"under the control"| X["must FAIL · no stopped entry"]
