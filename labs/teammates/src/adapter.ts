@@ -576,6 +576,15 @@ function onNotice<T>(
 const isRequest = (notice: WireNotice): boolean => notice.kind === "request";
 
 /** The latest copy of each board row in a conversation's items, oldest filing first. */
+/**
+ * Whether `copy` of a row is of the attempt `row` is on: the same try, on the same
+ * run. A retry runs the task again, and a copy from before it speaks only for the
+ * attempt that ended.
+ */
+function sameAttempt(copy: Record<string, any> | undefined, row: Record<string, any>): boolean {
+  return copy !== undefined && (copy.attempts ?? 0) === (row.attempts ?? 0) && (copy.run?.sessionId ?? null) === (row.run?.sessionId ?? null);
+}
+
 function boardRows(items: readonly Item[]): Map<string, Record<string, any>> {
   const rows = new Map<string, Record<string, any>>();
   for (const item of items) {
@@ -1116,9 +1125,17 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         const board = listed.get(id);
         if (board === undefined) return rows.get(id) ?? runRows.get(id)!;
         const kept: Record<string, unknown> = {};
-        for (const field of isTerminalStatus(board.status) ? [...BRIEF, ...UNPROJECTED] : BRIEF) {
+        for (const field of BRIEF) {
           const value = runRows.get(id)?.[field] ?? rows.get(id)?.[field];
           if (value !== undefined) kept[field] = value;
+        }
+        // An ended task's output and error are its last attempt's: a copy from before a retry says nothing of this one.
+        if (isTerminalStatus(board.status)) {
+          const current = [runRows.get(id), rows.get(id)].filter((copy) => sameAttempt(copy, board));
+          for (const field of UNPROJECTED) {
+            const value = current.find((copy) => copy![field] !== undefined)?.[field];
+            if (value !== undefined) kept[field] = value;
+          }
         }
         return { ...board, ...kept };
       };
@@ -1128,7 +1145,8 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           if (typeof runSession !== "string") continue;
           // An ended task's run is let go once the run's own copy says it ended (it carries the output
           // the board read doesn't), or never followed when no copy of it was ever read.
-          if (isTerminalStatus((runRows.get(row.id) ?? row).status)) {
+          const copy = runRows.get(row.id);
+          if (isTerminalStatus((sameAttempt(copy, row) ? copy! : row).status)) {
             runFeeds.get(runSession)?.();
             runFeeds.set(runSession, () => {});
             continue;
