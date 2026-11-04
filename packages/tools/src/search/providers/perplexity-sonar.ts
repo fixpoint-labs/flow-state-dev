@@ -9,7 +9,9 @@
  * Uses the `sonar` model by default. The normalized `tier` selects the model
  * variant (deep → "sonar-reasoning", otherwise "sonar"); a `searchMode` override
  * sets the model name verbatim. Domain filters go in `search_domain_filter`,
- * as for the Perplexity Search API. Same API key as the Perplexity Search API.
+ * as for the Perplexity Search API: an allowlist or a denylist, so with include
+ * domains the excludes are dropped and an exclude inside an included domain is
+ * not applied (see `perplexityDomainFilter`). Same API key as the Perplexity Search API.
  */
 
 import type { SearchProviderAdapter, SearchOutput } from "../types";

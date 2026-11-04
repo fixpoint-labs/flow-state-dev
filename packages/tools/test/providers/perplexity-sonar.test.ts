@@ -190,7 +190,12 @@ describe("perplexitySonarAdapter", () => {
     expect(result.results).toHaveLength(3);
   });
 
-  it("sends domain filters as search_domain_filter (excludes prefixed with -)", async () => {
+  // search_domain_filter is an allowlist or a denylist, never both.
+  it.each([
+    ["include only → allowlist", ["react.dev"], [], ["react.dev"]],
+    ["exclude only → denylist with a '-' prefix", [], ["pinterest.com"], ["-pinterest.com"]],
+    ["include and exclude → allowlist only", ["react.dev"], ["pinterest.com"], ["react.dev"]],
+  ])("sends domain filters as search_domain_filter: %s", async (_case, includeDomains, excludeDomains, expected) => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ choices: [], citations: [] }), { status: 200 })
     );
@@ -199,13 +204,13 @@ describe("perplexitySonarAdapter", () => {
       maxResults: 5,
       searchDepth: "basic",
       topic: "general",
-      includeDomains: ["react.dev"],
-      excludeDomains: ["pinterest.com"],
+      includeDomains,
+      excludeDomains,
       apiKey: "test-key",
     });
 
     const body = JSON.parse((fetch as any).mock.calls[0][1].body);
-    expect(body.search_domain_filter).toEqual(["react.dev", "-pinterest.com"]);
+    expect(body.search_domain_filter).toEqual(expected);
   });
 
   it("omits search_domain_filter when no domain filter is set", async () => {

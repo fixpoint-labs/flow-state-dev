@@ -28,12 +28,18 @@ export function withSiteOperators(
 
 /**
  * Perplexity's `search_domain_filter` value, read by both its Search API and
- * Sonar: include domains as-is, exclude domains with a `-` prefix. Empty when
- * no filter is set, so callers can omit the field.
+ * Sonar. The filter is an allowlist or a denylist, never both in one request.
+ * With include domains it is the allowlist alone: an exclude outside every
+ * included domain is already ruled out, and one inside an included domain
+ * (include `example.com`, exclude `docs.example.com`) cannot be expressed, so
+ * results can be wider than asked rather than the request being invalid.
+ * With excludes only it is a denylist, each domain prefixed with `-`. Empty
+ * when no filter is set, so callers can omit the field.
  */
 export function perplexityDomainFilter(
   includeDomains: readonly string[] = [],
   excludeDomains: readonly string[] = []
 ): string[] {
-  return [...includeDomains, ...excludeDomains.map((d) => `-${d}`)];
+  if (includeDomains.length > 0) return [...includeDomains];
+  return excludeDomains.map((d) => `-${d}`);
 }

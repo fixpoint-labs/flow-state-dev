@@ -87,7 +87,7 @@ tools.search({
 });
 ```
 
-Every provider applies them. Exa, Tavily, Perplexity, Perplexity Sonar, and Parallel use their own filter fields. Serper and Brave write them into the query as `site:` and `-site:` operators, and OR-group multiple include domains.
+Every provider applies them. Exa, Tavily, Perplexity, Perplexity Sonar, and Parallel use their own filter fields. Serper and Brave write them into the query as `site:` and `-site:` operators, and OR-group multiple include domains. Perplexity and Perplexity Sonar take an include list or an exclude list, not both, so when you set both they apply only the include list, and an excluded subdomain of an included domain can still appear.
 
 ## Provider selection
 
