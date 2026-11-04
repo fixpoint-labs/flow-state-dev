@@ -10,7 +10,7 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 <div class="fs-page">
 
 <div class="fs-dark">
-<header style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 24px; padding: 18px 28px;">
+<header class="fs-header" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 24px; padding: 18px 28px;">
 <a href="/" style="display: flex; align-items: center; gap: 10px; text-decoration: none; min-height: 44px;">
 <svg viewBox="0 0 150 90" aria-hidden="true" style="display: block; width: 44px; height: auto; overflow: visible;"><g fill="none" stroke="rgba(236,231,218,.55)" stroke-width="1.6" stroke-dasharray="3 5"><path d="M0 45 H31"><animate attributeName="stroke-dashoffset" from="0" to="-16" dur="0.8s" repeatCount="indefinite"></animate></path><path d="M119 45 H150"><animate attributeName="stroke-dashoffset" from="0" to="-16" dur="0.8s" repeatCount="indefinite"></animate></path><path d="M0 18 C40 18 50 12 75 12 C100 12 110 18 150 18"><animate attributeName="stroke-dashoffset" from="0" to="-16" dur="0.8s" repeatCount="indefinite"></animate></path><path d="M0 72 C40 72 50 78 75 78 C100 78 110 72 150 72"><animate attributeName="stroke-dashoffset" from="0" to="-16" dur="0.8s" repeatCount="indefinite"></animate></path></g><g fill="none" stroke="#f4f1e4" stroke-width="6"><path d="M31 45 Q53 7 75 45 Q53 83 31 45 Z"></path><path d="M53 45 Q75 7 97 45 Q75 83 53 45 Z"></path><path d="M75 45 Q97 7 119 45 Q97 83 75 45 Z"></path></g></svg>
 <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 14px; font-weight: 600; color: #f4f1e4;">flow-state.dev</span>
@@ -21,24 +21,36 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 <a href="#starters" style="padding: 12px 0;">Starters</a>
 <a href="https://github.com/fixpoint-labs/flow-state-dev" style="padding: 12px 0;">GitHub ↗</a>
 </nav>
+<details class="fs-menu">
+<summary aria-label="Menu"><svg viewBox="0 0 20 14" aria-hidden="true" style="display: block; width: 20px; height: 14px;"><path d="M0 1 H20 M0 7 H20 M0 13 H20" stroke="currentColor" stroke-width="1.8"></path></svg></summary>
+<div class="fs-menu-panel">
+<nav class="fs-nav" aria-label="Main">
+<a href="/docs/intro">Docs</a>
+<a href="#starters">Starters</a>
+<a href="https://github.com/fixpoint-labs/flow-state-dev">GitHub ↗</a>
+</nav>
+<div class="fs-doors" role="group" aria-label="Choose your door"><a href="https://www.flow-state.build">For everyone <span>.build</span></a><a class="on" href="/" aria-current="page">For developers <span>.dev</span></a></div>
+</div>
+</details>
 </header>
 
-<section class="fs-sheet" aria-labelledby="hero-title">
+<section class="fs-sheet fs-hero" aria-labelledby="hero-title">
 <div class="fs-rail" aria-hidden="true">00 — FLOW STATE</div>
-<div class="fs-body" style="display: flex; flex-wrap: wrap; gap: 40px; padding-top: 56px; padding-bottom: 56px;">
-<div style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 24px;">
-<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;">
-<span style="display: inline-block; background: #e8f551; color: #1b1a15; padding: 4px 9px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;">Early preview</span>
-<p style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; color: #a6a08f;">Open source · TypeScript · Any model · Web-based</p>
+<div class="fs-body fs-hero-body" style="display: flex; flex-wrap: wrap; gap: 40px; padding-top: 56px; padding-bottom: 56px;">
+<div class="fs-hero-text" style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 24px;">
+<div class="fs-hero-tags" style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;">
+<span class="fs-hero-pill" style="display: inline-block; background: #e8f551; color: #1b1a15; padding: 4px 9px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;">Early preview</span>
+<p class="fs-hero-tagline" style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; color: #a6a08f;">Open source · TypeScript · Any model · Web-based</p>
 </div>
 
 <h1 id="hero-title" class="fs-h1" style="margin: 0; font-size: 58px; line-height: 1.12; letter-spacing: -0.04em; font-weight: 700; text-wrap: pretty; max-width: 654px; color: #f4f1e4;">Harness your <span style="background: #e8f551; color: #1b1a15; padding: 0 .08em; box-decoration-break: clone; -webkit-box-decoration-break: clone;">AI workforce.</span></h1>
-<p style="margin: 0; font-size: 16.5px; line-height: 1.6; color: #cbc5b5; max-width: 600px;">Claude Code, Codex and Grok Bot are someone else's harness. Flow State gives you the building blocks to build your own, from one agent to a whole workforce, fitted to your process, on any model, at a cost you control.</p>
-<div style="display: flex; flex-wrap: wrap; gap: 10px;">
+<p class="fs-desk" style="margin: 0; font-size: 16.5px; line-height: 1.6; color: #cbc5b5; max-width: 600px;">Claude Code, Codex and Grok Bot are someone else's harness. Flow State gives you the building blocks to build your own, from one agent to a whole workforce, fitted to your process, on any model, at a cost you control.</p>
+<p class="fs-mob" style="margin: 0; font-size: 16.5px; line-height: 1.6; color: #cbc5b5;">Your own harness, from one agent to a whole workforce, on any model, at a cost you control.</p>
+<div class="fs-hero-ctas" style="display: flex; flex-wrap: wrap; gap: 10px;">
 <a class="fs-btn fs-btn-bone fs-btn-mark" href="#starters">Pick a starter →</a>
 <a class="fs-btn fs-btn-ghost" href="/docs/intro">Read the docs</a>
 </div>
-<div style="display: flex; flex-direction: column; gap: 8px; padding-top: 4px;">
+<div class="fs-hero-install" style="display: flex; flex-direction: column; gap: 8px; padding-top: 4px;">
 <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10.5px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: #8d8777;">Or add it to an app you have</span>
 <div style="display: inline-flex; align-self: flex-start; max-width: 100%; overflow-x: auto; align-items: center; gap: 12px; min-height: 44px; box-sizing: border-box; padding: 12px 18px; background: #1c1b15; border: 1px solid rgba(236,231,218,.3); font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px; font-weight: 500; color: #ece7da;">
 <span aria-hidden="true" style="color: #8d8777;">$</span><code style="font-family: inherit; white-space: nowrap;">pnpm add @flow-state-dev/core @flow-state-dev/engine zod</code>
@@ -46,7 +58,7 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 </div>
 </div>
 
-<div style="flex: 1 1 440px; min-width: 0; align-self: center; display: flex; flex-direction: column; gap: 14px;">
+<div class="fs-hero-art" style="flex: 1 1 440px; min-width: 0; align-self: center; display: flex; flex-direction: column; gap: 14px;">
 
 <svg viewBox="0 0 460 320" role="img" aria-label="One person sends a request into a system; the system reshapes itself from an off-the-shelf line into a process fitted to them, and finished work stacks up on the other side" style="display: block; width: 100%; height: auto;">
 <path d="M84 160 H111" stroke="rgba(236,231,218,.55)" stroke-width="1.1" stroke-dasharray="4 4"><animate attributeName="stroke-dashoffset" from="0" to="-16" dur="0.9s" repeatCount="indefinite"></animate></path>
@@ -92,7 +104,7 @@ export const landingMarkup = String.raw`<div class="fs-root" style="font-family:
 <div class="fs-rail" aria-hidden="true">01 — THEIR HARNESS</div>
 <div class="fs-body" style="display: flex; flex-wrap: wrap; gap: 32px 48px; align-items: center;">
 <div style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 14px;">
-
+<p class="fs-mob" style="margin: 0; font-size: 17px; line-height: 1.5; font-weight: 500;">Claude Code, Codex and Grok Bot are someone else's harness.</p>
 <h2 id="loop-title" style="margin: 0; font-size: 34px; line-height: 1.08; letter-spacing: -0.035em; font-weight: 700; text-wrap: pretty;">Today's harness is someone else's product.</h2>
 <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #3d3a32; max-width: 480px;">Claude Code, Codex and Grok Bot are impressive, sub-agents and all. But you work inside their UX, on their models, with their memory, and you wait for them to ship the feature you need. There's no deterministic step and no hybrid flow. Customizing them means adding extensions like skills, and each one usually means more token spend.</p>
 </div>
