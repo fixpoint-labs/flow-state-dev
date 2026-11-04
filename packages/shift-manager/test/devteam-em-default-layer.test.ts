@@ -16,7 +16,6 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { TOOL_USE_RULE } from "@flow-state-dev/workforce";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { EM_FLOW, EM_TURN } from "../teams/devteam/workforce/flows/workers/em.mts";
@@ -26,6 +25,9 @@ afterEach(async () => {
   await opened?.dispose();
   opened = undefined;
 });
+
+/** The tool-use rule's stable opener; the rule itself stays internal to workforce. */
+const TOOL_USE_OPENER = "Work things out yourself first.";
 
 /** The system message of each call the EM's turn made, in order. */
 const systems: string[] = [];
@@ -92,10 +94,10 @@ describe("the EM's turn", () => {
     expect(system!.startsWith("You are Engineering Manager, on the Engineering team.")).toBe(true);
     // Its delegates, named as ones to file tasks with.
     expect(system).toContain("eng.coder");
-    // The ask-versus-act half of the layer, word for word.
-    expect(system).toContain(TOOL_USE_RULE);
+    // The ask-versus-act half of the layer, by its stable opener.
+    expect(system).toContain(TOOL_USE_OPENER);
     // Its own file's text still follows the layer.
     const own = system!.indexOf("You are the EM on the engineering team.");
-    expect(own).toBeGreaterThan(system!.indexOf(TOOL_USE_RULE));
+    expect(own).toBeGreaterThan(system!.indexOf(TOOL_USE_OPENER));
   });
 });
