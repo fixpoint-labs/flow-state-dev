@@ -69,6 +69,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   };
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [paneWidth, setPaneWidth] = usePaneWidth();
+  const paneRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let live = true;
     void adapter.listProjects().then((rows) => live && setProjects(rows));
@@ -180,6 +181,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
               session={selected}
               project={projects.find((p) => p.id === selected.projectId)}
               onOpenThread={(taskId) => openTaskOf(selected.id, taskId)}
+              // The right pane lists the session's background work: View moves you there.
+              onViewTasks={() => paneRef.current?.focus()}
             />
           ) : (
             <ProjectPicker
@@ -192,7 +195,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
             />
           )}
         </SheetArea>
-        <div className="relative min-h-0 min-w-0">
+        <div ref={paneRef} tabIndex={-1} className="relative min-h-0 min-w-0 outline-none">
           <PaneResizer width={paneWidth} onResize={setPaneWidth} />
           {selected && pane === "tasks" ? (
             <TasksPane

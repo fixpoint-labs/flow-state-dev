@@ -474,8 +474,9 @@ describe("the session-mode screen", () => {
     await ask("Compare Acme and Globex for us.");
     await within(thread()).findByRole("status");
     fireEvent.click(within(thread()).getByRole("button", { name: "Stop" }));
-    await within(thread()).findByText(/Interrupted/);
-    expect(within(thread()).queryByRole("status")).toBeNull();
+    await within(thread()).findByText(/Interrupted by you/);
+    // The working line is gone; the one status left is the stopped line.
+    expect(within(thread()).queryByText(/working ·/)).toBeNull();
   });
 
   it("never stops the turn on one Esc, in the composer or when it closes a sheet", async () => {
@@ -528,7 +529,7 @@ describe("the session-mode screen", () => {
     await waitFor(() => expect(within(pane()).getByText(/Background tasks · 2/)).toBeTruthy());
     expect(row("Research Acme").dataset.taskStatus).toBe("in_progress");
     fireEvent.click(within(thread()).getByRole("button", { name: "Stop" }));
-    await within(thread()).findByText(/Background tasks keep running/);
+    await within(thread()).findByText(/Interrupted by you · 2 background tasks still running/);
     await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"), { timeout: 2000 });
   });
 });

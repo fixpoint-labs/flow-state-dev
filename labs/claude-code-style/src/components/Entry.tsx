@@ -6,6 +6,7 @@ import { TASK_STATUS } from "../lib/task-status";
 import type { ToolRun } from "../lib/tool-steps";
 import { cn } from "../lib/utils";
 import { MessageResponse } from "./flow-state/message";
+import { RequestRecovery } from "./flow-state/request-recovery";
 import { composeToolCallsLabel, toolRunOpen, type ToolStepState } from "./flow-state/tool-grouping";
 
 /**
@@ -30,9 +31,22 @@ function AgentMarkdown({ text, className }: { text: string; className?: string }
  * session took it, which opens to the task's reply; a thread in threads mode is
  * a card (`ThreadCard`, which the main thread draws). `mark` is the feed's
  * mark for your line (`useJumpToLatest`'s `mine`), so a line you send rises to
- * near the top of the feed.
+ * near the top of the feed. A turn you stopped is the registry's
+ * `request-recovery` stopped line; `stillRunning` is the background work it
+ * counts, which the thread passes only to the line that can say it truly, and
+ * `onViewTasks` opens where those tasks are listed.
  */
-export function Entry({ entry, mark }: { entry: ThreadEntry; mark?: SentLineMark }) {
+export function Entry({
+  entry,
+  mark,
+  stillRunning,
+  onViewTasks,
+}: {
+  entry: ThreadEntry;
+  mark?: SentLineMark;
+  stillRunning?: number;
+  onViewTasks?: () => void;
+}) {
   switch (entry.kind) {
     case "user":
       return (
@@ -61,10 +75,10 @@ export function Entry({ entry, mark }: { entry: ThreadEntry; mark?: SentLineMark
           ▸ {composeToolCallsLabel([{ name: "createTask" }])}
         </div>
       );
-    case "interrupted":
+    case "stopped":
       return (
-        <div className="text-xs text-muted-foreground" data-entry="interrupted">
-          Interrupted. Background tasks keep running.
+        <div data-entry="stopped">
+          <RequestRecovery stopped stillRunning={stillRunning} onView={onViewTasks} />
         </div>
       );
   }

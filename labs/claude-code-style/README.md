@@ -151,7 +151,7 @@ a package call:
 | Sending and the thread | the `respond` action, and the session's message and tool items |
 | A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
 | The main session reading the project's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |
-| Interrupting | aborting the session's running turn; its tasks keep running |
+| Interrupting | aborting the turns running when you press Stop; the thread then shows the registry's `request-recovery` stopped line after that turn, read from its `aborted` request, with the count of background work still running from the session stream's runs |
 | The tasks pane and a task's work | the `listTasks_tasks` read (stores nothing per poll), and the items of the task's run session |
 | Threads mode's sessions | the same, with `desk.lead`, a `coordinator`, as the main worker |
 | A thread card, and *Sent to a task* | the lead's `createTask` call in the session's items |

@@ -36,6 +36,8 @@ export function withCoder(text: string, coder: CoderChoice): string {
 export function Composer({
   sessionId,
   running,
+  stopping = false,
+  stopRefused,
   armed = false,
   onSend,
   onStop,
@@ -43,6 +45,10 @@ export function Composer({
   /** The session it types to; `/` and a session switch find its composer by it. */
   sessionId: string;
   running: boolean;
+  /** A Stop is under way: the button waits until the turn has ended. */
+  stopping?: boolean;
+  /** Why the server refused the last Stop, shown beside the button. */
+  stopRefused?: string;
   /** A first Esc is waiting for its second: say so under the box. */
   armed?: boolean;
   /** Resolves once the line has landed; rejects with why it didn't. */
@@ -94,13 +100,19 @@ export function Composer({
               ))}
             </select>
           </label>
-          {running ? (
+          {running && stopRefused !== undefined ? (
+            <span role="alert" className="text-xs text-destructive">
+              Not stopped: {stopRefused}
+            </span>
+          ) : null}
+          {running || stopping ? (
             <button
               type="button"
               onClick={onStop}
-              className="border border-border px-3 py-1 text-sm font-semibold text-destructive hover:bg-accent"
+              disabled={stopping}
+              className="border border-border px-3 py-1 text-sm font-semibold text-destructive hover:bg-accent disabled:opacity-60"
             >
-              Stop
+              {stopping ? "Stopping…" : "Stop"}
             </button>
           ) : null}
           <button

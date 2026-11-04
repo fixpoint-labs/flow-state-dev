@@ -63,6 +63,8 @@ interface FixtureSession {
   row: SessionRow;
   entries: ThreadEntry[];
   running: boolean;
+  /** A Stop is under way: from the press until the turn has ended, as the real adapter reads it. */
+  stopping?: boolean;
   turnStartedAt?: number;
   /** Lines sent while a turn ran, by their entry id. */
   queue: { id: string; text: string }[];
@@ -482,15 +484,23 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       if (!s.running) return;
       for (const t of s.timers) clearTimeout(t);
       s.timers = [];
-      push(s, { kind: "interrupted", id: nextId("i") });
-      endTurn(s);
+      // Stopping until the server says the turn ended, then its stopped line after its last entry.
+      s.stopping = true;
+      notify();
+      setTimeout(() => {
+        s.stopping = false;
+        push(s, { kind: "stopped", id: nextId("i") });
+        endTurn(s);
+      }, 50 * speed);
     },
 
     watchThread(sessionId, onChange) {
       return watch(() => {
         const s = sessions.get(sessionId);
         if (!s) return;
-        const view: ThreadView = { entries: s.entries, running: s.running, turnStartedAt: s.turnStartedAt, connection };
+        // The real adapter's count is the session's unfinished runs: here, its tasks still going.
+        const backgroundRunning = s.tasks.filter((task) => task.status === "in_progress" || task.status === "pending").length;
+        const view: ThreadView = { entries: s.entries, running: s.running, stopping: s.stopping === true, backgroundRunning, turnStartedAt: s.turnStartedAt, connection };
         onChange(view);
       });
     },

@@ -1,5 +1,6 @@
 import { useInterruptKeys, useJumpToLatest } from "@flow-state-dev/react";
-import type { LabAdapter, ProjectRow, SessionRow, TaskRow } from "../adapter";
+import { useState } from "react";
+import type { LabAdapter, ProjectRow, SessionRow, TaskRow, ThreadEntry } from "../adapter";
 import { elapsed, useNow, useWatch } from "../lib/use-watch";
 import { modeOfWorker } from "../modes";
 import { cn } from "../lib/utils";
@@ -20,17 +21,23 @@ import { ThreadCard } from "./ThreadCard";
  *
  * Esc twice, or Cmd/Ctrl+., stops the turn from anywhere on the page. One Esc
  * never does: it closes a sheet, or belongs to the text box it was typed in.
+ * A stopped turn leaves its line in the thread; the count of background work
+ * still running shows on the newest one only while nothing came after it,
+ * since a line about work started since would be false.
  */
 export function Thread({
   adapter,
   session,
   project,
   onOpenThread,
+  onViewTasks,
 }: {
   adapter: LabAdapter;
   session: SessionRow;
   project: ProjectRow | undefined;
   onOpenThread: (taskId: string) => void;
+  /** Show where this session's background tasks are listed. */
+  onViewTasks?: () => void;
 }) {
   const view = useWatch((emit: Parameters<LabAdapter["watchThread"]>[1]) => adapter.watchThread(session.id, emit), [adapter, session.id]);
   const mode = modeOfWorker(session.worker);
@@ -48,12 +55,22 @@ export function Thread({
   const now = useNow(running && !stale);
   const count = view?.entries.length ?? 0;
   const feed = useJumpToLatest({ resetKey: session.id });
+  const stopping = view?.stopping ?? false;
+  // Why the server refused the last Stop, shown beside the button until the next one.
+  const [stopRefused, setStopRefused] = useState<string>();
+  const stop = () => {
+    setStopRefused(undefined);
+    adapter.interrupt(session.id).catch((error: unknown) => setStopRefused(error instanceof Error ? error.message : String(error)));
+  };
   // On the document, so the keys work wherever focus is; a sheet's Esc arrives already spent.
   const keys = useInterruptKeys({
-    enabled: running && session.projectId !== null,
-    onInterrupt: () => void adapter.interrupt(session.id),
+    enabled: running && !stopping && session.projectId !== null,
+    onInterrupt: stop,
     target: "document",
   });
+  const last = view?.entries.at(-1);
+  // The count belongs to the newest stopped line, while no later turn has started.
+  const countFor = (entry: ThreadEntry) => (entry === last && entry.kind === "stopped" && !running ? (view?.backgroundRunning ?? undefined) : undefined);
 
   return (
     <main aria-label="Main thread" className="flex h-full min-h-0 min-w-0 flex-col">
@@ -92,7 +109,12 @@ export function Thread({
               ) : (
                 // The request an entry came in on, so a check can tell which turn it landed in.
                 <div key={entry.id} className="contents" data-request-id={entry.requestId}>
-                  <Entry entry={entry} mark={entry.kind === "user" ? feed.mine(entry.id) : undefined} />
+                  <Entry
+                    entry={entry}
+                    mark={entry.kind === "user" ? feed.mine(entry.id) : undefined}
+                    stillRunning={countFor(entry)}
+                    onViewTasks={onViewTasks}
+                  />
                 </div>
               ),
             )}
@@ -115,13 +137,15 @@ export function Thread({
         <Composer
           sessionId={session.id}
           running={running}
+          stopping={stopping}
+          stopRefused={stopRefused}
           armed={keys.armed}
           onSend={(text) => {
             // Your own line brings you back to the end, wherever you had scrolled to.
             feed.sent();
             return adapter.send(session.id, text);
           }}
-          onStop={() => void adapter.interrupt(session.id)}
+          onStop={stop}
         />
       )}
     </main>
