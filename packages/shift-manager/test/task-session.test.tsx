@@ -10,7 +10,7 @@
  *   status. That stream doesn't reconnect; when it drops while the run is still
  *   going, the Session follows the run again, so its status can still settle.
  */
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const lab = { client: { userId: "u_1" }, snapshot: undefined, refresh: vi.fn() };
@@ -101,6 +101,20 @@ describe("a task Session that opens on the newest items", () => {
     const ids = screen.getAllByTestId("session-item").map((el) => el.getAttribute("data-item-id"));
     // The claim teaches the attribution; it is never drawn itself.
     expect(ids).toEqual(["m1", "m2"]);
+  });
+
+  it("keeps a failed claims read on screen through later feed updates, and Retry reads the claims again", async () => {
+    readTaskClaims.mockRejectedValueOnce(new Error("the store is down")).mockResolvedValue([claim]);
+    render(<TaskSession />);
+    await act(async () => feeds.at(-1)!.onRead({ items: [step(1)], truncated: true, loadEarlier: vi.fn() }));
+    expect(screen.getByTestId("session-failure").textContent).toContain("the store is down");
+    // A new step on the stream: the claims are still missing, so the failure stays.
+    await act(async () => feeds.at(-1)!.onRead({ items: [step(1), step(2)], truncated: true, loadEarlier: vi.fn() }));
+    expect(screen.getByTestId("session-failure")).toBeTruthy();
+
+    fireEvent.click(within(screen.getByTestId("session-failure")).getByRole("button"));
+    await act(async () => feeds.at(-1)!.onRead({ items: [step(1), step(2)], truncated: true, loadEarlier: vi.fn() }));
+    expect(screen.getAllByTestId("session-item").map((el) => el.getAttribute("data-item-id"))).toEqual(["m1", "m2"]);
   });
 
   it("reads no claims when the whole session is in view: its claims are already there", async () => {

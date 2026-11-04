@@ -164,8 +164,11 @@ function RunItems({ run }: { run: OpenRun }) {
   const collection = collectionOfBoard(task.boardRef);
   const windowed = stored?.truncated === true;
   const [claims, setClaims] = useState<readonly OutputItem[]>([]);
+  // Its own failure: a feed update must not clear it while the steps it hides are still hidden.
+  const [claimsFailure, setClaimsFailure] = useState<Failure | undefined>(undefined);
   useEffect(() => {
     setClaims([]);
+    setClaimsFailure(undefined);
     if (!windowed) return;
     let closed = false;
     readTaskClaims(client, run.sessionId, collection).then(
@@ -173,7 +176,7 @@ function RunItems({ run }: { run: OpenRun }) {
         if (!closed) setClaims(read);
       },
       (error: unknown) => {
-        if (!closed) setFailure(describeFailure(error));
+        if (!closed) setClaimsFailure(describeFailure(error));
       },
     );
     return () => {
@@ -209,10 +212,11 @@ function RunItems({ run }: { run: OpenRun }) {
     return { items, shared: mine.shared };
   }, [stored, claims, collection, task.taskId, sentSet, renderers]);
 
-  if (failure !== undefined) {
+  const shownFailure = failure ?? claimsFailure;
+  if (shownFailure !== undefined) {
     return (
       <div className="p-4">
-        <SectionFailure what="This run's session" failure={failure} onRetry={() => setAttempt((n) => n + 1)} testId="session-failure" />
+        <SectionFailure what="This run's session" failure={shownFailure} onRetry={() => setAttempt((n) => n + 1)} testId="session-failure" />
       </div>
     );
   }
