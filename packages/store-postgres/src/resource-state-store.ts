@@ -21,6 +21,12 @@
  * losing write reports, are the shared rule from `@flow-state-dev/core/helpers`.
  * The compare inside each write statement is this store's own statement of the
  * same rule, kept in step by the shared conformance suite.
+ *
+ * The store keeps index entries (`indexes`) in `resource_index` and build
+ * markers in `resource_index_built`. Each write's index upkeep rides the
+ * write's own statement as data-modifying CTEs gated on the write having
+ * landed, so a row and its entries commit together or not at all, with no
+ * transaction and on any executor. The rule is on `ResourceStateIndexes`.
  */
 
 import {
@@ -30,6 +36,9 @@ import {
 } from "@flow-state-dev/core/helpers";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type {
+  ResourceIndexBuildState,
+  ResourceIndexEntry,
+  ResourceStateSetOptions,
   ResourceStateStore,
   StorageScopeType,
   ExpectedVersion,
@@ -38,9 +47,80 @@ import type {
   VersionedResourceState
 } from "@flow-state-dev/engine";
 import type { QueryExecutor } from "./types";
+import { collectionKeyRegex } from "./collection-key-regex";
 
 /** A row as Postgres hands it back, before coercion and lifecycle narrowing. */
 type RawRow = { state: JsonObject; version: number | string; lifecycle: string };
+
+/**
+ * The CTEs that keep the index in step with a write. Each is gated on
+ * `source`, the CTE holding the rows the write landed, so a write that
+ * conflicts changes nothing. Reads the eight parameters {@link upkeepParams}
+ * returns, from `$base` on. In order: drop the key's entries the write does
+ * not list, add the ones it does (a build may have added some already), and
+ * clear the markers of indexes that cover the key and that it does not list.
+ *
+ * All CTEs of one statement share a snapshot, which is why the drop spares
+ * the listed entries instead of deleting all and re-inserting: the insert
+ * would not see the delete and would collide with the rows it removes.
+ */
+function indexUpkeep(source: string, base: number): string {
+  const [scopeType, scopeId, key, collections, indexes, values, listedCollections, listedIndexes] =
+    Array.from({ length: 8 }, (_, i) => `$${base + i}`);
+  const landed = `EXISTS (SELECT 1 FROM ${source})`;
+  const listedEntries = `unnest(${collections}::text[], ${indexes}::text[], ${values}::text[]) AS n(c, i, v)`;
+  return `fsd_entries_dropped AS (
+     DELETE FROM resource_index r
+      WHERE ${landed}
+        AND r.scope_type = ${scopeType}::text AND r.scope_id = ${scopeId}::text
+        AND r.resource_key = ${key}::text
+        AND NOT EXISTS (SELECT 1 FROM ${listedEntries}
+                         WHERE n.c = r.collection AND n.i = r.index_name AND n.v = r.value)
+   ),
+   fsd_entries_added AS (
+     INSERT INTO resource_index (scope_type, scope_id, collection, index_name, value, resource_key)
+     SELECT ${scopeType}::text, ${scopeId}::text, n.c, n.i, n.v, ${key}::text FROM ${listedEntries}
+      WHERE ${landed}
+     ON CONFLICT DO NOTHING
+   ),
+   fsd_markers_cleared AS (
+     DELETE FROM resource_index_built b
+      WHERE ${landed}
+        AND b.scope_type = ${scopeType}::text AND b.scope_id = ${scopeId}::text
+        AND ${key}::text ~ b.key_regex
+        AND NOT EXISTS (SELECT 1 FROM unnest(${listedCollections}::text[], ${listedIndexes}::text[]) AS l(c, i)
+                         WHERE l.c = b.collection AND l.i = b.index_name)
+   )`;
+}
+
+/** The parameters {@link indexUpkeep} reads, for a write of `key` listing `entries`. */
+function upkeepParams(
+  scopeType: StorageScopeType,
+  scopeId: string,
+  key: string,
+  entries: ResourceIndexEntry[]
+): unknown[] {
+  const collections: string[] = [];
+  const indexes: string[] = [];
+  const values: string[] = [];
+  for (const entry of entries) {
+    for (const value of new Set(entry.values)) {
+      collections.push(entry.collection);
+      indexes.push(entry.index);
+      values.push(value);
+    }
+  }
+  return [
+    scopeType,
+    scopeId,
+    key,
+    collections,
+    indexes,
+    values,
+    entries.map((entry) => entry.collection),
+    entries.map((entry) => entry.index)
+  ];
+}
 
 export function createPostgresResourceStateStore(executor: QueryExecutor): ResourceStateStore {
   /** Parse one raw result row into the shape the shared contract logic takes. */
@@ -83,10 +163,12 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       scopeId: string,
       resourceKey: string,
       state: JsonObject,
-      expectedVersion: ExpectedVersion
+      expectedVersion: ExpectedVersion,
+      options?: ResourceStateSetOptions
     ): Promise<SetResult<JsonObject>> {
       assertSetExpectedVersion(expectedVersion);
       const payload = JSON.stringify(state);
+      const upkeep = upkeepParams(scopeType, scopeId, resourceKey, options?.indexEntries ?? []);
 
       if (expectedVersion === "any") {
         // The bump happens IN the statement, not from a prior read: a
@@ -97,14 +179,18 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
         // update this store exists to stop, on the one path every caller uses
         // until the registry driver lands.
         const written = await executor.query(
-          `INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
-           VALUES ($1, $2, $3, $4::jsonb, 1, 'live')
-           ON CONFLICT (scope_type, scope_id, resource_key) DO UPDATE SET
-             state = EXCLUDED.state,
-             version = resource_state.version + 1,
-             lifecycle = 'live'
-           RETURNING version`,
-          [scopeType, scopeId, resourceKey, payload]
+          `WITH w AS (
+             INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
+             VALUES ($1, $2, $3, $4::jsonb, 1, 'live')
+             ON CONFLICT (scope_type, scope_id, resource_key) DO UPDATE SET
+               state = EXCLUDED.state,
+               version = resource_state.version + 1,
+               lifecycle = 'live'
+             RETURNING version
+           ),
+           ${indexUpkeep("w", 5)}
+           SELECT version FROM w`,
+          [scopeType, scopeId, resourceKey, payload, ...upkeep]
         );
         return { ok: true, version: Number(written.rows[0]!.version) };
       }
@@ -132,14 +218,15 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
              VALUES ($1, $2, $3, $4::jsonb, 1, 'live')
              ON CONFLICT (scope_type, scope_id, resource_key) DO NOTHING
              RETURNING version, state, lifecycle
-           )
+           ),
+           ${indexUpkeep("ins", 5)}
            SELECT version, state, lifecycle, true AS inserted FROM ins
            UNION ALL
            SELECT version, state, lifecycle, false AS inserted
              FROM resource_state
             WHERE scope_type = $1 AND scope_id = $2 AND resource_key = $3
               AND NOT EXISTS (SELECT 1 FROM ins)`,
-          [scopeType, scopeId, resourceKey, payload]
+          [scopeType, scopeId, resourceKey, payload, ...upkeep]
         );
         const attempted = attempt.rows[0] as (RawRow & { inserted: boolean }) | undefined;
         if (attempted === undefined) {
@@ -160,12 +247,17 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
         // No row at all: a plain insert at version 1. `DO NOTHING` makes a lost
         // race report zero rows rather than overwriting the winner.
         const inserted = await executor.query(
-          `INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
-           VALUES ($1, $2, $3, $4::jsonb, 1, 'live')
-           ON CONFLICT (scope_type, scope_id, resource_key) DO NOTHING`,
-          [scopeType, scopeId, resourceKey, payload]
+          `WITH w AS (
+             INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
+             VALUES ($1, $2, $3, $4::jsonb, 1, 'live')
+             ON CONFLICT (scope_type, scope_id, resource_key) DO NOTHING
+             RETURNING version
+           ),
+           ${indexUpkeep("w", 5)}
+           SELECT version FROM w`,
+          [scopeType, scopeId, resourceKey, payload, ...upkeep]
         );
-        if ((inserted.rowCount ?? 0) > 0) return { ok: true, version: 1 };
+        if (inserted.rows.length > 0) return { ok: true, version: 1 };
 
         // A row exists. Recreating over a tombstone continues from its version,
         // so a version is never reused; a live row is a conflict.
@@ -180,12 +272,17 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
         // generation already used — reusing a version is precisely what the
         // retained tombstone exists to prevent.
         const revived = await executor.query(
-          `UPDATE resource_state SET state = $1::jsonb, version = $2, lifecycle = 'live'
-           WHERE scope_type = $3 AND scope_id = $4 AND resource_key = $5
-             AND lifecycle <> 'live' AND version = $6`,
-          [payload, nextVersion, scopeType, scopeId, resourceKey, current.version]
+          `WITH w AS (
+             UPDATE resource_state SET state = $1::jsonb, version = $2, lifecycle = 'live'
+             WHERE scope_type = $3 AND scope_id = $4 AND resource_key = $5
+               AND lifecycle <> 'live' AND version = $6
+             RETURNING version
+           ),
+           ${indexUpkeep("w", 7)}
+           SELECT version FROM w`,
+          [payload, nextVersion, scopeType, scopeId, resourceKey, current.version, ...upkeep]
         );
-        if ((revived.rowCount ?? 0) === 0) {
+        if (revived.rows.length === 0) {
           return resourceStateConflict(await readRow(scopeType, scopeId, resourceKey));
         }
         return { ok: true, version: nextVersion };
@@ -193,12 +290,17 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
 
       const nextVersion = expectedVersion + 1;
       const updated = await executor.query(
-        `UPDATE resource_state SET state = $1::jsonb, version = $2, lifecycle = 'live'
-         WHERE scope_type = $3 AND scope_id = $4 AND resource_key = $5
-           AND version = $6 AND lifecycle = 'live'`,
-        [payload, nextVersion, scopeType, scopeId, resourceKey, expectedVersion]
+        `WITH w AS (
+           UPDATE resource_state SET state = $1::jsonb, version = $2, lifecycle = 'live'
+           WHERE scope_type = $3 AND scope_id = $4 AND resource_key = $5
+             AND version = $6 AND lifecycle = 'live'
+           RETURNING version
+         ),
+         ${indexUpkeep("w", 7)}
+         SELECT version FROM w`,
+        [payload, nextVersion, scopeType, scopeId, resourceKey, expectedVersion, ...upkeep]
       );
-      if ((updated.rowCount ?? 0) === 0) {
+      if (updated.rows.length === 0) {
         return resourceStateConflict(await readRow(scopeType, scopeId, resourceKey));
       }
       return { ok: true, version: nextVersion };
@@ -225,16 +327,25 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       // caller-supplied value can reach the sentinel branch.
       assertDeleteExpectedVersion(expectedVersion);
       const guard = expectedVersion === "any" ? -1 : expectedVersion;
+      // The tombstone's entries go in the same statement.
       const marked = await executor.query(
-        `UPDATE resource_state SET state = '{}'::jsonb, lifecycle = 'deleted'
-         WHERE scope_type = $1 AND scope_id = $2 AND resource_key = $3
-           AND lifecycle = 'live' AND ($4 = -1 OR version = $4)
-         RETURNING version`,
+        `WITH w AS (
+           UPDATE resource_state SET state = '{}'::jsonb, lifecycle = 'deleted'
+           WHERE scope_type = $1 AND scope_id = $2 AND resource_key = $3
+             AND lifecycle = 'live' AND ($4 = -1 OR version = $4)
+           RETURNING version
+         ),
+         fsd_entries_dropped AS (
+           DELETE FROM resource_index
+            WHERE EXISTS (SELECT 1 FROM w)
+              AND scope_type = $1 AND scope_id = $2 AND resource_key = $3
+         )
+         SELECT version FROM w`,
         [scopeType, scopeId, resourceKey, guard]
       );
       // Read the retained version off the statement, not off a prior read:
       // under `"any"` a concurrent writer can advance the row between the two.
-      if ((marked.rowCount ?? 0) > 0) {
+      if (marked.rows.length > 0) {
         return { ok: true, version: Number(marked.rows[0]!.version) };
       }
 
@@ -324,7 +435,10 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       // DELETE — the retained versions are what stop a straggler from the
       // previous generation matching a row in the next one.
       await executor.query(
-        `UPDATE resource_state SET state = '{}'::jsonb, lifecycle = 'deleted'
+        `WITH fsd_entries_dropped AS (
+           DELETE FROM resource_index WHERE scope_type = $1 AND scope_id = $2
+         )
+         UPDATE resource_state SET state = '{}'::jsonb, lifecycle = 'deleted'
          WHERE scope_type = $1 AND scope_id = $2 AND lifecycle = 'live'`,
         [scopeType, scopeId]
       );
@@ -337,10 +451,80 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       // deliberately not reachable from teardown. See `purgeTombstones` on
       // `ResourceStateStore` for what giving those versions back costs.
       await executor.query(
-        `DELETE FROM resource_state
+        `WITH fsd_entries_dropped AS (
+           DELETE FROM resource_index r USING resource_state s
+            WHERE r.scope_type = $1 AND r.scope_id = $2
+              AND s.scope_type = $1 AND s.scope_id = $2
+              AND s.resource_key = r.resource_key AND s.lifecycle = 'deleted'
+         )
+         DELETE FROM resource_state
          WHERE scope_type = $1 AND scope_id = $2 AND lifecycle = 'deleted'`,
         [scopeType, scopeId]
       );
+    },
+
+    indexes: {
+      async state(scopeType, scopeId, collection, index): Promise<ResourceIndexBuildState> {
+        const result = await executor.query(
+          `SELECT status FROM resource_index_built
+            WHERE scope_type = $1 AND scope_id = $2 AND collection = $3 AND index_name = $4`,
+          [scopeType, scopeId, collection, index]
+        );
+        const row = result.rows[0] as { status: string } | undefined;
+        if (row === undefined) return "unbuilt";
+        return row.status === "built" ? "built" : "building";
+      },
+
+      async beginBuild(scopeType, scopeId, collection, index): Promise<void> {
+        await executor.query(
+          `INSERT INTO resource_index_built (scope_type, scope_id, collection, index_name, status, key_regex)
+           VALUES ($1, $2, $3, $4, 'building', $5)
+           ON CONFLICT (scope_type, scope_id, collection, index_name)
+           DO UPDATE SET status = 'building', key_regex = EXCLUDED.key_regex`,
+          [scopeType, scopeId, collection, index, collectionKeyRegex(collection)]
+        );
+      },
+
+      async completeBuild(scopeType, scopeId, collection, index, entries): Promise<boolean> {
+        const keys: string[] = [];
+        const values: string[] = [];
+        for (const entry of entries) {
+          for (const value of new Set(entry.values)) {
+            keys.push(entry.key);
+            values.push(value);
+          }
+        }
+        // The flip and the entries in one statement: both, only if the
+        // building marker survived the scan.
+        const result = await executor.query(
+          `WITH f AS (
+             UPDATE resource_index_built SET status = 'built'
+              WHERE scope_type = $1 AND scope_id = $2 AND collection = $3 AND index_name = $4
+                AND status = 'building'
+             RETURNING 1
+           ),
+           fsd_entries_added AS (
+             INSERT INTO resource_index (scope_type, scope_id, collection, index_name, value, resource_key)
+             SELECT $1::text, $2::text, $3::text, $4::text, n.v, n.k
+               FROM unnest($5::text[], $6::text[]) AS n(k, v)
+              WHERE EXISTS (SELECT 1 FROM f)
+             ON CONFLICT DO NOTHING
+           )
+           SELECT 1 FROM f`,
+          [scopeType, scopeId, collection, index, keys, values]
+        );
+        return result.rows.length > 0;
+      },
+
+      async findKeys(scopeType, scopeId, collection, index, value): Promise<string[]> {
+        const result = await executor.query(
+          `SELECT resource_key FROM resource_index
+            WHERE scope_type = $1 AND scope_id = $2 AND collection = $3
+              AND index_name = $4 AND value = $5`,
+          [scopeType, scopeId, collection, index, value]
+        );
+        return result.rows.map((row) => row.resource_key as string).sort();
+      }
     }
   };
 }

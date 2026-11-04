@@ -439,6 +439,42 @@ const RESOURCE_STATE_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_resource_state_scope ON resource_state(scope_type, scope_id)"
 ];
 
+// Index entries for resource collections: one row per (row, index, value), so
+// a collection can be looked up by a declared field without reading its rows.
+// Generic on purpose: a new index needs no DDL. The built-marker table records
+// which (scope, collection, index) has finished its first build; `key_regex`
+// is the collection pattern as a regular expression, so a write can clear the
+// markers covering its key inside its own statement. Both are kept in step
+// with resource_state by createPostgresResourceStateStore.
+const RESOURCE_INDEX_TABLES = [
+  `
+CREATE TABLE IF NOT EXISTS resource_index (
+  scope_type    TEXT NOT NULL,
+  scope_id      TEXT NOT NULL,
+  collection    TEXT NOT NULL,
+  index_name    TEXT NOT NULL,
+  value         TEXT NOT NULL,
+  resource_key  TEXT NOT NULL,
+  PRIMARY KEY (scope_type, scope_id, collection, index_name, value, resource_key)
+);
+`,
+  `
+CREATE TABLE IF NOT EXISTS resource_index_built (
+  scope_type    TEXT NOT NULL,
+  scope_id      TEXT NOT NULL,
+  collection    TEXT NOT NULL,
+  index_name    TEXT NOT NULL,
+  status        TEXT NOT NULL,
+  key_regex     TEXT,
+  PRIMARY KEY (scope_type, scope_id, collection, index_name)
+);
+`
+];
+
+const RESOURCE_INDEX_INDEXES = [
+  "CREATE INDEX IF NOT EXISTS idx_resource_index_key ON resource_index(scope_type, scope_id, resource_key)"
+];
+
 const REQUEST_EVENTS_TABLE = `
 CREATE TABLE IF NOT EXISTS request_events (
   request_id      TEXT NOT NULL,
@@ -753,6 +789,7 @@ function getSchemaDDL(): {
       ACTIVE_REQUESTS_TABLE,
       RESOURCE_CONTENT_TABLE,
       RESOURCE_STATE_TABLE,
+      ...RESOURCE_INDEX_TABLES,
       REQUEST_EVENTS_TABLE,
       REQUEST_ITEMS_TABLE,
       REQUEST_RUNONCE_TABLE,
@@ -770,6 +807,7 @@ function getSchemaDDL(): {
       ...ACTIVE_REQUESTS_INDEXES,
       ...RESOURCE_CONTENT_INDEXES,
       ...RESOURCE_STATE_INDEXES,
+      ...RESOURCE_INDEX_INDEXES,
       ...REQUEST_EVENTS_INDEXES,
       ...REQUEST_ITEMS_INDEXES,
       ...REQUEST_RUNONCE_INDEXES,

@@ -131,9 +131,13 @@ The schema uses:
 | `active_requests` | `request_id` | In-flight request registry for interrupted request recovery |
 | `resource_content` | `(scope_type, scope_id, resource_key)` | Resource content bodies (`TEXT`), keyed per resource, separate from scope records |
 | `resource_state` | `(scope_type, scope_id, resource_key)` | Resource state (`JSONB`), single + collection instances, keyed per resource, separate from scope records |
+| `resource_index` | `(scope_type, scope_id, collection, index_name, value, resource_key)` | Index entries that let a collection be looked up by a declared field. Written in the same statement as the row they describe; indexed on `(scope_type, scope_id, resource_key)` |
+| `resource_index_built` | `(scope_type, scope_id, collection, index_name)` | Which indexes have finished their first build in a scope, with the collection pattern as a regular expression so a write can clear the markers covering its key |
 | `request_events` | `(request_id, sequence_number)` | Stream event replay for completed requests |
 | `request_items` | `(request_id, item_id)` | Output items produced by a request (one row per item) |
 | `wakes` | `(tenant_key, session_id, entry)` | When pending work in a session falls due, read by the durability sweeper ([Wakes](https://flow-state.dev/docs/advanced/durable-execution#wakes)); indexed on `due_at` |
+
+Every resource state write keeps `resource_index` and `resource_index_built` in step in the same statement, so a database used with `skipSchemaInit: true` must already have them: run `initializeSchema` against it with this version first.
 
 ### Instance ownership
 

@@ -1266,6 +1266,116 @@ export type VersionedResourceState = {
 };
 
 /**
+ * One declared index's values for one row, as a `set` carries them.
+ *
+ * Index entries let a collection be looked up by a field outside its key. The
+ * engine computes them from the app's declared indexes; a store only keeps
+ * them in step with the row and answers lookups. See
+ * {@link ResourceStateIndexes}.
+ */
+export type ResourceIndexEntry = {
+  /** The collection's full declared pattern (not its storage prefix). Opaque to the store, except that it decides which keys the index covers. */
+  collection: string;
+  /** The index's stored name, its version included. Opaque to the store. */
+  index: string;
+  /** The row's canonical value strings for this index. Empty: the row has no value for it. */
+  values: string[];
+};
+
+/** The optional last argument of {@link ResourceStateStore.set}. */
+export type ResourceStateSetOptions = {
+  /**
+   * The row's entries for each index the writer declares. A store with
+   * {@link ResourceStateStore.indexes} commits them with the row, or not at
+   * all. A store without index verbs ignores them.
+   */
+  indexEntries?: ResourceIndexEntry[];
+};
+
+/**
+ * Whether a scope's index can answer a lookup. `unbuilt`: no build has
+ * finished, or a write cleared it. `building`: a build has begun and nothing
+ * has cleared it since. `built`: the index holds an entry for every live row
+ * the collection covers.
+ */
+export type ResourceIndexBuildState = "unbuilt" | "building" | "built";
+
+/** One row's entries, as a build found them. */
+export type ResourceIndexBuildEntry = {
+  /** The row's resource key. */
+  key: string;
+  /** The row's canonical value strings for the index being built. */
+  values: string[];
+};
+
+/**
+ * The index verbs a store may implement. A store implements all four or none;
+ * without them the engine answers a lookup by scanning the scope's rows.
+ *
+ * ## The rule every verb keeps
+ *
+ * Entries are a **superset**: every live row the collection covers has its
+ * entries once the index is built, and an entry may outlive the value that
+ * made it. The engine re-checks each hit against its row, so a stale entry is
+ * never returned, and a missing one could never be recovered. So:
+ *
+ * - A successful `set` makes the key's entries exactly the ones it lists, in
+ *   the row's own commit. A `set` that conflicts changes no entry.
+ * - A successful `set` also clears the build marker of every index in the
+ *   scope whose collection pattern matches the key and that the call does not
+ *   list: a writer that does not know an index cannot keep it whole, so the
+ *   next lookup rebuilds it. A `set` that conflicts clears nothing.
+ * - `delete`, `deleteAll` and `purgeTombstones` remove the entries of the
+ *   rows they tombstone or reclaim. They leave markers alone: a row that is
+ *   not live needs no entry.
+ * - A build only adds entries. It never replaces them, because a live write
+ *   may land while it scans.
+ *
+ * Scopes are isolated: nothing here reads or clears another scope's entries
+ * or markers.
+ */
+export interface ResourceStateIndexes {
+  /** Whether `index` of `collection` is built in this scope. `unbuilt` when nothing was recorded. */
+  state(
+    scopeType: StorageScopeType,
+    scopeId: string,
+    collection: string,
+    index: string
+  ): Promise<ResourceIndexBuildState>;
+
+  /** Record that a build of `index` has begun in this scope (its state becomes `building`). */
+  beginBuild(
+    scopeType: StorageScopeType,
+    scopeId: string,
+    collection: string,
+    index: string
+  ): Promise<void>;
+
+  /**
+   * Add `entries` and mark the index `built`, in one commit, only if its
+   * `building` marker is still there. Returns whether it did. When a write
+   * cleared the marker during the scan, nothing is written and the next
+   * lookup builds again.
+   */
+  completeBuild(
+    scopeType: StorageScopeType,
+    scopeId: string,
+    collection: string,
+    index: string,
+    entries: ResourceIndexBuildEntry[]
+  ): Promise<boolean>;
+
+  /** The keys with an entry of `value` for `index`, in this scope, in ascending key order. */
+  findKeys(
+    scopeType: StorageScopeType,
+    scopeId: string,
+    collection: string,
+    index: string,
+    value: string
+  ): Promise<string[]>;
+}
+
+/**
  * Separates resource state persistence from scope record persistence.
  *
  * State is addressed by (scopeType, scopeId, resourceKey) — the same scheme as
@@ -1362,13 +1472,18 @@ export interface ResourceStateStore {
    * `undefined` when the row is tombstoned, and `conflict.currentVersion` is
    * the version now stored. A caller must treat an `undefined` current value
    * as "deleted" and stop — never as "reuse what I had cached".
+   *
+   * `options.indexEntries` carries the row's index entries. A store with
+   * {@link indexes} commits them with the row (see
+   * {@link ResourceStateIndexes} for the rule); one without ignores them.
    */
   set(
     scopeType: StorageScopeType,
     scopeId: string,
     resourceKey: string,
     state: JsonObject,
-    expectedVersion: ExpectedVersion
+    expectedVersion: ExpectedVersion,
+    options?: ResourceStateSetOptions
   ): Promise<SetResult<JsonObject>>;
 
   /**
@@ -1491,6 +1606,13 @@ export interface ResourceStateStore {
    * and the permanent brick the other order causes.
    */
   purgeTombstones(scopeType: StorageScopeType, scopeId: string): Promise<void>;
+
+  /**
+   * The index verbs, when this store keeps index entries. Absent on a store
+   * that does not (memory, filesystem): the engine answers a lookup there by
+   * scanning, with the same result.
+   */
+  indexes?: ResourceStateIndexes;
 }
 
 /**

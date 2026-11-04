@@ -422,6 +422,33 @@ CREATE TABLE IF NOT EXISTS resource_state (
 CREATE INDEX IF NOT EXISTS idx_resource_state_scope ON resource_state(scope_type, scope_id);
 `;
 
+// Index entries for resource collections: one row per (row, index, value), so
+// a collection can be looked up by a declared field without reading its rows.
+// Generic on purpose: a new index needs no DDL. The built-marker table records
+// which (scope, collection, index) has finished its first build. Both are kept
+// in step with resource_state by createSQLiteResourceStateStore, inside the
+// row's own transaction.
+const RESOURCE_INDEX_TABLES = `
+CREATE TABLE IF NOT EXISTS resource_index (
+  scope_type    TEXT NOT NULL,
+  scope_id      TEXT NOT NULL,
+  collection    TEXT NOT NULL,
+  index_name    TEXT NOT NULL,
+  value         TEXT NOT NULL,
+  resource_key  TEXT NOT NULL,
+  PRIMARY KEY (scope_type, scope_id, collection, index_name, value, resource_key)
+);
+CREATE INDEX IF NOT EXISTS idx_resource_index_key ON resource_index(scope_type, scope_id, resource_key);
+CREATE TABLE IF NOT EXISTS resource_index_built (
+  scope_type    TEXT NOT NULL,
+  scope_id      TEXT NOT NULL,
+  collection    TEXT NOT NULL,
+  index_name    TEXT NOT NULL,
+  status        TEXT NOT NULL,
+  PRIMARY KEY (scope_type, scope_id, collection, index_name)
+);
+`;
+
 // FIX-401: durable sequencer checkpoints. Identity is
 // (request_id, block_instance_id); upsert overwrites latest, delete removes
 // at terminal completion. `data` carries the full SequencerCheckpoint JSON
@@ -722,6 +749,7 @@ export function initializeSchemaDDL(db: Database.Database): void {
   db.exec(REQUEST_EVENTS_TABLE);
   db.exec(RESOURCE_CONTENT_TABLE);
   db.exec(RESOURCE_STATE_TABLE);
+  db.exec(RESOURCE_INDEX_TABLES);
   db.exec(REQUEST_RUNONCE_TABLE);
   db.exec(SEQUENCER_CHECKPOINTS_TABLE);
   db.exec(TRACE_REQUEST_ROSTER_TABLE);
