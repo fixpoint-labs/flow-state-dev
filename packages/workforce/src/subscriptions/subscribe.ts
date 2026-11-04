@@ -72,12 +72,27 @@ export type SubscribeOutcome = { readonly id: string } | { readonly refused: str
 /** Why a subscription ended. */
 export type SubscriptionEnd = "unsubscribed" | "thread_closed" | "task_errored" | "task_cancelled";
 
-/** A stable id for one session's subscription to one thread: subscribing again updates it. */
-async function subscriptionIdOf(sessionId: string, provider: string, thread: string): Promise<string> {
-  const bytes = new TextEncoder().encode(`${sessionId}\n${provider}\n${thread}`);
+/**
+ * A stable id for one session's subscription to one thread: subscribing again
+ * updates it. A session id is unique only within its tenant, and every tenant's
+ * rows share the user's cell, so the tenant is part of the id. A session with
+ * no tenant keeps the id it had.
+ */
+async function subscriptionIdOf(sessionId: string, provider: string, thread: string, tenantId: string | undefined): Promise<string> {
+  const tenant = tenantId === undefined ? "" : `\n${tenantId}`;
+  const bytes = new TextEncoder().encode(`${sessionId}\n${provider}\n${thread}${tenant}`);
   const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", bytes));
   return `sub_${[...digest.slice(0, 12)].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
 }
+
+/** The tenant the running session is under, or none. */
+const tenantOf = (ctx: BlockContext): string | undefined => {
+  const tenantId = (ctx.session.identity as { tenantId?: string }).tenantId;
+  return tenantId === undefined || tenantId.length === 0 ? undefined : tenantId;
+};
+
+/** Whether `row` was made by the running session: its id, in its tenant. */
+const madeHere = (ctx: BlockContext, row: SubscriptionRow): boolean => row.sessionId === ctx.session.identity.id && row.tenantId === tenantOf(ctx);
 
 const indexEntryOf = (row: SubscriptionRow): IndexEntry => ({
   provider: row.provider,
@@ -118,7 +133,8 @@ export async function subscribe(ctx: BlockContext, providers: readonly Subscript
   // The flow a delivery lands on: the session's own record, as the engine reads it for this user.
   const view = await ctx.requestHost?.sessions?.read(identity.id);
   const flowKind = view === undefined ? undefined : (view.flowId ?? view.flowKind);
-  const id = await subscriptionIdOf(identity.id, provider.provider, thread);
+  const tenantId = tenantOf(ctx);
+  const id = await subscriptionIdOf(identity.id, provider.provider, thread, tenantId);
   const self = await provider.self?.(ctx);
   const taskId = state[TASK_ID_STATE_KEY];
   const row: SubscriptionRow = {
@@ -137,7 +153,7 @@ export async function subscribe(ctx: BlockContext, providers: readonly Subscript
     userId: identity.userId,
     orgId: identity.orgId,
     // The tenant its session runs under, so its deliveries reach that session.
-    ...(identity.tenantId === undefined || identity.tenantId.length === 0 ? {} : { tenantId: identity.tenantId }),
+    ...(tenantId === undefined ? {} : { tenantId }),
     enabled: true,
     at: Date.now()
   };
@@ -220,7 +236,7 @@ export function subscriptionTools(options: { readonly providers: readonly Subscr
     execute: async (input, rawCtx) => {
       const ctx = rawCtx as unknown as BlockContext;
       const row = (await subscriptionsOf(ctx).getOptional(input.id))?.state;
-      if (row === undefined || row.sessionId !== ctx.session.identity.id) {
+      if (row === undefined || !madeHere(ctx, row)) {
         return { refused: `not_yours: this conversation has no subscription "${input.id}".` };
       }
       await unsubscribe(ctx, input.id, "unsubscribed");

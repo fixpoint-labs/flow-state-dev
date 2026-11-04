@@ -114,9 +114,17 @@ const deliveredSchema = z.object({
 
 type Delivered = z.infer<typeof deliveredSchema>;
 
-/** A delivery's message id: one object, at one version, for one session (epic D4). */
-export function deliveryMessageId(object: SubscriptionEvent["object"], sessionId: string): string {
-  return `sub_${encodeURIComponent(object.id)}@${object.version}:${sessionId}`;
+/**
+ * A delivery's message id: one object, at one version, for one session in its
+ * tenant (epic D4): `sub_<object>@<version>:<session>`, or
+ * `sub_<object>@<version>@<tenant>:<session>` under a tenant. A session id is
+ * unique only within its tenant, and every tenant's log rows share the user's
+ * cell. The object and the tenant are URI-encoded, so neither holds an `@` or a
+ * `:` and the parts read back apart.
+ */
+export function deliveryMessageId(object: SubscriptionEvent["object"], sessionId: string, tenantId?: string): string {
+  const tenant = tenantId === undefined || tenantId.length === 0 ? "" : `@${encodeURIComponent(tenantId)}`;
+  return `sub_${encodeURIComponent(object.id)}@${object.version}${tenant}:${sessionId}`;
 }
 
 /** The message a delivery sends: marked as outside content, so the recipient reads it as information, not instructions. */
@@ -264,7 +272,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     // sends) stops before both, so it spends no slot and marks nothing seen:
     // the first's outcome decides, and a lost first is sent by the next copy.
     const cursorRef = await subscriptionCursorsOf(ctx).getOrCreate(subscription, { seen: [], window: { start: 0, sent: 0 }, held: 0, inFlight: [] });
-    const id = deliveryMessageId(event.object, row.sessionId);
+    const id = deliveryMessageId(event.object, row.sessionId, row.tenantId);
     // A send the recipient took after its delivery looked (an accepted
     // dispatch) is seen now, on its next copy, without a slot.
     const landed = takenRow((await messageLogOf(ctx).getOptional(id))?.state);

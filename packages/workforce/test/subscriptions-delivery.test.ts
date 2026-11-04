@@ -9,6 +9,7 @@
  * nothing, and one user's private repo must never reach another user.
  */
 import { describe, expect, it, vi } from "vitest";
+import { deliveryMessageId } from "../src/subscriptions";
 import { bootSubscriptionsHost, event, revoked, type SubscriptionsHost } from "./subscriptions-harness";
 
 const PR = "github:acme/api#412";
@@ -215,6 +216,29 @@ describe("who hears what", () => {
       expect(routed.ownerRuns.map((run) => run.run.owner.tenantId)).toEqual(["tenant-a"]);
       expect((await host.serviceRows("alice")).map((row) => [row.toSession, row.status])).toEqual([[one, "delivered"]]);
     }));
+
+  it("keeps one user's same-id sessions in two tenants apart: each subscribes, and each tenant's session hears the event", () =>
+    withHost(async (host) => {
+      // A session id is unique within a tenant only, and both tenants' rows share the user's cell.
+      const one = await host.followerInTenant("alice", "tenant-a", "sess-shared");
+      const two = await host.followerInTenant("alice", "tenant-b", "sess-shared");
+      expect([one, two]).toEqual(["sess-shared", "sess-shared"]);
+      const a = (await host.subscribe("alice", one, { thread: PR }, "tenant-a")) as { id: string };
+      const b = (await host.subscribe("alice", two, { thread: PR }, "tenant-b")) as { id: string };
+      expect(a.id).not.toBe(b.id);
+      expect((await host.subscriptionRows("alice")).map((row) => row.tenantId).sort()).toEqual(["tenant-a", "tenant-b"]);
+      const routed = await host.route(event({ text: "for both tenants" }));
+      expect(routed.ownerRuns.map((run) => run.run.owner.tenantId).sort()).toEqual(["tenant-a", "tenant-b"]);
+      // Two deliveries of one event to one session id, one per tenant: two log rows, not one overwritten.
+      expect((await host.serviceRows("alice")).map((row) => row.status)).toEqual(["delivered", "delivered"]);
+    }));
+
+  it("names a delivery by its tenant too, and keeps a session with no tenant on the id it had", () => {
+    const object = { id: "review/1", version: 3 };
+    expect(deliveryMessageId(object, "sess-1")).toBe("sub_review%2F1@3:sess-1");
+    const ids = new Set([deliveryMessageId(object, "sess-1"), deliveryMessageId(object, "sess-1", "tenant-a"), deliveryMessageId(object, "sess-1", "tenant-b")]);
+    expect(ids.size).toBe(3);
+  });
 
   it("refuses a sentence with no thread, and a thread of another provider", () =>
     withHost(async (host) => {

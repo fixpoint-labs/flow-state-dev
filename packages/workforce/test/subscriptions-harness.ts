@@ -127,12 +127,12 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     return created.body.session!.id;
   };
 
-  /** A follower conversation for `userId` under `tenantId`, created over HTTP with the tenant header. */
-  const followerInTenant = async (userId: string, tenantId: string) => {
+  /** A follower conversation for `userId` under `tenantId`, created over HTTP with the tenant header; with `sessionId` as its id when given. */
+  const followerInTenant = async (userId: string, tenantId: string, sessionId?: string) => {
     const request = new Request("http://localhost/api/flows/follower/sessions", {
       method: "POST",
       headers: { "content-type": "application/json", "x-user": userId, "x-tenant-id": tenantId },
-      body: JSON.stringify({ userId, state: { workerId: "eng.follower" } })
+      body: JSON.stringify({ userId, ...(sessionId === undefined ? {} : { sessionId }), state: { workerId: "eng.follower" } })
     });
     const res = await (await board.router()).POST(request, { params: { path: ["follower", "sessions"] } });
     const body = (await res.json()) as { session?: { id: string } };

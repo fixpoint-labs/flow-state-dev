@@ -40,7 +40,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
   "one-key": [
     {
       module: "packages/workforce/src/subscriptions/service-flow.ts",
-      from: String.raw`@\$\{object\.version\}:\$\{sessionId\}`,
+      from: String.raw`@\$\{object\.version\}\$\{tenant\}:\$\{sessionId\}`,
       to: "@${object.version}"
     }
   ],
@@ -298,9 +298,10 @@ for (const user of ["alice", "bob"]) {
   for (const value of Object.values(rows)) {
     const row = value.state as { id: string; from: string; toSession: string; status: string };
     if (!row.from.startsWith("service:")) continue;
-    // `sub_<object>@<version>:<session>`: the object and version, read without assuming the session suffix is there.
+    // `sub_<object>@<version>[@<tenant>]:<session>`: the object and version, read without assuming the session suffix is there.
     const base = row.id.endsWith(`:${row.toSession}`) ? row.id.slice(0, -(row.toSession.length + 1)) : row.id;
-    const key = decodeURIComponent(base.slice("sub_".length));
+    const [object, version] = base.slice("sub_".length).split("@");
+    const key = `${decodeURIComponent(object!)}@${version}`;
     landed.push({ session: row.toSession, key, status: row.status });
   }
 }

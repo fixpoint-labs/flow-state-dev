@@ -37,3 +37,8 @@
 | 2026-11-04 | review round 2 | n/a | FAIL (expected) | `GOAL_CONTROL=close-gated`: (d) a13, b10, a14 one delivery each after their thread closed; (a) the same rows extra. |
 | 2026-11-04 | review round 2 | n/a | FAIL (expected) | `GOAL_CONTROL=close-whole`: (d) a12 0 of 31 after #414 closed; (a) a12 58 of 90. |
 | 2026-11-04 | review round 2 | n/a | PASS | 319 deliveries matched the oracle over 24 subscriptions, 300 events and 40 redeliveries; reads in the service's requests 595, user-cell reads in requests 2072, cross-user 0; model resolutions 0; d floors 12, 13, 1, 1, 1 and a12's 31 after #414; outsider events 75, 20 delivered to opted-in subscriptions. **SHARE 0.820 (1105/1347)**, over the kill line. |
+| 2026-11-04 | review round 3 | n/a | FAIL (expected) | `GOAL_CONTROL=one-key`: (a) sessions short (a1 1 of 9, a2 2 of 20); CAN'T TELL on d · b7, a13, a14 (read 0). |
+| 2026-11-04 | review round 3 | n/a | FAIL (expected) | `GOAL_CONTROL=fail-open`: (e) outsider deliveries; (a) sessions with extra rows. SHARE 0.756. |
+| 2026-11-04 | review round 3 | n/a | FAIL (expected) | `GOAL_CONTROL=close-gated`: (d) a13, b10, a14 one delivery each after their thread closed; (a) the same rows extra. |
+| 2026-11-04 | review round 3 | n/a | FAIL (expected) | `GOAL_CONTROL=close-whole`: (d) a12 0 of 31 after #414 closed; (a) a12 58 of 90. |
+| 2026-11-04 | review round 3 | n/a | PASS | 319 deliveries matched the oracle over 24 subscriptions, 300 events and 40 redeliveries; reads in the service's requests 595, user-cell reads in requests 2072, cross-user 0; model resolutions 0; d floors 12, 13, 1, 1, 1 and a12's 31 after #414; outsider events 75, 20 delivered to opted-in subscriptions. **SHARE 0.820 (1105/1347)**, over the kill line. |
