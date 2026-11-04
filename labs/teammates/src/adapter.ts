@@ -371,6 +371,8 @@ const LIST_TASKS = taskActionName("listTasks", TASK_BOARD);
 const BOARD_LEDGERS = ["tasks", "plan"] as const;
 /** The board's action a question on a row is answered through, on the conversation that filed it. */
 const UPDATE_TASK = taskActionName("updateTask", TASK_BOARD);
+/** The board's one-task read: a re-run copies the whole brief from it. */
+const GET_TASK = taskActionName("getTask", TASK_BOARD);
 /** Requests that are a worker answering: everything but the board's own passes. */
 const QUIET_ACTIONS = new Set(["dispatch"]);
 /** The harness a run's items came from, by the block that emitted them: each harness block's own name, which the host keeps. */
@@ -1224,21 +1226,48 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     },
     taskActions(sessionId) {
       // The board is the conversation's own: its flow, the session that filed the task, and its `"tasks"` collection.
-      const board = async () => {
+      const flowOf = async () => {
         let flowId = flowOfSession.get(sessionId);
         if (flowId === undefined) {
           const detail = await client.sessions.get(sessionId);
           flowId = detail.flowId ?? detail.flowKind;
           flowOfSession.set(sessionId, flowId);
         }
-        return inbox.board({ flowId, sessionId, board: TASK_BOARD });
+        return flowId;
+      };
+      const board = async () => inbox.board({ flowId: await flowOf(), sessionId, board: TASK_BOARD });
+      /**
+       * `task` with its brief as the board holds it. The list read leaves the brief out, and an old
+       * task's copy in the conversation may be past the loaded history, so a re-run reads it whole
+       * rather than file the task again without it.
+       */
+      const withBrief = async (task: BoardTask): Promise<BoardTask> => {
+        const flow = client.flow(await flowOf());
+        const { id: requestId } = await flow.send(GET_TASK, { id: task.id }, { sessionId });
+        const { status } = await flow.request(requestId).wait();
+        const found = (await client.sessions.requests(sessionId, { includeResultOutput: true, limit: 20 })).find((r) => r.id === requestId);
+        const output = found?.result?.output as { ok?: boolean; error?: string; task?: Record<string, any> } | undefined;
+        if (status !== "completed" || output?.ok === false || output?.task === undefined) {
+          throw new Error(output?.error ?? found?.result?.error?.message ?? "The task couldn't be read, so it wasn't filed again.");
+        }
+        const held = output.task;
+        const { context: _context, labels: _labels, priority: _priority, ...rest } = task;
+        return {
+          ...rest,
+          ...(typeof held.context === "string" ? { context: held.context } : {}),
+          ...(Array.isArray(held.labels) ? { labels: held.labels as string[] } : {}),
+          ...(typeof held.priority === "number" ? { priority: held.priority } : {}),
+        };
       };
       return {
         cancel: async (taskId) => (await board()).cancel(taskId),
         steer: async (taskId, message) => (await board()).steer(taskId, message),
         release: async (taskId) => (await board()).release(taskId),
         retry: async (taskId) => (await board()).retry(taskId),
-        rerun: async (task, worker) => (await board()).refile(refileRowOf(task), rerunOverrides(task, worker)),
+        rerun: async (task, worker) => {
+          const whole = await withBrief(task);
+          return (await board()).refile(refileRowOf(whole), rerunOverrides(whole, worker));
+        },
       };
     },
     async answerTask(sessionId, taskId, answer) {

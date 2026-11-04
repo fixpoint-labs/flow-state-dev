@@ -11,13 +11,17 @@ import { describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import { createLabAdapter, toBoardTask } from "../src/adapter";
 
-/** A client that takes every board action, answering `answer`, and keeps each one sent. */
-function boardClient(answer: Record<string, unknown>) {
+/**
+ * A client that takes every board action, answering `answer`, and keeps each one sent.
+ * `getTask_tasks` answers with `held`, the task as the board holds it, when given.
+ */
+function boardClient(answer: Record<string, unknown>, held?: Record<string, unknown>) {
   const sent: Array<{ flow: string; action: string; input: Record<string, unknown>; sessionId: string }> = [];
+  const outputOf = (action: string) => (action === "getTask_tasks" && held !== undefined ? { ok: true, task: held } : answer);
   const client = {
     sessions: {
       get: async (id: string) => ({ id, flowKind: "agent" }),
-      requests: async () => sent.map((_, i) => ({ id: `req_${i}`, result: { output: answer } })),
+      requests: async () => sent.map((s, i) => ({ id: `req_${i}`, result: { output: outputOf(s.action) } })),
     },
     flow: (flow: string) => ({
       send: async (action: string, input: Record<string, unknown>, { sessionId }: { sessionId: string }) => {
@@ -45,13 +49,13 @@ const failedRow = {
 
 describe("a task's buttons act on the board of the conversation that filed it", () => {
   it("re-run files the task again on the other worker, the old brief kept and a line naming the old task by title", async () => {
-    const { client, sent } = boardClient({ ok: true, taskId: "task_2" });
+    const { client, sent } = boardClient({ ok: true, taskId: "task_2" }, failedRow);
     const task = toBoardTask(failedRow, () => "cursor");
     const id = await createLabAdapter(client).taskActions("wks_cos").rerun(task, "teammates.claude-code");
 
     expect(id).toBe("task_2");
-    expect(sent).toHaveLength(1);
-    const [filed] = sent;
+    expect(sent.map((s) => s.action)).toEqual(["getTask_tasks", "createTask_tasks"]);
+    const [, filed] = sent;
     expect([filed!.flow, filed!.action, filed!.sessionId]).toEqual(["agent", "createTask_tasks", "wks_cos"]);
     // Copied as filed, and only the assignee changed.
     expect(filed!.input).toMatchObject({ goal: failedRow.goal, title: "Fix the typo", labels: ["docs"], priority: 2, assignee: "teammates.claude-code" });
@@ -61,10 +65,26 @@ describe("a task's buttons act on the board of the conversation that filed it", 
   });
 
   it("re-run of a task filed with no brief carries just the line naming it", async () => {
-    const { client, sent } = boardClient({ ok: true, taskId: "task_2" });
     const { context: _, ...bare } = failedRow;
+    const { client, sent } = boardClient({ ok: true, taskId: "task_2" }, { ...bare, status: "cancelled" });
     await createLabAdapter(client).taskActions("wks_cos").rerun(toBoardTask({ ...bare, status: "cancelled" }), "teammates.codex");
-    expect(sent[0]!.input.context).toBe('This re-runs the task "Fix the typo", which was cancelled.');
+    expect(sent[1]!.input.context).toBe('This re-runs the task "Fix the typo", which was cancelled.');
+  });
+
+  it("re-run reads the whole task first, so an old task whose brief the conversation no longer holds keeps it", async () => {
+    // Only what the board's list read carries: an old task's history copy is past the loaded window.
+    const listed = { id: failedRow.id, title: failedRow.title, goal: failedRow.goal, assignee: failedRow.assignee, status: failedRow.status };
+    const { client, sent } = boardClient({ ok: true, taskId: "task_2" }, failedRow);
+    await createLabAdapter(client).taskActions("wks_cos").rerun(toBoardTask(listed, () => "cursor"), "teammates.claude-code");
+    const filed = sent.find((s) => s.action === "createTask_tasks")!;
+    expect(filed.input).toMatchObject({ labels: ["docs"], priority: 2 });
+    expect(String(filed.input.context).startsWith(`${failedRow.context}\n\n`)).toBe(true);
+  });
+
+  it("re-run files nothing when the whole task can't be read", async () => {
+    const { client, sent } = boardClient({ ok: false, error: "No task task_1 on this board." });
+    await expect(createLabAdapter(client).taskActions("wks_cos").rerun(toBoardTask(failedRow), "teammates.claude-code")).rejects.toThrow(/No task task_1/);
+    expect(sent.map((s) => s.action)).toEqual(["getTask_tasks"]);
   });
 
   it("cancel, steer, release and retry go to the same board's own actions", async () => {
@@ -83,7 +103,7 @@ describe("a task's buttons act on the board of the conversation that filed it", 
   });
 
   it("a refusal shows as the board's own words", async () => {
-    const { client } = boardClient({ ok: false, error: 'already_open: task "Fix the typo" (task_2) is this same work for teammates.claude-code' });
+    const { client } = boardClient({ ok: false, error: 'already_open: task "Fix the typo" (task_2) is this same work for teammates.claude-code' }, failedRow);
     await expect(createLabAdapter(client).taskActions("wks_cos").rerun(toBoardTask(failedRow), "teammates.claude-code")).rejects.toThrow(/^already_open: /);
   });
 });
