@@ -43,8 +43,6 @@
  * {@link workerHarnesses} is the set a hire picks from.
  */
 
-import { existsSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { CLAUDE_CODE_PASS, checkClaudeCodeReadiness, claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
 import { harnessEnv } from "@flow-state-dev/core";
@@ -60,11 +58,12 @@ import type { HarnessFeeds as ManagerHarnessFeeds } from "@flow-state-dev/harnes
 import {
   formatHarnessReadiness,
   harnessReadiness,
-  harnessStub,
+  scriptedHarness as sharedScriptedHarness,
   type HarnessReadinessRead,
-  type StubRun,
 } from "@flow-state-dev/harness-manager";
-import { commitAll, hasChanges } from "./scratch-repo.mts";
+
+/** What the scripted run does where it works; harness-manager's, re-exported for this tree's checks. */
+export { commitScriptedWork } from "@flow-state-dev/harness-manager";
 
 /** The environment variable that picks the harness. */
 export const HARNESS_ENV = "DEVFORCE_LAB_HARNESS";
@@ -220,29 +219,6 @@ export function errorReporterHarness({ cwd, mcpTools }: ErrorReporterHarnessFeed
   } as never) as unknown as HarnessBlock;
 }
 
-/** The row line the manager's prompt carries, `Row <id>, phase <p>, attempt <n>.` */
-function rowLine(prompt: string): string {
-  return prompt.split("\n").find((line) => line.startsWith("Row ")) ?? "a row";
-}
-
-/**
- * What the scripted run does where it works: one file, committed when that is
- * a checkout. A project with no repository runs in its files (`workspace/`,
- * no git), where the file itself is the work and the manager saves it back.
- *
- * A retry runs in the checkout its first attempt left, where that attempt
- * already committed this same file. With nothing new to commit, `git commit`
- * fails, and that failure would replace why the first attempt was sent back
- * (most often the judge's verdict). The commit is skipped instead: the
- * attempt's work is already on the row's branch.
- *
- * @param run The attempt, as the stub hands it to `duringRun`.
- */
-export function commitScriptedWork(run: StubRun): void {
-  writeFileSync(join(run.cwd, "SCRIPTED-RUN.md"), `A scripted run, no model.\n\n${rowLine(run.prompt)}\n`);
-  if (existsSync(join(run.cwd, ".git")) && hasChanges(run.cwd)) commitAll(run.cwd, "scripted run: note the row");
-}
-
 /**
  * The pause before each scripted step. Long enough that a run opened from Tasks
  * is still running and its steps arrive while you watch; short enough that it
@@ -272,27 +248,14 @@ export const RUN_MINUTES_ENV = "DEVFORCE_LAB_RUN_MINUTES";
 export const CLAUDE_CODE_RUN_TIMEOUT_MS = DEFAULT_RUN_MINUTES * 60_000;
 
 /**
- * The scripted run a served Lab uses by default: narrates a step every
- * `stepEveryMs`, commits, finishes.
+ * The scripted run a served Lab uses by default: harness-manager's
+ * `scriptedHarness`, holding the project workspace for relayed MCP tools.
  *
  * @param stepEveryMs The pause before each step; {@link SCRIPTED_STEP_MS} by default.
  * @returns The stub, whose `runs` log what each attempt was handed.
  */
 export function scriptedHarness(stepEveryMs: number = SCRIPTED_STEP_MS) {
-  return harnessStub({
-    steps: [
-      "Reading the worker's instructions, brief and conventions.",
-      "Planning the change for this row.",
-      "Writing SCRIPTED-RUN.md in the checkout.",
-      "Checking the checkout before committing.",
-      "Committing the work on the row's branch.",
-    ],
-    stepEveryMs,
-    duringRun: commitScriptedWork,
-    mcpUses: [projectWorkspaceCapability],
-    // What a conversation's task reads back: an answer task is done only with one.
-    finalMessage: "A scripted run, no model: it wrote SCRIPTED-RUN.md.",
-  });
+  return sharedScriptedHarness({ stepEveryMs, mcpUses: [projectWorkspaceCapability] });
 }
 
 /**

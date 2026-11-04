@@ -80,7 +80,7 @@ import {
 } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
-import { RESPOND_ACTION } from "./worker-door";
+import { doorTask, RESPOND_ACTION } from "./worker-door";
 import { declareBuiltInRoles } from "./worker-roles";
 import { routedTaskHistory } from "./coordinator/routed-brief";
 import { withTaskEndingReads } from "./conversation-board/task-ending-read";
@@ -1439,7 +1439,7 @@ function defineAgentFlowAround(
       // A reply: its notice waits for it to end. In a task session whose task
       // is open, the line steers the task instead (FIX-2086).
       [RESPOND_ACTION]: {
-        inputSchema: installation !== undefined ? inputSchema.strict() : inputSchema,
+        ...doorTask(installation !== undefined ? inputSchema.strict() : inputSchema),
         block: steerOrTalk(userTurn),
         userMessage: (input) => input.message,
         concurrency: REPLY_CONCURRENCY

@@ -100,7 +100,7 @@ export {
   type WorkerLookupOptions
 } from "./worker-lookup";
 export { mergeWorkerFlows } from "./merge-worker-flows";
-export { workerDoorOf, type WorkerDoor } from "./worker-door";
+export { doorTask, workerDoorOf, type WorkerDoor } from "./worker-door";
 export { resourcesFromDocs } from "./resources-from-docs";
 export { referencesFromDocs, referenceBody } from "./references-from-docs";
 export {

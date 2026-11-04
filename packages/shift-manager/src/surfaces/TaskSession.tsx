@@ -5,8 +5,10 @@
  * One read of the run session's stored items, then one stream: the run's
  * request, through the flow its session names. Mounted only while the tab is
  * open, so a user reading Brief pays for no stream. A session shared with
- * other tasks shows only the items stamped with this task's id, and the lines
- * its composer sent with their replies (FIX-2009), and says so.
+ * other tasks shows only the items stamped with this task's id (a line its
+ * composer sent, and the reply, carry the stamp when the door takes the task),
+ * and the lines it sent to a door that keeps no task id, with their replies
+ * (FIX-2009), and says so.
  *
  * Each item is drawn by Shift Manager's copy of the registry's item components
  * (`chatAssistantRenderers`: message, reasoning, tool, status, error, task
@@ -178,7 +180,8 @@ function RunItems({ run }: { run: OpenRun }) {
   // a keyed snapshot shows its latest version only, and a container with its
   // own renderer draws the items it owns.
   const { renderers } = useFlowContext();
-  const sentSet = useMemo(() => new Set(sent), [sent]);
+  const { unstamped } = task;
+  const sentSet = useMemo(() => new Set(unstamped), [unstamped]);
   const shown = useMemo(() => {
     if (stored === undefined) return undefined;
     const mine = taskItems(stored.items, collectionOfBoard(task.boardRef), task.taskId, sentSet);

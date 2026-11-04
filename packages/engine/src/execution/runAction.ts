@@ -849,12 +849,19 @@ async function runObserverSafely(
   }
 }
 
+/** The request's task stamp for an item the runtime builds itself, or nothing. */
+function requestTaskStamp(taskId: string | undefined): { taskId?: string } {
+  return taskId !== undefined ? { taskId } : {};
+}
+
 /**
  * Emits an internal terminal error item when the response emitter supports item events.
+ * `taskId` is the request's task (the action's `taskOf`), stamped on the item.
  */
 async function emitTerminalError(
   ctx: ExecutionContext,
-  error: FlowError
+  error: FlowError,
+  taskId?: string
 ): Promise<void> {
   if (
     typeof ctx.response !== "object" ||
@@ -887,7 +894,8 @@ async function emitTerminalError(
     ts: Date.now(),
     message: error.message,
     code: error.code,
-    ...(details ? { details } : {})
+    ...(details ? { details } : {}),
+    ...requestTaskStamp(taskId)
   };
 
   await response.emitItemAdded(item);
@@ -913,7 +921,8 @@ function getActionTokenBudget(action: ActionCore): {
 
 async function emitBudgetWarning(
   ctx: ExecutionContext,
-  message: string
+  message: string,
+  taskId?: string
 ): Promise<void> {
   if (
     typeof ctx.response !== "object" ||
@@ -939,7 +948,8 @@ async function emitBudgetWarning(
     provenance: RUNTIME_PROVENANCE,
     ts: Date.now(),
     message,
-    detail: { code: "system.token_budget_warning" }
+    detail: { code: "system.token_budget_warning" },
+    ...requestTaskStamp(taskId)
   };
 
   await response.emitItemAdded(item);
@@ -948,9 +958,11 @@ async function emitBudgetWarning(
 
 /**
  * Emits a persistent status item indicating the request was stopped by the user.
+ * `taskId` is the request's task (the action's `taskOf`), stamped on the item.
  */
 async function emitAbortedMessage(
-  ctx: ExecutionContext
+  ctx: ExecutionContext,
+  taskId?: string
 ): Promise<void> {
   if (
     typeof ctx.response !== "object" ||
@@ -975,7 +987,8 @@ async function emitAbortedMessage(
     provenance: RUNTIME_PROVENANCE,
     ts: Date.now(),
     message: "Request was stopped.",
-    detail: { code: "system.request_aborted" }
+    detail: { code: "system.request_aborted" },
+    ...requestTaskStamp(taskId)
   };
 
   await response.emitItemAdded(item);
@@ -1756,8 +1769,14 @@ async function runActionAttempt<
   // throw until after context creation.
   let parsedInput: unknown;
   let parseError: unknown;
+  // The task this request is for, named by the action's `taskOf`. Stamped on
+  // the echo below and handed to the context as the default task of every
+  // scope, so a replayed request still stamps what it emits.
+  let requestTaskId: string | undefined;
   try {
     parsedInput = parseActionInput(action, options.input);
+    const namedTask = action.taskOf?.(parsedInput);
+    requestTaskId = typeof namedTask === "string" && namedTask.length > 0 ? namedTask : undefined;
 
     // Skip the user-message echo on a continuation (FIX-811): it represents the
     // INITIAL caller input and is already in the merged prior log, so emitting
@@ -1777,6 +1796,7 @@ async function runActionAttempt<
         itemIndex: getResponseItemCount(response),
         provenance: RUNTIME_PROVENANCE,
         ts: Date.now(),
+        ...requestTaskStamp(requestTaskId),
         content: [{ type: "output_text", text }]
       };
       await response.emitItemAdded(userItem);
@@ -2034,6 +2054,7 @@ async function runActionAttempt<
       metadata: options.metadata,
       resumeContext,
       input: options.input,
+      requestTaskId,
       signal: composedSignal,
       sideChainSignal: sideChainController.signal,
       modelResolver: options.runtimeConfig.modelResolver,
@@ -2270,7 +2291,8 @@ async function runActionAttempt<
       // counter and collide with the first replayed block's index.
       itemIndex: ctx._reserveItemIndex?.() ?? getResponseItemCount(response),
       provenance: RUNTIME_PROVENANCE,
-      ts: Date.now()
+      ts: Date.now(),
+      ...requestTaskStamp(requestTaskId)
     };
     await response.emitItemAdded(resumeItem);
     await response.emitItemDone(resumeItem);
@@ -2291,7 +2313,8 @@ async function runActionAttempt<
       requestId,
       itemIndex: ctx._reserveItemIndex?.() ?? getResponseItemCount(response),
       provenance: RUNTIME_PROVENANCE,
-      ts: Date.now()
+      ts: Date.now(),
+      ...requestTaskStamp(requestTaskId)
     };
     await response.emitItemAdded(continuationItem);
     await response.emitItemDone(continuationItem);
@@ -2495,7 +2518,8 @@ async function runActionAttempt<
           // count on a normal run, where this is the terminal item.
           itemIndex: ctx._reserveItemIndex?.() ?? getResponseItemCount(response),
           provenance: RUNTIME_PROVENANCE,
-          ts: Date.now()
+          ts: Date.now(),
+          ...requestTaskStamp(requestTaskId)
         };
         await response.emitItemAdded(suspItem);
         await response.emitItemDone(suspItem);
@@ -2676,7 +2700,8 @@ async function runActionAttempt<
 
         await emitBudgetWarning(
           ctx,
-          `Token budget exceeded: consumed ${consumed} of ${tokenBudget.maxTotalTokens}`
+          `Token budget exceeded: consumed ${consumed} of ${tokenBudget.maxTotalTokens}`,
+          requestTaskId
         );
 
         if (tokenBudget.onExceeded === "stop") {
@@ -2685,7 +2710,8 @@ async function runActionAttempt<
       } else if (warningThreshold !== undefined && consumed >= warningThreshold) {
         await emitBudgetWarning(
           ctx,
-          `Token budget warning: consumed ${consumed} of ${tokenBudget.maxTotalTokens}`
+          `Token budget warning: consumed ${consumed} of ${tokenBudget.maxTotalTokens}`,
+          requestTaskId
         );
       }
     }
@@ -3049,9 +3075,9 @@ async function runActionAttempt<
       // The item, not the status event: the status event ends the stream for
       // every subscriber, so it has to wait until the record is written.
       if (wasIntentionalAbort) {
-        await emitAbortedMessage(ctx);
+        await emitAbortedMessage(ctx, requestTaskId);
       } else if (!signalAborted) {
-        await emitTerminalError(ctx, normalizedError!);
+        await emitTerminalError(ctx, normalizedError!, requestTaskId);
       }
 
       // Stop synthesis before the drain, not after the record write. The drain

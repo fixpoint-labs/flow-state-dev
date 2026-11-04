@@ -10,6 +10,7 @@
  * - **j3**, someone who runs Shift Manager on their own machine: the host is killed while all six
  *   stops wait; after a restart all six are listed once, and each is answered once and carries on.
  */
+import { crashAndRestart } from "../../lib/server.mts";
 import type { Shipped } from "../workers-message-each-other/legs.mts";
 import { CAST } from "./cast.mts";
 import { checkSix, fileSix, legB, untilWaiting, waiting, type Context, type Filed } from "./legs.mts";
@@ -200,16 +201,21 @@ export async function journeyDeadlines(serving: Serving, shipped: Shipped, conte
 }
 
 /**
- * j3: the six of leg a, the host killed (SIGKILL) while all wait, restarted on the same store.
- * `j3:six-after-restart` all six are listed once, as leg a reads them; `j3:answered-after-restart`
- * each answered once in the Inbox carries on as leg b says.
+ * j3: the six of leg a, the host crashed while all wait (`crashAndRestart`: SIGKILL to its whole
+ * process group, checked gone), restarted on the same store. `j3:crashed` nothing of the killed
+ * host is left running when the next one starts; `j3:six-after-restart` all six are listed once,
+ * as leg a reads them; `j3:answered-after-restart` each answered once in the Inbox carries on as
+ * leg b says.
  */
 export async function journeyRestart(serving: Serving, shipped: Shipped, context: Contextual): Promise<void> {
   let served = await serveLab(serving, "j3-before");
   let filed: Filed;
+  let fail: Context["fail"];
   const retag = (c: Context, tag: string): Context => ({ ...c, fail: (inner, what) => c.fail(tag, `${inner}: ${what}`) });
   try {
-    const c = retag(context(await aliceIn(shipped, served.origin), serving.files), "j3:six-before");
+    const before = context(await aliceIn(shipped, served.origin), serving.files);
+    fail = before.fail;
+    const c = retag(before, "j3:six-before");
     const ids = await fileSix(c);
     const rows = await untilWaiting(c, ids, serving.harness === "claude-code" ? 15 * 60_000 : 180_000);
     const notWaiting = Object.entries(ids).filter(([stop]) => !waiting(stop as never, rows[stop as keyof typeof rows]));
@@ -223,10 +229,16 @@ export async function journeyRestart(serving: Serving, shipped: Shipped, context
     await served.stop();
     throw error;
   }
-  served.child.kill("SIGKILL");
-  await served.exited;
-  await sleep(2_000);
-  served = await serveLab(serving, "j3-after");
+  try {
+    served = await crashAndRestart(served.child, () => serveLab(serving, "j3-after"));
+  } catch (error) {
+    // No restart served, so `served` is still the crashed host: stop it on every exit (its exit is awaited).
+    await served.stop();
+    // Only the crash's own refusal is `j3:crashed`; a restart that never serves throws as before.
+    if (!(error instanceof Error && error.message.startsWith("crashAndRestart:"))) throw error;
+    fail("j3:crashed", error.message);
+    return;
+  }
   try {
     const base = context(await aliceIn(shipped, served.origin), serving.files);
     const rows = await untilWaiting(base, filed.ids, 60_000);

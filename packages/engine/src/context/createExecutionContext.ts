@@ -3269,6 +3269,7 @@ export async function createExecutionContext<
       phase: "main" as const
     }),
     nextItemIndex: () => reserveItemIndex(),
+    taskId: options.requestTaskId,
   };
 
   // Request-level trace emitters used by `_runtimeHooks` (router decisions,
@@ -4234,8 +4235,9 @@ export async function createExecutionContext<
         // enclosing sequencer node before constructing the steps that emit, so
         // those steps' chains see the mark here. Re-resolved per scope (not
         // copied from the parent emCtx) because the mark lands after the
-        // parent scope's emCtx was built.
-        let resolvedTaskId: string | undefined;
+        // parent scope's emCtx was built. With no mark on the chain, the scope
+        // runs the request's task (the action's `taskOf`), if it names one.
+        let resolvedTaskId: string | undefined = options.requestTaskId;
         for (let node: ExecutionParentNode | undefined = childChain; node !== undefined; node = node.previous) {
           if (node.scopeTaskId !== undefined) {
             resolvedTaskId = node.scopeTaskId;
