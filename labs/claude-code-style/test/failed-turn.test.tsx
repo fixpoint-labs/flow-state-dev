@@ -56,6 +56,12 @@ describe("the adapter reads a failed turn", () => {
     ]);
   });
 
+  it("keeps Retry on a failed turn a later item that drew nothing came after", () => {
+    // An empty assistant message of another turn draws no entry, so it is not the newest turn.
+    const entries = entriesOf([message("u1", "r1", "user", "first"), errorItem("e1", "r1", "failed"), message("a2", "r2", "assistant", "")], false, new Set(["r1"]));
+    expect(entries.find((e) => e.kind === "failed")).toMatchObject({ retryable: true });
+  });
+
   it("offers no Retry on a newest turn the engine would refuse to retry", () => {
     // r1 is not among the turns the engine retries: a task or the flow itself started it.
     const entries = entriesOf([message("u1", "r1", "user", "first"), errorItem("e1", "r1", "failed")], false, new Set());

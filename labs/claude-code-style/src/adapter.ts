@@ -411,7 +411,6 @@ export function entriesOf(items: readonly Item[], threads = false, retryableTurn
   const filingTurns = new Set(items.filter((item) => filedTaskOf(item) !== undefined).map((item) => item.requestId));
   // A turn that failed; its reply, if it never finished, is marked incomplete. Retry is offered on the newest turn only.
   const failedTurns = new Set(items.filter((item) => item.type === "error").map((item) => item.requestId));
-  const newestTurn = items[items.length - 1]?.requestId;
   const entries: ThreadEntry[] = [];
   const runs = new Map<string, ToolCallOf[]>();
   for (const item of items) {
@@ -439,7 +438,7 @@ export function entriesOf(items: readonly Item[], threads = false, retryableTurn
         reason: item.message ?? "",
         ...(item.code === undefined ? {} : { code: item.code }),
         ...(item.details === undefined ? {} : { details: item.details }),
-        retryable: requestId !== undefined && requestId === newestTurn && retryableTurns.has(requestId),
+        retryable: false,
         requestId,
       });
       continue;
@@ -476,7 +475,12 @@ export function entriesOf(items: readonly Item[], threads = false, retryableTurn
       entries.push({ kind: "assistant", id: item.id, text, ...(incomplete ? { incomplete: true } : {}), requestId });
     }
   }
-  return entries;
+  // The newest turn is the one that drew the last entry: an item that draws none (a retried notice,
+  // an empty message) does not move it.
+  const newestTurn = entries[entries.length - 1]?.requestId;
+  return entries.map((entry) =>
+    entry.kind === "failed" && entry.requestId !== undefined && entry.requestId === newestTurn && retryableTurns.has(entry.requestId) ? { ...entry, retryable: true } : entry,
+  );
 }
 
 /** The adapter the app runs on: the served lab, as the user the page was served for. */
