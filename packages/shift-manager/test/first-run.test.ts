@@ -34,6 +34,6 @@ describe("the Shift Coordinator's starter lines", () => {
 
   it("hold no Lab's worker name in their source", () => {
     const source = readFileSync(new URL("../src/lib/first-run.ts", import.meta.url), "utf8");
-    for (const name of ["Engineering Manager", "Reviewer", "eng.", "Chief of Staff"]) expect(source).not.toContain(name);
+    for (const name of ["Engineering Manager", "Reviewer", "eng.", "Chief of Staff"]) expect(source).not.toContain(name); // retired-name-refusal: the Teammates lab's name, asserted absent
   });
 });
