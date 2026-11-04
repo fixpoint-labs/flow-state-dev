@@ -5,11 +5,13 @@ import type { SuspensionItem } from "@flow-state-dev/core/items";
 import type { SuspensionStatus } from "@flow-state-dev/core/types";
 import { resolveApprovalOutcome, useSuspensionResolver } from "@flow-state-dev/react";
 import { CheckIcon, MinusIcon } from "lucide-react";
+import { RunChecks, type RunCheck } from "./run-checks";
 
 /**
  * A review waiting on the user: **Accept** or **Ask for changes**. For a
  * coding run's review (harness-manager's `reviewChanges`) it shows the
- * commits the run made on its branch and the judge's verdict; for any other
+ * commits the run made on its branch, the project's checks (`RunChecks`) and
+ * the judge's verdict; for any other
  * review it shows the stop's prompt, which holds the work under review.
  *
  * The card sends only `{ verdict: "accepted" }` or `{ verdict: "revise",
@@ -37,6 +39,8 @@ export interface ReviewDetail {
   subjects: string[];
   /** The judge's verdict on the run, or `null` when no judge read it. */
   judge: { verdict: string; confidence: number; reason: string } | null;
+  /** The checks the run's phase ran (harness-manager's `commandCheck`), or `null`/absent when none ran. */
+  checks?: RunCheck[] | null;
 }
 
 /** The two answers a review takes. */
@@ -96,7 +100,7 @@ export function judgeLine(review: ReviewDetail): string {
  * flight the buttons are disabled, and a failure is shown under them with the
  * words kept. With `unanswerable` set (or no `answer`), the card shows the
  * review and that sentence, and offers no buttons. `children` sit between the
- * commits and the judge: an app's diff of the run goes there.
+ * commits and the checks: an app's diff of the run goes there.
  */
 export function ReviewHold({
   prompt,
@@ -179,6 +183,7 @@ export function ReviewHold({
             </ul>
           ) : null}
           {children}
+          <RunChecks checks={review.checks ?? null} className="mt-1.5" />
           <div className="mt-1.5 text-xs" data-review-judge>
             <span className="font-semibold">{judgeLine(review)}</span>
             {review.judge && review.judge.reason !== "" ? (
