@@ -702,6 +702,10 @@ describe("the task's actions, in the frame's header beside Interrupt", () => {
     fireEvent.click(screen.getByTestId("task-action-release"));
     await waitFor(async () => expect(["pending", "in_progress"]).toContain(await storedStatus(opened, row.id)), { timeout: 10_000 });
     await waitFor(() => expect(screen.getByTestId("task-action-row").getAttribute("data-status")).not.toBe("held"), { timeout: 10_000 });
+    // The board hands the released row to a run on its next dispatch pass, after
+    // the press's own reads: the frame keeps reading until it shows that run.
+    await eventually(async () => ((await opened.rows()).find((r) => r.id === row.id)?.run != null ? true : undefined), "the released row's run");
+    await waitFor(() => expect(screen.getByTestId("task-action-row").getAttribute("data-status")).toBe("in_progress"), { timeout: 10_000 });
   }, 30_000);
 
   it("cancels a running task once confirmed, then retries it as the same task", async () => {

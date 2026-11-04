@@ -222,7 +222,10 @@ function Actions({ gaps }: { gaps: Gaps }) {
       ) : null}
       {board === undefined || task.row === undefined ? null : (
         // No Steer box: the composer below reaches the run. After each press the
-        // row is read again, so the buttons follow the board's new status.
+        // row is read again, so the buttons follow the board's new status (and a
+        // released or retried row is followed until a run claims it); the Lab is
+        // read too, for the Tasks list and the sidebar's counts, which a cancel's
+        // dependents also change.
         <TaskActions
           id={task.taskId}
           status={task.row.status}
