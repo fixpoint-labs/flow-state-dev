@@ -1,6 +1,6 @@
 # Flow State
 
-Flow State gives you a working app with a full agentic backend already in place: workers that take on tasks, a task board they share with you, state and memory kept in your own stores, output streamed to the browser as it is written, and models from any provider, through the Vercel AI Gateway or your own provider key. What each worker does is a **flow**, the steps it runs, written in TypeScript you can read and edit. Use the flows as they are, or change them to fit how you work.
+Flow State gives you a working app with a full agentic backend already in place: workers that take on tasks, a task board they share with you, state and memory kept in your own stores, output streamed to the browser as it is written, and models from any provider, on a direct key (OpenAI, Anthropic, Google) or through a gateway (Vercel AI Gateway, OpenRouter). Workers can also hand work to the coding agents you already use, Claude Code, Codex and Cursor, on the sign-ins you already have, including a Claude or ChatGPT subscription. Flow State coordinates those agents, so it works as a harness over them. What each worker does is a **flow**, the steps it runs, written in TypeScript you can read and edit. Use the flows as they are, or change them to fit how you work.
 
 You own the code. You pick the model for each step and keep the data in systems you run. Where a step doesn't need a model, it runs as plain code.
 
@@ -41,9 +41,9 @@ Set keys in your shell or in a `.env.local` at the repository root:
 
 | Key | Needed for |
 | --- | --- |
-| `AI_GATEWAY_API_KEY` | The model every worker answers on, through the [Vercel AI Gateway](https://vercel.com/docs/ai-gateway). Both starters default to OpenAI models, so an `OPENAI_API_KEY` works in its place. See [Setting up models](https://flow-state.dev/docs/getting-started/setting-up-models). |
-| Claude Code signed in, or `ANTHROPIC_API_KEY` | Coding tasks on Claude Code. The Claude Code-style starter's default coder runs on it. |
-| Codex signed in (`codex login`), or `CODEX_API_KEY` | Coding tasks on Codex. |
+| One model key: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `AI_GATEWAY_API_KEY` or `OPENROUTER_API_KEY` | The model every worker answers on. A direct key is used before a gateway key. Both starters default to OpenAI models, so `OPENAI_API_KEY` or `AI_GATEWAY_API_KEY` works as is. For another provider's key, add that provider's package to the starter and set its model (`TEAMMATES_MODEL` or `CLAUDE_CODE_STYLE_MODEL`) to one of that provider's models. Teammates' helper model stays `openai/gpt-6-luna`, so it also needs an OpenAI or gateway key. See [Setting up models](https://flow-state.dev/docs/getting-started/setting-up-models). |
+| Claude Code signed in (an API key or a Claude subscription), or `ANTHROPIC_API_KEY` | Coding tasks on Claude Code. The Claude Code-style starter's default coder runs on it. |
+| Codex signed in (`codex login`, with an API key or a ChatGPT sign-in), or `CODEX_API_KEY` | Coding tasks on Codex. |
 | Cursor signed in, or `CURSOR_API_KEY` | Coding tasks on Cursor. Teammates' default coder runs on it. |
 | `TAVILY_API_KEY`, `EXA_API_KEY` or `BRAVE_API_KEY` | Optional. Teammates' researcher uses one to search the web. |
 
