@@ -87,7 +87,7 @@ tools.search({
 });
 ```
 
-Exa, Tavily, Perplexity, and Parallel apply these natively. Serper emulates them with Google `site:` operators (multiple include domains are OR-grouped). Brave and Perplexity Sonar have no domain filter, so the values are ignored there. Sonar is the provider a `deep` request can auto-select, so if you depend on domain filtering, pin a provider that supports it.
+Every provider applies them. Exa, Tavily, Perplexity, Perplexity Sonar, and Parallel use their own filter fields. Serper and Brave write them into the query as `site:` and `-site:` operators, and OR-group multiple include domains.
 
 ## Provider selection
 

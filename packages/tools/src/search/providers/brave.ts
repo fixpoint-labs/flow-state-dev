@@ -1,20 +1,22 @@
 /**
  * Brave Search adapter.
  *
- * Brave has no retrieval-depth knob and no first-class domain include/exclude
- * filter, so the normalized `tier` and domain filters are no-ops here. The
- * reduced `capabilities.tiers` steers `deep` requests toward richer providers
- * during auto-selection.
+ * Brave has no retrieval-depth knob, so the normalized `tier` is a no-op here;
+ * the reduced `capabilities.tiers` steers `deep` requests toward richer
+ * providers during auto-selection. It has no domain filter field either, so
+ * domain filters are written into the query as `site:` / `-site:` operators,
+ * as Serper does.
  */
 
 import type { SearchProviderAdapter, SearchOutput } from "../types";
+import { withSiteOperators } from "./domain-filters";
 
 export const braveAdapter: SearchProviderAdapter = {
   name: "brave",
   capabilities: { tiers: ["fast", "balanced"] },
   async search(query, options): Promise<SearchOutput> {
     const params = new URLSearchParams({
-      q: query,
+      q: withSiteOperators(query, options.includeDomains, options.excludeDomains),
       count: String(options.maxResults),
     });
 

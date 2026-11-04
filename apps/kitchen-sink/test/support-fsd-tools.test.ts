@@ -7,8 +7,7 @@
  *     registers is refused, and the build throws);
  *   - no other specialist gains them: the folder is the worker's own;
  *   - `search-docs` searches the docs site only. Red: a plain web search,
- *     whose query reaches the provider with no site filter. A provider that
- *     ignores the filter (Brave, Perplexity Sonar) is refused, not searched;
+ *     whose query reaches the provider with no site filter;
  *   - `fetch` reads flow-state.dev pages only. A post can name any URL, so any
  *     other host, a look-alike, or a non-http scheme gets a refusal the model
  *     reads, and nothing is requested.
@@ -58,22 +57,6 @@ describe("support.fsd's lookups", () => {
     await testBlock(searchDocs, { input: { query: "defineFlow actions", maxResults: 3, topic: "general" } });
 
     expect(sent).toEqual([expect.objectContaining({ q: "defineFlow actions site:flow-state.dev" })]);
-  });
-
-  it("search-docs refuses rather than search the open web when the provider ignores the site filter", async () => {
-    // Brave drops `includeDomains`. Perplexity Sonar does too, but a Perplexity
-    // key resolves to Perplexity's own search first, which filters.
-    onlySearchKey("BRAVE_SEARCH_API_KEY");
-    const sent = vi.fn();
-    vi.stubGlobal("fetch", sent);
-
-    const { default: searchDocs } = await import("@/workforce/teams/support/workers/fsd/blocks/search-docs");
-    const { output } = await testBlock(searchDocs, {
-      input: { query: "defineFlow actions", maxResults: 3, topic: "general" },
-    });
-
-    expect(output).toEqual({ refused: expect.stringContaining("flow-state.dev") });
-    expect(sent).not.toHaveBeenCalled();
   });
 
   it("fetch reads a flow-state.dev page", async () => {

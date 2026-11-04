@@ -11,6 +11,7 @@
  */
 
 import type { SearchProviderAdapter, SearchOutput } from "../types";
+import { perplexityDomainFilter } from "./domain-filters";
 
 export const perplexityAdapter: SearchProviderAdapter = {
   name: "perplexity",
@@ -19,10 +20,7 @@ export const perplexityAdapter: SearchProviderAdapter = {
     const tier = options.tier ?? "balanced";
     const contextSize =
       tier === "fast" ? "low" : tier === "deep" ? "high" : undefined;
-    const domainFilter = [
-      ...(options.includeDomains ?? []),
-      ...(options.excludeDomains ?? []).map((d) => `-${d}`),
-    ];
+    const domainFilter = perplexityDomainFilter(options.includeDomains, options.excludeDomains);
     const response = await globalThis.fetch(
       "https://api.perplexity.ai/search",
       {
