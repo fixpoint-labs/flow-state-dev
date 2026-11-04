@@ -86,7 +86,7 @@ eval apparatus ([D2](#d2)).
 |---|---|
 | **Instead of** | Moving FIX-2500 and FIX-2498's skills-index section to *Not doing*, the alternative argued in the [second look](https://github.com/fixpoint-labs/flow-state-dev/pull/4672#issuecomment-6631454763) |
 | **Because** | Under the kill line a layer no ask reaches can be neither cut at the cut run nor proven at the wrap, so it ships unmeasured, which is what D2 exists to stop. The owner kept "keeps the thread" and "sees its skills" in the outcome |
-| **Locks in** | FIX-2500 and the skills-index section stay in scope, and are now cuttable and provable: the cut run cancels either one whose ask already passes ([ER-6](#who-owns-what)), and the wrap proves the rest. Answer sizing, in FIX-2498's behaviour section, gets its own ask. FIX-2541's spec and Linear description carry the seven asks. The seeded long conversation is the larger part of the cost, two to three days rather than one |
+| **Locks in** | FIX-2500 and the skills-index section stay in scope, and are now cuttable and provable: the cut run cancels either one whose ask already passes ([ER-6](#who-owns-what)), and the wrap proves the rest. Answer sizing, in FIX-2498's behaviour section, gets its own ask. FIX-2541's spec and Linear description carry the seven asks. The seeded long conversation is the larger part of the cost, two to three days rather than one. Each new ask asserts its mechanism fired, and the cut run switches on today's fold and skills listing, so the ask measures the content; a cut keeps the default flip ([ER-6, ER-7](#who-owns-what)) |
 
 **What would change my mind:** compaction or skills dropped from the outcome on purpose. Then
 they move to *Not doing*, and their asks go with them.
@@ -107,8 +107,8 @@ consumed; a *uses* cell is a place a child must not re-decide.
 | ER-3 | A layer that replaces an app's own patch deletes that patch in the same change: an app's length line, a hand-built coding prompt. Kitchen Sink's `todaysDate` goes only in the change that makes its standalone assistant compose the exported environment formatter | Each child | The closure's sweep |
 | ER-4 | The coding brief's "check before done" takes its checks from `commandCheck`'s own `commands` option. No second list; the report is never the verdict ([D5](#d5)) | FIX-2502 · FIX-2494, 2495 consume | FIX-2502's spec review; the closure's coder leg |
 | ER-5 | A harness's own preset is appended to, never replaced | FIX-2494 builds · FIX-2502 consumes | FIX-2502's spec review |
-| ER-6 | No layer is implemented before the cut run reports on the closure issue. A layer, or a section of FIX-2498, whose ask passes 3 of 3 is cancelled or dropped, citing the run ([D2](#d2)). The environment section is exempt and kept regardless: only Kitchen Sink gets a date from the bugs | The coordinator | Each wake |
-| ER-7 | The closure's scripts assert on the worker's answer through `fsdev run` on a real model, each with a control that fails on today's `main`. Each ask runs 3 times and passes only on 3 of 3; a control fails if any run fails | FIX-2541 | The closure's spec review |
+| ER-6 | No layer is implemented before the cut run reports on the closure issue. A layer, or a section of FIX-2498, whose ask passes 3 of 3 is cancelled or dropped, citing the run ([D2](#d2)). The environment section is exempt and kept regardless: only Kitchen Sink gets a date from the bugs. A cut of the skills index or the summary drops its content and keeps its default flip ([D1](#d1)): the wrap sets no switch | The coordinator | Each wake |
+| ER-7 | The closure's scripts assert on the worker's answer through `fsdev run` on a real model, each with a control that fails on today's `main`. Each ask runs 3 times and passes only on 3 of 3; a control fails if any run fails, and each ask must fail its control in at least one app where it runs. An ask that needs a mechanism to fire (a summary fold, a held skill) asserts it fired first; a run where it did not fails. The control and the cut run turn on today's fold and skills listing; the wrap sets no switch | FIX-2541 | The closure's spec review |
 | ER-8 | Consumed issues keep their parents: FIX-2387 and FIX-2388 (FIX-2369), FIX-2174 (FIX-2171), FIX-2467, FIX-2073 | The coordinator | Each refresh |
 
 ## Coordination seams
@@ -169,6 +169,21 @@ and Codex's [review of DECISIONS.md](https://github.com/fixpoint-labs/flow-state
 - **Q1's alternative priced on its card** (the second look). The owner answered it after merge;
   see [Q1](#q1).
 
+On Q1's amendment, from the [second look on #4703](https://github.com/fixpoint-labs/flow-state-dev/pull/4703#issuecomment-6641038965)
+(three findings that decide whether the kill line can cut the layers Q1 added), EM calls:
+
+- **No vacuous pass** (#1). The fold ask finds a fold in the run record before it checks the
+  decision; the skill ask finds the skill held. A run where the mechanism did not fire fails, so
+  it can never cancel FIX-2500 or the index. ER-7.
+- **The cut run switches on what `main` has** (#1, #2). Today's `historySummary` fold in both
+  labs, and `skills.activateTool` with a fitting skill held, so each ask tests the layer's
+  content against the existing mechanism rather than failing by construction. A cut drops the
+  content and keeps the default flip, because the wrap sets no switch. ER-6, ER-7.
+- **The control is per ask** (#4). Each ask must fail on `main` in an app where it runs; "one
+  ask fails in every app" no longer showed that the new asks can fail. ER-7.
+- **Routed, not folded** (#3 and the fixture note). The sizing ask's pass criterion and a shared
+  seeded-conversation fixture are FIX-2541's, which owns how its scripts assert (ER-7).
+
 ## How it got here
 
 - **Filed (Nov 2)** — epic and twelve children from the harness comparison. D1 to D3 settled
@@ -178,6 +193,8 @@ and Codex's [review of DECISIONS.md](https://github.com/fixpoint-labs/flow-state
 - **Review round 1 (Nov 4)** — analysed; two children folded; the calls above.
 - **Review round 2 (Nov 4)** — the second look and Codex folded; Q1's alternative priced.
 - **Merged (Nov 4).** The owner then answered [Q1](#q1): three more asks in the closure; FIX-2500
-  and the skills index stay. Folded by a follow-up amendment PR.
+  and the skills index stay. Folded by a follow-up amendment PR (#4703).
+- **Amendment review (Nov 4)** — #4703's second look: the new asks can't pass vacuously, the cut
+  run switches on today's mechanisms, the control is per ask. A second amendment PR.
 
 **Open:** none.
