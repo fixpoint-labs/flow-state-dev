@@ -1,22 +1,23 @@
 // @vitest-environment happy-dom
 /**
  * A coding task's popup sums up what its run did, so you don't open each step
- * group to learn it (FIX-2396): one line, "Edited 1 file · ran 2 commands ·
- * 2s", with a chip per file changed. Files are counted, not edit calls, and a
- * failed edit changed nothing. The result box takes how the task ended: a
- * failed task's result is never a success's green. Once it ended, Copy copies
- * the result (else the error), and "Ask Chief of Staff to follow up" opens
- * the conversation that filed it with the task named in its composer, unsent.
+ * group to learn it (FIX-2396): one line, "Edited 1 file · ran 1 command",
+ * with a chip per file. The files are what the run's harness recorded,
+ * read through harness-manager's `readRecordedWork`, never re-parsed from the
+ * steps; a harness that records none (Codex and Cursor today) gets no file
+ * part, never "0 files". The result box takes how the task ended: a failed
+ * task's result is never a success's green. Once it ended, Copy copies the
+ * result (else the error), and "Ask Chief of Staff to follow up" opens the
+ * conversation that filed it with the task named in its composer, unsent.
  *
- * Red states produced before this was trusted: count edit calls instead of
- * distinct paths, and the two-edits case fails; drop the `completed` check,
- * and the failed-edit case fails; colour the result green whatever the
- * status, and the failed-tone case fails; prefill the selected conversation
- * rather than the filer's, and the follow-up case fails.
+ * Red states produced before this was trusted: count the run's edit steps
+ * instead of the recorded files, and the Codex case fails; colour the result
+ * green whatever the status, and the failed-tone case fails; prefill the open
+ * conversation rather than the filer's, and the follow-up case fails.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runSummary, runSummaryLine, runSteps, toBoardTask, type BoardTask } from "../src/adapter";
+import { commandsRun, runSummaryLine, runSteps, toBoardTask, type BoardTask } from "../src/adapter";
 import { App } from "../src/App";
 import { createFixtureLab } from "./fake-lab";
 
@@ -39,78 +40,67 @@ const call = (name: string, args: Record<string, unknown>, status = "completed")
   output: {},
 });
 
-describe("a run's summary, from its steps", () => {
-  it("counts files, not edit calls, across each harness's tool shapes", () => {
+describe("a run's summary line", () => {
+  it("counts the shell commands that ran, not one still running", () => {
     const steps = runSteps([
-      call("Edit", { file_path: "/work/README.md", old_string: "a", new_string: "b" }),
-      call("Edit", { file_path: "/work/README.md", old_string: "c", new_string: "d" }),
-      call("Write", { file_path: "/work/docs/new.md", content: "x" }),
-      call("file_change", { changes: [{ path: "/work/src/a.ts", kind: "update" }, { path: "/work/README.md", kind: "update" }] }),
-      call("edit", { path: "/work/src/b.ts" }),
-      call("Read", { file_path: "/work/src/c.ts" }),
-    ] as never);
-    expect(runSummary(steps).files).toEqual(["/work/README.md", "/work/docs/new.md", "/work/src/a.ts", "/work/src/b.ts"]);
-  });
-
-  it("leaves out an edit that failed or is still running, and counts commands that ran", () => {
-    const steps = runSteps([
-      call("Edit", { file_path: "/work/failed.md" }, "incomplete"),
-      call("Edit", { file_path: "/work/running.md" }, "in_progress"),
       call("Bash", { command: "pnpm test" }),
       call("command_execution", { command: "pnpm lint" }, "incomplete"),
       call("shell", { command: "pnpm build" }, "in_progress"),
+      call("Edit", { file_path: "/work/README.md" }),
     ] as never);
-    const summary = runSummary(steps);
-    expect(summary.files).toEqual([]);
-    expect(summary.commands).toBe(2);
+    expect(commandsRun(steps)).toBe(2);
   });
 
-  it("reads as one line, leaving out what the run didn't do", () => {
-    expect(runSummaryLine({ files: ["a", "b", "c"], commands: 5 }, 134_000)).toBe("Edited 3 files · ran 5 commands · 2m 14s");
-    expect(runSummaryLine({ files: ["a"], commands: 0 })).toBe("Edited 1 file");
-    expect(runSummaryLine({ files: [], commands: 1 }, 4_000)).toBe("Ran 1 command · 4s");
-    expect(runSummaryLine({ files: [], commands: 0 })).toBe("");
+  it("reads as one line, leaving out what the run didn't do, and no file part when nothing was recorded", () => {
+    expect(runSummaryLine({ files: { count: 3, truncated: false }, commands: 5, durationMs: 134_000 })).toBe("Edited 3 files · ran 5 commands · 2m 14s");
+    expect(runSummaryLine({ files: { count: 1, truncated: false }, commands: 0 })).toBe("Edited 1 file");
+    expect(runSummaryLine({ files: { count: 200, truncated: true }, commands: 0 })).toBe("Edited 200+ files");
+    expect(runSummaryLine({ files: null, commands: 1, durationMs: 4_000 })).toBe("Ran 1 command · 4s");
+    expect(runSummaryLine({ files: null, commands: 0 })).toBe("");
   });
-});
 
-describe("a task's duration, from its row", () => {
-  it("is completed minus started once the task ended, and absent while it runs", () => {
-    expect(toBoardTask({ id: "t1", status: "completed", assignee: "x", title: "t", startedAt: 1_000, completedAt: 135_000 }).durationMs).toBe(134_000);
-    expect(toBoardTask({ id: "t2", status: "in_progress", assignee: "x", title: "t", startedAt: 1_000 }).durationMs).toBeUndefined();
-    expect(toBoardTask({ id: "t3", status: "errored", assignee: "x", title: "t", completedAt: 5_000 }).durationMs).toBeUndefined();
+  it("carries the run's request beside its session, so the recorded work can be read", () => {
+    const task = toBoardTask({ id: "t1", status: "completed", assignee: "x", title: "t", run: { sessionId: "s1", requestId: "q9", attempt: 1 } });
+    expect([task.runSessionId, task.runRequestId]).toEqual(["s1", "q9"]);
   });
 });
 
-/** Ask Chief of Staff to have Codex fix the typo; open its popup. */
-async function openCodexTask() {
+/** Ask Chief of Staff to have `agent` fix the typo; open its popup. */
+async function openTask(agent = "Codex") {
   const box = await screen.findByLabelText("Message Chief of Staff");
   await act(async () => {
-    fireEvent.change(box, { target: { value: "Have Codex fix the typo in the README's first line." } });
+    fireEvent.change(box, { target: { value: `Have ${agent} fix the typo in the README's first line.` } });
     fireEvent.keyDown(box, { key: "Enter" });
   });
   const conversation = screen.getByRole("main", { name: "Conversation" });
-  fireEvent.click(await within(conversation).findByRole("button", { name: new RegExp(`^${TASK}, on Codex`) }, { timeout: 3000 }));
+  fireEvent.click(await within(conversation).findByRole("button", { name: new RegExp(`^${TASK}, on ${agent}`) }, { timeout: 3000 }));
   return screen.findByRole("dialog", { name: TASK });
 }
 
 describe("a coding task's popup", () => {
-  it("sums up the finished run: files and commands, how long, and a chip per file", async () => {
-    let clock = 0;
-    render(<App adapter={createFixtureLab({ speed: 0.05, now: () => (clock += 250) })} />);
-    const popup = await openCodexTask();
+  it("sums up a finished Claude Code run from what it recorded: files and commands, a chip per file", async () => {
+    render(<App adapter={createFixtureLab({ speed: 0.05 })} />);
+    const popup = await openTask("Claude Code");
     await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
-    const line = popup.querySelector("[data-summary-line]")?.textContent ?? "";
-    expect(line).toMatch(/^Edited 1 file · ran 2 commands · \d+s$/);
+    await waitFor(() => expect(popup.querySelector("[data-summary-line]")?.textContent).toBe("Edited 1 file · ran 1 command"));
     const chips = within(popup).getByRole("list", { name: "Files changed" });
     expect(within(chips).getByText("README.md").getAttribute("title")).toBe("/work/README.md");
     expect(within(popup).getByRole("region", { name: "Result" }).getAttribute("data-tone")).toBe("done");
+  });
+
+  it("says no file count for a harness that records none, though its run edited one", async () => {
+    render(<App adapter={createFixtureLab({ speed: 0.05 })} />);
+    const popup = await openTask("Codex");
+    await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
+    await waitFor(() => expect(popup.querySelector("[data-summary-line]")?.textContent).toBe("Ran 2 commands"));
+    expect(within(popup).queryByRole("list", { name: "Files changed" })).toBeNull();
   });
 
   it("copies the result", async () => {
     const writeText = vi.fn(async () => {});
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     render(<App adapter={createFixtureLab({ speed: 0.05 })} />);
-    const popup = await openCodexTask();
+    const popup = await openTask();
     await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
     await act(async () => fireEvent.click(within(popup).getByRole("button", { name: "Copy" })));
     expect(writeText).toHaveBeenCalledWith("Fixed the typo in README.md, line 1.");
@@ -119,7 +109,7 @@ describe("a coding task's popup", () => {
 
   it("asks the worker that filed it to follow up: its conversation opens with the task named in the composer", async () => {
     render(<App adapter={createFixtureLab({ speed: 0.05 })} />);
-    const popup = await openCodexTask();
+    const popup = await openTask();
     await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
     fireEvent.click(within(popup).getByRole("button", { name: "Ask Chief of Staff to follow up" }));
     expect(screen.queryByRole("dialog", { name: TASK })).toBeNull();

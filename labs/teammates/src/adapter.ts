@@ -80,11 +80,12 @@ import {
   type RefileRow,
   type TaskRowView,
 } from "@flow-state-dev/orchestration/inbox";
-import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import { readRecordedWork, reviewDetail, type RecordedRun, type RecordedWork, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
 import {
   composeToolGroupLabel,
+  TOOL_VERB_MAP,
   toolRunOpen,
   toolRunState,
   toolStepState,
@@ -157,17 +158,14 @@ export interface BoardTask {
   priority?: number;
   /** The session its run works in, once it started. */
   runSessionId?: string;
+  /** The request that is its latest run, in {@link runSessionId}: what the run recorded is read by the two. */
+  runRequestId?: string;
   /** For a coding task, the harness it runs on: the one its run reported, else its worker's `harness:`. */
   harness?: string;
   /** The model its run reported, when it reported one; never guessed. */
   model?: string;
   /** What its runs spent, as orchestration's task-row view folds it (`taskRowView`); absent before any ran. */
   spend?: TaskSpendView;
-  /**
-   * How long it took, in ms, from the row's `startedAt` to its `completedAt`; only once it ended.
-   * A board keeps the first `startedAt` across a retry, so a retried task's spans its attempts.
-   */
-  durationMs?: number;
   /** What it waits on you for, while something does: its oldest open hold. */
   waiting?: TaskWaiting;
 }
@@ -226,8 +224,6 @@ export interface SessionStep {
   tool?: string;
   /** For `tool`, the step is a shell command, shown as code. */
   code?: boolean;
-  /** For a `tool` step that changes files (an edit, a write, Codex's `file_change`), the paths it names. */
-  paths?: string[];
   /** For `tool`, how it stands: running, waiting, done, or failed (thrown, or a result that says so). */
   state?: ToolStepState;
   /** For `said`, while it is still being written. */
@@ -278,56 +274,37 @@ export function stepRun(steps: readonly SessionStep[]): StepRun {
   return { label, state, open: toolRunOpen(state) };
 }
 
-/**
- * The tools that change files, case-folded: each harness's edit, write and
- * delete, and Codex's `file_change`. A step of one of these names its paths.
- */
-const FILE_CHANGE_TOOLS = new Set([
-  "edit", "edit_file", "multiedit", "notebookedit", "write", "write_file", "create_file", "delete", "delete_file", "file_change",
-]);
+/** A tool the registry's words call running a command: each harness's shell tool. */
+const isCommand = (tool: string | undefined) => tool !== undefined && TOOL_VERB_MAP[tool.toLowerCase()]?.singular === "ran a command";
 
-/** The paths a file-changing tool call names in its args: Codex's `changes[].path`, else the one path arg it carries. */
-function changedPaths(tool: string, args: Record<string, unknown>): string[] | undefined {
-  if (!FILE_CHANGE_TOOLS.has(tool.toLowerCase())) return undefined;
-  if (Array.isArray(args.changes)) {
-    const paths = args.changes.map((c: { path?: unknown }) => c?.path).filter((p): p is string => typeof p === "string" && p !== "");
-    return paths.length === 0 ? undefined : paths;
-  }
-  const path = [args.file_path, args.path, args.target_file, args.notebook_path].find((p): p is string => typeof p === "string" && p !== "");
-  return path === undefined ? undefined : [path];
+/**
+ * How many shell commands a run's steps ran, done or failed; one still running
+ * isn't counted. Known by the tool's name in the registry's vocabulary, the
+ * one the step groups' "ran 3 commands" already uses.
+ */
+export function commandsRun(steps: readonly SessionStep[]): number {
+  return steps.filter((step) => step.kind === "tool" && isCommand(step.tool) && (step.state ?? "completed") !== "running").length;
 }
 
-/** What a run did, summed from its steps: the files it changed and the commands it ran. */
+/** What a coding task's popup says the run did: the files it recorded, its commands, and how long it took. */
 export interface RunSummary {
-  /** Each file a completed change named, once, in the order first changed. A failed or running change isn't counted. */
-  files: string[];
-  /** Shell commands that ran, done or failed; one still running isn't counted. */
+  /** The files the run's harness recorded touching; `null` when the harness records none (Codex and Cursor today). */
+  files: { count: number; truncated: boolean } | null;
   commands: number;
-}
-
-/** A run's steps summed up for its popup's line ({@link runSummaryLine}). */
-export function runSummary(steps: readonly SessionStep[]): RunSummary {
-  const files: string[] = [];
-  let commands = 0;
-  for (const step of steps) {
-    if (step.kind !== "tool") continue;
-    const state = step.state ?? "completed";
-    if (step.code === true && state !== "running") commands++;
-    if (state !== "completed") continue;
-    for (const path of step.paths ?? []) if (!files.includes(path)) files.push(path);
-  }
-  return { files, commands };
+  /** Only once the task ended. */
+  durationMs?: number;
 }
 
 /**
- * "Edited 2 files · ran 5 commands · 2m 14s": what a run did and how long it
- * took, with what it didn't do left out. Empty when there is nothing to say.
+ * "Edited 2 files · ran 5 commands · 2m 14s", with what the run didn't do
+ * left out, and no file part for a harness that records none (never "0
+ * files"). Empty when there is nothing to say.
  */
-export function runSummaryLine(summary: RunSummary, durationMs?: number): string {
-  const n = summary.files.length;
+export function runSummaryLine({ files, commands, durationMs }: RunSummary): string {
+  const n = files?.count ?? 0;
   const parts = [
-    n === 0 ? null : `edited ${n} file${n === 1 ? "" : "s"}`,
-    summary.commands === 0 ? null : `ran ${summary.commands} command${summary.commands === 1 ? "" : "s"}`,
+    n === 0 ? null : `edited ${n}${files?.truncated ? "+" : ""} file${n === 1 && !files?.truncated ? "" : "s"}`,
+    commands === 0 ? null : `ran ${commands} command${commands === 1 ? "" : "s"}`,
     durationMs === undefined ? null : durationText(durationMs),
   ].filter((p): p is string => p !== null);
   const line = parts.join(" · ");
@@ -409,6 +386,8 @@ export interface LabAdapter {
   watchRun(runSessionId: string, onChange: (steps: SessionStep[]) => void): Unsubscribe;
   /** The run's latest review, read from its stop; `undefined` until it stops for one. */
   watchReview(runSessionId: string, onChange: (review: ReviewDetail | undefined) => void): Unsubscribe;
+  /** What a run recorded (its files, plan and pull requests), by the run's session and request: harness-manager's reader. */
+  recordedWork(run: RecordedRun): Promise<RecordedWork>;
   /** Answer what a task waits on you for; the run goes on, or the task completes on an accept. */
   answerTask(sessionId: string, taskId: string, answer: TaskAnswer): Promise<void>;
   /** The board's actions on the tasks conversation `sessionId` filed, sent to that conversation's board. */
@@ -694,9 +673,9 @@ export function toBoardTask(
     ...(Array.isArray(row.labels) ? { labels: row.labels.filter((label: unknown): label is string => typeof label === "string") } : {}),
     ...(typeof row.priority === "number" ? { priority: row.priority } : {}),
     ...(typeof row.run?.sessionId === "string" ? { runSessionId: row.run.sessionId } : {}),
+    ...(typeof row.run?.sessionId === "string" && typeof row.run?.requestId === "string" ? { runRequestId: row.run.requestId } : {}),
     ...harnessAndModel(spendOf(spend), harnessOf(row.assignee ?? "")),
     ...(spend === null ? {} : { spend }),
-    ...durationOf(view, status),
     ...waitingOf(view),
   };
 }
@@ -715,14 +694,6 @@ export function rerunOverrides(task: BoardTask, worker: string): RefileOverrides
   const ended = task.status === "cancelled" ? "was cancelled" : "failed";
   const line = `This re-runs the task "${task.title}", which ${ended}${task.harness === undefined ? "" : ` on ${task.harness}`}.`;
   return { assignee: worker, context: task.context === undefined || task.context === "" ? line : `${task.context}\n\n${line}` };
-}
-
-/** How long an ended task took, from the row view's times; nothing while it runs or when a time is missing. */
-function durationOf(view: TaskRowView | null, status: BoardTask["status"]): { durationMs?: number } {
-  const started = view?.times.startedAt ?? null;
-  const completed = view?.times.completedAt ?? null;
-  if (status === "running" || started === null || completed === null || completed < started) return {};
-  return { durationMs: completed - started };
 }
 
 /** What a row waits on you for, as `taskRowView` reads it: its oldest open hold, or nothing. */
@@ -892,14 +863,12 @@ function toolStep(item: Item, ended: readonly string[] = []): SessionStep {
   const output = status === "done" ? item.output : undefined;
   const intent = toolIntent(tool, args);
   const subject = intent === undefined ? toolSubject(tool, args, output) : undefined;
-  const paths = changedPaths(tool, args);
   return {
     id: item.id,
     kind: "tool",
     tool,
     text: intent ?? subject?.text ?? `Used ${tool}`,
     ...(subject?.code ? { code: true } : {}),
-    ...(paths === undefined ? {} : { paths }),
     state: toolStepState(status, tool, output),
   };
 }
@@ -1312,6 +1281,9 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         last = seen;
         onChange(review);
       });
+    },
+    recordedWork(run) {
+      return readRecordedWork(client, run);
     },
     taskActions(sessionId) {
       // The board is the conversation's own: its flow, the session that filed the task, and its `"tasks"` collection.

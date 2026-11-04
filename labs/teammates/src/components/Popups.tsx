@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { runSummary, runSummaryLine, type BoardTask, type LabAdapter, type TalkRow, type WorkerRow } from "../adapter";
+import { commandsRun, runSummaryLine, type BoardTask, type LabAdapter, type SessionStep, type TalkRow, type WorkerRow } from "../adapter";
+import type { RecordedWork } from "@flow-state-dev/harness-manager/browser";
 import { harnessName } from "../lib/harness";
 import { cn } from "../lib/utils";
 import type { Look } from "../lib/looks";
@@ -146,7 +147,7 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp,
     <SessionPopup label={line} title={title} status={task?.status} onClose={onClose}>
       {task === undefined ? null : <TaskActions key={task.id} id={task.id} status={task.boardStatus} actions={actions} steer rerun={rerun} />}
       {/* What a coding task's run changed, what it ran and how long it took, without opening a step. */}
-      {task && isCoding(task.to) ? <TaskSummary steps={steps} durationMs={task.durationMs} /> : null}
+      {task && isCoding(task.to) ? <TaskSummary adapter={adapter} task={task} steps={steps} /> : null}
       {task && task.status !== "running" ? <TaskOutcomeActions task={task} followUp={followUp} /> : null}
       {/* What a coding task's runs spent, in and out apart, with the vendor's charge when it reported one. */}
       {task?.spend && isCoding(task.to) ? (
@@ -183,13 +184,39 @@ const RESULT_TONE: Record<BoardTask["status"], string> = {
 /** How many file chips show before the rest fold into "+N more". */
 const CHIPS_SHOWN = 8;
 
-/** "Edited 2 files · ran 5 commands · 2m 14s", and a chip per file it changed, named by its file name. */
-function TaskSummary({ steps, durationMs }: { steps: Parameters<typeof runSummary>[0]; durationMs?: number }) {
-  const summary = runSummary(steps);
-  const line = runSummaryLine(summary, durationMs);
+/**
+ * What a run's harness recorded touching, read through harness-manager's
+ * reader by the run's session and request; read again when the task's status
+ * changes, so an ended task shows all of it. `undefined` until read, or when
+ * the read fails: the line then goes without files rather than say a wrong count.
+ */
+function useRecordedFiles(adapter: LabAdapter, task: BoardTask): RecordedWork["files"] | undefined {
+  const [files, setFiles] = useState<RecordedWork["files"] | undefined>(undefined);
+  const { runSessionId: sessionId, runRequestId: requestId, status } = task;
+  useEffect(() => {
+    if (sessionId === undefined || requestId === undefined) return;
+    let live = true;
+    adapter
+      .recordedWork({ sessionId, requestId })
+      .then((work) => {
+        if (live) setFiles(work.files);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [adapter, sessionId, requestId, status]);
+  return files;
+}
+
+/** "Edited 2 files · ran 5 commands", and a chip per file the run recorded, named by its file name. */
+function TaskSummary({ adapter, task, steps }: { adapter: LabAdapter; task: BoardTask; steps: readonly SessionStep[] }) {
+  const files = useRecordedFiles(adapter, task) ?? null;
+  const rows = files?.rows ?? [];
+  const line = runSummaryLine({ files: files === null ? null : { count: rows.length, truncated: files.truncated }, commands: commandsRun(steps) });
   if (line === "") return null;
-  const shown = summary.files.slice(0, CHIPS_SHOWN);
-  const more = summary.files.length - shown.length;
+  const shown = rows.slice(0, CHIPS_SHOWN);
+  const more = rows.length - shown.length;
   return (
     <div data-task-summary className="flex flex-col gap-1.5">
       <p data-summary-line className="text-xs text-muted-foreground">
@@ -197,7 +224,7 @@ function TaskSummary({ steps, durationMs }: { steps: Parameters<typeof runSummar
       </p>
       {shown.length === 0 ? null : (
         <ul aria-label="Files changed" className="flex flex-wrap gap-1">
-          {shown.map((path) => (
+          {shown.map(({ path }) => (
             <li key={path} title={path} data-file-chip className="rounded-sm border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
               {path.split("/").filter((part) => part !== "").pop() ?? path}
             </li>
