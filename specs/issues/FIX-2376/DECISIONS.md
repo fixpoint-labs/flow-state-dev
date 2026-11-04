@@ -44,7 +44,7 @@ request read FIX-2375 widens.
 |---|---|
 | **Instead of** | Type ahead only: the composer stays open, but Send waits for the turn to end · or keep `run` on `queue` |
 | **Because** | The chat-agent flow already queues a second `run` ("queues behind the first (FIFO) instead of being dropped"). The page can't use it: `sendAction` leaves the running turn's stream, so the page locks the composer instead. React's `useHarnessLines` already sends a mid-turn turn through the client and follows it once the running turn ends; Kitchen Sink's harness modes ship on it. Its input is fixed at `{ prompt }` and it doesn't say what waits, so it gains `input` and `waiting`. Under `queue` a waiting run fails after 30 seconds (503), and a Flow State turn often runs longer; `defer` waits with no limit, as the hook's docs ask |
-| **Locks in** | Two public additions to `useHarnessLines` (`input`, `waiting`), so a changeset for `@flow-state-dev/react`. Flow State's `run` waits as long as the turn ahead takes; a 33rd waiting run on one session is refused (409), and a turn that never ends holds every line behind it until it is stopped |
+| **Locks in** | Two public additions to `useHarnessLines` (`input`, `waiting`), so a changeset for `@flow-state-dev/react`. Flow State's `run` waits as long as the turn ahead takes; a 33rd waiting run on one session is refused (409), and a turn that never ends holds every line behind it until it is stopped. That holds for every caller of `run`, not only the composer. In this repo they are the Flow State page's composer and its voice input (`useVoice`, `action: "run"`, `page.tsx`), and `fsdev run chat-agent run`, which sends one line. A caller that relied on a 503 at 30 seconds now waits; none in the repo did. Under `FSD_BULLMQ_DISPATCH=1` the BullMQ worker runs `defer` too (`packages/bullmq/src/worker.ts`) |
 
 ![D2: queue through useHarnessLines with run on defer, chosen, beside type-ahead only and keeping queue. Decides it: a turn longer than 30 seconds. Price: two public options on a react hook. Flips if Flow State turns never ran past 30 seconds](figures/d2-kitchen-sink-queues.svg)
 
@@ -101,6 +101,19 @@ derivation (D1); Kitchen Sink's half extends an existing react hook rather than 
   Code-style *queues a line sent while a turn runs* passes on this spec's base.
 - **A `queue` wait fails at 30 seconds** — **CONFIRMED** by read: `QUEUE_WAIT_TIMEOUT_MS = 30_000`
   in `engine/src/transports/concurrency/lease-backend.ts`, not configurable per action.
+
+## Notes from review
+
+For the implementer; recorded, not baked into the design.
+
+- *Cursor review, PR #4732:* "Leg **c** (35s held turn e2e) is the heaviest part of the set. The
+  anti-game rationale is sound (`queue` fails at 30s). If CI/runtime cost becomes painful later,
+  consider documenting a fallback tier (e.g. engine/integration proof of `defer` >30s + a slimmer
+  e2e for unlock + waiting mark only) **without** shortening the hold in the contract test —
+  optional, not required for this spec."
+- *Second-look review, PR #4732:* "Since the rename is already conceded as a follow-up, file that
+  issue now so the two new public options don't cement the name." The issue (*give
+  `useHarnessLines` a neutral name*) is to be filed before the react slice merges.
 
 ## How it got here
 

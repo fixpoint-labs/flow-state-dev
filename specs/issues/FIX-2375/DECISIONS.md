@@ -40,12 +40,24 @@ button on this same look.
   blur. *By you* holds because only the request's own user can abort it (the abort route answers
   404 to anyone else). A cut-off turn you Discard (FIX-2377) also ends `aborted`, and reads the same:
   you ended it.
+- **Names, so the three don't blur.** One word per thing:
+
+  | Request status | Registry look (`request-recovery`) | Lab entry kind | Copy |
+  |---|---|---|---|
+  | `aborted`, by Stop or by Discard | `stopped` | `stopped` | *Interrupted by you* |
+  | `interrupted` (a restart cut it off) | interrupted (`onContinue` / `onDiscard`) | FIX-2377's | *…'s turn was cut off* |
+  | `failed` | failed (`onRetry`) | FIX-2370's | *… couldn't finish this turn* |
+
+  The lab verb stays `interrupt`, as do `useInterruptKeys` and the *Interrupted* copy: they name
+  the gesture, not a request state.
 - **Where the line sits.** After the last entry of the aborted request. A request with no entry in
   the loaded window gets no line; there is nowhere true to put it.
-- **The count shows on the newest stopped line only, and only while no later turn has started.** An
-  old line saying *2 still running* about work started since would be false. The count is the
-  session's unfinished runs, whichever turn started them. `runs` is `null` until the stream has
-  named them, and then no clause shows: unknown is not zero.
+- **The count is one number on the thread view, not on an entry.** Each adapter sets
+  `backgroundRunning` from `sessionFeed`'s `runs`: the session's unfinished runs, whichever turn
+  started them, `null` until the stream has named them (then no clause shows: unknown is not zero).
+  The lab's thread view passes it to the newest stopped line only, and only while no later turn has
+  started: an old line saying *2 still running* about work started since would be false. The
+  adapter states a fact; where it shows is the view's call.
 - **Where each fact comes from.** The turn's state comes from the session's request records,
   through the one request read each adapter already makes on request notices. The Claude Code-style
   adapter's read widens from running turns to recent turns of its `TURN_ACTIONS`, so `aborted` is
@@ -54,26 +66,28 @@ button on this same look.
   comment says (`adapter.ts`, `watchThread`). Task runs are child sessions of the session that
   dispatched them (`engine/src/context/dispatch-run.ts`, `parentSessionId`); the browser pass
   confirms that each lab's tasks show up in the count.
-- **Seam with FIX-2376.** It stacks on this one in both adapters and marks a line *queued*. It reads
-  the same request read this spec widens. It does not add a second one, and it does not take turn
-  state from the feed's `runs`, which carry background work only. If FIX-2376's spec says
-  otherwise, that spec moves, not this one.
+- **Seam with FIX-2376.** It stacks on this one in both adapters and removes the labs' *queued*
+  marks: under `hold` a line sent mid-turn starts its own answer at once (its D1). Both specs read
+  turn state from the same request read, which this spec widens; neither adds a second read or
+  takes turn state from the feed's `runs`, which carry background work only.
 - **Seam with FIX-2370 and FIX-2377's lab slices.** They come later in each lab's stack 2 and add
-  their lines to the same entry mapping and the same request read, with `request-recovery` already
-  installed by this slice.
+  their lines to the same entry mapping and the same request read. This slice installs
+  `request-recovery` in each lab, since it is the first lab slice to draw it; theirs update that copy.
 - **What Stop aborts.** In Teammates, each answering request in the conversation that is in
   progress: everything but `dispatch` (its `QUIET_ACTIONS`), which is what its *working* line
   already counts. Stop stops exactly what *working* shows. A turn parked on an approval is not
-  running and has no Stop; its card's Reject answers it.
+  running and has no Stop; its card's Reject answers it. Under `hold` a line sent mid-turn starts
+  its own turn (FIX-2376), so Stop stops the turns running when it is pressed. A line sent after
+  that starts a new turn, which is not aborted and reads running beside the stopped line.
 - **Stopping and its end.** The adapter holds `stopping` from the `interrupt` call until the
-  request read shows the turn ended. A 409 from abort means the turn already ended, and counts as
+  request read shows every turn it aborted ended; a turn started after the press does not hold it. A 409 from abort means the turn already ended, and counts as
   done. Any other refusal clears `stopping` and is shown beside the button. The Stop button is
   disabled while stopping.
 - **Teammates' keys.** `useInterruptKeys` on the document, enabled while the worker answers, as the
   other lab's `Thread.tsx` has it. The session popup's own Esc listener prevents the default, so
   closing it never arms a stop.
 - **Order.** The registry slice first (epic D3), then each lab's slice on its adapter stack 1, after
-  FIX-2374 (done). The adapter tests use FIX-2406's in-process host harness from the start (its D1),
+  FIX-2374 (done), installing `request-recovery` as its first step. The adapter tests use FIX-2406's in-process host harness from the start (its D1),
   so FIX-2406 folds them into its matrix as the *stop* scenario instead of replacing a second harness.
 - **The test fakes follow.** Each lab's `test/fake-lab.ts` draws what the real adapter now draws.
   The goal check never reads them.
@@ -91,6 +105,20 @@ button on this same look.
 ## Analysis
 
 Skipped here, as a spec-set member: the epic agent runs `analysis` and `reuse-review` over the set.
+
+## Notes from review
+
+For the implementer; recorded, not baked into the design.
+
+- *Cursor review, PR #4732:* "Live count from `sessionFeed` `runs` is correct, but today CC-style
+  `watchThread` rebuilds the full view on emit (`entriesOf` + JSON dedup). When implementers
+  subscribe to `runs`, **patch `stillRunning` on the interrupted entry** rather than re-running full
+  entry synthesis on runs-only deltas — especially with two concurrent streams (FIX-2376)." With the
+  count now on the view (`backgroundRunning`), a runs-only change should update that one field
+  without rebuilding the entries.
+- *Cursor review, PR #4732 (soft):* "cite **Shift Manager's `InterruptState` / pending-until-record
+  pattern** in FIX-2375 DECISIONS as the template for `stopping` + refused abort beside the button
+  (labs still won't import shift-manager — same semantics, less one-off design)."
 
 ## How it got here
 

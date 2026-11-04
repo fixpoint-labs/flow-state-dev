@@ -33,7 +33,7 @@ flowchart LR
   A --> T["adapter test · labs/*/test/stop-turn.test.ts"]
   T -->|"Stopping, then Interrupted by you, count 2"| P["PASS"]
   C["control · the aborted mapping removed, or today's main"] -.-> A
-  A -.->|"under the control"| X["must FAIL · no Interrupted entry"]
+  A -.->|"under the control"| X["must FAIL · no stopped entry"]
 ```
 
 The check reads what each lab's real adapter hands the screen, talking to that lab's real host
@@ -42,10 +42,10 @@ in process. No test fake and no recorded responses are involved.
 | How we verify | |
 |---|---|
 | **Goal check** | One test file per lab, `labs/claude-code-style/test/stop-turn.test.ts` and `labs/teammates/test/stop-turn.test.ts`, run by the implementer before the PR is ready, verdict in the PR. They drive the real `createWiredLab` / `createLabAdapter` against the lab's own host in process (`createInProcessFetch` + `createMockModelResolver`), the harness FIX-2406's D1 chose, so the server writes the `aborted` status the adapter reads. No recorded `/requests` fixtures: a recording could pass on a shape the server stopped writing. The Claude Code-style host moves from `fsdev.config.mts` into `host.mts` as `openLab(options)` here (the debt FIX-2406 names), and FIX-2406 builds on it. These two files become FIX-2406's *stop* scenario when its matrix lands; they are not a second harness. Then **one browser pass per lab** with a real model: ask for something that files a task, press Stop, read the thread. If no browser is available, hand it to `fsd-qa` over the mailbox |
-| **Signal** | (1) `interrupt` posts `…/requests/<id>/abort` once for each running turn, and none for a `dispatch` request. (2) The view says it is stopping from that call until the requests read shows the turn ended. (3) Once that read shows the turn `aborted`, exactly one `interrupted` entry follows the last entry of that request. (4) That entry carries a count of 2 while the session stream's `session.runs` names two runs, and none once it names zero. (5) In Teammates, a `completed` request gets no entry. Browser: the line reads *Interrupted by you · 1 background task still running · View* |
-| **Input** | A scripted turn `r1` that files two board tasks and then waits, stopped through the adapter's `interrupt`; the host writes `r1` `aborted` and the stream names the two runs until they settle. A correct adapter must also pass with the stopped turn being the older of two (a newer `completed` turn after it), where the entry still lands after `r1`'s items and carries no count |
+| **Signal** | (1) `interrupt` posts `…/requests/<id>/abort` once for each running turn, and none for a `dispatch` request. (2) The view says it is stopping from that call until the requests read shows the turn ended. (3) Once that read shows the turn `aborted`, exactly one `stopped` entry follows the last entry of that request. (4) The view's `backgroundRunning` is 2 while the session stream's `session.runs` names two runs, 0 once it names zero, and `null` before the stream has named them. (5) In Teammates, a `completed` request gets no entry. Browser: the line reads *Interrupted by you · 1 background task still running · View* |
+| **Input** | A scripted turn `r1` that files two board tasks and then waits, stopped through the adapter's `interrupt`; the host writes `r1` `aborted` and the stream names the two runs until they settle. A correct adapter must also pass with the stopped turn being the older of two (a newer `completed` turn after it), where the entry still lands after `r1`'s items. In Teammates, a line sent after Stop is pressed starts its own turn: it gets no abort, reads running, and `stopping` clears once `r1` ends |
 | **Anti-game** | Never assert on `test/fake-lab.ts` output: the fake already draws this line, which is how the dead entry went unnoticed. The request statuses come from the `/requests` response, not from a hand-built entry. No assertion on copy beyond the browser pass |
-| **Control that must fail** | Today's `main`: the Claude Code-style adapter never produces `interrupted`, so signal 3 fails; the Teammates adapter has no `interrupt` verb, so signal 1 fails. After the change: delete the `aborted` → entry mapping in either adapter, and signal 3 fails. Each PR shows that red run |
+| **Control that must fail** | Today's `main`: the Claude Code-style adapter never produces the entry, so signal 3 fails; the Teammates adapter has no `interrupt` verb, so signal 1 fails. After the change: delete the `aborted` → entry mapping in either adapter, and signal 3 fails. Each PR shows that red run |
 
 ## What changes
 
@@ -68,10 +68,15 @@ Both labs stop a turn the same way and say so the same way, from one shared line
   and *cut off by a restart* (FIX-2377). *Stopped* is quiet: a status, not an alert, with no
   button, since the server retries only a failed or cut-off request. It takes an optional count
   of work still running and a View callback.
-- **Each lab's adapter** produces the `interrupted` entry from the turn's request status
-  (`aborted`), placed after that request's last entry. It carries the live count of the session's
-  unfinished runs (`sessionFeed`'s `runs`) on the newest such entry, while no later turn has
-  started. The thread view gains a `stopping` flag.
+- **Each lab installs `request-recovery`** into `src/components/flow-state/`, as it installed
+  `error.tsx`, once the registry slice has landed. Neither lab has it today, and this slice is the
+  first lab slice to need it, so it installs it; FIX-2370 and FIX-2377's later lab slices use that copy.
+- **Each lab's adapter** produces a `stopped` entry from the turn's request status (`aborted`),
+  placed after that request's last entry. The Claude Code-style lab's dead `interrupted` entry kind
+  is renamed to `stopped`: in `request-recovery`, *interrupted* already means a turn a restart cut
+  off. The thread view gains `stopping` and `backgroundRunning`, the live count of the session's
+  unfinished runs (`sessionFeed`'s `runs`). One number per thread: the lab's thread view decides
+  which line shows it.
 - **Teammates** gains the `interrupt` verb, the Claude Code-style lab's: abort each running
   answering turn in the conversation. The composer shows Stop beside Send while the worker answers (Send stays: a mid-turn line
   starts its own answer, see FIX-2376),
@@ -84,13 +89,14 @@ The call site, in the Claude Code-style lab's `Entry.tsx`:
 ```diff
 + import { RequestRecovery } from "./flow-state/request-recovery";
   …
-      case "interrupted":
+-     case "interrupted":
 -       return (
 -         <div className="text-xs text-muted-foreground" data-entry="interrupted">
 -           Interrupted. Background tasks keep running.
 -         </div>
 -       );
-+       return <RequestRecovery stopped stillRunning={entry.stillRunning} onView={onViewTasks} />;
++     case "stopped":
++       return <RequestRecovery stopped stillRunning={countFor(entry)} onView={onViewTasks} />;
 ```
 
 **Docs:** update `packages/ui/README.md`'s `request-recovery` row and add a *A turn you stopped*
@@ -131,7 +137,7 @@ stream's runs, which are the child sessions doing background work, never the ses
 |---|---|
 | **Whatever already stops a turn.** `RequestHandle.abort()` (client); `useSession`'s `abortRequest` and `dismissRequest` (react); Shift Manager's `requestInterrupt` (`lib/task.tsx`, `lib/run.ts`); the Claude Code-style lab's `interrupt` verb. No row in `docs/mechanisms/mechanisms.yaml` (searched *stop*, *abort*, *cancel*, *interrupt*: only the `suspension` and harness rows match, neither this job) | **Builds on** `abort()`. Teammates' new verb calls it the same way the other lab's does. No new way to stop |
 | **Whatever already shows a stopped turn.** `useSession` injects a local status item, *Request was stopped.*, that a reload loses; Shift Manager reads the record's `aborted`; the Claude Code-style lab declares an `interrupted` entry and never produces it (only `test/fake-lab.ts:473` does) | **Builds on** Shift Manager's way: the record. The labs' line comes from the request status, so it survives a reload. `useSession`'s item is **left alone** (debt, below) |
-| `request-recovery` (FIX-2370, extended by FIX-2377) | **Extends** it with the *stopped* look ([D1](DECISIONS.md#d1)) |
+| `request-recovery` (FIX-2370, extended by FIX-2377) | **Extends** it with the *stopped* look ([D1](DECISIONS.md#d1)). Not yet installed in either lab (`labs/*/src/components/flow-state/` has `error.tsx`, not this); this slice installs it |
 | `sessionFeed` (FIX-2374), its snapshot's `runs` | **Builds on.** Both labs already follow sessions with it. Teammates' `lib/session-feed.ts` wrapper passes `runs` through; today it passes only items and state |
 | `useInterruptKeys`, `interruptChordLabel` (FIX-2413) | **Builds on.** Teammates adopts them. Its session popup's Esc listener spends its Esc (`preventDefault`), as FIX-2413 asks of every dismisser |
 | The issue's evidence | **Moved since filing:** `maxSteps: 100` is now `labs/teammates/host.mts:323`; the entry type is `labs/claude-code-style/src/adapter.ts:113`; Teammates' request tracking is in `watchConversation` (`onNotice` on request notices). `packages/client/src/types/index.ts:203` is `ChildSessionStatus`'s `aborted`; a request's own is `RequestStatus` in `@flow-state-dev/contracts` |
@@ -147,7 +153,7 @@ Nothing is added to a package beyond that. The lab verbs and entry mapping are a
 
 | The debt | |
 |---|---|
-| **Removes** | The Claude Code-style lab's dead `interrupted` entry, by producing it, and its fixed claim *Background tasks keep running*. The gap between the lab's test fake and its real adapter on this case |
+| **Removes** | The Claude Code-style lab's dead `interrupted` entry, by producing it as `stopped`, and its fixed claim *Background tasks keep running*. The gap between the lab's test fake and its real adapter on this case |
 | **Adds** | None. Teammates' `interrupt` verb mirrors the other lab's, as every shared verb does: labs share no code (FIX-2152 ER-4, kept by the epic). FIX-2406's one contract matrix covers both, with an *interrupt* scenario |
 | **Leaves** | `useSession`'s local *Request was stopped.* item, which Kitchen Sink shows and a reload loses. It could read the record the same way; no issue filed yet |
 
