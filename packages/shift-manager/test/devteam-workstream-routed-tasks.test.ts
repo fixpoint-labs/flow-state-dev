@@ -328,6 +328,16 @@ describe("a steer on a routed task in a workstream's session", () => {
     const coder = (await host.coderRow())!;
     expect(coder.status).toBe("completed");
     expect(done.completedAt).toBeGreaterThanOrEqual(coder.completedAt);
+
+    // The routed task's turn, the steer's owed turn and the coder's task
+    // notice are not the `respond` entry, and each still opens with the
+    // default worker layer: the session names its worker, so the layer never
+    // drops out of them.
+    expect(seen.turns.length).toBeGreaterThanOrEqual(2);
+    for (const turn of seen.turns) {
+      expect(turn).toContain("You are Engineering Manager, on the Engineering team.");
+      expect(turn).toContain("Work things out yourself first.");
+    }
   }, 120_000);
 });
 

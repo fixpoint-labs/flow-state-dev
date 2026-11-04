@@ -53,18 +53,18 @@ const CONTROLS: Record<string, Patch[]> = {
   "wrong-board": [
     {
       file: "src/adapter.ts",
-      from: "return inbox.board({ flowId, sessionId, board: TASK_BOARD });",
-      to: 'return inbox.board({ flowId, sessionId, board: "plan" });',
+      from: "inbox.board({ flowId: await flowOf(), sessionId, board: TASK_BOARD });",
+      to: 'inbox.board({ flowId: await flowOf(), sessionId, board: "plan" });',
       why: 'the task\'s action row is bound to board "plan", not the conversation\'s "tasks"',
     },
   ],
   "other-session": [
     {
       file: "src/adapter.ts",
-      from: "rerun: async (task, worker) => (await board()).refile(refileRowOf(task), rerunOverrides(task, worker)),",
+      from: "return (await board()).refile(refileRowOf(whole), rerunOverrides(whole, worker));",
       to:
-        `rerun: async (task, worker) => { const other = (await workforce.listWorkerSessions(${JSON.stringify(fixture.filer)})).find((s) => !s.isDefault)!.session; ` +
-        "return inbox.board({ flowId: other.flowId ?? other.flowKind, sessionId: other.id, board: TASK_BOARD }).refile(refileRowOf(task), rerunOverrides(task, worker)); },",
+        `const other = (await workforce.listWorkerSessions(${JSON.stringify(fixture.filer)})).find((s) => !s.isDefault)!.session; ` +
+        "return inbox.board({ flowId: other.flowId ?? other.flowKind, sessionId: other.id, board: TASK_BOARD }).refile(refileRowOf(whole), rerunOverrides(whole, worker));",
       why: "Re-run is bound to a second conversation with Chief of Staff, not the one that filed the task",
     },
   ],

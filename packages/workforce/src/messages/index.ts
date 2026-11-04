@@ -29,6 +29,9 @@ export {
 export { DEFAULT_MESSAGE_BUDGET, DEFAULT_MESSAGES_PER_TURN, type MessageLimits } from "./message-limits";
 export { sendMessageInputSchema } from "./message-tool";
 export { MAX_LISTED_RECIPIENTS, rosterDisplayName, rosterTeamName, workerRecipients, type WorkerRecipients } from "./recipients";
+// The default worker layer: exported so a worker flow an app writes
+// itself puts the same first entry in its prompt as the built-in agent flow.
+export { workerIdentityPrompt } from "./worker-identity";
 // Reading another conversation without waking it (FIX-2173).
 export {
   CONSULT_SESSION_HISTORY_TOOL,
