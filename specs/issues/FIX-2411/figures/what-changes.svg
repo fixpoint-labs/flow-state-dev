@@ -1,0 +1,86 @@
+<svg viewBox="0 0 940 440" role="img" aria-label="What changes. Three layers change and one comes out. The change bus publishes a run notice on the owner's user topic for every session and request write except items and state field deltas. The session listing, asked with include status, returns each row's latest request status, in one round trip. In the React package, the navigator's leaf read becomes the public useSessionList hook, live on the user topic and on the page becoming visible, and the navigator draws each row's state mark and how long ago it changed. In Kitchen Sink, the harness rail draws from useSessionList with the model and a needs-you mark, its own read and its reads counter come out, and the Flow State page drops its hand-made re-reads. Left as they are: useFlow's session list, the claude-code-style lab's list, and the pull-request badge, deferred by D3"
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .row   { fill:var(--code-soft); stroke:var(--code); stroke-width:1; }
+    .foot  { fill:var(--surface-2); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .gone  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; text-decoration:line-through; }
+    .t-n   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+  <g id="engine">
+    <rect class="lane" x="16" y="16" width="218" height="312" rx="6"/>
+    <text class="t-lbl" x="30" y="36">ENGINE</text>
+    <rect class="row" x="26" y="48" width="198" height="128" rx="4"/>
+    <text class="t-h" x="38" y="70">The change bus</text>
+    <text class="t-n" x="38" y="90">run on the owner's user topic,</text>
+    <text class="t-n" x="38" y="105">every session write and</text>
+    <text class="t-n" x="38" y="120">request write but items</text>
+    <text class="t-n" x="38" y="135">and state deltas</text>
+    <rect class="row" x="26" y="188" width="198" height="128" rx="4"/>
+    <text class="t-h" x="38" y="210">The session listing</text>
+    <text class="t-n" x="38" y="230">include status: each row's</text>
+    <text class="t-n" x="38" y="245">latest request status, in one</text>
+    <text class="t-n" x="38" y="260">round trip</text>
+  </g>
+  <g id="client">
+    <rect class="lane" x="242" y="16" width="218" height="312" rx="6"/>
+    <text class="t-lbl" x="256" y="36">CLIENT</text>
+    <rect class="row" x="252" y="48" width="198" height="128" rx="4"/>
+    <text class="t-h" x="264" y="70">sessions.list</text>
+    <text class="t-n" x="264" y="90">include takes status beside</text>
+    <text class="t-n" x="264" y="105">dispatch-runs</text>
+    <rect class="row" x="252" y="188" width="198" height="128" rx="4"/>
+    <text class="t-h" x="264" y="210">SessionSummary</text>
+    <text class="t-n" x="264" y="230">requestStatus on each row,</text>
+    <text class="t-n" x="264" y="245">when asked</text>
+  </g>
+  <g id="react">
+    <rect class="lane" x="468" y="16" width="218" height="312" rx="6"/>
+    <text class="t-lbl" x="482" y="36">REACT</text>
+    <rect class="row" x="478" y="48" width="198" height="128" rx="4"/>
+    <text class="t-h" x="490" y="70">useSessionList</text>
+    <text class="gone" x="490" y="90">the navigator's private leaf</text>
+    <text class="gone" x="490" y="105">read</text>
+    <text class="t-n" x="490" y="124">public, live on the user topic</text>
+    <text class="t-n" x="490" y="139">and on the tab showing</text>
+    <rect class="row" x="478" y="188" width="198" height="128" rx="4"/>
+    <text class="t-h" x="490" y="210">FlowNavigator</text>
+    <text class="gone" x="490" y="230">rows: a title or an id</text>
+    <text class="t-n" x="490" y="249">each row's state mark and how</text>
+    <text class="t-n" x="490" y="264">long ago it changed</text>
+  </g>
+  <g id="kitchen-sink">
+    <rect class="lane" x="694" y="16" width="218" height="312" rx="6"/>
+    <text class="t-lbl" x="708" y="36">KITCHEN SINK</text>
+    <rect class="row" x="704" y="48" width="198" height="128" rx="4"/>
+    <text class="t-h" x="716" y="70">The harness rail</text>
+    <text class="gone" x="716" y="90">its own read and a reads</text>
+    <text class="gone" x="716" y="105">counter</text>
+    <text class="t-n" x="716" y="124">useSessionList, with model and</text>
+    <text class="t-n" x="716" y="139">a needs-you mark</text>
+    <rect class="row" x="704" y="188" width="198" height="128" rx="4"/>
+    <text class="t-h" x="716" y="210">The Flow State page</text>
+    <text class="gone" x="716" y="230">re-reads the navigator by hand</text>
+    <text class="t-n" x="716" y="249">nothing to do: the open leaf</text>
+    <text class="t-n" x="716" y="264">is live</text>
+  </g>
+  <g id="stays">
+    <rect class="foot" x="16" y="344" width="908" height="80" rx="6"/>
+    <text class="t-lbl" x="30" y="366">LEFT AS THEY ARE</text>
+    <text class="t-b" x="30" y="388">useFlow's session list · the claude-code-style lab's list, a follow-up · the pull-request badge, D3</text>
+    <text class="t-s" x="30" y="408">Every read still goes through sessions.list with today's scoping. The session topic's notices are unchanged.</text>
+  </g>
+</svg>
