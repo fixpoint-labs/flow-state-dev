@@ -1,8 +1,8 @@
 # Flow State
 
-Flow State lets you start from a working app with a full agentic backend and make it your own. The backend is already there: workers that take on tasks, a task board they share with you, state and memory kept in your own stores, output streamed to the browser as it is written, and any model you have a key for. Use its flows as they are, or change them to fit how you work.
+Flow State gives you a working app with a full agentic backend already in place: workers that take on tasks, a task board they share with you, state and memory kept in your own stores, output streamed to the browser as it is written, and models from any provider, through the Vercel AI Gateway or your own provider key. What each worker does is a **flow**, the steps it runs, written in TypeScript you can read and edit. Use the flows as they are, or change them to fit how you work.
 
-You own the code. Nothing runs on someone else's harness, so you pick the model for each step, keep the data in systems you run, and run plain code wherever a model isn't needed.
+You own the code. You pick the model for each step and keep the data in systems you run. Where a step doesn't need a model, it runs as plain code.
 
 It is open source, written in TypeScript, and runs as a web service. It is also an early preview: the starters are research software, and each one's README lists what isn't wired yet.
 
@@ -14,12 +14,12 @@ Docs: [flow-state.dev/docs](https://flow-state.dev/docs/intro).
 
 A starter is a complete app: React pages, a team of workers, and the flows they run on. Every starter runs on the same backend packages, so what differs between them is mostly the UI and the workers' files.
 
-- **[Teammates](labs/teammates)** (`labs/teammates`): a Grok Bot-style team. Chief of Staff, researcher and writer each keep one long conversation, message each other where you can see it, and hand code changes to a coding agent (Claude Code, Codex or Cursor) that runs in the background. You can hire teammates of your own from the page.
-- **[Claude Code-style agent](labs/claude-code-style)** (`labs/claude-code-style`): one conversation driving an agent loop. The main session answers questions about your project itself and starts background tasks for the long pieces. Code changes go to a coding agent, and in threads mode a run that changed files waits for you to accept it or ask for changes.
+- **[Teammates](labs/teammates)** (`labs/teammates`): a small team you talk to one at a time. Chief of Staff, researcher and writer each keep one long conversation, message each other where you can see it, and hand code changes to a coding agent (Claude Code, Codex or Cursor) that runs in the background. You can hire teammates of your own from the page. The layout follows Grok Bot's.
+- **[Claude Code-style agent](labs/claude-code-style)** (`labs/claude-code-style`): one conversation driving an agent loop. The main session answers questions about your project itself and starts background tasks for the long pieces. Code changes go to a coding agent. In threads mode, where each request runs as a task in a session of its own, a run that changed files waits for you to accept it or ask for changes.
 
 Shift Manager, an app for working a whole team's asks, tasks and workstreams, is in progress. An early version is in [`packages/shift-manager`](packages/shift-manager), where several screens are placeholders; see its [docs](https://flow-state.dev/docs/shift-manager/overview).
 
-For now the starters run from a clone of this repository. They are workspace packages that depend on the framework's source, not something you install from npm.
+The starters run from a clone of this repository. They are workspace packages that depend on the framework's source, not something you install from npm. To build your own app on one, fork this repository and work in the starter's folder (`labs/<starter>`). Pulling framework updates is a normal `git pull` from upstream.
 
 ## Run a starter
 
@@ -41,7 +41,7 @@ Set keys in your shell or in a `.env.local` at the repository root:
 
 | Key | Needed for |
 | --- | --- |
-| `AI_GATEWAY_API_KEY` | The model every worker answers on. Both starters need it. |
+| `AI_GATEWAY_API_KEY` | The model every worker answers on, through the [Vercel AI Gateway](https://vercel.com/docs/ai-gateway). Both starters default to OpenAI models, so an `OPENAI_API_KEY` works in its place. See [Setting up models](https://flow-state.dev/docs/getting-started/setting-up-models). |
 | Claude Code signed in, or `ANTHROPIC_API_KEY` | Coding tasks on Claude Code. The Claude Code-style starter's default coder runs on it. |
 | Codex signed in (`codex login`), or `CODEX_API_KEY` | Coding tasks on Codex. |
 | Cursor signed in, or `CURSOR_API_KEY` | Coding tasks on Cursor. Teammates' default coder runs on it. |
@@ -101,14 +101,14 @@ pnpm add @flow-state-dev/core @flow-state-dev/engine zod
 
 ## Underneath
 
-The starters are built on a foundation you can use directly. You compose **blocks**, typed units that range from a model call to plain code, checks and routing, into **flows**, sets of named actions a client can call. State and documents are typed and scoped to a session, user or org, on the store you choose. Runs are durable, so long work survives a restart and resumes where it stopped. You pick the model per block, and loops and coding runs stop at the limits you set. On the front end, a client SDK and React hooks read the same types, and the DevTool shows every run as it happens.
+The starters are built on a foundation you can use directly. You compose **blocks**, typed units that range from a model call to plain code, checks and routing, into flows. A flow exposes named actions, each running a block, that a client can call, and every worker runs on a flow. State and documents are typed and scoped to a session, user or org, on the store you choose. Runs are durable, so long work survives a restart and resumes where it stopped. You pick the model per block, and loops and coding runs stop at the limits you set. On the front end, a client SDK and React hooks read the same types, and the DevTool shows every run as it happens.
 
 Everything is published under `@flow-state-dev/`. Install only what you use.
 
 | Group | Packages |
 | --- | --- |
 | **Core** | [`core`](packages/core) (blocks, flows, types), [`engine`](packages/engine) (runtime, stores, streaming, HTTP routes), [`client`](packages/client) (API client for browsers and Node), [`react`](packages/react) (hooks and renderers), [`contracts`](packages/contracts) (shared item types, re-exported by `core`) |
-| **Workers and tasks** | [`orchestration`](packages/orchestration) (task board, skills), [`workforce`](packages/workforce) (workers and `WORKER.md`), [`workspace`](packages/workspace) (a directory a worker edits files in), [`harness-manager`](packages/harness-manager) (a task run as a supervised coding session), [`shift-manager`](packages/shift-manager) (browser app for a team) |
+| **Workers and tasks** | [`orchestration`](packages/orchestration) (task board, skills), [`workforce`](packages/workforce) (workers and `WORKER.md`), [`workspace`](packages/workspace) (a directory a worker edits files in), [`harness-manager`](packages/harness-manager) (runs a task on a coding agent in its own checkout and checks the result before the task completes), [`shift-manager`](packages/shift-manager) (browser app for a team) |
 | **Coding agents** | [`claude-code`](packages/claude-code), [`codex`](packages/codex), [`cursor`](packages/cursor) |
 | **Building blocks** | [`memory`](packages/memory), [`tools`](packages/tools), [`patterns`](packages/patterns) |
 | **Hosting** | [`next`](packages/next), [`vercel`](packages/vercel), [`node`](packages/node), [`bullmq`](packages/bullmq) (durable background jobs and cron) |
