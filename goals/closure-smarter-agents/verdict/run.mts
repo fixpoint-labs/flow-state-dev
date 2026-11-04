@@ -16,7 +16,7 @@
  */
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { REPO_ROOT, runGoal } from "../../lib/index.mts";
+import { runGoal } from "../../lib/index.mts";
 import { ALL_APPS, ASKS, cellsFor, controlFails, passesEverywhere, RUNS, sweepGuidance, type App, type Sheet } from "../asks.mts";
 import { closurePass, sheetFile } from "../closure.mts";
 
