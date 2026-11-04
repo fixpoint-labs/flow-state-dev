@@ -21,5 +21,5 @@ export {
   type RecordedWork,
   type RecordedWorkClient,
 } from "./recorded-work";
-export { reviewDetail, type ReviewDetail } from "./review-detail";
+export { reviewDetail, type ReviewDetail, type ReviewLand } from "./review-detail";
 export { shellWord, workPlace, type WorkPlace, type WorkPlaceCommands, type WorkPlaceViewer } from "./work-place";

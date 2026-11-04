@@ -68,3 +68,34 @@ describe("a coding task's popup answers what its run waits on you for", () => {
     expect(within(popup).queryByRole("region", { name: "Ready for review" })).toBeNull();
   });
 });
+
+describe("accepting a coding task's review says where its work goes (FIX-2543)", () => {
+  it("offers Open a PR and Merge locally; a merge that conflicts shows the error and a Retry, and a PR after it shows its link and what's next", async () => {
+    render(<App adapter={fast({ review: true, lands: true })} />);
+    const popup = await fileCodingTask();
+
+    const review = await within(popup).findByRole("region", { name: "Ready for review" }, { timeout: 3000 });
+    // Two clearly labelled ways to accept, and no bare Accept.
+    expect(within(review).getByRole("button", { name: "Accept: Open a PR" })).toBeTruthy();
+    expect(within(review).queryByRole("button", { name: "Accept" })).toBeNull();
+    fireEvent.click(within(review).getByRole("button", { name: "Accept: Merge locally" }));
+
+    // The merge conflicted: the error, a Retry of it, and the other way.
+    const again = await waitFor(
+      () => {
+        const card = within(popup).getByRole("region", { name: "Ready for review" });
+        expect(within(card).getByRole("alert").textContent).toMatch(/Merging locally failed: Merging conflicts in README\.md/);
+        return card;
+      },
+      { timeout: 3000 },
+    );
+    expect(within(again).getByRole("button", { name: "Retry: Merge locally" })).toBeTruthy();
+    fireEvent.click(within(again).getByRole("button", { name: "Accept: Open a PR" }));
+
+    const result = await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
+    await waitFor(() => expect(result.textContent).toMatch(/Opened pull request #7 into main\. Next: review and merge it\./));
+    expect(within(result).getByRole("link", { name: "pull request #7" }).getAttribute("href")).toBe("https://github.com/acme/relay/pull/7");
+    // The task's row in the thread says it too.
+    expect(within(conversation()).getByRole("button", { name: `${TASK}, on Cursor` }).textContent).toMatch(/PR #7/);
+  }, 20_000);
+});

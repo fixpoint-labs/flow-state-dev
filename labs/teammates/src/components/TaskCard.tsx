@@ -44,6 +44,11 @@ export const TaskCard = memo(function TaskCard({
       )}
       <span className="min-w-0 flex-1 truncate">{line}</span>
       {on === undefined ? null : <RunsOn on={on} />}
+      {task.landed === undefined ? null : (
+        <span data-task-landed={task.landed.kind} className="shrink-0 text-xs text-muted-foreground">
+          {task.landed.kind === "pull-request" ? `PR #${task.landed.number}` : `merged into ${task.landed.branch}`}
+        </span>
+      )}
       <span className={cn("shrink-0 text-xs", task.status === "failed" ? "text-destructive" : "text-muted-foreground")} data-task-status>
         {task.status}
       </span>

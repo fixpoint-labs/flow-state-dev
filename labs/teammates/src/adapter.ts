@@ -66,6 +66,7 @@ import {
 import { isTerminalStatus, parseNotice, taskSpendView, taskSpendViewSchema } from "@flow-state-dev/orchestration/tasks";
 import { createInboxClient, inboxItems, taskRowView, type InboxAnswer, type InboxHold, type InboxRow } from "@flow-state-dev/orchestration/inbox";
 import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import type { LandedWork, ReviewLand } from "./components/flow-state/review-hold";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
 import { harnessName } from "./lib/harness";
@@ -122,6 +123,8 @@ export interface BoardTask {
   model?: string;
   /** What it waits on you for, while something does: its oldest open hold. */
   waiting?: TaskWaiting;
+  /** For an accepted coding task, where its work went: the pull request opened, or the merge into your checkout. */
+  landed?: LandedWork;
 }
 
 /**
@@ -138,8 +141,8 @@ export interface TaskWaiting {
 /** A coding run's review: its branch, commits and the judge's verdict. */
 export type { ReviewDetail };
 
-/** Your answer to what a task waits on: the words to a question, or a review's verdict. */
-export type TaskAnswer = { text: string } | { verdict: "accepted" } | { verdict: "revise"; words: string };
+/** Your answer to what a task waits on: the words to a question, or a review's verdict, an accept naming how its work lands. */
+export type TaskAnswer = { text: string } | { verdict: "accepted"; land?: ReviewLand } | { verdict: "revise"; words: string };
 
 /**
  * One step of a session as a popup draws it: a line given to the worker (a
@@ -522,7 +525,21 @@ export function toBoardTask(
     ...(typeof row.run?.sessionId === "string" ? { runSessionId: row.run.sessionId } : {}),
     ...harnessAndModel(spendOf(row), harnessOf(row.assignee ?? "")),
     ...waitingOf(row, holds),
+    ...landedOf(row.output?.landed),
   };
+}
+
+/** Where an accepted run's work went, from harness-manager's output, or nothing when it names none readable. */
+function landedOf(value: unknown): { landed?: LandedWork } {
+  if (typeof value !== "object" || value === null) return {};
+  const v = value as Record<string, unknown>;
+  if (v.kind === "pull-request" && typeof v.url === "string" && typeof v.number === "number" && typeof v.branch === "string" && typeof v.base === "string") {
+    return { landed: { kind: "pull-request", url: v.url, number: v.number, branch: v.branch, base: v.base } };
+  }
+  if (v.kind === "merge" && typeof v.branch === "string" && typeof v.commit === "string" && typeof v.checkout === "string" && typeof v.from === "string") {
+    return { landed: { kind: "merge", branch: v.branch, commit: v.commit, checkout: v.checkout, from: v.from } };
+  }
+  return {};
 }
 
 /** What a row waits on you for, as `taskRowView` reads it: its oldest open hold, or nothing. */
@@ -564,7 +581,8 @@ export function reviewOf(items: readonly Item[]): ReviewDetail | undefined {
 /** A {@link TaskAnswer} as the Inbox client's answer for the hold it answers. */
 function inboxAnswerOf(answer: TaskAnswer): InboxAnswer {
   if ("text" in answer) return { text: answer.text };
-  return { value: answer.verdict === "accepted" ? { verdict: "accepted" } : { verdict: "revise", words: answer.words } };
+  if (answer.verdict === "revise") return { value: { verdict: "revise", words: answer.words } };
+  return { value: answer.land === undefined ? { verdict: "accepted" } : { verdict: "accepted", land: answer.land } };
 }
 
 /** The harness by its name (the run's, else the worker's), and the run's model. */

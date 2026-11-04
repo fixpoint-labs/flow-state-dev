@@ -15,8 +15,10 @@
  * A run that committed waits for your review before its task completes
  * (harness-manager's `reviewChanges`): the task's popup shows its commits and
  * the judge's verdict (`goalJudge`, which reads the run against the task's
- * goal first), with **Accept** and **Ask for changes**. Your words go to the
- * same coding session for one more run, which you review again.
+ * goal first), with **Ask for changes** and two ways to accept: **Open a PR**
+ * and **Merge locally** (harness-manager's `land`, through the host's
+ * `WorkspaceHost.land`). Your words go to the same coding session for one
+ * more run, which you review again.
  *
  * Where a run works comes from the host's workspace, whose source is the
  * lab's one working folder: every run gets a worktree of it. With `checks`,

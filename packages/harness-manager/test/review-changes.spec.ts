@@ -5,14 +5,14 @@
  * answer route as a screen sends them. Only the harness is a stub, and it
  * records what each step was handed.
  */
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { heard } from "./heard";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { z } from "zod";
-import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
+import { OBSERVED_PULL_REQUESTS, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
 import type { BlockContext, HarnessBlock } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
@@ -107,12 +107,18 @@ function scriptedJudge(verdict: HarnessJudgeVerdict) {
   };
 }
 
-function host(options: { script: Step[]; reviewChanges?: boolean; durable?: boolean; userDeadlineMs?: number }) {
+function host(options: { script: Step[]; reviewChanges?: boolean; durable?: boolean; userDeadlineMs?: number; remote?: boolean }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-review-"));
   dirs.push(dir);
   const sourceRepo = join(dir, "repo");
   mkdirSync(sourceRepo, { recursive: true });
   seedRepo(sourceRepo);
+  // A bare repository on disk as `origin`, set before the host pins it, for an accept that pushes.
+  const remote = join(dir, "origin.git");
+  if (options.remote === true) {
+    execFileSync("git", ["clone", "-q", "--bare", sourceRepo, remote]);
+    execFileSync("git", ["remote", "set-url", "origin", remote], { cwd: sourceRepo });
+  }
 
   const ledger = defineTaskCollection({ id: BOARD_ID, scope: "org" as const, stateSchema: harnessTaskInputSchema });
   const seen: SeenStep[] = [];
@@ -272,7 +278,27 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
     await until((t) => t.status === "pending", "the failed try back on the board");
     await act("drain");
   };
-  return { act, row, until, review, stop, reviewData, readChanges, waiting, answer, start, retry, seen, dispose: () => state.dispose() };
+  /** The run session's pull request record (FIX-2268), as a reader of the session reads it. */
+  const pullRequests = async (sessionId: string) =>
+    Object.keys(await (await runtime()).stores.resourceState.getByPrefix("session", sessionId, `${OBSERVED_PULL_REQUESTS}/`));
+  return {
+    act,
+    row,
+    until,
+    review,
+    stop,
+    reviewData,
+    readChanges,
+    waiting,
+    answer,
+    start,
+    retry,
+    seen,
+    sourceRepo,
+    remote,
+    pullRequests,
+    dispose: () => state.dispose(),
+  };
 }
 
 describe("a coding run that made changes waits for a person's review", () => {
@@ -288,7 +314,15 @@ describe("a coding run that made changes waits for a person's review", () => {
       expect(hold.ask.prompt).toContain("information, not approval");
       // The browser reader takes the stop's own data as the review card's props, so its field names can't drift apart.
       const detail = reviewDetail((await h.stop(hold))?.data);
-      expect(detail).toEqual({ branch: expect.any(String), commits: 1, subjects: ["Change 1"], judge: null });
+      expect(detail).toEqual({
+        branch: expect.any(String),
+        commits: 1,
+        subjects: ["Change 1"],
+        judge: null,
+        // This host can land an accept either way (FIX-2543).
+        lands: ["pull-request", "merge"],
+        landFailed: null,
+      });
       expect(hold.ask.prompt).toContain(`1 commit on ${detail!.branch}`);
       expect(held.attempts).toBe(1);
       expect(h.seen).toHaveLength(1);
@@ -534,5 +568,150 @@ describe("a judged run on a board read from the claim, with review on", () => {
     expect(row.status).toBe("in_progress");
     expect(openRowHolds(row).map((h) => h.ask.prompt)).toEqual(["which repository did you mean?"]);
     expect(row.holds?.some((h) => h.source.kind === "suspension")).toBe(false);
+  }, 60_000);
+});
+
+describe("an accepted run's work lands where the person chose (FIX-2543)", () => {
+  const PR_URL = "https://github.com/acme/widgets/pull/42";
+  const PATH = process.env.PATH;
+  let ghLog: string;
+  const ghCalls = () => (existsSync(ghLog) ? readFileSync(ghLog, "utf8").trim().split("\n") : []);
+  const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+  const isAncestor = (cwd: string, commit: string, ref: string) => {
+    try {
+      git(cwd, "merge-base", "--is-ancestor", commit, ref);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // `gh` is a stub on PATH: it logs each call, finds no pull request open, and prints a link for one it opens.
+  beforeAll(() => {
+    const bin = mkdtempSync(join(tmpdir(), "harness-manager-land-gh-"));
+    dirs.push(bin);
+    ghLog = join(bin, "calls.log");
+    writeFileSync(
+      join(bin, "gh"),
+      `#!/usr/bin/env node
+const args = process.argv.slice(2);
+require("node:fs").appendFileSync(${JSON.stringify(ghLog)}, args.join(" ") + "\\n");
+process.stdout.write(args[0] === "pr" && args[1] === "create" ? ${JSON.stringify(PR_URL)} + "\\n" : "[]");
+`,
+    );
+    chmodSync(join(bin, "gh"), 0o755);
+    process.env.PATH = `${bin}${delimiter}${PATH ?? ""}`;
+  });
+  afterAll(() => {
+    process.env.PATH = PATH;
+  });
+
+  it("offers both ways on the review: open a pull request, or merge locally", async () => {
+    const h = host({ script: ["commits"], remote: true });
+    try {
+      await h.start();
+      const held = await h.until(h.waiting, "the review");
+      expect(reviewDetail((await h.stop(h.review(held)!))?.data)).toMatchObject({ lands: ["pull-request", "merge"], landFailed: null });
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("on Open a PR, pushes the run's branch, opens its pull request, and puts the link on the task and the session's record", async () => {
+    const h = host({ script: ["commits"], remote: true });
+    try {
+      await h.start();
+      const held = await h.until(h.waiting, "the review");
+      const branch = reviewDetail((await h.stop(h.review(held)!))?.data)!.branch!;
+      expect((await h.answer({ verdict: "accepted", land: "pull-request" })).status).toBe(202);
+      const done = await h.until((t) => t.status === "completed", "the accept to land and complete it");
+
+      // pushed: the run's commit is on the remote's copy of its branch.
+      expect(git(h.remote, "rev-parse", `refs/heads/${branch}`)).toBe(git(h.seen[0]!.cwd, "rev-parse", "HEAD"));
+      // opened: gh was asked to open it from the run's branch into the base.
+      expect(ghCalls().some((call) => call.startsWith("pr create") && call.includes(`--head ${branch}`) && call.includes("--base main"))).toBe(true);
+      expect(done.output).toMatchObject({
+        review: "accepted",
+        landed: { kind: "pull-request", url: PR_URL, number: 42, branch, base: "main" },
+      });
+      expect(await h.pullRequests(done.run!.sessionId!)).toEqual([`${OBSERVED_PULL_REQUESTS}/github.com/acme/widgets/42`]);
+      expect(h.seen).toHaveLength(1);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("on Merge locally, lands the run's commit on the base branch of the person's checkout, and says the branch and commit", async () => {
+    const h = host({ script: ["commits"] });
+    try {
+      await h.start();
+      await h.until(h.waiting, "the review");
+      const commit = git(h.seen[0]!.cwd, "rev-parse", "HEAD");
+      expect((await h.answer({ verdict: "accepted", land: "merge" })).status).toBe(202);
+      const done = await h.until((t) => t.status === "completed", "the accept to merge and complete it");
+
+      expect(isAncestor(h.sourceRepo, commit, "refs/heads/main")).toBe(true);
+      expect(done.output).toMatchObject({
+        review: "accepted",
+        landed: { kind: "merge", branch: "main", commit: git(h.sourceRepo, "rev-parse", "main"), checkout: h.sourceRepo },
+      });
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("stops a merge that conflicts, asks again with the error and nothing changed, and a pull request after it lands", async () => {
+    const h = host({ script: ["commits"], remote: true });
+    try {
+      await h.start();
+      const first = await h.until(h.waiting, "the review");
+      // The person's main changed the same file meanwhile.
+      writeFileSync(join(h.sourceRepo, "change-1.txt"), "the person's own line\n");
+      git(h.sourceRepo, "add", "change-1.txt");
+      git(h.sourceRepo, "-c", "user.name=p", "-c", "user.email=p@p", "commit", "-q", "-m", "The person's change");
+      const main = git(h.sourceRepo, "rev-parse", "main");
+      const commit = git(h.seen[0]!.cwd, "rev-parse", "HEAD");
+
+      await h.answer({ verdict: "accepted", land: "merge" });
+      const again = await h.until((t) => h.waiting(t) && h.review(t)!.id !== h.review(first)!.id, "the review asked again");
+
+      expect(again.status).toBe("in_progress");
+      expect(h.review(again)!.ask.prompt).toContain("Merging locally failed");
+      expect(h.review(again)!.ask.prompt).toContain("change-1.txt");
+      expect(reviewDetail((await h.stop(h.review(again)!))?.data)?.landFailed).toMatchObject({ land: "merge" });
+      // Nothing resolved and nothing lost: main is where it was, the run's commit still on its branch.
+      expect(git(h.sourceRepo, "rev-parse", "main")).toBe(main);
+      expect(git(h.sourceRepo, "status", "--porcelain", "--untracked-files=no")).toBe("");
+      expect(git(h.seen[0]!.cwd, "rev-parse", "HEAD")).toBe(commit);
+
+      await h.answer({ verdict: "accepted", land: "pull-request" });
+      const done = await h.until((t) => t.status === "completed", "the pull request after the conflict");
+      expect(done.output).toMatchObject({ landed: { kind: "pull-request", url: PR_URL } });
+      expect(h.seen).toHaveLength(1);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("asks again when the push fails, keeping the run's commit, and a retry once the remote is back lands", async () => {
+    const h = host({ script: ["commits"], remote: true });
+    try {
+      await h.start();
+      const first = await h.until(h.waiting, "the review");
+      rmSync(h.remote, { recursive: true, force: true });
+
+      await h.answer({ verdict: "accepted", land: "pull-request" });
+      const again = await h.until((t) => h.waiting(t) && h.review(t)!.id !== h.review(first)!.id, "the review asked again");
+      expect(h.review(again)!.ask.prompt).toContain("Opening the pull request failed");
+      expect(existsSync(h.seen[0]!.cwd)).toBe(true);
+
+      execFileSync("git", ["init", "-q", "--bare", h.remote]);
+      await h.answer({ verdict: "accepted", land: "pull-request" });
+      const done = await h.until((t) => t.status === "completed", "the retry to land");
+      expect(done.output).toMatchObject({ landed: { kind: "pull-request", url: PR_URL } });
+      expect(git(h.remote, "rev-parse", `refs/heads/${(done.output as { branch: string }).branch}`)).toBe(git(h.seen[0]!.cwd, "rev-parse", "HEAD"));
+    } finally {
+      await h.dispose();
+    }
   }, 60_000);
 });

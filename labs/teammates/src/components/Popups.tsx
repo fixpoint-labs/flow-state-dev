@@ -3,7 +3,7 @@ import type { BoardTask, LabAdapter, TalkRow } from "../adapter";
 import type { Look } from "../lib/looks";
 import { useWatch } from "../lib/use-watch";
 import { Avatar } from "./Avatar";
-import { ReviewHold } from "./flow-state/review-hold";
+import { LandedOutcome, ReviewHold } from "./flow-state/review-hold";
 import { SessionPopup, Steps } from "./SessionPopup";
 
 /** What a popup shows: a task one conversation filed, or one message a worker sent. */
@@ -100,9 +100,10 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, onClose, onMissin
       {/* The result leads; how the run got there is below it. */}
       {task?.waiting?.kind === "review" ? <TaskReview adapter={adapter} sessionId={popup.sessionId} task={task} /> : null}
       {task?.waiting?.kind === "question" ? <TaskQuestion adapter={adapter} sessionId={popup.sessionId} task={task} /> : null}
-      {task?.result ? (
+      {task?.result || task?.landed ? (
         <section aria-label="Result" data-step="result" className="rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-2 text-sm whitespace-pre-wrap">
           {task.result}
+          {task.landed === undefined ? null : <LandedOutcome landed={task.landed} />}
         </section>
       ) : null}
       <Steps steps={steps} nameOf={nameOf} empty={starting} />

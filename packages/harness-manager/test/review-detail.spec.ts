@@ -15,6 +15,20 @@ describe("reviewDetail", () => {
       commits: 2,
       subjects: ["B", "A"],
       judge,
+      lands: [],
+      landFailed: null,
+    });
+  });
+
+  it("reads the ways an accept can land, and the last landing that failed, dropping what it can't read", () => {
+    const failed = { land: "merge", message: "Merging conflicts in a.txt." };
+    expect(reviewDetail({ branch: "b", lands: ["pull-request", "merge", "deploy", 3], landFailed: failed })).toMatchObject({
+      lands: ["pull-request", "merge"],
+      landFailed: failed,
+    });
+    expect(reviewDetail({ branch: "b", lands: "merge", landFailed: { land: "deploy", message: "x" } })).toMatchObject({
+      lands: [],
+      landFailed: null,
     });
   });
 
@@ -33,6 +47,8 @@ describe("reviewDetail", () => {
       commits: null,
       subjects: ["ok"],
       judge: null,
+      lands: [],
+      landFailed: null,
     });
     expect(reviewDetail({ branch: "b", commits: -1 })?.commits).toBeNull();
     expect(reviewDetail({ commits: null, judge: { verdict: "not_done", confidence: 0.4 } })).toEqual({
@@ -40,6 +56,8 @@ describe("reviewDetail", () => {
       commits: null,
       subjects: [],
       judge: { verdict: "not_done", confidence: 0.4, reason: "" },
+      lands: [],
+      landFailed: null,
     });
   });
 });
