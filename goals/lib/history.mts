@@ -26,6 +26,30 @@ export async function summaryAsSeen(client: { sessions: { state(sessionId: strin
   return snapshot.resources?.session?.historySummary?.clientData;
 }
 
+/** A session's request as the requests route lists it, as far as the window needs it. */
+type WindowRequest = { id: string; createdAt?: number; startedAtMs?: number; historyStart?: { requestId?: string } | null };
+
+/**
+ * The history window the server applied to a session's latest request, in
+ * turns, read off the session's own record: the requests from the one its
+ * `historyStart` names up to the latest. `undefined` while the latest request
+ * carries no `historyStart`, which is while every earlier turn still fits.
+ * A goal reads the window this way, never as a constant, because no route
+ * serves a flow's `historyWindow` setting.
+ */
+export function historyWindowOf(requests: readonly WindowRequest[]): number | undefined {
+  const ordered = [...requests].sort((a, b) => (a.startedAtMs ?? a.createdAt ?? 0) - (b.startedAtMs ?? b.createdAt ?? 0));
+  const start = ordered.at(-1)?.historyStart?.requestId;
+  if (start === undefined) return undefined;
+  const from = ordered.findIndex((r) => r.id === start);
+  return from < 0 ? undefined : ordered.length - 1 - from;
+}
+
+/** {@link historyWindowOf} for a session, read over the client. */
+export async function sessionWindow(client: SessionReads, sessionId: string): Promise<number | undefined> {
+  return historyWindowOf((await client.sessions.requests(sessionId, { limit: 200 })) as WindowRequest[]);
+}
+
 /**
  * A session's fold, as two records agree on it: the summary counts at least
  * one fold, and the session's latest request carries a `historyStart` naming

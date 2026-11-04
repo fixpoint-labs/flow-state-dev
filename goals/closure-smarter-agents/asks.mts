@@ -117,62 +117,72 @@ export function gradeMultiFile(turn: Turn, fx: Fixtures["multiFile"]): Graded {
   return out;
 }
 
+/** The path a fetch call's `url` argument names, without a trailing slash; `undefined` when it names none. */
+function fetchedPath(input: string | undefined): string | undefined {
+  try {
+    const url = (JSON.parse(input ?? "") as { url?: unknown }).url;
+    return typeof url === "string" ? new URL(url).pathname.replace(/\/+$/, "") : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Multi-file, where no fresh value can be planted (Kitchen Sink's published
  * docs): one request, every page the answer needs was fetched in this turn,
- * and the reply states each fact. A fact the worker knew without reading
- * fails on the fetch, so no cell passes without reading.
+ * and the reply states each fact. A page counts as read only when a call of
+ * `fetchTool` (the app's page-fetch tool, named by its driver) succeeded with
+ * that page as its `url`; a search that mentions the page reads nothing. A
+ * fact the worker knew without reading fails on the fetch.
  */
-export function gradePagesRead(turn: Turn, fx: Fixtures["pages"]): Graded {
+export function gradePagesRead(turn: Turn, fx: Fixtures["pages"], fetchTool: string): Graded {
   const out: Graded = [];
   if (turn.requests !== 1) out.push(`multi-file: took ${turn.requests} requests, not one turn`);
-  const fetched = succeeded(turn).map((t) => t.input ?? "").join("\n");
-  const unread = fx.pages.filter((page) => !fetched.includes(page));
+  const fetched = new Set(
+    succeeded(turn)
+      .filter((t) => t.name === fetchTool)
+      .map((t) => fetchedPath(t.input)),
+  );
+  const unread = fx.pages.filter((page) => !fetched.has(page));
   if (unread.length > 0) out.push(`multi-file: the turn never fetched ${unread.join(", ")} (of ${fx.pages.length} pages)`);
   const unsaid = fx.facts.filter((fact) => !fact.test(turn.reply));
   if (unsaid.length > 0) out.push(`multi-file: the reply lacks ${unsaid.map(String).join(", ")}: ${clip(turn.reply)}`);
   return out;
 }
 
-/**
- * The commands a coder's report names: inline code spans, then bare
- * `pnpm|npm|node|…` commands in the text outside them. A bare command keeps
- * a dot inside an argument (`check.mjs`) and ends at a sentence's full stop.
- */
-function commandsNamed(report: string): string[] {
-  const spanned = /`([^`\n]+)`/g;
-  const spans = [...report.matchAll(spanned)].map((m) => m[1]!.trim());
-  const outside = report.replace(spanned, " ");
-  const bare = [...outside.matchAll(/\b((?:pnpm|npm|npx|yarn|node|tsc|vitest|make|pytest|cargo|go)\b(?:[^\n.,;:)]|\.(?=\S))*)/g)].map((m) => m[1]!.trim());
+/** Code spans in a report that read as a command (`pnpm …`, `node …`, …): the only way a report can name a check the record lacks. */
+function commandSpans(report: string): string[] {
   const runner = /^(?:pnpm|npm|npx|yarn|node|tsc|vitest|make|pytest|cargo|go)\b/;
-  return [...new Set([...spans, ...bare].filter((c) => runner.test(c)))];
+  return [...new Set([...report.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]!.trim()).filter((c) => runner.test(c)))];
 }
 const norm = (c: string) => c.replace(/\s+/g, " ").trim();
 
 /**
- * Coder: the report names at least one check, and each check it names is in
- * the record with the outcome the report gives it. A `null` record fails.
+ * Coder, graded from the record outward: each check the run recorded that
+ * the report names (its command appears in the report) must have the
+ * outcome the report gives it, and at least one must be named. Prose is
+ * never parsed into a command: only a code span can name a check the record
+ * lacks, and that fails. A `null` record fails.
  */
 export function gradeCoder(turn: Turn): Graded {
   if (turn.checks == null) return ["coder: the run recorded no checks (null)"];
-  const named = commandsNamed(turn.reply);
-  if (named.length === 0) return [`coder: the report names no check: ${clip(turn.reply)}`];
+  const report = norm(turn.reply);
   const out: Graded = [];
-  for (const command of named) {
-    const ran = turn.checks.find((c) => norm(c.command) === norm(command) || norm(c.command).endsWith(norm(command)));
-    if (ran === undefined) {
-      out.push(`coder: the report names \`${command}\`, which did not run`);
-      continue;
-    }
-    const said = outcomeSaid(turn.reply, command);
-    if (said === undefined) out.push(`coder: the report names \`${command}\` but not its result`);
-    else if (said !== ran.ok) out.push(`coder: the report says \`${command}\` ${said ? "passed" : "failed"}; it ${ran.ok ? "passed" : "failed"}`);
+  for (const span of commandSpans(turn.reply)) {
+    if (!turn.checks.some((c) => norm(c.command) === norm(span) || norm(c.command).endsWith(norm(span)))) out.push(`coder: the report names \`${span}\`, which did not run`);
+  }
+  const named = turn.checks.filter((c) => report.includes(norm(c.command)));
+  if (named.length === 0 && out.length === 0) return [`coder: the report names no check the run recorded: ${clip(turn.reply)}`];
+  for (const ran of named) {
+    const said = outcomeSaid(turn.reply, norm(ran.command));
+    if (said === undefined) out.push(`coder: the report names \`${ran.command}\` but not its result`);
+    else if (said !== ran.ok) out.push(`coder: the report says \`${ran.command}\` ${said ? "passed" : "failed"}; it ${ran.ok ? "passed" : "failed"}`);
   }
   return out;
 }
 /** The outcome the sentence naming `command` gives it, if any. */
 function outcomeSaid(report: string, command: string): boolean | undefined {
-  const sentence = report.split(/(?<=[.!?\n])\s+/).find((s) => s.includes(command));
+  const sentence = report.split(/(?<=[.!?\n])\s+/).map(norm).find((s) => s.includes(command));
   if (sentence === undefined) return undefined;
   if (/\b(fail(?:s|ed|ing)?|red|error(?:s|ed)?|broke)\b/i.test(sentence)) return false;
   if (/\b(pass(?:es|ed)?|green|ok|succeed(?:s|ed)?|clean)\b|✓/i.test(sentence)) return true;

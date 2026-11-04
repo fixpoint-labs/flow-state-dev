@@ -40,6 +40,8 @@ const workerDir = (root: string, name: string) => join(tree(root), "teams", "sup
 
 const driver: AppDriver = {
   app: "kitchen-sink",
+  // `@flow-state-dev/tools`' fetch block, as the specialist's tool calls record it.
+  pageFetchTool: "fetch",
   plant: (d, p) => Object.assign({}, ...SPECIALISTS.map((name) => skillFiles(workerDir(p.root, name), d.skill, p.switches))),
   start: async (d, p, scratch) => {
     const repo = gitRepository(join(scratch, "repo"), { [d.coder.file]: d.coder.script });

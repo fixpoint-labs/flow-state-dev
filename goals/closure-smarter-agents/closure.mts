@@ -28,7 +28,7 @@ import { DatabaseSync } from "node:sqlite";
 import { createClient } from "@flow-state-dev/client";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { foldOf, goalTmpDir, intentFreeEnv, onClosed, REPO_ROOT, refuseIfAnswering, runGoal, sleep, stopProcessGroup, type SessionReads } from "../lib/index.mts";
+import { foldOf, goalTmpDir, sessionWindow, intentFreeEnv, onClosed, REPO_ROOT, refuseIfAnswering, runGoal, sleep, stopProcessGroup, type SessionReads } from "../lib/index.mts";
 import {
   ASKS,
   cellsFor,
@@ -389,20 +389,37 @@ export async function askWorker(
 }
 
 /**
- * The fold ask, on one conversation: the decision, then enough short turns
- * that the earliest leave the history window (`GOAL_FOLD_TURNS`, default 44
- * against the built-in worker's 50-turn window), then the question. Whether
- * a fold is in the session is read before the question is asked.
+ * The fold ask, on one conversation: the decision, then short turns until
+ * the session's own record shows its earliest turns out of the history
+ * window the server applies (`historyWindowOf`), and {@link FOLD_MARGIN}
+ * more; then the question. The window is read, never assumed. At most
+ * `GOAL_FOLD_TURNS_MAX` fillers (default 200); a window never seen leaves
+ * the fold precondition failing. Whether a fold is in the session is read
+ * before the question is asked.
  */
 export async function askAfterFold(fsd: Fsd, options: { user: string; worker: string; d: Draw }): Promise<Turn> {
-  const fillers = Number(process.env.GOAL_FOLD_TURNS ?? 44);
+  const cap = Number(process.env.GOAL_FOLD_TURNS_MAX ?? 200);
+  const reads = fsd as unknown as SessionReads;
   const opening = await askWorker(fsd, { user: options.user, worker: options.worker, line: options.d.fold.opening, quietMs: 4_000 });
-  for (let n = 1; n <= fillers; n += 1) {
-    await askWorker(fsd, { user: options.user, worker: options.worker, sessionId: opening.sessionId, line: options.d.fold.filler(n), quietMs: 4_000 });
+  let sent = 0;
+  let window: number | undefined;
+  while (sent < cap && !foldFillersPassed(sent, window)) {
+    sent += 1;
+    await askWorker(fsd, { user: options.user, worker: options.worker, sessionId: opening.sessionId, line: options.d.fold.filler(sent), quietMs: 4_000 });
+    window = await sessionWindow(reads, opening.sessionId);
   }
-  const { folded } = await foldOf(fsd as unknown as SessionReads, opening.sessionId);
+  console.error(`  fold: ${sent} fillers against a served window of ${window ?? "(none seen)"} turns`);
+  const { folded } = await foldOf(reads, opening.sessionId);
   const last = await askWorker(fsd, { user: options.user, worker: options.worker, sessionId: opening.sessionId, line: options.d.lines.fold });
   return { ...last, folded };
+}
+
+/** Filler turns sent past the served window before the fold question, so the decision is well out of it and a fold has run. */
+export const FOLD_MARGIN = 3;
+
+/** Whether `sent` filler turns have gone past the served `window` (read off the record) by the margin. No window seen yet: not past. */
+export function foldFillersPassed(sent: number, window: number | undefined): boolean {
+  return window !== undefined && sent > window && sent >= window + FOLD_MARGIN;
 }
 
 /** A turn's items as a {@link Turn}: one request, the reply, and each tool call. */
@@ -496,11 +513,18 @@ export interface AppDriver {
   plant: (d: Draw, p: ClosurePass, scratch: string) => Record<string, string>;
   /** Serve the app for one run (fresh store under `scratch`) and hand back its asks. */
   start: (d: Draw, p: ClosurePass, scratch: string) => Promise<AppRun>;
+  /**
+   * The tool the asked worker fetches a published page with, by its recorded
+   * name. Set, the multi-file ask is the published-docs one, and a page counts
+   * as read only through a call of this tool (`gradePagesRead`).
+   */
+  pageFetchTool?: string;
 }
 
-const GRADE: Record<Ask, (turn: Turn, d: Draw, app: App) => Graded> = {
+const GRADE: Record<Ask, (turn: Turn, d: Draw, driver: AppDriver) => Graded> = {
   date: (turn) => gradeDate(turn),
-  multiFile: (turn, d, app) => (app === "kitchen-sink" ? gradePagesRead(turn, d.fixtures.pages) : gradeMultiFile(turn, d.fixtures.multiFile)),
+  multiFile: (turn, d, driver) =>
+    driver.pageFetchTool === undefined ? gradeMultiFile(turn, d.fixtures.multiFile) : gradePagesRead(turn, d.fixtures.pages, driver.pageFetchTool),
   coder: (turn) => gradeCoder(turn),
   knowledge: (turn, d) => gradeKnowledge(turn, d.fixtures.knowledge),
   sizing: (turn, d) => gradeSizing(turn, d.fixtures.sizing),
@@ -559,7 +583,7 @@ export async function runClosure(driver: AppDriver): Promise<void> {
             const record = run.asks[ask];
             if (record === undefined) throw new Error(`setup: ${driver.app} has no driver for the ${ask} ask`);
             const turn = await record(d);
-            const graded = GRADE[ask](turn, d, driver.app);
+            const graded = GRADE[ask](turn, d, driver);
             ((sheet[ask] ??= {})[driver.app] ??= []).push(graded);
             for (const line of graded) failures.push(`${ask} · run ${n} · ${line}`);
             notes.push(`${ask} run ${n}: ${graded.length === 0 ? "pass" : "FAIL"}`);

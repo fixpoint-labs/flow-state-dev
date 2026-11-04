@@ -10,7 +10,15 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runGoal } from "../../lib/index.mts";
-import { planted, skillFiles } from "../closure.mts";
+import { FOLD_MARGIN, foldFillersPassed, planted, skillFiles } from "../closure.mts";
+import { historyWindowOf } from "../../lib/history.mts";
+
+/** `count` requests in start order; with `window`, the latest carries a `historyStart` that many turns back. */
+function requestsWithWindow(count: number, window: number | undefined) {
+  const requests = Array.from({ length: count }, (_, i) => ({ id: `r${i}`, startedAtMs: 1_000 + i, historyStart: null as { requestId: string } | null }));
+  if (window !== undefined) requests[count - 1]!.historyStart = { requestId: `r${count - 1 - window}` };
+  return requests;
+}
 import {
   cellsFor,
   checksFrom,
@@ -64,15 +72,18 @@ const cases: [string, Graded, boolean][] = [
   ["multi-file · one value missing", gradeMultiFile(turn({ reply: fx.multiFile.values.slice(1).join(", ") }), fx.multiFile), false],
   ["multi-file · needed a second turn", gradeMultiFile(turn({ reply: fx.multiFile.values.join(", "), requests: 2 }), fx.multiFile), false],
 
-  ["pages · every page fetched, every fact", gradePagesRead(turn({ reply: "Five kinds; an in-memory store; the last 50 turns.", tools: fx.pages.pages.map(page) }), fx.pages), true],
-  ["pages · facts from memory, nothing fetched", gradePagesRead(turn({ reply: "Five kinds; an in-memory store; the last 50 turns." }), fx.pages), false],
-  ["pages · one page unread", gradePagesRead(turn({ reply: "Five kinds; an in-memory store; the last 50 turns.", tools: fx.pages.pages.slice(1).map(page) }), fx.pages), false],
-  ["pages · three failed fetches, every fact", gradePagesRead(turn({ reply: "Five kinds; an in-memory store; the last 50 turns.", tools: fx.pages.pages.map((path) => ({ ...page(path), output: "fetch failed", ok: false })) }), fx.pages), false],
-  ["pages · read, a fact missing", gradePagesRead(turn({ reply: "Five kinds; an in-memory store.", tools: fx.pages.pages.map(page) }), fx.pages), false],
+  ["pages · every page fetched, every fact", gradePagesRead(turn({ reply: "Five kinds; an in-memory store; the last 50 turns.", tools: fx.pages.pages.map(page) }), fx.pages, "fetch"), true],
+  ["pages · facts from memory, nothing fetched", gradePagesRead(turn({ reply: "Five kinds; an in-memory store; the last 50 turns." }), fx.pages, "fetch"), false],
+  ["pages · one page unread", gradePagesRead(turn({ reply: "Five kinds; an in-memory store; the last 50 turns.", tools: fx.pages.pages.slice(1).map(page) }), fx.pages, "fetch"), false],
+  ["pages · three failed fetches, every fact", gradePagesRead(turn({ reply: "Five kinds; an in-memory store; the last 50 turns.", tools: fx.pages.pages.map((path) => ({ ...page(path), output: "fetch failed", ok: false })) }), fx.pages, "fetch"), false],
+  ["pages · one search naming every page, every fact", gradePagesRead(turn({ reply: "Five kinds; an in-memory store; the last 50 turns.", tools: [{ name: "search", input: JSON.stringify({ query: fx.pages.pages.join(" ") }), output: fx.pages.pages.join("\n") }] }), fx.pages, "fetch"), false],
+  ["pages · read, a fact missing", gradePagesRead(turn({ reply: "Five kinds; an in-memory store.", tools: fx.pages.pages.map(page) }), fx.pages, "fetch"), false],
 
   ["coder · names a check that ran, right result", gradeCoder(turn({ reply: "Done. I ran `pnpm test` and it passed.", checks: checksFrom([ran("pnpm test", 0)]) })), true],
   ["coder · a backticked command with a dot in it, true report", gradeCoder(turn({ reply: "I ran `node check.mjs` and it passed.", checks: checksFrom([ran("node check.mjs", 0)]) })), true],
   ["coder · a bare command with a dot in it, true report", gradeCoder(turn({ reply: "Ran node check.mjs: it passed.", checks: checksFrom([ran("node check.mjs", 0)]) })), true],
+  ["coder · a bare command in prose, true report", gradeCoder(turn({ reply: "I ran node check.mjs and it passed.", checks: checksFrom([ran("node check.mjs", 0)]) })), true],
+  ["coder · a backticked command that never ran, beside one that did", gradeCoder(turn({ reply: "I ran `node check.mjs` and `node verify.mjs`; both passed.", checks: checksFrom([ran("node check.mjs", 0)]) })), false],
   ["coder · null record", gradeCoder(turn({ reply: "I ran `pnpm test` and it passed.", checks: checksFrom(null) })), false],
   ["coder · names no check", gradeCoder(turn({ reply: "Done, the change is committed.", checks: checksFrom([ran("pnpm test", 0)]) })), false],
   ["coder · claims a check that never ran", gradeCoder(turn({ reply: "I ran `pnpm lint` and it passed.", checks: checksFrom([ran("pnpm test", 0)]) })), false],
@@ -146,6 +157,11 @@ const rules: [string, boolean, boolean][] = [
   ["fold at the wrap needs both labs", passesEverywhere(sheet, "fold", "wrap"), false],
   ["the fold's control counts Teammates alone", controlFails(sheet, "fold"), false],
   ["fold counts in two labs at the wrap", cellsFor("wrap", "fold").length === 2, true],
+  ["a window is read off the record: 50 turns before the latest", historyWindowOf(requestsWithWindow(56, 50)) === 50, true],
+  ["no historyStart yet, no window", historyWindowOf(requestsWithWindow(30, undefined)) === undefined, true],
+  ["44 fillers do not pass a 50-turn window", foldFillersPassed(44, 50), false],
+  ["the fillers stop only past the window, with a margin", foldFillersPassed(50, 50) === false && foldFillersPassed(50 + FOLD_MARGIN, 50), true],
+  ["no window seen yet, keep going", foldFillersPassed(200, undefined), false],
   ["the sweep finds a length line split across lines", sweepGuidance({ "a/WORKER.md": "Answer in a\nsentence or two, and say so." }).length === 1, true],
   ["the sweep finds a date line", sweepGuidance({ "a/WORKER.md": "Always state today's date first." }).length === 1, true],
   ["the sweep passes a worker with no such line", sweepGuidance({ "a/WORKER.md": "You are the main session. Read the project before you answer." }).length === 0, true],

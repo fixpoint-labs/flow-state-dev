@@ -30,10 +30,12 @@ draws a docs question.
 
 - **date** a date the reply names is today by the run's own clock (read at ask and reply), and no other.
 - **multi-file** one request, and every planted value is in the reply. Kitchen Sink: every page
-  the drawn question needs was fetched in that turn (its tool calls' inputs), and the reply states
-  each fact.
-- **coder** the report names at least one check, and each is in the record with the outcome the
-  report gives it (the workspace's own pass rule); a `null` record fails. The record is the run
+  the drawn question needs is the `url` of a successful call of its page-fetch tool in that turn (a
+  search that names the page reads nothing), and the reply states each fact.
+- **coder** graded from the record outward: each recorded check the report names must have the
+  outcome the report gives it (the workspace's own pass rule), and at least one must be named. Only
+  a code span can name a check the record lacks, which fails; prose is never parsed into a command.
+  A `null` record fails. The record is the run
   record's `checks` (labs, Shift Manager), or the harness session turn's (Kitchen Sink).
 - **knowledge** at least 3 lookups, and a cited source is one a lookup returned.
 - **sizing** the sum, in 50 words or fewer (D2).
@@ -76,8 +78,10 @@ GOAL_PASS=<pass>  pnpm tsx goals/closure-smarter-agents/verdict/run.mts
 ```
 
 `GOAL_ASKS=date,sizing` runs a subset (the sheet keeps the other asks only when they ran on the same commit; the verdict refuses sheets from another commit, or a mix), `GOAL_RUNS` the number of
-runs, `GOAL_COMMIT` another tree, `GOAL_SHEETS` where sheets are kept, `GOAL_FOLD_TURNS` the
-filler turns before the fold question (default 44).
+runs, `GOAL_COMMIT` another tree, `GOAL_SHEETS` where sheets are kept, `GOAL_FOLD_TURNS_MAX` the
+most filler turns before the fold question (default 200). The fold ask sends fillers until the
+session's record shows its earliest turns out of the window the server applies, then three more;
+it reads that window off the record, never assumes one.
 
 **Needs:** `AI_GATEWAY_API_KEY`; a Claude Code sign-in, on a non-root host for Kitchen Sink (its
 Claude Code mode is off as root); Kitchen Sink's multi-file and knowledge asks need its

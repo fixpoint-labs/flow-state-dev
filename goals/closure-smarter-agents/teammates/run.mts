@@ -13,7 +13,7 @@
  *
  * Run:  GOAL_PASS=cut pnpm tsx goals/closure-smarter-agents/teammates/run.mts
  *       GOAL_PASS=control (serves 0df5c85) · GOAL_PASS=wrap (sets nothing)
- *       GOAL_ASKS=date,sizing (a subset) · GOAL_RUNS · GOAL_FOLD_TURNS
+ *       GOAL_ASKS=date,sizing (a subset) · GOAL_RUNS · GOAL_FOLD_TURNS_MAX
  */
 import { join } from "node:path";
 import { askAfterFold, askWorker, clientFor, gitRepository, heldSkills, runChecks, runClosure, serveFsdev, skillFiles, type AppDriver } from "../closure.mts";
