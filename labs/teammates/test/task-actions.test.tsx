@@ -64,6 +64,22 @@ describe("a coding task's popup has its buttons", () => {
     expect(buttons(popup)).toEqual(["Retry", "Re-run on Claude Code", "Re-run on Codex"]);
   });
 
+  it("starts the row afresh when the popup moves to another task, so a draft never carries to it", async () => {
+    render(<App adapter={createFixtureLab({ speed: 0.3, asks: true })} />);
+    const cursor = await openCodingTask("Cursor");
+    fireEvent.click(within(cursor).getByRole("button", { name: "Close" }));
+    const codex = await openCodingTask("Codex");
+    await waitFor(() => expect(buttons(codex)).toEqual(["Cancel", "Steer"]), { timeout: 2000 });
+    fireEvent.change(within(codex).getByLabelText("Steer this task"), { target: { value: "Meant for Codex." } });
+
+    // The conversation's other task opens in the same popup, which keeps no draft of the first.
+    const conversation = screen.getByRole("main", { name: "Conversation" });
+    fireEvent.click(within(conversation).getByRole("button", { name: new RegExp(`^${TASK}, on Cursor`) }));
+    await waitFor(() => expect(within(codex).getByLabelText("Steer this task")).toBeTruthy());
+    expect(codex.textContent).toMatch(/Cursor/);
+    expect((within(codex).getByLabelText("Steer this task") as HTMLTextAreaElement | HTMLInputElement).value).toBe("");
+  });
+
   it("a failed task shows its reason as an error, not as its result", async () => {
     render(<App adapter={createFixtureLab({ speed: 0.05, notSetUp: ["cursor"] })} />);
     const popup = await openCodingTask("Cursor");

@@ -112,6 +112,8 @@
     "labs/teammates/src/components/flow-state/tool-grouping.ts",
     // and of the registry's review card, which the task popup draws.
     "labs/teammates/src/components/flow-state/review-hold.tsx",
+    // and of the registry's error, whose `ErrorDisplay` export its task popup doesn't draw.
+    "labs/teammates/src/components/flow-state/error.tsx",
     // The Teammates lab's byte copy of the registry's connection screen; its
     // backoff export is for apps that time their own retries.
     "labs/teammates/src/components/flow-state/connection-screen.tsx",
@@ -147,6 +149,9 @@
   "ignoreExports": [
     { "file": "apps/kitchen-sink/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen"] },
     { "file": "packages/shift-manager/src/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen"] },
+    // The Teammates lab's copy of the registry's task-actions, with its Re-run buttons:
+    // the confirm words and the cancel outcome are exported for tests and goals that read them off the page.
+    { "file": "labs/teammates/src/components/flow-state/task-actions.tsx", "exports": ["CANCEL_CONFIRM", "cancelOutcome"] },
     // Shift Manager's byte copy of the registry's task-actions: the confirm words and
     // the cancel outcome are exported for tests and goals that read them off the page.
     { "file": "packages/shift-manager/src/components/flow-state/task-actions.tsx", "exports": ["CANCEL_CONFIRM", "cancelOutcome"] }

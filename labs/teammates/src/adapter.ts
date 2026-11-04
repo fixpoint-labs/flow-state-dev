@@ -630,7 +630,7 @@ export function toBoardTask(
 }
 
 /** The fields a re-file copies from a task, as the board's `refile` takes them. */
-export function refileRowOf(task: BoardTask): RefileRow {
+function refileRowOf(task: BoardTask): RefileRow {
   return { goal: task.goal, title: task.title, context: task.context ?? null, assignee: task.to, labels: task.labels ?? null, priority: task.priority ?? null };
 }
 

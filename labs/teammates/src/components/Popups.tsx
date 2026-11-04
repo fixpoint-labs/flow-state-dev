@@ -39,7 +39,7 @@ export const taskLabel = (line: string, task: { harness?: string; model?: string
  * `harness:` differs from the harness of the worker the task was filed for.
  * A task that isn't a coding task, or whose worker's harness isn't known, has none.
  */
-export function rerunTargets(task: Pick<BoardTask, "to">, coders: readonly WorkerRow[]): WorkerRow[] {
+function rerunTargets(task: Pick<BoardTask, "to">, coders: readonly WorkerRow[]): WorkerRow[] {
   const own = coders.find((w) => w.id === task.to)?.harness;
   if (own === undefined) return [];
   return coders.filter((w) => w.takesTasks && w.harness !== undefined && w.harness !== own);
@@ -125,7 +125,7 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, 
       : rerunTargets(task, coders).map((worker) => ({ label: harnessName(worker.harness!), run: () => actions.rerun(task, worker.id) }));
   return (
     <SessionPopup label={line} title={title} status={task?.status} onClose={onClose}>
-      {task === undefined ? null : <TaskActions id={task.id} status={task.boardStatus} actions={actions} steer rerun={rerun} />}
+      {task === undefined ? null : <TaskActions key={task.id} id={task.id} status={task.boardStatus} actions={actions} steer rerun={rerun} />}
       {/* Why it failed, as an error; the result leads otherwise. How the run got there is below. */}
       {task?.error ? (
         <section aria-label="Error" role="alert" data-step="error" className="flex flex-col gap-1 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
