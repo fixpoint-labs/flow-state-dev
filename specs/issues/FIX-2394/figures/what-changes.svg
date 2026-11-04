@@ -1,0 +1,66 @@
+<svg viewBox="0 0 940 330" role="img" aria-label="What changes. Before: a running task card in either lab says running and its last note, with no time; a task whose run died says running forever; the pane header counts open tasks as one number. After: the card says working and a ticking clock from this attempt's run start; a row nothing has written for three minutes says quiet for 7m in amber in place of the clock; a finished row says when it ended; the header counts running, waiting, failed and done. One registry item, task-signals, holds the wording and the threshold, and both labs install it. It reads fields a listTasks row already carries: updatedAt and run.startedAt. Not built here: the steps pill, which is FIX-2164's."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-in  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .n-out { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:5 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+    .t-amb { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; font-weight:600; }
+    .t-new { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+
+  <g id="before">
+    <text class="t-lbl" x="16" y="24">BEFORE · BOTH LABS</text>
+    <rect class="n-box" x="16" y="34" width="420" height="190" rx="5"/>
+    <text class="t-s" x="32" y="58">Background tasks · 3</text>
+    <text class="t-b" x="32" y="88">Fix the login copy</text>
+    <text class="t-s" x="32" y="106">running · "editing Login.tsx"</text>
+    <text class="t-b" x="32" y="136">Tech debt scan</text>
+    <text class="t-s" x="32" y="154">running   (its run died 40 minutes ago)</text>
+    <text class="t-b" x="32" y="184">Write the notes</text>
+    <text class="t-s" x="32" y="202">done</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="504" y="24">AFTER · BOTH LABS, ONE HELPER</text>
+    <rect class="n-new" x="504" y="34" width="420" height="190" rx="5"/>
+    <text class="t-new" x="520" y="58">2 running · 1 done</text>
+    <text class="t-b" x="520" y="88">Fix the login copy</text>
+    <text class="t-new" x="520" y="106">working · 4m 12s · "editing Login.tsx"</text>
+    <text class="t-b" x="520" y="136">Tech debt scan</text>
+    <text class="t-amb" x="520" y="154">quiet for 40m</text>
+    <text class="t-b" x="520" y="184">Write the notes</text>
+    <text class="t-new" x="520" y="202">done · 12m ago</text>
+  </g>
+
+  <path class="arrow" d="M444 129 L496 129 M488 124 L496 129 L488 134"/>
+
+  <g id="sources">
+    <rect class="n-in" x="16" y="246" width="292" height="66" rx="5"/>
+    <text class="t-lbl" x="32" y="266">ALREADY ON A LISTTASKS ROW</text>
+    <text class="t-s" x="32" y="284">updatedAt · the run's heartbeat</text>
+    <text class="t-s" x="32" y="300">run.startedAt · this attempt</text>
+    <path class="arrow" d="M308 279 L344 279 M336 274 L344 279 L336 284"/>
+    <rect class="n-new" x="352" y="246" width="292" height="66" rx="5"/>
+    <text class="t-lbl" x="368" y="266">ADDED · UI REGISTRY</text>
+    <text class="t-b" x="368" y="286">task-signals</text>
+    <text class="t-s" x="368" y="302">clock · quiet after 3m · counts</text>
+    <rect class="n-out" x="660" y="246" width="264" height="66" rx="5"/>
+    <text class="t-lbl" x="676" y="266">NOT HERE</text>
+    <text class="t-s" x="676" y="284">steps pill 2/7 · FIX-2164</text>
+    <text class="t-s" x="676" y="300">"of 20:00" · no budget exists</text>
+  </g>
+</svg>
