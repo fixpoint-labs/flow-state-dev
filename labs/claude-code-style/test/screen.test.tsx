@@ -390,7 +390,7 @@ describe("the session-mode screen", () => {
     // Step 5: stopping is asked of the main session, which cancels its own task.
     await ask("Stop the Globex research.");
     await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("cancelled"));
-    expect(within(thread()).getByText(/Updated a task/)).toBeTruthy();
+    expect(within(thread()).getByText(/Update a task/)).toBeTruthy();
   });
 
   it("keeps a task read only: a row opens its work in a sheet over the main thread, with no stop or composer", async () => {

@@ -87,6 +87,32 @@ describe("opening a task from Tasks (BR-1, BR-5, BR-6)", () => {
   }, 30_000);
 });
 
+// FIX-2374: the Session follows the run session's feed, which reconnects on its own, not the request's replay.
+describe("the Session follows the run session", () => {
+  it("reads the session once, then takes each new step from the session's stream", async () => {
+    const opened = await openLab();
+    const row = await heldRow(opened, false);
+    const real = globalThis.fetch;
+    const calls = { state: 0, stream: 0 };
+    const at = `/sessions/${encodeURIComponent(row.run!.sessionId)}/`;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.includes(`${at}state`) && url.includes("include_items") && !url.includes("item_types")) calls.state += 1;
+      if (url.includes(`${at}stream`)) calls.stream += 1;
+      return real(input, init);
+    });
+    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
+    await screen.findByTestId("session", {}, { timeout: 10_000 });
+    await waitFor(() => expect(itemIds().length).toBeGreaterThan(0), { timeout: 5_000 });
+    const before = itemIds().length;
+    await waitFor(() => expect(itemIds().length).toBeGreaterThan(before), { timeout: 4_000 });
+    expect(calls.stream).toBeGreaterThan(0);
+    expect(calls.state).toBe(1);
+    // A session that holds no more than one page offers nothing earlier.
+    expect(screen.queryByTestId("session-load-earlier")).toBeNull();
+  }, 30_000);
+});
+
 describe("Interrupt (BR-11, BR-13, BR-14)", () => {
   it("shows interrupted only after the request record reads aborted, and writes nothing to the row", async () => {
     const opened = await openLab();
