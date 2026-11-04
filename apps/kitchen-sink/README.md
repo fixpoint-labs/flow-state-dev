@@ -103,7 +103,7 @@ when you don't know.
 
 None of the four names a `flow:`, so all of them run on the built-in agent flow.
 
-`support.fsd` can look things up. Its `tools:` line names `search-docs`, a web search held to the published docs at flow-state.dev, and `fetch`, which reads a page by its URL. Both are files in its own `blocks/` folder, so no other specialist has them. Searching needs a search provider's key in the environment (`TAVILY_API_KEY`, `EXA_API_KEY`, `SERPER_API_KEY` and the others `@flow-state-dev/tools` reads); without one, the search call returns an error to the specialist.
+`support.fsd` can look things up. Its `tools:` line names `search-docs`, a web search held to the published docs at flow-state.dev, and `fetch`, which reads a page by its URL and is limited to flow-state.dev: any other host is refused. A search provider that cannot hold results to the docs site (Brave, Perplexity Sonar) is refused too, rather than searching the open web. Both are files in its own `blocks/` folder, so no other specialist has them. Searching needs a search provider's key in the environment (`TAVILY_API_KEY`, `EXA_API_KEY`, `SERPER_API_KEY` and the others `@flow-state-dev/tools` reads); without one, the search call returns an error to the specialist.
 
 ### How a post finds its specialist
 

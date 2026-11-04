@@ -70,7 +70,8 @@ import {
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, type WorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
-import { fetch, search } from "@flow-state-dev/tools";
+import { fetch } from "@flow-state-dev/tools/fetch";
+import { search } from "@flow-state-dev/tools/search";
 import { z } from "zod";
 import {
   AGENT_FLOW,
