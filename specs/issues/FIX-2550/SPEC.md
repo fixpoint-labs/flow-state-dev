@@ -85,8 +85,10 @@ and Kitchen Sink. No package changes.
 | The labs' `interrupted` entry (Claude Code-style, after you stop a turn) | **Left alone**: a stop you made is not a failure |
 | FIX-2406's contract matrix (spec [#4719](https://github.com/fixpoint-labs/flow-state-dev/pull/4719)) | Its failed-turn row is `it.fails` against this issue; whichever lands second removes the mark |
 
-**Removes:** nothing. **Adds:** one adapter verb and one entry kind per lab. **Debt:** none new;
-newest-only Retry is the screen's rule, as FIX-2370 documents on the component.
+**Removes:** nothing. **Adds:** one adapter verb and one entry kind per lab. **Debt:** none new.
+Newest-only Retry has one owner per layer: the adapter decides which turn is newest (`latest`,
+[D2](DECISIONS.md#d2)), because only it sees every item; the screen passes `onRetry` for that
+entry and adds only "not while a turn runs", as FIX-2370 has every caller do.
 
 ## Sign off
 

@@ -30,6 +30,11 @@ The two below are what the labs' code had to add.
   and a request that wrote nothing (a board pass in Teammates) is not a turn the person saw.
   If such a request is the session's newest, Retry still shows; the server takes a retry of
   any failed request, so it still works.
+- **Who owns what:** `latest` is the adapter's answer to "which turn is newest", and the only
+  one; the screen never recomputes it. The screen's own rule is only "no Retry while a turn
+  runs". The adapter's tests cover `latest`; the screen's cover that `onRetry` follows it.
+- **Not a bug:** Retry can show on the thread's newest turn while the session's newest request
+  is a board pass. That is the intended reading, and the retry still succeeds.
 - **Locks in:** Retry follows what the person sees as the last turn.
 
 ## Decided, not asked
@@ -47,6 +52,15 @@ The two below are what the labs' code had to add.
 - **E4 · A task's own run** (the task view in Claude Code-style) shows its failure line too, with
   no Retry: a failed task is retried from its row, which already has the button.
 - **E5 · Wording.** The line's words are the component's; neither lab adds copy that names a role.
+
+## Notes from review
+
+Round 1 (2026-11-04): Codex, no findings. Cursor (simplify): the one real point, that the spec
+named two owners for "newest", is folded into D2 and the debt line. Recorded, not folded:
+*failed* rather than FIX-2370's "error entry" is kept, since it matches the component's
+`data-state="failed"` and the engine's request status, and Teammates' task `result.failed` is a
+flag on another kind, not a kind; E4 stays, as one branch with no Retry wiring; FIX-2406's
+matrix becomes the end-to-end spine when it lands, and these tests stay as the mapping's.
 
 ## How it got here
 
