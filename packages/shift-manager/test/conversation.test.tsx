@@ -32,7 +32,7 @@ vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
  * Each follow a mounted conversation opened: the session, where its items go, and whether it
  * stopped. The follow's first answer is `read`'s; a case pushes what the session stream brings.
  */
-type Follower = { onRead(read: { items: unknown[]; truncated: boolean }): void; onFailure(failure: { message: string }): void };
+type Follower = { onRead(read: { items: unknown[]; truncated: boolean; loadEarlier?: () => Promise<void> }): void; onFailure(failure: { message: string }): void };
 const follows: Array<{ sessionId: string; to: Follower; closed: boolean }> = [];
 vi.mock("../src/lib/run", async (original) => ({
   ...(await original<typeof import("../src/lib/run")>()),
@@ -145,10 +145,23 @@ describe("what a view of its own draws", () => {
   });
 
   it("doesn't call a cut-short read empty when what it holds draws nothing: later items may", async () => {
-    read.mockResolvedValue({ items: [{ id: "sc1", requestId: "r", type: "state_change", ts: 1 }], truncated: true });
+    const loadEarlier = vi.fn(async () => {});
+    read.mockResolvedValue({ items: [{ id: "sc1", requestId: "r", type: "state_change", ts: 1 }], truncated: true, loadEarlier });
     drawn([session(s1)]);
-    expect(await screen.findByTestId("rev-truncated")).toBeTruthy();
+    expect(await screen.findByTestId("rev-load-earlier")).toBeTruthy();
     expect(screen.queryByTestId("rev-conversation-empty")).toBeNull();
+  });
+
+  it("offers Load earlier while the session holds older items, and asks the follow for them", async () => {
+    const loadEarlier = vi.fn(async () => {});
+    read.mockResolvedValue({ items: [item("b", "Newer")], truncated: true, loadEarlier });
+    drawn([session(s1)]);
+    fireEvent.click(await screen.findByTestId("rev-load-earlier-button"));
+    expect(loadEarlier).toHaveBeenCalledTimes(1);
+    // The follow hears the longer list; once it holds the start, there is nothing earlier to offer.
+    await streamed([item("a", "Older"), item("b", "Newer")]);
+    expect(screen.getAllByTestId("mine").map((el) => el.textContent)).toEqual(["Older", "Newer"]);
+    expect(screen.queryByTestId("rev-load-earlier")).toBeNull();
   });
 
   it("keeps its look hooks the same whatever its test id, so one rule styles every conversation", () => {

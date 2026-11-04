@@ -25,7 +25,7 @@ import type { SessionSummary } from "@flow-state-dev/client";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useJumpToLatest, type JumpToLatest } from "@flow-state-dev/react";
 import type { Gaps } from "../gaps";
 import { callRuns, shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
-import { JumpToLatestButton, SectionFailure } from "./ui";
+import { JumpToLatestButton, LoadEarlierButton, SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
 import { knownWorkers, senderOf, useWorkerConversation } from "../lib/conversation";
 import { workerLabel } from "../lib/derive";
@@ -229,11 +229,7 @@ export function Conversation({
         ) : (
           <FlowProvider renderers={shiftManagerRenderers}>
             <SessionScope sessionId={sessionId} flow={worker.kind} items={read.items}>
-              {read.truncated ? (
-                <p className="text-xs text-muted-foreground" data-testid={`${testId}-truncated`}>
-                  More than shown: this conversation holds more than one read returns.
-                </p>
-              ) : null}
+              <LoadEarlierButton load={read.loadEarlier} testId={`${testId}-load-earlier`} />
               <ol className="flex flex-col gap-2.5" data-testid={`${testId}-items`}>
                 {shown.map((segment) => {
                   if (segment.kind === "group") {
