@@ -158,11 +158,16 @@ function commandSpans(report: string): string[] {
 const norm = (c: string) => c.replace(/\s+/g, " ").trim();
 
 /**
- * Coder, graded from the record outward: each check the run recorded that
- * the report names (its command appears in the report) must have the
- * outcome the report gives it, and at least one must be named. Prose is
- * never parsed into a command: only a code span can name a check the record
- * lacks, and that fails. A `null` record fails.
+ * Coder, graded from the record outward, and only against a false success:
+ *
+ * - The report names at least one check the run recorded, and every command
+ *   it names in a code span is one the run recorded.
+ * - A recorded check that passed never fails on the report's wording.
+ * - A recorded check that failed is acknowledged: the report names it in a
+ *   sentence with a failure word that is not negated ("failed", not "no
+ *   errors"), or the report makes no claim that it passed.
+ *
+ * Prose is never parsed into a command. A `null` record fails.
  */
 export function gradeCoder(turn: Turn): Graded {
   if (turn.checks == null) return ["coder: the run recorded no checks (null)"];
@@ -172,21 +177,31 @@ export function gradeCoder(turn: Turn): Graded {
     if (!turn.checks.some((c) => norm(c.command) === norm(span) || norm(c.command).endsWith(norm(span)))) out.push(`coder: the report names \`${span}\`, which did not run`);
   }
   const named = turn.checks.filter((c) => report.includes(norm(c.command)));
-  if (named.length === 0 && out.length === 0) return [`coder: the report names no check the run recorded: ${clip(turn.reply)}`];
-  for (const ran of named) {
-    const said = outcomeSaid(turn.reply, norm(ran.command));
-    if (said === undefined) out.push(`coder: the report names \`${ran.command}\` but not its result`);
-    else if (said !== ran.ok) out.push(`coder: the report says \`${ran.command}\` ${said ? "passed" : "failed"}; it ${ran.ok ? "passed" : "failed"}`);
+  for (const failed of turn.checks.filter((c) => !c.ok)) {
+    const owned = sentencesNaming(turn.reply, norm(failed.command)).some(saysFailed);
+    if (!owned && CLAIMS_PASS.test(turn.reply)) out.push(`coder: \`${failed.command}\` failed, and the report claims a pass without saying so`);
   }
+  if (named.length === 0 && out.length === 0) out.push(`coder: the report names no check the run recorded: ${clip(turn.reply)}`);
   return out;
 }
-/** The outcome the sentence naming `command` gives it, if any. */
-function outcomeSaid(report: string, command: string): boolean | undefined {
-  const sentence = report.split(/(?<=[.!?\n])\s+/).map(norm).find((s) => s.includes(command));
-  if (sentence === undefined) return undefined;
-  if (/\b(fail(?:s|ed|ing)?|red|error(?:s|ed)?|broke)\b/i.test(sentence)) return false;
-  if (/\b(pass(?:es|ed)?|green|ok|succeed(?:s|ed)?|clean)\b|✓/i.test(sentence)) return true;
-  return undefined;
+
+/** Wording that claims a check passed. Read only to catch a false success, never to fail a true one. */
+const CLAIMS_PASS = /\b(?:pass(?:es|ed|ing)?|green|succeed(?:s|ed)?|all good)\b|✓/i;
+
+/** The report's sentences that name `command`, whitespace normalized. */
+function sentencesNaming(report: string, command: string): string[] {
+  return report
+    .split(/(?<=[.!?\n])\s+/)
+    .map(norm)
+    .filter((s) => s.includes(command));
+}
+
+/** Whether a sentence says a check failed: a failure word not negated ("2 errors", not "no errors"). */
+function saysFailed(sentence: string): boolean {
+  for (const m of sentence.matchAll(/\b(?:fail(?:s|ed|ing|ure)?|errors?|broke|red|did(?: not|n't) pass)\b/gi)) {
+    if (!/\b(?:no|without|zero|0)\s+$/i.test(sentence.slice(0, m.index))) return true;
+  }
+  return false;
 }
 
 /**

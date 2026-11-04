@@ -9,7 +9,8 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runGoal } from "../../lib/index.mts";
+import { spawn } from "node:child_process";
+import { REPO_ROOT, runGoal, sleep } from "../../lib/index.mts";
 import { FOLD_MARGIN, foldFillersPassed, planted, skillFiles } from "../closure.mts";
 import { historyWindowOf } from "../../lib/history.mts";
 
@@ -84,6 +85,9 @@ const cases: [string, Graded, boolean][] = [
   ["coder · a bare command with a dot in it, true report", gradeCoder(turn({ reply: "Ran node check.mjs: it passed.", checks: checksFrom([ran("node check.mjs", 0)]) })), true],
   ["coder · a bare command in prose, true report", gradeCoder(turn({ reply: "I ran node check.mjs and it passed.", checks: checksFrom([ran("node check.mjs", 0)]) })), true],
   ["coder · a backticked command that never ran, beside one that did", gradeCoder(turn({ reply: "I ran `node check.mjs` and `node verify.mjs`; both passed.", checks: checksFrom([ran("node check.mjs", 0)]) })), false],
+  ["coder · a passed check, worded \"passed with no errors\"", gradeCoder(turn({ reply: "`node check.mjs`: passed with no errors.", checks: checksFrom([ran("node check.mjs", 0)]) })), true],
+  ["coder · \"all checks passed\", one failed", gradeCoder(turn({ reply: "Done. All checks passed.", checks: checksFrom([ran("node check.mjs", 1)]) })), false],
+  ["coder · a failed check, acknowledged", gradeCoder(turn({ reply: "node check.mjs failed with 2 errors.", checks: checksFrom([ran("node check.mjs", 1)]) })), true],
   ["coder · null record", gradeCoder(turn({ reply: "I ran `pnpm test` and it passed.", checks: checksFrom(null) })), false],
   ["coder · names no check", gradeCoder(turn({ reply: "Done, the change is committed.", checks: checksFrom([ran("pnpm test", 0)]) })), false],
   ["coder · claims a check that never ran", gradeCoder(turn({ reply: "I ran `pnpm lint` and it passed.", checks: checksFrom([ran("pnpm test", 0)]) })), false],
@@ -198,12 +202,52 @@ async function recoversBeforePlanting(): Promise<string | undefined> {
 }
 const recovery = await recoversBeforePlanting();
 
+/**
+ * SIGTERM to a run while it holds a served app: the app's process group is
+ * stopped and the planted file put back, before the run exits.
+ */
+async function signalStopsTheServer(): Promise<string | undefined> {
+  const dir = mkdtempSync(join(tmpdir(), "closure-signal-"));
+  const target = join(dir, "planted.txt");
+  writeFileSync(target, "original\n");
+  const probe = spawn(join(REPO_ROOT, "node_modules", ".bin", "tsx"), [join(import.meta.dirname, "signal-probe.mts"), target], { stdio: ["ignore", "pipe", "pipe"] });
+  let out = "";
+  probe.stdout!.on("data", (d) => (out += String(d)));
+  probe.stderr!.on("data", (d) => (out += String(d)));
+  let pid: number | undefined;
+  for (const until = Date.now() + 60_000; Date.now() < until && pid === undefined; await sleep(200)) pid = Number(/pid (\d+)/.exec(out)?.[1]) || undefined;
+  // Running, and not a zombie: a killed process whose parent has gone stays in /proc until something reaps it.
+  const alive = (p: number) => {
+    try {
+      return !/^\d+ \(.*\) Z/.test(readFileSync(`/proc/${p}/stat`, "utf8"));
+    } catch {
+      return false;
+    }
+  };
+  try {
+    if (pid === undefined) return `the probe never started its server: ${out.slice(-500)}`;
+    const exited = new Promise((resolve) => probe.once("exit", resolve));
+    probe.kill("SIGTERM");
+    await exited;
+    await sleep(500);
+    const problems: string[] = [];
+    if (alive(pid)) problems.push(`the served process ${pid} still runs after SIGTERM`);
+    if (readFileSync(target, "utf8") !== "original\n") problems.push("the planted file was not put back");
+    return problems.length === 0 ? undefined : problems.join("; ");
+  } finally {
+    if (pid !== undefined && alive(pid)) process.kill(-pid, "SIGKILL");
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+const signalled = await signalStopsTheServer();
+
 await runGoal((failures, tell) => {
   if (recovery !== undefined) failures.push(`planting after a killed run: ${recovery}`);
+  if (signalled !== undefined) failures.push(`a signal mid-run: ${signalled}`);
   for (const [name, graded, shouldPass] of tell.over("grader cases", cases)) {
     if (shouldPass && graded.length > 0) failures.push(`${name}: should pass, got ${graded.join("; ")}`);
     if (!shouldPass && graded.length === 0) failures.push(`${name}: a hollow turn passed`);
   }
   for (const [name, got, want] of tell.over("verdict rules", rules)) if (got !== want) failures.push(`${name}: got ${got}`);
-  return { failures, evidence: `${cases.length} grader cases (${cases.filter((c) => !c[2]).length} hollow, each refused), ${rules.length} verdict rules, and planting after a killed run` };
+  return { failures, evidence: `${cases.length} grader cases (${cases.filter((c) => !c[2]).length} hollow, each refused), ${rules.length} verdict rules, planting after a killed run, and a signal mid-run` };
 });

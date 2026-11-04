@@ -143,14 +143,32 @@ export async function serveFsdev(options: { root: string; cwd: string; args?: st
   };
   child.stdout!.on("data", keep);
   child.stderr!.on("data", keep);
+  const stop = servedUntilStopped(child);
   let gone = false;
   onClosed(child, () => (gone = true));
   for (const until = Date.now() + 180_000; Date.now() < until && !gone; await sleep(500)) {
     const status = await fetch(`${origin}/api/flows`, { signal: AbortSignal.timeout(2_000) }).then((r) => r.status, () => 0);
-    if (status > 0 && status < 500) return { origin, child, log: () => log, stop: () => stopProcessGroup(child) };
+    if (status > 0 && status < 500) return { origin, child, log: () => log, stop };
   }
-  stopProcessGroup(child);
+  stop();
   throw new Error(`setup: the app never served on ${origin}. Log tail:\n${log.slice(-2000)}`);
+}
+
+/** The stops of every app this process is serving now: a signal stops them all before the run exits. */
+const serving = new Set<() => void>();
+
+/**
+ * Hold `child` (a detached process group, as an app is served) as served
+ * until the returned stop is called. {@link planted}'s signal handler stops
+ * every one still held, so a SIGINT or SIGTERM never leaves a server running.
+ */
+export function servedUntilStopped(child: ChildProcess): () => void {
+  const stop = () => {
+    serving.delete(stop);
+    stopProcessGroup(child);
+  };
+  serving.add(stop);
+  return stop;
 }
 
 /** A client for `userId` against `origin`, carrying `bearer` when the host has a door. */
@@ -225,7 +243,12 @@ export async function planted<T>(key: string, plant: () => Record<string, string
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, text);
   }
-  const onSignal = () => (restoreFrom(file, journal), process.exit(130));
+  // A signal never reaches `finally`: stop every served app's process group, put the tree back, then exit.
+  const onSignal = () => {
+    for (const stop of [...serving]) stop();
+    restoreFrom(file, journal);
+    process.exit(130);
+  };
   process.once("SIGINT", onSignal);
   process.once("SIGTERM", onSignal);
   try {
