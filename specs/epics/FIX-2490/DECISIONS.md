@@ -27,13 +27,13 @@ it is a preset, and our apps turn it on.
 |---|---|
 | **Instead of** | A before/after eval of about 10 scripted tasks per app, scored by a judge, before any layer or content change |
 | **Because** | The four closure scripts have to exist anyway. Run once after the six bugs merge, they show which asks the wiring alone fixed, which is the question the eval was for. The owner's call, before this draft |
-| **Locks in** | Bugs first. The closure's scripts are built early, as its spec POC, so the cut run can happen before the closure is unblocked; no separate end-state POC is built. Each bug blocks each layer in Linear. A layer whose ask passes on the cut run is cancelled, citing the run ([ER-6](#who-owns-what)). "Smarter" outside the four asks is not measured |
+| **Locks in** | Bugs first. The closure's scripts are built early, as its spec POC, so the cut run can happen before the closure is unblocked; no separate end-state POC is built. Each bug blocks each layer in Linear. A layer whose ask passes on the cut run is cancelled, citing the run ([ER-6](#who-owns-what)). "Smarter" outside the seven asks is not measured |
 
 **What would change my mind:** a cut run that can't tell the layers apart, because every ask
 passes or fails the same either way. Then the asks are too coarse, and a finer check is worth
 its cost.
 
-![D2, how we know a layer is needed: the closure scripts, run after the bugs, chosen, beside a before and after eval. Decides it: the scripts exist anyway and answer which asks the bugs alone fixed. Price: four asks, not a quality score. Flips if the cut run can't tell the layers apart](figures/d2-cut-run.svg)
+![D2, how we know a layer is needed: the closure scripts, run after the bugs, chosen, beside a before and after eval. Decides it: the scripts exist anyway and answer which asks the bugs alone fixed. Price: seven asks, not a quality score. Flips if the cut run can't tell the layers apart](figures/d2-cut-run.svg)
 
 <a name="d3"></a>
 ## D3 · Tool-owned guidance stays its own issue (FIX-2499)
@@ -92,9 +92,6 @@ eval apparatus ([D2](#d2)).
 they move to *Not doing*, and their asks go with them.
 
 ![Q1, decided: three more asserts in FIX-2541's scripts, chosen, beside moving the summary and skills index out. Decides it: a layer with no ask can neither be cut nor proven. Price: two to three days more proof. Flips if compaction and skills were dropped from the outcome on purpose](figures/open-proof-reach.svg)
-
-It comes down to the first row: a layer no ask reaches can't be cut, so the summary and the
-index stay, each with an ask of its own.
 
 ## Who owns what
 
@@ -169,7 +166,8 @@ and Codex's [review of DECISIONS.md](https://github.com/fixpoint-labs/flow-state
   Codex). The assistant is a standalone core `generator`, not a worker, so the environment
   section never reaches it. FIX-2498 exports the formatter and has the assistant compose it,
   deleting FIX-2492's fix in that change. ER-3 and the seam.
-- **Q1 stays open**, now with the second look's alternative priced on its card.
+- **Q1's alternative priced on its card** (the second look). The owner answered it after merge;
+  see [Q1](#q1).
 
 ## How it got here
 

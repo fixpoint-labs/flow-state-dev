@@ -34,10 +34,14 @@ that did not run · a closure bug is open.
 flowchart LR
   A["each of four apps · real model · fsdev run · 3 runs per ask"] --> L1["leg a · a dated ask and a multi-file question"]
   A --> L2["leg b · a coding task and a several-lookup knowledge ask"]
-  A --> L3["leg c · a one-line question · a fitting skill<br/>a decision across a summary fold · the labs"]
+  A --> C1["leg c1 · a one-line question<br/>reaches FIX-2498's behaviour section · sizing"]
+  A --> C2["leg c2 · a fitting skill<br/>reaches FIX-2498's skills index"]
+  A --> C3["leg c3 · a decision across a summary fold<br/>reaches FIX-2500 · the two labs only"]
   L1 --> T["what the worker answers"]
   L2 --> T
-  L3 --> T
+  C1 --> T
+  C2 --> T
+  C3 --> T
   T -->|"3 of 3 · right date · one turn<br/>checks named and run · source cited<br/>short · skill loaded · decision kept"| P["PASS · the goal is met"]
   C["control · today's main"] -.-> T
   T -.->|"under the control"| F["must FAIL in every app"]
@@ -45,7 +49,7 @@ flowchart LR
 
 | How we verify | |
 |---|---|
-| **Goal check** | The closure FIX-2541: one scripted `fsdev run` per app on one `main` commit after every other child merges, seven asks ([Q1](DECISIONS.md#q1)). No eval apparatus ([D2](DECISIONS.md#d2)) |
+| **Goal check** | The closure FIX-2541: four app scripts on `fsdev run`, on one `main` commit after every other child merges. Seven asks in each lab, six in Kitchen Sink and Shift Manager, which skip the fold ([Q1](DECISIONS.md#q1)); each ask runs 3 times ([ER-7](DECISIONS.md#who-owns-what)). That is 78 real-model runs a pass, and the closure makes three: the control, the cut run and the wrap. No eval apparatus ([D2](DECISIONS.md#d2)) |
 | **Signal** | The worker states today's date · a code question that needs several files is answered in one turn · the coder's report names the checks it ran and their result · a knowledge worker cites a source, on an ask that needs several lookups · a one-line question gets a short answer · a worker holding a skill that fits loads it without a slash · in the two labs, a decision made before a summary fold is still used after it |
 | **Sampling** | Each ask runs 3 times and passes only on 3 of 3 ([ER-7](DECISIONS.md#who-owns-what)) |
 | **The coder leg** | Asserts against the run record's `checks`, which `commandCheck` (on `main`) writes in all four apps; the closure turns on Teammates' checks. Passes when the report names at least one check and each one it names is in `checks` with the outcome it reports. A `null` record fails. On the cut run no brief asks for checks, so this leg is expected to fail there |
@@ -94,7 +98,7 @@ this one merges.
 | FIX-2499 | An optional guidance field on a tool, in the same tools list | Search and fetch learn to cite; owner kept it ([D3](DECISIONS.md#d3)) | Ready to Spec |
 | FIX-2500 | A structured summary for long conversations, on by default | The labs' long-conversation ask: a decision is still used after a summary fold ([Q1](DECISIONS.md#q1)) | Ready to Spec |
 | FIX-2502 | One coding brief in harness-manager, used by three apps | The coder ask in every app; replaces three hand-built prompts | Ready to Spec |
-| FIX-2541 · closure · **required** | The four scripted runs, seven asks, once as the cut run and once at wrap | The only child that proves the outcome | Ready to Spec · blocked by every other child |
+| FIX-2541 · closure · **required** | Four app scripts, seven asks (the fold in the labs only), 3 runs each; run as the cut run and at wrap | The only child that proves the outcome | Ready to Spec · blocked by every other child |
 
 10 children and the closure FIX-2541. FIX-2497 and FIX-2501 are Duplicate of FIX-2498. Each bug
 blocks each layer in Linear, so no layer is built before the cut run.
@@ -164,8 +168,6 @@ ceiling. If wrong: every worker pays for sections few of them need.
 **Decided, not asked:** [D4](DECISIONS.md#d4) · [D5](DECISIONS.md#d5) ·
 [rounds 1 and 2](DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them).
 
-**Decided after merge: [Q1](DECISIONS.md#q1).** The owner's, Nov 4: the closure gains three
-asks (sizing, a skill load, a decision across a fold), so FIX-2500 and the skills index stay
-and the cut run can cut them.
+**Decided after merge:** [Q1](DECISIONS.md#q1).
 
 Epic · 10 children and the closure FIX-2541 · Workforce: Shift Manager · Goal 1, validate through real usage
