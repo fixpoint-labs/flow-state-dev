@@ -79,6 +79,27 @@ describe("followSessionItems", () => {
     expect(reads.at(-1)!.items.at(-1)!.id).toBe("m259");
   });
 
+  it("loads the earlier items on request, reaching the first with no gap or repeat while the stream keeps adding", async () => {
+    const history = Array.from({ length: 260 }, (_, i) => message(`m${i}`, `line ${i}`, 10 + i));
+    const h = host(history);
+    const reads: SessionItems[] = [];
+    stops.push(followSessionItems(h.client, "s1", { onRead: (read) => reads.push(read), onFailure: () => {} }));
+    await until(() => reads.length > 0 && h.counts.stream === 1);
+    expect(reads.at(-1)!.items).toHaveLength(200);
+
+    // A reply arrives on the stream before the earlier page is asked for.
+    const live = message("m260", "line 260", 270);
+    history.push(live);
+    h.push(101, live);
+    await until(() => reads.at(-1)!.items.at(-1)!.id === "m260");
+
+    await reads.at(-1)!.loadEarlier!();
+    const last = reads.at(-1)!;
+    expect(last.items.map((item) => item.id)).toEqual([...history.map((item) => item.id)]);
+    expect(last.truncated).toBe(false);
+    expect(last.loadEarlier).toBeUndefined();
+  });
+
   it("reports an empty session once its history read lands, whether or not the stream ever opens", async () => {
     const h = host([], { failStream: true });
     const reads: SessionItems[] = [];

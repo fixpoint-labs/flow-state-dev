@@ -76,8 +76,13 @@ const ITEM_PAGE = 200;
 /** How many pages the Session reads before it says there is more than it shows. */
 const ITEM_PAGES = 5;
 
-/** A session's stored items, oldest first, and whether there were more than were read. */
-export type SessionItems = { items: OutputItem[]; truncated: boolean };
+/**
+ * A session's stored items, oldest first, and whether there were more than were
+ * read. A followed session ({@link followSessionItems}) also carries
+ * `loadEarlier` while it holds older items: each call adds the page before the
+ * first item, and the follower hears the longer list.
+ */
+export type SessionItems = { items: OutputItem[]; truncated: boolean; loadEarlier?: () => Promise<void> };
 
 /**
  * The run session's stored items, oldest first. At most {@link ITEM_PAGES}
@@ -113,7 +118,8 @@ export type SessionItemsFollower = {
  * the bus wakes on another process's write and which reads only what changed
  * where the bus can't cross. Nothing is read on a clock, and a reply costs no
  * more reads however long it is. `truncated` says the session holds items
- * older than the first one read. Returns the stop.
+ * older than the first one read, and `loadEarlier` reaches them a page at a
+ * time. Returns the stop.
  */
 export function followSessionItems(client: Pick<Client, "sessions">, sessionId: string, to: SessionItemsFollower): () => void {
   const feed = sessionFeed(client, sessionId);
@@ -138,7 +144,7 @@ export function followSessionItems(client: Pick<Client, "sessions">, sessionId: 
     }
     last = items;
     read = true;
-    to.onRead({ items: [...items], truncated: hasEarlier });
+    to.onRead({ items: [...items], truncated: hasEarlier, ...(hasEarlier ? { loadEarlier: () => feed.loadEarlier() } : {}) });
   });
   return () => {
     stop();
