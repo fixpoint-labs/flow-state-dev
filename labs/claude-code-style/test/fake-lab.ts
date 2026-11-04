@@ -49,6 +49,8 @@ export interface FakeLab extends LabAdapter {
   setConnection(state: ConnectionState): void;
   /** The open task titled `title`, in any session, fails with `error`, as its run would. */
   fail(title: string, error: string): void;
+  /** The next turn's model call fails: the turn ends with no reply, as the real adapter shows it today. */
+  failNextTurn(): void;
 }
 
 interface FixtureTask extends TaskRow {
@@ -118,6 +120,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
   const listeners = new Set<() => void>();
   let seq = 0;
   let connection: ConnectionState = "live";
+  let failNext = false;
   const nextId = (prefix: string) => `${prefix}-${++seq}`;
 
   const notify = () => {
@@ -319,6 +322,12 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
 
   const turn = (s: FixtureSession, text: string, origin: string) => {
     startTurn(s);
+    if (failNext) {
+      // fake: the real adapter draws no failed turn yet (FIX-2550): the turn just ends.
+      failNext = false;
+      play(s, [[300, () => endTurn(s)]]);
+      return;
+    }
     const threads = modeOfWorker(s.row.worker)?.id === "threads";
     // The task the line names (by a word of its title), finished or not, else the first one running.
     // The stop script re-reads its status, so a finished one is reported, not swapped for another.
@@ -420,6 +429,9 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     setConnection(state) {
       connection = state;
       notify();
+    },
+    failNextTurn() {
+      failNext = true;
     },
     fail(title, error) {
       for (const s of sessions.values()) {
