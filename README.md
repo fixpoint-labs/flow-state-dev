@@ -14,7 +14,7 @@ Docs: [flow-state.dev/docs](https://flow-state.dev/docs/intro).
 
 A starter is a complete app: React pages, a team of workers, and the flows they run on. Every starter runs on the same backend packages, so what differs between them is mostly the UI and the workers' files.
 
-- **[Teammates](labs/teammates)** (`labs/teammates`): a small team you talk to one at a time. Chief of Staff, researcher and writer each keep one long conversation, message each other where you can see it, and hand code changes to a coding agent (Claude Code, Codex or Cursor) that runs in the background. You can hire teammates of your own from the page. The layout follows Grok Bot's.
+- **[Teammates](labs/teammates)** (`labs/teammates`): a small team you talk to one at a time. Chief of Staff, researcher and writer each keep one long conversation, message each other where you can see it, and hand code changes to a coding agent (Claude Code, Codex or Cursor) that runs in the background. You can hire teammates of your own from the page. The teammates are listed on the left, and choosing one opens its conversation.
 - **[Claude Code-style agent](labs/claude-code-style)** (`labs/claude-code-style`): one conversation driving an agent loop. The main session answers questions about your project itself and starts background tasks for the long pieces. Code changes go to a coding agent. In threads mode, where each request runs as a task in a session of its own, a run that changed files waits for you to accept it or ask for changes.
 
 Shift Manager, an app for working a whole team's asks, tasks and workstreams, is in progress. An early version is in [`packages/shift-manager`](packages/shift-manager), where several screens are placeholders; see its [docs](https://flow-state.dev/docs/shift-manager/overview).
@@ -49,7 +49,7 @@ Set keys in your shell or in a `.env.local` at the repository root:
 
 You only need the coding-agent sign-ins for the coding workers. At startup each starter logs which coding agents this machine can run and what to run for any that can't.
 
-Both starters keep their data in a SQLite file under `.fsdev/`, so conversations and tasks survive a restart. Coding tasks run in a git worktree of the repository, on a branch of their own, so your checkout isn't touched. By default that repository is this clone; Teammates takes `TEAMMATES_WORKDIR` to point at another checkout. The full list of settings, and a first conversation to try, is in each starter's README: [Teammates](labs/teammates/README.md#run-it), [Claude Code-style](labs/claude-code-style/README.md#run-it).
+Both starters keep their data in a SQLite file under `.fsdev/`, so conversations and tasks survive a restart. By default, coding tasks work on the clone the starter runs from, so in your fork they change your fork's code. Each task runs in a git worktree on a branch of its own, and your checked-out branch and files aren't touched. Teammates takes `TEAMMATES_WORKDIR` to point at another checkout. The full list of settings, and a first conversation to try, is in each starter's README: [Teammates](labs/teammates/README.md#run-it), [Claude Code-style](labs/claude-code-style/README.md#run-it).
 
 ## Make it yours
 
@@ -91,9 +91,9 @@ Read more:
 
 Flow State also mounts inside an existing Next.js App Router or Node project.
 
-Ask your coding assistant to run the [`install-fsd`](plugins/flow-state-dev/skills/install-fsd/SKILL.md) skill from your project directory. It inspects the project, shows you the files it will write, then writes them. It doesn't commit, so review the result with `git diff`. To wire it by hand, follow [Existing project](https://flow-state.dev/docs/getting-started/existing-project). The [Quick Start](https://flow-state.dev/docs/getting-started/quick-start) builds a streaming chat with a React UI from nothing.
+The quickest route is [`install-fsd`](plugins/flow-state-dev/skills/install-fsd/SKILL.md), an install routine your coding assistant runs from your project directory. It has nothing to do with the skills workers load. It inspects the project, shows you the files it will write, then writes them. It doesn't commit, so review the result with `git diff`. The [Quick Start](https://flow-state.dev/docs/getting-started/quick-start) builds a streaming chat with a React UI from nothing.
 
-The core install is:
+To wire it by hand, follow [Existing project](https://flow-state.dev/docs/getting-started/existing-project), starting with:
 
 ```bash
 pnpm add @flow-state-dev/core @flow-state-dev/engine zod
