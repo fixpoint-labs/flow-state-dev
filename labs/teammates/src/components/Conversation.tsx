@@ -1,6 +1,6 @@
 import { useJumpToLatest } from "@flow-state-dev/react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import type { BoardTask, ConversationEntry, LabAdapter, WorkerRow } from "../adapter";
+import type { ConversationEntry, LabAdapter, WorkerRow } from "../adapter";
 import type { Look } from "../lib/looks";
 import { useStatusLine } from "../lib/status";
 import { pendingFor } from "../lib/talk";
@@ -13,15 +13,15 @@ import { JumpToLatestButton } from "./JumpToLatest";
 import { LoadEarlier } from "./LoadEarlier";
 import { Entry } from "./Entry";
 import { answerIn, type Popup } from "./Popups";
-import { TaskCard } from "./TaskCard";
+import { TaskCard, type TaskLine } from "./TaskCard";
 
 /** A small button in the conversation's header. */
 const HEADER_BUTTON = "rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase hover:bg-accent";
 
 type TaskEntry = Extract<ConversationEntry, { kind: "task" }>;
-const placeholders = new WeakMap<TaskEntry, BoardTask>();
+const placeholders = new WeakMap<TaskEntry, TaskLine>();
 /** The card a filed task shows until its board row arrives: one object per (reused) entry, so the memoized card skips re-renders. */
-function placeholderOf(entry: TaskEntry, harness: string | undefined): BoardTask {
+function placeholderOf(entry: TaskEntry, harness: string | undefined): TaskLine {
   let task = placeholders.get(entry);
   if (task === undefined) {
     task = { id: entry.taskId, to: entry.to, title: entry.title, status: "running", ...(harness === undefined ? {} : { harness }) };
