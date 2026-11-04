@@ -1,0 +1,7 @@
+{
+  "project": "Task actions",
+  "failingProject": "Gone repository",
+  "goal": "Add a line naming the scripted run to NOTES.md in the project.",
+  "failingGoal": "Add a line to NOTES.md in a project whose repository is gone.",
+  "steer": "Name the file SCRIPTED-RUN.md in the line, please."
+}
