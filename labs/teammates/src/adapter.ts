@@ -9,8 +9,10 @@
  * | `listWorkers`       | the workforce client's `roster()`                                            |
  * | `openConversation`  | `ensureWorkerSession({ worker })`: the worker's default conversation         |
  * | `send`              | the worker's door, `respond`, streamed, so its answer shows as it is written  |
- * | `watchConversation` | the session's items, from its snapshot and then its stream, and its        |
- * |                     | requests (is it answering) on each request notice, via `client.subscribe` |
+ * | `watchConversation` | the session's items, from its snapshot and then its stream (`sessionFeed`), |
+ * |                     | each run of tool calls named by the UI registry's `tool-naming` and        |
+ * |                     | `tool-grouping`, and its requests (is it answering) on each request notice, |
+ * |                     | via `client.subscribe`                                                     |
  * | `watchConnection`   | the same feed's connection state: `live`, `lapsed` once a retry has failed…  |
  * | `answerApproval`    | the request's `answer`: approve or reject a `user_approval` stop             |
  * | `watchTalk`         | the user's message log (`workforceMessages`), as `sendMessage` writes it     |
@@ -51,7 +53,7 @@ import {
   type WireNotice,
   type WireTopic,
 } from "@flow-state-dev/client";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import { isSuspensionWait, type OutputItem } from "@flow-state-dev/core/items";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   createWorkforceClient,
@@ -68,6 +70,15 @@ import { createInboxClient, inboxItems, taskRowView, type InboxAnswer, type Inbo
 import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
+import {
+  composeToolGroupLabel,
+  toolRunOpen,
+  toolRunState,
+  toolStepState,
+  withToolState,
+  type ToolCallStatus,
+  type ToolStepState,
+} from "./components/flow-state/tool-grouping";
 import { harnessName } from "./lib/harness";
 import { sessionFeeds, type SessionFeed } from "./lib/session-feed";
 import { stableList } from "./lib/stable";
@@ -156,6 +167,8 @@ export interface SessionStep {
   tool?: string;
   /** For `tool`, the step is a shell command, shown as code. */
   code?: boolean;
+  /** For `tool`, how it stands: running, waiting, done, or failed (thrown, or a result that says so). */
+  state?: ToolStepState;
   /** For `said`, while it is still being written. */
   streaming?: boolean;
 }
@@ -174,7 +187,35 @@ export type ConversationEntry =
   /** A task it filed ended, as a line under the name of the worker that ran it; `title` is the task's, once its row is read. */
   | { kind: "result"; id: string; taskId: string; from: string; text: string; title?: string; failed?: boolean; cancelled?: boolean }
   /** The worker waits for your yes (`suspendForUser` with an approval); `resolution` once answered. */
-  | { kind: "approval"; id: string; requestId: string; suspensionId: string; text: string; resolution?: string };
+  | { kind: "approval"; id: string; requestId: string; suspensionId: string; text: string; resolution?: string }
+  /** A run of tool calls one turn made in a row, drawn inline as one line ({@link StepRun}) that opens to each. */
+  | ({ kind: "steps"; id: string; steps: SessionStep[] } & StepRun);
+
+/**
+ * A run of tool steps as one line: what it did ("Read 2 files and searched
+ * the code"; the step in flight while it runs, "Read src/a.ts…"), how it
+ * stands, and whether it shows open. Open while it runs, folded once it
+ * doesn't: the registry's `toolRunOpen`.
+ */
+export interface StepRun {
+  label: string;
+  state: ToolStepState;
+  open: boolean;
+}
+
+/** One line for a run of tool steps, in the UI registry's words: {@link StepRun}. */
+export function stepRun(steps: readonly SessionStep[]): StepRun {
+  const states = steps.map((step) => step.state ?? "completed");
+  const state = toolRunState(states);
+  const now = state === "running" ? [...steps].reverse().find((step) => step.state === "running") : undefined;
+  const label =
+    steps.length === 1
+      ? withToolState(steps[0]!.text, state)
+      : now !== undefined
+        ? withToolState(now.text, "running")
+        : withToolState(composeToolGroupLabel(steps.map((step) => step.tool ?? step.text)), state, states.filter((s) => s === state).length, steps.length);
+  return { label, state, open: toolRunOpen(state) };
+}
 
 /** What a conversation shows now. */
 export interface ConversationView {
@@ -580,6 +621,8 @@ function harnessAndModel(spend: { harness?: string; model?: string }, setting: s
 export function toEntries(items: readonly Item[], workers: ReadonlySet<string>): ConversationEntry[] {
   const rows = boardRows(items);
   const entries: ConversationEntry[] = [];
+  /** The turn the last run of steps belongs to: a run never spans two. */
+  let runTurn: unknown;
   for (const item of items) {
     if (item.type === "message" && item.role === "user") {
       entries.push({ kind: "user", id: item.id, text: textOf(item) });
@@ -607,15 +650,23 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>):
     } else if (item.type === "message" && item.role === "assistant") {
       const text = textOf(item);
       if (text.trim() !== "") entries.push({ kind: "assistant", id: item.id, text, ...(item.status === "in_progress" ? { streaming: true } : {}) });
-    } else if (item.type === "tool_output" && item.toolCall?.name === SEND_MESSAGE_TOOL) {
+    } else if (item.type === "tool_output" && item.toolCall?.name === SEND_MESSAGE_TOOL && sentTo(item) !== undefined) {
       const args = parseArgs(item);
-      const messageId = item.output?.sent;
-      if (typeof messageId === "string" && typeof args.to === "string") {
-        entries.push({ kind: "sent", id: item.id, messageId, to: args.to, text: String(args.text ?? "") });
-      }
+      entries.push({ kind: "sent", id: item.id, messageId: item.output.sent, to: String(args.to), text: String(args.text ?? "") });
     } else if (item.type === "tool_output" && item.toolCall?.name === CREATE_TASK && item.output?.ok === true) {
       const args = parseArgs(item);
       entries.push({ kind: "task", id: item.id, taskId: item.output.taskId, title: String(args.title ?? args.goal ?? ""), to: String(args.assignee ?? "") });
+    } else if (item.type === "tool_output" && typeof item.toolCall?.name === "string") {
+      // Any other call is a step of the turn, inline: a call in a row with the last one, in the same turn, joins its run.
+      const step = toolStep(item);
+      const last = entries[entries.length - 1];
+      if (last?.kind === "steps" && runTurn === item.requestId) {
+        const steps = [...last.steps, step];
+        entries[entries.length - 1] = { kind: "steps", id: last.id, steps, ...stepRun(steps) };
+      } else {
+        entries.push({ kind: "steps", id: item.id, steps: [step], ...stepRun([step]) });
+        runTurn = item.requestId;
+      }
     } else if (item.type === "suspension" && item.reason === "user_approval") {
       entries.push({ kind: "approval", id: item.id, requestId: item.requestId, suspensionId: item.suspensionId, text: item.message });
     } else if (item.type === "suspension_resume") {
@@ -653,15 +704,36 @@ function sentTo(item: Item): string | undefined {
   return typeof messageId === "string" && typeof to === "string" ? to : undefined;
 }
 
+/** A tool call's status as the registry reads it: a call parked on an approval or a question waits. */
+function callStatus(item: Item): ToolCallStatus {
+  if (isSuspensionWait(item as never)) return "waiting";
+  if (item.status === "in_progress") return "running";
+  // A call that never finished (`incomplete`) did not work.
+  return item.status === "completed" ? "done" : "failed";
+}
+
 /**
  * A tool call as a step, in the UI registry's words: what it said it was doing,
- * else what it acted on ("Read …/src/a.ts", the command it ran), else the tool
- * it used. The same on every harness, since the registry names each one's tools.
+ * else what it acted on, with its result once it has one ("Read …/src/a.ts",
+ * `Search "x" · 3 matches`, the command it ran), else the tool it used; and how
+ * it stands, a refused call failed as a thrown one is. The same on every
+ * harness, since the registry names each one's tools.
  */
-function toolStep(id: string, tool: string, args: Record<string, unknown>): SessionStep {
+function toolStep(item: Item): SessionStep {
+  const tool: string = item.toolCall.name;
+  const args = parseArgs(item);
+  const status = callStatus(item);
+  const output = status === "done" ? item.output : undefined;
   const intent = toolIntent(tool, args);
-  const subject = intent === undefined ? toolSubject(tool, args) : undefined;
-  return { id, kind: "tool", tool, text: intent ?? subject?.text ?? `Used ${tool}`, ...(subject?.code ? { code: true } : {}) };
+  const subject = intent === undefined ? toolSubject(tool, args, output) : undefined;
+  return {
+    id: item.id,
+    kind: "tool",
+    tool,
+    text: intent ?? subject?.text ?? `Used ${tool}`,
+    ...(subject?.code ? { code: true } : {}),
+    state: toolStepState(status, tool, output),
+  };
 }
 
 /** A session's items as a popup's steps: what it was given, what it wrote, and the tools it ran. */
@@ -675,7 +747,7 @@ export function toSteps(items: readonly Item[]): SessionStep[] {
     } else if (item.type === "tool_output" && item.toolCall?.name === SEND_MESSAGE_TOOL && sentTo(item) !== undefined) {
       steps.push({ id: item.id, kind: "sent", text: String(parseArgs(item).text ?? ""), to: sentTo(item) ?? "" });
     } else if (item.type === "tool_output" && typeof item.toolCall?.name === "string") {
-      steps.push(toolStep(item.id, item.toolCall.name, parseArgs(item)));
+      steps.push(toolStep(item));
     }
   }
   return steps;

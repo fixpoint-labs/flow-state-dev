@@ -19,7 +19,12 @@ theme on purpose, so it reads as the app it copies.
   turns the worker reads word for word begin; it reads *summarized* only when the earlier turns were
   summarized for the worker. A line you send rises to near the top and its answer is written
   below it; nothing else moves the list, and *Jump to latest* appears when there is more below. A
-  task's line is drawn the moment it is filed and fills in where it is. Enter sends; Cmd+Enter
+  task's line is drawn the moment it is filed and fills in where it is. While a worker answers,
+  the tools it uses show in the conversation as it uses them, each saying what it acted on
+  (*Read …/next/plan.md*, *Search "codename" · 2 matches*). A run of them is one line, open while
+  it runs and folded once it is done, *Searched the code and read a file*, that opens to each. A
+  step whose result says it failed, such as a read the working folder refused, reads *(failed)* in
+  red. Enter sends; Cmd+Enter
   (Ctrl+Enter) sends from every box, including a teammate's instructions, where plain Enter is a
   new line.
 - **Popup:** a message line or a task line in the conversation opens that piece of work in a popup
@@ -181,7 +186,7 @@ names the package call it makes.
 | The working folder | `localWorkspaceHost` with a constant run source, `{ kind: "repo", repo }`, and the folder in `localRepositories`; `projectSourceTools` read it |
 | Coding tasks and their runs | the conversation board's rows assigned to the worker on the coding flow, which the list leaves out; the row's `run` link, read as the run session's items |
 | A task waiting on you, and your answer | the row's holds through the Inbox's `inboxItems` and `taskRowView`, answered with the Inbox client's `answerOne`; a review drawn by the UI registry's `review-hold`, installed in `src/components/flow-state/`, from the run's stop read by harness-manager's `reviewDetail` |
-| A run's steps in plain words | the UI registry's `tool-naming` and `tool-grouping`, installed in `src/components/flow-state/`, over each tool call's name and arguments |
+| A run's steps in plain words, in a popup and inline in the conversation | the UI registry's `tool-naming` and `tool-grouping`, installed in `src/components/flow-state/`, over each tool call's name, arguments, status and result: `toolSubject`, `toolStepState` (with `toolOutcome`), `toolRunState`, `withToolState` and `toolRunOpen` |
 | The divider and its *summarized* label | the last request's `historyStart`, and the session's `historySummary` resource |
 
 The conversation follows its session's stream. Busy status, whether a conversation is answering,
