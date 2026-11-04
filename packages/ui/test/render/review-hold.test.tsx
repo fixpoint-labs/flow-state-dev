@@ -41,6 +41,25 @@ describe("the review card draws a coding run's review", () => {
     expect(screen.getByText(DATA.judge!.reason)).toBeTruthy();
   });
 
+  it("shows the project's checks, a red one open with its output, so the reviewer sees the code doesn't build before accepting", () => {
+    const checks = [
+      { command: "pnpm typecheck", exitCode: 0, timedOut: false, skipped: false, durationMs: 1200, tail: "" },
+      { command: "pnpm test", exitCode: 1, timedOut: false, skipped: false, durationMs: 900, tail: "CHECK-MARKER: 1 failed" },
+    ];
+    render(<ReviewHold review={{ ...DATA, checks }} answer={async () => {}} />);
+    expect(screen.getByText("Checks 1/2 passed")).toBeTruthy();
+    expect(screen.getByText(/CHECK-MARKER: 1 failed/)).toBeTruthy();
+    // Information, not a gate: the reviewer can still accept.
+    expect(screen.getByRole("button", { name: "Accept" })).toBeTruthy();
+  });
+
+  it("draws no checks line when none ran, rather than claiming 0/0", () => {
+    render(<ReviewHold review={{ ...DATA, checks: null }} />);
+    expect(screen.queryByText(/^Checks /)).toBeNull();
+    render(<ReviewHold review={DATA} />);
+    expect(screen.queryByText(/^Checks /)).toBeNull();
+  });
+
   it("says so when git couldn't count the commits, and when no judge read the run", () => {
     render(<ReviewHold review={{ branch: "b", commits: null, subjects: [], judge: null }} />);
     expect(screen.getByText("Commits couldn't be read")).toBeTruthy();

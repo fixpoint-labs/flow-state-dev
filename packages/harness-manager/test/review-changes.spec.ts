@@ -288,7 +288,7 @@ describe("a coding run that made changes waits for a person's review", () => {
       expect(hold.ask.prompt).toContain("information, not approval");
       // The browser reader takes the stop's own data as the review card's props, so its field names can't drift apart.
       const detail = reviewDetail((await h.stop(hold))?.data);
-      expect(detail).toEqual({ branch: expect.any(String), commits: 1, subjects: ["Change 1"], judge: null });
+      expect(detail).toEqual({ branch: expect.any(String), commits: 1, subjects: ["Change 1"], judge: null, checks: null });
       expect(hold.ask.prompt).toContain(`1 commit on ${detail!.branch}`);
       expect(held.attempts).toBe(1);
       expect(h.seen).toHaveLength(1);

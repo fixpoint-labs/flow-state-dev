@@ -92,6 +92,28 @@ export function latestTurn(input: {
   return { requestId, number: turns.size, status };
 }
 
+/**
+ * The turn of the session that waits on an answer about a tool call, as the
+ * session flow records it, or `null`. Read the way the flow reads it when it
+ * refuses a new turn while one waits, so the page holds a message back
+ * instead of sending one the flow would refuse. A turn the items show stopped
+ * no longer waits, even before the record that says so is read.
+ *
+ * @param turns The session's turn records, by request id.
+ * @param items The session's items, for the stops among them.
+ */
+export function turnWaitingOnApproval(
+  turns: Readonly<Record<string, HarnessTurnRecord>> | null | undefined,
+  items: readonly TurnItem[],
+): string | null {
+  for (const [requestId, turn] of Object.entries(turns ?? {})) {
+    if (turn.waitsOnApproval !== true || turn.endedAt != null) continue;
+    if (items.some((item) => item.requestId === requestId && isStopItem(item))) continue;
+    return requestId;
+  }
+  return null;
+}
+
 /** What the session says under a turn. */
 export type TurnNotice =
   | { readonly kind: "continued"; readonly conversation: string }

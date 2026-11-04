@@ -247,12 +247,15 @@ describe("the teammates screen", () => {
     const tasks = [ended("t-1", "Look up the launch date", "done"), ended("t-2", "Check the beta numbers", "failed"), ended("t-3", "Find a customer quote", "done"), ended("t-4", "Pull the survey", "cancelled")];
     render(<App adapter={fast({ tasks })} />);
     const side = await screen.findByRole("complementary", { name: "Chief of Staff's panel" });
-    const groups = () => [...side.querySelectorAll("button[aria-expanded]")].map((b) => b.textContent);
+    const groups = () => [...side.querySelectorAll("button[aria-expanded]")].map((b) => b.getAttribute("aria-label"));
     // Ended tasks are folded: their groups show counts, and none of their rows.
-    await waitFor(() => expect(groups()).toEqual(["Done (2)▸", "Failed (1)▸", "Cancelled (1)▸"]));
+    await waitFor(() => expect(groups()).toEqual(["Done (2)", "Failed (1)", "Cancelled (1)"]));
+    const folded = () => [...side.querySelectorAll("button[aria-expanded]")].map((b) => b.getAttribute("aria-expanded"));
+    expect(folded()).toEqual(["false", "false", "false"]);
     expect(within(side).queryByRole("button", { name: "Asked researcher to look up the launch date" })).toBeNull();
     // Opening a group shows its rows, and only its own.
     fireEvent.click(within(side).getByRole("button", { name: /^Done \(2\)/ }));
+    expect(folded()).toEqual(["true", "false", "false"]);
     const done = within(side).getByRole("list", { name: "Done" });
     expect(within(done).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Asked researcher to look up the launch date", "Asked researcher to find a customer quote"]);
     expect(within(side).queryByRole("button", { name: "Asked researcher to check the beta numbers" })).toBeNull();
@@ -303,15 +306,15 @@ describe("the teammates screen", () => {
     expect(within(popup).getByRole("region", { name: "Result" }).textContent).toBe("Fixed the typo in README.md, line 1.");
   });
 
-  it("opens a coding task's run in a popup, read only, from its line in the thread or its row in the teammate's panel", async () => {
+  it("opens a coding task's run in a popup, from its line in the thread or its row in the teammate's panel", async () => {
     render(<App adapter={fast()} />);
     await tell("Chief of Staff", "Fix the typo in the README's first line.");
     const card = await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" });
 
-    // From the thread: the run fills in live, with no composer, and its result lands in it.
+    // From the thread: the run fills in live, with no composer (its one box is the task's Steer line), and its result lands in it.
     fireEvent.click(card);
     let popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" });
-    expect(within(popup).queryByRole("textbox")).toBeNull();
+    expect(within(popup).getAllByRole("textbox").map((box) => box.getAttribute("aria-label"))).toEqual(["Steer this task"]);
     await waitFor(() => expect(popup.textContent).toMatch(/on Cursor/), { timeout: 2000 });
     await waitFor(() => expect(popup.textContent).toMatch(/Edit \/work\/README\.md/), { timeout: 2000 });
     expect(await within(popup).findByRole("region", { name: "Result" }, { timeout: 2000 })).toBeTruthy();
@@ -410,7 +413,8 @@ describe("the teammates screen", () => {
     expect(entries("task")).toHaveLength(1);
     fireEvent.click(line);
     const popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" });
-    expect(popup.textContent).not.toMatch(/on Claude Code|on Codex/);
+    // Its run started nowhere: the popup offers Re-run on the others, and names no harness it ran on.
+    expect(popup.textContent).not.toMatch(/(Started|Starting) on (Claude Code|Codex)/);
   });
 
   it("lines the composer up with the message list: one column token, centred", async () => {

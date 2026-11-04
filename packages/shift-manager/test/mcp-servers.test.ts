@@ -309,6 +309,12 @@ describe("the harness a Lab runs", () => {
     expect(Object.keys(without!).sort()).toEqual(
       ["allowedTools", "cwd", "detached", "env", "onSession", "onUsage", "permissionMode", "recordWork", "resume", "settingSources", "settings", "systemPrompt"].sort(),
     );
+    expect(without!.allowedTools).toEqual(["Read", "Write", "Edit", "Bash", "Grep", "Glob"]);
+    expect(without!.systemPrompt).toMatchObject({ type: "preset", preset: "claude_code" });
+    const append = (without!.systemPrompt as { append?: string }).append;
+    expect(append).toEqual(expect.any(String));
+    expect(append!.length).toBeGreaterThan(0);
+    expect(append).not.toMatch(/Do nothing else/);
     // The checkout's conventions with every hook off, and never the operator's own user settings (FIX-2421 D2).
     expect(without).toMatchObject({ settingSources: ["project"], settings: { disableAllHooks: true } });
     const { mcpTools, uses, ...rest } = withTools!;

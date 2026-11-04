@@ -73,9 +73,11 @@ import {
   planSource,
   turnNotice,
   turnNumbers,
+  turnWaitingOnApproval,
   type PlanMarkerItem,
   type PlanRowItem,
   type TurnNotice,
+  type TurnStatus,
 } from "@/lib/harness-turn";
 import type { HarnessSessionState } from "@flow-state-dev/harness-manager";
 import { SESSION_DRAFT } from "@/lib/session-draft";
@@ -146,7 +148,17 @@ function SessionBody({
     [items, isStreaming, turnRequest],
   );
   const turnsByRequest = useMemo(() => turnNumbers(items), [items]);
-  const notice = turn === null ? null : turnNotice(state.turns?.[turn.requestId] ?? null, turn.status, bound);
+  // A turn waiting on an answer about a tool call, as the session's record
+  // says: the flow refuses any other turn until it is answered or stopped, so
+  // the page holds a message back and keeps that turn's notice and Stop up,
+  // whatever turn the items show last.
+  const heldBy = useMemo(() => (isStreaming ? null : turnWaitingOnApproval(state.turns, items)), [isStreaming, state.turns, items]);
+  const shown: { requestId: string; status: TurnStatus } | null = heldBy !== null ? { requestId: heldBy, status: "waiting" } : turn;
+  const notice = shown === null ? null : turnNotice(state.turns?.[shown.requestId] ?? null, shown.status, bound);
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    if (heldBy === null) setHeld(false);
+  }, [heldBy]);
   // Lines reach the run in the order they were typed, and the page stays on
   // the running turn while a line's turn waits behind it.
   const lines = useHarnessLines(session, { sendOne: sendLineOnce });
@@ -155,6 +167,14 @@ function SessionBody({
     async (msg: PromptInputMessage) => {
       const prompt = msg.text.trim();
       if (prompt.length === 0) return;
+      if (heldBy !== null) {
+        // Not sent: the message stays in the composer, and the card it waits on comes into view.
+        setHeld(true);
+        document.querySelector('[data-testid="conversation"] [data-suspension]:not([data-resolved])')?.scrollIntoView({ block: "center" });
+        // In case the record this read is stale, re-read it, so the next send sees the turn as it stands.
+        void refresh({ items: false });
+        return;
+      }
       try {
         const outcome = await lines.send(prompt);
         setLastLine(outcome);
@@ -169,13 +189,13 @@ function SessionBody({
         // Keep the persisted draft so a failed send can be retried.
       }
     },
-    [lines, refresh, setMessage, sessionId],
+    [heldBy, lines, refresh, setMessage, sessionId],
   );
   // A turn waiting on an answer has no stream to close: the session stops it by request id.
-  const waiting = turn?.status === "waiting";
+  const waiting = shown?.status === "waiting";
   const stopTurn = useCallback(
-    () => (waiting && turn !== null ? session.dismissRequest(turn.requestId) : session.abortRequest()),
-    [waiting, turn, session],
+    () => (waiting && shown !== null ? session.dismissRequest(shown.requestId) : session.abortRequest()),
+    [waiting, shown, session],
   );
   const steered = turn === null ? [] : (state.turns?.[turn.requestId]?.steered ?? []);
   const turnRecord = turn === null ? null : (state.turns?.[turn.requestId] ?? null);
@@ -220,7 +240,7 @@ function SessionBody({
           <ConversationScrollButton />
         </Conversation>
         <div className="border-t">
-          <LineNotes steered={steered} last={lastLine} running={isStreaming} label={label} />
+          <LineNotes steered={steered} last={lastLine} running={isStreaming} held={held} label={label} />
           {notice !== null && <Notice notice={notice} label={label} />}
           {turnRecord !== null && <TurnSpend record={turnRecord} />}
           {turn !== null && <TurnWork record={state.turns?.[turn.requestId] ?? null} label={label} />}
@@ -290,20 +310,26 @@ function SessionRepoLine({ line }: { line: RepoLine }) {
   );
 }
 
-/** While a turn runs, what a line sent now does; the lines the latest turn took; and where the last line sent went. */
+/**
+ * While a turn runs, what a line sent now does; the lines the latest turn took; where the last line sent went; and
+ * why a message was held back while a turn waits on an answer about a tool call.
+ */
 function LineNotes({
   steered,
   last,
   running,
+  held,
   label,
 }: {
   steered: readonly string[];
   last: LineOutcome | null;
   running: boolean;
+  /** Whether the last message was held back because a turn waits on an answer about a tool call. */
+  held: boolean;
   label: string;
 }) {
   const after = running && last === "after-this-turn";
-  if (steered.length === 0 && !running) return null;
+  if (steered.length === 0 && !running && !held) return null;
   return (
     <div className="mx-auto max-w-3xl px-3 pt-2 text-sm text-muted-foreground sm:px-4" data-testid="line-notes">
       {running && !after && (
@@ -316,6 +342,11 @@ function LineNotes({
           You, taken into the running turn: {line}
         </p>
       ))}
+      {held && (
+        <p data-testid="line-held">
+          Not sent: {label} is waiting on your answer to the card above. Approve or reject it, or Stop that turn, then send your message.
+        </p>
+      )}
       {after && (
         <p data-testid="line-after">{label} couldn&apos;t take your line into this turn. It runs after this turn.</p>
       )}

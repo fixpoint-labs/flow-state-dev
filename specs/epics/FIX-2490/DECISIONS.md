@@ -4,7 +4,7 @@
 
 The calls that sit above any single child: what was chosen, what lost, why, and what each locks
 in for the ten children and the closure. D1 to D3 are the owner's, made before this spec was
-written. D4 and D5 are engineering calls. Q1 is open.
+written. D4 and D5 are engineering calls. Q1 is the owner's, answered on Nov 4.
 
 <a name="d1"></a>
 ## D1 · New layers are on by default for every workforce worker, each with its own opt-out
@@ -27,13 +27,13 @@ it is a preset, and our apps turn it on.
 |---|---|
 | **Instead of** | A before/after eval of about 10 scripted tasks per app, scored by a judge, before any layer or content change |
 | **Because** | The four closure scripts have to exist anyway. Run once after the six bugs merge, they show which asks the wiring alone fixed, which is the question the eval was for. The owner's call, before this draft |
-| **Locks in** | Bugs first. The closure's scripts are built early, as its spec POC, so the cut run can happen before the closure is unblocked; no separate end-state POC is built. Each bug blocks each layer in Linear. A layer whose ask passes on the cut run is cancelled, citing the run ([ER-6](#who-owns-what)). "Smarter" outside the four asks is not measured |
+| **Locks in** | Bugs first. The closure's scripts are built early, as its spec POC, so the cut run can happen before the closure is unblocked; no separate end-state POC is built. Each bug blocks each layer in Linear. A layer whose ask passes on the cut run is cancelled, citing the run ([ER-6](#who-owns-what)). "Smarter" outside the seven asks is not measured |
 
 **What would change my mind:** a cut run that can't tell the layers apart, because every ask
 passes or fails the same either way. Then the asks are too coarse, and a finer check is worth
 its cost.
 
-![D2, how we know a layer is needed: the closure scripts, run after the bugs, chosen, beside a before and after eval. Decides it: the scripts exist anyway and answer which asks the bugs alone fixed. Price: four asks, not a quality score. Flips if the cut run can't tell the layers apart](figures/d2-cut-run.svg)
+![D2, how we know a layer is needed: the closure scripts, run after the bugs, chosen, beside a before and after eval. Decides it: the scripts exist anyway and answer which asks the bugs alone fixed. Price: seven asks, not a quality score. Flips if the cut run can't tell the layers apart](figures/d2-cut-run.svg)
 
 <a name="d3"></a>
 ## D3 · Tool-owned guidance stays its own issue (FIX-2499)
@@ -73,43 +73,25 @@ gets the defaults.
 Engineering, not asked: one list of checks is the only answer the compose rule allows.
 
 <a name="q1"></a>
-## Q1 · Open · Should the proof reach every layer the epic builds?
+## Q1 · Resolved · The proof reaches every layer the epic builds: three more asks in the closure
 
-**Plain terms.** The proof has four asks: the date, a multi-file question, a coder's checks, a
-cited source. Three things in the set are reached by none of them: answer sizing and the skills
-index (both FIX-2498 sections now) and the structured summary (FIX-2500). Under the kill line,
-a section with no ask can't be cut at the cut run, and can't be proven at the wrap. It ships
-unmeasured, which is what D2 exists to stop.
+**The owner's call, Nov 4 (in session).** FIX-2541's scripts gain three asks beside the four
+they had: **(1)** a one-line question gets a short answer; **(2)** a worker holding a skill that
+fits loads it without a slash; **(3)** a decision made before a summary fold is still used after
+it, in the two labs, where conversations run long. Each runs 3 times and passes on 3 of 3, with
+a control that fails on the pinned pre-bug `main` ([ER-7](#who-owns-what)). Still each app on its
+real path, still no eval apparatus ([D2](#d2)).
 
-**The trade-off.** Three more asserts in the same scripts is adding to the proof, which is
-your call. Moving the summary and the skills index out of the epic loses "keeps the thread" and
-"sees its skills" from the epic's description, and leaves sizing unproven.
+| | |
+|---|---|
+| **Instead of** | Moving FIX-2500 and FIX-2498's skills-index section to *Not doing*, the alternative argued in the [second look](https://github.com/fixpoint-labs/flow-state-dev/pull/4672#issuecomment-6631454763) |
+| **Because** | Under the kill line a layer no ask reaches can be neither cut at the cut run nor proven at the wrap, so it ships unmeasured, which is what D2 exists to stop. The owner kept "keeps the thread" and "sees its skills" in the outcome |
+| **Locks in** | FIX-2500 and the skills-index section stay in scope, and are now cuttable and provable: the cut run cancels either one whose ask already passes ([ER-6](#who-owns-what)), and the wrap proves the rest. Answer sizing, in FIX-2498's behaviour section, gets its own ask. FIX-2541's spec and Linear description carry the seven asks. The seeded long conversation is the larger part of the cost, two to three days rather than one. Each new ask asserts its mechanism fired, and the cut run switches on today's skills listing and uses Teammates' existing fold, so the ask measures the content; a cut keeps the default flip ([ER-6, ER-7](#who-owns-what)) |
 
-**My recommendation: add three asserts to the same scripts.** A one-line question gets a short
-answer. A worker holding a skill that fits loads it without a slash. A decision made before a
-summary fold is still used after it, in the two labs, where conversations run long. Still
-`fsdev run`, still no eval apparatus.
+**What would change my mind:** compaction or skills dropped from the outcome on purpose. Then
+they move to *Not doing*, and their asks go with them.
 
-**The other option, argued in the [second look](https://github.com/fixpoint-labs/flow-state-dev/pull/4672#issuecomment-6631454763):
-move FIX-2500 and the skills-index section out.** Growing the proof to fit what was planned is
-backwards; the sizing and fold asserts are the most brittle model-behaviour checks in the set,
-and the index reverses the skills switches' "zero configuration costs nothing" rule, the
-costliest default flip here with the weakest case. Both stay available opt-in (the switches and
-`historySummary` exist), sizing is proven by the closure's sweep, and either comes back when a
-real ask shows the need. **Price:** saves both specs and builds, the index's per-turn tokens on
-every worker and the summary's extra model call per fold; costs "keeps the thread" and "sees
-its skills" from the epic's promise, and sizing stays without a scripted ask.
-
-**What would change my mind:** if you dropped compaction and skills from the outcome on purpose.
-Then take the other option.
-
-**What being wrong costs.** Recommended and unneeded: three asserts, two of them quick; the
-seeded long conversation is the larger part, two to three days rather than one. Not taken and
-needed: two layers ship that every worker pays for and nobody showed to help. With compaction on
-by default, that pay includes one extra model call per worker every time its summary folds, on
-top of the index's per-turn tokens.
-
-![Q1, whether the proof reaches every layer: three more asserts, recommended, beside moving the summary and skills index out. Decides it: a layer with no ask can neither be cut nor proven. Price: more proof to write, which is the owner's call. Flips if compaction and skills were dropped from the outcome on purpose](figures/open-proof-reach.svg)
+![Q1, decided: three more asserts in FIX-2541's scripts, chosen, beside moving the summary and skills index out. Decides it: a layer with no ask can neither be cut nor proven. Price: two to three days more proof. Flips if compaction and skills were dropped from the outcome on purpose](figures/open-proof-reach.svg)
 
 ## Who owns what
 
@@ -125,8 +107,8 @@ consumed; a *uses* cell is a place a child must not re-decide.
 | ER-3 | A layer that replaces an app's own patch deletes that patch in the same change: an app's length line, a hand-built coding prompt. Kitchen Sink's `todaysDate` goes only in the change that makes its standalone assistant compose the exported environment formatter | Each child | The closure's sweep |
 | ER-4 | The coding brief's "check before done" takes its checks from `commandCheck`'s own `commands` option. No second list; the report is never the verdict ([D5](#d5)) | FIX-2502 · FIX-2494, 2495 consume | FIX-2502's spec review; the closure's coder leg |
 | ER-5 | A harness's own preset is appended to, never replaced | FIX-2494 builds · FIX-2502 consumes | FIX-2502's spec review |
-| ER-6 | No layer is implemented before the cut run reports on the closure issue. A layer, or a section of FIX-2498, whose ask passes 3 of 3 is cancelled or dropped, citing the run ([D2](#d2)). The environment section is exempt and kept regardless: only Kitchen Sink gets a date from the bugs | The coordinator | Each wake |
-| ER-7 | The closure's scripts assert on the worker's answer through `fsdev run` on a real model, each with a control that fails on today's `main`. Each ask runs 3 times and passes only on 3 of 3; a control fails if any run fails | FIX-2541 | The closure's spec review |
+| ER-6 | No layer is implemented before the cut run reports on the closure issue. A layer, or a section of FIX-2498, whose ask passes 3 of 3 is cancelled or dropped, citing the run ([D2](#d2)). The environment section is exempt and kept regardless: only Kitchen Sink gets a date from the bugs. A cut of the skills index or the summary drops its content and keeps its default flip ([D1](#d1)): the wrap sets no switch | The coordinator | Each wake |
+| ER-7 | The closure's scripts serve each app as it ships and drive it over its public API, as the existing goals for these apps do, and assert on the worker's answer on a real model, each with a control that fails on `0df5c85` (`main` before the bug fixes, pinned). Each ask runs 3 times and passes only on 3 of 3; a control fails if any run fails, and each ask must fail its control in at least one app where it runs. An ask that needs a mechanism to fire (a summary fold, a held skill) asserts it fired first; a run where it did not fails. "Where it runs" means where the ask's precondition can hold: the Claude Code-style lab has no fold on `main`, so it runs the fold ask only at the wrap, and FIX-2500's cut is read on Teammates alone. The control and the cut run turn on today's skills listing; the wrap sets no switch | FIX-2541 | The closure's spec review |
 | ER-8 | Consumed issues keep their parents: FIX-2387 and FIX-2388 (FIX-2369), FIX-2174 (FIX-2171), FIX-2467, FIX-2073 | The coordinator | Each refresh |
 
 ## Coordination seams
@@ -184,7 +166,47 @@ and Codex's [review of DECISIONS.md](https://github.com/fixpoint-labs/flow-state
   Codex). The assistant is a standalone core `generator`, not a worker, so the environment
   section never reaches it. FIX-2498 exports the formatter and has the assistant compose it,
   deleting FIX-2492's fix in that change. ER-3 and the seam.
-- **Q1 stays open**, now with the second look's alternative priced on its card.
+- **Q1's alternative priced on its card** (the second look). The owner answered it after merge;
+  see [Q1](#q1).
+
+On Q1's amendment, from the [second look on #4703](https://github.com/fixpoint-labs/flow-state-dev/pull/4703#issuecomment-6641038965)
+(three findings that decide whether the kill line can cut the layers Q1 added), EM calls:
+
+- **No vacuous pass** (#1). The fold ask finds a fold in the run record before it checks the
+  decision; the skill ask finds the skill held. A run where the mechanism did not fire fails, so
+  it can never cancel FIX-2500 or the index. ER-7.
+- **The cut run switches on what `main` has** (#1, #2). The control and the cut run turn on
+  `skills.activateTool` with a fitting skill held; Teammates already folds with its
+  `historySummary`; the Claude Code-style lab has no fold, so it runs the fold ask at the wrap
+  only ([FIX-2541's alignment](#on-fix-2541s-alignment)). Each ask tests the layer's content
+  against the existing mechanism rather than failing by construction. A cut drops the content
+  and keeps the default flip, because the wrap sets no switch. ER-6, ER-7 is the normative copy.
+- **The control is per ask** (#4). Each ask must fail on `main` in an app where it runs; "one
+  ask fails in every app" no longer showed that the new asks can fail. ER-7.
+- **Routed, not folded** (#3 and the fixture note). The sizing ask's pass criterion and a shared
+  seeded-conversation fixture are FIX-2541's, which owns how its scripts assert (ER-7).
+
+<a name="on-fix-2541s-alignment"></a>
+On FIX-2541's alignment: the owner approved the closure's spec by merging
+[#4711](https://github.com/fixpoint-labs/flow-state-dev/pull/4711) (head 0c048b4), and the FSD
+Architect's coherence comments on it
+([fork](https://github.com/fixpoint-labs/flow-state-dev/pull/4711#issuecomment-6642090061),
+[epic vs spec](https://github.com/fixpoint-labs/flow-state-dev/pull/4711#issuecomment-6642092355))
+named three places this epic said otherwise. The epic now follows the child:
+
+- **The summary's cut is decided on Teammates alone** (Switches, leg c3). The Claude Code-style
+  lab has no summary fold and no switch on `main`, so its fold ask could only fail its
+  precondition on the control and the cut run. It runs that ask at the wrap only, where
+  FIX-2500's default must carry it. "Every app where it runs" means every app where the ask's
+  precondition can hold, so FIX-2541's [D1](../../issues/FIX-2541/DECISIONS.md#d1) is read
+  plainly, with no exception. ER-6's cut-keeps-flip and this epic's D1 are unchanged. ER-7.
+- **The real path is each app served as it ships, driven over its public API** (goal check). One
+  `fsdev run` process does not host a turn that spans sessions and a coding run; every existing
+  goal for these apps serves the app and drives it through its client. The asks and their pass
+  criteria are unchanged. ER-7.
+- **The control is pinned to `0df5c85`**, `main` before the bug fixes, instead of "today's
+  `main`", which moves as children merge and could let a control pass for the wrong reason.
+  ER-7.
 
 ## How it got here
 
@@ -194,5 +216,12 @@ and Codex's [review of DECISIONS.md](https://github.com/fixpoint-labs/flow-state
   run; Q1 raised.
 - **Review round 1 (Nov 4)** — analysed; two children folded; the calls above.
 - **Review round 2 (Nov 4)** — the second look and Codex folded; Q1's alternative priced.
+- **Merged (Nov 4).** The owner then answered [Q1](#q1): three more asks in the closure; FIX-2500
+  and the skills index stay. Folded by a follow-up amendment PR (#4703).
+- **Amendment review (Nov 4)** — #4703's second look: the new asks can't pass vacuously, the cut
+  run switches on today's mechanisms, the control is per ask. A second amendment PR.
+- **FIX-2541 aligned (Nov 4)** — the owner merged the closure's spec (#4711). The epic follows
+  it: the summary's cut on Teammates alone, the apps on their real path, the control pinned to
+  `0df5c85`. A third amendment PR.
 
-**Open: [Q1](#q1).**
+**Open:** none.

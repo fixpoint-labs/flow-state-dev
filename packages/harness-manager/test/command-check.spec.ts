@@ -26,6 +26,7 @@ import {
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { commandCheck, harnessDrainBudgetMs, harnessManager, harnessTaskInputSchema, resolveOwnership, runOwnerClaimOrder, runTopic, type CompletionRunContext, type HarnessFeeds, type PhaseSpec } from "../src";
 import { harnessTaskId } from "../src/workspace";
+import { reviewDetail } from "../src/browser";
 import { seedRepo } from "./fixtures";
 import { cleanUpHosts } from "./claim-host";
 import { releaseLock, tryAcquireLock } from "@flow-state-dev/workspace";
@@ -295,6 +296,10 @@ describe("a run is done only when its checks pass", () => {
       const hold = h.review(held)!;
       expect(hold.ask.prompt).toContain("Checks 1/1 passed.");
       expect((await h.suspension(hold))?.data?.checks).toEqual([
+        expect.objectContaining({ command: "node check.mjs", exitCode: 0, timedOut: false, skipped: false }),
+      ]);
+      // The browser reader hands the review card the same checks, so the card can't drift from the stop.
+      expect(reviewDetail((await h.suspension(hold))?.data)?.checks).toEqual([
         expect.objectContaining({ command: "node check.mjs", exitCode: 0, timedOut: false, skipped: false }),
       ]);
       const record = await h.runRow();

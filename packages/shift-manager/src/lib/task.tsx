@@ -128,6 +128,10 @@ export function TaskProvider({
   const [boardRows, setBoardRows] = useState<BoardRow[]>(fromSnapshot);
   const [rowFailure, setRowFailure] = useState<Failure | undefined>(undefined);
   const [reads, setReads] = useState(0);
+  // Set by a re-read someone asked for (a board action in the frame, or Retry):
+  // a row that comes back pending with no run is then followed until the board
+  // hands it to one, which a Release or a Retry leaves to its next dispatch pass.
+  const [following, setFollowing] = useState(false);
 
   useEffect(() => {
     setBoardRows(fromSnapshot);
@@ -237,7 +241,8 @@ export function TaskProvider({
     if (linkSettled) setReads(0);
   }, [linkSettled, link?.requestId]);
   const awaitingNextRun = row !== undefined && row.run !== null && linkSettled && isOpen(row);
-  const waiting = boardKnown && (awaitingLink(row) || awaitingNextRun) && boardFailure === undefined && reads < REREAD_AT_MOST;
+  const awaitingDispatch = following && row !== undefined && row.status === "pending" && row.run === null;
+  const waiting = boardKnown && (awaitingLink(row) || awaitingNextRun || awaitingDispatch) && boardFailure === undefined && reads < REREAD_AT_MOST;
   useEffect(() => {
     if (!waiting) return;
     const timer = setTimeout(() => {
@@ -299,6 +304,7 @@ export function TaskProvider({
   useEffect(() => {
     setSent([]);
     setUnstamped([]);
+    setFollowing(false);
   }, [boardRef, taskId]);
   const noteSent = useCallback((requestId: string, stamped: boolean) => {
     const add = (held: string[]) => (held.includes(requestId) ? held : [...held, requestId]);
@@ -316,6 +322,7 @@ export function TaskProvider({
     gaveUp: boardKnown && awaitingLink(row) && boardFailure === undefined && reads >= REREAD_AT_MOST,
     // A read now, then a fresh re-read window if the row is still waiting.
     retryRow: () => {
+      setFollowing(true);
       setReads(0);
       void readBoardNow();
     },

@@ -580,11 +580,12 @@ Query parameters, all optional:
 - `item_types`: comma-separated item types, applied as on the snapshot route.
 
 A connection reads the store when a change notice for the session wakes it, at
-most once a second. On a bus that crosses processes, that is its only read, so
+most once a second. On a bus that crosses processes, the in-memory default
+included (it serves an app that runs as one process), that is its only read, so
 an open view of a session where nothing changes costs the store nothing. On a
-bus that can't cross (the in-memory default, or one that has stopped crossing)
-it also reads about once a second, so a reply written by another process still
-arrives. Pings and the 15-minute close keep their own timers.
+bus that doesn't cross (a Postgres bus with no tail pool, or one that has
+stopped crossing) it also reads about once a second, so a reply written by
+another process still arrives. Pings and the 15-minute close keep their own timers.
 
 Each SSE frame's `event` is the event's `type`, and its `data` is the whole
 event as JSON. Every event carries `stream: "session"`, `sessionId`, and `at`,
@@ -669,12 +670,18 @@ const stop = stores.bus!.subscribe(topic, (notice: ChangeNotice) => readAgain(no
 |---|---|
 | `publish(notice)` | Called only after the change can be read. A failure never fails the write that caused it |
 | `subscribe(topic, listener)` | Returns the unsubscribe |
-| `crossesProcesses` | Whether a notice published in another process reaches this one *now*. Only `true` turns the session stream's timed read off |
+| `crossesProcesses` | Whether a change made in any process that serves this app reaches this one's subscribers *now*. Only `true` turns the session stream's timed read and the client's fallback poll off |
 | `onCrossingChange(listener)` | Each change of `crossesProcesses`. A change to `false` puts waiting streams back on the timed read |
 
 A bus that reconnects sends each subscriber one `resync` notice on its topic.
 `createInMemoryBus()` is the default, and the in-process fan-out an adapter can
-compose; it never says it crosses.
+compose. It is the bus for an app that runs as one process, so it always says
+it crosses: with it, the session stream keeps no timed read and a client with
+an open socket stops its fallback poll. An app that writes its stores from
+several processes (several servers, a worker, or `fsdev run` / `fsdev chat` on
+the same SQLite file as a running server) needs a bus that crosses, such as the
+Postgres bus that Postgres stores fill by default. On the in-memory bus, the
+other processes' changes don't push to open pages.
 
 **A registry you build yourself.** `resolveStores`, `createFlowState`,
 `runAction`, BullMQ's job processor and `fsdev` apply `withChangeBus(stores)`,
@@ -696,7 +703,7 @@ that user, and closes the socket after an hour. It answers each accepted ticket
 with `{ type: "subscribed" }` once the ticket's topics are heard, so a client reads
 after that point and misses nothing. After the first ticket, and each time the
 bus's `crossesProcesses` changes, it sends `{ type: "crossing", crosses }`:
-whether notices from other processes reach this socket. A client keeps reading on
+whether a change from any process serving the app reaches this socket. A client keeps reading on
 its timer until it hears `crosses: true`.
 `serve()` in `@flow-state-dev/node` does all of this; `secret` defaults to a
 random key per router.
@@ -1057,12 +1064,13 @@ type VersionedResourceState = { state: JsonObject; version: number };
 
 interface ResourceStateStore {
   get(scopeType, scopeId, resourceKey): Promise<VersionedResourceState | undefined>;
-  set(scopeType, scopeId, resourceKey, state, expectedVersion): Promise<SetResult<JsonObject>>;
+  set(scopeType, scopeId, resourceKey, state, expectedVersion, options?): Promise<SetResult<JsonObject>>;
   delete(scopeType, scopeId, resourceKey, expectedVersion): Promise<SetResult<JsonObject>>;
   getAll(scopeType, scopeId): Promise<Record<string, VersionedResourceState>>;
   getByPrefix(scopeType, scopeId, keyPrefix): Promise<Record<string, VersionedResourceState>>;
   deleteAll(scopeType, scopeId): Promise<void>;
   purgeTombstones(scopeType, scopeId): Promise<void>;
+  indexes?: ResourceStateIndexes; // optional: see "Index entries" below
 }
 ```
 
@@ -1104,6 +1112,36 @@ It removes tombstones only. A live row is data — state can legitimately be wri
 The engine runs it immediately **before** creating the session record, not after. There is no transaction across the two stores, and creating first would leave a committed record over intact tombstones whenever the reclamation failed — with nothing to retry it, since a second create answers 409 and an action-driven create adopts the record instead. Reclaiming first commits nothing until it has succeeded, and running it twice is a no-op.
 
 **Writing an adapter:** `purgeTombstones` is required. It is one statement in SQL (`DELETE … WHERE scope_type = ? AND scope_id = ? AND lifecycle = 'deleted'`), and the shared conformance suite covers it. Adding a required method to a published store interface breaks every implementer — including test doubles, which are implementers too.
+
+### Index entries
+
+A store can keep **index entries**: rows that let a collection be looked up by a field outside its key without reading the collection. Entries are optional. A store that keeps them has an `indexes` member with four verbs; one that does not (the memory and filesystem adapters) leaves it out, and lookups there read the scope's rows instead. The SQLite and Postgres adapters keep them.
+
+```ts
+type ResourceIndexEntry = { collection: string; index: string; values: string[] };
+
+interface ResourceStateIndexes {
+  state(scopeType, scopeId, collection, index): Promise<"unbuilt" | "building" | "built">;
+  beginBuild(scopeType, scopeId, collection, index): Promise<string>;
+  completeBuild(scopeType, scopeId, collection, index, build: string, entries: { key: string; values: string[] }[]): Promise<boolean>;
+  findKeys(scopeType, scopeId, collection, index, value): Promise<string[]>;
+}
+```
+
+`collection` is the collection's full declared pattern and `index` its stored name, version included; `values` are canonical strings. A writer passes a row's entries as `set(…, expectedVersion, { indexEntries })`. A store without `indexes` ignores that argument.
+
+Entries may be stale but never missing, because a reader checks every hit against its row and can drop a stale one but cannot find a row with no entry. The verbs keep that rule:
+
+| Operation | What it does to entries and markers |
+|---|---|
+| `set` that lands | The key's entries become exactly the ones it lists, in the row's own commit. The build marker of every index whose collection pattern covers the key, and that the call does not list, is cleared, so the next lookup rebuilds it |
+| `set` that conflicts | Changes no entry and clears no marker |
+| `delete`, `deleteAll`, `purgeTombstones` | Remove the entries of the rows they tombstone or reclaim. Markers stay |
+| `beginBuild` | Marks the index `building` in that scope and returns the build's token. A later `beginBuild` replaces the marker with a new token |
+| `completeBuild` | Adds the entries and marks the index `built`, in one commit, only if the `building` marker its token names is still there. Returns whether it did. It only adds, never replaces, because a live write may land during the scan |
+| `findKeys` | The keys with an entry of that value, in ascending order |
+
+Each scope's entries and markers are its own. **Writing an adapter:** implement all four verbs or none. Commit a row and its entries together: SQLite runs both in one transaction, and Postgres puts the entry upkeep in the write's own statement. Pass `indexes: true` to `createResourceStateStoreConformanceTests` to run the index cases against your store.
 
 `toBareState` / `toBareStates` are exported for readers that only want the stored value and not the version beside it. `VersionedResourceState` is **branded**, so it is not assignable to `JsonObject` and a missing unwrap fails to compile rather than silently handing the wrong shape downstream. The brand is a phantom optional property that never exists at runtime — adapters still construct a versioned read as a plain object literal. It does not defend against an explicit `as` cast; that stays the caller's assertion to make.
 

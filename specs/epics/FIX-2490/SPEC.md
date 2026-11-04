@@ -32,24 +32,32 @@ that did not run · a closure bug is open.
 
 ```mermaid
 flowchart LR
-  A["each of four apps · real model · fsdev run · 3 runs per ask"] --> L1["leg a · a dated ask and a multi-file question"]
+  A["four apps served as they ship · driven over their APIs<br/>real model · 3 runs per ask"] --> L1["leg a · a dated ask and a multi-file question"]
   A --> L2["leg b · a coding task and a several-lookup knowledge ask"]
+  A --> C1["leg c1 · a one-line question<br/>reaches FIX-2498's behaviour section · sizing"]
+  A --> C2["leg c2 · a fitting skill<br/>reaches FIX-2498's skills index"]
+  A --> C3["leg c3 · a decision across a summary fold<br/>reaches FIX-2500<br/>cut decided on Teammates<br/>runs in both labs at wrap"]
   L1 --> T["what the worker answers"]
   L2 --> T
-  T -->|"3 of 3 · right date · one turn · checks named and run · source cited"| P["PASS · the goal is met"]
-  C["control · today's main"] -.-> T
-  T -.->|"under the control"| F["must FAIL in every app"]
+  C1 --> T
+  C2 --> T
+  C3 --> T
+  T -->|"3 of 3 · right date · one turn<br/>checks named and run · source cited<br/>short · skill loaded · decision kept"| P["PASS · the goal is met"]
+  C["control · pre-bug main 0df5c85"] -.-> T
+  T -.->|"under the control"| F["each ask must FAIL<br/>in an app where its<br/>precondition can hold"]
 ```
 
 | How we verify | |
 |---|---|
-| **Goal check** | The closure FIX-2541: one scripted `fsdev run` per app on one `main` commit after every other child merges. No eval apparatus ([D2](DECISIONS.md#d2)) |
-| **Signal** | The worker states today's date · a code question that needs several files is answered in one turn · the coder's report names the checks it ran and their result · a knowledge worker cites a source, on an ask that needs several lookups |
+| **Goal check** | The closure FIX-2541: four app scripts, each serving its app as it ships and driving it over its public API, as the existing goals for these apps do; at the wrap, on one `main` commit after every other child merges. Seven asks in the two labs; six in Kitchen Sink and Shift Manager, which skip the fold ([Q1](DECISIONS.md#q1)); each ask runs 3 times ([ER-7](DECISIONS.md#who-owns-what)). That is 78 real-model runs at the wrap, and 75 on the control and the cut run, where the Claude Code-style lab skips the fold too (*Switches*). No eval apparatus ([D2](DECISIONS.md#d2)) |
+| **Signal** | The worker states today's date · a code question that needs several files is answered in one turn · the coder's report names the checks it ran and their result · a knowledge worker cites a source, on an ask that needs several lookups · a one-line question gets a short answer · a worker holding a skill that fits loads it without a slash · in the two labs, a decision made before a summary fold is still used after it |
 | **Sampling** | Each ask runs 3 times and passes only on 3 of 3 ([ER-7](DECISIONS.md#who-owns-what)) |
+| **Preconditions** | An ask that needs a mechanism to fire asserts that it fired before it asserts the answer: the fold ask finds a summary fold in the run record, the skill ask a skill the worker holds. A run where it did not fire fails; it never passes, so it never cuts a layer. "Every app where it runs", here and in the cut, means every app where the ask's precondition can hold ([ER-7](DECISIONS.md#who-owns-what)) |
+| **Switches** | On the control and the cut run, the scripts turn on what `main` already has but leaves off: the skills listing (`skills.activateTool`) with a fitting skill held. Teammates already folds (its `historySummary`). The Claude Code-style lab has no fold and no switch on `main`, so it runs the fold ask only at the wrap, and FIX-2500's cut is decided on Teammates alone ([decided in review](DECISIONS.md#on-fix-2541s-alignment)). So the two asks measure the layer's content, not the switch. At the wrap the scripts set nothing; the defaults must carry it |
 | **The coder leg** | Asserts against the run record's `checks`, which `commandCheck` (on `main`) writes in all four apps; the closure turns on Teammates' checks. Passes when the report names at least one check and each one it names is in `checks` with the outcome it reports. A `null` record fails. On the cut run no brief asks for checks, so this leg is expected to fail there |
-| **The cut run, and the kill line** | The same scripts on `main` after the six bugs merge, before any layer is built. A layer, or a section of FIX-2498, whose ask already passes is cut, except the environment section, which is kept regardless ([ER-6](DECISIONS.md#who-owns-what)) |
+| **The cut run, and the kill line** | The same scripts on `main` after the six bugs merge, before any layer is built. A layer, or a section of FIX-2498, whose ask already passes is cut, except the environment section, which is kept regardless. Where a layer turns an existing switch on by default (the skills index, the summary), a cut drops its content and keeps the flip, since the wrap sets no switch ([ER-6](DECISIONS.md#who-owns-what), [D1](DECISIONS.md#d1)) |
 | **Anti-game** | Assert on the worker's answer, never on a child's own output |
-| **Control that must fail** | Today's `main`: at least one ask fails in every app |
+| **Control that must fail** | `0df5c85`, `main` before the bug fixes, pinned so the control can't drift as children merge: each ask fails, in at least one run of 3, in at least one app where it runs. An ask that never fails there can't show its layer is needed; the closure reports it, and its layer goes to the cut run like any other ([ER-7](DECISIONS.md#who-owns-what)) |
 
 **Lead measure:** the set's goal-proven children, named. None yet.
 
@@ -90,9 +98,9 @@ this one merges.
 | **Framework layers · spec route, after the cut run** | | | |
 | FIX-2498 | One module, `workerDefaultLayer`: named sections, an opt-out each and `defaults: false` for all, a token ceiling with a failing test. Three sections: behaviour (finish with evidence, size the answer), environment (date, user, project, surface; its formatter exported, and composed by Kitchen Sink's standalone assistant) and the skills index. Reaches workers built without an installation. FIX-2497 and FIX-2501 folded in | The dated ask in every app, and the "finished, with evidence, sized" half of the outcome | Ready to Spec |
 | FIX-2499 | An optional guidance field on a tool, in the same tools list | Search and fetch learn to cite; owner kept it ([D3](DECISIONS.md#d3)) | Ready to Spec |
-| FIX-2500 | A structured summary for long conversations, on by default | No closure ask reaches it yet ([Q1](DECISIONS.md#q1)) | Ready to Spec |
+| FIX-2500 | A structured summary for long conversations, on by default | The labs' long-conversation ask: a decision is still used after a summary fold ([Q1](DECISIONS.md#q1)) | Ready to Spec |
 | FIX-2502 | One coding brief in harness-manager, used by three apps | The coder ask in every app; replaces three hand-built prompts | Ready to Spec |
-| FIX-2541 · closure · **required** | The four scripted runs, once as the cut run and once at wrap | The only child that proves the outcome | Ready to Spec · blocked by every other child |
+| FIX-2541 · closure · **required** | Four app scripts, seven asks (the fold in the labs only, the Claude Code-style lab's at wrap only), 3 runs each; run as the control, the cut run and at wrap | The only child that proves the outcome | Ready to Spec · blocked by every other child |
 
 10 children and the closure FIX-2541. FIX-2497 and FIX-2501 are Duplicate of FIX-2498. Each bug
 blocks each layer in Linear, so no layer is built before the cut run.
@@ -149,7 +157,7 @@ at the cut run.
 
 ## Sign off
 
-**[The goal](#the-goal-and-how-well-know-its-met):** four asks in four apps, with nothing
+**[The goal](#the-goal-and-how-well-know-its-met):** seven asks across four apps, with nothing
 written by the app. If wrong: we wrap with agents that pass a script and still feel dumb.
 
 **[The debt](#whats-already-here-and-the-debt):** app copies go, per-turn tokens grow under a
@@ -162,7 +170,6 @@ ceiling. If wrong: every worker pays for sections few of them need.
 **Decided, not asked:** [D4](DECISIONS.md#d4) · [D5](DECISIONS.md#d5) ·
 [rounds 1 and 2](DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them).
 
-**Open: [Q1](DECISIONS.md#q1).** The proof does not reach FIX-2500, the skills index or answer
-sizing. Recommended: three more asserts. The alternative: move the summary and the index out.
+**Decided after merge:** [Q1](DECISIONS.md#q1) · [FIX-2541's alignment](DECISIONS.md#on-fix-2541s-alignment).
 
 Epic · 10 children and the closure FIX-2541 · Workforce: Shift Manager · Goal 1, validate through real usage

@@ -1,225 +1,166 @@
-# @flow-state-dev
+# Flow State
 
-**Build AI workflows with blocks. Get streaming, state, retries, and type safety for free.**
+Flow State gives you a working app with a full agentic backend already in place:
 
-```ts
-import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+- Workers that take on tasks, and a task board they share with you.
+- State and memory kept in your own stores, with output streamed to the browser as it is written.
+- Models from any provider, on a direct key (OpenAI, Anthropic, Google) or through a gateway (Vercel AI Gateway, OpenRouter).
+- Hand-offs to the coding agents you already use, Claude Code, Codex and Cursor, on the sign-ins you already have, including a Claude or ChatGPT subscription. Flow State coordinates those agents, so it works as a harness over them.
+- Flows, the steps each worker runs, written in TypeScript you can read and edit. Use them as they are, or change them to fit how you work.
 
-const chat = generator({
-  name: "chat",
-  model: "openai/gpt-6-luna",
-  prompt: "You are a helpful assistant.",
-  inputSchema: z.object({ message: z.string() }),
-  history: true,
-  user: (input) => input.message,
-});
+You own the code. You pick the model for each step and keep the data in systems you run. Where a step doesn't need a model, it runs as plain code.
 
-const trackUsage = handler({
-  name: "track-usage",
-  sessionStateSchema: z.object({ messageCount: z.number().default(0) }),
-  execute: async (input, ctx) => {
-    await ctx.session.incState({ messageCount: 1 });
-    return input;
-  },
-});
+It is open source, written in TypeScript, and runs as a web service. It is also an early preview: the starters are research software, and each one's README lists what isn't wired yet.
 
-const pipeline = sequencer({ name: "chat-pipeline" })
-  .step(chat)
-  .step(trackUsage);
+Today it's for developers. Where it's heading is apps that people who don't write code install and then reshape by asking the app to rewrite or reconfigure itself. That isn't here yet; [flow-state.build](https://www.flow-state.build) is where it will show up.
 
-export default defineFlow({
-  kind: "my-app",
-  actions: {
-    chat: { block: pipeline, userMessage: (i) => i.message },
-  },
-  session: { stateSchema: z.object({ messageCount: z.number().default(0) }) },
-})();
-```
+Docs: [flow-state.dev/docs](https://flow-state.dev/docs/intro).
 
-That's a streaming chat with conversation history, session state, and atomic counters. No transport wiring. No SSE plumbing. No retry logic. The framework handles all of it.
+## Starters
 
-## What you get
+A starter is a complete app: React pages, a team of workers, and the flows they run on. Every starter runs on the same backend packages, so what differs between them is mostly the UI and the workers' files.
 
-**Five block kinds. Infinite compositions.**
+- **[Teammates](labs/teammates)** (`labs/teammates`): a small team you talk to one at a time. Chief of Staff, researcher and writer each keep one long conversation, message each other where you can see it, and hand code changes to a coding agent (Claude Code, Codex or Cursor) that runs in the background. You can hire teammates of your own from the page. The teammates are listed on the left, and choosing one opens its conversation.
+- **[Claude Code-style agent](labs/claude-code-style)** (`labs/claude-code-style`): one conversation driving an agent loop. The main session answers questions about your project itself and starts background tasks for the long pieces. Code changes go to a coding agent. In threads mode, where each request runs as a task in a session of its own, a run that changed files waits for you to accept it or ask for changes.
 
-| Block | What it does |
-|-------|-------------|
-| **handler** | Pure logic — validate, transform, mutate state, implement tools |
-| **generator** | Call an LLM with managed tool loops, streaming, and structured output repair |
-| **sequencer** | Compose blocks into pipelines with `.step()`, `.parallel()`, `.rescue()`, `.forEach()`, and 10 more DSL methods |
-| **router** | Dispatch to different pipelines at runtime based on input or state |
+Shift Manager, an app for working a whole team's asks, tasks and workstreams, is in progress. An early version is in [`packages/shift-manager`](packages/shift-manager), where several screens are placeholders; see its [docs](https://flow-state.dev/docs/shift-manager/overview).
 
-Any block or sequence of blocks can be used as a tool. A single tool call can trigger an entire multi-step pipeline — your AI's tools can be as sophisticated as any other part of your workflow.
+The starters run from a clone of this repository. They are workspace packages that depend on the framework's source, not something you install from npm. To build your own app on one, fork this repository and work in the starter's folder (`labs/<starter>`). Pulling framework updates is a normal `git pull` from upstream.
 
-**Scoped state that scales.** Four isolation levels — request, session, user, org — each with atomic operations (`patchState`, `incState`, `pushState`, `atomicState`). Every block declares only the state fields it needs. Type-safe all the way down.
+## Run a starter
 
-**Resumable streaming out of the box.** Items stream over SSE as blocks execute. Disconnect mid-response? Reconnect with a sequence cursor and pick up exactly where you left off. No data loss. No duplicate events.
-
-**Resources: hybrid memory and filesystem.** Each resource combines rich text content with structured atomic state — like files that carry metadata. An artifact can hold a document's full text alongside its title, tags, and timestamps. Scoped to sessions, users, or orgs. Projections derive client-safe views from state and resources, giving the frontend exactly the shape it needs without manual data wiring.
-
-**First-class error handling.** Retry policies per block. Type-based rescue routing. Non-aborting work queues for side-chain operations. Normalized error model with codes, scopes, and retry signals.
-
-**Full-stack type safety.** Define a schema once in Zod. It validates at runtime, infers at compile time, and flows from server blocks through the client SDK to React hooks. One type system, zero glue code.
-
-## The developer experience
-
-**Flows are full APIs.** Register a flow and you get action execution, session management, SSE streaming, and state snapshots — zero route wiring:
-
-**Server** — Three lines to a complete API:
-
-```ts
-const registry = createFlowRegistry();
-registry.register(myFlow);
-export const { GET, POST, DELETE } = createFlowApiRouter({ registry });
-```
-
-**Client** — Connect from anywhere, framework handles SSE and state sync:
-
-```ts
-const fsd = createClient({ baseUrl: "http://localhost:3000", userId: "user_1" });
-await fsd.flow("my-app").send("chat", { message: "Hello" });
-```
-
-**React** — Hooks that wire streaming, items, and clientData to your UI:
-
-```tsx
-<FlowProvider flowKind="my-app" userId="user_1">
-  <ChatUI />
-</FlowProvider>
-
-function ChatUI() {
-  const flow = useFlow({ autoCreateSession: true });
-  const session = useSession(flow.activeSessionId);
-
-  return (
-    <>
-      {session.items.map(item => <ItemRenderer key={item.id} item={item} />)}
-      <button onClick={() => session.sendAction("chat", { message: "Hi" })}>
-        Send
-      </button>
-    </>
-  );
-}
-```
-
-**Testing** — Deterministic tests with generator mocks, no real LLM calls:
-
-```ts
-import { testBlock, testItems } from "@flow-state-dev/testing";
-
-const result = await testBlock(pipeline, {
-  input: { message: "Hello" },
-  session: { state: { messageCount: 0 } },
-  generators: { "chat": mockGenerator({ script: [{ text: "Hi there!" }] }) },
-});
-
-const items = testItems(result.items);
-expect(items.messages()).toHaveLength(1);
-expect(result.output).toBeDefined();
-```
-
-**Built for an ecosystem.** Blocks and flows are portable. Share a tool block, a validation handler, or a complete agentic flow across projects. The uniform block contract means community blocks compose with yours out of the box.
-
-## When this framework is for you
-
-- You're building AI-powered features and tired of reinventing orchestration, streaming, and state management every time.
-- You want composable primitives, not a rigid agent framework that prescribes how you structure your AI.
-- You want tools that can be as powerful as your workflows — multi-step pipelines, not just function wrappers.
-- You want your AI to have a real workspace: persistent resources with rich content and typed state, not just chat history.
-- You care about execution semantics — retry, rescue, lifecycle hooks — being explicit and testable, not hidden in application glue.
-- You want one coherent stack across server, client, React, CLI, and tests.
-
-## Packages
-
-| Package | Purpose |
-|---------|---------|
-| [`@flow-state-dev/core`](packages/core) | Block builders, flow definitions, type contracts, item taxonomy |
-| [`@flow-state-dev/engine`](packages/engine) | Execution runtime, stores, SSE streaming, HTTP routes |
-| [`@flow-state-dev/client`](packages/client) | Isomorphic API client — actions, sessions, streams |
-| [`@flow-state-dev/react`](packages/react) | React hooks and renderers |
-| [`@flow-state-dev/testing`](packages/testing) | Test harnesses and generator mocks |
-| [`@flow-state-dev/fsdev`](packages/cli) | Terminal interface (`fsdev run`, `fsdev dev`) |
-| [`@flow-state-dev/devtool`](packages/devtool) | Pre-built DevTool assets for `fsdev dev` |
-| [`apps/devtool`](apps/devtool) | DevTool source app |
-
-## Get started
-
-If you have a project of your own, ask a coding assistant to run the `install-fsd` skill, or follow [Existing project](https://flow-state.dev/docs/getting-started/existing-project) by hand.
-
-If you are contributing to this repository, clone it and install from the root:
+You need Node.js 22.18 or newer and pnpm 10.4.1 (`corepack enable && corepack prepare pnpm@10.4.1`).
 
 ```bash
-# Prerequisites: Node.js >=22, pnpm@10.4.1
+git clone https://github.com/fixpoint-labs/flow-state-dev
+cd flow-state-dev
 pnpm install
+pnpm build:assets   # one time: builds the DevTool
+
+pnpm --filter @flow-state-dev/teammates dev
+# or
+pnpm --filter @flow-state-dev/claude-code-style dev
+```
+
+Each command builds the starter's pages and serves them with its backend. Open the address it prints as `App:` (`http://localhost:4200` by default). The `DevTool:` line gives the address of a browser inspector that shows every run, item and state change as it happens. It reads `not served` until `pnpm build:assets` has run.
+
+Set keys in your shell or in a `.env.local` at the repository root:
+
+| Key | Needed for |
+| --- | --- |
+| One model key: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `AI_GATEWAY_API_KEY` or `OPENROUTER_API_KEY` | The model every worker answers on. Both starters default to OpenAI models (Teammates' helper calls always use one), so `OPENAI_API_KEY` or `AI_GATEWAY_API_KEY` works as is. For another provider, install its package at the repository root, such as `pnpm add -w @ai-sdk/anthropic` (or `@ai-sdk/google`, `@openrouter/ai-sdk-provider`), and change the model setting. See [Setting up models](https://flow-state.dev/docs/getting-started/setting-up-models) and each starter's Run it section ([Teammates](labs/teammates/README.md#run-it), [Claude Code-style](labs/claude-code-style/README.md#run-it)). |
+| Claude Code signed in (an API key or a Claude subscription), or `ANTHROPIC_API_KEY` | Coding tasks on Claude Code. The Claude Code-style starter's default coder runs on it. |
+| Codex signed in (`codex login`, with an API key or a ChatGPT sign-in), or `CODEX_API_KEY` | Coding tasks on Codex. |
+| Cursor signed in, or `CURSOR_API_KEY` | Coding tasks on Cursor. Teammates' default coder runs on it. |
+| `TAVILY_API_KEY`, `EXA_API_KEY` or `BRAVE_API_KEY` | Optional. Teammates' researcher uses one to search the web. |
+
+You only need the coding-agent sign-ins for the coding workers. At startup each starter logs which coding agents this machine can run and what to run for any that can't.
+
+Both starters keep their data in a SQLite file under `.fsdev/`, so conversations and tasks survive a restart. By default, coding tasks work on the clone the starter runs from, so in your fork they change your fork's code. Each task runs in a git worktree on a branch of its own, and your checked-out branch and files aren't touched. Teammates takes `TEAMMATES_WORKDIR` to point at another checkout. The full list of settings, and a first conversation to try, is in each starter's README: [Teammates](labs/teammates/README.md#run-it), [Claude Code-style](labs/claude-code-style/README.md#run-it).
+
+## Make it yours
+
+Most of what makes a starter itself lives in plain files you can edit.
+
+**Workers are `WORKER.md` files.** Each one sits in its own folder under the starter's `workforce/teams/<team>/workers/<name>/`. The frontmatter says who the worker is and what it can use; the body is its instructions. Here is Teammates' researcher, from [`labs/teammates/workforce/teams/teammates/workers/researcher/WORKER.md`](labs/teammates/workforce/teams/teammates/workers/researcher/WORKER.md):
+
+```md
+---
+name: researcher
+description: Finds facts for the team, in the working folder's files and on the web, and replies to whoever asked.
+icon: "🔎"
+color: teal
+tools: [globProjectSource, readProjectSource, grepProjectSource, search, fetch]
+---
+
+You find facts: dates, prices, what a document or the code says. Look them up, never guess: read the
+working folder's files with `globProjectSource`, `grepProjectSource` and `readProjectSource`, and
+search the web with `search` and `fetch`. Say where each fact came from: the file's path, or the
+page's URL.
+```
+
+`description` is the only required key. `name` is the display name, `tools` lists the tools it may call, and `flow` picks which flow it runs on. A starter's flow can accept its own settings on top: Teammates reads `icon` and `color` for the worker list, and its coding workers name a `harness:` (`claude-code`, `codex` or `cursor`). Add a folder and you've added a worker. Edit the body and its instructions change on the next start.
+
+**The team is `TEAM.md`.** It sits at the top of the team's folder and holds what every worker on the team is told, such as which codebase they work on.
+
+**Flows are TypeScript.** When a worker needs to do something the existing flows don't, write a flow of your own and point the worker at it with `flow:`. The Claude Code-style starter keeps its own in `labs/claude-code-style/workforce/flows/`. Workers can also load skills, Markdown playbooks they pull in when a task calls for one.
+
+**The UI is a React app.** Each starter's pages are under its `src/`, built with Vite. They call the backend through typed hooks from `@flow-state-dev/react`, and some components come from the Flow State UI registry, copied into `src/components/flow-state/` so you can edit them like any other file.
+
+Read more:
+
+- [Workforce](https://flow-state.dev/docs/workforce/overview) and [Workers on disk](https://flow-state.dev/docs/workforce/workers-on-disk): every `WORKER.md` and `TEAM.md` key
+- [Flows](https://flow-state.dev/docs/fundamentals/flows)
+- [Skills](https://flow-state.dev/docs/skills/overview)
+- [React](https://flow-state.dev/docs/client/react) and the [UI registry](https://flow-state.dev/docs/ui/overview)
+
+## Add it to an app you already have
+
+Flow State also mounts inside an existing Next.js App Router or Node project.
+
+The quickest route is [`install-fsd`](plugins/flow-state-dev/skills/install-fsd/SKILL.md), an install routine your coding assistant runs from your project directory. It has nothing to do with the skills workers load. It inspects the project, shows you the files it will write, then writes them. It doesn't commit, so review the result with `git diff`. The [Quick Start](https://flow-state.dev/docs/getting-started/quick-start) builds a streaming chat with a React UI from nothing.
+
+To wire it by hand, follow [Existing project](https://flow-state.dev/docs/getting-started/existing-project), starting with:
+
+```bash
+pnpm add @flow-state-dev/core @flow-state-dev/engine zod
+```
+
+## Underneath
+
+The starters are built on a foundation you can use directly. You compose **blocks**, typed units that range from a model call to plain code, checks and routing, into flows. A flow exposes named actions, each running a block, that a client can call, and every worker runs on a flow. State and documents are typed and scoped to a session, user or org, on the store you choose. Runs are durable, so long work survives a restart and resumes where it stopped. You pick the model per block, and loops and coding runs stop at the limits you set. On the front end, a client SDK and React hooks read the same types, and the DevTool shows every run as it happens.
+
+Everything is published under `@flow-state-dev/`. Install only what you use.
+
+| Group | Packages |
+| --- | --- |
+| **Core** | [`core`](packages/core) (blocks, flows, types), [`engine`](packages/engine) (runtime, stores, streaming, HTTP routes), [`client`](packages/client) (API client for browsers and Node), [`react`](packages/react) (hooks and renderers), [`contracts`](packages/contracts) (shared item types, re-exported by `core`) |
+| **Workers and tasks** | [`orchestration`](packages/orchestration) (task board, skills), [`workforce`](packages/workforce) (workers and `WORKER.md`), [`workspace`](packages/workspace) (a directory a worker edits files in), [`harness-manager`](packages/harness-manager) (runs a task on a coding agent in its own checkout and checks the result before the task completes), [`shift-manager`](packages/shift-manager) (browser app for a team) |
+| **Coding agents** | [`claude-code`](packages/claude-code), [`codex`](packages/codex), [`cursor`](packages/cursor) |
+| **Building blocks** | [`memory`](packages/memory), [`tools`](packages/tools), [`patterns`](packages/patterns) |
+| **Hosting** | [`next`](packages/next), [`vercel`](packages/vercel), [`node`](packages/node), [`bullmq`](packages/bullmq) (durable background jobs and cron) |
+| **Persistence** | [`store-sqlite`](packages/store-sqlite), [`store-postgres`](packages/store-postgres) |
+| **Transports** | [`mcp`](packages/mcp), [`scheduled`](packages/scheduled), [`voice-openai`](packages/voice-openai) |
+| **Tooling** | [`fsdev`](packages/cli) (the CLI), [`devtool`](packages/devtool), [`testing`](packages/testing) (harnesses and mock models) |
+
+Concepts, guides and API reference are in the [docs](https://flow-state.dev/docs/intro). For small, copy-able code, see [`examples/hello-chat`](examples/hello-chat).
+
+## Developing Flow State itself
+
+For contributors to the framework.
+
+```bash
+git clone https://github.com/fixpoint-labs/flow-state-dev
+cd flow-state-dev
+pnpm install
+pnpm packages:build   # emits dist/*.d.ts so your editor resolves workspace imports
 pnpm typecheck
 pnpm test
+pnpm lint
 ```
 
-## Apps and Examples
+These should pass on a fresh clone. `pnpm install` also installs a pre-push hook that runs `pnpm lint` and the repo's naming checks, and blocks the push if any fails. See [development setup](docs/contributing/development-setup.md).
 
-Two directories, different purposes:
-
-- `apps/*` — full reference applications we maintain, test against, and use for day-to-day feature work. Larger in scope; multiple flows; polished UI.
-- `examples/*` — minimal, focused, pedagogical. Each example fits in a single README section.
-
-**[apps/kitchen-sink](apps/kitchen-sink)** — Reference app. Hosts the `chat-agent` flow (handler + generator + router + sequencer, resources, clientData, capabilities, tool-use) and everything the framework can do in a full Next.js UI.
-
-**[examples/hello-chat](examples/hello-chat)** — Minimal chat flow. Generator + handler + sequencer in ~50 lines. Start here.
-
-## Architecture
-
-The framework ships as six packages with strict dependency boundaries:
+Apps, starters and examples run against package source, so a package edit shows up in a running app without a rebuild.
 
 ```
-core ← engine ← testing
-core ← client ← react ← apps/devtool
+packages/   published packages
+apps/       docs site, DevTool source, kitchen-sink, and other maintained apps
+labs/       the starters and other experimental apps
+examples/   small, copy-able examples
+plugins/    the flow-state-dev plugin, including the install-fsd skill
+docs/       architecture reference and contributor guides
 ```
 
-- `engine` never depends on `client` or `react`
-- `react` wraps `client` — no transport logic in the UI layer
-- `apps/devtool` uses only public APIs
+Where to read next:
 
-Request lifecycle:
-```
-POST /api/flows/{kind}/actions/{action}
-  → 202 Accepted (async execution)
-  → SSE stream: items, content deltas, status events
-  → request.completed
-  → Client refetches state snapshot
-```
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): how to submit a change
+- [`AGENTS.md`](AGENTS.md): the working protocol and code style, for people and coding agents
+- [`docs/philosophy.md`](docs/philosophy.md): the principles behind design decisions
+- [`docs/architecture/overview.md`](docs/architecture/overview.md): packages and how a request flows through them
+- [`docs/contributing/best-practices.md`](docs/contributing/best-practices.md): implementation standards
 
-Resume after disconnect: `Last-Event-ID` or `starting_after` query param replays events from the sequence cursor.
-
-## Documentation
-
-**Architecture** (`docs/architecture/`):
-- [Overview](docs/architecture/overview.md) — System architecture, data flow, core abstractions
-- [Blocks](docs/architecture/blocks.md) — Handler, generator, evaluator, sequencer, router deep dive
-- [Flows and Actions](docs/architecture/flows-and-actions.md) — defineFlow, actions, lifecycle hooks
-- [State and Scopes](docs/architecture/state-and-scopes.md) — Four scopes, atomic ops, CAS concurrency
-- [Streaming](docs/architecture/streaming.md) — Item/content model, SSE protocol, resume semantics
-- [Execution and Errors](docs/architecture/execution-and-errors.md) — Retry, rescue, work queue
-- [Resources and Client Data](docs/architecture/resources-and-client-data.md) — Typed data containers and derived client views
-- [Sequencer DSL](docs/architecture/sequencer-dsl.md) — Full method reference
-- [Server and Client](docs/architecture/server-and-client.md) — Routes, transport, React hooks
-
-**Contributing** (`docs/contributing/`):
-- [Best Practices](docs/contributing/best-practices.md) — Implementation standards
-- [Architecture Reference](docs/contributing/architecture-reference.md) — Locked contracts
-- [Development Setup](docs/contributing/development-setup.md) — Monorepo workflow
-- [Wave Process](docs/contributing/wave-process.md) — Wave execution protocol
-
-## Current status
-
-Phase 1 (Foundation) — Waves 1.a through 1.m are complete. Core contracts, block builders, server runtime, client transport, React bindings, testing utilities, the CLI and the devtool are all implemented and tested. Remaining: 1.n, cross-package validation.
-
-## Contributing
-
-- See [`AGENTS.md`](AGENTS.md) for the process protocol
-- See [`docs/contributing/`](docs/contributing/) for standards and setup
-- Keep implementation standards in `docs/contributing/best-practices.md`
-- See [`CONTRIBUTING.md`](CONTRIBUTING.md) for contribution guidelines
-- See [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) for community standards
+Please read the [Code of Conduct](CODE_OF_CONDUCT.md). To report a vulnerability, follow [`SECURITY.md`](SECURITY.md).
 
 ## Sponsors
 
@@ -236,9 +177,9 @@ We're grateful to the sponsors who support the development of `@flow-state-dev`.
 </p>
 
 <p align="center">
-  <a href="https://neon.com"><strong>Neon</strong></a> — Serverless Postgres with branching, autoscaling, and scale-to-zero.
+  <a href="https://neon.com"><strong>Neon</strong></a>: serverless Postgres with branching, autoscaling, and scale-to-zero.
 </p>
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE) for details. Copyright (c) 2026 Fixpoint Labs.
+MIT. See [`LICENSE`](LICENSE) for details. Copyright (c) 2026 Fixpoint Labs.

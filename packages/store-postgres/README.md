@@ -131,9 +131,13 @@ The schema uses:
 | `active_requests` | `request_id` | In-flight request registry for interrupted request recovery |
 | `resource_content` | `(scope_type, scope_id, resource_key)` | Resource content bodies (`TEXT`), keyed per resource, separate from scope records |
 | `resource_state` | `(scope_type, scope_id, resource_key)` | Resource state (`JSONB`), single + collection instances, keyed per resource, separate from scope records |
+| `resource_index` | none; unique on `(scope_type, scope_id, collection, index_name, md5(value), resource_key)` | Index entries that let a collection be looked up by a declared field. Written in the same statement as the row they describe; indexed on `(scope_type, scope_id, resource_key)`. The unique index keys a digest of the value so a value of any length fits a B-tree entry; lookups match the digest, then the full value |
+| `resource_index_built` | `(scope_type, scope_id, collection, index_name)` | Which indexes have finished their first build in a scope, with the collection pattern as a regular expression so a write can clear the markers covering its key |
 | `request_events` | `(request_id, sequence_number)` | Stream event replay for completed requests |
 | `request_items` | `(request_id, item_id)` | Output items produced by a request (one row per item) |
 | `wakes` | `(tenant_key, session_id, entry)` | When pending work in a session falls due, read by the durability sweeper ([Wakes](https://flow-state.dev/docs/advanced/durable-execution#wakes)); indexed on `due_at` |
+
+Every resource state write keeps `resource_index` and `resource_index_built` in step in the same statement. A `set` that lands then runs one more statement, which clears the build markers of indexes covering its key that it did not list: a marker committed while the write waited on a row lock is invisible to the write's own statement, and a build behind it could otherwise finish without the row. That is one extra round trip per successful `set`. Because the write touches both tables, a database used with `skipSchemaInit: true` must already have them: run `initializeSchema` against it with this version first.
 
 ### Instance ownership
 
@@ -399,7 +403,7 @@ const stores = postgresStores({
 
 ### With no tail pool
 
-`liveTailPool: null`, the `{ pool }` shape without a `liveTailPool`, and the `{ executor }` shape (PGlite) never listen, so the bus reports `crossesProcesses: false` and views use the once-a-second read. The `{ pool }` shape still sends its notices, so views on processes that do listen hear its writes. `vercelPostgresStores` from `@flow-state-dev/vercel/store` passes `liveTailPool: null` and doesn't back the `bus` slot.
+`liveTailPool: null`, the `{ pool }` shape without a `liveTailPool`, and the `{ executor }` shape (PGlite) never listen, so the bus reports `crossesProcesses: false` and views use the once-a-second read. The `{ pool }` shape still sends its notices, so views on processes that do listen hear its writes. `vercelPostgresStores` from `@flow-state-dev/vercel/store` passes `liveTailPool: null` and backs the `bus` slot with this bus, so a deployment's instances say they don't cross and keep the once-a-second read.
 
 `close()` stops the ping and hands the listening connection back before it ends the pools.
 
