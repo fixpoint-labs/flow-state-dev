@@ -28,7 +28,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Subscribing to each listed session's own topic, as the claude-code-style lab does, plus a notice only when a session is created · or a new session joining at reload ([FIX-2466 D1](../FIX-2466/DECISIONS.md#d1)) |
 | **Because** | A list has to hear rows it does not list yet, and only a topic it already holds can carry that: the owner's user topic. Treating the owner as one more parent of each session reuses the bus's one rule ("a write publishes `run` on the session's parent"), with no new kind or topic (ER-2). One topic also covers every row, where per-row topics mean a topic per row, re-subscribed each time the list changes. FIX-2466 D1 named its own flip: *"an app lists sessions that other people or processes add"*. This rail lists sessions from other tabs, scripts and `fsdev run` |
-| **Locks in** | Every session write and every request write except `items` also publishes `run` on the owner's user topic. `ChangeKind`'s `run` reads "a session record was written: the topic's own session, a run under it, or, on a user topic, one of that user's sessions". Every list watcher reads the listing again, once per burst, when any of its user's sessions starts, ends or is titled |
+| **Locks in** | Every session write and every request write except `items` and state field deltas (`patchField`, `incField`, `pushToArray`, `deleteField`, which a busy turn writes many of and no row shows) also publishes `run` on the owner's user topic. The bus's session identity carries the owner for this. `ChangeKind`'s `run` reads "a session record was written: the topic's own session, a run under it, or, on a user topic, one of that user's sessions". Every list watcher reads the listing again, once per burst, when any of its user's sessions starts, ends or is titled |
 
 ![D1: how does a session list hear a change to a session it may not list yet? Chosen: the owner's user topic hears every change to that user's sessions. Instead of: each listed session's own topic plus a notice on create. It comes down to rows not listed yet: per-row topics never hear them. The price is a listing read whenever any of the user's sessions starts or ends a turn. Both use the bus's existing run kind. Locks in run on the user topic for every session and request write. Flips if one user runs so many sessions at once that open rails read constantly](figures/d1-user-topic.svg)
 
@@ -83,9 +83,14 @@ counts its state. Then the badge comes in with no read per row.
   index, batching moves there. `include` takes a list, so `"dispatch-runs"` and
   `"status"` combine. Without `"status"` the listing is byte for byte today's. A session with no
   request has no `requestStatus` (`== null` guard, BP-030).
-- **What needs you:** `suspended` (waiting on a person: a question, or a harness turn's tool
-  approval, which suspends the turn), `interrupted` (lost to a restart, with Continue or Discard
-  from FIX-2377), `failed` and `incomplete`. `aborted` is a stop you made and is not marked.
+- **What needs you:** `suspended` when the stop waits for a person (a question, or a harness
+  turn's tool approval, which suspends the turn), `interrupted` (lost to a restart, with Continue or Discard
+  from FIX-2377), `failed` and `incomplete`. `aborted` is a stop you made and is not marked. A
+  turn also suspends on a wait for other work (a worker's `sendMessage({ wait: true })`), which
+  resumes by itself, so the listing adds `requestWaitsForUser` to a `suspended` row, from that
+  request's pending suspensions (`isUserSuspension`), one more read only for suspended rows. A
+  row from a server without it reads as waiting on you. The rule lives once, in the exported
+  `sessionRowState`, which both rails draw from.
 - **The hook reads again when the page becomes visible.** On a host whose bus says it crosses
   processes but runs as two, as Kitchen Sink's SQLite store does under `fsdev run`, no notice
   reaches the rail ([the in-memory bus](../../../packages/engine/src/bus/in-memory-bus.ts) reports
@@ -143,5 +148,31 @@ before the gate.
   The owner's user topic becomes one more parent on the bus, the listing carries each row's state
   by the runs listing's rule, and the navigator's leaf read becomes one live public hook under
   both rails. The pull-request badge is deferred.
+- **Review round 1** — two folds. The user topic skips state field deltas (D1's price, cut at
+  the publisher rather than at its flip), because a turn's state writes would wake every open
+  rail. A stop on other work is not "needs you", because a worker waiting on another's reply
+  suspends too (Codex).
+
+## Notes from review
+
+Recorded for the implementer, not folded into the design.
+
+- *"Have `useSessionList` return rows already carrying `needsYou` (and the shared label helper),
+  so the harness list and the navigator draw from the same derived row and cannot disagree."*
+  (second look, 3)
+- *"Extract the shared selection (live request wins, else most recent) and let the two callers
+  differ only in how they collapse the status."* (second look, 4)
+- *"one internal `useLiveSessionQuery(...)` shared by `useLeafSessions` and `useSessionList`, and
+  keep the public surface as thin as re-exports plus docs."* (Cursor, SPEC.md:112)
+- *"the harness adoption PR is where this usually regresses (frame still bumping `reads` while
+  also calling the hook). Worth calling out in the Kitchen Sink PR checklist."* (Cursor, SPEC.md:30)
+- *"ensure implementers don't add additional per-row reads on top (badge/D3 territory)."*
+  (Cursor, DECISIONS.md:31)
+- *"export it (or a small shared row chrome component) from `@flow-state-dev/react` so status
+  marks and labels can't drift silently."* (Cursor, DECISIONS.md:49)
+- *"Consider documenting the exact query params in the spec so `flow-state/page.tsx` doesn't
+  invent a third listing pattern."* (Cursor, DECISIONS.md:103)
+- *"Suggest running the standalone `analysis` skill before the direction gate."* (Cursor,
+  DECISIONS.md:125)
 
 **Open: none.**

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D1: how does a session list hear a change to a session it may not list yet? Chosen: the owner's user topic hears every change to that user's sessions. Instead of: each listed session's own topic plus a notice on create. It comes down to rows not listed yet: per-row topics never hear them. The price is a listing read whenever any of the user's sessions starts or ends a turn. Both use the bus's existing run kind. Locks in run on the user topic for every session and request write. Flips if one user runs so many sessions at once that open rails read constantly."
+<svg viewBox="0 0 940 418" role="img" aria-label="D1: how does a session list hear a change to a session it may not list yet? Chosen: the owner's user topic hears every change to that user's sessions. Instead of: each listed session's own topic plus a notice on create. It comes down to rows not listed yet: per-row topics never hear them. The price is a listing read whenever any of the user's sessions starts or ends a turn. Both use the bus's existing run kind. Locks in run on the user topic for every session and request write but items and state deltas. Flips if one user runs so many sessions at once that open rails read constantly."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -83,7 +83,7 @@ READS</text>
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">LOCKS IN</text>
     <text class="t-b" x="32" y="369">run on the user topic for every session write</text>
-    <text class="t-s" x="32" y="387">and every request write except items</text>
+    <text class="t-s" x="32" y="387">and request write, but items and state deltas</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
