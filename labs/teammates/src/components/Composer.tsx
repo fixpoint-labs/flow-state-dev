@@ -1,5 +1,5 @@
 import { clearDraft, isSendKey, useDraft, useSubmit } from "@flow-state-dev/react";
-import { useRef, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
 
 /**
  * Where you type to the open worker. Enter or Cmd+Enter (Ctrl+Enter) sends,
@@ -12,12 +12,17 @@ import { useRef, type FormEvent, type KeyboardEvent } from "react";
  * nothing: the box keeps it and says why, with Retry. A send that lands clears
  * the box, unless something else was typed meanwhile. The draft is kept per
  * conversation across a reload.
+ *
+ * A `prefill` (a popup's "Ask … to follow up") adds its words to the box,
+ * after a blank line when something is already typed, and puts the cursor at
+ * the end; nothing is sent.
  */
 export function Composer({
   sessionId,
   workerName,
   running,
   onSend,
+  prefill,
 }: {
   /** The conversation it types to; `/` and a switch find its composer by it. */
   sessionId: string;
@@ -25,10 +30,28 @@ export function Composer({
   running: boolean;
   /** Resolves once the line has landed; rejects with why it didn't. */
   onSend: (text: string) => Promise<void>;
+  /** Words to add to the box, once per `n`. */
+  prefill?: { text: string; n: number };
 }) {
   const [text, setText] = useDraft("teammates:draft", sessionId);
   const current = useRef(text);
   current.current = text;
+  const box = useRef<HTMLTextAreaElement>(null);
+  const applied = useRef(0);
+  const toEnd = useRef(false);
+  useEffect(() => {
+    if (prefill === undefined || prefill.n === applied.current) return;
+    applied.current = prefill.n;
+    const typed = current.current.trimEnd();
+    toEnd.current = true;
+    setText(typed === "" ? prefill.text : `${typed}\n\n${prefill.text}`);
+  }, [prefill, setText]);
+  useEffect(() => {
+    if (!toEnd.current) return;
+    toEnd.current = false;
+    box.current?.focus();
+    box.current?.setSelectionRange(text.length, text.length);
+  }, [text]);
   const { error, busy, submit } = useSubmit(async (typed: string) => {
     await onSend(typed.trim());
     // The box may have closed and reopened while it ran: the stored draft goes only if it is still this line.
@@ -54,6 +77,7 @@ export function Composer({
       <div data-column className="mx-auto max-w-(--thread-width)">
         <div className="flex items-end gap-2 rounded-3xl border border-border bg-card px-3 py-2 focus-within:border-ring">
           <textarea
+            ref={box}
             aria-label={`Message ${workerName}`}
             data-composer
             data-session-id={sessionId}

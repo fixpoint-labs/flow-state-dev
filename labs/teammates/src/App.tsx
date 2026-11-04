@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LabAdapter, NewTeammate, WorkerRow } from "./adapter";
 import { Conversation } from "./components/Conversation";
 import { KeysSheet } from "./components/KeysSheet";
-import { PopupView, type Popup } from "./components/Popups";
+import { PopupView, type FollowUp, type Popup } from "./components/Popups";
 import { Switcher } from "./components/Switcher";
 import { TeammatePanel } from "./components/TeammatePanel";
 import { WorkersList } from "./components/WorkersList";
@@ -146,6 +146,23 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     how.current = "push";
     setPopup(undefined);
   }, []);
+  // Words a task popup's follow-up hands the composer of the conversation that filed the task.
+  const [prefill, setPrefill] = useState<{ sessionId: string; text: string; n: number }>();
+  // Who filed the open task: the worker whose conversation it is, when that conversation is on the roster.
+  const filer = popup?.kind === "task" ? Object.entries(sessions).find(([, session]) => session === popup.sessionId)?.[0] : undefined;
+  const followUp = useMemo<FollowUp | undefined>(() => {
+    if (filer === undefined || popup?.kind !== "task") return undefined;
+    const session = popup.sessionId;
+    return {
+      name: nameOf(filer),
+      ask: (text) => {
+        how.current = "push";
+        setPopup(undefined);
+        setSelected(filer);
+        setPrefill((last) => ({ sessionId: session, text, n: (last?.n ?? 0) + 1 }));
+      },
+    };
+  }, [filer, popup, nameOf]);
   // A task the address named that its conversation doesn't hold: dropped, not a step.
   const dropPopup = useCallback(() => {
     how.current = "replace";
@@ -228,6 +245,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
           harnessOf={harnessOf}
           onFire={() => fire(worker.id)}
           onOpen={openPopup}
+          prefill={prefill?.sessionId === sessionId ? prefill : undefined}
         />
       ) : (
         <main aria-label="Conversation" />
@@ -266,7 +284,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         }}
       />
       <KeysSheet open={keysOpen} onOpenChange={setKeysOpen} keys={KEYS} />
-      {popup ? <PopupView adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} coders={coders} onClose={closePopup} onMissing={popup === addressed.current ? dropPopup : undefined} /> : null}
+      {popup ? <PopupView adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} coders={coders} followUp={followUp} onClose={closePopup} onMissing={popup === addressed.current ? dropPopup : undefined} /> : null}
     </div>
   );
 }

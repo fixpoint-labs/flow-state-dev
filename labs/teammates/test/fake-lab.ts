@@ -266,10 +266,12 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
     const row = () => tasks.find((t) => t.id === task.id);
     /** This run still owns its task: it wasn't cancelled, nor run again. */
     const live = () => (row()?.attempt ?? attempt) === attempt && row()?.boardStatus !== "cancelled";
+    // When it started, for how long it took once it ends, as a row's `startedAt` and `completedAt` give it.
+    const startedAt = now();
     const end = (status: "done" | "failed", text: string) => () => {
       if (!live()) return;
       const ending = status === "done" ? { result: text } : { error: text };
-      updateTask(task.id, { status, boardStatus: status === "done" ? "completed" : "errored", ...ending });
+      updateTask(task.id, { status, boardStatus: status === "done" ? "completed" : "errored", durationMs: now() - startedAt, ...ending });
       w.queue.push({ kind: "result", task: { ...task, status, ...ending } });
       startNext(w);
     };
@@ -596,7 +598,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
         async retry(taskId) {
           const task = filed(taskId);
           if (task.boardStatus !== "errored" && task.boardStatus !== "cancelled") throw new Error(refusal(task, "not_ended"));
-          updateTask(taskId, { status: "running", boardStatus: "in_progress", error: undefined, result: undefined });
+          updateTask(taskId, { status: "running", boardStatus: "in_progress", error: undefined, result: undefined, durationMs: undefined });
           runTask(filer(), filed(taskId));
         },
         async rerun(task, to) {

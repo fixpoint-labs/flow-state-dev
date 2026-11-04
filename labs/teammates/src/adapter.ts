@@ -92,6 +92,7 @@ import {
   type ToolCallStatus,
   type ToolStepState,
 } from "./components/flow-state/tool-grouping";
+import { durationText } from "./components/flow-state/spend";
 import { harnessName } from "./lib/harness";
 import { sessionFeeds, type SessionFeed } from "./lib/session-feed";
 import { stableList } from "./lib/stable";
@@ -162,6 +163,11 @@ export interface BoardTask {
   model?: string;
   /** What its runs spent, as orchestration's task-row view folds it (`taskRowView`); absent before any ran. */
   spend?: TaskSpendView;
+  /**
+   * How long it took, in ms, from the row's `startedAt` to its `completedAt`; only once it ended.
+   * A board keeps the first `startedAt` across a retry, so a retried task's spans its attempts.
+   */
+  durationMs?: number;
   /** What it waits on you for, while something does: its oldest open hold. */
   waiting?: TaskWaiting;
 }
@@ -220,6 +226,8 @@ export interface SessionStep {
   tool?: string;
   /** For `tool`, the step is a shell command, shown as code. */
   code?: boolean;
+  /** For a `tool` step that changes files (an edit, a write, Codex's `file_change`), the paths it names. */
+  paths?: string[];
   /** For `tool`, how it stands: running, waiting, done, or failed (thrown, or a result that says so). */
   state?: ToolStepState;
   /** For `said`, while it is still being written. */
@@ -268,6 +276,62 @@ export function stepRun(steps: readonly SessionStep[]): StepRun {
         ? withToolState(now.text, "running")
         : withToolState(composeToolGroupLabel(steps.map((step) => step.tool ?? step.text)), state, states.filter((s) => s === state).length, steps.length);
   return { label, state, open: toolRunOpen(state) };
+}
+
+/**
+ * The tools that change files, case-folded: each harness's edit, write and
+ * delete, and Codex's `file_change`. A step of one of these names its paths.
+ */
+const FILE_CHANGE_TOOLS = new Set([
+  "edit", "edit_file", "multiedit", "notebookedit", "write", "write_file", "create_file", "delete", "delete_file", "file_change",
+]);
+
+/** The paths a file-changing tool call names in its args: Codex's `changes[].path`, else the one path arg it carries. */
+function changedPaths(tool: string, args: Record<string, unknown>): string[] | undefined {
+  if (!FILE_CHANGE_TOOLS.has(tool.toLowerCase())) return undefined;
+  if (Array.isArray(args.changes)) {
+    const paths = args.changes.map((c: { path?: unknown }) => c?.path).filter((p): p is string => typeof p === "string" && p !== "");
+    return paths.length === 0 ? undefined : paths;
+  }
+  const path = [args.file_path, args.path, args.target_file, args.notebook_path].find((p): p is string => typeof p === "string" && p !== "");
+  return path === undefined ? undefined : [path];
+}
+
+/** What a run did, summed from its steps: the files it changed and the commands it ran. */
+export interface RunSummary {
+  /** Each file a completed change named, once, in the order first changed. A failed or running change isn't counted. */
+  files: string[];
+  /** Shell commands that ran, done or failed; one still running isn't counted. */
+  commands: number;
+}
+
+/** A run's steps summed up for its popup's line ({@link runSummaryLine}). */
+export function runSummary(steps: readonly SessionStep[]): RunSummary {
+  const files: string[] = [];
+  let commands = 0;
+  for (const step of steps) {
+    if (step.kind !== "tool") continue;
+    const state = step.state ?? "completed";
+    if (step.code === true && state !== "running") commands++;
+    if (state !== "completed") continue;
+    for (const path of step.paths ?? []) if (!files.includes(path)) files.push(path);
+  }
+  return { files, commands };
+}
+
+/**
+ * "Edited 2 files · ran 5 commands · 2m 14s": what a run did and how long it
+ * took, with what it didn't do left out. Empty when there is nothing to say.
+ */
+export function runSummaryLine(summary: RunSummary, durationMs?: number): string {
+  const n = summary.files.length;
+  const parts = [
+    n === 0 ? null : `edited ${n} file${n === 1 ? "" : "s"}`,
+    summary.commands === 0 ? null : `ran ${summary.commands} command${summary.commands === 1 ? "" : "s"}`,
+    durationMs === undefined ? null : durationText(durationMs),
+  ].filter((p): p is string => p !== null);
+  const line = parts.join(" · ");
+  return line.charAt(0).toUpperCase() + line.slice(1);
 }
 
 /** What a conversation shows now. */
@@ -632,6 +696,7 @@ export function toBoardTask(
     ...(typeof row.run?.sessionId === "string" ? { runSessionId: row.run.sessionId } : {}),
     ...harnessAndModel(spendOf(spend), harnessOf(row.assignee ?? "")),
     ...(spend === null ? {} : { spend }),
+    ...durationOf(view, status),
     ...waitingOf(view),
   };
 }
@@ -650,6 +715,14 @@ export function rerunOverrides(task: BoardTask, worker: string): RefileOverrides
   const ended = task.status === "cancelled" ? "was cancelled" : "failed";
   const line = `This re-runs the task "${task.title}", which ${ended}${task.harness === undefined ? "" : ` on ${task.harness}`}.`;
   return { assignee: worker, context: task.context === undefined || task.context === "" ? line : `${task.context}\n\n${line}` };
+}
+
+/** How long an ended task took, from the row view's times; nothing while it runs or when a time is missing. */
+function durationOf(view: TaskRowView | null, status: BoardTask["status"]): { durationMs?: number } {
+  const started = view?.times.startedAt ?? null;
+  const completed = view?.times.completedAt ?? null;
+  if (status === "running" || started === null || completed === null || completed < started) return {};
+  return { durationMs: completed - started };
 }
 
 /** What a row waits on you for, as `taskRowView` reads it: its oldest open hold, or nothing. */
@@ -819,12 +892,14 @@ function toolStep(item: Item, ended: readonly string[] = []): SessionStep {
   const output = status === "done" ? item.output : undefined;
   const intent = toolIntent(tool, args);
   const subject = intent === undefined ? toolSubject(tool, args, output) : undefined;
+  const paths = changedPaths(tool, args);
   return {
     id: item.id,
     kind: "tool",
     tool,
     text: intent ?? subject?.text ?? `Used ${tool}`,
     ...(subject?.code ? { code: true } : {}),
+    ...(paths === undefined ? {} : { paths }),
     state: toolStepState(status, tool, output),
   };
 }
