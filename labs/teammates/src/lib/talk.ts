@@ -7,12 +7,14 @@ import type { ConversationEntry, TalkRow } from "../adapter";
 
 /**
  * Messages logged to `worker` that its conversation hasn't read yet: each
- * waits for the worker's current answer to end. Joined by message id, so it
- * needs the received entry to carry one.
+ * waits for the worker's current answer to end. The log says when one landed,
+ * which covers a waited send's answer (no received line ever lands for it)
+ * and a received line older than the loaded page. The join by message id
+ * covers the moment a line has landed and the log's next read hasn't caught up.
  */
 export function pendingFor(worker: string, rows: TalkRow[], entries: ConversationEntry[]): TalkRow[] {
   const read = new Set(entries.flatMap((e) => (e.kind === "received" ? [e.messageId] : [])));
-  return rows.filter((m) => m.to === worker && !m.undelivered && !read.has(m.id));
+  return rows.filter((m) => m.to === worker && !m.undelivered && !m.delivered && !read.has(m.id));
 }
 
 /**

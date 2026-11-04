@@ -197,6 +197,8 @@ export interface TalkRow {
   at: number;
   /** It was refused, or nobody took it in time: it will never land. */
   undelivered?: boolean;
+  /** It landed: as a received line in one of the recipient's conversations, or as a waited send's result, which lands as no line. */
+  delivered?: boolean;
   /** The sender asked for a reply: one answer comes back, as a message or as a waited send's result. */
   replyRequested?: boolean;
   /** The framework's "no answer" to the message it replies to: the recipient's turn gave none. */
@@ -844,6 +846,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
               ...(m.replyRequested === true ? { replyRequested: true } : {}),
               ...(m.noAnswer === true ? { noAnswer: true } : {}),
               ...(m.status === "refused" || m.status === "undeliverable" ? { undelivered: true } : {}),
+              ...(m.status === "delivered" ? { delivered: true } : {}),
             }));
         },
         onChange,
