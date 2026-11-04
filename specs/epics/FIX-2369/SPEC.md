@@ -58,12 +58,10 @@ every day for FSD's own work". It adds restart goals in three apps (FIX-2407) an
 end-to-end checks, all with a real model, to the goal corpus. It does nothing for subsystems
 these apps don't touch.
 
-## Lead measure, not doing, kill line
-
 | | |
 |---|---|
-| **Lead measure** | The children whose own goal check has passed, named, as read off the status table: goal-proven, then merged. A list, not a ratio. A Done count says nothing about the closure's legs |
-| **Not doing** | [What stays as it is](#what-stays-as-it-is), and the goal's *bigger, and not this epic's* row: push, PR opening and review comments are FIX-1768's. Also out, since 2026-11-04, because none serves the goal: FIX-2489 (schedule work from chat), FIX-2516 (attachments in every chat), FIX-2553 (a pull-request badge on session rows), FIX-2552 (sessions started elsewhere join the lab sidebar). They stay in the project backlog ([decided](DECISIONS.md#decided-recorded-so-no-child-reopens-them)) |
+| **Lead measure** | The children whose goal check has passed, listed by name, not counted. A Done count says nothing about the closure's legs |
+| **Not doing** | Anything past a reviewed branch (push, PR, review comments are FIX-1768's), and everything in [What stays as it is](#what-stays-as-it-is) |
 | **Kill line** | If the first closure run shows the coding harness, not the apps, is why a change can't reach a reviewed branch (runs can't commit or run checks reliably), stop app work and redirect to harness reliability |
 
 ## What's in the box
@@ -155,6 +153,8 @@ in FIX-1763), FIX-2168 and FIX-2164 (task timing and step fields), and FIX-2252 
 staleness) are inputs that don't block it: the goal stops at a reviewed branch.
 
 **Moved to [FIX-2430](https://linear.app/fixpoint-labs/issue/FIX-2430):** FIX-2402, FIX-2404 and FIX-2423, which no closure check needs ([decided in review](DECISIONS.md#decided-recorded-so-no-child-reopens-them)).
+
+**Left the epic 2026-11-04:** FIX-2489, FIX-2516, FIX-2553 and FIX-2552, which don't serve the goal; they stay in the project backlog ([decided](DECISIONS.md#decided-recorded-so-no-child-reopens-them)).
 
 ## How the issues flow into each other
 
