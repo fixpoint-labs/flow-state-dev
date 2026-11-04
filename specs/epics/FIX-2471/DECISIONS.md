@@ -16,6 +16,7 @@ flowchart TD
   E --> Q3["Q3 · In observe, a held task, not an Inbox item with no task"]
   E --> Q4["Q4 · No Slack flow; the event shape is proved without it"]
   E --> Q5["Q5 · Retire sessionId only where a service flow routes"]
+  E --> R7["ER-7 · open · when a task's subscription ends"]
   E --> G["decided earlier · D2–D4, D6–D8, D10, D11"]
 ```
 
@@ -121,7 +122,23 @@ It comes down to proving the event's shape: a Slack flow spends a whole child on
 It comes down to a Stripe customer's events: retired everywhere, each runs in a fresh session.
 
 <a name="open"></a>
-**Open: none.** Q2 is settled at FIX-2534's spec gate.
+## Open
+
+<a name="er7"></a>
+### ER-7 · When does a task's subscription end?
+
+- **In plain terms:** a coding task ends just after opening its PR; as signed, later reviews
+  reach no task.
+- **The trade-off:** amended, a finished task's session takes a turn per review until the PR
+  closes or the cap.
+- **My recommendation: amend.** End on failure, cancellation, or the thread closing.
+- **What would change my mind:** a finished task's session refusing messages; today only a
+  running one does (`message-target.ts` ~90).
+- **If wrong:** sessions wake on reviews nobody acts on.
+
+![ER-7: the thread closing or a failure, recommended, beside the task's end; decided by a late review](figures/open-er7-subscription-end.svg)
+
+Q2 is settled at FIX-2534's spec gate.
 
 <details>
 <summary><b>Decided earlier, not on the sign-off</b> · D2–D4, D6–D8, D10, D11</summary>
@@ -135,8 +152,9 @@ many-to-many.
 
 <a name="d4"></a>
 **D4 · Push and poll are only ingestion; two dedupe questions** (owner, Nov 1; EM, Nov 3). Seen
-by this subscription? Its last-seen version. Got by this recipient? A `sendMessage` id
-`<object>@<version>:<session>` on the log's `getOrCreate` (~298, ~394). No new store.
+by this subscription? Its cursor row's last-seen version. Got by this recipient? A `sendMessage` id
+`<object>@<version>:<session>` on the log's `getOrCreate` (~298, ~394). No third dedupe
+store; the thread index only nominates.
 
 <a name="d6"></a>
 **D6 · A structured filter selects; the screen decides.** Provider, thread and optional kinds
@@ -182,7 +200,7 @@ Child 1, the seam, owns six; a *uses* cell is a place a child must not re-decide
 | ER-4 | Users subscribe to and hear only threads they can read; nothing crosses users | Child 1 (D5) | Children 3, 4; closure's two users |
 | ER-5 | Only `subscribe` and `unsubscribe` write subscriptions | Child 1 (D5) | Children 2, 5 |
 | ER-6 | One normalized event over `WebhookInboundEvent` | Child 1 (D4) | Children 2, 3 |
-| ER-7 | A task's subscription ends with the task | Child 1 (D5) | Closure |
+| ER-7 | *Pending · [ER-7](#er7)* A task's subscription ends with the task | Child 1 (D5) | Closure |
 | ER-8 | Seen once per subscription, sent once per session | Child 1 (D4) | Closure, leg c |
 
 ## Coordination seams
@@ -190,7 +208,7 @@ Child 1, the seam, owns six; a *uses* cell is a place a child must not re-decide
 | Seam | Between | Rule |
 |---|---|---|
 | `sendMessage` | Child 1, [FIX-2070](https://linear.app/fixpoint-labs/issue/FIX-2070) (In Development) | The second to land rebases onto the other's `exempt` path |
-| The subscription row | Children 1, 3 | Child 1 owns it; child 3 adds schedule fields and last-seen version |
+| The subscription row | Children 1, 3 | Child 1 owns it; child 3 adds schedule fields; delivery writes the cursor row (ER-5) |
 | The event shape | Children 1, 2, 3 | Child 1 fixes it; push and poll map into it |
 | Coordinator config | Child 5, FIX-1786 | One key beside `routing` |
 
@@ -201,7 +219,9 @@ child 1's gate · [D9](#d9)'s exempt path · [D10](#d10)'s rows · the 5× bar's
 `sessionId`'s retirement in the GitHub child · the reuse calls in
 [SPEC](SPEC.md#whats-already-here-and-the-debt)'s Adds table.
 
-Owner, Nov 4: [Q1](#q1) · [Q3](#q3) · [Q4](#q4) · [Q5](#q5).
+EM, Nov 4: [D4](#d4)'s cursor row.
+
+Open, owner: [ER-7](#er7).
 
 ## What the end-state POC showed
 
@@ -215,3 +235,6 @@ None built.
   GitHub child, Slack out). Q1, Q3, Q4 opened, then Q5 from the guides.
 - **Merged (Nov 4).** The owner's merge of #4515 decided [Q1](#q1), [Q3](#q3), [Q4](#q4) and
   [Q5](#q5), and the set was filed as FIX-2534 to FIX-2539.
+- **Corrected (EM, Nov 4).** [D4](#d4)'s cursor row, from FIX-2534's spec
+  ([#4673](https://github.com/fixpoint-labs/flow-state-dev/pull/4673)).
+- **Opened (Nov 4).** [ER-7](#er7), from that spec's Q-A.

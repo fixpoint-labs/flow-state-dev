@@ -26,7 +26,7 @@ it follows, with nobody relaying it and no model reading every event.**
 | **The real need** | The same, with cost flat as sessions multiply |
 | **Smaller, and rejected** | Derive the task's session from `sessionId`: still one session per event, no dedupe, no localhost |
 | **Bigger, and not this epic's** | The Not doing list below |
-| **Not done if** | A config-screened delivery calls a model, or a generator routes · a session gets an event twice, or misses one on its PR · a user gets a thread they can't read, or a refused event · a subscription outlives its task or polls under 5 minutes · GitHub routes by `sessionId` · the flow files a task, or `observe` runs inferred work · a closure bug is open |
+| **Not done if** | A config-screened delivery calls a model, or a generator routes · a session gets an event twice, or misses one on its PR · a user gets a thread they can't read, or a refused event · a subscription outlives its task (per [ER-7](DECISIONS.md#er7) once signed) or polls under 5 minutes · GitHub routes by `sessionId` · the flow files a task, or `observe` runs inferred work · a closure bug is open |
 
 ```mermaid
 flowchart LR
@@ -82,7 +82,7 @@ Filed at this gate; live state is in Linear.
 
 | Child | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-2534](https://linear.app/fixpoint-labs/issue/FIX-2534) · subscriptions, config screens, delivery | Event shape, collection, tools, the chain with its sender check ([Q1](DECISIONS.md#q1)) and contract (Q2), delivery, task endings, both dedupes | The seam | Ready to Spec |
+| [FIX-2534](https://linear.app/fixpoint-labs/issue/FIX-2534) · subscriptions, config screens, delivery | Event shape, collection, tools, the chain with its sender check ([Q1](DECISIONS.md#q1)) and contract (Q2), delivery, task endings ([ER-7](DECISIONS.md#er7), pending), both dedupes | The seam | Ready to Spec |
 | [FIX-2535](https://linear.app/fixpoint-labs/issue/FIX-2535) · GitHub flow, retire `sessionId` | Binding, normalization, thread keys, versions, PR-open subscribe ([Q5](DECISIONS.md#q5)) | The first provider | Ready to Spec |
 | [FIX-2536](https://linear.app/fixpoint-labs/issue/FIX-2536) · polling | Per-user schedule rows, the 5-minute floor | Localhost | Ready to Spec |
 | [FIX-2537](https://linear.app/fixpoint-labs/issue/FIX-2537) · custom and Jev screens | Custom screen blocks; one evaluator call per event | Fuzzy interests, priced | Ready to Spec |
@@ -153,7 +153,8 @@ creeps back.
 3. **[D9](DECISIONS.md#d9) · Delivery is `sendMessage`'s exempt path.** If wrong: two sets of
    recipient rules.
 
-**Open: none.** Decided at merge: [Q1](DECISIONS.md#q1) · [Q3](DECISIONS.md#q3) ·
+**Open:** [ER-7](DECISIONS.md#er7).
+Decided at merge: [Q1](DECISIONS.md#q1) · [Q3](DECISIONS.md#q3) ·
 [Q4](DECISIONS.md#q4) · [Q5](DECISIONS.md#q5).
 
 Epic · 5 children and a closure · Inbound Transports & Reactive Flows · Webhooks / Workforce
