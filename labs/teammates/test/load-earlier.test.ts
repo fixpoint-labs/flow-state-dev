@@ -31,6 +31,7 @@ function clientOver(count: number): Client {
       stream: () => ({ close() {} }),
       requests: async () => [],
     },
+    subscribe: () => ({ close() {} }),
   } as unknown as Client;
 }
 

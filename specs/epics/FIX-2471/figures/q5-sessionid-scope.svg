@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="Open fork Q1, who gets through a subscription&#x27;s screen by default. Recommended: fail closed, so org members, repo collaborators and the bots the app lists pass. Instead of: fail open, anyone the thread shows. It comes down to the first row, an outsider commenting on a public repo: fail closed refuses it before any model sees it; fail open lands it in a coding task&#x27;s context unscreened. The price is the second row: an app that triages outsiders&#x27; issues opts in per subscription, in one line, where fail open needs nothing. Third row, a tie: the check costs zero tokens either way. Locks in: child 1 ships the sender check this way, so it is decided at this gate. Flips if most apps we serve triage outsiders."
+<svg viewBox="0 0 940 420" role="img" aria-label="Q5, decided by the owner on Nov 4: whether sessionId retires for every provider or only for GitHub. Chosen: only where a service flow routes. Instead of: everywhere, as first written. It comes down to the first row, a Stripe customer&#x27;s events: keeping sessionId for providers with no service flow keeps one session per customer, as the Stripe guide shows, while retiring it everywhere runs each event in a fresh session, since no service flow replaces it. The price is the second row: two ways to route, split by provider, against one. Third row, a tie: GitHub routes by subscriptions only either way. Locks in: the not-done-if line reads a GitHub event routes by sessionId, and the Stripe and Slack guides stay. Flips if every provider in the guides gets a service flow."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -11,7 +11,6 @@
     .bg     { fill:var(--surface); }
     .ask    { fill:var(--surface-2); }
     .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
-    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
     .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
     .decide { fill:var(--accent-soft); }
     .bar    { fill:var(--accent); }
@@ -36,68 +35,67 @@
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">OPEN · Q1 · THE FORK</text>
-    <text class="t-q" x="32" y="52">Who gets through a subscription&#x27;s screen by default?</text>
+    <text class="t-lbl" x="32" y="32">Q5 · THE CALL · OWNER, NOV 4</text>
+    <text class="t-q" x="32" y="52">Does sessionId retire for every provider, or only GitHub?</text>
   </g>
 
   <g id="options">
-    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
-    <text class="t-h c-code" x="228" y="112">Fail closed: members, collaborators, bots</text>
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Only where a service flow routes</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">Fail open: anyone the thread shows</text>
+    <text class="t-h c-lost" x="592" y="112">Everywhere, as first written</text>
   </g>
 
   <g id="row-decides">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">AN OUTSIDER COMMENTS</text>
-    <text class="t-lbl" x="32" y="169">ON A PUBLIC REPO</text>
+    <text class="t-lbl" x="32" y="156">A STRIPE CUSTOMER&#x27;S</text>
+    <text class="t-lbl" x="32" y="169">EVENTS</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Refused before any model</text>
-    <text class="t-s" x="248" y="179">outside text never reaches a session</text>
+    <text class="t-b" x="248" y="161">Keep one session per customer</text>
+    <text class="t-s" x="248" y="179">the Stripe guide works as written</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Lands in a coding task&#x27;s context</text>
-    <text class="t-s" x="612" y="179">unscreened: the prompt-injection door</text>
+    <text class="t-b" x="612" y="161">Each runs in a fresh session</text>
+    <text class="t-s" x="612" y="179">no service flow replaces sessionId</text>
   </g>
 
   <g id="row-2">
-    <text class="t-lbl" x="32" y="222">AN APP THAT TRIAGES</text>
-    <text class="t-lbl" x="32" y="235">OUTSIDERS&#x27; ISSUES</text>
+    <text class="t-lbl" x="32" y="222">WAYS TO</text>
+    <text class="t-lbl" x="32" y="235">ROUTE</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">Opts in per subscription</text>
-    <text class="t-s" x="248" y="241">one line, but it has to know to</text>
+    <text class="t-b" x="248" y="223">Two, split by provider</text>
+    <text class="t-s" x="248" y="241">a service flow where one exists, sessionId elsewhere</text>
     <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">Works as it is</text>
-    <text class="t-s" x="612" y="241">nothing to set</text>
+    <text class="t-b" x="612" y="223">One</text>
+    <text class="t-s" x="612" y="241">subscriptions only</text>
     <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
 
   <g id="row-3">
-    <text class="t-lbl" x="32" y="280">TOKENS FOR</text>
-    <text class="t-lbl" x="32" y="293">THE CHECK</text>
+    <text class="t-lbl" x="32" y="280">GITHUB</text>
     <text class="mark tie" x="228" y="282">=</text>
-    <text class="t-b" x="248" y="281">Zero</text>
-    <text class="t-s" x="248" y="299">a config screen</text>
+    <text class="t-b" x="248" y="281">Subscriptions only</text>
+    <text class="t-s" x="248" y="299">the GitHub child removes it there</text>
     <text class="mark tie" x="592" y="282">=</text>
-    <text class="t-b" x="612" y="281">Zero</text>
-    <text class="t-s" x="612" y="299">no check runs</text>
+    <text class="t-b" x="612" y="281">Subscriptions only</text>
+    <text class="t-s" x="612" y="299">the same</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>
 
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Child 1 ships the sender check this way</text>
-    <text class="t-s" x="32" y="389">so it is decided at this gate, not in a child</text>
+    <text class="t-b" x="32" y="371">Not done if: a GitHub event routes by sessionId</text>
+    <text class="t-s" x="32" y="389">the Stripe and Slack guides stay as they are</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">Most apps we serve triage outsiders</text>
-    <text class="t-s" x="494" y="389">then fail open, and a repo opts in to close</text>
+    <text class="t-b" x="494" y="371">Every provider in the guides gets a flow</text>
+    <text class="t-s" x="494" y="389">then sessionId retires everywhere</text>
   </g>
 </svg>

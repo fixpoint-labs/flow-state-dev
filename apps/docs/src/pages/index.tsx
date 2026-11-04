@@ -13,7 +13,7 @@ import "../components/Landing/landing.css";
 
 const TITLE = "flow-state.dev · Harness your AI workforce";
 const DESCRIPTION =
-  "Claude Code, Codex and Grok Bot are someone else's harness. Flow State gives you the building blocks to build your own, from one agent to a whole workforce, on any model, at a cost you control.";
+  "Build your own harness with Flow State, from one agent to a whole workforce, shaped to how your team works, on any model, at a cost you control.";
 
 /** Closes the phone menu when one of its links is followed, so "Starters" doesn't leave it open. */
 function closeMenuOnLink(event: MouseEvent<HTMLElement>): void {

@@ -9,12 +9,14 @@
  * | `listWorkers`       | the workforce client's `roster()`                                            |
  * | `openConversation`  | `ensureWorkerSession({ worker })`: the worker's default conversation         |
  * | `send`              | the worker's door, `respond`, streamed, so its answer shows as it is written  |
- * | `watchConversation` | the session's items, from its snapshot and then its stream                   |
+ * | `watchConversation` | the session's items, from its snapshot and then its stream, and its        |
+ * |                     | requests (is it answering) on each request notice, via `client.subscribe` |
  * | `watchConnection`   | the same feed's connection state: `live`, `lapsed` once a retry has failed…  |
  * | `answerApproval`    | the request's `answer`: approve or reject a `user_approval` stop             |
  * | `watchTalk`         | the user's message log (`workforceMessages`), as `sendMessage` writes it     |
- * | `watchActivity`     | `listSessionRequests` on the worker's conversation                           |
+ * | `watchActivity`     | `listSessionRequests` on the worker's conversation, on each request notice   |
  * | `watchWindow`       | the last answering request's `historyStart`, and the session's `historySummary` |
+ * |                     | on each request notice and each notice of that resource                      |
  * | `hire`              | the workforce client's `hire`: a row on the user's roster                     |
  * | `editInstructions`  | the workforce client's `edit`, on one of the user's own workers               |
  * | `fire`              | the workforce client's `fire`, on one of the user's own workers               |
@@ -30,6 +32,8 @@
  * |                     | named by the UI registry's `tool-naming` (`components/flow-state/`)           |
  * | `watchExchange`     | the receiving worker's conversation: the turn that read one message          |
  *
+ * `watchTalk` and `watchTasks`' board read still read on a clock (`poll`); every other watch reads on a change.
+ *
  * A received message is drawn from its own item (`workforce:received`), which
  * carries its message id, so the pending line joins the log to the
  * conversation by id (gap G2, shipped with FIX-2070).
@@ -37,7 +41,16 @@
  * The page acts as the user `fsdev dev` hands it (the config's `devtool`
  * block), with the bearer token when there is one, on the server it came from.
  */
-import { createClient, readEveryCollectionPage, topic, type Client, type SessionConnectionState, type SessionRequestSummary } from "@flow-state-dev/client";
+import {
+  createClient,
+  readEveryCollectionPage,
+  topic,
+  type Client,
+  type SessionConnectionState,
+  type SessionRequestSummary,
+  type WireNotice,
+  type WireTopic,
+} from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
@@ -368,16 +381,52 @@ function poll<T>(read: () => Promise<T>, onValue: (value: T) => void, everyMs = 
 }
 
 /**
- * Run `read` now, and again on each notice of a conversation's board (FIX-2429):
- * its session's topic narrowed to each ledger its `listTasks` read returns, so a
- * reply streaming in the conversation never wakes it. One read at a time, and
- * one waiting for any number of notices. Wherever push can miss a change,
- * `client.subscribe` reads every `everyMs` instead.
+ * A read again after a failed one, 1 s and doubling to 30 s, the shape of the
+ * client's own reconnects. A view that reads on a notice has no clock to try
+ * again on where push covers it, so a failed read would otherwise wait for a
+ * change that may never come. `succeeded` resets the delay; `stop` drops a
+ * waiting try.
  */
-function onBoardChange(client: Client, sessionId: string, read: () => Promise<void>, everyMs = POLL_MS): Unsubscribe {
+function retryAfterFailure(again: () => void): { failed(): void; succeeded(): void; stop(): void } {
+  let attempt = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return {
+    failed() {
+      clearTimeout(timer);
+      timer = setTimeout(again, Math.min(30_000, 1_000 * 2 ** attempt));
+      attempt += 1;
+    },
+    succeeded() {
+      attempt = 0;
+    },
+    stop() {
+      clearTimeout(timer);
+    },
+  };
+}
+
+/**
+ * Read `read` now, and again whenever a notice under `topics` passes `hears`
+ * (FIX-2466), reporting a value only when it changed, as {@link poll} does.
+ * A connect, a reconnect, a tick and a `resync` read too. One read at a time,
+ * and one waiting for any number of notices. Wherever push can miss a change,
+ * `client.subscribe` reads every `everyMs` instead, so the view keeps no timer
+ * of its own. A failed read tries again on its own ({@link retryAfterFailure}).
+ * A read still out when the watch stops reports nothing.
+ */
+function onNotice<T>(
+  client: Client,
+  topics: readonly WireTopic[],
+  hears: (notice: WireNotice) => boolean,
+  read: () => Promise<T>,
+  onValue: (value: T) => void,
+  everyMs = POLL_MS,
+): Unsubscribe {
   let live = true;
+  let last = "";
   let running = false;
   let queued = false;
+  const retry = retryAfterFailure(() => void run());
   const run = async (): Promise<void> => {
     if (!live) return;
     if (running) {
@@ -386,9 +435,16 @@ function onBoardChange(client: Client, sessionId: string, read: () => Promise<vo
     }
     running = true;
     try {
-      await read();
+      const value = await read();
+      retry.succeeded();
+      const seen = JSON.stringify(value);
+      if (live && seen !== last) {
+        last = seen;
+        onValue(value);
+      }
     } catch (error) {
       console.error("teammates: a read failed", error);
+      if (live) retry.failed();
     }
     running = false;
     if (queued) {
@@ -396,14 +452,22 @@ function onBoardChange(client: Client, sessionId: string, read: () => Promise<vo
       void run();
     }
   };
-  const topics = BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource }));
-  const subscription = client.subscribe(topics, { onChange: () => void run(), pollIntervalMs: everyMs });
+  const subscription = client.subscribe(topics, {
+    onChange: (notice) => {
+      if (notice === null || notice.kind === "resync" || hears(notice)) void run();
+    },
+    pollIntervalMs: everyMs,
+  });
   void run();
   return () => {
     live = false;
+    retry.stop();
     subscription.close();
   };
 }
+
+/** A request notice: one of the session's requests was created, moved or deleted. Never `items`, sent per stored chunk. */
+const isRequest = (notice: WireNotice): boolean => notice.kind === "request";
 
 /** The latest copy of each board row in a conversation's items, oldest filing first. */
 function boardRows(items: readonly Item[]): Map<string, Record<string, any>> {
@@ -677,6 +741,8 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const feeds = sessionFeeds(client);
   /** Each worker's conversation, and the flow it runs on, once opened. */
   const conversations = new Map<string, { sessionId: string; flow: string }>();
+  /** Told each time a conversation opens, so a worker's activity is watched from then. */
+  const conversationOpened = new Set<() => void>();
   const flowOfSession = new Map<string, string>();
   /** The workers, by id, so a line under a worker's name reads as a task's ending. */
   let workerIds = new Set<string>();
@@ -690,6 +756,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     const opened = { sessionId: session.id, flow: session.flowKind };
     conversations.set(worker, opened);
     flowOfSession.set(session.id, session.flowKind);
+    for (const tell of [...conversationOpened]) tell();
     return opened;
   };
 
@@ -749,7 +816,10 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         reuse(toEntries(items, workerIds));
         emit();
       });
-      const stopPoll = poll(
+      const stopPoll = onNotice(
+        client,
+        [topic.session(sessionId)],
+        isRequest,
         () => client.sessions.requests(sessionId, { limit: 20 }),
         (requests) => {
           const answering = requests.filter((r) => !QUIET_ACTIONS.has(r.actionName));
@@ -789,12 +859,23 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       );
     },
     watchActivity(worker, onChange) {
-      return poll(async () => {
+      // A worker that takes tasks only has no conversation: it is idle here. One that has one is
+      // watched from the moment it opens, on its conversation's request notices.
+      let live = true;
+      let stopRead: Unsubscribe | undefined;
+      const follow = () => {
         const known = conversations.get(worker);
-        // A worker that takes tasks only has no conversation: it is busy while a run it was handed is.
-        if (known === undefined) return { running: false, lastActiveAt: 0 };
-        return activityOf(await client.sessions.requests(known.sessionId, { limit: 20 }));
-      }, onChange);
+        if (!live || known === undefined || stopRead !== undefined) return;
+        stopRead = onNotice(client, [topic.session(known.sessionId)], isRequest, async () => activityOf(await client.sessions.requests(known.sessionId, { limit: 20 })), onChange);
+      };
+      if (conversations.has(worker)) follow();
+      else onChange({ running: false, lastActiveAt: 0 });
+      conversationOpened.add(follow);
+      return () => {
+        live = false;
+        conversationOpened.delete(follow);
+        stopRead?.();
+      };
     },
     watchWindow(sessionId, onChange) {
       let items: Item[] = [];
@@ -811,7 +892,11 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         items = next;
         emit();
       });
-      const stopPoll = poll(
+      // The window moves with a turn (a request notice), and the summary's mark with its resource.
+      const stopPoll = onNotice(
+        client,
+        [topic.session(sessionId)],
+        (notice) => isRequest(notice) || (notice.kind === "resource" && notice.topic.resource === HISTORY_SUMMARY),
         async (): Promise<WindowRead> => {
           const requests = await client.sessions.requests(sessionId, { limit: 20 });
           const summary = (await client.sessions.state(sessionId, { includeItems: false })).resources?.session?.[HISTORY_SUMMARY] as
@@ -920,15 +1005,25 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           }),
         ).then(publish, (error) => console.error("teammates: a session's flow couldn't be read", error));
       };
-      // A run links itself, and a task settles, on its own session: the board's notice says so.
-      const stopBoard = onBoardChange(client, sessionId, async () => {
-        const flow = flowOfSession.get(sessionId) ?? (await client.sessions.get(sessionId)).flowKind;
-        const read = await client.flow(flow).read<{ ok: boolean; error?: string; tasks: Array<Record<string, any>> }>(LIST_TASKS, {}, { sessionId });
-        if (!read.ok) throw new Error(read.error);
-        if (stopped) return;
-        listed = new Map(read.tasks.map((task) => [task.id as string, task]));
-        publish();
-      });
+      // A run links itself, and a task settles, on its own session: the board's notice says so
+      // (FIX-2429). The topics are narrowed to the ledgers the read returns, so every notice on
+      // them is the board's: a reply streaming in the conversation never reaches them.
+      const stopBoard = onNotice(
+        client,
+        BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })),
+        () => true,
+        async () => {
+          const flow = flowOfSession.get(sessionId) ?? (await client.sessions.get(sessionId)).flowKind;
+          const read = await client.flow(flow).read<{ ok: boolean; error?: string; tasks: Array<Record<string, any>> }>(LIST_TASKS, {}, { sessionId });
+          if (!read.ok) throw new Error(read.error);
+          return read.tasks;
+        },
+        (tasks) => {
+          if (stopped) return;
+          listed = new Map(tasks.map((task) => [task.id as string, task]));
+          publish();
+        },
+      );
       const stopFeed = watchFeed(sessionId, boardRows, (read) => {
         rows = read;
         publish();
