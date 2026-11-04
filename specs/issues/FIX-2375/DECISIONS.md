@@ -73,7 +73,8 @@ button on this same look.
   other lab's `Thread.tsx` has it. The session popup's own Esc listener prevents the default, so
   closing it never arms a stop.
 - **Order.** The registry slice first (epic D3), then each lab's slice on its adapter stack 1, after
-  FIX-2374 (done). FIX-2406's matrix takes over these adapter tests' *interrupt* case later.
+  FIX-2374 (done). The adapter tests use FIX-2406's in-process host harness from the start (its D1),
+  so FIX-2406 folds them into its matrix as the *stop* scenario instead of replacing a second harness.
 - **The test fakes follow.** Each lab's `test/fake-lab.ts` draws what the real adapter now draws.
   The goal check never reads them.
 

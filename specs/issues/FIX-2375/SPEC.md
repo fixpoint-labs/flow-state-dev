@@ -29,21 +29,21 @@ because they stopped it, and what is still running.
 
 ```mermaid
 flowchart LR
-  F["recorded server answers · a stopped turn, 2 live runs"] --> A["each lab's real adapter"]
+  F["the lab's own host in process · scripted model · a stopped turn, 2 live runs"] --> A["each lab's real adapter"]
   A --> T["adapter test · labs/*/test/stop-turn.test.ts"]
   T -->|"Stopping, then Interrupted by you, count 2"| P["PASS"]
   C["control · the aborted mapping removed, or today's main"] -.-> A
   A -.->|"under the control"| X["must FAIL · no Interrupted entry"]
 ```
 
-The check reads what each lab's real adapter hands the screen, fed with the server's own response
-shapes. No test fake is involved.
+The check reads what each lab's real adapter hands the screen, talking to that lab's real host
+in process. No test fake and no recorded responses are involved.
 
 | How we verify | |
 |---|---|
-| **Goal check** | One test file per lab, `labs/claude-code-style/test/stop-turn.test.ts` and `labs/teammates/test/stop-turn.test.ts`, run by the implementer before the PR is ready, verdict in the PR. They drive the real `createWiredLab` / `createLabAdapter` over a recording `fetch`, as `labs/claude-code-style/test/watch-thread.test.ts` does today. Then **one browser pass per lab** with a real model: ask for something that files a task, press Stop, read the thread. If no browser is available, hand it to `fsd-qa` over the mailbox |
+| **Goal check** | One test file per lab, `labs/claude-code-style/test/stop-turn.test.ts` and `labs/teammates/test/stop-turn.test.ts`, run by the implementer before the PR is ready, verdict in the PR. They drive the real `createWiredLab` / `createLabAdapter` against the lab's own host in process (`createInProcessFetch` + `createMockModelResolver`), the harness FIX-2406's D1 chose, so the server writes the `aborted` status the adapter reads. No recorded `/requests` fixtures: a recording could pass on a shape the server stopped writing. The Claude Code-style host moves from `fsdev.config.mts` into `host.mts` as `openLab(options)` here (the debt FIX-2406 names), and FIX-2406 builds on it. These two files become FIX-2406's *stop* scenario when its matrix lands; they are not a second harness. Then **one browser pass per lab** with a real model: ask for something that files a task, press Stop, read the thread. If no browser is available, hand it to `fsd-qa` over the mailbox |
 | **Signal** | (1) `interrupt` posts `…/requests/<id>/abort` once for each running turn, and none for a `dispatch` request. (2) The view says it is stopping from that call until the requests read shows the turn ended. (3) Once that read shows the turn `aborted`, exactly one `interrupted` entry follows the last entry of that request. (4) That entry carries a count of 2 while the session stream's `session.runs` names two runs, and none once it names zero. (5) In Teammates, a `completed` request gets no entry. Browser: the line reads *Interrupted by you · 1 background task still running · View* |
-| **Input** | A session with a user line and two tool calls under request `r1`, `/requests` answering `r1` first `in_progress` and then `aborted`, and the stream naming two runs, then none. A correct adapter must also pass with the stopped turn being the older of two (a newer `completed` turn after it), where the entry still lands after `r1`'s items and carries no count |
+| **Input** | A scripted turn `r1` that files two board tasks and then waits, stopped through the adapter's `interrupt`; the host writes `r1` `aborted` and the stream names the two runs until they settle. A correct adapter must also pass with the stopped turn being the older of two (a newer `completed` turn after it), where the entry still lands after `r1`'s items and carries no count |
 | **Anti-game** | Never assert on `test/fake-lab.ts` output: the fake already draws this line, which is how the dead entry went unnoticed. The request statuses come from the `/requests` response, not from a hand-built entry. No assertion on copy beyond the browser pass |
 | **Control that must fail** | Today's `main`: the Claude Code-style adapter never produces `interrupted`, so signal 3 fails; the Teammates adapter has no `interrupt` verb, so signal 1 fails. After the change: delete the `aborted` → entry mapping in either adapter, and signal 3 fails. Each PR shows that red run |
 
