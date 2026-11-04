@@ -3,13 +3,13 @@
  * `include=status` (FIX-2411): what a row in a list of sessions shows about
  * its turn.
  *
- * The rule is the runs listing's (`child-session-routes.ts`): a request still
- * going wins over a later one that ended, else the most recent request
- * speaks. Unlike that listing, the status goes out as the request's own, so
- * `suspended` (stopped) and `interrupted` (lost to a restart) stay apart: a
- * person acts on each.
+ * Which request speaks is the runs listing's rule, read through its one
+ * helper ({@link governingRequest}): a live request wins over a later one
+ * that ended, else the most recent request speaks. Unlike that listing, the
+ * status goes out as the request's own, so `suspended` (stopped) and
+ * `interrupted` (lost to a restart) stay apart: the user acts on each.
  *
- * `suspended` covers two stops a person tells apart: one that waits for them
+ * `suspended` covers two stops the user tells apart: one that waits for them
  * (a question, an approval) and one that waits on other work (a reply from
  * another worker), which resumes by itself. `waitsForUser` says which.
  *
@@ -17,13 +17,11 @@
  * request scope (`sessionRequestScope`), never the caller's, and one read of
  * the session's pending suspensions when the answer is `suspended`.
  */
-import type { RequestStatus } from "@flow-state-dev/core/types";
 import { isUserSuspension } from "@flow-state-dev/core/types";
+import type { RequestStatus } from "@flow-state-dev/core/types";
 import { sessionRequestScope } from "../context/session-request-scope";
-import type { RequestRecord, RequestStore, SessionRecord, SuspensionStore } from "../stores/types";
-
-/** A request that is still going, whether or not it is the most recent. */
-const GOING: readonly RequestStatus[] = ["in_progress", "suspended"];
+import type { RequestStore, SessionRecord, SuspensionStore } from "../stores/types";
+import { governingRequest } from "./child-session-routes";
 
 /** What a listed row says about its session's turn. */
 export type LatestRequestStatus = {
@@ -32,32 +30,21 @@ export type LatestRequestStatus = {
   readonly waitsForUser?: boolean;
 };
 
-/**
- * The status of `session`'s latest request, or `undefined` when it has none.
- *
- * Read 1 is the most recent request. When it is still going, it is the
- * answer. Otherwise read 2 asks, unordered and `limit: 1`, whether any request
- * is still going (an earlier one finishing after a later one started); one
- * that is wins. Unordered and limited, so a session that has piled up
- * suspended records costs one row.
- */
+/** The status of `session`'s latest request, or `undefined` when it has none. */
 export async function latestRequestStatus(
   stores: { readonly request: RequestStore; readonly suspensions: SuspensionStore },
   sessionId: string,
   session: Pick<SessionRecord, "userId" | "orgId" | "flowKind" | "flowId">,
   tenantId: string | undefined
 ): Promise<LatestRequestStatus | undefined> {
-  const scope = sessionRequestScope(sessionId, session, tenantId);
-  const [mostRecent] = await stores.request.list({ ...scope, orderBy: "startedAtMs", limit: 1 });
-  if (mostRecent === undefined) return undefined;
-  let latest: RequestRecord = mostRecent;
-  if (!GOING.includes(mostRecent.status)) {
-    const [going] = await stores.request.list({ ...scope, status: GOING, orderBy: "none", limit: 1 });
-    if (going !== undefined) latest = going;
-  }
+  const latest = await governingRequest(stores.request, sessionRequestScope(sessionId, session, tenantId));
+  if (latest === undefined) return undefined;
   if (latest.status !== "suspended") return { status: latest.status };
-  // The request id came from the tenant's own request store, so matching it
-  // keeps another tenant's suspension of the same bare session id out.
+  // The suspension filter has no request id, so this lists the session's
+  // pending stops (owner-scoped, usually one or two) and matches the request
+  // here. The request id came from the tenant's own request store, so
+  // matching it keeps another tenant's suspension of the same bare session id
+  // out.
   const pending = await stores.suspensions.list({ sessionId, userId: session.userId, status: "pending" });
   return {
     status: "suspended",

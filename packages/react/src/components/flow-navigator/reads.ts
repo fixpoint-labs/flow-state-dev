@@ -23,7 +23,7 @@ import {
   type SessionSummary
 } from "@flow-state-dev/client";
 import { useFencedRead } from "../../internal/useFencedRead";
-import { useLiveSessionRead } from "../../hooks/useSessionList";
+import { useLiveSessionRead } from "../../internal/useLiveSessionRead";
 import type { FlowNavigatorLeaf } from "./grouping";
 
 /**
@@ -118,12 +118,12 @@ export function useLeafSessions(
   // the client can subscribe (FIX-2411): the same read `useSessionList` makes.
   // A closed leaf asks for nothing; the visit token in the identity is what
   // starts a fresh read when it opens.
-  return useLiveSessionRead(
+  return useLiveSessionRead({
     source,
-    sessionQueryFor(address, [{ id: address, cardinality }]),
+    query: sessionQueryFor(address, [{ id: address, cardinality }]),
     includeDispatchRuns,
-    true,
-    visit.token !== null,
-    [cardinality, visit.token]
-  );
+    includeStatus: true,
+    enabled: visit.token !== null,
+    extraIdentity: [cardinality, visit.token]
+  });
 }

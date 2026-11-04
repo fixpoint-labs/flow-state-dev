@@ -271,6 +271,16 @@ describe("withChangeBus · every request and session write publishes its session
     await tick();
     expect(alice.map((n) => n.kind)).toEqual(["run"]);
 
+    // A full request write whose status didn't change is still heard, on
+    // purpose: a row's state also rests on what the write lands beside it
+    // (a stop's suspension record, which says whether it waits for the
+    // user), so the notice can't be keyed on the status alone.
+    alice.length = 0;
+    await stores.request.set("r1", request("r1", "s_new"), "any");
+    await tick();
+    await tick();
+    expect(alice.map((n) => n.kind)).toEqual(["run"]);
+
     // A streamed reply's items move no row's state: the list doesn't hear them.
     alice.length = 0;
     stores.request.persistItems("r1", [message("r1", "m1")]);

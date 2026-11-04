@@ -93,7 +93,7 @@ export type ListSessionsOptions = {
    * What the listing adds, one value or several:
    *
    * - `"dispatch-runs"`: also return the sessions a dispatcher ran work in.
-   *   Off by default: a listing without it returns the sessions a person
+   *   Off by default: a listing without it returns the sessions the user
    *   started. It widens parentage only; a run of another principal,
    *   organization or tenant stays absent. A row that came in this way
    *   carries {@link SessionSummary.parentSessionId}.

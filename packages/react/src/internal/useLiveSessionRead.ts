@@ -76,7 +76,9 @@ export function useLiveSessionRead({
     ...(includeStatus ? (["status"] as const) : [])
   ];
   const { data, isLoading, error, refresh } = useFencedRead<readonly SessionSummary[]>(
-    [source, query.flowKind, query.flowId, includeDispatchRuns, includeStatus, ...extraIdentity],
+    // `enabled` is in the identity, as `useFencedRead` asks of a caller that
+    // toggles it: turning it off drops the held rows and any read in flight.
+    [source, query.flowKind, query.flowId, includeDispatchRuns, includeStatus, enabled, ...extraIdentity],
     EMPTY_SESSIONS,
     "Failed to load sessions",
     () =>

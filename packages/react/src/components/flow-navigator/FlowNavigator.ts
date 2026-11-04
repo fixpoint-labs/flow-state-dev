@@ -24,7 +24,7 @@
  * An open leaf's sessions are live (FIX-2411): through a client that can
  * `subscribe`, they read again when one of the user's sessions changes, and
  * when the page becomes visible. Each session row shows its latest turn's
- * state, marked when it needs its person, and how long ago it changed.
+ * state, marked when it needs its user, and how long ago it changed.
  */
 import {
   Fragment,
@@ -208,8 +208,8 @@ const metaText = {
 
 /**
  * A session row's state mark, when it has one to show, and its age. Always
- * shown, unlike the trailing slot: a state is what a person scans the rail
- * for. Coloured by `--fsd-nav-attention` when the session needs its person,
+ * shown, unlike the trailing slot: a state is what the user scans the rail
+ * for. Coloured by `--fsd-nav-attention` when the session needs its user,
  * else `--fsd-nav-muted-fg`.
  */
 function sessionMeta(session: SessionSummary, now: number): ReactNode[] {

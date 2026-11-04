@@ -22,14 +22,14 @@ export function sessionLabel(session: Pick<SessionSummary, "id" | "title">): str
   return match === null ? session.id : `${match[1]}_…${match[2]!.slice(-6)}`;
 }
 
-/** A row's state, by its latest request's status: what a person reads, and whether it needs them. */
+/** A row's state, by its latest request's status: what the user reads, and whether it needs them. */
 export type SessionRowState = {
   readonly status: RequestStatus;
-  /** What a person reads: "Running", "Waiting on you", … */
+  /** What the user reads: "Running", "Waiting on you", … */
   readonly label: string;
   /** A one-character mark, since the package ships no icon set. */
   readonly mark: string;
-  /** The session needs its person: waiting on them, lost to a restart, failed, or cut short. */
+  /** The session needs its user: waiting on them, lost to a restart, failed, or cut short. */
   readonly needsYou: boolean;
 };
 
@@ -39,7 +39,7 @@ const STATES: Record<RequestStatus, Omit<SessionRowState, "status"> | null> = {
   interrupted: { label: "Interrupted", mark: "!", needsYou: true },
   failed: { label: "Failed", mark: "✕", needsYou: true },
   incomplete: { label: "Incomplete", mark: "!", needsYou: true },
-  // A finished turn and a stop the person made say nothing: the quiet rows.
+  // A finished turn and a stop the user made say nothing: the quiet rows.
   completed: null,
   aborted: null
 };
@@ -48,7 +48,7 @@ const WAITING_ON_WORK: Omit<SessionRowState, "status"> = { label: "Waiting", mar
 
 /**
  * The row's state, or `null` for a session with nothing to say: no request
- * yet, a finished one, one its person stopped, or a listing not asked for
+ * yet, a finished one, one its user stopped, or a listing not asked for
  * status.
  */
 export function sessionRowState(

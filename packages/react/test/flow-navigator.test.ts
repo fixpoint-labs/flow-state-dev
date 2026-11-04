@@ -869,7 +869,7 @@ describe("FlowNavigator · a session row's state and age", () => {
   const sessionRow = (id: string) =>
     document.querySelector<HTMLElement>(`[data-session-id="${id}"]`)!;
 
-  it("marks the sessions that need their person, and only those", async () => {
+  it("marks the sessions that need their user, and only those", async () => {
     const now = Date.now();
     const rows = [
       { id: "s-wait", requestStatus: "suspended", requestWaitsForUser: true },

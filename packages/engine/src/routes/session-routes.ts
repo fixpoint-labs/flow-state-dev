@@ -39,12 +39,17 @@ import {
 import { sessionRequestScope } from "../context/session-request-scope";
 import { toClientSession } from "./client-session";
 import { latestRequestStatus } from "./session-request-status";
+import { mapBounded } from "../utils/map-bounded";
+
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import {
   flowAuthenticates,
   ownResolverVerdict,
   type InstanceCallerResolver
 } from "./instance-caller";
+
+/** How many sessions' status reads `include=status` runs at once. */
+const STATUS_READS_IN_FLIGHT = 8;
 
 type SessionRouteContext = {
   registry: FlowRegistry;
@@ -312,14 +317,13 @@ export async function handleListSessions(
 
   // Each visible row's latest request status, only when asked (FIX-2411):
   // read on the server, under each session's own request scope, so a list
-  // shows which session needs its person without a read per row from the
-  // browser.
+  // shows which session needs its user without a read per row from the
+  // browser. A few sessions at a time, so a long unlimited listing costs
+  // time rather than a burst of store reads.
   const statuses =
     include.status === true
-      ? await Promise.all(
-          visible.map((s) =>
-            latestRequestStatus(ctx.stores, toBareSessionId(s.id, ctx.tenantId), s, ctx.tenantId)
-          )
+      ? await mapBounded(visible, STATUS_READS_IN_FLIGHT, (s) =>
+          latestRequestStatus(ctx.stores, toBareSessionId(s.id, ctx.tenantId), s, ctx.tenantId)
         )
       : undefined;
 

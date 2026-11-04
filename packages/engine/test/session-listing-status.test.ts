@@ -1,11 +1,11 @@
 /**
  * `GET /sessions?include=status` (FIX-2411): each row's latest request
- * status, so a list of sessions shows which one needs its person without the
+ * status, so a list of sessions shows which one needs its user without the
  * browser reading every session's requests.
  *
  * The rule is the runs listing's: a request still going wins over a later one
  * that ended; else the most recent speaks. `suspended` and `interrupted` go
- * out as themselves, since a person acts on each. Without the include, the
+ * out as themselves, since the user acts on each. Without the include, the
  * rows carry no status, as before.
  */
 import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
@@ -85,7 +85,7 @@ async function statuses(router: ReturnType<typeof createFlowApiRouter>, query: s
 }
 
 describe("GET /sessions?include=status", () => {
-  it("gives each row its latest request's status, keeping the ones a person acts on apart", async () => {
+  it("gives each row its latest request's status, keeping the ones the user acts on apart", async () => {
     const stores = createInMemoryStores();
     await seedSession(stores, "s_done");
     await seedRequest(stores, "r1", "s_done", "failed", 1000);
@@ -142,7 +142,7 @@ describe("GET /sessions?include=status", () => {
       sessions: Array<{ id: string; requestStatus?: string; requestWaitsForUser?: boolean }>;
     };
     const rows = Object.fromEntries(body.sessions.map((s) => [s.id, [s.requestStatus, s.requestWaitsForUser]]));
-    // A question waits for the person; a wait on another worker's reply resumes by itself.
+    // A question waits for the user; a wait on another worker's reply resumes by itself.
     expect(rows).toEqual({
       s_question: ["suspended", true],
       s_reply: ["suspended", false],

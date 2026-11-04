@@ -421,7 +421,7 @@ another principal, organization or tenant are absent either way.
 ### Each session's state
 
 `include: "status"` adds `requestStatus` to each row: the status of the
-session's latest request. A request still running or waiting on a person
+session's latest request. A request still running or waiting on the user
 (`in_progress`, `suspended`) wins over a later one that ended. A session with no
 request has none, so guard with `== null`. On a `suspended` row,
 `requestWaitsForUser` is `true` when the request waits for the user (a question,

@@ -57,6 +57,18 @@ describe("useSessionList", () => {
     expect(live.subscriptions[0]!.topics).toEqual([topic.user()]);
   });
 
+  it("holds nothing once disabled, even with the same client and flow", async () => {
+    const live = liveClient([[row("s1")]]);
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) => useSessionList({ flowKind: "chat", client: live.client, enabled }),
+      { initialProps: { enabled: true } }
+    );
+    await waitFor(() => expect(result.current.sessions.map((s) => s.id)).toEqual(["s1"]));
+
+    rerender({ enabled: false });
+    expect(result.current.sessions).toEqual([]);
+  });
+
   it("reads again on a run notice, so a session made elsewhere joins the list", async () => {
     const live = liveClient([[row("s1")], [row("s2"), row("s1")]]);
     const { result } = renderHook(() => useSessionList({ flowKind: "chat", client: live.client }));
