@@ -188,6 +188,7 @@ export function claudeCodeHarness({ mcpTools, ...feeds }: HarnessFeeds): Harness
     recordWork: true,
     allowedTools: ["Read", "Write", "Edit", "Bash", "Grep", "Glob"],
     permissionMode: "acceptEdits",
+    // A string replaces Claude Code's preset (goals/claude-code-harness/it-keeps-its-own-plan).
     systemPrompt: {
       type: "preset",
       preset: "claude_code",
