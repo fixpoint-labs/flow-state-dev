@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 430" role="img" aria-label="ER-7, an open fork for the owner: when does a task&#x27;s subscription end? Recommended: when the task fails or is cancelled, or when its thread closes, the PR merged or closed. Beside it, as signed: when the task ends. It comes down to the first row, a review that arrives after a coding task&#x27;s run: recommended, it lands in the task&#x27;s session, which takes messages once the task has finished; as signed, it reaches no task, because the run ended just after the PR opened. The price is the second row: a turn per review while the PR stays open, until it closes or the cap stops it. Third row, a tie: either answer is one rule at child 1&#x27;s unsubscribe. Locks in: a finished task keeps hearing its open PR. Flips if a finished task&#x27;s session can&#x27;t take a message; then the subscription moves to the task&#x27;s follow-up or owner."
+<svg viewBox="0 0 940 430" role="img" aria-label="ER-7, an open fork for the owner: when does a task&#x27;s subscription end? Recommended: when the task fails or is cancelled, or when its thread closes, the PR merged or closed. Beside it, as signed: when the task ends. It comes down to the first row, a review that arrives after a coding task&#x27;s run: recommended, it lands in the task&#x27;s session, which takes messages once the task has finished; as signed, it reaches no task, because the run ended just after the PR opened. The price is the second row: a turn per review while the PR stays open, until it closes or the cap stops it. Third row, the epic&#x27;s first promise, that a coding task follows its PR and a screened review lands in its session: recommended, it is kept; as signed, it breaks for every review after the run, and the first team row would need rewording. Locks in: a finished task keeps hearing its open PR. Flips if a finished task&#x27;s session can&#x27;t take a message; then the subscription moves to the task&#x27;s follow-up or owner."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -72,13 +72,14 @@
     <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
   <g id="row-2">
-    <text class="t-lbl" x="32" y="280">WHERE IT LIVES</text>
-    <text class="mark tie" x="228" y="282">=</text>
-    <text class="t-b" x="248" y="281">One rule at unsubscribe</text>
-    <text class="t-s" x="248" y="299">child 1 owns it either way</text>
-    <text class="mark tie" x="592" y="282">=</text>
-    <text class="t-b" x="612" y="281">One rule at unsubscribe</text>
-    <text class="t-s" x="612" y="299">child 1 owns it either way</text>
+    <text class="t-lbl" x="32" y="274">THE EPIC&#x27;S</text>
+    <text class="t-lbl" x="32" y="287">FIRST PROMISE</text>
+    <text class="mark plus" x="228" y="282">+</text>
+    <text class="t-b" x="248" y="281">Kept: a review lands in its session</text>
+    <text class="t-s" x="248" y="299">the coding task follows its PR, as promised</text>
+    <text class="mark minus" x="592" y="282">−</text>
+    <text class="t-b" x="612" y="281">Broken for reviews after the run</text>
+    <text class="t-s" x="612" y="299">the first team row would need rewording</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>
 

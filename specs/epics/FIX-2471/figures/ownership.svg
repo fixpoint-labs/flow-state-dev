@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 326" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: eight rules by the six children, five unfiled and a closure, each rule with one owner. Child 1, subscriptions, config screens and delivery, owns one messaging API, a user hears only what they can read, one write path for subscriptions, one normalized event shape, a subscription ending with its thread or a failed task (pending the owner), and each event seen once per subscription and delivered once per session. Child 4, custom and Jev screens, owns no generator in routing. Child 5, explicit and inferred work, owns the service flow never filing a task. Children 2 and 3, the GitHub flow and polling, own no rule and use most of them. The closure, child 6, uses every rule.">
+     aria-label="Who owns what: eight rules by the six children, FIX-2534 to FIX-2539, the last the closure, each rule with one owner. Child 1, subscriptions, config screens and delivery, owns one messaging API, a user hears only what they can read, one write path for subscriptions, one normalized event shape, when a task's subscription ends (pending the owner's ER-7 call), and each event seen once per subscription and delivered once per session. Child 4, custom and Jev screens, owns no generator in routing. Child 5, explicit and inferred work, owns the service flow never filing a task. Children 2 and 3, the GitHub flow and polling, own no rule and use most of them. The closure, child 6, uses every rule.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; }
@@ -16,7 +16,7 @@
     .t-use { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
   </style>
   <rect class="bg" x="0" y="0" width="940" height="326"/>
-  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#8212; ONE OWNER PER RULE &#183; COLUMNS ARE THE CHILDREN, NOT FILED YET</text>
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#8212; ONE OWNER PER RULE &#183; COLUMNS ARE THE CHILDREN, FIX-2534 TO FIX-2539</text>
   <g id="columns">
     <text class="t-col" x="378" y="46">1&#183;subs</text>
     <text class="t-col" x="468" y="46">2&#183;GitHub</text>
@@ -67,7 +67,7 @@
     <rect class="use" x="822" y="218" width="72" height="26" rx="3"/><text class="t-use" x="828" y="235">uses</text>
   </g>
   <g id="er7">
-    <text class="t-row" x="16" y="268">ER-7 a subscription ends with its thread · pending</text>
+    <text class="t-row" x="16" y="268">ER-7 a subscription ends with its task · pending</text>
     <rect class="own" x="372" y="250" width="72" height="26" rx="3"/><text class="t-own" x="378" y="267">OWNS</text>
     <rect class="use" x="462" y="250" width="72" height="26" rx="3"/><text class="t-use" x="468" y="267">uses</text>
     <rect class="use" x="822" y="250" width="72" height="26" rx="3"/><text class="t-use" x="828" y="267">uses</text>
