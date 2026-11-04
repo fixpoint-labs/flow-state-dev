@@ -49,6 +49,7 @@ import {
   projectAddressSchema,
   routedTaskHistory,
   workerConfigOf,
+  workerIdentityPrompt,
   WORKSTREAM_OPENED_ENTRY,
   workstreamOpenedEntry,
   WORKER_TASK_ENTRY,
@@ -181,6 +182,12 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
    * tools its `tools:` line names. Its history is the session's, with a
    * routed task's recent lines from the conversation that routed it shown
    * just before the message, on that turn only.
+   *
+   * Its prompt opens with Workforce's default worker layer, the same first
+   * entry the built-in agent flow's turn has, so what that layer says (who
+   * the worker is and who it can reach, then work things out first) and
+   * anything later added to it reach the EM too. Then its team's text and
+   * its own file's.
    */
   const turn = generator({
     name: EM_TURN,
@@ -189,6 +196,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     history: routedTaskHistory,
     uses: [factory.tools, factory.messages],
     prompt: [
+      (_input: unknown, ctx: BlockContext) => workerIdentityPrompt(ctx, installation),
       (_input: unknown, ctx: BlockContext) => settingsOf(ctx).teamInstructions,
       (_input: unknown, ctx: BlockContext) => settingsOf(ctx).instructions,
     ],
