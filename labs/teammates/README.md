@@ -14,7 +14,13 @@ theme so it reads as the app it copies.
   saying what it is doing now (*Replying to you*, *Messaging writer*, *Running coding task: …*,
   *Idle*), and how many new entries its conversation has since you last looked. The same icon
   marks the teammate in the conversation's header, on message lines and in popups; the header
-  carries the same status line.
+  carries the same status line. A teammate that needs you says so first, in the attention colour
+  and with a badge, and keeps its place in the list: *Needs your OK: …* while it waits for your
+  yes, *Waiting on you: …* while one of its tasks does. For two minutes after a coding task of its
+  ends, the line says *Coding task finished: …* or *Coding task failed: …*. The tab's title counts
+  the teammates with something for you, *(2) Teammates*. *Notify me*, at the foot, asks the
+  browser's permission and then sends a desktop notification for each new need or ended coding
+  task while the tab is in the background; it is off until you turn it on.
 - **Center:** the chosen worker's one conversation. It goes on for weeks, past its history window
   of 50 turns: before a turn leaves the window, it is folded into a running summary that the worker
   reads with the turns it still has word for word. A divider marks where the word-for-word turns

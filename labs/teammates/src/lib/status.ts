@@ -1,11 +1,15 @@
 /**
  * The line under a teammate's name: what it is doing right now, from real
- * state only. It is answering in its conversation (a running request), a
- * coding task it started is running (the board's row), it sent a message and
- * waits for the reply (the message log), or it is idle. Nothing is guessed:
- * with no request, no running task and no open message, it is idle.
+ * state only. First, anything it needs from you: an approval it asked for and
+ * you haven't answered, or a task of its that waits on you. Then it is
+ * answering in its conversation (a running request), a coding task it
+ * started is running (the board's row), a coding task of its just ended (for
+ * two minutes after), it sent a message and waits for the reply (the message
+ * log), or it is idle. Nothing is guessed: with no request, no running task
+ * and no open message, it is idle.
  */
 import type { Activity, BoardTask, ConversationEntry, LabAdapter, TalkRow, WorkerRow } from "../adapter";
+import { taskRowPresentation } from "../components/Popups";
 import { waitingOn } from "./talk";
 import { age, useNow, useWatch } from "./use-watch";
 
@@ -18,22 +22,90 @@ export interface StatusInputs {
   now: number;
 }
 
+/** How long a coding task's ending stays on the line: long enough for a glance; the panel keeps it after. */
+export const ENDING_SHOWN_MS = 2 * 60_000;
+
+/** An approval's tone: the attention colour, a person must act. A task's tone is `taskRowPresentation`'s. */
+const NEEDS_OK = "text-attention";
+/** The quiet tone of every other line. */
+const PLAIN = "text-muted-foreground";
+
+/** The line, and the class that colours it: a task's from `taskRowPresentation`, an approval's the attention colour. */
+export interface Status {
+  text: string;
+  tone: string;
+  /** It asks you to act: an approval, or a task waiting on you. */
+  needsYou: boolean;
+}
+
+const upperFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** An approval it asked for that you haven't answered yet. */
+const openApproval = (e: ConversationEntry): boolean => e.kind === "approval" && e.resolution === undefined;
+
+/** A task of its that waits on you. */
+const taskWaitsOnYou = (t: BoardTask): boolean => t.status === "running" && t.waiting !== undefined;
+
 /**
- * The status line, in plain words: "Replying to you", "Replying to researcher",
- * "Running coding task: X", "Messaging writer", or "Idle".
+ * What a teammate needs from you, oldest first: each open approval, then each
+ * task that waits on you. The one rule for "needs you": the status line, the
+ * row's badge, the tab's title and the notifications all read it.
  */
-export function statusLine(worker: string, { activity, entries, talk, tasks, now }: StatusInputs, nameOf: (id: string) => string, isCoding: (id: string) => boolean): string {
+export function needsOf({ entries, tasks }: Pick<StatusInputs, "entries" | "tasks">): { key: string; text: string; kind: "approval" | "task"; task?: BoardTask }[] {
+  return [
+    ...entries.flatMap((e) => (e.kind === "approval" && openApproval(e) ? [{ key: `approval:${e.suspensionId}`, text: e.text, kind: "approval" as const }] : [])),
+    ...tasks.flatMap((t) => (taskWaitsOnYou(t) && t.waiting !== undefined ? [{ key: `waiting:${t.id}`, text: t.waiting.prompt, kind: "task" as const, task: t }] : [])),
+  ];
+}
+
+/** When a task ended, as its row's view reads it; absent while it runs, or when the row says nothing. */
+export const endedAt = (t: BoardTask): number | undefined => t.view?.times.completedAt ?? undefined;
+
+/** The coding tasks that ended (done or failed) in the last {@link ENDING_SHOWN_MS}, newest first. */
+export function freshEndings(tasks: readonly BoardTask[], now: number, isCoding: (id: string) => boolean): BoardTask[] {
+  const fresh = (t: BoardTask) => {
+    const at = endedAt(t);
+    return at !== undefined && now - at < ENDING_SHOWN_MS;
+  };
+  return tasks.filter((t) => (t.status === "done" || t.status === "failed") && isCoding(t.to) && fresh(t)).sort((a, b) => endedAt(b)! - endedAt(a)!);
+}
+
+/**
+ * The status line, in plain words, and its tone: "Needs your OK: …",
+ * "Waiting on you: …", "Replying to you", "Replying to researcher",
+ * "Running coding task: X", "Coding task finished: X", "Coding task
+ * failed: X", "Messaging writer", or "Idle".
+ */
+export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: string) => string, isCoding: (id: string) => boolean): Status {
+  const { activity, entries, talk, tasks, now } = inputs;
+  const need = needsOf(inputs)[0];
+  if (need?.kind === "approval") return { text: `Needs your OK: ${need.text}`, tone: NEEDS_OK, needsYou: true };
+  if (need !== undefined) {
+    const state = taskRowPresentation(need.task!);
+    return { text: `${upperFirst(state.word)}: ${need.text}`, tone: state.tone, needsYou: true };
+  }
+  const plain = (text: string): Status => ({ text, tone: PLAIN, needsYou: false });
   if (activity?.running) {
     // What it is answering: the last line it was given, yours or another worker's.
     const given = [...entries].reverse().find((e) => e.kind === "user" || e.kind === "received");
-    return given?.kind === "received" ? `Replying to ${nameOf(given.from)}` : "Replying to you";
+    return plain(given?.kind === "received" ? `Replying to ${nameOf(given.from)}` : "Replying to you");
   }
   const coding = tasks.find((t) => t.status === "running" && isCoding(t.to));
-  if (coding) return `Running coding task: ${coding.title}`;
+  if (coding) return plain(`Running coding task: ${coding.title}`);
+  const ended = freshEndings(tasks, now, isCoding)[0];
+  if (ended) {
+    const state = taskRowPresentation(ended);
+    return { text: `Coding task ${ended.status === "failed" ? state.word : "finished"}: ${ended.title}`, tone: state.tone, needsYou: false };
+  }
   const waiting = waitingOn(worker, [...talk]);
-  if (waiting.length > 0) return `Messaging ${waiting.map(nameOf).join(", ")}`;
-  if (activity === undefined) return "";
-  return activity.lastActiveAt > 0 ? `Idle · ${age(activity.lastActiveAt, now)}` : "Idle";
+  if (waiting.length > 0) return plain(`Messaging ${waiting.map(nameOf).join(", ")}`);
+  if (activity === undefined) return plain("");
+  return plain(activity.lastActiveAt > 0 ? `Idle · ${age(activity.lastActiveAt, now)}` : "Idle");
+}
+
+/** {@link statusOf}'s words alone. */
+export function statusLine(worker: string, inputs: StatusInputs, nameOf: (id: string) => string, isCoding: (id: string) => boolean): string {
+  return statusOf(worker, inputs, nameOf, isCoding).text;
 }
 
 /** A teammate's status line, live. Its age holds while `stale`. */
