@@ -49,3 +49,8 @@ The views that never send have b, d and e only; each `first-send` has f or f.emp
 | 2026-11-04 | (same tree) | n/a | FAIL (expected) | `key-reset`: f red (the line 64px down, scrollTop moved 19px as the reply grew), no `WRONG:` |
 | 2026-11-04 | (same tree) | n/a | FAIL (expected) | `main-rule`: a.short and a.long red on all six sending surfaces, f red (64px, moved 19px), no other red |
 | 2026-11-04 | (same tree) | n/a | FAIL (expected) | `no-reserve`: a.short and a.long red on all six sending surfaces, f red (64px), no other red |
+| 2026-11-04 | 6278d20c | n/a | PASS | all 44 signals on 10 surfaces, with the new `devtool/first-send` leg: the first request 13px below the feed's top, scrollTop moved 0px while the long reply grew, arrow shown |
+| 2026-11-04 | 6278d20c | n/a | FAIL (expected) | `main-rule`: a.short and a.long red on all six sending surfaces, f red (64px, moved 19px), f.empty red (moved 33px), no `WRONG:` |
+| 2026-11-04 | 6278d20c | n/a | FAIL (expected) | `no-reserve`: a.short and a.long red on all six sending surfaces, f red (64px), f.empty green (the first request is the feed's first element), no `WRONG:` |
+| 2026-11-04 | 6278d20c | n/a | FAIL (expected) | `key-reset`: f red (64px, moved 19px), no `WRONG:` |
+| 2026-11-04 | 6278d20c | n/a | FAIL (expected) | `mount-history`: f.empty red (moved 33px as the reply grew), no `WRONG:`. The hook at ee26bdc fails f.empty the same way (moved 33px) |
