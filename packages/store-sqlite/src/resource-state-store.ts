@@ -201,6 +201,9 @@ export function createSQLiteResourceStateStore(
         insertEntryStmt.run(scopeType, scopeId, entry.collection, entry.index, value, resourceKey);
       }
     }
+    // One marker per declared (collection, index) the scope has built, so this
+    // reads as many rows as the app has index declarations, not resource rows.
+    // Patterns are matched here because SQLite has no regex operator.
     const markers = selectMarkersStmt.all(scopeType, scopeId) as Array<{
       collection: string;
       index_name: string;

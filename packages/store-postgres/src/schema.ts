@@ -447,6 +447,13 @@ const RESOURCE_STATE_INDEXES = [
 // is the collection pattern as a regular expression, so a write can clear the
 // markers covering its key inside its own statement. Both are kept in step
 // with resource_state by createPostgresResourceStateStore.
+//
+// The six columns are the entry's identity, as on SQLite, but the unique
+// index keys `md5(value)`, not `value`: a B-tree entry is capped near 2.7 KB,
+// so keying the raw value would refuse a long one. `findKeys` matches the
+// digest and then the full value, so a digest collision cannot return a key
+// whose value differs. Two values sharing a digest within one row's entries
+// would keep one entry, for a row whose writer chose both values.
 const RESOURCE_INDEX_TABLES = [
   `
 CREATE TABLE IF NOT EXISTS resource_index (
@@ -455,8 +462,7 @@ CREATE TABLE IF NOT EXISTS resource_index (
   collection    TEXT NOT NULL,
   index_name    TEXT NOT NULL,
   value         TEXT NOT NULL,
-  resource_key  TEXT NOT NULL,
-  PRIMARY KEY (scope_type, scope_id, collection, index_name, value, resource_key)
+  resource_key  TEXT NOT NULL
 );
 `,
   `
@@ -474,6 +480,7 @@ CREATE TABLE IF NOT EXISTS resource_index_built (
 ];
 
 const RESOURCE_INDEX_INDEXES = [
+  "CREATE UNIQUE INDEX IF NOT EXISTS idx_resource_index_entry ON resource_index(scope_type, scope_id, collection, index_name, md5(value), resource_key)",
   "CREATE INDEX IF NOT EXISTS idx_resource_index_key ON resource_index(scope_type, scope_id, resource_key)"
 ];
 

@@ -1195,6 +1195,28 @@ function createIndexConformanceTests(options: CreateResourceStateStoreConformanc
       });
     });
 
+    it("finds a row by a long, poorly compressible value, written by a set and by a build", async () => {
+      await withIndexes(async (store, indexes) => {
+        // Random hex well past a B-tree entry's ~2.7 KB limit: a store that
+        // keys entries on the raw value refuses the write.
+        const long = (seed: number) => {
+          let x = seed;
+          return Array.from({ length: 6000 }, () => {
+            x = (Math.imul(x, 1103515245) + 12345) >>> 0;
+            return (x >>> 28).toString(16);
+          }).join("");
+        };
+        const [written, built] = [long(1), long(2)];
+        await store.set("session", "s1", "work/w", state(1), 0, byId(written));
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, written)).toEqual(["work/w"]);
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, `${written.slice(0, -1)}x`)).toEqual([]);
+
+        const build = await indexes.beginBuild("session", "s1", WORK, BY_ID);
+        expect(await indexes.completeBuild("session", "s1", WORK, BY_ID, build, [{ key: "work/b", values: [built] }])).toBe(true);
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, built)).toEqual(["work/b"]);
+      });
+    });
+
     it("keeps one scope's entries out of every other scope", async () => {
       await withIndexes(async (store, indexes) => {
         await store.set("session", "s1", "work/a", state(1), 0, byId("a"));

@@ -524,7 +524,7 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
         const result = await executor.query(
           `SELECT resource_key FROM resource_index
             WHERE scope_type = $1 AND scope_id = $2 AND collection = $3
-              AND index_name = $4 AND value = $5`,
+              AND index_name = $4 AND md5(value) = md5($5::text) AND value = $5`,
           [scopeType, scopeId, collection, index, value]
         );
         return result.rows.map((row) => row.resource_key as string).sort();
