@@ -74,7 +74,7 @@ export interface FollowUp {
 }
 
 /** What a follow-up puts in the filer's composer: the task by its title, and room for what to do next. */
-export const followUpText = (task: Pick<BoardTask, "title">) => `Follow up on "${task.title}": `;
+const followUpText = (task: Pick<BoardTask, "title">) => `Follow up on "${task.title}": `;
 
 /** The open popup, live: it reads what it shows by itself, so it stays current while the work goes on. */
 export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp, onClose, onMissing }: {
