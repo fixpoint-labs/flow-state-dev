@@ -26,12 +26,15 @@ const FINISHED: ReadonlySet<TaskStatus> = new Set(["completed", "errored", "canc
  * or until the open task is one of them: then it opens, and the marked row
  * scrolls into view, wherever the task was opened from. The heading counts
  * them by state (running, waiting, failed, done), and each row carries its
- * time: a running card's clock ticks each second.
+ * time: a running card's clock ticks each second. While the app's last read of
+ * the rows failed (`stale`), no card says *quiet*, and the pane says so in
+ * `data-stale`.
  */
 export function TasksPane({
   adapter,
   sessionId,
   tasks: listed,
+  stale = false,
   openId,
   onOpen,
   onMissing,
@@ -40,6 +43,8 @@ export function TasksPane({
   sessionId: string;
   /** The session's task rows, as the app reads them; `undefined` until read. */
   tasks: TaskRow[] | undefined;
+  /** The app's last read of the rows failed: they may be old. */
+  stale?: boolean;
   /** The task whose sheet is open, kept by the app so the page's address can name it. */
   openId: string | undefined;
   onOpen: (taskId: string | undefined) => void;
@@ -69,7 +74,7 @@ export function TasksPane({
   }, [openId, doneOpen, shown]);
 
   return (
-    <aside aria-label="Background tasks" className="flex h-full min-h-0 flex-col bg-inspector">
+    <aside aria-label="Background tasks" className="flex h-full min-h-0 flex-col bg-inspector" data-stale={stale || undefined}>
       <div className="px-4 pt-4 pb-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
         Background tasks{counts === "" ? "" : ` · ${counts}`}
       </div>
@@ -83,7 +88,7 @@ export function TasksPane({
             <ul className="flex flex-col gap-2">
               {active.map((task) => (
                 <li key={task.id}>
-                  <TaskCard task={task} selected={task.id === openId} onOpen={() => toggle(task.id)} now={now} />
+                  <TaskCard task={task} selected={task.id === openId} onOpen={() => toggle(task.id)} now={now} stale={stale} />
                 </li>
               ))}
             </ul>

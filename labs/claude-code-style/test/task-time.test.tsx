@@ -58,6 +58,26 @@ describe("a task's time in the tasks pane", () => {
   });
 });
 
+describe("a task's time while the pane's read is stale", () => {
+  it("never calls a run quiet from rows its last read may have left behind, and marks the pane stale", () => {
+    const now = Date.now();
+    const tasks = [row("t2", "Research Globex", "in_progress", { updatedAt: now - 40 * MIN, startedAt: now - 45 * MIN, leaseUntil: now - 38 * MIN })];
+    render(<TasksPane adapter={adapter} sessionId="s1" tasks={tasks} stale openId={undefined} onOpen={() => {}} onMissing={() => {}} />);
+    const pane = screen.getByRole("complementary", { name: "Background tasks" });
+    expect(pane.hasAttribute("data-stale")).toBe(true);
+    expect(within(pane).queryByText(/quiet/)).toBeNull();
+    expect(within(pane).getByText(/^working · 45m 0s$|^working · 45m 1s$/)).toBeTruthy();
+  });
+
+  it("never calls a run quiet on the threads board while the read is stale", () => {
+    const now = Date.now();
+    const tasks = [row("t2", "Research Globex", "in_progress", { updatedAt: now - 40 * MIN, startedAt: now - 45 * MIN, leaseUntil: now - 38 * MIN })];
+    render(<ThreadsBoard adapter={adapter} sessionId="s1" tasks={tasks} stale openId={undefined} onOpen={() => {}} onMissing={() => {}} />);
+    const board = screen.getByRole("complementary", { name: "Tasks" });
+    expect(within(board).queryByText(/quiet/)).toBeNull();
+  });
+});
+
 describe("a task's time on the threads board", () => {
   it("shows a running row's clock, never an age its heartbeat keeps at now", () => {
     const now = Date.now();

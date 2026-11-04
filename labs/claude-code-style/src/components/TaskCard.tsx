@@ -10,11 +10,12 @@ import { harnessLabelOf } from "./ThreadStatus";
  * one line once it has finished. Each is a button that opens the task; what
  * opening does is the list's. A running card times this attempt's run, or
  * says *quiet* once its run stopped answering; a finished row says how long
- * ago it ended (the registry's `task-signals`, at the list's `now`).
+ * ago it ended (the registry's `task-signals`, at the list's `now`). While the
+ * list's read is `stale`, a running card never says *quiet*: its rows may be old.
  */
 
 /** A running or waiting task, at full size. */
-export function TaskCard({ task, selected, onOpen, now }: { task: TaskRow; selected: boolean; onOpen: () => void; now: number }) {
+export function TaskCard({ task, selected, onOpen, now, stale = false }: { task: TaskRow; selected: boolean; onOpen: () => void; now: number; stale?: boolean }) {
   const status = TASK_STATUS[task.status];
   return (
     <button
@@ -30,7 +31,7 @@ export function TaskCard({ task, selected, onOpen, now }: { task: TaskRow; selec
           {task.title}
         </span>
         <span className={cn("block truncate text-xs", status.tone)}>
-          {task.view === undefined ? status.label : <TaskTime view={task.view} run={task.run} now={now} tone={taskSignalTone} fallback={status.label} />}
+          {task.view === undefined ? status.label : <TaskTime view={task.view} run={task.run} now={now} stale={stale} tone={taskSignalTone} fallback={status.label} />}
           {task.statusNote ? ` · "${task.statusNote}"` : ""}
         </span>
         {task.assignee ? <span className="block text-xs text-muted-foreground">{task.assignee}</span> : null}

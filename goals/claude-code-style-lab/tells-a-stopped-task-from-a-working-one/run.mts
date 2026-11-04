@@ -43,8 +43,8 @@ await runTaskSignals({
         const card = pane.locator("button[data-task-status]").filter({ hasText: title }).first();
         return (await card.count()) === 0 ? undefined : ((await card.textContent()) ?? undefined);
       },
-      // The pane marks nothing stale: its rows are re-read every two seconds, and a read that fails keeps the last.
-      stale: async () => false,
+      // The pane says `data-stale` while its last read of the rows failed: it keeps the last rows then.
+      stale: async () => (await pane.getAttribute("data-stale")) !== null,
     };
   },
 });

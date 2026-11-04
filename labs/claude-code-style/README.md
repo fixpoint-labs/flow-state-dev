@@ -142,7 +142,8 @@ attempt's run started, so a retried task starts again from zero. A running task 
 stopped answering reads *quiet for 40m* in amber: the run stopped renewing its claim on the task
 (the board's lease lapsed), as when the server running it died, and it stays quiet until the
 board hands the task to a new run. A run that is alive but slow keeps renewing, so it never reads
-quiet; a long clock is the sign there. A finished row says how long ago it ended, the threads
+quiet; a long clock is the sign there. While the page can't read the tasks (its connection
+dropped), it keeps the last rows and never calls a task quiet from them. A finished row says how long ago it ended, the threads
 board's rows carry the same time, and the pane's heading counts the tasks running, waiting, failed
 and done.
 

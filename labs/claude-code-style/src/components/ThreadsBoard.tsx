@@ -19,13 +19,14 @@ const rowNote = (task: TaskRow) =>
  * columns table), and pinned ones on top. Each group has a count and
  * collapses; *Resolved* starts collapsed. Each row carries its time (a
  * running one's clock, *quiet* once its run stopped answering, an ended one's
- * age). Opening a thread replaces the board
+ * age; never *quiet* while the app's last read of the rows failed). Opening a thread replaces the board
  * with its view, with a back arrow; the main thread stays in the center.
  */
 export function ThreadsBoard({
   adapter,
   sessionId,
   tasks: listed,
+  stale = false,
   openId,
   onOpen,
   onMissing,
@@ -34,6 +35,8 @@ export function ThreadsBoard({
   sessionId: string;
   /** The session's task rows, as the app reads them; `undefined` until read. */
   tasks: TaskRow[] | undefined;
+  /** The app's last read of the rows failed: they may be old. */
+  stale?: boolean;
   openId: string | undefined;
   onOpen: (taskId: string | undefined) => void;
   /** `openId` names no thread of this session's, once its rows are read. */
@@ -110,7 +113,7 @@ export function ThreadsBoard({
                           </span>
                           {task.view !== undefined ? (
                             <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                              <TaskTime view={task.view} run={task.run} now={now} tone={taskSignalTone} />
+                              <TaskTime view={task.view} run={task.run} now={now} stale={stale} tone={taskSignalTone} />
                             </span>
                           ) : null}
                         </button>
