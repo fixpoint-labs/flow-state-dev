@@ -31,8 +31,7 @@ export interface Draw {
 }
 
 /** Kitchen Sink's multi-file pool: each answer needs facts from three separate published doc pages. */
-const DOCS = "https://flow-state.dev";
-export const DOC_ASKS: readonly { line: string; pages: string[]; facts: RegExp[] }[] = [
+const DOC_ASKS: readonly { line: string; pages: string[]; facts: RegExp[] }[] = [
   {
     line: "Using the flow-state.dev docs: how many block kinds are there, how many of a conversation's last turns does the built-in worker's model get, and which store does the server ship with by default?",
     pages: ["/docs/fundamentals/blocks", "/docs/workforce/built-in-worker", "/docs/persistence/overview"],
@@ -138,5 +137,3 @@ export function draw(): Draw {
   };
 }
 
-/** The pages a Kitchen Sink pages-ask's fetches must reach, as full URLs (for a goal.md line). */
-export const docUrl = (path: string) => `${DOCS}${path}`;

@@ -4,9 +4,9 @@
  * spec names), and the verdict rules read a sheet the way FIX-2541 D1 and the
  * owner's fold decision say. No app runs.
  *
- * Run: pnpm tsx goals/closure-smarter-agents/check.mts
+ * Run: pnpm tsx goals/closure-smarter-agents/graders/run.mts
  */
-import { runGoal } from "../lib/index.mts";
+import { runGoal } from "../../lib/index.mts";
 import {
   cellsFor,
   checksFrom,
@@ -26,7 +26,7 @@ import {
   type Graded,
   type Sheet,
   type Turn,
-} from "./asks.mts";
+} from "../asks.mts";
 
 const now = new Date();
 const turn = (over: Partial<Turn>): Turn => ({ reply: "", tools: [], requests: 1, askedAt: now, answeredAt: now, ...over });

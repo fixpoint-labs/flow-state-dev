@@ -12,13 +12,13 @@
  *   sweep finds no date, "done" or length guidance an app wrote in its own
  *   WORKER.md files (epic ER-3). The sweep is reported on every pass.
  *
- * Run:  GOAL_PASS=wrap pnpm tsx goals/closure-smarter-agents/verdict.mts
+ * Run:  GOAL_PASS=wrap pnpm tsx goals/closure-smarter-agents/verdict/run.mts
  */
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { REPO_ROOT, runGoal } from "../lib/index.mts";
-import { ALL_APPS, ASKS, cellsFor, controlFails, passesEverywhere, RUNS, sweepGuidance, type App, type Sheet } from "./asks.mts";
-import { closurePass, sheetFile } from "./closure.mts";
+import { REPO_ROOT, runGoal } from "../../lib/index.mts";
+import { ALL_APPS, ASKS, cellsFor, controlFails, passesEverywhere, RUNS, sweepGuidance, type App, type Sheet } from "../asks.mts";
+import { closurePass, sheetFile } from "../closure.mts";
 
 /** Each app's workers' tree, under the served root. */
 const TREES: Record<App, string[]> = {

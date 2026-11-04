@@ -7,7 +7,7 @@
  * its turn called, and the records an app keeps beside it (the run record's
  * `checks`, a fold, a held skill). It never reads a layer's own output or
  * prompt text (epic ER-7, anti-game). The drivers that record a turn are the
- * four `<app>/run.mts`; `check.mts` proves each grader refuses a hollow turn.
+ * four `<app>/run.mts`; `graders/run.mts` proves each grader refuses a hollow turn.
  *
  * Moved from the spec's POC (`specs/issues/FIX-2541/poc/closure-asks/`)
  * unchanged in shape, with three additions: checks are normalized once
@@ -220,7 +220,6 @@ export const ALL_APPS: readonly App[] = ["claude-code-style", "teammates", "kitc
 export const ASKS: readonly Ask[] = ["date", "multiFile", "coder", "knowledge", "sizing", "skill", "fold"];
 /** The three passes the same scripts run: the control (pre-bug main), the cut run (after the bugs), the wrap (after every child). */
 export type Pass = "control" | "cut" | "wrap";
-export const PASSES: readonly Pass[] = ["control", "cut", "wrap"];
 export const RUNS = 3;
 
 /**

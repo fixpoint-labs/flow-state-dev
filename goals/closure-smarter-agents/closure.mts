@@ -53,7 +53,7 @@ import { draw, type Draw } from "./fixtures.mts";
 export type Fsd = ReturnType<typeof createClient>;
 
 /** The commit the control runs on: main when the epic merged, before any bug fix (FIX-2541 DECISIONS). */
-export const CONTROL_COMMIT = "0df5c85";
+const CONTROL_COMMIT = "0df5c85";
 
 // ---------------------------------------------------------------------------
 // The pass and the tree
@@ -193,7 +193,7 @@ function restoreFrom(file: string, journal: Journal): void {
  * put back is journaled first, so a run killed before its `finally` is
  * undone by the next one.
  */
-export async function planted<T>(key: string, files: Record<string, string>, fn: () => Promise<T>): Promise<T> {
+async function planted<T>(key: string, files: Record<string, string>, fn: () => Promise<T>): Promise<T> {
   const file = journalFile(key);
   if (existsSync(file)) {
     console.error(`putting back what a killed run left planted (${file})`);
@@ -504,8 +504,8 @@ function asksFor(app: App, pass: Pass): Ask[] {
   );
 }
 
-/** Where each pass's sheets are kept between the four scripts and `verdict.mts`: `GOAL_SHEETS`, or one folder under the system's temp. */
-export const SHEETS = process.env.GOAL_SHEETS ?? join(tmpdir(), "fsd-goal-closure-sheets");
+/** Where each pass's sheets are kept between the four scripts and `verdict/run.mts`: `GOAL_SHEETS`, or one folder under the system's temp. */
+const SHEETS = process.env.GOAL_SHEETS ?? join(tmpdir(), "fsd-goal-closure-sheets");
 
 /** The pass's sheet file for one app: the verdict script reads the four together. */
 export function sheetFile(pass: Pass, app: App): string {
@@ -517,7 +517,7 @@ export function sheetFile(pass: Pass, app: App): string {
  * Run `driver` for `GOAL_RUNS` runs (default 3): each run a fresh draw, its
  * files planted, the app served on a fresh store, every ask it counts in
  * recorded and graded. Each failure is tagged `<ask> · run <n>`. The sheet is
- * written for `verdict.mts`; the verdict line is this app's alone.
+ * written for `verdict/run.mts`; the verdict line is this app's alone.
  */
 export async function runClosure(driver: AppDriver): Promise<void> {
   const p = closurePass();

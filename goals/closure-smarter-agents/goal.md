@@ -60,7 +60,7 @@ back after the run, and by the next run if the machine killed this one (`closure
 `planted`). A project's checks (the labs' and Shift Manager's project row, Kitchen Sink's
 `KITCHEN_SINK_HARNESS_CHECKS`) are the project's data, a fixture on every pass.
 
-**Sweep** (`verdict.mts`): no app's `WORKER.md` carries date, "done" or length guidance of its own
+**Sweep** (`verdict/run.mts`): no app's `WORKER.md` carries date, "done" or length guidance of its own
 (epic ER-3). Reported on every pass; a failure at the wrap.
 
 **Model:** real, each app's own (through the AI Gateway); coder asks on Claude Code.
@@ -68,11 +68,11 @@ back after the run, and by the next run if the machine killed this one (`closure
 **Run** (one pass = all four, then the verdict):
 
 ```bash
-pnpm tsx goals/closure-smarter-agents/check.mts           # graders and rules, model-free
+pnpm tsx goals/closure-smarter-agents/graders/run.mts         # graders and rules, model-free
 GOAL_PASS=control pnpm tsx goals/closure-smarter-agents/<app>/run.mts   # serves 0df5c85's tree
 GOAL_PASS=cut     pnpm tsx goals/closure-smarter-agents/<app>/run.mts   # this checkout
 GOAL_PASS=wrap    pnpm tsx goals/closure-smarter-agents/<app>/run.mts   # sets nothing
-GOAL_PASS=<pass>  pnpm tsx goals/closure-smarter-agents/verdict.mts
+GOAL_PASS=<pass>  pnpm tsx goals/closure-smarter-agents/verdict/run.mts
 ```
 
 `GOAL_ASKS=date,sizing` runs a subset (the sheet keeps the other asks), `GOAL_RUNS` the number of
