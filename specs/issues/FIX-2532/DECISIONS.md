@@ -26,11 +26,18 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | An explicit backfill command an operator runs after deploying a new or changed index |
 | **Because** | A command someone forgets leaves `findBy` returning too few rows with no error, which is the one failure a lookup must not have. The first call per scope already has to read the rows to answer, so it writes their entries and records `(scope, collection, index, version)` as built. A version bump counts as unbuilt, so a changed index function rebuilds the same way |
-| **Locks in** | Index entries are a superset, re-checked against each row on every read. To keep it one, the build only adds entries and never replaces them, and a live write always writes its entries whether or not the index is built yet: a build that replaced entries with the state it read could undo a write that landed mid-build. The first lookup per scope per index version pays one scan of that scope. For the ledger's `byTaskId` that scope is the user cell, every conversation's partitions, once. Every caller of `findBy`, ours or an app's, inherits that one-time cost |
+| **Locks in** | Index entries are a superset, re-checked against each row on every read. To keep it one, the build only adds entries and never replaces them, and a live write always writes its entries whether or not the index is built yet: a build that replaced entries with the state it read could undo a write that landed mid-build. The first lookup per scope per index version pays one scan of that scope. For the ledger's `byTaskId` that scope is the user cell, every conversation's partitions, once. Every caller of `findBy`, ours or an app's, inherits that one-time cost. A write that carries no entries for an index the scope has marked built or building clears that marker, so the next lookup rebuilds, and a build marks itself built only if its building marker survived the scan |
 
 ![D1: build on first lookup, chosen, beside an explicit backfill command. Decides it: a forgotten step after deploy. Price: one scan per scope on the first call](figures/d1-backfill.svg)
 
 It comes down to the step nobody runs: a command that is forgotten makes `findBy` silently miss rows.
+
+**Upgrade note.** The marker rule covers a process that runs this change's store code but doesn't
+declare the index, such as a v1 process still writing during a rolling deploy to v2: its writes
+clear the marker and the next lookup rebuilds. It can't cover a binary from before this change,
+whose store knows no markers. A row such a binary writes after the first lookup has no entries
+until it is rewritten. Finish that rollout before the first lookup, or bump the index's version
+once it's done, which rebuilds.
 
 **What would change my mind:** a scope large enough that one scan on a request path is not
 acceptable. Then a command is added beside the lazy build, not instead of it.
@@ -41,8 +48,8 @@ acceptable. Then a command is added beside the lazy build, not instead of it.
 | | |
 |---|---|
 | **Instead of** | Each engine write path (block writes, the browser create route) computing entries from the collection it already holds |
-| **Because** | A row written without its entries is never found again, and no read-side check can recover a missing entry (a stale one is filtered; an absent one is invisible). Writes reach the store from more than the block path: the resource routes, and packages that write `stores.resourceState` directly (`harness-manager/src/upgrade-kept-turns.ts`). One writer over the store the runtime hands out covers them all, the way the owner-writes check already sits where every write meets the store ([tenet 5](../../../docs/philosophy.md)) |
-| **Locks in** | The app's index declarations are known at startup, and two flows declaring different indexes on overlapping collections in one scope are refused there. A process that writes a collection must register a flow declaring it; its writes otherwise carry no entries |
+| **Because** | A row written without its entries is never found again, and no read-side check can recover a missing entry (a stale one is filtered; an absent one is invisible). Writes reach the store from more than the block path: the resource routes, and host code that writes `stores.resourceState` directly. The owner-writes check is no model here: it lives in each run's resource registry (`engine/src/context/resource-registry.ts`), and direct store writers skip it. So the writer wraps the `StoreRegistry` that `createFlowState` resolves (`engine/src/flowstate/createFlowState.ts`), before the router, the worker or `runtime.stores` takes it, and every handle derives from the wrapped one ([tenet 5](../../../docs/philosophy.md)). That covers `harness-manager/src/upgrade-kept-turns.ts`, which the devteam host calls with `runtime.stores`, and goal seeds that write through `runtime.stores` |
+| **Locks in** | The app's index declarations are known at startup. The writer computes a key's entries from every registered declaration whose pattern matches it, not from the writing flow's, so a flow that declares the same pattern without `indexes` still writes the entries another flow declared, and is no conflict. Startup refuses one index name at two versions on overlapping patterns in one scope; functions can't be compared, so name and version are the identity. A process that registers no flow declaring an index writes no entries for it; its writes clear the built marker ([D1](#d1)), so the cost is a rebuild, not a missed row |
 
 ![D2: one engine writer, chosen, beside per-path computation. Decides it: a write that skips the block path. Price: startup must know every index](figures/d2-one-writer.svg)
 
@@ -80,11 +87,30 @@ becomes a store read, and moves to `findBy` plus an in-memory filter as the last
 ## Decided, not asked
 
 - **The convergence point for "every row's entries match its index functions"** is the D2
-  writer. Writers that must pass through it: `mutateResourceKey` and `deleteResourceKey`
-  (`engine/context/createExecutionContext.ts`), the browser create and delete routes
-  (`engine/routes/resource-routes.ts`), `deleteAll` (`session-routes.ts`), and every direct
-  `stores.resourceState.set` in packages. Tombstone, `deleteAll` and `purgeTombstones` clear
-  entries inside the store, with no declaration needed.
+  writer, on the registry `createFlowState` resolves. Writers that pass through it:
+  `mutateResourceKey` and `deleteResourceKey` (`engine/context/createExecutionContext.ts`), the
+  browser create and delete routes (`engine/routes/resource-routes.ts`), `deleteAll`
+  (`session-routes.ts`), and host-level writers given `runtime.stores`
+  (`harness-manager/src/upgrade-kept-turns.ts`, goal seeds). Test seeds
+  (`testing/src/runtime/createTestContext.ts`, `testing/src/test-utilities/testFlow.ts`) write
+  before any lookup, so D1's build picks them up. Tombstone, `deleteAll` and `purgeTombstones`
+  clear entries inside the store, with no declaration needed.
+- **Store verbs on `ResourceStateStore`, all optional:**
+  - `set(scopeType, scopeId, key, state, expectedVersion, options?: { indexEntries?:
+    IndexEntry[] })`, where `IndexEntry` is `{ collection, index, values }`: the full pattern,
+    the index name with its version, and the canonical value strings (empty for `null`). In the
+    row's transaction the store replaces the key's entries for each listed `(collection, index)`
+    and deletes the built or building marker of any index in the scope whose pattern matches the
+    key and that the call doesn't list (D1). A `set` without options lists nothing.
+  - `indexes?: { state, beginBuild, completeBuild, findKeys }`. `state(scope, collection, index)`
+    returns `unbuilt`, `building` or `built`. `beginBuild` writes the building marker.
+    `completeBuild(scope, collection, index, entries: { key, values }[])` adds the entries and
+    flips building to built in one transaction, only if the building marker is still there;
+    otherwise the lookup's own scan has answered and the next one tries again.
+    `findKeys(scope, collection, index, value)` returns keys. A store implements all four or
+    none.
+  - `delete`, `deleteAll` and `purgeTombstones` keep their signatures and clear entries inside
+    the store.
 - **SQL: one generic table**, `resource_index(scope_type, scope_id, collection, index_name, value,
   resource_key)` with all six as the primary key, plus a built-marker table. A write replaces
   that row's entries in the same transaction. No per-field DDL, no `ALTER TABLE`.
@@ -163,6 +189,10 @@ session: no fresh sub-agent was available in this environment.
   already in memory, so moving them saved no read and added one. `TaskCollectionRef.findBy`
   dropped with them. Collection identity changed from the storage prefix to the full pattern,
   because two patterns can share a prefix. D1 now states the build's add-only discipline.
+- **Round 2** — precision only. A write without an index's entries clears its built marker, so
+  a process that doesn't declare the index costs a rebuild rather than a missed row; the
+  upgrade gap that rule can't close is named on D1. D2's writer sits on the resolved
+  `StoreRegistry`, not beside the owner-writes check, and the store verbs are named.
 
 ## Notes from review
 

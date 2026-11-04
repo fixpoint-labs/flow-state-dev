@@ -10,7 +10,7 @@
 | **runs that flow on SQLite or Postgres with thousands of rows** | Every lookup loads every row in the scope | The lookup reads an index table. A row and its index entries commit together or not at all |
 | **adds an index to a collection that already has rows** | n/a | The first lookup in each scope builds the index from the rows it finds, and returns the right rows on that first call |
 | **sends a message to a task by id on a ledger kept per conversation** | Found through a hand-built `__ids` marker written apart from the row; a marker can outlive or precede its row | Found through the ledger's own `byTaskId` index, written with the row. Old `__ids` rows stay in the store, unread |
-| **runs tests and dev on the memory or filesystem store** | n/a | `findBy` returns the same rows, by scanning. Slower, never different |
+| **runs tests and dev on the memory or filesystem store** | n/a | `findBy` returns the same rows, by scanning. Slower, never different: `findTaskPartitions` there scans the whole user cell on every call, where today it reads one `__ids` prefix |
 
 The task ledger is looked up by fields outside its key two ways: eleven sites filter a partition
 already in memory, and the one lookup that crosses partitions, a task id, reads the hand-built
@@ -112,16 +112,16 @@ id, a read per row for a value many rows share.
 | Already here | What this does with it |
 |---|---|
 | Whatever finds a row by a field outside its key: `collection` (`list(prefix)` then filter: eleven sites over a loaded task ledger, listed on [D3](DECISIONS.md#d3), and faceted `search`), and the hand-built marker collection `id-index.ts`. `schedule` is a different job (ordered claim). Searched `find(`, `filter(`, `__ids`, `index`, `lookup`, `by[A-Z]` across `packages/*/src` | **This is the third way** (key, prefix, field). **Replaces** `id-index.ts`. Filters over rows already loaded keep using `list` ([D3](DECISIONS.md#d3)) |
-| `store` · `ResourceStateStore` | **Extends** with optional index verbs; a store without them is served by the engine's scan |
-| The owner fence that sees every write meet the store (`engine/resources/owner-private.ts`) and its startup fence over flows | **Builds on** the same placement: one writer for entries, one startup check for conflicting declarations |
+| `store` · `ResourceStateStore` | **Extends**: `set` takes an optional sixth argument carrying the row's entries, and an optional `indexes` member holds four index verbs ([Decided, not asked](DECISIONS.md#decided-not-asked)). A store without `indexes` is served by the engine's scan |
+| The `StoreRegistry` `createFlowState` resolves, the one the router, the worker and `runtime.stores` share · the owner-private startup fence over flows (`engine/resources/owner-private.ts`) | **Wraps** the registry with the index writer, so direct store writers pass it too. **Builds on** the startup fence's shape for the check on conflicting declarations |
 | Schema init by `CREATE TABLE IF NOT EXISTS` (`store-sqlite`, `store-postgres` `schema.ts`) | **Builds on** for the index table and the built-marker table |
 | [FIX-2160 D1](../FIX-2160/DECISIONS.md#d1): the ledger finds a row by id across conversations, through an id index the ledger's add writes | **Amended:** the lookup and `findTaskPartitions` stay; the index becomes the ledger's declared `byTaskId`, written with the row, not before it. `taskLedgerResources(ledger)` keeps its name and returns the ledger alone |
 
 | Adds | Existing piece considered | Why it doesn't fit, or how this is composed from it |
 |---|---|---|
 | `indexes` on `defineResourceCollection`, `findBy` on `ResourceCollectionRef` | `collection` · `list(prefix)` | `list` answers by key. A field lookup on it loads the scope; composed: the scan fallback *is* `list`'s read plus the index function |
-| Optional index verbs on `ResourceStateStore` + one index table per SQL store | `store` · `set` / `delete` | Entries must commit in `set`'s own transaction, so they ride that call. Delete and tombstone clear entries with no declaration |
-| One engine index writer over `stores.resourceState` | The owner-writes check where every write meets the store | Same placement, second job. Not inside each write path: direct store writers would skip it ([D2](DECISIONS.md#d2)) |
+| Optional index verbs on `ResourceStateStore` + one index table per SQL store | `store` · `set` / `delete` | Entries must commit in `set`'s own transaction, so they ride that call as `set(…, expectedVersion, { indexEntries })`. Delete and tombstone clear entries with no declaration |
+| One engine index writer wrapping the resolved `StoreRegistry` | The owner-writes check in each run's resource registry | That check sees only a run's writes; direct store writers skip it. The writer sits on the registry every handle derives from ([D2](DECISIONS.md#d2)) |
 
 | The debt | |
 |---|---|
@@ -144,7 +144,9 @@ beside the first.
 1. **[D1](DECISIONS.md#d1) · A new or changed index builds itself on the first lookup in each
    scope.** If wrong: a large scope pays one full scan on a request path.
 2. **[D2](DECISIONS.md#d2) · One engine writer computes entries for every resource write.** If
-   wrong: a process that writes a collection without declaring it leaves rows no lookup finds.
+   wrong: a process that writes a collection without declaring it forces a rebuild of that
+   scope's index on the next lookup, and a binary from before this change can leave rows unfound
+   until they're rewritten.
 3. **[D3](DECISIONS.md#d3) · Scans over a loaded ledger stay; `findBy` is for rows not yet
    loaded.** If wrong: two ways to find a task by a field live side by side until the ledger
    stops loading whole partitions.
