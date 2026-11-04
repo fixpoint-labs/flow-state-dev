@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
-import type { BoardTask, LabAdapter, TalkRow } from "../adapter";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { BoardTask, LabAdapter, TalkRow, WorkerRow } from "../adapter";
+import { harnessName } from "../lib/harness";
 import type { Look } from "../lib/looks";
 import { useWatch } from "../lib/use-watch";
 import { Avatar } from "./Avatar";
+import { ErrorBody } from "./flow-state/error";
 import { ReviewHold } from "./flow-state/review-hold";
+import { TaskActions, type TaskRerunOption } from "./flow-state/task-actions";
 import { SessionPopup, Steps } from "./SessionPopup";
 
 /** What a popup shows: a task one conversation filed, or one message a worker sent. */
@@ -31,6 +34,17 @@ export const taskLabel = (line: string, task: { harness?: string; model?: string
   return on === undefined ? line : `${line}, on ${on}`;
 };
 
+/**
+ * The coding workers a coding task can be re-run on: each one whose
+ * `harness:` differs from the harness of the worker the task was filed for.
+ * A task that isn't a coding task, or whose worker's harness isn't known, has none.
+ */
+export function rerunTargets(task: Pick<BoardTask, "to">, coders: readonly WorkerRow[]): WorkerRow[] {
+  const own = coders.find((w) => w.id === task.to)?.harness;
+  if (own === undefined) return [];
+  return coders.filter((w) => w.takesTasks && w.harness !== undefined && w.harness !== own);
+}
+
 /** How a sent message stands. */
 export type AnswerState = "working" | "replied" | "no answer";
 
@@ -46,34 +60,43 @@ export const answerIn = (talk: readonly TalkRow[], messageId: string): AnswerSta
 };
 
 /** The open popup, live: it reads what it shows by itself, so it stays current while the work goes on. */
-export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, onClose, onMissing }: {
+export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, onMissing }: {
   adapter: LabAdapter;
   popup: Popup;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
+  /** The roster's coding workers: a failed or cancelled coding task can be re-run on another's harness. */
+  coders: readonly WorkerRow[];
   onClose: () => void;
   /** A task popup's conversation holds no such task, once its tasks are read: a link to a task that is gone. */
   onMissing?: () => void;
 }) {
   return popup.kind === "task" ? (
     // Keyed by conversation: a switch never judges the task against the last conversation's rows.
-    <TaskPopup key={popup.sessionId} adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} onClose={onClose} onMissing={onMissing} />
+    <TaskPopup key={popup.sessionId} adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} coders={coders} onClose={onClose} onMissing={onMissing} />
   ) : (
     <MessagePopup adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} onClose={onClose} />
   );
 }
 
-/** A task's run session and its result. */
-function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, onClose, onMissing }: {
+/**
+ * A task's run session and its result, with its action row: Cancel and Steer
+ * while it is open (the popup has no composer, so Steer is its own box),
+ * Release while held, Retry and a Re-run per other harness once it failed or
+ * was cancelled. The board decides each; the row shows its words.
+ */
+function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, onMissing }: {
   adapter: LabAdapter;
   popup: Extract<Popup, { kind: "task" }>;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
+  coders: readonly WorkerRow[];
   onClose: () => void;
   onMissing?: () => void;
 }) {
+  const actions = useMemo(() => adapter.taskActions(popup.sessionId), [adapter, popup.sessionId]);
   const tasks = useWatch(adapter.watchTasks, popup.sessionId);
   const task = tasks?.find((t) => t.id === popup.taskId);
   const missing = tasks !== undefined && task === undefined;
@@ -95,9 +118,20 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, onClose, onMissin
     );
   // A coding task says what it starts on from the moment it is filed, before its run reports anything.
   const starting = task?.harness !== undefined && isCoding(task.to) ? `Starting on ${task.harness}…` : task?.runSessionId ? "Starting…" : "Not started yet.";
+  // A coding task's re-runs, one per other harness on the roster.
+  const rerun: TaskRerunOption[] =
+    task === undefined || !isCoding(task.to)
+      ? []
+      : rerunTargets(task, coders).map((worker) => ({ label: harnessName(worker.harness!), run: () => actions.rerun(task, worker.id) }));
   return (
     <SessionPopup label={line} title={title} status={task?.status} onClose={onClose}>
-      {/* The result leads; how the run got there is below it. */}
+      {task === undefined ? null : <TaskActions id={task.id} status={task.boardStatus} actions={actions} steer rerun={rerun} />}
+      {/* Why it failed, as an error; the result leads otherwise. How the run got there is below. */}
+      {task?.error ? (
+        <section aria-label="Error" role="alert" data-step="error" className="flex flex-col gap-1 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <ErrorBody message={task.error} />
+        </section>
+      ) : null}
       {task?.waiting?.kind === "review" ? <TaskReview adapter={adapter} sessionId={popup.sessionId} task={task} /> : null}
       {task?.waiting?.kind === "question" ? <TaskQuestion adapter={adapter} sessionId={popup.sessionId} task={task} /> : null}
       {task?.result ? (

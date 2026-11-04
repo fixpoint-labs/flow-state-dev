@@ -29,7 +29,7 @@ theme so it reads as the app it copies.
   (Ctrl+Enter) sends from every box, including a teammate's instructions, where plain Enter is a
   new line.
 - **Popup:** a message line or a task line in the conversation opens that piece of work in a popup
-  over it: the other worker's session, read only and live. It closes with Esc, its close button, or
+  over it: the other worker's session, live. A task's popup also has the task's buttons (below). It closes with Esc, its close button, or
   a click outside it, and the conversation under it keeps its place.
 - **Right:** the open teammate's panel. At the top, its name and role, and *Edit instructions*.
   Under that, the tasks its conversation started, coding tasks and teammates' jobs alike. Running
@@ -77,8 +77,17 @@ does, with no question first. Each agent is a worker of its own, off the list an
 messaged, whose `WORKER.md` names its `harness:`. A line in Chief of Staff's conversation and a
 row in Chief of Staff's panel show the task, tagged with the agent it runs on (and the model, once the
 run reports one), and open its run in a popup. The result lands in Chief of Staff's conversation as
-the coding task's line, *Coding task finished: …*. To change a coding task, tell Chief of Staff,
-who starts the next one.
+the coding task's line, *Coding task finished: …*. To change a coding task, tell Chief of Staff, who starts the next one,
+or use the task's buttons.
+
+A task's popup has its buttons, which act on the task's row with no turn of Chief of Staff's in
+between. While the task runs: **Cancel**, which asks once, and a **Steer** line whose words reach
+the run. Once it failed or was cancelled: **Retry**, which runs it again as the same task, and, for
+a coding task, one **Re-run on …** per other coding agent. A re-run is a new task on that agent,
+its brief the old one plus a line naming the task it re-runs; the old task stays as it was, and the
+result lands in Chief of Staff's conversation like any other. When the board refuses a press (the
+same work is already open on that agent, say), its words show in place. A failed task's reason
+shows as an error at the top of its popup.
 
 A coding task's popup says *Starting on Codex…* from the moment the task is filed. Once the run
 starts, its steps show as they happen, and once it ends, the result is at the top, above them. The
@@ -195,6 +204,7 @@ names the package call it makes.
 | The working folder | `localWorkspaceHost` with a constant run source, `{ kind: "repo", repo }`, and the folder in `localRepositories`; `projectSourceTools` read it |
 | Coding tasks and their runs | the conversation board's rows assigned to the worker on the coding flow, which the list leaves out; the row's `run` link, read as the run session's items |
 | A task waiting on you, and your answer | the row's holds through the Inbox's `inboxItems` and `taskRowView`, answered with the Inbox client's `answerOne`; a review drawn by the UI registry's `review-hold`, installed in `src/components/flow-state/`, from the run's stop read by harness-manager's `reviewDetail` |
+| A task's buttons | the Inbox client's `board(at)` on the conversation that filed it (`cancel`, `steer`, `release`, `retry`, and `refile` for a re-run), drawn by the UI registry's `task-actions`, with a failed task's error drawn by its `error` (`ErrorBody`), both installed in `src/components/flow-state/` |
 | A run's steps in plain words, in a popup and inline in the conversation | the UI registry's `tool-naming` and `tool-grouping`, installed in `src/components/flow-state/`, over each tool call's name, arguments, status and result: `toolSubject`, `toolStepState` (with `toolOutcome`), `toolRunState`, `withToolState` and `toolRunOpen` |
 | The divider and its *summarized* label | the last request's `historyStart`, and the session's `historySummary` resource |
 

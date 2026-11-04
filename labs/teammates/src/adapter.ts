@@ -23,12 +23,15 @@
  * | `editInstructions`  | the workforce client's `edit`, on one of the user's own workers               |
  * | `fire`              | the workforce client's `fire`, on one of the user's own workers               |
  * | `watchTasks`        | the board's rows, as the conversation's stream carries each one (`task-change`) |
- * |                     | and the board's `listTasks` read, on each notice of the conversation's board   |
+ * |                     | and the board's `listTasks` read (`taskActionName`), on each notice of the     |
+ * |                     | conversation's board                                                          |
  * |                     | and `taskSpendView` on a row, for the harness and model its run reported      |
  * |                     | and each linked run's session, where the run writes its row (its holds)      |
  * |                     | and `taskRowView` with the Inbox's holds (`inboxItems`), for what it waits on |
  * |                     | you for                                                                      |
  * | `answerTask`        | the Inbox client's `answerOne`, on the task's open question or review         |
+ * | `taskActions`       | the Inbox client's `board(at)` on the conversation that filed the task, its   |
+ * |                     | `"tasks"` board: cancel, steer, release, retry, and `refile` for a re-run      |
  * | `watchReview`       | the run's review stop, read by harness-manager's browser `reviewDetail`        |
  * | `watchRun`          | the items of the session the task's row names as its run, each tool call      |
  * |                     | named by the UI registry's `tool-naming` (`components/flow-state/`)           |
@@ -66,7 +69,17 @@ import {
   type WorkforceClient,
 } from "@flow-state-dev/workforce/browser";
 import { isTerminalStatus, parseNotice, taskSpendView, taskSpendViewSchema } from "@flow-state-dev/orchestration/tasks";
-import { createInboxClient, inboxItems, taskRowView, type InboxAnswer, type InboxHold, type InboxRow } from "@flow-state-dev/orchestration/inbox";
+import {
+  createInboxClient,
+  inboxItems,
+  taskActionName,
+  taskRowView,
+  type InboxAnswer,
+  type InboxHold,
+  type InboxRow,
+  type RefileOverrides,
+  type RefileRow,
+} from "@flow-state-dev/orchestration/inbox";
 import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
@@ -123,8 +136,24 @@ export interface BoardTask {
   title: string;
   /** `cancelled` is its own ending: a task someone withdrew did not fail. */
   status: "running" | "done" | "failed" | "cancelled";
-  /** What the run reported when it ended, or why it failed or was cancelled. */
+  /**
+   * The row's own board status (`pending`, `held`, `in_progress`, `completed`,
+   * `errored`, `cancelled`), which `status` folds for the screen. The task's
+   * actions follow this one, since the board decides by it.
+   */
+  boardStatus: string;
+  /** What the run reported when it completed. */
   result?: string;
+  /** Why it failed, or the reason it was cancelled with, when the row says one. */
+  error?: string;
+  /** What the task is to do: its goal as filed. A re-run files it again. */
+  goal: string;
+  /** The brief it was filed with beside its goal, when it has one. */
+  context?: string;
+  /** Its labels, as filed. */
+  labels?: string[];
+  /** Its priority, as filed. */
+  priority?: number;
   /** The session its run works in, once it started. */
   runSessionId?: string;
   /** For a coding task, the harness it runs on: the one its run reported, else its worker's `harness:`. */
@@ -148,6 +177,28 @@ export interface TaskWaiting {
 
 /** A coding run's review: its branch, commits and the judge's verdict. */
 export type { ReviewDetail };
+
+/**
+ * The board's actions on the tasks one conversation filed, each resolving on
+ * the board's yes and rejecting with its own words on a refusal. Shaped as the
+ * registry's `task-actions` row takes them, plus `rerun`.
+ */
+export interface TaskActions {
+  /** Cancel a task. Resolves to the ids of the waiting tasks the board cancelled with it. */
+  cancel(taskId: string): Promise<string[]>;
+  /** Send words to an open task's run: they join its brief. */
+  steer(taskId: string, message: string): Promise<void>;
+  /** Release a held task: it goes back to pending. */
+  release(taskId: string): Promise<void>;
+  /** Run a failed or cancelled task again, as the same task. */
+  retry(taskId: string): Promise<void>;
+  /**
+   * File `task` again as a new task on `worker`, its brief kept and a line
+   * naming the task it re-runs added ({@link rerunOverrides}). The old task
+   * stays as it was. Resolves to the new task's id.
+   */
+  rerun(task: BoardTask, worker: string): Promise<string>;
+}
 
 /** Your answer to what a task waits on: the words to a question, or a review's verdict. */
 export type TaskAnswer = { text: string } | { verdict: "accepted" } | { verdict: "revise"; words: string };
@@ -292,6 +343,8 @@ export interface LabAdapter {
   watchReview(runSessionId: string, onChange: (review: ReviewDetail | undefined) => void): Unsubscribe;
   /** Answer what a task waits on you for; the run goes on, or the task completes on an accept. */
   answerTask(sessionId: string, taskId: string, answer: TaskAnswer): Promise<void>;
+  /** The board's actions on the tasks conversation `sessionId` filed, sent to that conversation's board. */
+  taskActions(sessionId: string): TaskActions;
   /**
    * What `worker` did with one message it was sent: the turn in its own
    * conversation that read it, from the message to the turn's end, live.
@@ -308,12 +361,16 @@ const TASK_CHANGE = "task-change";
 const CREATE_TASK = "createTask";
 /** What a board row's `listTasks` read never carries: an ended task's output and error, read from the row's other copies. */
 const UNPROJECTED = ["output", "error"] as const;
+/** Nor the brief a re-run copies beside its goal and title, read from those copies too, open or ended. */
+const BRIEF = ["context", "labels", "priority"] as const;
+/** The board a conversation files its tasks on: Workforce's `"tasks"`. */
+const TASK_BOARD = "tasks";
 /** The board's read of its rows, on a conversation's flow. */
-const LIST_TASKS = "listTasks_tasks";
+const LIST_TASKS = taskActionName("listTasks", TASK_BOARD);
 /** The ledgers that read returns: the conversation's board and its planning worker's steps. */
 const BOARD_LEDGERS = ["tasks", "plan"] as const;
 /** The board's action a question on a row is answered through, on the conversation that filed it. */
-const UPDATE_TASK = "updateTask_tasks";
+const UPDATE_TASK = taskActionName("updateTask", TASK_BOARD);
 /** Requests that are a worker answering: everything but the board's own passes. */
 const QUIET_ACTIONS = new Set(["dispatch"]);
 /** The harness a run's items came from, by the block that emitted them: each harness block's own name, which the host keeps. */
@@ -559,11 +616,33 @@ export function toBoardTask(
     to: row.assignee ?? "",
     title: row.title ?? row.goal ?? row.id,
     status,
-    ...((answer ?? error) === undefined ? {} : { result: answer ?? error }),
+    boardStatus: String(row.status ?? ""),
+    goal: String(row.goal ?? ""),
+    ...(answer === undefined ? {} : { result: answer }),
+    ...(error === undefined ? {} : { error }),
+    ...(typeof row.context === "string" ? { context: row.context } : {}),
+    ...(Array.isArray(row.labels) ? { labels: row.labels.filter((label: unknown): label is string => typeof label === "string") } : {}),
+    ...(typeof row.priority === "number" ? { priority: row.priority } : {}),
     ...(typeof row.run?.sessionId === "string" ? { runSessionId: row.run.sessionId } : {}),
     ...harnessAndModel(spendOf(row), harnessOf(row.assignee ?? "")),
     ...waitingOf(row, holds),
   };
+}
+
+/** The fields a re-file copies from a task, as the board's `refile` takes them. */
+export function refileRowOf(task: BoardTask): RefileRow {
+  return { goal: task.goal, title: task.title, context: task.context ?? null, assignee: task.to, labels: task.labels ?? null, priority: task.priority ?? null };
+}
+
+/**
+ * What a re-run sets over the copied task: the worker it now goes to, and its
+ * brief with one line added naming the task it re-runs, by title, so the old
+ * brief is kept and the link shows. Exported for its tests.
+ */
+export function rerunOverrides(task: BoardTask, worker: string): RefileOverrides {
+  const ended = task.status === "cancelled" ? "was cancelled" : "failed";
+  const line = `This re-runs the task "${task.title}", which ${ended}${task.harness === undefined ? "" : ` on ${task.harness}`}.`;
+  return { assignee: worker, context: task.context === undefined || task.context === "" ? line : `${task.context}\n\n${line}` };
 }
 
 /** What a row waits on you for, as `taskRowView` reads it: its oldest open hold, or nothing. */
@@ -646,7 +725,7 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>, 
         id: item.id,
         taskId,
         from: item.agentName,
-        text: task?.result ?? textOf(item),
+        text: task?.result ?? task?.error ?? textOf(item),
         ...(task?.title === undefined ? {} : { title: task.title }),
         ...(failed ? { failed: true } : {}),
         ...(cancelled ? { cancelled: true } : {}),
@@ -1035,19 +1114,18 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
        * A row is the board read's (FIX-2429): every committed write of a row sends a board notice, so
        * the read is never more than one notice behind, and a field it leaves out is cleared (an
        * answered hold). Until the first read lands, the conversation's copy, else the run's, stands in.
-       * The run's and the conversation's copies give only what the read never carries: an ended
-       * task's output and error ({@link UNPROJECTED}).
+       * The run's and the conversation's copies give only what the read never carries: the task's
+       * brief ({@link BRIEF}), and an ended task's output and error ({@link UNPROJECTED}).
        */
       const rowOf = (id: string): Record<string, any> => {
         const board = listed.get(id);
         if (board === undefined) return rows.get(id) ?? runRows.get(id)!;
-        if (!isTerminalStatus(board.status)) return board;
-        const ended: Record<string, unknown> = {};
-        for (const field of UNPROJECTED) {
+        const kept: Record<string, unknown> = {};
+        for (const field of isTerminalStatus(board.status) ? [...BRIEF, ...UNPROJECTED] : BRIEF) {
           const value = runRows.get(id)?.[field] ?? rows.get(id)?.[field];
-          if (value !== undefined) ended[field] = value;
+          if (value !== undefined) kept[field] = value;
         }
-        return { ...board, ...ended };
+        return { ...board, ...kept };
       };
       const followRuns = (current: readonly Record<string, any>[]) => {
         for (const row of current) {
@@ -1143,6 +1221,25 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         last = seen;
         onChange(review);
       });
+    },
+    taskActions(sessionId) {
+      // The board is the conversation's own: its flow, the session that filed the task, and its `"tasks"` collection.
+      const board = async () => {
+        let flowId = flowOfSession.get(sessionId);
+        if (flowId === undefined) {
+          const detail = await client.sessions.get(sessionId);
+          flowId = detail.flowId ?? detail.flowKind;
+          flowOfSession.set(sessionId, flowId);
+        }
+        return inbox.board({ flowId, sessionId, board: TASK_BOARD });
+      };
+      return {
+        cancel: async (taskId) => (await board()).cancel(taskId),
+        steer: async (taskId, message) => (await board()).steer(taskId, message),
+        release: async (taskId) => (await board()).release(taskId),
+        retry: async (taskId) => (await board()).retry(taskId),
+        rerun: async (task, worker) => (await board()).refile(refileRowOf(task), rerunOverrides(task, worker)),
+      };
     },
     async answerTask(sessionId, taskId, answer) {
       const kind = "text" in answer ? "question" : "review";
