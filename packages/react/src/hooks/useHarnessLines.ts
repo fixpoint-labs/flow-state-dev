@@ -1,17 +1,21 @@
 /**
- * Lines typed into a harness session while its turns run: each goes into the
- * running turn when the run takes it, or runs as a turn after the ones before
- * it, in the order typed, and the session view stays on the running turn
- * until it ends.
+ * Lines typed into a session while its turns run: each goes into the running
+ * turn when the run takes it, or runs as a turn after the ones before it, in
+ * the order typed, and the session view stays on the running turn until it
+ * ends. Any flow whose turn action waits for the one running (`defer`) can
+ * use it, a harness session or a plain chat.
  *
  * The rule for one line is the client's `sendHarnessLine`; this hook owns
  * what a page needs around it. A turn sent while one runs goes through the
  * client, not the session view, which would leave the running turn's stream
- * for the new request. The hook keeps those turns and follows each with
- * `followRequest` once the turn before it has ended. A view opened while
- * turns wait follows the oldest running one first.
+ * for the new request. The hook keeps one such turn waiting on the server at
+ * a time, since `defer` starts waiting requests one at a time but in no set
+ * order: later lines wait in the page, and the next is sent once the one
+ * before it has started. It follows each with `followRequest` once the turn
+ * before it has ended, and returns the lines still waiting, for a page to
+ * mark. A view opened while turns wait follows the oldest running one first.
  */
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   harnessLines,
   sendHarnessLine,
@@ -24,18 +28,51 @@ import type { SessionView } from "./useSession";
 
 /** Options for {@link useHarnessLines}. */
 export type UseHarnessLinesOptions<TOutcome extends string = HarnessLineOutcome> = {
-  /** The flow's turn action, which takes `{ prompt }`. Declare it `concurrency: "defer"`. Default `"turn"`. */
+  /** The flow's turn action. Declare it `concurrency: "defer"`. Default `"turn"`. */
   turnAction?: string;
+  /**
+   * The turn action's input for a line, read when the line is sent. Default
+   * `{ prompt: line }`.
+   */
+  input?: (line: string) => unknown;
   /** The flow's steer action (core's `harnessSteering`). Default `"steer"`. */
   steerAction?: string;
   /** How one line is sent. Default the client's `sendHarnessLine`. */
   sendOne?: (prompt: string, running: boolean, sender: HarnessLineSender) => Promise<TOutcome>;
 };
 
+/** A line waiting for the running turn, in {@link HarnessLinesView.waiting}. */
+export type HarnessWaitingLine = {
+  /** Stable while the line waits: a key for a list. */
+  key: string;
+  /** The line as typed. Absent for a turn this page didn't send, such as one a reload found waiting. */
+  text?: string;
+};
+
 /** What {@link useHarnessLines} returns. */
 export type HarnessLinesView<TOutcome extends string = HarnessLineOutcome> = {
-  /** Send one line, after every line sent before it has its answer. Resolves with where it went. */
+  /**
+   * Send one line, after every line sent before it has its answer. Resolves
+   * with where it went; a line that waits resolves once it is listed in
+   * `waiting`, and rejects if its turn could not be sent.
+   */
   send: (prompt: string) => Promise<TOutcome>;
+  /**
+   * The lines waiting for the running turn, oldest first, until each one's
+   * turn is followed. At most one is on the server; the rest wait in the page
+   * and are sent in order, so a reload or a closed tab loses those.
+   */
+  waiting: readonly HarnessWaitingLine[];
+};
+
+/** One waiting line: on the server once `requestId` is set, else held in the page until the line before it starts. */
+type QueuedLine = {
+  key: string;
+  text?: string;
+  input?: unknown;
+  requestId?: string;
+  /** Its turn's send is out. */
+  sending?: boolean;
 };
 
 /** How many running requests are read to find the session's turns. */
@@ -60,19 +97,31 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
   session: SessionView,
   options: UseHarnessLinesOptions<TOutcome> = {}
 ): HarnessLinesView<TOutcome> {
-  const { flowKind, sessionId, userId, isStreaming, isLoading, followRequest, sendAction } = session;
+  const { flowKind, sessionId, userId, isStreaming, isLoading, followRequest, sendAction, items } = session;
   const turnAction = options.turnAction ?? "turn";
   const steerAction = options.steerAction ?? "steer";
   const sendOneRef = useRef(options.sendOne);
   sendOneRef.current = options.sendOne;
+  const inputRef = useRef(options.input);
+  inputRef.current = options.input;
   const client = useClient({ userId });
 
   const streaming = useRef(isStreaming);
   streaming.current = isStreaming;
   const viewedSession = useRef(sessionId);
   viewedSession.current = sessionId;
-  // Turns sent while one ran, oldest first. Each waits on the server for the one before it.
-  const waiting = useRef<string[]>([]);
+  // Lines whose turns wait for the one running, oldest first: the first on the
+  // server, the rest held here until the one before them starts.
+  const queue = useRef<QueuedLine[]>([]);
+  const [waiting, setWaiting] = useState<readonly HarnessWaitingLine[]>([]);
+  const publish = useCallback(() => {
+    setWaiting(queue.current.map(({ key, text }) => (text === undefined ? { key } : { key, text })));
+  }, []);
+  const keys = useRef(0);
+  // The waiting turn the view last moved to, until its first item shows it started.
+  const starting = useRef<string | null>(null);
+  /** The view follows a waiting turn that hasn't started: a line sent now must not wait beside it. */
+  const startPending = () => starting.current !== null && streaming.current;
   const checkingRunning = useRef(false);
   // How many times each running turn was followed again after its stream dropped.
   const reattached = useRef(new Map<string, number>());
@@ -95,8 +144,59 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
     [client, turnAction]
   );
 
+  /** The turn's input for `line`. */
+  const inputOf = useCallback((line: string) => (inputRef.current === undefined ? { prompt: line } : inputRef.current(line)), []);
+
+  /** Send `line`'s turn to wait behind the running one; a failed send drops it from the waiting lines. */
+  const sendQueued = useCallback(
+    async (line: QueuedLine, onSent: () => void) => {
+      if (sessionId === undefined) return;
+      line.sending = true;
+      try {
+        const sent = await client.flow(flowKind).send(turnAction, line.input, { sessionId });
+        line.requestId = sent.id;
+      } catch (error) {
+        queue.current = queue.current.filter((other) => other !== line);
+        publish();
+        throw error;
+      } finally {
+        line.sending = false;
+      }
+      // The running turn may have ended while the line was sent.
+      onSent();
+    },
+    [client, flowKind, sessionId, turnAction, publish]
+  );
+
+  // `followWaiting` and `sendHeld` call each other; the ref breaks the cycle.
+  const followWaitingRef = useRef<() => void>(() => undefined);
+
+  /**
+   * Send the oldest held line, once no line waits on the server and the turn
+   * the view moved to has started: two waiting `defer` turns start in no set
+   * order, so only one waits at a time.
+   */
+  const sendHeld = useCallback(() => {
+    if (startPending()) return;
+    if (queue.current.some((line) => line.requestId !== undefined || line.sending === true)) return;
+    const next = queue.current[0];
+    if (next === undefined) return;
+    sendQueued(next, () => followWaitingRef.current()).catch((error: unknown) => {
+      // Its send went out after `send` resolved: nothing awaits it to reject.
+      console.error("[useHarnessLines] a waiting line could not be sent", error);
+      sendHeld();
+    });
+  }, [sendQueued]);
+
+  // The turn the view moved to has its first item: it started, so the next held line can wait behind it.
+  useEffect(() => {
+    if (starting.current === null || !(items ?? []).some((item) => item.requestId === starting.current)) return;
+    starting.current = null;
+    sendHeld();
+  }, [items, sendHeld]);
+
   const followWaiting = useCallback(() => {
-    if (sessionId === undefined || streaming.current || checkingRunning.current || waiting.current.length === 0) return;
+    if (sessionId === undefined || streaming.current || checkingRunning.current || queue.current.length === 0) return;
     // A stream that drops stops streaming too, while its turn still runs: read
     // which turn runs before moving on from it.
     checkingRunning.current = true;
@@ -109,7 +209,7 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
         // The turn followed still runs, and only its stream ended: follow it
         // again, so its end moves the view on to the waiting turn. One the
         // person stopped is not followed again: move on to the waiting turn.
-        if (running !== undefined && !waiting.current.includes(running.id)) {
+        if (running !== undefined && !queue.current.some((line) => line.requestId === running.id)) {
           const drops = (reattached.current.get(running.id) ?? 0) + 1;
           reattached.current.set(running.id, drops);
           if (drops > MAX_REATTACH) return;
@@ -117,18 +217,28 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
           if (followRequest(running.id) !== false) return;
           streaming.current = false;
         }
-        const next = waiting.current.shift();
-        if (next === undefined) return;
+        // The turn the view moved to has ended, started or not: a held line may go.
+        starting.current = null;
+        const next = queue.current[0];
+        // Its turn isn't on the server yet: send it, and follow it once it is.
+        if (next?.requestId === undefined) {
+          sendHeld();
+          return;
+        }
+        queue.current.shift();
+        publish();
         // Following until the next render says so, so a second call follows nothing more.
         streaming.current = true;
-        followRequest(next);
+        starting.current = next.requestId;
+        followRequest(next.requestId);
       },
       // Unread, the view stays on the request it follows.
       () => {
         checkingRunning.current = false;
       }
     );
-  }, [sessionId, runningTurns, followRequest]);
+  }, [sessionId, runningTurns, followRequest, sendHeld, publish]);
+  followWaitingRef.current = followWaiting;
   useEffect(() => {
     if (!isStreaming) followWaiting();
   }, [isStreaming, followWaiting]);
@@ -139,7 +249,9 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
   useEffect(() => {
     if (sessionId === undefined || isLoading || checkedOpen.current === sessionId) return;
     checkedOpen.current = sessionId;
-    waiting.current = [];
+    queue.current = [];
+    starting.current = null;
+    publish();
     reattached.current.clear();
     runningTurns(sessionId).then(
       (turns) => {
@@ -147,13 +259,17 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
         if (checkedOpen.current !== sessionId || oldest === undefined || turns.length < 2) return;
         const listed = turns.slice(1).map((request) => request.id);
         // A line sent while the list was read is kept, after the ones it lists.
-        waiting.current = [...listed, ...waiting.current.filter((id) => !listed.includes(id))];
+        queue.current = [
+          ...listed.map((id): QueuedLine => ({ key: id, requestId: id })),
+          ...queue.current.filter((line) => line.requestId === undefined || !listed.includes(line.requestId))
+        ];
+        publish();
         followRequest(oldest.id);
       },
       // Unread, the view stays on the request it follows.
       () => undefined
     );
-  }, [sessionId, isLoading, runningTurns, followRequest]);
+  }, [sessionId, isLoading, runningTurns, followRequest, publish]);
 
   const send = useCallback(
     (prompt: string): Promise<TOutcome> => {
@@ -161,24 +277,28 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
       const sender: HarnessLineSender = {
         steer: async (text) => {
           // Read when the line's turn comes, after the lines before it.
-          if (waiting.current.length > 0) return { taken: false, live: false };
+          if (queue.current.length > 0) return { taken: false, live: false };
           return steerRunningTurn(client, { flowKind, sessionId, prompt: text, action: steerAction });
         },
         turn: async (text) => {
-          if (!streaming.current) {
-            await sendAction(turnAction, { prompt: text }, { userMessage: text });
+          const input = inputOf(text);
+          if (!streaming.current && queue.current.length === 0) {
+            await sendAction(turnAction, input, { userMessage: text });
             return;
           }
-          const sent = await client.flow(flowKind).send(turnAction, { prompt: text }, { sessionId });
-          waiting.current.push(sent.id);
-          // The running turn may have ended while the line was sent.
-          followWaiting();
+          const line: QueuedLine = { key: `line-${++keys.current}`, text, input };
+          queue.current = [...queue.current, line];
+          publish();
+          // Another line already waits on the server, or the turn the view moved to hasn't
+          // started: this one waits here, and is sent in its turn.
+          if (startPending() || queue.current.some((other) => other !== line && (other.requestId !== undefined || other.sending === true))) return;
+          await sendQueued(line, followWaiting);
         }
       };
-      return lines.send(prompt, streaming.current, sender);
+      return lines.send(prompt, streaming.current || queue.current.length > 0, sender);
     },
-    [client, flowKind, sessionId, steerAction, turnAction, sendAction, followWaiting, lines]
+    [client, flowKind, sessionId, steerAction, turnAction, sendAction, followWaiting, lines, inputOf, publish, sendQueued]
   );
 
-  return { send };
+  return { send, waiting };
 }
