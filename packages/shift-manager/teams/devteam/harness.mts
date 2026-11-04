@@ -177,13 +177,6 @@ const CLAUDE_CODE_REPO_OPTIONS = {
  * With `mcpTools`, the run is handed its project's MCP servers and nothing
  * else, and the block holds the project and key collections the resolver
  * reads. Without, the options are exactly what they were.
- *
- * The run starts from Claude Code's own prompt with {@link CODER_BRIEF}
- * appended. A plain string would replace that prompt, and with it what tells
- * the agent to keep a plan, so the task inspector's plan would stay empty.
- * `Grep` and `Glob` are named because Claude Code offers them outside its
- * terminal only when they are; `Bash`, already allowed, reaches every path
- * they could, so naming them allows nothing new.
  */
 export function claudeCodeHarness({ mcpTools, ...feeds }: HarnessFeeds): HarnessBlock {
   return claudeCodeAgent({
@@ -195,21 +188,18 @@ export function claudeCodeHarness({ mcpTools, ...feeds }: HarnessFeeds): Harness
     recordWork: true,
     allowedTools: ["Read", "Write", "Edit", "Bash", "Grep", "Glob"],
     permissionMode: "acceptEdits",
-    systemPrompt: { type: "preset", preset: "claude_code", append: CODER_BRIEF },
+    systemPrompt: {
+      type: "preset",
+      preset: "claude_code",
+      append:
+        "You are working in a checkout the Lab placed you in for one task. " +
+        "Do what your instructions and your brief ask, and keep to that task. " +
+        "When the work is done, commit it with git: the task is finished only when its commit is there. " +
+        "End with a short report: what you changed, and what you checked (the commands or tests you ran and what they showed), " +
+        "or what you could not check and why.",
+    },
   } as never) as unknown as HarnessBlock;
 }
-
-/**
- * What the Lab's coder is told on top of Claude Code's own prompt: stay on
- * the task, commit (the implement phase waits for a commit), and say what
- * changed and how it was checked, which is what a reviewer of the row reads.
- */
-export const CODER_BRIEF =
-  "You are working in a checkout the Lab placed you in for one task. " +
-  "Do what your instructions and your brief ask, and keep to that task. " +
-  "When the work is done, commit it with git: the task is finished only when its commit is there. " +
-  "End with a short report: what you changed, and what you checked (the commands or tests you ran and what they showed), " +
-  "or what you could not check and why.";
 
 /**
  * Claude Code as the Error Reporter's harness (FIX-1983): read and search

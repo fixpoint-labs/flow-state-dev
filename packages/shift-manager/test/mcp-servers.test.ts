@@ -309,6 +309,13 @@ describe("the harness a Lab runs", () => {
     expect(Object.keys(without!).sort()).toEqual(
       ["allowedTools", "cwd", "detached", "env", "onSession", "onUsage", "permissionMode", "recordWork", "resume", "settingSources", "settings", "systemPrompt"].sort(),
     );
+    expect(without!.allowedTools).toEqual(["Read", "Write", "Edit", "Bash", "Grep", "Glob"]);
+    const prompt = without!.systemPrompt as { type: string; preset: string; append: string };
+    expect(prompt).toMatchObject({ type: "preset", preset: "claude_code" });
+    expect(prompt.append).toMatch(/commit it with git/);
+    expect(prompt.append).toMatch(/what you changed/);
+    expect(prompt.append).toMatch(/what you checked/);
+    expect(prompt.append).not.toMatch(/Do nothing else/);
     // The checkout's conventions with every hook off, and never the operator's own user settings (FIX-2421 D2).
     expect(without).toMatchObject({ settingSources: ["project"], settings: { disableAllHooks: true } });
     const { mcpTools, uses, ...rest } = withTools!;
