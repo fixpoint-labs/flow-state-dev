@@ -11,7 +11,8 @@
  */
 import { handler, router } from "@flow-state-dev/core";
 import { resolveProvider, search, searchInputSchema, searchOutputSchema } from "@flow-state-dev/tools/search";
-import { z } from "zod";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
+import { z, type ZodTypeAny } from "zod";
 
 /** Where the framework's docs are published (`apps/docs`). */
 const DOCS_DOMAIN = "flow-state.dev";
@@ -21,7 +22,11 @@ const UNFILTERED_PROVIDERS = new Set(["brave", "perplexity-sonar"]);
 
 const searchConfig = { includeDomains: [DOCS_DOMAIN] };
 
-const searchSite = search(searchConfig).as({ name: "search-docs-site" });
+// The two routes answer different shapes (the results, or the refusal), so
+// the routes are typed with an open output and the router declares the union.
+type Route = BlockDefinition<typeof searchInputSchema, ZodTypeAny>;
+
+const searchSite: Route = search(searchConfig).as({ name: "search-docs-site" });
 
 const refusalSchema = z.object({ refused: z.string() });
 
@@ -34,7 +39,7 @@ function providerName(): string | null {
   }
 }
 
-const refuse = handler({
+const refuse: Route = handler({
   name: "search-docs-refused",
   inputSchema: searchInputSchema,
   outputSchema: refusalSchema,
@@ -43,7 +48,7 @@ const refuse = handler({
   }),
 });
 
-export default router({
+export default router<typeof searchInputSchema, ZodTypeAny>({
   name: "search-docs",
   description:
     "Search the flow-state-dev framework's documentation (flow-state.dev). Returns titles, URLs, and snippets from matching docs pages.",

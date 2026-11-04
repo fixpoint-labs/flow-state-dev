@@ -11,7 +11,8 @@
  */
 import { handler, router } from "@flow-state-dev/core";
 import { fetch, fetchInputSchema, fetchResultSchema } from "@flow-state-dev/tools/fetch";
-import { z } from "zod";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
+import { z, type ZodTypeAny } from "zod";
 
 /** The one site this worker may read: the framework's published docs. */
 const DOCS_HOST = "flow-state.dev";
@@ -30,9 +31,13 @@ function isDocsUrl(raw: string): boolean {
   return url.hostname === DOCS_HOST || url.hostname.endsWith(`.${DOCS_HOST}`);
 }
 
-const readPage = fetch().as({ name: "fetch-docs-page" });
+// The two routes answer different shapes (the page, or the refusal), so the
+// routes are typed with an open output and the router declares the union.
+type Route = BlockDefinition<typeof fetchInputSchema, ZodTypeAny>;
 
-const refuse = handler({
+const readPage: Route = fetch().as({ name: "fetch-docs-page" });
+
+const refuse: Route = handler({
   name: "fetch-refused",
   inputSchema: fetchInputSchema,
   outputSchema: refusalSchema,
@@ -41,7 +46,7 @@ const refuse = handler({
   }),
 });
 
-export default router({
+export default router<typeof fetchInputSchema, ZodTypeAny>({
   name: "fetch",
   description:
     "Fetch a page of the flow-state-dev docs (https://flow-state.dev) and return its content as markdown. Any other site is refused.",
