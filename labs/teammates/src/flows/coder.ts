@@ -43,7 +43,6 @@ import {
   WORKER_TASK_ENTRY,
   workerConfigSchema,
   workerFlow,
-  workerConfigOf,
   workerMessagesResources,
   workerTaskEntry,
   type WorkerInstallation,
@@ -82,42 +81,35 @@ export interface CoderFlowOptions {
   checks?: { commands: readonly string[]; timeoutMs: number };
 }
 
-/**
- * The coding worker's own instructions, its `WORKER.md` body, from the worker
- * the router loaded for this task; `undefined` for a worker with no body.
- */
-function instructionsOf(ctx: PromptRunContext["ctx"]): string | undefined {
-  const { instructions } = workerConfigOf(ctx);
-  return typeof instructions === "string" ? instructions : undefined;
-}
+/** The instructions a run's brief opens with, read for the run's own worker; `undefined` for none. */
+export type InstructionsOf = (ctx: PromptRunContext["ctx"]) => Promise<string | undefined>;
 
 /**
- * A task's run: the worker's instructions, then the task's goal and brief,
- * done when the harness says it finished.
- */
-const PHASE: PhaseSpec = {
-  phase: "change",
-  buildPrompt: (run) =>
-    [
-      instructionsOf(run.ctx),
-      run.task.title === undefined ? undefined : `Task: ${run.task.title}`,
-      run.task.goal,
-      run.task.context,
-      `Work in ${run.workspacePath}. Make the change, commit it with git, and say in one line what changed.`,
-      run.feedback === undefined ? undefined : `Why the last attempt stopped:\n\n${run.feedback}`,
-    ]
-      .filter((line): line is string => typeof line === "string" && line !== "")
-      .join("\n\n"),
-  isDone: (run) => run.stopReport === "finished",
-} as PhaseSpec;
-
-/**
- * The phase a coding run runs, with the working folder's checks when the host names any.
+ * The phase a coding run runs: the worker's instructions, then the task's goal
+ * and brief, done when the harness says it finished; with the working folder's
+ * checks when the host names any.
  *
+ * @param instructionsOf The worker's own instructions. Absent: none, as for a
+ *   caller that reads only the phase's budgets.
  * @throws When `checks.timeoutMs` isn't a positive whole number.
  */
-export function codingPhase(checks?: CoderFlowOptions["checks"]): PhaseSpec {
-  return checks === undefined || checks.commands.length === 0 ? PHASE : commandCheck(PHASE, checks);
+export function codingPhase(checks?: CoderFlowOptions["checks"], instructionsOf?: InstructionsOf): PhaseSpec {
+  const phase = {
+    phase: "change",
+    buildPrompt: async (run) =>
+      [
+        await instructionsOf?.(run.ctx),
+        run.task.title === undefined ? undefined : `Task: ${run.task.title}`,
+        run.task.goal,
+        run.task.context,
+        `Work in ${run.workspacePath}. Make the change, commit it with git, and say in one line what changed.`,
+        run.feedback === undefined ? undefined : `Why the last attempt stopped:\n\n${run.feedback}`,
+      ]
+        .filter((line): line is string => typeof line === "string" && line !== "")
+        .join("\n\n"),
+    isDone: (run) => run.stopReport === "finished",
+  } as PhaseSpec;
+  return checks === undefined || checks.commands.length === 0 ? phase : commandCheck(phase, checks);
 }
 
 /** What a user's line in one of a coding worker's sessions is answered with. */
@@ -132,7 +124,8 @@ const DOOR_REPLY =
  * @throws When the default harness is not one the host offers.
  */
 export function coderFlow(options: CoderFlowOptions) {
-  const phase = codingPhase(options.checks);
+  // Built here first so a bad `checks` fails at construction, not at the hire.
+  codingPhase(options.checks);
   const names = Object.keys(options.harnesses);
   if (names.length === 0) throw new Error(`${CODER_FLOW}: the host offers no harness.`);
   if (!names.includes(options.defaultHarness)) {
@@ -140,6 +133,12 @@ export function coderFlow(options: CoderFlowOptions) {
   }
   return workerFlow(
     (installation: WorkerInstallation) => {
+      // The worker is loaded again for each brief, so the prompt step never
+      // depends on the router having loaded it earlier in the same request.
+      const phase = codingPhase(options.checks, async (ctx) => {
+        const { instructions } = (await installation.resolveWorker(ctx, CODER_FLOW)).config as { instructions?: unknown };
+        return typeof instructions === "string" ? instructions : undefined;
+      });
       const managers: Record<string, TaskWorker> = {};
       for (const [name, harness] of Object.entries(options.harnesses)) {
         managers[name] = harnessManager({

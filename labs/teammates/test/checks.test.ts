@@ -11,17 +11,10 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { CompletionRunContext, PhaseDoneVerdict, PromptRunContext } from "@flow-state-dev/harness-manager";
 import { codingPhase } from "../src/flows/coder";
 import { checkCommands, setupCommand } from "../host.mts";
-
-// The brief opens with the worker's instructions, read off the turn's loaded worker
-// (`worker-instructions.test.ts` covers that); a worker with none here.
-vi.mock("@flow-state-dev/workforce", async (original) => ({
-  ...(await original<typeof import("@flow-state-dev/workforce")>()),
-  workerConfigOf: () => ({}),
-}));
 
 /** A worktree whose check is red until `state.txt` says "ok". */
 function worktree(state: string) {
