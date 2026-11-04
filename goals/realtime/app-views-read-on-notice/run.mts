@@ -1,8 +1,9 @@
 /**
  * realtime › app views read on a notice (FIX-2466).
  *
- * One `serve()` host on a bound port, on FIX-2426's crossing double so no
- * view keeps its fallback timer, and the apps' views that this change moved,
+ * One `serve()` host on a bound port, on the default in-memory bus (which
+ * covers an app that runs as one process, so no view keeps its fallback timer
+ * while its socket is open: FIX-2545), and the apps' views that this change moved,
  * driven directly with real clients (Node's `fetch` and `WebSocket`): the
  * claude-code-style lab's thread (its running turn) and pins, the Teammates
  * lab's conversation (whether it is answering) and its divider, and Shift
@@ -16,8 +17,8 @@
  *        request view makes as many reads during the long reply as during
  *        the short one, and the item view reads nothing (the stream brings
  *        the items).
- *   c  — the same views on a host whose bus doesn't cross (the in-memory
- *        default): a pin and a turn show within the view's old pace + 1 s.
+ *   c  — the same views on a host whose bus doesn't cross (the crossing
+ *        double turned off): a pin and a turn show within the view's old pace + 1 s.
  *
  * Controls (each runs this file again with a patch applied as it loads):
  *   GOAL_CONTROL=timer       each lab view keeps a fixed timer with the socket up: a's 0-reads must FAIL.
@@ -108,12 +109,19 @@ function deskFlow(): FlowInstance {
 
 type Host = { handle: ServeHandle; base: string; stores: StoreRegistry };
 
-async function host(crosses: boolean): Promise<Host> {
+/**
+ * A host on `bus`: `"default"` leaves the stores without one, so the router
+ * fills the in-memory bus an app on one process runs on; `"not-crossing"` is
+ * the crossing double turned off, a bus that doesn't reach every writer.
+ */
+async function host(bus: "default" | "not-crossing"): Promise<Host> {
   const registry = createFlowRegistry();
   registry.register(deskFlow());
   registry.register(definePinsFlow()() as unknown as FlowInstance);
   const memory = createInMemoryStores();
-  const stores: StoreRegistry = crosses ? { ...memory, bus: crossingBus() } : memory;
+  const notCrossing = crossingBus();
+  notCrossing.setCrossing(false);
+  const stores: StoreRegistry = bus === "default" ? memory : { ...memory, bus: notCrossing };
   const router = createFlowApiRouter({
     registry,
     stores,
@@ -216,7 +224,7 @@ await runGoal(async (failures, tell) => {
   const closers: Array<() => void> = [];
   try {
     // ---------------------------------------------------------------- a, b
-    const on = await host(true);
+    const on = await host("default");
     hosts.push(on);
     const writer = clientOf(on).client;
     const sessionId = (await writer.flow("desk").createSession()).id;
@@ -297,7 +305,7 @@ await runGoal(async (failures, tell) => {
 
     // ------------------------------------------------------------------- c
     {
-      const plain = await host(false);
+      const plain = await host("not-crossing");
       hosts.push(plain);
       const w = clientOf(plain).client;
       const s = (await w.flow("desk").createSession()).id;

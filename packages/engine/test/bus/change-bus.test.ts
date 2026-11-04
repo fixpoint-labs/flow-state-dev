@@ -83,8 +83,12 @@ function message(requestId: string, id: string) {
 }
 
 describe("the in-memory bus", () => {
-  it("never says it crosses processes", () => {
-    expect(createInMemoryBus().crossesProcesses).toBe(false);
+  // The in-memory bus is for an app that runs as one process: every change is
+  // made where its subscribers are, so it covers them and the session stream
+  // and the client drop their timed reads. An app that writes from several
+  // processes uses a bus that crosses (the Postgres bus).
+  it("says it crosses processes, since it serves an app that runs as one", () => {
+    expect(createInMemoryBus().crossesProcesses).toBe(true);
   });
 
   it("delivers a scope's narrowed notices to its unnarrowed subscribers, with the narrowed topic", async () => {

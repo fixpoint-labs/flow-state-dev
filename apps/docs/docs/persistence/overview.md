@@ -15,9 +15,10 @@ The `bus` slot carries change notices. Every request and session write sends one
 | Bus | What an open session view reads |
 |---|---|
 | Crosses processes | Only after a change, at most once a second. A view of a quiet session costs the store nothing |
-| In memory | After a change, and also about once a second, so a reply written by another process still arrives |
+| In memory | Only after a change. The in-memory bus is for an app that runs as one process, so it counts as crossing |
+| Doesn't cross (a Postgres bus with no listening pool, or one that lost its connection) | After a change, and also about once a second, so a reply written by another process still arrives |
 
-The Postgres adapter backs `bus` (see [Postgres](#postgres)). The in-memory, file and SQLite adapters don't, so their profiles run the in-memory bus, and views use the once-a-second read.
+The Postgres adapter backs `bus` (see [Postgres](#postgres)). The in-memory, file and SQLite adapters don't, so their profiles run the in-memory bus. Run such an app as one process: a change another process writes to the same file reaches an open view only at its next read.
 
 | Adapter | Persistence | When to use |
 |---------|------------|-------------|
@@ -331,10 +332,12 @@ A store that can carry notices between processes backs the `bus` slot: it declar
 |---|---|
 | `publish(notice)` | Send `{ topic, kind, origin? }` to every process's subscribers of that topic. The engine calls it only once the write can be read. A failure must not fail the write |
 | `subscribe(topic, listener)` | Hear the notices under `topic`, and return the unsubscribe. A subscriber to a scope's topic hears every notice under the scope; one narrowed to a resource hears only that resource's |
-| `crossesProcesses` | `true` only while a notice published in another process reaches this one. While it is `true`, the session stream stops its once-a-second read, so a wrong `true` is a view that stops updating |
+| `crossesProcesses` | `true` only while a change made in any process that serves the app reaches this one. While it is `true`, the session stream stops its once-a-second read and clients stop their fallback polls, so a wrong `true` is a view that stops updating |
 | `onCrossingChange(listener)` | Called on each change of `crossesProcesses`. A change to `false` puts waiting views back on the once-a-second read |
 
 A topic is `{ scope, id, tenantId, resource? }`, with `tenantId` always present (`""` for a single-tenant app), so derive channel names from all of it and no tenant hears another's notices. A notice never carries rows. Notices are at most once: a bus that loses its connection and gets it back sends each subscriber one `resync` notice, and the subscriber reads again. `createInMemoryBus()` from `@flow-state-dev/engine` does the in-process fan-out, so an adapter can deliver what it hears through it.
+
+The in-memory bus is the default, and it is for an app that runs as one process. Every change is made in the process that serves the page, so it always reports `crossesProcesses: true` and views update on notices alone, with no timed reads. If your app writes its stores from more than one process, use a bus that crosses. Postgres stores fill one by default. Otherwise a change made in another process won't reach an open page until something else makes it read. That includes several servers on one SQLite file, and `fsdev run` or `fsdev chat` writing the same SQLite file as a running `fsdev dev`.
 
 If you pass a `StoreRegistry` you built yourself, set `bus` on it to use your own; the engine wraps the request and session stores so every write publishes.
 

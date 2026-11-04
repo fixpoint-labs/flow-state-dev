@@ -15,7 +15,8 @@ import {
   createFlowRegistry,
   createInMemoryStores,
   disposeFlowApiRouter,
-  parseFlowRoute
+  parseFlowRoute,
+  withChangeBus
 } from "../src";
 import type { RequestRecord, SessionRecord, StoreRegistry } from "../src";
 import { SESSION_STREAM_TIMINGS } from "../src/routes/session-stream-routes";
@@ -159,7 +160,9 @@ function buildRouter(): { router: Router; stores: StoreRegistry } {
       actions: { say: { block: handler({ name: "say", execute: () => ({}) }) } }
     })()
   );
-  const stores = createInMemoryStores();
+  // Wrapped as the engine wraps them, so the cases' own writes publish the
+  // notices that wake the stream: the default bus keeps no timed read.
+  const stores = withChangeBus(createInMemoryStores());
   return { router: createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 }), stores };
 }
 
