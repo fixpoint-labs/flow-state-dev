@@ -294,7 +294,7 @@ describe("a message that asks for a reply", { timeout: 40_000 }, () => {
   });
 
   it.each([
-    ["the generator's own cap", {}],
+    ["the flow's default", {}],
     ["the flow's maxSteps", { maxSteps: 12 }]
   ] as const)("to an agent worker that is still looking things up when its steps run out (%s) is answered with what it found", async (_cap, agentOptions: { maxSteps?: number }) => {
     // Ada, an agent worker on the built-in flow, looks the doc up again for as
@@ -336,8 +336,10 @@ describe("a message that asks for a reply", { timeout: 40_000 }, () => {
     expect(await until(async () => (await answersTo(h, ask!)).length === 1)).toBe(true);
     await h.settled();
 
-    // She spent every step but the last on lookups (the generator's cap of 8, or the flow's maxSteps), then answered.
-    expect(lookups.length).toBe((agentOptions.maxSteps ?? 8) - 1);
+    // She spent every step but the last on lookups (the flow's default of 50, or its maxSteps), then answered.
+    // The default is workforce's, not core's generator cap of 8: eight steps
+    // ran out before a worker had read enough to answer.
+    expect(lookups.length).toBe((agentOptions.maxSteps ?? 50) - 1);
     const [answer] = await answersTo(h, ask!);
     expect(answer).toMatchObject({ from: "ada", to: "otto", text: "The doc says Bluebird.", toSession: otto, status: "delivered" });
     expect(answer!.noAnswer).toBeUndefined();
