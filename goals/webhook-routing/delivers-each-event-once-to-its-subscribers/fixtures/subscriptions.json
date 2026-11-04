@@ -1,0 +1,260 @@
+[
+  {
+    "label": "a1",
+    "user": "alice",
+    "input": {
+      "thread": "github:acme/api#412",
+      "kinds": [
+        "review",
+        "check"
+      ],
+      "interest": "Reviews and CI on my PR."
+    }
+  },
+  {
+    "label": "a2",
+    "user": "alice",
+    "input": {
+      "thread": "github:acme/api#412",
+      "interest": "Everything on #412, in my second conversation."
+    }
+  },
+  {
+    "label": "a3",
+    "user": "alice",
+    "input": {
+      "thread": "github:acme/api",
+      "screens": [
+        {
+          "screen": "words",
+          "any": [
+            "panic",
+            "crash"
+          ]
+        }
+      ],
+      "interest": "Crash reports on the API repo."
+    }
+  },
+  {
+    "label": "a4",
+    "user": "alice",
+    "input": {
+      "thread": "github:acme/api",
+      "screens": [
+        {
+          "screen": "labels",
+          "any": [
+            "security"
+          ]
+        }
+      ],
+      "interest": "Security issues on the API."
+    }
+  },
+  {
+    "label": "a5",
+    "user": "alice",
+    "input": {
+      "thread": "github:acme/private-api#7",
+      "interest": "My private PR."
+    }
+  },
+  {
+    "label": "a6",
+    "user": "alice",
+    "input": {
+      "thread": "github:acme/web#9",
+      "kinds": [
+        "review"
+      ],
+      "screens": [
+        {
+          "screen": "allow",
+          "ids": [
+            "codex"
+          ]
+        }
+      ],
+      "interest": "Codex's reviews on web#9."
+    }
+  },
+  {
+    "label": "a7",
+    "user": "alice",
+    "input": {
+      "thread": "github:acme/web",
+      "kinds": [
+        "check"
+      ],
+      "interest": "CI results on the web repo."
+    }
+  },
+  {
+    "label": "a8",
+    "user": "alice",
+    "input": {
+      "thread": "github:acme/api#413",
+      "outsiders": true,
+      "interest": "Community feedback on #413, outsiders included."
+    }
+  },
+  {
+    "label": "a9",
+    "user": "alice",
+    "input": {
+      "thread": "github:acme/api",
+      "screens": [
+        {
+          "screen": "words",
+          "any": [
+            "deprecat"
+          ]
+        }
+      ],
+      "interest": "Anything about deprecations."
+    }
+  },
+  {
+    "label": "a10",
+    "user": "alice",
+    "input": {
+      "thread": "github:acme/api#413",
+      "kinds": [
+        "comment"
+      ],
+      "screens": [
+        {
+          "screen": "words",
+          "any": [
+            "benchmark"
+          ]
+        }
+      ],
+      "interest": "Benchmark discussion on #413."
+    }
+  },
+  {
+    "label": "a11",
+    "user": "alice",
+    "input": {
+      "thread": "github:acme/api#414",
+      "interest": "#414 until it closes."
+    }
+  },
+  {
+    "label": "b1",
+    "user": "bob",
+    "input": {
+      "thread": "github:acme/api#412",
+      "interest": "#412, as its reviewer."
+    }
+  },
+  {
+    "label": "b2",
+    "user": "bob",
+    "input": {
+      "thread": "github:acme/api",
+      "screens": [
+        {
+          "screen": "labels",
+          "any": [
+            "bug"
+          ]
+        }
+      ],
+      "interest": "Bugs in the API."
+    }
+  },
+  {
+    "label": "b3",
+    "user": "bob",
+    "input": {
+      "thread": "github:acme/web#9",
+      "kinds": [
+        "review"
+      ],
+      "interest": "Reviews on web#9."
+    }
+  },
+  {
+    "label": "b4",
+    "user": "bob",
+    "input": {
+      "thread": "github:acme/web",
+      "screens": [
+        {
+          "screen": "words",
+          "any": [
+            "flaky"
+          ]
+        }
+      ],
+      "interest": "Flaky tests on web."
+    }
+  },
+  {
+    "label": "b5",
+    "user": "bob",
+    "input": {
+      "thread": "github:acme/api#413",
+      "screens": [
+        {
+          "screen": "allow",
+          "ids": [
+            "octocat"
+          ]
+        }
+      ],
+      "interest": "What octocat says on #413."
+    }
+  },
+  {
+    "label": "b6",
+    "user": "bob",
+    "input": {
+      "thread": "github:acme/api",
+      "kinds": [
+        "check"
+      ],
+      "screens": [
+        {
+          "screen": "labels",
+          "any": [
+            "release"
+          ]
+        }
+      ],
+      "interest": "Release CI on the API."
+    }
+  },
+  {
+    "label": "b7",
+    "user": "bob",
+    "input": {
+      "thread": "github:acme/api#412",
+      "interest": "#412 for a while; unsubscribed halfway."
+    },
+    "unsubscribeAt": 150
+  },
+  {
+    "label": "b8",
+    "user": "bob",
+    "input": {
+      "thread": "github:acme/private-api#7",
+      "interest": "Alice's private PR, which bob can't read."
+    }
+  },
+  {
+    "label": "b9",
+    "user": "bob",
+    "input": {
+      "thread": "github:acme/web",
+      "kinds": [
+        "comment"
+      ],
+      "outsiders": true,
+      "interest": "Community comments on web."
+    }
+  }
+]
