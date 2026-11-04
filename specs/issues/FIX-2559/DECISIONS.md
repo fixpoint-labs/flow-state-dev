@@ -24,6 +24,10 @@ An item renderer is handed only its item. Retry needs the session.
 - **Instead of** changing the registry's set: that set is drawn by other apps and by Kitchen
   Sink's coding harness modes, which have no `useSession` failure path to wire, and a renderer
   in it still could not reach a session.
+- **Instead of** a renderer that closes over `session`: the renderers are a module-level map
+  handed to `FlowProvider`, which sits above the page that owns the session. Closing over it
+  means moving `FlowProvider` or building the map per render; calling `useSession` inside the
+  renderer opens a second hook on the session and repeats the gating there.
 - **Locks in:** Flow State mode's `error` entry is the page's, like its `message` entry already is.
 
 <a name="d2"></a>
@@ -45,15 +49,32 @@ An item renderer is handed only its item. Retry needs the session.
   `session.error`. The POST answers with the run's stream, and the failure arrives as the
   `error` item. `session.error` is set by a refused send, a failed snapshot read, and a refused
   retry. Only the last is already on the line (*Retry failed: …*), so the box skips that one
-  error and shows the rest. FIX-2370's E6 expected a failed run to show twice; read against the
+  error and shows the rest. **The rule is identity:** `resumeLatestRequest` sets `session.error`
+  to the same `Error` it rejects with, so the chat panel keeps the error its Retry was refused
+  with and passes the box `session.error` unless it is that object. No message matching, and a
+  later refused send or failed read is a different object, so it still shows. The filter sits
+  where the chat panel passes `error=` to `ConversationBody`, which stays presentational. FIX-2370's E6 expected a failed run to show twice; read against the
   hook, the overlap is the refused retry.
 - **E2 · Who the line names:** *Assistant*, FIX-2370's own example for Kitchen Sink.
 - **E3 · No incomplete mark.** FIX-2370 puts that on the labs' adapters. Kitchen Sink's message
   renderer is the registry's, and a mark there is a registry change for every app.
 - **E4 · Scope is Flow State mode.** The coding harness modes draw their turn failures as their
   own notice ("This turn failed: …") and keep the registry's set unchanged.
-- **E5 · The e2e failure is scripted**, a model that throws on its first call for one scenario
-  marker, in the app's test-mode resolver. It fails the run the way a provider error does.
+- **E5 · The e2e failure is scripted.** `lib/e2e-mock-script.ts` gains a `[scenario:fail-once]`
+  script (the retry's answer) and `failsOnce(generator, messages)`: true on the first
+  `assistant-generator` call for a turn carrying the marker, false after, kept in one set of
+  turn texts. `test-model-resolver.ts` throws in the same wrapper that applies holds, before the
+  model runs, so the run fails the way a provider error does. Each check sends its own turn text.
+
+## Notes from review
+
+Round 1 (2026-11-04): Codex, no findings. Cursor (simplify), approved. Folded: E1's rule is now
+named (identity, filtered where the chat panel passes `error=`), E5 spells the mock's contract,
+D1 says why not a closure over `session`. Recorded for the implementer: `retryFor` changes only
+when `latestRequest` or the streaming flags change, and context reaches the renderer without
+re-rendering the memoized `ConversationBody`; Kitchen Sink's tests cover the wrapper (item to
+props, `who`, D2's gating, the box), not `RequestRecovery`'s own busy and refused states, which
+FIX-2370's render tests own.
 
 ## How it got here
 
