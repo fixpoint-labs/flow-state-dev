@@ -77,7 +77,10 @@ does, with no question first. Each agent is a worker of its own, off the list an
 messaged, whose `WORKER.md` names its `harness:`. The rest of that file is the agent's
 instructions: every run on it is told them before the task. A line in Chief of Staff's conversation and a
 row in Chief of Staff's panel show the task, tagged with the agent it runs on (and the model, once the
-run reports one), and open its run in a popup. The result lands in Chief of Staff's conversation as
+run reports one), and open its run in a popup. Once the run reports what it spent, the line adds its
+tokens and, when the vendor reported a charge, the cost; the popup splits input from output tokens, and
+the panel totals Chief of Staff's coding tasks. A run billed by subscription shows tokens and no cost.
+The result lands in Chief of Staff's conversation as
 the coding task's line, *Coding task finished: …*. To change a coding task, tell Chief of Staff, who starts the next one,
 or use the task's buttons.
 

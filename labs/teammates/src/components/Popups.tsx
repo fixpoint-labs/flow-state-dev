@@ -6,6 +6,7 @@ import { useWatch } from "../lib/use-watch";
 import { Avatar } from "./Avatar";
 import { ErrorBody } from "./flow-state/error";
 import { ReviewHold } from "./flow-state/review-hold";
+import { Spend } from "./flow-state/spend";
 import { TaskActions, type TaskRerunOption } from "./flow-state/task-actions";
 import { SessionPopup, Steps } from "./SessionPopup";
 
@@ -126,6 +127,12 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, 
   return (
     <SessionPopup label={line} title={title} status={task?.status} onClose={onClose}>
       {task === undefined ? null : <TaskActions key={task.id} id={task.id} status={task.boardStatus} actions={actions} steer rerun={rerun} />}
+      {/* What a coding task's runs spent, in and out apart, with the vendor's charge when it reported one. */}
+      {task?.spend && isCoding(task.to) ? (
+        <div data-task-spend>
+          <Spend spend={task.spend} split className="text-[11px]" />
+        </div>
+      ) : null}
       {/* Why it failed, as an error; the result leads otherwise. How the run got there is below. */}
       {task?.error ? (
         <section aria-label="Error" role="alert" data-step="error" className="flex flex-col gap-1 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
