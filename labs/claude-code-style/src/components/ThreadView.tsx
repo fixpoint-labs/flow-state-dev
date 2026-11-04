@@ -8,6 +8,8 @@ import { JumpToLatestButton } from "./JumpToLatest";
 import { LoadEarlier } from "./LoadEarlier";
 import { ReviewCard } from "./ReviewCard";
 import { Spend } from "./flow-state/spend";
+import { StreamingIndicator } from "./flow-state/streaming-indicator";
+import { workingStatus } from "./flow-state/working-status";
 import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus";
 
 /**
@@ -101,6 +103,10 @@ export function ThreadView({
       <div ref={feed.ref} className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pt-2 pb-8 [overflow-wrap:anywhere]">
         <LoadEarlier load={work?.loadEarlier} />
         {work?.entries.map((entry) => <Entry key={entry.id} entry={entry} />)}
+        {/* The live line: what it is doing now, else "Working...", and for how long. A task waiting on you isn't working. */}
+        {task.status === "in_progress" && task.waitingOn === undefined ? (
+          <StreamingIndicator message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
+        ) : null}
         <JumpToLatestButton feed={feed} />
       </div>
       {question ? (

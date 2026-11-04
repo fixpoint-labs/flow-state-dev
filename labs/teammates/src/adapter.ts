@@ -28,6 +28,9 @@
  * | `watchRun`          | the items of the session the task's row names as its run, each tool call      |
  * |                     | named by the UI registry's `tool-naming` (`components/flow-state/`)           |
  * | `watchExchange`     | the receiving worker's conversation: the turn that read one message          |
+ * | `watchWorking`      | the run session's items, for the tool call in flight (the UI registry's      |
+ * |                     | `working-status`), and harness-manager's browser `readRecordedWork`, for the |
+ * |                     | plan its harness recorded                                                    |
  *
  * A received message is drawn from its own item (`workforce:received`), which
  * carries its message id, so the pending line joins the log to the
@@ -51,9 +54,10 @@ import {
 } from "@flow-state-dev/workforce/browser";
 import { isTerminalStatus, parseNotice, taskSpendView } from "@flow-state-dev/orchestration/tasks";
 import { createInboxClient, inboxItems, taskRowView, type InboxAnswer, type InboxHold, type InboxRow } from "@flow-state-dev/orchestration/inbox";
-import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import { readRecordedWork, reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
+import { toolInFlight, type PlanRowNow, type ToolCallNow } from "./components/flow-state/working-status";
 import { harnessName } from "./lib/harness";
 import { sessionFeeds, type SessionFeed } from "./lib/session-feed";
 import { stableList } from "./lib/stable";
@@ -108,6 +112,19 @@ export interface BoardTask {
   model?: string;
   /** What it waits on you for, while something does: its oldest open hold. */
   waiting?: TaskWaiting;
+  /** The one-line note its run last reported while it ran (`statusNote`). */
+  note?: string;
+  /** When it started running, in ms: what its feed's elapsed time counts from. */
+  startedAt?: number;
+  /** The request its run is, in its run session, once it started. */
+  runRequestId?: string;
+}
+
+/** What a running task's run shows it doing now: the tool call still running, and the plan its harness recorded. */
+export interface WorkingNow {
+  inFlight?: ToolCallNow;
+  /** `undefined` while the run records no plan. */
+  plan?: PlanRowNow[];
 }
 
 /**
@@ -241,6 +258,8 @@ export interface LabAdapter {
    * Empty until the message is read.
    */
   watchExchange(worker: string, messageId: string, onChange: (steps: SessionStep[]) => void): Unsubscribe;
+  /** What a run is doing now, live: read only while a task's feed shows it running. */
+  watchWorking(run: { sessionId: string; requestId?: string }, onChange: (now: WorkingNow) => void): Unsubscribe;
 }
 
 /** How often the reads with no stream are read again. */
@@ -404,9 +423,18 @@ export function toBoardTask(
     status,
     ...((answer ?? error) === undefined ? {} : { result: answer ?? error }),
     ...(typeof row.run?.sessionId === "string" ? { runSessionId: row.run.sessionId } : {}),
+    ...(typeof row.run?.requestId === "string" ? { runRequestId: row.run.requestId } : {}),
+    ...(typeof row.statusNote === "string" ? { note: row.statusNote } : {}),
+    ...startedAtOf(row),
     ...harnessAndModel(spendOf(row), harnessOf(row.assignee ?? "")),
     ...waitingOf(row, holds),
   };
+}
+
+/** When a row's run started: the row's own start, else its run's (rows before either carry neither, BP-030). */
+function startedAtOf(row: Record<string, any>): { startedAt?: number } {
+  const at = typeof row.startedAt === "number" ? row.startedAt : row.run?.startedAt;
+  return typeof at === "number" ? { startedAt: at } : {};
 }
 
 /** What a row waits on you for, as `taskRowView` reads it: its oldest open hold, or nothing. */
@@ -910,6 +938,37 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       const hold = openHolds.get(sessionId)?.get(taskId)?.find((h) => h.ask.kind === kind);
       if (hold === undefined) throw new Error(`This task isn't waiting on your ${kind === "question" ? "answer" : "review"} any more.`);
       await inbox.answerOne(hold, inboxAnswerOf(answer));
+    },
+    watchWorking(run, onChange) {
+      let now: WorkingNow = {};
+      let last = "";
+      const tell = (next: WorkingNow) => {
+        now = next;
+        const seen = JSON.stringify(now);
+        if (seen === last) return;
+        last = seen;
+        onChange(now);
+      };
+      const stopFeed = watchFeed(run.sessionId, (items) => toolInFlight(items as never), (inFlight) => {
+        const { inFlight: _, ...rest } = now;
+        tell(inFlight === undefined ? rest : { ...rest, inFlight });
+      });
+      const requestId = run.requestId;
+      // A harness records its plan apart from the run's items, so it is read again while the feed is open.
+      const stopPlan =
+        requestId === undefined
+          ? () => {}
+          : poll(
+              () => readRecordedWork(client, { sessionId: run.sessionId, requestId }),
+              (work) => {
+                const { plan: _, ...rest } = now;
+                tell(work.plan === null ? rest : { ...rest, plan: work.plan.rows.map(({ title, status }) => ({ title, status })) });
+              },
+            );
+      return () => {
+        stopFeed();
+        stopPlan();
+      };
     },
     watchExchange(worker, messageId, onChange) {
       let stop: Unsubscribe | undefined;

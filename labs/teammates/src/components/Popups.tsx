@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import type { BoardTask, LabAdapter, TalkRow } from "../adapter";
+import type { BoardTask, LabAdapter, TalkRow, WorkingNow } from "../adapter";
 import type { Look } from "../lib/looks";
 import { useWatch } from "../lib/use-watch";
 import { Avatar } from "./Avatar";
 import { ReviewHold } from "./flow-state/review-hold";
+import { StreamingIndicator } from "./flow-state/streaming-indicator";
+import { workingStatus } from "./flow-state/working-status";
 import { SessionPopup, Steps } from "./SessionPopup";
 
 /** What a popup shows: a task one conversation filed, or one message a worker sent. */
@@ -106,8 +108,27 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, onClose, onMissin
         </section>
       ) : null}
       <Steps steps={steps} nameOf={nameOf} empty={starting} />
+      {/* Until its first step, the line above says it is starting; a task waiting on you isn't working. */}
+      {task?.status === "running" && task.waiting === undefined && task.runSessionId !== undefined && steps.length > 0 ? (
+        <WorkingLine adapter={adapter} task={task} runSessionId={task.runSessionId} />
+      ) : null}
     </SessionPopup>
   );
+}
+
+/**
+ * The live line at the end of a running task's feed: the most specific thing
+ * it is doing now (the tool call in flight, the plan step in progress, its
+ * last note), else "Working...", with how long it has been running.
+ */
+function WorkingLine({ adapter, task, runSessionId }: { adapter: LabAdapter; task: BoardTask; runSessionId: string }) {
+  const requestId = task.runRequestId;
+  const watch = useCallback<(sessionId: string, onChange: (now: WorkingNow) => void) => () => void>(
+    (sessionId, onChange) => adapter.watchWorking({ sessionId, ...(requestId === undefined ? {} : { requestId }) }, onChange),
+    [adapter, requestId],
+  );
+  const now = useWatch(watch, runSessionId);
+  return <StreamingIndicator message={workingStatus({ ...now, note: task.note })} since={task.startedAt} />;
 }
 
 /** A coding run's review, with the registry's card: its commits and the judge's verdict, and Accept or Ask for changes. */

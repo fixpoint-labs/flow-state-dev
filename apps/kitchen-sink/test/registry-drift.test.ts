@@ -32,6 +32,8 @@ const NOT_INSTALLED_COMPONENTS = new Set([
   "connection-banner.tsx",
   "connection-screen.tsx",
   "request-recovery.tsx",
+  // Kitchen Sink draws no background task's feed, so nothing here says what one is doing now.
+  "working-status.ts",
 ]);
 
 const drift = () =>

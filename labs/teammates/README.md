@@ -25,7 +25,9 @@ theme on purpose, so it reads as the app it copies.
   new line.
 - **Popup:** a message line or a task line in the conversation opens that piece of work in a popup
   over it: the other worker's session, read only and live. It closes with Esc, its close button, or
-  a click outside it, and the conversation under it keeps its place.
+  a click outside it, and the conversation under it keeps its place. While a task runs, its feed
+  ends in a live line: the command or file it is on, else its plan step, else "Working...", with
+  how long it has been running.
 - **Right:** Talk, the worker's exchanges with the other workers, grouped by worker, from the
   message log. It closes.
 - **Keys:** ⌘K (Ctrl+K) finds a teammate by its name or role, or opens *Hire a teammate*. Alt+↑

@@ -17,7 +17,9 @@
  * |                 | is the feed's, for a thread longer than its first read                     |
  * | `watchTasks`    | the conversation board's `listTasks_tasks` read, and the rows' open holds  |
  * | `watchTaskWork` | the items of a task's run session, followed through `sessionFeed`, with   |
- * |                 | its `loadEarlier` too                                                      |
+ * |                 | its `loadEarlier` too; while the task runs, the tool call in flight (the   |
+ * |                 | UI registry's `working-status`) and harness-manager's `readRecordedWork`, |
+ * |                 | for the plan its harness recorded                                         |
  * | `sayInThread`   | the Inbox client's answer to the thread's open question, else `updateTask_tasks` with your line |
  * | `resolve`       | the Inbox client's answer to the thread's review: `{ verdict: "accepted" }` |
  * | `requestChanges`| the same answer with `{ verdict: "revise", words }`                        |
@@ -27,7 +29,7 @@ import { createClient, sessionFeed, type Client, type SessionConnectionState, ty
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import { createInboxClient, inboxItems, type InboxAnswer, type InboxHold, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
 import { parseNotice, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
-import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import { readRecordedWork, reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import {
   createWorkforceClient,
   delegateAnswerOf,
@@ -40,6 +42,7 @@ import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
 import { projectIdOf, refuseExisting } from "./lib/new-project";
 import { waitingOnYou } from "./lib/columns";
 import { resultSummary } from "./lib/result-summary";
+import { toolInFlight, type PlanRowNow, type ToolCallNow } from "./components/flow-state/working-status";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
@@ -137,6 +140,8 @@ export interface TaskRow {
   steps?: { done: number; total: number };
   /** When the task last changed, in ms. */
   updatedAt?: number;
+  /** When it started running, in ms: what its feed's elapsed time counts from. */
+  startedAt?: number;
   /** What its runs spent, as the board's `listTasks` reads it (`taskSpendView`): model, harness, tokens; none before it runs. */
   spend?: TaskSpendView;
 }
@@ -151,6 +156,15 @@ export interface TaskWork {
   review?: ReviewDetail;
   /** Present while the run holds items older than its first entry: adds the page before them. */
   loadEarlier?: () => Promise<void>;
+  /** What its run is doing now, while the task runs. */
+  working?: WorkingNow;
+}
+
+/** What a running task's run shows it doing now: the tool call still running, and the plan its harness recorded. */
+export interface WorkingNow {
+  inFlight?: ToolCallNow;
+  /** `undefined` while the run records no plan. */
+  plan?: PlanRowNow[];
 }
 
 /** Everything the screen reads and writes. */
@@ -492,6 +506,8 @@ export function createWiredLab(fsd: Client): LabAdapter {
 
   /** Each listed task's run session, by task id, as the last list saw it. */
   const runSessionOf = new Map<string, string>();
+  /** Each running task's run (its session and request), by task id, as the last list saw it; none once it ended. */
+  const runningRunOf = new Map<string, { sessionId: string; requestId: string }>();
 
   /** The feed of each thread open on screen, by session id, so a send there can stream its answer into it. */
   const threadFeeds = new Map<string, SessionFeed>();
@@ -502,7 +518,11 @@ export function createWiredLab(fsd: Client): LabAdapter {
       .flow(await flowOfSession(sessionId))
       .read<{ ok: boolean; error?: string; tasks: any[] }>("listTasks_tasks", {}, { sessionId });
     if (!listed.ok) throw new Error(listed.error);
-    for (const task of listed.tasks as any[]) if (task.run?.sessionId !== undefined) runSessionOf.set(task.id, task.run.sessionId);
+    for (const task of listed.tasks as any[]) {
+      if (task.run?.sessionId !== undefined) runSessionOf.set(task.id, task.run.sessionId);
+      if (task.status === "in_progress" && typeof task.run?.requestId === "string") runningRunOf.set(task.id, { sessionId: task.run.sessionId, requestId: task.run.requestId });
+      else runningRunOf.delete(task.id);
+    }
     return (listed.tasks as any[]).map((task) => ({
       id: task.id,
       title: task.title ?? task.goal,
@@ -511,6 +531,8 @@ export function createWiredLab(fsd: Client): LabAdapter {
       ...(task.assignee === undefined ? {} : { assignee: task.assignee }),
       ...(task.statusNote == null ? {} : { statusNote: task.statusNote }),
       ...(typeof task.updatedAt === "number" ? { updatedAt: task.updatedAt } : {}),
+      // The row's own start, else its run link's; rows before either carry neither (BP-030).
+      ...(typeof (task.startedAt ?? task.run?.startedAt) === "number" ? { startedAt: task.startedAt ?? task.run.startedAt } : {}),
       ...(task.run?.sessionId === undefined ? {} : { runSessionId: task.run.sessionId, run: task.run }),
       ...(Array.isArray(task.holds) ? { holds: task.holds } : {}),
       ...(task.spend == null ? {} : { spend: task.spend }),
@@ -738,14 +760,43 @@ export function createWiredLab(fsd: Client): LabAdapter {
             onChange({ entries: [] });
             return;
           }
-          stopItems = followItems(fsd, runSession, [...THREAD_ITEMS, "suspension"], (items, loadEarlier) => {
+          let work: TaskWork | undefined;
+          let plan: PlanRowNow[] | undefined;
+          const tell = () => {
+            if (work === undefined) return;
+            const { working: _, ...rest } = work;
+            const inFlight = work.working?.inFlight;
+            const working: WorkingNow = { ...(inFlight === undefined ? {} : { inFlight }), ...(plan === undefined ? {} : { plan }) };
+            onChange(Object.keys(working).length === 0 ? rest : { ...rest, working });
+          };
+          const stopFeed = followItems(fsd, runSession, [...THREAD_ITEMS, "suspension"], (items, loadEarlier) => {
             const review = reviewStopOf(items);
-            onChange({
+            const inFlight = toolInFlight(items as never);
+            work = {
               entries: entriesOf(items.filter((item) => item.type !== "suspension")),
               ...(review === undefined ? {} : { review }),
               ...(loadEarlier === undefined ? {} : { loadEarlier }),
-            });
+              ...(inFlight === undefined ? {} : { working: { inFlight } }),
+            };
+            tell();
           }).stop;
+          // A harness records its plan apart from the run's items: read again while the task runs.
+          const stopPlan = every(
+            async () => {
+              const run = runningRunOf.get(taskId);
+              if (run === undefined || run.sessionId !== runSession) return null;
+              return (await readRecordedWork(fsd, run)).plan?.rows.map(({ title, status }) => ({ title, status })) ?? null;
+            },
+            (rows) => {
+              plan = rows ?? undefined;
+              tell();
+            },
+            3000,
+          );
+          stopItems = () => {
+            stopFeed();
+            stopPlan();
+          };
         },
         2000,
       );

@@ -185,6 +185,22 @@
       "categories": ["ai", "tools"]
     },
     {
+      "name": "working-status",
+      "title": "Working Status",
+      "type": "registry:component",
+      "description": "Pure helpers that say what a running task is doing now in one line: the tool call in flight, else the plan step in progress, else its progress note. Pairs with streaming-indicator.",
+      "dependencies": ["@flow-state-dev/core"],
+      "registryDependencies": ["tool-naming"],
+      "files": [
+        {
+          "type": "registry:lib",
+          "path": "registry/components/working-status.ts",
+          "target": "components/flow-state/working-status.ts"
+        }
+      ],
+      "categories": ["ai", "tools"]
+    },
+    {
       "name": "code-block",
       "title": "Code Block",
       "type": "registry:component",

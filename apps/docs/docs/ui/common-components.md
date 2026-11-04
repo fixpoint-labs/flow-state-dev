@@ -155,6 +155,26 @@ The timer reads `42s` under a minute, `1m 24s` from there, and `1h 3m` (no secon
 
 `RequestGroupRenderer` renders a request's items in the chat and sets `since` from the first item of the latest request, so you set `since` yourself only when you render the indicator directly. While a tool call or thought is in progress, the indicator shows "Working..." and the clock instead of the status words, so the line never collapses to a bare timer. The timer disappears when the request stops streaming. Pass `showWorkedFor` to `RequestGroupRenderer` and a finished request ends in a line like "Worked for 3m 24s • 4:28 PM" (`WorkedFor`, exported from the same file). The end time comes from the items unless you also pass `latestCompletedAtMs`, the request record's end, which is exact.
 
+### What a running task is doing now
+
+`working-status` holds two pure functions for the line at the end of a background task's feed. `toolInFlight` finds the newest tool call in a run's items that hasn't returned yet. `workingStatus` picks the most specific status it has: that call, then the plan step the harness reports in progress, then the task's last progress note. When there is none of them it returns `undefined`, and the indicator keeps its "Working..." label.
+
+```bash
+fsdev ui add working-status
+```
+
+```tsx
+import { StreamingIndicator } from "@/components/flow-state/streaming-indicator";
+import { toolInFlight, workingStatus } from "@/components/flow-state/working-status";
+
+const message = workingStatus({ inFlight: toolInFlight(runItems), plan: planRows, note: task.statusNote });
+<StreamingIndicator message={message} since={task.startedAt} />
+// Running pnpm test (4m 12s)
+// Step 3 of 5: Add regression test (4m 12s)
+```
+
+A shell command reads "Running" and the command, other calls read like a [Tool](#tool) row ("Edit src/adapter.ts"), and a plan step reads "Step 3 of 5:" and its title. A plan row counts as in progress whatever the harness calls it (`in_progress`, `IN_PROGRESS`, `in-progress`).
+
 ## Status
 
 Status message display with a shimmer animation for in-progress states. Renders the current request status slot.
