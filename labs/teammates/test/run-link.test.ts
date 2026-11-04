@@ -179,6 +179,36 @@ describe("what a task's runs spent, as the board read folds it", () => {
   });
 });
 
+describe("a hold answered in the run's session", () => {
+  it("leaves the card once the board read stops listing it, though the conversation's older copy still holds it", async () => {
+    const run = { sessionId: "dsx_run", requestId: "req_run", attempt: 1 };
+    const hold = { id: "susp-1", actor: "user", openedAt: 2, source: { kind: "suspension", requestId: "req_run", suspensionId: "susp-1" }, ask: { kind: "review", prompt: "1 commit on b" } };
+    const conversation = filed("in_progress");
+    // The conversation's copy caught the row while the review was open.
+    const held = { ...conversation, data: { ...conversation.data, task: { ...conversation.data.task, run, updatedAt: 2, holds: [hold] } } };
+    const push = fakeSubscribe();
+    let answered = false;
+    const client = {
+      subscribe: push.subscribe,
+      sessions: {
+        state: async (id: string) => ({ at: 1, sessionCreatedAt: 1, items: id === "dsx_run" ? [] : [held], pagination: { hasMore: false, nextOffset: 1 } }),
+        stream: () => ({ close() {} }),
+        get: async (id: string) => (id === "dsx_run" ? { id, flowKind: "teammates-coder" } : { id, flowKind: "agent" }),
+      },
+      // `listTasks` lists a row's open holds, and leaves `holds` out once none is open.
+      flow: () => ({ read: async () => ({ ok: true, tasks: [{ ...conversation.data.task, run, updatedAt: answered ? 3 : 2, ...(answered ? {} : { holds: [hold] }) }] }) }),
+    } as unknown as Client;
+    let tasks: BoardTask[] = [];
+    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
+    await until(() => tasks[0]?.waiting !== undefined);
+    answered = true;
+    push.hear({ topic: { scope: "session", id: "wks_1", resource: "tasks" }, kind: "board" });
+    await until(() => tasks[0]?.waiting === undefined);
+    stop();
+    expect(tasks[0]?.waiting).toBeUndefined();
+  });
+});
+
 describe("a row the run's feed and the board read both carry", () => {
   /**
    * The conversation's copy names the run, so the run's own session is followed and supplies a
@@ -268,8 +298,8 @@ describe("a board read still in flight when the watch stops", () => {
 describe("a coding task's hold, while it runs", () => {
   /**
    * The run writes its row on its own session: its link, and the review it stops for. The
-   * conversation's copy still says only that the task is running, so read alone, nothing waits
-   * on you and the popup has no review to answer.
+   * conversation's copy still says only that the task is running. The write sends a board notice,
+   * and the board's read lists the open hold, as `listTasks` does.
    */
   function clientWithRunRow() {
     const conversation = filed("in_progress");
@@ -297,11 +327,11 @@ describe("a coding task's hold, while it runs", () => {
         stream: () => ({ close() {} }),
         get: async (id: string) => (id === "dsx_run" ? { id, flowKind: "teammates-coder" } : { id, flowKind: "agent" }),
       },
-      flow: () => ({ read: async () => ({ ok: true, tasks: [{ ...conversation.data.task, run }] }) }),
+      flow: () => ({ read: async () => ({ ok: true, tasks: [{ ...held.data.task }] }) }),
     } as unknown as Client;
   }
 
-  it("is read from the run's own session, where the run writes it", async () => {
+  it("is read from the board, which the run's write reaches from its own session", async () => {
     let tasks: BoardTask[] = [];
     const stop = createLabAdapter(clientWithRunRow()).watchTasks("wks_1", (next) => (tasks = next));
     await until(() => tasks[0]?.waiting !== undefined);
@@ -336,6 +366,8 @@ describe("a coding task's hold, while it runs", () => {
     await until(() => opened.includes("dsx_run") && pushTo.has("wks_1"));
     expect(opened).not.toContain("dsx_old");
     expect(closed).not.toContain("dsx_run");
+    // The run writes its ending in its own session; the conversation hears of it too.
+    pushTo.get("dsx_run")!({ item: ended });
     pushTo.get("wks_1")!({ item: ended });
     await until(() => tasks.find((t) => t.id === "task_1")?.status === "done");
     expect(tasks.find((t) => t.id === "task_1")?.status).toBe("done");

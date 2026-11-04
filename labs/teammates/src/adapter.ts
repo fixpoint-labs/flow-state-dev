@@ -263,6 +263,8 @@ const POLL_MS = 1_500;
 const TASK_CHANGE = "task-change";
 /** The tool a worker files a task with. */
 const CREATE_TASK = "createTask";
+/** What a board row's `listTasks` read never carries: an ended task's output and error, read from the row's other copies. */
+const UNPROJECTED = ["output", "error"] as const;
 /** The board's read of its rows, on a conversation's flow. */
 const LIST_TASKS = "listTasks_tasks";
 /** The ledgers that read returns: the conversation's board and its planning worker's steps. */
@@ -945,22 +947,30 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       const runRows = new Map<string, Record<string, any>>();
       const runFeeds = new Map<string, Unsubscribe>();
       /**
-       * The one rule for a row's three copies (the board read, the run's, the conversation's): the
-       * newest by the `updatedAt` each copy carries as the row recorded it; on a tie, the board read,
-       * then the run's. What the newest copy leaves out (the board read carries no output) comes from
-       * the conversation's copy.
+       * A row is the board read's (FIX-2429): every committed write of a row sends a board notice, so
+       * the read is never more than one notice behind, and a field it leaves out is cleared (an
+       * answered hold). Until the first read lands, the conversation's copy, else the run's, stands in.
+       * The run's and the conversation's copies give only what the read never carries: an ended
+       * task's output and error ({@link UNPROJECTED}).
        */
       const rowOf = (id: string): Record<string, any> => {
-        const copies = [listed.get(id), runRows.get(id), rows.get(id)].filter((c): c is Record<string, any> => c !== undefined);
-        const newest = copies.reduce((best, copy) => ((copy.updatedAt ?? 0) > (best.updatedAt ?? 0) ? copy : best));
-        return { ...rows.get(id), ...newest };
+        const board = listed.get(id);
+        if (board === undefined) return rows.get(id) ?? runRows.get(id)!;
+        if (!isTerminalStatus(board.status)) return board;
+        const ended: Record<string, unknown> = {};
+        for (const field of UNPROJECTED) {
+          const value = runRows.get(id)?.[field] ?? rows.get(id)?.[field];
+          if (value !== undefined) ended[field] = value;
+        }
+        return { ...board, ...ended };
       };
       const followRuns = (current: readonly Record<string, any>[]) => {
         for (const row of current) {
           const runSession = row.run?.sessionId;
           if (typeof runSession !== "string") continue;
-          // An ended task's row already says all there is: its run is let go, or never followed.
-          if (isTerminalStatus(row.status)) {
+          // An ended task's run is let go once the run's own copy says it ended (it carries the output
+          // the board read doesn't), or never followed when no copy of it was ever read.
+          if (isTerminalStatus((runRows.get(row.id) ?? row).status)) {
             runFeeds.get(runSession)?.();
             runFeeds.set(runSession, () => {});
             continue;
