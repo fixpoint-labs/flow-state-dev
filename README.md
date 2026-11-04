@@ -1,6 +1,6 @@
 # flow-state-dev
 
-flow-state-dev is a TypeScript framework for agents and agentic systems. You write typed, composable **blocks**: a call to a model, a function, a pipeline of other blocks. A **flow** is a set of named actions, each running a block. The framework runs them, streams model output to the client as it is produced (over SSE, and a dropped connection can pick up where it left off), holds state in four scopes (request, session, user, org), and turns a flow into an HTTP API.
+flow-state-dev is a TypeScript framework for agents and agentic systems. You write typed, composable **blocks**: a call to a model, a function, a pipeline of other blocks. A **flow** is a set of named actions, each running a block. The framework runs them, streams model output to the client as it is produced (over server-sent events, so a dropped connection can pick up where it left off), holds state in four scopes (request, session, user, org), and turns a flow into an HTTP API.
 
 With the core packages you can ship a streaming chat or an agent with tools. Memory, ready-made agent patterns, a task board and coding-agent integrations are built from the same blocks when you need them. None of them are required.
 
@@ -80,7 +80,7 @@ export const dynamic = "force-dynamic";
 
 The model string resolves from the provider package and API key you set up below. The [Quick Start](https://flow-state.dev/docs/getting-started/quick-start) adds the React side.
 
-Every block is one of five kinds, and any block can be used as a tool.
+Every block is one of five kinds, and any block can be used as a tool, so a model can call a single function or a whole pipeline.
 
 | Kind | What it does |
 | --- | --- |
@@ -92,7 +92,7 @@ Every block is one of five kinds, and any block can be used as a tool.
 
 ## Get started in your own project
 
-You need Node.js 22.18 or newer (the CLI loads a TypeScript `fsdev.config` with Node's built-in type stripping, on by default from 22.18), a package manager, and an API key for OpenAI, Anthropic, or Google.
+You need Node.js 22.18 or newer, a package manager, and an API key for OpenAI, Anthropic, or Google.
 
 **Add it to an existing Next.js App Router or Node project.** Ask your coding assistant to run the [`install-fsd`](plugins/flow-state-dev/skills/install-fsd/SKILL.md) skill, a packaged install routine, from your project directory. It inspects the project, shows you the files it will write, then writes them. It doesn't commit, so review the result with `git diff`. Or wire it by hand: [Existing project](https://flow-state.dev/docs/getting-started/existing-project).
 
@@ -128,7 +128,7 @@ Everything is published under `@flow-state-dev/`. Install only what you use.
 | **Tooling** | [`fsdev`](packages/cli) (the CLI), [`devtool`](packages/devtool) (assets served by `fsdev dev`), [`testing`](packages/testing) (test harnesses and mock models, so tests make no real LLM calls) |
 | **Persistence** | [`store-sqlite`](packages/store-sqlite) and [`store-postgres`](packages/store-postgres). See [Persistence](https://flow-state.dev/docs/persistence/overview) |
 | **Building blocks** | [`memory`](packages/memory) (cross-turn memory), [`tools`](packages/tools) (reusable tool blocks), [`patterns`](packages/patterns) (supervisor, debate, plan-and-execute and others) |
-| **Teams of agents** | Packages for running many agents against a shared list of tasks. [`orchestration`](packages/orchestration) holds the tasks, [`workforce`](packages/workforce) builds agents to work them, [`workspace`](packages/workspace) gives an agent a directory to edit files in, [`harness-manager`](packages/harness-manager) runs a task as a supervised coding session, and [`shift-manager`](packages/shift-manager) is a browser app for managing it all |
+| **Teams of agents** | Packages for running many agents against a shared list of tasks. [`orchestration`](packages/orchestration) holds the tasks, [`workforce`](packages/workforce) builds agents to work them, [`workspace`](packages/workspace) gives an agent a directory to edit files in, [`harness-manager`](packages/harness-manager) runs a task as a supervised coding session, and [`shift-manager`](packages/shift-manager) is a browser app for viewing and working a team's inbox, tasks and workstreams |
 | **Coding agents** | [`claude-code`](packages/claude-code), [`codex`](packages/codex), and [`cursor`](packages/cursor) run each vendor's coding agent as a block. See [coding agents](https://flow-state.dev/docs/tools/coding-agents) |
 | **Other transports** | [`mcp`](packages/mcp) (serve flows over MCP), [`scheduled`](packages/scheduled) (scheduled actions), [`voice-openai`](packages/voice-openai) (OpenAI voice) |
 
@@ -145,7 +145,7 @@ Everything is published under `@flow-state-dev/`. Install only what you use.
 
 This section is for contributing to the framework. If you only want to use it, you're done above.
 
-You need Node.js 22 or newer (the repo's `engines` floor; 22.18+ matches the CLI) and pnpm 10.4.1 (`corepack enable && corepack prepare pnpm@10.4.1`).
+You need Node.js 22.18 or newer and pnpm 10.4.1 (`corepack enable && corepack prepare pnpm@10.4.1`).
 
 ```bash
 git clone https://github.com/fixpoint-labs/flow-state-dev
@@ -157,7 +157,7 @@ pnpm test
 pnpm lint
 ```
 
-These should pass on a fresh clone. `pnpm install` also installs a pre-push hook that runs `pnpm lint` and two naming checks (retired terms, one word per concept), and blocks the push if any fails. The first lint run takes about a minute; later runs reuse a cache.
+These should pass on a fresh clone. `pnpm install` also installs a pre-push hook that runs `pnpm lint` and the repo's naming checks, and blocks the push if any fails (details in [development setup](docs/contributing/development-setup.md)). The first lint run takes about a minute; later runs reuse a cache.
 
 Apps and examples run against package source, so editing a package shows up in a running app without a rebuild.
 
@@ -165,7 +165,7 @@ Apps and examples run against package source, so editing a package shows up in a
 packages/   published packages
 apps/       docs site, DevTool source, kitchen-sink, and other maintained apps
 examples/   small, copy-able examples
-labs/       applications built on the framework, still being worked out
+labs/       experimental applications built on the framework
 plugins/    the flow-state-dev plugin, including the install-fsd skill
 docs/       architecture reference and contributor guides
 ```
@@ -196,9 +196,9 @@ We're grateful to the sponsors who support the development of `@flow-state-dev`.
 </p>
 
 <p align="center">
-  <a href="https://neon.com"><strong>Neon</strong></a> — Serverless Postgres with branching, autoscaling, and scale-to-zero.
+  <a href="https://neon.com"><strong>Neon</strong></a>: serverless Postgres with branching, autoscaling, and scale-to-zero.
 </p>
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE) for details. Copyright (c) 2026 Fixpoint Labs.
+MIT. See [`LICENSE`](LICENSE) for details. Copyright (c) 2026 Fixpoint Labs.
