@@ -36,7 +36,7 @@ flowchart LR
   A --> L2["leg b · a coding task and a several-lookup knowledge ask"]
   A --> C1["leg c1 · a one-line question<br/>reaches FIX-2498's behaviour section · sizing"]
   A --> C2["leg c2 · a fitting skill<br/>reaches FIX-2498's skills index"]
-  A --> C3["leg c3 · a decision across a summary fold<br/>reaches FIX-2500 · Teammates · both labs at wrap"]
+  A --> C3["leg c3 · a decision across a summary fold<br/>reaches FIX-2500<br/>cut decided on Teammates<br/>runs in both labs at wrap"]
   L1 --> T["what the worker answers"]
   L2 --> T
   C1 --> T
@@ -49,7 +49,7 @@ flowchart LR
 
 | How we verify | |
 |---|---|
-| **Goal check** | The closure FIX-2541: four app scripts, each serving its app as it ships and driving it over its public API, as the existing goals for these apps do; at the wrap, on one `main` commit after every other child merges. Seven asks in each lab, six in Kitchen Sink and Shift Manager, which skip the fold ([Q1](DECISIONS.md#q1)); each ask runs 3 times ([ER-7](DECISIONS.md#who-owns-what)). That is 78 real-model runs at the wrap, and 75 on the control and the cut run, where the Claude Code-style lab skips the fold too (*Switches*). No eval apparatus ([D2](DECISIONS.md#d2)) |
+| **Goal check** | The closure FIX-2541: four app scripts, each serving its app as it ships and driving it over its public API, as the existing goals for these apps do; at the wrap, on one `main` commit after every other child merges. Seven asks in the two labs; six in Kitchen Sink and Shift Manager, which skip the fold ([Q1](DECISIONS.md#q1)); each ask runs 3 times ([ER-7](DECISIONS.md#who-owns-what)). That is 78 real-model runs at the wrap, and 75 on the control and the cut run, where the Claude Code-style lab skips the fold too (*Switches*). No eval apparatus ([D2](DECISIONS.md#d2)) |
 | **Signal** | The worker states today's date · a code question that needs several files is answered in one turn · the coder's report names the checks it ran and their result · a knowledge worker cites a source, on an ask that needs several lookups · a one-line question gets a short answer · a worker holding a skill that fits loads it without a slash · in the two labs, a decision made before a summary fold is still used after it |
 | **Sampling** | Each ask runs 3 times and passes only on 3 of 3 ([ER-7](DECISIONS.md#who-owns-what)) |
 | **Preconditions** | An ask that needs a mechanism to fire asserts that it fired before it asserts the answer: the fold ask finds a summary fold in the run record, the skill ask a skill the worker holds. A run where it did not fire fails; it never passes, so it never cuts a layer. "Every app where it runs", here and in the cut, means every app where the ask's precondition can hold ([ER-7](DECISIONS.md#who-owns-what)) |

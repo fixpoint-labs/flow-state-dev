@@ -175,10 +175,12 @@ On Q1's amendment, from the [second look on #4703](https://github.com/fixpoint-l
 - **No vacuous pass** (#1). The fold ask finds a fold in the run record before it checks the
   decision; the skill ask finds the skill held. A run where the mechanism did not fire fails, so
   it can never cancel FIX-2500 or the index. ER-7.
-- **The cut run switches on what `main` has** (#1, #2). Today's `historySummary` fold in both
-  labs (narrowed to Teammates by [FIX-2541's alignment](#on-fix-2541s-alignment)), and
-  `skills.activateTool` with a fitting skill held, so each ask tests the layer's content against the existing mechanism rather than failing by construction. A cut drops the
-  content and keeps the default flip, because the wrap sets no switch. ER-6, ER-7.
+- **The cut run switches on what `main` has** (#1, #2). The control and the cut run turn on
+  `skills.activateTool` with a fitting skill held; Teammates already folds with its
+  `historySummary`; the Claude Code-style lab has no fold, so it runs the fold ask at the wrap
+  only ([FIX-2541's alignment](#on-fix-2541s-alignment)). Each ask tests the layer's content
+  against the existing mechanism rather than failing by construction. A cut drops the content
+  and keeps the default flip, because the wrap sets no switch. ER-6, ER-7 is the normative copy.
 - **The control is per ask** (#4). Each ask must fail on `main` in an app where it runs; "one
   ask fails in every app" no longer showed that the new asks can fail. ER-7.
 - **Routed, not folded** (#3 and the fixture note). The sizing ask's pass criterion and a shared
