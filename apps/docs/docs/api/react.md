@@ -200,28 +200,34 @@ Scrolls a conversation the way ChatGPT and Claude do. When the person sends a li
 ```tsx
 const feed = useJumpToLatest({ resetKey: sessionId });
 
-<div ref={feed.ref} className="overflow-y-auto">
-  {lines.map((line) => (
-    <div key={line.id} {...(line.role === "user" ? feed.mine(line.id) : {})}>{line.text}</div>
-  ))}
-  {feed.atEnd ? null : <button onClick={feed.jump}>Jump to latest</button>}
-</div>
-<Composer onSend={(text) => { feed.sent(); return send(text); }} />
+return (
+  <>
+    <div ref={feed.ref} className="overflow-y-auto">
+      {lines.map((line) => (
+        <div key={line.id} {...(line.role === "user" ? feed.mine(line.id) : {})}>{line.text}</div>
+      ))}
+    </div>
+    {feed.atEnd ? null : <button onClick={feed.jump}>Jump to latest</button>}
+    <Composer onSend={(text) => { feed.sent(); return send(text); }} />
+  </>
+);
 ```
 
 | Option / return | Type | Notes |
 |----------|------|-------|
 | `options.resetKey` | `string \| null` | What the feed shows, such as a session id. A change opens the feed at its end again, with no animation. |
-| `options.startAtEnd` | `boolean` | Open at the end. Default `true`; `false` opens at the top, for a feed with a lead above its turns. |
-| `ref` | `(node) => void` | Attach to the scrolling element. |
-| `mine(key)` | `(key: string) => attributes` | Spread on each of the person's own lines. `key` should stay the same while the line redraws, such as its id. |
+| `options.startAtEnd` | `boolean` | Open at the end. Default `true`; `false` opens where the element starts, for a feed with a lead above its turns, and ignores `resetKey` changes. |
+| `ref` | `(node: HTMLElement \| null) => void` | Attach to the scrolling element. |
+| `mine(key)` | `(key: string) => SentLineMark` | Returns `{ "data-sent-line": key }`. Spread it on each of the person's own lines. `key` should stay the same while the line redraws, such as its id. |
 | `sent()` | `() => void` | Call when the person sends. Their marked line scrolls to near the top when it lands, once. It also works when called after the line is drawn. |
 | `atEnd` | `boolean` | `false` when there is content below the view: show a jump-to-latest button. |
 | `jump()` | `() => void` | Scroll to the end of the content, smoothly. |
 
-To let the line reach the top under a short reply, the hook adds space at the end of the feed as bottom padding. The space shrinks as the reply grows and stays until the next send or switch, so a short reply has blank space under it. `atEnd` and `jump()` ignore it.
+To let the line reach the top under a short reply, the hook adds space at the end of the feed as bottom padding. The space shrinks as the reply grows and stays until the next send, or until the feed opens or switches, so a short reply has blank space under it. `atEnd` and `jump()` ignore it.
 
-A reply that grows past the bottom edge, or content that isn't the person's line, never moves the view. Any scroll the reader makes, with the wheel, touch, keys or the scrollbar, cancels a rise that hasn't happened yet.
+A reply that grows past the bottom edge, or content that isn't the person's line, never moves the view. A feed that never calls `mine` or `sent` keeps the view where the reader put it and shows the button when there is more below.
+
+Any scroll the reader makes, with the wheel, touch, scroll keys or the scrollbar, cancels a rise that hasn't happened yet. Keys typed into an input, textarea or editable element inside the feed don't count as scrolling.
 
 ### `useVoice(session, options)`
 

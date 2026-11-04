@@ -4,4 +4,4 @@
 "@flow-state-dev/shift-manager": patch
 ---
 
-`useJumpToLatest`'s `sent()` no longer goes to the end. The person's line, marked with the new `mine(key)`, rises to near the top of the feed when it lands, and the hook keeps space at the feed's end (as bottom padding) so a short reply leaves it there. Any scroll by the person cancels a rise that hasn't happened; `atEnd` and `jump()` look at content only. Mark each of the person's lines with `{...feed.mine(line.id)}`: a `sent()` with no marked line moves nothing. DevTool's stream view and Shift Manager's conversation and task session scroll this way (FIX-2360).
+`useJumpToLatest` brings the person's line to near the top of the feed when they send, and never scrolls for content that arrives after it. Mark each of their lines with `{...feed.mine(line.id)}` and call `sent()` on send; without them the view stays where the reader put it and `atEnd` turns `false` when there is more below. DevTool's stream view and Shift Manager's conversation and task session scroll this way (FIX-2360).

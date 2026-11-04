@@ -410,8 +410,8 @@ return (
           {line.text}
         </div>
       ))}
-      {feed.atEnd ? null : <button onClick={feed.jump}>Jump to latest</button>}
     </div>
+    {feed.atEnd ? null : <button onClick={feed.jump}>Jump to latest</button>}
     <Composer
       onSend={(text) => {
         feed.sent();
@@ -422,16 +422,19 @@ return (
 );
 ```
 
-- `sent()`: call when the person sends a line. When their line lands, it scrolls smoothly to near the top of the feed, once, from wherever the reader was. Calling it after the line is already drawn works too, for an app that learns of the send in an effect: the marked line the feed had not shown before is the one that rises.
-- `mine(key)`: returns the attribute that marks an element as one of the person's lines. `key` names the line and should stay the same while it redraws, such as its id. Put it on an element with a box of its own, not on a `display: contents` wrapper.
-- `atEnd`: `false` when there is content below the view. Show a jump-to-latest button then.
-- `jump()`: to the end of the content, smoothly.
-- `startAtEnd` (default `true`): `false` opens where the element starts, such as a feed with a lead above its turns.
-- `resetKey`: what the feed shows, such as a session id. A change opens the feed at its end again.
+- `ref`: attach to the scrolling element.
+- `mine(key)`: returns `{ "data-sent-line": key }` (typed `SentLineMark`). Spread it on each of the person's lines. `key` names the line and should stay the same while it redraws, such as its id. Put it on an element with a box of its own, not on a `display: contents` wrapper.
+- `sent()`: call when the person sends a line. When their line lands, it scrolls smoothly to near the top of the feed, once, from wherever the reader was. Calling it after the line is already drawn works too, for an app that learns of the send in an effect: the newest marked line the feed had not shown before is the one that rises. Called before the scrolling element mounts, the feed opens at its end when it does.
+- `atEnd`: `false` when there is content below the view (more than 32 px). Show a jump-to-latest button then.
+- `jump()`: scrolls smoothly to the end of the content.
+- `startAtEnd` (default `true`): `false` opens where the element starts, such as a feed with a lead above its turns. Such a feed ignores `resetKey` changes.
+- `resetKey`: what the feed shows, such as a session id. A change opens the feed at its end again. Replacing the scrolling element under the same key leaves the reader where they were.
 
-So the line can reach the top under a short reply, the hook keeps space at the end of the feed, as bottom padding on the scrolling element. The space shrinks as the reply grows and is gone once the reply fills the view. Otherwise it stays until the next send, or until the feed opens or switches, because removing it sooner would move the view. A short reply therefore has blank space under it. `atEnd` and `jump()` ignore the space.
+So the line can reach the top under a short reply, the hook keeps space at the end of the feed, as bottom padding on the scrolling element. The space shrinks as the reply grows and is gone once the reply fills the view. Otherwise it stays until the next send, or until the feed opens or switches, so a short reply has blank space under it. `atEnd` and `jump()` ignore the space.
 
-A reply growing past the bottom edge never moves the view: `atEnd` turns `false` and the button appears. Content that isn't the person's line, such as another worker's message or a task result, never moves it either. Any scroll by the person (wheel, touch, scroll keys, or the scrollbar) cancels a rise that hasn't happened yet.
+A reply growing past the bottom edge never moves the view: `atEnd` turns `false` and the button appears. Content that isn't the person's line, such as another worker's message or a task result, never moves it either. A feed that never calls `mine` or `sent` behaves this way throughout: the view stays put and the button shows when there is more below.
+
+Any scroll by the person cancels a rise that hasn't happened yet: the wheel, touch, a press on the scrollbar, or a scroll key (arrows, Page Up/Down, Home, End, Space) pressed on the feed. Keys typed into an input, textarea, select or editable element inside the feed don't count.
 
 A feed that opens is already at its end on the first frame, with nothing animating: on mount, when `resetKey` changes, and when its first read fills it.
 
