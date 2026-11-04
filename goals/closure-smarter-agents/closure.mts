@@ -67,6 +67,8 @@ export interface ClosurePass {
   root: string;
   /** One line for the verdict: which tree, at which commit. */
   describe: string;
+  /** The commit the tree is, resolved to its full SHA: what each result is stamped with. */
+  commit: string;
   /** Whether the run sets the switches `main` leaves off (the control and the cut run), or nothing (the wrap). */
   switches: boolean;
 }
@@ -83,9 +85,12 @@ export function closurePass(): ClosurePass {
 }
 
 /** This checkout, or a commit's own tree and install, kept across runs (a commit's tree doesn't change). */
-function treeFor(commit: string): { root: string; describe: string } {
+function treeFor(commit: string): { root: string; describe: string; commit: string } {
   const git = (...args: string[]) => execFileSync("git", ["-C", REPO_ROOT, ...args], { encoding: "utf8" }).trim();
-  if (commit === "") return { root: REPO_ROOT, describe: `this checkout, \`${git("rev-parse", "--short=9", "HEAD")}\`` };
+  if (commit === "") {
+    const head = git("rev-parse", "HEAD");
+    return { root: REPO_ROOT, describe: `this checkout, \`${head.slice(0, 9)}\``, commit: head };
+  }
   const sha = git("rev-parse", `${commit}^{commit}`);
   const root = join(tmpdir(), "fsd-goal-closure-trees", sha.slice(0, 12));
   if (!existsSync(join(root, "package.json"))) {
@@ -97,7 +102,7 @@ function treeFor(commit: string): { root: string; describe: string } {
     const installed = spawnSync("pnpm", ["install", "--frozen-lockfile", "--prefer-offline"], { cwd: root, encoding: "utf8", timeout: 900_000 });
     if (installed.status !== 0) throw new Error(`setup: ${sha} did not install: ${(installed.stdout + installed.stderr).slice(-1500)}`);
   }
-  return { root, describe: `\`${sha.slice(0, 9)}\` (GOAL_COMMIT=${commit}), its own tree and install` };
+  return { root, describe: `\`${sha.slice(0, 9)}\` (GOAL_COMMIT=${commit}), its own tree and install`, commit: sha };
 }
 
 // ---------------------------------------------------------------------------
@@ -514,6 +519,16 @@ function asksFor(app: App, pass: Pass): Ask[] {
 /** Where each pass's sheets are kept between the four scripts and `verdict/run.mts`: `GOAL_SHEETS`, or one folder under the system's temp. */
 const SHEETS = process.env.GOAL_SHEETS ?? join(tmpdir(), "fsd-goal-closure-sheets");
 
+/** One app's sheet for a pass, as written: each ask's results and the commit they ran on. */
+export interface SheetFile {
+  app: App;
+  pass: Pass;
+  tree: string;
+  at: string;
+  commits?: Partial<Record<Ask, string>>;
+  sheet?: Sheet;
+}
+
 /** The pass's sheet file for one app: the verdict script reads the four together. */
 export function sheetFile(pass: Pass, app: App): string {
   mkdirSync(join(SHEETS, pass), { recursive: true });
@@ -557,9 +572,22 @@ export async function runClosure(driver: AppDriver): Promise<void> {
     }
     tell.over("asks graded", asks.flatMap((ask) => sheet[ask]?.[driver.app] ?? []));
     // A run of a subset (`GOAL_ASKS`) replaces only the asks it graded in the pass's sheet.
+    // Each ask's results are stamped with the commit they ran on; an earlier
+    // result is kept only when it ran on this run's commit, so a sheet never
+    // carries another tree's results under this tree's name.
     const file = sheetFile(p.pass, driver.app);
-    const kept = existsSync(file) ? ((JSON.parse(readFileSync(file, "utf8")) as { sheet?: Sheet }).sheet ?? {}) : {};
-    writeFileSync(file, JSON.stringify({ app: driver.app, pass: p.pass, tree: p.describe, at: new Date().toISOString(), sheet: { ...kept, ...sheet } }, null, 2));
+    const before = existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as SheetFile) : undefined;
+    const kept: Sheet = {};
+    const commits: Partial<Record<Ask, string>> = {};
+    for (const ask of ASKS) {
+      if (before?.sheet?.[ask] !== undefined && before.commits?.[ask] === p.commit) {
+        kept[ask] = before.sheet[ask];
+        commits[ask] = p.commit;
+      }
+    }
+    for (const ask of asks) commits[ask] = p.commit;
+    const written: SheetFile = { app: driver.app, pass: p.pass, tree: p.describe, at: new Date().toISOString(), commits, sheet: { ...kept, ...sheet } };
+    writeFileSync(file, JSON.stringify(written, null, 2));
     const cells = asks.map((ask) => `${ask} ${(sheet[ask]?.[driver.app] ?? []).filter((r) => r.length === 0).length}/${runs}`);
     return { failures, evidence: `${driver.app}, ${p.pass} pass on ${p.describe}: ${cells.join(", ")} (sheet ${sheetFile(p.pass, driver.app)})` };
   });

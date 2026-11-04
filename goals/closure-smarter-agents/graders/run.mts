@@ -25,6 +25,7 @@ import {
   gradeSkill,
   passesEverywhere,
   passesIn,
+  sheetCommitProblems,
   sweepGuidance,
   type Fixtures,
   type Graded,
@@ -33,7 +34,8 @@ import {
 } from "../asks.mts";
 
 const now = new Date();
-const turn = (over: Partial<Turn>): Turn => ({ reply: "", tools: [], requests: 1, askedAt: now, answeredAt: now, ...over });
+/** A turn; each tool call succeeded unless the case says `ok: false`, as `turnOf` records it. */
+const turn = (over: Partial<Turn>): Turn => ({ reply: "", requests: 1, askedAt: now, answeredAt: now, ...over, tools: (over.tools ?? []).map((t) => ({ ok: true, ...t })) });
 const long = (d: Date) => d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const yesterday = new Date(now.getTime() - 86_400_000);
@@ -65,6 +67,7 @@ const cases: [string, Graded, boolean][] = [
   ["pages · every page fetched, every fact", gradePagesRead(turn({ reply: "Five kinds; an in-memory store; the last 50 turns.", tools: fx.pages.pages.map(page) }), fx.pages), true],
   ["pages · facts from memory, nothing fetched", gradePagesRead(turn({ reply: "Five kinds; an in-memory store; the last 50 turns." }), fx.pages), false],
   ["pages · one page unread", gradePagesRead(turn({ reply: "Five kinds; an in-memory store; the last 50 turns.", tools: fx.pages.pages.slice(1).map(page) }), fx.pages), false],
+  ["pages · three failed fetches, every fact", gradePagesRead(turn({ reply: "Five kinds; an in-memory store; the last 50 turns.", tools: fx.pages.pages.map((path) => ({ ...page(path), output: "fetch failed", ok: false })) }), fx.pages), false],
   ["pages · read, a fact missing", gradePagesRead(turn({ reply: "Five kinds; an in-memory store.", tools: fx.pages.pages.map(page) }), fx.pages), false],
 
   ["coder · names a check that ran, right result", gradeCoder(turn({ reply: "Done. I ran `pnpm test` and it passed.", checks: checksFrom([ran("pnpm test", 0)]) })), true],
@@ -106,6 +109,7 @@ const cases: [string, Graded, boolean][] = [
   ["sizing · short and empty of the answer", gradeSizing(turn({ reply: "It depends." }), fx.sizing), false],
 
   ["skill · held, loaded, marker", gradeSkill(turn({ reply: "RN-7731: steps now 50.", held: ["release-notes"], tools: [{ name: "loadSkill", input: '{"name":"release-notes"}' }] }), fx.skill), true],
+  ["skill · held, its load failed, marker", gradeSkill(turn({ reply: "RN-7731: steps now 50.", held: ["release-notes"], tools: [{ name: "loadSkill", input: '{"name":"release-notes"}', ok: false }] }), fx.skill), false],
   ["skill · not held (vacuous)", gradeSkill(turn({ reply: "RN-7731", held: [], tools: [{ name: "loadSkill", input: "release-notes" }] }), fx.skill), false],
   ["skill · held, never loaded", gradeSkill(turn({ reply: "Steps now 50.", held: ["release-notes"] }), fx.skill), false],
 
@@ -123,7 +127,13 @@ const sheet: Sheet = {
   fold: { "claude-code-style": [bad, bad, bad], teammates: [ok, ok, ok] },
   knowledge: { "claude-code-style": [ok, ok], teammates: [ok, ok, ok], "kitchen-sink": [ok, ok, ok], "shift-manager": [ok, ok, ok] },
 };
+const SHA_A = "a".repeat(40);
+const SHA_B = "b".repeat(40);
 const rules: [string, boolean, boolean][] = [
+  ["a sheet all from the expected commit is accepted", sheetCommitProblems([{ app: "teammates", ask: "date", commit: SHA_A }, { app: "kitchen-sink", ask: "date", commit: SHA_A }], SHA_A).length === 0, true],
+  ["a sheet mixing two commits is refused", sheetCommitProblems([{ app: "teammates", ask: "date", commit: SHA_A }, { app: "teammates", ask: "sizing", commit: SHA_B }], SHA_A).length > 0, true],
+  ["a sheet from another commit than the pass's is refused", sheetCommitProblems([{ app: "teammates", ask: "date", commit: SHA_B }], SHA_A).length > 0, true],
+  ["a result with no commit is refused", sheetCommitProblems([{ app: "teammates", ask: "date" }], SHA_A).length > 0, true],
   ["3 of 3 passes in an app", passesIn(sheet, "date", "teammates"), true],
   ["2 of 3 does not pass", passesIn(sheet, "sizing", "teammates"), false],
   ["2 recorded runs is not a pass", passesIn(sheet, "knowledge", "claude-code-style"), false],

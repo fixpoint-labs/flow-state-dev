@@ -12,13 +12,17 @@
  *   sweep finds no date, "done" or length guidance an app wrote in its own
  *   WORKER.md files (epic ER-3). The sweep is reported on every pass.
  *
+ * On every pass, each result must have run on the pass's own tree: a result
+ * with no commit, from another commit, or sheets that mix commits fail the
+ * verdict (`asks.mts` → `sheetCommitProblems`).
+ *
  * Run:  GOAL_PASS=wrap pnpm tsx goals/closure-smarter-agents/verdict/run.mts
  */
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { runGoal } from "../../lib/index.mts";
-import { ALL_APPS, ASKS, cellsFor, controlFails, passesEverywhere, RUNS, sweepGuidance, type App, type Sheet } from "../asks.mts";
-import { closurePass, sheetFile } from "../closure.mts";
+import { ALL_APPS, ASKS, cellsFor, controlFails, passesEverywhere, RUNS, sheetCommitProblems, sweepGuidance, type App, type Sheet, type SheetStamp } from "../asks.mts";
+import { closurePass, sheetFile, type SheetFile } from "../closure.mts";
 
 /** Each app's workers' tree, under the served root. */
 const TREES: Record<App, string[]> = {
@@ -43,6 +47,7 @@ const p = closurePass();
 
 await runGoal((failures, tell) => {
   const sheet: Sheet = {};
+  const stamps: SheetStamp[] = [];
   const missing: App[] = [];
   for (const app of ALL_APPS) {
     const file = sheetFile(p.pass, app);
@@ -50,10 +55,17 @@ await runGoal((failures, tell) => {
       missing.push(app);
       continue;
     }
-    const kept = (JSON.parse(readFileSync(file, "utf8")) as { sheet?: Sheet }).sheet ?? {};
-    for (const ask of ASKS) if (kept[ask]?.[app] !== undefined) (sheet[ask] ??= {})[app] = kept[ask]![app];
+    const written = JSON.parse(readFileSync(file, "utf8")) as SheetFile;
+    for (const ask of ASKS) {
+      const runs = written.sheet?.[ask]?.[app];
+      if (runs === undefined) continue;
+      (sheet[ask] ??= {})[app] = runs;
+      stamps.push({ app, ask, ...(written.commits?.[ask] === undefined ? {} : { commit: written.commits[ask] }) });
+    }
   }
   for (const app of missing) failures.push(`${app}: no ${p.pass} sheet (run ${app}/run.mts with GOAL_PASS=${p.pass})`);
+  // Every result must have run on the pass's own tree (the control's is 0df5c85, resolved).
+  for (const line of sheetCommitProblems(stamps, p.commit)) failures.push(`sheets: ${line}`);
 
   const cells = tell.over(
     "graded cells",

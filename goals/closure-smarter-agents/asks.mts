@@ -49,6 +49,16 @@ export function checksFrom(recorded: unknown): Turn["checks"] {
     .map((check) => ({ command: check.command, ok: checkoutCommandPassed(check) }));
 }
 
+/**
+ * The tool calls a turn made that succeeded. Every grader that reads tool
+ * calls reads them through this: a failed fetch, lookup or load is not a page
+ * read, a source looked at or a skill loaded. A call with no `ok` is not
+ * known to have succeeded, so it does not count either.
+ */
+export function succeeded(turn: Turn): Turn["tools"] {
+  return turn.tools.filter((t) => t.ok === true);
+}
+
 /** A grader's result for one run: empty is pass; each line is one named failure. */
 export type Graded = string[];
 
@@ -116,7 +126,7 @@ export function gradeMultiFile(turn: Turn, fx: Fixtures["multiFile"]): Graded {
 export function gradePagesRead(turn: Turn, fx: Fixtures["pages"]): Graded {
   const out: Graded = [];
   if (turn.requests !== 1) out.push(`multi-file: took ${turn.requests} requests, not one turn`);
-  const fetched = turn.tools.map((t) => t.input ?? "").join("\n");
+  const fetched = succeeded(turn).map((t) => t.input ?? "").join("\n");
   const unread = fx.pages.filter((page) => !fetched.includes(page));
   if (unread.length > 0) out.push(`multi-file: the turn never fetched ${unread.join(", ")} (of ${fx.pages.length} pages)`);
   const unsaid = fx.facts.filter((fact) => !fact.test(turn.reply));
@@ -177,13 +187,11 @@ function outcomeSaid(report: string, command: string): boolean | undefined {
  */
 export function gradeKnowledge(turn: Turn, fx: Fixtures["knowledge"]): Graded {
   const out: Graded = [];
-  if (turn.tools.length < fx.minLookups) out.push(`knowledge: ${turn.tools.length} lookups, the ask needs ${fx.minLookups}`);
+  const lookups = succeeded(turn);
+  if (lookups.length < fx.minLookups) out.push(`knowledge: ${lookups.length} lookups that succeeded, the ask needs ${fx.minLookups}`);
   const cited = [...turn.reply.matchAll(/https?:\/\/[^\s)>\]]+|(?:\/|\b)[\w.-]+(?:\/[\w.-]+)+\.(?:md|mdx|ts|tsx|txt)\b/g)].map((m) => m[0].replace(/[.,]$/, ""));
   if (cited.length === 0) return [...out, `knowledge: the reply cites no source: ${clip(turn.reply)}`];
-  const seen = turn.tools
-    .filter((t) => t.ok !== false)
-    .map((t) => `${t.input ?? ""}\n${t.output ?? ""}`)
-    .join("\n");
+  const seen = lookups.map((t) => `${t.input ?? ""}\n${t.output ?? ""}`).join("\n");
   if (!cited.some((c) => seen.includes(c))) out.push(`knowledge: the reply cites ${cited.slice(0, 3).join(", ")}, none of which a lookup returned`);
   return out;
 }
@@ -206,7 +214,7 @@ export function gradeSkill(turn: Turn, fx: Fixtures["skill"]): Graded {
   if (!(turn.held ?? []).includes(fx.name)) return [`skill: precondition: the worker does not hold ${fx.name}`];
   const out: Graded = [];
   if (/(^|\s)\//.test(fx.asked)) out.push("skill: the ask has a slash; the fixture is wrong");
-  if (!turn.tools.some((t) => fx.loadTool.test(t.name) && (t.input ?? "").includes(fx.name))) out.push(`skill: no load of ${fx.name}`);
+  if (!succeeded(turn).some((t) => fx.loadTool.test(t.name) && (t.input ?? "").includes(fx.name))) out.push(`skill: no load of ${fx.name}`);
   if (!turn.reply.includes(fx.marker)) out.push(`skill: the reply lacks the skill's marker`);
   return out;
 }
@@ -261,6 +269,26 @@ export function controlFails(sheet: Sheet, ask: Ask): boolean {
 /** The cut (on the cut run) and the pass (at the wrap): the ask passes 3 of 3 in every app it counts in (D1). */
 export function passesEverywhere(sheet: Sheet, ask: Ask, pass: Exclude<Pass, "control">): boolean {
   return cellsFor(pass, ask).every((app) => passesIn(sheet, ask, app));
+}
+
+/** Each graded result's app, ask and the commit it ran on, as a sheet file records them. */
+export type SheetStamp = { app: App; ask: Ask; commit?: string };
+
+/**
+ * Why a pass's sheets can't be read as one pass: a result with no commit, a
+ * result from another commit than the pass's (`expected`, a resolved SHA),
+ * or results from more than one commit. Empty when every result ran on
+ * `expected`.
+ */
+export function sheetCommitProblems(stamps: readonly SheetStamp[], expected: string): string[] {
+  const out: string[] = [];
+  const commits = new Set(stamps.map((s) => s.commit ?? "(none)"));
+  if (commits.size > 1) out.push(`the sheets mix ${commits.size} commits: ${[...commits].map((c) => c.slice(0, 9)).join(", ")}`);
+  for (const s of stamps) {
+    if (s.commit === undefined) out.push(`${s.app} ${s.ask}: no commit recorded`);
+    else if (s.commit !== expected) out.push(`${s.app} ${s.ask}: ran on ${s.commit.slice(0, 9)}, not the pass's ${expected.slice(0, 9)}`);
+  }
+  return out;
 }
 
 const clip = (s: string) => JSON.stringify(s.slice(0, 160));

@@ -75,7 +75,7 @@ GOAL_PASS=wrap    pnpm tsx goals/closure-smarter-agents/<app>/run.mts   # sets n
 GOAL_PASS=<pass>  pnpm tsx goals/closure-smarter-agents/verdict/run.mts
 ```
 
-`GOAL_ASKS=date,sizing` runs a subset (the sheet keeps the other asks), `GOAL_RUNS` the number of
+`GOAL_ASKS=date,sizing` runs a subset (the sheet keeps the other asks only when they ran on the same commit; the verdict refuses sheets from another commit, or a mix), `GOAL_RUNS` the number of
 runs, `GOAL_COMMIT` another tree, `GOAL_SHEETS` where sheets are kept, `GOAL_FOLD_TURNS` the
 filler turns before the fold question (default 44).
 
