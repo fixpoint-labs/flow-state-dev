@@ -74,7 +74,8 @@ coding agent's job does: you watch it, you don't talk to it. Ask Chief of Staff 
 and Chief of Staff starts a coding task in the working folder, on one of three coding agents:
 Claude Code, Codex or Cursor. Name one ("have Codex do it") and that one runs; name none and Cursor
 does, with no question first. Each agent is a worker of its own, off the list and never
-messaged, whose `WORKER.md` names its `harness:`. A line in Chief of Staff's conversation and a
+messaged, whose `WORKER.md` names its `harness:`. The rest of that file is the agent's
+instructions: every run on it is told them before the task. A line in Chief of Staff's conversation and a
 row in Chief of Staff's panel show the task, tagged with the agent it runs on (and the model, once the
 run reports one), and open its run in a popup. The result lands in Chief of Staff's conversation as
 the coding task's line, *Coding task finished: …*. To change a coding task, tell Chief of Staff, who starts the next one,

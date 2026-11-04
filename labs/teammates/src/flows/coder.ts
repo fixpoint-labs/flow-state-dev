@@ -10,7 +10,8 @@
  * worker's setting (the epic's ER-9), so another harness is one more
  * `WORKER.md` and one more entry in the host's harnesses, with no new flow.
  * A harness this machine isn't set up for fails the task at once, saying
- * why; it never moves to another.
+ * why; it never moves to another. A run's brief opens with that worker's
+ * `WORKER.md` body, so editing it changes what the harness is told.
  *
  * A run that committed waits for your review before its task completes
  * (harness-manager's `reviewChanges`): the task's popup shows its commits and
@@ -42,6 +43,7 @@ import {
   WORKER_TASK_ENTRY,
   workerConfigSchema,
   workerFlow,
+  workerConfigOf,
   workerMessagesResources,
   workerTaskEntry,
   type WorkerInstallation,
@@ -80,11 +82,15 @@ export interface CoderFlowOptions {
   checks?: { commands: readonly string[]; timeoutMs: number };
 }
 
-/** A task's run: its goal and brief, done when the harness says it finished. */
+/**
+ * A task's run: the worker's instructions, then the task's goal and brief,
+ * done when the harness says it finished.
+ */
 const PHASE: PhaseSpec = {
   phase: "change",
   buildPrompt: (run) =>
     [
+      workerConfigOf(run.ctx).instructions,
       run.task.title === undefined ? undefined : `Task: ${run.task.title}`,
       run.task.goal,
       run.task.context,
