@@ -326,7 +326,7 @@ A board that dispatches work keeps a running task on the worker it was given to,
 
 ## Roster
 
-Roster shows the signed-in user's workers: the standard workers the Lab's worker inventory lists, and their own, hired or forked, which no one else sees (marked YOURS). Their own are read through Workforce's client (`createWorkforceClient(...).roster()`), so the Lab has to register the roster flow `hireWorkforce` returns. Each worker is in one of two groups:
+Roster shows the signed-in user's workers: the standard workers the Lab's worker inventory lists, and their own, hired or forked, which no one else sees (marked YOURS). Their own are read through Workforce's client (`createWorkforceClient(...).watchRoster()`), so the Lab has to register the roster flow `hireWorkforce` returns. Each worker is in one of two groups:
 
 - **On shift**: it holds a task that is running, or it is waiting on you, either on a task waiting on questions or on an ask in Inbox.
 - **Off shift**: neither. A worker with only queued tasks is off shift until it claims one.
@@ -337,7 +337,7 @@ Every worker has a **Settings** button. It opens that worker's settings page (`/
 
 The same status appears in the sidebar and in a workstream's panel, so a worker reads the same everywhere. If the Lab's asks didn't load, each of those places marks its status *partial*: a worker waiting on you only through an ask would read off shift.
 
-Roster is read with the rest of the screen, when Shift Manager starts, on Retry, after you answer an ask, and after each message the Shift Coordinator takes (so a hire, a fire, or a project it starts for you, shows up at once). It says when it was read. It doesn't refresh on its own.
+The list of workers follows your roster on its own: a worker hired, forked, edited or fired, from another tab or by a worker's turn, shows on Roster, in TEAMS, in a project's lead picker and in DELEGATES without a reload. Each worker's status and tasks are read with the rest of the screen, when Shift Manager starts, on Retry, after you answer an ask, and after each message the Shift Coordinator takes. The screen says when it was read.
 
 Slots count what a worker holds now. Nothing in a Lab limits how many tasks a worker takes, so Roster shows no capacity and no free slots.
 

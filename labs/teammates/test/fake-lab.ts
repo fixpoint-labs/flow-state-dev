@@ -469,12 +469,22 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       notify();
     },
 
-    async listWorkers() {
+    watchWorkers(onChange, onError) {
       if (unreachable > 0) {
         unreachable -= 1;
-        throw new TypeError("fetch failed");
+        // Told after the call returns, as a read that failed would be.
+        queueMicrotask(() => onError?.(new TypeError("fetch failed")));
+        return () => {};
       }
-      return [...workers.values()].filter((w) => !fired.has(w.row.id)).map((w) => w.row);
+      // Like the workforce client's watch, it reports only a change.
+      let last = "";
+      return watch(() => {
+        const rows = [...workers.values()].filter((w) => !fired.has(w.row.id)).map((w) => w.row);
+        const seen = JSON.stringify(rows);
+        if (seen === last) return;
+        last = seen;
+        onChange(rows);
+      });
     },
 
     async openConversation(workerId) {

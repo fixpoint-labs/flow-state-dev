@@ -171,7 +171,7 @@ export function RosterView({
 }) {
   const { refresh } = useLab();
   const lookName = useLookName(look);
-  const roster = useRoster(snapshot.readAt);
+  const roster = useRoster();
   const { snapshot: withOwn, workers, own } = withRoster(snapshot, roster);
   if (!snapshot.inventory.ok && workers.length === 0) {
     return (

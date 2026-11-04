@@ -18,9 +18,21 @@ let fixture: LabSnapshot;
 let rosterRead: () => Promise<
   Array<{ id: string; flow: string; standard: boolean; description: string | null; settings?: Record<string, unknown> }>
 > = async () => [];
+/** How many roster watches the screens started, and what each reports to: a test tells them of a change. */
+let rosterWatches = 0;
+const rosterViews = new Set<(entries: never[]) => void>();
 
 vi.mock("../src/lib/workforce", () => ({
-  useWorkforce: () => ({ roster: () => rosterRead() }),
+  useWorkforce: () => ({
+    roster: () => rosterRead(),
+    // The roster watch, reporting one read; `rosterWatches` counts the watches started.
+    watchRoster: (onRoster: (entries: never[]) => void, options?: { onError?: (error: unknown) => void }) => {
+      rosterWatches += 1;
+      rosterViews.add(onRoster);
+      void (rosterRead() as Promise<never[]>).then(onRoster, options?.onError);
+      return () => rosterViews.delete(onRoster);
+    },
+  }),
 }));
 
 vi.mock("../src/lib/reads", async (importOriginal) => {
@@ -102,6 +114,7 @@ beforeEach(() => (window as unknown as { happyDOM: { setViewport(viewport: { wid
 beforeEach(() => {
   fixture = lab();
   rosterRead = async () => [];
+  rosterWatches = 0;
 });
 afterEach(() => cleanup());
 
@@ -521,16 +534,24 @@ describe("the sidebar (V4)", () => {
     expect(attrs(screen.getAllByTestId("team"), "data-team")).toEqual([GENERAL_TEAM, "eng", "ops"]);
   });
 
-  it("Roster and TEAMS share one roster read per snapshot", async () => {
-    let reads = 0;
-    rosterRead = async () => {
-      reads += 1;
-      return [{ id: "amber-1f2e", flow: "coder", standard: false, description: null }];
-    };
+  it("Roster and TEAMS share one roster watch per connection", async () => {
+    rosterRead = async () => [{ id: "amber-1f2e", flow: "coder", standard: false, description: null }];
     await open("/roster");
     await within(await screen.findByTestId("roster")).findByTestId("roster-worker-own");
     await waitFor(() => expect(screen.getByTestId("teams").querySelector('[data-worker-id="amber-1f2e"]')).not.toBeNull());
-    expect(reads).toBe(1);
+    expect(rosterWatches).toBe(1);
+  });
+
+  it("a hire the roster watch reports shows on Roster and TEAMS without a new snapshot read", async () => {
+    await open("/roster");
+    await screen.findByTestId("roster");
+    expect(screen.queryByTestId("roster-worker-own")).toBeNull();
+    const hired = [{ id: "amber-1f2e", flow: "coder", standard: false, description: null }] as never[];
+    await act(async () => {
+      for (const view of [...rosterViews]) view(hired);
+    });
+    expect(within(screen.getByTestId("roster")).getAllByTestId("roster-worker-own").map((el) => el.closest("[data-worker-id]")?.getAttribute("data-worker-id"))).toEqual(["amber-1f2e"]);
+    expect(screen.getByTestId("teams").querySelector('[data-worker-id="amber-1f2e"]')).not.toBeNull();
   });
 
   it("BR-20: the counts and the footer carry the partial mark when asks did not load", async () => {

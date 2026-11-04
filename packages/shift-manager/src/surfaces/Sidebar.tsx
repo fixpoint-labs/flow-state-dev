@@ -417,7 +417,7 @@ export function Sidebar({
   const tasksCount = loaded === undefined ? "…" : openRows(loaded).length;
   const waiting = loaded !== undefined && loaded.inbox.ok && loaded.inbox.value.length > 0;
   // The user's own workers are on their roster, not in the inventory: joined as Roster joins them.
-  const roster = useRoster(loaded?.readAt);
+  const roster = useRoster();
   const joined = loaded === undefined ? undefined : withRoster(loaded, roster);
   // With the inventory unread and nobody on the roster, TEAMS has only its failure to show.
   const drawn = joined !== undefined && (loaded?.inventory.ok === true || joined.workers.length > 0) ? joined : undefined;

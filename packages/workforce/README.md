@@ -1986,7 +1986,10 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   too. Its `hire`, `fork`, `edit` and `fire` run the roster flow's actions of the same names on the
   user's roster session, so an app hires, changes and fires the user's own workers with no restart
   (`hire({ id, flow?, description?, instructions?, skills?, settings? })`, `fork(from, id)`,
-  `edit({ id, ...fields })`, `fire(id)`); each rejects with the action's refusal. The server decides who the caller is with `resolvePrincipal` on
+  `edit({ id, ...fields })`, `fire(id)`); each rejects with the action's refusal. `watchRoster(onRoster,
+  { onError })` follows the roster through the client's `subscribe`: it reads again when a notice
+  names either worker collection, and every three seconds only where push can miss a change. It
+  reports only a changed roster, and returns the function that stops it. The server decides who the caller is with `resolvePrincipal` on
   `createFlowState`. See [Authentication](https://flow-state.dev/docs/server/authentication),
   [Host adapters](https://flow-state.dev/docs/server/host-adapters) for serving it, and
   [Serving it to your users](https://flow-state.dev/docs/workforce/overview#serving-it-to-your-users).
@@ -2002,6 +2005,10 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   const roster = await workforce.roster();
   // [{ id: "scribe", flow: "research", standard: false, description: "Takes notes.", settings: {} },
   //  { id: "researcher", flow: "research", standard: true, description: "Finds things out.", settings: {} }]
+
+  // A screen that lists workers follows the roster instead: called now, and again on each
+  // hire, fork, edit or fire, from any tab or any worker's turn. Returns the stop function.
+  const stop = workforce.watchRoster((entries) => draw(entries), { onError: (error) => show(error) });
 
   const session = await workforce.ensureWorkerSession({ worker: roster[0].id });
   // { id: "wks_…", flowKind: "research", userId, createdAt, updatedAt, … }
