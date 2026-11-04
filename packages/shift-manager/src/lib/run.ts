@@ -104,6 +104,29 @@ export async function readSessionItems(client: Client, sessionId: string): Promi
   return { items: items.sort(compareItemOrder), truncated: true };
 }
 
+/** Pages of components {@link readTaskClaims} reads at most. */
+const CLAIM_PAGES = 50;
+
+/**
+ * The board's `task-change` items for `collectionId` in the session, read on
+ * their own. Which task ids belong to a board is learned from these, so a
+ * view that holds only the session's newest items (its first item comes after
+ * the task was claimed) still attributes the task's newer steps to it.
+ */
+export async function readTaskClaims(client: Pick<Client, "sessions">, sessionId: string, collectionId: string): Promise<OutputItem[]> {
+  const claims: OutputItem[] = [];
+  for (let offset = 0, page = 0; page < CLAIM_PAGES; page += 1) {
+    const state = await client.sessions.state(sessionId, { includeItems: true, itemTypes: ["component"], offset, limit: ITEM_PAGE });
+    for (const item of state.items ?? []) {
+      const data = (item as { component?: string; data?: { collectionId?: string } }).data;
+      if ((item as { component?: string }).component === "task-change" && data?.collectionId === collectionId) claims.push(item);
+    }
+    if (state.pagination?.hasMore !== true) break;
+    offset = state.pagination.nextOffset ?? offset + ITEM_PAGE;
+  }
+  return claims;
+}
+
 /** Where {@link followSessionItems} reports to. */
 export type SessionItemsFollower = {
   /** The session's items now, oldest first: the first read, then again each time the stream brings one. */

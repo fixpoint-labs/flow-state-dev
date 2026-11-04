@@ -25,10 +25,13 @@ import { SessionItemsProvider } from "../components/flow-state/session-items-con
 import { EmptyState, JumpToLatestButton, LoadEarlierButton, SectionFailure } from "../components/ui";
 import { asksOfTask, waitsOnYou } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
-import { collectionOfBoard, type Ask, type Failure } from "../lib/reads";
+import { collectionOfBoard, describeFailure, type Ask, type Failure } from "../lib/reads";
 import { RouteLink } from "../components/RouteLink";
-import { followRequest, followSessionItems, readRunRecord, taskItems, type OpenRun, type SessionItems } from "../lib/run";
+import { followRequest, followSessionItems, readRunRecord, readTaskClaims, taskItems, type OpenRun, type SessionItems } from "../lib/run";
 import { useTask } from "../lib/task";
+
+/** How long after a dropped status stream a run still going is followed again. */
+const STATUS_FOLLOW_AGAIN_MS = 3_000;
 
 export function TaskSession() {
   const task = useTask();
@@ -128,27 +131,55 @@ function RunItems({ run }: { run: OpenRun }) {
     };
   }, [client, run.sessionId, attempt]);
 
+  // The run's status, from its request stream. That stream doesn't reconnect: when it drops, the
+  // run's record is read, and a run still going is followed again after a pause. The items stay.
+  const [statusFollows, setStatusFollows] = useState(0);
   useEffect(() => {
     let closed = false;
+    let again: ReturnType<typeof setTimeout> | undefined;
+    const followAgain = () => {
+      if (!closed) again = setTimeout(() => setStatusFollows((n) => n + 1), STATUS_FOLLOW_AGAIN_MS);
+    };
     const stream = followRequest(client, run, {
       // The items come from the session feed.
       onItem: () => {},
       onStatus: reportStatus,
-      // A dropped status stream doesn't blank the items: read the run's record once instead.
       onError: () => {
-        readRunRecord(client, run).then(
-          (record) => {
-            if (!closed) reportStatus(record.status, record.endedAtMs);
-          },
-          () => {},
-        );
+        readRunRecord(client, run).then((record) => {
+          if (closed) return;
+          reportStatus(record.status, record.endedAtMs);
+          if (record.status === "in_progress") followAgain();
+        }, followAgain);
       },
     });
     return () => {
       closed = true;
+      clearTimeout(again);
       stream.close();
     };
-  }, [client, run, reportStatus]);
+  }, [client, run, reportStatus, statusFollows]);
+
+  // A window that starts after the task was claimed holds no `task-change` naming it, and the
+  // attribution would drop every step: read the board's claims in this session on their own.
+  const collection = collectionOfBoard(task.boardRef);
+  const windowed = stored?.truncated === true;
+  const [claims, setClaims] = useState<readonly OutputItem[]>([]);
+  useEffect(() => {
+    setClaims([]);
+    if (!windowed) return;
+    let closed = false;
+    readTaskClaims(client, run.sessionId, collection).then(
+      (read) => {
+        if (!closed) setClaims(read);
+      },
+      (error: unknown) => {
+        if (!closed) setFailure(describeFailure(error));
+      },
+    );
+    return () => {
+      closed = true;
+    };
+  }, [client, run.sessionId, collection, windowed, attempt]);
 
   // Each line sent from the task's composer takes the session to its end, to show it. An effect, not a
   // call in the send handler as in `Conversation`, because the composer lives in `TaskFrame`. Only growth
@@ -170,10 +201,13 @@ function RunItems({ run }: { run: OpenRun }) {
   const sentSet = useMemo(() => new Set(unstamped), [unstamped]);
   const shown = useMemo(() => {
     if (stored === undefined) return undefined;
-    const mine = taskItems(stored.items, collectionOfBoard(task.boardRef), task.taskId, sentSet);
-    const items = buildItemRenderStream(mine.items, renderers).flatMap((segment) => (segment.kind === "item" ? [segment.item] : segment.items));
+    // The claims only teach the attribution which tasks are this board's; they are never drawn.
+    const keys = new Set(stored.items.map((item) => `${item.requestId}/${item.id}`));
+    const held = [...claims.filter((item) => !keys.has(`${item.requestId}/${item.id}`)), ...stored.items];
+    const mine = taskItems(held, collection, task.taskId, sentSet);
+    const items = buildItemRenderStream(mine.items.filter((item) => keys.has(`${item.requestId}/${item.id}`)), renderers).flatMap((segment) => (segment.kind === "item" ? [segment.item] : segment.items));
     return { items, shared: mine.shared };
-  }, [stored, task.boardRef, task.taskId, sentSet, renderers]);
+  }, [stored, claims, collection, task.taskId, sentSet, renderers]);
 
   if (failure !== undefined) {
     return (
