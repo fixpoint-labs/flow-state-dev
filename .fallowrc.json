@@ -104,6 +104,8 @@
     "labs/claude-code-style/src/components/flow-state/spend.tsx",
     // and of the registry's tool grouping, which its tool lines read.
     "labs/claude-code-style/src/components/flow-state/tool-grouping.ts",
+    // and of the registry's error, whose `ErrorDisplay` export its sheet doesn't draw.
+    "labs/claude-code-style/src/components/flow-state/error.tsx",
     // The stock shadcn copies the Teammates lab and Shift Manager palettes are built on.
     "labs/teammates/src/components/ui/**",
     "packages/shift-manager/src/components/ui/command.tsx",
@@ -149,7 +151,9 @@
     { "file": "packages/shift-manager/src/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen"] },
     // Shift Manager's byte copy of the registry's task-actions: the confirm words and
     // the cancel outcome are exported for tests and goals that read them off the page.
-    { "file": "packages/shift-manager/src/components/flow-state/task-actions.tsx", "exports": ["CANCEL_CONFIRM", "cancelOutcome"] }
+    { "file": "packages/shift-manager/src/components/flow-state/task-actions.tsx", "exports": ["CANCEL_CONFIRM", "cancelOutcome"] },
+    // and the Claude Code-style lab's copy of it, for the same reason.
+    { "file": "labs/claude-code-style/src/components/flow-state/task-actions.tsx", "exports": ["CANCEL_CONFIRM", "cancelOutcome"] }
   ],
 
   // Dead code fails `fallow audit` at its default severity. Complexity reports
