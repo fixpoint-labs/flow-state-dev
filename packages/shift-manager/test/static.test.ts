@@ -168,13 +168,16 @@ describe("V8", () => {
     );
   });
 
-  it("makes no write from the task screen but the abort and the one send path (ER-15, D2)", () => {
+  it("makes no write from the task screen but the abort, the one send path and the board's own task actions (ER-15, D2)", () => {
     const taskFiles = ["lib/run.ts", "lib/task.tsx", "surfaces/TaskFrame.tsx", "surfaces/TaskSession.tsx", "surfaces/TaskInspector.tsx"];
     const WRITES = /\.(send|resume|answer|retry|continue|delete|updateMetadata)\(|\b(postLine|createCollectionItem|updateCollectionItem|deleteCollectionItem|createSession|retryRequest|continueRequest)\b|method:\s*"(POST|PUT|PATCH|DELETE)"/;
     const writes = (text: string) =>
       text.split("\n").filter((line) => WRITES.test(line) || (/\.request\([^)]*\)\.abort\(/.test(line) && !/await actions\.request\(run\.requestId\)\.abort\(\)/.test(line)));
     for (const file of taskFiles) expect(writes(readFileSync(join(src, file), "utf8")), file).toEqual([]);
     expect(readFileSync(join(src, "lib/run.ts"), "utf8")).toContain("await actions.request(run.requestId).abort()");
+    // The header's action row changes the task only through the board's own
+    // actions, the reader's `taskActions`, handed to the registry's row whole.
+    expect(readFileSync(join(src, "surfaces/TaskFrame.tsx"), "utf8")).toContain("reader.taskActions(");
     // Planted: a second write is caught.
     expect(writes(`await client.flow(f).send("run", {});`)).toHaveLength(1);
     expect(writes(`await client.flow(f).request(id).abort();`)).toHaveLength(1);

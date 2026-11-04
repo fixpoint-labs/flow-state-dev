@@ -52,7 +52,7 @@ For background work that must survive the function freezing after the response (
 
 ## `@flow-state-dev/vercel/store`
 
-`vercelPostgresStores()` returns a `StoreAdapter` for the `primary` capability slot, Postgres tuned for Vercel and Neon. It bakes in the Vercel pool defaults (`vercelPgPoolOptions`), swaps in Neon's WebSocket `Client` for `.neon.tech` URLs, skips schema init (migrations run out-of-band at build), and uses the polling tail fallback. No `process.env.VERCEL` checks or URL sniffing in your code — declare it as a profile slot.
+`vercelPostgresStores()` returns a `StoreAdapter` for the `primary` and `bus` capability slots, Postgres tuned for Vercel and Neon. It bakes in the Vercel pool defaults (`vercelPgPoolOptions`), swaps in Neon's WebSocket `Client` for `.neon.tech` URLs, skips schema init (migrations run out-of-band at build), and uses the polling tail fallback. Its bus sends each change's notice but doesn't listen, so it reports that it doesn't cross processes, and open session views read once a second across the deployment's instances. No `process.env.VERCEL` checks or URL sniffing in your code — declare it as a profile slot.
 
 ```ts
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";

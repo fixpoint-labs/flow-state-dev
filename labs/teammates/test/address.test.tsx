@@ -133,13 +133,13 @@ describe("the page's address", () => {
     // Each conversation's tasks arrive as soon as they are watched, so only a
     // popup that judges one conversation's task by another's rows drops it.
     const rows: Record<string, BoardTask[]> = {
-      "session-a": [{ id: "task-a", to: "teammates.writer", title: "Draft the notes", status: "running" }],
-      "session-b": [{ id: "task-b", to: "teammates.researcher", title: "Look it up", status: "running" }],
+      "session-a": [{ id: "task-a", to: "teammates.writer", title: "Draft the notes", goal: "Draft the notes", status: "running", boardStatus: "in_progress" }],
+      "session-b": [{ id: "task-b", to: "teammates.researcher", title: "Look it up", goal: "Look it up", status: "running", boardStatus: "in_progress" }],
     };
     const adapter: LabAdapter = { ...fast(), watchTasks: (sessionId, onChange) => (onChange(rows[sessionId] ?? []), () => {}) };
     const missing: string[] = [];
     const draw = (sessionId: string, taskId: string) => (
-      <PopupView adapter={adapter} popup={{ kind: "task", sessionId, taskId }} nameOf={(id) => id} lookOf={() => ({}) as never} isCoding={() => false} onClose={() => {}} onMissing={() => missing.push(taskId)} />
+      <PopupView adapter={adapter} popup={{ kind: "task", sessionId, taskId }} nameOf={(id) => id} lookOf={() => ({}) as never} isCoding={() => false} coders={[]} onClose={() => {}} onMissing={() => missing.push(taskId)} />
     );
     const { rerender } = render(draw("session-a", "task-a"));
     await screen.findByRole("dialog", { name: /draft the notes/i });

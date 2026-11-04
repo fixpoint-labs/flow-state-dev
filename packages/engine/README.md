@@ -580,11 +580,12 @@ Query parameters, all optional:
 - `item_types`: comma-separated item types, applied as on the snapshot route.
 
 A connection reads the store when a change notice for the session wakes it, at
-most once a second. On a bus that crosses processes, that is its only read, so
+most once a second. On a bus that crosses processes, the in-memory default
+included (it serves an app that runs as one process), that is its only read, so
 an open view of a session where nothing changes costs the store nothing. On a
-bus that can't cross (the in-memory default, or one that has stopped crossing)
-it also reads about once a second, so a reply written by another process still
-arrives. Pings and the 15-minute close keep their own timers.
+bus that doesn't cross (a Postgres bus with no tail pool, or one that has
+stopped crossing) it also reads about once a second, so a reply written by
+another process still arrives. Pings and the 15-minute close keep their own timers.
 
 Each SSE frame's `event` is the event's `type`, and its `data` is the whole
 event as JSON. Every event carries `stream: "session"`, `sessionId`, and `at`,
@@ -669,12 +670,18 @@ const stop = stores.bus!.subscribe(topic, (notice: ChangeNotice) => readAgain(no
 |---|---|
 | `publish(notice)` | Called only after the change can be read. A failure never fails the write that caused it |
 | `subscribe(topic, listener)` | Returns the unsubscribe |
-| `crossesProcesses` | Whether a notice published in another process reaches this one *now*. Only `true` turns the session stream's timed read off |
+| `crossesProcesses` | Whether a change made in any process that serves this app reaches this one's subscribers *now*. Only `true` turns the session stream's timed read and the client's fallback poll off |
 | `onCrossingChange(listener)` | Each change of `crossesProcesses`. A change to `false` puts waiting streams back on the timed read |
 
 A bus that reconnects sends each subscriber one `resync` notice on its topic.
 `createInMemoryBus()` is the default, and the in-process fan-out an adapter can
-compose; it never says it crosses.
+compose. It is the bus for an app that runs as one process, so it always says
+it crosses: with it, the session stream keeps no timed read and a client with
+an open socket stops its fallback poll. An app that writes its stores from
+several processes (several servers, a worker, or `fsdev run` / `fsdev chat` on
+the same SQLite file as a running server) needs a bus that crosses, such as the
+Postgres bus that Postgres stores fill by default. On the in-memory bus, the
+other processes' changes don't push to open pages.
 
 **A registry you build yourself.** `resolveStores`, `createFlowState`,
 `runAction`, BullMQ's job processor and `fsdev` apply `withChangeBus(stores)`,
@@ -696,7 +703,7 @@ that user, and closes the socket after an hour. It answers each accepted ticket
 with `{ type: "subscribed" }` once the ticket's topics are heard, so a client reads
 after that point and misses nothing. After the first ticket, and each time the
 bus's `crossesProcesses` changes, it sends `{ type: "crossing", crosses }`:
-whether notices from other processes reach this socket. A client keeps reading on
+whether a change from any process serving the app reaches this socket. A client keeps reading on
 its timer until it hears `crosses: true`.
 `serve()` in `@flow-state-dev/node` does all of this; `secret` defaults to a
 random key per router.

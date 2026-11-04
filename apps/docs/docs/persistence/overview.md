@@ -15,9 +15,10 @@ The `bus` slot carries change notices. Every request and session write sends one
 | Bus | What an open session view reads |
 |---|---|
 | Crosses processes | Only after a change, at most once a second. A view of a quiet session costs the store nothing |
-| In memory | After a change, and also about once a second, so a reply written by another process still arrives |
+| In memory | Only after a change. The in-memory bus is for an app that runs as one process, so it counts as crossing |
+| Doesn't cross (a Postgres bus with no listening pool, or one that lost its connection) | After a change, and also about once a second, so a reply written by another process still arrives |
 
-The Postgres adapter backs `bus` (see [Postgres](#postgres)). The in-memory, file and SQLite adapters don't, so their profiles run the in-memory bus, and views use the once-a-second read.
+The Postgres adapter backs `bus` (see [Postgres](#postgres)). The in-memory, file and SQLite adapters don't, so their profiles run the in-memory bus. Run such an app as one process: a change another process writes to the same file reaches an open view only at its next read.
 
 | Adapter | Persistence | When to use |
 |---------|------------|-------------|
@@ -76,7 +77,7 @@ const flowstate = createFlowState({
 
 On Vercel, use `vercelPostgresStores()` from `@flow-state-dev/vercel/store` instead — it bakes in the pool tuning and Neon client swap.
 
-With more than one process on one database (a web process and BullMQ workers, or several web processes), a session view open on one process sees a change saved on another as soon as it is saved, and a view of a quiet session costs the database nothing. You don't configure anything for this: the Postgres adapter backs the `bus` slot, and each process with an open view holds one listening connection and pings itself through it every 2 seconds. When the ping stops coming back, because a transaction pooler doesn't deliver `LISTEN` notifications or the connection dropped, views on that process go back to the once-a-second read until it recovers, and nothing is missed. `vercelPostgresStores()` doesn't back `bus`, so views there use the once-a-second read. The [package README](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/store-postgres#cross-process-notices) covers the connection, the pooler warning and `liveTailPool: null`.
+With more than one process on one database (a web process and BullMQ workers, or several web processes), a session view open on one process sees a change saved on another as soon as it is saved, and a view of a quiet session costs the database nothing. You don't configure anything for this: the Postgres adapter backs the `bus` slot, and each process with an open view holds one listening connection and pings itself through it every 2 seconds. When the ping stops coming back, because a transaction pooler doesn't deliver `LISTEN` notifications or the connection dropped, views on that process go back to the once-a-second read until it recovers, and nothing is missed. `vercelPostgresStores()` backs `bus` with a Postgres bus that doesn't listen, so views there use the once-a-second read. The [package README](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/store-postgres#cross-process-notices) covers the connection, the pooler warning and `liveTailPool: null`.
 
 Postgres provides the concurrency safety that compare-and-swap relies on. Compare-and-swap means a write carries the version it expects to find, and the store applies it only if that version is still current — so a write built on a stale read is refused instead of silently overwriting someone else's.
 
@@ -331,10 +332,12 @@ A store that can carry notices between processes backs the `bus` slot: it declar
 |---|---|
 | `publish(notice)` | Send `{ topic, kind, origin? }` to every process's subscribers of that topic. The engine calls it only once the write can be read. A failure must not fail the write |
 | `subscribe(topic, listener)` | Hear the notices under `topic`, and return the unsubscribe. A subscriber to a scope's topic hears every notice under the scope; one narrowed to a resource hears only that resource's |
-| `crossesProcesses` | `true` only while a notice published in another process reaches this one. While it is `true`, the session stream stops its once-a-second read, so a wrong `true` is a view that stops updating |
+| `crossesProcesses` | `true` only while a change made in any process that serves the app reaches this one. While it is `true`, the session stream stops its once-a-second read and clients stop their fallback polls, so a wrong `true` is a view that stops updating |
 | `onCrossingChange(listener)` | Called on each change of `crossesProcesses`. A change to `false` puts waiting views back on the once-a-second read |
 
 A topic is `{ scope, id, tenantId, resource? }`, with `tenantId` always present (`""` for a single-tenant app), so derive channel names from all of it and no tenant hears another's notices. A notice never carries rows. Notices are at most once: a bus that loses its connection and gets it back sends each subscriber one `resync` notice, and the subscriber reads again. `createInMemoryBus()` from `@flow-state-dev/engine` does the in-process fan-out, so an adapter can deliver what it hears through it.
+
+The in-memory bus is the default, and it is for an app that runs as one process. Every change is made in the process that serves the page, so it always reports `crossesProcesses: true` and views update on notices alone, with no timed reads. If your app writes its stores from more than one process, use a bus that crosses. Postgres stores fill one by default. Otherwise a change made in another process won't reach an open page until something else makes it read. That includes several servers on one SQLite file, and `fsdev run` or `fsdev chat` writing the same SQLite file as a running `fsdev dev`.
 
 If you pass a `StoreRegistry` you built yourself, set `bus` on it to use your own; the engine wraps the request and session stores so every write publishes.
 

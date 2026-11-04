@@ -5,6 +5,7 @@ import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { STALE_CLASS } from "./flow-state/connection-banner";
+import { costAmount, tokenCount } from "./flow-state/spend";
 import { runsOn, taskLabel, taskLine, type Popup } from "./Popups";
 import { InstructionsForm } from "./TeammateForms";
 import { useStale } from "./WorkersList";
@@ -135,6 +136,7 @@ export function TeammatePanel({
             Tasks
           </div>
           {tasks.length === 0 ? <p className="px-4 text-xs text-muted-foreground">{worker.name} hasn't started any tasks yet.</p> : null}
+          <CodingSpend tasks={tasks.filter((t) => isCoding(t.to))} />
           {active.length > 0 ? <ul aria-label="Active">{active.map(row)}</ul> : null}
           {ended.map((group) => {
             const open = opened[group.status] ?? false;
@@ -167,4 +169,35 @@ export function TeammatePanel({
       </div>
     </aside>
   );
+}
+
+/**
+ * What this conversation's coding tasks spent, all together: their tokens, and
+ * the charges vendors reported. Each task's own count is its row's folded view;
+ * a task whose runs reported nothing adds nothing, and a subscription run adds
+ * tokens but no charge. A total missing a count reads as partial. Nothing shows
+ * until a coding task has reported spend. (The registry's line never sums; this
+ * total is the panel's own.)
+ */
+function CodingSpend({ tasks }: { tasks: readonly BoardTask[] }) {
+  const line = codingSpendLine(tasks);
+  if (line === "") return null;
+  return (
+    <p className="px-4 pb-2 font-mono text-[10px] text-muted-foreground" data-coding-spend>
+      {line}
+    </p>
+  );
+}
+
+/** {@link CodingSpend}'s line, or `""` until some task has reported a count or a charge. Exported for its tests. */
+export function codingSpendLine(tasks: readonly BoardTask[]): string {
+  const spent = tasks.flatMap((t) => (t.spend === undefined ? [] : [t.spend]));
+  // Nothing measured yet, only runs that started: no line, never a measured-looking zero.
+  if (!spent.some((s) => s.inputTokens !== null || s.outputTokens !== null || s.costUsd != null)) return "";
+  const tokens = spent.reduce((sum, s) => sum + (s.inputTokens ?? 0) + (s.outputTokens ?? 0), 0);
+  const charged = spent.filter((s) => s.costUsd != null);
+  const cost = charged.reduce((sum, s) => sum + (s.costUsd ?? 0), 0);
+  // Some count still missing, or a source not yet reported: the total is a floor, and says so, as each task's line does.
+  const partial = spent.some((s) => s.unreported || s.inputTokens === null || s.outputTokens === null) ? " (partial)" : "";
+  return [`Coding tasks: ${tokenCount(tokens)} tokens${partial}`, charged.length === 0 ? null : costAmount(cost)].filter(Boolean).join(" · ");
 }

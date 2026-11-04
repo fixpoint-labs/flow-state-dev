@@ -1,5 +1,5 @@
 import { ClientHttpError } from "@flow-state-dev/client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LabAdapter, NewTeammate, WorkerRow } from "./adapter";
 import { Conversation } from "./components/Conversation";
 import { KeysSheet } from "./components/KeysSheet";
@@ -129,6 +129,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   }, [workers]);
   const lookOf = useCallback((id: string) => lookOfRow(workers.find((w) => w.id === id) ?? { id, name: id }), [workers]);
   const teammates = workers.filter((w) => !w.takesTasks);
+  const coders = useMemo(() => workers.filter((w) => w.takesTasks), [workers]);
   const worker = teammates.find((w) => w.id === selected);
   // A user's pick: a step Back returns from, and the teammate opens with the cursor in its composer.
   const selectWorker = useCallback((id: string) => {
@@ -265,7 +266,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         }}
       />
       <KeysSheet open={keysOpen} onOpenChange={setKeysOpen} keys={KEYS} />
-      {popup ? <PopupView adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} onClose={closePopup} onMissing={popup === addressed.current ? dropPopup : undefined} /> : null}
+      {popup ? <PopupView adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} coders={coders} onClose={closePopup} onMissing={popup === addressed.current ? dropPopup : undefined} /> : null}
     </div>
   );
 }

@@ -18,16 +18,23 @@
  * At boot, after the inventory, the Lab opens one conversation with the lead
  * and files its tasks there through the conversation's own `createTask_tasks`:
  *
- * - one **held** task for each worker named first on its flow: its run
- *   narrates a step about every second and holds until it is aborted (or
+ * - one **running** task for each worker named first on its flow: its run
+ *   narrates a step about every second and runs until it is aborted (or
  *   `holdMs` passes);
  * - two **short** tasks for the other worker on the shared flow, which run
  *   two steps each and finish;
  * - with `asking`, one **asking** task for the worker on a flow of its own,
  *   whose run opens and then waits on a user's approval. With `holdAsk`, it
  *   asks only once `releaseAsk()` is called, so a screen can be open first;
- * - one **waiting** task, filed last, which depends on the first held task,
- *   so nothing claims it while that task holds.
+ * - with `taskActions`, three tasks for a task's action row (FIX-2382), for
+ *   the worker named first on the shared flow: one filed **held** on the
+ *   board (`held: true`), which nothing claims until it is released; one
+ *   more **cancellable** running task, kept apart from the running tasks
+ *   the other checks interrupt; and one **failing** task, one try only,
+ *   whose run throws {@link RUN_LAB_FAILURE}, so its row reads `errored`
+ *   with that error;
+ * - one **waiting** task, filed last, which depends on the first running
+ *   task, so nothing claims it while that task runs.
  *
  * Every run opens as a coding harness does: a message, a reasoning item, and
  * one tool call with its result, each stamped with the task the way the
@@ -112,12 +119,15 @@ const PROGRESS_KEY = "progress";
 /** What an asking run asks a user to approve. */
 export const RUN_LAB_ASK = "Write the audit note?";
 
+/** What a failing run throws, and so the error its errored row carries. */
+export const RUN_LAB_FAILURE = "The audit note's folder is read only.";
+
 /**
  * What a task asks its scripted run to do, filed as the task's `input`; `ask`:
  * suspend on a user's approval of this, after the opening; `holdAsk`: only
- * once the Lab's `releaseAsk()` is called.
+ * once the Lab's `releaseAsk()` is called; `fail`: throw this, after the opening.
  */
-export type RunScript = { steps?: number; holdMs?: number; ask?: string; holdAsk?: boolean };
+export type RunScript = { steps?: number; holdMs?: number; ask?: string; holdAsk?: boolean; fail?: string };
 
 /** The open Lab's ask gate: a `holdAsk` run asks once it resolves. One Lab is open at a time. */
 let askGate: { opened: Promise<void>; open(): void } = gate();
@@ -209,6 +219,7 @@ const scriptedRun = handler({
       ]);
     }
     if (script.ask !== undefined) await ctx.suspend!({ reason: "user_approval", message: script.ask });
+    if (script.fail !== undefined) throw new Error(script.fail);
 
     const resources = (ctx as { resources?: Record<string, unknown> }).resources ?? {};
     const plan = resources[OBSERVED_PLAN] as Upsertable | undefined;
@@ -267,8 +278,9 @@ async function readTree() {
 /**
  * Build, open and hand back the Lab, with its tasks filed on the lead's conversation.
  * With `untaskedDoors`, the delegates' flows take lines through a door that keeps no task id.
+ * With `taskActions`, it also files the held, cancellable and failing tasks a task's action row acts on.
  */
-export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean; untaskedDoors?: boolean } = {}) {
+export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean; untaskedDoors?: boolean; taskActions?: boolean } = {}) {
   const asks = (askGate = gate());
   const orgId = DEFAULT_ORG_ID;
   const tree = await readTree();
@@ -409,21 +421,22 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean;
   });
   if (opened.status !== 201) throw new Error(`the lead's conversation was not opened: ${opened.status} ${JSON.stringify(opened.body)}`);
   const conversation = RUN_LAB_LEAD_SESSION;
-  const file = async (worker: (typeof workers)[number], goal: string, script: RunScript, deps?: string[]) => {
+  const file = async (worker: (typeof workers)[number], goal: string, script: RunScript, deps?: string[], extra: { held?: true; maxAttempts?: number } = {}) => {
     const out = (await act(flows[leadFlow]!, conversation, "createTask_tasks", {
       goal,
       assignee: worker.id,
       input: script,
       ...(deps === undefined ? {} : { deps }),
+      ...extra,
     })) as { ok: boolean; taskId?: string; error?: string };
     if (out?.ok !== true) throw new Error(`filing for ${worker.id} was refused: ${JSON.stringify(out)}`);
     return out.taskId!;
   };
 
   const firsts = flowsOfWorkers.map((flow) => workers.find((w) => w.flow === flow)!);
-  const filed: Array<{ taskId: string; workerId: string; kind: "held" | "short" | "waiting" | "asking" }> = [];
+  const filed: Array<{ taskId: string; workerId: string; kind: "running" | "short" | "waiting" | "asking" | "held" | "cancellable" | "failing" }> = [];
   for (const worker of firsts) {
-    filed.push({ taskId: await file(worker, `${worker.name}: hold until stopped`, {}), workerId: worker.id, kind: "held" });
+    filed.push({ taskId: await file(worker, `${worker.name}: hold until stopped`, {}), workerId: worker.id, kind: "running" });
   }
   if (options.asking === true) {
     // One more task for the worker on a flow of its own, whose run stops to ask a user.
@@ -437,11 +450,21 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean;
   for (const worker of workers.filter((w) => !firsts.includes(w))) {
     for (const n of [1, 2]) filed.push({ taskId: await file(worker, `${worker.name}: short run ${n}`, { steps: 2 }), workerId: worker.id, kind: "short" });
   }
-  // It waits on the first held task, which never finishes on its own, so nothing claims it.
-  const firstHeld = filed.find((f) => f.kind === "held")!;
-  const firstWorker = workers.find((w) => w.id === firstHeld.workerId)!;
+  if (options.taskActions === true) {
+    const worker = firsts[0]!;
+    filed.push({ taskId: await file(worker, `${worker.name}: held until released`, {}, undefined, { held: true }), workerId: worker.id, kind: "held" });
+    filed.push({ taskId: await file(worker, `${worker.name}: run until cancelled`, {}), workerId: worker.id, kind: "cancellable" });
+    filed.push({
+      taskId: await file(worker, `${worker.name}: fail at once`, { fail: RUN_LAB_FAILURE }, undefined, { maxAttempts: 1 }),
+      workerId: worker.id,
+      kind: "failing",
+    });
+  }
+  // It waits on the first running task, which never finishes on its own, so nothing claims it.
+  const firstRunning = filed.find((f) => f.kind === "running")!;
+  const firstWorker = workers.find((w) => w.id === firstRunning.workerId)!;
   filed.push({
-    taskId: await file(firstWorker, `${firstWorker.name}: waits on the held task`, { steps: 1 }, [firstHeld.taskId]),
+    taskId: await file(firstWorker, `${firstWorker.name}: waits on the running task`, { steps: 1 }, [firstRunning.taskId]),
     workerId: firstWorker.id,
     kind: "waiting",
   });
