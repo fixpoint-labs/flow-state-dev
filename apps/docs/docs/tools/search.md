@@ -78,7 +78,7 @@ A config `tier` still applies as the default the model can override. Leave `agen
 
 ## Domain filters
 
-Restrict or exclude domains where the provider supports it:
+Restrict results to some domains, or exclude others:
 
 ```ts
 tools.search({
