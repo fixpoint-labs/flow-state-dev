@@ -4,7 +4,7 @@
  * end or further up, and a reply streaming in used to drag them along. What
  * arrives below turns `atEnd` off so the app can offer a jump to it. Opening a
  * conversation still lands at its end, with nothing animating. A line the
- * person sends rises to near the top, with room kept under it, so its reply
+ * person sends rises to near the top, with space kept under it, so its reply
  * streams in where they can read it instead of below the fold.
  */
 import { act, cleanup, render, screen } from "@testing-library/react";
@@ -66,7 +66,7 @@ function layOut(node: HTMLElement): HTMLElement {
   let top = 0;
   Object.defineProperties(node, {
     clientHeight: { get: () => VIEW },
-    scrollHeight: { get: () => Math.max(VIEW, node.querySelectorAll("p").length * LINE + room(node)) },
+    scrollHeight: { get: () => Math.max(VIEW, node.querySelectorAll("p").length * LINE + space(node)) },
     // As a browser does, a feed whose end comes up past the view is read at its new end.
     scrollTop: { get: () => (top = Math.max(0, Math.min(top, node.scrollHeight - VIEW))), set: (v: number) => (top = Math.max(0, Math.min(v, node.scrollHeight - VIEW))) },
   });
@@ -79,7 +79,7 @@ function layOut(node: HTMLElement): HTMLElement {
 }
 
 /** The space the hook keeps below the last line, as the bottom padding it set. */
-const room = (node: HTMLElement) => Number.parseFloat(node.style.paddingBottom) || 0;
+const space = (node: HTMLElement) => Number.parseFloat(node.style.paddingBottom) || 0;
 
 // Each line's box, as a browser lays it out: 40px tall, stacked, moved up by the feed's scroll. The feed's own top is 0.
 HTMLParagraphElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
@@ -184,7 +184,7 @@ const nearTop = (i: number) => {
 };
 
 describe("sending a line", () => {
-  it("brings the line the person sent near the top, wherever they had scrolled to, and keeps room under a short reply", async () => {
+  it("brings the line the person sent near the top, wherever they had scrolled to, and keeps space under a short reply", async () => {
     const { rerender } = await opened(20);
     scrollTo(0);
     act(() => feed.sent());
@@ -192,7 +192,7 @@ describe("sending a line", () => {
     await settle();
     expect(moves.at(-1)?.behavior).toBe("smooth");
     expect(nearTop(20)).toBe(true);
-    // A reply shorter than the view: the line stays where it rose to, and the room under the reply is not "more below".
+    // A reply shorter than the view: the line stays where it rose to, and the space under the reply is not "more below".
     moves.length = 0;
     rerender(feedElement({ lines: 22, mine: [20] }));
     await settle();
@@ -215,12 +215,12 @@ describe("sending a line", () => {
     expect(feed.atEnd).toBe(false);
   });
 
-  it("jumps to the reply's end, not into the room kept under it", async () => {
+  it("jumps to the reply's end, not into the space kept under it", async () => {
     const { rerender } = await opened(20);
     act(() => feed.sent());
     rerender(feedElement({ lines: 21, mine: [20] }));
     await settle();
-    // No reply yet: all that is under the line is the room.
+    // No reply yet: all that is under the line is the space.
     act(() => feed.jump());
     // The last line's bottom is the view's bottom.
     expect(lineTop(20) + LINE).toBe(VIEW);
@@ -310,7 +310,7 @@ describe("sending a line", () => {
     expect(screen.getByTestId("feed").scrollTop).toBe(30 * LINE - VIEW);
   });
 
-  it("drops the room on switching to another conversation, which opens at its end", async () => {
+  it("drops the space on switching to another conversation, which opens at its end", async () => {
     const { rerender } = await opened(20, { resetKey: "a" });
     act(() => feed.sent());
     rerender(feedElement({ lines: 21, mine: [20], resetKey: "a" }));

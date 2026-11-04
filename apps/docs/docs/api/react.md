@@ -219,7 +219,7 @@ const feed = useJumpToLatest({ resetKey: sessionId });
 | `atEnd` | `boolean` | `false` when there is content below the view: show a jump-to-latest button. |
 | `jump()` | `() => void` | Scroll to the end of the content, smoothly. |
 
-To let the line reach the top under a short reply, the hook adds room at the end of the feed as bottom padding. The room shrinks as the reply grows and stays until the next send or switch, so a short reply has blank space under it. `atEnd` and `jump()` ignore it.
+To let the line reach the top under a short reply, the hook adds space at the end of the feed as bottom padding. The space shrinks as the reply grows and stays until the next send or switch, so a short reply has blank space under it. `atEnd` and `jump()` ignore it.
 
 A reply that grows past the bottom edge, or content that isn't the person's line, never moves the view. Any scroll the reader makes, with the wheel, touch, keys or the scrollbar, cancels a rise that hasn't happened yet.
 

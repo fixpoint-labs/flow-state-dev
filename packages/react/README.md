@@ -429,7 +429,7 @@ return (
 - `startAtEnd` (default `true`): `false` opens where the element starts, such as a feed with a lead above its turns.
 - `resetKey`: what the feed shows, such as a session id. A change opens the feed at its end again.
 
-So the line can reach the top under a short reply, the hook keeps room at the end of the feed, as bottom padding on the scrolling element. The room shrinks as the reply grows and is gone once the reply fills the view. Otherwise it stays until the next send, or until the feed opens or switches, because removing it sooner would move the view. A short reply therefore has blank space under it. `atEnd` and `jump()` ignore the room.
+So the line can reach the top under a short reply, the hook keeps space at the end of the feed, as bottom padding on the scrolling element. The space shrinks as the reply grows and is gone once the reply fills the view. Otherwise it stays until the next send, or until the feed opens or switches, because removing it sooner would move the view. A short reply therefore has blank space under it. `atEnd` and `jump()` ignore the space.
 
 A reply growing past the bottom edge never moves the view: `atEnd` turns `false` and the button appears. Content that isn't the person's line, such as another worker's message or a task result, never moves it either. Any scroll by the person (wheel, touch, scroll keys, or the scrollbar) cancels a rise that hasn't happened yet.
 

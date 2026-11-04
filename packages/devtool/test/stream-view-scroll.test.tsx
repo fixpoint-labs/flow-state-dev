@@ -62,7 +62,7 @@ function layOut() {
   const isStream = (el: HTMLElement) => el.classList.contains("overflow-auto") && el.classList.contains("bg-fs-surface");
   const tops = new WeakMap<HTMLElement, number>();
   const requests = (el: HTMLElement) => [...el.children].filter((child) => !child.classList.contains("sticky")) as HTMLElement[];
-  // The room the stream keeps under a request just sent is its bottom padding.
+  // The space the stream keeps under a request just sent is its bottom padding.
   const height = (el: HTMLElement) => requests(el).length * 200 + (Number.parseFloat(el.style.paddingBottom) || 0);
   const scrolls: (ScrollBehavior | undefined)[] = [];
   Object.defineProperties(HTMLElement.prototype, {

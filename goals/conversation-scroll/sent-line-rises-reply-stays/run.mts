@@ -49,8 +49,8 @@ type Signal = "a.short" | "a.long" | "b" | "c" | "d" | "e";
 /** Each control serves the hook patched (`build.mts`) and must fail exactly these signals, on every surface that has them. */
 const CONTROLS: Record<string, { why: string; fails: Signal[] }> = {
   "main-rule": { why: "useJumpToLatest as it was before this change (581142fb): a send goes to the end", fails: ["a.short", "a.long"] },
-  // The person's line lands before its reply starts, so with no room it can't reach the top under either length.
-  "no-reserve": { why: "useJumpToLatest keeps no room under the sent line", fails: ["a.short", "a.long"] },
+  // The person's line lands before its reply starts, so with no space it can't reach the top under either length.
+  "no-reserve": { why: "useJumpToLatest keeps no space under the sent line", fails: ["a.short", "a.long"] },
 };
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(CONTROLS).join(", ")}`);

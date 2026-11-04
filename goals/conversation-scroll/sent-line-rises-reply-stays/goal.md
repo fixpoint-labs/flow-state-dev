@@ -31,7 +31,7 @@ The views that never send have b, d and e only.
 **Controls:** `GOAL_CONTROL=<name>` on the same command. Each serves `useJumpToLatest` patched in every page's build (`build.mts`), and must fail exactly its own signals on every surface that has them; any other red, or one of its signals green, is reported as `WRONG:`.
 
 - `main-rule`: the hook as it was on `main` before this change (581142fb), plus a `mine` that only sets the attribute. A send goes to the end. Must fail **a.short** and **a.long** on all six surfaces that send.
-- `no-reserve`: the hook keeps no room under the sent line. Must fail **a.short** and **a.long** on all six surfaces that send. The spec expected the short reply only; the person's line lands before its reply starts, so with no room it can't rise under either length.
+- `no-reserve`: the hook keeps no space under the sent line. Must fail **a.short** and **a.long** on all six surfaces that send. The spec expected the short reply only; the person's line lands before its reply starts, so with no space it can't rise under either length.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

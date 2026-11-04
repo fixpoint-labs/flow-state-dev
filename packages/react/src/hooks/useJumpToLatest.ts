@@ -8,7 +8,7 @@
  *   lands (or if it is already drawn, for an app that learns of the send after
  *   it), the feed scrolls it to near its top, once, smoothly, wherever the
  *   reader was. A scroll by the person before it lands cancels the move.
- * - **Room below it.** So that line can reach the top under a short reply, the
+ * - **Space below it.** So that line can reach the top under a short reply, the
  *   feed keeps space at its end, as bottom padding on the scrolling element.
  *   The space shrinks as the reply grows and is gone once the reply fills the
  *   view. It stays until the next send, open or switch: taking it away sooner
@@ -17,7 +17,7 @@
  *   landing, a line from someone else: none of it scrolls the feed, even while
  *   the reader is at the end. `atEnd` turns `false` instead, so the app can
  *   show a jump-to-latest button that calls {@link JumpToLatest.jump}. Both
- *   look at content only: the kept room is not "more below".
+ *   look at content only: the kept space is not "more below".
  * - **Any scroll by the person is theirs**, in any direction: wheel, touch,
  *   scroll keys, or a press on the scrollbar. A move the hook makes itself is
  *   not.
@@ -66,7 +66,7 @@ export type JumpToLatest = {
   jump: () => void;
   /**
    * The person sent a line: when their line lands, it rises to near the top of
-   * the feed, with room kept below it for the reply. Call it as the line goes
+   * the feed, with space kept below it for the reply. Call it as the line goes
    * out, or after it is drawn (an effect on a send counter): either way the
    * line marked with {@link JumpToLatest.mine} that the feed had not shown yet
    * is the one that rises.
@@ -128,9 +128,9 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
     // The person's lines the feed has shown already, by key: none of them is the one a send waits for.
     const shown = new Set<string>();
     let settling: number | undefined;
-    // The line the room is kept for, the room in pixels, and the padding the element had before it.
+    // The line the space is kept for, the space in pixels, and the padding the element had before it.
     let anchor: string | undefined;
-    let room = 0;
+    let space = 0;
     let padding: { inline: string; px: number } | undefined;
     // Where a move the hook is making is headed: scrolls on the way are its own, not the reader's.
     let gliding: number | undefined;
@@ -144,7 +144,7 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
     };
     /** The newest of the person's lines not shown before. */
     const unshown = () => marked().reverse().find((el) => !shown.has(el.getAttribute(MINE)!));
-    const contentHeight = () => node.scrollHeight - room;
+    const contentHeight = () => node.scrollHeight - space;
     const near = () => contentHeight() - node.scrollTop - node.clientHeight <= AT_END_SLACK;
     const topOf = (el: HTMLElement) => el.getBoundingClientRect().top - node.getBoundingClientRect().top - node.clientTop + node.scrollTop;
 
@@ -159,24 +159,24 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
       });
     };
 
-    /** Size the room so the anchored line can sit near the top, whatever is below it. */
-    const fitRoom = () => {
+    /** Size the space so the anchored line can sit near the top, whatever is below it. */
+    const fitSpace = () => {
       if (anchor === undefined) return;
       const line = marked().find((el) => el.getAttribute(MINE) === anchor);
       if (line === undefined) return;
       const needed = Math.max(0, topOf(line) - GAP_ABOVE_LINE + node.clientHeight - contentHeight());
-      if (Math.abs(needed - room) < 0.5) return;
+      if (Math.abs(needed - space) < 0.5) return;
       if (padding === undefined) {
         padding = { inline: node.style.paddingBottom, px: Number.parseFloat(getComputedStyle(node).paddingBottom) || 0 };
       }
-      room = needed;
-      node.style.paddingBottom = `${padding.px + room}px`;
+      space = needed;
+      node.style.paddingBottom = `${padding.px + space}px`;
     };
-    const dropRoom = () => {
+    const dropSpace = () => {
       anchor = undefined;
       if (padding !== undefined) node.style.paddingBottom = padding.inline;
       padding = undefined;
-      room = 0;
+      space = 0;
     };
 
     /** Move to `top`, as the hook's own move. */
@@ -189,13 +189,13 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
       lastTop = node.scrollTop;
     };
 
-    /** The person's line landed: room below it, and up it goes. */
+    /** The person's line landed: space below it, and up it goes. */
     const bring = (line: HTMLElement) => {
       waiting = false;
       held = false;
       anchor = line.getAttribute(MINE)!;
       showAll();
-      fitRoom();
+      fitSpace();
       glide(topOf(line) - GAP_ABOVE_LINE, "smooth");
       setAtEnd(near());
     };
@@ -203,7 +203,7 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
     /** `added`: the change put new elements in the feed, such as the line just sent. */
     const onChange = (added = false) => {
       if (opening.current) {
-        dropRoom();
+        dropSpace();
         showAll();
         scrollToTop(node, node.scrollHeight, "instant");
         lastTop = node.scrollTop;
@@ -217,10 +217,10 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
         if (added) settleLater();
       }
       // Content under the line that shrinks, such as a working line going away, pulls the end up past
-      // where the view is, and the browser moves the view to it before the room grows back. Until the
+      // where the view is, and the browser moves the view to it before the space grows back. Until the
       // person scrolls, the view goes back where it was, before anyone sees a frame of it.
       const was = lastTop;
-      fitRoom();
+      fitSpace();
       if (anchor !== undefined && !held && gliding === undefined && node.scrollTop < was - 0.5) scrollToTop(node, was, "instant");
       lastTop = node.scrollTop;
       if (gliding === undefined) setAtEnd(near());
@@ -291,7 +291,7 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
       reset: () => {
         waiting = false;
         gliding = undefined;
-        dropRoom();
+        dropSpace();
         scrollToTop(node, node.scrollHeight, "instant");
       },
     };
@@ -300,7 +300,7 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
       if (frame.current !== undefined) cancelAnimationFrame(frame.current);
       frame.current = undefined;
       if (settling !== undefined) cancelAnimationFrame(settling);
-      dropRoom();
+      dropSpace();
       node.removeEventListener("scroll", onScroll);
       node.removeEventListener("scrollend", onScrollEnd);
       node.removeEventListener("wheel", theirs);
