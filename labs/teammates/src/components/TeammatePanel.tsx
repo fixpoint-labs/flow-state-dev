@@ -1,14 +1,13 @@
 import { useState } from "react";
 import type { BoardTask, LabAdapter, WorkerRow } from "../adapter";
 import type { Look } from "../lib/looks";
-import { useWatch } from "../lib/use-watch";
+import { useStale, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { STALE_CLASS } from "./flow-state/connection-banner";
 import { costAmount, tokenCount } from "./flow-state/spend";
 import { runsOn, taskLabel, taskLine, type Popup } from "./Popups";
 import { InstructionsForm } from "./TeammateForms";
-import { useStale } from "./WorkersList";
 
 /** The heading over each of the panel's sections. */
 const HEADING = "font-mono text-[10px] tracking-widest text-muted-foreground uppercase";
