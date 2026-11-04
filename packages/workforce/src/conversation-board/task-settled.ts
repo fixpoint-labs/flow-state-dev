@@ -71,7 +71,7 @@ import { filingSessionIdOf } from "./filing-session";
 import { CONVERSATION_LEDGER_ID, ownConversationLedger } from "./ledger";
 import { sendTaskReport } from "./report-owed";
 import { noteTaskAnswer } from "@flow-state-dev/orchestration/task-board";
-import { admitOwnTask } from "./task-admission";
+import { admitOwnTask, markAdmittedTask } from "./task-admission";
 import { anotherTurnWaitsOnItsPlan } from "./plan";
 import { noteTaskEndingRead, taskEndingReadsStateSchema } from "./task-ending-read";
 import { delegateAnswerMetadata } from "./delegate-answer";
@@ -456,6 +456,8 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     // runs for the task, and the task is checked at its end, after any turn
     // this notice wakes, with that turn's answer. First, before any await.
     .tap(admitOwnTask("conversation-task-settled-admission", true))
+    // In a task session, the line and the woken turn's reply are the waiting task's.
+    .tap(markAdmittedTask("conversation-task-settled-mark-task"))
     .step(settle)
     .tapIf((settled: Settled) => settled.act === "run-board", runPass);
   if (options.onRouted !== undefined) {
