@@ -2036,6 +2036,9 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
+      '@flow-state-dev/orchestration':
+        specifier: workspace:*
+        version: link:../orchestration
       '@flow-state-dev/react':
         specifier: workspace:*
         version: link:../react

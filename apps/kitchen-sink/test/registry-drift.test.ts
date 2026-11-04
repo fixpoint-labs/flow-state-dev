@@ -3,8 +3,8 @@
  *
  * `compareRegistryCopies` does the walk. This file only states this app's
  * scope: stories are not installed, and neither are the two `generative/`
- * components, the connection bar and screen, the request-recovery line, or
- * the task action row.
+ * components, the connection bar and screen, the request-recovery line, the
+ * task action row, or the task time signal.
  * `compared.length` fails a walk that passes by comparing less.
  */
 import { dirname, join } from "node:path";
@@ -28,13 +28,15 @@ const kitchenSinkTargetDir = join(testDir, "../components/flow-state");
  * Kitchen Sink follows sessions through `useSession`, so it draws neither the
  * connection bar nor the first-read screen. The request-recovery line is not
  * installed here either, nor the task action row, which no screen here
- * opens a task to draw. An installed copy nothing imports is dead code.
+ * opens a task to draw, nor the task time signal, which no screen here lists
+ * a board's rows to draw. An installed copy nothing imports is dead code.
  */
 const NOT_INSTALLED_COMPONENTS = new Set([
   "connection-banner.tsx",
   "connection-screen.tsx",
   "request-recovery.tsx",
   "task-actions.tsx",
+  "task-signals.tsx",
 ]);
 
 const drift = () =>

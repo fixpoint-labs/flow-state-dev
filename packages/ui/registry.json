@@ -351,6 +351,20 @@
       "categories": ["ai", "framework"]
     },
     {
+      "name": "task-signals",
+      "title": "Task signals",
+      "type": "registry:component",
+      "description": "A task row's time and stall signal: a running row's clock from this attempt's run start, quiet when its lease has lapsed (the board's own rule, never while the feed is stale), how long ago an ended row ended; and a list's per-state counts. Reads a listTasks row's taskRowView, run start and lease deadline; the app passes the time and its tone.",
+      "dependencies": ["@flow-state-dev/orchestration"],
+      "registryDependencies": ["spend"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/task-signals.tsx",
+        "target": "components/flow-state/task-signals.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
       "name": "approval",
       "title": "Approval",
       "type": "registry:component",
