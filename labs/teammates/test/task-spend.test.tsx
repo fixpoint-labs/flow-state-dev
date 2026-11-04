@@ -105,7 +105,8 @@ describe("the panel's coding-task total", () => {
     expect(codingSpendLine([task(view(1_000, 200, 0.1)), task(view(2_000, null, null, true))])).toBe("Coding tasks: 3.2k tokens (partial) · $0.10");
   });
 
-  it("is empty until some task reports spend", () => {
+  it("is empty until some task reports a count, so a started run never reads as 0 tokens", () => {
     expect(codingSpendLine([task()])).toBe("");
+    expect(codingSpendLine([task(view(null, null, null, true))])).toBe("");
   });
 });

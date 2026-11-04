@@ -189,10 +189,11 @@ function CodingSpend({ tasks }: { tasks: readonly BoardTask[] }) {
   );
 }
 
-/** {@link CodingSpend}'s line, or `""` when no task has reported spend. Exported for its tests. */
+/** {@link CodingSpend}'s line, or `""` until some task has reported a count or a charge. Exported for its tests. */
 export function codingSpendLine(tasks: readonly BoardTask[]): string {
   const spent = tasks.flatMap((t) => (t.spend === undefined ? [] : [t.spend]));
-  if (spent.length === 0) return "";
+  // Nothing measured yet, only runs that started: no line, never a measured-looking zero.
+  if (!spent.some((s) => s.inputTokens !== null || s.outputTokens !== null || s.costUsd != null)) return "";
   const tokens = spent.reduce((sum, s) => sum + (s.inputTokens ?? 0) + (s.outputTokens ?? 0), 0);
   const charged = spent.filter((s) => s.costUsd != null);
   const cost = charged.reduce((sum, s) => sum + (s.costUsd ?? 0), 0);
