@@ -12,6 +12,12 @@ export const PINS_FLOW = "pins";
 
 const userStateSchema = z.object({ pinned: z.array(z.string()).default([]) });
 
+/**
+ * Your pins as stored. The engine doesn't apply the schema's `.default([])` to
+ * stored user state, so a user who has never pinned has no `pinned` yet.
+ */
+const pinnedOf = (state: { pinned?: string[] }): string[] => state.pinned ?? [];
+
 /** A handler that changes your pins by `change` and answers them. */
 const pinsBlock = (name: string, change: (pinned: string[], taskId: string) => string[]) =>
   handler({
@@ -20,16 +26,14 @@ const pinsBlock = (name: string, change: (pinned: string[], taskId: string) => s
     outputSchema: userStateSchema,
     userStateSchema,
     execute: async (input, ctx) => {
-      const pinned = change(ctx.user.state.pinned, input.taskId);
+      const pinned = change(pinnedOf(ctx.user.state), input.taskId);
       await ctx.user.patchState({ pinned });
       return { pinned };
     },
   });
-  
 
 /** Build the flow: list (a read), pin and unpin, over your user state. */
 export function definePinsFlow() {
-  const taskInput = z.object({ taskId: z.string().min(1) });
   return defineFlow({
     kind: PINS_FLOW,
     user: { stateSchema: userStateSchema },
@@ -41,13 +45,13 @@ export function definePinsFlow() {
           inputSchema: z.object({}),
           outputSchema: userStateSchema,
           userStateSchema,
-          execute: async (_input, ctx) => ({ pinned: ctx.user.state.pinned }),
+          execute: async (_input, ctx) => ({ pinned: pinnedOf(ctx.user.state) }),
         }),
       },
     },
     actions: {
-      pin: { inputSchema: taskInput, block: pinsBlock("pin", (pinned, id) => (pinned.includes(id) ? pinned : [...pinned, id])) },
-      unpin: { inputSchema: taskInput, block: pinsBlock("unpin", (pinned, id) => pinned.filter((p) => p !== id)) },
+      pin: { block: pinsBlock("pin", (pinned, id) => (pinned.includes(id) ? pinned : [...pinned, id])) },
+      unpin: { block: pinsBlock("unpin", (pinned, id) => pinned.filter((p) => p !== id)) },
     },
   });
 }
