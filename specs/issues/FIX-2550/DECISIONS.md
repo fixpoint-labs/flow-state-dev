@@ -24,15 +24,21 @@ The two below are what the labs' code had to add.
 <a name="d2"></a>
 ## D2 · "Newest turn" is read from the thread's items
 
-- The adapter marks a failed entry `latest` when no item of a later request follows it in the
-  thread; the screen passes `onRetry` only for that entry, and only while no turn runs.
-- **Instead of** reading the session's requests: the thread's items already order the turns,
-  and a request that wrote nothing (a board pass in Teammates) is not a turn the person saw.
-  If such a request is the session's newest, Retry still shows; the server takes a retry of
-  any failed request, so it still works.
-- **Who owns what:** `latest` is the adapter's answer to "which turn is newest", and the only
-  one; the screen never recomputes it. The screen's own rule is only "no Retry while a turn
-  runs". The adapter's tests cover `latest`; the screen's cover that `onRetry` follows it.
+- The adapter marks a failed entry `retryable` when it is the newest turn, the request of the
+  last entry the thread draws, and the engine will retry that request: one whose source is
+  `http`, `mcp` or `scheduled` (the engine's public re-entry sources; a record with no source
+  came in over `http`). The screen passes `onRetry` only for that entry, and only while no turn
+  runs.
+- **Instead of** reading the newest request alone: the thread's entries already order the
+  turns, and a request that drew nothing (a board pass in Teammates) is not a turn the person
+  saw. The session's recent requests are read only for their source.
+- **Why the source rule:** the engine refuses a retry of a request a task or the flow itself
+  started (`internal`, `task`). A worker answering another worker's message runs in its own
+  conversation with source `internal`, so without the rule its failed turn would offer a
+  Retry that can only fail. Each lab pins its list to the engine's in a test.
+- **Who owns what:** `retryable` is the adapter's answer, and the only one; the screen never
+  recomputes it. The screen's own rule is only "no Retry while a turn runs". The adapter's
+  tests cover `retryable`; the screen's cover that `onRetry` follows it.
 - **Not a bug:** Retry can show on the thread's newest turn while the session's newest request
   is a board pass. That is the intended reading, and the retry still succeeds.
 - **Locks in:** Retry follows what the person sees as the last turn.

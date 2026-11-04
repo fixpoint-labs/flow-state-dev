@@ -14,7 +14,7 @@ code adds to it.
 |---|---|---|
 | **sends a turn that fails** (no API key, a provider error, max steps) in the Claude Code-style lab | The working line goes away and nothing else shows. A crash looks like a short answer | A red line in the thread: *The main session couldn't finish this turn*, the reason, and **Retry** |
 | **sends a turn that fails** in the Teammates lab | The same: *… is answering* stops, and nothing says why | The same line under the worker's name: *Researcher couldn't finish this turn* |
-| **presses Retry** | — | The button says *Retrying…*; the turn runs again and its reply streams into the thread. A refused retry says so and Retry comes back |
+| **presses Retry** | — | The button says *Retrying…*; the turn runs again as a new request, and its reply shows in the thread once stored (it does not stream; a streaming retry needs a client and engine change). A refused retry says so and Retry comes back |
 | **reads an older failed turn** | — | The reason stays; Retry shows only on the newest turn, and not while one is running |
 | **watches a reply fail half-way** | The half reply reads as a finished one | The half reply is marked *Incomplete*, with the failure line under it |
 
@@ -45,7 +45,7 @@ flowchart LR
 - *Adapter cases, per lab:* built from an error item shaped the way `runAction.ts` writes one
   (`type: "error"`, `status: "failed"`, `message`, `code`, `requestId`). It maps to one failed
   entry carrying the reason; a message of the same request that never completed is marked
-  incomplete; only the newest turn's failed entry is retryable.
+  incomplete; only the newest turn's failed entry is retryable, and only when the engine will retry its request.
 - *Retry, per lab:* the adapter's `retry` posts the client's retry for that request.
 - *Screen, per lab:* the failed entry draws `request-recovery` with the reason; Retry is drawn on
   the newest turn and calls the adapter; an older one draws no button.
@@ -53,13 +53,13 @@ flowchart LR
   the line with the engine's reason.
 
 **Control that must fail:** dropping the `"error"` branch from each adapter fails its adapter
-case; passing `onRetry` on every failed entry fails the newest-only case. Each is run red in the
+case; passing `onRetry` on every failed entry fails the newest-only case; dropping the source check fails the internal-source case. Each is run red in the
 PR.
 
 ## What changes
 
 - **Each lab's adapter** maps an `error` item to a `failed` entry (reason, code, details, its
-  request, and whether it is the newest turn), and marks an unfinished `message` of a failed
+  request, and whether Retry applies: the newest turn, from a source the engine retries), and marks an unfinished `message` of a failed
   request incomplete. Claude Code-style adds `error` to the item types it reads.
 - **Each lab's adapter gains `retry(sessionId, requestId)`**, the client's
   `flow(f).request(id).retry()` on the session's flow ([D1](DECISIONS.md#d1)). Each lab's fake
@@ -86,7 +86,7 @@ and Kitchen Sink. No package changes.
 | FIX-2406's contract matrix (spec [#4719](https://github.com/fixpoint-labs/flow-state-dev/pull/4719)) | Its failed-turn row is `it.fails` against this issue; whichever lands second removes the mark |
 
 **Removes:** nothing. **Adds:** one adapter verb and one entry kind per lab. **Debt:** none new.
-Newest-only Retry has one owner per layer: the adapter decides which turn is newest (`latest`,
+Newest-only Retry has one owner per layer: the adapter decides which turn is retryable (`retryable`,
 [D2](DECISIONS.md#d2)), because only it sees every item; the screen passes `onRetry` for that
 entry and adds only "not while a turn runs", as FIX-2370 has every caller do.
 
