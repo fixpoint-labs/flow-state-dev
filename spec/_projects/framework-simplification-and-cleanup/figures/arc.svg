@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 252" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The arc: four epic lanes from Aug 10 to Sep 29. The declared-surface epic, FIX-1127, ran from 15:37 to 23:56 UTC on Aug 12 and is done. Durable storage, FIX-1157, ran from Aug 13 to Aug 28 and is done. Verified identity, FIX-1503, had its direction approved on Sep 22 at 13:20 UTC and its bar runs to the now line with no child started. Keeping flows alive, FIX-1637, was filed on Sep 29 and had its direction approved the same day at 19:51 UTC; its bar is a sliver at the now line, with none of its eight children started. The now line is Sep 29, 19:54 UTC.">
+<svg viewBox="0 0 940 456" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The arc: eight epic lanes from Aug 10 to Nov 4. Declared surface, FIX-1127, ran inside one day, Aug 12, and is done. Durable storage, FIX-1157, ran Aug 13 to Aug 28 and is done. Verified identity, FIX-1503, had its direction approved on Sep 22 and its bar runs to the now line with its one child not started. Keeping flows alive, FIX-1637, had its direction approved on Sep 29 and its bar runs to the now line with four of eight children done. One owner per fact, FIX-2036, filed Oct 15, and durable agents, FIX-2171, filed Oct 24, have no bar: both epics are in Backlog, though three and two of their children are done. Mechanism sweep, FIX-2316, ran Oct 30 to Oct 31 and is done. Clean SDK, FIX-2447, was filed Nov 1 and has no bar; its direction is being drafted. The now line is Nov 4.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -12,6 +12,7 @@
     .tick   { stroke:var(--rule); stroke-width:1; stroke-dasharray:2 4; }
     .done   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
     .flight { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .filed  { stroke:var(--ink-3); stroke-width:1.2; }
     .now    { stroke:var(--gone); stroke-width:1.6; }
     .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
               font-size:9.5px; letter-spacing:.1em; }
@@ -20,51 +21,81 @@
     .t-now  { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:10px; }
   </style>
 
-  <!-- 13.5px per day: x = 200 + 13.5 * (days since Aug 10 00:00 UTC).
-       FIX-1127 Aug 12 15:37 = 235.8 to 23:56 = 240.5 · FIX-1157 Aug 13 23:15 = 253.6 to Aug 28 19:58 = 454.2
-       FIX-1503 spec merged Sep 22 13:20 = 788.0 · FIX-1637 spec merged Sep 29 19:51 = 886.2
-       (drawn 3px wide, centred on its start, so a same-hour bar stays visible) · now Sep 29 19:54 = 886.2 -->
+  <!-- 8px per day: x = 200 + 8 * (days since Aug 10 00:00 UTC).
+       FIX-1127 Aug 12 15:37 = 221.2 to 23:56 = 224.0 · FIX-1157 Aug 13 23:15 = 231.8 to Aug 28 19:58 = 350.7
+       FIX-1503 spec merged Sep 22 13:20 = 548.4 · FIX-1637 spec merged Sep 29 19:51 = 606.6
+       FIX-2036 filed Oct 15 14:24 = 732.8 · FIX-2171 filed Oct 24 14:08 = 804.7
+       FIX-2316 started Oct 30 20:18 = 854.8 to Oct 31 02:01 = 856.7 · FIX-2447 filed Nov 1 19:50 = 870.6
+       (same-day bars drawn 3px wide so they stay visible) · now Nov 4 23:55 = 896.0 -->
   <g id="axis">
     <text class="t-lbl" x="16" y="20">EPIC</text>
     <text class="t-lbl" x="200" y="20">AUG 10</text>
-    <text class="t-lbl" x="335" y="20">AUG 20</text>
-    <text class="t-lbl" x="470" y="20">AUG 30</text>
-    <text class="t-lbl" x="605" y="20">SEP 9</text>
-    <text class="t-lbl" x="740" y="20">SEP 19</text>
+    <text class="t-lbl" x="360" y="20">AUG 30</text>
+    <text class="t-lbl" x="520" y="20">SEP 19</text>
+    <text class="t-lbl" x="680" y="20">OCT 9</text>
+    <text class="t-lbl" x="840" y="20">OCT 29</text>
     <path class="axis" d="M200 30 H900"/>
-    <path class="tick" d="M200 30 V224 M335 30 V224 M470 30 V224 M605 30 V224 M740 30 V224 M875 30 V224"/>
+    <path class="tick" d="M200 30 V424 M280 30 V424 M360 30 V424 M440 30 V424 M520 30 V424 M600 30 V424 M680 30 V424 M760 30 V424 M840 30 V424"/>
   </g>
 
   <g id="declared-surface">
     <text class="t-lane" x="16" y="56">declared surface</text>
     <text class="t-s"    x="16" y="70">FIX-1127 · 3/3</text>
-    <rect class="done" x="235.8" y="42" width="4.7" height="26" rx="1"/>
-    <text class="t-s" x="250" y="59">one day · Aug 12 · wrapped</text>
+    <rect class="done" x="221.2" y="42" width="3" height="26" rx="1"/>
+    <text class="t-s" x="232" y="59">one day · Aug 12 · wrapped</text>
   </g>
 
   <g id="durable-storage">
     <text class="t-lane" x="16" y="104">durable storage</text>
     <text class="t-s"    x="16" y="118">FIX-1157 · 6/7</text>
-    <rect class="done" x="253.6" y="90" width="200.6" height="26" rx="4"/>
-    <text class="t-s" x="462" y="107">Aug 13 · re-scoped Aug 20 · wrapped Aug 28</text>
+    <rect class="done" x="231.8" y="90" width="118.9" height="26" rx="4"/>
+    <text class="t-s" x="358" y="107">Aug 13 · re-scoped Aug 20 · wrapped Aug 28</text>
   </g>
 
   <g id="verified-identity">
     <text class="t-lane" x="16" y="152">verified identity</text>
-    <text class="t-s"    x="16" y="166">FIX-1503 · 0/1 filed</text>
-    <rect class="flight" x="788" y="138" width="98.2" height="26" rx="4"/>
-    <text class="t-s" x="780" y="155" text-anchor="end">direction approved Sep 22 · no child started</text>
+    <text class="t-s"    x="16" y="166">FIX-1503 · 0/1</text>
+    <rect class="flight" x="548.4" y="138" width="347.6" height="26" rx="4"/>
+    <text class="t-s" x="556" y="155">direction approved Sep 22 · its one child not started</text>
   </g>
 
   <g id="keeping-flows-alive">
     <text class="t-lane" x="16" y="200">keeping flows alive</text>
-    <text class="t-s"    x="16" y="214">FIX-1637 · 0/8</text>
-    <rect class="flight" x="884.7" y="186" width="3" height="26" rx="1"/>
-    <text class="t-s" x="876" y="203" text-anchor="end">filed and direction approved Sep 29 · no child started</text>
+    <text class="t-s"    x="16" y="214">FIX-1637 · 4/8</text>
+    <rect class="flight" x="606.6" y="186" width="289.4" height="26" rx="4"/>
+    <text class="t-s" x="614" y="203">approved Sep 29 · 4 done · closure next</text>
+  </g>
+
+  <g id="one-owner-per-fact">
+    <text class="t-lane" x="16" y="248">one owner per fact</text>
+    <text class="t-s"    x="16" y="262">FIX-2036 · 3/10</text>
+    <path class="filed" d="M732.8 238 V256"/>
+    <text class="t-s" x="726" y="251" text-anchor="end">filed Oct 15 · Backlog · 3 children done Oct 20</text>
+  </g>
+
+  <g id="durable-agents">
+    <text class="t-lane" x="16" y="296">durable agents</text>
+    <text class="t-s"    x="16" y="310">FIX-2171 · 2/16</text>
+    <path class="filed" d="M804.7 286 V304"/>
+    <text class="t-s" x="798" y="299" text-anchor="end">filed Oct 24 · Backlog · 2 children done</text>
+  </g>
+
+  <g id="mechanism-sweep">
+    <text class="t-lane" x="16" y="344">mechanism sweep</text>
+    <text class="t-s"    x="16" y="358">FIX-2316 · 5/5</text>
+    <rect class="done" x="854.8" y="330" width="3" height="26" rx="1"/>
+    <text class="t-s" x="846" y="347" text-anchor="end">filed Oct 29 · ran Oct 30–31 · wrapped</text>
+  </g>
+
+  <g id="clean-sdk">
+    <text class="t-lane" x="16" y="392">clean SDK</text>
+    <text class="t-s"    x="16" y="406">FIX-2447 · 0/17</text>
+    <path class="filed" d="M870.6 382 V400"/>
+    <text class="t-s" x="864" y="395" text-anchor="end">filed Nov 1 · direction being drafted</text>
   </g>
 
   <g id="now">
-    <path class="now" d="M886.2 30 V236"/>
-    <text class="t-now" x="880" y="246" text-anchor="end">NOW · SEP 29 19:54</text>
+    <path class="now" d="M896 30 V436"/>
+    <text class="t-now" x="890" y="446" text-anchor="end">NOW · NOV 4</text>
   </g>
 </svg>
