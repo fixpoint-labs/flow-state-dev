@@ -662,6 +662,20 @@
         "target": "components/flow-state/run-checks.tsx"
       }],
       "categories": ["ai", "code"]
+    },
+    {
+      "name": "task-actions",
+      "title": "Task Actions",
+      "type": "registry:component",
+      "description": "An opened task's action row, by its board status: Cancel (confirmed once, naming the waiting tasks it took), Release on a held task and an optional Steer box while open; Retry and Re-run on another harness once failed or cancelled. Each press shows busy, then its outcome or the board's refusal in place. Takes the board's calls as props, shaped like orchestration's inbox.board(at).",
+      "dependencies": [],
+      "registryDependencies": ["tokens"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/task-actions.tsx",
+        "target": "components/flow-state/task-actions.tsx"
+      }],
+      "categories": ["ai", "framework"]
     }
   ]
 }

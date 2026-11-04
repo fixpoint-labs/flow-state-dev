@@ -8,6 +8,7 @@
  * v2's: the state square, ID, TASK, NOW, STREAM, WORKER, TIME (elapsed from
  * the row's start, by a clock) and COST (the vendor's charge its runs
  * reported, FIX-2398). Columns with no shipped read say who ships them (BR-16).
+ * A failed row carries its error as a line under its title.
  */
 import { useEffect, useState } from "react";
 import { COLUMNS, columnFor } from "../lib/columns";
@@ -21,6 +22,7 @@ import { useLab } from "../lib/lab-data";
 import { STALE_CLASS } from "../components/flow-state/connection-banner";
 import { cn } from "../lib/utils";
 import { costAmount, spendLine } from "../components/flow-state/spend";
+import { ErrorBody } from "../components/flow-state/error";
 import type { Gaps } from "../gaps";
 
 /** The columns Tasks groups by State, done excluded. */
@@ -196,6 +198,11 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                         <RouteLink to={taskRoute(row)} className="hover:underline" data-testid="task-row-link">
                           {row.title}
                         </RouteLink>
+                        {row.status === "errored" && row.error !== null ? (
+                          <div className="truncate text-xs text-destructive" title={row.error} data-testid="task-row-error">
+                            <ErrorBody message={row.error} />
+                          </div>
+                        ) : null}
                       </td>
                       <td className={cn(MONO_CELL, "text-muted-foreground")} title={gaps.now} data-testid="task-row-now">
                         —
