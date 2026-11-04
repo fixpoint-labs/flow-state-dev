@@ -398,7 +398,7 @@ Explicit `onApprove`/`onReject` props still take precedence; with neither a prov
 
 ### `useJumpToLatest(options?)`
 
-Scrolls a conversation the way ChatGPT and Claude do. A line the person sends rises to near the top of the view and its reply streams in below it. After that, nothing the reader didn't do moves the view. Attach `ref` to the scrolling element, mark each of the person's own lines with `mine(key)`, and call `sent()` when they send.
+Scrolls a conversation the way ChatGPT and Claude do. A line the person sends rises to near the top of the view and its reply streams in below it. After that, the view stays where it is until the reader moves it. Attach `ref` to the scrolling element, mark each of the person's own lines with `mine(key)`, and call `sent()` when they send.
 
 ```tsx
 const feed = useJumpToLatest({ resetKey: sessionId });
@@ -432,11 +432,11 @@ return (
 
 So the line can reach the top under a short reply, the hook keeps space at the end of the feed, as bottom padding on the scrolling element. The space shrinks as the reply grows and is gone once the reply fills the view. Otherwise it stays until the next send, or until the feed opens or switches, so a short reply has blank space under it. `atEnd` and `jump()` ignore the space.
 
-A reply growing past the bottom edge never moves the view: `atEnd` turns `false` and the button appears. Content that isn't the person's line, such as another worker's message or a task result, never moves it either. A feed that never calls `mine` or `sent` behaves this way throughout: the view stays put and the button shows when there is more below.
+A reply growing past the bottom edge never moves the view: `atEnd` turns `false` and the button appears. Content that isn't the person's line, such as another participant's message or a tool result, never moves it either. A feed that never calls `mine` or `sent` behaves this way throughout: the view stays put and the button shows when there is more below.
 
 Any scroll by the person cancels a rise that hasn't happened yet: the wheel, touch, a press on the scrollbar, or a scroll key (arrows, Page Up/Down, Home, End, Space) pressed on the feed. Keys typed into an input, textarea, select or editable element inside the feed don't count.
 
-A feed that opens is already at its end on the first frame, with nothing animating: on mount, when `resetKey` changes, and when its first read fills it.
+With `startAtEnd` on, a feed that opens is already at its end on the first frame, with nothing animating: on mount, when `resetKey` changes, and when content first fills a feed that was empty, such as a conversation that loads after the feed mounts.
 
 ### `useDraft(namespace, id)`
 
