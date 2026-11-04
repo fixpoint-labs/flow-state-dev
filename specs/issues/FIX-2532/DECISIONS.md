@@ -13,8 +13,8 @@ flowchart TD
   D1 -.->|"rejected"| X1["an explicit backfill command<br/>a forgotten step means silent misses"]
   I --> D2["D2 · one engine writer computes entries for every write"]
   D2 -.->|"rejected"| X2["each write path computes its own<br/>a direct store write skips the index"]
-  I --> D3["D3 · the four in-partition scans move to findBy now"]
-  D3 -.->|"rejected"| X3["leave them on the loaded mirror<br/>two ways to do one job"]
+  I --> D3["D3 · scans over a loaded ledger stay; findBy is for rows not loaded"]
+  D3 -.->|"rejected"| X3["move them to findBy now<br/>a store read per turn, nothing saved"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -26,7 +26,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | An explicit backfill command an operator runs after deploying a new or changed index |
 | **Because** | A command someone forgets leaves `findBy` returning too few rows with no error, which is the one failure a lookup must not have. The first call per scope already has to read the rows to answer, so it writes their entries and records `(scope, collection, index, version)` as built. A version bump counts as unbuilt, so a changed index function rebuilds the same way |
-| **Locks in** | Index entries are a superset, re-checked against each row on every read. The first lookup per scope per index version pays one scan of that scope. Every caller of `findBy`, ours or an app's, inherits that one-time cost |
+| **Locks in** | Index entries are a superset, re-checked against each row on every read. To keep it one, the build only adds entries and never replaces them, and a live write always writes its entries whether or not the index is built yet: a build that replaced entries with the state it read could undo a write that landed mid-build. The first lookup per scope per index version pays one scan of that scope. For the ledger's `byTaskId` that scope is the user cell, every conversation's partitions, once. Every caller of `findBy`, ours or an app's, inherits that one-time cost |
 
 ![D1: build on first lookup, chosen, beside an explicit backfill command. Decides it: a forgotten step after deploy. Price: one scan per scope on the first call](figures/d1-backfill.svg)
 
@@ -52,21 +52,30 @@ It comes down to a write that skips the block path: per-path computation leaves 
 Then entries would have to be computed in the store from a persisted declaration.
 
 <a name="d3"></a>
-## D3 · The four in-partition scans move to `findBy` now
+## D3 · Scans over a loaded ledger stay; `findBy` is for rows not yet loaded
 
 | | |
 |---|---|
-| **Instead of** | Leaving `held-task.ts`, `steer.ts`, `task-admission.ts` and `wait-on-task.ts` on `list().find/filter` over the ledger already loaded for the request |
-| **Because** | The issue's objective is one way to look a row up by a field. Two would teach the next reader to copy the scan onto ledgers where it costs. Honestly: today each site scans a partition already in memory, so the move buys no speed until the ledger stops loading whole partitions |
-| **Locks in** | The task ledger declares indexes on `id`, `run.requestId`, `run.sessionId` and the lapsed wait. A change to those fields on the task schema needs an index version bump. The turn path takes one awaited store read per lookup where it now reads memory |
+| **Instead of** | Moving the task ledger's in-partition scans to `findBy` now, with an in-memory filter for the part one field doesn't answer |
+| **Because** | Every one of them filters a partition the request already holds in memory, so an index saves no read. Most ask more than one field equality answers (table below), so each would still filter in code after an awaited store read, and it would read the committed index where the rest of the turn reads the request's mirror. The one lookup that does avoid loading rows, a task id across partitions, is `__ids`, and it moves |
+| **Locks in** | `findBy` is the way to find rows by a field **when the alternative is reading them from the store**; filtering rows already loaded is not a lookup, and the docs say so. The task ledger declares one index, `byTaskId` |
 
-![D3: move the scans now, chosen, beside leaving them on the mirror. Decides it: one way to do the job. Price: one store read per turn](figures/d3-four-scans.svg)
+![D3: leave the scans on the loaded mirror, chosen, beside moving them to findBy. Decides it: an index saves nothing on rows already in memory. Price of moving: one store read per site per turn](figures/d3-loaded-scans.svg)
 
-It comes down to one way to do the job: leaving the scans keeps a pattern that is copied where it costs.
+It comes down to what an index saves: on a partition already in memory, nothing.
 
-**What would change my mind:** a turn-latency budget the extra read breaks. Then the three
-conversation sites stay on the mirror and only `wait-on-task.ts`, which reads a whole board,
-moves.
+| Site (chained `list(...).find/filter/some`) | Asks | If the ledger stopped loading whole partitions |
+|---|---|---|
+| `held-task.ts` `claimedTask` | in progress, and `run.requestId` **or** the stamped claim's id | `findBy` on `run.requestId` + `get` of the claim, status filtered in code |
+| `held-task.ts` `linkedTaskOf` | `run.requestId` | `findBy` |
+| `steer.ts` (thread lookup, settle-wake) · `task-admission.ts` `ownTaskRow` | open thread of `taskId`; in progress and `run.sessionId` | `findBy` on the one field + status filtered in code |
+| `task-admission.ts` `piecesHold` | legacy rows without `filedByTask` | stays: ages out with the rows |
+| `routed-session.ts` | open rows with a `targetSessionId` | stays: a sweep, not a lookup |
+| `wait-on-task.ts` `releaseEndedWaits` | lapsed wait with a request id | `findBy` on a derived `lapsedWait` value |
+| `steer-context.ts` `runningTaskOf` · `task-tools-capability.ts` (claim, duplicate check) | session, request and attempt together; assignee, target, goal | `findBy` on `run.requestId` + the rest in code; the duplicate check stays |
+
+**What would change my mind:** the ledger stops hydrating whole partitions. Then each site
+becomes a store read, and moves to `findBy` plus an in-memory filter as the last column says.
 
 ## Decided, not asked
 
@@ -79,11 +88,19 @@ moves.
 - **SQL: one generic table**, `resource_index(scope_type, scope_id, collection, index_name, value,
   resource_key)` with all six as the primary key, plus a built-marker table. A write replaces
   that row's entries in the same transaction. No per-field DDL, no `ALTER TABLE`.
-- **`collection` is the pattern's storage prefix**; the version is part of the stored index name,
-  so entries of an old version are never read.
+- **`collection` is the collection's full declared pattern**, not its storage prefix: two
+  patterns can share a prefix (`data/[topic]/observations` and `data/[topic]/notes` are both
+  `data`), and a shared identity would let one collection's built marker cover the other. The
+  version is part of the stored index name, so entries of an old version are never read.
 - **`findBy` reads the same cell and passes the same owner fence as `list`.** A partitioned
-  ledger's partitions share one cell, so a lookup crosses partitions; `TaskCollectionRef.findBy`
-  narrows to its own partition with the existing wrapper.
+  ledger's partitions share one cell, so a lookup crosses partitions, which is what
+  `findTaskPartitions` needs. `TaskCollectionRef` gets no `findBy`: nothing calls it (D3).
+- **What `findBy` sees:** keys come from the committed index, and a write persists when it is
+  made, so this request's own writes are found. Each hit's state is read as `get` reads it, and
+  a key this request deleted is not returned. It can return a row another request committed
+  after this one started, which an eagerly loaded `list` would not.
+- **Cost on SQL:** one index query, then one row read per hit for the re-check. Cheap for a key
+  like a task id; an index whose value many rows share costs a read per row it returns.
 - **Values:** a string, number or boolean, or an array of them, normalised to a canonical string.
   `null` and `undefined` index nothing. Equality only.
 - **Determinism:** an index function sees `key` and `state` only, documented and tested. One
@@ -103,13 +120,16 @@ moves.
 | An index per field: JSONB expression indexes or generated columns | Per-field DDL and migrations for every declaration; SQLite and Postgres diverge |
 | An ORM (Drizzle, Kysely) | Doesn't remove the hard part, keeping entries in step with rows |
 | Maintain entries from `onInstance*` hooks, as the schedule index does | Hooks run after the write and don't see direct store writes, so an entry and its row commit apart |
+| Ledger-local: a second key per task (`<ledger>/by-id/<taskId>/<partition>`) or an id-first key layout | `byTaskId` is today's only consumer, so this is the cheap alternative. A second key is a second `set`, which is `__ids` again: marker and row commit apart. An id-first layout breaks the partition prefix read the ledger loads by. And the issue's objective is that no package builds its own index, so a ledger-local fix is the thing being removed |
 
 ## Settled
 
-- **The spec's counts: four scan sites and one hand-built index** — **CONFIRMED** by
-  [`poc/fact-check/check.sh`](poc/fact-check/check.sh), which asserts the set of
-  `list(...).find|filter` sites over a ledger in `workforce` and `orchestration` is exactly the
-  four named. Its control, `FACT_CHECK_PLANT=1`, plants a fifth site and fails, as it must.
+- **The scans over a loaded ledger, and the one hand-built index** — **CONFIRMED** by
+  [`poc/fact-check/check.sh`](poc/fact-check/check.sh), which counts every chained
+  `list(...).find|filter|some` site in `workforce` and `orchestration` sources, across lines, per
+  file, and asserts the count is the inventory on [D3](#d3): eleven sites in seven files. Its
+  control, `FACT_CHECK_PLANT=1`, plants a multiline site in a listed file and fails, as it must.
+  It proves the inventory, not that a site could move as a drop-in; D3's table says what each asks.
 
 ## Analysis
 
@@ -117,7 +137,7 @@ moves.
 session: no fresh sub-agent was available in this environment.
 
 1. **Reuse** — `indexes`/`findBy` extend `collection`; the store verbs extend `store`; the writer
-   reuses the owner-writes placement; `TaskCollectionRef.findBy` composes the partition wrapper.
+   reuses the owner-writes placement; `findTaskPartitions` keeps its lookup over `byTaskId`.
    None is a second mechanism except as recorded in the debt. See
    [Builds on / Adds](SPEC.md#whats-already-here-and-the-debt).
 2. **Prior art** — a side index table written in the row's transaction is the standard secondary
@@ -130,13 +150,33 @@ session: no fresh sub-agent was available in this environment.
 5. **Necessity** — earns its place: it removes a hand-built index whose marker and row commit
    apart.
 6. **Ergonomics** — one config field and one method; `findBy` returns the refs `list` returns.
-7. **Concerns** — D3's gain is consistency, not speed; stated on its card. Recorded, nothing
-   folded.
+7. **Concerns** — D3 as first drafted moved four scans for consistency, not speed; review
+   showed the scans are eleven and mostly compound, and D3 now leaves them (*How it got here*).
 
 ## How it got here
 
 - **Draft** — framed as a field lookup the framework keeps current; a generic SQL index table
   written in the row's transaction, a scan elsewhere, and a lazy build; replaces FIX-2160 D1's
   hand-built `__ids`.
+- **Round 1** — D3 reversed: the in-partition scans stay on the loaded mirror, because review
+  showed there are eleven, not four, most on predicates one field doesn't answer, over rows
+  already in memory, so moving them saved no read and added one. `TaskCollectionRef.findBy`
+  dropped with them. Collection identity changed from the storage prefix to the full pattern,
+  because two patterns can share a prefix. D1 now states the build's add-only discipline.
+
+## Notes from review
+
+For the implementer, not baked into the design.
+
+- **cursor[bot], D1:** "lazy build granularity should match `TaskCollectionRef` partition
+  narrowing where possible, so D1's one-time cost does not regress FIX-2160-scale paths on first
+  deploy." `byTaskId` crosses partitions by definition, so a partition-sized build can't answer
+  it; the one-time cell scan is on D1's card. Keep the cell scan off a request path where you can.
+- **Second look #4, D2:** "Prefer a loud failure: the wrapped store throws (or logs once per
+  collection) when it sees a write to a key matching no registered declaration *and* the scope has
+  built markers for that prefix."
+- **Second look, architecture:** "Delete `resolveResourceCollection`'s `__ids` special-casing in
+  the same PR rather than leaving a no-op wrapper (BP-034)." · "Put the canonical-string value
+  normalisation in one shared util used by both the scan fallback and the SQL write path."
 
 **Open: none.**

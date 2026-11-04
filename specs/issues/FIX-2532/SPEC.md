@@ -12,8 +12,9 @@
 | **sends a message to a task by id on a ledger kept per conversation** | Found through a hand-built `__ids` marker written apart from the row; a marker can outlive or precede its row | Found through the ledger's own `byTaskId` index, written with the row. Old `__ids` rows stay in the store, unread |
 | **runs tests and dev on the memory or filesystem store** | n/a | `findBy` returns the same rows, by scanning. Slower, never different |
 
-The task ledger alone has five lookups on fields outside the key, done two different ways. Each
-new lookup on a ledger kept per partition would need another hand-built index like `__ids`.
+The task ledger is looked up by fields outside its key two ways: eleven sites filter a partition
+already in memory, and the one lookup that crosses partitions, a task id, reads the hand-built
+`__ids` marker. Each new lookup like it on a ledger kept per partition would need another.
 
 ## The goal, and how we'll know it's met
 
@@ -26,7 +27,7 @@ before the index existed.**
 | **The real need** | "Collections declare which fields they can be looked up by, and the framework maintains and serves the lookup. No package builds its own index." ([FIX-2532](https://linear.app/fixpoint-labs/issue/FIX-2532), Objective) |
 | **Smaller, and rejected** | "`findBy` exists and returns the right rows." Hittable by a scan on every store, which is the cost the issue exists to remove, and leaves `__ids` in place |
 | **Bigger, and not this issue's** | Range queries, ordering, search inside a collection (FIX-833), lookups across users |
-| **Not done if** | The conformance suite is green but the SQL store still scans · rows written before the declaration are missing on the first lookup · `__ids` or one of the four scans is still there · an entry and its row can commit apart |
+| **Not done if** | The conformance suite is green but the SQL store still scans · rows written before the declaration are missing on the first lookup · `__ids` is still there · an entry and its row can commit apart |
 
 ```mermaid
 flowchart LR
@@ -95,7 +96,8 @@ flowchart LR
 
 Every write passes one engine-side writer that knows the app's declared indexes
 ([D2](DECISIONS.md#d2)). Every hit is re-checked against its row, so a stale entry is never
-returned.
+returned. That makes a SQL lookup one index query plus one row read per hit: cheap for a task
+id, a read per row for a value many rows share.
 
 ## What stays as it is
 
@@ -109,7 +111,7 @@ returned.
 
 | Already here | What this does with it |
 |---|---|
-| Whatever finds a row by a field outside its key: `collection` (`list(prefix)` then filter: `held-task.ts`, `steer.ts`, `task-admission.ts`, `wait-on-task.ts`, faceted `search`), and the hand-built marker collection `id-index.ts`. `schedule` is a different job (ordered claim). Searched `find(`, `filter(`, `__ids`, `index`, `lookup`, `by[A-Z]` across `packages/*/src` | **This is the third way** (key, prefix, field). **Replaces** `id-index.ts` and the four scans; ad-hoc predicates keep using `list` |
+| Whatever finds a row by a field outside its key: `collection` (`list(prefix)` then filter: eleven sites over a loaded task ledger, listed on [D3](DECISIONS.md#d3), and faceted `search`), and the hand-built marker collection `id-index.ts`. `schedule` is a different job (ordered claim). Searched `find(`, `filter(`, `__ids`, `index`, `lookup`, `by[A-Z]` across `packages/*/src` | **This is the third way** (key, prefix, field). **Replaces** `id-index.ts`. Filters over rows already loaded keep using `list` ([D3](DECISIONS.md#d3)) |
 | `store` · `ResourceStateStore` | **Extends** with optional index verbs; a store without them is served by the engine's scan |
 | The owner fence that sees every write meet the store (`engine/resources/owner-private.ts`) and its startup fence over flows | **Builds on** the same placement: one writer for entries, one startup check for conflicting declarations |
 | Schema init by `CREATE TABLE IF NOT EXISTS` (`store-sqlite`, `store-postgres` `schema.ts`) | **Builds on** for the index table and the built-marker table |
@@ -120,15 +122,14 @@ returned.
 | `indexes` on `defineResourceCollection`, `findBy` on `ResourceCollectionRef` | `collection` · `list(prefix)` | `list` answers by key. A field lookup on it loads the scope; composed: the scan fallback *is* `list`'s read plus the index function |
 | Optional index verbs on `ResourceStateStore` + one index table per SQL store | `store` · `set` / `delete` | Entries must commit in `set`'s own transaction, so they ride that call. Delete and tombstone clear entries with no declaration |
 | One engine index writer over `stores.resourceState` | The owner-writes check where every write meets the store | Same placement, second job. Not inside each write path: direct store writers would skip it ([D2](DECISIONS.md#d2)) |
-| `findBy` on `TaskCollectionRef` (its partition only) | `TaskCollectionRef.list(filter)` | `list` reads the loaded mirror; `findBy` is the resource ref's, narrowed by the existing partition wrapper |
 
 | The debt | |
 |---|---|
-| **Removes** | `orchestration/src/tasks/collection/id-index.ts`, the `__ids` collection and its install rule, the index check in `resolveTaskIdIndex`, four `list().find/filter` scans |
+| **Removes** | `orchestration/src/tasks/collection/id-index.ts`, the `__ids` collection and its install rule, the index check in `resolveTaskIdIndex` |
 | **Adds** | Dead `__ids` rows in deployed stores, never read (BP-030). Entries of a superseded index version, left until their row is rewritten and never read. Both permanent by design: removing them needs a migration nobody needs |
-| **Leaves** | Faceted `search` still filters a listed collection; it could adopt indexes when a facet store grows. `piecesHold` (`task-admission.ts`) still scans for legacy rows that predate `filedByTask`; it ages out with them. No issue filed for either: no measured cost |
+| **Leaves** | The eleven filters over a loaded task ledger ([D3](DECISIONS.md#d3)): they move when the ledger stops loading whole partitions, and not before. Faceted `search` still filters a listed collection; it could adopt indexes when a facet store grows. No issue filed for either: no measured cost |
 
-**Net: flat.** One hand-built index and four scans go; one framework index takes their job.
+**Net: flat.** One hand-built index goes; one framework index takes its job.
 
 ## Sign off
 
@@ -136,7 +137,7 @@ returned.
 index read on SQL, legacy rows found on the first call. If wrong: we ship a `findBy` that still
 scans, or hold the issue for range queries it was never meant to deliver.
 
-**[The debt](#whats-already-here-and-the-debt), net flat:** `__ids` and four scans go; an index
+**[The debt](#whats-already-here-and-the-debt), net flat:** `__ids` goes; an index
 table, optional store verbs and one engine writer arrive. If wrong: a second index mechanism
 beside the first.
 
@@ -144,8 +145,9 @@ beside the first.
    scope.** If wrong: a large scope pays one full scan on a request path.
 2. **[D2](DECISIONS.md#d2) · One engine writer computes entries for every resource write.** If
    wrong: a process that writes a collection without declaring it leaves rows no lookup finds.
-3. **[D3](DECISIONS.md#d3) · The four in-partition scans move to `findBy` now.** If wrong: one
-   extra store read per turn for no speed gain today.
+3. **[D3](DECISIONS.md#d3) · Scans over a loaded ledger stay; `findBy` is for rows not yet
+   loaded.** If wrong: two ways to find a task by a field live side by side until the ledger
+   stops loading whole partitions.
 
 **Open: none.** D2 is the one to weigh. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
 

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D3, whether the four lookups over a loaded ledger move to findBy now. Chosen: move all four. Instead of: leave them on the in-memory mirror. Decides it: one way to do the job, where leaving them keeps a scan the next reader copies onto ledgers where it costs. Price: one awaited store read per turn, with no speed gain while the ledger loads whole partitions. Tie: the same rows either way. Locks in: task ledger fields are indexed, so renaming one needs a version bump. Flips if: the turn path cannot take one more read."
+<svg viewBox="0 0 940 420" role="img" aria-label="D3, whether the eleven scans over a loaded task ledger move to findBy now. Chosen: leave them on the loaded mirror. Instead of: move them to findBy with an in-memory filter. Decides it: what an index saves, which on a partition already in memory is nothing, while each moved site would still filter in code. Price of moving: one awaited store read per site per turn. What it sees: the mirror is the request's view; findBy reads the committed index. Locks in: findBy is for rows not yet loaded, and the ledger declares byTaskId only. Flips if: the ledger stops loading whole partitions."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -35,59 +35,59 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">D3 · THE CALL</text>
-    <text class="t-q" x="32" y="52">Do the four lookups over a loaded ledger move to findBy now?</text>
+    <text class="t-q" x="32" y="52">Do the eleven scans over a loaded ledger move to findBy now?</text>
   </g>
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Move all four now</text>
+    <text class="t-h c-code" x="228" y="112">Leave them on the loaded mirror</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">Leave them on the loaded mirror</text>
+    <text class="t-h c-lost" x="592" y="112">Move them to findBy + a filter</text>
   </g>
   <g id="row-decides">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">WAYS TO DO</text>
-    <text class="t-lbl" x="32" y="169">THE JOB</text>
+    <text class="t-lbl" x="32" y="156">WHAT AN INDEX</text>
+    <text class="t-lbl" x="32" y="169">SAVES</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">One</text>
-    <text class="t-s" x="248" y="179">the next reader copies findBy</text>
+    <text class="t-b" x="248" y="161">Nothing to save</text>
+    <text class="t-s" x="248" y="179">the partition is already in memory</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Two</text>
-    <text class="t-s" x="612" y="179">the scan gets copied where it costs</text>
+    <text class="t-b" x="612" y="161">Nothing, at a price</text>
+    <text class="t-s" x="612" y="179">most sites ask more than one field; each still filters</text>
   </g>
   <g id="row-2">
     <text class="t-lbl" x="32" y="222">COST PER TURN</text>
-    <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">One awaited store read</text>
-    <text class="t-s" x="248" y="241">no speed gain while the ledger loads whole</text>
-    <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">An in-memory scan</text>
-    <text class="t-s" x="612" y="241">of a partition already loaded</text>
+    <text class="mark plus" x="228" y="224">+</text>
+    <text class="t-b" x="248" y="223">An in-memory scan</text>
+    <text class="t-s" x="248" y="241">of a partition already loaded</text>
+    <text class="mark minus" x="592" y="224">−</text>
+    <text class="t-b" x="612" y="223">One awaited store read</text>
+    <text class="t-s" x="612" y="241">per site, no speed gain while the ledger loads whole</text>
     <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
   <g id="row-3">
-    <text class="t-lbl" x="32" y="280">CORRECTNESS</text>
-    <text class="mark tie" x="228" y="282">=</text>
-    <text class="t-b" x="248" y="281">Same rows</text>
-    <text class="t-s" x="248" y="299">committed writes are in the store</text>
-    <text class="mark tie" x="592" y="282">=</text>
-    <text class="t-b" x="612" y="281">Same rows</text>
-    <text class="t-s" x="612" y="299">the mirror holds the same set</text>
+    <text class="t-lbl" x="32" y="280">WHAT IT SEES</text>
+    <text class="mark plus" x="228" y="282">+</text>
+    <text class="t-b" x="248" y="281">The request's view</text>
+    <text class="t-s" x="248" y="299">what the rest of the turn reads</text>
+    <text class="mark minus" x="592" y="282">−</text>
+    <text class="t-b" x="612" y="281">The committed index</text>
+    <text class="t-s" x="612" y="299">can differ from the mirror beside it</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Task ledger fields are indexed</text>
-    <text class="t-s" x="32" y="389">renaming one needs an index version bump</text>
+    <text class="t-b" x="32" y="371">findBy is for rows not yet loaded</text>
+    <text class="t-s" x="32" y="389">the task ledger declares byTaskId only</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">The turn path can’t take one more read</text>
-    <text class="t-s" x="494" y="389">then only wait-on-task moves</text>
+    <text class="t-b" x="494" y="371">The ledger stops loading whole partitions</text>
+    <text class="t-s" x="494" y="389">then each site moves: findBy + a filter in code</text>
   </g>
 </svg>
