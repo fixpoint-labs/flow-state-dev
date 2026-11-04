@@ -56,11 +56,12 @@ export function TasksPane({
   useEffect(() => {
     if (openInDone !== undefined) setDoneOpen(true);
   }, [openInDone]);
-  // The marked row scrolls into view once it is drawn.
+  // The marked row scrolls into view once it is drawn: when it is opened, when Done opens, or when its row is first read.
   const list = useRef<HTMLDivElement>(null);
+  const shown = open !== undefined;
   useEffect(() => {
     list.current?.querySelector('[aria-expanded="true"]')?.scrollIntoView?.({ block: "nearest" });
-  }, [openId, doneOpen]);
+  }, [openId, doneOpen, shown]);
 
   return (
     <aside aria-label="Background tasks" className="flex h-full min-h-0 flex-col bg-inspector">
