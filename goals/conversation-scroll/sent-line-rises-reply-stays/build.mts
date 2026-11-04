@@ -49,6 +49,13 @@ function patchedHook(): string | undefined {
     if (!source.includes(from)) throw new Error(`key-reset: the hook has no "${from}"`);
     return source.replace(from, "");
   }
+  if (control === "mount-history") {
+    const source = readFileSync(HOOK, "utf8");
+    // The attach site, not the settle one: the one followed by the first change.
+    const from = "if (!waiting.current) showAll();\n    onChange();";
+    if (source.split(from).length !== 2) throw new Error(`mount-history: the hook has no single "${from}"`);
+    return source.replace(from, "showAll();\n    onChange();");
+  }
   return undefined;
 }
 

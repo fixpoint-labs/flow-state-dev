@@ -8,6 +8,7 @@
  * (`pages/script.ts`): no server, no model. One leg per surface:
  *
  *   devtool/stream                   DevTool's stream view
+ *   devtool/first-send               a first request into an empty session, sent while the stream is its empty state (f.empty only)
  *   shift-manager/conversation       Shift Manager's conversation
  *   shift-manager/task-session       a task's Session tab
  *   shift-manager/first-send         a first line into a conversation the send creates (f only)
@@ -27,6 +28,7 @@
  *   e        a switch to the other conversation is at its end on every frame it is drawn, from the first
  *   f        a first send that creates its conversation: the line lands near the top, and the long reply
  *            grows past the bottom edge with `scrollTop` moving no more than 1px, and the arrow shows
+ *   f.empty  the same, for a first send made while the view draws an empty state in place of the feed
  *
  * Run:     PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/conversation-scroll/sent-line-rises-reply-stays/run.mts
  * Control: GOAL_CONTROL=main-rule | no-reserve | key-reset, same command (goal.md → Controls).
@@ -48,14 +50,16 @@ const NEAR_TOP = 48;
 
 // ---- the controls ----------------------------------------------------------------
 
-type Signal = "a.short" | "a.long" | "b" | "c" | "d" | "e" | "f";
+type Signal = "a.short" | "a.long" | "b" | "c" | "d" | "e" | "f" | "f.empty";
 /** Each control serves the hook patched (`build.mts`) and must fail exactly these signals, on every surface that has them. */
 const CONTROLS: Record<string, { why: string; fails: Signal[] }> = {
-  "main-rule": { why: "useJumpToLatest as it was before this change (581142fb): a send goes to the end", fails: ["a.short", "a.long", "f"] },
+  "main-rule": { why: "useJumpToLatest as it was before this change (581142fb): a send goes to the end", fails: ["a.short", "a.long", "f", "f.empty"] },
   // The person's line lands before its reply starts, so with no space it can't reach the top under either length.
   "no-reserve": { why: "useJumpToLatest keeps no space under the sent line", fails: ["a.short", "a.long", "f"] },
   // The conversation's id arriving before its first line reopens the feed, as if switched to: the reply scrolls as history.
   "key-reset": { why: "useJumpToLatest reopens on a key that arrives after a send", fails: ["f"] },
+  // A send made before the feed mounts is not kept for the line the feed mounts with: the reply scrolls as history.
+  "mount-history": { why: "useJumpToLatest counts the lines a feed mounts with as shown, even with a send waiting", fails: ["f.empty"] },
 };
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(CONTROLS).join(", ")}`);
@@ -72,10 +76,14 @@ const APPS: App[] = [
 
 /** How a surface sends: through its own composer, or as the app learns of a send from elsewhere (`goal.send`). */
 type Send = { composer: string; key: string } | "goal" | "none";
-/** `first`: the send creates the conversation, so the feed's key arrives after the send and before its line. */
-type Surface = { id: string; app: string; query: string; feed: string; send: Send; first?: true };
+/**
+ * `first`: the send creates the conversation, so the feed's key arrives after the send and before its line.
+ * `empty`: the text the view draws in place of the feed until its first line, so the send is made before the feed mounts.
+ */
+type Surface = { id: string; app: string; query: string; feed: string; send: Send; first?: true; empty?: string };
 const SURFACES: Surface[] = [
   { id: "devtool/stream", app: "devtool", query: "stream", feed: ".overflow-auto.bg-fs-surface", send: "goal" },
+  { id: "devtool/first-send", app: "devtool", query: "first-send", feed: ".overflow-auto.bg-fs-surface", send: "goal", first: true, empty: "No requests yet" },
   { id: "shift-manager/conversation", app: "shift-manager", query: "conversation", feed: '[data-testid="conversation-feed"]', send: { composer: '[data-testid="conversation-composer-input"]', key: "Enter" } },
   {
     id: "shift-manager/first-send",
@@ -206,7 +214,8 @@ async function send(page: Page, surface: Surface, text: string) {
 /** Wait for the line holding `text` to be drawn in the feed, then for the feed to come to rest. */
 async function landed(page: Page, surface: Surface, text: string): Promise<Read> {
   for (const until = Date.now() + 8_000; Date.now() < until; await page.waitForTimeout(50)) {
-    if ((await must(page, surface.feed, text)).lineTop !== null) break;
+    // A view with an empty state draws no feed until the line lands.
+    if (((await read(page, surface.feed, text))?.lineTop ?? null) !== null) break;
   }
   await settled(page, surface.feed);
   return await must(page, surface.feed, text);
@@ -231,8 +240,13 @@ async function runSurface(browser: Browser, origin: string, surface: Surface): P
   try {
     await page.goto(`${origin}/?surface=${surface.query}`);
     await page.waitForFunction(() => (window as unknown as { goal?: { ready: boolean } }).goal?.ready === true, undefined, { timeout: 15_000 });
-    await page.waitForSelector(surface.feed, { timeout: 15_000 });
-    await settled(page, surface.feed);
+    if (surface.empty === undefined) {
+      await page.waitForSelector(surface.feed, { timeout: 15_000 });
+      await settled(page, surface.feed);
+    } else {
+      await page.getByText(surface.empty).waitFor({ timeout: 15_000 });
+      if ((await read(page, surface.feed)) !== null) throw new Error(`${surface.id}: the feed is drawn before the first send`);
+    }
     const stamp = Date.now().toString(36);
 
     if (surface.first) {
@@ -244,7 +258,7 @@ async function runSurface(browser: Browser, origin: string, surface: Surface): P
       const { drift, last } = await driftUntilDone(page, surface.feed, r.top);
       const below = last.height - last.top - last.view > 40;
       grade(
-        "f",
+        surface.empty === undefined ? "f" : "f.empty",
         nearTop(r) && drift <= 1 && last.arrow && below,
         `landed: ${where(r)}; scrollTop moved ${drift.toFixed(1)}px while the reply grew; ${below ? "content below the view" : "no content below the view"}; arrow ${last.arrow ? "shown" : "not shown"}`,
       );
@@ -365,7 +379,7 @@ await runGoal(async (failures) => {
         failures.push(`${surface.id} setup: ${(error as Error).message.slice(0, 600)}`);
         continue;
       }
-      const signals: Signal[] = surface.first ? ["f"] : surface.send === "none" ? ["b", "d", "e"] : ["a.short", "a.long", "b", "c", "d", "e"];
+      const signals: Signal[] = surface.first ? [surface.empty === undefined ? "f" : "f.empty"] : surface.send === "none" ? ["b", "d", "e"] : ["a.short", "a.long", "b", "c", "d", "e"];
       for (const signal of signals) {
         const v = verdicts.get(signal) ?? { pass: false, note: "never ran" };
         const line = `${surface.id} ${signal} ${v.pass ? "PASS" : "FAIL"} ${v.note}`;

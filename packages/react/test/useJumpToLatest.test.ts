@@ -349,24 +349,6 @@ describe("sending a line", () => {
     expect(feed.atEnd).toBe(false);
   });
 
-  it("shows the line sent before the feed existed, once the feed mounts with it", async () => {
-    // An empty state in place of the feed until the first request: the hook runs, the element doesn't.
-    function Late({ lines }: { lines: number }) {
-      feed = useJumpToLatest();
-      if (lines === 0) return createElement("span", null, "nothing yet");
-      return createElement(
-        "div",
-        { "data-testid": "feed", ref: (node: HTMLDivElement | null) => feed.ref(node && layOut(node)) },
-        Array.from({ length: lines }, (_, i) => createElement("p", { key: i }, `line ${i}`)),
-      );
-    }
-    const { rerender } = render(createElement(Late, { lines: 0 }));
-    act(() => feed.sent());
-    rerender(createElement(Late, { lines: 30 }));
-    await settle();
-    expect(screen.getByTestId("feed").scrollTop).toBe(30 * LINE - VIEW);
-  });
-
   it("brings up the first line of a conversation the send itself creates, though the key arrives before the line", async () => {
     // Nothing to show yet (`null`), then the send opens the conversation: its id lands before its first line does.
     const { rerender } = await opened(20, { resetKey: null });
@@ -402,6 +384,16 @@ describe("sending a line", () => {
     expect(nearTop(20)).toBe(true);
   });
 
+  it("brings up the line sent while the scrolling element is replaced, not an earlier one of the person's", async () => {
+    const { rerender } = await opened(20, { resetKey: "a", elementKey: "one", mine: [10] });
+    act(() => feed.sent());
+    rerender(feedElement({ lines: 20, resetKey: "a", elementKey: "two", mine: [10] }));
+    await settle();
+    rerender(feedElement({ lines: 21, mine: [10, 20], resetKey: "a", elementKey: "two" }));
+    await settle();
+    expect(nearTop(20)).toBe(true);
+  });
+
   it("drops the space on switching to another conversation, which opens at its end", async () => {
     const { rerender } = await opened(20, { resetKey: "a" });
     act(() => feed.sent());
@@ -413,6 +405,83 @@ describe("sending a line", () => {
     expect(screen.getByTestId("feed").style.paddingBottom).toBe("");
     expect(screen.getByTestId("feed").scrollTop).toBe(30 * LINE - VIEW);
     expect(moves.every((m) => m.behavior === "instant")).toBe(true);
+  });
+});
+
+/**
+ * A view that draws an empty state in place of the feed until there is something in it, such as a
+ * conversation with no requests yet: the hook runs, the scrolling element doesn't.
+ */
+function Late({ lines, mine = [], startAtEnd, resetKey }: { lines: number; mine?: number[]; startAtEnd?: boolean; resetKey?: string | null }) {
+  feed = useJumpToLatest({ startAtEnd, resetKey });
+  if (lines === 0) return createElement("span", null, "nothing yet");
+  return createElement(
+    "div",
+    { "data-testid": "feed", ref: (node: HTMLDivElement | null) => feed.ref(node && layOut(node)) },
+    Array.from({ length: lines }, (_, i) => createElement("p", { key: i, ...(mine.includes(i) ? feed.mine(`line ${i}`) : {}) }, `line ${i}`)),
+  );
+}
+const late = (props: Parameters<typeof Late>[0]) => createElement(Late, props);
+
+describe("sending before the feed exists", () => {
+  // The first send into an empty conversation: the feed mounts with the line, then the reply streams in under it.
+  for (const startAtEnd of [true, false]) {
+    it(`brings up the first line, sent before the feed mounted, and keeps the reply below it (startAtEnd ${startAtEnd})`, async () => {
+      const { rerender } = render(late({ lines: 0, startAtEnd }));
+      act(() => feed.sent());
+      rerender(late({ lines: 1, mine: [0], startAtEnd }));
+      await settle();
+      expect(space(screen.getByTestId("feed"))).toBeGreaterThan(0);
+      // The reply grows past the bottom edge over several draws: the view stays on the line.
+      for (const lines of [2, 4, 8, 12]) {
+        rerender(late({ lines, mine: [0], startAtEnd }));
+        await settle();
+        await nextFrame();
+      }
+      expect(nearTop(0)).toBe(true);
+      expect(feed.atEnd).toBe(false);
+    });
+  }
+
+  it("brings up the first line of a conversation the send creates, when the feed mounts with the key", async () => {
+    const { rerender } = render(late({ lines: 0, resetKey: null }));
+    act(() => feed.sent());
+    rerender(late({ lines: 1, mine: [0], resetKey: "created" }));
+    await settle();
+    rerender(late({ lines: 12, mine: [0], resetKey: "created" }));
+    await settle();
+    await nextFrame();
+    expect(nearTop(0)).toBe(true);
+    expect(feed.atEnd).toBe(false);
+  });
+
+  it("opens at the end of what the feed mounts with before the line, then brings the line up when it lands", async () => {
+    const { rerender } = render(late({ lines: 0 }));
+    act(() => feed.sent());
+    rerender(late({ lines: 30 }));
+    await settle();
+    expect(screen.getByTestId("feed").scrollTop).toBe(30 * LINE - VIEW);
+    rerender(late({ lines: 31, mine: [30] }));
+    await settle();
+    expect(nearTop(30)).toBe(true);
+  });
+
+  it("does not lift a line of another conversation switched to before the feed mounted: it opens at its end", async () => {
+    const { rerender } = render(late({ lines: 0, resetKey: "a" }));
+    act(() => feed.sent());
+    rerender(late({ lines: 0, resetKey: "b" }));
+    rerender(late({ lines: 20, mine: [15], resetKey: "b" }));
+    await settle();
+    expect(screen.getByTestId("feed").scrollTop).toBe(20 * LINE - VIEW);
+    expect(space(screen.getByTestId("feed"))).toBe(0);
+  });
+
+  it("with no send, mounts at the end of what it holds, the person's lines included", async () => {
+    const { rerender } = render(late({ lines: 0 }));
+    rerender(late({ lines: 20, mine: [19] }));
+    await settle();
+    expect(screen.getByTestId("feed").scrollTop).toBe(20 * LINE - VIEW);
+    expect(space(screen.getByTestId("feed"))).toBe(0);
   });
 });
 

@@ -175,4 +175,19 @@ describe("StreamView — where it opens, and how it follows", () => {
     expect(top).toBeGreaterThanOrEqual(0);
     expect(top).toBeLessThanOrEqual(48);
   });
+
+  it("brings up the first request sent into an empty session, with space kept under it for the reply", async () => {
+    layOut();
+    // The panel counts the send before the request exists: the stream is still its empty state then.
+    const { container, rerender } = render(view([], 0));
+    rerender(view([], 1));
+    rerender(view([group(0)], 1));
+    await settle();
+    await nextFrame();
+    const el = stream(container);
+    const top = el.querySelector(`[data-sent-line="req-0"]`)!.getBoundingClientRect().top;
+    expect(top).toBeGreaterThanOrEqual(0);
+    expect(top).toBeLessThanOrEqual(48);
+    expect(Number.parseFloat(el.style.paddingBottom) || 0).toBeGreaterThan(0);
+  });
 });

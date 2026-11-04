@@ -424,7 +424,7 @@ return (
 
 - `ref`: attach to the scrolling element.
 - `mine(key)`: returns `{ "data-sent-line": key }` (typed `SentLineMark`). Spread it on each of the person's lines. `key` names the line and should stay the same while it redraws, such as its id. Put it on an element with a box of its own, not on a `display: contents` wrapper.
-- `sent()`: call when the person sends a line. When their line lands, it scrolls smoothly to near the top of the feed, once, from wherever the reader was. Calling it after the line is already drawn works too, for an app that learns of the send in an effect: the newest marked line the feed had not shown before is the one that rises. Called before the scrolling element mounts, the feed opens at its end when it does.
+- `sent()`: call when the person sends a line. When their line lands, it scrolls smoothly to near the top of the feed, once, from wherever the reader was. Calling it after the line is already drawn works too, for an app that learns of the send in an effect: the newest marked line the feed had not shown before is the one that rises. Called before the scrolling element mounts, such as from a view that shows an empty state until the first line, the line still rises when the feed mounts with it, with space kept below it for the reply.
 - `atEnd`: `false` when there is content below the view (more than 32 px). Show a jump-to-latest button then.
 - `jump()`: scrolls smoothly to the end of the content.
 - `startAtEnd` (default `true`): `false` opens where the element starts, such as a feed with a lead above its turns. A `resetKey` change doesn't reopen such a feed at its end.

@@ -93,7 +93,7 @@ function scrollToTop(el: HTMLElement, top: number, behavior: "instant" | "smooth
 const mine = (key: string): SentLineMark => ({ [MINE]: key });
 
 /** What the scrolling element's hook does, for the calls that come from outside its effect. */
-type Feed = { sent: () => void; jump: () => void; reset: (toEnd: boolean) => void };
+type Feed = { claim: () => void; jump: () => void; reset: (toEnd: boolean) => void };
 
 /**
  * Keep the scrolling element `ref` is attached to where the reader put it,
@@ -110,9 +110,13 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
   const frame = useRef<number | undefined>(undefined);
   const feed = useRef<Feed | undefined>(undefined);
   // Armed by `sent`: the next of the person's lines the feed shows rises, once. Kept across a replaced
-  // element, so a send made as it is replaced still rises. A send that fails before its line draws stays
-  // armed until the person scrolls; the hook is told of no failure to disarm it on.
+  // element and across the element first attaching, so a send made as it is replaced, or before there is
+  // one, still rises. A send that fails before its line draws stays armed until the person scrolls; the
+  // hook is told of no failure to disarm it on.
   const waiting = useRef(false);
+  // The person's lines the feed has shown already, by key: none of them is the one a send waits for. Kept
+  // across a replaced element, so its lines are not taken for the line a send waits for.
+  const shownLines = useRef(new Set<string>());
   // Whether the person has sent in the conversation shown: in one that arrives where there was none, the send created it.
   const sentHere = useRef(false);
 
@@ -133,8 +137,7 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
   // Before paint, so the first frame of a feed that opens at the end is already there.
   useLayoutEffect(() => {
     if (node === null) return;
-    // The person's lines the feed has shown already, by key: none of them is the one a send waits for.
-    const shown = new Set<string>();
+    const shown = shownLines.current;
     let settling: number | undefined;
     // The line the space is kept for, the space in pixels, and the padding the element had before it.
     let anchor: string | undefined;
@@ -208,6 +211,8 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
 
     /** The person's line landed: space below it, and up it goes. */
     const bring = (line: HTMLElement) => {
+      // A feed short enough never to have overflowed is still opening; the person writing in it ends that.
+      opening.current = false;
       waiting.current = false;
       held = false;
       anchor = line.getAttribute(MINE)!;
@@ -217,8 +222,14 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
       setAtEnd(near());
     };
 
-    /** `added`: the change put new elements in the feed, such as the line just sent. */
+    /**
+     * The one place a send claims its line: as it is made, as the element attaches, and on every change
+     * after. `added`: the change put new elements in the feed, such as the line just sent.
+     */
     const onChange = (added = false) => {
+      const line = unshown();
+      // Before the opening, so a line sent before the feed had anything to open on rises rather than opens.
+      if (waiting.current && line !== undefined) return bring(line);
       if (opening.current) {
         dropSpace();
         showAll();
@@ -228,11 +239,7 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
         setAtEnd(true);
         return;
       }
-      const line = unshown();
-      if (line !== undefined) {
-        if (waiting.current) return bring(line);
-        if (added) settleLater();
-      }
+      if (line !== undefined && added) settleLater();
       // Content under the line that shrinks, such as a working line going away, pulls the end up past
       // where the view is, and the browser moves the view to it before the space grows back. Until the
       // person scrolls, the view goes back where it was, before anyone sees a frame of it.
@@ -243,8 +250,9 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
       if (gliding === undefined) setAtEnd(near());
     };
     // The person's lines already drawn when the element attaches, such as a feed that opens at its start or a
-    // replaced element, came before any send this element sees.
-    showAll();
+    // replaced element, came before any send this element sees, unless a send waits: then the newest of them
+    // not shown before is its line, such as the first one sent into an empty conversation.
+    if (!waiting.current) showAll();
     onChange();
 
     const onScroll = () => {
@@ -298,13 +306,7 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
     mutations.observe(node, { childList: true, subtree: true, characterData: true });
 
     feed.current = {
-      sent: () => {
-        // A feed short enough never to have overflowed is still opening; the person writing in it ends that.
-        opening.current = false;
-        const line = unshown();
-        if (line !== undefined) bring(line);
-        else waiting.current = true;
-      },
+      claim: () => onChange(),
       jump: () => {
         waiting.current = false;
         held = true;
@@ -362,13 +364,10 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
 
   const sent = useCallback(() => {
     sentHere.current = true;
-    // No scrolling element yet, such as a view drawing an empty state until the first request:
-    // it opens at its end when it mounts, which shows the line.
-    if (feed.current === undefined) {
-      opening.current = true;
-      return;
-    }
-    feed.current.sent();
+    waiting.current = true;
+    // With no scrolling element yet, such as a view drawing an empty state until the first request, the
+    // element claims the line when it attaches.
+    feed.current?.claim();
   }, []);
 
   return { ref: setNode, atEnd, jump, sent, mine };

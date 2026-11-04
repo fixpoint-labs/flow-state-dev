@@ -10,6 +10,9 @@
  * A send counts in `sends` at once, and its request lands after, as the
  * panel does. A switch remounts the workspace, as the panel does, and the
  * stream is empty while the other session is read.
+ *
+ * `?surface=first-send` opens a session with no requests yet: the stream
+ * draws its empty state until the first send's request lands.
  */
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -91,6 +94,7 @@ exposeGoal({
     setTimeout(() => reading(false), 120);
   },
 });
+if (new URLSearchParams(location.search).get("surface") === "first-send") script.create(script.open);
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <Page />

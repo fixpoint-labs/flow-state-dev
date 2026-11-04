@@ -219,7 +219,7 @@ return (
 | `options.startAtEnd` | `boolean` | Open at the end. Default `true`; `false` opens where the element starts, for a feed with a lead above its turns, and a `resetKey` change doesn't reopen such a feed at its end. |
 | `ref` | `(node: HTMLElement \| null) => void` | Attach to the scrolling element. |
 | `mine(key)` | `(key: string) => SentLineMark` | Returns `{ "data-sent-line": key }`. Spread it on each of the person's own lines. `key` should stay the same while the line redraws, such as its id. Put it on an element with a box of its own, not a `display: contents` wrapper. |
-| `sent()` | `() => void` | Call when the person sends. Their marked line scrolls to near the top when it lands, once. Calling it after the line is drawn works too, for an app that learns of the send in an effect: the newest marked line the feed had not shown before is the one that rises. Called before the scrolling element mounts, the feed opens at its end when it does. |
+| `sent()` | `() => void` | Call when the person sends. Their marked line scrolls to near the top when it lands, once. Calling it after the line is drawn works too, for an app that learns of the send in an effect: the newest marked line the feed had not shown before is the one that rises. Called before the scrolling element mounts, such as from a view that shows an empty state until the first line, the line still rises when the feed mounts with it, with space kept below it for the reply. |
 | `atEnd` | `boolean` | `false` when there is more than 32 px of content below the view: show a jump-to-latest button. |
 | `jump()` | `() => void` | Scroll to the end of the content, smoothly. |
 
