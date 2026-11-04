@@ -18,10 +18,12 @@
  * the composer keep the follow-up after taking it, and switching away and back
  * adds it twice.
  */
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { commandsRun, runSummaryLine, runSteps, toBoardTask, type BoardTask } from "../src/adapter";
 import { App } from "../src/App";
+import { useRecordedFiles } from "../src/components/Popups";
+import type { LabAdapter } from "../src/adapter";
 import { createFixtureLab } from "./fake-lab";
 
 afterEach(() => {
@@ -133,6 +135,25 @@ describe("a coding task's popup", () => {
     expect(screen.queryByRole("dialog", { name: TASK })).toBeNull();
     const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
     await waitFor(() => expect(box.value).toBe(`Follow up on "Fix the typo in the README's first line": `));
+  });
+});
+
+describe("the files a popup reads", () => {
+  it("never shows one attempt's files for the next: a retry's run starts with none until its own are read", async () => {
+    let answer: (files: { rows: { path: string; kind: "edited"; applied: number }[]; truncated: boolean }) => void = () => {};
+    const adapter = {
+      recordedWork: ({ requestId }: { requestId: string }) =>
+        requestId === "req-1"
+          ? Promise.resolve({ plan: null, pullRequests: null, files: { rows: [{ path: "a.ts", kind: "edited" as const, applied: 1 }], truncated: false } })
+          : new Promise((resolve) => (answer = (files) => resolve({ plan: null, pullRequests: null, files }))),
+    } as unknown as LabAdapter;
+    const task = (requestId: string, status: BoardTask["status"]): BoardTask => ({ id: "t1", to: "w", title: "T", goal: "T", status, boardStatus: status === "running" ? "in_progress" : "errored", runSessionId: "run:t1", runRequestId: requestId });
+    const { result, rerender } = renderHook(({ t }) => useRecordedFiles(adapter, t), { initialProps: { t: task("req-1", "failed") } });
+    await waitFor(() => expect(result.current?.rows.map((r) => r.path)).toEqual(["a.ts"]));
+    rerender({ t: task("req-2", "running") });
+    expect(result.current).toBeUndefined();
+    await act(async () => answer({ rows: [], truncated: false }));
+    expect(result.current?.rows).toEqual([]);
   });
 });
 

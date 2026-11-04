@@ -190,23 +190,25 @@ const CHIPS_SHOWN = 8;
  * changes, so an ended task shows all of it. `undefined` until read, or when
  * the read fails: the line then goes without files rather than say a wrong count.
  */
-function useRecordedFiles(adapter: LabAdapter, task: BoardTask): RecordedWork["files"] | undefined {
-  const [files, setFiles] = useState<RecordedWork["files"] | undefined>(undefined);
+export function useRecordedFiles(adapter: LabAdapter, task: BoardTask): RecordedWork["files"] | undefined {
   const { runSessionId: sessionId, runRequestId: requestId, status } = task;
+  // Kept with the run it was read for: a retry's new run never shows the last attempt's files.
+  const run = sessionId === undefined || requestId === undefined ? undefined : `${sessionId}\n${requestId}`;
+  const [read, setRead] = useState<{ run: string; files: RecordedWork["files"] }>();
   useEffect(() => {
-    if (sessionId === undefined || requestId === undefined) return;
+    if (run === undefined || sessionId === undefined || requestId === undefined) return;
     let live = true;
     adapter
       .recordedWork({ sessionId, requestId })
       .then((work) => {
-        if (live) setFiles(work.files);
+        if (live) setRead({ run, files: work.files });
       })
       .catch(() => {});
     return () => {
       live = false;
     };
-  }, [adapter, sessionId, requestId, status]);
-  return files;
+  }, [adapter, run, sessionId, requestId, status]);
+  return read !== undefined && read.run === run ? read.files : undefined;
 }
 
 /** "Edited 2 files · ran 5 commands", and a chip per file the run recorded, named by its file name. */
