@@ -21,16 +21,18 @@
   recorders, not a parse here.
 
 <a name="d2"></a>
-## D2 · Duration shows once the task ended, from the row's own times
+## D2 · Duration shows once the task ended, timed from this attempt
 
 | | End minus start, ended only (chosen) | A live clock while it runs |
 |---|---|---|
-| Source | the task times FIX-2395 carries on `BoardTask` | the same plus a ticking timer |
+| Source | the run link's `startedAt` (`BoardTask.runStartedAt`, the field FIX-2394 adds) to the task's `completedAt` (FIX-2395) | the same plus a ticking timer |
 | Re-renders | none | one a second per open popup |
-| Wrong value risk | spans retries (noted in the spec) | the same, plus clock skew between browser and server |
+| Wrong value risk | none from retries: an attempt's own start | clock skew between browser and server |
 
 - **Because:** the issue asks for how long the work took, which is a finished task's question.
-  The popup already shows a running task's steps live.
+  The popup already shows a running task's steps live. The start is the attempt's, not the
+  task's first `startedAt` (which the board keeps across a retry), so the popup agrees with
+  the row's `working · 10s` after a retry, as FIX-2394's clock does.
 - **If wrong:** a running task's line adds `running 1m 12s` from `startedAt`; nothing here is
   thrown away.
 
@@ -49,8 +51,10 @@
 
 ## Decided, not asked
 
-- **E1 · Files are the recorded rows**, one per path as the recorder keys them; a truncated read
-  says `200+ files`.
+- **E1 · Files are the recorded rows whose edit landed**, one per path as the recorder keys
+  them; a truncated read says `200+ files`. A path whose every attempt failed was tried, not
+  edited, so it is left out: `readRecordedWork`'s file rows gain `applied` (the recorder's
+  `appliedCount`; `null` on an older row, which counts), a patch to harness-manager.
 - **E2 · Commands counted** from steps whose tool the registry calls running a command, done or failed, not ones
   still running.
 - **E3 · Chips show the file's name**, the full path as their title; past eight, a `+N more` chip.

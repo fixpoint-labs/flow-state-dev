@@ -35,7 +35,7 @@ a task. This issue reads both and adds neither. Its implementation stacks on FIX
 flowchart LR
   W["readRecordedWork<br/>(harness-manager/browser)"] --> F["files · chips"]
   R["run steps (watchRun)"] --> N["command count"]
-  T["BoardTask times<br/>(FIX-2395)"] --> D["duration, once ended"]
+  T["run.startedAt (FIX-2394)<br/>completedAt (FIX-2395)"] --> D["duration, once ended"]
   F --> H["popup summary line"]
   N --> H
   D --> H
@@ -86,6 +86,7 @@ flowchart LR
   requests but not `observed-file-ops`, so their tasks show no file count. Follow-up: FIX-2555
   (D1).
 - **The duration's start.** The board keeps a task's first `startedAt` across a retry; the run
-  link's `startedAt` is this attempt's. The line uses whichever FIX-2395 carries; if it is the
-  task's, a retried task's duration spans its attempts (D2).
+  link's `startedAt` is this attempt's, and the line times from it (`BoardTask.runStartedAt`,
+  named as FIX-2394 names it, so the row's clock and the popup agree after a retry) to the
+  task's `completedAt` from FIX-2395 (D2).
 - **FIX-2349** fixed this popup's wrong FAILED header; nothing here touches the header status.
