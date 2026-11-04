@@ -509,14 +509,16 @@ describe("the session-mode screen", () => {
     expect(reads).toHaveLength(2);
   });
 
-  it("queues a line sent while a turn runs, and runs it after", async () => {
+  it("answers a line sent while a turn runs at once, beside the turn, and never says it waits", async () => {
     render(<App adapter={createFakeLab({ speed: 0.2 })} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
     await within(thread()).findByRole("status");
     await ask("Also add a risks section.");
-    expect(within(thread()).getByText(/queued · runs when this turn ends/)).toBeTruthy();
+    // Its answer lands while the first turn still runs: the vendor script's closing line hasn't.
     await within(thread()).findByText(/Noted\./, undefined, { timeout: 4000 });
+    expect(within(thread()).queryByText(/Globex is still running in the background/)).toBeNull();
+    expect(within(thread()).queryByText(/queued|runs when this turn ends|waits/i)).toBeNull();
   });
 
   it("interrupts the running turn with Stop", async () => {

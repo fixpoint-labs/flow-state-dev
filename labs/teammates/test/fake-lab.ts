@@ -14,9 +14,12 @@
  * adapter's own `runSteps`. A task's buttons act on its row as the board would: Cancel stops its
  * run, Steer adds a line the run shows, Retry runs it again as the same task, and Re-run files a new
  * task on another coding worker, refused (`already_open`) while the same work is open there. Ask writer to
- * publish and it waits for your yes first. Each worker
- * answers one request at a time: a line you send, or a message from another
- * worker, waits while the worker is answering, and runs when it is done.
+ * publish and it waits for your yes first. A line you send starts its own
+ * publish and it waits for your yes first. A line you send starts its own
+ * turn at once, beside any the worker is answering, as the worker's door
+ * (`respond`, `hold`) starts it on the server. A message from another worker,
+ * or a task's result, waits until the worker has no turn running, as the
+ * server defers it, then runs.
  * Lead's conversation starts past the 50-turn history window.
  * `failTurn` leaves a failed turn in a conversation, as an engine `error` item
  * would; Retry runs that turn's line again.
@@ -142,15 +145,22 @@ type FixtureTask = BoardTask & { sessionId: string; attempt?: number; createdAt?
 /** The board's words for an action on a task that has ended or is still open, as `updateTask` and `retryTask` refuse. */
 const refusal = (task: FixtureTask, verb: string) => `${verb}: task "${task.title}" (${task.id}) is ${task.boardStatus}.`;
 
+/** One running turn: its last entry so far, and whether it still runs (a stopped one's steps do nothing). */
+interface FixtureTurn {
+  live: boolean;
+  /** Its latest entry's id: a stopped line goes after it, as the real adapter places one. */
+  last?: string;
+}
+
 interface FixtureWorker {
   row: LabWorker;
   sessionId: string;
   entries: ConversationEntry[];
-  running: boolean;
+  /** The turns running now: a line you send starts one beside the others. */
+  turns: FixtureTurn[];
   lastActiveAt: number;
-  queue: Job[];
-  /** Counts turns: a stopped turn's steps still due see a newer count and do nothing. */
-  turn?: number;
+  /** Messages and results the server defers: each waits until no turn runs. */
+  deferred: Job[];
   /** A Stop is under way: from the press until the turn has ended, as the real adapter reads it. */
   stopping?: boolean;
 }
@@ -178,7 +188,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
   const nextId = (prefix: string) => `${prefix}-${++seq}`;
 
   const workers = new Map<string, FixtureWorker>(
-    ROSTER.map((row) => [row.id, { row, sessionId: `conversation:${row.id}`, entries: [], running: false, lastActiveAt: now(), queue: [] }]),
+    ROSTER.map((row) => [row.id, { row, sessionId: `conversation:${row.id}`, entries: [], turns: [], lastActiveAt: now(), deferred: [] }]),
   );
   const worker = (id: string): FixtureWorker => {
     const found = workers.get(id);
@@ -213,8 +223,12 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
     return () => listeners.delete(emit);
   };
 
+  /** The turn whose step is running now, so an entry it pushes is counted as its. */
+  let active: FixtureTurn | undefined;
+
   const push = (w: FixtureWorker, entry: ConversationEntry) => {
     w.entries = [...w.entries, entry];
+    if (active !== undefined) active.last = entry.id;
     notify();
   };
 
@@ -236,16 +250,16 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
 
   /**
    * `sendMessage`: a card in the sender's conversation, a row in the log, and a
-   * `receive` queued for the recipient. A send that isn't an answer asks for one.
+   * `receive` deferred for the recipient. A send that isn't an answer asks for one.
    */
   const sendMessage = (w: FixtureWorker, to: string, text: string, inReplyTo?: string): Step[1] => () => {
     const message: LabTalk = { id: nextId("m"), from: w.row.id, to, text, inReplyTo, ...(inReplyTo ? {} : { replyRequested: true }), at: now() };
     push(w, { kind: "sent", id: nextId("s"), messageId: message.id, to, text });
     log.push(message);
     const recipient = worker(to);
-    recipient.queue.push({ kind: "receive", message });
+    recipient.deferred.push({ kind: "receive", message });
     notify();
-    startNext(recipient);
+    startDeferred(recipient);
   };
 
   const updateTask = (id: string, patch: Partial<FixtureTask>) => {
@@ -302,8 +316,8 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       if (!live()) return;
       const ending = status === "done" ? { result: text } : { error: text };
       updateTask(task.id, { status, boardStatus: status === "done" ? "completed" : "errored", completedAt: Date.now(), ...ending });
-      w.queue.push({ kind: "result", task: { ...task, status, ...ending } });
-      startNext(w);
+      w.deferred.push({ kind: "result", task: { ...task, status, ...ending } });
+      startDeferred(w);
     };
     // A harness this machine isn't set up for: the task fails before any run, naming it.
     if (notSetUp.has(harness)) {
@@ -430,41 +444,55 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
     return [[w.row.id === LEAD ? 6000 : 900, say(w, `Noted: "${job.text}" I've folded it into the plan.`)]];
   };
 
-  const startNext = (w: FixtureWorker) => {
-    if (w.running) return;
-    const job = w.queue.shift();
-    if (!job) return;
-    w.running = true;
+  /** A turn for `job`, started now, beside any already running. */
+  const startTurn = (w: FixtureWorker, job: Job) => {
+    const t: FixtureTurn = { live: true };
+    w.turns = [...w.turns, t];
     w.lastActiveAt = now();
     if (job.kind === "user") {
-      w.entries = w.entries.map((e) => (e.id === job.entryId && e.kind === "user" ? { ...e, queued: false } : e));
+      t.last = job.entryId;
     } else if (job.kind === "result") {
       const { task } = job;
-      w.entries = [...w.entries, { kind: "result", id: nextId("r"), taskId: task.id, from: task.to, text: task.result ?? task.error ?? "", title: task.title, ...(task.status === "failed" ? { failed: true } : {}) }];
+      t.last = nextId("r");
+      w.entries = [...w.entries, { kind: "result", id: t.last, taskId: task.id, from: task.to, text: task.result ?? task.error ?? "", title: task.title, ...(task.status === "failed" ? { failed: true } : {}) }];
     } else {
       const { message } = job;
-      w.entries = [...w.entries, { kind: "received", id: nextId("r"), messageId: message.id, from: message.from, text: message.text, inReplyTo: message.inReplyTo }];
+      t.last = nextId("r");
+      w.entries = [...w.entries, { kind: "received", id: t.last, messageId: message.id, from: message.from, text: message.text, inReplyTo: message.inReplyTo }];
     }
     notify();
-    const turn = (w.turn = (w.turn ?? 0) + 1);
     let at = 0;
     // The next line's turn fails before any reply: its failed line, then the turn ends.
     const failed = failNext !== undefined && job.kind === "user" ? failNext : undefined;
     if (failed !== undefined) failNext = undefined;
     const steps: Step[] = failed !== undefined ? [[0, () => fake.failTurn(w.sessionId, failed)]] : script(w, job);
-    for (const [delay, run] of [...steps, [200, () => endTurn(w)] as Step]) {
+    for (const [delay, run] of [...steps, [200, () => endTurn(w, t)] as Step]) {
       at += delay;
       setTimeout(() => {
-        if (w.turn === turn) run();
+        if (!t.live) return;
+        active = t;
+        try {
+          run();
+        } finally {
+          active = undefined;
+        }
       }, at * speed);
     }
   };
 
-  const endTurn = (w: FixtureWorker) => {
-    w.running = false;
+  /** The next deferred message or result, once the worker has no turn running. */
+  const startDeferred = (w: FixtureWorker) => {
+    if (w.turns.length > 0) return;
+    const job = w.deferred.shift();
+    if (job) startTurn(w, job);
+  };
+
+  const endTurn = (w: FixtureWorker, t: FixtureTurn) => {
+    t.live = false;
+    w.turns = w.turns.filter((other) => other !== t);
     w.lastActiveAt = now();
     notify();
-    startNext(w);
+    startDeferred(w);
   };
 
   // Seed: Lead's conversation runs two turns past the window, with an exchange with writer near its end.
@@ -564,8 +592,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       const line = w?.entries.find((e) => e.kind === "user" && `turn-${e.id}` === requestId);
       if (!w || line?.kind !== "user") throw new Error(`No failed turn "${requestId}" to retry.`);
       w.entries = w.entries.map((e) => (e.kind === "failed" ? { ...e, retryable: false } : e));
-      w.queue.push({ kind: "user", entryId: line.id, text: line.text });
-      startNext(w);
+      startTurn(w, { kind: "user", entryId: line.id, text: line.text });
     },
 
     async readContext() {
@@ -609,27 +636,33 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       const w = bySession(sessionId);
       if (!w) throw new Error(`no conversation ${sessionId}`);
       const entryId = nextId("u");
-      push(w, { kind: "user", id: entryId, text, queued: w.running });
-      w.queue.push({ kind: "user", entryId, text });
-      startNext(w);
+      push(w, { kind: "user", id: entryId, text });
+      // Its own turn, at once, beside any running: the door is `hold`.
+      startTurn(w, { kind: "user", entryId, text });
     },
 
     async interrupt(sessionId) {
       const w = bySession(sessionId);
-      if (!w?.running) return;
+      if (w === undefined || w.turns.length === 0) return;
       if (refuseStop) {
         refuseStop = false;
         throw new Error("The turn went on before the stop reached it. Press Stop again.");
       }
-      // As the real adapter draws it: stopping until the turn has ended, then a stopped line after its last entry.
-      w.turn = (w.turn ?? 0) + 1;
+      // The turns answering at the press; a line sent after it is its own turn, and runs on.
+      const pressed = [...w.turns];
+      for (const t of pressed) t.live = false;
+      // As the real adapter draws it: stopping until the turns have ended, then each one's stopped line after its last entry.
       w.stopping = true;
       notify();
       setTimeout(() => {
         w.stopping = false;
-        const requestId = nextId("req");
-        push(w, { kind: "stopped", id: `stopped:${requestId}`, requestId });
-        endTurn(w);
+        for (const t of pressed) {
+          const requestId = nextId("req");
+          const line: ConversationEntry = { kind: "stopped", id: `stopped:${requestId}`, requestId };
+          const at = w.entries.findIndex((e) => e.id === t.last);
+          w.entries = at < 0 ? [...w.entries, line] : [...w.entries.slice(0, at + 1), line, ...w.entries.slice(at + 1)];
+          endTurn(w, t);
+        }
       }, 50 * speed);
     },
 
@@ -639,7 +672,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
         if (!w) return;
         // The real adapter's count is the conversation's unfinished runs: here, its tasks still running.
         const backgroundRunning = tasks.filter((t) => t.sessionId === sessionId && t.status === "running").length;
-        onChange({ entries: w.entries, running: w.running, stopping: w.stopping === true, backgroundRunning });
+        onChange({ entries: w.entries, running: w.turns.length > 0, stopping: w.stopping === true, backgroundRunning });
       });
     },
 
@@ -663,7 +696,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       return watch(() => {
         const w = worker(workerId);
         // A worker that takes tasks is busy while one of its runs is.
-        const running = w.row.takesTasks ? tasks.some((t) => t.to === workerId && t.status === "running") : w.running;
+        const running = w.row.takesTasks ? tasks.some((t) => t.to === workerId && t.status === "running") : w.turns.length > 0;
         onChange({ running, lastActiveAt: w.lastActiveAt });
       });
     },
@@ -682,7 +715,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
     async hire({ name, role }) {
       if (workers.has(name) && !fired.has(name)) throw new Error(`"${name}" is already on your roster`);
       const row: LabWorker = { id: name, name, role, own: true };
-      workers.set(name, { row, sessionId: `conversation:${name}`, entries: [], running: false, lastActiveAt: now(), queue: [] });
+      workers.set(name, { row, sessionId: `conversation:${name}`, entries: [], turns: [], lastActiveAt: now(), deferred: [] });
       notify();
       return row;
     },

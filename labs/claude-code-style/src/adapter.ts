@@ -116,7 +116,6 @@ export type ThreadEntry = (
       kind: "user";
       id: string;
       text: string;
-      queued?: boolean;
       /** Threads mode: the lead's turn filed threads for this line. */
       sentToThread?: boolean;
     }

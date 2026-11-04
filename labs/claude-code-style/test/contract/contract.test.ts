@@ -1,10 +1,10 @@
 /**
- * The lab's contract matrix: five scenarios, each run against the test double
+ * The lab's contract matrix: six scenarios, each run against the test double
  * (`test/fake-lab.ts`) and against the real adapter over the lab's own host
  * (`host.mts`, in process, with only the model scripted). Both columns share
  * every assertion, so a package change that alters what the adapter hands the
  * screen fails here, and a fake that draws what the real adapter can't fails
- * too. The Teammates lab runs the same five scenarios on its own adapter.
+ * too. The Teammates lab runs the same scenarios on its own adapter.
  *
  * A gap the real adapter will close is listed in `GAPS` with its issue: that
  * assertion runs as `it.fails`, so it stays green while the gap is there and
@@ -14,13 +14,16 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import { createClient } from "@flow-state-dev/client";
 import type { ModelResolver } from "@flow-state-dev/core/types";
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { pluggable, scriptedModels, waitFor } from "../../../test-support/contract";
 import { openLab } from "../../host.mts";
-import { createWiredLab, type LabAdapter, type LabTask, type ThreadView, type Unsubscribe } from "../../src/adapter";
+import { createWiredLab, type LabAdapter, type LabTask, type ThreadEntry, type ThreadView, type Unsubscribe } from "../../src/adapter";
+import { Entry } from "../../src/components/Entry";
 import type { ModeId } from "../../src/modes";
 import { createFakeLab } from "../fake-lab";
 
@@ -40,6 +43,8 @@ interface Target {
   releaseResearch(): void;
   /** The abort calls the adapter posted, by URL; the fake posts none, so it has none. */
   aborts?: string[];
+  /** How many of the session's turns the server holds `in_progress` now, from its request rows; the fake has none. */
+  turnsRunning?(sessionId: string): Promise<number>;
   close(): Promise<void>;
 }
 
@@ -56,6 +61,10 @@ const ASK = {
   stopWithTasks: "Research both vendors, then draft the comparison.",
   /** A turn after a stopped one. */
   after: "Thanks, carry on later.",
+  /** Lines sent while a turn runs: each one's turn works on until it is stopped. */
+  beside: ["Meanwhile, add a risks section.", "Meanwhile, list the open questions."],
+  /** A line sent as a turn ends. */
+  next: "Add a risks section.",
 };
 /** A research task's goal carries this while the stop scenario holds it running. */
 const HELD = "[held]";
@@ -109,7 +118,7 @@ function labScript(failing: { next: boolean }, held: Promise<void>): ModelResolv
           if (signal?.aborted) throw new DOMException("The turn was stopped.", "AbortError");
           return { text: "The comparison, finished." };
         }
-        if (lastUserLine(said).includes(ASK.long)) {
+        if (lastUserLine(said).includes(ASK.long) || lastUserLine(said).includes("Meanwhile,")) {
           await waitFor(30_000, signal);
           // A stopped model call ends with no text, as a provider's cut stream does.
           if (signal?.aborted) throw new DOMException("The turn was stopped.", "AbortError");
@@ -165,7 +174,8 @@ async function realTarget(): Promise<Target> {
     }
     return inProcess(input, init);
   });
-  const lab = createWiredLab(createClient({ userId: "u_lab", baseUrl: "", fetcher: plug.fetcher as never }));
+  const client = createClient({ userId: "u_lab", baseUrl: "", fetcher: plug.fetcher as never });
+  const lab = createWiredLab(client);
   const project = await lab.createProject("vendor-notes", `file://${repo}`);
   return {
     lab,
@@ -176,6 +186,8 @@ async function realTarget(): Promise<Target> {
     releaseResearch: () => releaseResearch(),
     refuseNextAbort: () => (refuse.next = true),
     aborts,
+    turnsRunning: async (sessionId) =>
+      (await client.sessions.requests(sessionId, { limit: 20 })).filter((r) => r.actionName === "respond" && r.status === "in_progress").length,
     close: async () => {
       releaseResearch();
       plug.restore();
@@ -233,6 +245,33 @@ function follow<T>(watch: (on: (value: T) => void) => Unsubscribe): Followed<T> 
 }
 
 const thread = (lab: LabAdapter, id: string) => follow<ThreadView>((on) => lab.watchThread(id, on));
+
+/** Reads `read` every 100 ms until `check` holds for it, or fails after `ms`. */
+async function readUntil<T>(read: () => Promise<T>, check: (value: T) => boolean, ms = 15_000): Promise<T> {
+  const end = Date.now() + ms;
+  let last = await read();
+  while (!check(last)) {
+    if (Date.now() > end) throw new Error(`condition never held; last read: ${JSON.stringify(last)}`);
+    await waitFor(100);
+    last = await read();
+  }
+  return last;
+}
+
+/** What a user line may carry: anything more is a state the screen could draw. */
+const USER_LINE_KEYS = new Set(["kind", "id", "text", "sentToThread", "requestId"]);
+
+/**
+ * A line of yours says only what you typed: it carries no field past its text, and the thread draws
+ * nothing more for it, such as a mark that it waits.
+ */
+function expectPlainLine(view: ThreadView, text: string) {
+  const line = view.entries.find((e) => e.kind === "user" && e.text === text) as ThreadEntry | undefined;
+  expect(line, `the line "${text}" is in the thread`).toBeDefined();
+  expect(Object.keys(line!).filter((key) => !USER_LINE_KEYS.has(key))).toEqual([]);
+  const drawn = renderToStaticMarkup(createElement(Entry, { entry: line! })).replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+  expect(drawn).toBe(text);
+}
 const tasks = (lab: LabAdapter, id: string) => follow<LabTask[]>((on) => lab.watchTasks(id, on));
 
 describe.each([
@@ -259,6 +298,54 @@ describe.each([
       // The same turn goes on to write about it.
       await view.until((v) => v.entries.slice(v.entries.findIndex((e) => e.id === result.id) + 1).some((e) => e.kind === "assistant"));
       await board.until((r) => r.some((t) => t.id === result.taskId && t.status === "completed"));
+    });
+  });
+
+  describe("a line sent mid-turn", () => {
+    check("starts its own turn at once, beside the running one, and nothing says it waits", async () => {
+      target = await make();
+      const { lab } = target;
+      const id = await target.open("session");
+      const view = thread(lab, id);
+      // Every view the thread draws, not only the latest: a mark drawn for a moment counts.
+      const drawn: ThreadView[] = [];
+      stops.push(lab.watchThread(id, (v) => drawn.push(v)));
+      await lab.send(id, ASK.long);
+      await view.until((v) => v.running);
+      for (const line of ASK.beside) await lab.send(id, line);
+      // Both lines are in the thread while it reads running.
+      await view.until((v) => v.running && ASK.beside.every((line) => v.entries.some((e) => e.kind === "user" && e.text === line)));
+      if (target.turnsRunning !== undefined) {
+        // On the server all three turns run at once: none waits to start.
+        await readUntil(() => target!.turnsRunning!(id), (count) => count === 3);
+        // Then past the thread's next read of the turns, so it has drawn all three running.
+        await waitFor(2_000);
+        expect(view.latest()!.running).toBe(true);
+      }
+      // No line was ever drawn with a mark, in any view.
+      for (const v of drawn) for (const e of v.entries) if (e.kind === "user") expectPlainLine(v, e.text);
+      // Stopped, so the host can close. A Stop stops the turns the thread had read as running at the
+      // press, and its request read can trail the sends, so Stop is pressed until none runs.
+      for (let press = 0; press < 10 && view.latest()!.running; press++) {
+        await lab.interrupt(id);
+        await waitFor(1_000);
+      }
+      await view.until((v) => !v.running, 20_000);
+    });
+
+    check("a line sent as a turn ends is answered too, and nothing says it waited", async () => {
+      target = await make();
+      const { lab } = target;
+      const id = await target.open("session");
+      const view = thread(lab, id);
+      await lab.send(id, ASK.after);
+      // The turn's text is in: it is ending.
+      await view.until((v) => v.entries.some((e) => e.kind === "assistant"));
+      await lab.send(id, ASK.next);
+      const answered = (v: ThreadView) => v.entries.slice(v.entries.findIndex((e) => e.kind === "user" && e.text === ASK.next) + 1).some((e) => e.kind === "assistant");
+      const ended = await view.until((v) => !v.running && v.entries.some((e) => e.kind === "user" && e.text === ASK.next) && answered(v), 20_000);
+      expectPlainLine(ended, ASK.after);
+      expectPlainLine(ended, ASK.next);
     });
   });
 

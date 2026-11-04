@@ -272,7 +272,7 @@ export interface SessionStep {
 
 /** One entry of a worker's conversation, in the order it happened. */
 export type ConversationEntry =
-  | { kind: "user"; id: string; text: string; queued?: boolean }
+  | { kind: "user"; id: string; text: string }
   /** `streaming` while the answer is still being written; `incomplete` when its turn failed before it was finished. */
   | { kind: "assistant"; id: string; text: string; streaming?: boolean; incomplete?: boolean }
   /**
