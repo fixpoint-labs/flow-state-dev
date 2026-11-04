@@ -2726,7 +2726,8 @@ does, from `service:<provider>`. Its text says it is outside content, to read as
 not as instructions, followed by the event's title, text and link.
 
 - **Once per conversation.** Two conversations following one PR each hear each event. A redelivery,
-  or the same version of an object seen again, adds nothing; a new version is a new event.
+  or the same version of an object seen again, adds nothing, even when it arrives while the first is
+  still sending, and it doesn't count against the cap; a new version is a new event.
 - **Only what the user can read.** A thread the user can't read is refused at `subscribe`, and an
   event on a private repository's thread is checked again, as that user, before it reaches them.
 - **A cap.** One subscription sends at most `capPerHour` messages an hour (30 by default), however
@@ -2753,8 +2754,8 @@ passed, and one per subscription its closing event ends, each with its `finished
 it. The output carries a verdict per subscription the event's threads named, `{ subscription,
 pass, reason }`, the first 100 of them, and `verdictsCut`, how many more there were.
 
-A delivery the recipient's host loses is sent on the event's next delivery: a redelivery from the
-provider, or a poll. Nothing retries it on its own: without a redelivery or a poll, it
+A delivery the recipient's host loses, or accepts and then fails before taking, is sent on the
+event's next delivery: a redelivery from the provider, or a poll. Nothing retries it on its own: without a redelivery or a poll, it
 isn't sent.
 
 ## Error Reporter

@@ -105,7 +105,14 @@ export const subscriptionCursorSchema = z.object({
   /** The cap's window: when it began and how many went out in it. */
   window: z.object({ start: z.number(), sent: z.number().int().min(0) }).default({ start: 0, sent: 0 }),
   /** Events the cap held since the last one that went out. */
-  held: z.number().int().min(0).default(0)
+  held: z.number().int().min(0).default(0),
+  /**
+   * The objects a delivery took a slot for and is still sending, as
+   * `[id, version, since]`: a copy of one stops here, without a slot and
+   * without marking it seen. One past its lease (a delivery that stopped) no
+   * longer counts.
+   */
+  inFlight: z.array(z.tuple([z.string(), z.number(), z.number()])).default([])
 });
 
 export type SubscriptionCursor = z.infer<typeof subscriptionCursorSchema>;

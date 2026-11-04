@@ -176,6 +176,76 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     return routed;
   };
 
+  /**
+   * Route one event and wait only for its owner runs, not for the host to
+   * settle: a test that holds another delivery's dispatch runs this beside it.
+   */
+  const routeBeside = async (event: SubscriptionEvent) => {
+    const routed = await routeServiceEvent(await hostOf(), {
+      flowKind: "github-service",
+      entry: SUBSCRIPTION_ROUTE_ENTRY,
+      input: event,
+      principal: { userId: "service:github", orgId: ORG }
+    });
+    if (routed.error !== undefined) throw new Error(`routing failed: ${JSON.stringify(routed.error)}`);
+    return Promise.all(routed.ownerRuns.map(async (run) => (await run.finished!).output as { act: string }));
+  };
+
+  /**
+   * Hold the first `actionName` dispatch the host records until `release`:
+   * `reached` resolves once a delivery waits there, its slot taken.
+   * `release({ lose: true })` loses it, as a store that went down would.
+   */
+  const holdFirstDispatch = async (actionName: string) => {
+    const store = (await board.state.getRuntime()).stores.request;
+    const set = store.set.bind(store);
+    let held = false;
+    let reach!: () => void;
+    let release!: (lose: boolean) => void;
+    const reached = new Promise<void>((resolve) => (reach = resolve));
+    const released = new Promise<boolean>((resolve) => (release = resolve));
+    store.set = (async (id: string, record: { actionName?: string }, ...rest: unknown[]) => {
+      if (!held && record.actionName === actionName) {
+        held = true;
+        reach();
+        if (await released) throw new Error(`the store is down: request ${id} was not recorded`);
+      }
+      return (set as (...args: unknown[]) => Promise<unknown>)(id, record, ...rest);
+    }) as typeof store.set;
+    return {
+      reached,
+      release: (how: { lose?: boolean } = {}) => {
+        store.set = set as typeof store.set;
+        release(how.lose === true);
+      }
+    };
+  };
+
+  /**
+   * Fail the first write of a service message's take (`takenBy`): the
+   * recipient's request was accepted and then failed before taking it.
+   */
+  const failFirstTake = async () => {
+    const store = (await board.state.getRuntime()).stores.resourceState;
+    const set = store.set.bind(store);
+    const prefix = WORKER_MESSAGES_PATTERN.replace("*", "");
+    let failed = 0;
+    store.set = (async (scopeType, scopeId, key, state, expected) => {
+      const row = state as { takenBy?: unknown; from?: unknown };
+      if (failed === 0 && key.startsWith(prefix) && row.takenBy !== undefined && String(row.from).startsWith("service:")) {
+        failed += 1;
+        throw new Error("the store is down: the take was not written");
+      }
+      return set(scopeType, scopeId, key, state, expected);
+    }) as typeof store.set;
+    return {
+      failed: () => failed,
+      restore: () => {
+        store.set = set as typeof store.set;
+      }
+    };
+  };
+
   /** The service's messages that landed in `sessionId`, as the model reads them. */
   const heard = async (sessionId: string) => (await board.messages(sessionId)).filter((m) => m.text.startsWith("From service:")).map((m) => m.text);
 
@@ -203,7 +273,7 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
       .filter((row) => typeof row.from === "string" && row.from.startsWith("service:"));
   };
 
-  return { ...board, hostOf, follower, followerInTenant, subscribe, unsubscribe, route, heard, subscriptionRows, cursorOf, serviceRows };
+  return { ...board, hostOf, follower, followerInTenant, subscribe, unsubscribe, route, routeBeside, holdFirstDispatch, failFirstTake, heard, subscriptionRows, cursorOf, serviceRows };
 }
 
 export type SubscriptionsHost = ReturnType<typeof bootSubscriptionsHost>;

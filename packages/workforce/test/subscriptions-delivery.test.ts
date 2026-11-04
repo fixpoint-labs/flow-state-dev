@@ -70,6 +70,26 @@ describe("a subscribed session hears each event once", () => {
       expect(await host.heard(one)).toHaveLength(1);
     }));
 
+  // An accepted dispatch isn't a landed message: a recipient request that fails
+  // before taking it must leave the event for its next delivery, or it is lost.
+  it("lands on the next delivery when the recipient's request was accepted and failed before taking it", () =>
+    withHost(async (host) => {
+      const one = await host.follower("alice");
+      await host.subscribe("alice", one, { thread: PR });
+      const review = event({ text: "accepted, never taken" });
+      const take = await host.failFirstTake();
+      await host.route(review);
+      take.restore();
+      expect(take.failed()).toBe(1);
+      expect(await host.heard(one)).toEqual([]);
+      await host.route({ ...review, deliveryId: "redelivered" });
+      expect(await host.heard(one)).toHaveLength(1);
+      // Landed, it is seen: a third copy adds nothing and costs the cap nothing.
+      await host.route({ ...review, deliveryId: "again" });
+      expect(await host.heard(one)).toHaveLength(1);
+      expect(await host.serviceRows("alice")).toHaveLength(1);
+    }));
+
   it("hears nothing on a thread it didn't subscribe to, or of a kind it didn't list", () =>
     withHost(async (host) => {
       const one = await host.follower("alice");
@@ -300,6 +320,59 @@ describe("the cap", () => {
         expect(await host.heard(one)).toHaveLength(1);
         const cursor = await host.cursorOf("alice", (await host.subscriptionRows("alice"))[0]!.id);
         expect([cursor.window.sent, cursor.held]).toEqual([1, 4]);
+      },
+      { service: { capPerHour: 1 } }
+    ));
+
+  // Two copies of one event in flight at once (a webhook redelivered while the
+  // first is still sending) are one message: they must cost one slot, or one
+  // event spends a second slot a later event needed.
+  it("spends one slot on two copies of one event that arrive at once, and sends the next event", () =>
+    withHost(
+      async (host) => {
+        const one = await host.follower("alice");
+        await host.subscribe("alice", one, { thread: PR });
+        const review = event({ text: "the first" });
+        const gate = await host.holdFirstDispatch("onMessageReceived");
+        const first = host.route(review);
+        await gate.reached;
+        // The copy arrives while the first is still sending.
+        const copy = await host.routeBeside({ ...review, deliveryId: "redelivered" });
+        gate.release();
+        await first;
+        expect(await host.heard(one)).toHaveLength(1);
+        expect((await host.cursorOf("alice", (await host.subscriptionRows("alice"))[0]!.id)).window.sent).toBe(1);
+        await host.route(event({ text: "the next" }));
+        const heard = await host.heard(one);
+        expect(heard).toHaveLength(2);
+        expect(heard[1]).toContain("the next");
+        expect(copy).toEqual([{ act: "inflight" }]);
+      },
+      { service: { capPerHour: 2 } }
+    ));
+
+  // The copy that finds the first still sending must not mark the event seen:
+  // if the first's dispatch is then lost, the event's next delivery is the only
+  // way it reaches the session.
+  it("sends a redelivery after the first of two copies at once lost its dispatch, with a cap of one", () =>
+    withHost(
+      async (host) => {
+        const one = await host.follower("alice");
+        await host.subscribe("alice", one, { thread: PR });
+        const review = event({ text: "lost while a copy was in flight" });
+        const gate = await host.holdFirstDispatch("onMessageReceived");
+        const first = host.route(review);
+        await gate.reached;
+        // The copy finds the only slot taken, by the first: it is in flight, not held.
+        const copy = await host.routeBeside({ ...review, deliveryId: "copy" });
+        gate.release({ lose: true });
+        await first;
+        expect(await host.heard(one)).toEqual([]);
+        await host.route({ ...review, deliveryId: "redelivered" });
+        const heard = await host.heard(one);
+        expect(heard).toHaveLength(1);
+        expect(heard[0]).toContain("lost while a copy was in flight");
+        expect(copy).toEqual([{ act: "inflight" }]);
       },
       { service: { capPerHour: 1 } }
     ));
