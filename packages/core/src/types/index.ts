@@ -355,6 +355,19 @@ export {
   ownerSegment,
 } from "./resource-collection";
 
+export type {
+  DeclaredResourceIndex,
+  ResourceIndexDeclaration,
+  ResourceIndexFunction,
+  ResourceIndexValue,
+} from "./resource-index";
+export {
+  canonicalIndexValue,
+  canonicalIndexValues,
+  declaredIndexes,
+  storedIndexName,
+} from "./resource-index";
+
 export { isCollectionConfig, resourceStorageKeys } from "./storage-identity";
 
 export type {

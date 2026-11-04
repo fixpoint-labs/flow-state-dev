@@ -112,7 +112,9 @@ becomes a store read, and moves to `findBy` plus an in-memory filter as the last
   - `delete`, `deleteAll` and `purgeTombstones` keep their signatures and clear entries inside
     the store.
 - **SQL: one generic table**, `resource_index(scope_type, scope_id, collection, index_name, value,
-  resource_key)` with all six as the primary key, plus a built-marker table. A write replaces
+  resource_key)`, plus a built-marker table. On SQLite all six are the primary key; on Postgres
+  uniqueness is a unique index over the six with `md5(value)` in place of `value`, so a value
+  over the B-tree row limit still writes. A write replaces
   that row's entries in the same transaction. No per-field DDL, no `ALTER TABLE`.
 - **`collection` is the collection's full declared pattern**, not its storage prefix: two
   patterns can share a prefix (`data/[topic]/observations` and `data/[topic]/notes` are both

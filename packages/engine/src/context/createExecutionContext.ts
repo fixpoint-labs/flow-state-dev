@@ -17,6 +17,7 @@ import type {
   ResourceRef,
   ResourceRegistry,
   ResourceCollectionConfig,
+  DeclaredResourceIndex,
   SessionItem,
   SessionItemViews,
   SessionMetadataInput,
@@ -150,6 +151,7 @@ import { refuseInstancePin } from "./instance-pin";
 import { requestInSessionScope, sessionRequestScope } from "./session-request-scope";
 import { recordRequestStop } from "../execution/record-request-stop";
 import { ownerKeyMaySeed } from "../resources/owner-private";
+import { findIndexedKeys } from "../resources/resource-indexes";
 import {
   compareTurnsOldestFirst,
   outputItemToSessionItem,
@@ -2033,6 +2035,35 @@ export async function createExecutionContext<
       }
     };
   };
+  // FIX-2532: `findBy`'s candidate keys from the store's index, in the cell a
+  // collection's rows live in (the one `list()` reads). `undefined` when the
+  // store keeps no index entries: the registry then scans.
+  const makeIndexLookup =
+    (scope: ContentScopeType) =>
+    async (
+      config: ResourceCollectionConfig,
+      index: DeclaredResourceIndex,
+      value: string
+    ): Promise<string[] | undefined> => {
+      const indexes = stores.resourceState.indexes;
+      if (indexes === undefined) return undefined;
+      const scopeId = resolveConfigScopeId(scope, config);
+      if (scopeId === undefined) return [];
+      const rawPrefix = getPatternPrefix(config.pattern);
+      return findIndexedKeys(
+        {
+          store: stores.resourceState,
+          indexes,
+          scopeType: storageScopeOf(scope, scopeId),
+          scopeId,
+          collection: config.pattern,
+          keyPrefix: rawPrefix === "" ? "" : `${rawPrefix}/`
+        },
+        index,
+        value
+      );
+    };
+
   const sessionLazyLoad = makeLazyLoad("session");
   const userLazyLoad = makeLazyLoad("user");
   const orgLazyLoad = makeLazyLoad("org");
@@ -2753,6 +2784,7 @@ export async function createExecutionContext<
     ...userKeyPersisters,
     onResourceChanged: makeResourceChangeHandler("user"),
     lazyLoad: userLazyLoad,
+    findIndexedKeys: makeIndexLookup("user"),
     recordResourceLoad,
     resolveEagerSource: (keyOrPrefix) => resolveEagerSource("user", keyOrPrefix),
     templateResolverRef,
@@ -2771,6 +2803,7 @@ export async function createExecutionContext<
     ...sessionKeyPersisters,
     onResourceChanged: makeResourceChangeHandler("session"),
     lazyLoad: sessionLazyLoad,
+    findIndexedKeys: makeIndexLookup("session"),
     recordResourceLoad,
     resolveEagerSource: (keyOrPrefix) => resolveEagerSource("session", keyOrPrefix),
     templateResolverRef,
@@ -2792,6 +2825,7 @@ export async function createExecutionContext<
           ...orgKeyPersisters,
           onResourceChanged: makeResourceChangeHandler("org"),
           lazyLoad: orgLazyLoad,
+          findIndexedKeys: makeIndexLookup("org"),
           recordResourceLoad,
           resolveEagerSource: (keyOrPrefix) => resolveEagerSource("org", keyOrPrefix),
           templateResolverRef,
