@@ -1,0 +1,15 @@
+{
+  "worker": "teammates.researcher",
+  "path": "docs/releases/next/plan.md",
+  "line": "# Next release\n\n## Codename\n\n{value}\n\nKeep it out of public copy until launch.",
+  "decoys": {
+    "README.md": "# Relay\n\nRelay moves files between teams. See docs/ for how we plan and ship.\n",
+    "docs/process.md": "# How we ship\n\nEach release gets a plan under docs/releases/, with its codename and dates.\n",
+    "docs/releases/last/plan.md": "# Last release\n\n## Codename\n\nretired\n\nIt shipped in March.\n",
+    "src/index.ts": "export const version = \"2.3.0\";\n"
+  },
+  "asks": [
+    "What codename did we pick for the next release? It's written down in the working folder.",
+    "Look up the next release's codename in our files, please."
+  ]
+}
