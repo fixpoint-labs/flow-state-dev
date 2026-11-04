@@ -37,7 +37,10 @@
  * (default `.fsdev/claude-code-style` under the working directory: the
  * SQLite file and each coding run's worktree or clone), `CLAUDE_CODE_STYLE_USER` (default
  * `u_lab`). `CLAUDE_CODE_STYLE_ANSWER_AGAIN=off` leaves `answerAgain` off the
- * main worker's flow: the goal check's control.
+ * main worker's flow: the goal check's control. `CLAUDE_CODE_STYLE_HARNESS=stub`
+ * runs every coding task on harness-manager's scripted coder, no model, one
+ * step every `CLAUDE_CODE_STYLE_HARNESS_STEP_MS` (default 2000): for a goal
+ * check of what the lab does around a run, such as its task actions.
  *
  * A coding run is done only when its project's checks pass (the project row's
  * `checks`; none named runs nothing). `CLAUDE_CODE_STYLE_SETUP`, one command
@@ -67,6 +70,8 @@ const model = process.env.CLAUDE_CODE_STYLE_MODEL ?? "openai/gpt-5.4";
 const data = resolve(process.env.CLAUDE_CODE_STYLE_DATA ?? ".fsdev/claude-code-style");
 const userId = process.env.CLAUDE_CODE_STYLE_USER ?? "u_lab";
 const answerAgain = process.env.CLAUDE_CODE_STYLE_ANSWER_AGAIN === "off" ? {} : { answerAgain: true as const };
+const scripted =
+  process.env.CLAUDE_CODE_STYLE_HARNESS === "stub" ? { scriptedStepMs: Number(process.env.CLAUDE_CODE_STYLE_HARNESS_STEP_MS ?? 2_000) } : {};
 mkdirSync(data, { recursive: true });
 
 /** The repository the lab is started in, or none outside one. */
@@ -114,7 +119,7 @@ flows = {
   agent: defineAgentWorkerFlow({ installation, model, ...answerAgain, uses: [projectSourceCapability({ workspace }), consultSessionsCapability(installation)] }),
   coordinator: defineCoordinatorFlow({ installation, routeModel: model, agent: { model } }),
   // Its runs work in the session's project: a task filed with none is refused at filing (FIX-2333).
-  [HARNESS_THREAD_FLOW]: { flow: defineHarnessThreadFlow({ installation, workspace }), roles: ["contributor"], needsProject: true },
+  [HARNESS_THREAD_FLOW]: { flow: defineHarnessThreadFlow({ installation, workspace, ...scripted }), roles: ["contributor"], needsProject: true },
 };
 const workers = hireWorkforce(installation) as { id: string }[];
 const projects = defineProjectsFlow()({ id: PROJECTS_FLOW }) as { id: string };

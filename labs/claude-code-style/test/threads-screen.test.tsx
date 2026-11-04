@@ -156,7 +156,7 @@ describe("the threads-mode screen", () => {
     fireEvent.click(within(screen.getByRole("navigation", { name: "Sessions" })).getByRole("button", { name: /Billing triage/ }));
     await waitFor(() => expect(rowsIn("Pinned").join()).toMatch(/Weekly uptime digest/));
     expect(within(board()).queryByRole("region", { name: "Working" })).toBeNull();
-    // A failed thread waits on you; there is no retry button, you ask the main session.
+    // A failed thread waits on you: its view offers Retry (`task-actions.test.tsx`).
     expect(rowsIn("Waiting on you").join()).toMatch(/Export failed invoices.*Failed · The export timed out/);
     // A harness run that completed at its review deadline is resolved, marked so it never reads as approved.
     fireEvent.click(within(board()).getByRole("button", { name: /Resolved · 3/ }));
@@ -188,7 +188,7 @@ describe("the threads-mode screen", () => {
     await waitFor(() => expect(coder.dataset.column).toBe("resolved"));
   });
 
-  it("turns a thread's composer off once it is finished, and points you to the main session", async () => {
+  it("turns a thread's composer off once it is finished", async () => {
     await startThreadsSession(0.01);
     await ask("Research three vendors for a status page, one thread each.");
     await waitFor(() => expect(card("Vendor C · summary").dataset.column).toBe("review"));
