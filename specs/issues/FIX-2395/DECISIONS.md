@@ -26,7 +26,8 @@
   away, so nothing becomes unreachable. *Cancelled* stays its own collapsed group, as FIX-2525
   decided: a withdrawn task did not fail.
 - **Order:** newest first by `completedAt` for ended rows and `startedAt ?? createdAt` for running
-  ones; a row with no time keeps its board order after the timed ones.
+  ones; a row with no time keeps its board order after the timed ones. A retry keeps the task's
+  first `startedAt`, so a retried task holds its place instead of jumping to the top.
 - **Waiting first:** a running task that waits on you sorts to the top of *Running*.
 
 ## Decided, not asked
@@ -58,6 +59,11 @@ Round 3 (#4717), cross-spec owners settled with FIX-2394 (#4735, its *DECISIONS 
 item; this spec drops its timer and keeps a plain total. D1's row times stay here, and #4735's
 clock depends on them. `lib/task-state.ts` still decides tone, including the warning tone for
 FIX-2394's `quiet` signal.
+
+Retry start (#4717, #4735, #4724): one start per attempt for durations. FIX-2394's clock and
+FIX-2396's popup both time from the row's `run.startedAt`, so a retried row and its popup agree.
+The task-level `startedAt` stays on the action as the task's first start: it orders *Running* and
+no one reads it as a duration. No `runStartedAt` field is added to `BoardTask`.
 
 ## How it got here
 
