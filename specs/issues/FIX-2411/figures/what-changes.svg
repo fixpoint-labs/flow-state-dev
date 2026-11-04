@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 440" role="img" aria-label="What changes. Three layers change and one comes out. The change bus publishes a run notice on the owner's user topic for every session write and every request write except items. The session listing, asked with include status, returns each row's latest request status, in a fixed number of batched reads. In the React package, the navigator's leaf read becomes the public useSessionList hook, live on the user topic and on the page becoming visible, and the navigator draws each row's state mark and how long ago it changed. In Kitchen Sink, the harness rail draws from useSessionList with the model and a needs-you mark, its own read and its reads counter come out, and the Flow State page drops its hand-made re-reads. Left as they are: useFlow's session list, the claude-code-style lab's list, and the pull-request badge, deferred by D3"
+<svg viewBox="0 0 940 440" role="img" aria-label="What changes. Three layers change and one comes out. The change bus publishes a run notice on the owner's user topic for every session write and every request write except items. The session listing, asked with include status, returns each row's latest request status, in one round trip. In the React package, the navigator's leaf read becomes the public useSessionList hook, live on the user topic and on the page becoming visible, and the navigator draws each row's state mark and how long ago it changed. In Kitchen Sink, the harness rail draws from useSessionList with the model and a needs-you mark, its own read and its reads counter come out, and the Flow State page drops its hand-made re-reads. Left as they are: useFlow's session list, the claude-code-style lab's list, and the pull-request badge, deferred by D3"
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -31,8 +31,8 @@
     <rect class="row" x="26" y="188" width="198" height="128" rx="4"/>
     <text class="t-h" x="38" y="210">The session listing</text>
     <text class="t-n" x="38" y="230">include status: each row's</text>
-    <text class="t-n" x="38" y="245">latest request status, batched</text>
-    <text class="t-n" x="38" y="260">reads</text>
+    <text class="t-n" x="38" y="245">latest request status, in one</text>
+    <text class="t-n" x="38" y="260">round trip</text>
   </g>
   <g id="client">
     <rect class="lane" x="242" y="16" width="218" height="312" rx="6"/>

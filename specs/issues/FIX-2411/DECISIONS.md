@@ -76,8 +76,11 @@ counts its state. Then the badge comes in with no read per row.
 
 - **The row's state comes from the listing, not from the browser.** `sessions.list({ include:
   "status" })` returns `requestStatus` on each row: the latest request's `RequestStatus`, by
-  the runs listing's rule (a live request wins, else the most recent), in a fixed number of
-  batched reads per page, never one per row. `include` takes a list, so `"dispatch-runs"` and
+  the runs listing's rule (a live request wins, else the most recent), in at most two
+  reads per row on the server, each returning at most one record, under that session's own
+  request scope. The rows' scopes differ (flow kind, flow id, organization), so the runs
+  listing's batched form doesn't carry over as is; if a page proves slow on a store with no
+  index, batching moves there. `include` takes a list, so `"dispatch-runs"` and
   `"status"` combine. Without `"status"` the listing is byte for byte today's. A session with no
   request has no `requestStatus` (`== null` guard, BP-030).
 - **What needs you:** `suspended` (waiting on a person: a question, or a harness turn's tool
@@ -112,7 +115,7 @@ counts its state. Then the badge comes in with no read per row.
 | Alternative | Why not |
 |---|---|
 | A notice only when a session is created, on the user topic, with each row's state on its own topic | Two subscriptions for one list, and the per-row half re-subscribes whenever the list changes |
-| Each row's state from the browser, reading its requests (the claude-code-style lab's way) | One read per row per change; the listing can answer for the page in three reads |
+| Each row's state from the browser, reading its requests (the claude-code-style lab's way) | One read per row per change from the browser; the listing answers for the page in one round trip |
 | A new `ChangeKind` such as `session` | ER-2 and FIX-2426's one-publisher rule: `run` already means a session record changed |
 | A timer for the `fsdev run` case | ER-3 forbids an always-on poll; reading when the tab shows covers the person who is looking |
 | `live` on `useFlow` | It reads the flow list and owns selection and create; a rail would pay for both |
