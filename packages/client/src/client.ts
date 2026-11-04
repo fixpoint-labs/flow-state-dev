@@ -74,6 +74,9 @@ export type CreateClientOptions = {
   fetcher?: ClientFetch;
 };
 
+/** What a session listing can add to its rows ({@link ListSessionsOptions.include}). */
+export type SessionListInclude = "dispatch-runs" | "status";
+
 /** Query options for {@link Client.sessions}`.list`. */
 export type ListSessionsOptions = {
   flowKind?: string;
@@ -87,13 +90,17 @@ export type ListSessionsOptions = {
   limit?: number;
   offset?: number;
   /**
-   * Also return the sessions a dispatcher ran work in. Off by default: a
-   * listing without it returns the sessions a person started. It widens
-   * parentage only; a run of another principal, organization or tenant stays
-   * absent. A row that came in this way carries
-   * {@link SessionSummary.parentSessionId}.
+   * What the listing adds, one value or several:
+   *
+   * - `"dispatch-runs"`: also return the sessions a dispatcher ran work in.
+   *   Off by default: a listing without it returns the sessions a person
+   *   started. It widens parentage only; a run of another principal,
+   *   organization or tenant stays absent. A row that came in this way
+   *   carries {@link SessionSummary.parentSessionId}.
+   * - `"status"`: each row's {@link SessionSummary.requestStatus}, the state
+   *   of its latest request, read on the server.
    */
-  include?: "dispatch-runs";
+  include?: SessionListInclude | readonly SessionListInclude[];
   /**
    * Only the sessions whose readonly state fields hold these values: a field
    * the flow's session `stateSchema` declares `.readonly()`, set when the
@@ -487,10 +494,14 @@ export function createClient(options: CreateClientOptions): Client {
 
   const sessions: SessionsApi = {
     list: async (listOptions = {}) => {
-      const { state, ...rest } = listOptions;
+      const { state, include, ...rest } = listOptions;
       // The client's own user unless the call names another: a host without
       // sign-in narrows nothing, so no filter would list every user's.
-      const query: Record<string, QueryValue> = { ...rest, userId: rest.userId ?? userId };
+      const query: Record<string, QueryValue> = {
+        ...rest,
+        userId: rest.userId ?? userId,
+        include: typeof include === "string" || include === undefined ? include : include.join(",") || undefined
+      };
       for (const [field, value] of Object.entries(state ?? {})) query[`state.${field}`] = value;
       const payload = await t.json<{ sessions: SessionSummary[] }>("/api/flows/sessions", undefined, query);
       return payload.sessions;

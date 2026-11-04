@@ -1,0 +1,143 @@
+/**
+ * `GET /sessions?include=status` (FIX-2411): each row's latest request
+ * status, so a list of sessions shows which one needs its person without the
+ * browser reading every session's requests.
+ *
+ * The rule is the runs listing's: a request still going wins over a later one
+ * that ended; else the most recent speaks. `suspended` and `interrupted` go
+ * out as themselves, since a person acts on each. Without the include, the
+ * rows carry no status, as before.
+ */
+import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import type { FlowInstance, RequestStatus } from "@flow-state-dev/core/types";
+import { z } from "zod";
+import { describe, expect, it } from "vitest";
+import {
+  createFlowApiRouter,
+  createFlowRegistry,
+  createInMemoryStores,
+  type RequestRecord,
+  type StoreRegistry
+} from "../src";
+
+const notes = defineFlow({
+  kind: "notes",
+  actions: {
+    run: {
+      inputSchema: z.object({}),
+      block: handler({ name: "run", inputSchema: z.object({}), execute: () => ({}) })
+    }
+  }
+});
+
+function host(stores: StoreRegistry) {
+  const registry = createFlowRegistry();
+  registry.registerMany([notes() as unknown as FlowInstance]);
+  return createFlowApiRouter({ registry, stores });
+}
+
+async function seedSession(stores: StoreRegistry, id: string, userId = "u_1"): Promise<void> {
+  const now = Date.now();
+  await stores.session.set(
+    id,
+    { id, orgId: DEFAULT_ORG_ID, flowKind: "notes", flowId: "notes", userId, state: {}, version: 0, createdAt: now, updatedAt: now, journal: [] },
+    "any"
+  );
+}
+
+async function seedRequest(
+  stores: StoreRegistry,
+  id: string,
+  sessionId: string,
+  status: RequestStatus,
+  startedAtMs: number,
+  userId = "u_1"
+): Promise<void> {
+  await stores.request.set(
+    id,
+    {
+      id,
+      sessionId,
+      flowKind: "notes",
+      flowId: "notes",
+      actionName: "run",
+      userId,
+      orgId: DEFAULT_ORG_ID,
+      source: "http",
+      status,
+      startedAtMs,
+      state: {},
+      version: 0,
+      createdAt: startedAtMs,
+      updatedAt: startedAtMs
+    } as unknown as RequestRecord,
+    "any"
+  );
+}
+
+async function statuses(router: ReturnType<typeof createFlowApiRouter>, query: string): Promise<Record<string, unknown>> {
+  const response = await router.GET(new Request(`http://localhost/api/flows/sessions${query}`), {
+    params: { path: ["sessions"] }
+  });
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { sessions: Array<{ id: string; requestStatus?: string }> };
+  return Object.fromEntries(body.sessions.map((s) => [s.id, s.requestStatus ?? null]));
+}
+
+describe("GET /sessions?include=status", () => {
+  it("gives each row its latest request's status, keeping the ones a person acts on apart", async () => {
+    const stores = createInMemoryStores();
+    await seedSession(stores, "s_done");
+    await seedRequest(stores, "r1", "s_done", "failed", 1000);
+    await seedRequest(stores, "r2", "s_done", "completed", 2000);
+    await seedSession(stores, "s_failed");
+    await seedRequest(stores, "r3", "s_failed", "completed", 1000);
+    await seedRequest(stores, "r4", "s_failed", "failed", 2000);
+    await seedSession(stores, "s_waiting");
+    await seedRequest(stores, "r5", "s_waiting", "suspended", 1000);
+    await seedSession(stores, "s_lost");
+    await seedRequest(stores, "r6", "s_lost", "interrupted", 1000);
+    await seedSession(stores, "s_new");
+
+    expect(await statuses(host(stores), "?flowKind=notes&include=status")).toEqual({
+      s_done: "completed",
+      s_failed: "failed",
+      s_waiting: "suspended",
+      s_lost: "interrupted",
+      s_new: null
+    });
+  });
+
+  it("lets a request still going win over a later one that ended", async () => {
+    const stores = createInMemoryStores();
+    await seedSession(stores, "s1");
+    await seedRequest(stores, "early", "s1", "in_progress", 1000);
+    await seedRequest(stores, "late", "s1", "completed", 2000);
+    expect(await statuses(host(stores), "?flowKind=notes&include=status")).toEqual({ s1: "in_progress" });
+  });
+
+  it("reads only the session's own requests, never another owner's under the same id", async () => {
+    const stores = createInMemoryStores();
+    await seedSession(stores, "s1");
+    await seedRequest(stores, "mine", "s1", "completed", 1000);
+    await seedRequest(stores, "theirs", "s1", "failed", 2000, "u_2");
+    expect(await statuses(host(stores), "?flowKind=notes&include=status")).toEqual({ s1: "completed" });
+  });
+
+  it("combines with dispatch-runs, and leaves rows without a status when not asked", async () => {
+    const stores = createInMemoryStores();
+    await seedSession(stores, "s1");
+    await seedRequest(stores, "r1", "s1", "failed", 1000);
+    expect(await statuses(host(stores), "?flowKind=notes&include=dispatch-runs,status")).toEqual({ s1: "failed" });
+    expect(await statuses(host(stores), "?flowKind=notes")).toEqual({ s1: null });
+  });
+
+  it("refuses an include it doesn't know, naming both it accepts", async () => {
+    const stores = createInMemoryStores();
+    const response = await host(stores).GET(new Request("http://localhost/api/flows/sessions?include=stauts"), {
+      params: { path: ["sessions"] }
+    });
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { error: string }).error).toContain(`"status"`);
+  });
+});

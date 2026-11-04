@@ -134,7 +134,7 @@ describe("FlowNavigator · what a click costs the server", () => {
     await click(instanceRow("worker-7"));
 
     await waitFor(() => expect(server.listSessions).toHaveBeenCalledTimes(1));
-    expect(server.calls[0]).toEqual({ flowId: "worker-7" });
+    expect(server.calls[0]).toEqual({ flowId: "worker-7", include: ["status"] });
   });
 
   it("treats a singleton kind row as the leaf — one request, no instance level", async () => {
@@ -145,7 +145,7 @@ describe("FlowNavigator · what a click costs the server", () => {
     await click(kindRow("chat"));
 
     await waitFor(() => expect(server.listSessions).toHaveBeenCalledTimes(1));
-    expect(server.calls[0]).toEqual({ flowKind: "chat" });
+    expect(server.calls[0]).toEqual({ flowKind: "chat", include: ["status"] });
     expect(document.querySelectorAll('[data-leaf="chat"]')).toHaveLength(1);
   });
 
@@ -862,5 +862,42 @@ describe("FlowNavigator · row actions show on hover or focus (BR-29 – BR-34)"
     await waitFor(() => expect(kindRow("agent")).toBeTruthy());
     expect(opacity(kindRow("agent"))).toBe("1");
     expect(opacity(kindRow("chat"))).toBe("1");
+  });
+});
+
+describe("FlowNavigator · a session row's state and age", () => {
+  const sessionRow = (id: string) =>
+    document.querySelector<HTMLElement>(`[data-session-id="${id}"]`)!;
+
+  it("marks the sessions that need their person, and only those", async () => {
+    const now = Date.now();
+    const rows = [
+      { id: "s-wait", requestStatus: "suspended" },
+      { id: "s-run", requestStatus: "in_progress" },
+      { id: "s-done", requestStatus: "completed" },
+      { id: "s-stopped", requestStatus: "aborted" },
+      { id: "s-lost", requestStatus: "interrupted" },
+      { id: "s-new" },
+    ].map((row) => ({ flowKind: "chat", userId: "u", createdAt: now, updatedAt: now - 5 * 60_000, ...row }));
+    const list = vi.fn(async () => rows as unknown as SessionSummary[]);
+    mount(fakeServer([entry("chat", "chat", "singleton")], []), {
+      client: { flows: async () => [entry("chat", "chat", "singleton")], sessions: { list } } as never,
+    });
+
+    await waitFor(() => expect(kindRow("chat")).toBeTruthy());
+    await click(kindRow("chat"));
+    await waitFor(() => expect(sessionRow("s-wait")).toBeTruthy());
+
+    const needsYou = Array.from(document.querySelectorAll("[data-needs-you]")).map(
+      (mark) => mark.closest("[data-session-id]")!.getAttribute("data-session-id")
+    );
+    expect(needsYou).toEqual(["s-wait", "s-lost"]);
+    // Running is shown, but is not something to answer.
+    expect(sessionRow("s-run").querySelector("[data-request-status]")?.getAttribute("aria-label")).toBe("Running");
+    // A finished turn, a stop you made and a session with no turn carry no mark.
+    for (const id of ["s-done", "s-stopped", "s-new"]) {
+      expect(sessionRow(id).querySelector("[data-request-status]")).toBeNull();
+    }
+    expect(sessionRow("s-new").querySelector("[data-session-age]")?.textContent).toBe("5m");
   });
 });

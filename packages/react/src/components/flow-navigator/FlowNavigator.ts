@@ -20,11 +20,17 @@
  * parent's, and a dashed line (`--fsd-nav-guide`) runs down from each open
  * row past everything under it. A row's slot content shows while the row is
  * pointed at, focused into or selected, and always on a screen with no hover.
+ *
+ * An open leaf's sessions are live (FIX-2411): through a client that can
+ * `subscribe`, they read again when one of the user's sessions changes, and
+ * when the page becomes visible. Each session row shows its latest turn's
+ * state, marked when it needs its person, and how long ago it changed.
  */
 import {
   Fragment,
   createElement,
   useCallback,
+  useEffect,
   useMemo,
   useState,
   type FocusEvent,
@@ -45,6 +51,7 @@ import {
   type LeafSessions
 } from "./reads";
 import { arrangeSessionRows, type SessionRow } from "./dispatch-runs";
+import { sessionAge, sessionLabel, sessionRowState } from "./session-row";
 
 /** A leaf, plus the state of its session list — what a slot is handed. */
 export type FlowNavigatorLeafState = FlowNavigatorLeaf & {
@@ -181,18 +188,63 @@ const GAP = 6;
  */
 const INDENT_STEP = TWISTY + GAP;
 
-const ENGINE_ID = /^([a-z]+)_\d{13}_([0-9a-f]{6,})$/;
+/** How often a row's age is redrawn. A clock for the text, never a read. */
+const AGE_TICK_MS = 60_000;
+
+/** The time a navigator draws its rows' ages against, moved on once a minute while it is mounted. */
+function useMinuteClock(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), AGE_TICK_MS);
+    return () => clearInterval(timer);
+  }, []);
+  return now;
+}
+
+const metaText = {
+  flexShrink: 0,
+  fontSize: "var(--fsd-nav-note-font-size, 11px)"
+} as const;
 
 /**
- * What a session row reads: its title, else an engine-minted id shortened to
- * its prefix and its last six characters (`sess_…3df102`), else the id whole.
- * The tail is kept rather than the head because ids minted months apart share
- * their first digits.
+ * A session row's state mark, when it has one to show, and its age. Always
+ * shown, unlike the trailing slot: a state is what a person scans the rail
+ * for. Coloured by `--fsd-nav-attention` when the session needs its person,
+ * else `--fsd-nav-muted-fg`.
  */
-function sessionLabel(session: SessionSummary): string {
-  if (session.title != null && session.title.trim() !== "") return session.title;
-  const match = ENGINE_ID.exec(session.id);
-  return match === null ? session.id : `${match[1]}_…${match[2]!.slice(-6)}`;
+function sessionMeta(session: SessionSummary, now: number): ReactNode[] {
+  const state = sessionRowState(session);
+  const muted = "var(--fsd-nav-muted-fg, inherit)";
+  const mark =
+    state === null
+      ? null
+      : createElement(
+          "span",
+          {
+            key: "state",
+            role: "img",
+            "aria-label": state.label,
+            title: state.label,
+            "data-request-status": state.status,
+            ...(state.needsYou ? { "data-needs-you": "" } : {}),
+            style: { ...metaText, color: state.needsYou ? "var(--fsd-nav-attention, #c2410c)" : muted }
+          },
+          state.mark
+        );
+  // A row with no usable time draws no age, rather than "NaNw".
+  const age = !Number.isFinite(session.updatedAt)
+    ? null
+    : createElement(
+        "span",
+        {
+          key: "age",
+          "data-session-age": "",
+          title: new Date(session.updatedAt).toLocaleString(),
+          style: { ...metaText, color: muted }
+        },
+        sessionAge(session.updatedAt, now)
+      );
+  return [mark, age];
 }
 
 const label = {
@@ -413,6 +465,8 @@ type LeafContext = {
   readonly includeDispatchRuns: boolean;
   readonly onSelectSession: (sessionId: string, leaf: FlowNavigatorLeaf) => void;
   readonly slots: FlowNavigatorSlots;
+  /** The time rows' ages are drawn against. */
+  readonly now: number;
 };
 
 /** An open leaf's session list, drawn from the read its row holds. */
@@ -468,7 +522,8 @@ function SessionList(props: {
                   },
                   content: [
                     twisty(null),
-                    createElement("span", { style: label }, sessionLabel(session))
+                    createElement("span", { style: label }, sessionLabel(session)),
+                    ...sessionMeta(session, context.now)
                   ],
                   trailing: slots.rowTrailing?.({
                     type: "session",
@@ -659,7 +714,9 @@ export function FlowNavigator(props: FlowNavigatorProps): ReactNode {
   // would be the same missing answer wearing a confident face.
   const answered = !inventory.isLoading && inventory.error === null;
 
+  const now = useMinuteClock();
   const leafContext: LeafContext = {
+    now,
     source,
     selectedSessionId: props.selectedSessionId,
     includeDispatchRuns: props.includeDispatchRuns ?? false,

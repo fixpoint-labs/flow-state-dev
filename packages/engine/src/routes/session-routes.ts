@@ -38,6 +38,7 @@ import {
 } from "../stores/scope-keys";
 import { sessionRequestScope } from "../context/session-request-scope";
 import { toClientSession } from "./client-session";
+import { latestRequestStatus } from "./session-request-status";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import {
   flowAuthenticates,
@@ -84,6 +85,9 @@ type SessionRouteContext = {
  */
 const DISPATCH_RUNS_INCLUDE = "dispatch-runs";
 
+/** The include that adds each row's latest request status (FIX-2411). */
+const STATUS_INCLUDE = "status";
+
 /**
  * Map the `include` query parameter onto a store parentage.
  *
@@ -98,21 +102,24 @@ const DISPATCH_RUNS_INCLUDE = "dispatch-runs";
  */
 function resolveSessionInclude(
   raw: string | null
-): { parentage?: SessionParentage } | { error: string } {
+): { parentage?: SessionParentage; status?: true } | { error: string } {
   if (raw === null) return {};
   const tokens = raw
     .split(",")
     .map((token) => token.trim())
     .filter((token) => token.length > 0);
-  const unknown = tokens.filter((token) => token !== DISPATCH_RUNS_INCLUDE);
+  const unknown = tokens.filter((token) => token !== DISPATCH_RUNS_INCLUDE && token !== STATUS_INCLUDE);
   if (unknown.length > 0) {
     return {
-      error: `include accepts "${DISPATCH_RUNS_INCLUDE}"; received ${unknown
+      error: `include accepts "${DISPATCH_RUNS_INCLUDE}" and "${STATUS_INCLUDE}"; received ${unknown
         .map((token) => `"${token}"`)
         .join(", ")}`
     };
   }
-  return tokens.length === 0 ? {} : { parentage: "all" };
+  return {
+    ...(tokens.includes(DISPATCH_RUNS_INCLUDE) ? { parentage: "all" as const } : {}),
+    ...(tokens.includes(STATUS_INCLUDE) ? { status: true as const } : {})
+  };
 }
 
 /** What the session listing needs beyond an addressed route's context. */
@@ -303,10 +310,27 @@ export async function handleListSessions(
     if (own ?? hostRuleAdmits(s)) visible.push(s);
   }
 
+  // Each visible row's latest request status, only when asked (FIX-2411):
+  // read on the server, under each session's own request scope, so a list
+  // shows which session needs its person without a read per row from the
+  // browser.
+  const statuses =
+    include.status === true
+      ? await Promise.all(
+          visible.map((s) =>
+            latestRequestStatus(ctx.stores.request, toBareSessionId(s.id, ctx.tenantId), s, ctx.tenantId)
+          )
+        )
+      : undefined;
+
   return jsonResponse(200, {
     // Surface bare session ids — the stored `id` is the namespaced storage key —
     // and only the state each row's flow exposes (FIX-1588).
-    sessions: visible.map((s) => toClientSession(ctx.registry, s, toBareSessionId(s.id, ctx.tenantId)))
+    sessions: visible.map((s, index) => {
+      const row = toClientSession(ctx.registry, s, toBareSessionId(s.id, ctx.tenantId));
+      const requestStatus = statuses?.[index];
+      return requestStatus === undefined ? row : { ...row, requestStatus };
+    })
   });
 }
 
