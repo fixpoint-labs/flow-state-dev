@@ -1,5 +1,5 @@
 import { interruptChordLabel, isSendKey } from "@flow-state-dev/react";
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useDraftSend } from "../lib/use-draft-send";
 
 /**
@@ -37,9 +37,12 @@ export function Composer({
   sessionId,
   running,
   armed = false,
+  seed,
   onSend,
   onStop,
 }: {
+  /** A line to put in the box, as a starter line's click hands it; `at` makes a second click of the same line count. Never sent by itself. */
+  seed?: { text: string; at: number };
   /** The session it types to; `/` and a session switch find its composer by it. */
   sessionId: string;
   running: boolean;
@@ -52,6 +55,13 @@ export function Composer({
   const [coder, setCoder] = useState<CoderChoice>("Auto");
   const { text, setText, sending, failure, submit } = useDraftSend("claude-code-style:draft", sessionId);
   const send = () => submit((line) => onSend(withCoder(line, coder)));
+  const box = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (seed === undefined) return;
+    setText(seed.text);
+    box.current?.focus();
+    // Only a new seed puts its line in the box; setText is the draft's own setter.
+  }, [seed]);
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     void send();
@@ -68,6 +78,7 @@ export function Composer({
     <form onSubmit={onSubmit} className="px-6 pb-4">
       <div className="border border-border bg-card focus-within:border-ring">
         <textarea
+          ref={box}
           aria-label="Message the main session"
           data-composer
           data-session-id={sessionId}
