@@ -44,7 +44,7 @@ describe("on a real engine", () => {
         });
       });
       const line = view.entries.find((e): e is Extract<ThreadEntry, { kind: "failed" }> => e.kind === "failed")!;
-      expect(line).toMatchObject({ reason: "AI_GATEWAY_API_KEY is not set", requestId: sent.id, latest: true });
+      expect(line).toMatchObject({ reason: "AI_GATEWAY_API_KEY is not set", requestId: sent.id, retryable: true });
 
       await lab.retry(sessionId, line.requestId!);
       const requests = await client.sessions.requests(sessionId, { includeResultOutput: true, limit: 10 });

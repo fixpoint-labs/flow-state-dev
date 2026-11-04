@@ -97,7 +97,7 @@ export function Thread({
                     entry={entry}
                     mark={entry.kind === "user" ? feed.mine(entry.id) : undefined}
                     // Retry only the newest turn, and not while one runs: the engine retries a failed request as a new one.
-                    onRetry={entry.kind === "failed" && entry.latest && !running && entry.requestId !== undefined ? retryOf(entry.requestId) : undefined}
+                    onRetry={entry.kind === "failed" && entry.retryable && !running && entry.requestId !== undefined ? retryOf(entry.requestId) : undefined}
                   />
                 </div>
               ),

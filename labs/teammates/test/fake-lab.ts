@@ -484,16 +484,16 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       const line = [...w.entries].reverse().find((e) => e.kind === "user");
       const last = w.entries[w.entries.length - 1];
       w.entries = w.entries.map((e) =>
-        e.kind === "failed" ? { ...e, latest: false } : e === last && e.kind === "assistant" ? { kind: "assistant", id: e.id, text: e.text, incomplete: true } : e,
+        e.kind === "failed" ? { ...e, retryable: false } : e === last && e.kind === "assistant" ? { kind: "assistant", id: e.id, text: e.text, incomplete: true } : e,
       );
-      push(w, { kind: "failed", id: nextId("f"), requestId: `turn-${line?.id ?? nextId("r")}`, reason, latest: true });
+      push(w, { kind: "failed", id: nextId("f"), requestId: `turn-${line?.id ?? nextId("r")}`, reason, retryable: true });
     },
     async retry(sessionId, requestId) {
       retries.push({ sessionId, requestId });
       const w = bySession(sessionId);
       const line = w?.entries.find((e) => e.kind === "user" && `turn-${e.id}` === requestId);
       if (!w || line?.kind !== "user") throw new Error(`No failed turn "${requestId}" to retry.`);
-      w.entries = w.entries.map((e) => (e.kind === "failed" ? { ...e, latest: false } : e));
+      w.entries = w.entries.map((e) => (e.kind === "failed" ? { ...e, retryable: false } : e));
       w.queue.push({ kind: "user", entryId: line.id, text: line.text });
       startNext(w);
     },

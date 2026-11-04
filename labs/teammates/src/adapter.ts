@@ -233,10 +233,11 @@ export type ConversationEntry =
   /** `streaming` while the answer is still being written; `incomplete` when its turn failed before it was finished. */
   | { kind: "assistant"; id: string; text: string; streaming?: boolean; incomplete?: boolean }
   /**
-   * A turn that failed, from the engine's `error` item: its reason, its request, and `latest` when
-   * it is the conversation's newest turn, the one Retry is offered on.
+   * A turn that failed, from the engine's `error` item: its reason, its request, and `retryable`
+   * when Retry is offered on it: it is the conversation's newest turn, and one the engine will run
+   * again for you (a worker's message it was answering is not).
    */
-  | { kind: "failed"; id: string; requestId: string; reason: string; code?: string; details?: Record<string, unknown>; latest: boolean }
+  | { kind: "failed"; id: string; requestId: string; reason: string; code?: string; details?: Record<string, unknown>; retryable: boolean }
   /** The worker messaged another worker (`sendMessage`). */
   | { kind: "sent"; id: string; messageId: string; to: string; text: string }
   /** A message another worker sent, as the `receive` turn that read it. */
@@ -364,6 +365,13 @@ export interface LabAdapter {
    */
   watchExchange(worker: string, messageId: string, onChange: (steps: SessionStep[]) => void): Unsubscribe;
 }
+
+/**
+ * The request sources the engine retries for a caller (`PUBLIC_REENTRY_SOURCES`): a turn that came
+ * in another way, such as a worker's message (`internal`) or a task's run (`task`), it refuses.
+ * A copy, since the page can't import the engine; a test pins it to the engine's.
+ */
+export const RETRYABLE_SOURCES: ReadonlySet<string> = new Set(["http", "mcp", "scheduled"]);
 
 /** How often the reads with no stream are read again. */
 const POLL_MS = 1_500;
@@ -714,9 +722,15 @@ function harnessAndModel(spend: { harness?: string; model?: string }, setting: s
  * A conversation's items as the entries the screen draws. `ended` names the
  * requests the server lists as over: a step their turn left running (a turn
  * that crashed mid-call) reads failed, not running for good. A failed turn's
- * `error` item is a failed entry, `latest` on the newest turn that drew one.
+ * `error` item is a failed entry, `retryable` when it is the newest turn that drew one and one of
+ * `retryableTurns`, the requests the engine will retry.
  */
-export function toEntries(items: readonly Item[], workers: ReadonlySet<string>, ended: readonly string[] = []): ConversationEntry[] {
+export function toEntries(
+  items: readonly Item[],
+  workers: ReadonlySet<string>,
+  ended: readonly string[] = [],
+  retryableTurns: ReadonlySet<string> = new Set(),
+): ConversationEntry[] {
   const rows = boardRows(items);
   const entries: ConversationEntry[] = [];
   /** The turn the last run of steps belongs to: a run never spans two. */
@@ -734,7 +748,7 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>, 
         reason: typeof item.message === "string" ? item.message : "",
         ...(typeof item.code === "string" ? { code: item.code } : {}),
         ...(item.details === undefined ? {} : { details: item.details }),
-        latest: false,
+        retryable: false,
       });
     } else if (item.type === "message" && item.role === "user") {
       entries.push({ kind: "user", id: item.id, text: textOf(item) });
@@ -796,7 +810,9 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>, 
     drawEntry(item);
     if (entries.length !== drawn) newestTurn = item.requestId;
   }
-  return entries.map((entry) => (entry.kind === "failed" && entry.requestId === newestTurn ? { ...entry, latest: true } : entry));
+  return entries.map((entry) =>
+    entry.kind === "failed" && entry.requestId === newestTurn && retryableTurns.has(entry.requestId) ? { ...entry, retryable: true } : entry,
+  );
 }
 
 /**
@@ -1000,6 +1016,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       let items: Item[] = [];
       let inProgress: string[] = [];
       let ended: string[] = [];
+      let retryable = new Set<string>();
       let shown: ConversationView | undefined;
       // Unchanged entries keep their objects, so a streamed chunk redraws only the growing one.
       const reuse = stableList<ConversationEntry>((next) => {
@@ -1017,7 +1034,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       };
       const stopFeed = watchFeed(sessionId, (next) => next, (next) => {
         items = next;
-        reuse(toEntries(items, workerIds, ended));
+        reuse(toEntries(items, workerIds, ended, retryable));
         emit();
       });
       const stopPoll = onNotice(
@@ -1029,8 +1046,10 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           const answering = requests.filter((r) => !QUIET_ACTIONS.has(r.actionName));
           inProgress = answering.filter((r) => r.status === "in_progress").map((r) => r.id);
           ended = requests.filter((r) => r.status !== "in_progress").map((r) => r.id);
+          // The turns the engine would retry: a record with no source predates it, and came in over http.
+          retryable = new Set(requests.filter((r) => RETRYABLE_SOURCES.has(r.source ?? "http")).map((r) => r.id));
           // A turn that ended with a call still marked running reads that call failed.
-          reuse(toEntries(items, workerIds, ended));
+          reuse(toEntries(items, workerIds, ended, retryable));
           emit();
         },
       );

@@ -3,13 +3,16 @@
  * A turn that fails reads as a failure. The engine writes an `error` item for
  * every failed request; before, the thread never read that type, so a crash
  * looked like a short answer. Now it is one line under the thread with the
- * reason and, on the newest turn only, a Retry that runs the turn again: the
+ * reason and, on the newest turn only, a Retry that runs the turn again. The
  * engine retries any failed request, so the screen is what keeps Retry off an
- * older line, where it would re-run a turn the person has moved past.
+ * older line, where it would re-run a turn the person has moved past. It also
+ * keeps Retry off a turn the engine refuses to retry (one a task or the flow
+ * itself started), where the button could only fail.
  */
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { entriesOf, type ThreadEntry } from "../src/adapter";
+import { PUBLIC_REENTRY_SOURCES } from "@flow-state-dev/engine";
+import { entriesOf, RETRYABLE_SOURCES, type ThreadEntry } from "../src/adapter";
 import { Entry } from "../src/components/Entry";
 import { Thread } from "../src/components/Thread";
 import { createFakeLab } from "./fake-lab";
@@ -33,10 +36,10 @@ describe("the adapter reads a failed turn", () => {
       message("u1", "r1", "user", "Fix the build"),
       message("a1", "r1", "assistant", "Looking at the", "in_progress"),
       errorItem("e1", "r1", "AI_GATEWAY_API_KEY is not set"),
-    ]);
+    ], false, new Set(["r1"]));
     expect(entries.map((e) => e.kind)).toEqual(["user", "assistant", "failed"]);
     expect(entries[1]).toMatchObject({ kind: "assistant", incomplete: true });
-    expect(entries[2]).toMatchObject({ kind: "failed", reason: "AI_GATEWAY_API_KEY is not set", code: "PROVIDER_ERROR", requestId: "r1", latest: true });
+    expect(entries[2]).toMatchObject({ kind: "failed", reason: "AI_GATEWAY_API_KEY is not set", code: "PROVIDER_ERROR", requestId: "r1", retryable: true });
   });
 
   it("offers Retry on the newest turn only", () => {
@@ -45,12 +48,22 @@ describe("the adapter reads a failed turn", () => {
       errorItem("e1", "r1", "first failed"),
       message("u2", "r2", "user", "second"),
       errorItem("e2", "r2", "second failed"),
-    ]);
+    ], false, new Set(["r1", "r2"]));
     const failed = entries.filter((e): e is Extract<ThreadEntry, { kind: "failed" }> => e.kind === "failed");
-    expect(failed.map((e) => [e.reason, e.latest])).toEqual([
+    expect(failed.map((e) => [e.reason, e.retryable])).toEqual([
       ["first failed", false],
       ["second failed", true],
     ]);
+  });
+
+  it("offers no Retry on a newest turn the engine would refuse to retry", () => {
+    // r1 is not among the turns the engine retries: a task or the flow itself started it.
+    const entries = entriesOf([message("u1", "r1", "user", "first"), errorItem("e1", "r1", "failed")], false, new Set());
+    expect(entries.find((e) => e.kind === "failed")).toMatchObject({ retryable: false });
+  });
+
+  it("counts a turn retryable from the same sources the engine retries", () => {
+    expect([...RETRYABLE_SOURCES].sort()).toEqual([...PUBLIC_REENTRY_SOURCES].sort());
   });
 
   it("leaves a finished reply of a turn that worked alone", () => {
@@ -60,7 +73,7 @@ describe("the adapter reads a failed turn", () => {
 });
 
 describe("the line a failed turn draws", () => {
-  const failed = (latest: boolean): ThreadEntry => ({ kind: "failed", id: "e1", reason: "The model refused the key.", latest, requestId: "r1" });
+  const failed = (retryable: boolean): ThreadEntry => ({ kind: "failed", id: "e1", reason: "The model refused the key.", retryable, requestId: "r1" });
 
   it("names who failed and why, and Retry calls back", async () => {
     let retried = 0;

@@ -43,7 +43,7 @@ describe("on a real engine", () => {
         });
       });
       const line = view.entries.find((e): e is Extract<ConversationEntry, { kind: "failed" }> => e.kind === "failed")!;
-      expect(line).toMatchObject({ reason: "AI_GATEWAY_API_KEY is not set", requestId: sent.id, latest: true });
+      expect(line).toMatchObject({ reason: "AI_GATEWAY_API_KEY is not set", requestId: sent.id, retryable: true });
 
       await lab.retry(sessionId, line.requestId);
       const again = (await client.sessions.requests(sessionId, { limit: 10 })).find((r) => r.id !== sent.id);

@@ -114,10 +114,10 @@ export type ThreadEntry = (
     }
   | { kind: "interrupted"; id: string }
   /**
-   * A turn that failed, from the engine's `error` item: its reason, and `latest` when it is the
-   * thread's newest turn, the one Retry is offered on.
+   * A turn that failed, from the engine's `error` item: its reason, and `retryable` when Retry is
+   * offered on it: it is the thread's newest turn, and one the engine will run again for you.
    */
-  | { kind: "failed"; id: string; reason: string; code?: string; details?: Record<string, unknown>; latest: boolean }
+  | { kind: "failed"; id: string; reason: string; code?: string; details?: Record<string, unknown>; retryable: boolean }
   /** Threads mode: a thread the lead filed, where its `createTask` call is. The card reads the task row. */
   | { kind: "thread"; id: string; taskId: string }
 ) & { requestId?: string };
@@ -236,6 +236,13 @@ const UPDATE_TASK_ACTION = taskActionName("updateTask", TASKS_BOARD);
 
 /** The flow a coding worker runs on: its run sessions answer which harness it is (`harness`). */
 const CODING_FLOW = "harness-thread";
+
+/**
+ * The request sources the engine retries for a caller (`PUBLIC_REENTRY_SOURCES`): a turn that came
+ * in another way, such as a worker's message (`internal`) or a task's run (`task`), it refuses.
+ * A copy, since the page can't import the engine; a test pins it to the engine's.
+ */
+export const RETRYABLE_SOURCES: ReadonlySet<string> = new Set(["http", "mcp", "scheduled"]);
 
 /** The item types a thread draws: a failed turn's `error` item too. */
 const THREAD_ITEMS = ["message", "tool_output", "error"];
@@ -394,10 +401,11 @@ function filedTaskOf(item: Item): string | undefined {
  * and so is a delegate's answer that landed in the conversation as written (a task filed with `resultTo:
  * "conversation"`): either way the task's reply is one line, not the session's own words.
  * In threads mode (`threads`), a task the lead filed is a thread card where its `createTask` call is, and
- * your line is marked when its turn filed one. A failed turn's `error` item is a failed entry, `latest` on the
- * newest turn, and a reply that turn never finished is marked incomplete.
+ * your line is marked when its turn filed one. A failed turn's `error` item is a failed entry, `retryable`
+ * when it is the newest turn and one of `retryableTurns` (the requests the engine will retry), and a reply
+ * that turn never finished is marked incomplete.
  */
-export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[] {
+export function entriesOf(items: readonly Item[], threads = false, retryableTurns: ReadonlySet<string> = new Set()): ThreadEntry[] {
   // A turn a user's line started holds that line; a notice's own turn holds none.
   const userTurns = new Set(items.filter((item) => item.type === "message" && item.role === "user").map((item) => item.requestId));
   const filingTurns = new Set(items.filter((item) => filedTaskOf(item) !== undefined).map((item) => item.requestId));
@@ -431,7 +439,7 @@ export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[
         reason: item.message ?? "",
         ...(item.code === undefined ? {} : { code: item.code }),
         ...(item.details === undefined ? {} : { details: item.details }),
-        latest: requestId !== undefined && requestId === newestTurn,
+        retryable: requestId !== undefined && requestId === newestTurn && retryableTurns.has(requestId),
         requestId,
       });
       continue;
@@ -589,10 +597,12 @@ export function createWiredLab(fsd: Client): LabAdapter {
     );
 
   /** The turns running in a session, oldest first. */
-  const runningTurns = async (sessionId: string) =>
-    (await fsd.sessions.requests(sessionId, { status: "in_progress", limit: 50 }))
-      .filter((request) => TURN_ACTIONS.has(request.actionName))
+  /** Of a session's requests, its turns still running, oldest first. */
+  const turnsRunningIn = (requests: Awaited<ReturnType<typeof fsd.sessions.requests>>) =>
+    requests
+      .filter((request) => request.status === "in_progress" && TURN_ACTIONS.has(request.actionName))
       .sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0));
+  const runningTurns = async (sessionId: string) => turnsRunningIn(await fsd.sessions.requests(sessionId, { status: "in_progress", limit: 50 }));
 
   /** Every item of a session of the types a thread draws (or `types`), every page. */
   const itemsOf = async (sessionId: string, types: readonly string[] = THREAD_ITEMS): Promise<Item[]> => {
@@ -984,13 +994,13 @@ export function createWiredLab(fsd: Client): LabAdapter {
       let items: Item[] | undefined;
       let loadEarlier: (() => Promise<void>) | undefined;
       let connection: ConnectionState | undefined;
-      let turnOf: { turn: Awaited<ReturnType<typeof runningTurns>>[number] | undefined; threads: boolean } | undefined;
+      let turnOf: { turn: Awaited<ReturnType<typeof runningTurns>>[number] | undefined; threads: boolean; retryable: string[] } | undefined;
       let last: string | undefined;
       const tell = () => {
         if (items === undefined || turnOf === undefined) return;
-        const { turn, threads } = turnOf;
+        const { turn, threads, retryable } = turnOf;
         const view: ThreadView = {
-          entries: entriesOf(items, threads),
+          entries: entriesOf(items, threads, new Set(retryable)),
           running: turn !== undefined,
           ...(connection === undefined ? {} : { connection }),
           ...(turn?.startedAtMs === undefined ? {} : { turnStartedAt: turn.startedAtMs }),
@@ -1025,8 +1035,12 @@ export function createWiredLab(fsd: Client): LabAdapter {
         [topic.session(sessionId)],
         (notice) => notice.kind === "request",
         async () => {
-          const [turns, threads] = await Promise.all([runningTurns(sessionId), isThreads(sessionId)]);
-          return { turn: turns[0], threads };
+          // One read of the latest requests, newest updated first, answers both: the running turn
+          // is among them, and so is the turn a failed line could retry.
+          const [recent, threads] = await Promise.all([fsd.sessions.requests(sessionId, { limit: 50 }), isThreads(sessionId)]);
+          // The turns the engine would retry: a record with no source predates it, and came in over http.
+          const retryable = recent.filter((request) => RETRYABLE_SOURCES.has(request.source ?? "http")).map((request) => request.id);
+          return { turn: turnsRunningIn(recent)[0], threads, retryable };
         },
         (next) => {
           turnOf = next;

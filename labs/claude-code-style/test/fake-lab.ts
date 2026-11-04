@@ -435,8 +435,8 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       const line = [...s.entries].reverse().find((e) => e.kind === "user");
       const requestId = `turn-${line?.id ?? nextId("r")}`;
       const last = s.entries[s.entries.length - 1];
-      s.entries = s.entries.map((e) => (e.kind === "failed" ? { ...e, latest: false } : e === last && e.kind === "assistant" ? { ...e, incomplete: true } : e));
-      push(s, { kind: "failed", id: nextId("f"), reason, latest: true, requestId });
+      s.entries = s.entries.map((e) => (e.kind === "failed" ? { ...e, retryable: false } : e === last && e.kind === "assistant" ? { ...e, incomplete: true } : e));
+      push(s, { kind: "failed", id: nextId("f"), reason, retryable: true, requestId });
       endTurn(s);
     },
     setConnection(state) {
@@ -501,7 +501,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       const s = session(sessionId);
       const line = s.entries.find((e) => e.kind === "user" && `turn-${e.id}` === requestId);
       if (line?.kind !== "user") throw new Error(`No failed turn "${requestId}" to retry.`);
-      s.entries = s.entries.map((e) => (e.kind === "failed" ? { ...e, latest: false } : e));
+      s.entries = s.entries.map((e) => (e.kind === "failed" ? { ...e, retryable: false } : e));
       turn(s, line.text, line.id);
     },
 
