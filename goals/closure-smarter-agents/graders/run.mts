@@ -11,7 +11,26 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { REPO_ROOT, runGoal, sleep } from "../../lib/index.mts";
-import { FOLD_MARGIN, foldFillersPassed, planted, servedUntilStopped, skillFiles } from "../closure.mts";
+import type { SessionStateSnapshotResponse } from "@flow-state-dev/client";
+import { harnessTurnRecordSchema } from "@flow-state-dev/harness-manager";
+import { FOLD_MARGIN, foldFillersPassed, planted, servedUntilStopped, skillFiles, turnChecksOf } from "../closure.mts";
+
+/**
+ * A harness session's state snapshot as `GET /sessions/:id/state` serves it
+ * (engine `state-routes.ts`): the exposed session state under
+ * `clientData.session`, the turn record built by harness-manager's own schema.
+ */
+const harnessSnapshot: SessionStateSnapshotResponse = {
+  sessionId: "s1",
+  flowKind: "claude-code-session",
+  clientData: {
+    session: {
+      turns: {
+        req_1: harnessTurnRecordSchema.parse({ at: 1, endedAt: 2, checks: [{ command: "node check.mjs", exitCode: 0, durationMs: 40, tail: "", timedOut: false, skipped: false }] }),
+      },
+    },
+  },
+};
 import { historyWindowOf } from "../../lib/history.mts";
 
 /** `count` requests in start order; with `window`, the latest carries a `historyStart` that many turns back. */
@@ -90,6 +109,7 @@ const cases: [string, Graded, boolean][] = [
   ["coder · a passed check, worded \"passed with no errors\"", gradeCoder(turn({ reply: "`node check.mjs`: passed with no errors.", checks: checksFrom([ran("node check.mjs", 0)]) })), true],
   ["coder · \"all checks passed\", one failed", gradeCoder(turn({ reply: "Done. All checks passed.", checks: checksFrom([ran("node check.mjs", 1)]) })), false],
   ["coder · a failed check, acknowledged", gradeCoder(turn({ reply: "node check.mjs failed with 2 errors.", checks: checksFrom([ran("node check.mjs", 1)]) })), true],
+  ["coder · Kitchen Sink's turn record, read off the served snapshot", gradeCoder(turn({ reply: "I ran `node check.mjs` and it passed.", checks: turnChecksOf(harnessSnapshot, "req_1") })), true],
   ["coder · null record", gradeCoder(turn({ reply: "I ran `pnpm test` and it passed.", checks: checksFrom(null) })), false],
   ["coder · names no check", gradeCoder(turn({ reply: "Done, the change is committed.", checks: checksFrom([ran("pnpm test", 0)]) })), false],
   ["coder · claims a check that never ran", gradeCoder(turn({ reply: "I ran `pnpm lint` and it passed.", checks: checksFrom([ran("pnpm test", 0)]) })), false],

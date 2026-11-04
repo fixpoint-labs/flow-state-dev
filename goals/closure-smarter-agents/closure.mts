@@ -25,8 +25,10 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileS
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { createClient } from "@flow-state-dev/client";
+import { createClient, type SessionStateSnapshotResponse } from "@flow-state-dev/client";
+import type { MessageItem, OutputItem, SuspensionItem, ToolOutputItem } from "@flow-state-dev/core/items";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
+import { harnessSessionStateSchema, runRecordStateSchema } from "@flow-state-dev/harness-manager";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { foldOf, goalTmpDir, sessionWindow, intentFreeEnv, onClosed, REPO_ROOT, refuseIfAnswering, runGoal, sleep, stopProcessGroup, type SessionReads } from "../lib/index.mts";
 import {
@@ -298,25 +300,11 @@ export async function heldSkills(tree: string, workerId: string): Promise<string
 /** A request in one of these has ended; any other (running, queued, parked on a reply) is still owed. */
 const ENDED = new Set(["completed", "failed", "incomplete", "aborted", "interrupted", "cancelled"]);
 
-type Item = {
-  type: string;
-  role?: string;
-  blockName?: string;
-  content?: { text?: string }[];
-  output?: unknown;
-  toolCall?: { name?: string; arguments?: string };
-  status?: string;
-  error?: unknown;
-};
-
 /** Every message and tool item of a session, oldest first. */
-export async function itemsOf(fsd: Fsd, sessionId: string): Promise<Item[]> {
-  const items: Item[] = [];
+export async function itemsOf(fsd: Fsd, sessionId: string): Promise<OutputItem[]> {
+  const items: OutputItem[] = [];
   for (let offset = 0; ; ) {
-    const page = (await fsd.sessions.state(sessionId, { includeItems: true, itemTypes: ["message", "tool_output"], offset, limit: 100 })) as {
-      items?: Item[];
-      pagination?: { hasMore: boolean; nextOffset: number };
-    };
+    const page = await fsd.sessions.state(sessionId, { includeItems: true, itemTypes: ["message", "tool_output"], offset, limit: 100 });
     items.push(...(page.items ?? []));
     if (page.pagination?.hasMore !== true) return items;
     offset = page.pagination.nextOffset;
@@ -331,17 +319,15 @@ export async function itemsOf(fsd: Fsd, sessionId: string): Promise<Item[]> {
  * left waiting, and named once.
  */
 async function answerWaiting(fsd: Fsd, user: string, named: Set<string>, own: Set<string>): Promise<void> {
-  for (const session of (await fsd.sessions.list({ userId: user, include: "dispatch-runs" })) as Array<{ id: string; flowId?: string; flowKind?: string }>) {
-    const page = (await fsd.sessions.state(session.id, { includeItems: true, itemTypes: ["suspension"], limit: 500 })) as {
-      items?: { suspensionId: string; suspensionStatus?: string; requestId?: string; reason?: string; allow?: string[]; resumeSchema?: { properties?: Record<string, unknown> } }[];
-    };
-    for (const item of page.items ?? []) {
-      if (item.suspensionStatus !== "pending" || item.requestId === undefined || !own.has(item.requestId) || named.has(item.suspensionId)) continue;
+  for (const session of (await fsd.sessions.list({ userId: user, include: "dispatch-runs" }))) {
+    const page = await fsd.sessions.state(session.id, { includeItems: true, itemTypes: ["suspension"], limit: 500 });
+    for (const item of (page.items ?? []).filter((i): i is SuspensionItem => i.type === "suspension")) {
+      if (item.suspensionStatus !== "pending" || !own.has(item.requestId) || named.has(item.suspensionId)) continue;
       const request = fsd.flow(String(session.flowId ?? session.flowKind)).request(item.requestId);
       const allow = item.allow ?? ["approve", "reject"];
       const answer =
         allow.includes("approve")
-          ? { action: "approve" as const, ...(item.resumeSchema?.properties?.scope === undefined ? {} : { data: { scope: "run" } }) }
+          ? { action: "approve" as const, ...((item.resumeSchema?.properties as Record<string, unknown> | undefined)?.scope === undefined ? {} : { data: { scope: "run" } }) }
           : allow.includes("submit") && item.resumeSchema !== undefined && JSON.stringify(item.resumeSchema).includes("accepted")
             ? { action: "submit" as const, data: { verdict: "accepted" } }
             : undefined;
@@ -365,7 +351,7 @@ async function answerWaiting(fsd: Fsd, user: string, named: Set<string>, own: Se
 export async function untilQuiet(fsd: Fsd, user: string, budgetMs: number, quietMs = 20_000, since = 0): Promise<void> {
   const named = new Set<string>();
   for (let waited = 0, quiet = 0; waited < budgetMs && quiet < quietMs; waited += 2_000) {
-    const all = (await fsd.sessions.list({ userId: user, include: "dispatch-runs" })) as Array<{ id: string }>;
+    const all = await fsd.sessions.list({ userId: user, include: "dispatch-runs" });
     const open = new Set<string>();
     let waiting = 0;
     for (const { id } of all) {
@@ -385,7 +371,7 @@ export async function untilQuiet(fsd: Fsd, user: string, budgetMs: number, quiet
 /** How many items each of the person's sessions holds, dispatch runs included. */
 async function itemCounts(fsd: Fsd, user: string): Promise<Map<string, number>> {
   const counts = new Map<string, number>();
-  for (const { id } of (await fsd.sessions.list({ userId: user, include: "dispatch-runs" })) as Array<{ id: string }>) {
+  for (const { id } of (await fsd.sessions.list({ userId: user, include: "dispatch-runs" }))) {
     counts.set(id, (await itemsOf(fsd, id)).length);
   }
   return counts;
@@ -404,7 +390,7 @@ export async function askWorker(
   options: { user: string; worker: string; line: string; budgetMs?: number; quietMs?: number; sessionId?: string },
 ): Promise<Turn & { sessionId: string }> {
   const sessionId = options.sessionId ?? (await createWorkforceClient(fsd).ensureWorkerSession({ worker: options.worker })).id;
-  const session = (await fsd.sessions.get(sessionId)) as { flowId?: string; flowKind?: string };
+  const session = await fsd.sessions.get(sessionId);
   const before = await itemCounts(fsd, options.user);
   const askedAt = new Date();
   const sent = await fsd.flow(String(session.flowId ?? session.flowKind)).send("respond", { message: options.line }, { sessionId });
@@ -412,7 +398,7 @@ export async function askWorker(
   await untilQuiet(fsd, options.user, options.budgetMs ?? 8 * 60_000, options.quietMs, askedAt.getTime());
   const answeredAt = new Date();
   const own = turnOf((await itemsOf(fsd, sessionId)).slice(before.get(sessionId) ?? 0), askedAt, answeredAt);
-  const elsewhere: Item[] = [];
+  const elsewhere: OutputItem[] = [];
   for (const id of (await itemCounts(fsd, options.user)).keys()) {
     if (id !== sessionId) elsewhere.push(...(await itemsOf(fsd, id)).slice(before.get(id) ?? 0));
   }
@@ -430,7 +416,7 @@ export async function askWorker(
  */
 export async function askAfterFold(fsd: Fsd, options: { user: string; worker: string; d: Draw }): Promise<Turn> {
   const cap = Number(process.env.GOAL_FOLD_TURNS_MAX ?? 200);
-  const reads = fsd as unknown as SessionReads;
+  const reads: SessionReads = fsd;
   const opening = await askWorker(fsd, { user: options.user, worker: options.worker, line: options.d.fold.opening, quietMs: 4_000 });
   let sent = 0;
   let window: number | undefined;
@@ -454,16 +440,16 @@ export function foldFillersPassed(sent: number, window: number | undefined): boo
 }
 
 /** A turn's items as a {@link Turn}: one request, the reply, and each tool call. */
-export function turnOf(items: readonly Item[], askedAt: Date, answeredAt: Date): Turn {
+export function turnOf(items: readonly OutputItem[], askedAt: Date, answeredAt: Date): Turn {
   const reply = items
-    .filter((item) => item.type === "message" && item.role === "assistant")
-    .map((item) => (item.content ?? []).map((part) => part.text ?? "").join(""))
+    .filter((item): item is MessageItem => item.type === "message" && item.role === "assistant")
+    .map((item) => item.content.map((part) => (part.type === "output_text" ? part.text : "")).join(""))
     .join("\n");
   const tools = items
-    .filter((item) => item.type === "tool_output")
+    .filter((item): item is ToolOutputItem => item.type === "tool_output")
     .map((item) => ({
-      name: item.blockName ?? item.toolCall?.name ?? "(unnamed)",
-      input: item.toolCall?.arguments ?? "",
+      name: item.blockName ?? item.toolCall.name,
+      input: item.toolCall.arguments,
       output: typeof item.output === "string" ? item.output : JSON.stringify(item.output ?? null),
       ok: item.status !== "failed" && item.error == null,
     }));
@@ -481,9 +467,10 @@ export function runChecks(dbFile: string): Turn["checks"] {
   const db = new DatabaseSync(dbFile, { readOnly: true });
   try {
     const rows = db.prepare("SELECT state FROM resource_state WHERE resource_key LIKE 'runs/%'").all() as { state: string }[];
+    // Each row through harness-manager's own run-record schema: a row that is not one fails loudly.
     const records = rows
-      .map((row) => JSON.parse(row.state) as { checks?: unknown; updatedAt?: number | null })
-      .filter((record) => Array.isArray(record.checks))
+      .map((row) => runRecordStateSchema.parse(JSON.parse(row.state)))
+      .filter((record) => record.checks !== null)
       .sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0));
     return records.length === 0 ? null : checksFrom(records.at(-1)!.checks);
   } finally {
@@ -493,13 +480,21 @@ export function runChecks(dbFile: string): Turn["checks"] {
 
 /**
  * The checks a harness session's turn recorded (harness-manager's
- * `harnessSessionFlow` with `verify`, which Kitchen Sink's coding modes run):
- * the session state's `turns[requestId].checks`, normalized by
- * {@link checksFrom}. Kitchen Sink keeps checks on the turn, not on a run.
+ * `harnessSessionFlow` with `verify`, which Kitchen Sink's coding modes run),
+ * normalized by {@link checksFrom}. Kitchen Sink keeps checks on the turn, not
+ * on a run. The state route serves the session's exposed state (`turns`
+ * among it) under `clientData.session`, read through harness-manager's own
+ * schema, so a change to either shape fails here, not as a silent `null`.
  */
 export async function turnChecks(fsd: Fsd, sessionId: string, requestId: string): Promise<Turn["checks"]> {
-  const snapshot = (await fsd.sessions.state(sessionId)) as { state?: { turns?: Record<string, { checks?: unknown } | undefined> | null } };
-  return checksFrom(snapshot.state?.turns?.[requestId]?.checks);
+  return turnChecksOf(await fsd.sessions.state(sessionId), requestId);
+}
+
+/** {@link turnChecks} over a snapshot already read. */
+export function turnChecksOf(snapshot: SessionStateSnapshotResponse, requestId: string): Turn["checks"] {
+  const state = harnessSessionStateSchema.pick({ turns: true }).safeParse(snapshot.clientData.session ?? {});
+  if (!state.success) throw new Error(`setup: the session's state is not a harness session's: ${state.error.message}`);
+  return checksFrom(state.data.turns?.[requestId]?.checks);
 }
 
 /** A git repository at `dir` holding `files`, committed once on `main`: a project's repository or a working folder. */

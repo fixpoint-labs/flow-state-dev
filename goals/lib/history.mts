@@ -3,7 +3,10 @@
  * the session's `historySummary` resource (its public `clientData`), and the
  * `historyStart` mark its latest request carries. Shared by the goals that
  * need a fold to have happened before they grade what came after it.
+ * Read through the client's own response types, so a route's shape change
+ * is a compile error here, not a fold that never seems to happen.
  */
+import type { SessionRequestSummary, SessionStateSnapshotResponse } from "@flow-state-dev/client";
 
 /** The summary's public face: whether it is complete, how many folds ran, and the request it reaches through. */
 export interface SummaryAsSeen {
@@ -15,19 +18,21 @@ export interface SummaryAsSeen {
 /** What {@link foldOf} needs of a client: the session state and request routes. */
 export interface SessionReads {
   sessions: {
-    state(sessionId: string): Promise<unknown>;
-    requests(sessionId: string, options?: { limit?: number }): Promise<unknown>;
+    state(sessionId: string): Promise<SessionStateSnapshotResponse>;
+    requests(sessionId: string, options?: { limit?: number }): Promise<SessionRequestSummary[]>;
   };
 }
 
 /** The `historySummary` resource's public state on `sessionId`, or `undefined` when the session holds none. */
-export async function summaryAsSeen(client: { sessions: { state(sessionId: string): Promise<unknown> } }, sessionId: string): Promise<SummaryAsSeen | undefined> {
-  const snapshot = (await client.sessions.state(sessionId)) as { resources?: { session?: Record<string, { clientData?: SummaryAsSeen } | undefined> } };
-  return snapshot.resources?.session?.historySummary?.clientData;
+export async function summaryAsSeen(client: { sessions: Pick<SessionReads["sessions"], "state"> }, sessionId: string): Promise<SummaryAsSeen | undefined> {
+  const snapshot = await client.sessions.state(sessionId);
+  const entry = snapshot.resources?.session?.historySummary;
+  // A resource entry's `clientData` is whatever the resource exposes: the summary's public face here.
+  return entry !== undefined && "clientData" in entry ? (entry.clientData as SummaryAsSeen | undefined) : undefined;
 }
 
 /** A session's request as the requests route lists it, as far as the window needs it. */
-type WindowRequest = { id: string; createdAt?: number; startedAtMs?: number; historyStart?: { requestId?: string } | null };
+type WindowRequest = Pick<SessionRequestSummary, "id" | "startedAtMs"> & { historyStart?: { requestId?: string } | null };
 
 /**
  * The history window the server applied to a session's latest request, in
@@ -38,7 +43,7 @@ type WindowRequest = { id: string; createdAt?: number; startedAtMs?: number; his
  * serves a flow's `historyWindow` setting.
  */
 export function historyWindowOf(requests: readonly WindowRequest[]): number | undefined {
-  const ordered = [...requests].sort((a, b) => (a.startedAtMs ?? a.createdAt ?? 0) - (b.startedAtMs ?? b.createdAt ?? 0));
+  const ordered = [...requests].sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0));
   const start = ordered.at(-1)?.historyStart?.requestId;
   if (start === undefined) return undefined;
   const from = ordered.findIndex((r) => r.id === start);
@@ -47,7 +52,7 @@ export function historyWindowOf(requests: readonly WindowRequest[]): number | un
 
 /** {@link historyWindowOf} for a session, read over the client. */
 export async function sessionWindow(client: SessionReads, sessionId: string): Promise<number | undefined> {
-  return historyWindowOf((await client.sessions.requests(sessionId, { limit: 200 })) as WindowRequest[]);
+  return historyWindowOf(await client.sessions.requests(sessionId, { limit: 200 }));
 }
 
 /**
@@ -57,8 +62,8 @@ export async function sessionWindow(client: SessionReads, sessionId: string): Pr
  */
 export async function foldOf(client: SessionReads, sessionId: string): Promise<{ folded: boolean; folds: number; historyStart: string | undefined }> {
   const seen = await summaryAsSeen(client, sessionId);
-  const requests = (await client.sessions.requests(sessionId, { limit: 200 })) as Array<{ id: string; createdAt?: number; startedAtMs?: number; historyStart?: { requestId?: string } | null }>;
-  const latest = [...requests].sort((a, b) => (a.startedAtMs ?? a.createdAt ?? 0) - (b.startedAtMs ?? b.createdAt ?? 0)).at(-1);
+  const requests = await client.sessions.requests(sessionId, { limit: 200 });
+  const latest = [...requests].sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0)).at(-1);
   const historyStart = latest?.historyStart?.requestId;
   const folds = seen?.folds ?? 0;
   const ids = new Set(requests.map((r) => r.id));
