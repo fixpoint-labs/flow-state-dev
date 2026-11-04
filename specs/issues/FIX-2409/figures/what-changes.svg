@@ -1,0 +1,79 @@
+<svg viewBox="0 0 940 440" role="img" aria-label="What changes. Two columns, today and after, with the same rows. The snapshot is read on boot and an org switch, after the user's own actions, and on Retry and the lapsed retry, in both. Today three views also nudge it when they see another session's change, and nothing hears a change no view is showing, so the summary says Nothing needs you with no age. After, the three nudges are gone and one subscription reads the snapshot on a notice from the user, the org or a listed session, acting on request, run and resource, never on a streamed item and never on Shift Manager's own sessions, with a 30 second timer only where push can miss a change. The summary says Nothing needs you, as of 14:02, refresh."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .kept  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .gone  { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .new   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.6; }
+    .read  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .rule  { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-gone { fill:var(--gone); }
+    .c-acc  { fill:var(--accent); }
+    .c-code { fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+
+  <g id="heads">
+    <text class="t-lbl" x="24" y="30">TODAY</text>
+    <text class="t-lbl" x="488" y="30">AFTER</text>
+    <line class="rule" x1="470" y1="18" x2="470" y2="424"/>
+  </g>
+
+  <g id="row-kept">
+    <rect class="kept" x="24" y="44" width="430" height="64" rx="5"/>
+    <text class="t-lbl" x="38" y="62">READS THE SNAPSHOT</text>
+    <text class="t-b" x="38" y="80">boot · org switch · your own answer, line or task action</text>
+    <text class="t-s" x="38" y="97">Retry · the lapsed retry</text>
+    <rect class="kept" x="488" y="44" width="430" height="64" rx="5"/>
+    <text class="t-lbl" x="502" y="62">READS THE SNAPSHOT · UNCHANGED</text>
+    <text class="t-b" x="502" y="80">boot · org switch · your own answer, line or task action</text>
+    <text class="t-s" x="502" y="97">Retry · the lapsed retry</text>
+  </g>
+
+  <g id="row-nudges">
+    <rect class="gone" x="24" y="122" width="430" height="64" rx="5"/>
+    <text class="t-lbl c-gone" x="38" y="140">THREE VIEWS NUDGE IT</text>
+    <text class="t-b" x="38" y="158">the Tasks panel, a board card, the task screen</text>
+    <text class="t-s" x="38" y="175">only when that view is open and sees the change</text>
+    <rect class="gone" x="488" y="122" width="430" height="64" rx="5"/>
+    <text class="t-lbl c-gone" x="502" y="140">GONE</text>
+    <text class="t-s" x="502" y="160">one implementation per need (epic ER-3)</text>
+  </g>
+
+  <g id="row-others">
+    <rect class="n-box" x="24" y="200" width="430" height="110" rx="5"/>
+    <text class="t-lbl" x="38" y="218">ANOTHER SESSION'S CHANGE</text>
+    <text class="t-b" x="38" y="238">a delegate asks · a scheduled task is filed</text>
+    <text class="t-b" x="38" y="256">a task moves · a hire · a project</text>
+    <text class="t-h c-gone" x="38" y="284">nothing hears it</text>
+    <rect class="new" x="488" y="200" width="430" height="110" rx="5"/>
+    <text class="t-lbl c-acc" x="502" y="218">ONE SUBSCRIPTION · CLIENT.SUBSCRIBE</text>
+    <text class="t-b" x="502" y="238">user · org · each listed session</text>
+    <text class="t-b" x="502" y="256">request · run · resource it reads · resync</text>
+    <text class="t-s" x="502" y="276">never items · never Shift Manager's own sessions</text>
+    <text class="t-s" x="502" y="294">a 30 s timer only where push can miss a change</text>
+  </g>
+
+  <g id="row-summary">
+    <rect class="read" x="24" y="324" width="430" height="92" rx="5"/>
+    <text class="t-lbl c-code" x="38" y="342">THE SUMMARY</text>
+    <text class="t-h" x="38" y="368">Nothing needs you.</text>
+    <text class="t-s" x="38" y="390">no age; true only as of a read you caused</text>
+    <rect class="read" x="488" y="324" width="430" height="92" rx="5"/>
+    <text class="t-lbl c-code" x="502" y="342">THE SUMMARY</text>
+    <text class="t-h" x="502" y="368">1 thing needs you.</text>
+    <text class="t-s" x="502" y="390">as of 14:02 · refresh   (R reads too)</text>
+  </g>
+</svg>
