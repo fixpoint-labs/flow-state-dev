@@ -52,6 +52,7 @@ import {
   harnessReadiness,
   harnessReadinessAction,
   harnessReadinessCapability,
+  scriptedHarness,
   resolveOwnership,
   type HarnessReadinessRead,
 } from "@flow-state-dev/harness-manager";
@@ -108,6 +109,12 @@ export interface TeammatesOptions {
    * harness says it finished.
    */
   checks?: readonly string[];
+  /**
+   * For goal checks only: every coding worker runs on harness-manager's
+   * scripted harness instead of its own, which narrates five steps this far
+   * apart and finishes, with no model and no sign-in. Absent: the real harnesses.
+   */
+  scriptedHarnessStepMs?: number;
 }
 
 /** How long a coding run's checks may take together. */
@@ -280,6 +287,10 @@ export async function openTeammates(options: TeammatesOptions) {
     judge: true,
     doneTimeoutMs,
   });
+  // A goal's scripted harness (harness-manager's, the one DevTeam serves) stands in for every harness a worker names, and is always ready.
+  const scripted =
+    options.scriptedHarnessStepMs === undefined ? undefined : scriptedHarness({ stepEveryMs: options.scriptedHarnessStepMs }).slot;
+  const harnesses = scripted === undefined ? HARNESSES : Object.fromEntries(Object.keys(HARNESSES).map((name) => [name, scripted as Harness]));
   const readiness = teammatesReadiness();
   // At start, never awaited: a missing sign-in never stops the server.
   void readiness.read().then((rows) => console.log(formatHarnessReadiness(rows)));
@@ -313,9 +324,9 @@ export async function openTeammates(options: TeammatesOptions) {
       showSettings: ["icon", "color"],
     },
     [CODER_FLOW]: coderFlow({
-      harnesses: HARNESSES,
+      harnesses,
       defaultHarness: options.harness ?? "cursor",
-      ready: readiness.refusal,
+      ...(scripted === undefined ? { ready: readiness.refusal } : {}),
       workspace,
       runTimeoutMs,
       checks,
