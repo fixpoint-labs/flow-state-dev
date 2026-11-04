@@ -15,7 +15,9 @@ import { useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
  *
  * A `prefill` (a popup's "Ask … to follow up") adds its words to the box,
  * after a blank line when something is already typed, and puts the cursor at
- * the end; nothing is sent.
+ * the end; nothing is sent. It calls `onPrefilled` once the words are in, so
+ * the parent drops them: a box that closes and reopens (a switch away and
+ * back) must not add them again.
  */
 export function Composer({
   sessionId,
@@ -23,6 +25,7 @@ export function Composer({
   running,
   onSend,
   prefill,
+  onPrefilled,
 }: {
   /** The conversation it types to; `/` and a switch find its composer by it. */
   sessionId: string;
@@ -32,6 +35,8 @@ export function Composer({
   onSend: (text: string) => Promise<void>;
   /** Words to add to the box, once per `n`. */
   prefill?: { text: string; n: number };
+  /** Called once `prefill`'s words are in the box, for the parent to drop them. */
+  onPrefilled?: () => void;
 }) {
   const [text, setText] = useDraft("teammates:draft", sessionId);
   const current = useRef(text);
@@ -45,7 +50,8 @@ export function Composer({
     const typed = current.current.trimEnd();
     toEnd.current = true;
     setText(typed === "" ? prefill.text : `${typed}\n\n${prefill.text}`);
-  }, [prefill, setText]);
+    onPrefilled?.();
+  }, [prefill, setText, onPrefilled]);
   useEffect(() => {
     if (!toEnd.current) return;
     toEnd.current = false;

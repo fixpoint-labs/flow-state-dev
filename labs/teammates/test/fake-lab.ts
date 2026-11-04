@@ -572,7 +572,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
         const call = (item as { toolCall?: { name?: string; arguments?: string } }).toolCall;
         return call?.name === "Edit" ? [JSON.parse(call.arguments ?? "{}").file_path as string] : [];
       });
-      return { plan: null, files: { rows: [...new Set(edited)].map((path) => ({ path, kind: "edited" as const })), truncated: false }, pullRequests: null };
+      return { plan: null, files: { rows: [...new Set(edited)].map((path) => ({ path, kind: "edited" as const, applied: 1 })), truncated: false }, pullRequests: null };
     },
 
     async answerTask(_sessionId, taskId, answer) {

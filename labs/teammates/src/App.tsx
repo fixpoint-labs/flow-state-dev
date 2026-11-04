@@ -148,6 +148,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   }, []);
   // Words a task popup's follow-up hands the composer of the conversation that filed the task.
   const [prefill, setPrefill] = useState<{ sessionId: string; text: string; n: number }>();
+  // Counts every ask, so a composer that stayed open never mistakes a new one for the one it took.
+  const asks = useRef(0);
   // Who filed the open task: the worker whose conversation it is, when that conversation is on the roster.
   const filer = popup?.kind === "task" ? Object.entries(sessions).find(([, session]) => session === popup.sessionId)?.[0] : undefined;
   const followUp = useMemo<FollowUp | undefined>(() => {
@@ -159,10 +161,13 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         how.current = "push";
         setPopup(undefined);
         setSelected(filer);
-        setPrefill((last) => ({ sessionId: session, text, n: (last?.n ?? 0) + 1 }));
+        asks.current += 1;
+        setPrefill({ sessionId: session, text, n: asks.current });
       },
     };
   }, [filer, popup, nameOf]);
+  // Taken once: a composer that remounts (a switch away and back) doesn't add the words again.
+  const consumePrefill = useCallback(() => setPrefill(undefined), []);
   // A task the address named that its conversation doesn't hold: dropped, not a step.
   const dropPopup = useCallback(() => {
     how.current = "replace";
@@ -246,6 +251,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
           onFire={() => fire(worker.id)}
           onOpen={openPopup}
           prefill={prefill?.sessionId === sessionId ? prefill : undefined}
+          onPrefilled={consumePrefill}
         />
       ) : (
         <main aria-label="Conversation" />

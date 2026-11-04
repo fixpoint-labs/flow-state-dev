@@ -212,7 +212,8 @@ function useRecordedFiles(adapter: LabAdapter, task: BoardTask): RecordedWork["f
 /** "Edited 2 files · ran 5 commands", and a chip per file the run recorded, named by its file name. */
 function TaskSummary({ adapter, task, steps }: { adapter: LabAdapter; task: BoardTask; steps: readonly SessionStep[] }) {
   const files = useRecordedFiles(adapter, task) ?? null;
-  const rows = files?.rows ?? [];
+  // A path whose every attempt failed was tried, not edited.
+  const rows = (files?.rows ?? []).filter((row) => row.applied !== 0);
   const line = runSummaryLine({ files: files === null ? null : { count: rows.length, truncated: files.truncated }, commands: commandsRun(steps) });
   if (line === "") return null;
   const shown = rows.slice(0, CHIPS_SHOWN);

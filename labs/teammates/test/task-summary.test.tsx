@@ -13,7 +13,10 @@
  * Red states produced before this was trusted: count the run's edit steps
  * instead of the recorded files, and the Codex case fails; colour the result
  * green whatever the status, and the failed-tone case fails; prefill the open
- * conversation rather than the filer's, and the follow-up case fails.
+ * conversation rather than the filer's, and the follow-up case fails; count
+ * every recorded row, and a file whose every edit failed reads as edited; let
+ * the composer keep the follow-up after taking it, and switching away and back
+ * adds it twice.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -88,6 +91,21 @@ describe("a coding task's popup", () => {
     expect(within(popup).getByRole("region", { name: "Result" }).getAttribute("data-tone")).toBe("done");
   });
 
+  it("counts a file only when an edit to it landed, not when every attempt failed", async () => {
+    const lab = createFixtureLab({ speed: 0.05 });
+    const read = lab.recordedWork.bind(lab);
+    lab.recordedWork = async (run) => {
+      const work = await read(run);
+      const tried = { path: "/work/LICENSE", kind: "edited" as const, applied: 0 };
+      return work.files === null ? work : { ...work, files: { ...work.files, rows: [...work.files.rows, tried] } };
+    };
+    render(<App adapter={lab} />);
+    const popup = await openTask("Claude Code");
+    await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
+    await waitFor(() => expect(popup.querySelector("[data-summary-line]")?.textContent).toBe("Edited 1 file · ran 1 command"));
+    expect(within(popup).queryByText("LICENSE")).toBeNull();
+  });
+
   it("says no file count for a harness that records none, though its run edited one", async () => {
     render(<App adapter={createFixtureLab({ speed: 0.05 })} />);
     const popup = await openTask("Codex");
@@ -148,5 +166,18 @@ describe("a filed task's popup, opened by its address", () => {
     const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
     await waitFor(() => expect(box.value).toBe(`Also check the dates.\n\nFollow up on "Draft the PM role": `));
     expect(screen.queryByLabelText("Message researcher")).toBeNull();
+  });
+
+  it("adds the follow-up once: switching away and back doesn't add it again", async () => {
+    const popup = await open(failed);
+    fireEvent.click(within(popup).getByRole("button", { name: "Ask Chief of Staff to follow up" }));
+    const ask = `Follow up on "Draft the PM role": `;
+    await waitFor(async () => expect(((await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement).value).toBe(ask));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Workers" })).getByRole("button", { name: /researcher/ }));
+    await screen.findByLabelText("Message researcher");
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Workers" })).getByRole("button", { name: /Chief of Staff/ }));
+    const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(box.value).toBe(ask);
   });
 });

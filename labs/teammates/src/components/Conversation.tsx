@@ -54,6 +54,7 @@ export function Conversation({
   onFire,
   onOpen,
   prefill,
+  onPrefilled,
 }: {
   adapter: LabAdapter;
   worker: WorkerRow;
@@ -69,6 +70,8 @@ export function Conversation({
   onOpen: (popup: Popup) => void;
   /** Words a popup's follow-up adds to this conversation's composer, once per `n`. */
   prefill?: { text: string; n: number };
+  /** Called once the composer took `prefill`'s words. */
+  onPrefilled?: () => void;
 }) {
   const view = useWatch(adapter.watchConversation, sessionId);
   // What the conversation's feed last heard from the server; a stale one greys the status and stops its clock.
@@ -214,7 +217,7 @@ export function Conversation({
         </div>
         <JumpToLatestButton feed={feed} />
       </div>
-      <Composer sessionId={sessionId} workerName={worker.name} running={running} prefill={prefill} onSend={(text) => {
+      <Composer sessionId={sessionId} workerName={worker.name} running={running} prefill={prefill} onPrefilled={onPrefilled} onSend={(text) => {
           // Your own line takes you to the end, wherever you had scrolled to.
           feed.sent();
           return adapter.send(sessionId, text);
