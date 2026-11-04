@@ -87,6 +87,25 @@ const labFlow = defineFlow({
   }
 });
 
+/**
+ * The same blocks with a host's repository check: a stand-in that answers a
+ * repository naming `unusable` as no run could check it out, and every other
+ * as a worktree. Counts its calls, so a test sees the write asked it.
+ */
+const hostChecks: string[] = [];
+const checkedBlocks = defineProjectBlocks({
+  checkRepository: async (repository) => {
+    hostChecks.push(repository);
+    return repository.includes("unusable")
+      ? { usable: false, problem: "/srv/unusable does not ignore the directory \".fsdev/ask\". Add `**/.fsdev/` to that repository's .gitignore." }
+      : { usable: true, how: "worktree" };
+  }
+});
+const checkedFlow = defineFlow({
+  kind: "checked",
+  actions: { ...checkedBlocks.actions, inspect: { block: inspect } }
+});
+
 // --- Harness ---
 
 type Answer = { status: number; json: any };
@@ -95,7 +114,7 @@ type Answer = { status: number; json: any };
 async function boot(options: { primary?: ReturnType<typeof inMemoryStores> } = {}) {
   const primary = options.primary ?? inMemoryStores();
   const state = createFlowState({
-    flows: { lab: labFlow },
+    flows: { lab: labFlow, checked: checkedFlow },
     stores: { default: { primary } },
     modelResolver: createMockModelResolver({}),
     resolvePrincipal: (context: any) => {
@@ -491,5 +510,51 @@ describe("a project's files", () => {
     );
     expect((await h.call("GET", "mallory", ["sessions", malloryLab, "resources", "project-files"])).status).toBe(403);
     expect((await h.call("GET", "alice", ["sessions", lab, "resources", "project-files"])).status).toBe(403);
+  });
+
+  describe("with the host's repository check", () => {
+    const UNUSABLE = "file:///srv/unusable";
+
+    it("refuses an unusable repository repository-unusable, in the host's words, on create and on set, and writes nothing", async () => {
+      const h = await boot();
+      const lab = await h.openSession("alice", "checked");
+      await h.ok("alice", "checked", lab, "createProject", { id: "apollo", title: "Apollo" });
+      const before = (await h.inspectRow("apollo")).row;
+      const set = await h.act("alice", "checked", lab, "setRepository", { project: { visibility: "shared", id: "apollo" }, repository: UNUSABLE });
+      const create = await h.act("alice", "checked", lab, "createProject", { id: "fresh", title: "Fresh", repository: UNUSABLE });
+      for (const result of [set, create]) {
+        expect(result.settled).not.toBe("completed");
+        expect(refusal(result)).toContain("repository-unusable");
+        expect(refusal(result)).toContain("Add `**/.fsdev/`");
+      }
+      expect((await h.inspectRow("apollo")).row).toEqual(before);
+      expect((await h.inspectRow("fresh")).row).toBeNull();
+    });
+
+    it("accepts a usable repository, and its read answers what the write would", async () => {
+      const h = await boot();
+      const lab = await h.openSession("alice", "checked");
+      const created = await h.ok("alice", "checked", lab, "createProject", { id: "fine", title: "Fine", repository: "file:///srv/fine" });
+      expect(created.project.repository).toBe("file:///srv/fine");
+      expect(await h.ok("alice", "checked", lab, "checkRepository", { repository: "file:///srv/fine" })).toEqual({ usable: true, how: "worktree" });
+      expect(await h.ok("alice", "checked", lab, "checkRepository", { repository: UNUSABLE })).toMatchObject({
+        usable: false,
+        problem: expect.stringContaining("Add `**/.fsdev/`")
+      });
+    });
+
+    it("answers a value no row may record with its problem, without asking the host", async () => {
+      const h = await boot();
+      const lab = await h.openSession("alice", "checked");
+      const asked = hostChecks.length;
+      const answer = await h.ok("alice", "checked", lab, "checkRepository", { repository: "/srv/a-path" });
+      expect(answer).toMatchObject({ usable: false, problem: expect.stringContaining("is a path, not a remote") });
+      expect(hostChecks.length).toBe(asked);
+    });
+
+    it("offers no checkRepository action and asks nothing when the host gives no check", () => {
+      expect(projectBlocks.actions.checkRepository).toBeUndefined();
+      expect(checkedBlocks.actions.checkRepository).toBeDefined();
+    });
   });
 });

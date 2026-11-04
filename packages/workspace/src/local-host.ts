@@ -67,8 +67,10 @@
  * ```
  */
 import { randomUUID } from "node:crypto";
-import { existsSync, linkSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { GIT_TIMEOUT_MS, run } from "./exec";
 import {
   asideName,
@@ -502,6 +504,19 @@ export interface WorkspaceHost {
    */
   readSource?(answer: RunSourceAnswer, request: SourceReadRequest): Promise<SourceReadResult>;
   /**
+   * Whether a run on `repository` would get a checkout here, asked before any
+   * run, with nothing made: the host's remote allow-list, then for a listed
+   * repository or a `file://` remote that the folder exists and is a git
+   * repository, then that it has a commit and that its last commit ignores
+   * `ignored` — the same `ignoredProblem` a provision runs, on the tree a
+   * run's checkout is cut from, so a rule that is only in uncommitted changes
+   * is refused with "commit it" and the two can't disagree. A network
+   * remote the host allows answers usable without being reached: its reach
+   * is learned at the first run. Never rejects for an unusable repository;
+   * the answer says why. Optional, as `remove` is.
+   */
+  checkRepository?(repository: string, options?: { ignored?: IgnoredDirectory }): Promise<RepositoryCheckResult>;
+  /**
    * Every worktree this host holds: each one git knows, in a clone under the
    * root or a listed repository, whose directory is strictly inside the root.
    * A directory git does not know is not listed. Optional, as `remove` is.
@@ -545,6 +560,16 @@ export interface WorkspaceHost {
     options: { worktrees: WorktreeCollection; by?: WorktreeOwner },
   ): Promise<CheckoutSnapshot | null>;
 }
+
+/**
+ * What `WorkspaceHost.checkRepository` answers. `how` says where a run's
+ * checkout would be: a worktree of a repository the host lists, or a clone
+ * under the host's root. `problem` is a sentence for a person, naming the fix,
+ * and never repeats a credential.
+ */
+export type RepositoryCheckResult =
+  | { usable: true; how: "worktree" | "clone" }
+  | { usable: false; problem: string };
 
 /** One worktree a host holds, as `WorkspaceHost.list` reports it. */
 export interface ListedWorktree {
@@ -2156,12 +2181,101 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     return read;
   }
 
+  async function checkRepository(repository: string, options: { ignored?: IgnoredDirectory } = {}): Promise<RepositoryCheckResult> {
+    const path = repository.startsWith("file://") ? fileUrlPath(repository) : isAbsolute(repository) ? repository : undefined;
+    const listed = path === undefined ? undefined : listedRepository(path);
+    if (listed === undefined) {
+      const remote = checkRemote(repository, allow);
+      if ("reason" in remote) return { usable: false, problem: remote.message };
+      // A network remote is not reached here (see the method's doc).
+      if (remote.scheme !== "file") return { usable: true, how: "clone" };
+    }
+    const folder = listed ?? path!;
+    if (!existsSync(folder)) return { usable: false, problem: `there is no folder at ${folder} on this machine.` };
+    const left = () => provisionTimeoutMs;
+    let workTree: string;
+    try {
+      workTree = await git(folder, ["rev-parse", "--show-toplevel"], left());
+    } catch {
+      let bare = false;
+      try {
+        bare = (await git(folder, ["rev-parse", "--is-bare-repository"], left())) === "true";
+      } catch {
+        return { usable: false, problem: `${folder} is not a git repository. Run \`git init\` there, or name a repository's folder.` };
+      }
+      // A bare repository has no tree to read a rule from: the clone's checkout is checked at the run.
+      if (bare && listed === undefined) return { usable: true, how: "clone" };
+      return { usable: false, problem: `${folder} is not a git repository. Run \`git init\` there, or name a repository's folder.` };
+    }
+    try {
+      await git(workTree, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"], left());
+    } catch {
+      return { usable: false, problem: `${workTree} has no commit yet, and a coding run's checkout is cut from one. Commit its files first.` };
+    }
+    if (options.ignored !== undefined) {
+      const problem = await committedIgnoredProblem(workTree, options.ignored, left);
+      if (problem !== undefined) {
+        // The working tree may have the rule already: then what is missing is the commit.
+        const uncommitted = (await ignoredProblem(workTree, options.ignored, (args) => git(workTree, args, left()))) === undefined;
+        return {
+          usable: false,
+          problem: uncommitted
+            ? `${workTree} ignores "${options.ignored.dir}" only in uncommitted changes. A coding run's checkout is cut from the last commit, which doesn't. Commit the .gitignore change.`
+            : problem,
+        };
+      }
+    }
+    return { usable: true, how: listed !== undefined ? "worktree" : "clone" };
+  }
+
+  /**
+   * `ignoredProblem` on the tree a run's checkout gets: the last commit's,
+   * not the working tree's. The commit's .gitignore files are written to a
+   * scratch folder under a scratch index, and the same check runs there, so
+   * an uncommitted rule (or an uncommitted removal of one) doesn't count.
+   */
+  async function committedIgnoredProblem(repo: string, ignored: IgnoredDirectory, left: () => number): Promise<string | undefined> {
+    const gitDir = await git(repo, ["rev-parse", "--absolute-git-dir"], left());
+    const scratch = mkdtempSync(join(tmpdir(), "fsdev-check-"));
+    const tree = join(scratch, "tree");
+    mkdirSync(tree);
+    const committed = async (args: string[]) => {
+      const { stdout } = await run("git", [...NO_HOOKS, `--git-dir=${gitDir}`, `--work-tree=${tree}`, ...args], {
+        cwd: tree,
+        timeoutMs: left(),
+        env: { ...env, GIT_INDEX_FILE: join(scratch, "index") },
+      });
+      return stdout.trim();
+    };
+    try {
+      await committed(["read-tree", "HEAD"]);
+      const ignoreFiles = (await committed(["ls-files", "-z", "--", ":(glob)**/.gitignore"])).split("\0").filter((line) => line !== "");
+      if (ignoreFiles.length > 0) await committed(["checkout-index", "-f", "--", ...ignoreFiles]);
+      return await ignoredProblem(repo, ignored, committed);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  }
+
+  /** `path` as one of the listed repositories, by its resolved or real path. */
+  function listedRepository(path: string): string | undefined {
+    const resolved = resolve(path);
+    if (localRepositories.has(resolved)) return resolved;
+    try {
+      const real = realpathSync(resolved);
+      return localRepositories.has(real) ? real : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   return {
     root,
     source: options.source,
     provisionTimeoutMs,
     locate,
     provision,
+    checkRepository,
     save,
     hostId,
     holds,
@@ -2251,6 +2365,15 @@ async function hasCommit(g: Git, cwd: string, commit: string): Promise<boolean> 
 }
 
 /** The remote could not be read; say which one, and never with a credential. */
+/** The folder a `file://` URL names, or `undefined` for one that names none. */
+function fileUrlPath(url: string): string | undefined {
+  try {
+    return fileURLToPath(url);
+  } catch {
+    return undefined;
+  }
+}
+
 function unreadable(remote: AllowedRemote, error: unknown): WorkspaceRefusedError {
   if (error instanceof WorkspaceRefusedError) return error;
   const shown = redactRemote(remote.url);
