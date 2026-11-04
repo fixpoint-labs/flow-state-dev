@@ -67,7 +67,8 @@ function layOut(node: HTMLElement): HTMLElement {
   Object.defineProperties(node, {
     clientHeight: { get: () => VIEW },
     scrollHeight: { get: () => Math.max(VIEW, node.querySelectorAll("p").length * LINE + room(node)) },
-    scrollTop: { get: () => top, set: (v: number) => (top = Math.max(0, Math.min(v, node.scrollHeight - VIEW))) },
+    // As a browser does, a feed whose end comes up past the view is read at its new end.
+    scrollTop: { get: () => (top = Math.max(0, Math.min(top, node.scrollHeight - VIEW))), set: (v: number) => (top = Math.max(0, Math.min(v, node.scrollHeight - VIEW))) },
   });
   // A smooth scroll lands at once here: what the tests read is how it was asked for.
   node.scrollTo = ((options: ScrollToOptions) => {
@@ -235,6 +236,19 @@ describe("sending a line", () => {
     rerender(feedElement({ lines: 21, mine: [20], status: true }));
     await settle();
     expect(nearTop(20)).toBe(true);
+  });
+
+  it("keeps the risen line where it is when a working line under the reply goes away", async () => {
+    const { rerender } = await opened(20);
+    act(() => feed.sent());
+    rerender(feedElement({ lines: 21, mine: [20], status: true }));
+    await settle();
+    expect(nearTop(20)).toBe(true);
+    const risen = lineTop(20);
+    // The turn ends: the working line goes, and what is under the line is shorter.
+    rerender(feedElement({ lines: 21, mine: [20] }));
+    await settle();
+    expect(lineTop(20)).toBe(risen);
   });
 
   it("brings up a line already drawn when the send is learned of after it, as an effect does", async () => {

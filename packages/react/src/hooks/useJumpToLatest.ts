@@ -134,6 +134,9 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
     let padding: { inline: string; px: number } | undefined;
     // Where a move the hook is making is headed: scrolls on the way are its own, not the reader's.
     let gliding: number | undefined;
+    // Where the view last was, and whether the person has scrolled since their line rose.
+    let lastTop = node.scrollTop;
+    let held = false;
 
     const marked = () => Array.from(node.querySelectorAll<HTMLElement>(`[${MINE}]`));
     const showAll = () => {
@@ -183,11 +186,13 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
       gliding = target;
       scrollToTop(node, target, behavior);
       if (Math.abs(node.scrollTop - target) <= 1) gliding = undefined;
+      lastTop = node.scrollTop;
     };
 
     /** The person's line landed: room below it, and up it goes. */
     const bring = (line: HTMLElement) => {
       waiting = false;
+      held = false;
       anchor = line.getAttribute(MINE)!;
       showAll();
       fitRoom();
@@ -201,6 +206,7 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
         dropRoom();
         showAll();
         scrollToTop(node, node.scrollHeight, "instant");
+        lastTop = node.scrollTop;
         closeOpening(node);
         setAtEnd(true);
         return;
@@ -210,12 +216,19 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
         if (waiting) return bring(line);
         if (added) settleLater();
       }
+      // Content under the line that shrinks, such as a working line going away, pulls the end up past
+      // where the view is, and the browser moves the view to it before the room grows back. Until the
+      // person scrolls, the view goes back where it was, before anyone sees a frame of it.
+      const was = lastTop;
       fitRoom();
+      if (anchor !== undefined && !held && gliding === undefined && node.scrollTop < was - 0.5) scrollToTop(node, was, "instant");
+      lastTop = node.scrollTop;
       if (gliding === undefined) setAtEnd(near());
     };
     onChange();
 
     const onScroll = () => {
+      lastTop = node.scrollTop;
       if (gliding !== undefined) {
         if (Math.abs(node.scrollTop - gliding) > 1) return;
         gliding = undefined;
@@ -230,6 +243,7 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
     const theirs = () => {
       waiting = false;
       gliding = undefined;
+      held = true;
     };
     const onKey = (event: KeyboardEvent) => {
       if (SCROLL_KEYS.has(event.key)) theirs();
@@ -270,6 +284,7 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
       },
       jump: () => {
         waiting = false;
+        held = true;
         setAtEnd(true);
         glide(contentHeight() - node.clientHeight, "smooth");
       },
