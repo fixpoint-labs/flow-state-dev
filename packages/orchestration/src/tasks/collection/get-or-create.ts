@@ -172,12 +172,16 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   // where it declares one, else the running session.
   const legacyFiler = legacyFilerOf(options);
   const runningSession = options.ctx.session?.identity?.id;
+  // A board notice for every committed write of a row, lifecycle change or not
+  // (a run's spend, a cleared marker): it reaches every open view of the filer's
+  // board, from whichever session and process wrote. Server-written (BP-031).
+  const onWrite = (task: Task): void => {
+    const filer = task.filer?.sessionId ?? legacyFiler?.(task) ?? runningSession;
+    if (filer !== undefined) publishBoardChange(options.ctx, { sessionId: filer, board: options.collectionId });
+  };
   const onChange = (event: TaskChangeEvent): void => {
-    // A board notice beside the item: the item goes on the writing session's
-    // stream; the notice reaches every open view of the filer's board, from
-    // whichever session and process settles the row. Server-written (BP-031).
-    const filer = event.task.filer?.sessionId ?? legacyFiler?.(event.task) ?? runningSession;
-    if (filer !== undefined) publishBoardChange(options.ctx, { sessionId: filer, board: event.collectionId });
+    // The notice beside the item: the item goes on the writing session's stream.
+    onWrite(event.task);
     options.ctx.emit.component(
       TASK_CHANGE_COMPONENT_TYPE,
       {
@@ -208,6 +212,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
       // one request each get an isolated top-level slot without namespacing.
       stateKey: options.stateKey ?? (passed ? "tasks" : options.collectionId),
       onChange,
+      onWrite,
       getItems,
       now: options.now,
       claimIdentity,
@@ -263,6 +268,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
         ? options.collection
         : partitionedResourceCollection(options.collection, options.collectionId, partition),
     onChange,
+    onWrite,
     getItems,
     now: options.now,
     claimIdentity,

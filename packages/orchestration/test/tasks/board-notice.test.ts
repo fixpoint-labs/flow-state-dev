@@ -15,7 +15,7 @@ import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { createInMemoryBus, createInMemoryStores, runAction, type ChangeNotice } from "@flow-state-dev/engine";
 import { z } from "zod";
-import { defineTaskCollection, getOrCreateTaskCollection, resolveResourceCollection } from "../../src/tasks";
+import { defineTaskCollection, getOrCreateTaskCollection, resolveResourceCollection, ticketForClaim } from "../../src/tasks";
 
 const BOARD = "desk";
 
@@ -49,6 +49,26 @@ const flow = defineFlow({
         }
       })
     },
+    // A run's spend tick: a write that changes what the board's read shows (its model,
+    // tokens and cost) and emits no task-change item.
+    spend: {
+      block: handler({
+        name: "spend",
+        outputSchema: z.object({}),
+        execute: async (_input, ctx) => {
+          // A request of its own, on a row claimed earlier: only the spend write happens here.
+          const board = await desk(ctx);
+          const row = board.list()[0];
+          if (row === undefined) throw new Error("nothing filed");
+          await board.recordSpend!(
+            row.id,
+            { requestId: ctx.request.identity.id, part: "live", spend: { byModel: { "openai/gpt-6-luna": { prompt: 10, completion: 5, total: 15, cacheReadTokens: 0, cacheCreationTokens: 0 } }, harnessRuns: [] } },
+            { claim: ticketForClaim(BOARD, row) }
+          );
+          return {};
+        }
+      })
+    },
     scratch: {
       block: handler({
         name: "scratch",
@@ -73,7 +93,7 @@ function boot() {
     });
     return notices;
   };
-  const run = async (actionName: "file" | "settle" | "scratch", sessionId: string) => {
+  const run = async (actionName: "file" | "settle" | "scratch" | "spend", sessionId: string) => {
     const result = await runAction({ orgId: DEFAULT_ORG_ID, flow, actionName, input: {}, userId: "alice", sessionId, stores, runtimeConfig: {} });
     if (result.error !== undefined) throw new Error(`${actionName} failed: ${JSON.stringify(result.error)}`);
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -106,5 +126,15 @@ describe("a board change publishes a board notice", () => {
     const scratch = heard("worker", "scratch");
     await run("scratch", "worker");
     expect(scratch.map((n) => n.topic)).toEqual([{ scope: "session", id: "worker", tenantId: "", resource: "scratch" }]);
+  });
+
+  it("for a write that emits no task-change item: a run's spend, which the board read shows", async () => {
+    const { heard, run } = boot();
+    const conversationBoard = heard("conversation", BOARD);
+    await run("file", "conversation");
+    const spent = await run("spend", "task-session");
+    expect(conversationBoard.filter((n) => n.origin?.requestId === spent)).toEqual([
+      { topic: { scope: "session", id: "conversation", tenantId: "", resource: BOARD }, kind: "board", origin: { requestId: spent } }
+    ]);
   });
 });
