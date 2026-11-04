@@ -21,6 +21,7 @@ function requestsWithWindow(count: number, window: number | undefined) {
   return requests;
 }
 import {
+  ASKS,
   cellsFor,
   checksFrom,
   controlFails,
@@ -35,6 +36,7 @@ import {
   passesEverywhere,
   passesIn,
   sheetCommitProblems,
+  coverageProblems,
   sweepGuidance,
   type Fixtures,
   type Graded,
@@ -142,9 +144,21 @@ const sheet: Sheet = {
   fold: { "claude-code-style": [bad, bad, bad], teammates: [ok, ok, ok] },
   knowledge: { "claude-code-style": [ok, ok], teammates: [ok, ok, ok], "kitchen-sink": [ok, ok, ok], "shift-manager": [ok, ok, ok] },
 };
+/** A control pass's sheet with every cell it counts, each with `runs` failing runs. */
+function controlSheet(runs: number): Sheet {
+  const full: Sheet = {};
+  for (const ask of ASKS) for (const app of cellsFor("control", ask)) ((full[ask] ??= {})[app] = Array.from({ length: runs }, () => bad));
+  return full;
+}
+const missingCell = controlSheet(3);
+delete missingCell.date!["kitchen-sink"];
+
 const SHA_A = "a".repeat(40);
 const SHA_B = "b".repeat(40);
 const rules: [string, boolean, boolean][] = [
+  ["a complete control is covered", coverageProblems(controlSheet(3), "control").length === 0, true],
+  ["a GOAL_RUNS=1 control is refused", coverageProblems(controlSheet(1), "control").length > 0, true],
+  ["a control with a missing cell is refused", coverageProblems(missingCell, "control").length > 0, true],
   ["a sheet all from the expected commit is accepted", sheetCommitProblems([{ app: "teammates", ask: "date", commit: SHA_A }, { app: "kitchen-sink", ask: "date", commit: SHA_A }], SHA_A).length === 0, true],
   ["a sheet mixing two commits is refused", sheetCommitProblems([{ app: "teammates", ask: "date", commit: SHA_A }, { app: "teammates", ask: "sizing", commit: SHA_B }], SHA_A).length > 0, true],
   ["a sheet from another commit than the pass's is refused", sheetCommitProblems([{ app: "teammates", ask: "date", commit: SHA_B }], SHA_A).length > 0, true],

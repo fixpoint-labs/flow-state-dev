@@ -12,16 +12,17 @@
  *   sweep finds no date, "done" or length guidance an app wrote in its own
  *   WORKER.md files (epic ER-3). The sweep is reported on every pass.
  *
- * On every pass, each result must have run on the pass's own tree: a result
- * with no commit, from another commit, or sheets that mix commits fail the
- * verdict (`asks.mts` → `sheetCommitProblems`).
+ * On every pass, before the pass's own rule: every cell the pass counts must
+ * hold exactly 3 runs (`asks.mts` → `coverageProblems`), and each result must
+ * have run on the pass's own tree; a result with no commit, from another
+ * commit, or sheets that mix commits fail the verdict (`sheetCommitProblems`).
  *
  * Run:  GOAL_PASS=wrap pnpm tsx goals/closure-smarter-agents/verdict/run.mts
  */
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { runGoal } from "../../lib/index.mts";
-import { ALL_APPS, ASKS, cellsFor, controlFails, passesEverywhere, RUNS, sheetCommitProblems, sweepGuidance, type App, type Sheet, type SheetStamp } from "../asks.mts";
+import { ALL_APPS, ASKS, cellsFor, controlFails, coverageProblems, passesEverywhere, RUNS, sheetCommitProblems, sweepGuidance, type App, type Sheet, type SheetStamp } from "../asks.mts";
 import { closurePass, sheetFile, type SheetFile } from "../closure.mts";
 
 /** Each app's workers' tree, under the served root. */
@@ -66,6 +67,8 @@ await runGoal((failures, tell) => {
   for (const app of missing) failures.push(`${app}: no ${p.pass} sheet (run ${app}/run.mts with GOAL_PASS=${p.pass})`);
   // Every result must have run on the pass's own tree (the control's is 0df5c85, resolved).
   for (const line of sheetCommitProblems(stamps, p.commit)) failures.push(`sheets: ${line}`);
+  // Before any pass's own rule: every cell the pass counts, with exactly its runs.
+  for (const line of coverageProblems(sheet, p.pass)) failures.push(`coverage: ${line}`);
 
   const cells = tell.over(
     "graded cells",

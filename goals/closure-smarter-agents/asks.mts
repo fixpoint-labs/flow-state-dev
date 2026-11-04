@@ -296,6 +296,24 @@ export function passesEverywhere(sheet: Sheet, ask: Ask, pass: Exclude<Pass, "co
   return cellsFor(pass, ask).every((app) => passesIn(sheet, ask, app));
 }
 
+/**
+ * Why a pass's sheet does not cover the pass: each cell it counts
+ * ({@link cellsFor}) that is missing, or holds other than {@link RUNS} runs.
+ * Read before any pass's own rule, so no verdict stands on a short pass (a
+ * `GOAL_RUNS=1` control, an app never run). Empty when every cell is whole.
+ */
+export function coverageProblems(sheet: Sheet, pass: Pass): string[] {
+  const out: string[] = [];
+  for (const ask of ASKS) {
+    for (const app of cellsFor(pass, ask)) {
+      const runs = sheet[ask]?.[app];
+      if (runs === undefined) out.push(`${ask} in ${app}: no runs`);
+      else if (runs.length !== RUNS) out.push(`${ask} in ${app}: ${runs.length} runs, the pass needs ${RUNS}`);
+    }
+  }
+  return out;
+}
+
 /** Each graded result's app, ask and the commit it ran on, as a sheet file records them. */
 export type SheetStamp = { app: App; ask: Ask; commit?: string };
 
