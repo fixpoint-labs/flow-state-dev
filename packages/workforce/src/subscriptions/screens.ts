@@ -35,7 +35,7 @@ export const screenVerdictsSchema = z.object({ verdicts: z.array(screenVerdictSc
 /** A subscription the index nominated: its id, and what the screens read of it. */
 const candidateSchema = z.object({ subscription: z.string().min(1), entry: indexEntrySchema });
 
-export type Candidate = z.infer<typeof candidateSchema>;
+type Candidate = z.infer<typeof candidateSchema>;
 
 /** What the chain carries from step to step: the event, who is still undecided, and the verdicts so far. */
 export const screeningSchema = z.object({
