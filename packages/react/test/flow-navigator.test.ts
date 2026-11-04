@@ -894,13 +894,30 @@ describe("FlowNavigator · a session row's state and age", () => {
     );
     expect(needsYou).toEqual(["s-wait", "s-lost"]);
     // Waiting on another worker's reply resumes by itself.
-    expect(sessionRow("s-reply").querySelector("[data-request-status]")?.getAttribute("aria-label")).toBe("Waiting");
+    expect(sessionRow("s-reply").querySelector("[data-request-status]")?.getAttribute("title")).toBe("Waiting");
     // Running is shown, but is not something to answer.
-    expect(sessionRow("s-run").querySelector("[data-request-status]")?.getAttribute("aria-label")).toBe("Running");
+    expect(sessionRow("s-run").querySelector("[data-request-status]")?.getAttribute("title")).toBe("Running");
     // A finished turn, a stop you made and a session with no turn carry no mark.
     for (const id of ["s-done", "s-stopped", "s-new"]) {
       expect(sessionRow(id).querySelector("[data-request-status]")).toBeNull();
     }
     expect(sessionRow("s-new").querySelector("[data-session-age]")?.textContent).toBe("5m");
+
+    // The mark and the age are drawn, not named: a row is still found by its
+    // session's name, and says its state as a description.
+    const spoken = (el: Element): string =>
+      Array.from(el.childNodes)
+        .map((node) =>
+          node.nodeType === Node.TEXT_NODE
+            ? node.textContent ?? ""
+            : (node as Element).getAttribute("aria-hidden") === "true"
+              ? ""
+              : spoken(node as Element)
+        )
+        .join("");
+    const waiting = sessionRow("s-wait");
+    expect(spoken(waiting)).toBe("s-wait");
+    expect(waiting.getAttribute("aria-description")).toBe("Waiting on you");
+    expect(sessionRow("s-done").hasAttribute("aria-description")).toBe(false);
   });
 });
