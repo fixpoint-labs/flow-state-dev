@@ -70,6 +70,7 @@
     <rect class="one" x="696" y="244" width="228" height="72" rx="6"/>
     <text class="t-lbl" x="712" y="264">REPLACED IN ONE LINE</text>
     <text class="t-b" x="712" y="288">Any section, turned off</text>
+    <text class="t-s" x="712" y="306">or all of them: defaults: false</text>
   </g>
 
   <g id="fence">

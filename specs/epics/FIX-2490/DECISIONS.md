@@ -56,7 +56,7 @@ the kill line cuts it, and that is the decision working, not reversing.
 |---|---|
 | **Instead of** | Defaults in core's generator, so every app gets them, workforce or not · or each layer as its own prompt entry or capability |
 | **Because** | [FIX-2369 ER-2](../FIX-2369/DECISIONS.md#who-owns-what) keeps the generator unopinionated, and that holds. The seam in `agent-worker-flow.ts` says an org-wide layer of configurable text is where the seam is re-decided rather than widened; per-layer opt-outs are that point. Named sections fix the "where does TEAM.md end" problem the analysis found |
-| **Locks in** | One ordered list of named sections, each a fixed text with an opt-out, owned by FIX-2498. Opt-outs are one `defaults` key in the worker-config bag (`workerConfigSchema`); no new `defineAgentWorkerFlow` option. No registry, no app-supplied section text. The one core change (FIX-2499) is a no-op for a caller that sets nothing new |
+| **Locks in** | One ordered list of named sections, each a fixed text with an opt-out, owned by FIX-2498 and built as one module (`workerDefaultLayer`) that is the prompt array's single default entry. Opt-outs are one `defaults` key in the worker-config bag (`workerConfigSchema`), and `defaults: false` turns every section off; no new `defineAgentWorkerFlow` option. The layer reaches workers built without an installation; only identity, which reads the roster, still needs one. No registry, no app-supplied section text. The one core change (FIX-2499) is a no-op for a caller that sets nothing new |
 
 Engineering, not asked: it moves no product outcome, and the sign-off's D1 already fixes who
 gets the defaults.
@@ -90,14 +90,24 @@ answer. A worker holding a skill that fits loads it without a slash. A decision 
 summary fold is still used after it, in the two labs, where conversations run long. Still
 `fsdev run`, still no eval apparatus.
 
-**What would change my mind:** if you dropped compaction and skills from the outcome on purpose.
-Then FIX-2500 and the skills-index section move to *Not doing*, and sizing is proven by the
-closure's sweep.
+**The other option, argued in the [second look](https://github.com/fixpoint-labs/flow-state-dev/pull/4672#issuecomment-6631454763):
+move FIX-2500 and the skills-index section out.** Growing the proof to fit what was planned is
+backwards; the sizing and fold asserts are the most brittle model-behaviour checks in the set,
+and the index reverses the skills switches' "zero configuration costs nothing" rule, the
+costliest default flip here with the weakest case. Both stay available opt-in (the switches and
+`historySummary` exist), sizing is proven by the closure's sweep, and either comes back when a
+real ask shows the need. **Price:** saves both specs and builds, the index's per-turn tokens on
+every worker and the summary's extra model call per fold; costs "keeps the thread" and "sees
+its skills" from the epic's promise, and sizing stays without a scripted ask.
 
-**What being wrong costs.** Recommended and unneeded: three asserts and a seeded long
-conversation, about a day. Not taken and needed: two layers ship that every worker pays for and
-nobody showed to help. With compaction on by default, that pay includes one extra model call
-per worker every time its summary folds, on top of the index's per-turn tokens.
+**What would change my mind:** if you dropped compaction and skills from the outcome on purpose.
+Then take the other option.
+
+**What being wrong costs.** Recommended and unneeded: three asserts, two of them quick; the
+seeded long conversation is the larger part, two to three days rather than one. Not taken and
+needed: two layers ship that every worker pays for and nobody showed to help. With compaction on
+by default, that pay includes one extra model call per worker every time its summary folds, on
+top of the index's per-turn tokens.
 
 ![Q1, whether the proof reaches every layer: three more asserts, recommended, beside moving the summary and skills index out. Decides it: a layer with no ask can neither be cut nor proven. Price: more proof to write, which is the owner's call. Flips if compaction and skills were dropped from the outcome on purpose](figures/open-proof-reach.svg)
 
@@ -110,12 +120,12 @@ consumed; a *uses* cell is a place a child must not re-decide.
 
 | # | Rule every child obeys | Owner | Checked at |
 |---|---|---|---|
-| ER-1 | Every new layer is a named section of workforce's default layer, on by default, with its own opt-out ([D1](#d1), [D4](#d4)). Opt-outs are one `defaults` key in the worker-config bag (`defaults: { environment: false }`). No section is a capability, a registry entry or app-supplied text | FIX-2498 decides · FIX-2500 consumes | The spec-set review |
+| ER-1 | Every new layer is a named section of workforce's default layer (`workerDefaultLayer`), on by default, with its own opt-out ([D1](#d1), [D4](#d4)). Opt-outs are one `defaults` key in the worker-config bag (`defaults: { environment: false }`); `defaults: false` turns them all off. The fixed sections stay under a published ceiling of 400 tokens (1,600 characters), the estimate of about 250 plus a margin, with a test that fails past it; identity, the summary's content and each skill's entry are outside it. No section is a capability, a registry entry or app-supplied text | FIX-2498 decides · FIX-2500 consumes | The spec-set review |
 | ER-2 | Core gains mechanism, not defaults. A core change is a no-op for a caller that sets nothing new; workforce's worker flow is where it turns on | FIX-2499 | FIX-2499's spec review |
-| ER-3 | A layer that replaces an app's own patch deletes that patch in the same change: Kitchen Sink's `todaysDate`, an app's length line, a hand-built coding prompt | Each child | The closure's sweep |
+| ER-3 | A layer that replaces an app's own patch deletes that patch in the same change: an app's length line, a hand-built coding prompt. Kitchen Sink's `todaysDate` goes only in the change that makes its standalone assistant compose the exported environment formatter | Each child | The closure's sweep |
 | ER-4 | The coding brief's "check before done" takes its checks from `commandCheck`'s own `commands` option. No second list; the report is never the verdict ([D5](#d5)) | FIX-2502 · FIX-2494, 2495 consume | FIX-2502's spec review; the closure's coder leg |
 | ER-5 | A harness's own preset is appended to, never replaced | FIX-2494 builds · FIX-2502 consumes | FIX-2502's spec review |
-| ER-6 | No layer is implemented before the cut run reports on the closure issue. A layer, or a section of FIX-2498, whose ask passes 3 of 3 is cancelled or dropped, citing the run ([D2](#d2)) | The coordinator | Each wake |
+| ER-6 | No layer is implemented before the cut run reports on the closure issue. A layer, or a section of FIX-2498, whose ask passes 3 of 3 is cancelled or dropped, citing the run ([D2](#d2)). The environment section is exempt and kept regardless: only Kitchen Sink gets a date from the bugs | The coordinator | Each wake |
 | ER-7 | The closure's scripts assert on the worker's answer through `fsdev run` on a real model, each with a control that fails on today's `main`. Each ask runs 3 times and passes only on 3 of 3; a control fails if any run fails | FIX-2541 | The closure's spec review |
 | ER-8 | Consumed issues keep their parents: FIX-2387 and FIX-2388 (FIX-2369), FIX-2174 (FIX-2171), FIX-2467, FIX-2073 | The coordinator | Each refresh |
 
@@ -123,12 +133,12 @@ consumed; a *uses* cell is a place a child must not re-decide.
 
 | Seam | Between | Rule |
 |---|---|---|
-| `agent-worker-flow.ts` prompt array, `worker-identity.ts`, `workerConfigSchema` | FIX-2491, 2493, 2498, 2500, and FIX-2073 | The bugs land first: FIX-2491's step default, and FIX-2493 so every later section reaches the EM. FIX-2498 lands the section shape and its opt-out key; FIX-2500 adds its section after it. FIX-2073's line goes in the behaviour section |
+| `agent-worker-flow.ts` prompt array, `worker-identity.ts`, `workerConfigSchema` | FIX-2491, 2493, 2498, 2500, and FIX-2073 | The bugs land first: FIX-2491's step default, and FIX-2493 so every later section reaches the EM. FIX-2498 makes `workerDefaultLayer` the array's one default entry and replaces the seam's "do not grow" comment; FIX-2500 adds a section to that module, not to the array. FIX-2073's line goes in the behaviour section |
 | `labs/teammates/src/flows/coder.ts` | FIX-2495, FIX-2502, and FIX-2369's merge order on that file | FIX-2495's local fix first; FIX-2502 replaces the builder. FIX-2369's [build order](../FIX-2369/DECISIONS.md#coordination-seams) row for this file governs the merge order |
 | `packages/shift-manager/teams/devteam/harness.mts` | FIX-2494, FIX-2502 | FIX-2494 switches to the preset with appended text; FIX-2502 swaps that text for the brief |
 | harness-manager's `buildPrompt` | FIX-2502, FIX-2388 | The brief composes `heldPromptSection`, `PromptRunContext.task` and FIX-2388's issue section, and reads `commandCheck`'s `commands` |
 | Search, fetch and project-source tools | FIX-2496, FIX-2499 | FIX-2496 wires them with today's descriptions; FIX-2499 adds their guidance fields |
-| Kitchen Sink chat agent's date | FIX-2492, FIX-2498 | FIX-2498's environment section deletes FIX-2492's local fix (ER-3) |
+| Kitchen Sink chat agent's date | FIX-2492, FIX-2498 | The assistant is a standalone core generator, not a worker, so the section never reaches it. FIX-2492's per-turn date stays until FIX-2498 exports the environment formatter and has the assistant compose it; that change deletes the local fix (ER-3) |
 
 ## Decided in review, recorded so no child reopens them
 
@@ -136,6 +146,7 @@ consumed; a *uses* cell is a place a child must not re-decide.
   project source) to two workers. Which tool reaches `apps/docs` is its implementer's call.
 - **FIX-2500 does not wait for FIX-2174.** It supplies the summary to the existing fold; FIX-2174's
   triggers, overflow retry and manual compact are not needed for the goal.
+
 Round 1, from the analyst and `reuse-review` on e99e96f:
 
 - **FIX-2497 and FIX-2501 fold into FIX-2498** (PM restraint cut). Environment is a constant
@@ -150,6 +161,31 @@ Round 1, from the analyst and `reuse-review` on e99e96f:
   superseding nor reducing it; FIX-2500 reuses `historySummary`, so ER-2 is FIX-2499's alone;
   FIX-2502 composes. The SPEC's Adds table has the pieces.
 
+Round 2, from the [second look](https://github.com/fixpoint-labs/flow-state-dev/pull/4672#issuecomment-6631454763)
+and Codex's [review of DECISIONS.md](https://github.com/fixpoint-labs/flow-state-dev/pull/4672#discussion_r4468037697) on 5a275b3, EM calls:
+
+- **The environment section skips the cut run** (second look #1). FIX-2492 dates Kitchen Sink
+  only; the other three apps have no date at all, and the section is the first outcome bullet.
+  In ER-6.
+- **The coder leg asserts on `commandCheck`'s record** (#1). The run record's `checks`; the
+  SPEC's verify table says exactly what passes, and that the cut run is expected to fail it.
+- **A master off switch** (#3). `defaults: false` in the same key, owned by FIX-2498. No new
+  flow option. ER-1.
+- **A published token ceiling** (#3). 400 tokens for the fixed sections, the estimate of about
+  250 plus a margin, with a failing test; FIX-2498 owns it. ER-1.
+- **Changesets** (#3, implementer note). FIX-2498, 2499, 2500 and 2502 each add one for every
+  published package whose default behaviour changes (BP-022); workforce at least.
+- **Workers built without an installation get the layer** (#4). Today they get no identity
+  layer (`agent-worker-flow.ts`, the prompt array's first entry). FIX-2498's sections reach
+  them; identity still needs the roster. In FIX-2498's scope here and in Linear.
+- **One deep module** (#4, implementer note on FIX-2498). `workerDefaultLayer` owns section
+  order, the opt-outs and the "`undefined`, never `""`" rule; the array keeps one entry for it.
+- **Kitchen Sink's date stays until its assistant composes the shared formatter** (#5 and
+  Codex). The assistant is a standalone core `generator`, not a worker, so the environment
+  section never reaches it. FIX-2498 exports the formatter and has the assistant compose it,
+  deleting FIX-2492's fix in that change. ER-3 and the seam.
+- **Q1 stays open**, now with the second look's alternative priced on its card.
+
 ## How it got here
 
 - **Filed (Nov 2)** — epic and twelve children from the harness comparison. D1 to D3 settled
@@ -157,5 +193,6 @@ Round 1, from the analyst and `reuse-review` on e99e96f:
 - **Drafted (Nov 4)** — the closure FIX-2541 filed; bugs wired to block every layer for the cut
   run; Q1 raised.
 - **Review round 1 (Nov 4)** — analysed; two children folded; the calls above.
+- **Review round 2 (Nov 4)** — the second look and Codex folded; Q1's alternative priced.
 
 **Open: [Q1](#q1).**
