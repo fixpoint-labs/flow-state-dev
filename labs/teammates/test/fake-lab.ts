@@ -36,6 +36,8 @@ export interface FixtureOptions {
   review?: boolean;
   /** How many roster reads fail as an unreachable server would, before one lands. */
   unreachableReads?: number;
+  /** Board rows already there when the lab opens, each filed by the conversation of the worker `filer` names. */
+  tasks?: (BoardTask & { filer: string })[];
 }
 
 /** The fixture, plus what a test does to its server. */
@@ -137,7 +139,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
   };
   const bySession = (sessionId: string) => [...workers.values()].find((w) => w.sessionId === sessionId);
   const fired = new Set<string>();
-  let tasks: FixtureTask[] = [];
+  let tasks: FixtureTask[] = (options.tasks ?? []).map(({ filer, ...task }) => ({ ...task, sessionId: worker(filer).sessionId }));
   /** Each task's run, as the items its harness reports. */
   const runs = new Map<string, Record<string, unknown>[]>();
   const notSetUp = new Set(options.notSetUp ?? []);

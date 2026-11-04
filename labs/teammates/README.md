@@ -14,8 +14,7 @@ theme on purpose, so it reads as the app it copies.
   saying what it is doing now (*Replying to you*, *Messaging writer*, *Running coding task: …*,
   *Idle*), and how many new entries its conversation has since you last looked. The same icon
   marks the teammate in the conversation's header, on message lines and in popups; the header
-  carries the same status line. Under them, *Background* lists the coding
-  tasks they started; each opens its run in a popup, read only.
+  carries the same status line.
 - **Center:** the chosen worker's one conversation. It goes on for weeks. A divider marks where the
   turns the worker reads word for word begin; it reads *summarized* only when the earlier turns were
   summarized for the worker. A line you send rises to near the top and its answer is written
@@ -26,8 +25,11 @@ theme on purpose, so it reads as the app it copies.
 - **Popup:** a message line or a task line in the conversation opens that piece of work in a popup
   over it: the other worker's session, read only and live. It closes with Esc, its close button, or
   a click outside it, and the conversation under it keeps its place.
-- **Right:** Talk, the worker's exchanges with the other workers, grouped by worker, from the
-  message log. It closes.
+- **Right:** the open teammate's panel. At the top, its name and role, and *Edit instructions*.
+  Under that, the tasks its conversation started, coding tasks and teammates' jobs alike. Running
+  tasks come first. *Done*, *Failed* and *Cancelled* each fold into one line with a count, and a
+  click opens the rows. A task that ends moves into its group as it ends. Each row opens the task in
+  a popup. A *Routines* section sits at the foot, empty for now.
 - **Keys:** ⌘K (Ctrl+K) finds a teammate by its name or role, or opens *Hire a teammate*. Alt+↑
   and Alt+↓ move to the previous or next teammate. `/` puts the cursor in the composer, and `?`
   lists every key. Opening a teammate puts the cursor in its composer. Firing a teammate you hired
@@ -56,8 +58,8 @@ coding agent's job does: you watch it, you don't talk to it. Ask Chief of Staff 
 and Chief of Staff starts a coding task in the working folder, on one of three coding agents:
 Claude Code, Codex or Cursor. Name one ("have Codex do it") and that one runs; name none and Cursor
 does, with no question first. Each agent is a worker of its own, off the list and never
-messaged, whose `WORKER.md` names its `harness:`. A line in Chief of Staff's conversation and an
-item under *Background* show the task, tagged with the agent it runs on (and the model, once the
+messaged, whose `WORKER.md` names its `harness:`. A line in Chief of Staff's conversation and a
+row in Chief of Staff's panel show the task, tagged with the agent it runs on (and the model, once the
 run reports one), and open its run in a popup. The result lands in Chief of Staff's conversation as
 the coding task's line, *Coding task finished: …*. To change a coding task, tell Chief of Staff, who starts the next one.
 
@@ -98,8 +100,8 @@ needs files works in it. Nothing on the page picks a folder, and no worker can n
 
 You can hire teammates of your own (*Hire a teammate*, under the list): a name, one line on what it
 does, and its instructions. It joins the list at once, you can talk to it, and Chief of Staff can
-hand it tasks. Your own teammates get an *Instructions* control, which replaces their instructions
-from the next turn on, and *Fire*, which takes them off the list; their conversation stays readable.
+hand it tasks. Your own teammates' panels have *Edit instructions*, which replaces their instructions
+from the next turn on, and their header has *Fire*, which takes them off the list; their conversation stays readable.
 The three teammates from the files can't be edited or fired.
 
 Scope is core messaging and session management. There are no group chats, no new-chat button and
@@ -170,7 +172,7 @@ names the package call it makes.
 | On screen | Package piece |
 |---|---|
 | The worker list, sending, the conversation, busy status | the workforce client's `roster()` and `ensureWorkerSession`, the flow's `respond`, session items, `listSessionRequests` |
-| Workers messaging each other, the Talk panel | `sendMessage`, the received-message item (`workforce:received`), and the message log |
+| Workers messaging each other | `sendMessage`, the received-message item (`workforce:received`), and the message log |
 | Hiring, changing and firing your own teammates | the workforce client's `hire`, `edit` and `fire`, on the roster flow |
 | Task lines | the conversation board's rows |
 | A teammate's icon and color | its `WORKER.md`'s `icon:` and `color:` lines, declared on the `agent` flow with `settings` and shown on its `roster()` row with `showSettings` |
