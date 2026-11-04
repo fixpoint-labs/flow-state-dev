@@ -58,7 +58,8 @@ already carries. No orchestration or harness code changes.
 
 - **Clock.** A `running` row reads `working · ` plus `spend`'s `durationText(now − run.startedAt)`.
 - **Quiet.** A `running` row with `updatedAt` older than three minutes (1.5 × the default lease)
-  reads `quiet for 7m` in the warning tone, in place of the clock. Never on a row kept open on its
+  reads `quiet for 7m` in place of the clock. The item returns the signal and its words. Each
+  lab's one tone helper (`task-state.ts`, `task-status.ts`) colours it in the warning tone. Never on a row kept open on its
   filed tasks (`keptOpenBy`: no lease), and never while the feed is stale.
 - **Ended.** `done`, `failed` and `cancelled` rows read `12m ago`.
 - **Count.** `taskCounts(states)` returns running, waiting, failed and done, without zeros.
