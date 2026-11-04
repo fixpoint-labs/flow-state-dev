@@ -5,7 +5,7 @@ import { Conversation } from "./components/Conversation";
 import { KeysSheet } from "./components/KeysSheet";
 import { PopupView, type Popup } from "./components/Popups";
 import { Switcher } from "./components/Switcher";
-import { TalkPanel } from "./components/TalkPanel";
+import { TeammatePanel } from "./components/TeammatePanel";
 import { WorkersList } from "./components/WorkersList";
 import { ConnectionScreen, type ConnectionFailure } from "./components/flow-state/connection-screen";
 import { readAddress, writeAddress, type Address, type AddressWrite } from "./lib/address";
@@ -15,9 +15,10 @@ import { lookOf as lookOfRow } from "./lib/looks";
 
 /**
  * The screen: the teammates on the left, the chosen teammate's one
- * conversation in the center, and its talk with the other teammates on the
- * right. Coding is a background task, not a teammate: the worker coding tasks
- * run on is off the list, and each coding task is a background item under it.
+ * conversation in the center, and its panel on the right: who it is, and the
+ * tasks its conversation filed. Coding is a background task, not a teammate:
+ * the worker coding tasks run on is off the list, and each coding task is a
+ * row in the panel of the teammate that started it.
  * A task or a message between workers, and a coding task, opens in a popup
  * over the thread, read only and live. The app opens on the first teammate,
  * unless the page's address names what was open (`lib/address`): a reload, a
@@ -50,7 +51,6 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const [selected, setSelected] = useState<string>();
   // A task or a message, open in a popup over the thread.
   const [popup, setPopup] = useState<Popup>();
-  const [talkOpen, setTalkOpen] = useState(true);
   const [switching, setSwitching] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
   const [hiring, setHiring] = useState(false);
@@ -130,8 +130,6 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const lookOf = useCallback((id: string) => lookOfRow(workers.find((w) => w.id === id) ?? { id, name: id }), [workers]);
   const teammates = workers.filter((w) => !w.takesTasks);
   const worker = teammates.find((w) => w.id === selected);
-  // No worker chosen, no Talk column held for one.
-  const talkShown = talkOpen && worker !== undefined;
   // A user's pick: a step Back returns from, and the teammate opens with the cursor in its composer.
   const selectWorker = useCallback((id: string) => {
     how.current = "push";
@@ -178,6 +176,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
   const sessionId = selected ? sessions[selected] : undefined;
+  // No teammate open, no panel column held for one.
+  const panelShown = worker !== undefined && sessionId !== undefined;
   useLabKeys({
     palette: () => setSwitching((open) => !open),
     step: (by) => {
@@ -199,19 +199,17 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   return (
     <div
       className="grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
-      style={{ gridTemplateColumns: talkShown ? "15rem minmax(0,1fr) 18rem" : "15rem minmax(0,1fr)" }}
+      style={{ gridTemplateColumns: panelShown ? "15rem minmax(0,1fr) 18rem" : "15rem minmax(0,1fr)" }}
     >
       <WorkersList
         adapter={adapter}
         workers={teammates}
         sessions={sessions}
         selected={worker?.id}
-        openTask={popup?.kind === "task" ? popup.taskId : undefined}
         nameOf={nameOf}
         lookOf={lookOf}
         isCoding={isCoding}
         onSelect={selectWorker}
-        onOpen={openPopup}
         onHire={hire}
         hiring={hiring}
         onHiring={setHiring}
@@ -229,13 +227,24 @@ export function App({ adapter }: { adapter: LabAdapter }) {
           harnessOf={harnessOf}
           onFire={() => fire(worker.id)}
           onOpen={openPopup}
-          talkOpen={talkOpen}
-          onToggleTalk={() => setTalkOpen((open) => !open)}
         />
       ) : (
         <main aria-label="Conversation" />
       )}
-      {talkShown ? <TalkPanel adapter={adapter} worker={worker} nameOf={nameOf} onClose={() => setTalkOpen(false)} /> : null}
+      {panelShown ? (
+        <TeammatePanel
+          // One panel per teammate: an opened group or an edit doesn't carry over to another.
+          key={worker.id}
+          adapter={adapter}
+          worker={worker}
+          sessionId={sessionId}
+          openTask={popup?.kind === "task" ? popup.taskId : undefined}
+          nameOf={nameOf}
+          lookOf={lookOf}
+          isCoding={isCoding}
+          onOpen={openPopup}
+        />
+      ) : null}
       <Switcher
         open={switching}
         onOpenChange={setSwitching}
