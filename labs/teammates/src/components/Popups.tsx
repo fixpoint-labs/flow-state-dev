@@ -214,9 +214,14 @@ export function useRecordedFiles(adapter: LabAdapter, task: BoardTask): Recorded
 /** "Edited 2 files · ran 5 commands", and a chip per file the run recorded, named by its file name. */
 function TaskSummary({ adapter, task, steps }: { adapter: LabAdapter; task: BoardTask; steps: readonly SessionStep[] }) {
   const files = useRecordedFiles(adapter, task) ?? null;
-  // A path whose every attempt failed was tried, not edited.
-  const rows = (files?.rows ?? []).filter((row) => row.applied !== 0);
-  const line = runSummaryLine({ files: files === null ? null : { count: rows.length, truncated: files.truncated }, commands: commandsRun(steps) });
+  // One per path (a steer or a review's changes record the path again), and only a path an edit landed on:
+  // one whose every attempt failed was tried, not edited.
+  const rows = [...new Map((files?.rows ?? []).filter((row) => row.applied !== 0).map((row) => [row.path, row])).values()];
+  // A retry runs in the same session: only this run's commands.
+  const line = runSummaryLine({
+    files: files === null ? null : { count: rows.length, truncated: files.truncated },
+    commands: commandsRun(steps, task.runRequestId),
+  });
   if (line === "") return null;
   const shown = rows.slice(0, CHIPS_SHOWN);
   const more = rows.length - shown.length;

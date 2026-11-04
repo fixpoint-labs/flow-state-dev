@@ -90,7 +90,7 @@ describe("a session's steps in a popup", () => {
     const refused = send("m3", { to: "teammates.writer", text: "Hi." }, { ok: false, error: "no_worker: Nothing was sent." });
     expect(toSteps([waited, refused])).toEqual([
       { id: "m2", kind: "sent", text: "Draft it?", to: "teammates.writer" },
-      { id: "m3", kind: "tool", tool: "sendMessage", text: "Message teammates.writer", state: "error" },
+      { id: "m3", kind: "tool", tool: "sendMessage", text: "Message teammates.writer", state: "error", requestId: "r1" },
     ]);
   });
 });

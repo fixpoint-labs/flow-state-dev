@@ -56,6 +56,12 @@ describe("a run's summary line", () => {
     expect(commandsRun(steps)).toBe(2);
   });
 
+  it("counts only the run's own request: a retry in the same session doesn't add the last attempt's commands", () => {
+    const steps = runSteps([{ ...call("Bash", { command: "ls" }), requestId: "attempt-1" }, { ...call("Bash", { command: "pwd" }), requestId: "attempt-2" }] as never);
+    expect(commandsRun(steps, "attempt-2")).toBe(1);
+    expect(commandsRun(steps)).toBe(2);
+  });
+
   it("reads as one line, leaving out what the run didn't do, and no file part when nothing was recorded", () => {
     expect(runSummaryLine({ files: { count: 3, truncated: false }, commands: 5, durationMs: 134_000 })).toBe("Edited 3 files · ran 5 commands · 2m 14s");
     expect(runSummaryLine({ files: { count: 1, truncated: false }, commands: 0 })).toBe("Edited 1 file");
@@ -106,6 +112,20 @@ describe("a coding task's popup", () => {
     await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
     await waitFor(() => expect(popup.querySelector("[data-summary-line]")?.textContent).toBe("Edited 1 file · ran 1 command"));
     expect(within(popup).queryByText("LICENSE")).toBeNull();
+  });
+
+  it("counts a file once when the run edited it again after a steer or a review's changes", async () => {
+    const lab = createFixtureLab({ speed: 0.05 });
+    const read = lab.recordedWork.bind(lab);
+    lab.recordedWork = async (run) => {
+      const work = await read(run);
+      return work.files === null ? work : { ...work, files: { ...work.files, rows: [...work.files.rows, ...work.files.rows] } };
+    };
+    render(<App adapter={lab} />);
+    const popup = await openTask("Claude Code");
+    await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
+    await waitFor(() => expect(popup.querySelector("[data-summary-line]")?.textContent).toBe("Edited 1 file · ran 1 command"));
+    expect(within(popup).getAllByText("README.md").filter((el) => el.hasAttribute("data-file-chip"))).toHaveLength(1);
   });
 
   it("says no file count for a harness that records none, though its run edited one", async () => {

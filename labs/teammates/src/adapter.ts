@@ -226,6 +226,8 @@ export interface SessionStep {
   code?: boolean;
   /** For `tool`, how it stands: running, waiting, done, or failed (thrown, or a result that says so). */
   state?: ToolStepState;
+  /** For `tool`, the request (turn) that made the call: a task's session holds every attempt's. */
+  requestId?: string;
   /** For `said`, while it is still being written. */
   streaming?: boolean;
 }
@@ -280,10 +282,17 @@ const isCommand = (tool: string | undefined) => tool !== undefined && TOOL_VERB_
 /**
  * How many shell commands a run's steps ran, done or failed; one still running
  * isn't counted. Known by the tool's name in the registry's vocabulary, the
- * one the step groups' "ran 3 commands" already uses.
+ * one the step groups' "ran 3 commands" already uses. Given the run's request,
+ * only that request's calls count: a retry runs in the same session.
  */
-export function commandsRun(steps: readonly SessionStep[]): number {
-  return steps.filter((step) => step.kind === "tool" && isCommand(step.tool) && (step.state ?? "completed") !== "running").length;
+export function commandsRun(steps: readonly SessionStep[], requestId?: string): number {
+  return steps.filter(
+    (step) =>
+      step.kind === "tool" &&
+      isCommand(step.tool) &&
+      (step.state ?? "completed") !== "running" &&
+      (requestId === undefined || step.requestId === undefined || step.requestId === requestId),
+  ).length;
 }
 
 /** What a coding task's popup says the run did: the files it recorded, its commands, and how long it took. */
@@ -870,6 +879,7 @@ function toolStep(item: Item, ended: readonly string[] = []): SessionStep {
     text: intent ?? subject?.text ?? `Used ${tool}`,
     ...(subject?.code ? { code: true } : {}),
     state: toolStepState(status, tool, output),
+    ...(typeof item.requestId === "string" ? { requestId: item.requestId } : {}),
   };
 }
 
