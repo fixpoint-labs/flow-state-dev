@@ -224,6 +224,8 @@ export interface ConversationView {
   running: boolean;
   /** Present while the conversation holds turns older than its first entry: adds the page before them. */
   loadEarlier?: () => Promise<void>;
+  /** When the conversation's first loaded item was written, in ms. A message sent before it is outside the window. */
+  since?: number;
 }
 
 /** One row of the message log: one message from one worker to another. */
@@ -891,8 +893,9 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       const emit = () => {
         const running = answeringOf(items, inProgress, ended);
         const earlier = feed.hasEarlier();
-        if (shown?.entries === entries && shown.running === running && (shown.loadEarlier !== undefined) === earlier) return;
-        shown = { entries, running, ...(earlier ? { loadEarlier } : {}) };
+        const since: number | undefined = items[0]?.ts;
+        if (shown?.entries === entries && shown.running === running && (shown.loadEarlier !== undefined) === earlier && shown.since === since) return;
+        shown = { entries, running, ...(earlier ? { loadEarlier } : {}), ...(since === undefined ? {} : { since }) };
         onChange(shown);
       };
       const stopFeed = watchFeed(sessionId, (next) => next, (next) => {

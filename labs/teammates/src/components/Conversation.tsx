@@ -75,7 +75,7 @@ export function Conversation({
   const talk = useWatch(adapter.watchTalk, worker.id) ?? [];
   const entries = view?.entries ?? [];
   const running = view?.running ?? false;
-  const pending = pendingFor(worker.id, talk, entries);
+  const pending = pendingFor(worker.id, talk, entries, view?.since);
   const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
   const status = useStatusLine(adapter, worker, sessionId, nameOf, isCoding, stale);
   const [panel, setPanel] = useState<"fire">();

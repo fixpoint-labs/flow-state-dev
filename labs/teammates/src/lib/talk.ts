@@ -11,10 +11,12 @@ import type { ConversationEntry, TalkRow } from "../adapter";
  * which covers a waited send's answer (no received line ever lands for it)
  * and a received line older than the loaded page. The join by message id
  * covers the moment a line has landed and the log's next read hasn't caught up.
+ * `since` is when the conversation's window starts: a message sent before it was
+ * read in an older turn the window no longer holds, so it is not waiting.
  */
-export function pendingFor(worker: string, rows: TalkRow[], entries: ConversationEntry[]): TalkRow[] {
+export function pendingFor(worker: string, rows: TalkRow[], entries: ConversationEntry[], since?: number): TalkRow[] {
   const read = new Set(entries.flatMap((e) => (e.kind === "received" ? [e.messageId] : [])));
-  return rows.filter((m) => m.to === worker && !m.undelivered && !m.delivered && !read.has(m.id));
+  return rows.filter((m) => m.to === worker && !m.undelivered && !m.delivered && !read.has(m.id) && (since === undefined || m.at >= since));
 }
 
 /**
