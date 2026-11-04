@@ -33,7 +33,7 @@
 import { z } from "zod";
 import { defineFlow, handler, router } from "@flow-state-dev/core";
 import type { BlockDefinition, HarnessBlock } from "@flow-state-dev/core/types";
-import { commandCheck, goalJudge, harnessManager, type HarnessFeeds, type PhaseSpec, type PromptRunContext } from "@flow-state-dev/harness-manager";
+import { commandCheck, goalJudge, harnessManager, type HarnessFeeds, type PhaseSpec } from "@flow-state-dev/harness-manager";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -83,15 +83,6 @@ export interface CoderFlowOptions {
 }
 
 /**
- * The coding worker's own instructions, its `WORKER.md` body, from the worker
- * the router loaded for this task; `undefined` for a worker with no body.
- */
-function instructionsOf(ctx: PromptRunContext["ctx"]): string | undefined {
-  const { instructions } = workerConfigOf(ctx);
-  return typeof instructions === "string" ? instructions : undefined;
-}
-
-/**
  * A task's run: the worker's instructions, then the task's goal and brief,
  * done when the harness says it finished.
  */
@@ -99,7 +90,7 @@ const PHASE: PhaseSpec = {
   phase: "change",
   buildPrompt: (run) =>
     [
-      instructionsOf(run.ctx),
+      workerConfigOf(run.ctx).instructions,
       run.task.title === undefined ? undefined : `Task: ${run.task.title}`,
       run.task.goal,
       run.task.context,
