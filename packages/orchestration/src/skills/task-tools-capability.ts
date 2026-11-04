@@ -1793,6 +1793,13 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
              * of its own. On the board's action only: a model's tool reads none.
              */
             spend: taskSpendViewSchema.nullable().optional(),
+            /**
+             * When the row was last written (epoch ms), as the row records it
+             * (FIX-2429), so a client that holds the row from another source
+             * too (a run's own session) keeps the newer copy. On the board's
+             * action only, like `spend`.
+             */
+            updatedAt: z.number().optional(),
             /** A request is waiting on this task's ending (`getTask` with `wait`). */
             waitedOn: z.literal(true).optional(),
             ...waitingShape,
@@ -1827,7 +1834,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
           ...(t.run != null ? { run: t.run } : {}),
           // A client's read, never a model's (FIX-2288): the action carries it, the tool doesn't.
-          ...(claimless ? { spend: taskSpendView(t) } : {}),
+          ...(claimless ? { spend: taskSpendView(t), updatedAt: t.updatedAt } : {}),
           ...(t.wait != null && t.wait.lapsed !== true && !isTerminalStatus(t.status) ? { waitedOn: true as const } : {}),
           ...waitingOf(t),
           ...withCurrentId(currentFor(t, latest.get(t.followUpOf ?? t.id))),

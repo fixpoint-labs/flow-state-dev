@@ -103,8 +103,8 @@ describe("a coding task's run, while it runs", () => {
     expect(reads).toHaveLength(2);
   });
 
-  it("takes the board read's fields over the conversation's copy, which the read never names a time for", async () => {
-    // `listTasks` carries no `updatedAt`; the conversation's own copy does.
+  it("takes the board read over the conversation's copy when the read is as new or newer", async () => {
+    // The read names when the row was last written, as the conversation's copy does: the newer copy wins, a tie the read.
     const item = filed("in_progress");
     const stamped = { ...item, data: { ...item.data, task: { ...item.data.task, updatedAt: 1 } } };
     const push = fakeSubscribe();
@@ -116,7 +116,7 @@ describe("a coding task's run, while it runs", () => {
         stream: () => ({ close() {} }),
         get: async () => ({ id: "wks_1", flowKind: "agent" }),
       },
-      flow: () => ({ read: async () => ({ ok: true, tasks: [{ ...item.data.task, ...(linked ? { run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 } } : {}) }] }) }),
+      flow: () => ({ read: async () => ({ ok: true, tasks: [{ ...item.data.task, updatedAt: linked ? 3 : 1, ...(linked ? { run: { sessionId: "dsx_run", requestId: "req_run", attempt: 1 } } : {}) }] }) }),
     } as unknown as Client;
     let tasks: BoardTask[] = [];
     const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
@@ -176,6 +176,57 @@ describe("what a task's runs spent, as the board read folds it", () => {
     await until(() => tasks[0]?.model !== undefined);
     stop();
     expect(tasks[0]).toMatchObject({ harness: "Codex", model: "gpt-5.5-codex" });
+  });
+});
+
+describe("a row the run's feed and the board read both carry", () => {
+  /**
+   * The conversation's copy names the run, so the run's own session is followed and supplies a
+   * copy of the row (updatedAt 5). The board read is whatever `board()` answers then.
+   */
+  function twoSources(board: () => Record<string, unknown>) {
+    const run = { sessionId: "dsx_run", requestId: "req_run", attempt: 1 };
+    const conversation = filed("in_progress");
+    const linked = { ...conversation, data: { ...conversation.data, task: { ...conversation.data.task, run, updatedAt: 2 } } };
+    const fromRun = { ...linked, id: "task-change:board/task_1@run", requestId: "req_run", ts: 5, data: { ...linked.data, kind: "progress_reported", task: { ...linked.data.task, updatedAt: 5 } } };
+    const push = fakeSubscribe();
+    const client = {
+      subscribe: push.subscribe,
+      sessions: {
+        state: async (id: string) => ({ at: 1, sessionCreatedAt: 1, items: id === "dsx_run" ? [fromRun] : [linked], pagination: { hasMore: false, nextOffset: 1 } }),
+        stream: () => ({ close() {} }),
+        get: async (id: string) => ({ id, flowKind: "agent" }),
+      },
+      flow: () => ({ read: async () => ({ ok: true, tasks: [{ ...linked.data.task, ...board() }] }) }),
+    } as unknown as Client;
+    return { client, push };
+  }
+  const notice = { topic: { scope: "session" as const, id: "wks_1", resource: "tasks" }, kind: "board" as const };
+
+  it("shows a spend the board read reports after the run's copy arrived", async () => {
+    let spend: unknown = null;
+    const { client, push } = twoSources(() => ({ updatedAt: 5, spend }));
+    let tasks: BoardTask[] = [];
+    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
+    await new Promise((r) => setTimeout(r, 100));
+    spend = { harness: "codex", model: "gpt-5.5-codex", inputTokens: 10, outputTokens: 5, costUsd: null, unreported: false, live: true };
+    push.hear(notice);
+    await until(() => tasks[0]?.model !== undefined);
+    stop();
+    expect(tasks[0]).toMatchObject({ harness: "Codex", model: "gpt-5.5-codex" });
+  });
+
+  it("shows a completion the board read reports while the run's copy still says running", async () => {
+    let done = false;
+    const { client, push } = twoSources(() => (done ? { status: "completed", updatedAt: 9 } : { updatedAt: 5 }));
+    let tasks: BoardTask[] = [];
+    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next));
+    await new Promise((r) => setTimeout(r, 100));
+    done = true;
+    push.hear(notice);
+    await until(() => tasks[0]?.status === "done");
+    stop();
+    expect(tasks[0]?.status).toBe("done");
   });
 });
 

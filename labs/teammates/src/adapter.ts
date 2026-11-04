@@ -934,19 +934,26 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       /**
        * Each row as the board's last read answered it. A task settles, and its run links itself, in
        * the task's own session, which the conversation's stream doesn't carry; the board's notice
-       * does, and the read says what changed. The newer of the two copies is the row.
+       * does, and the read says what changed.
        */
       let listed = new Map<string, Record<string, any>>();
       /**
        * Each linked run's own copy of its row. A run writes its row on its own session (its link, its
        * questions, its review), so the conversation hears of those only when the task ends: the run's
-       * session is followed too, and the newer of the two copies is the row.
+       * session is followed too.
        */
       const runRows = new Map<string, Record<string, any>>();
       const runFeeds = new Map<string, Unsubscribe>();
-      const newer = (row: Record<string, any>) => {
-        const fromRun = runRows.get(row.id);
-        return fromRun !== undefined && (fromRun.updatedAt ?? 0) > (row.updatedAt ?? 0) ? fromRun : row;
+      /**
+       * The one rule for a row's three copies (the board read, the run's, the conversation's): the
+       * newest by the `updatedAt` each copy carries as the row recorded it; on a tie, the board read,
+       * then the run's. What the newest copy leaves out (the board read carries no output) comes from
+       * the conversation's copy.
+       */
+      const rowOf = (id: string): Record<string, any> => {
+        const copies = [listed.get(id), runRows.get(id), rows.get(id)].filter((c): c is Record<string, any> => c !== undefined);
+        const newest = copies.reduce((best, copy) => ((copy.updatedAt ?? 0) > (best.updatedAt ?? 0) ? copy : best));
+        return { ...rows.get(id), ...newest };
       };
       const followRuns = (current: readonly Record<string, any>[]) => {
         for (const row of current) {
@@ -970,18 +977,13 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           runFeeds.set(runSession, stop);
         }
       };
-      // The board read's fields win: it names no time to compare, and a change after it sends a notice
-      // that reads again. The conversation's copy keeps what the read leaves out (a result's output).
-      const merged = (): Record<string, any>[] => {
-        const all = new Map(rows);
-        for (const [id, row] of listed) all.set(id, { ...all.get(id), ...row });
-        return [...all.values()];
-      };
+      /** Every row, the conversation's order first, each as {@link rowOf} settles it. */
+      const merged = (): Record<string, any>[] => [...new Set([...rows.keys(), ...listed.keys()])].map(rowOf);
       // Set once the watch stops: a read or a flow lookup that lands after it shows nothing and follows no run.
       let stopped = false;
       const publish = () => {
         if (stopped) return;
-        const current = merged().map(newer);
+        const current = merged();
         const flowOf = (id: string) => (id === sessionId ? flowOfSession.get(sessionId) : runFlows.get(id));
         const holds = holdsOfRows(sessionId, current, flowOf);
         openHolds.set(sessionId, holds);
