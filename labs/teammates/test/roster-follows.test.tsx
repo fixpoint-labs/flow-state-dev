@@ -8,7 +8,7 @@
  * Red state produced: against the boot read plus a re-read after this tab's
  * own hire and fire, the hire made elsewhere never shows.
  */
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/App";
 import { createFixtureLab } from "./fake-lab";
@@ -52,5 +52,30 @@ describe("the worker list follows the roster", () => {
     await act(async () => void (await lab.hire({ name: "scribe", role: "Takes notes", instructions: "" })));
     await waitFor(() => expect(listed()).toContain("scribe"));
     expect(watches).toBe(1);
+  });
+
+  it("keeps following the roster when one teammate's conversation won't open, and opens it when picked", async () => {
+    const lab = createFixtureLab({ speed: 0.05 });
+    let refuse = true;
+    const flaky: typeof lab = {
+      ...lab,
+      openConversation: (workerId) =>
+        workerId === "scribe" && refuse ? Promise.reject(new TypeError("fetch failed")) : lab.openConversation(workerId),
+    };
+    render(<App adapter={flaky} />);
+    await screen.findByLabelText("Message Chief of Staff");
+
+    // The hire's conversation fails to open: the roster still lands, and so does the next change.
+    await act(async () => void (await lab.hire({ name: "scribe", role: "Takes notes", instructions: "" })));
+    await waitFor(() => expect(listed()).toContain("scribe"));
+    await act(async () => void (await lab.hire({ name: "editor", role: "Edits", instructions: "" })));
+    await waitFor(() => expect(listed()).toContain("editor"));
+    expect(screen.getByLabelText("Message Chief of Staff")).toBeTruthy();
+
+    // Picked once the lab answers again, its conversation opens.
+    refuse = false;
+    const row = screen.getByRole("navigation", { name: "Workers" }).querySelector<HTMLElement>('[data-worker="scribe"]')!;
+    fireEvent.click(row.querySelector("button") ?? row);
+    expect(await screen.findByLabelText("Message scribe")).toBeTruthy();
   });
 });

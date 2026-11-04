@@ -94,9 +94,19 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     const stop = adapter.watchWorkers((roster) => {
       const mine = ++latest;
       const talking = roster.filter((w) => !w.takesTasks);
-      Promise.all(talking.map((w) => adapter.openConversation(w.id))).then((ids) => {
+      Promise.allSettled(talking.map((w) => adapter.openConversation(w.id))).then((opened) => {
         if (!current || mine !== latest) return;
-        const byWorker = Object.fromEntries(talking.map((w, i) => [w.id, ids[i]!]));
+        // Before the page lands, a conversation that won't open is the lab being unreachable.
+        const refused = opened.find((o): o is PromiseRejectedResult => o.status === "rejected");
+        if (!landed && refused) return failed(refused.reason);
+        // After, one conversation that won't open never holds back the roster: that teammate keeps
+        // the conversation it had, or opens when picked.
+        const byWorker: Record<string, string> = {};
+        talking.forEach((w, i) => {
+          const o = opened[i]!;
+          const id = o.status === "fulfilled" ? o.value : conversations.current[w.id];
+          if (id !== undefined) byWorker[w.id] = id;
+        });
         conversations.current = byWorker;
         setWorkers(roster);
         setSessions(byWorker);
@@ -183,6 +193,20 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
   const sessionId = selected ? sessions[selected] : undefined;
+  // A teammate whose conversation didn't open with its roster opens when picked.
+  const unopened = ready && worker !== undefined && sessionId === undefined ? worker.id : undefined;
+  useEffect(() => {
+    if (unopened === undefined) return;
+    let current = true;
+    adapter.openConversation(unopened).then((id) => {
+      if (!current || conversations.current[unopened] !== undefined) return;
+      conversations.current = { ...conversations.current, [unopened]: id };
+      setSessions(conversations.current);
+    }, () => {});
+    return () => {
+      current = false;
+    };
+  }, [adapter, unopened]);
   // No teammate open, no panel column held for one.
   const panelShown = worker !== undefined && sessionId !== undefined;
   useLabKeys({
