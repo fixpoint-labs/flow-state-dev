@@ -45,6 +45,7 @@ await runTaskSignals({
     const env = { GOAL_HARNESS: "stub", GOAL_HARNESS_STEP_MS: String(STEP_MS), GOAL_STALE_THRESHOLD_MS: String(STALE_THRESHOLD_MS), ...NO_MODEL };
     return port === undefined ? startTeammates(data, USER, env, workdir) : startTeammates(data, USER, env, workdir, undefined, port);
   },
+  store: (data) => join(data, "teammates.sqlite"),
   open: async (page: Page, origin: string) => {
     const fsd = createClient({ userId: USER, baseUrl: origin });
     const session = await createWorkforceClient(fsd).ensureWorkerSession({ worker: FILER.id });

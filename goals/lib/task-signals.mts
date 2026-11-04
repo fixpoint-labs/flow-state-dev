@@ -21,8 +21,8 @@
  *   kept down {@link DOWN_MS}, and served again on the same store and port,
  *   so the page left open reads it again as a person's would; a page whose
  *   feed gave up on the server while it was down is reloaded once. The server
- *   is served with {@link STALE_THRESHOLD_MS}, so the board takes the lapsed
- *   row back about a minute after it answers, not at once. Before it does (the row's `attempts` changes, or its lease is
+ *   comes back with the board's take-back held about {@link RECLAIM_HOLD_MS},
+ *   not at once. Before it does (the row's `attempts` changes, or its lease is
  *   no longer lapsed), the row reads `quiet for` at least four minutes. A
  *   read of a row the page marks stale says nothing of the run and isn't
  *   counted; a row taken back before the page showed it fresh is CAN'T TELL,
@@ -38,6 +38,7 @@
 import type { ChildProcess } from "node:child_process";
 import type { Page } from "playwright";
 import { leaseLapsed } from "@flow-state-dev/orchestration/tasks";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { plant, type Plant } from "./plant.mts";
 import { crashAndRestart, stopProcessGroup } from "./server.mts";
 import { goalTmpDir } from "./paths.mts";
@@ -50,15 +51,21 @@ export const STEP_MS = 240_000;
 /** How long the quiet leg keeps the host down. */
 export const DOWN_MS = 240_000;
 /**
- * How long a request's heartbeat may be silent before the server takes it as
- * interrupted, which is what wakes the board to take a dead run's row back.
- * At the engine's default (one minute) the restarted server's first sweep does
- * that within a second or so of answering, too soon for a page to read the row
- * reliably; at the time the host is down plus a minute, the first sweep leaves
- * it and a later one, about a minute on, takes it. The row's lease, which
- * quiet reads, is untouched.
+ * How long the restarted server leaves a dead run's row before the board takes
+ * it back. Two things on a restarted server wake the board for a lapsed row at
+ * once, and each is pushed out by about this much, so the page left open has a
+ * minute, not a second, to read the row:
+ * - the board's wake, due when the lease lapsed, which the server fires as it
+ *   starts: the quiet leg moves every wake in the store to the restart plus
+ *   this, through the store's own `wakes.move`, while the host is down;
+ * - the killed request, which the server's first sweep takes as interrupted
+ *   and whose session's wakes it brings forward: the server is served with a
+ *   stale threshold of {@link STALE_THRESHOLD_MS}.
+ * Neither touches the row or its lease, which quiet reads.
  */
-export const STALE_THRESHOLD_MS = DOWN_MS + 60_000;
+export const RECLAIM_HOLD_MS = 60_000;
+/** How long a request's heartbeat may be silent before the server takes it as interrupted: the time the host is down, plus the hold. */
+export const STALE_THRESHOLD_MS = DOWN_MS + RECLAIM_HOLD_MS;
 /** How far the page's clock may be from now − the run's start. */
 export const CLOCK_SLACK_MS = 5_000;
 /** How long the page has to show what the board's row reads. */
@@ -95,6 +102,8 @@ export interface SignalsLab {
    * scripted coder; on `port` when given (a restart serves where the open page looks).
    */
   serve(data: string, port?: number): Promise<{ origin: string; child: ChildProcess }>;
+  /** The SQLite file the server under `data` keeps its store in. */
+  store(data: string): string;
   /** Open the page where the board's rows show, on `origin`. */
   open(page: Page, origin: string): Promise<LabBoard>;
 }
@@ -142,6 +151,25 @@ const quietMinutesOf = (words: string | undefined) => {
   const m = /quiet for (?:(\d+)h )?(\d+)m/.exec(words ?? "");
   return m === null ? undefined : Number(m[1] ?? 0) * 60 + Number(m[2]);
 };
+
+/**
+ * Move every wake in the store at `file` to `dueAt`, while no server holds it
+ * (see {@link RECLAIM_HOLD_MS}); how many moved.
+ */
+async function holdWakes(file: string, dueAt: number): Promise<number> {
+  const stores = createSQLiteStores({ filename: file });
+  try {
+    const wakes = stores.wakes;
+    if (wakes === undefined) throw new Error("setup: the lab's store keeps no wakes");
+    let moved = 0;
+    for (const wake of await wakes.listDue(Number.MAX_SAFE_INTEGER, 1_000)) {
+      if (wake.dueAt < dueAt && (await wakes.move(wake, wake.version, dueAt))) moved += 1;
+    }
+    return moved;
+  } finally {
+    stores.close();
+  }
+}
 
 /** Poll `check` every `everyMs` until it answers, or `forMs` passes. */
 async function until<T>(check: () => Promise<T | undefined>, forMs: number, everyMs = 1_000): Promise<T | undefined> {
@@ -259,6 +287,8 @@ export async function runTaskSignals(lab: SignalsLab): Promise<void> {
         const port = Number(new URL(served.origin).port);
         await crashAndRestart(served.child, async () => {
           await sleep(DOWN_MS);
+          const held = await holdWakes(lab.store(data), Date.now() + RECLAIM_HOLD_MS);
+          say(`quiet: held ${held} wake(s) ${RECLAIM_HOLD_MS / 1000}s past the restart`);
           // The killed server's port can take a moment to free: one more try on it, a little later.
           serving = lab.serve(data, port).catch(async (cause) => {
             say(`quiet: the restart on port ${port} failed (${String(cause).split("\n")[0]}); trying again`);

@@ -28,6 +28,7 @@ await runTaskSignals({
     const lab = port === undefined ? await startLab(data, USER, env) : await startLab(data, USER, env, undefined, port);
     return { origin: lab.origin, child: lab.child };
   },
+  store: (data) => join(data, "lab.db"),
   open: async (page: Page, origin: string) => {
     const fsd = createClient({ userId: USER, baseUrl: origin });
     await page.goto(origin);
