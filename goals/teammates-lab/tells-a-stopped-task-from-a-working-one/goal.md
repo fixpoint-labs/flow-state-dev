@@ -22,9 +22,12 @@ against the board's own `listTasks` row.
 - **alive**: a run in one 4-minute step (its request renewing the row's lease) reads `working · …`
   on every read of the row, about every 3 s, for those 4 minutes, and never `quiet`.
 - **quiet**: the host is killed mid-run (`crashAndRestart`, SIGKILL to its process group), kept
-  down 4 minutes, and served again on the same store; the page reopens Chief of Staff. Before the
-  board takes the row back (its `attempts` changes or its lease is no longer lapsed), the row
-  reads `quiet for` at least 4m.
+  down 4 minutes, and served again on the same store. Before the board takes the row back (its
+  `attempts` changes or its lease is no longer lapsed), the row reads `quiet for` at least 4m.
+  The server comes back on the same port, so the page left open reads it again; a page that
+  marks the row stale is reloaded once, and a stale read isn't counted. The board takes the
+  lapsed row back about a second after the server answers, so reading starts as the server
+  starts.
 
 **Anti-game:** read the page, never the adapter, the test double or React state. Every read is
 compared with the board's row. A row the board took back before the page could be read is CAN'T
@@ -48,3 +51,9 @@ each runs only the leg it must fail):
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-11-04 | 5f73870d (goal module before the quiet leg read from the server's first answer) | n/a, scripted coder | FAIL (control `task-clock`) | clock only: the retried row read `running`, no clock (rows carry no task-level `startedAt` before FIX-2395) |
+| 2026-11-04 | 5f73870d + the same-port restart | n/a | FAIL (control `quiet-from-age`) | alive only: the live run read `quiet for 0m` 13 s into its one step, its lease renewed 6 times |
+| 2026-11-04 | 5f73870d + the same-port restart, before the stale rule | n/a | FAIL (goal) | quiet: the one read after the restart was the stale panel's frozen `working · 4m 1s`; the board took the row back before the feed came back. Led to counting only fresh reads and reloading a stale page |
+| 2026-11-04 | 46856a3c's module, pre-commit | n/a | FAIL (control `never-quiet`) | quiet only: 2 fresh reads (after one stale read and a reload) of a row lapsed by 125 s read `working · 4m 4s`; the board took it back 1.1 s after the server answered |
+| 2026-11-04 | 46856a3c's module, pre-commit | n/a | PASS | clock 0 s against 1 s since the retry's run started, then 4 s; alive 79 reads over 237 s, all working, 6 lease deadlines; quiet `quiet for 4m` 0.6 s after the server answered (after a reload), lease lapsed 124 s before |
+| 2026-11-04 | 46856a3c's module, pre-commit | n/a | FAIL (control `task-clock`) | clock only: the retried row read `running`, no clock |

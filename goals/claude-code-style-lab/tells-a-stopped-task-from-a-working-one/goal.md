@@ -22,9 +22,12 @@ the card's words on the page against the board's own `listTasks` row.
 - **alive**: a run in one 4-minute step (its request renewing the row's lease) reads `working · …`
   on every read of the card, about every 3 s, for those 4 minutes, and never `quiet`.
 - **quiet**: the host is killed mid-run (`crashAndRestart`, SIGKILL to its process group), kept
-  down 4 minutes, and served again on the same store; the page reopens the session. Before the
-  board takes the row back (its `attempts` changes or its lease is no longer lapsed), the card
-  reads `quiet for` at least 4m.
+  down 4 minutes, and served again on the same store. Before the board takes the row back (its
+  `attempts` changes or its lease is no longer lapsed), the card reads `quiet for` at least 4m.
+  The server comes back on the same port, so the page left open reads it again; a page that
+  marks the row stale is reloaded once, and a stale read isn't counted. The board takes the
+  lapsed row back about a second after the server answers, so reading starts as the server
+  starts.
 
 **Anti-game:** read the page, never the adapter, the test double or React state. Every read is
 compared with the board's row. A row the board took back before the page could be read is CAN'T
@@ -47,3 +50,8 @@ each runs only the leg it must fail):
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-11-04 | 5f73870d (goal module before the quiet leg read from the server's first answer) | n/a, scripted coder | FAIL (control `task-clock`) | clock only: the retried card read `running`, no clock (rows carry no task-level `startedAt` before FIX-2395) |
+| 2026-11-04 | 5f73870d + the same-port restart | n/a | FAIL (control `quiet-from-age`) | alive only: the live run read `quiet for 0m` 15 s into its one step, its lease renewed 6 times |
+| 2026-11-04 | 5f73870d + the same-port restart | n/a | FAIL (control `never-quiet`) | quiet only: 2 reads of the row while its lease had lapsed (by 124 s) read `working · 4m 3s`, never quiet |
+| 2026-11-04 | 5f73870d + the same-port restart | n/a | PASS | clock 1 s against 1 s since the retry's run started, then 5 s; alive 80 reads over 240 s, all working, 7 lease deadlines; quiet `quiet for 4m` 243 s after the kill, lease lapsed 126 s before |
+| 2026-11-04 | 46856a3c | n/a | FAIL (control `task-clock`) | clock only, as above |
