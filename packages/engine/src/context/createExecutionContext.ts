@@ -2037,10 +2037,10 @@ export async function createExecutionContext<
   };
   // FIX-2532: `findBy`'s candidate keys from the store's index, in every cell
   // a collection's keys route to: its own, and the cell of each overlapping
-  // collection of this flow at the scope (a narrower one can keep its keys
-  // elsewhere), each cell answering only for the keys it owns, as `list()`
-  // reads them. `undefined` when the store keeps no index entries: the
-  // registry then scans.
+  // collection and of each single whose storage key it matches, of this flow
+  // at the scope (either can keep its keys elsewhere), each cell answering
+  // only for the keys it owns, as `list()` reads them. `undefined` when the
+  // store keeps no index entries: the registry then scans.
   const makeIndexLookup =
     (scope: ContentScopeType) =>
     async (
@@ -2050,12 +2050,17 @@ export async function createExecutionContext<
     ): Promise<string[] | undefined> => {
       const indexes = stores.resourceState.indexes;
       if (indexes === undefined) return undefined;
-      const configs = Object.values(
+      const configs = Object.entries(
         scope === "session" ? sessionResourceConfigs : scope === "user" ? userResourceConfigs : orgResourceConfigs
       );
       const cells = new Set<string>();
-      for (const other of [config, ...configs]) {
-        if (other !== config && (!isCollectionConfig(other) || !patternsReach(other.pattern, config.pattern))) continue;
+      const ownCell = resolveConfigScopeId(scope, config);
+      if (ownCell !== undefined) cells.add(ownCell);
+      for (const [accessor, other] of configs) {
+        const reaches = isCollectionConfig(other)
+          ? patternsReach(other.pattern, config.pattern)
+          : matchesPattern(config.pattern, scopeStorageKeyMaps[scope][accessor] ?? accessor);
+        if (!reaches) continue;
         const scopeId = resolveConfigScopeId(scope, other);
         if (scopeId !== undefined) cells.add(scopeId);
       }

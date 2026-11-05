@@ -16,7 +16,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, defineResourceCollection, handler, ownerSegment } from "@flow-state-dev/core";
+import { defineFlow, defineResource, defineResourceCollection, handler, ownerSegment } from "@flow-state-dev/core";
 import type { FlowInstance, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { createFlowState } from "../../flowstate/createFlowState";
 import { runAction } from "../../execution/runAction";
@@ -296,6 +296,73 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
           { key: "public/x", id: "t1" },
         ]);
         expect(await app.find("t1")).toEqual(["docs/drafts/x", "docs/public/x"]);
+      });
+    });
+
+    it("finds a row a single resource under the collection keeps in another cell, as list() shows it", async () => {
+      await withStores(async (raw) => {
+        // The collection is shared; the single at `docs/special` is isolated
+        // to this flow, and owns its key over the collection's prefix.
+        const docs = defineResourceCollection({
+          pattern: "docs/**",
+          scope: "org",
+          flowIsolation: false,
+          stateSchema: rowSchema,
+          indexes: { byId: (_key, state) => state.id },
+        });
+        const special = defineResource({
+          scope: "org",
+          ref: "docs/special",
+          flowIsolation: true,
+          stateSchema: z.object({ id: z.string().default(""), owner: z.string().default("") }),
+        });
+        const file = handler({
+          name: "file",
+          inputSchema: fileInput,
+          outputSchema: z.object({}),
+          resources: { docs, special },
+          execute: async (input, ctx) => {
+            for (const row of input.rows) {
+              if (row.key === "special") await ctx.resources.special.setState({ id: row.id, owner: "" });
+              else await (ctx.resources.docs as unknown as ResourceCollectionRef).upsert(row.key, { id: row.id });
+            }
+            return {};
+          },
+        });
+        const find = handler({
+          name: "find",
+          inputSchema: findInput,
+          outputSchema: z.array(z.string()),
+          resources: { docs, special },
+          execute: async (input, ctx) => {
+            const ref = ctx.resources.docs as unknown as ResourceCollectionRef;
+            const listed = (await ref.list())
+              .filter((row) => row.state.id === input.value)
+              .map((row) => row.path)
+              .sort();
+            const found = (await ref.findBy("byId", input.value)).map((row) => row.path);
+            // findBy answers from the rows list() reads.
+            expect(found).toEqual(listed);
+            return found;
+          },
+        });
+        const flow = defineFlow({
+          kind: "find-by-single-cell",
+          actions: { file: { inputSchema: fileInput, block: file }, find: { inputSchema: findInput, block: find } },
+        })();
+        const app = await boot(raw, flow);
+        await app.file([{ key: "public", id: "x" }]);
+        // The first lookup builds the index in both cells; the single's write
+        // after it keeps the entries, so the next lookup reads the index and
+        // scans no more than one after it, where nothing was written (the
+        // scans left are list()'s own).
+        expect(await app.find("x")).toEqual(["docs/public"]);
+        await app.file([{ key: "special", id: "x" }]);
+        const counter = countScans(raw);
+        expect(await app.find("x")).toEqual(["docs/public", "docs/special"]);
+        const afterWrite = counter.scans;
+        expect(await app.find("x")).toEqual(["docs/public", "docs/special"]);
+        if (indexes) expect(afterWrite).toBe(counter.scans - afterWrite);
       });
     });
 
