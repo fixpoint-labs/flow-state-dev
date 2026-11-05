@@ -39,7 +39,7 @@ vi.mock("../src/lib/connection", () => ({
   connect: (connection: { userId: string }) => ({ userId: connection.userId, subscribe }),
   readConnection: () => ({ userId: USER }),
 }));
-const workforce = { roster: async () => [] };
+const workforce = { watchRoster: () => () => {} };
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
 
 let sessions: SessionSummary[] = [];
