@@ -12,7 +12,7 @@
 | **tests their own `ctx.suspend`** | Fails the same way | `run.resume(...)` continues it, through the route the client's `resume` uses |
 | **autocompletes `@flow-state-dev/testing`** | 90 names: test helpers beside a benchmark suite (21 names), two import-graph scanners and a package marker. Six of the benchmark types are on core's root too | The helpers for testing an app and evals. Benchmarking is at `testing/benchmark`; the scanners are off the published surface |
 | **writes a benchmark or runs `fsdev benchmark`** | Imports from the roots of testing, patterns and core | Imports from `testing/benchmark` and `patterns/benchmark`. The run is the same |
-| **tests a sequencer or a router** | Picks between `testBlock`, `testSequencer` and `testRouter` | `testBlock`. Its result carries the steps for a sequencer and the chosen route for a router |
+| **tests a sequencer or a router** | Picks between `testBlock`, `testSequencer` and `testRouter` | `testBlock`. Its result carries the steps and side chains for a sequencer and the chosen route for a router |
 
 Durable-by-default and `ctx.suspendForUser` shipped in the same window, and the testing package
 can't exercise either. The first row is the epic's
@@ -27,17 +27,17 @@ root offers only what testing an app needs.**
 | Is it the right goal? | |
 |---|---|
 | **The real need** | *"An adopter cannot unit-test a `ctx.suspendForUser` approval step, even though durable-by-default and suspendForUser shipped this window"* (the issue), and the epic's *Surface* row for every published root |
-| **Smaller, and rejected** | "`testFlow` accepts a durability provider." Leaves the answer to the adopter, who would wire a router, a registry and a provider by hand: the 40 lines our own engine test needs |
+| **Smaller, and rejected** | "`testFlow` accepts a durability provider" (the issue's *runtimeConfig passthrough*). Leaves the answer to the adopter, who would wire a router, a registry and a provider by hand: the 40 lines our own engine test needs. `testFlow` builds that config itself instead; no general passthrough is added |
 | **Bigger, and not this issue's** | A test helper that spawns or messages other sessions (FIX-1293). The Inbox's answer path for a task-board run, which FIX-2450 owns |
-| **Not done if** | The answer resumes the run by some route other than the engine's answer route · a generator after the answer reaches a real model · the README example passes only in the workspace, not from the installed tarball · a benchmark or scanner name is still on the testing or core root, outside Q1's alias window · a timer outlives `testFlow` and holds the test process open |
+| **Not done if** | The answer or `resume` reaches the run by some route other than the engine's answer or resume route · a generator after the answer reaches a real model · the README example passes only in the workspace, not from the installed tarball · a benchmark, scanner or folded-helper name is still on the testing, core or patterns root, outside Q1's alias window · the benchmark names were deleted rather than moved, or `fsdev benchmark` stops running · a timer outlives `testFlow` and holds the test process open |
 
 ```mermaid
 flowchart LR
   I["installed tarballs · empty project"] --> R["the README's approval-step test · verbatim"]
   R --> S["suspended · answer approve · answer again · reject path"]
-  I --> E["root key census · testing and core"]
+  I --> E["root key census · testing, core, patterns · subpaths import"]
   S -->|"completed with output · second answer refused · mocks used after"| P["PASS"]
-  E -->|"no benchmark or scanner name"| P
+  E -->|"names off the roots and present on the subpaths"| P
   C["control · main at ebec5326 tarballs"] -.-> R
   C -.-> E
   S -.->|"under the control"| F["must FAIL"]
@@ -49,10 +49,10 @@ README test fails at the first `expect` and the census finds `runBenchmark`.
 | How we verify | |
 |---|---|
 | **Goal check** | A leg c assertion in `scripts/packed-install/run.mjs`, plus a root-key census under leg b. The closure manifest's *One path* and *Surface* rows hold their ids; this issue's PR flips them to `expect: pass` ([DECISIONS → Decided](DECISIONS.md#decided-not-asked)). Run by the implementer at completion; verdict in the implementation PR |
-| **Signal** | The README test passes: `suspended`, then `completed` with the step's output; a second `answer` throws *already resolved*; a `reject` reaches the block as a no; a generator after the answer returns its mock. `Object.keys` of the testing and core roots holds none of the 21 benchmark, 3 bundle or 1 marker names |
+| **Signal** | The README test (the code block under its *Testing a step that waits for a person* heading) passes: `suspended`, then `completed` with the step's output; a `reject` reaches the block as a no; a generator after the answer returns its mock; a `ctx.suspend` resumed with `run.resume` completes. The process exits in under 10 s with no force-exit flag. Census: `Object.keys` of the testing, core and patterns roots holds none of the moved or folded names (the list is the census on `ebec5326`, written into the manifest), and `testing/benchmark` and `patterns/benchmark` import from the tarball and export every one of them |
 | **Input** | The README's refund-approval example. A different stop kind (`input`, with a schema) must pass too |
-| **Anti-game** | Assert on the installed tarball, never workspace `src`. The *already resolved* refusal and a schema refusal must come from the route: a helper that calls `continueRequest` directly passes the happy path and fails these |
-| **Control that must fail** | `run.mjs --control`: fails on *suspended* (today `failed`) and on the census (`runBenchmark` on the root) |
+| **Anti-game** | Assert on the installed tarball, never workspace `src`. Prove the route, not the message: the stop is first answered through the engine's own answer route on the same stores, as a screen would, and only then does `run.answer` have to refuse it. A helper that keeps its own record of answered stops, or validates with its own schema check, can't see that answer |
+| **Control that must fail** | `run.mjs --control`: fails on *suspended* (today `failed`) and on the census (`runBenchmark` on the root, no `testing/benchmark`). In the implementation PR, a variant with `run.answer` swapped for a direct `continueRequest` must fail the refusal-after-screen-answer assertion |
 
 ## What changes
 
@@ -86,9 +86,11 @@ How a moved name reaches an adopter on 0.4.0 or testing 0.3.x is ER-3 / Q1's ans
 **Docs:** update the testing README (an approval-step example, `answer` and `resume`, the
 `durable` option, the subpaths) and the patterns README's benchmark section; update
 `testing/testing-flows` with a *Testing a step that waits for a person* section,
-`testing/benchmarks` and `api/benchmarks` for the new imports, `api/testing` for the result's
-methods and the folded helpers, and one line in the human-in-the-loop guide pointing to the
-test section. Add the testing row to the *what each package root is for* page FIX-2448
+`testing/benchmarks`, `api/benchmarks` and the *choosing patterns with benchmarks* guide for
+the new imports, `api/testing`, `testing/overview` and `testing/flow-integration-tests` for the
+result's methods and the folded helpers, and one line in the human-in-the-loop guide pointing
+to the test section. The repo's own teaching of the folded helpers moves with them (BP-034):
+`AGENTS.md`, the `write-block-tests` and `tdd` skills, `development-setup.md`. Add the testing row to the *what each package root is for* page FIX-2448
 publishes. No new page.
 
 ## How an answer reaches the run
@@ -131,7 +133,7 @@ engine code that ships today; the POC ran it ([Settled](DECISIONS.md#settled)).
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
-| `answer` and `resume` on `testFlow`'s result, and `suspension` | `suspension` · the answer and resume routes; the client's `answer` (FIX-2450) | Composed: each is one in-process call to its route. The testing package doesn't depend on the client, so it calls the route the client calls |
+| `answer` and `resume` on `testFlow`'s result (each taking `headers` for a flow's own sign-in), and `suspension` | `suspension` · the answer and resume routes; the client's `answer` (FIX-2450) | Composed: each is one in-process call to its route. The testing package doesn't depend on the client, so it calls the route the client calls |
 | A `durable` option on `testFlow` | `resolveDurabilityProvider`'s `durable` | The same name and meaning, passed through |
 | `testing/benchmark`, `patterns/benchmark` | Each package's `exports` map; core's `./benchmark/types.ts` | Extends the maps. No new package |
 | A repo-only `./bundle` entry on testing | Orchestration's `./inbox/check`, hidden by `publishConfig` | Epic D2's second kind, reused |

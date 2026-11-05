@@ -59,13 +59,13 @@ It comes down to vocabulary: on a core subpath, the framework's base package sti
 | | |
 |---|---|
 | **Instead of** | Three block helpers, two of them `testBlock` plus extra result fields |
-| **Because** | `testSequencer` is `testBlock` plus step traces read from the items; `testRouter` is `testBlock` plus the route a hook saw. They differ only in what the caller gets back, which `issue-spec` question 7 says is a parameter on the closest entry, not a second helper |
-| **Locks in** | One helper per unit an adopter tests: `testBlock` for a block, `testFlow` for an action. `testBlock`'s result type depends on the block's kind. The two names retire per ER-3 / Q1's answer; four test files and their docs pages change |
+| **Because** | `testSequencer` is `testBlock` plus step traces and side-chain results read from the items; `testRouter` is `testBlock` plus the route a hook saw. They differ only in what the caller gets back, which `issue-spec` question 7 says is a parameter on the closest entry, not a second helper |
+| **Locks in** | One helper per unit an adopter tests: `testBlock` for a block, `testFlow` for an action. `testBlock`'s result type depends on the block's kind. The two names retire per ER-3 / Q1's answer; four test files, four docs pages and four repo guides (`AGENTS.md`, two skills, `development-setup.md`) change |
 
 **What would change my mind:** `testBlock` unable to type `steps` and `selectedRoute` by the
 block's kind without a cast in the adopter's test. Then keep the two as typed wrappers.
 
-![D3: fold into testBlock, chosen, beside keeping three helpers. Decides it: what an adopter picks between to test one block. Price: the two names retire, and four test files and their docs pages change. Tie: the same steps and route are returned. Locks in: one helper per unit. Flips if: the result can't be typed by kind without a cast](figures/d3-one-block-helper.svg)
+![D3: fold into testBlock, chosen, beside keeping three helpers. Decides it: what an adopter picks between to test one block. Price: the two names retire, and four test files, four docs pages and four repo guides change. Tie: the same steps and route are returned. Locks in: one helper per unit. Flips if: the result can't be typed by kind without a cast](figures/d3-one-block-helper.svg)
 
 It comes down to the pick: three names for one job is the choice the epic exists to remove.
 
@@ -81,8 +81,13 @@ It comes down to the pick: three names for one job is the choice the epic exists
   there are several. `run.resume` mirrors the client's `resume`, for a developer's own
   `ctx.suspend`. This issue is blocked by FIX-2450 for the name.
 - **What `answer` returns** is the same `TestFlowResult` shape, for the same request: status,
-  output and the items of the run that followed. A refusal throws an error carrying the route's
-  status and message.
+  output and the items emitted after the stop (the first result already holds the ones before
+  it). A refusal throws an error carrying the route's status and message. With no pending stop
+  on this request (a task-board stop sits on the worker's request), `answer` throws saying so,
+  before any route call.
+- **A flow's own sign-in.** The route checks the principal's user and org against the request,
+  so the README names the case: the headers must make the flow's resolver return the test's
+  user and the org `testFlow` ran in, or the answer is told the stop doesn't exist.
 - **Convergence point:** every answer or resume in a test goes through its engine route. The
   only writers are `run.answer` and `run.resume`; neither calls `continueRequest`.
 - **No timer outlives `testFlow`.** The router is built for an answer and disposed when the run
@@ -96,10 +101,21 @@ It comes down to the pick: three names for one job is the choice the epic exists
 - **The goal check's rows.** The closure manifest's *One path* row gains this issue's leg c
   assertion (proposed id `testing-answers-a-stop`) and *Surface* its census of the testing and
   core roots; FIX-2564 names the ids, and this issue's PR flips them to `expect: pass`.
-- **Seams.** FIX-2448 lands first on `core/src/index.ts`; this issue removes the six types from
+- **Seams.** The router, in-process fetch, dispose and durability entries this uses may move to
+  `engine/host` under FIX-2449; testing imports them from wherever that split puts them, and
+  counts as their outside consumer for ER-1. FIX-2448 lands first on `core/src/index.ts`; this issue removes the six types from
   its split. Moving the adapters touches patterns' root, FIX-2459's surface: this issue edits
   only the benchmark block. The testing package marker is FIX-2449's, with the other three.
 - **Changesets** per ER-7: testing, core and patterns, one line each naming the new homes.
+
+## Notes for the implementer
+
+From validation, below the bar: the route's busy-wait and any settle wait stall under
+`vi.useFakeTimers()`, so the README says so; about 130 `testFlow` call sites, `evalFlow`
+included, now write checkpoints, so run the full suite before and after; the POC passed flat
+router options and had no generator after the answer, so "one runtime config" is the
+implementer's first test (the router also stamps `requestHost`); the optional peer publishes as
+an exact pin under `workspace:*`; the goal check's legs and control are FIX-2564's to build.
 
 ## Considered and dropped
 
@@ -136,3 +152,6 @@ Run by the epic-agent over the whole spec set, with `reuse-review` on *Builds on
   and the testing root mixes benchmark and repo tooling into adopter helpers. The answer goes
   through the engine's own route in process, built on checkpoint durability; benchmark and
   scanner names leave three roots for subpaths; two block helpers fold into one.
+- **Validation** — the goal check now proves the route by a screen's answer first, covers the
+  patterns root and the subpaths' presence, and checks `resume` and timers; the docs line gained
+  two pages and the repo guides; D3's count corrected.

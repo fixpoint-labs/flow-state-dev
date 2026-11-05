@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D3, how many helpers test one block. Chosen: fold testSequencer and testRouter into testBlock. Instead of: keeping three helpers. It comes down to the first row: with one helper, an adopter testing a block has nothing to pick between; with three, they choose between names that differ only in result fields. The price is the second row: the two names retire, and four test files and their docs pages change, where keeping them changes nothing. The third row is a tie: the same steps and chosen route come back. Locks in: one helper per unit, testBlock for a block and testFlow for an action. Flips if: testBlock&#x27;s result can&#x27;t be typed by the block&#x27;s kind without a cast."
+<svg viewBox="0 0 940 420" role="img" aria-label="D3, how many helpers test one block. Chosen: fold testSequencer and testRouter into testBlock. Instead of: keeping three helpers. It comes down to the first row: with one helper, an adopter testing a block has nothing to pick between; with three, they choose between names that differ only in result fields. The price is the second row: the two names retire, and four test files, four docs pages and four repo guides change, where keeping them changes nothing. The third row is a tie: the same steps and chosen route come back. Locks in: one helper per unit, testBlock for a block and testFlow for an action. Flips if: testBlock&#x27;s result can&#x27;t be typed by the block&#x27;s kind without a cast."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -66,7 +66,7 @@
     <text class="t-lbl" x="32" y="222">WHAT CHANGES</text>
     <text class="mark minus" x="228" y="224">−</text>
     <text class="t-b" x="248" y="223">Two names retire</text>
-    <text class="t-s" x="248" y="241">4 test files and their docs pages</text>
+    <text class="t-s" x="248" y="241">4 test files, 4 docs pages, 4 guides</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">Nothing</text>
     <text class="t-s" x="612" y="241">no adopter test moves</text>
