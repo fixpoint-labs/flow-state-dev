@@ -4,9 +4,9 @@ import type { LabAdapter, TaskRow } from "../adapter";
 import { useWatch } from "../lib/use-watch";
 import { useDraftSend } from "../lib/use-draft-send";
 import { Entry } from "./Entry";
-import { JumpToLatestButton } from "./JumpToLatest";
 import { LoadEarlier } from "./LoadEarlier";
 import { ReviewCard } from "./ReviewCard";
+import { Sheet } from "./Sheet";
 import { ErrorBody } from "./flow-state/error";
 import { Spend } from "./flow-state/spend";
 import { StreamingIndicator } from "./flow-state/streaming-indicator";
@@ -15,36 +15,38 @@ import { workingStatus } from "./flow-state/working-status";
 import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus";
 
 /**
- * One task, in place of the board. Its work reads the task's run session.
- * You can talk inside a task (spec D3): your line is a steer on it, and
- * answers its open question when it has one. When it is ready for
- * review, *Resolve* accepts it and *Request changes* sends your words back.
- * Under the header, the task's action row: Cancel and Release
- * while it is open, Retry once it failed or was cancelled. It has no Steer
- * box, since the composer steers. A failed task's error shows as an error.
- * A finished task's composer is off.
- * Cmd+Enter (Ctrl+Enter) does what the box's main button does: answer or send,
- * or request changes when it is ready for review. Plain Enter is a new line.
+ * One task, as a sheet over the main thread, the same flyout session mode's
+ * background tasks open in. Its work reads the task's run session. You can
+ * talk inside a task (spec D3): your line is a steer on it, and answers its
+ * open question when it has one. When it is ready for review, *Resolve*
+ * accepts it and *Request changes* sends your words back. Under the header,
+ * the task's action row: Cancel and Release while it is open, Retry once it
+ * failed or was cancelled, and Pin beside them. It has no Steer box, since the
+ * composer steers. A failed task's error shows as an error. A finished task's
+ * composer is off. Cmd+Enter (Ctrl+Enter) does what the box's main button
+ * does: answer or send, or request changes when it is ready for review. Plain
+ * Enter is a new line.
  */
 export function ThreadView({
   adapter,
   sessionId,
   task,
   pinned,
-  onBack,
+  onClose,
 }: {
   adapter: LabAdapter;
   sessionId: string;
   task: TaskRow;
   pinned: boolean;
-  onBack: () => void;
+  onClose: () => void;
 }) {
   const work = useWatch(
     (emit: Parameters<LabAdapter["watchTaskWork"]>[2]) => adapter.watchTaskWork(sessionId, task.id, emit),
     [adapter, sessionId, task.id],
   );
   const { text, setText, sending, failure, submit } = useDraftSend("claude-code-style:task-draft", task.id);
-  const feed = useJumpToLatest({ resetKey: task.id });
+  // The board keys this view by task, so a change of task remounts it and the feed starts over.
+  const feed = useJumpToLatest();
   const column = statusColumn(task);
   const question = task.waitingOn && task.waitingOn.kind !== "review" ? task.waitingOn : undefined;
   const words = text.trim();
@@ -80,109 +82,113 @@ export function ThreadView({
   };
 
   return (
-    <aside aria-label={`Task: ${task.title}`} className="flex h-full min-h-0 flex-col bg-inspector">
-      <div className="flex items-center gap-2 border-b border-border px-3 py-3">
-        <button type="button" aria-label="Back to tasks" onClick={onBack} className="px-1 text-sm hover:bg-accent">
-          ←
-        </button>
-        <ThreadIcon task={task} />
-        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{task.title}</h2>
-        <HarnessTag task={task} />
+    <Sheet
+      label={`Task: ${task.title}`}
+      feed={feed}
+      onClose={onClose}
+      title={
+        <span className="flex min-w-0 items-center gap-2">
+          <ThreadIcon task={task} />
+          <span className="truncate">{task.title}</span>
+          <HarnessTag task={task} />
+        </span>
+      }
+      subtitle={<Spend spend={task.spend} split />}
+      footer={
+        <div className="flex flex-col gap-2">
+          {question ? (
+            <div role="note" className="border border-attention bg-attention/10 px-3 py-2 text-sm [overflow-wrap:anywhere]">
+              <span className="font-semibold">Waiting on you</span> · {question.prompt}
+            </div>
+          ) : null}
+          {column === "review" ? <ReviewCard task={task} review={work?.review} /> : null}
+          {finished ? (
+            <p role="note" className="text-xs text-muted-foreground">
+              This task is finished.
+            </p>
+          ) : (
+            <form onSubmit={say}>
+              <textarea
+                aria-label="Message this task"
+                rows={2}
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+                onKeyDown={onKeyDown}
+                placeholder={question ? "Answer the task…" : column === "review" ? "What should change…" : "Say something in this task…"}
+                className="block w-full resize-none border border-border bg-card px-3 py-2 text-sm outline-none focus:border-ring"
+              />
+              {failure !== undefined ? (
+                <p role="alert" className="mt-1 text-xs text-destructive">
+                  Not sent: {failure} ·{" "}
+                  <button type="button" className="underline" onClick={() => (column === "review" ? requestChanges() : say())}>
+                    Retry
+                  </button>
+                </p>
+              ) : null}
+              {resolve.error === undefined ? null : (
+                <p role="alert" className="mt-1 text-xs text-destructive">
+                  Couldn't resolve: {resolve.error}
+                </p>
+              )}
+              <div className="mt-2 flex justify-end gap-1.5">
+                {column === "review" ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={held}
+                      onClick={() => void resolve.submit(undefined)}
+                      className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40"
+                    >
+                      {resolve.busy ? "Resolving…" : "Resolve"}
+                    </button>
+                    <button type="button" disabled={!words || held} onClick={requestChanges} className="border border-border px-2 py-1 text-xs disabled:opacity-40">
+                      Request changes
+                    </button>
+                  </>
+                ) : (
+                  <button type="submit" disabled={!words || held} className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40">
+                    {question ? "Answer" : "Send"}
+                  </button>
+                )}
+              </div>
+            </form>
+          )}
+        </div>
+      }
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        {/* No Steer box: the composer below steers the task. */}
+        <TaskActions key={task.id} id={task.id} status={task.status} actions={actions} />
         <button
           type="button"
           aria-pressed={pinned}
           disabled={pin.busy}
           onClick={() => void pin.submit(undefined)}
-          className="border border-border px-1.5 text-xs hover:bg-accent disabled:opacity-40"
+          className="ml-auto border border-border px-1.5 text-xs hover:bg-accent disabled:opacity-40"
         >
           {pinned ? "Unpin" : "Pin"}
         </button>
       </div>
       {pin.error === undefined ? null : (
-        <p role="alert" className="px-4 pt-2 text-xs text-destructive">
+        <p role="alert" className="text-xs text-destructive">
           Couldn't {pinned ? "unpin" : "pin"}: {pin.error}
         </p>
       )}
-      {/* No Steer box: the composer below steers the task. */}
-      <div className="px-4 pt-2 empty:hidden">
-        <TaskActions key={task.id} id={task.id} status={task.status} actions={actions} />
-      </div>
       {task.status === "errored" && task.error !== undefined ? (
-        <div role="alert" className="mx-4 mt-2 flex flex-col gap-1 border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div role="alert" className="flex flex-col gap-1 border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           <ErrorBody message={task.error} />
         </div>
       ) : null}
-      {/* Ready for review is said once, by its card above the composer. */}
-      {column === "review" ? null : <div className="px-4 pt-2 text-xs text-muted-foreground [overflow-wrap:anywhere]">{statusLine(task)}</div>}
-      <Spend spend={task.spend} split className="px-4" />
-      <div ref={feed.ref} className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pt-2 pb-8 [overflow-wrap:anywhere]">
-        <LoadEarlier load={work?.loadEarlier} />
-        {work?.entries.map((entry) => (
-          <Entry key={entry.id} entry={entry} mark={entry.kind === "user" ? feed.mine(entry.id) : undefined} />
-        ))}
-        {/* The live line: what it is doing now, else "Working...", and for how long. A task waiting on you isn't working. */}
-        {task.status === "in_progress" && task.waitingOn === undefined ? (
-          <StreamingIndicator message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
-        ) : null}
-        <JumpToLatestButton feed={feed} />
-      </div>
-      {question ? (
-        <div role="note" className="mx-3 border border-attention bg-attention/10 px-3 py-2 text-sm [overflow-wrap:anywhere]">
-          <span className="font-semibold">Waiting on you</span> · {question.prompt}
-        </div>
+      {/* Ready for review is said once, by its card in the footer. */}
+      {column === "review" ? null : <div className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{statusLine(task)}</div>}
+      <LoadEarlier load={work?.loadEarlier} />
+      {work?.entries.map((entry) => (
+        <Entry key={entry.id} entry={entry} mark={entry.kind === "user" ? feed.mine(entry.id) : undefined} />
+      ))}
+      {/* The live line: what it is doing now, else "Working...", and for how long. A task waiting on you isn't working. */}
+      {task.status === "in_progress" && task.waitingOn === undefined ? (
+        <StreamingIndicator message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
       ) : null}
-      {column === "review" ? <ReviewCard task={task} review={work?.review} /> : null}
-      {finished ? (
-        <p role="note" className="px-4 py-3 text-xs text-muted-foreground">
-          This task is finished.
-        </p>
-      ) : (
-        <form onSubmit={say} className="px-3 py-3">
-          <textarea
-            aria-label="Message this task"
-            rows={2}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder={question ? "Answer the task…" : column === "review" ? "What should change…" : "Say something in this task…"}
-            className="block w-full resize-none border border-border bg-card px-3 py-2 text-sm outline-none focus:border-ring"
-          />
-          {failure !== undefined ? (
-            <p role="alert" className="mt-1 text-xs text-destructive">
-              Not sent: {failure} ·{" "}
-              <button type="button" className="underline" onClick={() => (column === "review" ? requestChanges() : say())}>
-                Retry
-              </button>
-            </p>
-          ) : null}
-          {resolve.error === undefined ? null : (
-            <p role="alert" className="mt-1 text-xs text-destructive">
-              Couldn't resolve: {resolve.error}
-            </p>
-          )}
-          <div className="mt-2 flex justify-end gap-1.5">
-            {column === "review" ? (
-              <>
-                <button
-                  type="button"
-                  disabled={held}
-                  onClick={() => void resolve.submit(undefined)}
-                  className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40"
-                >
-                  {resolve.busy ? "Resolving…" : "Resolve"}
-                </button>
-                <button type="button" disabled={!words || held} onClick={requestChanges} className="border border-border px-2 py-1 text-xs disabled:opacity-40">
-                  Request changes
-                </button>
-              </>
-            ) : (
-              <button type="submit" disabled={!words || held} className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40">
-                {question ? "Answer" : "Send"}
-              </button>
-            )}
-          </div>
-        </form>
-      )}
-    </aside>
+    </Sheet>
   );
 }

@@ -10,6 +10,7 @@
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LabAdapter, TaskRow, TaskWork } from "../src/adapter";
+import { SheetArea, SheetProvider } from "../src/components/Sheet";
 import { ThreadView } from "../src/components/ThreadView";
 import { toolRun } from "../src/lib/tool-steps";
 
@@ -38,13 +39,21 @@ function open(task: TaskRow) {
     },
     taskActions: () => ({}),
   } as unknown as LabAdapter;
-  const view = render(<ThreadView adapter={adapter} sessionId="s-1" task={task} pinned={false} onBack={() => {}} />);
-  const pane = screen.getByRole("complementary", { name: `Task: ${task.title}` });
+  // The view is a sheet, which draws into the area a provider hosts.
+  const shown = (current: TaskRow) => (
+    <SheetProvider>
+      <SheetArea>
+        <ThreadView adapter={adapter} sessionId="s-1" task={current} pinned={false} onClose={() => {}} />
+      </SheetArea>
+    </SheetProvider>
+  );
+  const view = render(shown(task));
+  const pane = screen.getByRole("dialog", { name: `Task: ${task.title}` });
   return {
     pane,
     line: () => within(pane).queryByTestId("streaming-indicator"),
     setWork: (working: TaskWork["working"]) => act(() => show({ entries: DONE_SO_FAR, ...(working === undefined ? {} : { working }) })),
-    setTask: (next: Partial<TaskRow>) => view.rerender(<ThreadView adapter={adapter} sessionId="s-1" task={{ ...task, ...next }} pinned={false} onBack={() => {}} />),
+    setTask: (next: Partial<TaskRow>) => view.rerender(shown({ ...task, ...next })),
   };
 }
 
