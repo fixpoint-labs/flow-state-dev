@@ -30,7 +30,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url)).replace(/\/$/, "");
 
 /** Changesets the release docs pass covered that haven't been released yet. */
-export function stagedChangesets(root) {
+function stagedChangesets(root) {
   const manifest = join(root, "apps/docs/release-docs.json");
   if (!existsSync(manifest)) return [];
   const ids = JSON.parse(readFileSync(manifest, "utf8")).changesets ?? [];
@@ -38,7 +38,7 @@ export function stagedChangesets(root) {
 }
 
 /** `{ name, version }` for every package under packages/ that publishes to npm. */
-export function publicPackages(root) {
+function publicPackages(root) {
   const dir = join(root, "packages");
   return readdirSync(dir)
     .map((name) => join(dir, name, "package.json"))
@@ -49,7 +49,7 @@ export function publicPackages(root) {
 }
 
 /** The packages whose version on main isn't on npm. A failed lookup counts as missing. */
-export async function unpublished(packages, fetchImpl = fetch) {
+async function unpublished(packages, fetchImpl = fetch) {
   const results = await Promise.all(
     packages.map(async (pkg) => {
       const url = `https://registry.npmjs.org/${pkg.name.replace("/", "%2F")}/${pkg.version}`;
