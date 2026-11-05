@@ -255,6 +255,66 @@ describe("withChangeBus · every request and session write publishes its session
     expect(child.map((n) => n.kind)).toContain("request");
   });
 
+  it("names the owner's user topic for a session or request write, not items or a state delta, so a list of their sessions hears one it doesn't list yet", async () => {
+    const { stores, bus } = wired();
+    const alice = hear(bus, { scope: "user", id: "alice", tenantId: "" });
+    const bob = hear(bus, { scope: "user", id: "bob", tenantId: "" });
+
+    // A session nobody watches yet: its own topic has no listener, its owner's does.
+    await stores.session.set("s_new", session("s_new"), "any");
+    await tick();
+    expect(alice.map((n) => n.kind)).toEqual(["run"]);
+
+    alice.length = 0;
+    await stores.request.set("r1", request("r1", "s_new"), "any");
+    await tick();
+    await tick();
+    expect(alice.map((n) => n.kind)).toEqual(["run"]);
+
+    // A full request write whose status didn't change is still heard, on
+    // purpose: a row's state also rests on what the write lands beside it
+    // (a stop's suspension record, which says whether it waits for the
+    // user), so the notice can't be keyed on the status alone.
+    alice.length = 0;
+    await stores.request.set("r1", request("r1", "s_new"), "any");
+    await tick();
+    await tick();
+    expect(alice.map((n) => n.kind)).toEqual(["run"]);
+
+    // A streamed reply's items move no row's state: the list doesn't hear them.
+    alice.length = 0;
+    stores.request.persistItems("r1", [message("r1", "m1")]);
+    await tick();
+    await tick();
+    expect(alice).toEqual([]);
+
+    // Nor a state field's delta, which a busy turn writes many of. The
+    // session's own topic still hears it.
+    const own = hear(bus, sessionTopic("s_new"));
+    await stores.session.patchField!("s_new", ["model"], "m", "any", Date.now());
+    await stores.request.incField!("r1", ["n"], 1, "any", Date.now());
+    await tick();
+    await tick();
+    expect(alice).toEqual([]);
+    expect(own.map((n) => n.kind).sort()).toEqual(["request", "run"]);
+
+    alice.length = 0;
+    await stores.session.delete("s_new");
+    await tick();
+    expect(alice.map((n) => n.kind)).toEqual(["run"]);
+    expect(bob).toEqual([]);
+  });
+
+  it("names the owner's user topic under the record's tenant", async () => {
+    const { stores, bus } = wired();
+    const t1 = hear(bus, { scope: "user", id: "alice", tenantId: "t1" });
+    const untenanted = hear(bus, { scope: "user", id: "alice", tenantId: "" });
+    await stores.session.set("t1:s1", session("t1:s1", { tenantId: "t1" }), "any");
+    await tick();
+    expect(t1.map((n) => n.kind)).toEqual(["run"]);
+    expect(untenanted).toEqual([]);
+  });
+
   it("publishes under the record's tenant, by the bare session id", async () => {
     const { stores, bus } = wired();
     const t1 = hear(bus, sessionTopic("s1", "t1"));

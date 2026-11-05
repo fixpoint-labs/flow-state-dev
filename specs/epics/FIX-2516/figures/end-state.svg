@@ -1,0 +1,92 @@
+<svg viewBox="0 0 940 486" role="img" aria-label="What's in the box. In the box, the framework: attachments beside the input, one limits set checked by the server, file parts on the user line live and after reload, file parts to a generator with a history rule, and a task brief that keeps its files. In the box, harnesses and composer: a turn's files reach Claude Code, Codex and Cursor; the plus picker, paste, drop, a preview strip with remove; downscaling and plain refusals. A fence across the box: bytes travel inside the request, at most 10 images and 3 MB of files per message; past it is FIX-824's upload boundary, only if the kill line trips. Composed in by the app: its composer's look, and which actions write a user line. Replaced in one line: Kitchen Sink's text-only submit, and sendTurn's string. Not built: files in replies, audio and video, a file library, drive pickers, Word and Excel, upload once."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .chip  { fill:var(--surface); stroke:var(--code); stroke-width:1; }
+    .app   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .one   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .none  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .fence { stroke:var(--gone); stroke-width:2; stroke-dasharray:8 5; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-code { fill:var(--code); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="486"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="16" width="612" height="318" rx="8"/>
+    <text class="t-tag c-code" x="32" y="38">IN THE BOX · WHAT EVERY CHAT GETS</text>
+    <text class="t-lbl" x="32" y="62">THE FRAMEWORK · FIX-2517</text>
+    <rect class="chip" x="32" y="70" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="92">Attachments beside the input (Q2)</text>
+    <rect class="chip" x="32" y="110" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="132">One limits set, checked by the server</text>
+    <rect class="chip" x="32" y="150" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="172">File parts on the user line, after reload</text>
+    <rect class="chip" x="32" y="190" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="212">File parts to a generator, with history</text>
+    <text class="t-lbl" x="330" y="62">HARNESSES · FIX-2519 · DOCUMENTS · FIX-2520</text>
+    <rect class="chip" x="330" y="70" width="282" height="34" rx="4"/>
+    <text class="t-b" x="342" y="92">A turn's files to Claude Code, Codex, Cursor</text>
+    <rect class="chip" x="330" y="110" width="282" height="34" rx="4"/>
+    <text class="t-b" x="342" y="132">A task's brief keeps its files, every run</text>
+    <text class="t-lbl" x="330" y="166">THE COMPOSER · FIX-2518</text>
+    <rect class="chip" x="330" y="174" width="282" height="34" rx="4"/>
+    <text class="t-b" x="342" y="196">+ picker, paste, drop, previews, remove</text>
+    <rect class="chip" x="330" y="214" width="282" height="34" rx="4"/>
+    <text class="t-b" x="342" y="236">Downscaling and plain refusals</text>
+  </g>
+
+  <g id="the-fence">
+    <line class="fence" x1="16" y1="268" x2="628" y2="268"/>
+    <text class="t-tag c-gone" x="32" y="290">FENCE · Q1</text>
+    <text class="t-b" x="32" y="308">Bytes travel inside the request: at most 10 images and 3 MB of files a message</text>
+    <text class="t-s" x="32" y="324">past it, FIX-824's upload boundary, and only if the kill line trips</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="app" x="644" y="16" width="280" height="150" rx="8"/>
+    <text class="t-tag c-acc" x="660" y="38">COMPOSED IN BY THE APP</text>
+    <text class="t-b" x="660" y="66">Its composer's look</text>
+    <text class="t-s" x="660" y="84">the pieces come from fsdev ui add</text>
+    <text class="t-b" x="660" y="114">Which actions write a user line</text>
+    <text class="t-s" x="660" y="132">an action with userMessage takes files;</text>
+    <text class="t-s" x="660" y="148">one without refuses them</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="one" x="644" y="182" width="280" height="152" rx="8"/>
+    <text class="t-lbl" x="660" y="204">REPLACED IN ONE LINE</text>
+    <text class="t-b" x="660" y="232">Kitchen Sink's text-only submit</text>
+    <text class="t-s" x="660" y="250">sends msg.files with msg.text</text>
+    <text class="t-b" x="660" y="282">sendTurn(message)</text>
+    <text class="t-s" x="660" y="300">takes the composer's files too</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="none" x="16" y="352" width="908" height="118" rx="8"/>
+    <text class="t-tag c-gone" x="32" y="374">NOT BUILT</text>
+    <text class="t-b" x="32" y="404">Files in model replies</text>
+    <text class="t-b" x="252" y="404">Audio and video</text>
+    <text class="t-b" x="472" y="404">A file library, or reuse</text>
+    <text class="t-b" x="692" y="404">Cloud drive pickers</text>
+    <text class="t-b" x="32" y="440">Word and Excel</text>
+    <text class="t-s" x="32" y="456">cut on 2026-11-05, a later issue</text>
+    <text class="t-b" x="252" y="440">Upload once, reference many</text>
+    <text class="t-s" x="252" y="456">FIX-891</text>
+    <text class="t-b" x="472" y="440">A blob store</text>
+    <text class="t-s" x="472" y="456">FIX-824 and FIX-367</text>
+  </g>
+</svg>

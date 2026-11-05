@@ -418,6 +418,32 @@ const runs = rows.filter((row) => row.parentSessionId != null);
 Leave the option off and you get the sessions a person started. Rows belonging to
 another principal, organization or tenant are absent either way.
 
+### Each session's state
+
+`include: "status"` adds `requestStatus` to each row: the status of the
+session's latest request. A request still running or waiting on the user
+(`in_progress`, `suspended`) wins over a later one that ended. A session with no
+request has none, so guard with `== null`. On a `suspended` row,
+`requestWaitsForUser` is `true` when the request waits for the user (a question,
+an approval) and `false` when it waits on other work that resumes by itself.
+Pass an array to ask for more than
+one thing:
+
+```ts
+const rows = await fsd.sessions.list({
+  flowKind: "research",
+  include: ["dispatch-runs", "status"],
+});
+
+const needsMe = rows.filter((row) => row.requestWaitsForUser === true);
+```
+
+To keep the list current, subscribe to `topic.user()` and list again on a
+`"run"` notice. The server sends one whenever one of the user's sessions is
+created, titled or deleted, or one of its requests starts or ends, from any tab,
+script or CLI run. A change written by another server process reaches the socket
+only on a change bus that crosses processes. In React, `useSessionList` from `@flow-state-dev/react` does both.
+
 ### Sessions created with readonly state
 
 A flow's session `stateSchema` can declare a field `.readonly()`: it is set when
