@@ -11,8 +11,9 @@ ER-8, and FIX-2534's D2 and cursor, are inputs and are not reopened here.
 flowchart TD
   I["FIX-2536"] --> D1["D1 · a poll reaches only its own user's subscriptions"]
   D1 -.->|"rejected · A's credentials read what B then hears"| X1["the poll feeds the thread index's routing"]
-  I --> D2["D2 · the place moves only past what was taken"]
-  D2 -.->|"rejected · a lost delivery is fetched never again"| X2["the place moves on every answer"]
+  I --> D2["D2 · polledThrough moves every poll · a lost delivery waits on the cursor"]
+  D2 -.->|"rejected · every later event judged again"| X2["hold the mark at the loss"]
+  D2 -.->|"rejected · the lost event is gone"| X3["move the mark and drop it"]
   I --> QA["Q-A · open, owner · pushed subscriptions also poll slowly"]
 ```
 
@@ -36,20 +37,20 @@ access through, such as a GitHub App installation scoped per user. Then one poll
 could serve everyone, and the routing path is cheaper.
 
 <a name="d2"></a>
-## D2 · A poll's place moves only once every event it fetched was taken, seen, held or finally refused
+## D2 · The poll's `polledThrough` mark moves after every poll; a delivery the host lost waits on the cursor and is sent on the next poll, unscreened
 
 | | |
 |---|---|
-| **Instead of** | Moving the place (the provider's ETag and `since` mark) on every answer, the usual way to poll |
-| **Because** | FIX-2534 leaves an event unseen when the host lost its dispatch, so its next copy sends it (`service-flow.ts` ~30–33). On push, that copy is a redelivery. On a laptop, the only next copy is the next poll, and a moved place answers it `304`. So a send that came back `unsent`, or met another delivery's in-flight mark, keeps the place: the next poll asks without it, and the cursor drops what was already seen |
-| **Locks in** | The place is a promise: everything before it reached its sessions. A loss costs one unconditional request and a re-read the cursor dedupes, never a missed event |
+| **Instead of** | Holding the mark at the lost event, so the next poll fetches it again · moving the mark and dropping the event |
+| **Because** | FIX-2534 leaves an event unseen when the host lost its dispatch, so its next copy sends it (`service-flow.ts` ~30–33). On push, that copy is a redelivery; on a laptop, a poll past the mark never fetches it again. Holding the mark would fetch and screen every later event again, and FIX-2537's Jev would judge each one twice (the [seam](#seam-2537)). So the mark moves every poll (EM call, 2026-11-05), and the lost event, already screened, waits in a bounded resend list on the same cursor row; the next poll hands it straight to delivery under the same message id, so it lands once |
+| **Locks in** | Each event a poll fetched is screened once, then delivered, refused, held or kept to resend. The cursor holds up to 20 screened events of its user's own thread; past that, the oldest are dropped and the session's next message says how many |
 
-![D2: the place moves only past what was taken, chosen, beside moving it on every answer. Decides it: a delivery the host lost. Flips if delivery itself resent what it gave back](figures/d2-place.svg)
+![D2: the mark moves every poll and a lost delivery waits on the cursor, chosen, beside holding the mark at the loss. Decides it: a delivery the host lost. Flips if delivery itself resent what it gave back](figures/d2-place.svg)
 
-It comes down to a lost delivery: with the place moved, the next poll answers `304` and the event is gone.
+It comes down to a lost delivery: held, the mark makes Jev judge every later event again; moved without a list, the event is gone.
 
 **What would change my mind:** delivery gaining its own resend for what it gave back. Then the
-place could move freely, and this rule is extra.
+resend list is extra.
 
 <a name="decided-not-asked"></a>
 <details>
@@ -57,7 +58,7 @@ place could move freely, and this rule is extra.
 
 ## Decided, not asked
 
-- **Where.** The fire and the place in `workforce/src/subscriptions/`; the tick beside Vercel's
+- **Where.** The fire and the cursor fields in `workforce/src/subscriptions/`; the tick beside Vercel's
   claim-and-dispatch, its home (`scheduled` or a shared helper) the implementer's call; GitHub's
   poll beside FIX-2535's GitHub flow.
 - **The row (epic D10, as signed).** One per polled subscription, in a `defineScheduleCollection`
@@ -69,13 +70,16 @@ place could move freely, and this rule is extra.
   off. Every ending goes through `unsubscribe` already: the tool, a task's failure or cancel
   (`endTaskSubscriptions`), a thread's closing. A poll that sees the thread close emits
   `closes: true` and ends it the same way.
-- <a name="seam-2537"></a>**Seen versions skip the screens: a seam with FIX-2537 (#4809).** Before any screen
-  runs, the fire drops every object and version the subscription's cursor has already seen (or
-  a live in-flight mark holds). Routing remembers nothing it judged, so without this a push and
-  then a poll of one version would be judged twice, and FIX-2537's Jev would make two calls for
-  one event (epic ER-1, D7). The check reads the cursor and writes nothing; `deliverToRow`'s own
-  cursor check still decides the send. Tested: a unit test (a pushed version, then polled: zero
-  screen calls) and the goal's signal (g) with the `no-seen-skip` control.
+- <a name="seam-2537"></a>**The seam with FIX-2537 (#4809): `polledThrough`.** The poll
+  fetches only objects updated since the cursor's `polledThrough` mark, and moves it after every
+  poll, whether or not anything was delivered (EM call, 2026-11-05). An event a screen refused,
+  Jev included, is never fetched or judged again: a subscription's cursor records `seen` only in
+  delivery, so `seen` alone can't say so. One field on the per-subscription cursor row, not a new
+  store. Before any screen the fire also drops versions the cursor has seen, so a version push
+  already delivered isn't judged again. **Left:** in an app that pushes and polls, a version push
+  refused is judged once more by the first poll, since routing remembers nothing it judged; leg 3
+  reports the count. Tested: a unit test (an event refused on one poll is not routed on the
+  next) and the goal's signal (g) with the `no-mark` control.
 - **The floor (epic D10).** The app sets the cadence: 5, 10, 15, 20, 30 or 60 minutes. Under 5,
   or off that list, the service flow's definition throws. `subscribe` builds the cron itself
   and checks it again before it writes; no tool input carries a cadence or a cron.
@@ -92,7 +96,7 @@ place could move freely, and this rule is extra.
 - **Versions agree.** The poll uses FIX-2535's normalizer and version rule unchanged, so one
   object at one state has one version by push and by poll (epic D4, ER-8). GitHub's poll is
   unit-tested on a recorded push payload and the recorded REST read of the same comment.
-- **Conditional requests.** The place holds one ETag per read the provider makes. GitHub
+- **Conditional requests.** The cursor holds one ETag per read the provider makes. GitHub
   answers a conditional request `304` and does not count it against the primary rate limit.
 - **Per-repo batching: not built.** D10's note asks for it; each subscription is its own row,
   and rows fire on their own minutes. A quiet thread costs a few `304`s per period. Batch when a
@@ -101,7 +105,8 @@ place could move freely, and this rule is extra.
   not polled in v1. `subscribe` says so in its result; with push off, it refuses.
 - **Turning polling on later.** A subscription made before the app polled has no row until it
   subscribes again. The README says so.
-- **A failed poll** (a revoked token, a `404`) keeps the place and records the error on it; the
+- **A failed poll** (a revoked token, a `404`) fetched nothing, so `polledThrough` stays, and the
+  error is recorded on the cursor; the
   subscription stays until one of ER-7's endings.
 
 </details>
@@ -122,7 +127,7 @@ place could move freely, and this rule is extra.
 ### Q-A · Should subscriptions that push also poll, slowly, to catch what push lost?
 
 - **In plain terms:** FIX-2534 found that an event lost during delivery is never resent unless
-  the provider sends it again. With this issue, a poll fetches it again (D2). Today that helps
+  the provider sends it again. With this issue, a polled subscription keeps it and sends it on the next poll (D2). Today that helps
   only apps that poll. The question is whether an app with a webhook also polls, about once an
   hour, so a lost review still reaches its task.
 - **The trade-off:** yes means every subscription also has an hourly row, a few conditional
@@ -172,5 +177,6 @@ raised.** Run by the authoring worker, which has no sub-agent tool; say so at th
 
 - **Draft:** epic D10's rows and cadence on FIX-2534's cursor; D2 from FIX-2534's unsent path;
   the tick from finding none in a long-lived host.
-- **Seam (coordinator, 2026-11-05):** seen versions skip the screens, so FIX-2537's Jev
-  stays one call per event across push and poll.
+- **Seam (EM call, 2026-11-05):** `polledThrough` moves every poll, so FIX-2537's Jev judges a
+  polled event once. D2 changed with it: a lost delivery waits on the cursor instead of holding
+  the mark.
