@@ -42,6 +42,7 @@ function stub(task: BoardTask) {
       return () => {};
     },
     watchReview: () => () => {},
+    taskActions: () => ({}),
     watchWorking: (run: { sessionId: string; requestId?: string }, onChange: (now: WorkingNow) => void) => {
       watched.push(`${run.sessionId}/${run.requestId}`);
       showNow = onChange;
@@ -62,6 +63,8 @@ const RUNNING: BoardTask = {
   to: "coder.claude-code",
   title: "Fix session log ordering",
   status: "running",
+  boardStatus: "in_progress",
+  goal: "Fix session log ordering after researcher replies.",
   runSessionId: "run-1",
   runRequestId: "req-1",
   harness: "Claude Code",
@@ -76,6 +79,7 @@ function open(lab: ReturnType<typeof stub>) {
       nameOf={(id) => id}
       lookOf={() => ({}) as never}
       isCoding={() => true}
+      coders={[]}
       onClose={() => {}}
     />,
   );
@@ -118,9 +122,9 @@ describe("a running task's feed ends in a live working line", () => {
   });
 
   it.each([
-    ["done", { status: "done", result: "Fixed." }],
-    ["failed", { status: "failed", result: "The checks stayed red." }],
-    ["cancelled", { status: "cancelled" }],
+    ["done", { status: "done", boardStatus: "completed", result: "Fixed." }],
+    ["failed", { status: "failed", boardStatus: "errored", error: "The checks stayed red." }],
+    ["cancelled", { status: "cancelled", boardStatus: "cancelled" }],
   ] as const)("is gone once the task is %s", (_, ended) => {
     const lab = stub(RUNNING);
     const popup = open(lab);

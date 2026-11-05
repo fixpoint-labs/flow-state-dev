@@ -11,6 +11,7 @@ import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LabAdapter, TaskRow, TaskWork } from "../src/adapter";
 import { ThreadView } from "../src/components/ThreadView";
+import { toolRun } from "../src/lib/tool-steps";
 
 afterEach(() => {
   cleanup();
@@ -24,7 +25,7 @@ const RUNNING: TaskRow = { id: "t-1", title: "Fix session log ordering", goal: "
 /** The run's entries so far: it has done things, and nothing new has arrived since. */
 const DONE_SO_FAR: TaskWork["entries"] = [
   { kind: "assistant", id: "a1", text: "Now the core converter in `adapter.ts`." },
-  { kind: "tool", id: "t1", name: "Bash" },
+  { kind: "tool", id: "t1", ...toolRun([{ id: "c1", name: "Bash", args: { command: "ls" }, status: "done" }]) },
 ];
 
 function open(task: TaskRow) {
@@ -35,6 +36,7 @@ function open(task: TaskRow) {
       onChange({ entries: DONE_SO_FAR });
       return () => {};
     },
+    taskActions: () => ({}),
   } as unknown as LabAdapter;
   const view = render(<ThreadView adapter={adapter} sessionId="s-1" task={task} pinned={false} onBack={() => {}} />);
   const pane = screen.getByRole("complementary", { name: `Task: ${task.title}` });
