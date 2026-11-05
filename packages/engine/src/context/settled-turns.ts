@@ -6,7 +6,10 @@
  * the newest past turns under the session's request scope, leave out the
  * running request, an interrupted turn that will run again (parked) or that a
  * retry re-ran, keep only the settled items of any other interrupted turn,
- * and order what is left oldest first.
+ * and order what is left oldest first. The session's open turns are read here
+ * too, once, and every step runs over the two reads together: a retry among
+ * the open turns supersedes its original, a request both reads caught is read
+ * once, and the window is held to `turns` after they are merged.
  *
  * A turn waiting on a call is read as far as it got (FIX-2279). A call is a
  * wait gate bound to a request it started (`dispatcher({ wait: true })`, a
@@ -40,12 +43,6 @@ export type SettledTurnsInputs = {
   runningRequestId?: string;
   /** The running request's metadata, when it is in this session: a retry names the turn it re-runs. */
   runningMetadata?: Record<string, unknown>;
-  /**
-   * The session's turns open now (running or suspended), read by a caller
-   * that is not one of them: a retry still running names the turn it re-runs
-   * as well.
-   */
-  openTurns?: readonly Pick<RequestRecord, "metadata">[];
   /** Where parked gates are read. Without one, nothing is treated as parked. */
   durability?: Pick<DurabilityProvider, "listSuspended" | "loadSuspension">;
   /** Where a park a turn owes is read (FIX-2269): a turn that owes one is parked. */
@@ -77,6 +74,12 @@ export type SettledTurns = {
    * got: not settled, so a reader that marks turns settled marks these open.
    */
   waiting: Set<string>;
+  /**
+   * The session's turns open now, running or suspended, other than the
+   * running request: read once here, so a retry among them supersedes its
+   * original in every reader alike.
+   */
+  open: RequestRecord[];
   /** The turns a model reads, oldest first. */
   settled: RequestRecord[];
 };
@@ -84,14 +87,13 @@ export type SettledTurns = {
 /** Read a session's settled past turns. See the file header for the rule. */
 export async function readSettledTurns(inputs: SettledTurnsInputs): Promise<SettledTurns> {
   const { turns, runningRequestId } = inputs;
-  // The newest past turns (`PAST_TURN_STATUSES`). The status filter excludes
-  // the running request and any in-flight siblings; an `interrupted` request
-  // is a turn its host died in, and what it persisted (the message that
-  // started it, the calls that ran) is part of the conversation.
-  // `orderBy:"startedAtMs"` keeps the selection robust to out-of-order
-  // metadata writes. One row past the window is read only to learn whether an
-  // earlier turn fell out of it; it is dropped before anything reads the
-  // window.
+  // Two reads, then one pipeline over both.
+  //
+  // The newest past turns (`PAST_TURN_STATUSES`): an `interrupted` request is
+  // a turn its host died in, and what it persisted (the message that started
+  // it, the calls that ran) is part of the conversation. `orderBy:"startedAtMs"`
+  // keeps the selection robust to out-of-order metadata writes. One row past
+  // the window is read only to learn whether an earlier turn fell out of it.
   const listed = await inputs.requests.list({
     ...inputs.scope,
     status: PAST_TURN_STATUSES,
@@ -99,46 +101,45 @@ export async function readSettledTurns(inputs: SettledTurnsInputs): Promise<Sett
     orderBy: "startedAtMs",
     withItems: true
   });
+  // The session's open turns, running or suspended, other than the running
+  // request: every one can be a retry that supersedes a past turn, and a
+  // suspended one waiting on a call is read as far as it got. Not limited: a
+  // limit would be spent on turns the steps below leave out, and a session's
+  // open turns are few. Items only where something can suspend.
+  const open = (
+    await inputs.requests.list({ ...inputs.scope, status: ["in_progress", "suspended"], orderBy: "startedAtMs", withItems: inputs.durability !== undefined })
+  ).filter((r) => r.id !== runningRequestId);
 
   // The store's newest-first order breaks a start-time tie by id; trimming
   // before reversing keeps the turn at the edge the same as without the extra row.
   const past = listed.slice(0, turns).reverse();
-  const retried = retriedIds([...past, ...(inputs.openTurns ?? [])], inputs.runningMetadata);
+  const retried = retriedIds([...past, ...open], inputs.runningMetadata);
   let parked = new Set<string>();
   let waiting = new Set<string>();
-  // The session's suspended turns no older than the window: those waiting on
-  // a call are read as far as they got. Not limited here: a limit would be spent
-  // on turns `callWaits` then leaves out (a stop for the user, a wait on a
-  // task), hiding an older call behind them; the merged window below is what
-  // is held to `turns`, and a session's open turns are few. Without a
-  // durability provider nothing suspends, so there is nothing to list.
-  const first = listed.length > turns ? past[0] : undefined;
-  const suspended =
-    inputs.durability === undefined
-      ? []
-      : (await inputs.requests.list({ ...inputs.scope, status: ["suspended"], orderBy: "startedAtMs", withItems: true })).filter(
-          (r) => r.id !== runningRequestId && (first === undefined || compareTurnsOldestFirst(r.startedAtMs, r.id, first.startedAtMs, first.id) >= 0)
-        );
   try {
     parked = await parkedInterruptedIds(inputs.durability, past, inputs.wakes);
-    waiting = await callWaits(inputs.durability, inputs.scope, [...suspended, ...past.filter((r) => parked.has(r.id) && !retried.has(r.id))]);
+    const candidates = [...open.filter((r) => r.status === "suspended"), ...past.filter((r) => parked.has(r.id))];
+    waiting = await callWaits(inputs.durability, inputs.scope, candidates.filter((r) => !retried.has(r.id)));
   } catch (error) {
     inputs.onGateReadError(error);
   }
-  // The past turns and the waiting ones, each once: a request the window read
-  // `interrupted` that was re-driven and parked again before the suspended read
-  // is in both, and the suspended read is how it stands now. Then the newest
-  // `turns` of them, so a waiting turn takes a place in the window like any other.
+
+  // Each request once: one the past read caught `interrupted` that was re-driven
+  // and parked again before the open read is in both, and the open read is how
+  // it stands now. Of the open turns only those waiting on a call take a place.
   const byId = new Map<string, RequestRecord>();
-  for (const r of [...suspended.filter((r) => waiting.has(r.id)), ...past]) if (!byId.has(r.id)) byId.set(r.id, r);
+  for (const r of [...open.filter((r) => waiting.has(r.id)), ...past]) if (!byId.has(r.id)) byId.set(r.id, r);
   const merged = [...byId.values()].sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.id, b.startedAtMs, b.id));
+  // The newest `turns` of them, so a waiting turn takes a place like any other
+  // and the window stays a hard cap; `start` names the first held when any fell out.
   const held = merged.slice(Math.max(0, merged.length - turns));
   const start = (listed.length > turns || merged.length > turns) && held[0] !== undefined ? { requestId: held[0].id } : undefined;
   // The window is the past turns it holds; a waiting `suspended` turn is listed among the open ones.
   const window = held.filter((r) => r.status !== "suspended");
   const settled = held
     .filter((r) => r.id !== runningRequestId)
-    .filter((r) => r.status !== "interrupted" || waiting.has(r.id) || (!retried.has(r.id) && !parked.has(r.id)))
+    // An interrupted turn a retry re-ran is never read; a parked one only while it waits on a call.
+    .filter((r) => r.status !== "interrupted" || (!retried.has(r.id) && (waiting.has(r.id) || !parked.has(r.id))))
     .map((r) => {
       if (r.status === "completed" || r.items === undefined) return r;
       const wait = waiting.has(r.id);
@@ -148,7 +149,7 @@ export async function readSettledTurns(inputs: SettledTurnsInputs): Promise<Sett
       return { ...r, items: wait ? [...items, waitingLine(r, r.items)] : items };
     });
 
-  return { window, ...(start !== undefined ? { start } : {}), retried, parked, waiting, settled };
+  return { window, ...(start !== undefined ? { start } : {}), retried, parked, waiting, open, settled };
 }
 
 /**

@@ -143,15 +143,11 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
       const turns = Math.max(0, Math.min(SESSION_HISTORY_MAX_TURNS, Math.floor(count)));
       // The session's own request scope, as its own turns load their window.
       const scope = sessionRequestScope(sessionId, record, identity.tenantId);
-      const open = (await reads.requests.list({ ...scope, status: ["in_progress", "suspended"], orderBy: "startedAtMs" })).filter(
-        (r) => r.id !== reads.runningRequestId
-      );
       const past = await readSettledTurns({
         requests: reads.requests,
         scope,
         turns,
         runningRequestId: reads.runningRequestId,
-        openTurns: open,
         ...(reads.durability !== undefined ? { durability: reads.durability } : {}),
         onGateReadError: reads.onGateReadError
       });
@@ -179,7 +175,7 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
         turns: read,
         ...(first !== undefined && leftOut ? { startRequestId: first.id } : {}),
         ...(newest !== undefined ? { asOf: { requestId: newest.id, atMs: newest.completedAtMs ?? newest.updatedAt } } : {}),
-        running: open.length > 0 || past.parked.size > 0 || (past.start !== undefined && (await parkedBefore(reads, scope, past.window)))
+        running: past.open.length > 0 || past.parked.size > 0 || (past.start !== undefined && (await parkedBefore(reads, scope, past.window)))
       };
     },
   };

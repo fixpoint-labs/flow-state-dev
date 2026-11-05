@@ -162,6 +162,25 @@ describe("readSettledTurns, for the session's open turns", () => {
     expect(turns.settled.map((r) => r.id)).toEqual(["filing"]);
   });
 
+  it("leaves out a turn whose retry is the one waiting on a call", async () => {
+    // A died, /retry re-ran it as B, and B parked on a call: B is the turn, A is not.
+    const died = record("a", "interrupted", 2, [line("a", "The gala is at Harbor Hall.", 2)]);
+    const retry = { ...record("b", "suspended", 3, [line("b", "The gala is at Harbor Hall.", 3), parkedCall("b", 4)]), metadata: { retryOf: "a" } } as RequestRecord;
+    const turns = await read([earlier, died, retry], [gate("b", "wait", { requestId: "r-recipient", deadline: 9 })]);
+    expect(turns.settled.map((r) => r.id)).toEqual(["done", "b"]);
+    expect(turns.retried.has("a")).toBe(true);
+  });
+
+  it("leaves out a turn whose retry is still open, whatever it waits on, as another session's read does", async () => {
+    // The turn's own read passes no open turns: it must find the retry itself.
+    const died = record("a", "interrupted", 2, [line("a", "Book it.", 2)]);
+    const stoppedRetry = { ...record("b", "suspended", 3, [line("b", "Book it.", 3)]), metadata: { retryOf: "a" } } as RequestRecord;
+    const runningRetry = { ...record("c", "in_progress", 4, []), metadata: { retryOf: "done" } } as RequestRecord;
+    const doneDied = { ...earlier, status: "interrupted" as const };
+    const turns = await read([doneDied, died, stoppedRetry, runningRetry], [{ ...gate("b", "approval", {}), suspensionId: "g-stop" }]);
+    expect(turns.settled.map((r) => r.id)).toEqual([]);
+  });
+
   it("reads a turn once when both reads caught it, as it stands now", async () => {
     // Read interrupted by the window, then re-driven and parked again before the suspended read.
     const died = { ...filing, status: "interrupted" as const };
