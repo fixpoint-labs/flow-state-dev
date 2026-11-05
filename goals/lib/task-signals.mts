@@ -192,11 +192,12 @@ export async function runTaskSignals(lab: SignalsLab): Promise<void> {
     const notes: string[] = [];
     const scratch = goalTmpDir(`${lab.name}-task-signals${control === "" ? "" : `-${control}`}`);
     const data = `${scratch}/data`;
+    // The browser starts before the control is planted, so a browser that won't start leaves the checkout as it was.
+    const browser = await launchChromium();
     const unplant = plant(plants, control);
     let served: { origin: string; child: ChildProcess } | undefined;
     /** The restarted server while it starts, so it is stopped however the run ends. */
     let serving: Promise<{ origin: string; child: ChildProcess }> | undefined;
-    const browser = await launchChromium();
     try {
       try {
         lab.build();
