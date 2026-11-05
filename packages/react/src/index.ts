@@ -148,7 +148,11 @@ export {
   type FlowNavigatorProps,
   type FlowNavigatorRow,
   type FlowNavigatorSection,
-  type FlowNavigatorSlots
+  type FlowNavigatorSlots,
+  sessionLabel,
+  sessionRowState,
+  sessionAge,
+  type SessionRowState
 } from "./components/flow-navigator";
 
 export {
@@ -194,6 +198,12 @@ export {
 export { useDraft, clearDraft, readDraft, saveDraft } from "./hooks/useDraft";
 
 export { useSubscription, type UseSubscriptionOptions } from "./hooks/useSubscription";
+export {
+  useSessionList,
+  type SessionList,
+  type SessionListClient,
+  type UseSessionListOptions
+} from "./hooks/useSessionList";
 
 export {
   useSubmit,

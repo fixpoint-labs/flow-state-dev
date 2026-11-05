@@ -93,18 +93,16 @@ export interface HarnessSessionViewProps {
   readonly models: ModelChoices;
   /** What the session's harness loads from the repository, from the server. Unset, the header leaves the line out. */
   readonly repoLine?: RepoLine;
-  /** Called when the session's title arrives or changes, so the rail can pick it up. */
-  readonly onTitled?: () => void;
 }
 
 /** How the page sends one line: the framework's rule, with Kitchen Sink's goal controls on it. */
 const sendLineOnce = (prompt: string, running: boolean, sender: LineSender) => sendLine(prompt, running, sender);
 
 /** One harness session's conversation and plan. */
-export function HarnessSessionView({ label, flowKind, sessionId, models, repoLine, onTitled }: HarnessSessionViewProps) {
+export function HarnessSessionView({ label, flowKind, sessionId, models, repoLine }: HarnessSessionViewProps) {
   return (
     <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl={BASE_PATH} renderers={chatAssistantRenderers}>
-      <SessionBody label={label} sessionId={sessionId} models={models} repoLine={repoLine} onTitled={onTitled} />
+      <SessionBody label={label} sessionId={sessionId} models={models} repoLine={repoLine} />
     </FlowProvider>
   );
 }
@@ -114,13 +112,11 @@ function SessionBody({
   sessionId,
   models,
   repoLine,
-  onTitled,
 }: {
   label: string;
   sessionId: string;
   models: ModelChoices;
   repoLine?: RepoLine;
-  onTitled?: () => void;
 }) {
   const session = useSession(sessionId, { items: true, autoResume: true });
   const [message, setMessage] = useDraft(SESSION_DRAFT, sessionId);
@@ -128,13 +124,6 @@ function SessionBody({
   messageRef.current = message;
 
   const { refresh } = session;
-
-  // The rail lists sessions by title. The flow sets it in a session's first
-  // turn, so re-read the rail when it arrives.
-  const title = session.detail?.title;
-  useEffect(() => {
-    if (title !== undefined) onTitled?.();
-  }, [title, onTitled]);
 
   const state = (session.snapshot?.clientData.session ?? {}) as Partial<HarnessSessionState>;
   const bound = state.binding?.confirmed ?? null;

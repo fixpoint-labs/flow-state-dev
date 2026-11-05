@@ -1634,6 +1634,11 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   both writes refuse a path, a value starting with `-`, a control character, a remote-helper address (`ext::…`), a user
   or password on `http(s)`, and a password on any scheme, with `invalid-repository`, and never
   repeat the value. `git@host:org/repo` and `ssh://git@host/org/repo` are accepted.
+  A host that passes `defineProjectBlocks({ checkRepository })` (its workspace host's
+  `checkRepository`, bound to the directory its runs must not commit) also has both writes refuse a
+  repository no run could check out on this machine, with `repository-unusable` and the host's
+  sentence, and gets a read-only **`checkRepository { repository }`** action that answers the same
+  question, `{ usable, how }` or `{ usable: false, problem }`, so a page can ask before it writes.
 - **`setMcpServers { project?: { visibility, id }, mcpServers }`** replaces the project's list of
   MCP server names; `[]` clears it. Members only; nothing else on the row moves. A name must be one
   the host offers, `defineProjectBlocks({ mcpServers })`: refusals `unknown-mcp-server` (naming what
@@ -2690,7 +2695,7 @@ coordinator's own turn's answer name, which its messages carry as `agentName`) a
 `WORK_PROJECT_STATE_KEY`, `SEND_MESSAGE_TOOL` (the
 tool a sent message is a call to), `MESSAGE_RECEIVED_ENTRY`, `RECEIVED_MESSAGE_COMPONENT` (the
 component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
-`WORKER_MESSAGES_RESOURCE` and `workerMessageRowSchema`, `delegateAnswerOf`, the same values the root exports, and reaches no Node built-in.
+`WORKER_MESSAGES_RESOURCE` and `workerMessageRowSchema`, `delegateAnswerOf`, `answerTextOf`, the same values the root exports, and reaches no Node built-in.
 
 ## Exports
 
@@ -2701,6 +2706,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `takeFinishedTasks` / `finishedTaskSchema` / `FinishedTask` | A handler block that takes the tasks this conversation filed whose endings haven't been heard yet, says each as a line under its delegate's name, and returns them as `{ taskId, ending, worker?, line }[]`. Input is ignored. `[]` outside a turn a user's own message started (see [Answering again with finished tasks](#answering-again-with-finished-tasks)). |
 | `finishedTasksAnswerAgain({ message? })` / `FinishedTasksAnswerAgainOptions` | The block `answerAgain: true` uses: `takeFinishedTasks`, then `{ message }` naming each finished task and how it ended, or `{}` when nothing finished. `message(finished)` replaces the default wording. |
 | `delegateAnswerOf(item)` / `delegateAnswerMetadata({ worker, taskId })` / `DelegateAnswer` | A delegate's answer that landed in a conversation as written (a task filed with `resultTo: "conversation"`, routed or not), as its message item marks it: `{ worker, taskId }`, or `undefined` for any other item. `delegateAnswerMetadata` is the `metadata` such a line is emitted with. Also on `./browser`. |
+| `answerTextOf(output)` | A completed task's answer as text, from its row's `output`: the output itself when it is a string (an agent worker's answer), else its `answer` field (a coding run's). `undefined` when blank or absent. The rule the conversation lands a task's answer by. Also on `./browser`. |
 | `MAX_ANSWERS_AGAIN` | `3`, the most times one request answers again after its turn, the answer after a plan included. |
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability({ roster, inventory, sources? })` | The discovery door. Installs the `workers` source plus whatever other domains' sources you pass, and contributes one control tool, `discover`, which lists the standard workers the files declare. |
@@ -2767,7 +2773,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `ResourceModuleExport` / `WorkerResourceModuleExport` | What a module in the organisation's or a team's `resources/` folder may be — a capability or a resource — and the narrower type a worker's own folder is held to: a resource, never a capability. |
 | `WorkerCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that worker wants. Read by the built-in `agent` worker flow; validated at the hire. |
 | `defineProjectsCollection()` / `definePrivateProjectsCollection()` | The shared projects (`projects/*` at org scope) and the private ones (the same keys at each user's scope), both shared across flows and browser-readable through `expose`. Every call returns the same declaration, so they never conflict. `defineProjectFilesCollection` and `definePrivateProjectFilesCollection` declare the files; neither has a browser read. |
-| `defineProjectBlocks({ mcpServers? })` | Returns `{ createProject, setRepository, setMcpServers, setChecks, setBrief, readProject, listProjects, readProjectFiles, actions }`. `mcpServers` names the MCP servers a project may name; absent, none. See [Projects](#projects). |
+| `defineProjectBlocks({ mcpServers?, checkRepository? })` | Returns `{ createProject, setRepository, setMcpServers, setChecks, setBrief, readProject, listProjects, readProjectFiles, actions }`. `mcpServers` names the MCP servers a project may name; absent, none. `checkRepository` is the host's repository check: both repository writes refuse `repository-unusable` on its no, and `actions.checkRepository` asks it. See [Projects](#projects). |
 | `projectMcpCapability(servers, { operator?, env?, allow?, idleMs? })` / `PROJECT_MCP_CAPABILITY` / `PROJECT_MCP_IDLE_MS` | The `projectMcp` capability: a `tools` preset a worker picks in its file, giving its model the conversation's project MCP servers as tools with the talking user's key, over a kept connection. See [Projects](#projects). |
 | `projectMcpTools(servers, { operator?, env? })` / `ProjectMcpServers` / `ProjectMcpToolsResolver` | The resolver a coding harness calls once per run for its project's MCP tools, relayed through FSD's own connection with the run owner's key. See [Projects](#projects). |
 | `defineMcpCredentialsCollection()` / `mcpCredentialsCapability` / `mcpCredentialProblem(value)` / `MCP_CREDENTIALS_PREFIX` | Each user's MCP server keys, `mcp-credentials/*` at user scope (client read: `setAt` only), the capability the resolving block holds, and the check a key route runs on a value. |
