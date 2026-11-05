@@ -45,6 +45,7 @@ export {
   inMemoryStores,
   resolveOrgStorageKey,
   resolveRequestIncarnation,
+  resolveSharedUserCellKey,
   resolveTraceMaxRequests,
   resolveUserStorageKey,
   runWithCAS,
@@ -241,6 +242,18 @@ export type {
   CreateDurabilitySweeperOptions,
   DurabilitySweeper
 } from "./durability/durability-sweeper";
+// A run as a row's owner, fired host-side, and the routing that fires one per
+// subscriber a service flow nominates (FIX-2534 D2).
+export {
+  fireOwnerRunThrough,
+  routeServiceEvent,
+  type MalformedOwnerRun,
+  type OwnerRun,
+  type OwnerRunFired,
+  type OwnerRunRefusal,
+  type RoutedOwnerRun,
+  type RoutedServiceEvent
+} from "./durability/owner-runs";
 
 export const enginePackageMarker = "@flow-state-dev/engine";
 

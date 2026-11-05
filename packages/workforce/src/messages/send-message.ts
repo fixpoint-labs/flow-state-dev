@@ -277,45 +277,18 @@ export async function sendMessage(
   flowKind: string,
   input: SendMessageInput,
   from: string,
-  options: {
-    readonly id?: string;
-    readonly exempt?: true;
-    readonly replyRequested?: { readonly deadlineAt?: number };
-    readonly noAnswer?: true;
-  } = {}
+  options: SendOptions = {}
 ): Promise<SendOutcome> {
-  const refuse = (error: string): SendOutcome => ({ ok: false, error });
   const state = (ctx.session.state ?? {}) as Record<string, unknown>;
   const sender = state[WORKER_ID_STATE_KEY];
   if (typeof sender !== "string" || sender.length === 0) return refuse("not_a_worker: this session runs no worker, so it can't send a message.");
-  if (input.text.trim().length === 0) return refuse("empty_message: say something.");
-  if (input.text.length > MAX_MESSAGE_CHARS) {
-    return refuse(`message_too_long: a message holds at most ${MAX_MESSAGE_CHARS} characters; this one has ${input.text.length}. Nothing was sent.`);
-  }
+  const repeated = await checkTextAndRepeat(ctx, installation, flowKind, input.text, from, options.id);
+  if (repeated !== undefined) return repeated;
 
   // ---- the recipient, and where it lands -----------------------------------
   const log = messageLogOf(ctx);
-  const writtenRef = options.id === undefined ? undefined : await log.getOptional(options.id);
-  const written = writtenRef?.state;
-  if (writtenRef !== undefined && written !== undefined) {
-    // The repeat answers what the first send did: an ended row stays a refusal.
-    if (written.status === "refused" || written.status === "undeliverable") {
-      return refuse(`not_delivered: the message to "${written.to}" was ${written.status} (${written.reason ?? "no reason was given"}).`);
-    }
-    // A flow with no pass sends on its own dispatch only, so a repeat finding
-    // the row never taken (the first send ended between the write and the
-    // dispatch) sends it again; the take keeps it once. A waited send's repeat
-    // sends it again too, pass or not (FIX-2269): its sender waits on the
-    // request that dispatch starts, and a resend from the pass leaves it none
-    // to follow.
-    const resends = carriesPass(installation, flowKind);
-    if (written.status === "unconfirmed" && written.takenBy === undefined && (written.deadlineAt !== undefined || !resends)) {
-      return markAnswer(ctx, written, await dispatchOnce(ctx, writtenRef, written, from, resends));
-    }
-    return markAnswer(ctx, written, { ok: true, id: written.id });
-  }
   const to = input.to;
-  let recipient: RosterWorker;
+  let recipientId: string;
   let destination: MessageAddress;
   let exchange: string | undefined;
   if (typeof to !== "string") {
@@ -325,14 +298,14 @@ export async function sendMessage(
     }
     const checked = "task" in to ? await checkTaskTarget(ctx, installation, to.task) : await checkTargetSession(ctx, installation, to.session, { session: true });
     if (!checked.ok) return refuse(checked.error);
-    recipient = checked.target.worker;
-    destination = { sessionId: checked.target.sessionId, flow: recipient.flow };
+    recipientId = checked.target.worker.id;
+    destination = { sessionId: checked.target.sessionId, flow: checked.target.worker.flow };
   } else {
     // ---- by name: on the roster, and hearing by name ------------------------
     const named = await installation.rosterWorker(ctx as never, to);
     const refused = recipientRefusal(installation, sender, to, named, input.inReplyTo !== undefined);
     if (refused !== undefined || named === undefined) return refuse(refused ?? `no_worker: no worker "${to}" on your roster.`);
-    recipient = named;
+    recipientId = named.id;
     if (input.inReplyTo !== undefined) {
       const answered = (await log.getOptional(input.inReplyTo))?.state;
       if (answered === undefined || answered.to !== sender || answered.from !== to) {
@@ -351,16 +324,129 @@ export async function sendMessage(
       destination = { sessionId: answered.fromSession, flow: answered.fromFlow };
       exchange = answered.exchange;
     } else {
-      destination = filingSessionFor(state, to) ?? (await conversationAddress(ctx, installation, to, recipient.flow, state));
+      destination = filingSessionFor(state, to) ?? (await conversationAddress(ctx, installation, to, named.flow, state));
     }
   }
 
   // ---- a reply request needs a turn to answer it ---------------------------
   // The flow it lands on, which for an answer is the original sender's.
   if (options.replyRequested !== undefined && runsMessageTurn(installation.workerFlows()[destination.flow]?.flow) === false) {
-    return refuse(`${noReplyError(recipient.id)} Nothing was sent.`);
+    return refuse(`${noReplyError(recipientId)} Nothing was sent.`);
   }
+  const addressed = typeof to === "string" ? {} : "task" in to ? { addressedBy: "task" as const, toTask: to.task } : { addressedBy: "session" as const };
+  return sendTo(ctx, installation, flowKind, input, from, options, { sender, recipientId, destination, exchange, addressed });
+}
 
+/** A service's delivery (FIX-2534, epic D9): who it is from, the subscription's session it goes to, and the message. */
+interface ServiceMessage {
+  /** Where the sending worker would stand: `service:<provider>`. */
+  readonly sender: string;
+  /** A live subscription's session, the worker it runs, and its flow: the subscription row is the recipient check. */
+  readonly to: { readonly sessionId: string; readonly flow: string; readonly worker: string };
+  readonly text: string;
+  /** The server-chosen id, so a repeat lands once. */
+  readonly id: string;
+}
+
+/**
+ * Send a service's delivery to a subscription's session: the server's own
+ * message (no budget), from `service:<provider>`, to the session the
+ * subscription row names. That row is its recipient check, not the roster's
+ * or `checkTargetSession`'s. Set by server code from a subscription row,
+ * never by a model.
+ */
+export async function sendServiceMessage(
+  ctx: BlockContext,
+  installation: WorkerInstallation,
+  flowKind: string,
+  message: ServiceMessage,
+  from: string
+): Promise<SendOutcome> {
+  const repeated = await checkTextAndRepeat(ctx, installation, flowKind, message.text, from, message.id);
+  if (repeated !== undefined) return repeated;
+  return sendTo(
+    ctx,
+    installation,
+    flowKind,
+    { text: message.text },
+    from,
+    { id: message.id, exempt: true },
+    {
+      sender: message.sender,
+      recipientId: message.to.worker,
+      destination: { sessionId: message.to.sessionId, flow: message.to.flow },
+      addressed: { addressedBy: "session" as const }
+    }
+  );
+}
+
+/** What a send is given beside its input. Server code only, never a model's input. */
+interface SendOptions {
+  readonly id?: string;
+  readonly exempt?: true;
+  readonly replyRequested?: { readonly deadlineAt?: number };
+  readonly noAnswer?: true;
+}
+
+const refuse = (error: string): SendOutcome => ({ ok: false, error });
+
+/**
+ * What every send checks before its recipient: the text, then whether a send
+ * under `id` was already written. Answers the send when it ends here, or
+ * `undefined` to go on.
+ */
+async function checkTextAndRepeat(
+  ctx: BlockContext,
+  installation: WorkerInstallation,
+  flowKind: string,
+  text: string,
+  from: string,
+  givenId: string | undefined
+): Promise<SendOutcome | undefined> {
+  if (text.trim().length === 0) return refuse("empty_message: say something.");
+  if (text.length > MAX_MESSAGE_CHARS) {
+    return refuse(`message_too_long: a message holds at most ${MAX_MESSAGE_CHARS} characters; this one has ${text.length}. Nothing was sent.`);
+  }
+  const writtenRef = givenId === undefined ? undefined : await messageLogOf(ctx).getOptional(givenId);
+  const written = writtenRef?.state;
+  if (writtenRef === undefined || written === undefined) return undefined;
+  // The repeat answers what the first send did: an ended row stays a refusal.
+  if (written.status === "refused" || written.status === "undeliverable") {
+    return refuse(`not_delivered: the message to "${written.to}" was ${written.status} (${written.reason ?? "no reason was given"}).`);
+  }
+  // A flow with no pass sends on its own dispatch only, so a repeat finding
+  // the row never taken (the first send ended between the write and the
+  // dispatch) sends it again; the take keeps it once. A waited send's repeat
+  // sends it again too, pass or not (FIX-2269): its sender waits on the
+  // request that dispatch starts, and a resend from the pass leaves it none
+  // to follow.
+  const resends = carriesPass(installation, flowKind);
+  if (written.status === "unconfirmed" && written.takenBy === undefined && (written.deadlineAt !== undefined || !resends)) {
+    return markAnswer(ctx, written, await dispatchOnce(ctx, writtenRef, written, from, resends));
+  }
+  return markAnswer(ctx, written, { ok: true, id: written.id });
+}
+
+/** A send's checked recipient: who it is from and to, where it lands, and how the row says it was addressed. */
+interface Resolved {
+  readonly sender: string;
+  readonly recipientId: string;
+  readonly destination: MessageAddress;
+  readonly exchange?: string;
+  readonly addressed: Pick<WorkerMessageRow, "addressedBy" | "toTask">;
+}
+
+/** Every send's tail, once its recipient is checked: the budget, the owed id, the row, then one dispatch. */
+async function sendTo(
+  ctx: BlockContext,
+  installation: WorkerInstallation,
+  flowKind: string,
+  input: Pick<SendMessageInput, "text" | "inReplyTo">,
+  from: string,
+  options: SendOptions,
+  resolved: Resolved
+): Promise<SendOutcome> {
+  const { destination } = resolved;
   // ---- the budget ----------------------------------------------------------
   // The server's own message costs none (FIX-2241); every other send pays its place.
   const paid = options.exempt === true ? exemptPlace(ctx, options.id) : await payPlace(ctx, installation, options.id);
@@ -372,11 +458,11 @@ export async function sendMessage(
   if (resends) await oweMessage(ctx, id);
   const row: WorkerMessageRow = {
     id,
-    from: sender,
-    to: recipient.id,
-    ...(typeof to === "string" ? {} : "task" in to ? { addressedBy: "task" as const, toTask: to.task } : { addressedBy: "session" as const }),
+    from: resolved.sender,
+    to: resolved.recipientId,
+    ...resolved.addressed,
     text: input.text,
-    exchange: exchange ?? id,
+    exchange: resolved.exchange ?? id,
     ...(input.inReplyTo === undefined ? {} : { inReplyTo: input.inReplyTo }),
     fromSession: ctx.session.identity.id,
     fromFlow: flowKind,
@@ -391,7 +477,7 @@ export async function sendMessage(
     status: "unconfirmed",
     at: Date.now()
   };
-  const ref = await log.getOrCreate(id, row);
+  const ref = await messageLogOf(ctx).getOrCreate(id, row);
   // An answer claims the message it answers before it goes out, so a crash
   // after the dispatch can't leave room for a second answer; a refused one
   // gives the claim back. One its sender still waits for goes out the same way:

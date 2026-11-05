@@ -195,6 +195,19 @@ export function resolveUserStorageKey(
 }
 
 /**
+ * The cell a user-scoped collection that is shared across flows (one with
+ * `flowIsolation: false`) keeps a user's rows in, for a request that starts
+ * from outside any run: `<userId>:~org:<orgId>`. The one derivation the
+ * scheduled-dispatch endpoint hands its resolver and the host's owner-run
+ * check reads, so the two can't drift apart.
+ *
+ * @param flowKind Named in the `OrgRequiredError` a malformed org throws.
+ */
+export function resolveSharedUserCellKey(userId: string, orgId: string, flowKind: string): string {
+  return resolveUserStorageKey(userId, orgId, { id: flowKind, isolateUserState: false });
+}
+
+/**
  * Bare `orgId` unless the flow isolates the org scope; then
  * `${orgId}:${flow.id}`. Governs the scope *record* (`ctx.org.state`)
  * only — resources route per-resource via `resolveResourceScopeId`.

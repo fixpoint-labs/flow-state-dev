@@ -216,6 +216,8 @@ export type BoardHostOptions = {
   hire?: HireWorkforceOptions;
   /** Flows that are no worker flow, registered beside them as they are, keyed by id. */
   plainFlows?: Record<string, FlowInstance>;
+  /** Flows that are no worker flow but are built on the installation (a subscription service flow), keyed by id. */
+  plainFlowsOf?: (installation: WorkerInstallation) => Record<string, FlowInstance>;
   /** The engine's `errorCapture` handler (FIX-1983's reporter). */
   errorCapture?: (event: any) => void;
   /** Inbound transport adapters for the router, such as the scheduled-dispatch one. */
@@ -307,7 +309,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   const instances: Record<string, FlowInstance> = Object.fromEntries(
     hireWorkforce(installation, options.hire).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy])
   );
-  Object.assign(instances, options.plainFlows ?? {});
+  Object.assign(instances, options.plainFlows ?? {}, options.plainFlowsOf?.(installation) ?? {});
   const judgment = options.judgment ?? mockGenerator({ script: [{ when: () => true, then: { text: QUIET_TURN } }] });
   const agentAnswer = options.agentAnswer ?? mockGenerator({ script: [] });
   const models = createMockModelResolver({

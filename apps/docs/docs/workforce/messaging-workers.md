@@ -280,6 +280,32 @@ Its next turn reads the line in its history. No turn is started for it.
 
 **Resends need a host that keeps wakes.** The resend runs on the sending session's [wake](../advanced/durable-execution.md#wakes), so it needs a durable host. On a host without wakes, an owed message is sent again only when that session's board runs for something else. A worker flow that offers `sendMessage` needs the session factory's entries, `board.entries(turn)`, which carry those resends. `hireWorkforce` refuses one without them, naming the flow. A flow that sends from its own code without the factory sends a message once and never again.
 
+## Messages from a service
+
+A conversation can also hear from an outside service. It follows a thread, such as a pull request or a repository, and each event on that thread arrives as a message from `service:<provider>`, for example `service:github`. Nothing reads the event with a model on the way. Screens decide who hears it: small checks, written in code, that each event must pass to reach a conversation.
+
+The worker follows a thread with the `subscribe` tool:
+
+```json
+{ "provider": "github", "thread": "github:acme/api#412", "kinds": ["review", "check"], "interest": "Reviews and CI on my PR." }
+```
+
+`interest` is a required sentence saying what the conversation wants to hear. It's kept with the subscription as a note; screens don't read it, so the filtering comes from `kinds` and the other screens.
+
+What the conversation can count on:
+
+- **Each event once.** Two conversations following the same PR each hear each review. If the service sends an event again, nothing new arrives. An edit to a comment is a new version, and it arrives.
+- **Only what its user can read.** Following a thread the user can't read is refused. An event on a private repository's thread is checked again, as that user, before it is delivered.
+- **People outside the project are left out by default.** Members, collaborators and the bots named in the service flow's `trustedBots` option get through. Anyone else gets through only when the subscription asked for them with `outsiders: true`.
+- **Its own actions are left out.** A review the user left themselves doesn't come back to them.
+- **It's marked as outside content.** The message says where it came from, and tells the model to read it as information, not as instructions.
+
+A subscription can narrow what it hears with screens: event kinds, labels, words in the title or text, or a list of senders. One subscription sends at most 30 messages an hour by default; the service flow's `capPerHour` setting changes it. Past that, events are held, and the next message says how many were held.
+
+A subscription ends when the conversation unsubscribes, when the thread it follows closes (a PR is merged or closed, which leaves a subscription to the whole repository running), or when the task whose session subscribed fails or is cancelled. A task that finishes keeps its subscriptions, so a coding task that opened a PR still hears the reviews on it.
+
+The tools, the service flow an app registers, and every refusal code are in the [workforce README](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/workforce#subscriptions).
+
 ## The budget
 
 Messages between workers can't run on forever. Each line you type starts a **budget**: at most 6 messages (`messages.budget`) for everything that descends from that line, across every worker. The messages, the turns they wake, the answers those turns send and the tasks filed along the way all draw on the same 6, parallel branches included. On top of that, any one request sends at most 3 (`perTurn`).
