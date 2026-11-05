@@ -32,7 +32,8 @@ import { TasksPanel } from "../components/TasksPanel";
 import { COORDINATOR_FLOW, useConversationSession } from "../lib/conversation";
 import { useSessionItems } from "../components/flow-state/session-items-context";
 import { ItemRenderer } from "@flow-state-dev/react";
-import { Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
+import { AsOf, ASKING_CLASS, Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
+import { cn } from "../lib/utils";
 import { clearHandedLine, useHandedLine } from "../lib/outbox";
 import { shiftCoordinatorOf, inboxItemIdOf, workerLabel, workerStates, shiftSummary, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
@@ -131,7 +132,7 @@ function NeedsYouTag() {
  * label says whose summary it is: Shift Manager's, not the worker's.
  */
 function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
-  const { refresh } = useLab();
+  const { refresh, asking } = useLab();
   const retry = () => void refresh();
   const { inbox, asks, running } = shiftSummary(snapshot);
   // What needs the user is what Inbox lists: one item per task held on a
@@ -142,7 +143,7 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
       <p className="font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
         SHIFT SUMMARY · FROM SHIFT MANAGER
       </p>
-      <div className="text-base leading-[1.55]" data-look="summary-prose">
+      <div className={cn("text-base leading-[1.55]", asking && ASKING_CLASS)} data-look="summary-prose" data-asking={asking ? "true" : undefined}>
         {inbox.ok ? (
           <p data-testid="shift-coordinator-summary-asks">
             {needsYou === 0 ? (
@@ -164,6 +165,7 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
           <SectionFailure what="What is running" failure={running.failure} onRetry={retry} testId="shift-coordinator-summary-running-failure" />
         )}
       </div>
+      <AsOf readAt={snapshot.readAt} onRefresh={retry} testId="shift-coordinator-as-of" />
       {asks.ok && asks.value.length > 0 ? (
         <ol className="flex flex-col border border-foreground bg-card" data-testid="shift-coordinator-asks">
           {asks.value.map((ask, i) => (

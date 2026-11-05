@@ -12,8 +12,8 @@
  * change (no push, the socket down, a bus that doesn't cross, as the SQLite
  * store's) it reads every {@link TASKS_POLL_MS} instead, but only while a task
  * is open or for a while after one moved, as it always has: its ending wakes a
- * coordinator turn of its own, and the turn's follow-up shows too. When a read
- * shows a task moved, it reloads the Lab. Nothing here knows a tool's name.
+ * coordinator turn of its own, and the turn's follow-up shows too. Nothing here
+ * knows a tool's name.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSubscription } from "@flow-state-dev/react";
@@ -53,7 +53,7 @@ export function TasksPanel({
   /** List only the active tasks, with the done and the errored each folded into a closed group. */
   activeOnly?: boolean;
 }) {
-  const { client, refresh } = useLab();
+  const { client } = useLab();
   const [read, setRead] = useState<Read>(undefined);
   // Whether the last read left a task open, or one just moved: the timer's gate.
   const [timed, setTimed] = useState(false);
@@ -71,7 +71,7 @@ export function TasksPanel({
   }, [worker.kind, sessionId]);
 
   // `signal` aborts once the read's subscription or effect is gone: a read that lands after the
-  // panel unmounted, or moved to another conversation, sets nothing and reloads nothing.
+  // panel unmounted, or moved to another conversation, sets nothing.
   const readTasks = useCallback(async (_notice?: unknown, signal?: AbortSignal) => {
     if (sessionId === null || worker.kind === null) return;
     const mine = ++latest.current;
@@ -80,16 +80,13 @@ export function TasksPanel({
       if (mine !== latest.current || signal?.aborted === true) return;
       setRead({ tasks });
       const now = standing(tasks);
-      if (last.current.standing !== undefined && last.current.standing !== now) {
-        last.current.movedAt = Date.now();
-        void refresh();
-      }
+      if (last.current.standing !== undefined && last.current.standing !== now) last.current.movedAt = Date.now();
       last.current.standing = now;
       setTimed(tasks.some(isOpen) || Date.now() - last.current.movedAt < AFTER_A_MOVE_MS);
     } catch (error: unknown) {
       if (mine === latest.current && signal?.aborted !== true) setRead({ failure: describeFailure(error).message });
     }
-  }, [client, refresh, worker.kind, sessionId]);
+  }, [client, worker.kind, sessionId]);
 
   // On open, and after each turn the user sends.
   useEffect(() => {
