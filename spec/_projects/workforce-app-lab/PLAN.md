@@ -13,11 +13,11 @@ Done on Oct 23, and the labs' (FIX-2152) at its closure merge on Oct 31, eight d
 FIX-1786's wrap reached this spec on Oct 31, a week after its bar closed. Three bars run to the now
 line: org primitives, whose closure merged Oct 6 and which closes when the epic wraps, the daily
 driver (FIX-2369), approved late on Oct 31, and smarter agents (FIX-2490), approved Nov 4 at 19:10,
-whose bar is only its start mark so far. FIX-1765's lane ends in a cross on Oct 13, canceled into
+whose bar is five hours long. FIX-1765's lane ends in a cross on Oct 13, canceled into
 FIX-1764. Memory's (FIX-1775) ends in a done mark on Oct 9 with no bar, and its long-session half was
 never filed. Coding tasks (FIX-1763), gaps between epics (FIX-2273), Workforce over MCP (FIX-2331),
-app follow-ups (FIX-2430, Oct 31) and worktrees and sandboxing (FIX-2440, Nov 1) carry filing ticks
-and no approved objective. Three lanes stay empty by plan.
+app follow-ups (FIX-2430, Oct 31), worktrees and sandboxing (FIX-2440, Nov 1) and attachments
+(FIX-2516, created Nov 3 and labelled an epic Nov 5) carry filing ticks and no approved objective. Three lanes stay empty by plan.
 
 ## What each epic consumes and releases
 
