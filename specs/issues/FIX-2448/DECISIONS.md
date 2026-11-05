@@ -25,7 +25,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Reading ER-1's "outside consumer" as any import from outside the package, sibling packages included |
 | **Because** | 58 of core's root names are imported only by our own packages, and 26 of the 54 seams this issue moves pass today only because a README passage names them, or a covered signature reaches them. If a sibling's import counts, every seam passes and the check can't hold the epic's fence: a name our packages share belongs on `/internal` ([epic D2](../../epics/FIX-2447/DECISIONS.md#d2)). Tenet 2: the root is the adopter's surface, not our wiring |
-| **Locks in** | From the check's first PR, a name only our packages use lives on `/internal` or earns a README line, in every published package. A type an adopter meets only through a covered function's signature counts as used through it, so config and option types need no line of their own. Adopter code is `apps/` (not `apps/docs` or `apps/devtool`), `examples/` and `labs/`; the docs are the package's README and `apps/docs` |
+| **Locks in** | From the check's first PR, a name only our packages use lives on `/internal` or earns a README line, in every published package. A type an adopter meets only through a covered function's signature counts as used through it, so config and option types need no line of their own. Adopter code is `apps/` (not `apps/docs` or `apps/devtool`), `examples/` and `labs/`; the docs are the package's README and `apps/docs`. `goals/` are ours: they count for nothing and may import `/internal`. The epic adopts this as its ER-1 reading, so the rule and the census apply to every package, not core alone |
 
 ![D1: what counts as using a root name. Adopter code or the docs, chosen, beside any import outside the package. Decides it: a seam only our packages import, which fails the check instead of passing. Price: a public type only our packages import today needs a README line. Ties: a name an app imports passes either way](figures/d1-used-means.svg)
 
@@ -54,14 +54,28 @@ that adopters are told to use. It isn't: 163 of its 442 names are not on the roo
 ## Decided, not asked
 
 - **The first PR is the export check**, a ratchet over every published root, before any name
-  moves (the epic's sequencing). It refuses a failing name the base ref doesn't have, comparing
-  head against base as `scripts/check-new-dead-code.mjs` does, so there is no baseline file for
-  a diff to edit. Its plants run in CI the way `scripts/mechanisms.test.mjs` runs the mechanism
-  checks' plants.
-- **One walker.** The check reads names through `packageExports` and imports through one census
-  that also refuses an adopter `/internal` import. Not an ESLint `no-restricted-imports` entry:
-  that would be a second reader of the same imports. FIX-2449's collision check reads the same
-  walker, which is the convergence point for "what is a root name".
+  moves (the epic's sequencing). It refuses a failing name the base ref doesn't have, reading the
+  base through `mechanism-exports.mjs`'s `gitReader` as `classify-mechanism-pr.mjs` does, so
+  there is no baseline file for a diff to edit and no copied checkout. Its plants run in CI the
+  way `scripts/mechanisms.test.mjs` runs the mechanism checks' plants.
+- **One walker, one census, one index.** `packageExports` merges a package's entries into one
+  name map, first entry wins; the first PR splits it into a per-entry index, once, and the
+  current callers read the merged view off it. Imports go through one census module, FIX-2162's
+  caller census extended, which also refuses an adopter `/internal` import. FIX-2449's collision
+  check, FIX-2459's one-home test and FIX-2463's entry check read the same index and census; none
+  writes its own. Not an ESLint `no-restricted-imports` entry: that would be a second reader of
+  the same imports.
+- **The refusal covers every `/internal`**: any `@flow-state-dev/*/internal` path, which today
+  is client's and, as the set lands, core's, engine's, orchestration's, react's and contracts'.
+  The PR that creates `core/internal` ships the fix that hides it from import completions if one
+  exists; if none does, epic D2's closure spot-check stands as a recorded finding.
+- **The installed-tarball read is a packed-install leg assertion**, on `run.mjs`'s `packAll` /
+  `npmInstall` through FIX-2564, not a second pack and install in this goal's check.
+- **Core's tarball stops shipping tests.** Its build `tsconfig.json` includes `src/**/*`, so four
+  test files under `src/` compile into `dist`; the build excludes test files, and the leg
+  asserts no `*.test.*` in the tarball.
+- **`WAIT_DEADLINE_ENTRY` moves here**, to `core/internal` with the wait-gate seams
+  (`moved.tsv`). `TASK_SETTLED_ENTRY` and the task-tool names are orchestration's issue.
 - **Reach is the compiler's.** "Met through a covered signature" is computed on the emitted
   declaration, not on source text. The spec's census approximates it on source, so its counts
   are an upper bound on what fails.
@@ -95,7 +109,11 @@ that adopters are told to use. It isn't: 163 of its 442 names are not on the roo
   that name in the same PR, as Fallow's check makes a PR answer for the export it orphaned.
 - **A README mention counts, and the README is reviewed prose.** Framework-facing passages leave
   it for `docs/architecture/`, which counts for nothing, so what remains is adopter material.
-  `--after` lists each name a README line added in the PR clears, for the reviewer.
+  This is the epic's ER-1 reading for every package: this issue moves core's passages, and each
+  package's owner moves its own. `--after` lists each name a README line added in the PR clears,
+  for the reviewer.
+- **The roots page has every published root's row**, each with its job, written here; each
+  child edits the row of the root it changes.
 - **Both subpaths are real entries**: `exports` and `publishConfig.exports` in core's manifest,
   `tsconfig.base.json` paths, and the seven vitest configs that alias core's subpaths.
   `items/internal`'s fold touches about 48 importing files.
@@ -113,6 +131,9 @@ that adopters are told to use. It isn't: 163 of its 442 names are not on the roo
 | `stripInternal` on core's `.d.ts` | The epic's D2 rejects it: sibling packages compile against the published declarations |
 | Checking every public subpath, not only roots | ER-1 is about roots. `core/types` is named in the debt's *Leaves* |
 | Moving only the issue's named list, no check | The smaller goal, rejected in `SPEC.md` |
+| Copying `check-new-dead-code.mjs`'s base checkout | `gitReader` already reads any ref's exports in place |
+| A pack and install inside this goal's check | The packed-install job already packs and installs every package; a second one drifts from it |
+| Cleaning the eleven unowned roots here | Each root's ruling needs its package's owner; the ratchet stops them growing meanwhile |
 
 ## Settled
 
@@ -138,5 +159,11 @@ Not run on this spec alone: it is a spec-set member, and the epic-agent runs `an
 - **Validation** — the blind goal pass added the first-PR and README-dump states, reading moved
   names from the installed `.d.ts`, and every `/internal` import form; the technical pass turned
   four deletes into two unexports, added `requestHostOf`, and widened the docs line and importers.
+- **Set review (Nov 5)** — scope is core's *Surface* cell (with FIX-2460's benchmark types) plus
+  the ratchet over every root, not the eleven unowned roots; D1's reading became the epic's ER-1,
+  for every package, goals ours; one census module and a per-entry `packageExports` index, base
+  read through `gitReader`; the tarball read moved to the packed-install leg; the `/internal`
+  refusal covers every package's; the roots page gets every root's row; core's tarball stops
+  shipping its four test files.
 
 **Open: none.**
