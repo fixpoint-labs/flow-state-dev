@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="Open fork, Kitchen Sink&#x27;s copies of the registry components. Recommended: keep the installed copies and replace the hand sync with one command, with the existing drift test as the gate. Or: point Kitchen Sink at the registry source with an alias and delete the 43 copies. It comes down to the first row: kept copies show the setup an adopter has after an install, while an alias shows one no adopter can have. The price is the second row: an edit is followed by one command, and the drift test fails if it is forgotten, where the alias needs one edit. Third row: imports resolve from Kitchen Sink as today, while under the alias bare imports resolve from packages/ui, which does not declare ai. Locks in: the 43 files stay, and the epic&#x27;s removal becomes the hand sync, not the files. Flips if Kitchen Sink stops being the adopter reference."
+<svg viewBox="0 0 940 418" role="img" aria-label="Decision D3, Kitchen Sink&#x27;s copies of the registry components. Chosen: keep the installed copies and replace the hand sync with one command, with the existing drift test as the gate. Or: point Kitchen Sink at the registry source with an alias and delete the 43 copies. It comes down to the first row: kept copies show the setup an adopter has after an install, while an alias shows one no adopter can have. The price is the second row: an edit is followed by one command, and the drift test fails if it is forgotten, where the alias needs one edit. Third row: imports resolve from Kitchen Sink as today, while under the alias bare imports resolve from packages/ui, which does not declare ai. Locks in: the 43 files stay, and the epic&#x27;s removal is the hand sync, not the files. Flips if Kitchen Sink stops being the adopter reference."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -37,13 +37,13 @@
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">OPEN · THE CALL</text>
-    <text class="t-q" x="32" y="52">Kitchen Sink&#x27;s registry copies: delete them, or stop syncing them by hand?</text>
+    <text class="t-lbl" x="32" y="32">D3 · DECIDED AT SET REVIEW</text>
+    <text class="t-q" x="32" y="52">Kitchen Sink keeps its registry copies; one command replaces the hand sync</text>
   </g>
 
   <g id="options">
-    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
     <text class="t-h c-code" x="228" y="112">Keep the copies; one command refreshes</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">OR</text>
@@ -91,7 +91,7 @@
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">LOCKS IN</text>
     <text class="t-b" x="32" y="369">43 files stay in Kitchen Sink</text>
-    <text class="t-s" x="32" y="387">the epic&#x27;s removal becomes the hand sync, not the files</text>
+    <text class="t-s" x="32" y="387">the epic&#x27;s removal is the hand sync, not the files</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
