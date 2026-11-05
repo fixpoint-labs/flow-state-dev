@@ -1,0 +1,99 @@
+<svg viewBox="0 0 940 396" role="img" aria-label="What changes. Before: a verified GitHub delivery matches a binding whose sessionId names a session per PR, so a review lands in a pr-412 session that no coding task follows, and the task that opened the PR hears nothing. After: the task's session subscribes to its PR when its own record shows it opened it; a verified delivery takes the webhook transport's service route, is normalized into the FIX-2534 event, and the GitHub service flow routes it to that subscription, once, as a message from service:github. No session is made from the event."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-in  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-old { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .n-seam{ fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .arr   { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .arr-x { stroke:var(--gone); stroke-width:1.3; fill:none; stroke-dasharray:4 3; }
+    .head  { fill:var(--ink-3); }
+    .row   { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="396"/>
+
+  <g id="before">
+    <text class="t-lbl" x="16" y="26">BEFORE · A BINDING NAMES A SESSION</text>
+    <rect class="n-in" x="16" y="40" width="150" height="54" rx="5"/>
+    <text class="t-b" x="30" y="62">GitHub delivery</text>
+    <text class="t-s" x="30" y="80">a review on #412</text>
+    <rect class="n-box" x="200" y="40" width="170" height="54" rx="5"/>
+    <text class="t-b" x="214" y="62">webhook transport</text>
+    <text class="t-s" x="214" y="80">verify · match on[event]</text>
+    <rect class="n-old" x="404" y="40" width="200" height="54" rx="5"/>
+    <text class="t-b" x="418" y="62">binding · sessionId</text>
+    <text class="t-s" x="418" y="80">(e) =&gt; "pr-412"</text>
+    <rect class="n-old" x="638" y="40" width="130" height="54" rx="5"/>
+    <text class="t-b" x="652" y="62">session pr-412</text>
+    <text class="t-s" x="652" y="80">made from the event</text>
+    <rect class="n-box" x="796" y="40" width="128" height="54" rx="5"/>
+    <text class="t-b" x="810" y="62">the PR's task</text>
+    <text class="t-x" x="810" y="80">hears nothing</text>
+    <path class="arr" d="M166,67 L198,67"/><polygon class="head" points="200,67 193,63 193,71"/>
+    <path class="arr" d="M370,67 L402,67"/><polygon class="head" points="404,67 397,63 397,71"/>
+    <path class="arr" d="M604,67 L636,67"/><polygon class="head" points="638,67 631,63 631,71"/>
+    <path class="arr-x" d="M768,67 L794,67"/>
+  </g>
+
+  <line x1="16" y1="122" x2="924" y2="122" class="row" stroke-width="1"/>
+
+  <g id="after-subscribe">
+    <text class="t-lbl" x="16" y="150">AFTER · THE TASK SUBSCRIBES, THE SERVICE ROUTES</text>
+    <rect class="n-box" x="16" y="164" width="190" height="54" rx="5"/>
+    <text class="t-b" x="30" y="186">coding task opens #412</text>
+    <text class="t-s" x="30" y="204">its session's PR record</text>
+    <rect class="n-new" x="240" y="164" width="200" height="54" rx="5"/>
+    <text class="t-b" x="254" y="186">subscribe, at turn end</text>
+    <text class="t-s" x="254" y="204">github:acme/api#412 · D2</text>
+    <rect class="n-seam" x="474" y="164" width="200" height="54" rx="5"/>
+    <text class="t-b" x="488" y="186">its subscription</text>
+    <text class="t-s" x="488" y="204">row + thread index · FIX-2534</text>
+    <path class="arr" d="M206,191 L238,191"/><polygon class="head" points="240,191 233,187 233,195"/>
+    <path class="arr" d="M440,191 L472,191"/><polygon class="head" points="474,191 467,187 467,195"/>
+  </g>
+
+  <g id="after-route">
+    <rect class="n-in" x="16" y="250" width="150" height="54" rx="5"/>
+    <text class="t-b" x="30" y="272">GitHub delivery</text>
+    <text class="t-s" x="30" y="290">a review on #412</text>
+    <rect class="n-new" x="200" y="250" width="200" height="54" rx="5"/>
+    <text class="t-b" x="214" y="272">transport · service route</text>
+    <text class="t-s" x="214" y="290">verify · normalize · D1</text>
+    <rect class="n-seam" x="434" y="250" width="200" height="54" rx="5"/>
+    <text class="t-b" x="448" y="272">GitHub service flow</text>
+    <text class="t-s" x="448" y="290">nominate · screens · owner runs</text>
+    <rect class="n-box" x="668" y="250" width="256" height="54" rx="5"/>
+    <text class="t-b" x="682" y="272">the PR's task session</text>
+    <text class="t-ok" x="682" y="290">hears it once, from service:github</text>
+    <path class="arr" d="M166,277 L198,277"/><polygon class="head" points="200,277 193,273 193,281"/>
+    <path class="arr" d="M400,277 L432,277"/><polygon class="head" points="434,277 427,273 427,281"/>
+    <path class="arr" d="M634,277 L666,277"/><polygon class="head" points="668,277 661,273 661,281"/>
+    <path class="arr" d="M574,218 L574,248"/><polygon class="head" points="574,250 570,243 578,243"/>
+  </g>
+
+  <g id="legend">
+    <rect class="n-new" x="16" y="336" width="14" height="14" rx="2"/>
+    <text class="t-s" x="38" y="347">this issue</text>
+    <rect class="n-seam" x="130" y="336" width="14" height="14" rx="2"/>
+    <text class="t-s" x="152" y="347">FIX-2534, built on</text>
+    <rect class="n-old" x="300" y="336" width="14" height="14" rx="2"/>
+    <text class="t-s" x="322" y="347">retired for GitHub</text>
+    <rect class="n-in" x="460" y="336" width="14" height="14" rx="2"/>
+    <text class="t-s" x="482" y="347">from outside</text>
+    <text class="t-s" x="16" y="378">D3: GitHub gets its 202 only after the owner runs are recorded. No session is made from the event.</text>
+  </g>
+</svg>

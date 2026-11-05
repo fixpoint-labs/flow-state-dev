@@ -1,0 +1,101 @@
+<svg viewBox="0 0 940 428" role="img" aria-label="D2: how does a coding task come to follow the PR it opened? Chosen: from its own record of opening it. Instead of: from GitHub&#x27;s PR-opened event. It comes down to the first row, who knows which session opened the PR: only the session&#x27;s own PR record names it; the event carries a branch and a login, no session. The session writes the row through subscribe as its user, so ER-5 holds, where the event path needs the service to write for a user. A PR opened outside the session is not followed by default, a cost of the chosen one. Locks in that every worker session that opens a GitHub PR follows its reviews, comments and CI until the PR closes. Flips if the event named the session that opened the PR."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+      .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="428"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">How does a coding task come to follow the PR it opened?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">From its own record of opening it</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">From GitHub&#x27;s PR-opened event</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHO KNOWS</text>
+    <text class="t-lbl" x="32" y="169">WHICH SESSION</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">The session that opened it</text>
+    <text class="t-s" x="248" y="179">its PR record names the PR</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Nobody in the event</text>
+    <text class="t-s" x="612" y="179">a branch and a login, no session</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="222">WHO WRITES</text>
+    <text class="t-lbl" x="32" y="235">THE ROW</text>
+    <text class="mark plus" x="228" y="224">+</text>
+    <text class="t-b" x="248" y="223">The session, through subscribe</text>
+    <text class="t-s" x="248" y="241">as its user, ER-5 holds</text>
+    <text class="mark minus" x="592" y="224">−</text>
+    <text class="t-b" x="612" y="223">The service, for a user</text>
+    <text class="t-s" x="612" y="241">a cross-user write FIX-2534 refused</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="280">A PR OPENED</text>
+    <text class="t-lbl" x="32" y="293">ELSEWHERE</text>
+    <text class="mark minus" x="228" y="282">−</text>
+    <text class="t-b" x="248" y="281">Not followed by default</text>
+    <text class="t-s" x="248" y="299">the subscribe tool still can</text>
+    <text class="mark plus" x="592" y="282">+</text>
+    <text class="t-b" x="612" y="281">Followed, if a match is found</text>
+    <text class="t-s" x="612" y="299">by guessing a session</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="338" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="359">LOCKS IN</text>
+    <text class="t-b" x="32" y="379">Every worker session that opens a GitHub PR follows it</text>
+    <text class="t-s" x="32" y="397">reviews, comments and CI, until the PR closes</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="338" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="359">FLIPS IF</text>
+    <text class="t-b" x="494" y="379">The event named the session that opened the PR</text>
+    <text class="t-s" x="494" y="397">then the service could nominate it</text>
+  </g>
+</svg>
