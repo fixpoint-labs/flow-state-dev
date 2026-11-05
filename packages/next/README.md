@@ -8,17 +8,16 @@ Platform-agnostic Next.js App Router adapter for flow-state-dev.
 pnpm add @flow-state-dev/next
 ```
 
-`createNextHandler` mounts a `FlowState` (from `createFlowState`) onto an
-optional catch-all route, so one file answers both the bare `/api/flows` and
-every path under it. It resolves the runtime lazily on the first request and
+`createNextHandler` mounts a `FlowState` (from `createFlowState`) onto a
+catch-all route. It resolves the runtime lazily on the first request and
 awaits Next.js 15's async `params`. There's no Vercel-specific behavior here,
 so the same handler works on Next-on-Cloudflare and other non-Vercel Next
 deployments.
 
 ```ts
-// src/app/api/flows/[[...path]]/route.ts
+// app/api/flows/[...path]/route.ts
+import { flowstate } from "@/flowstate";
 import { createNextHandler } from "@flow-state-dev/next";
-import flowstate from "../../../../../fsdev.config";
 
 export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
 export const runtime = "nodejs";

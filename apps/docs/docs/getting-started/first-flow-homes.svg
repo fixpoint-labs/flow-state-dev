@@ -10,7 +10,7 @@
 <line class="hi" x1="24" y1="140" x2="256" y2="140"/><rect class="solid" x="354" y="56" width="232" height="340"/>
 <text class="lb" x="366" y="88">PLACE 02</text>
 <text class="nm" x="366" y="110">Your server</text>
-<text class="sub" x="366" y="128">fsdev.config.ts and the route</text>
+<text class="sub" x="366" y="128">lib/flowstate.ts and the route</text>
 <line class="hi" x1="354" y1="140" x2="586" y2="140"/><rect fill="url(#hatch)" x="684" y="56" width="232" height="10"/><line class="thin" x1="684" y1="66.5" x2="916" y2="66.5"/><rect class="solid" x="684" y="56" width="232" height="340"/>
 <text class="lb" x="696" y="88">PLACE 03</text>
 <text class="nm" x="696" y="110">The store</text>

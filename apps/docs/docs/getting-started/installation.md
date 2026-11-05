@@ -50,24 +50,25 @@ The `react` package depends on `client` internally — you don't need to install
 
 ## Peer Dependencies
 
-- **`zod`** `^3.25.76` — You write your schemas with it, and the packages depend on this range, so install the same major (zod 3)
+- **`zod`** `^3.24.1` — Used for schema validation across all packages
 - **`react`** `^18.0.0 || ^19.0.0` — Required only by `@flow-state-dev/react`
 
-## Runtime and TypeScript
+## TypeScript
 
-- Node.js `22` or newer
-- TypeScript `^6.0`, the version the packages are built and type-checked with
+flow-state.dev is written in TypeScript and ships type definitions. For best results:
+
+- TypeScript `^5.7`
 - Enable `strict` mode in your `tsconfig.json`
 
 ## Initialize the server
 
-Describe the runtime once with `createFlowState`. You pass it your flows, a model config, and where to store state. Default-export it from `fsdev.config.ts` at your project root: your route handler imports it from there, and the `fsdev` CLI reads only `fsdev.config.*`, so one file serves both.
+Describe the runtime once with `createFlowState`. You pass it your flows, a model config, and where to store state. Keep this in its own file so a route handler (and your tests) can import it.
 
-```ts title="fsdev.config.ts"
+```ts title="lib/flowstate.ts"
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import myFlow from "./src/flows/my-flow/flow";
+import myFlow from "@/flows/my-flow/flow";
 
-export default createFlowState({
+export const flowstate = createFlowState({
   flows: { myFlow },
   models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: inMemoryStores() } },
@@ -78,11 +79,11 @@ export default createFlowState({
 
 ## Mount the route
 
-A platform adapter turns the FlowState into HTTP route handlers. The framework uses one optional catch-all route, so the bare `/api/flows` and every path under it reach the same handlers. For a Next.js app you run locally with `pnpm dev`:
+A platform adapter turns the `flowstate` handle into HTTP route handlers. The framework uses one catch-all route. For a Next.js app you run locally with `pnpm dev`:
 
-```ts title="src/app/api/flows/[[...path]]/route.ts"
+```ts title="app/api/flows/[...path]/route.ts"
+import { flowstate } from "@/lib/flowstate";
 import { createNextHandler } from "@flow-state-dev/next";
-import flowstate from "../../../../../fsdev.config";
 
 export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
 export const runtime = "nodejs";

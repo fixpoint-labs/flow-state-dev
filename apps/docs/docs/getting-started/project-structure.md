@@ -25,10 +25,9 @@ src/
   app/
     api/
       flows/
-        [[...path]]/
-          route.ts         # Server API route (mounts fsdev.config.ts)
+        [...path]/
+          route.ts         # Server API route (registry + router)
     page.tsx               # React UI
-fsdev.config.ts            # The runtime: flows, models, stores (read by the route and the CLI)
 ```
 
 ## Key Principles
@@ -79,23 +78,23 @@ export const chatGen = generator({
 
 ### One runtime config, one server route
 
-Describe the runtime once in `fsdev.config.ts` at the project root, then mount it from a single optional catch-all API route that handles routing for all flows. The `fsdev` CLI reads the same file, and only that file, so the terminal and the server run one wiring:
+Describe the runtime once in `lib/flowstate.ts`, then mount it from a single catch-all API route that handles routing for all flows:
 
-```ts title="fsdev.config.ts"
+```ts title="lib/flowstate.ts"
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import chatFlow from "./src/flows/my-chat/flow";
-import agentFlow from "./src/flows/my-agent/flow";
+import chatFlow from "@/flows/my-chat/flow";
+import agentFlow from "@/flows/my-agent/flow";
 
-export default createFlowState({
+export const flowstate = createFlowState({
   flows: { chatFlow, agentFlow },
   models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```
 
-```ts title="src/app/api/flows/[[...path]]/route.ts"
+```ts title="app/api/flows/[...path]/route.ts"
+import { flowstate } from "@/lib/flowstate";
 import { createNextHandler } from "@flow-state-dev/next";
-import flowstate from "../../../../../fsdev.config";
 
 export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
 export const runtime = "nodejs";

@@ -80,15 +80,20 @@ cd apps/my-app && pnpm fsdev run my-flow action -i '{}'
 
 ## Sharing it with your server entry
 
-Your server entry imports the same FlowState, straight from the config. A Next.js optional catch-all route mounts it, and answers both the bare `/api/flows` and every path under it:
+Your server entry imports the same FlowState. Re-export it from a small server-entry file so both sides reference one object:
 
-```ts title="src/app/api/flows/[[...path]]/route.ts"
-import { createNextHandler } from "@flow-state-dev/next";
-import flowstate from "../../../../../fsdev.config";
+```ts title="lib/server.ts"
+export { default as flowstate } from "../fsdev.config";
+```
 
-export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+A Next.js catch-all route handler then awaits the router off that handle:
+
+```ts title="app/api/flows/[...path]/route.ts"
+import { flowstate } from "@/lib/server";
+export async function GET(req: NextRequest, ctx: RouteContext) {
+  const router = await flowstate.getRouter();
+  return router.GET(req, { params: await ctx.params });
+}
 ```
 
 Three in-repo apps ship a config and work as references. `hello-chat` is the minimal case: a couple of flows and in-memory stores, nothing else. `kitchen-sink` is the full case: multiple store profiles, intent-mapped models, and a gateway. Read whichever matches how far along your own setup is.
@@ -185,9 +190,15 @@ named the user shows only on the stderr line.
 
 ## Runtime requirements
 
-The CLI runs on Node 22 or newer and loads a `.ts` or `.mts` config itself, so you don't need tsx or a build step. Write the config's imports the way the rest of your app does: extensionless relative paths such as `./src/flows/chat/flow`, and the path aliases from your `tsconfig.json`, such as `@/flows/chat/flow`.
+A `.ts` config needs a runtime that can load TypeScript. Inside the framework monorepo, tsx handles that. In a consumer repo, you need one of:
 
-An `fsdev.config.mjs` or `fsdev.config.js` is loaded by Node as plain JavaScript, so its relative imports name the file in full, extension included.
+- Node >= 22.18, which strips TypeScript types natively.
+- Run the CLI under tsx.
+- Use an `fsdev.config.mjs` or `fsdev.config.js` instead.
+
+Native type stripping ignores `tsconfig` path aliases. Keep the config's import chain on relative paths (`./src/flows/chat/flow`), not aliases like `@/flows/chat/flow`, or the import will fail to resolve.
+
+One sharp edge: the CLI's `engines` field allows any Node 22, but type stripping is only on by default from Node 22.18. On earlier 22.x releases a `.ts` config will not load. Allowed-to-install is not the same as can-load-a-`.ts`-config. If you're on an earlier 22.x, run under tsx or ship an `.mjs` config.
 
 ## See also
 

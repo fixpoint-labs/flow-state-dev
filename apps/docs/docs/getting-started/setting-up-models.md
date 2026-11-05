@@ -44,11 +44,11 @@ Blocks don't have to name a model. An **intent** is a role — `chat`, `utility`
 
 Declare the map on `createFlowState`, alongside your flows and stores:
 
-```ts title="fsdev.config.ts"
+```ts title="lib/flowstate.ts"
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import chatFlow from "./src/flows/hello-chat/flow";
+import chatFlow from "@/flows/hello-chat/flow";
 
-export default createFlowState({
+export const flowstate = createFlowState({
   flows: { chatFlow },
   models: {
     default: "openai/gpt-6-luna",
