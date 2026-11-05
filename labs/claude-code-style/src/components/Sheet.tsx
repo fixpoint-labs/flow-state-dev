@@ -1,4 +1,4 @@
-import { useJumpToLatest } from "@flow-state-dev/react";
+import type { JumpToLatest } from "@flow-state-dev/react";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { JumpToLatestButton } from "./JumpToLatest";
@@ -31,25 +31,26 @@ export function SheetArea({ children }: { children: ReactNode }) {
 }
 
 /**
- * A read-only sheet over the main thread. It closes with its close button,
- * Esc, or a click on the main thread around it. What it shows is the opener's
- * to keep live; the sheet only frames it.
+ * A sheet over the main thread. It closes with its close button, Esc, or a
+ * click on the main thread around it. What it shows is the opener's to keep
+ * live; the sheet only frames it. The opener owns the scrolling feed (`feed`),
+ * since it also needs it to scroll after its own sends.
  */
-export function Sheet({ label, title, subtitle, onClose, children, footer }: {
+export function Sheet({ label, title, subtitle, onClose, feed, children, footer }: {
   /** The sheet's accessible name. */
   label: string;
   title: ReactNode;
   subtitle?: ReactNode;
   onClose: () => void;
+  /** The opener's `useJumpToLatest` for the body: the sheet opens on the latest of what it shows. */
+  feed: JumpToLatest;
   children: ReactNode;
   footer?: ReactNode;
 }) {
   const { host } = useContext(SheetHost);
-  // Opens on the latest of the work it shows; what arrives after waits below the arrow.
-  const feed = useJumpToLatest();
   useEffect(() => {
     // Capture phase, and the Esc is spent: it closed the sheet, so it never also counts toward stopping the turn.
-    // Every Esc while the sheet is open closes it, from any focus: the sheet is read-only and holds no text field.
+    // Every Esc while the sheet is open closes it, from any focus, its text boxes included. A draft is kept per task, so a close loses no words.
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
