@@ -110,7 +110,12 @@ describe("perplexityAdapter", () => {
     ).not.toHaveProperty("search_context_size");
   });
 
-  it("maps domain filters to search_domain_filter with a '-' exclude prefix", async () => {
+  // search_domain_filter is an allowlist or a denylist, never both.
+  it.each([
+    ["include only → allowlist", ["arxiv.org"], [], ["arxiv.org"]],
+    ["exclude only → denylist with a '-' prefix", [], ["pinterest.com"], ["-pinterest.com"]],
+    ["include and exclude → allowlist only", ["arxiv.org"], ["pinterest.com"], ["arxiv.org"]],
+  ])("maps domain filters to search_domain_filter: %s", async (_case, includeDomains, excludeDomains, expected) => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ results: [] }), { status: 200 })
     );
@@ -119,13 +124,13 @@ describe("perplexityAdapter", () => {
       maxResults: 5,
       searchDepth: "basic",
       topic: "general",
-      includeDomains: ["arxiv.org"],
-      excludeDomains: ["pinterest.com"],
+      includeDomains,
+      excludeDomains,
       apiKey: "k",
     });
     expect(
       JSON.parse((fetch as any).mock.calls[0][1].body).search_domain_filter
-    ).toEqual(["arxiv.org", "-pinterest.com"]);
+    ).toEqual(expected);
   });
 
   it("throws on non-200 response", async () => {

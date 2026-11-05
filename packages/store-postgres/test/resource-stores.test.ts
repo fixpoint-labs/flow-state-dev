@@ -51,6 +51,7 @@ createContentStoreConformanceTests({
 
 createResourceStateStoreConformanceTests({
   name: "PostgresResourceStateStore",
+  indexes: true,
   createStore: async () => createPostgresResourceStateStore(await freshExecutor())
 });
 

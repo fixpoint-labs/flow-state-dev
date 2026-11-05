@@ -208,6 +208,12 @@ describe("a row with no run (BR-3)", () => {
     expect((screen.getByTestId("task-interrupt") as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByTestId("run-state").textContent).toBe("nothing is running");
     const reads = () => seen.filter(isBoardRead).length;
+    // The snapshot reads the board again as the lab's held runs start and link
+    // their rows (it hears their notices): wait for those to end, then watch.
+    for (let last = -1; last !== reads(); ) {
+      last = reads();
+      await act(() => new Promise((r) => setTimeout(r, 1_000)));
+    }
     const after = reads();
     await act(() => new Promise((r) => setTimeout(r, 2_500)));
     expect(reads()).toBe(after);

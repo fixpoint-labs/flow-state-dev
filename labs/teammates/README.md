@@ -66,8 +66,9 @@ drafts from the working folder's files and from pages it fetches, and Chief of S
 work. Chief of Staff sends a quick ask as a message, and real work as a task: a job that needs the
 folder's files read goes to researcher or writer, and a job in several parts goes out as several
 tasks, in order. Every result lands back in Chief of Staff's conversation as one line, *researcher
-finished: Look up the launch date*, that opens the task in a popup, where the whole result is. Chief
-of Staff's own answer on it shows in full below.
+finished: Look up the launch date*, that opens the task in a popup, where the whole result is. A task
+that finished without writing a result says so there, in place of the result. Chief of Staff's own
+answer on it shows in full below.
 
 ### Coding tasks
 

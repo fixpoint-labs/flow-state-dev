@@ -278,6 +278,13 @@ export { runBoardSegment } from "./workspace";
  * session door's `runOf` keys a row's run with it, as the manager did.
  */
 export { taskIssueSegment } from "./workspace";
+/**
+ * The directory a run writes its question into, which no repository may
+ * commit: what every provision hands the workspace host. A host asks the same
+ * rule of a repository before any run, through `checkRepository`:
+ * `workspace.checkRepository(repository, { ignored: ASK_MARKER_IGNORED })`.
+ */
+export { ASK_MARKER_IGNORED } from "./workspace";
 
 // ── Subscription usage left, per person and harness ─────────────────────────
 //

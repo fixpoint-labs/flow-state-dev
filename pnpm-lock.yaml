@@ -1794,6 +1794,9 @@ importers:
       '@flow-state-dev/store-sqlite':
         specifier: workspace:*
         version: link:../store-sqlite
+      '@flow-state-dev/tools':
+        specifier: workspace:*
+        version: link:../tools
       '@flow-state-dev/workforce':
         specifier: workspace:*
         version: link:../workforce

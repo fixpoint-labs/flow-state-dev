@@ -33,7 +33,7 @@ export function HarnessModeView({
 }) {
   useSuppressHistoryKeys();
   const stream = useCallback(
-    (sessionId: string, refreshSessions: () => void) => (
+    (sessionId: string) => (
       <HarnessSessionView
         key={sessionId}
         label={label}
@@ -41,7 +41,6 @@ export function HarnessModeView({
         sessionId={sessionId}
         models={models}
         repoLine={repoLine}
-        onTitled={refreshSessions}
       />
     ),
     [label, flowKind, models, repoLine],
