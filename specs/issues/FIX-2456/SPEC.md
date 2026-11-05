@@ -27,8 +27,8 @@ root shows no workforce panels.**
 |---|---|
 | **The real need** | The epic's *one way to do each thing* and a root that shows *only what an app author needs* ([FIX-2447](../../epics/FIX-2447/SPEC.md#the-goal-and-how-well-know-its-met)); the issue: registry users don't get the FIX-2360 rule |
 | **Smaller, and rejected** | "Delete `ScrollOnNewRequest` and call the hook." The registry's 70dvh last group would still fight the hook's kept room, and the four button copies stay |
-| **Bigger, and not this issue's** | Every component off the react root. Renderers and `FlowNavigator` are the package's job ([What stays](#what-stays-as-it-is)). De-duplicating Kitchen Sink's registry copies is FIX-2461's |
-| **Not done if** | A fresh registry install or Kitchen Sink still goes to the bottom on a send · a line the reader didn't send rises · a send with no marked line moves the view · a jump button is still written by hand anywhere but DevTool · `ScrollOnNewRequest` or the 50px rule survives as dead code · a panel name is still a plain react root export (with Q1's alias option, a `@deprecated` one naming `/workforce` is allowed until its minor) · the registry composer keeps its own Enter rule · happy-dom tests pass and the browser check never ran on the registry surfaces |
+| **Bigger, and not this issue's** | Every component off the react root. Renderers and `FlowNavigator` are the package's job ([What stays](#what-stays-as-it-is)). A refresh command for Kitchen Sink's registry copies, which stay, is FIX-2461's |
+| **Not done if** | A fresh registry install or Kitchen Sink still goes to the bottom on a send · a line the reader didn't send rises · a send with no marked line moves the view · a jump button is still written by hand anywhere but DevTool · `ScrollOnNewRequest` or the 50px rule survives as dead code · a panel name is still a plain react root export (with Q1's alias option, a `@deprecated` one naming `/workforce` is allowed until its minor) · the registry composer keeps its own Enter rule · a copy this issue installs in a lab has no byte-equal test · happy-dom tests pass and the browser check never ran on the registry surfaces |
 
 ```mermaid
 flowchart LR
@@ -54,8 +54,9 @@ control must fail, on its named signals, before a PASS counts.
 | **Anti-game** | No assertion on the hook's return or on `scrollTo` calls; the line is found by its text. The registry items come from the registry, not from a page written for the check |
 | **Control that must fail** | `GOAL_CONTROL=main-registry` installs the registry items as on `main`: a.short and a.long red on `registry/send` (the line lands about a third down, over the 70dvh group); d red on both (`ScrollOnNewRequest` scrolls for any new request). b and c stay green: today's registry never follows a stream. Any other red is `WRONG:`. The existing `no-reserve` control also runs on `registry/send` and must fail a.short and a.long. Census `--after` on `main`: exit 1, 46 items |
 
-The closure manifest has no row for one scroll rule, so this issue flips none; the closure runs
-this check as a child goal check the manifest doesn't cover.
+The closure manifest has no row for one scroll rule; the closure runs this check as a child goal
+check the manifest doesn't cover. This issue does contribute to react's *Surface* cell (the 25 panel
+names), which the last of the four react contributors to land flips; if that is this issue, it flips it.
 
 ## What changes
 
@@ -99,7 +100,8 @@ Red is what goes. Each lane ends with one thing where there were two or five, ex
 `ScrollOnNewRequest`); point *Workforce components*, the React API page's panels paragraph,
 *Writing UI stories* and the react README's panels section at `/workforce`; point the
 `useJumpToLatest` examples (React API page, react README) at the registry's button; add react's
-row to the epic's *what each package root is for* page once FIX-2448 publishes it. No new page.
+row, naming `@flow-state-dev/react/workforce`, to the epic's *what each package root is for* page
+once FIX-2448 publishes it; the row is this issue's. No new page.
 
 ## How a send reaches the line
 
@@ -119,13 +121,16 @@ still reopens at its end on a switch.
 
 ## What stays as it is
 
-- `useJumpToLatest`'s behaviour and its place on the react root. The registry now imports it.
+- `useJumpToLatest`'s behaviour and its place on the react root. The registry now imports it. The
+  hook's own edge-case fixes are FIX-2540's, outside the epic; whichever of the two lands second
+  rebases.
 - The renderers and `FlowNavigator` on the root: the package is *hooks and renderers*, and the
   navigator draws flows and sessions, which every app has. `isSendKey` and `isTypingTarget` stay
   too ([D2](DECISIONS.md#d2)).
 - Shift Manager, DevTool and the labs keep their own feeds. Shift Manager's and the labs' buttons
   go; DevTool's stays (E4).
-- Kitchen Sink's other hand-synced registry copies. FIX-2461 replaces them, last.
+- Kitchen Sink's other registry copies and their drift test. The copies stay; FIX-2461 adds the
+  refresh command that ends the hand sync.
 
 ## What's already here, and the debt
 
@@ -144,13 +149,13 @@ still reopens at its end on a switch.
 | `@flow-state-dev/react/workforce` | react's exports map (`.` only); core's subpaths | Extends the map; a documented public subpath of epic D2's kind |
 | A `feed` prop on `Conversation` and `ConversationScrollButton` | `useJumpToLatest`; the registry's scroll context | Composed: the context carries the hook's return. No second rule |
 | `conversation` and `prompt-input` depend on `@flow-state-dev/react`; `request-group` on `conversation` | Four registry items already depend on `react` | Reuse |
-| Installed copies of `conversation` in Shift Manager and both labs | Their hand-written buttons; their existing registry copies, byte-equal by test | The registry's install path those apps already use |
+| Installed copies of `conversation` in Shift Manager and both labs | Their hand-written buttons; their existing registry copies (Shift Manager's byte-equal by `test/static.test.ts`; the labs' untested) | The registry's install path those apps already use. Each lab gains a byte-equal test over the copies this issue installs |
 
 | The debt | |
 |---|---|
 | **Removes** | `ScrollOnNewRequest`, the 50px rule and their context; the 70dvh last group; three hand-written jump buttons; the registry composer's own Enter rule; 25 workforce names from react's root (the undocumented `*PropNames` lists leave public surface entirely) |
-| **Adds** | A subpath to keep. Three more installed copies of `conversation.tsx`, synced by each app's byte-equal test, in place of three 20-line buttons. With Q1's alias option, deprecated root names until its removal minor |
-| **Leaves** | Kitchen Sink's hand-synced registry copies (FIX-2461). DevTool's own button, permanent by design: a published package can't take a copy-in (FIX-1477 D1) |
+| **Adds** | A subpath to keep. Three more installed copies of `conversation.tsx` in place of three 20-line buttons: Shift Manager's held by its existing byte-equal test, each lab's by a new one over the copies this issue installs (the labs' older copies stay untested). With Q1's alias option, deprecated root names until its removal minor |
+| **Leaves** | Kitchen Sink's registry copies, drift-tested (FIX-2461 adds their refresh command). DevTool's own button, permanent by design: a published package can't take a copy-in (FIX-1477 D1) |
 
 **Net: down.** Two scroll rules become one and five buttons two; the root sheds 25 names for one
 subpath. The added copies are the registry's own path, not a second mechanism.
