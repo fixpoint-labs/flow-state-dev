@@ -8,7 +8,7 @@
  * Red state produced: against the boot read plus a re-read after this tab's
  * own hire and fire, the hire made elsewhere never shows.
  */
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/App";
 import { createFixtureLab } from "./fake-lab";
@@ -77,5 +77,17 @@ describe("the worker list follows the roster", () => {
     const row = screen.getByRole("navigation", { name: "Workers" }).querySelector<HTMLElement>('[data-worker="scribe"]')!;
     fireEvent.click(row.querySelector("button") ?? row);
     expect(await screen.findByLabelText("Message scribe")).toBeTruthy();
+  });
+
+  it("opens a teammate hired here with the cursor in its composer, once its row lands", async () => {
+    const lab = createFixtureLab({ speed: 0.05 });
+    render(<App adapter={lab} />);
+    await screen.findByLabelText("Message Chief of Staff");
+    fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
+    const form = screen.getByRole("form", { name: "Hire a teammate" });
+    fireEvent.change(within(form).getByLabelText("Teammate name"), { target: { value: "scribe" } });
+    fireEvent.change(within(form).getByLabelText("Teammate role"), { target: { value: "Takes notes" } });
+    await act(async () => fireEvent.click(within(form).getByRole("button", { name: "Hire" })));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Message scribe")));
   });
 });

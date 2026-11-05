@@ -76,6 +76,13 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   // The popup the address opened. Only it is dropped when its task is gone: a
   // task filed a moment ago can be opened before its row arrives.
   const addressed = useRef<Popup | undefined>(undefined);
+  // The teammates the last landed roster drew, and a pick waiting for a roster: a hire picks its
+  // teammate once its row lands; a fire picks from the roster that no longer has the fired one.
+  const landedTalking = useRef<WorkerRow[]>([]);
+  const waitingPick = useRef<((talking: WorkerRow[]) => boolean) | null>(null);
+  const pickWhenLanded = (pick: (talking: WorkerRow[]) => boolean) => {
+    waitingPick.current = pick(landedTalking.current) ? null : pick;
+  };
   const fromAddress = (named: Address) => {
     addressed.current = taskIn(named, conversations.current);
     return addressed.current;
@@ -108,8 +115,10 @@ export function App({ adapter }: { adapter: LabAdapter }) {
           if (id !== undefined) byWorker[w.id] = id;
         });
         conversations.current = byWorker;
+        landedTalking.current = talking;
         setWorkers(roster);
         setSessions(byWorker);
+        if (waitingPick.current?.(talking)) waitingPick.current = null;
         if (landed) return;
         landed = true;
         setUnreachable(undefined);
@@ -125,14 +134,22 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     };
   }, [adapter, attempt]);
 
-  // The watch brings the new row and its conversation.
+  // The watch brings the new row and its conversation; the pick waits for them.
   const hire = async (teammate: NewTeammate) => {
     const hired = await adapter.hire(teammate);
-    selectWorker(hired.id);
+    pickWhenLanded((talking) => {
+      if (!talking.some((w) => w.id === hired.id)) return false;
+      selectWorker(hired.id);
+      return true;
+    });
   };
   const fire = async (worker: string) => {
     await adapter.fire(worker);
-    setSelected(workers.find((w) => !w.takesTasks && w.id !== worker)?.id);
+    pickWhenLanded((talking) => {
+      if (talking.some((w) => w.id === worker)) return false;
+      setSelected(talking[0]?.id);
+      return true;
+    });
   };
 
   // Stable between roster reads, so a memoized entry doesn't redraw for a new function.
