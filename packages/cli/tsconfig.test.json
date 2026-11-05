@@ -5,7 +5,5 @@
     "rootDir": "../..",
     "noEmit": true
   },
-  "include": ["src/**/*", "test/**/*"],
-  // This fixture imports through an alias that only its own tsconfig.json declares.
-  "exclude": ["test/fixtures-config/alias/**"]
+  "include": ["src/**/*", "test/**/*"]
 }
