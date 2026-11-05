@@ -89,8 +89,11 @@ describe("accepting a coding task's review says where its work goes", () => {
       },
       { timeout: 3000 },
     );
-    expect(within(again).getByRole("button", { name: "Retry: Merge locally" })).toBeTruthy();
-    fireEvent.click(within(again).getByRole("button", { name: "Accept: Open a PR" }));
+    // A retry that fails with the same words is a new ask: Retry is offered again, not a receipt.
+    const retry = within(again).getByRole("button", { name: "Retry: Merge locally" });
+    fireEvent.click(retry);
+    await waitFor(() => expect(within(popup).getByRole("button", { name: "Retry: Merge locally" })).not.toBe(retry), { timeout: 3000 });
+    fireEvent.click(within(popup).getByRole("button", { name: "Accept: Open a PR" }));
 
     const result = await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
     await waitFor(() => expect(result.textContent).toMatch(/Opened pull request #7 into main\. Next: review and merge it\./));

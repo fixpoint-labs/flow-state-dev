@@ -295,6 +295,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       if (!live()) throw new Error("left behind");
     };
     /** The task waits on you for `waiting`, until you answer. */
+    let holdCount = 0;
     const waitOn = (waiting: NonNullable<BoardTask["waiting"]>) =>
       new Promise<TaskAnswer>((resolve) => {
         waits.set(task.id, (answer) => {
@@ -302,7 +303,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
           updateTask(task.id, { waiting: undefined });
           resolve(answer);
         });
-        updateTask(task.id, { waiting });
+        updateTask(task.id, { waiting: { ...waiting, holdId: `hold-${++holdCount}` } });
       });
     void (async () => {
       await sleep(600);
@@ -336,8 +337,8 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
         });
         notify();
         const answer = await waitOn({ kind: "review", prompt: `${commits} commit${commits === 1 ? "" : "s"} on ${branch}`, unanswerable: null });
-        if ("verdict" in answer && answer.verdict === "accepted" && answer.land === "merge" && landFailed === null) {
-          // The first merge conflicts: asked again, nothing changed.
+        if ("verdict" in answer && answer.verdict === "accepted" && answer.land === "merge") {
+          // Every merge conflicts, the same way each time: asked again, nothing changed.
           landFailed = { land: "merge", message: "Merging conflicts in README.md, so it was stopped." };
           commits--;
           continue;

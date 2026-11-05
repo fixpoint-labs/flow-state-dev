@@ -167,6 +167,7 @@ function TaskReview({ adapter, sessionId, task }: { adapter: LabAdapter; session
       prompt={review === undefined ? task.waiting?.prompt : undefined}
       answer={(answer) => adapter.answerTask(sessionId, task.id, answer)}
       unanswerable={task.waiting?.unanswerable ?? null}
+      holdId={task.waiting?.holdId ?? null}
     />
   );
 }

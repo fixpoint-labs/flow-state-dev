@@ -153,6 +153,19 @@ describe("a review whose host can land the work offers two labelled accepts", ()
     await waitFor(() => expect(answer).toHaveBeenCalledWith({ verdict: "accepted", land: "merge" }));
   });
 
+  it("a retry that fails with the same words is a new ask: Retry comes back, not the receipt of the last one", async () => {
+    const answer = vi.fn(async () => {});
+    const landFailed = { land: "merge" as const, message: "Merging conflicts in README.md, so it was stopped." };
+    const review = { ...DATA, lands: ["pull-request", "merge"] as const, landFailed };
+    const { rerender } = render(<ReviewHold review={{ ...review, lands: [...review.lands] }} holdId="susp-2" answer={answer} />);
+    fireEvent.click(screen.getByRole("button", { name: "Retry: Merge locally" }));
+    await waitFor(() => expect(screen.getByText("Accepted")).toBeTruthy());
+    // The same card, asked again with the same failure, under a new stop.
+    rerender(<ReviewHold review={{ ...review, lands: [...review.lands] }} holdId="susp-3" answer={answer} />);
+    expect(screen.getByRole("button", { name: "Retry: Merge locally" })).toBeTruthy();
+    expect(screen.queryByText("Accepted")).toBeNull();
+  });
+
   it("the done state says where the work went and what comes next", () => {
     render(<LandedOutcome landed={{ kind: "pull-request", url: "https://github.com/acme/relay/pull/7", number: 7, branch: "b", base: "main" }} />);
     expect(screen.getByRole("link", { name: "pull request #7" }).getAttribute("href")).toBe("https://github.com/acme/relay/pull/7");

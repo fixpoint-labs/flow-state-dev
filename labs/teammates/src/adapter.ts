@@ -179,6 +179,8 @@ export interface TaskWaiting {
   kind: "question" | "review" | "other";
   prompt: string;
   unanswerable: string | null;
+  /** The hold's id (a stop's suspension id): a review asked again is a new hold. */
+  holdId?: string;
 }
 
 /** A coding run's review: its branch, commits and the judge's verdict. */
@@ -676,7 +678,7 @@ function waitingOf(view: TaskRowView | null): { waiting?: TaskWaiting } {
   const hold = view?.hold ?? null;
   if (hold === null) return {};
   const kind = hold.ask.kind === "question" || hold.ask.kind === "review" ? hold.ask.kind : "other";
-  return { waiting: { kind, prompt: hold.ask.prompt, unanswerable: hold.unanswerable } };
+  return { waiting: { kind, prompt: hold.ask.prompt, unanswerable: hold.unanswerable, holdId: hold.id } };
 }
 
 /**

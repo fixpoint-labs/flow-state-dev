@@ -45,7 +45,7 @@ describe("a task waits on you while its row holds a question or a review", () =>
     expect(holds.map((h) => [h.ask.kind, h.source])).toEqual([
       ["question", { kind: "row", flowId: "agent", sessionId: CONVERSATION, action: "updateTask_tasks", taskId: "task_1" }],
     ]);
-    expect(toBoardTask(row([question]), undefined, holds).waiting).toEqual({ kind: "question", prompt: "Only line 1, or every typo?", unanswerable: null });
+    expect(toBoardTask(row([question]), undefined, holds).waiting).toEqual({ kind: "question", prompt: "Only line 1, or every typo?", unanswerable: null, holdId: "q1" });
   });
 
   it("a review: answered on the run's own flow, at its stop", () => {

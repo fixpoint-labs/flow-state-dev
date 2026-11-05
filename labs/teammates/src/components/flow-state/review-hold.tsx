@@ -152,6 +152,7 @@ export function ReviewHold({
   answer,
   unanswerable,
   resolved,
+  holdId,
   children,
 }: {
   /** The stop's prompt: what a review that isn't a coding run's shows. */
@@ -164,6 +165,14 @@ export function ReviewHold({
   unanswerable?: string | null;
   /** The review was answered: the card collapses to a receipt. */
   resolved?: "accepted" | "revise" | "answered";
+  /**
+   * Which ask this card answers: the stop's suspension id, or the hold's id.
+   * A review asked again after a landing failed is a new ask, so its buttons
+   * come back even when it failed with the same words. Pass it wherever a
+   * review can be asked again; without it the card tells asks apart by the
+   * failure's message alone.
+   */
+  holdId?: string | null;
   children?: ReactNode;
 }) {
   const [words, setWords] = useState("");
@@ -171,9 +180,10 @@ export function ReviewHold({
   const [error, setError] = useState<string | null>(null);
   // What was sent, and for which ask: a review asked again after a landing failed is a new ask.
   const failed = review?.landFailed ?? null;
+  const hold = holdId ?? failed?.message ?? null;
   const [sent, setSent] = useState<{ verdict: ReviewAnswer["verdict"]; for: string | null } | null>(null);
 
-  const outcome = resolved ?? (sent !== null && sent.for === (failed?.message ?? null) ? sent.verdict : null);
+  const outcome = resolved ?? (sent !== null && sent.for === hold ? sent.verdict : null);
   if (outcome !== null && outcome !== undefined) return <ReviewReceipt outcome={outcome} />;
 
   const send = async (reply: ReviewAnswer) => {
@@ -182,7 +192,7 @@ export function ReviewHold({
     setError(null);
     try {
       await answer(reply);
-      setSent({ verdict: reply.verdict, for: failed?.message ?? null });
+      setSent({ verdict: reply.verdict, for: hold });
     } catch (err) {
       setError(err instanceof Error ? err.message : "The answer didn't go through.");
     } finally {
@@ -377,6 +387,7 @@ export function ReviewSuspension({
     <ReviewHold
       {...(item.message ? { prompt: item.message } : {})}
       {...(review ? { review } : {})}
+      holdId={item.suspensionId}
       {...(answer === undefined ? { unanswerable: NO_RESOLVER_UNANSWERABLE } : { answer })}
       resolved={isResolved === true ? "answered" : undefined}
     />
