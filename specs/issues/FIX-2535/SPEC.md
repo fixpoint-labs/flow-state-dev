@@ -103,8 +103,8 @@ flowchart LR
 
 | The debt | |
 |---|---|
-| **Removes** | GitHub's `sessionId` routing, from `apps/docs/guides/webhooks-github.md` (rewritten: mount the flow, a task follows its PR) and `apps/docs/docs/server/webhooks.md` |
-| **Adds** | `service` beside `on` on `WebhookSubscriptionConfig`: `on` is required today, so the type takes `on` or `service`. Permanent by design (Q5, two ways to route, split by provider). One optional event field. Docs updated with it: `docs/architecture/webhook-transport.md`, the workforce, core, engine and harness-manager READMEs, `mechanisms.yaml`'s `webhook` and `subscriptions` rows |
+| **Removes** | GitHub's `sessionId` routing. Its user guides (`webhooks-github.md`: mount the flow, a task follows its PR; `server/webhooks.md`) are rewritten at release by `/release-docs`, from the changeset's `Docs:` pointers |
+| **Adds** | `service` beside `on` on `WebhookSubscriptionConfig`: `on` is required today, so the type takes `on` or `service`. Permanent by design (Q5, two ways to route, split by provider). One optional event field. Docs in the change: `docs/architecture/webhook-transport.md` and `mechanisms.yaml`'s `webhook` and `subscriptions` rows. The workforce, core, engine and harness-manager READMEs follow at release (`/release-docs`) |
 | **Leaves** | `sessionId` for Stripe, Slack and custom bindings, and their guides (Q5). A fork PR's check run names no PR, so only repository subscribers hear it; not filed |
 
 **Net: up, by one public form and one field.** No code used GitHub's `sessionId` routing.
