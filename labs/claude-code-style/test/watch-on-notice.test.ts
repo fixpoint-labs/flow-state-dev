@@ -1,6 +1,6 @@
 /**
- * The lab's views that used to read on a clock read on a change instead
- * (FIX-2466): pins on a user-state notice, through a read that writes nothing;
+ * The lab's views that used to read on a clock read on a change instead:
+ * pins on a user-state notice, through a read that writes nothing;
  * a thread's running turn on a request notice; the sidebar's rows on each
  * listed session's notices; a task's work when the board names its run.
  * Wherever push can miss a change, `client.subscribe` reads on its timer at
