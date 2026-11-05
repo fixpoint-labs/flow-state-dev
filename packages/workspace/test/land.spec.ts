@@ -222,6 +222,30 @@ describe("a merge that git reports done but that didn't commit the run's work", 
   });
 });
 
+describe("a merge that runs out of the landing's time", () => {
+  it("still puts the checkout back, with its own time to do it, so Retry can run", async () => {
+    const { h, place } = await runWithCommit();
+    // Diverged, so the merge makes a commit; signing it takes longer than the landing may.
+    writeFileSync(join(repo, "other.txt"), "the person's other change\n");
+    git(repo, "add", "other.txt");
+    git(repo, "commit", "-q", "-m", "The person's other change");
+    const before = git(repo, "rev-parse", "main");
+    const bin = tempDir("land-gpg");
+    writeFileSync(join(bin, "slow-gpg"), "#!/bin/sh\nsleep 3\nexit 1\n");
+    chmodSync(join(bin, "slow-gpg"), 0o755);
+    git(repo, "config", "commit.gpgSign", "true");
+    git(repo, "config", "gpg.format", "openpgp");
+    git(repo, "config", "gpg.program", join(bin, "slow-gpg"));
+
+    const landing = h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "merge", timeoutMs: 1000 });
+
+    await expect(landing).rejects.toMatchObject({ reason: "merge-failed" });
+    expect(existsSync(join(repo, ".git", "MERGE_HEAD"))).toBe(false);
+    expect(git(repo, "rev-parse", "main")).toBe(before);
+    expect(git(repo, "status", "--porcelain", "--untracked-files=no")).toBe("");
+  }, 20_000);
+});
+
 describe("a run whose base is a remote-tracking ref", () => {
   for (const baseRef of ["origin/main", "refs/remotes/origin/main"]) {
     it(`merges into the local branch that tracks ${baseRef}, and opens a pull request into main on origin`, async () => {

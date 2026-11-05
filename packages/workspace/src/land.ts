@@ -34,6 +34,13 @@ import { firstLine, NO_HOOKS } from "./worktree";
 /** How long one landing may take, by default: every command in it shares this one deadline. */
 export const LAND_TIMEOUT_MS = 2 * 60_000;
 
+/**
+ * How long each command that puts a checkout back after a failed merge may
+ * take: its own bound, not what is left of the landing's, so a merge that ran
+ * out the landing's time is still undone.
+ */
+const RESTORE_TIMEOUT_MS = 30_000;
+
 /** The run whose work lands: its checkout and branch, and the ref it was cut from. */
 export interface LandTarget {
   /** The run's checkout. */
@@ -115,9 +122,11 @@ export async function landRun(host: LandHost, target: LandTarget, request: LandR
   const left = () => Math.max(1, deadline - Date.now());
   const git = async (cwd: string, args: string[]) =>
     (await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs: left(), env: host.env })).stdout.trim();
+  const restoreGit = async (cwd: string, args: string[]) =>
+    (await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs: RESTORE_TIMEOUT_MS, env: host.env })).stdout.trim();
   const base = await resolveBase(git, host.repo, host.pins, target.baseRef);
   return request.kind === "merge"
-    ? await merge(git, host.repo, base, target.branch)
+    ? await merge(git, restoreGit, host.repo, base, target.branch)
     : await openPullRequest(git, host, target, base, request, left);
 }
 
@@ -183,7 +192,7 @@ async function resolveBase(git: Git, repo: string, pins: KeptFetchPins | undefin
  * whatever the repository's merge config says (`--commit --no-squash`), never
  * overwriting an ignored file. A conflict aborts and says which files.
  */
-async function merge(git: Git, repo: string, resolved: Base, from: string): Promise<Landed> {
+async function merge(git: Git, restoreGit: Git, repo: string, resolved: Base, from: string): Promise<Landed> {
   const base = resolved.local;
   if (base === undefined) {
     throw new WorkspaceRefusedError(
@@ -234,9 +243,9 @@ async function merge(git: Git, repo: string, resolved: Base, from: string): Prom
     await git(checkout, ["merge", "--no-edit", "--quiet", "--commit", "--no-squash", "--no-overwrite-ignore", from]);
   } catch (error) {
     // The index's unmerged entries, not git's wording: `<mode> <object> <stage>\t<path>` per stage.
-    const unmerged = await git(checkout, ["ls-files", "--unmerged"]).catch(() => "");
-    // Abort whatever the merge left, so the checkout is as it was.
-    await git(checkout, ["merge", "--abort"]).catch(() => undefined);
+    // Read and undone on their own time: the merge may have failed by running out the landing's.
+    const unmerged = await restoreGit(checkout, ["ls-files", "--unmerged"]).catch(() => "");
+    if (!(await restore(restoreGit, checkout, before))) throw notRestored(checkout, base, from, before, error);
     if (unmerged !== "") {
       const files = [...new Set(unmerged.split("\n").map((line) => line.slice(line.indexOf("\t") + 1)))];
       throw new WorkspaceRefusedError(
@@ -254,23 +263,50 @@ async function merge(git: Git, repo: string, resolved: Base, from: string): Prom
   const commit = await git(checkout, ["rev-parse", "HEAD"]);
   // Success means the run's commit is on the base now, whatever git printed.
   if (!(await git(checkout, ["merge-base", "--is-ancestor", fromCommit, commit]).then(() => true, () => false))) {
-    // Put the checkout back where it was: whatever the merge staged or committed is dropped.
-    // `--merge` refuses rather than lose a change the merge didn't make; the checkout was clean before it.
-    await git(checkout, ["merge", "--abort"]).catch(() => undefined);
-    const restored = await git(checkout, ["reset", "--quiet", "--merge", before]).then(
-      async () => (await git(checkout, ["status", "--porcelain", "--untracked-files=no"])) === "",
-      () => false,
-    );
+    if (!(await restore(restoreGit, checkout, before))) throw notRestored(checkout, base, from, before, null);
     throw new WorkspaceRefusedError(
       "merge-failed",
       `Merging "${from}" into "${base}" in ${checkout} didn't commit it, so it didn't land. ` +
-        (restored
-          ? `Nothing changed in that checkout. `
-          : `Putting that checkout back at ${before.slice(0, 12)} failed, so check it for staged changes. `) +
-        `The run's commits are still on "${from}".`,
+        `Nothing changed in that checkout. The run's commits are still on "${from}".`,
     );
   }
   return { kind: "merge", branch: base, commit, checkout, from };
+}
+
+/**
+ * Put `checkout` back at `before` after a merge this landing started: abort
+ * the merge it left, reset what it staged or committed, then check. `true`
+ * only when there is no merge in progress, HEAD is `before` and nothing is
+ * staged. `reset --merge` refuses rather than lose a change the merge didn't
+ * make; the checkout was clean before it.
+ */
+async function restore(git: Git, checkout: string, before: string): Promise<boolean> {
+  const mergeHead = async () => existsSync(await git(checkout, ["rev-parse", "--path-format=absolute", "--git-path", "MERGE_HEAD"]));
+  try {
+    if (await mergeHead()) await git(checkout, ["merge", "--abort"]).catch(() => undefined);
+    if ((await git(checkout, ["rev-parse", "HEAD"])) !== before || (await git(checkout, ["status", "--porcelain", "--untracked-files=no"])) !== "") {
+      await git(checkout, ["reset", "--quiet", "--merge", before]);
+    }
+    return (
+      !(await mergeHead()) &&
+      (await git(checkout, ["rev-parse", "HEAD"])) === before &&
+      (await git(checkout, ["status", "--porcelain", "--untracked-files=no"])) === ""
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** A merge that failed and whose checkout couldn't be put back: says so, and where it was. */
+function notRestored(checkout: string, base: string, from: string, before: string, error: unknown): WorkspaceRefusedError {
+  return new WorkspaceRefusedError(
+    "merge-failed",
+    `Merging "${from}" into "${base}" in ${checkout} ` +
+      (error === null ? "didn't commit it" : `failed: ${firstLine(error) ?? "git gave no reason"}`) +
+      `, and putting that checkout back at ${before.slice(0, 12)} failed too. ` +
+      `Check it for a merge in progress or staged changes (git merge --abort, or git reset --merge ${before.slice(0, 12)}) before trying again. ` +
+      `The run's commits are still on "${from}".`,
+  );
 }
 
 /**
