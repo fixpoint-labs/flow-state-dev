@@ -157,23 +157,38 @@ The timer reads `42s` under a minute, `1m 24s` from there, and `1h 3m` (no secon
 
 ### What a running task is doing now
 
-`working-status` holds two pure functions for the line at the end of a background task's feed. `toolInFlight` finds the newest tool call in a run's items that hasn't returned yet. `workingStatus` picks the most specific status it has: that call, then the plan step the harness reports in progress, then the task's last progress note. When there is none of them it returns `undefined`, and the indicator keeps its "Working..." label.
+Some work runs outside the chat request: a task in the background, such as a [coding agent](/docs/tools/coding-agents) run, whose items you render as a feed. `working-status` holds two pure functions for the live line at the end of that feed. `toolInFlight` finds the newest tool call in the task's items that hasn't returned yet. `workingStatus` picks the most specific status it has: that call, then the plan step the task reports in progress, then the task's last progress note. When there is none of them it returns `undefined`, and the indicator keeps its "Working..." label.
 
 ```bash
 fsdev ui add working-status
 ```
 
-```tsx
-import { StreamingIndicator } from "@/components/flow-state/streaming-indicator";
-import { toolInFlight, workingStatus } from "@/components/flow-state/working-status";
+`workingStatus` takes one object, and every field in it is optional:
 
-const message = workingStatus({ inFlight: toolInFlight(runItems), plan: planRows, note: task.statusNote });
-<StreamingIndicator message={message} since={task.startedAt} />
-// Running pnpm test (4m 12s)
-// Step 3 of 5: Add regression test (4m 12s)
+- `inFlight`: the result of `toolInFlight(items)`, where `items` is the task's `OutputItem[]`.
+- `plan`: the task's plan as `PlanRowNow[]`, each row `{ title: string; status: string | null }`. A coding agent's rows come from [the run's plan](/docs/tools/coding-agents#the-runs-plan). Pass `null` or leave it out when there is no plan.
+- `note`: the task's last progress note, a `string` or `null`. Blank text counts as no note.
+
+```tsx
+import type { OutputItem } from "@flow-state-dev/core/items";
+import { StreamingIndicator } from "@/components/flow-state/streaming-indicator";
+import { toolInFlight, workingStatus, type PlanRowNow } from "@/components/flow-state/working-status";
+
+function TaskWorkingLine({ items, plan, note, startedAt }: {
+  items: OutputItem[];
+  plan: PlanRowNow[] | null;
+  note: string | null;
+  startedAt: number;
+}) {
+  const message = workingStatus({ inFlight: toolInFlight(items), plan, note });
+  return <StreamingIndicator message={message} since={startedAt} />;
+}
+// Renders one line, for example either of:
+//   Running pnpm test (4m 12s)
+//   Step 3 of 5: Add regression test (4m 12s)
 ```
 
-A shell command reads "Running" and the command, other calls read like a [Tool](#tool) row ("Edit src/adapter.ts"), and a plan step reads "Step 3 of 5:" and its title. A plan row counts as in progress whatever the harness calls it (`in_progress`, `IN_PROGRESS`, `in-progress`).
+A tool call that states what it's doing, such as a shell command's `description`, reads as that statement. Otherwise a shell command reads "Running" and the command, other calls read like a [Tool](#tool) row ("Edit src/adapter.ts"), and a call with nothing to name reads "Using" and the tool's name. A plan step reads "Step 3 of 5:" and its title. A plan row counts as in progress whatever the task calls it (`in_progress`, `IN_PROGRESS`, `in-progress`).
 
 ## Status
 
