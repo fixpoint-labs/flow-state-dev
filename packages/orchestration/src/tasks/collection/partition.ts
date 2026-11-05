@@ -194,6 +194,8 @@ export function partitionedResourceCollection(
     upsert: (key, update, createOnly) => inner.upsert(keyOf(key), update, createOnly),
     delete: (key) => inner.delete(keyOf(key)),
     list: async (within) => (await inner.list(`${segment}/${within ?? ""}`)).filter(isDirectChild),
+    // The partition's rows only, like `list`.
+    findBy: async (index, value) => (await inner.findBy(index, value)).filter(isDirectChild),
     count: async () => (await view.list()).length,
   };
   byPartition.set(partition, view);

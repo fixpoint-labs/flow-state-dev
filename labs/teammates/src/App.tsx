@@ -1,6 +1,6 @@
 import { ClientHttpError } from "@flow-state-dev/client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { LabAdapter, NewTeammate, WorkerRow } from "./adapter";
+import type { HarnessRow, LabAdapter, LabContext, NewTeammate, WorkerRow } from "./adapter";
 import { Conversation } from "./components/Conversation";
 import { KeysSheet } from "./components/KeysSheet";
 import { PopupView, type FollowUp, type Popup } from "./components/Popups";
@@ -107,6 +107,20 @@ export function App({ adapter }: { adapter: LabAdapter }) {
       live.current = false;
     };
   }, [boot]);
+
+  // What the lab works on and with, and which harnesses can run: read once, the chips again on Re-check.
+  const [context, setContext] = useState<LabContext>();
+  const [harnesses, setHarnesses] = useState<HarnessRow[]>();
+  useEffect(() => {
+    let on = true;
+    void adapter.readContext().then((read) => on && setContext(read), () => undefined);
+    // A failed read draws no chips rather than "checking" forever.
+    void adapter.readHarnesses().then((rows) => on && setHarnesses(rows), () => on && setHarnesses([]));
+    return () => {
+      on = false;
+    };
+  }, [adapter]);
+  const recheck = async () => setHarnesses(await adapter.readHarnesses(true));
 
   const hire = async (teammate: NewTeammate) => {
     const hired = await adapter.hire(teammate);
@@ -252,6 +266,10 @@ export function App({ adapter }: { adapter: LabAdapter }) {
           onOpen={openPopup}
           prefill={prefill?.sessionId === sessionId ? prefill : undefined}
           onPrefilled={consumePrefill}
+          workers={workers}
+          context={context}
+          harnesses={harnesses}
+          onRecheck={recheck}
         />
       ) : (
         <main aria-label="Conversation" />

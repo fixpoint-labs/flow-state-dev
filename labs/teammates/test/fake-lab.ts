@@ -470,6 +470,18 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       notify();
     },
 
+    async readContext() {
+      return { folder: "/work/launch-site", folderProblem: null, model: "openai/gpt-6-luna", harness: "cursor", delegates: { [LEAD]: "all" as const } };
+    },
+
+    async readHarnesses() {
+      return [
+        { harness: "claude-code", label: "Claude Code", ready: true, reason: null, remedy: null, unanswered: false },
+        { harness: "codex", label: "Codex", ready: false, reason: "Codex has no credential", remedy: "Run `codex login`", unanswered: false },
+        { harness: "cursor", label: "Cursor", ready: true, reason: null, remedy: null, unanswered: false },
+      ];
+    },
+
     async listWorkers() {
       if (unreachable > 0) {
         unreachable -= 1;

@@ -17,6 +17,7 @@ import type {
   ResourceRef,
   ResourceRegistry,
   ResourceCollectionConfig,
+  DeclaredResourceIndex,
   SessionItem,
   SessionItemViews,
   SessionMetadataInput,
@@ -149,7 +150,8 @@ import {
 import { refuseInstancePin } from "./instance-pin";
 import { requestInSessionScope, sessionRequestScope } from "./session-request-scope";
 import { recordRequestStop } from "../execution/record-request-stop";
-import { ownerKeyMaySeed } from "../resources/owner-private";
+import { ownerKeyMaySeed, patternsReach } from "../resources/owner-private";
+import { findIndexedKeys, ownedWrite } from "../resources/resource-indexes";
 import {
   compareTurnsOldestFirst,
   outputItemToSessionItem,
@@ -2033,6 +2035,56 @@ export async function createExecutionContext<
       }
     };
   };
+  // FIX-2532: `findBy`'s candidate keys from the store's index, in every cell
+  // a collection's keys route to: its own, and the cell of each overlapping
+  // collection and of each single whose storage key it matches, of this flow
+  // at the scope (either can keep its keys elsewhere), each cell answering
+  // only for the keys it owns, as `list()` reads them. `undefined` when the
+  // store keeps no index entries: the registry then scans.
+  const makeIndexLookup =
+    (scope: ContentScopeType) =>
+    async (
+      config: ResourceCollectionConfig,
+      index: DeclaredResourceIndex,
+      value: string
+    ): Promise<string[] | undefined> => {
+      const indexes = stores.resourceState.indexes;
+      if (indexes === undefined) return undefined;
+      const configs = Object.entries(
+        scope === "session" ? sessionResourceConfigs : scope === "user" ? userResourceConfigs : orgResourceConfigs
+      );
+      const cells = new Set<string>();
+      const ownCell = resolveConfigScopeId(scope, config);
+      if (ownCell !== undefined) cells.add(ownCell);
+      for (const [accessor, other] of configs) {
+        const reaches = isCollectionConfig(other)
+          ? patternsReach(other.pattern, config.pattern)
+          : matchesPattern(config.pattern, scopeStorageKeyMaps[scope][accessor] ?? accessor);
+        if (!reaches) continue;
+        const scopeId = resolveConfigScopeId(scope, other);
+        if (scopeId !== undefined) cells.add(scopeId);
+      }
+      const rawPrefix = getPatternPrefix(config.pattern);
+      const found = await Promise.all(
+        [...cells].map(async (scopeId) => {
+          const keys = await findIndexedKeys(
+            {
+              store: stores.resourceState,
+              indexes,
+              scopeType: storageScopeOf(scope, scopeId),
+              scopeId,
+              collection: config.pattern,
+              keyPrefix: rawPrefix === "" ? "" : `${rawPrefix}/`
+            },
+            index,
+            value
+          );
+          return keys.filter((key) => resolveResourceStorageScopeId(scope, key) === scopeId);
+        })
+      );
+      return [...new Set(found.flat())].sort();
+    };
+
   const sessionLazyLoad = makeLazyLoad("session");
   const userLazyLoad = makeLazyLoad("user");
   const orgLazyLoad = makeLazyLoad("org");
@@ -2278,7 +2330,14 @@ export async function createExecutionContext<
             // included, doesn't stop on it (FIX-2145).
             signal: writesOutlivingAbort > 0 ? undefined : options.sideChainSignal,
             persist: (next, expectedVersion) =>
-              stores.resourceState.set(storageScopeOf(scope, scopeId), scopeId, key, next, expectedVersion),
+              stores.resourceState.set(
+                storageScopeOf(scope, scopeId),
+                scopeId,
+                key,
+                next,
+                expectedVersion,
+                ownedWrite(flow.id)
+              ),
             reread: () => stores.resourceState.get(storageScopeOf(scope, scopeId), scopeId, key)
           });
         } catch (err) {
@@ -2753,6 +2812,7 @@ export async function createExecutionContext<
     ...userKeyPersisters,
     onResourceChanged: makeResourceChangeHandler("user"),
     lazyLoad: userLazyLoad,
+    findIndexedKeys: makeIndexLookup("user"),
     recordResourceLoad,
     resolveEagerSource: (keyOrPrefix) => resolveEagerSource("user", keyOrPrefix),
     templateResolverRef,
@@ -2771,6 +2831,7 @@ export async function createExecutionContext<
     ...sessionKeyPersisters,
     onResourceChanged: makeResourceChangeHandler("session"),
     lazyLoad: sessionLazyLoad,
+    findIndexedKeys: makeIndexLookup("session"),
     recordResourceLoad,
     resolveEagerSource: (keyOrPrefix) => resolveEagerSource("session", keyOrPrefix),
     templateResolverRef,
@@ -2792,6 +2853,7 @@ export async function createExecutionContext<
           ...orgKeyPersisters,
           onResourceChanged: makeResourceChangeHandler("org"),
           lazyLoad: orgLazyLoad,
+          findIndexedKeys: makeIndexLookup("org"),
           recordResourceLoad,
           resolveEagerSource: (keyOrPrefix) => resolveEagerSource("org", keyOrPrefix),
           templateResolverRef,

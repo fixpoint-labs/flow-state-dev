@@ -23,10 +23,13 @@ export function Composer({
   sessionId,
   workerName,
   running,
+  seed,
   onSend,
   prefill,
   onPrefilled,
 }: {
+  /** A line to put in the box, as a starter line's click hands it; `at` makes a second click of the same line count. Never sent by itself. */
+  seed?: { text: string; at: number };
   /** The conversation it types to; `/` and a switch find its composer by it. */
   sessionId: string;
   workerName: string;
@@ -58,6 +61,11 @@ export function Composer({
     box.current?.focus();
     box.current?.setSelectionRange(text.length, text.length);
   }, [text]);
+  useEffect(() => {
+    if (seed === undefined) return;
+    setText(seed.text);
+    box.current?.focus();
+  }, [seed]);
   const { error, busy, submit } = useSubmit(async (typed: string) => {
     await onSend(typed.trim());
     // The box may have closed and reopened while it ran: the stored draft goes only if it is still this line.
