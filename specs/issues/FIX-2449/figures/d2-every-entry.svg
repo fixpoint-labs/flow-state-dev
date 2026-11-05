@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, where the collision check looks. Chosen: every public entry of the six foundation packages. Instead of: package roots only. It comes down to the first row: the chosen scope finds ten collisions, the roots-only scope finds seven and misses ExpectedVersion, executeBlock, and two different RetryPolicy types inside core. The price is the second row: renames reach core's subpaths, which is FIX-2448's seam. The third row is a tie: the check costs the same, one walk over the same source. Locks in: six public names, renamed on the side an app author doesn't import. Flips if: adopters never import a foundation subpath."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, where the one collision assertion looks. Chosen: every published root, plus every public entry of the six foundation packages. Instead of: package roots only. It comes down to the first row: the chosen scope finds 22 collisions, the roots-only scope finds 18 and misses ExpectedVersion, camelToKebab, executeBlock, and two different RetryPolicy types inside core. The price is the second row: renames reach core's subpaths, which is FIX-2448's seam. The third row is a tie: the check costs the same, one read of FIX-2448's per-entry index. Locks in: six public names, renamed on the side an app author doesn't import. Flips if: adopters never import a foundation subpath."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -37,7 +37,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Every public foundation entry</text>
+    <text class="t-h c-code" x="228" y="112">Every root, plus foundation subpaths</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Package roots only</text>
@@ -50,10 +50,10 @@
     <text class="t-lbl" x="32" y="169">CAN IMPORT</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Finds all ten</text>
+    <text class="t-b" x="248" y="161">Finds all 22</text>
     <text class="t-s" x="248" y="179">two RetryPolicy types inside core included</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Finds seven</text>
+    <text class="t-b" x="612" y="161">Finds 18</text>
     <text class="t-s" x="612" y="179">core plus core/models still shows two</text>
   </g>
 
@@ -71,10 +71,10 @@
   <g id="row-tie">
     <text class="t-lbl" x="32" y="280">THE CHECK'S COST</text>
     <text class="mark tie" x="228" y="282">=</text>
-    <text class="t-b" x="248" y="281">One walk over source</text>
-    <text class="t-s" x="248" y="299">the walker the anchor check reads</text>
+    <text class="t-b" x="248" y="281">One read of the index</text>
+    <text class="t-s" x="248" y="299">no walker of its own</text>
     <text class="mark tie" x="592" y="282">=</text>
-    <text class="t-b" x="612" y="281">One walk over source</text>
+    <text class="t-b" x="612" y="281">One read of the index</text>
     <text class="t-s" x="612" y="299">the same</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>

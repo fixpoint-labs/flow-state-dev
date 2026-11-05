@@ -5,6 +5,10 @@
  *   node specs/issues/FIX-2449/poc/root-census/census.mjs            # roots only
  *   node specs/issues/FIX-2449/poc/root-census/census.mjs --public   # every public entry
  *   node specs/issues/FIX-2449/poc/root-census/census.mjs --plant    # negative control
+ *   node specs/issues/FIX-2449/poc/root-census/census.mjs --all            # every published root
+ *   node specs/issues/FIX-2449/poc/root-census/census.mjs --all --public   # the assertion's scope:
+ *        every published root, plus every public entry of the six foundation packages
+ *   node specs/issues/FIX-2449/poc/root-census/census.mjs --all --every    # every public entry of every published package
  *
  * It reads one entry at a time through the walker the anchor check already uses
  * (scripts/mechanism-exports.mjs → packageExports), by overlaying each package.json
@@ -20,7 +24,6 @@
 import { fsReader, packageExports } from "../../../../../scripts/mechanism-exports.mjs";
 
 const ROOT = new URL("../../../../../", import.meta.url).pathname;
-const FOUNDATION = ["contracts", "core", "engine", "client", "react", "testing"].map((p) => `@flow-state-dev/${p}`);
 const args = new Set(process.argv.slice(2));
 const hidden = (key) => /internal|\/check$/.test(key);
 
@@ -30,6 +33,13 @@ for (const d of base.packageDirs()) {
   const t = base(`packages/${d}/package.json`);
   if (t) dirOf.set(JSON.parse(t).name, d);
 }
+// The six foundation packages, or with --all every published (non-private) package.
+const SIX = ["contracts", "core", "engine", "client", "react", "testing"].map((p) => `@flow-state-dev/${p}`);
+const FOUNDATION = args.has("--all")
+  ? [...dirOf].filter(([, d]) => !JSON.parse(base(`packages/${d}/package.json`)).private).map(([n]) => n).sort()
+  : SIX;
+// Which entries of a package count: roots, or (--public) every public entry of the six, or (--every) of all.
+const keysOf = (pkg) => args.has("--every") || (args.has("--public") && SIX.includes(pkg)) ? publicKeys(pkg) : ["."];
 const publicKeys = (pkg) => Object.keys(JSON.parse(base(`packages/${dirOf.get(pkg)}/package.json`)).exports ?? {}).filter((k) => !hidden(k));
 
 /** name → { file, type } for exactly one entry of one package. */
@@ -54,7 +64,7 @@ function entryExports(pkg, key) {
 
 const entries = []; // { entry, names }
 for (const pkg of FOUNDATION) {
-  for (const key of args.has("--public") ? publicKeys(pkg) : ["."]) {
+  for (const key of keysOf(pkg)) {
     entries.push({ entry: key === "." ? pkg : `${pkg}${key.slice(1)}`, names: entryExports(pkg, key) });
   }
 }
