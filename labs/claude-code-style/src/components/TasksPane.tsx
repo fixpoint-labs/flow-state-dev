@@ -1,4 +1,3 @@
-import { useJumpToLatest } from "@flow-state-dev/react";
 import { useCallback, useMemo } from "react";
 import type { LabAdapter, TaskRow, TaskStatus } from "../adapter";
 import { TASK_STATUS } from "../lib/task-status";
@@ -99,12 +98,10 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
     (emit: Parameters<LabAdapter["watchTaskWork"]>[2]) => adapter.watchTaskWork(sessionId, task.id, emit),
     [adapter, sessionId, task.id],
   );
-  const feed = useJumpToLatest();
   const status = TASK_STATUS[task.status];
   return (
     <Sheet
       label={`Work: ${task.title}`}
-      feed={feed}
       title={
         <span className="flex items-center gap-2">
           <span className={cn("size-2 shrink-0 rounded-full", status.dot, task.status === "in_progress" && "animate-pulse")} />

@@ -6,9 +6,10 @@
  * proves the package at wiring.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { App } from "../src/App";
 import { createFakeLab } from "./fake-lab";
+import { layOutFeeds } from "./feed-layout";
 
 // The app keeps what is open in the page's address; each test starts on a bare one.
 afterEach(() => {
@@ -38,6 +39,15 @@ async function startThreadsSession(speed: number) {
   const picker = await screen.findByRole("region", { name: "Choose a project" });
   fireEvent.click(await within(picker).findByRole("button", { name: "vendor-notes" }));
   await screen.findByLabelText("Message the main session");
+}
+
+// Opens the thread that is ready for review, as a sheet over the main thread.
+async function openReviewThread() {
+  await startThreadsSession(0.01);
+  await ask("Research three vendors for a status page, one thread each.");
+  await waitFor(() => expect(card("Vendor C · summary").dataset.column).toBe("review"));
+  fireEvent.click(within(card("Vendor C · summary")).getByRole("button", { name: "View task" }));
+  return screen.getByRole("dialog", { name: "Task: Vendor C · summary" });
 }
 
 describe("the threads-mode screen", () => {
@@ -233,6 +243,38 @@ describe("the threads-mode screen", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task: Vendor C · summary" })).toBeNull());
     expect(within(thread()).getAllByRole("region", { name: /^Task: / })).toHaveLength(3);
+  });
+
+  it("scrolls the thread's body to your line when you send from its composer, as the main thread does", async () => {
+    // Every scroll the sheet's body is asked for is recorded. Your line rises smoothly, as it does in the main thread.
+    const feeds = layOutFeeds();
+    onTestFinished(feeds.restore);
+    const view = await openReviewThread();
+    const body = view.querySelector<HTMLElement>(":scope > .overflow-y-auto")!;
+    feeds.scrolls.length = 0;
+    fireEvent.change(within(view).getByLabelText("Message this task"), { target: { value: "Shorter, please." } });
+    fireEvent.click(within(view).getByRole("button", { name: "Request changes" }));
+    await waitFor(() => expect(feeds.scrolls.some((s) => s.feed === body && s.behavior === "smooth")).toBe(true));
+  });
+
+  it("keeps the thread open when Esc only ends an IME composition in its box", async () => {
+    const view = await openReviewThread();
+    const box = within(view).getByLabelText("Message this task");
+    fireEvent.keyDown(box, { key: "Escape", isComposing: true });
+    expect(screen.getByRole("dialog", { name: "Task: Vendor C · summary" })).toBeTruthy();
+    fireEvent.keyDown(box, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task: Vendor C · summary" })).toBeNull());
+  });
+
+  it("lets Esc close the keys sheet opened over a thread, and leaves the thread open", async () => {
+    const view = await openReviewThread();
+    fireEvent.keyDown(document.body, { key: "?" });
+    const keys = await screen.findByRole("dialog", { name: "Keys" });
+    await waitFor(() => expect(keys.contains(document.activeElement)).toBe(true));
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Keys" })).toBeNull());
+    expect(view.isConnected).toBe(true);
+    expect(screen.getByRole("dialog", { name: "Task: Vendor C · summary" })).toBeTruthy();
   });
 
   it("widens the side panel from its edge and remembers the width", async () => {

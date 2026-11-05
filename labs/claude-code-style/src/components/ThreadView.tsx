@@ -23,7 +23,7 @@ import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus
  * composer steers. A failed task's error shows as an error. A finished task's
  * composer is off. Cmd+Enter (Ctrl+Enter) does what the box's main button
  * does: answer or send, or request changes when it is ready for review. Plain
- * Enter is a new line. Esc closes the sheet, as it does from anywhere in it.
+ * Enter is a new line.
  */
 export function ThreadView({
   adapter,
@@ -43,7 +43,8 @@ export function ThreadView({
     [adapter, sessionId, task.id],
   );
   const { text, setText, sending, failure, submit } = useDraftSend("claude-code-style:task-draft", task.id);
-  const feed = useJumpToLatest({ resetKey: task.id });
+  // The board keys this view by task, so a change of task remounts it and the feed starts over.
+  const feed = useJumpToLatest();
   const column = statusColumn(task);
   const question = task.waitingOn && task.waitingOn.kind !== "review" ? task.waitingOn : undefined;
   const words = text.trim();
