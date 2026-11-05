@@ -13,8 +13,11 @@
  * must be found. Either miss exits 1.
  * Negative control: `--plant` adds a file with an unlisted output read under
  * labs/ and must exit 1 naming it; the file is removed afterwards.
+ * End state: `--end-state` checks FIX-2455's done state instead of the
+ * baseline: removed sites are expected, and any remaining output read or
+ * hand-rolled wait exits 1 (list views stay allowed). Today's tree fails it.
  *
- * Usage (repo root): node specs/issues/FIX-2455/poc/output-read-census/census.mjs [--plant]
+ * Usage (repo root): node specs/issues/FIX-2455/poc/output-read-census/census.mjs [--plant] [--end-state]
  */
 import { readFileSync, readdirSync, statSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -82,6 +85,7 @@ function census() {
 }
 
 const plant = process.argv.includes("--plant");
+const endState = process.argv.includes("--end-state");
 if (plant) {
   mkdirSync(join(ROOT, "labs/_census-plant/src"), { recursive: true });
   writeFileSync(join(ROOT, PLANT), [
@@ -99,22 +103,23 @@ try {
     const kind = [...kinds].includes("output-read") ? "output-read" : "list-view";
     counts[kind] += 1;
     const want = EXPECTED_READS[file];
-    const ok = want === kind;
+    const ok = endState ? kind === "list-view" : want === kind;
     if (!ok) failed = true;
     console.log(`  ${ok ? "ok " : "NEW"} ${kind.padEnd(11)} ${file}${want && want !== kind ? ` (expected ${want})` : ""}`);
   }
-  for (const file of Object.keys(EXPECTED_READS)) if (!reads[file]) { failed = true; console.log(`  GONE ${file}`); }
+  if (!endState) for (const file of Object.keys(EXPECTED_READS)) if (!reads[file]) { failed = true; console.log(`  GONE ${file}`); }
   console.log(`  → ${counts["output-read"]} output reads by list-and-find, ${counts["list-view"]} list view(s)`);
   console.log("Hand-rolled status waits:");
   for (const file of [...waits].sort()) {
-    const ok = EXPECTED_WAITS.includes(file);
+    const ok = !endState && EXPECTED_WAITS.includes(file);
     if (!ok) failed = true;
     console.log(`  ${ok ? "ok " : "NEW"} ${file}`);
   }
-  for (const file of EXPECTED_WAITS) if (!waits.has(file)) { failed = true; console.log(`  GONE ${file}`); }
+  if (!endState) for (const file of EXPECTED_WAITS) if (!waits.has(file)) { failed = true; console.log(`  GONE ${file}`); }
   console.log(`  → ${waits.size} files`);
 } finally {
   if (plant) rmSync(join(ROOT, "labs/_census-plant"), { recursive: true, force: true });
 }
-console.log(failed ? "FAIL: census differs from the spec's counts" : "PASS: census matches the spec's counts");
+const what = endState ? "the end state (0 output reads, 0 hand-rolled waits)" : "the spec's counts";
+console.log(failed ? `FAIL: census differs from ${what}` : `PASS: census matches ${what}`);
 process.exit(failed ? 1 : 0);

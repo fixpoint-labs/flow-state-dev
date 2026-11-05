@@ -41,11 +41,11 @@ ones; the 0.4.0 tarballs have no such call and must fail.
 
 | How we verify | |
 |---|---|
-| **Goal check** | FIX-2564's leg c, `scripts/packed-install/run.mjs --goal`, on the manifest cell `onepath.output-read` with its two cases: the request read under 101 newer ones, and a failing action. This issue flips it to `expect: pass`; react's *Surface* cell is flipped by whichever of FIX-2449, FIX-2450, this issue and FIX-2456 lands last. Run by the implementer at completion, verdict in the implementation PR. Plus [`poc/output-read-census/`](poc/output-read-census/census.mjs), run on the PR head |
-| **Signal** | `result()` resolves `{ status: "completed", output }` equal to what the action computed; a failing action resolves `failed` with its `error.code`. The census prints *0 output reads by list-and-find* |
+| **Goal check** | FIX-2564's leg c, `scripts/packed-install/run.mjs --goal`, on the manifest cell `onepath.output-read` with its two cases: the request read under 101 newer ones, and a failing action. This issue flips it to `expect: pass`; react's *Surface* cell is flipped by whichever of FIX-2449, FIX-2450, this issue and FIX-2456 lands last. Run by the implementer at completion, verdict in the implementation PR. Plus [`poc/output-read-census/`](poc/output-read-census/census.mjs) `--end-state`, run on the PR head (the plain run checks the baseline counts) |
+| **Signal** | `result()` resolves `{ status: "completed", output }` equal to what the action computed; a failing action resolves `failed` with its `error.code`. The census `--end-state` prints *0 output reads by list-and-find* and *0 files* of hand-rolled waits, and exits 0 |
 | **Input** | An action that returns a value computed from its input, so a stub can't pass. Any other input, or 500 newer requests, must pass too |
-| **Anti-game** | Assert on what the installed client returns, never on the route handler, a mocked transport or workspace `src` (ER-9). The census's `--plant` run must fail |
-| **Control that must fail** | `run.mjs --control=adopter-goal`, the 0.4.0 tarballs: both cases of `onepath.output-read` fail, on *`result()` resolves the output*. Today's `main` fails the census: 6 output reads |
+| **Anti-game** | Assert on what the installed client returns, never on the route handler, a mocked transport or workspace `src` (ER-9). The census's `--end-state --plant` run must fail |
+| **Control that must fail** | `run.mjs --control=adopter-goal`, the 0.4.0 tarballs: both cases of `onepath.output-read` fail, on *`result()` resolves the output*. Today's `main` fails the census `--end-state`: 6 output reads, 5 hand-rolled waits |
 
 ## What changes
 
