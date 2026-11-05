@@ -280,7 +280,8 @@ describe("the teammates screen", () => {
     expect(tile.querySelector("[data-task-status]")?.textContent).toBe("running");
     // The lab has no projects: no select, no prompt, no card, and no word for one anywhere.
     expect(screen.queryByRole("combobox")).toBeNull();
-    expect(screen.queryByRole("group")).toBeNull();
+    // The one group on screen is the harness chips (FIX-2403), never a project choice.
+    expect(screen.queryAllByRole("group").map((g) => g.getAttribute("aria-label"))).toEqual(["Coding harnesses"]);
     expect(document.body.textContent).not.toMatch(/project/i);
 
     // The result lands as the coding task's, never a teammate's, and Chief of Staff's next line uses it.

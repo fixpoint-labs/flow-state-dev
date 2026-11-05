@@ -2,7 +2,7 @@ import { useJumpToLatest } from "@flow-state-dev/react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { stepRun, type SessionStep } from "../adapter";
-import { AgentMarkdown } from "./flow-state/message-response";
+import { MarkdownText } from "./flow-state/message-response";
 import { JumpToLatestButton } from "./JumpToLatest";
 import { ToolRun } from "./ToolRun";
 
@@ -117,7 +117,7 @@ export function Steps({ steps, nameOf, empty }: { steps: readonly SessionStep[];
       case "said":
         return (
           <div key={group.id} data-step="said" className="text-sm leading-relaxed">
-            <AgentMarkdown text={group.text} />
+            <MarkdownText text={group.text} />
           </div>
         );
       case "sent":
