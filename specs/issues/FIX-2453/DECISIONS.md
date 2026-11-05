@@ -62,6 +62,7 @@ It comes down to a hover that reads *"per BP-030"*: FIX-and-LAB-only leaves 249 
 - **The file set is derived, not listed**: every `packages/*/src` except
   `validate-publish-set.mjs`'s `neverPublish`, plus `packages/ui/registry/**` and `examples/**`
   with `comments: "all"`. A package that starts publishing is covered with no config edit.
+- **An id built at runtime (`"FIX-" + n`) is out of reach** of both checks. None exists today; accepted.
 - **No allow-list option.** A real exception (none found) takes a reasoned
   `eslint-disable-next-line`; the tarball scan still reads it.
 - **An error names the fix**, and links a docs page only where one explains it (none does for

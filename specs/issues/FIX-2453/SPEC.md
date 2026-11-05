@@ -7,7 +7,7 @@
 | Someone who… | Today | After |
 |---|---|---|
 | **hovers a core export in their editor** | Reads *"(FIX-2133 D2, the epic FIX-2058's ER-8)"*. Core 0.4.0's type files carry 272 `FIX-`/`LAB-` ids, 307 with `BP-`/`BR-` | Reads what the export does. No tracker or process id in any published hover |
-| **hits a thrown error** | *"…matching isolation (FIX-735)."*, *"which was removed (FIX-918)"* | The message names the fix, and links a docs page where one explains it |
+| **hits a thrown error** | *"…matching isolation (FIX-735)."*, *"which was removed (FIX-918)"* | The message names the fix |
 | **runs the store conformance suite on their adapter** | Test titles end in *"(FIX-2426)"* | Titles say the behaviour under test |
 | **copies a UI registry component or an example** | Pastes our ticket pointers into their own repo | Gets files with none, comments included |
 | **writes new code in this repo, by hand or as an agent** | Nothing stops a JSDoc ending in *"(FIX-123)"*; 16 sibling specs are writing new code right now | `pnpm lint` fails on that line and says to keep the pointer in a `//` comment |
@@ -22,12 +22,15 @@ errors and test titles in parallel ([ER-5](../../epics/FIX-2447/DECISIONS.md#who
 hover, an error, a log line, a conformance test title, or a file they copy. A new one can't
 come back.**
 
+An id here is the rule's one pattern, `\b(FIX|LAB|FLC|TL|BP|BR)-\d+\b` ([D2](DECISIONS.md#d2)).
+A bare decision id (`D2`, `ER-8`) is not matched: it sits beside a `FIX-` id that is.
+
 | Is it the right goal? | |
 |---|---|
 | **The real need** | The epic's *Leakage* row: no `FIX-`/`LAB-` id in a published `.d.ts` JSDoc, a thrown error or a conformance test title ([FIX-2447](../../epics/FIX-2447/SPEC.md#the-goal-and-how-well-know-its-met)), and ER-5: nothing that ships carries one, siblings' new code included |
 | **Smaller, and rejected** | "Sweep today's ids." Without a gate the siblings re-add them in the same weeks, and the row fails again at the closure |
 | **Bigger, and not this issue's** | Kitchen Sink's 145 sites (unpublished; FIX-2461 owns what it says). Shift Manager's placeholder UI (FIX-2418) |
-| **Not done if** | The lint passes because a suppression or a disable still covers a site · the workspace is clean and a tarball isn't (core's `dist` ships 4 test files today) · hovers are clean and an error still names an issue · a copied registry file still carries one in a `//` comment |
+| **Not done if** | The lint passes because a suppression or a disable still covers a site · the workspace is clean and a tarball isn't (core's `dist` ships 4 test files today) · a file a tarball ships sits outside the lint's file set · hovers are clean and an error still names an issue · a copied registry file still carries one in a `//` comment · ids went by deleting the docs: a JSDoc or an error sentence that carried an id is gone rather than rewritten, or a `//` pointer was dropped instead of kept |
 
 ```mermaid
 flowchart LR
@@ -45,10 +48,10 @@ compiled into `dist` still fails the row.
 | How we verify | |
 |---|---|
 | **Goal check** | FIX-2564's closure manifest, *Leakage* row. This issue's last PR flips it to `expect: pass`. Two assertions, which FIX-2564 owns and names: the lint (`pnpm lint` green with no `fsd/no-tracker-ids` entry in the suppressions file) and a leg-b tarball scan ([`poc/rule/tarball-scan.mjs`](poc/rule/tarball-scan.mjs) is the reference) |
-| **Signal** | Zero matches of the rule's pattern in every published tarball's `.d.ts` JSDoc and `.js` string and template literals, and in the registry and example files, comments included |
+| **Signal** | Zero matches of the pattern in every published tarball's `.d.ts` JSDoc and `.js` string and template literals; and, in the workspace, in `packages/ui/registry/**` and `examples/**`, comments included (neither travels in a tarball). Exempt by design: `CHANGELOG.md` (built from changeset fragments, which may cite issues) and `.map` files (excluded from every package's `files`). READMEs are swept by hand, with no guard |
 | **Input** | The whole published set, packed. Any sibling's new file must fail the lint on its own PR |
-| **Anti-game** | The rule has no allow-list option. The file set is derived from the publish set, not written by the same diff. The tarball scan, not the lint, is what the row reads, so a disable directive can't pass it |
-| **Control that must fail** | The published 0.4.0 tarballs and `main` at `ebec5326`, failing on *zero ids in hovers* (core alone: 307). The rule's tests plant a JSDoc id and a string id that must be reported, and a `//` id that must not |
+| **Anti-game** | The rule has no allow-list option. The file set is derived from the publish set, not written by the same diff. The tarball scan, not the lint, is what the row reads, so a disable directive can't pass it. `removeComments` and deleted docs are refused at review: the sweep PRs keep each package's count of documented `.d.ts` declarations, and BP-006 pointers move, they are not dropped |
+| **Control that must fail** | The published 0.4.0 tarballs and `main` at `ebec5326`, red on each surface: hovers (core: 307 ids), runtime text (engine: 30, the FIX-735 error and the FIX-2426 conformance titles among them), copied files (13 registry sites in the workspace today). The rule's tests plant a JSDoc id, one on an exported interface member, a string, a template, an `it()` title and JSX text that must be reported, and a `//` id that must not |
 
 ## What changes
 
