@@ -24,7 +24,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | ER-5 read literally: no id in any byte that ships, `//` comments in compiled `.js` included |
 | **Because** | tsc copies JSDoc, and only JSDoc, into a `.d.ts` ([settled](#settled)), so a JSDoc block is exactly a hover. A `//` pointer reaches only compiled `.js`. Clearing those means deleting about 1,060 BP-006 pointers in six packages, or a second build, since tsc's `removeComments` strips the hovers too. Copied files land in the adopter's repo, so every comment counts there |
-| **Locks in** | A pointer's one home is a `//` or `/* */` comment, for every contributor and agent from the day the rule lands. ER-5 reads as *what an adopter reads*; the epic may want its wording to match |
+| **Locks in** | A pointer's one home is a `//` or `/* */` comment, for every contributor and agent from the day the rule lands. ER-5 reads as *what an adopter reads*. The gap with its old wording, *nothing that ships*, closes: ER-5 is being amended to *nothing an adopter reads* |
 
 ![D1, which shipped text the rule covers. Chosen: what an adopter reads. Instead of: every comment in every shipped file. Decides it: the BP-006 pointers, kept in line comments or deleted. Price: pointers still visible in compiled JavaScript. Hovers and errors are clean either way. Flips if adopters read compiled JavaScript as documentation](figures/d1-what-ships.svg)
 
@@ -58,14 +58,16 @@ It comes down to a hover that reads *"per BP-030"*: FIX-and-LAB-only leaves 249 
   file and flips the manifest row. No PR adds a suppression for this rule. Until then `pnpm lint`
   runs with `--pass-on-unpruned-suppressions`, so a sibling that fixes a suppressed id isn't
   failed and doesn't touch the file; only sweep PRs edit it. Counts are per file: swapping one id
-  for another in the same file passes the lint, and only leg b catches it.
+  for another in the same file passes the lint, and only the tarball scan catches it.
 - **The convergence point is the rule's one pattern constant.** Every writer reaches it: hand
-  edits, codemods, and generated files under `src`. FIX-2564's tarball assertion imports it
-  rather than copying it, so the lint and the scan can't drift.
+  edits, codemods, and generated files under `src`. This issue's tarball scan imports it
+  rather than copying it, so the lint and the scan can't drift. The manifest's
+  `leakage.tracker-ids` cell runs the lint itself, strict: suppressions set aside, violations
+  named by package, and the control run when the rule lands.
 - **The file set is derived, not listed**: every `packages/*/src` except
   `validate-publish-set.mjs`'s `neverPublish`, plus shift-manager's `cli/`, cursor's
   `runtime/` and `apps/devtool/src`, plus `packages/ui/registry/**` and `examples/**` with
-  `comments: "all"`. Leg b fails on any file a tarball ships from outside that set. A package that starts publishing is covered with no config edit.
+  `comments: "all"`. The tarball scan fails on any file a tarball ships from outside that set. A package that starts publishing is covered with no config edit.
 - **An id built at runtime (`"FIX-" + n`) is out of reach** of both checks. None exists today; accepted.
 - **`/*!` comments count as JSDoc**: tsc keeps them in a `.d.ts` too (none today).
 - **Shift Manager's `src` is swept like the rest**, though Vite bundles it and its JSDoc reaches
@@ -87,7 +89,7 @@ It comes down to a hover that reads *"per BP-030"*: FIX-and-LAB-only leaves 249 
 |---|---|
 | Add the ids to `check-retired-terms.mjs` | Line-based: it can't keep a `//` pointer and refuse a JSDoc or a string on the same line, and it is Workforce's vocabulary guard |
 | `no-restricted-syntax` for literals, a custom rule for comments | Two places carrying one pattern; ER-4 already budgets the one custom rule |
-| Scan only the built `.d.ts` and `.js` | Catches a leak after the PR that wrote it merged, with no line to point at. Kept as the closure's leg-b assertion, not as the gate |
+| Scan only the built `.d.ts` and `.js` | Catches a leak after the PR that wrote it merged, with no line to point at. Kept as this issue's own goal check, which the closure re-runs, not as the gate or a manifest cell |
 | Sweep first, then add the rule | Two thousand sites take several PRs; the siblings would re-add ids meanwhile |
 
 ## Settled
@@ -118,5 +120,9 @@ and `reuse-review` over the whole set.
 - **Validation** — the goal states its pattern and is red per surface; the file set gains the
   three roots outside `src`; `RetiredShapeEntry.owner` named; the ratchet's unpruned-suppression
   behaviour stated.
+- **Set review (Nov 5)** — the manifest's *Leakage* cell reads the lint's strict run, and the
+  tarball scan is this issue's own goal check, re-run at the closure; ER-5 is amended to match
+  D1; Kitchen Sink's 145 sites are unpublished and outside the rule, no member's; the
+  `eslint.config.mjs` seam with FIX-2457 is named.
 
 **Open: none.**

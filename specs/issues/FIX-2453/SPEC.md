@@ -29,28 +29,30 @@ A bare decision id (`D2`, `ER-8`) is not matched: it sits beside a `FIX-` id tha
 |---|---|
 | **The real need** | The epic's *Leakage* row: no `FIX-`/`LAB-` id in a published `.d.ts` JSDoc, a thrown error or a conformance test title ([FIX-2447](../../epics/FIX-2447/SPEC.md#the-goal-and-how-well-know-its-met)), and ER-5: nothing that ships carries one, siblings' new code included |
 | **Smaller, and rejected** | "Sweep today's ids." Without a gate the siblings re-add them in the same weeks, and the row fails again at the closure |
-| **Bigger, and not this issue's** | Kitchen Sink's 145 sites (unpublished; FIX-2461 owns what it says). Shift Manager's placeholder UI (FIX-2418) |
+| **Bigger, and not this issue's** | Kitchen Sink's 145 sites: it is unpublished, so outside the rule, and no member of the epic takes them. Shift Manager's placeholder UI (FIX-2418) |
 | **Not done if** | The lint passes because a suppression or a disable still covers a site · the workspace is clean and a tarball isn't (core's `dist` ships 4 test files today) · a file a tarball ships sits outside the lint's file set · hovers are clean and an error still names an issue · a copied registry file still carries one in a `//` comment · ids went by deleting the docs: a JSDoc or an error sentence that carried an id is gone rather than rewritten, or a `//` pointer was dropped instead of kept |
 
 ```mermaid
 flowchart LR
-  W["pnpm lint · the rule · no suppression entry left for it"] --> M["closure manifest · the Leakage row"]
-  A["every published package · packed and installed"] --> S["leg b scan · .d.ts JSDoc · .js string and template literals"]
-  S --> M
-  M -->|"zero ids on both"| P["PASS · Leakage expect pass"]
-  C["control · the 0.4.0 tarballs · main at ebec5326"] -.-> S
+  W["pnpm lint · the rule · strict run · suppressions set aside"] --> M["closure manifest · leakage.tracker-ids cell"]
+  M -->|"zero ids"| P["PASS · Leakage expect pass"]
+  A["every published package · packed and installed"] --> S["this issue's tarball scan · imports the rule's pattern"]
+  S -->|"zero ids · re-run at the closure"| G["goal met"]
+  C["control · the 0.4.0 tarballs · main at ebec5326"] -.-> W
+  C -.-> S
   S -.->|"under the control"| F["must FAIL · core hovers 307"]
 ```
 
-The lint gates every PR. The scan reads what an adopter installs, so a disabled line or a test
-compiled into `dist` still fails the row.
+The lint gates every PR, and its strict run is the manifest's *Leakage* cell. The tarball scan is
+this issue's own check: it reads what an adopter installs, so a disabled line or a test compiled
+into `dist` still fails it.
 
 | How we verify | |
 |---|---|
-| **Goal check** | FIX-2564's closure manifest, *Leakage* row. This issue's last PR flips it to `expect: pass`. Two assertions, which FIX-2564 owns and names: the lint (`pnpm lint` green with no `fsd/no-tracker-ids` entry in the suppressions file) and a leg-b tarball scan ([`poc/rule/tarball-scan.mjs`](poc/rule/tarball-scan.mjs) is the reference) |
+| **Goal check** | Two checks, one place each. The manifest's `leakage.tracker-ids` cell reads the lint's strict run: `fsd/no-tracker-ids` with the suppressions file set aside, naming violations by package; this issue's last PR flips it to `expect: pass`. The tarball scan ([`poc/rule/tarball-scan.mjs`](poc/rule/tarball-scan.mjs) is the reference) is this issue's own check, not a manifest cell: it lands with the rule, imports the rule's pattern constant, and the closure re-runs it |
 | **Signal** | Zero matches of the pattern in every published tarball's `.d.ts` JSDoc and `.js` string and template literals; and, in the workspace, in `packages/ui/registry/**` and `examples/**`, comments included (neither travels in a tarball). Exempt by design: `CHANGELOG.md` (built from changeset fragments, which may cite issues) and `.map` files (excluded from every package's `files`). READMEs are swept by hand, with no guard |
 | **Input** | The whole published set, packed. Any sibling's new file must fail the lint on its own PR |
-| **Anti-game** | The rule has no allow-list option. The file set is derived from the publish set, not written by the same diff. The tarball scan, not the lint, is what the row reads, so a disable directive can't pass it. `removeComments` and deleted docs are refused at review: the sweep PRs keep each package's count of documented `.d.ts` declarations, and BP-006 pointers move, they are not dropped |
+| **Anti-game** | The rule has no allow-list option. The file set is derived from the publish set, not written by the same diff. A disable directive can pass the strict run, not the tarball scan, and the goal needs both. `removeComments` and deleted docs are refused at review: the sweep PRs keep each package's count of documented `.d.ts` declarations, and BP-006 pointers move, they are not dropped |
 | **Control that must fail** | The published 0.4.0 tarballs and `main` at `ebec5326`, red on each surface: hovers (core: 307 ids), runtime text (engine: 30, the FIX-735 error and the FIX-2426 conformance titles among them), copied files (13 registry sites in the workspace today). The rule's tests plant a JSDoc id, one on an exported interface member, a string, a template, an `it()` title and JSX text that must be reported, and a `//` id that must not |
 
 ## What changes
@@ -98,7 +100,7 @@ flowchart LR
   B -->|"literals and comments"| J[".js · runtime text"]
   D --> T["tarball"]
   J --> T
-  T --> G["leg b scan"]
+  T --> G["tarball scan · this issue's check"]
 ```
 
 The rule lands first, ESLint's bulk suppressions holding today's 2,192 sites, so a sibling's
@@ -117,7 +119,7 @@ new id fails from day one. The sweep empties the file ([decided](DECISIONS.md#de
 | Already here | What this does with it |
 |---|---|
 | Term guards: `check-retired-terms.mjs`, the one-word-per-thing sweep, `validate-reserved-names.mjs`, the docs site's `lint:brand` | **Leaves alone.** This is the fifth. All four read lines or words, and none can tell a `//` pointer from a JSDoc block or a string, which is the whole distinction here. No `mechanisms.yaml` row: it lists runtime mechanisms |
-| `eslint.config.mjs`, syntactic rules, no custom rule yet; the CI *Lint* step and the pre-push hook | **Extends**, per [ER-4](../../epics/FIX-2447/DECISIONS.md#who-owns-what): the one custom rule. Same step, same hook |
+| `eslint.config.mjs`, syntactic rules, no custom rule yet; the CI *Lint* step and the pre-push hook | **Extends**, per [ER-4](../../epics/FIX-2447/DECISIONS.md#who-owns-what): the one custom rule. Same step, same hook. A seam: FIX-2457 adds a `no-restricted-syntax` entry to the same file; whichever lands second rebases |
 | ESLint's bulk suppressions (9.24+; the repo runs 9.39.5) | **Builds on**, as the ratchet. Proved in [`poc/rule/ratchet.sh`](poc/rule/ratchet.sh) |
 | `scripts/validate-publish-set.mjs` → `neverPublish`; each package's `files` and build root | **Builds on**: the rule's file set is every package's `src` except `neverPublish`, plus the three roots that ship from outside `src`: shift-manager's `cli/`, cursor's `runtime/`, and `apps/devtool/src` (devtool's `dist-client`). All three are at zero today |
 | [BP-006](../../../docs/contributing/best-practices/process.md): a ticket pointer is fine in a comment | **Amended**: a `//` or `/* */` comment, not JSDoc ([D1](DECISIONS.md#d1)) |
@@ -132,14 +134,14 @@ new id fails from day one. The sweep empties the file ([decided](DECISIONS.md#de
 |---|---|
 | **Removes** | 2,192 id sites in 25 published packages, the registry and the examples (2,128 JSDoc, 56 literals, 8 copied comments), and orchestration's `RetiredShapeEntry.owner` field: seven tracker ids stored as data on an exported type, read by nothing, which move to `//` comments |
 | **Adds** | One custom rule, permanent by design (ER-4). A suppressions file, paid by this issue |
-| **Leaves** | Core's `dist` ships four compiled test files (no ids), a surface leak routed to the epic-agent (FIX-2448's area). No markdown guard. `reportUnusedDisableDirectives: "off"`, so a stale disable goes unreported; leg b still reads its line. Kitchen Sink's 145 sites, FIX-2461's |
+| **Leaves** | Core's `dist` ships four compiled test files (no ids), a surface leak routed to the epic-agent (FIX-2448's area). No markdown guard. `reportUnusedDisableDirectives: "off"`, so a stale disable goes unreported; the tarball scan still reads its line. Kitchen Sink's 145 sites: unpublished, outside the rule, and no member's |
 
 **Net: down.** Two thousand sites go; one rule stays, and its suppressions file is gone by the end.
 
 ## Sign off
 
-**[The goal](#the-goal-and-how-well-know-its-met):** zero ids in what an adopter reads, measured
-on installed tarballs, and gated on every PR. If wrong: the closure finds ids the workspace
+**[The goal](#the-goal-and-how-well-know-its-met):** zero ids in what an adopter reads: the
+manifest cell reads the lint's strict run, and this issue's tarball scan reads what installs. If wrong: the closure finds ids the workspace
 lint never saw.
 
 **[The debt](#whats-already-here-and-the-debt):** net down; one permanent rule, a suppressions
@@ -147,7 +149,7 @@ file that ends empty. If wrong: a fifth term guard nobody folds.
 
 1. [D1](DECISIONS.md#d1) · **The rule covers what an adopter reads: hovers, runtime text, and
    copied files whole. `//` pointers stay, in compiled `.js` too.** If wrong: `node_modules`
-   still shows about 1,060 pointers. The one to weigh: it reads ER-5 narrower than its words.
+   still shows about 1,060 pointers. ER-5's wording is being amended to match.
 2. [D2](DECISIONS.md#d2) · **The pattern is our Linear keys and our process ids:
    `FIX`, `LAB`, `FLC`, `TL`, `BP`, `BR`.** If wrong: an 18% bigger sweep for ids adopters
    didn't mind.
