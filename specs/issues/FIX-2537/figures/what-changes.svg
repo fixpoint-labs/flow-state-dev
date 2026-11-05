@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 380" role="img" aria-label="What changes. Today: the nominated subscriptions pass through the five config screens, sender, own, labels, words and allow, and every one still undecided passes; the interest sentence is a note no screen reads. After: the same config screens, then each custom screen the app declared, run once over only the subscriptions that list it, then one evaluator call for the whole event, asking a yes or no per surviving subscription that listed interest. Those that pass get an owner run that delivers. If the call fails, the subscriptions it asked about are refused, nothing is asked again and no generator runs, and a hold-only owner run counts each as held. A subscription that listed neither passes after the custom screens with no model."
+<svg viewBox="0 0 940 380" role="img" aria-label="What changes. Today: the nominated subscriptions pass through the five config screens, sender, own, labels, words and allow, and every one still undecided passes; the interest sentence is a note no screen reads. After: the same config screens, then each custom screen the app declared, a sync function run once over only the subscriptions that list it, then one evaluator call for the whole event, asking a yes or no per distinct surviving sentence. Those that pass get an owner run that delivers. If the call fails, the subscriptions it asked about are refused as unjudged, nothing is asked again and no generator runs, and the event is not counted unheard, so it is never forwarded as unmatched. A subscription that listed neither passes after the custom screens with no model."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -54,12 +54,12 @@
   <text class="t-s" x="208" y="194">the same five</text>
   <rect class="new" x="380" y="156" width="170" height="58" rx="5"/>
   <text class="t-b" x="392" y="178">custom screens · D2</text>
-  <text class="t-s" x="392" y="194">app handlers, declared order</text>
+  <text class="t-s" x="392" y="194">app functions, sync, in order</text>
   <text class="t-s" x="392" y="207">each over who lists it</text>
   <rect class="model" x="584" y="156" width="174" height="58" rx="5"/>
   <text class="t-acc" x="596" y="174">ONE MODEL CALL · D1</text>
   <text class="t-b" x="596" y="192">one evaluator call</text>
-  <text class="t-s" x="596" y="207">a yes or no per interest</text>
+  <text class="t-s" x="596" y="207">a yes or no per sentence</text>
   <rect class="box" x="792" y="156" width="132" height="58" rx="5"/>
   <text class="t-b" x="804" y="178">owner run</text>
   <text class="t-s" x="804" y="194">deliver, as before</text>
@@ -75,9 +75,9 @@
   <!-- failure -->
   <path class="warn" d="M744 214 V290"/><path class="head" d="M744 296 l-4 -7 h8 z"/>
   <rect class="old" x="500" y="296" width="424" height="62" rx="5"/>
-  <text class="t-gone" x="512" y="318">the call failed: refused, and counted held</text>
+  <text class="t-gone" x="512" y="318">the call failed: refused, unjudged</text>
   <text class="t-s" x="512" y="335">no second call, no split, no generator</text>
-  <text class="t-s" x="512" y="350">a hold-only owner run; the next message says how many</text>
+  <text class="t-s" x="512" y="350">not unheard: never forwarded as unmatched</text>
 
   <text class="t-lbl" x="32" y="318">REFUSED AT ANY STAGE</text>
   <text class="t-s" x="32" y="335">is never asked about at a later one</text>

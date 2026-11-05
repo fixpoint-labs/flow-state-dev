@@ -6,12 +6,12 @@
 
 | Someone who… | Today | After |
 |---|---|---|
-| **follows something fuzzy** ("crash reports on acme/api") | Hears every event the code screens pass; the sentence is a note nobody reads | Lists the `interest` screen; a model judges each event that the code screens passed |
-| **builds an app with a check config can't say** ("has a stack trace") | Can't add one | Declares a custom screen once; a subscription names it |
-| **shares a busy PR with ten other fuzzy subscriptions** | n/a | One model call per event for all of them, not ten |
-| **is subscribed while the model is down** | n/a | The event is refused for them, nothing is asked twice, and their next message says how many were held |
-| **lists no `interest` screen** | No model, zero tokens | The same, byte for byte |
-| **decides whether the epic goes on** | Config share 0.820 (FIX-2534) | The share, split: config, custom, interest, open |
+| **follows something fuzzy** ("crash reports") | Hears all the code screens pass; nobody reads the sentence | Lists `interest`; a model judges what code passed |
+| **builds an app with a check config can't say** | Can't add one | Declares a function once; a subscription names it |
+| **shares a busy PR with ten fuzzy subscriptions** | n/a | One call per event, not ten; each sentence quoted as data |
+| **is subscribed while the model is down** | n/a | Refused, asked once, never forwarded as unheard |
+| **lists no `interest`** | Zero tokens | The same |
+| **decides whether the epic goes on** | Config share 0.820 (FIX-2534) | That share, plus calls per normalized event |
 
 The epic ([FIX-2471](../../epics/FIX-2471/SPEC.md)) gives this issue ER-1, D7's note and the kill line.
 
@@ -19,38 +19,36 @@ The epic ([FIX-2471](../../epics/FIX-2471/SPEC.md)) gives this issue ER-1, D7's 
 
 **A subscription can say what it wants in code or in a sentence; each event costs at most one
 model call however many subscriptions ask, only after the code screens passed them, and a failed
-call holds them, never asking again or asking a generator.**
+call refuses them, never asking again, asking a generator, or fanning the event out as unmatched.**
 
 | Is it the right goal? | |
 |---|---|
-| **The real need** | The epic's *"cares about something fuzzy … Jev reads only what config screens pass"*, with cost flat as subscribers multiply |
-| **Smaller, and rejected** | "An evaluator screen exists": a call per subscription meets it, and so does a fit check that falls back to a generator |
-| **Bigger, and not this issue's** | One judgment per event across a redelivery or push and poll ([Q-A](DECISIONS.md#qa)) · the closure's four legs (FIX-2539) |
-| **Not done if** | Two evaluator calls in one routing run · the model is asked about a subscription a code screen refused, or that didn't list `interest` · a failed call is retried, split or sent to a generator · a custom screen passes a subscription that didn't list it · a subscription with no `interest` screen costs a token · user B hears A's private repo |
+| **The real need** | The epic's *"cares about something fuzzy … Jev reads only what config screens pass"*, cost flat as subscribers grow |
+| **Smaller, and rejected** | "An evaluator screen exists": a call per subscription meets it |
+| **Bigger, and not this issue's** | One judgment per event across push and poll ([Q-A](DECISIONS.md#qa)) · the closure's four legs (FIX-2539) |
+| **Not done if** | Two calls in one routing run · the model sees a subscription code refused or that lists no `interest` · a failed call is retried, split or sent to a generator · an `unjudged` or failed-screen refusal makes an event unheard · user B hears A's private repo |
 
 ```mermaid
 flowchart LR
-  F["FIX-2534's fixture · plus interest and custom subscriptions · frozen first"] --> R["each event routed once"]
-  R --> S["each session's stored messages · each evaluator call's questions"]
-  S -->|"equals the oracle · ≤1 call per run · 0 generator calls"| OK["PASS · share split reported"]
+  F["FIX-2534's fixture · plus interest, custom and steering subscriptions · frozen first"] --> R["each event routed once"]
+  R --> S["each session's stored messages · each call's questions · each forward"]
+  S -->|"equals the oracle · ≤1 call per run · 0 generator calls"| OK["PASS · calls per event reported"]
   D["the model down"] --> R
-  C["controls · per-subscription · judge-first · fallback"] -.-> R
+  C["controls · per-subscription · judge-first · fallback · forward-unjudged"] -.-> R
   S -.->|"under a control"| X["must FAIL"]
 ```
-
-The check reads stored rows and the questions each call carried, not which blocks ran.
 
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/webhook-routing/judges-each-event-once/` · `mockEvaluationModel`, answering by a fixed rule over the event and the sentence · verdict on the implementation PR |
-| **Signal** | (a) Each session's rows equal the oracle's set. (b) ≤1 evaluator call per routing run, and exactly 1 where the oracle has a subscription to ask. (c) 0 generator calls. (d) Each call's questions are the oracle's survivors, no more. (e) With the model down: those subscriptions get nothing, (b) and (c) hold, and their next message counts the held. (f) 0 rows across users. **Reported:** the share split, and evaluator calls per normalized event, for [Q-A](DECISIONS.md#qa) |
-| **Input** | FIX-2534's normalized fixture, its subscriptions frozen, plus new ones that list `interest` or a custom screen, frozen in a commit named in `goal.md` before the first run |
-| **Anti-game** | The oracle restates the rules and imports no screen code. Count calls on the mock, not on block traces |
-| **Control that must fail** | `GOAL_CONTROL=per-subscription`: (b) FAILS. `judge-first`, the model before the code screens: (d) FAILS. `fallback`, a failed call asks a generator: (c) FAILS |
+| **Signal** | (a) Rows equal the oracle's. (b) ≤1 evaluator call per routing run, 1 where the oracle has a sentence. (c) 0 generator calls. (d) Questions are the oracle's distinct survivors. (e) Model down: those get nothing, (b) and (c) hold, 0 forwards. (f) 0 rows across users. (g) The steering fixture's neighbours keep their verdicts; its sentence arrives fenced and capped. **Reported:** config share, calls per normalized event |
+| **Input** | FIX-2534's fixture, plus `interest`, custom and one steering subscription, frozen in a commit `goal.md` names |
+| **Anti-game** | The oracle imports no screen code; calls are counted on the mock. The mock can't be steered, so (g) proves the fence, not resistance ([D1](DECISIONS.md#d1)) |
+| **Control that must fail** | `GOAL_CONTROL=per-subscription`: (b). `judge-first`: (d). `fallback` to a generator: (c). `forward-unjudged`, unjudged counted unheard: (e) |
 
 ## What changes
 
-![What changes. Before: five config screens, then every survivor passes; the sentence is a note. After: config screens, then each custom screen the app declared over the subscriptions that list it, then one evaluator call asking a yes or no per surviving subscription that listed interest; a failed call refuses them and counts them held](figures/what-changes.svg)
+![What changes. After the config screens: the app's custom functions, then one evaluator call, a yes or no per distinct sentence; a failed call refuses as unjudged, never unheard](figures/what-changes.svg)
 
 The chain grows two stages behind the config screens, and only the last one reads a model ([D1](DECISIONS.md#d1)).
 
@@ -59,7 +57,12 @@ The chain grows two stages behind the config screens, and only the last one read
  const github = { provider: "github", canRead, self,
 +  screens: {
 +    interestModel: "typesafe-ai/jev",            // one evaluation model; none, and `interest` is refused
-+    custom: { "stack-trace": { describe: "the text holds a stack trace", block: stackTraceScreen } },
++    custom: {
++      "stack-trace": {
++        describe: "the text holds a stack trace",
++        screen: (event, entry) => (/\n\s+at .+:\d+/.test(event.text) ? undefined : "no stack trace"),
++      },
++    },
 +  },
  };
 
@@ -70,72 +73,73 @@ The chain grows two stages behind the config screens, and only the last one read
    kinds: ["issue"],
 -  interest: "crash reports",                      // kept; nothing read it
 +  screens: [{ screen: "custom", name: "stack-trace" }, { screen: "interest" }],
-+  interest: "crash reports from production",      // the question the model answers
++  interest: "crash reports from production",      // quoted to the model as data
  })
 ```
 
-`screens` on the provider is an illustration; [D2](DECISIONS.md#d2) locks the `custom` listing
-and the handler-only rule, [D1](DECISIONS.md#d1) the `interest` kind.
+`screens` on the provider is illustrative; [D2](DECISIONS.md#d2) locks the `custom` listing and
+function shape.
 
-**Docs:** update the workforce README's *Subscriptions* (the two listed kinds, custom screens, a
-failed call) and `apps/docs/docs/workforce/messaging-workers.md` → *Messages from a service*,
-whose "screens don't read it" line no longer holds; update the `subscriptions` row's job in
-`docs/mechanisms/mechanisms.yaml`. No new page.
+**Docs:** the workforce README's *Subscriptions*; `messaging-workers.md` → *Messages from a
+service* ("screens don't read it" no longer holds); the `subscriptions` row in
+`mechanisms.yaml`. No new page.
 
 ## How an event is screened
 
 ```mermaid
 flowchart LR
   N["nominated subscriptions"] --> C["config screens · sender · own · labels · words · allow"]
-  C --> K["custom screens · in declared order · only those listing each"]
-  K --> J["one evaluator call · a yes or no per survivor listing interest"]
+  C --> K["custom functions · in declared order · only those listing each"]
+  K --> J["one evaluator call · a yes or no per distinct sentence"]
   J -->|"pass"| O["owner run · deliver"]
-  J -->|"call failed"| H["refused · owner run counts it held"]
+  J -->|"call failed or over 32"| H["refused · interest: unjudged · not unheard"]
   K -->|"no survivor lists interest"| O
 ```
 
-A sequencer of `.stepIf` steps plus one evaluator (epic D7): each stage runs only while a
-subscription is still undecided, so the model sees only what code passed. **Stays:** the five
-config screens, the verdict shape, the owner run and the cursor, and FIX-2534's share rule.
+A sequencer of `.stepIf` steps plus one evaluator (epic D7), each stage running only while a
+subscription is undecided. **Stays:** the config screens, the verdict shape, the owner run, the
+cursor, FIX-2534's share rule.
+
+**The seam FIX-2538 reads** ([D1](DECISIONS.md#d1)): an event is unheard, and may be forwarded as
+unmatched, only when every refusal was on content. An `interest: unjudged` refusal or a screen
+that threw is not, so an outage forwards nothing.
 
 ## What's already here, and the debt
 
 | Already here | What this does with it |
 |---|---|
-| **The job, "decide whether an event reaches a subscription".** FIX-2534's config chain (`subscriptions/screens.ts`), the only one | **Extends it.** Not a second way |
-| **Judging text against a sentence with a model**: `workforce/src/fit-check.ts`, `orchestration/src/skills/skill-evaluator.ts`, `harness-manager/src/goal-judge.ts` | **Uses core's `evaluator` directly**, as they do. Not `fit-check`: its fallback asks a generator, and it asks one choice, not a yes or no per subscription |
-| Epic D2, D6, D7, ER-1; FIX-2534 D1 (the verdict shape; the custom slot cut for this issue) | **Kept.** This fills the slot D1 named |
-| The `endOnly` owner run; the cursor's `held` count and its line in the next message | **Builds on:** a failed call's subscriptions are counted the same way |
+| **The job, "does an event reach a subscription".** FIX-2534's chain (`subscriptions/screens.ts`) | **Extends it:** `screenStep` and `screenRefusal` run custom functions too |
+| Core's `evaluator` (one `experimental_evaluate` call, `maxRetries: 0`); `fit-check.ts`'s `fitCallFailed` | **Reuses both;** `fitCallFailed` moves to a shared helper. Not `fit-check`'s generator fallback |
+| `ctx.runOnce` (`core/src/types/block.ts` ~564) | **Wraps the judgment:** a resumed request doesn't ask again |
+| Epic D2, D6, D7, ER-1; FIX-2534 D1's verdict shape and custom slot | **Kept;** this fills the slot |
 
 | Adds | Composed from |
 |---|---|
-| The `interest` listed screen, its sentence mirrored in the index | `listedScreenSchema`, `indexEntrySchema`: one more kind, one optional field |
-| The `custom` listed screen, and an app's declared screens | Handler blocks, one `.stepIf` each, answering `screenVerdictsSchema` |
-| The judgment step | Core's `evaluator` with a question per subscription, `.rescue` to a refusal |
-| A hold-only owner run | The delivery entry's `endOnly` mode, beside it |
+| The `interest` listed screen | `listedScreenSchema`; `indexEntrySchema` mirrors the row's `interest` |
+| The `custom` listed screen | `screenStep` / `screenRefusal`, one `.stepIf` each |
+| The judgment step | Core's `evaluator`, `.rescue` to the shared `fitCallFailed`, under `runOnce` |
 
 | The debt | |
 |---|---|
 | **Removes** | Nothing |
-| **Adds** | A model step in routing, opt-in: permanent (epic D2). User sentences in the org's server-only index, until FIX-2532 replaces it. A third owner-run mode |
-| **Leaves** | `fit-check`'s generator fallback, fenced off. An event that arrives twice is judged twice ([Q-A](DECISIONS.md#qa)) |
+| **Adds** | A model step in routing, opt-in: permanent (epic D2). User sentences in the org's server-only index, until FIX-2532 replaces it |
+| **Leaves** | `fit-check`'s generator fallback, fenced off. An event that arrives twice is judged twice unless the poll skips it ([Q-A](DECISIONS.md#qa)) |
 
-**Net: up, slightly.** One optional model step and one owner-run mode; no new store, sender or block kind.
+**Net: up, slightly.** One optional model step; no new store, sender, block kind or owner-run mode.
 
 ## Sign off
 
 **[The goal](#the-goal-and-how-well-know-its-met):** at most one model call per routing run, after
-code, with no fallback. If wrong: the fuzzy path costs per subscriber, and the kill line's
-premise goes.
+code, no fallback, no fan-out on failure. If wrong: the fuzzy path costs per subscriber.
 
 **[The debt](#whats-already-here-and-the-debt): up, slightly.** If wrong: user sentences outlive
 their subscriptions in the index.
 
-1. **[D1](DECISIONS.md#d1) · One evaluator call per routing run, a yes or no per subscription
-   that listed `interest`.** The one to weigh. If wrong: a coworker's sentence steers your verdict on a shared thread.
-2. **[D2](DECISIONS.md#d2) · A custom screen is the app's handler block, declared once, listed by
-   name.** If wrong: an app that needs a model in its screen has only `interest`.
+1. **[D1](DECISIONS.md#d1) · One evaluator call per routing run, a yes or no per distinct
+   sentence.** The one to weigh. If wrong: a coworker's sentence lowers your verdict on a thread you both follow.
+2. **[D2](DECISIONS.md#d2) · A custom screen is the app's sync function, declared once, listed by
+   name.** If wrong: an app that needs I/O or a model in its screen has only `interest`.
 
 **Open: [Q-A](DECISIONS.md#qa)** · may an event that arrives twice be judged twice?
 
-Feature · workforce · medium: one package, four adds, no new store · epic FIX-2471
+Feature · workforce · medium: one package, three adds, no new store · epic FIX-2471

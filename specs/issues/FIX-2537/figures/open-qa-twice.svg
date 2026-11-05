@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 430" role="img" aria-label="Q-A, open: when an event arrives twice, as a redelivery or from push and then a poll, may the model judge it twice? Recommended: judge once per routing run, and have the poll skip events its subscription has seen. The other option: a memo of verdicts per thread. It comes down to the first row, a third dedupe store: the recommendation adds none, the memo adds one kept in step with the cursor, which epic D4 rules out. The price is the second row: up to two calls per event when push and poll overlap, on fuzzy subscriptions only. The third row: the closure&#x27;s assertion is amended to per routing run, an epic amendment. Locks in one call per routing run, with the closure reporting calls per event. Would change my mind: push and poll overlapping by default, or leg c reading well over one call per event."
+<svg viewBox="0 0 940 430" role="img" aria-label="Q-A, open: when an event arrives twice, from push and then a poll, may the model judge it twice? Recommended: judge once per routing run, and take FIX-2536&#x27;s polledThrough mark so the poll skips events it already took. The other option: a memo of verdicts per thread. It comes down to the first row, a third dedupe store: the recommendation adds none, the memo adds one kept in step with the cursor, which epic D4 rules out. The price is the second row: up to two calls per event when push and poll overlap, on fuzzy subscriptions only. The third row: the closure&#x27;s assertion is amended to per routing run, an epic amendment. Locks in one call per routing run, with the closure reporting calls per event. Would change my mind: push and poll overlapping by default, or calls per event well over one after polledThrough."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -43,7 +43,7 @@
   <g id="options">
     <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
-    <text class="t-h c-code" x="228" y="112">Judge per run; the poll skips seen</text>
+    <text class="t-h c-code" x="228" y="112">Judge per run; polledThrough skips</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">THE OTHER OPTION</text>
     <text class="t-h c-lost" x="592" y="112">A verdict memo per thread</text>

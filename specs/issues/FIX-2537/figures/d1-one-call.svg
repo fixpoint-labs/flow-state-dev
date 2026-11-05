@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 430" role="img" aria-label="D1: how many model calls does one event cost when several subscriptions want a judgment? Chosen: one evaluator call with a yes or no question per subscription. Instead of: a call per subscription. It comes down to the first row, cost as subscribers grow: ten fuzzy subscriptions on a busy PR cost one call, not ten. The price is the second row: one sentence can steer another subscription&#x27;s answer in the shared call, though only to refuse or pass, and every pass is re-checked for read access. The third row: one failed call holds every subscription it asked about. Locks in a sixth public kind name, interest, and sentences on one event sharing one call. Flips if steering shows up in practice, then a call per user, at its cost."
+<svg viewBox="0 0 940 430" role="img" aria-label="D1: how many model calls does one event cost when several subscriptions want a judgment? Chosen: one evaluator call with a yes or no question per distinct sentence. Instead of: a call per subscription. It comes down to the first row, cost as subscribers grow: ten fuzzy subscriptions on a busy PR cost one call, not ten. The price is the second row: one sentence can lower another subscription&#x27;s verdict in the shared call, though each is fenced as quoted data and capped, and every pass is re-checked for read access. The third row: one failed call refuses every subscription it asked about as unjudged, and none is forwarded as unmatched. Locks in a sixth public kind name, interest, and sentences on one event sharing one call. Flips if steering shows up in practice, then a call per user, at its cost."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -43,7 +43,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">One call, a question each</text>
+    <text class="t-h c-code" x="228" y="112">One call, a question per sentence</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">A call per subscription</text>
@@ -67,7 +67,7 @@
     <text class="t-lbl" x="32" y="235">STEERS ANOTHER</text>
     <text class="mark minus" x="228" y="224">−</text>
     <text class="t-b" x="248" y="223">It can, in the shared call</text>
-    <text class="t-s" x="248" y="241">refuse or pass; reads re-checked</text>
+    <text class="t-s" x="248" y="241">fenced and capped; reads re-checked</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">Each call stands alone</text>
     <text class="t-s" x="612" y="241">no sentence sees another</text>
@@ -77,10 +77,10 @@
     <text class="t-lbl" x="32" y="280">A FAILED</text>
     <text class="t-lbl" x="32" y="293">CALL</text>
     <text class="mark minus" x="228" y="282">−</text>
-    <text class="t-b" x="248" y="281">Holds every asker</text>
-    <text class="t-s" x="248" y="299">one failure, all of them wait</text>
+    <text class="t-b" x="248" y="281">Refuses every asker</text>
+    <text class="t-s" x="248" y="299">unjudged, never forwarded</text>
     <text class="mark plus" x="592" y="282">+</text>
-    <text class="t-b" x="612" y="281">Holds one</text>
+    <text class="t-b" x="612" y="281">Refuses one</text>
     <text class="t-s" x="612" y="299">the rest are still judged</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 430" role="img" aria-label="D2: what may an app plug into the chain as a screen of its own? Chosen: handler blocks, declared once and run once per event over the subscriptions that list them. Instead of: any block kind, run once per subscription. It comes down to the first row, a model hidden in a screen: any other kind is refused when the chain is built, so the evaluator stays routing&#x27;s only model, where any block lets a generator screen route unseen. The price is the second row: a screen that needs a model has only the interest screen. The third row: code runs once per event, flat as subscribers grow. Locks in the custom listing by name and handler-only screens. Flips if apps need a model-backed screen beside interest, with its own budget."
+<svg viewBox="0 0 940 430" role="img" aria-label="D2: what may an app plug into the chain as a screen of its own? Chosen: a sync function from the event and the subscription to a refusal reason or nothing, declared once and run once per event by the existing screen step over the subscriptions that list it. Instead of: blocks, handler or any kind, with their own verdict contract. It comes down to the first row, a model hidden in a screen: nothing awaits, so the evaluator stays routing&#x27;s only model, where an async block can call one. The price is the second row: a screen that needs I/O or a model has only the interest screen. The third row: the contract is the config screens&#x27; own, a reason or nothing, where a block needs its own verdict rules. Locks in the custom listing by name and the function shape. Flips if apps need I/O or a model in a screen, beside interest, with its own budget."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -43,10 +43,10 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Handler blocks, once per event</text>
+    <text class="t-h c-code" x="228" y="112">Sync functions, once per event</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">Any block, per subscription</text>
+    <text class="t-h c-lost" x="592" y="112">Blocks, handler or any kind</text>
   </g>
 
   <g id="row-decides">
@@ -56,46 +56,46 @@
     <text class="t-lbl" x="32" y="169">IN A SCREEN</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Refused when the chain is built</text>
+    <text class="t-b" x="248" y="161">Nothing awaits</text>
     <text class="t-s" x="248" y="179">the evaluator stays the only model</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Can slip in</text>
-    <text class="t-s" x="612" y="179">a generator screen routes unseen</text>
+    <text class="t-s" x="612" y="179">an async step can call a model</text>
   </g>
   <g id="row-1">
     <text class="t-lbl" x="32" y="222">A SCREEN THAT</text>
     <text class="t-lbl" x="32" y="235">NEEDS A MODEL</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">Has only interest</text>
+    <text class="t-b" x="248" y="223">No I/O, no model: only interest</text>
     <text class="t-s" x="248" y="241">the one shared call</text>
     <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">Writes its own</text>
+    <text class="t-b" x="612" y="223">Can do I/O</text>
     <text class="t-s" x="612" y="241">at its own cost per event</text>
     <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
   <g id="row-2">
-    <text class="t-lbl" x="32" y="280">CODE RUNS</text>
-    <text class="t-lbl" x="32" y="293">PER EVENT</text>
+    <text class="t-lbl" x="32" y="280">THE</text>
+    <text class="t-lbl" x="32" y="293">CONTRACT</text>
     <text class="mark plus" x="228" y="282">+</text>
-    <text class="t-b" x="248" y="281">Once, over who lists it</text>
-    <text class="t-s" x="248" y="299">flat as subscribers grow</text>
+    <text class="t-b" x="248" y="281">The config screens&#x27; own</text>
+    <text class="t-s" x="248" y="299">a reason, or nothing</text>
     <text class="mark minus" x="592" y="282">−</text>
-    <text class="t-b" x="612" y="281">Once per subscription</text>
-    <text class="t-s" x="612" y="299">grows with subscribers</text>
+    <text class="t-b" x="612" y="281">A verdict contract to keep</text>
+    <text class="t-s" x="612" y="299">ignored, missing, throw rules</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>
 
   <g id="locks-in">
     <rect class="foot" x="16" y="340" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="361">LOCKS IN</text>
-    <text class="t-b" x="32" y="381">{ screen: custom, name }, handlers only</text>
+    <text class="t-b" x="32" y="381">{ screen: custom, name }, sync functions</text>
     <text class="t-s" x="32" y="399">renaming a declared screen breaks listings</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="340" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="361">FLIPS IF</text>
-    <text class="t-b" x="494" y="381">Apps need a model-backed screen</text>
+    <text class="t-b" x="494" y="381">Apps need I/O or a model in a screen</text>
     <text class="t-s" x="494" y="399">beside interest, with its own budget</text>
   </g>
 </svg>
