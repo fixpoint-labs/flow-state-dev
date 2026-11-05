@@ -74,10 +74,10 @@ describe("the page's address", () => {
     const card = await within(thread()).findByRole("region", { name: "Task: Vendor B · regions" });
     await waitFor(() => expect(within(card).getByRole("button", { name: /View thread|Answer/ })).toBeTruthy());
     fireEvent.click(within(card).getByRole("button", { name: /View thread|Answer/ }));
-    expect(screen.getByRole("complementary", { name: "Task: Vendor B · regions" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Task: Vendor B · regions" })).toBeTruthy();
 
     reload(adapter);
-    expect(await screen.findByRole("complementary", { name: "Task: Vendor B · regions" })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "Task: Vendor B · regions" })).toBeTruthy();
     expect(tab("Projects").getAttribute("aria-selected")).toBe("true");
     expect(within(thread()).getAllByText(/Research three vendors/).length).toBeGreaterThan(0);
   });
