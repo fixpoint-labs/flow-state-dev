@@ -418,13 +418,13 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
   );
 
   const handleNewSession = useCallback(
-    async (leaf: FlowNavigatorLeafState) => {
+    async () => {
       // Set before the await: the new session can be drawn before it returns.
+      // The open leaf hears it on the user's change notices.
       how.current = "push";
       await flow.createSession();
       setResolving(null);
       setPicked(null);
-      leaf.refresh();
       setIsRailDrawerOpen(false);
       setMobilePanel("chat");
     },
@@ -461,14 +461,6 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
     [flow]
   );
 
-  // The assistant's leaf, while it is open, so a session that gets its title
-  // after the first turn can be re-read into the rail.
-  const assistantLeafRefresh = useRef<(() => void) | null>(null);
-  const sessionTitle = session.detail?.title;
-  useEffect(() => {
-    if (sessionTitle !== undefined) assistantLeafRefresh.current?.();
-  }, [sessionTitle]);
-
   const railSlots = useMemo(
     () => ({
       // "New session" sits on the assistant's own row. Coordinators get none:
@@ -477,8 +469,6 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
       leafToolbar: (leaf: FlowNavigatorLeafState) =>
         leaf.kind === SHELL_FLOW ? (
           <AssistantLeafToolbar
-            leaf={leaf}
-            refreshRef={assistantLeafRefresh}
             disabled={flow.isLoading}
             onNewSession={handleNewSession}
           />
@@ -747,35 +737,21 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
   );
 }
 
-/**
- * The assistant's open leaf's action, on its row: "New session", plus a
- * handle on the leaf's re-read for as long as the leaf is open.
- */
+/** The assistant's open leaf's action, on its row: "New session". */
 function AssistantLeafToolbar({
-  leaf,
-  refreshRef,
   disabled,
   onNewSession,
 }: {
-  leaf: FlowNavigatorLeafState;
-  refreshRef: React.MutableRefObject<(() => void) | null>;
   disabled: boolean;
-  onNewSession: (leaf: FlowNavigatorLeafState) => Promise<void>;
+  onNewSession: () => Promise<void>;
 }) {
-  const { refresh } = leaf;
-  useEffect(() => {
-    refreshRef.current = refresh;
-    return () => {
-      if (refreshRef.current === refresh) refreshRef.current = null;
-    };
-  }, [refresh, refreshRef]);
   return (
     <Button
       variant="ghost"
       size="icon-xs"
       aria-label="New session"
       title="New session"
-      onClick={() => void onNewSession(leaf)}
+      onClick={() => void onNewSession()}
       disabled={disabled}
     >
       <Plus className="size-3.5" />
