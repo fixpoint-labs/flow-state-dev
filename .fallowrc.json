@@ -180,7 +180,14 @@
     { "file": "labs/teammates/src/components/flow-state/message-response.tsx", "exports": ["MessageResponse", "MessageResponseProps"] },
     // Kitchen Sink's byte copy of the registry's message: it re-exports `MessageResponseProps`
     // so installs that typed it from `message` keep compiling; the app itself doesn't name the type.
-    { "file": "apps/kitchen-sink/components/flow-state/message.tsx", "exports": ["MessageResponseProps"] }
+    { "file": "apps/kitchen-sink/components/flow-state/message.tsx", "exports": ["MessageResponseProps"] },
+    // The two labs' byte copies of the registry's streaming-indicator and shimmer, for a running
+    // task's working line: the line draws `StreamingIndicator`; `WorkedFor` and `TextShimmerProps`
+    // are the registry's for installs that show a finished turn's time or type the shimmer.
+    { "file": "labs/claude-code-style/src/components/flow-state/streaming-indicator.tsx", "exports": ["WorkedFor"] },
+    { "file": "labs/teammates/src/components/flow-state/streaming-indicator.tsx", "exports": ["WorkedFor"] },
+    { "file": "labs/claude-code-style/src/components/flow-state/shimmer.tsx", "exports": ["TextShimmerProps"] },
+    { "file": "labs/teammates/src/components/flow-state/shimmer.tsx", "exports": ["TextShimmerProps"] }
   ],
 
   // Dead code fails `fallow audit` at its default severity. Complexity reports

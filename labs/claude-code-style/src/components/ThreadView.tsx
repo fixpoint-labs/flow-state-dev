@@ -9,7 +9,9 @@ import { ReviewCard } from "./ReviewCard";
 import { Sheet } from "./Sheet";
 import { ErrorBody } from "./flow-state/error";
 import { Spend } from "./flow-state/spend";
+import { StreamingIndicator } from "./flow-state/streaming-indicator";
 import { TaskActions } from "./flow-state/task-actions";
+import { workingStatus } from "./flow-state/working-status";
 import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus";
 
 /**
@@ -183,6 +185,10 @@ export function ThreadView({
       {work?.entries.map((entry) => (
         <Entry key={entry.id} entry={entry} mark={entry.kind === "user" ? feed.mine(entry.id) : undefined} />
       ))}
+      {/* The live line: what it is doing now, else "Working...", and for how long. A task waiting on you isn't working. */}
+      {task.status === "in_progress" && task.waitingOn === undefined ? (
+        <StreamingIndicator message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
+      ) : null}
     </Sheet>
   );
 }
