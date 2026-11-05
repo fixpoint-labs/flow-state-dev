@@ -11,6 +11,10 @@
  * question to the person that names the goal and quotes the start of the
  * answer, since a person can only judge what they can see.
  *
+ * The model reads the goal, the answer, the run's commits and the files they
+ * changed, so a change the goal asks for is judged on the branch, not on a
+ * commit subject.
+ *
  * The model is a string the flow's model resolver resolves through its
  * evaluation hook; a check scripts it through the same resolver.
  */
@@ -100,10 +104,11 @@ export function goalJudge({ name, model = GOAL_JUDGE_MODEL, floor = GOAL_JUDGE_F
     name,
     model,
     inputSchema: harnessJudgeInputSchema,
-    state: (input: HarnessJudgeInput) => ({ goal: input.goal, answer: input.answer, commits: input.commits }),
+    state: (input: HarnessJudgeInput) => ({ goal: input.goal, answer: input.answer, commits: input.commits, diff: input.diff }),
     questions: () => ({
       [GOAL_JUDGE_QUESTION]: choice(
-        "A coding agent was given the goal and ended with the answer, having made the commits listed. " +
+        "A coding agent was given the goal and ended with the answer, having made the commits listed, " +
+          "which changed the files in the diff (each file's added and removed lines against the branch's base). " +
           "Did it do what the goal asks?",
         OUTCOMES,
       ),
