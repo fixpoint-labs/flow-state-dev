@@ -11,7 +11,7 @@ sign-off. D1 narrows the issue's proposal; D2 and D3 pick between shapes it left
 flowchart TD
   I["FIX-2458"] --> D1["D1 · core's existing readers per job · one failure kind stays"]
   D1 -.->|"rejected · a second answer to three questions"| X1["four new failure kinds"]
-  I --> D2["D2 · the peer range is the tested range · refuse outside it"]
+  I --> D2["D2 · the peer range is the tested range · one gate in core refuses outside it"]
   D2 -.->|"rejected · a claude-code release per SDK patch"| X2["exact pin for all three"]
   D2 -.->|"rejected · an untested wire runs silently"| X3["any version for all three"]
   I --> D3["D3 · each name carries its package · shared shapes once in core"]
@@ -37,13 +37,13 @@ It comes down to one answer per question: a kind would answer "was it stopped" a
 no readiness check in its path. Then `sdk-not-installed` earns its kind.
 
 <a name="d2"></a>
-## D2 · One SDK policy: the peer range is the tested range, and outside it the harness refuses
+## D2 · One SDK policy: the peer range is the tested range, and outside it one gate in core refuses
 
 | | |
 |---|---|
 | **Instead of** | Exact pins for all three, which claude-code would join · or any version for all three, which Codex and Cursor would leave |
 | **Because** | Each package translates its vendor's wire, so an untested version produces malformed items, not an error; that is why Codex and Cursor gate. But claude-code's comments were measured on SDK 0.3.234 while the lockfile pins 0.3.316: an exact pin would need a claude-code release for each patch. A range covers both: one version wide for Codex and Cursor, a tested span for Claude |
-| **Locks in** | Each package's `peerDependencies` range is what it tested, and the readiness check and the block refuse outside it, naming both. claude-code moves from `*` to a range: an adopter on an untested SDK gets a refusal with a remedy at build time. Widening a range is a release |
+| **Locks in** | Each package's `peerDependencies` range is what it tested, and the readiness check and the block refuse outside it, naming both. The refusal is one gate, `assertTestedSdkVersion` on `core/internal`, given each package's range and installed-version reader, throwing one `HarnessSdkVersionMismatchError`; Codex's and Cursor's gates and classes go, and claude-code gains none. claude-code moves from `*` to a range: an adopter on an untested SDK gets a refusal with a remedy at build time. Widening a range is a release |
 
 ![D2: the peer range is the tested range, beside exact pins for all and any version for all. Decides it: keeping both a gate and claude-code's release cadence. Price: each new span is a release. Flips if a vendor breaks its wire inside a patch](figures/d2-version-policy.svg)
 
@@ -79,7 +79,15 @@ It comes down to an app with two harnesses: shared names collide, and Kitchen Si
 - **Translate and emit leave the public entries of all three.** Nothing outside the packages
   imports them. The version helpers leave too, once Kitchen Sink reads readiness instead.
 - **Error classes stay, one set per package, renamed under D3** (`ClaudeAgentRunError` becomes
-  `ClaudeCode…`). claude-code gains a version-mismatch class for D2. Docs branch on core's readers.
+  `ClaudeCode…`), except the version mismatch: one `HarnessSdkVersionMismatchError` for all three.
+  Docs branch on core's readers.
+- **The shared version class lives on `core/internal`, not `core/harness`.** No adopter catches
+  either class today (no import outside the packages; only `cursor.md`'s failure table names one),
+  and D1 already gives "can it run here" its public answer, the readiness check. A public class
+  would be a second answer to teach. Its `code` (`HARNESS_SDK_VERSION_MISMATCH`) stays readable
+  to a host that must branch. It moves to `core/harness` the day an adopter catches it. The two
+  old codes are not retired values: the class is thrown when the block is built, never emitted
+  into an item or stored.
 - **The convergence point for "a stop is abort-like"** is each stop error's constructor: it
   defaults its root cause to an AbortError, so no construction site can miss it. Codex builds its
   in four places and Cursor in five (`abortRace`, the pre-run signal check, the session-id
@@ -99,7 +107,7 @@ It comes down to an app with two harnesses: shared names collide, and Kitchen Si
 
 | Alternative | Why not |
 |---|---|
-| One set of error classes in core for all three | Sound, and LAB-156's. The classes carry vendor detail, and nothing branches on them once the readers do |
+| One set of error classes in core for all three | Sound, and LAB-156's. The classes carry vendor detail, and nothing branches on them once the readers do. The version class is the exception taken here: its fields (SDK, installed, tested) carry no vendor detail |
 | A shared emitter | The issue already defers it; LAB-156 |
 | A new harness-lines guide page | Already written: *Steering a running turn* in `coding-agents.md` |
 | Keep `./sdk` beside a new root | Two doors to one module; with `./cli` gone, the root is the only door |
@@ -126,5 +134,9 @@ Skipped in member mode: the epic-agent runs `analysis` and `reuse-review` over t
 - **Validation** — a stop must be abort-like whatever the signal's reason, since harness-manager
   stops with timeouts and plain errors; the collision cell left for FIX-2449's check; the range
   match, the `./sdk` consumers and four more docs pages named.
+- **Set review (Nov 5)** — the version gate moves, not just the reader: one `assertTestedSdkVersion`
+  and one `HarnessSdkVersionMismatchError` on `core/internal`, called by all three; collisions
+  are the one workspace `surface.collisions` cell this issue contributes the harness renames to;
+  this issue owns the three harness *Surface* cells and their rows on the package-roots page.
 
 **Open: none.**
