@@ -1,0 +1,102 @@
+<svg viewBox="0 0 940 418" role="img" aria-label="Open fork, Kitchen Sink&#x27;s copies of the registry components. Recommended: keep the installed copies and replace the hand sync with one command, with the existing drift test as the gate. Or: point Kitchen Sink at the registry source with an alias and delete the 43 copies. It comes down to the first row: kept copies show the setup an adopter has after an install, while an alias shows one no adopter can have. The price is the second row: an edit is followed by one command, and the drift test fails if it is forgotten, where the alias needs one edit. Third row: imports resolve from Kitchen Sink as today, while under the alias bare imports resolve from packages/ui, which does not declare ai. Locks in: the 43 files stay, and the epic&#x27;s removal becomes the hand sync, not the files. Flips if Kitchen Sink stops being the adopter reference."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">OPEN · THE CALL</text>
+    <text class="t-q" x="32" y="52">Kitchen Sink&#x27;s registry copies: delete them, or stop syncing them by hand?</text>
+  </g>
+
+  <g id="options">
+    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <text class="t-h c-code" x="228" y="112">Keep the copies; one command refreshes</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">OR</text>
+    <text class="t-h c-lost" x="592" y="112">Alias to the registry; delete 43 files</text>
+  </g>
+
+  <g id="row-0">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHAT KITCHEN</text>
+    <text class="t-lbl" x="32" y="169">SINK SHOWS</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="163">+</text>
+    <text class="t-b" x="248" y="162">The setup an adopter has</text>
+    <text class="t-s" x="248" y="180">components it owns, as an install leaves them</text>
+    <text class="mark minus" x="592" y="163">−</text>
+    <text class="t-b" x="612" y="162">A setup no adopter can have</text>
+    <text class="t-s" x="612" y="180">an alias into packages/ui</text>
+  </g>
+
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="218">EDITING A</text>
+    <text class="t-lbl" x="32" y="231">COMPONENT</text>
+    <text class="mark minus" x="228" y="221">−</text>
+    <text class="t-b" x="248" y="220">Edit, then run one command</text>
+    <text class="t-s" x="248" y="238">the drift test fails if you forget</text>
+    <text class="mark plus" x="592" y="221">+</text>
+    <text class="t-b" x="612" y="220">Edit once</text>
+    <text class="t-s" x="612" y="238">nothing to refresh</text>
+    <line class="row" x1="16" y1="252" x2="924" y2="252"/>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="276">IMPORTS RESOLVE</text>
+    <text class="mark plus" x="228" y="279">+</text>
+    <text class="t-b" x="248" y="278">From Kitchen Sink, as today</text>
+    <text class="t-s" x="248" y="296">its own dependencies</text>
+    <text class="mark minus" x="592" y="279">−</text>
+    <text class="t-b" x="612" y="278">From packages/ui</text>
+    <text class="t-s" x="612" y="296">which doesn&#x27;t declare ai</text>
+    <line class="row" x1="16" y1="310" x2="924" y2="310"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">43 files stay in Kitchen Sink</text>
+    <text class="t-s" x="32" y="387">the epic&#x27;s removal becomes the hand sync, not the files</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">Kitchen Sink stops being the adopter reference</text>
+    <text class="t-s" x="494" y="387">then the alias wins and the copies go</text>
+  </g>
+</svg>
