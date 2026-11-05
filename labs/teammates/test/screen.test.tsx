@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 /**
  * The screen, on a test double (`fake-lab.ts`). These prove the UI only: a list of workers rather
- * than sessions, worker talk drawn in both conversations and the Talk panel
- * (D1), a reply that waits for your turn and shows as pending (D2), and a
+ * than sessions, worker talk drawn in both conversations (D1), the open
+ * teammate's panel with the tasks its conversation filed, a reply that waits for your turn and shows as pending (D2), and a
  * divider that never calls a window boundary a summary, and a coding job that
  * runs as a background task, not a teammate (D4, amended by FIX-2332), in the
  * working folder, with no project anywhere (D3, amended by FIX-2335). The
@@ -26,9 +26,8 @@ afterEach(() => {
 
 const workers = () => screen.getByRole("navigation", { name: "Workers" });
 const conversation = () => screen.getByRole("main", { name: "Conversation" });
-const talk = () => screen.getByRole("complementary", { name: "Talk" });
+const panel = (name: string) => screen.getByRole("complementary", { name: `${name}'s panel` });
 const teammates = () => within(workers()).getAllByRole("list")[0];
-const background = () => within(workers()).getByRole("list", { name: "Background" });
 const workerRow = (name: string) => workers().querySelector<HTMLElement>(`[data-worker="${name}"]`)!;
 const entries = (kind: string) => [...conversation().querySelectorAll(`[data-entry="${kind}"]`)];
 
@@ -108,14 +107,13 @@ describe("the teammates screen", () => {
     expect(divider.getAttribute("aria-label")).toBe("Earlier turns summarized");
   });
 
-  it("draws Chief of Staff's message to researcher in both conversations and in Chief of Staff's Talk panel", async () => {
+  it("draws Chief of Staff's message to researcher in both conversations", async () => {
     render(<App adapter={fast()} />);
     await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
 
     // Step 2: one line in Chief of Staff's conversation, "Messaged researcher", that opens the exchange.
     const line = await within(conversation()).findByRole("button", { name: "Messaged researcher: What's our launch date?" });
     expect(line.getAttribute("aria-expanded")).toBeNull();
-    await waitFor(() => expect(within(talk()).getByRole("region", { name: "with researcher" })).toBeTruthy());
 
     // While Chief of Staff waits, its row says so.
     await waitFor(() => expect(workerRow("Chief of Staff").querySelector("[data-status]")?.textContent).toBe("Messaging researcher"));
@@ -207,13 +205,66 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(within(workerRow("researcher")).queryByLabelText(/unread/)).toBeNull());
   });
 
-  it("closes the Talk panel and opens it again from the conversation", async () => {
+  it("has no Talk panel or Talk control: the right pane is the open teammate's panel", async () => {
     render(<App adapter={fast()} />);
-    await screen.findByRole("region", { name: "with writer" });
-    fireEvent.click(within(talk()).getByRole("button", { name: "Close talk" }));
+    await screen.findByLabelText("Message Chief of Staff");
     expect(screen.queryByRole("complementary", { name: "Talk" })).toBeNull();
-    fireEvent.click(within(conversation()).getByRole("button", { name: "Talk" }));
-    expect(within(talk()).getByRole("region", { name: "with writer" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /talk/i })).toBeNull();
+    // Who it is, at the top of its panel, and a place for its routines.
+    const info = within(panel("Chief of Staff")).getByRole("region", { name: "Teammate" });
+    expect(within(info).getByRole("heading", { name: "Chief of Staff" })).toBeTruthy();
+    expect(info.textContent).toMatch(/Plans the launch with you/);
+    expect(within(panel("Chief of Staff")).getByRole("region", { name: "Routines" })).toBeTruthy();
+  });
+
+  it("lists only the open teammate's tasks in its panel, and switching teammates switches them", async () => {
+    // Each teammate's conversation filed its own: a list that leaked another's would show both titles.
+    const tasks = [
+      { filer: "teammates.chief-of-staff", id: "t-lead", to: "teammates.cursor", title: "Bump the version", status: "running" as const, harness: "Cursor" },
+      { filer: "teammates.researcher", id: "t-research", to: "teammates.writer", title: "Draft the survey summary", status: "running" as const },
+    ];
+    render(<App adapter={fast({ tasks })} />);
+    const lead = await screen.findByRole("button", { name: "Coding task: Bump the version, on Cursor" });
+    expect(panel("Chief of Staff").contains(lead)).toBe(true);
+    expect(screen.queryByRole("button", { name: "Asked writer to draft the survey summary" })).toBeNull();
+
+    fireEvent.click(workerRow("researcher"));
+    const research = await within(panel("researcher")).findByRole("button", { name: "Asked writer to draft the survey summary" });
+    expect(screen.queryByRole("complementary", { name: "Chief of Staff's panel" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Coding task: Bump the version, on Cursor" })).toBeNull();
+    // A row opens the task's popup, the same one its line in the thread opens.
+    fireEvent.click(research);
+    expect(await screen.findByRole("dialog", { name: "Asked writer to draft the survey summary" })).toBeTruthy();
+    expect(research.getAttribute("aria-current")).toBe("true");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(workerRow("writer"));
+    expect(await within(panel("writer")).findByText("writer hasn't started any tasks yet.")).toBeTruthy();
+  });
+
+  it("puts the running tasks first, folds the ended ones into groups with their counts, and moves a task that ends into its group live", async () => {
+    const ended = (id: string, title: string, status: "done" | "failed" | "cancelled") => ({ filer: "teammates.chief-of-staff", id, to: "teammates.researcher", title, status });
+    const tasks = [ended("t-1", "Look up the launch date", "done"), ended("t-2", "Check the beta numbers", "failed"), ended("t-3", "Find a customer quote", "done"), ended("t-4", "Pull the survey", "cancelled")];
+    render(<App adapter={fast({ tasks })} />);
+    const side = await screen.findByRole("complementary", { name: "Chief of Staff's panel" });
+    const groups = () => [...side.querySelectorAll("button[aria-expanded]")].map((b) => b.textContent);
+    // Ended tasks are folded: their groups show counts, and none of their rows.
+    await waitFor(() => expect(groups()).toEqual(["Done (2)▸", "Failed (1)▸", "Cancelled (1)▸"]));
+    expect(within(side).queryByRole("button", { name: "Asked researcher to look up the launch date" })).toBeNull();
+    // Opening a group shows its rows, and only its own.
+    fireEvent.click(within(side).getByRole("button", { name: /^Done \(2\)/ }));
+    const done = within(side).getByRole("list", { name: "Done" });
+    expect(within(done).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Asked researcher to look up the launch date", "Asked researcher to find a customer quote"]);
+    expect(within(side).queryByRole("button", { name: "Asked researcher to check the beta numbers" })).toBeNull();
+
+    // A task filed now runs at the top, above the groups, and moves into Done when it ends, with no reload.
+    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    const active = await within(side).findByRole("list", { name: "Active" }, { timeout: 2000 });
+    expect(within(active).getByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" })).toBeTruthy();
+    expect(active.compareDocumentPosition(within(side).getByRole("button", { name: /^Done/ })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await waitFor(() => expect(within(side).getByRole("button", { name: /^Done \(3\)/ })).toBeTruthy(), { timeout: 4000 });
+    expect(within(side).queryByRole("list", { name: "Active" })).toBeNull();
+    expect(within(within(side).getByRole("list", { name: "Done" })).getByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" })).toBeTruthy();
   });
 
   it("starts a coding task at once, with no project anywhere on the screen, and lands its result as the coding task's", async () => {
@@ -252,23 +303,24 @@ describe("the teammates screen", () => {
     expect(within(popup).getByRole("region", { name: "Result" }).textContent).toBe("Fixed the typo in README.md, line 1.");
   });
 
-  it("opens a coding task's run in a popup, read only, from its line in the thread or its background item", async () => {
+  it("opens a coding task's run in a popup, from its line in the thread or its row in the teammate's panel", async () => {
     render(<App adapter={fast()} />);
     await tell("Chief of Staff", "Fix the typo in the README's first line.");
     const card = await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" });
 
-    // From the thread: the run fills in live, with no composer, and its result lands in it.
+    // From the thread: the run fills in live, with no composer (its one box is the task's Steer line), and its result lands in it.
     fireEvent.click(card);
     let popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" });
-    expect(within(popup).queryByRole("textbox")).toBeNull();
+    expect(within(popup).getAllByRole("textbox").map((box) => box.getAttribute("aria-label"))).toEqual(["Steer this task"]);
     await waitFor(() => expect(popup.textContent).toMatch(/on Cursor/), { timeout: 2000 });
     await waitFor(() => expect(popup.textContent).toMatch(/Edit \/work\/README\.md/), { timeout: 2000 });
     expect(await within(popup).findByRole("region", { name: "Result" }, { timeout: 2000 })).toBeTruthy();
     fireEvent.click(within(popup).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).toBeNull();
 
-    // From the background list: the same popup, and the item says it's the one open. The conversation stays.
-    const item = within(background()).getByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" });
+    // From the panel, under Done now that it has ended: the same popup, and the row says it's the one open. The conversation stays.
+    fireEvent.click(within(panel("Chief of Staff")).getByRole("button", { name: /^Done \(1\)/ }));
+    const item = within(panel("Chief of Staff")).getByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" });
     fireEvent.click(item);
     popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" });
     expect(item.getAttribute("aria-current")).toBe("true");
@@ -358,10 +410,11 @@ describe("the teammates screen", () => {
     expect(entries("task")).toHaveLength(1);
     fireEvent.click(line);
     const popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" });
-    expect(popup.textContent).not.toMatch(/on Claude Code|on Codex/);
+    // Its run started nowhere: the popup offers Re-run on the others, and names no harness it ran on.
+    expect(popup.textContent).not.toMatch(/(Started|Starting) on (Claude Code|Codex)/);
   });
 
-  it("lines the composer up with the message list: one column token, centred, Talk open or closed", async () => {
+  it("lines the composer up with the message list: one column token, centred", async () => {
     render(<App adapter={fast()} />);
     const box = await screen.findByLabelText("Message Chief of Staff");
     const columns = () => [...conversation().querySelectorAll<HTMLElement>("[data-column]")];
@@ -370,9 +423,6 @@ describe("the teammates screen", () => {
     expect(columns()).toHaveLength(2);
     expect(columns().every(capped)).toBe(true);
     expect(columns()[1].contains(box)).toBe(true);
-    // Closing Talk widens the center, not the column.
-    fireEvent.click(within(conversation()).getByRole("button", { name: "Talk" }));
-    expect(columns().every(capped)).toBe(true);
     // The answer's text takes the column's width; only your own lines are capped, on the right.
     await waitFor(() => expect(entries("assistant").length).toBeGreaterThan(0));
     expect(entries("assistant").every((e) => !/max-w-/.test(e.className))).toBe(true);
@@ -707,7 +757,7 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(4));
 
     await screen.findByLabelText("Message tester");
-    fireEvent.click(within(conversation()).getByRole("button", { name: "Instructions" }));
+    fireEvent.click(within(panel("tester")).getByRole("button", { name: "Edit instructions" }));
     const edit = screen.getByRole("form", { name: "Instructions for tester" });
     const box = within(edit).getByLabelText("New instructions for tester");
     fireEvent.change(box, { target: { value: "Answer in one sentence." } });
@@ -715,11 +765,22 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(screen.queryByRole("form", { name: "Instructions for tester" })).toBeNull());
   });
 
-  it("hires a teammate you can talk to, changes its instructions, and fires it; the files' workers can't be", async () => {
-    render(<App adapter={fast()} />);
+  it("hires a teammate you can talk to, changes its instructions from its panel, and fires it; the files' workers can't be", async () => {
+    const lab = fast();
+    // What the panel hands the adapter, whose editInstructions is the workforce client's edit: the next turn reads it.
+    const edits: [string, string][] = [];
+    const editInstructions = lab.editInstructions;
+    lab.editInstructions = async (worker, instructions) => {
+      edits.push([worker, instructions]);
+      return editInstructions(worker, instructions);
+    };
+    render(<App adapter={lab} />);
     await screen.findByLabelText("Message Chief of Staff");
-    // A worker from the files has no instructions or fire control.
+    // A worker from the files has no fire control, and its panel's Edit instructions says why it can't be used.
     expect(within(conversation()).queryByRole("button", { name: "Fire" })).toBeNull();
+    const locked = within(panel("Chief of Staff")).getByRole("button", { name: "Edit instructions" }) as HTMLButtonElement;
+    expect(locked.disabled).toBe(true);
+    expect(document.getElementById(locked.getAttribute("aria-describedby")!)?.textContent).toMatch(/can't be changed here yet/);
 
     fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
     const form = screen.getByRole("form", { name: "Hire a teammate" });
@@ -729,11 +790,12 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(4));
     expect(await screen.findByLabelText("Message tester")).toBeTruthy();
 
-    fireEvent.click(within(conversation()).getByRole("button", { name: "Instructions" }));
-    const edit = screen.getByRole("form", { name: "Instructions for tester" });
+    fireEvent.click(within(panel("tester")).getByRole("button", { name: "Edit instructions" }));
+    const edit = within(panel("tester")).getByRole("form", { name: "Instructions for tester" });
     fireEvent.change(within(edit).getByLabelText("New instructions for tester"), { target: { value: "Answer in one sentence." } });
     await act(async () => fireEvent.click(within(edit).getByRole("button", { name: "Save instructions" })));
     await waitFor(() => expect(screen.queryByRole("form", { name: "Instructions for tester" })).toBeNull());
+    expect(edits).toEqual([["tester", "Answer in one sentence."]]);
 
     // Fire asks in a row under the header, with Keep focused; Keep leaves the teammate where it is.
     window.confirm = () => {

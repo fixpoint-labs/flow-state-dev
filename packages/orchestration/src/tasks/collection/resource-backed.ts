@@ -210,6 +210,12 @@ export interface ResourceBackedOptions {
    */
   onChange?: (event: TaskChangeEvent) => void;
   /**
+   * Fired after a committed write that is no lifecycle change, so emits no
+   * `task-change` (a run's spend, a cleared marker): with `onChange`, every
+   * write that changes a row reaches one of the two (FIX-2429).
+   */
+  onWrite?: (task: Task) => void;
+  /**
    * Item-log accessor for `TaskHandle.items()` (FIX-480). Reads the
    * response's persistent item buffer at call time so synthesizer
    * prompt-builders can pick from a worker's natural emissions
@@ -529,7 +535,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
   const emit = createTaskChangeEmitter<TInput, TOutput>(
     options.collectionId,
-    onChange
+    onChange,
+    options.onWrite
   );
 
   function listAll(): Task<TInput, TOutput>[] {
@@ -633,7 +640,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     // The outcome describes the invocation that committed, so a replay that
     // took a different branch cannot report an earlier attempt's write.
     if (committed === undefined) return { outcome: "unchanged" };
-    if (kind !== null) emit(kind, committed.task, committed.prevStatus);
+    emit(kind, committed.task, committed.prevStatus);
     // The ending's own pass pays the cascade it owes (FIX-2080 D2).
     await payCascadeAfterWrite(cascadeWrites, committed.task as Task);
     // Then the delivery, so a notice names the dependents just cancelled.
@@ -708,9 +715,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
     if (written === undefined) return { outcome: "unchanged" };
     const changeKind = typeof kind === "function" ? kind(written.prev, written.next) : kind;
-    if (changeKind !== null) {
-      emit(changeKind, written.next, written.prev.status !== written.next.status ? written.prev.status : undefined);
-    }
+    emit(changeKind, written.next, written.prev.status !== written.next.status ? written.prev.status : undefined);
     return { outcome: "recorded" };
   }
 

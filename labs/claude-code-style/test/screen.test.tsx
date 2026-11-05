@@ -390,10 +390,10 @@ describe("the session-mode screen", () => {
     // Step 5: stopping is asked of the main session, which cancels its own task.
     await ask("Stop the Globex research.");
     await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("cancelled"));
-    expect(within(thread()).getByText(/Updated a task/)).toBeTruthy();
+    expect(within(thread()).getByText(/Update a task/)).toBeTruthy();
   });
 
-  it("keeps a task read only: a row opens its work in a sheet over the main thread, with no stop or composer", async () => {
+  it("opens a task's work in a sheet over the main thread, with its action row and no composer", async () => {
     render(<App adapter={fast()} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
@@ -407,9 +407,9 @@ describe("the session-mode screen", () => {
     expect(within(work).getByText(/Starting:/)).toBeTruthy();
     // What its run has spent so far, split as the board's row reports it.
     expect(within(work).getByText("openai/gpt-6-luna · 1.2k in · 300 out")).toBeTruthy();
-    expect(within(work).getByText(/To stop or steer a task, ask the main session/)).toBeTruthy();
-    expect(within(work).queryByRole("button", { name: /stop|cancel/i })).toBeNull();
-    expect(within(work).queryByRole("textbox")).toBeNull();
+    // Its changes are the action row's (`task-actions.test.tsx`); the sheet has no composer of its own.
+    expect(within(work).getByTestId("task-action-row")).toBeTruthy();
+    expect(within(work).queryByRole("textbox", { name: /message/i })).toBeNull();
   });
 
   it("closes the sheet with Esc, its close button, or a click on the thread around it, and leaves the thread in place", async () => {

@@ -27,6 +27,9 @@
  * | any other request write | `request` on its session, and `run` on that session's parent |
  * | any session write | `run` on the session, and on its parent |
  *
+ * A task board's change (`board`, narrowed to the board) is not a store write
+ * here: orchestration names it through the board-notice seam (`board-notice.ts`).
+ *
  * Not `persistEvents`, which feeds the request's own stream. A write that did
  * not land (a version conflict, a status predicate that failed) publishes
  * nothing. A failed publish never fails the write. Notices for one topic and
@@ -125,7 +128,8 @@ function noticeKey(notice: ChangeNotice): string {
  * folded by topic, kind and origin. Never throws, and a failed publish never
  * fails the write that raised it. Every publisher goes through this one:
  * the request and session store wrappers here, and the run's resource and
- * scope-state seams and the client's resource routes (FIX-1506).
+ * scope-state seams and the client's resource routes (FIX-1506), and the
+ * board-notice seam (FIX-2429).
  */
 export function publishNotices(bus: ChangeBus, notices: readonly ChangeNotice[]): void {
   let queued = pending.get(bus);

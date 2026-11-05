@@ -11,7 +11,7 @@
  *        second of its being accepted.
  *   b  — on that bus, B's open view makes no database statement over a ten
  *        second idle window, counted at B's executor.
- *   c  — with each server on its own in-memory bus (which can't cross), B's
+ *   c  — with each server on its own Postgres bus with no tail pool (which never crosses), B's
  *        view still receives A's reply, within two seconds, on its timed read.
  *
  * Controls (each runs this file again with a patch applied as it loads):
@@ -316,7 +316,7 @@ await runGoal(async (failures, tell) => {
     }
   }
 
-  // c: each server on its own in-memory bus; the timed read reaches B.
+  // c: each server on its own Postgres bus with no tail pool; the timed read reaches B.
   {
     const { a, b } = await twoServers(undefined);
     let view: View | undefined;
@@ -324,9 +324,9 @@ await runGoal(async (failures, tell) => {
       await savedAt(a, await act(a, "say", { text: "opening" }));
       view = await openView(b);
       await delay(1_500);
-      const reply = await act(a, "say", { text: "the reply, across in-memory buses" });
+      const reply = await act(a, "say", { text: "the reply, across two buses" });
       const saved = await savedAt(a, reply);
-      const got = await receivedAt(view, (e) => textOf(e) === "the reply, across in-memory buses", 4_000);
+      const got = await receivedAt(view, (e) => textOf(e) === "the reply, across two buses", 4_000);
       const replies = tell.over("c:fallback · B's copies of A's reply", got === undefined ? [] : [got]);
       if (replies.length === 0) failures.push("c:fallback: B's view never received A's reply within 4 s");
       else if (replies[0]! - saved >= 2_000) failures.push(`c:fallback: reply arrived ${replies[0]! - saved} ms after it was saved (bound 2000)`);

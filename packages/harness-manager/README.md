@@ -489,7 +489,7 @@ That posts to the engine's answer route, `POST /api/flows/:flow/requests/:reques
 
 To draw the review in a browser, add the ui registry's `review-hold` component (`fsdev ui add review-hold`). It offers Accept and Ask for changes, and sends only these two answers. The registry's `SuspensionCard` draws it for this stop, with the stop's prompt.
 
-The stop's `data` names the run's branch, commit count, commit subjects and the judge's verdict. Read it in the browser with `reviewDetail` from `@flow-state-dev/harness-manager/browser`, an entry that imports no Node built-in, and hand the result to the card as `review`:
+The stop's `data` names the run's branch, commit count, commit subjects, the judge's verdict and the checks the phase ran (`commandCheck`; `null` when none ran). The card shows the checks as "Checks 2/2 passed", with a red one open on its output. Read it in the browser with `reviewDetail` from `@flow-state-dev/harness-manager/browser`, an entry that imports no Node built-in, and hand the result to the card as `review`:
 
 ```tsx
 import { reviewDetail } from "@flow-state-dev/harness-manager/browser";

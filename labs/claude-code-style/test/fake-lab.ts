@@ -32,6 +32,7 @@ import type {
   Unsubscribe,
 } from "../src/adapter";
 import { waitingOnYou } from "../src/lib/columns";
+import { toolRun } from "../src/lib/tool-steps";
 import { modeById, modeOfWorker, type ModeId } from "../src/modes";
 
 /** How the fake keeps time. Tests pass `speed` to run the script fast. */
@@ -46,6 +47,8 @@ export interface FakeOptions {
 export interface FakeLab extends LabAdapter {
   /** Every thread's feed reports `state` from now on. */
   setConnection(state: ConnectionState): void;
+  /** The open task titled `title`, in any session, fails with `error`, as its run would. */
+  fail(title: string, error: string): void;
 }
 
 interface FixtureTask extends TaskRow {
@@ -63,7 +66,7 @@ interface FixtureSession {
   queue: { id: string; text: string }[];
   /** The running turn's steps: Stop clears these. */
   timers: ReturnType<typeof setTimeout>[];
-  /** Background tasks' steps: they outlive the turn, and only asking the main session stops a task. */
+  /** Background tasks' steps: they outlive the turn; a step skips a task that is no longer running. */
   taskTimers: ReturnType<typeof setTimeout>[];
   tasks: FixtureTask[];
 }
@@ -86,6 +89,7 @@ const CODE_REVIEW: ReviewDetail = {
     confidence: 0.91,
     reason: "The CHANGELOG gains one line naming Vendor C and why; nothing else in the repository changed, and the line follows the file's existing format.",
   },
+  checks: null,
 };
 
 /** The run's last words, as a real one ends: a long path and its branch, unbroken. */
@@ -210,7 +214,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
   const file = (s: FixtureSession, title: string, goal: string, note: string): Step[1] => () => {
     const task = startTask(title, goal, note, { assignee: "desk.researcher", spend: spent(RESEARCH_MODEL, 1200, 300, true) });
     s.tasks = [...s.tasks, task];
-    push(s, { kind: "tool", id: nextId("tool"), name: "createTask" });
+    push(s, { kind: "tool", id: nextId("tool"), ...toolRun([{ id: "c", name: "createTask", args: { title, goal }, status: "done", output: { ok: true, taskId: task.id } }]) });
   };
 
   const progress = (s: FixtureSession, title: string, note: string) => () =>
@@ -254,7 +258,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
         push(s, { kind: "assistant", id: nextId("a"), text: `"${task.title}" had already finished, so there was nothing to stop.` });
         return;
       }
-      push(s, { kind: "tool", id: nextId("tool"), name: "updateTask" });
+      push(s, { kind: "tool", id: nextId("tool"), ...toolRun([{ id: "c", name: "updateTask", args: { taskId: task.id, status: "cancelled" }, status: "done", output: { ok: true } }]) });
       setTask(s, task.id, { status: "cancelled", statusNote: undefined, waitingOn: undefined });
       push(s, { kind: "assistant", id: nextId("a"), text: `Stopped "${task.title}". The summary covers what is done so far.` });
     }],
@@ -382,7 +386,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       startTask(title, title, note, { status, updatedAt: now() - ago });
     const tasks = [
       thread("Weekly uptime digest", "in_progress", "Collecting this week's incidents"),
-      thread("Export failed invoices", "errored", "The export timed out"),
+      { ...thread("Export failed invoices", "errored", "The export timed out"), error: "The export timed out after 30s." },
       thread("Refund report", "completed"),
       thread("Dunning emails", "completed"),
       // A harness run nobody reviewed by the person-stop deadline: it completed, marked so.
@@ -405,10 +409,24 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
   };
   seedThreads();
 
+  /** An open task's row, by id, or the board's refusal in words. */
+  const openTask = (s: FixtureSession, id: string): FixtureTask => {
+    const task = s.tasks.find((t) => t.id === id);
+    if (!task) throw new Error(`No task "${id}" on this board.`);
+    if (task.status === "completed" || task.status === "errored" || task.status === "cancelled") throw new Error(`Task "${id}" is already ${task.status}.`);
+    return task;
+  };
+
   return {
     setConnection(state) {
       connection = state;
       notify();
+    },
+    fail(title, error) {
+      for (const s of sessions.values()) {
+        const task = s.tasks.find((t) => t.title === title && t.status === "in_progress");
+        if (task) setTask(s, task.id, { status: "errored", statusNote: undefined, error });
+      }
     },
     modes: ["session", "threads"],
     watchSessions(onChange) {
@@ -484,6 +502,33 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       }
       setTask(s, taskId, { status: "in_progress", waitingOn: undefined, statusNote: "Working with your answer", work });
       play(s, [[1200, advance(s, { id: taskId }, review(`Summary for ${line} ready`), `Done, going by your answer: ${line}.`), "background"]]);
+    },
+
+    // fake: stands in for the board's own calls (`inbox.board(at)`); a refusal rejects with words as the board's do.
+    taskActions(sessionId) {
+      return {
+        async cancel(id) {
+          openTask(session(sessionId), id);
+          setTask(session(sessionId), id, { status: "cancelled", statusNote: undefined, waitingOn: undefined });
+          return [];
+        },
+        async steer(id, message) {
+          const s = session(sessionId);
+          const task = openTask(s, id);
+          setTask(s, id, { work: [...task.work, { kind: "user", id: nextId("w"), text: message }] });
+        },
+        async release(id) {
+          const s = session(sessionId);
+          if (openTask(s, id).status !== "held") throw new Error(`Task "${id}" isn't held.`);
+          setTask(s, id, { status: "pending", waitingOn: undefined });
+        },
+        async retry(id) {
+          const s = session(sessionId);
+          const task = s.tasks.find((t) => t.id === id);
+          if (task?.status !== "errored" && task?.status !== "cancelled") throw new Error(`Task "${id}" hasn't failed or been cancelled.`);
+          setTask(s, id, { status: "in_progress", error: undefined, statusNote: "Running again" });
+        },
+      };
     },
 
     async resolve(sessionId, taskId) {

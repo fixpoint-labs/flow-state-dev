@@ -132,6 +132,16 @@ export const AGENT_FLOW = "agent";
 const DEFAULT_MODEL = "intent/chat";
 
 /**
+ * How many model steps a worker's turn may take when the app sets no
+ * `maxSteps`. Sized for real work rather than core's generator cap (8): a
+ * question about a codebase spends a step per glob, read and grep, and a
+ * knowledge question a step per lookup, so eight ran out before the worker had
+ * seen enough to answer. Core's own default stays 8 for generators outside
+ * workforce.
+ */
+const DEFAULT_MAX_STEPS = 50;
+
+/**
  * Where up-front skill matching publishes its result, when a worker turns it on.
  *
  * Explicit rather than the generator's own block state because the matcher runs
@@ -374,8 +384,8 @@ export interface AgentWorkerFlowOptions {
    * How many model steps a turn may take: each step is one model call, and a
    * step that calls tools leads to another. The last one offers no tools, so a
    * worker still looking things up answers with what it found. Defaults to
-   * the generator's own cap (8). Raise it for workers that dig: a researcher
-   * reading a large repository spends a step per lookup.
+   * {@link DEFAULT_MAX_STEPS} (50). Raise it for workers that dig further: a
+   * researcher reading a whole repository spends a step per file.
    */
   maxSteps?: number;
   /**
@@ -1181,7 +1191,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       // A worker still looking things up when its steps run out answers with
       // what it found, rather than ending its turn with nothing said: a sender
       // waiting on its reply would otherwise hear "no answer" (FIX-2347).
-      loop: { answerOnLastStep: true, ...(options.maxSteps === undefined ? {} : { maxIterations: options.maxSteps }) }
+      loop: { answerOnLastStep: true, maxIterations: options.maxSteps ?? DEFAULT_MAX_STEPS }
     });
 
   // The answer's two generator names, which its messages carry as `agentName`.

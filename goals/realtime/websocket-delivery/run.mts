@@ -13,7 +13,8 @@
  *        runs. Then B's token is revoked and B's socket drops: B's
  *        reconnect is refused, and B hears nothing more.
  *   c  — the same tab 2 code with no push, and with tab 2's socket on a
- *        second process on the in-memory bus: tab 2's read shows the reply
+ *        second process, each on its own Postgres bus with no tail pool (which
+ *        never crosses): tab 2's read shows the reply
  *        within one poll interval plus 1 s.
  *
  * Controls (each runs this file again with a patch applied as it loads):
@@ -390,7 +391,7 @@ await runGoal(async (failures, tell) => {
       else evidence.push(`c: no push, shown ${c1[0]} ms after saved`);
       view1.close();
 
-      // c2 · tab 2's socket on a second process, each on its own in-memory bus.
+      // c2 · tab 2's socket on a second process, each on its own Postgres bus with no tail pool.
       const pglite = new PGlite();
       const first = await host(await createPostgresStores({ executor: executorOver(pglite) }));
       const second = await host(await createPostgresStores({ executor: executorOver(pglite) }));

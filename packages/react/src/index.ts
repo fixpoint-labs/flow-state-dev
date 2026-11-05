@@ -187,7 +187,8 @@ export {
 export {
   useJumpToLatest,
   type JumpToLatest,
-  type JumpToLatestOptions
+  type JumpToLatestOptions,
+  type SentLineMark
 } from "./hooks/useJumpToLatest";
 
 export { useDraft, clearDraft, readDraft, saveDraft } from "./hooks/useDraft";

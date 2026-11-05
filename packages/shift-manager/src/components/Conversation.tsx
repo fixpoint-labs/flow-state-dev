@@ -25,12 +25,14 @@ import type { SessionSummary } from "@flow-state-dev/client";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useJumpToLatest, type JumpToLatest } from "@flow-state-dev/react";
 import type { Gaps } from "../gaps";
 import { callRuns, shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
-import { JumpToLatestButton, SectionFailure } from "./ui";
+import { JumpToLatestButton, LoadEarlierButton, SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
 import { knownWorkers, senderOf, useWorkerConversation } from "../lib/conversation";
 import { workerLabel } from "../lib/derive";
 import { SessionScope } from "./TaskBoardMeta";
 import { useLab } from "../lib/lab-data";
+import { cn } from "../lib/utils";
+import { STALE_CLASS } from "./flow-state/connection-banner";
 import type { Worker } from "../lib/reads";
 import { sendTurn } from "../lib/send";
 import { clockTime } from "../lib/shell";
@@ -123,7 +125,7 @@ export function Conversation({
   /** Why nothing can be sent here, whatever the worker: the session is read, never written to. */
   readOnly?: string;
 }) {
-  const { client, refresh, answered, snapshot } = useLab();
+  const { client, refresh, answered, snapshot, stale } = useLab();
   const conversation = useWorkerConversation(worker, sessions, session);
   const inventory = snapshot !== undefined && "inventory" in snapshot && snapshot.inventory?.ok ? snapshot.inventory.value.workers : undefined;
   const known = useMemo(() => knownWorkers(inventory ?? [], sessions), [inventory, sessions]);
@@ -229,11 +231,7 @@ export function Conversation({
         ) : (
           <FlowProvider renderers={shiftManagerRenderers}>
             <SessionScope sessionId={sessionId} flow={worker.kind} items={read.items}>
-              {read.truncated ? (
-                <p className="text-xs text-muted-foreground" data-testid={`${testId}-truncated`}>
-                  More than shown: this conversation holds more than one read returns.
-                </p>
-              ) : null}
+              <LoadEarlierButton load={read.loadEarlier} testId={`${testId}-load-earlier`} />
               <ol className="flex flex-col gap-2.5" data-testid={`${testId}-items`}>
                 {shown.map((segment) => {
                   if (segment.kind === "group") {
@@ -265,6 +263,7 @@ export function Conversation({
                       data-request-id={item.requestId}
                       data-item-type={item.type}
                       data-role={role}
+                      {...(item.type === "message" && role === "user" ? feed.mine(item.id) : {})}
                     >
                       {item.type === "message" && role === "assistant" ? (
                         // v2's label over each of the worker's messages: its name and the time it was written (v2:135).
@@ -291,7 +290,8 @@ export function Conversation({
         )}
         {working ? (
           // v2's thinking line (v2:167-169), saying only what is true: the worker has the line.
-          <p className="flex items-center gap-2 font-mono text-[11.5px] font-medium text-muted-foreground" data-testid={`${testId}-working`}>
+          // Greyed while the server is gone: the worker had the line when it last said so.
+          <p className={cn("flex items-center gap-2 font-mono text-[11.5px] font-medium text-muted-foreground", stale && STALE_CLASS)} data-testid={`${testId}-working`}>
             <span className="size-[7px] shrink-0 bg-info" data-look="working" aria-hidden />
             {name} is working on it…
           </p>

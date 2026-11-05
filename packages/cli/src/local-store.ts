@@ -3,6 +3,8 @@
  *
  * By default both open `.fsdev/data/fsdev.db` (SQLite), so a stop a terminal run
  * makes is listed and answered by the `fsdev dev` that reads the same file.
+ * Each process has its own in-memory change bus, so what a run writes doesn't
+ * push to the server's open pages: they show it on their next read.
  * SQLite's WAL mode and busy timeout let a run write beside a running server.
  * `--store filesystem` keeps a run's state as JSON files under `.fsdev/data`
  * instead: single-process, so `fsdev run` and `fsdev dev` can't share it at the
@@ -25,7 +27,8 @@ const LOCAL_DB_FILE = `${LOCAL_DATA_DIR}/fsdev.db`;
 
 /** Help text for the `--store` flag, the same on every command that takes it. */
 export const STORE_FLAG_HELP =
-  "Local store without an app config: sqlite (default, .fsdev/data/fsdev.db, shared by fsdev run and fsdev dev) " +
+  "Local store without an app config: sqlite (default, .fsdev/data/fsdev.db, shared by fsdev run and fsdev dev; " +
+  "a run's writes don't push to a running fsdev dev's open pages) " +
   "or filesystem (JSON files under .fsdev/data; single-process, so run and dev can't use it at the same time)";
 
 /** One opened local store, with the line a command prints for it and how to close it. */

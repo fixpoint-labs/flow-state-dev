@@ -250,6 +250,13 @@ export const EXCEPTIONS = [
     why: "a redirect from a removed page's address, so an old link still lands",
   },
   {
+    id: "registry-copies",
+    terms: ["kind", "person"],
+    where: (path) => /^packages\/shift-manager\/src\/components\/flow-state\//.test(path),
+    strip: /\bkinds?\b|\bpersons?\b|\bperson's\b/gi,
+    why: "an installed copy of a ui registry component, held byte-equal to its source in packages/ui (outside Workforce) by Shift Manager's static test: its words are the registry's",
+  },
+  {
     id: "person-any-human",
     terms: ["person"],
     where: (path) => PERSON_PINS.some((pin) => pin.path === path),

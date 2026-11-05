@@ -1,6 +1,6 @@
 import { useJumpToLatest } from "@flow-state-dev/react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import type { BoardTask, ConversationEntry, LabAdapter, WorkerRow } from "../adapter";
+import type { ConversationEntry, LabAdapter, WorkerRow } from "../adapter";
 import type { Look } from "../lib/looks";
 import { useStatusLine } from "../lib/status";
 import { pendingFor } from "../lib/talk";
@@ -13,16 +13,15 @@ import { JumpToLatestButton } from "./JumpToLatest";
 import { LoadEarlier } from "./LoadEarlier";
 import { Entry } from "./Entry";
 import { answerIn, type Popup } from "./Popups";
-import { TaskCard } from "./TaskCard";
-import { InstructionsForm } from "./TeammateForms";
+import { TaskCard, type TaskLine } from "./TaskCard";
 
 /** A small button in the conversation's header. */
 const HEADER_BUTTON = "rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase hover:bg-accent";
 
 type TaskEntry = Extract<ConversationEntry, { kind: "task" }>;
-const placeholders = new WeakMap<TaskEntry, BoardTask>();
+const placeholders = new WeakMap<TaskEntry, TaskLine>();
 /** The card a filed task shows until its board row arrives: one object per (reused) entry, so the memoized card skips re-renders. */
-function placeholderOf(entry: TaskEntry, harness: string | undefined): BoardTask {
+function placeholderOf(entry: TaskEntry, harness: string | undefined): TaskLine {
   let task = placeholders.get(entry);
   if (task === undefined) {
     task = { id: entry.taskId, to: entry.to, title: entry.title, status: "running", ...(harness === undefined ? {} : { harness }) };
@@ -35,8 +34,8 @@ function placeholderOf(entry: TaskEntry, harness: string | undefined): BoardTask
  * The center: the worker's one conversation. A divider marks where the turns
  * the worker reads word for word begin. A message another worker sent that
  * waits for the current answer shows as a pending line until it lands. A
- * teammate the user hired also gets its instructions and a fire control in
- * the header. Fire asks first in a row under the header, with Keep focused,
+ * teammate the user hired also gets a fire control in the header; its
+ * instructions are edited from its panel. Fire asks first in a row under the header, with Keep focused,
  * so a stray Enter keeps the teammate.
  *
  * New content settles in place: the list follows it only while you are at
@@ -54,8 +53,6 @@ export function Conversation({
   harnessOf,
   onFire,
   onOpen,
-  talkOpen,
-  onToggleTalk,
 }: {
   adapter: LabAdapter;
   worker: WorkerRow;
@@ -69,8 +66,6 @@ export function Conversation({
   onFire: () => Promise<void>;
   /** Open a popup over the thread: a task this conversation filed, or a message it sent. */
   onOpen: (popup: Popup) => void;
-  talkOpen: boolean;
-  onToggleTalk: () => void;
 }) {
   const view = useWatch(adapter.watchConversation, sessionId);
   // What the conversation's feed last heard from the server; a stale one greys the status and stops its clock.
@@ -80,10 +75,10 @@ export function Conversation({
   const talk = useWatch(adapter.watchTalk, worker.id) ?? [];
   const entries = view?.entries ?? [];
   const running = view?.running ?? false;
-  const pending = pendingFor(worker.id, talk, entries);
+  const pending = pendingFor(worker.id, talk, entries, view?.since);
   const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
   const status = useStatusLine(adapter, worker, sessionId, nameOf, isCoding, stale);
-  const [panel, setPanel] = useState<"instructions" | "fire">();
+  const [panel, setPanel] = useState<"fire">();
   const keep = useRef<HTMLButtonElement>(null);
   const fireButton = useRef<HTMLButtonElement>(null);
   // Keep (or Esc) closes the row and puts focus back on the header's Fire, where the person was.
@@ -126,28 +121,15 @@ export function Conversation({
         </div>
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{worker.role}</span>
         {worker.own ? (
-          <>
-            <button type="button" onClick={() => setPanel((p) => (p === "instructions" ? undefined : "instructions"))} className={HEADER_BUTTON}>
-              Instructions
-            </button>
-            <button ref={fireButton} type="button" onClick={() => setPanel("fire")} aria-expanded={panel === "fire"} className={HEADER_BUTTON}>
-              Fire
-            </button>
-          </>
+          <button ref={fireButton} type="button" onClick={() => setPanel("fire")} aria-expanded={panel === "fire"} className={HEADER_BUTTON}>
+            Fire
+          </button>
         ) : null}
         {running ? (
           <span className={cn("flex items-center gap-1.5 font-mono text-[10px] tracking-widest text-info uppercase", stale && STALE_CLASS)}>
             <span className="size-2 animate-pulse rounded-full bg-info" /> working
           </span>
         ) : null}
-        <button
-          type="button"
-          aria-pressed={talkOpen}
-          onClick={onToggleTalk}
-          className={cn("rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase hover:bg-accent", talkOpen && "bg-accent")}
-        >
-          Talk
-        </button>
       </header>
       {/* A stopped feed comes back with the page: every conversation's feed reopens on load. */}
       <ConnectionBanner feed={{ state: connection }} onRetry={() => window.location.reload()} />
@@ -172,18 +154,6 @@ export function Conversation({
           </button>
         </div>
       ) : null}
-      {panel === "instructions" ? (
-        <div className="border-b border-border px-6 py-3">
-          <InstructionsForm
-            name={worker.name}
-            onSave={async (instructions) => {
-              await adapter.editInstructions(worker.id, instructions);
-              setPanel(undefined);
-            }}
-            onCancel={() => setPanel(undefined)}
-          />
-        </div>
-      ) : null}
       <div ref={feed.ref} data-scroller className="relative flex-1 overflow-y-auto px-6 pt-4 pb-10">
         <div data-column className="mx-auto flex max-w-(--thread-width) flex-col gap-3">
           <LoadEarlier load={view?.loadEarlier} />
@@ -201,7 +171,11 @@ export function Conversation({
                   <span className="h-px flex-1 bg-border" />
                 </div>
               ) : null}
-              <div className={cn(i < markAt && "opacity-60")} data-in-window={markAt < 0 || i >= markAt ? "true" : "false"}>
+              <div
+                className={cn(i < markAt && "opacity-60")}
+                data-in-window={markAt < 0 || i >= markAt ? "true" : "false"}
+                {...(entry.kind === "user" ? feed.mine(entry.id) : {})}
+              >
                 {entry.kind === "task" ? (
                   taskTile(entry)
                 ) : (

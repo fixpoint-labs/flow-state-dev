@@ -3,8 +3,9 @@
  * session's history arriving in an empty view lands at the end with no
  * animation, rather than scrolling down from the top every time a session is
  * opened. After that, what arrives never moves the view, even at the end, since
- * the reader may be reading: a jump-to-latest arrow offers it instead. Only an
- * action the person sends takes the stream to its end.
+ * the reader may be reading: a jump-to-latest arrow offers it instead. An
+ * action the person sends rises to near the top, so its reply streams in below
+ * it, in view.
  */
 import { afterEach, describe, it, expect } from "vitest";
 import { act, fireEvent, render, within } from "@testing-library/react";
@@ -42,7 +43,7 @@ function group(n: number): RequestGroup {
   return { requestId, action: "sendMessage", status: "completed", startedAt: n, items: [item] as any };
 }
 
-const saved = ["scrollHeight", "clientHeight", "scrollTop", "scrollTo"].map(
+const saved = ["scrollHeight", "clientHeight", "scrollTop", "scrollTo", "getBoundingClientRect"].map(
   (name) => [name, Object.getOwnPropertyDescriptor(HTMLElement.prototype, name)] as const,
 );
 afterEach(() => {
@@ -60,7 +61,9 @@ afterEach(() => {
 function layOut() {
   const isStream = (el: HTMLElement) => el.classList.contains("overflow-auto") && el.classList.contains("bg-fs-surface");
   const tops = new WeakMap<HTMLElement, number>();
-  const height = (el: HTMLElement) => [...el.children].filter((child) => !child.classList.contains("sticky")).length * 200;
+  const requests = (el: HTMLElement) => [...el.children].filter((child) => !child.classList.contains("sticky")) as HTMLElement[];
+  // The space the stream keeps under a request just sent is its bottom padding.
+  const height = (el: HTMLElement) => requests(el).length * 200 + (Number.parseFloat(el.style.paddingBottom) || 0);
   const scrolls: (ScrollBehavior | undefined)[] = [];
   Object.defineProperties(HTMLElement.prototype, {
     scrollHeight: { configurable: true, get(this: HTMLElement) { return isStream(this) ? height(this) : 0; } },
@@ -70,6 +73,15 @@ function layOut() {
       get(this: HTMLElement) { return tops.get(this) ?? 0; },
       set(this: HTMLElement, value: number) {
         tops.set(this, isStream(this) ? Math.max(0, Math.min(value, height(this) - 500)) : 0);
+      },
+    },
+    // A request's box: 200px tall, stacked, moved up by the stream's scroll. The stream's own top is 0.
+    getBoundingClientRect: {
+      configurable: true,
+      value(this: HTMLElement) {
+        const parent = this.parentElement;
+        const top = parent !== null && isStream(parent) ? requests(parent).indexOf(this) * 200 - parent.scrollTop : 0;
+        return { top, bottom: top + 200, left: 0, right: 0, width: 0, height: 200, x: 0, y: top, toJSON: () => ({}) };
       },
     },
     scrollTo: {
@@ -127,7 +139,7 @@ describe("StreamView — where it opens, and how it follows", () => {
     expect(within(el).queryByRole("button", { name: "Jump to latest" })).toBeNull();
   });
 
-  it("goes to the end for an action the person sends, from wherever they had scrolled to", async () => {
+  it("brings an action the person sends near the top, from wherever they had scrolled to", async () => {
     const scrolls = layOut();
     const groups = Array.from({ length: 20 }, (_, i) => group(i));
     const { container, rerender } = render(view(groups, 0));
@@ -137,11 +149,45 @@ describe("StreamView — where it opens, and how it follows", () => {
     el.scrollTop = 400;
     el.dispatchEvent(new Event("scroll"));
     scrolls.length = 0;
-    // The request lands in the same render as the send: the jump alone reaches it.
+    // The request lands in the same render as the send is counted: it is the one that rises.
     rerender(view([...groups, group(20)], 1));
     await settle();
     expect(scrolls.length).toBeGreaterThan(0);
     expect(scrolls.every((s) => s === "smooth")).toBe(true);
-    expect(el.scrollTop).toBe(21 * 200 - 500);
+    const top = el.querySelector(`[data-sent-line="req-20"]`)!.getBoundingClientRect().top;
+    expect(top).toBeGreaterThanOrEqual(0);
+    expect(top).toBeLessThanOrEqual(48);
+  });
+
+  it("brings up the request the person sent when it lands after the send is counted", async () => {
+    layOut();
+    const groups = Array.from({ length: 20 }, (_, i) => group(i));
+    const { container, rerender } = render(view(groups, 0));
+    await settle();
+    await nextFrame();
+    const el = stream(container);
+    rerender(view(groups, 1));
+    await settle();
+    expect(el.scrollTop).toBe(20 * 200 - 500);
+    rerender(view([...groups, group(20)], 1));
+    await settle();
+    const top = el.querySelector(`[data-sent-line="req-20"]`)!.getBoundingClientRect().top;
+    expect(top).toBeGreaterThanOrEqual(0);
+    expect(top).toBeLessThanOrEqual(48);
+  });
+
+  it("brings up the first request sent into an empty session, with space kept under it for the reply", async () => {
+    layOut();
+    // The panel counts the send before the request exists: the stream is still its empty state then.
+    const { container, rerender } = render(view([], 0));
+    rerender(view([], 1));
+    rerender(view([group(0)], 1));
+    await settle();
+    await nextFrame();
+    const el = stream(container);
+    const top = el.querySelector(`[data-sent-line="req-0"]`)!.getBoundingClientRect().top;
+    expect(top).toBeGreaterThanOrEqual(0);
+    expect(top).toBeLessThanOrEqual(48);
+    expect(Number.parseFloat(el.style.paddingBottom) || 0).toBeGreaterThan(0);
   });
 });

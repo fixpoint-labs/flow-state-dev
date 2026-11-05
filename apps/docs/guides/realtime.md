@@ -29,17 +29,21 @@ function TaskList({ sessionId }: { sessionId: string }) {
   );
 
   useEffect(() => void refresh(), [refresh]); // the first read
-  useSubscription([topic.session(sessionId)], refresh, { pollIntervalMs: 3000 });
+  useSubscription(
+    [topic.session(sessionId, { resource: "tasks" }), topic.session(sessionId, { resource: "plan" })],
+    refresh,
+    { pollIntervalMs: 3000 },
+  );
 
   return <ul>{tasks.map((task) => <li key={task.id}>{task.title}</li>)}</ul>;
 }
 ```
 
-On the Node host, `refresh` runs as soon as the change is saved: the server sends the notice once the change can be read, and no timer is involved, so the delay is the network and your read. A burst of changes runs it once more after the read in flight finishes, not once per change. The hook doesn't read on mount, so keep the first read where your screen already makes it.
+On the Node host, `refresh` runs as soon as the change is saved: the server sends the notice once the change can be read, and no timer is involved, so the delay is the network and your read. A burst of changes runs it once more after the read in flight finishes, not once per change. The hook doesn't read on mount, so keep the first read where your screen already makes it. It subscribes through the provider's client; an app that builds its own client, with its own `fetcher`, passes it as `client` so the socket signs in the same way.
 
 | Topic | What changes it covers |
 |-------|------------------------|
-| `topic.session(id)` | One session: its requests, their items, and runs started under it. |
+| `topic.session(id)` | One session: its requests, their items, runs started under it, and changes to its task boards. |
 | `topic.user()` | The signed-in user's own scope. |
 | `topic.org()` | The signed-in user's organization. |
 
@@ -56,7 +60,25 @@ useSubscription([topic.session(sessionId)], (notice) => {
 });
 ```
 
-`kind` is `"items"`, `"request"`, `"run"`, `"state"`, `"resource"` or `"resync"`. `"state"` means the scope's state was written, and `"resource"` that a resource under it was, with the resource's path in `topic.resource`. `origin.requestId` names the request that made the change, when one did. Read everything on `null` and on `"resync"`: the screen may have missed something.
+`kind` is `"items"`, `"request"`, `"run"`, `"state"`, `"resource"`, `"board"` or `"resync"`. `"state"` means the scope's state was written, and `"resource"` that a resource under it was, with the resource's path in `topic.resource`. `"board"` means a task on one of the session's task boards changed, with the board's id in `topic.resource` (see [Task boards](#task-boards)). `origin.requestId` names the request that made the change, when one did. Read everything on `null` and on `"resync"`: the screen may have missed something.
+
+Narrowing the topic does the same job with less code. A screen subscribed to `topic.session(id, { resource: "tasks" })` only hears changes to that board, so a long reply never wakes it.
+
+## Task boards
+
+A task board's change is announced on the session that filed the task, narrowed to the board, whichever session or process made the change. A conversation's delegate settles its task in a task session of its own, and the conversation's board screen still hears of it at once. Subscribe the conversation's topic narrowed to each board your read returns:
+
+```ts
+useSubscription(
+  [topic.session(conversationId, { resource: "tasks" }), topic.session(conversationId, { resource: "plan" })],
+  refresh,
+  { pollIntervalMs: 3000 },
+);
+```
+
+Workforce's `listTasks_tasks` read returns the conversation's board and its planning worker's own steps, which sit on the `plan` board, so a screen of that read subscribes both. Subscribing `plan` is harmless when the flow has no planning worker.
+
+`BoardList` with `live` does this for you, for the one board it draws. Its `client` needs `subscribe` (see [A board as a list](/docs/workforce/ui#a-board-as-a-list)).
 
 ## Outside React
 
@@ -87,7 +109,7 @@ You don't write different code for either. The client asks the server what it su
 
 ## One process, several processes
 
-Each server keeps a *change bus*, the `bus` slot of its stores profile (the stores you hand `createFlowState`; see [Store adapters](/docs/persistence/overview#store-adapters)). A bus that *crosses processes* hands a change made in one server process to every other one. The default bus lives in memory and reaches only its own process, so it doesn't cross processes. On it, a subscription with `pollIntervalMs` keeps reading on its timer between notices, even when you run a single process. On a bus that crosses processes, the timer stays off while the socket is up.
+Each server keeps a *change bus*, the `bus` slot of its stores profile (the stores you hand `createFlowState`; see [Store adapters](/docs/persistence/overview#store-adapters)). A bus that *crosses processes* hands a change made in one server process to every other one. The default bus lives in memory and is for an app that runs as one process. Every change is made where the socket is, so it counts as crossing, and the `pollIntervalMs` timer stays off while the socket is up. If your app writes its stores from several processes, use a bus that crosses, such as the one Postgres stores fill by default. On the in-memory bus, another process's changes reach an open view only at its next read. That covers several servers on one SQLite file, or `fsdev run` writing the file a running `fsdev dev` serves.
 
 When several processes serve one address, give them all the same signing key, so a connection that lands on any of them is accepted:
 

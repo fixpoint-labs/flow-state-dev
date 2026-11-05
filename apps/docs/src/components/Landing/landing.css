@@ -122,7 +122,6 @@ body:has(main.fs-landing) {
 .fs-landing .fs-hero .fs-rail{display:none}
 .fs-landing .fs-hero-body{flex-direction:column;flex-wrap:nowrap !important;gap:24px !important;padding-top:28px !important;padding-bottom:40px !important}
 .fs-landing .fs-hero-text,.fs-landing .fs-hero-tags{display:contents !important}
-.fs-landing .fs-hero-pill{align-self:flex-start}
 .fs-landing .fs-hero-art{order:1;flex:none !important;align-self:stretch !important}
 .fs-landing .fs-hero-tagline{order:2}
 .fs-landing .fs-hero-install{order:3}
