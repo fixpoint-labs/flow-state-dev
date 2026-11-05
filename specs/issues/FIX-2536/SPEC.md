@@ -76,8 +76,8 @@ Past the poll, everything is FIX-2534's, reused.
 `poll` and `fetchSince` are illustrations; [D2](DECISIONS.md#d2) locks the cursor fields. A
 worker's `subscribe` call does not change.
 
-**Docs:** the workforce README, `apps/docs/docs/server/schedule-index.md`,
-`apps/docs/docs/server/webhooks.md` (*no public URL*), `docs/architecture/scheduled-actions.md`.
+**Docs:** in the change, `docs/architecture/scheduled-actions.md`. At release (`/release-docs`,
+from the changeset's `Docs:` pointers): the workforce README, `server/schedule-index.md`, `server/webhooks.md` (*no public URL*).
 
 ## How a poll reaches a session
 
