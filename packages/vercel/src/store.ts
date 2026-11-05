@@ -137,10 +137,7 @@ export function vercelPostgresStores(
   };
 
   return {
-    // `bus` too: the registry's Postgres bus. With no tail pool it never says
-    // it crosses, so a deployment's many instances keep the session stream's
-    // timed read instead of falling back to the in-memory bus, which is for an
-    // app that runs as one process.
+    // `bus`: the Postgres bus, not the one-process in-memory fallback (see header).
     capabilities: ["primary", "bus", "scheduler"],
     resolve() {
       building ??= build();
