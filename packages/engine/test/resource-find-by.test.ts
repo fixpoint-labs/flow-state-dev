@@ -238,6 +238,75 @@ describe("the index writer on the runtime's stores", () => {
   });
 });
 
+describe("the index writer and flow-isolated collections", () => {
+  it("applies only the writing cell's own declarations: another flow's isolated index never sees this flow's rows", async () => {
+    // Two flows declare `docs/*` isolated to themselves, with different
+    // schemas. A's index reads `tags`, which B's rows do not have.
+    const tagged = defineResourceCollection({
+      pattern: "docs/*",
+      scope: "org",
+      flowIsolation: true,
+      stateSchema: z.object({ tags: z.array(z.string()) }),
+      indexes: { byTag: (_key, state) => state.tags.map((tag: string) => tag.toLowerCase()) },
+    });
+    const titled = defineResourceCollection({
+      pattern: "docs/*",
+      scope: "org",
+      flowIsolation: true,
+      stateSchema: z.object({ title: z.string() }),
+    });
+    const flowOf = (kind: string, docs: typeof tagged | typeof titled, state: { tags: string[] } | { title: string }) =>
+      defineFlow({
+        kind,
+        actions: {
+          write: {
+            inputSchema: z.object({}),
+            block: handler({
+              name: `write-${kind}`,
+              inputSchema: z.object({}),
+              outputSchema: z.object({}),
+              resources: { docs },
+              execute: async (_input, ctx) => {
+                await (ctx.resources.docs as unknown as ResourceCollectionRef).upsert("a", state);
+                return {};
+              },
+            }),
+          },
+        },
+      })();
+    const a = flowOf("tagged", tagged, { tags: ["Red"] });
+    const b = flowOf("titled", titled, { title: "hello" });
+    const h = await boot({ tagged: a, titled: b });
+    const seen: Array<{ scopeId: string; options?: ResourceStateSetOptions }> = [];
+    const real = h.raw.resourceState.set.bind(h.raw.resourceState);
+    h.raw.resourceState.set = async (scopeType, scopeId, key, state, expected, options) => {
+      if (key === "docs/a") seen.push({ scopeId, options });
+      return real(scopeType, scopeId, key, state, expected, options);
+    };
+    const write = async (flow: typeof a) => {
+      const result = await runAction({
+        flow,
+        actionName: "write",
+        input: {},
+        userId: "alice",
+        orgId: ORG,
+        stores: h.runtime.stores,
+        runtimeConfig: { modelResolver: createMockModelResolver({}) },
+      });
+      if (result.error !== undefined) throw result.error;
+    };
+    await write(b);
+    await write(a);
+    expect(seen).toEqual([
+      { scopeId: `${ORG}:titled`, options: { indexEntries: [] } },
+      {
+        scopeId: `${ORG}:tagged`,
+        options: { indexEntries: [{ collection: "docs/*", index: "byTag@1", values: ['"red"'] }] },
+      },
+    ]);
+  });
+});
+
 describe("startup check on index declarations", () => {
   const declare = (pattern: string, scope: "org" | "user", version: number, kind: string) => {
     const collection = defineResourceCollection({

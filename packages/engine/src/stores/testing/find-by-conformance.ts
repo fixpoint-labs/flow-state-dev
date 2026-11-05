@@ -241,6 +241,64 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
       });
     });
 
+    it("finds a row a narrower collection keeps in another cell, as list() shows it", async () => {
+      await withStores(async (raw) => {
+        // The broad collection is shared; the narrower one under it is
+        // isolated to this flow, so its rows live in a different cell.
+        const docs = defineResourceCollection({
+          pattern: "docs/**",
+          scope: "org",
+          flowIsolation: false,
+          stateSchema: rowSchema,
+          indexes: { byTaskId: (_key, state) => state.id },
+        });
+        const drafts = defineResourceCollection({
+          pattern: "docs/drafts/*",
+          scope: "org",
+          flowIsolation: true,
+          stateSchema: rowSchema,
+        });
+        const file = handler({
+          name: "file",
+          inputSchema: fileInput,
+          outputSchema: z.object({}),
+          resources: { docs, drafts },
+          execute: async (input, ctx) => {
+            for (const row of input.rows) {
+              const draft = row.key.startsWith("drafts/");
+              const ref = (draft ? ctx.resources.drafts : ctx.resources.docs) as unknown as ResourceCollectionRef;
+              await ref.upsert(draft ? row.key.slice("drafts/".length) : row.key, { id: row.id });
+            }
+            return {};
+          },
+        });
+        const find = handler({
+          name: "find",
+          inputSchema: findInput,
+          outputSchema: z.array(z.string()),
+          resources: { docs, drafts },
+          execute: async (input, ctx) => {
+            const ref = ctx.resources.docs as unknown as ResourceCollectionRef;
+            const listed = (await ref.list()).map((row) => row.path).filter((path) => path.endsWith("/x"));
+            const found = (await ref.findBy("byTaskId", input.value)).map((row) => row.path);
+            // findBy answers from the rows list() reads.
+            expect(found.filter((path) => path.endsWith("/x"))).toEqual(listed);
+            return found;
+          },
+        });
+        const flow = defineFlow({
+          kind: "find-by-cells",
+          actions: { file: { inputSchema: fileInput, block: file }, find: { inputSchema: findInput, block: find } },
+        })();
+        const app = await boot(raw, flow);
+        await app.file([
+          { key: "drafts/x", id: "t1" },
+          { key: "public/x", id: "t1" },
+        ]);
+        expect(await app.find("t1")).toEqual(["docs/drafts/x", "docs/public/x"]);
+      });
+    });
+
     if (indexes) {
       it("answers a lookup on a built index without a prefix or whole-scope read of resource state", async () => {
         await withStores(async (raw) => {

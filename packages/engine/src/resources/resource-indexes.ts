@@ -6,9 +6,11 @@
  * the runtime resolves, so every handle derived from it, the run's resource
  * registry, the resource routes, and host code given `runtime.stores`, writes a
  * row together with its index entries. It computes a key's entries from every
- * registered declaration whose scope and pattern match the key, not from the
- * writing flow's, so a flow that declares the same pattern without `indexes`
- * still keeps another flow's index whole.
+ * registered declaration whose scope and pattern match the key and whose flow
+ * keeps that key in the cell being written, not from the writing flow's, so a
+ * flow that declares the same pattern without `indexes` still keeps another
+ * flow's index whole, and a flow-isolated collection's index never runs on
+ * another flow's isolated rows (whose schema it was never checked against).
  *
  * **The lookup** ({@link findIndexedKeys}) answers from the store's index
  * when the scope's index is built, and otherwise builds it: it marks the build
@@ -27,6 +29,7 @@
 import {
   canonicalIndexValues,
   declaredIndexes,
+  getPatternPrefix,
   matchesPattern,
   type DeclaredResourceIndex,
 } from "@flow-state-dev/core/types";
@@ -38,31 +41,96 @@ import type {
   StorageScopeType,
   StoreRegistry,
 } from "../stores/types";
+import { resolveResourceIsolation, resourceCellInstance, toIsolationFlow } from "../stores/scope-keys";
 import { isCollectionConfig } from "./is-collection-config";
+import { resolveOwnershipFlag, sessionRoutingIndex, type OwnershipBuckets } from "./lineage-scope";
 import { patternsReach } from "./owner-private";
+import { resourceStorageKeys } from "./storage-keys";
 
 /** A collection that declares indexes, as the writer and the check read it. */
 export interface IndexedCollection {
   pattern: string;
   scope: "session" | "user" | "org";
   indexes: readonly DeclaredResourceIndex[];
+  /** The id of the flow that declared it. */
+  flowId: string;
+  /** The cell its flow keeps `key` in (see {@link cellOfWrite}), by that flow's routing. */
+  cellOf(key: string): string;
 }
+
+/** A flow as the index declarations read it. */
+type IndexedFlow = {
+  id: string;
+  isolateUserState?: boolean;
+  isolateOrgState?: boolean;
+  resources?: Record<string, unknown>;
+};
 
 /** The declaration scope a storage scope's rows belong to: a lineage cell holds session rows. */
 function declarationScopeOf(scopeType: StorageScopeType): IndexedCollection["scope"] {
   return scopeType === "lineage" ? "session" : scopeType;
 }
 
+/**
+ * Which cell of its scope a write lands in: `lineage` or `session` at session
+ * scope; `shared` or `flow:<id>` (isolated to that flow) at user and org
+ * scope. `undefined` for a user or org `scopeId` of no shape the engine builds,
+ * where every declaration in the scope applies.
+ */
+function cellOfWrite(scopeType: StorageScopeType, scopeId: string): string | undefined {
+  if (scopeType === "lineage" || scopeType === "session") return scopeType;
+  const instance = resourceCellInstance(scopeType, scopeId);
+  if (instance === undefined) return undefined;
+  return instance === null ? "shared" : `flow:${instance}`;
+}
+
+/**
+ * How `flow` routes a key of `scope` to a cell, in {@link cellOfWrite}'s
+ * terms: the declaration owning the key (longest prefix) decides, as it does
+ * in execution, and an undeclared key takes the flow's default.
+ */
+function cellRouterOf(flow: IndexedFlow, scope: IndexedCollection["scope"]): (key: string) => string {
+  if (scope === "session") {
+    const { buckets } = sessionRoutingIndex(flow.resources);
+    return (key) => (resolveOwnershipFlag(buckets, key) === true ? "lineage" : "session");
+  }
+  const isolation = toIsolationFlow(flow);
+  const entries = Object.entries(flow.resources ?? {}).filter(
+    ([, def]) => (def as { scope?: string } | null)?.scope === scope
+  );
+  const storageKeys = resourceStorageKeys(Object.fromEntries(entries));
+  const singles = new Map<string, boolean>();
+  const prefixes: Array<{ prefix: string; flag: boolean }> = [];
+  for (const [accessor, def] of entries) {
+    const flag = resolveResourceIsolation((def as { flowIsolation?: boolean }).flowIsolation, isolation, scope);
+    if (isCollectionConfig(def)) {
+      const rawPrefix = getPatternPrefix(def.pattern);
+      prefixes.push({ prefix: rawPrefix === "" ? "" : `${rawPrefix}/`, flag });
+    } else {
+      singles.set(storageKeys[accessor] ?? accessor, flag);
+    }
+  }
+  const buckets: OwnershipBuckets = { singles, prefixes };
+  const fallback = scope === "user" ? isolation.isolateUserState : isolation.isolateOrgState;
+  return (key) => ((resolveOwnershipFlag(buckets, key) ?? fallback) ? `flow:${flow.id}` : "shared");
+}
+
 /** The indexed collections among a flow's resources. */
-function indexedCollectionsOf(resources: Record<string, unknown> | undefined): IndexedCollection[] {
+function indexedCollectionsOf(flow: IndexedFlow): IndexedCollection[] {
   const out: IndexedCollection[] = [];
-  for (const entry of Object.values(resources ?? {})) {
+  for (const entry of Object.values(flow.resources ?? {})) {
     if (!isCollectionConfig(entry)) continue;
     const config = entry as { pattern: string; scope?: unknown; indexes?: Record<string, unknown> };
     const indexes = declaredIndexes(config);
     if (indexes.length === 0) continue;
     if (config.scope !== "session" && config.scope !== "user" && config.scope !== "org") continue;
-    out.push({ pattern: config.pattern, scope: config.scope, indexes });
+    out.push({
+      pattern: config.pattern,
+      scope: config.scope,
+      indexes,
+      flowId: flow.id,
+      cellOf: cellRouterOf(flow, config.scope),
+    });
   }
   return out;
 }
@@ -78,10 +146,10 @@ function indexedCollectionsOf(resources: Record<string, unknown> | undefined): I
  * outlive the registration.
  */
 export function admitIndexedCollections(
-  incoming: { resources?: Record<string, unknown> },
+  incoming: IndexedFlow,
   known: readonly IndexedCollection[]
 ): readonly IndexedCollection[] {
-  const added = indexedCollectionsOf(incoming.resources);
+  const added = indexedCollectionsOf(incoming);
   if (added.length === 0) return known;
   const all = [...known];
   for (const collection of added) {
@@ -99,6 +167,7 @@ export function admitIndexedCollections(
     }
     const same = all.some(
       (prior) =>
+        prior.flowId === collection.flowId &&
         prior.scope === collection.scope &&
         prior.pattern === collection.pattern &&
         prior.indexes.length === collection.indexes.length &&
@@ -111,19 +180,23 @@ export function admitIndexedCollections(
 
 /**
  * A row's entries for every declared index whose scope and pattern cover its
- * key. Every index function sees the key and the state being written.
+ * key and whose flow keeps the key in the cell being written. Every index
+ * function sees the key and the state being written.
  */
 function indexEntriesFor(
   collections: readonly IndexedCollection[],
   scopeType: StorageScopeType,
+  scopeId: string,
   key: string,
   state: Record<string, unknown>
 ): ResourceIndexEntry[] {
   const scope = declarationScopeOf(scopeType);
+  const cell = cellOfWrite(scopeType, scopeId);
   const entries: ResourceIndexEntry[] = [];
   const seen = new Set<string>();
   for (const collection of collections) {
     if (collection.scope !== scope || !matchesPattern(collection.pattern, key)) continue;
+    if (cell !== undefined && collection.cellOf(key) !== cell) continue;
     for (const index of collection.indexes) {
       const id = `${collection.pattern}\n${index.stored}`;
       if (seen.has(id)) continue;
@@ -155,7 +228,7 @@ export function withResourceIndexWriter<T extends StoreRegistry>(
   if (WRITERS.has(stores.resourceState)) return stores;
   const store = stores.resourceState;
   const set: ResourceStateStore["set"] = (scopeType, scopeId, key, state, expectedVersion, options) => {
-    const computed = indexEntriesFor(collections(), scopeType, key, state);
+    const computed = indexEntriesFor(collections(), scopeType, scopeId, key, state);
     const ids = new Set(computed.map((entry) => `${entry.collection}\n${entry.index}`));
     const passed = (options?.indexEntries ?? []).filter((entry) => !ids.has(`${entry.collection}\n${entry.index}`));
     return store.set(scopeType, scopeId, key, state, expectedVersion, {
