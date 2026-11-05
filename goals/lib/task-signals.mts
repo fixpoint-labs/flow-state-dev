@@ -49,7 +49,7 @@ import { runGoal } from "./verdict.mts";
 /** The pause before each of the scripted coder's steps: one step is the four minutes the alive leg watches. */
 export const STEP_MS = 240_000;
 /** How long the quiet leg keeps the host down. */
-export const DOWN_MS = 240_000;
+const DOWN_MS = 240_000;
 /**
  * How long the restarted server leaves a dead run's row before the board takes
  * it back. Two things on a restarted server wake the board for a lapsed row at
@@ -63,11 +63,11 @@ export const DOWN_MS = 240_000;
  *   stale threshold of {@link STALE_THRESHOLD_MS}.
  * Neither touches the row or its lease, which quiet reads.
  */
-export const RECLAIM_HOLD_MS = 60_000;
+const RECLAIM_HOLD_MS = 60_000;
 /** How long a request's heartbeat may be silent before the server takes it as interrupted: the time the host is down, plus the hold. */
 export const STALE_THRESHOLD_MS = DOWN_MS + RECLAIM_HOLD_MS;
 /** How far the page's clock may be from now − the run's start. */
-export const CLOCK_SLACK_MS = 5_000;
+const CLOCK_SLACK_MS = 5_000;
 /** How long the page has to show what the board's row reads. */
 const PAGE_BOUND_MS = 20_000;
 /** How long a filed or retried task has to start running. */
@@ -135,7 +135,7 @@ function controls(itemFile: string): Record<string, Plant[]> {
 }
 
 /** "42s", "4m 12s", "1h 3m" (the item's `durationText`) in ms; undefined for anything else. */
-export function durationMs(text: string): number | undefined {
+function durationMs(text: string): number | undefined {
   const m = /^(?:(\d+)h )?(?:(\d+)m)?\s?(?:(\d+)s)?$/.exec(text.trim());
   if (m === null || (m[1] ?? m[2] ?? m[3]) === undefined) return undefined;
   return ((Number(m[1] ?? 0) * 60 + Number(m[2] ?? 0)) * 60 + Number(m[3] ?? 0)) * 1000;

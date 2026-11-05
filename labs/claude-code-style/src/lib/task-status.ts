@@ -15,7 +15,7 @@ export const TASK_STATUS: Record<TaskStatus, { label: string; tone: string; dot:
  * The token a task's time signal takes: a working clock keeps its row's tone, a run that stopped
  * answering (*quiet*: its lease lapsed) reads in the warning colour, and an ended row's age is muted.
  */
-export const TASK_SIGNAL_TONE: Record<TaskSignalKind, string> = {
+const TASK_SIGNAL_TONE: Record<TaskSignalKind, string> = {
   working: "",
   quiet: "text-warning",
   ended: "text-muted-foreground",
