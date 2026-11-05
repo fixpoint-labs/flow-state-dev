@@ -1,6 +1,6 @@
 /** A running request's steer context entry (FIX-2086). */
 import { describe, expect, it } from "vitest";
-import { createSteerContext } from "../../src/skills/steer-context";
+import { createSteerContext, showTakenSteers } from "../../src/skills/steer-context";
 import { ticketForClaim, type Task, type TaskCollectionRef } from "../../src/tasks";
 import { BOARD_FIELD, buildDelegationCtx, ownStateResolver } from "./delegation-ctx";
 
@@ -113,5 +113,23 @@ describe("the steer context entry", () => {
     await steer(ref, "Skip the archive");
     await ref.cancel("t");
     expect(await read(undefined, turn("r-turn") as never)).toBeNull();
+  });
+
+  it("never rejects when a person's line fails to land, so the caller still hands the steer on", async () => {
+    const shown: string[] = [];
+    const ctx = {
+      emit: { message: (text: string) => shown.push(text) },
+      _emitMessageAwaited: async () => {
+        throw new Error("the step's emitter is gone");
+      },
+    };
+    await expect(
+      showTakenSteers(ctx as never, [
+        { id: "s1", message: "Fall back.", from: "user" },
+        { id: "s2", message: "Use the North America numbers", from: "filer" },
+      ]),
+    ).resolves.toBeUndefined();
+    // The next steer still shows.
+    expect(shown).toEqual(["Message from the task's filer: Use the North America numbers"]);
   });
 });

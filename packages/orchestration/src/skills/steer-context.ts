@@ -57,7 +57,8 @@ export function renderSteers(steers: readonly ShownSteer[], lead: string): strin
  *
  * A person's line goes through the context's stored emitter, the one that
  * writes a `user` line; a hand-built context without one shows it through
- * `emit.message`.
+ * `emit.message`. Never rejects: a line that fails to land is a line not
+ * shown, never a steer lost.
  */
 export async function showTakenSteers(
   ctx: Pick<BlockContext, "emit" | "_emitMessageAwaited">,
@@ -67,7 +68,9 @@ export async function showTakenSteers(
     if (steer.id.startsWith("line:")) continue;
     if (steer.from === "user") {
       const agentName = steer.by ?? "user";
-      if (ctx._emitMessageAwaited !== undefined) await ctx._emitMessageAwaited(steer.message, { role: "user", agentName });
+      // Display only, like the plain emitter: a failed line never undoes the
+      // take that already wrote the row, or what the caller still does with it.
+      if (ctx._emitMessageAwaited !== undefined) await ctx._emitMessageAwaited(steer.message, { role: "user", agentName }).catch(() => undefined);
       else ctx.emit.message(steer.message, { agentName });
       continue;
     }
