@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="Q1, open: how does a stored file part point at its bytes. Recommended: the reference in FileContent.data, as fsd-blob and an id. Instead of: a new ref field, with data made optional. It comes down to the first row: only data leaves the published type unchanged. The price: a reader that assumes data is bytes gets a string it can't decode; no such reader exists today. Locks in a URI scheme in a stored field. Flips if a consumer already reads data as base64."
+<svg viewBox="0 0 940 418" role="img" aria-label="D4, the owner's call: how a stored file part points at its bytes. Chosen: the reference in FileContent.data, as fsd-blob and an id. Instead of: a new ref field, with data made optional. It comes down to the first row: only data leaves the published type unchanged. The price: a reader that assumes data is bytes gets a string it can't decode; one resolver and its test guard against it. Locks in a URI scheme in a stored field. Flips if a consumer already reads data as base64."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -36,13 +36,13 @@
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">Q1 · OPEN · THE CALL</text>
-    <text class="t-q" x="32" y="52">How does a stored file part point at its bytes?</text>
+    <text class="t-lbl" x="32" y="32">D4 · THE OWNER’S CALL, 2026-11-05</text>
+    <text class="t-q" x="32" y="52">How a stored file part points at its bytes</text>
   </g>
 
   <g id="options">
     <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
     <text class="t-h c-code" x="228" y="112">In data: fsd-blob:&lt;id&gt;</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
@@ -67,7 +67,7 @@
     <text class="t-lbl" x="32" y="237">ASSUMES BYTES</text>
     <text class="mark minus" x="228" y="227">−</text>
     <text class="t-b" x="248" y="226">Gets a string it can't decode</text>
-    <text class="t-s" x="248" y="244">none exists today</text>
+    <text class="t-s" x="248" y="244">one resolver and a test guard it</text>
     <text class="mark plus" x="592" y="227">+</text>
     <text class="t-b" x="612" y="226">Gets no data at all</text>
     <text class="t-s" x="612" y="244">fails plainly</text>
