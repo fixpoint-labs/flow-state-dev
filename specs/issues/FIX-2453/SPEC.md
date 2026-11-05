@@ -82,9 +82,10 @@ Left of the fence goes to zero and stays there; right of it is where a pointer l
 ```
 
 **Docs:** update BP-006 (`docs/contributing/best-practices/process.md`, and its `CLAUDE.md`
-line): a pointer lives in a `//` comment, never JSDoc, a string or a copied file. The two
-adopter examples using `FIX-2165` as a sample key (harness-manager's README and
-`apps/docs/docs/orchestration/harness-manager.md`) move to a neutral key. No new page.
+line): a pointer lives in a `//` comment, never JSDoc, a string or a copied file. Markdown is swept by hand: the
+published READMEs of core, patterns and harness-manager (two ids each), the knowledge-base
+example's README (five), and the docs page that uses `FIX-2165` as a sample key, which moves to a
+neutral key, as does harness-manager's refusal text. No new page.
 
 ## How it reaches the adopter
 
@@ -105,8 +106,9 @@ new id fails from day one. The sweep empties the file ([decided](DECISIONS.md#de
 
 ## What stays as it is
 
-- `//` and `/* */` pointers, tests outside `src`, changelogs, `.changeset/`, `specs/`,
-  `docs/internal/`, Kitchen Sink and `goals/`.
+- `//` and `/* */` pointers, changelogs, `.changeset/` (which `validate-changeset-refs.mjs`
+  requires to cite issues), `specs/`, `docs/internal/`, Kitchen Sink and `goals/`. Tests outside
+  `src` aren't linted; BP-006 already keeps ticket labels out of their titles.
 - What an error *means*: wording changes, never a code or a behaviour. A retired-value
   refusal's text is FIX-2454's helper's.
 
@@ -117,7 +119,7 @@ new id fails from day one. The sweep empties the file ([decided](DECISIONS.md#de
 | Term guards: `check-retired-terms.mjs`, the one-word-per-thing sweep, `validate-reserved-names.mjs`, the docs site's `lint:brand` | **Leaves alone.** This is the fifth. All four read lines or words, and none can tell a `//` pointer from a JSDoc block or a string, which is the whole distinction here. No `mechanisms.yaml` row: it lists runtime mechanisms |
 | `eslint.config.mjs`, syntactic rules, no custom rule yet; the CI *Lint* step and the pre-push hook | **Extends**, per [ER-4](../../epics/FIX-2447/DECISIONS.md#who-owns-what): the one custom rule. Same step, same hook |
 | ESLint's bulk suppressions (9.24+; the repo runs 9.39.5) | **Builds on**, as the ratchet. Proved in [`poc/rule/ratchet.sh`](poc/rule/ratchet.sh) |
-| `scripts/validate-publish-set.mjs` → `findPublishable` | **Builds on**: the rule's file set is the publish set's `src` |
+| `scripts/validate-publish-set.mjs` → `neverPublish`; each package's `files` and build root | **Builds on**: the rule's file set is every package's `src` except `neverPublish`, plus the three roots that ship from outside `src`: shift-manager's `cli/`, cursor's `runtime/`, and `apps/devtool/src` (devtool's `dist-client`). All three are at zero today |
 | [BP-006](../../../docs/contributing/best-practices/process.md): a ticket pointer is fine in a comment | **Amended**: a `//` or `/* */` comment, not JSDoc ([D1](DECISIONS.md#d1)) |
 | [FIX-2418](https://linear.app/fixpoint-labs/issue/FIX-2418): hide Shift Manager's placeholders and ids by default | **Overlaps** `packages/shift-manager/src/gaps.ts`. Its draft keeps ids in a `data-gap` attribute, a string this rule refuses; the gap keys by name instead |
 
@@ -128,9 +130,9 @@ new id fails from day one. The sweep empties the file ([decided](DECISIONS.md#de
 
 | The debt | |
 |---|---|
-| **Removes** | 2,192 id sites in 25 published packages, the registry and the examples (2,128 JSDoc, 56 literals, 8 copied comments) |
+| **Removes** | 2,192 id sites in 25 published packages, the registry and the examples (2,128 JSDoc, 56 literals, 8 copied comments), and orchestration's `RetiredShapeEntry.owner` field: seven tracker ids stored as data on an exported type, read by nothing, which move to `//` comments |
 | **Adds** | One custom rule, permanent by design (ER-4). A suppressions file, paid by this issue |
-| **Leaves** | Core's `dist` ships four compiled test files, a surface leak routed to the epic-agent (FIX-2448's area). No markdown guard. Kitchen Sink's 145 sites, FIX-2461's |
+| **Leaves** | Core's `dist` ships four compiled test files (no ids), a surface leak routed to the epic-agent (FIX-2448's area). No markdown guard. `reportUnusedDisableDirectives: "off"`, so a stale disable goes unreported; leg b still reads its line. Kitchen Sink's 145 sites, FIX-2461's |
 
 **Net: down.** Two thousand sites go; one rule stays, and its suppressions file is gone by the end.
 

@@ -55,15 +55,25 @@ It comes down to a hover that reads *"per BP-030"*: FIX-and-LAB-only leaves 249 
   cost is JSDoc on non-exported helpers, swept the same way.
 - **It lands as a ratchet.** The first PR adds the rule and `eslint-suppressions.json`
   (`--suppress-rule fsd/no-tracker-ids`); sweep PRs `--prune-suppressions`; the last deletes the
-  file and flips the manifest row. No PR adds a suppression for this rule.
+  file and flips the manifest row. No PR adds a suppression for this rule. Until then `pnpm lint`
+  runs with `--pass-on-unpruned-suppressions`, so a sibling that fixes a suppressed id isn't
+  failed and doesn't touch the file; only sweep PRs edit it. Counts are per file: swapping one id
+  for another in the same file passes the lint, and only leg b catches it.
 - **The convergence point is the rule's one pattern constant.** Every writer reaches it: hand
   edits, codemods, and generated files under `src`. FIX-2564's tarball assertion imports it
   rather than copying it, so the lint and the scan can't drift.
 - **The file set is derived, not listed**: every `packages/*/src` except
-  `validate-publish-set.mjs`'s `neverPublish`, plus `packages/ui/registry/**` and `examples/**`
-  with `comments: "all"`. A package that starts publishing is covered with no config edit.
+  `validate-publish-set.mjs`'s `neverPublish`, plus shift-manager's `cli/`, cursor's
+  `runtime/` and `apps/devtool/src`, plus `packages/ui/registry/**` and `examples/**` with
+  `comments: "all"`. Leg b fails on any file a tarball ships from outside that set. A package that starts publishing is covered with no config edit.
 - **An id built at runtime (`"FIX-" + n`) is out of reach** of both checks. None exists today; accepted.
-- **No allow-list option.** A real exception (none found) takes a reasoned
+- **`/*!` comments count as JSDoc**: tsc keeps them in a `.d.ts` too (none today).
+- **Shift Manager's `src` is swept like the rest**, though Vite bundles it and its JSDoc reaches
+  no hover: its strings are UI copy, and one rule over every published `src` is cheaper than an
+  exception.
+- **No allow-list option.** Ids stored as data are moved, not
+  excepted: `RetiredShapeEntry.owner`'s seven values become `//` comments and the unread field
+  goes (an exported type change, noted in its changeset). A real exception takes a reasoned
   `eslint-disable-next-line`; the tarball scan still reads it.
 - **An error names the fix**, and links a docs page only where one explains it (none does for
   FIX-735's case). A retired-value refusal (*"which was removed (FIX-918)"*) takes its text from
@@ -105,5 +115,8 @@ and `reuse-review` over the whole set.
 - **Draft** — framed as what an adopter reads, measured on the published tarballs rather than
   the workspace; one lexical ESLint rule over JSDoc and literals, landed as a bulk-suppression
   ratchet, building on the existing lint step and the publish set.
+- **Validation** — the goal states its pattern and is red per surface; the file set gains the
+  three roots outside `src`; `RetiredShapeEntry.owner` named; the ratchet's unpruned-suppression
+  behaviour stated.
 
 **Open: none.**

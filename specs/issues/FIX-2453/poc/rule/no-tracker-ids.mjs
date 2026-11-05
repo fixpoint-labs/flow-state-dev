@@ -27,7 +27,7 @@ export const noTrackerIds = {
     return {
       Program() {
         for (const c of context.sourceCode.getAllComments()) {
-          const jsdoc = c.type === "Block" && c.value.startsWith("*");
+          const jsdoc = c.type === "Block" && (c.value.startsWith("*") || c.value.startsWith("!"));
           if (jsdoc || all) report(c, c.value, jsdoc ? "a JSDoc block" : "a comment in a copied file");
         }
       },
