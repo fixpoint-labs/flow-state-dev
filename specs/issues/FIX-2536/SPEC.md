@@ -6,15 +6,14 @@
 
 | Someone who… | Today | After |
 |---|---|---|
-| **runs Shift Manager on a laptop** | No public URL, so no webhook; a subscribed task hears nothing | Each subscription polls on its own schedule row, at most every 5 minutes, into the same event and the same delivery |
-| **follows a thread that is both pushed and polled** | n/a | Each event once per session; a version push already delivered is dropped before any screen judges it |
-| **follows a PR whose delivery the host lost while polling** | n/a | It waits on the cursor; the next poll sends it, and it lands once ([D2](DECISIONS.md#d2)) |
+| **runs Shift Manager on a laptop** | No public URL, no webhook: a subscribed task hears nothing | Each subscription polls on its own row, at most every 5 minutes, into the same screens and delivery |
+| **follows a thread that is both pushed and polled** | n/a | Each event once per session |
+| **follows a PR whose delivery the host lost while polling** | n/a | The next poll fetches it again; it lands once ([D2](DECISIONS.md#d2)) |
 | **follows a private repo that another user also follows** | n/a | A poll made on your credentials reaches only your sessions ([D1](DECISIONS.md#d1)) |
-| **pays for the GitHub calls** | n/a | A quiet thread costs conditional requests that GitHub answers `304`; the due index fires only due rows |
+| **pays for the GitHub calls** | n/a | A quiet thread costs `304`s; only due rows fire |
 
-The epic ([FIX-2471](../../epics/FIX-2471/SPEC.md)) gives this issue D10's rows and cadence, ER-4,
-and the subscription-row seam. FIX-2534 ([spec](../FIX-2534/SPEC.md), #4687) gives it the row,
-the cursor, the screens and delivery.
+Inputs: the epic's ([FIX-2471](../../epics/FIX-2471/SPEC.md)) D10 and ER-4; FIX-2534's
+([spec](../FIX-2534/SPEC.md), #4687) row, cursor, screens and delivery.
 
 ## The goal, and how we'll know it's met
 
@@ -25,39 +24,37 @@ user.**
 
 | Is it the right goal? | |
 |---|---|
-| **The real need** | The epic's second team: *"runs Shift Manager on a laptop … the same flow polls, at most every 5 minutes"*, and its *"misses one on its PR"* |
-| **Smaller, and rejected** | "A poll handler fetches and routes": a lost delivery stays lost, nothing proves the floor, and a laptop host has no tick to fire it |
-| **Bigger, and not this issue's** | Catch-up polling for pushed apps ([Q-A](DECISIONS.md#qa), owner) · GitHub's push normalization (FIX-2535) · end to end (FIX-2539) |
-| **Not done if** | A session's set by poll differs from its set by push · a row fires under 5 minutes · a beat fires a row that isn't due · a lost delivery never arrives, or arrives twice · a version the subscription's cursor already saw is screened again · B's poll reads A's cell, or A's poll reaches B · an ended subscription still polls · a model is called |
+| **The real need** | The epic's *"runs Shift Manager on a laptop … the same flow polls, at most every 5 minutes"* |
+| **Smaller, and rejected** | "A poll handler fetches and routes": a lost delivery stays lost, and a laptop has no tick to fire it |
+| **Bigger, and not this issue's** | Catch-up for pushed apps ([Q-A](DECISIONS.md#qa)) · GitHub's normalizer (FIX-2535) · end to end (FIX-2539) |
+| **Not done if** | Poll's set differs from push's · a row fires under 5 minutes, or when not due · a lost delivery never arrives, or arrives twice · a judged version is judged again · one user's poll reaches another · an ended subscription still polls |
 
 ```mermaid
 flowchart LR
   F["FIX-2534's fixture · 300 events as a provider timeline · 24 subscriptions · 2 users"] --> P1["leg 1 · polled only · webhook off"]
-  F --> P2["leg 2 · polled, 10 deliveries lost"]
+  F --> P2["leg 2 · polled · 10 deliveries lost · 4 accepted, never taken · screen down, then up"]
   F --> P3["leg 3 · pushed and polled"]
   P1 --> S["each session's stored messages"]
   P2 --> S
   P3 --> S
   S -->|"equals the push oracle · fires ≥ 5 min apart · only due rows · 0 model calls · 0 cross-user"| OK["PASS"]
-  C["controls · drop-resend · walk-all · under-floor · no-mark"] -.-> P2
+  C["controls · mark-moves · walk-all · under-floor · no-screened · outage-screened"] -.-> P2
   S -.->|"under a control"| X["must FAIL"]
 ```
 
-The oracle is FIX-2534's push oracle, unchanged: polling must reach the same set.
-
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/webhook-routing/polls-each-event-once-without-a-webhook/` · no model · verdict on the implementation PR |
-| **Signal** | (a) Each session's rows equal the push oracle's set, in every leg. (b) Each row's fires are at least 5 minutes apart. (c) Fires equal due rows claimed, at most one per subscription per 5 minutes plus one, never subscriptions × beats. (d) Unchanged polls deliver nothing and send their ETags. (e) Each lost delivery lands exactly once, later. (f) 0 cross-user reads; 0 model calls. (g) Across polls, each version reaches a subscription's screens at most once: one refused on a poll is not fetched on the next. Leg 3 reports the versions push refused that the first poll judged again |
-| **Input** | FIX-2534's `fixtures/`, read as a timeline by `at`, served by a fake provider with ETags; the long-lived host's tick, driven by a fake clock over a SQLite due index |
-| **Anti-game** | Assert on stored rows and the index's claims, not on poll calls. Leg 2's losses are drawn from a fixed seed before the run |
-| **Control that must fail** | `drop-resend` (a lost delivery is not kept to resend): (e) FAILS. `walk-all` (each beat fires every subscription): (c) FAILS. `under-floor` (a 1-minute row): (b) FAILS. `no-mark` (`polledThrough` moves only when something was delivered): (g) FAILS. Today's `main`: (a) FAILS, nothing arrives |
+| **Goal check** | `goals/webhook-routing/polls-each-event-once-without-a-webhook/` · no model (the outage uses a stub screen) |
+| **Signal** | (a) Each session's rows equal FIX-2534's push oracle, every leg. (b) A row's fires are ≥ 5 minutes apart. (c) Fires equal due rows claimed. (d) Unchanged polls deliver nothing and send ETags. (e) Each lost delivery, and each accepted but never taken, lands exactly once, later. (f) 0 cross-user reads. (g) A version a screen refused or held is screened once, across polls. (h) Stub screen down, then up: each of its events is judged on the next poll, exactly once. Leg 3 counts versions push refused that a poll judged again |
+| **Input** | FIX-2534's `fixtures/` as a timeline, a fake provider with ETags, the shared tick on a fake clock over SQLite |
+| **Anti-game** | Assert on stored rows and claims, not poll calls; losses drawn from a fixed seed |
+| **Control that must fail** | `mark-moves` (mark moves every poll): (e). `walk-all` (every row each tick): (c). `under-floor` (a 1-minute row): (b). `no-screened`: (g). `outage-screened` (unjudged recorded as screened): (h). Today's `main`: (a) |
 
 ## What changes
 
-![What changes. Before: only a webhook reaches the service flow, and a laptop has none. After: subscribe writes a schedule row per subscription; a tick in the long-lived host walks the due index; each fire runs as the row's user, polls on their credentials, and hands the events to the same screens and delivery, moving polledThrough every poll and keeping a lost delivery to resend](figures/what-changes.svg)
+![What changes. Before: only a webhook reaches the service flow. After: a row per subscription, one shared tick, a fire as the user that polls and hands what is new to the same screens and delivery](figures/what-changes.svg)
 
-Everything right of the fire is FIX-2534's, reused; the new parts are the row, the tick, the poll and its cursor fields.
+Past the poll, everything is FIX-2534's, reused.
 
 ```diff
  // the app
@@ -72,80 +69,77 @@ Everything right of the fire is FIX-2534's, reused; the new parts are the row, t
 +  poll: (thread, cursor, ctx) => fetchSince(thread, cursor, ctx),   // as the user; since polledThrough; conditional
  }
 
- // fsdev dev, @flow-state-dev/node: no new config
-+// a host serving a flow with a schedule index ticks it once a minute
+ // fsdev dev and serve(): no new config
++// serve() starts @flow-state-dev/scheduled's tick for a flow with a schedule index
 ```
 
-`poll` and `fetchSince` are illustrations; [D2](DECISIONS.md#d2) locks what `polledThrough`
-means. A worker's `subscribe` call does not change: the app decides whether a provider polls.
+`poll` and `fetchSince` are illustrations; [D2](DECISIONS.md#d2) locks the cursor fields. A
+worker's `subscribe` call does not change.
 
-**Docs:** the workforce README's subscriptions section, `apps/docs/docs/server/schedule-index.md`
-(the long-lived host's tick), `apps/docs/docs/server/webhooks.md` (*no public URL*, after
-FIX-2535 publishes the GitHub guide), `docs/architecture/scheduled-actions.md`.
+**Docs:** the workforce README, `apps/docs/docs/server/schedule-index.md`,
+`apps/docs/docs/server/webhooks.md` (*no public URL*), `docs/architecture/scheduled-actions.md`.
 
 ## How a poll reaches a session
 
 ```mermaid
 flowchart LR
-  T["tick · once a minute"] -->|"claimDue"| R["due rows only"]
+  T["shared tick · once a minute"] -->|"claimDue"| R["due rows only"]
   R --> F["fire as the row's user · onOverlap skip"]
-  F --> W["first · the cursor's resend list · straight to delivery"]
-  F --> P["provider poll · on the user's credentials · since polledThrough"]
+  F --> P["provider poll · the user's credentials · since polledThrough"]
   P -->|"unchanged"| Z["nothing"]
-  P -->|"events"| Q{"cursor saw this version?"}
+  P -->|"events"| Q{"in seen or screened?"}
   Q -->|"yes"| Y["dropped · never screened"]
   Q -->|"no"| C["screens · this user's own subscription"]
-  C --> D["FIX-2534 delivery · cursor · in-flight · cap"]
-  W --> D
-  D -->|"unsent"| K["kept on the cursor to resend"]
-  P --> M["polledThrough moves · every poll"]
+  C -->|"refused or held"| SC["recorded in screened"]
+  C -->|"passed"| D["FIX-2534 delivery · cursor · in-flight · cap"]
+  D --> M["polledThrough · oldest not taken, not screened"]
 ```
 
-**Stays:** the subscription row and its tools, the thread index, routing and the push path,
-the cursor's `seen` and in-flight marks (read before the screens, not changed), the screens, `sendMessage`'s exempt path, and the
-Vercel tick.
+**Stays:** the subscription row and tools, the thread index, the push path, `seen` (*seen only
+when taken*), the in-flight marks, the screens.
 
 ## What's already here, and the debt
 
 | Already here | What this does with it |
 |---|---|
-| **The job, "fire a user's row on a schedule".** `defineScheduleCollection`, `createResourceCollectionScheduleResolver`, `onOverlap` (`packages/scheduled/src/`); recurring work (`workforce/src/schedules/scheduled-work.ts`) | **Reuses** all three, as epic D10 signed |
-| **The job, "walk a due index".** Vercel's `createScheduleTickHandler` (`vercel/src/schedules.ts`); BullMQ's index. Searched `cli/src`, `node/src`, `engine/src`: no tick in a long-lived host | **Extends:** the same claim-and-dispatch on a timer in `fsdev dev` and `@flow-state-dev/node` |
-| FIX-2534's cursor: `seen`, in-flight marks, *seen only when taken* (`subscriptions/service-flow.ts` ~144–357) | **Builds on:** a version it saw is dropped before the screens; a lost one is kept to resend ([D2](DECISIONS.md#d2)) |
-| FIX-2534's screens and `deliverToRow` | **Reuses** both, unchanged, for the user's own subscription |
-| The schedule resolver's principal: `{ userId, orgId }`, no tenant (`core/src/types/auth.ts` ~87) | **Leaves:** a subscription made under a tenant is not polled in v1 |
+| **"Fire a user's row on a schedule":** `packages/scheduled/src/`, as `workforce/src/schedules/scheduled-work.ts` uses it | **Reuses**, as epic D10 signed |
+| **"Walk a due index":** Vercel's `createScheduleTickHandler` (`vercel/src/schedules.ts` ~105). `fsdev dev` serves through `node`'s `serve()` (`cli/src/commands/dev.ts`); neither ticks | **Extends** (below) |
+| FIX-2534's cursor: `seen`, in-flight marks, *seen only when taken* (`subscriptions/rows.ts` ~102, `service-flow.ts` ~262–357) | **Builds on:** `seen` is read, never written outside delivery ([D2](DECISIONS.md#d2)) |
 
-| Adds | Composed from |
+## Reuse verdicts
+
+| Item | Verdict |
 |---|---|
-| A schedule row per polled subscription | `defineScheduleCollection`, keyed by the subscription id; written only by `subscribe` and `unsubscribe` (ER-5) |
-| The poll fire | The resolver's `blocks` map; a handler inside `defineSubscriptionServiceFlow` beside `deliver` |
-| `SubscriptionProvider.poll` | An optional method beside `canRead` |
-| `polledThrough`, ETags and a bounded resend list on the cursor | `subscriptionCursorSchema`, optional fields (BP-030); the [FIX-2537 seam](DECISIONS.md#seam-2537) |
-| GitHub's poll | Conditional REST reads, mapped by FIX-2535's normalizer |
-| The long-lived host's tick | The Vercel tick's claim-and-dispatch, on a timer |
+| The schedule row | **Reuse** `defineScheduleCollection` |
+| The poll fire | **Reuse** `createResourceCollectionScheduleResolver` + `onOverlap: "skip"`, the shape of `scheduled-work.ts` |
+| `SubscriptionProvider.poll` | **Extend** `SubscriptionProvider` with an optional method |
+| `polledThrough`, `screened`, ETags | **Extend** `subscriptionCursorSchema`: one extension, optional fields (BP-030); genuinely new |
+| Lease, screens, delivery | **Reuse** `deliverToRow` and `configScreenChain`, unchanged |
+| GitHub's poll | **New**, on FIX-2535's normalizer |
+| The tick | **Extend:** Vercel's handler body moves into `scheduled`, run on an interval like `stale-request-sweeper.ts` |
 
 | The debt | |
 |---|---|
-| **Removes** | Nothing |
-| **Adds** | A second way into delivery: from the user's own rows, beside the thread index ([D1](DECISIONS.md#d1)), permanent by design. A tick in two hosts, beside Vercel's |
-| **Leaves** | Per-repo batching (each subscription polls on its own), and tenants' subscriptions unpolled: both in [Decided, not asked](DECISIONS.md#decided-not-asked) |
+| **Removes** | Nothing; Vercel's tick body moves rather than being copied |
+| **Adds** | A second way into delivery, beside the thread index ([D1](DECISIONS.md#d1)), permanent by design. `vercel` and `node` load `scheduled` at runtime |
+| **Leaves** | Per-repo batching; tenants' subscriptions unpolled, since the resolver's principal has no tenant ([Decided, not asked](DECISIONS.md#decided-not-asked)) |
 
-**Net: up, a little.** One schedule collection, one fire, one tick; no new store, sender or event.
+**Net: up, a little.** One collection, one fire, one cursor extension; the tick is shared.
 
 ## Sign off
 
-**[The goal](#the-goal-and-how-well-know-its-met):** the push set, by poll alone, with the floor
-and the losses checked. If wrong: a laptop that hears most events and loses the rest.
+**[The goal](#the-goal-and-how-well-know-its-met):** the push set, by poll alone. If wrong: a
+laptop that hears most events and loses the rest.
 
-**[The debt](#whats-already-here-and-the-debt): up a little.** If wrong: a second delivery entry
-drifts from the thread index's rules.
+**[The debt](#whats-already-here-and-the-debt): up a little.** If wrong: the second delivery
+entry drifts from the index's rules.
 
-1. **[D1](DECISIONS.md#d1) · A poll reaches only its own user's subscriptions.** The one to
-   weigh. If wrong: N users on one repo make N polls.
-2. **[D2](DECISIONS.md#d2) · The poll's mark moves every time; a lost delivery waits on the
-   cursor.** If wrong: a lost delivery on a laptop never arrives, or Jev judges one event twice.
+1. **[D1](DECISIONS.md#d1) · A poll reaches only its own user's subscriptions.** If wrong: N
+   users on one repo make N polls.
+2. **[D2](DECISIONS.md#d2) · The mark holds at the oldest event neither taken nor screened; a
+   judged version is recorded in `screened`.** If wrong: a lost delivery on a laptop never
+   arrives, or Jev judges one event twice.
 
-**Open, owner: [Q-A](DECISIONS.md#qa)** · pushed subscriptions also poll, slowly, to catch what
-push lost. Not in this scope.
+**Open, owner: [Q-A](DECISIONS.md#qa)** · pushed subscriptions also poll hourly, as a follow-up.
 
-Feature · workforce, scheduled, cli, node · medium: one collection, one fire, one tick, GitHub's poll · epic FIX-2471 · GitHub's poll needs FIX-2535's normalizer on `main`
+Feature · workforce, scheduled, vercel, node · medium · epic FIX-2471 · GitHub's poll needs FIX-2535 on `main`
