@@ -42,10 +42,12 @@ export const LOCKFILES = {
 };
 
 /**
- * The Node floor for a wired-up project — not the `>=22` our packages declare.
+ * The Node floor for a wired-up project. It must stay at or above the `fsdev` package's
+ * `engines.node` (twins.test.mjs checks that).
  *
- * 22.0–22.17 passes `>=22` and then fails every printed command at config load, because the CLI
- * imports the emitted TypeScript config natively and that needs type stripping.
+ * It was set to 22.18 when the CLI loaded the TypeScript config only through Node's type
+ * stripping. The CLI now loads it itself on any Node 22, so this floor is stricter than the CLI
+ * needs; lowering it is a separate change to what this report refuses.
  */
 export const NODE_FLOOR = "22.18.0";
 
