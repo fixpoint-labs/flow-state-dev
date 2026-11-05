@@ -147,6 +147,60 @@ describe("a task's midway question heard while its filer's call waits", { timeou
     expect((await runtime.stores.request.get(filed))?.status).toBe("suspended");
 
     // The grade: the turn that hears the question is handed the line that filed the task.
-    expect(JSON.stringify(heard()!.messages)).toContain(VENUE);
+    const handed = JSON.stringify(heard()!.messages);
+    expect(handed).toContain(VENUE);
+    // And it is told the call still waits, not that it failed: a turn that
+    // read the call as failed would send it again.
+    expect(handed).toContain("still waiting on sendMessage");
+    expect(handed).not.toContain('Tool \\"sendMessage\\" failed');
+  });
+});
+
+/**
+ * The other side of the line: a request stopped for a person stays out of a
+ * turn that runs meanwhile. The person's answer resumes it at the same step,
+ * reading the session as it left it, so nothing it has said yet is final, and
+ * only a call's park (a wait on another request) is read as far as it got.
+ */
+describe("a request stopped for its user, heard by a turn that runs meanwhile", { timeout: 40_000 }, () => {
+  it("stays out of that turn's history", async () => {
+    const SECRET = "Lighthouse Pier";
+    const LATER = "What else is on today?";
+    const seen: GeneratorModelCallOptions[] = [];
+    const model: GeneratorModel = {
+      modelId: "otto-stops",
+      async generate() {
+        throw new Error("Otto is driven step by step");
+      },
+      async generateStep(options): Promise<Step> {
+        seen.push(options);
+        const last = userLines(options).at(-1) ?? "";
+        const answered = (options.messages ?? []).some((m) => (m as { role?: string }).role === "tool");
+        if (last.includes(SECRET) && !answered) {
+          return {
+            toolCalls: [{ toolCallId: "stop-1", toolName: "suspendForUser", args: { kind: "approval", prompt: "Book it?" } }],
+            finishReason: "tool-calls"
+          } as Step;
+        }
+        return { text: "Heard.", finishReason: "stop" } as Step;
+      }
+    };
+    const h = bootBoardHost({ durable: true, agentModel: model, standard: boardWorkers({ otto: { delegates: ["eng.tasker"] } }) });
+    open = h;
+    await h.state.getRouter();
+    const runtime = await h.state.getRuntime();
+
+    const otto = (await h.create("alice", "agent", { state: { workerId: "otto" } })).body.session!.id as string;
+    const stopped = await h.post("alice", otto, "respond", { message: `Book the dinner at ${SECRET}, once I say yes.` }, "agent");
+    expect(await until(async () => (await runtime.stores.request.get(stopped))?.status === "suspended")).toBe(true);
+
+    await h.post("alice", otto, "respond", { message: LATER }, "agent");
+    const later = () => seen.find((call) => (userLines(call).at(-1) ?? "").includes(LATER));
+    expect(await until(() => later() !== undefined)).toBe(true);
+
+    // Setup, not the grade: the stopped request still waits on Alice.
+    expect((await runtime.stores.request.get(stopped))?.status).toBe("suspended");
+    // The grade: the turn that ran meanwhile reads none of it.
+    expect(JSON.stringify(later()!.messages)).not.toContain(SECRET);
   });
 });

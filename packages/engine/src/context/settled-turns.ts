@@ -6,9 +6,23 @@
  * the newest past turns under the session's request scope, leave out the
  * running request, an interrupted turn that will run again (parked) or that a
  * retry re-ran, keep only the settled items of any other interrupted turn,
- * and order what is left oldest first. A turn still running, suspended or
- * parked is never read: what it says is not final.
+ * and order what is left oldest first.
+ *
+ * A turn waiting on a call is read as far as it got (FIX-2279). A call is a
+ * wait gate bound to a request it started (`dispatcher({ wait: true })`, a
+ * worker's `sendMessage` with `wait`), and a turn parked on one gives its
+ * session back, so another turn can run there before it resumes. That turn
+ * reads the waiting one's settled items, the line that started it and the
+ * calls that finished, followed by a line saying it is still waiting, built
+ * here from its own unfinished tool calls (or the gate's message). It is the
+ * same whether the waiting request is `suspended` or `interrupted` with its
+ * gate still pending. Any other turn still running, suspended or parked is
+ * never read: a stop for a person (whose answer resumes the turn reading the
+ * session as it left it), a wait on a task, or work still in progress.
  */
+import { isSuspensionWait, type MessageItem, type ToolOutputItem } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import { isWaitGate, waitGateDataOf, type SuspensionRecord } from "@flow-state-dev/core/types";
 import type { DurabilityProvider } from "../durability/types";
 import { parkedInterruptedIds } from "../durability/stop-suspended";
 import { PAST_TURN_STATUSES, retriedIds } from "../execution/past-turns";
@@ -56,6 +70,11 @@ export type SettledTurns = {
   retried: Set<string>;
   /** The ids of interrupted turns in the window that will run again. */
   parked: Set<string>;
+  /**
+   * The ids of turns waiting on a call that `settled` holds as far as they
+   * got: not settled, so a reader that marks turns settled marks these open.
+   */
+  waiting: Set<string>;
   /** The turns a model reads, oldest first. */
   settled: RequestRecord[];
 };
@@ -85,16 +104,102 @@ export async function readSettledTurns(inputs: SettledTurnsInputs): Promise<Sett
   const start = listed.length > turns && window[0] !== undefined ? { requestId: window[0].id } : undefined;
   const retried = retriedIds([...window, ...(inputs.openTurns ?? [])], inputs.runningMetadata);
   let parked = new Set<string>();
+  let calls = new Map<string, SuspensionRecord>();
+  // The session's suspended turns no older than the window: those waiting on
+  // a call are read as far as they got. Without a durability provider nothing
+  // suspends, so there is nothing to list.
+  const first = start !== undefined ? window[0] : undefined;
+  const suspended =
+    inputs.durability === undefined
+      ? []
+      : (await inputs.requests.list({ ...inputs.scope, status: ["suspended"], limit: turns, orderBy: "startedAtMs", withItems: true })).filter(
+          (r) => r.id !== runningRequestId && (first === undefined || compareTurnsOldestFirst(r.startedAtMs, r.id, first.startedAtMs, first.id) >= 0)
+        );
   try {
     parked = await parkedInterruptedIds(inputs.durability, window, inputs.wakes);
+    calls = await callWaits(inputs.durability, [...suspended, ...window.filter((r) => parked.has(r.id) && !retried.has(r.id))]);
   } catch (error) {
     inputs.onGateReadError(error);
   }
-  const settled = window
+  const waiting = new Set([...calls.keys()]);
+  const settled = [...window, ...suspended.filter((r) => calls.has(r.id))]
     .filter((r) => r.id !== runningRequestId)
-    .filter((r) => r.status !== "interrupted" || (!retried.has(r.id) && !parked.has(r.id)))
-    .map((r) => (r.status === "interrupted" && r.items !== undefined ? { ...r, items: r.items.filter((i) => i.status !== "in_progress") } : r))
+    .filter((r) => r.status !== "interrupted" || waiting.has(r.id) || (!retried.has(r.id) && !parked.has(r.id)))
+    .map((r) => {
+      if (r.status === "completed" || r.items === undefined) return r;
+      const gate = calls.get(r.id);
+      // A waiting turn's parked call is recorded as a failed tool call (`isSuspensionWait`):
+      // it has not failed, so the waiting line names it instead.
+      const items = r.items.filter((i) => i.status !== "in_progress" && (gate === undefined || !parkedCall(i)));
+      return { ...r, items: gate === undefined ? items : [...items, waitingLine(r, r.items, gate)] };
+    })
     .sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.id, b.startedAtMs, b.id));
 
-  return { window, ...(start !== undefined ? { start } : {}), retried, parked, settled };
+  return { window, ...(start !== undefined ? { start } : {}), retried, parked, waiting, settled };
+}
+
+/**
+ * The pending call gates of `records`, by request id: a wait gate bound to a
+ * request, never a person's stop or a wait on a task. One pending-gate read
+ * per session. Without a durability provider nothing can wait.
+ */
+async function callWaits(
+  provider: Pick<DurabilityProvider, "listSuspended"> | undefined,
+  records: readonly Pick<RequestRecord, "id" | "userId" | "sessionId">[]
+): Promise<Map<string, SuspensionRecord>> {
+  const calls = new Map<string, SuspensionRecord>();
+  if (provider === undefined || records.length === 0) return calls;
+  const ids = new Set(records.map((r) => r.id));
+  const others = new Set<string>();
+  const sessions = new Map<string, { userId: string; sessionId: string | undefined }>();
+  for (const r of records) sessions.set(`${r.userId}\u0000${r.sessionId ?? ""}`, { userId: r.userId, sessionId: r.sessionId });
+  for (const { userId, sessionId } of sessions.values()) {
+    const pending = await provider.listSuspended({ userId, ...(sessionId !== undefined ? { sessionId } : {}), status: "pending" });
+    for (const gate of pending) {
+      if (!ids.has(gate.requestId)) continue;
+      const binding = isWaitGate(gate) ? waitGateDataOf(gate)?.binding : undefined;
+      if (binding !== undefined && "requestId" in binding) calls.set(gate.requestId, gate);
+      else others.add(gate.requestId);
+    }
+  }
+  // A request that also holds another gate (a person's stop beside its call) stays out.
+  for (const id of others) calls.delete(id);
+  return calls;
+}
+
+/** A tool call a park left on the log: recorded failed, coded `SUSPENSION` (`isSuspensionWait`). */
+function parkedCall(item: RuntimeItem): boolean {
+  return item.type === "tool_output" && isSuspensionWait(item as ToolOutputItem);
+}
+
+/** How much of a waiting tool call's arguments the waiting line quotes. */
+const WAITING_ARGUMENTS_CHARS = 300;
+
+/**
+ * The line that closes a turn read while it waits on a call: what it still
+ * waits on, from its unfinished tool calls (the parked one among them), else
+ * the gate's message. Built at
+ * read time and never stored; hidden from clients.
+ */
+function waitingLine(record: RequestRecord, items: readonly RuntimeItem[], gate: SuspensionRecord): RuntimeItem {
+  const open = items.filter((i): i is ToolOutputItem & RuntimeItem => i.type === "tool_output" && (i.status === "in_progress" || parkedCall(i)));
+  const quote = (args: string) => (args.length > WAITING_ARGUMENTS_CHARS ? `${args.slice(0, WAITING_ARGUMENTS_CHARS)}…` : args);
+  const on =
+    open.length > 0
+      ? open.map((i) => `${i.toolCall.alias ?? i.toolCall.name}(${quote(i.toolCall.arguments)})`).join(", ")
+      : (gate.message ?? "a call");
+  const last = items.reduce((max, i) => Math.max(max, i.ts), record.startedAtMs);
+  const line: MessageItem = {
+    id: `waiting:${record.id}`,
+    type: "message",
+    status: "completed",
+    requestId: record.id,
+    itemIndex: items.reduce((max, i) => Math.max(max, i.itemIndex), -1) + 1,
+    provenance: { blockName: "history", blockInstanceId: "history", phase: "main" },
+    ts: last + 1,
+    itemVisibility: { client: false, history: true },
+    role: "assistant",
+    content: [{ type: "output_text", text: `(This turn has not finished: it is still waiting on ${on}. Its result is not known yet.)` }]
+  } as MessageItem;
+  return line as RuntimeItem;
 }

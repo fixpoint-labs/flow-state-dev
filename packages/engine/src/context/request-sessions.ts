@@ -168,10 +168,11 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
       const read: HistoryTurn[] = kept.map((r, at) => ({
         requestId: r.id,
         startedAtMs: r.startedAtMs,
-        settled: true,
+        // A turn waiting on a call is read as far as it got, and has not settled.
+        settled: !past.waiting.has(r.id),
         messages: selected[at]!.messages
       }));
-      const newest = kept.at(-1);
+      const newest = kept.filter((r) => !past.waiting.has(r.id)).at(-1);
       const first = kept[0];
       const leftOut = kept.length < past.settled.length || past.start !== undefined;
       return {

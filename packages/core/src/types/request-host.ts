@@ -312,7 +312,10 @@ export type SessionHistoryQuery = {
  * them: what a model may read of that conversation, and how fresh it is.
  */
 export type SessionHistory = {
-  /** The settled turns read, oldest first. Each carries its messages. */
+  /**
+   * The settled turns read, oldest first, and any turn waiting on a call, as
+   * far as it got (`settled: false`). Each carries its messages.
+   */
   readonly turns: readonly HistoryTurn[];
   /** The first turn read, when earlier settled turns were left out. */
   readonly startRequestId?: string;
@@ -323,7 +326,8 @@ export type SessionHistory = {
   readonly asOf?: { readonly requestId: string; readonly atMs: number };
   /**
    * Whether a turn of that session is open now: running, suspended, or
-   * interrupted and parked to run again. What it says is not read.
+   * interrupted and parked to run again. What it says is not read, except a
+   * turn waiting on a call, which `turns` holds as far as it got.
    */
   readonly running: boolean;
 };
