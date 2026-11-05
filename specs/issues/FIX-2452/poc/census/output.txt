@@ -1,43 +1,43 @@
 
-@flow-state-dev/store-sqlite: 20 root exports → root 3 · ./advanced 17
-  advanced  SQLiteStoreRegistry                  packages/integration-tests
-  advanced  createSQLiteStores                   packages/cli packages/integration-tests packages/shift-manager apps/docs goals/devforce-lab goals/devtool-workforce-visibility goals/durable-claim-safety goals/flow-instances goals/oversized-output goals/pentest-lab goals/resource-concurrency goals/shift-manager goals/user-scope goals/workers-as-resources goals/workforce-conventions goals/workforce-workers
-  advanced  createSQLiteSessionStore             — no outside consumer
-  advanced  createSQLiteRequestStore             — no outside consumer
-  advanced  createSQLiteUserStore                — no outside consumer
-  advanced  createSQLiteOrgStore                 — no outside consumer
-  advanced  createSQLiteActiveRequestRegistry    — no outside consumer
-  advanced  createSQLiteCheckpointStore          — no outside consumer
-  advanced  createSQLiteTraceStore               — no outside consumer
-  advanced  createSQLiteSuspensionStore          — no outside consumer
-  advanced  createSQLiteLeaseStore               — no outside consumer
-  advanced  createSQLiteWakeStore                — no outside consumer
-  advanced  SQLiteTraceStoreOptions              — no outside consumer
-  advanced  CreateSQLiteRequestStoreOptions      — no outside consumer
-  advanced  initializeSchema                     — no outside consumer
-  advanced  initializeSchemaDDL                  — no outside consumer
-  advanced  applyConnectionPragmas               — no outside consumer
+@flow-state-dev/store-sqlite: 20 root exports → root 3 · ./host 17
+  host      SQLiteStoreRegistry                  packages/integration-tests
+  host      createSQLiteStores                   packages/cli packages/integration-tests packages/shift-manager apps/docs goals/devforce-lab goals/devtool-workforce-visibility goals/durable-claim-safety goals/flow-instances goals/oversized-output goals/pentest-lab goals/resource-concurrency goals/shift-manager goals/user-scope goals/workers-as-resources goals/workforce-conventions goals/workforce-workers
+  host      createSQLiteSessionStore             — no outside consumer
+  host      createSQLiteRequestStore             — no outside consumer
+  host      createSQLiteUserStore                — no outside consumer
+  host      createSQLiteOrgStore                 — no outside consumer
+  host      createSQLiteActiveRequestRegistry    — no outside consumer
+  host      createSQLiteCheckpointStore          — no outside consumer
+  host      createSQLiteTraceStore               — no outside consumer
+  host      createSQLiteSuspensionStore          — no outside consumer
+  host      createSQLiteLeaseStore               — no outside consumer
+  host      createSQLiteWakeStore                — no outside consumer
+  host      SQLiteTraceStoreOptions              — no outside consumer
+  host      CreateSQLiteRequestStoreOptions      — no outside consumer
+  host      initializeSchema                     — no outside consumer
+  host      initializeSchemaDDL                  — no outside consumer
+  host      applyConnectionPragmas               — no outside consumer
   per-store constructors: 10, imported outside the package: 0
 
-@flow-state-dev/store-postgres: 22 root exports → root 4 · ./advanced 18
-  advanced  PostgresStoreRegistry                packages/vercel
-  advanced  createPostgresStores                 packages/vercel apps/docs apps/kitchen-sink goals/realtime goals/session-stream
-  advanced  createPostgresSessionStore           — no outside consumer
-  advanced  createPostgresRequestStore           — no outside consumer
-  advanced  createPostgresUserStore              — no outside consumer
-  advanced  createPostgresOrgStore               — no outside consumer
-  advanced  createPostgresActiveRequestRegistry  — no outside consumer
-  advanced  createPostgresContentStore           — no outside consumer
-  advanced  createPostgresResourceStateStore     — no outside consumer
-  advanced  createPostgresCheckpointStore        — no outside consumer
-  advanced  createPostgresSuspensionStore        — no outside consumer
-  advanced  createPostgresLeaseStore             — no outside consumer
-  advanced  createPostgresWakeStore              — no outside consumer
-  advanced  initializeSchema                     — no outside consumer
-  advanced  createPgPoolTx                       packages/vercel
-  advanced  QueryExecutor                        packages/vercel goals/personal-knowledge-mcp goals/realtime goals/session-stream
-  advanced  TxClient                             — no outside consumer
-  advanced  PostgresBus                          — no outside consumer
+@flow-state-dev/store-postgres: 22 root exports → root 4 · ./host 18
+  host      PostgresStoreRegistry                packages/vercel
+  host      createPostgresStores                 packages/vercel apps/docs apps/kitchen-sink goals/realtime goals/session-stream
+  host      createPostgresSessionStore           — no outside consumer
+  host      createPostgresRequestStore           — no outside consumer
+  host      createPostgresUserStore              — no outside consumer
+  host      createPostgresOrgStore               — no outside consumer
+  host      createPostgresActiveRequestRegistry  — no outside consumer
+  host      createPostgresContentStore           — no outside consumer
+  host      createPostgresResourceStateStore     — no outside consumer
+  host      createPostgresCheckpointStore        — no outside consumer
+  host      createPostgresSuspensionStore        — no outside consumer
+  host      createPostgresLeaseStore             — no outside consumer
+  host      createPostgresWakeStore              — no outside consumer
+  host      initializeSchema                     — no outside consumer
+  host      createPgPoolTx                       packages/vercel
+  host      QueryExecutor                        packages/vercel goals/personal-knowledge-mcp goals/realtime goals/session-stream
+  host      TxClient                             — no outside consumer
+  host      PostgresBus                          — no outside consumer
   per-store constructors: 11, imported outside the package: 0
 
 @flow-state-dev/engine: 26 store names on the root → root 6 · engine/host 20

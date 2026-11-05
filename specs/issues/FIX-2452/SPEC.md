@@ -10,7 +10,7 @@
 | **adds persistence** | Wraps one adapter in a profile and a slot | Writes `stores: sqliteStores({ filename })`. Named profiles stay, for an app that picks a store per environment |
 | **names `scheduler`, `blobs` or `queue` in a profile** | Accepted, and nothing happens. Three docs pages explain the no-op | Refused at construction. The error names where the job lives and the version the refusal goes in |
 | **mounts a generator as a chat action and forgets `itemVisibility`** | The chat renders empty, with no error | One dev warning when the flow is built, naming the action and both fixes |
-| **autocompletes a store package** | 20 names in store-sqlite, 22 in store-postgres: two factory families and 10 or 11 per-store constructors | The adapter factory and the schedule index. The rest is under `./advanced` |
+| **autocompletes a store package** | 20 names in store-sqlite, 22 in store-postgres: two factory families and 10 or 11 per-store constructors | The adapter factory and the schedule index. The rest is under `./host` |
 | **copies the quick start's flow** | Copies an empty `session: { stateSchema: z.object({}) }` that nothing needs | No `session` block |
 
 The ceremony comes from engine and core defaults, so the docs can't remove it alone. The
@@ -29,7 +29,7 @@ factory.**
 | **The real need** | The epic's *first hour*: the quick start is the adopter's first judgement, and today it shows defaults, not their app ([epic](../../epics/FIX-2447/SPEC.md#the-goal-and-how-well-know-its-met)) |
 | **Smaller, and rejected** | "`stores` accepts a bare adapter." The first file still writes a store line and an import, three slots still promise nothing, and the empty chat stays silent |
 | **Bigger, and not this issue's** | A real scheduler store (review item R-11, outside the epic) and a durable default store. Engine's own store names move here too, but only once FIX-2449's `engine/host` exists ([decided](DECISIONS.md#decided-not-asked)) |
-| **Not done if** | The quick start still writes a store line, or a getting-started page still declares an empty `session` · the in-memory notice fires when `stores` is set, or never fires · a profile with `scheduler`, `blobs` or `queue` constructs, or one with `primary` and `bus` stops constructing · a silent generator chat action builds with no warning in dev, or the warning doesn't name both fixes · the warning fires when `itemVisibility` is set, on an internal, task, webhook or schedule action, or in production · a store package's root lists a per-store constructor or `createXStores`, or a moved name doesn't resolve from `./advanced` · a docs page still lists `blobs`, `queue` or `scheduler` as a slot |
+| **Not done if** | The quick start still writes a store line, or a getting-started page still declares an empty `session` · the in-memory notice fires when `stores` is set, or never fires · a profile with `scheduler`, `blobs` or `queue` constructs, or one with `primary` and `bus` stops constructing · a silent generator chat action builds with no warning in dev, or the warning doesn't name both fixes · the warning fires when `itemVisibility` is set, on an internal, task, webhook or schedule action, or in production · a store package's root lists a per-store constructor or `createXStores`, or a moved name doesn't resolve from `./host` · a docs page still lists `blobs`, `queue` or `scheduler` as a slot |
 
 ```mermaid
 flowchart LR
@@ -50,19 +50,20 @@ module's keys. Under the control, every signal fails.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/first-hour/runs-without-store-ceremony/` · model-free · `node goals/first-hour/runs-without-store-ceremony/check.mjs [--control d6a38c09]`, printing PASS or FAIL per signal · packs engine, core, cli and the two store packages (at the control commit under `--control`) with `scripts/packed-install/run.mjs`'s pack step and installs them into an empty project · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | (a) A runtime with no `stores` and a flow with no `session` block answers a handler action through `fsdev run`, and stderr says it runs in memory; with `stores` set, stderr says nothing about memory. (b) With `stores: sqliteStores({ filename })`, `fsdev run --session <id>` twice: the second reads the first run's state, and the session row is in `filename`; pointed at a fresh `filename`, the second run does not see it. (c) Each of `blobs`, `queue` and `scheduler` in a profile makes `createFlowState` throw with that slot's name, its replacement and a version: 3 of 3; a profile with `primary` and `bus` constructs. (d) A caller action on a generator with no `itemVisibility` gives exactly one warning naming the flow, the action and both fixes. Set `itemVisibility`, put it on an internal, task, webhook or schedule action, or set `NODE_ENV=production`: none. (e) The installed roots export only `sqliteStores` and `createSQLiteScheduleIndex`, or `postgresStores` and `createPostgresScheduleIndex`, as runtime values, and every runtime name removed from a root is exported from its `./advanced`. Importing the store-postgres module needs no database. (f) The census reports 0 store lines and 0 empty `session` blocks in teaching files, and 0 docs pages naming a retired slot |
+| **Signal** | (a) A runtime with no `stores` and a flow with no `session` block answers a handler action through `fsdev run`, and stderr says it runs in memory; with `stores` set, stderr says nothing about memory. (b) With `stores: sqliteStores({ filename })`, `fsdev run --session <id>` twice: the second reads the first run's state, and the session row is in `filename`; pointed at a fresh `filename`, the second run does not see it. (c) Each of `blobs`, `queue` and `scheduler` in a profile makes `createFlowState` throw with that slot's name, its replacement and a version: 3 of 3; a profile with `primary` and `bus` constructs. (d) A caller action on a generator with no `itemVisibility` gives exactly one warning naming the flow, the action and both fixes. Set `itemVisibility`, put it on an internal, task, webhook or schedule action, or set `NODE_ENV=production`: none. (e) The installed roots export only `sqliteStores` and `createSQLiteScheduleIndex`, or `postgresStores` and `createPostgresScheduleIndex`, as runtime values, and every runtime name removed from a root is exported from its `./host`. Importing the store-postgres module needs no database. (f) The census reports 0 store lines and 0 empty `session` blocks in teaching files, and 0 docs pages naming a retired slot |
 | **Input** | A flow whose handler computes a value from the input. A different flow kind, action name or value must pass too; the warning names whatever it is on |
 | **Anti-game** | Don't assert on the normalising helper, `meta.profileKeys` or workspace `src`, and don't let (b) pass through the CLI's own no-config SQLite store: the app has a config, and the row is read from `filename`. Assert on the answer, the stored row, stderr text, the error and the installed module's keys |
 | **Control that must fail** | `main` at `d6a38c09`: (a) throws a `TypeError` at construction, (b) throws, since a bare adapter has no profile, (c) constructs, (d) warns nothing, (e) lists 20 and 22 names, (f) counts 54 store lines. The PR shows those FAILs before the PASS |
 
-**Closure manifest.** This spec owns no whole *Not done if* row. It owns the store packages'
-slice of *Surface*: where FIX-2564's manifest carries assertions for the store-sqlite and
-store-postgres roots or engine's store names, this PR flips them to `expect: pass`. *First
-hour* is FIX-2451's. The quick-start edit here must keep its leg passing.
+**Closure manifest.** This spec owns no whole *Not done if* row. In *Surface* it owns the
+store-sqlite and store-postgres cells, and flips them to `expect: pass`. It contributes engine's
+store names to engine's cell, which FIX-2449 owns: whichever of the two lands last flips that
+cell, naming both. *First hour* is FIX-2451's. The quick-start edit here must keep its leg
+passing.
 
 ## What changes
 
-![Before and after. The runtime file: today a store import and a stores line, after neither, and startup says it runs in memory. A profile: today primary, bus, blobs, queue and scheduler, after primary and bus, with the other three refused. The store-sqlite root: today 20 names in two families, after 3 names, with the other 17 under ./advanced](figures/what-changes.svg)
+![Before and after. The runtime file: today a store import and a stores line, after neither, and startup says it runs in memory. A profile: today primary, bus, blobs, queue and scheduler, after primary and bus, with the other three refused. The store-sqlite root: today 20 names in two families, after 3 names, with the other 17 under ./host](figures/what-changes.svg)
 
 Each row is one thing an adopter types or reads, today on the left and after on the right. The
 middle row's three dashed slots are [D2](DECISIONS.md#d2).
@@ -93,17 +94,23 @@ middle row's three dashed slots are [D2](DECISIONS.md#d2).
 
 ```diff
 - import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
-+ import { createSQLiteStores } from "@flow-state-dev/store-sqlite/advanced";
++ import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 ```
 
 **Docs:** update the getting-started pages (the store line and the empty `session` blocks;
 the quick start's snippet after FIX-2451 lands), `server/setup.md`,
 `configuration/runtime.md`, `persistence/overview.md` and `api/server.md` (the bare form
 first, three slots gone), `configuration/blocks.md` (the warning, beside its `itemVisibility` table), `server/schedule-index.md`
-and `streaming/trace-channel.md` (the `./advanced` paths), and every guide that writes the store
+and `streaming/trace-channel.md` (the `./host` paths), and every guide that writes the store
 line. Update the engine, store-sqlite, store-postgres, vercel and cli READMEs: the bare
-form, and an *Advanced* section on `./advanced`. Add the store packages' rows to FIX-2448's
-*what each package root is for* page. No new page.
+form, and a *For host and adapter authors* section on `./host`. Edit the store-sqlite and
+store-postgres rows of FIX-2448's *what each package root is for* page (FIX-2448 creates every
+root's row): the root for app authors, `./host` for host and adapter authors, the rule
+`engine/host` follows. No new page.
+
+**Kitchen Sink:** drop `scheduler: pgStores` from `apps/kitchen-sink/fsdev.config.ts`'s `prod`
+profile, the one repo caller of a retired slot. It is on the epic's Kitchen Sink seam;
+FIX-2461 lands after it.
 
 ## How `stores` reaches the runtime
 
@@ -136,8 +143,8 @@ asked](DECISIONS.md#decided-not-asked).
 |---|---|
 | `store` · the `stores` profile map on `createFlowState` | **Extends**: one entry with two more accepted shapes. Searched `stores:`, `StoresConfig`, `profile` across `packages/`: no other entry configures `createFlowState`'s store. Two lower entries already default omitted stores to memory, silently: `createFlowApiRouter`'s `stores` (`http-handlers.ts`) and `testFlow`'s. D1 follows them and adds the notice. The CLI's no-config SQLite store (`cli/src/local-store.ts`) serves runs with no app config, and stays |
 | `CapabilitySlotMap`, `FORWARD_COMPATIBLE_SLOTS` in `resolve-slots.ts` | **Removes** `blobs`, `queue`, `scheduler` and the skip branch |
-| `refuseRetiredDispatcherOption` in `createFlowState`; FIX-2454's refusal helper | **Builds on** FIX-2454's helper for the slot refusals ([D3 of the epic](../../epics/FIX-2447/DECISIONS.md#d3)); today's helper carries no version, so that part waits on FIX-2454 |
-| `warnOnceDev` (`core/src/helpers/deprecation.ts`); defineFlow's definition-time checks | **Builds on** `warnOnceDev` for the generator warning. One more definition-time check, after `mergeActions` so instance-override actions are covered |
+| `refuseRetiredDispatcherOption` in `createFlowState`; FIX-2454's `refuseRetired` | **Builds on** `refuseRetired` (`@flow-state-dev/contracts/internal`, with engine's retired table) for the slot refusals ([D3 of the epic](../../epics/FIX-2447/DECISIONS.md#d3)). Today's helper carries no version, so the refusals' PR is blocked by FIX-2454 |
+| `warnOnceDev` (`core/src/helpers/deprecation.ts`); defineFlow's definition-time checks | **Builds on** `warnOnceDev` for the generator warning. One more definition-time check, after `mergeActions` so instance-override actions are covered. `warnOnceDev` returns early in production by design, so D1's production warning can't use it |
 | `xStores` beside `createXStores` in engine, store-sqlite and store-postgres | **Moves** the registry factory and the per-store constructors off each root ([D3](DECISIONS.md#d3)) |
 | `docs/architecture/generator-identity.md` → *No position-inferred defaults* | **Kept.** The warning respects it |
 | [FIX-2426 SPEC](../FIX-2426/SPEC.md) and [FIX-2367 D5](../../epics/FIX-2367/DECISIONS.md#d5): the `bus` slot | **Kept**; the bare form's primary backs the bus when it declares it |
@@ -146,17 +153,19 @@ asked](DECISIONS.md#decided-not-asked).
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | A bare adapter, or nothing, for `stores` | `store` · the profile map | Composed: sugar normalised into a one-profile map at one point; no second resolution path |
-| `./advanced` on store-sqlite and store-postgres | Each package's `exports` map; the epic's store `./advanced` | Extends the maps; one entry per package. Engine's store names go to FIX-2449's `engine/host`, no new engine entry |
+| `./host` on store-sqlite and store-postgres | Each package's `exports` map; FIX-2449's `engine/host` | Extends the maps; one entry per package. Named as `engine/host` is, for the same reader: a name a host or adapter author needs and an app author doesn't lives on `<package>/host` ([D3](DECISIONS.md#d3)). No new engine entry |
+| D1's startup notice | The `active profile` stderr line in `createFlowState` | Extends the line: with no `stores`, it says the app runs in memory. No new mechanism |
+| D1's production warning: once per process, in every environment | `warnOnceDev`, which skips production | **Extends** `deprecation.ts` with a sibling that differs only in not skipping production (same keys, same `FSD_QUIET_WARNINGS` opt-out), exported beside `warnOnceDev` |
 | A definition-time warning | `warnOnceDev`; defineFlow's checks | Composed from both |
 
 | The debt | |
 |---|---|
 | **Removes** | Three no-op slots, their skip branch, and the three docs paragraphs about them; the store line from 54 teaching files; a second factory family on three roots; the empty `session` blocks |
-| **Adds** | Two more accepted shapes for `stores`, a second way to say one thing: permanent by design, normalised at one point. Two `./advanced` entries to keep. Three refusals, until the version FIX-2454's expiry lint enforces. One dev warning |
+| **Adds** | Two more accepted shapes for `stores`, a second way to say one thing: permanent by design, normalised at one point. Two `./host` entries to keep. Three refusals, until the version FIX-2454's retired-name check enforces. One dev warning, one production warning and its helper |
 | **Leaves** | A sequencer action whose generators are all silent isn't warned: a handler can emit, so silence can't be proved statically. A real scheduler store (R-11, unfiled, the epic's *bigger* row) |
 
 **Net: down.** Three slots, a family on three roots and the line in 54 files go; two input
-shapes and two subpaths come in.
+shapes, two subpaths and one warning helper come in.
 
 ## Sign off
 
@@ -176,7 +185,7 @@ drift apart.
    refused.** If wrong: Kitchen Sink's kind of `scheduler` line breaks an upgrade for a slot that
    did nothing.
 3. **[D3](DECISIONS.md#d3) · A store package's root carries its adapter factory and schedule
-   index; the rest moves to `./advanced`, nothing deleted.** If wrong: 21 unused constructors
+   index; the rest moves to `./host`, nothing deleted.** If wrong: 21 unused constructors
    stay published, semver-covered.
 
 **Open: none.** D1 is the one to weigh. Each move off a root reaches adopters per ER-3 and
