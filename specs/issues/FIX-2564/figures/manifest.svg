@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 584" role="img" aria-label="The closure manifest as a grid. Six Not done if rows down the side; across the top, where each is checked: a workspace ratchet run strictly on the tree, leg a the quick start, leg b tarball-only gaps, and leg c an app on the install. Surface: surface.root per failing package root in the ratchet column, eight owners, and surface.collisions in leg b, FIX-2449. One path: onepath.answer-task-stop, FIX-2450, and onepath.action-output, FIX-2455, both in leg c. First hour: firsthour.quickstart in leg a, FIX-2451. Leakage: leakage.tracker-ids in the ratchet column, FIX-2453. Shims: shims.unpublished-shapes in leg b, FIX-2454. Types: types.typed-handler, FIX-2457, and types.fresh-session-default, FIX-2554, both in leg c. Every cell starts at expect fail, and only its named owner flips it. A row passes when all its cells pass."
+<svg viewBox="0 0 940 770" role="img" aria-label="The closure manifest as a grid. Six Not done if rows down the side; across the top, where each is checked: a workspace ratchet run strictly on the tree, leg a the quick start, leg b tarball-only gaps, and leg c an app on the install. Surface: surface.root per package root the epic owns and surface.collisions over every root, both in the ratchet column, and surface.core-installed-dts in leg b, FIX-2448. One path: onepath.answer-task-stop, FIX-2450, and onepath.output-read, FIX-2455, both in leg c. First hour: first-hour.quickstart, FIX-2451, and first-hour.example per example, FIX-2461, both in leg a. Leakage: leakage.tracker-ids in the ratchet column, FIX-2453. Shims: shims.never-published, shims.human-approval-throws and shims.stored-human-approval in leg b, all FIX-2454. Types: types.typed-handler, FIX-2457, and types.fresh-session-default, FIX-2554, both in leg c. Every cell starts at expect fail; a cell names every contributor and the last to land flips it. A row passes when all its cells pass."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -19,7 +19,7 @@
     .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
     .t-fail { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:700; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="584"/>
+  <rect class="bg" x="0" y="0" width="940" height="770"/>
 
   <g id="title">
     <rect class="head" x="16" y="14" width="908" height="36" rx="6"/>
@@ -39,68 +39,85 @@
 
   <g id="row-surface">
     <line class="rule" x1="16" y1="96" x2="924" y2="96"/>
-    <text class="t-row" x="24" y="128">SURFACE</text>
-    <rect class="cell" x="148" y="104" width="182" height="40" rx="4"/>
+    <text class="t-row" x="24" y="150">SURFACE</text>
+    <rect class="cell" x="148" y="104" width="190" height="40" rx="4"/>
     <text class="t-id" x="156" y="120">surface.root.‹package›</text>
-    <text class="t-s" x="156" y="135">per root · 8 owners below</text>
-    <text class="t-fail" x="322" y="135" text-anchor="end">fail</text>
-    <rect class="cell" x="544" y="104" width="182" height="40" rx="4"/>
-    <text class="t-id" x="552" y="120">surface.collisions</text>
-    <text class="t-s" x="552" y="135">engine root · FIX-2449</text>
-    <text class="t-fail" x="718" y="135" text-anchor="end">fail</text>
+    <text class="t-s" x="156" y="135">owned roots · see below</text>
+    <text class="t-fail" x="330" y="135" text-anchor="end">fail</text>
+    <rect class="cell" x="148" y="150" width="190" height="40" rx="4"/>
+    <text class="t-id" x="156" y="166">surface.collisions</text>
+    <text class="t-s" x="156" y="181">every root · 2449, 2458</text>
+    <text class="t-fail" x="330" y="181" text-anchor="end">fail</text>
+    <rect class="cell" x="544" y="104" width="190" height="40" rx="4"/>
+    <text class="t-id" x="552" y="120">surface.core-installed-dts</text>
+    <text class="t-s" x="552" y="135">core's .d.ts · FIX-2448</text>
+    <text class="t-fail" x="726" y="135" text-anchor="end">fail</text>
   </g>
   <g id="row-one-path">
-    <line class="rule" x1="16" y1="152" x2="924" y2="152"/>
-    <text class="t-row" x="24" y="207">ONE PATH</text>
-    <rect class="cell" x="742" y="160" width="182" height="40" rx="4"/>
-    <text class="t-id" x="750" y="176">onepath.answer-task-stop</text>
-    <text class="t-s" x="750" y="191">React · FIX-2450</text>
-    <text class="t-fail" x="916" y="191" text-anchor="end">fail</text>
-    <rect class="cell" x="742" y="206" width="182" height="40" rx="4"/>
-    <text class="t-id" x="750" y="222">onepath.action-output</text>
-    <text class="t-s" x="750" y="237">client · FIX-2455</text>
-    <text class="t-fail" x="916" y="237" text-anchor="end">fail</text>
+    <line class="rule" x1="16" y1="196" x2="924" y2="196"/>
+    <text class="t-row" x="24" y="250">ONE PATH</text>
+    <rect class="cell" x="742" y="204" width="190" height="40" rx="4"/>
+    <text class="t-id" x="750" y="220">onepath.answer-task-stop</text>
+    <text class="t-s" x="750" y="235">React · FIX-2450</text>
+    <text class="t-fail" x="924" y="235" text-anchor="end">fail</text>
+    <rect class="cell" x="742" y="250" width="190" height="40" rx="4"/>
+    <text class="t-id" x="750" y="266">onepath.output-read</text>
+    <text class="t-s" x="750" y="281">client · FIX-2455</text>
+    <text class="t-fail" x="924" y="281" text-anchor="end">fail</text>
   </g>
   <g id="row-first-hour">
-    <line class="rule" x1="16" y1="254" x2="924" y2="254"/>
-    <text class="t-row" x="24" y="286">FIRST HOUR</text>
-    <rect class="cell" x="346" y="262" width="182" height="40" rx="4"/>
-    <text class="t-id" x="354" y="278">firsthour.quickstart</text>
-    <text class="t-s" x="354" y="293">the docs · FIX-2451</text>
-    <text class="t-fail" x="520" y="293" text-anchor="end">fail</text>
+    <line class="rule" x1="16" y1="296" x2="924" y2="296"/>
+    <text class="t-row" x="24" y="350">FIRST HOUR</text>
+    <rect class="cell" x="346" y="304" width="190" height="40" rx="4"/>
+    <text class="t-id" x="354" y="320">first-hour.quickstart</text>
+    <text class="t-s" x="354" y="335">the docs · FIX-2451</text>
+    <text class="t-fail" x="528" y="335" text-anchor="end">fail</text>
+    <rect class="cell" x="346" y="350" width="190" height="40" rx="4"/>
+    <text class="t-id" x="354" y="366">first-hour.example.‹name›.*</text>
+    <text class="t-s" x="354" y="381">each example · FIX-2461</text>
+    <text class="t-fail" x="528" y="381" text-anchor="end">fail</text>
   </g>
   <g id="row-leakage">
-    <line class="rule" x1="16" y1="310" x2="924" y2="310"/>
-    <text class="t-row" x="24" y="342">LEAKAGE</text>
-    <rect class="cell" x="148" y="318" width="182" height="40" rx="4"/>
-    <text class="t-id" x="156" y="334">leakage.tracker-ids</text>
-    <text class="t-s" x="156" y="349">the lint · FIX-2453</text>
-    <text class="t-fail" x="322" y="349" text-anchor="end">fail</text>
+    <line class="rule" x1="16" y1="396" x2="924" y2="396"/>
+    <text class="t-row" x="24" y="427">LEAKAGE</text>
+    <rect class="cell" x="148" y="404" width="190" height="40" rx="4"/>
+    <text class="t-id" x="156" y="420">leakage.tracker-ids</text>
+    <text class="t-s" x="156" y="435">the lint · FIX-2453</text>
+    <text class="t-fail" x="330" y="435" text-anchor="end">fail</text>
   </g>
   <g id="row-shims">
-    <line class="rule" x1="16" y1="366" x2="924" y2="366"/>
-    <text class="t-row" x="24" y="398">SHIMS</text>
-    <rect class="cell" x="544" y="374" width="182" height="40" rx="4"/>
-    <text class="t-id" x="552" y="390">shims.unpublished-shapes</text>
-    <text class="t-s" x="552" y="405">task store · FIX-2454</text>
-    <text class="t-fail" x="718" y="405" text-anchor="end">fail</text>
+    <line class="rule" x1="16" y1="450" x2="924" y2="450"/>
+    <text class="t-row" x="24" y="527">SHIMS</text>
+    <rect class="cell" x="544" y="458" width="190" height="40" rx="4"/>
+    <text class="t-id" x="552" y="474">shims.never-published</text>
+    <text class="t-s" x="552" y="489">the census's 19 · FIX-2454</text>
+    <text class="t-fail" x="726" y="489" text-anchor="end">fail</text>
+    <rect class="cell" x="544" y="504" width="190" height="40" rx="4"/>
+    <text class="t-id" x="552" y="520">shims.human-approval-throws</text>
+    <text class="t-s" x="552" y="535">throws · FIX-2454</text>
+    <text class="t-fail" x="726" y="535" text-anchor="end">fail</text>
+    <rect class="cell" x="544" y="550" width="190" height="40" rx="4"/>
+    <text class="t-id" x="552" y="566">shims.stored-human-approval</text>
+    <text class="t-s" x="552" y="581">a user's stop · FIX-2454</text>
+    <text class="t-fail" x="726" y="581" text-anchor="end">fail</text>
   </g>
   <g id="row-types">
-    <line class="rule" x1="16" y1="422" x2="924" y2="422"/>
-    <text class="t-row" x="24" y="477">TYPES</text>
-    <rect class="cell" x="742" y="430" width="182" height="40" rx="4"/>
-    <text class="t-id" x="750" y="446">types.typed-handler</text>
-    <text class="t-s" x="750" y="461">core types · FIX-2457</text>
-    <text class="t-fail" x="916" y="461" text-anchor="end">fail</text>
-    <rect class="cell" x="742" y="476" width="182" height="40" rx="4"/>
-    <text class="t-id" x="750" y="492">types.fresh-session-default</text>
-    <text class="t-s" x="750" y="507">scope state · FIX-2554</text>
-    <text class="t-fail" x="916" y="507" text-anchor="end">fail</text>
+    <line class="rule" x1="16" y1="596" x2="924" y2="596"/>
+    <text class="t-row" x="24" y="650">TYPES</text>
+    <rect class="cell" x="742" y="604" width="190" height="40" rx="4"/>
+    <text class="t-id" x="750" y="620">types.typed-handler</text>
+    <text class="t-s" x="750" y="635">uses: [cap] · FIX-2457</text>
+    <text class="t-fail" x="924" y="635" text-anchor="end">fail</text>
+    <rect class="cell" x="742" y="650" width="190" height="40" rx="4"/>
+    <text class="t-id" x="750" y="666">types.fresh-session-default</text>
+    <text class="t-s" x="750" y="681">scope state · FIX-2554</text>
+    <text class="t-fail" x="924" y="681" text-anchor="end">fail</text>
   </g>
 
   <g id="foot">
-    <line class="rule" x1="16" y1="524" x2="924" y2="524"/>
-    <text class="t-s" x="24" y="548">Every cell starts at expect: fail, shown in red. Only the named child flips its cell; a row passes when all its cells do.</text>
-    <text class="t-s" x="24" y="566">Surface owners: core 2448 · engine, client 2449 · react 2456 · orchestration, patterns 2459 · testing 2460 · harnesses 2458 · workforce 2463 · stores 2452 · other roots 2448</text>
+    <line class="rule" x1="16" y1="696" x2="924" y2="696"/>
+    <text class="t-s" x="24" y="718">Every cell starts at expect: fail, shown in red. A cell names every contributor and the last to land flips it; a row passes when all its cells do.</text>
+    <text class="t-s" x="24" y="736">Surface roots: core 2448, 2460 · engine 2449, 2452 · client 2449 · react 2449, 2450, 2455, 2456 · orchestration 2459 · patterns 2459, 2460</text>
+    <text class="t-s" x="24" y="754">testing 2460 · claude-code, codex, cursor 2458 · store-sqlite, store-postgres 2452 · workforce's entry names 2463. Other roots: held by the ratchet, no cell</text>
   </g>
 </svg>
