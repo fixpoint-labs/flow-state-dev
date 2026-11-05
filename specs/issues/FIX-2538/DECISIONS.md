@@ -37,8 +37,8 @@ It comes down to a private repo: a forward address is a second read check to kee
 | | |
 |---|---|
 | **Instead of** | Telling the coordinator's model, in its prompt, to file held · the delivery filing the held task itself |
-| **Because** | A prompt only asks. The delivery writes `ask` or `inferred` beside `addressedBy` on `workerMessageRowSchema`, from the event's `addressed`, server-written; the received entry copies it to request state. In `observe`, an inferred turn gets read tools and `createTask`, wrapped through a request-dependent `uses` so every filing carries `questions: [{ kind: "confirm", prompt }]` whatever the model passed (BP-031); a No cancels, the default. No `sendMessage`, no catalog tools. A filing from the delivery breaks D8: the service flow never calls `createTask` |
-| **Locks in** | A turn whose tools depend on the message it answers. `off`: an inferred forward lands as a line and wakes no turn. Asks, and `auto`: the ordinary turn |
+| **Because** | A prompt only asks. The delivery writes `ask` or `inferred` beside `addressedBy` on `workerMessageRowSchema`, from the event's `addressed`, server-written; the received entry copies it to request state. The board's task tools (no resources, only `controlTools`) move to a request-dependent `uses` entry: the plain set, or one whose `createTask` adds `questions: [{ kind: "confirm", prompt }]` whatever the model passed (BP-031). A turn never carries two. In `observe`, an inferred turn gets the wrapped set; a No cancels, the default. No `sendMessage`, no catalog tools |
+| **Locks in** | A turn whose tools depend on the message it answers. The wrapper stays a control tool: a catalog one behind a `tools:` fence is silently dropped and the unwrapped one runs ([POC](poc/dynamic-uses-override/README.md)). Fallback: a filing generator with fixed `tools: [wrapped]` (EM call, 2026-11-05) `off`: an inferred forward lands as a line and wakes no turn. Asks, and `auto`: the ordinary turn |
 
 ![D2: the filing turn, chosen, beside an instruction in the prompt. Decides it: a model that ignores it. Flips if a coordinator needs to message a delegate to judge work](figures/d2-observe-files-only.svg)
 
@@ -66,8 +66,7 @@ It comes down to a model that ignores the prompt: in the filing turn, every task
   (`kind not forwarded`, `no coordinator follows`). No store: totals are the closure ledger's.
 - **The key.** Read at the turn, so a change applies to the next forward.
 - **The mark.** `ask | inferred`, the coordinator's only input to choose; written from `addressed`, never model input (BP-031) (EM call, 2026-11-05).
-- **Every routing policy.** A forward runs the coordinator's own turn; `round-robin` and
-  `everyone` don't route it.
+- **Every routing policy.** A forward runs the coordinator's own turn.
 - **The confirm.** Its prompt is the goal and the event's link; yes releases the task as filed.
 - **Cost.** One turn per forward in `observe` or `auto`, and per ask in any mode, under the cap;
   an outage adds none.
@@ -85,22 +84,17 @@ It comes down to a model that ignores the prompt: in the filing turn, every task
 
 ## Settled
 
-None built. Read in the code: `uses` takes a function of the request (`UsesSlot`); the received
-entry has request state (`message-received-entry.ts` ~167).
-
-## Notes from review
-
-- **Architecture pass, item 1:** *"`uses` only *adds* context/tools."* For the implementer: the
-  wrapped `createTask` must replace the static one. If `uses` can't, use a filing entry with its own fixed `tools:`.
+**REFUTED → C** ([POC](poc/dynamic-uses-override/README.md), 2026-11-05): a dynamic same-named `createTask` beside the
+static board throws (`assertUniqueToolNames`); resolving the board tools only per request gives
+one, the wrapped one. Read in the code: the received entry has request state (~167).
 
 ## Analysis
 
 2026-11-05 · watermark FIX-2534 (#4687) · **Right approach.** By the authoring worker (no
 sub-agent tool). Other shapes: [D1](#d1), [D2](#d2). Cutting child 5 keeps today's drop.
-Concern: the review note above.
 
 ## How it got here
 
 - **Draft (2026-11-05):** from the epic's D8, D11 and Q3, on FIX-2534 as merged.
-- **Restraint and reuse fold (2026-11-05):** the ask fork and its knob to FIX-2535, read here as
-  `addressed`; the confirm reused; failed screens forward nothing (FIX-2537); one goal line cut. EM calls.
+- **Restraint and reuse fold (2026-11-05):** the ask fork to FIX-2535; the confirm reused; failed
+  screens forward nothing; the POC moved the board's tools per request. EM calls.

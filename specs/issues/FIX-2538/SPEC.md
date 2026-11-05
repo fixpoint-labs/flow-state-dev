@@ -27,7 +27,7 @@ held forwards nothing; and the service flow files no task.**
 |---|---|
 | **The real need** | The epic's team row: *"`observe` files it held; `auto` runs it"*, not done if *"the flow files a task, or `observe` runs inferred work"* |
 | **Smaller, and rejected** | "The key exists and is read": a prompt can ignore a mode |
-| **Bigger, and not this issue's** | GitHub's normalize and asks (FIX-2535), polling (FIX-2536), Jev on forwards (FIX-2537), the four legs end to end (FIX-2539) |
+| **Bigger, and not this issue's** | FIX-2535, FIX-2536, FIX-2537, and the four legs end to end (FIX-2539) |
 | **Not done if** | A task filed from a forwarded event in `observe` starts an attempt · `off` calls a model on a forwarded event · the service flow writes a board row · an unforwarded kind or an outsider reaches a coordinator · an event whose screen failed or held reaches an unmatched coordinator · an ask waits or drops in any mode |
 
 ```mermaid
@@ -38,15 +38,15 @@ flowchart LR
   O -->|"held tasks · 0 attempts · Inbox green"| P["PASS"]
   A -->|"the same tasks · each ran"| P
   X -->|"0 model calls on inferred · asks ran"| P
-  C["control · no-gate · createTask unwrapped"] -.->|"observe starts attempts"| Q["must FAIL"]
+  C["control · no-gate · board tools static"] -.->|"observe starts attempts"| Q["must FAIL"]
 ```
 
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/webhook-routing/inferred-work-waits-in-observe/` · scripted model · a test service flow |
-| **Signal** | (a) 0 board rows written by the service principal. (b) `observe`: every task a forward filed has an open confirm and 0 attempts, and `reconcileInbox` is green. (c) `auto`: those tasks ran. (d) `off`: 0 model calls on inferred forwards, and asks ran in all three modes. (e) A forwarded kind whose screen failed reached no unmatched coordinator. (f) Unlisted kinds and outsiders reached no coordinator; the dropped count equals the fixture's |
+| **Signal** | (a) 0 board rows written by the service principal. (b) `observe`: every task a forward filed has an open confirm and 0 attempts, and `reconcileInbox` is green. (c) `auto`: those tasks ran. (d) `off`: 0 model calls on inferred forwards, and asks ran in all three modes. (e) A forwarded kind whose screen failed reached no unmatched coordinator. (f) Unlisted kinds and outsiders reached no coordinator; the dropped count equals the fixture's. (g) An inferred turn in `observe` offers the model exactly one `createTask`, the wrapped one |
 | **Anti-game** | The scripted model files with `questions: []`. Assert on rows, attempts and holds, never on tool calls |
-| **Control that must fail** | `GOAL_CONTROL=no-gate` (the turn gets the board's `createTask` unwrapped): (b) FAILS. Today's `main`: (c) FAILS, since nothing is forwarded |
+| **Control that must fail** | `GOAL_CONTROL=no-gate` (the board's tools stay static): (b) and (g) FAIL. Today's `main`: (c) FAILS, since nothing is forwarded |
 
 ## What changes
 
@@ -63,7 +63,7 @@ flowchart LR
   end
 ```
 
-Right of the check is FIX-2534's path, as the subscriber; only the coordinator's turn is new.
+Right of the check is FIX-2534's path; only the coordinator's turn is new.
 
 ```diff
  // a coordinator's turn, or its user
@@ -117,8 +117,8 @@ FIX-2534's delivery for every ordinary subscription.
 | The subscription row and index entry (`rows.ts`, `screenSettingsSchema`) | **Extends:** `unmatched` is new here, on `screenSettingsSchema` and so on the index entry; ER-5 holds |
 | `SubscriptionServiceOptions` (`trustedBots`) | **Extends:** `forwards` beside `trustedBots` |
 | The message row (`messages/log-row.ts`, `workerMessageRowSchema`) | **Extends:** one server-written field beside `addressedBy`: ask or inferred |
-| `createTask`'s confirm: `questions: [{ kind: "confirm", prompt }]` (`skills/task-tools-capability.ts` ~1033); a No cancels by default (`tasks/collection/holds.ts` ~129) | **Reuses:** wrapped in workforce through a request-dependent `uses`. No new filing path; the Inbox lists it already (Q3) |
-| `routing` (`coordinator-config.ts` ~62) | **Leaves alone;** `inferredWork` is a key beside it |
+| `createTask`'s confirm: `questions: [{ kind: "confirm", prompt }]` (`skills/task-tools-capability.ts` ~1033); a No cancels by default (`tasks/collection/holds.ts` ~129) | **Reuses:** the board's task tools move from the static `uses` (`agent-worker-flow.ts` ~1079) to a request-dependent entry. No new filing path; the Inbox lists it (Q3) |
+| `routing` (`coordinator-config.ts` ~62) | **Leaves alone;** `inferredWork` sits beside it |
 
 | Adds | Composed from |
 |---|---|
