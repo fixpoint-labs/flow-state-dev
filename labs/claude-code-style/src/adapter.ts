@@ -22,7 +22,11 @@
  * |                 | again on each notice of the board, through `client.subscribe`; a failed   |
  * |                 | row's error from its `getTask`, once per attempt                           |
  * | `watchTaskWork` | the items of a task's run session, followed through `sessionFeed`, with   |
- * |                 | its `loadEarlier` too, from the moment the board's read names that session |
+ * |                 | its `loadEarlier` too, from the moment the board's read names that session; |
+ * |                 | while the task runs, the tool call in flight (the UI registry's            |
+ * |                 | `working-status`), from the run request's own stream too, which sends a   |
+ * |                 | call as it starts; and harness-manager's `readRecordedWork`, for the plan |
+ * |                 | its harness recorded, read on each write to it and on a re-run's request  |
  * | `sayInThread`   | the Inbox client's answer to the thread's open question, else the board's `steer` |
  * | `taskActions`   | the Inbox client's `board(at)` on the session that holds the board: `cancel`, |
  * |                 | `steer`, `release` and `retry`, each the board's own action                 |
@@ -33,7 +37,7 @@
  *
  * Every watch reads on a change, through `onNotice`.
  */
-import { createClient, sessionFeed, topic, type Client, type SessionConnectionState, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
+import { bindStoreToCallbacks, createClient, createRequestStreamStore, sessionFeed, topic, type Client, type SessionConnectionState, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   createInboxClient,
@@ -46,7 +50,7 @@ import {
   type TaskHold,
 } from "@flow-state-dev/orchestration/inbox";
 import { parseNotice, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
-import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import { readRecordedWork, reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import {
   createWorkforceClient,
   delegateAnswerOf,
@@ -56,12 +60,14 @@ import {
   WORKER_ID_STATE_KEY,
 } from "@flow-state-dev/workforce/browser";
 import { isSuspensionWait } from "@flow-state-dev/core/items";
+import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/types";
 import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
 import { projectIdOf, refuseExisting } from "./lib/new-project";
 import type { HarnessReadinessChipRow } from "./components/flow-state/harness-readiness";
 import { waitingOnYou } from "./lib/columns";
 import { resultSummary } from "./lib/result-summary";
 import { toolRun, type ToolCallOf, type ToolRun } from "./lib/tool-steps";
+import { toolInFlight, type PlanRowNow, type ToolCallNow } from "./components/flow-state/working-status";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
@@ -159,6 +165,8 @@ export interface TaskRow {
   steps?: { done: number; total: number };
   /** When the task last changed, in ms. */
   updatedAt?: number;
+  /** When it started running, in ms: what its feed's elapsed time counts from. */
+  startedAt?: number;
   /** What its runs spent, as the board's `listTasks` reads it (`taskSpendView`): model, harness, tokens; none before it runs. */
   spend?: TaskSpendView;
   /** Why its last attempt failed, as the board recorded it; only on a failed task. */
@@ -178,6 +186,15 @@ export interface TaskWork {
   review?: ReviewDetail;
   /** Present while the run holds items older than its first entry: adds the page before them. */
   loadEarlier?: () => Promise<void>;
+  /** What its run is doing now, while the task runs. */
+  working?: WorkingNow;
+}
+
+/** What a running task's run shows it doing now: the tool call still running, and the plan its harness recorded. */
+export interface WorkingNow {
+  inFlight?: ToolCallNow;
+  /** `undefined` while the run records no plan. */
+  plan?: PlanRowNow[];
 }
 
 /** One coding harness's readiness, as harness-manager's readiness action answers it. */
@@ -272,6 +289,17 @@ export interface Item {
 const TASKS_EVERY_MS = 2_000;
 /** The ledgers a session's `listTasks` read returns: its board and its planning worker's steps. */
 const BOARD_LEDGERS = ["tasks", "plan"] as const;
+
+/**
+ * A write to the plan a harness records (core's `observed-plan` rows and its
+ * `observed-plan-list` markers). A row only its owner may read is published
+ * unnamed, so an unnamed resource notice reads too.
+ */
+const isPlanWrite = (notice: WireNotice): boolean =>
+  notice.kind === "resource" &&
+  (notice.topic.resource === undefined ||
+    notice.topic.resource.startsWith(`${OBSERVED_PLAN}/`) ||
+    notice.topic.resource.startsWith(`${OBSERVED_PLAN_LIST}/`));
 
 /**
  * A read again after a failed one, 1 s and doubling to 30 s, the shape of the
@@ -497,6 +525,68 @@ function followItems(
   };
 }
 
+/**
+ * The tool calls of one request as its own stream sends them: each one as it
+ * starts, not only once finished, as the session stream sends them. For what
+ * a running task is in now. A dropped connection is opened again after a
+ * backoff (1 s, doubling to 30 s), resuming after the last event it heard,
+ * until the request ends or the watch stops. An answer that says the request
+ * is not there for you (401, 403, 404) stops it; the session feed's finished
+ * copies stand.
+ */
+function followRequestCalls(fsd: Client, flow: Promise<string>, requestId: string, onItems: (items: readonly Item[]) => void): Unsubscribe {
+  const store = createRequestStreamStore();
+  let live = true;
+  let handle: { close(): void } | undefined;
+  let retry: ReturnType<typeof setTimeout> | undefined;
+  let failures = 0;
+  const open = (flowKind: string): void => {
+    if (!live) return;
+    const heard = store.lastSequenceNumber;
+    handle = fsd.flow(flowKind).request(requestId).stream({
+      ...(heard > 0 ? { startingAfter: heard } : {}),
+      ...bindStoreToCallbacks(store, {
+        itemFilter: (item) => item.type === "tool_output",
+        onChange: () => {
+          failures = 0;
+          store.flushDeltas();
+          if (live) onItems(store.getSorted() as unknown as Item[]);
+        },
+      }),
+      onError: (error) => {
+        handle?.close();
+        handle = undefined;
+        if (!live || store.status !== "in_progress" || STREAM_GONE.has((error as { status?: number }).status ?? 0)) return;
+        retry = setTimeout(() => open(flowKind), Math.min(30_000, 1_000 * 2 ** failures));
+        failures += 1;
+      },
+    });
+  };
+  flow.then(open, (error) => console.warn("[claude-code-style]", error));
+  return () => {
+    live = false;
+    if (retry !== undefined) clearTimeout(retry);
+    handle?.close();
+  };
+}
+
+/** A request stream's answers that mean it is not there for this caller: opening it again cannot help. */
+const STREAM_GONE: ReadonlySet<number> = new Set([401, 403, 404]);
+
+/**
+ * The call a run is in now, from both of its sources: the request's own
+ * stream, which sends a call as it starts, and the session feed, whose
+ * finished copy of a call wins over a streamed copy that never heard its end.
+ * The feed's own candidates are the run request's only (`requestId`, else the
+ * newest request's): a reused session keeps the call a crashed earlier request
+ * left half-done for good, and that is not what the run is doing now.
+ */
+function inFlightOf(streamed: readonly Item[], fed: readonly Item[], requestId: string | null | undefined): ToolCallNow | undefined {
+  const finished = new Set(fed.filter((item) => item.status !== "in_progress").map((item) => item.id));
+  const request = requestId ?? fed[fed.length - 1]?.requestId;
+  return toolInFlight(streamed.filter((item) => !finished.has(item.id)) as never) ?? toolInFlight(fed.filter((item) => item.requestId === request) as never);
+}
+
 /** The adapter over one client. */
 export function createWiredLab(fsd: Client): LabAdapter {
   const workforce = createWorkforceClient(fsd);
@@ -648,6 +738,8 @@ export function createWiredLab(fsd: Client): LabAdapter {
 
   /** Each listed task's run session, by task id, as the last list saw it. */
   const runSessionOf = new Map<string, string>();
+  /** Each running task's run (its session and request), by task id, as the last list saw it; none once it ended. */
+  const runningRunOf = new Map<string, { sessionId: string; requestId: string }>();
   /** Told whenever a list moves a task's run session: a task's work follows the one the board names now. */
   const runLinkMoved = new Set<() => void>();
 
@@ -662,6 +754,12 @@ export function createWiredLab(fsd: Client): LabAdapter {
     if (!listed.ok) throw new Error(listed.error);
     let moved = false;
     for (const task of listed.tasks as any[]) {
+      const ranAs = runningRunOf.get(task.id)?.requestId;
+      if (task.status === "in_progress" && typeof task.run?.sessionId === "string" && typeof task.run?.requestId === "string") {
+        runningRunOf.set(task.id, { sessionId: task.run.sessionId, requestId: task.run.requestId });
+      } else runningRunOf.delete(task.id);
+      // A re-run in the same session is a new request: what the task is in now moved with it.
+      if (runningRunOf.get(task.id)?.requestId !== ranAs) moved = true;
       if (task.run?.sessionId === undefined || runSessionOf.get(task.id) === task.run.sessionId) continue;
       runSessionOf.set(task.id, task.run.sessionId);
       moved = true;
@@ -675,6 +773,8 @@ export function createWiredLab(fsd: Client): LabAdapter {
       ...(task.assignee === undefined ? {} : { assignee: task.assignee }),
       ...(task.statusNote == null ? {} : { statusNote: task.statusNote }),
       ...(typeof task.updatedAt === "number" ? { updatedAt: task.updatedAt } : {}),
+      // The row's own start, else its run link's; rows before either carry neither (BP-030).
+      ...(typeof (task.startedAt ?? task.run?.startedAt) === "number" ? { startedAt: task.startedAt ?? task.run.startedAt } : {}),
       ...(task.run?.sessionId === undefined ? {} : { runSessionId: task.run.sessionId, run: task.run }),
       ...(Array.isArray(task.holds) ? { holds: task.holds } : {}),
       ...(task.spend == null ? {} : { spend: task.spend }),
@@ -1028,33 +1128,97 @@ export function createWiredLab(fsd: Client): LabAdapter {
     watchTaskWork: (_sessionId, taskId, onChange) => {
       // The task's run session is known once the board has listed it, and a re-run moves it: follow
       // whichever session the board names now, from the moment a list names it, and show no work
-      // until one does. The run's items come from its session stream.
+      // until one does. The run's items come from its session stream. While the task runs, what it
+      // is in now follows the request the board names: its own stream for the call in flight, and
+      // the plan it recorded, read again on each write to it. A re-run in the same session is a new
+      // request, followed from the list that names it.
       let stopItems: Unsubscribe | undefined;
+      let stopRun: Unsubscribe | undefined;
       let following: string | null | undefined;
+      let followingRun: string | null | undefined;
+      let work: TaskWork | undefined;
+      let fed: readonly Item[] = [];
+      let streamed: readonly Item[] = [];
+      let plan: PlanRowNow[] | undefined;
+      // What was last told: a stream delta that moves neither the work nor what it is doing now tells nothing.
+      let toldWork: TaskWork | undefined;
+      let toldWorking = "";
+      const tell = () => {
+        if (work === undefined) return;
+        const inFlight = inFlightOf(streamed, fed, followingRun);
+        const working: WorkingNow = { ...(inFlight === undefined ? {} : { inFlight }), ...(plan === undefined ? {} : { plan }) };
+        const seen = JSON.stringify(working);
+        if (work === toldWork && seen === toldWorking) return;
+        toldWork = work;
+        toldWorking = seen;
+        onChange(Object.keys(working).length === 0 ? work : { ...work, working });
+      };
+      const followRun = (runSession: string) => {
+        const run = runningRunOf.get(taskId);
+        const requestId = run !== undefined && run.sessionId === runSession ? run.requestId : null;
+        if (requestId === followingRun) return;
+        followingRun = requestId;
+        stopRun?.();
+        stopRun = undefined;
+        streamed = [];
+        plan = undefined;
+        tell();
+        if (requestId === null) return;
+        const stopCalls = followRequestCalls(fsd, flowOfSession(runSession), requestId, (items) => {
+          streamed = items;
+          tell();
+        });
+        const stopPlan = onNotice(
+          fsd,
+          [topic.session(runSession)],
+          isPlanWrite,
+          async () => (await readRecordedWork(fsd, { sessionId: runSession, requestId })).plan?.rows.map(({ title, status }) => ({ title, status })) ?? null,
+          (rows) => {
+            plan = rows ?? undefined;
+            tell();
+          },
+        );
+        stopRun = () => {
+          stopCalls();
+          stopPlan();
+        };
+      };
       const follow = () => {
         const runSession = runSessionOf.get(taskId) ?? null;
-        if (runSession === following) return;
-        following = runSession;
-        stopItems?.();
-        stopItems = undefined;
-        if (runSession === null) {
-          onChange({ entries: [] });
-          return;
+        if (runSession !== following) {
+          following = runSession;
+          stopItems?.();
+          stopItems = undefined;
+          stopRun?.();
+          stopRun = undefined;
+          followingRun = undefined;
+          work = undefined;
+          fed = [];
+          streamed = [];
+          plan = undefined;
+          if (runSession === null) {
+            onChange({ entries: [] });
+            return;
+          }
+          stopItems = followItems(fsd, runSession, [...THREAD_ITEMS, "suspension"], (items, loadEarlier) => {
+            const review = reviewStopOf(items);
+            fed = items;
+            work = {
+              entries: entriesOf(items.filter((item) => item.type !== "suspension")),
+              ...(review === undefined ? {} : { review }),
+              ...(loadEarlier === undefined ? {} : { loadEarlier }),
+            };
+            tell();
+          }).stop;
         }
-        stopItems = followItems(fsd, runSession, [...THREAD_ITEMS, "suspension"], (items, loadEarlier) => {
-          const review = reviewStopOf(items);
-          onChange({
-            entries: entriesOf(items.filter((item) => item.type !== "suspension")),
-            ...(review === undefined ? {} : { review }),
-            ...(loadEarlier === undefined ? {} : { loadEarlier }),
-          });
-        }).stop;
+        if (runSession !== null) followRun(runSession);
       };
       runLinkMoved.add(follow);
       follow();
       return () => {
         runLinkMoved.delete(follow);
         stopItems?.();
+        stopRun?.();
       };
     },
     sayInThread: async (sessionId, taskId, line) => {

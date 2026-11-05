@@ -11,8 +11,9 @@
  * - **Parked.** An interrupted record that will run again under the same id
  *   (`parkedInterruptedIds` in `durability/stop-suspended.ts`: a pending gate,
  *   or a logged gate owed a re-drive), like a `suspended` one. History leaves
- *   it out until it finishes; retention never deletes it; a stop reads the
- *   same rule.
+ *   it out until it finishes, unless its pending gate is a call, which history
+ *   reads as far as it got (`context/settled-turns.ts`); retention never
+ *   deletes it; a stop reads the same rule.
  * - **Retried.** `/retry` runs the turn again under a new id with
  *   `metadata.retryOf` naming the original, which stays `interrupted`. The
  *   retry is the turn, so history leaves the original out while the retry is

@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import type { BoardTask, LabAdapter, TalkRow, WorkerRow } from "../adapter";
+import type { BoardTask, LabAdapter, TalkRow, WorkerRow, WorkingNow } from "../adapter";
 import { harnessName } from "../lib/harness";
 import type { Look } from "../lib/looks";
 import { useWatch } from "../lib/use-watch";
@@ -8,7 +8,9 @@ import { ErrorBody } from "./flow-state/error";
 import { MarkdownText } from "./flow-state/message-response";
 import { LandedOutcome, ReviewHold, type ReviewAnswer } from "./flow-state/review-hold";
 import { Spend } from "./flow-state/spend";
+import { StreamingIndicator } from "./flow-state/streaming-indicator";
 import { TaskActions, type TaskRerunOption } from "./flow-state/task-actions";
+import { workingStatus } from "./flow-state/working-status";
 import { SessionPopup, Steps } from "./SessionPopup";
 
 /** What a popup shows: a task one conversation filed, or one message a worker sent. */
@@ -182,8 +184,27 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, 
           {isCoding(task.to) ? "The coding task" : nameOf(task.to)} finished without writing a result. Its steps below show what it did.
         </section>
       ) : null}
+      {/* The live line ends the feed while it runs: until its first step, the line above says it is starting; a task waiting on you isn't working. */}
+      {task?.status === "running" && task.waiting === undefined && task.runSessionId !== undefined && steps.length > 0 ? (
+        <WorkingLine adapter={adapter} task={task} runSessionId={task.runSessionId} />
+      ) : null}
     </SessionPopup>
   );
+}
+
+/**
+ * The live line at the end of a running task's feed: the most specific thing
+ * it is doing now (the tool call in flight, the plan step in progress, its
+ * last note), else "Working...", with how long it has been running.
+ */
+function WorkingLine({ adapter, task, runSessionId }: { adapter: LabAdapter; task: BoardTask; runSessionId: string }) {
+  const requestId = task.runRequestId;
+  const watch = useCallback<(sessionId: string, onChange: (now: WorkingNow) => void) => () => void>(
+    (sessionId, onChange) => adapter.watchWorking({ sessionId, ...(requestId === undefined ? {} : { requestId }) }, onChange),
+    [adapter, requestId],
+  );
+  const now = useWatch(watch, runSessionId);
+  return <StreamingIndicator message={workingStatus({ ...now, note: task.note })} since={task.startedAt} />;
 }
 
 /** A review verdict given in this popup on one task's run (`run`), placed after the steps it was given over (`after` of them). */

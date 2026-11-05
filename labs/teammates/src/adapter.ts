@@ -35,6 +35,10 @@
  * | `watchRun`          | the items of the session the task's row names as its run, each tool call      |
  * |                     | named by the UI registry's `tool-naming` (`components/flow-state/`)           |
  * | `watchExchange`     | the receiving worker's conversation: the turn that read one message          |
+ * | `watchWorking`      | the run session's items and its run request's own stream (which sends a call |
+ * |                     | as it starts), for the tool call in flight (the UI registry's               |
+ * |                     | `working-status`), and harness-manager's browser `readRecordedWork`, for the |
+ * |                     | plan its harness recorded, read on each write to it                          |
  *
  * `watchTalk` still reads on a clock (`poll`); every other watch reads on a change.
  *
@@ -46,7 +50,9 @@
  * block), with the bearer token when there is one, on the server it came from.
  */
 import {
+  bindStoreToCallbacks,
   createClient,
+  createRequestStreamStore,
   readEveryCollectionPage,
   topic,
   type Client,
@@ -56,6 +62,7 @@ import {
   type WireTopic,
 } from "@flow-state-dev/client";
 import { isSuspensionWait, type OutputItem } from "@flow-state-dev/core/items";
+import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/types";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   answerTextOf,
@@ -81,7 +88,7 @@ import {
   type RefileRow,
   type TaskRowView,
 } from "@flow-state-dev/orchestration/inbox";
-import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import { readRecordedWork, reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import type { LandedWork, ReviewLand } from "./components/flow-state/review-hold";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
@@ -94,6 +101,7 @@ import {
   type ToolCallStatus,
   type ToolStepState,
 } from "./components/flow-state/tool-grouping";
+import { toolInFlight, type PlanRowNow, type ToolCallNow } from "./components/flow-state/working-status";
 import { harnessName } from "./lib/harness";
 import { sessionFeeds, type SessionFeed } from "./lib/session-feed";
 import { stableList } from "./lib/stable";
@@ -169,6 +177,19 @@ export interface BoardTask {
   waiting?: TaskWaiting;
   /** For an accepted coding task, where its work went: the pull request opened, or the merge into your checkout. */
   landed?: LandedWork;
+  /** The one-line note its run last reported while it ran (`statusNote`). */
+  note?: string;
+  /** When it started running, in ms: what its feed's elapsed time counts from. */
+  startedAt?: number;
+  /** The request its run is, in its run session, once it started. */
+  runRequestId?: string;
+}
+
+/** What a running task's run shows it doing now: the tool call still running, and the plan its harness recorded. */
+export interface WorkingNow {
+  inFlight?: ToolCallNow;
+  /** `undefined` while the run records no plan. */
+  plan?: PlanRowNow[];
 }
 
 /**
@@ -388,6 +409,8 @@ export interface LabAdapter {
    * Empty until the message is read.
    */
   watchExchange(worker: string, messageId: string, onChange: (steps: SessionStep[]) => void): Unsubscribe;
+  /** What a run is doing now, live: read only while a task's feed shows it running. */
+  watchWorking(run: { sessionId: string; requestId?: string }, onChange: (now: WorkingNow) => void): Unsubscribe;
 }
 
 /** How often the reads with no stream are read again. */
@@ -607,8 +630,80 @@ function onNotice<T>(
   };
 }
 
+/**
+ * The tool calls of one request as its own stream sends them: each one as it
+ * starts, not only once finished, as the session stream sends them. For what
+ * a running task is in now. A dropped connection is opened again after a
+ * backoff (1 s, doubling to 30 s), resuming after the last event it heard,
+ * until the request ends or the watch stops. An answer that says the request
+ * is not there for you (401, 403, 404) stops it; the session feed's finished
+ * copies stand.
+ */
+function followRequestCalls(client: Client, flow: Promise<string>, requestId: string, onItems: (items: readonly OutputItem[]) => void): Unsubscribe {
+  const store = createRequestStreamStore();
+  let live = true;
+  let handle: { close(): void } | undefined;
+  let retry: ReturnType<typeof setTimeout> | undefined;
+  let failures = 0;
+  const open = (flowId: string): void => {
+    if (!live) return;
+    const heard = store.lastSequenceNumber;
+    handle = client.flow(flowId).request(requestId).stream({
+      ...(heard > 0 ? { startingAfter: heard } : {}),
+      ...bindStoreToCallbacks(store, {
+        itemFilter: (item) => item.type === "tool_output",
+        onChange: () => {
+          failures = 0;
+          store.flushDeltas();
+          if (live) onItems(store.getSorted());
+        },
+      }),
+      onError: (error) => {
+        handle?.close();
+        handle = undefined;
+        if (!live || store.status !== "in_progress" || STREAM_GONE.has((error as { status?: number }).status ?? 0)) return;
+        retry = setTimeout(() => open(flowId), Math.min(30_000, 1_000 * 2 ** failures));
+        failures += 1;
+      },
+    });
+  };
+  flow.then(open, (error) => console.error("teammates: a run's request couldn't be followed", error));
+  return () => {
+    live = false;
+    if (retry !== undefined) clearTimeout(retry);
+    handle?.close();
+  };
+}
+
+/** A request stream's answers that mean it is not there for this caller: opening it again cannot help. */
+const STREAM_GONE: ReadonlySet<number> = new Set([401, 403, 404]);
+
+/**
+ * The call a run is in now, from both of its sources: the request's own
+ * stream, which sends a call as it starts, and the session feed, whose
+ * finished copy of a call wins over a streamed copy that never heard its end.
+ */
+function inFlightOf(streamed: readonly OutputItem[], fed: readonly OutputItem[], requestId: string | undefined): ToolCallNow | undefined {
+  const finished = new Set(fed.filter((item) => item.status !== "in_progress").map((item) => item.id));
+  // The feed's own candidates are the run request's only, else the newest request's: a reused session keeps
+  // the call a crashed earlier request left half-done for good, and that is not what the run is doing now.
+  const request = requestId ?? fed[fed.length - 1]?.requestId;
+  return toolInFlight(streamed.filter((item) => !finished.has(item.id))) ?? toolInFlight(fed.filter((item) => item.requestId === request));
+}
+
 /** A request notice: one of the session's requests was created, moved or deleted. Never `items`, sent per stored chunk. */
 const isRequest = (notice: WireNotice): boolean => notice.kind === "request";
+
+/**
+ * A write to the plan a harness records (core's `observed-plan` rows and its
+ * `observed-plan-list` markers). A row only its owner may read is published
+ * unnamed, so an unnamed resource notice reads too.
+ */
+const isPlanWrite = (notice: WireNotice): boolean =>
+  notice.kind === "resource" &&
+  (notice.topic.resource === undefined ||
+    notice.topic.resource.startsWith(`${OBSERVED_PLAN}/`) ||
+    notice.topic.resource.startsWith(`${OBSERVED_PLAN_LIST}/`));
 
 /** Whether `copy` of a row is of the same attempt (try count and run) as `row`: a retry's copies speak only for it. */
 function sameAttempt(copy: Record<string, any> | undefined, row: Record<string, any>): boolean {
@@ -655,6 +750,9 @@ export function toBoardTask(
     ...(Array.isArray(row.labels) ? { labels: row.labels.filter((label: unknown): label is string => typeof label === "string") } : {}),
     ...(typeof row.priority === "number" ? { priority: row.priority } : {}),
     ...(typeof row.run?.sessionId === "string" ? { runSessionId: row.run.sessionId } : {}),
+    ...(typeof row.run?.requestId === "string" ? { runRequestId: row.run.requestId } : {}),
+    ...(typeof row.statusNote === "string" ? { note: row.statusNote } : {}),
+    ...startedAtOf(row),
     ...harnessAndModel(spend, harnessOf(row.assignee ?? "")),
     ...(spend === null ? {} : { spend }),
     ...waitingOf(view),
@@ -673,6 +771,12 @@ function landedOf(value: unknown): { landed?: LandedWork } {
     return { landed: { kind: "merge", branch: v.branch, commit: v.commit, checkout: v.checkout, from: v.from } };
   }
   return {};
+}
+
+/** When a row's run started: the row's own start, else its run's (rows before either carry neither, BP-030). */
+function startedAtOf(row: Record<string, any>): { startedAt?: number } {
+  const at = typeof row.startedAt === "number" ? row.startedAt : row.run?.startedAt;
+  return typeof at === "number" ? { startedAt: at } : {};
 }
 
 /** The fields a re-file copies from a task, as the board's `refile` takes them. */
@@ -1362,6 +1466,61 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       const hold = openHolds.get(sessionId)?.get(taskId)?.find((h) => h.ask.kind === kind);
       if (hold === undefined) throw new Error(`This task isn't waiting on your ${kind === "question" ? "answer" : "review"} any more.`);
       await inbox.answerOne(hold, inboxAnswerOf(answer));
+    },
+    watchWorking(run, onChange) {
+      let now: WorkingNow = {};
+      let last = "";
+      const tell = (next: WorkingNow) => {
+        now = next;
+        const seen = JSON.stringify(now);
+        if (seen === last) return;
+        last = seen;
+        onChange(now);
+      };
+      // The session stream sends a call once it is finished; the run request's own stream sends it as it starts.
+      let fed: readonly OutputItem[] = [];
+      let streamed: readonly OutputItem[] = [];
+      const tellInFlight = () => {
+        const inFlight = inFlightOf(streamed, fed, run.requestId);
+        const { inFlight: _, ...rest } = now;
+        tell(inFlight === undefined ? rest : { ...rest, inFlight });
+      };
+      const stopFeed = watchFeed(run.sessionId, (items) => items as unknown as OutputItem[], (items) => {
+        fed = items;
+        tellInFlight();
+      });
+      const requestId = run.requestId;
+      const stopCalls =
+        requestId === undefined
+          ? () => {}
+          : followRequestCalls(
+              client,
+              client.sessions.get(run.sessionId).then((detail) => detail.flowId ?? detail.flowKind),
+              requestId,
+              (items) => {
+                streamed = items;
+                tellInFlight();
+              },
+            );
+      // A harness records its plan apart from the run's items: read again on each write to it.
+      const stopPlan =
+        requestId === undefined
+          ? () => {}
+          : onNotice(
+              client,
+              [topic.session(run.sessionId)],
+              isPlanWrite,
+              () => readRecordedWork(client, { sessionId: run.sessionId, requestId }),
+              (work) => {
+                const { plan: _, ...rest } = now;
+                tell(work.plan === null ? rest : { ...rest, plan: work.plan.rows.map(({ title, status }) => ({ title, status })) });
+              },
+            );
+      return () => {
+        stopFeed();
+        stopCalls();
+        stopPlan();
+      };
     },
     watchExchange(worker, messageId, onChange) {
       let stop: Unsubscribe | undefined;

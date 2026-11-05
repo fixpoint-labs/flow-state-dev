@@ -683,6 +683,12 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       });
     },
 
+    watchWorking(_run, onChange) {
+      // The double's runs report each step as it finishes and record no plan: the line keeps its plain label.
+      onChange({});
+      return () => {};
+    },
+
     watchExchange(workerId, messageId, onChange) {
       // The recipient's turn that read the message: from its received entry to the next thing it was given.
       return watch(() => {
