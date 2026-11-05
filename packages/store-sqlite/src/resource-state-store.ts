@@ -22,15 +22,26 @@
  * losing write reports, are the shared rule from `@flow-state-dev/core/helpers`.
  * The compare inside each write statement is this store's own statement of the
  * same rule, kept in step by the shared conformance suite.
+ *
+ * The store keeps index entries (`indexes`) in `resource_index` and build
+ * markers in `resource_index_built`. Every write runs in one immediate
+ * transaction with its index upkeep, so a row and its entries commit together
+ * or not at all, and a write's marker check cannot interleave with a build's
+ * begin or completion. The rule is on `ResourceStateIndexes`.
  */
+import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import {
   assertDeleteExpectedVersion,
   assertSetExpectedVersion,
   resourceStateConflict
 } from "@flow-state-dev/core/helpers";
-import type { JsonObject } from "@flow-state-dev/core/types";
+import { matchesPattern, type JsonObject } from "@flow-state-dev/core/types";
 import type {
+  ResourceIndexBuildEntry,
+  ResourceIndexBuildState,
+  ResourceIndexEntry,
+  ResourceStateSetOptions,
   ResourceStateStore,
   StorageScopeType,
   ExpectedVersion,
@@ -125,6 +136,104 @@ export function createSQLiteResourceStateStore(
     "DELETE FROM resource_state WHERE scope_type = ? AND scope_id = ? AND lifecycle = 'deleted'"
   );
 
+  // --- index upkeep --------------------------------------------------------
+  const deleteKeyEntriesStmt = db.prepare(
+    "DELETE FROM resource_index WHERE scope_type = ? AND scope_id = ? AND resource_key = ?"
+  );
+  const deleteScopeEntriesStmt = db.prepare(
+    "DELETE FROM resource_index WHERE scope_type = ? AND scope_id = ?"
+  );
+  const deleteTombstonedEntriesStmt = db.prepare(
+    "DELETE FROM resource_index WHERE scope_type = ? AND scope_id = ? AND resource_key IN (" +
+      "SELECT resource_key FROM resource_state " +
+      "WHERE scope_type = ? AND scope_id = ? AND lifecycle = 'deleted')"
+  );
+  // OR IGNORE: a build adds entries a live write may already have made.
+  const insertEntryStmt = db.prepare(
+    "INSERT OR IGNORE INTO resource_index " +
+      "(scope_type, scope_id, collection, index_name, value, resource_key) VALUES (?, ?, ?, ?, ?, ?)"
+  );
+  const selectMarkersStmt = db.prepare(
+    "SELECT collection, index_name FROM resource_index_built WHERE scope_type = ? AND scope_id = ?"
+  );
+  const selectMarkerStmt = db.prepare(
+    "SELECT status FROM resource_index_built " +
+      "WHERE scope_type = ? AND scope_id = ? AND collection = ? AND index_name = ?"
+  );
+  const deleteMarkerStmt = db.prepare(
+    "DELETE FROM resource_index_built " +
+      "WHERE scope_type = ? AND scope_id = ? AND collection = ? AND index_name = ?"
+  );
+  const beginBuildStmt = db.prepare(
+    "INSERT INTO resource_index_built (scope_type, scope_id, collection, index_name, status, build_id) " +
+      "VALUES (?, ?, ?, ?, 'building', ?) " +
+      "ON CONFLICT (scope_type, scope_id, collection, index_name) " +
+      "DO UPDATE SET status = 'building', build_id = excluded.build_id"
+  );
+  // Fenced on the build's token, not only the status: a build whose marker a
+  // write cleared must not complete on the marker a later build set.
+  const markBuiltStmt = db.prepare(
+    "UPDATE resource_index_built SET status = 'built' " +
+      "WHERE scope_type = ? AND scope_id = ? AND collection = ? AND index_name = ? " +
+      "AND status = 'building' AND build_id = ?"
+  );
+  const findKeysStmt = db.prepare(
+    "SELECT resource_key FROM resource_index " +
+      "WHERE scope_type = ? AND scope_id = ? AND collection = ? AND index_name = ? AND value = ?"
+  );
+
+  /**
+   * After a successful write of `resourceKey`: make its entries exactly
+   * `entries`, and clear the marker of every covering index the write did not
+   * list. Runs inside the write's transaction.
+   */
+  const keepIndexInStep = (
+    scopeType: StorageScopeType,
+    scopeId: string,
+    resourceKey: string,
+    entries: ResourceIndexEntry[]
+  ): void => {
+    deleteKeyEntriesStmt.run(scopeType, scopeId, resourceKey);
+    const listed = new Set<string>();
+    for (const entry of entries) {
+      listed.add(markerId(entry.collection, entry.index));
+      for (const value of new Set(entry.values)) {
+        insertEntryStmt.run(scopeType, scopeId, entry.collection, entry.index, value, resourceKey);
+      }
+    }
+    // One marker per declared (collection, index) the scope has built, so this
+    // reads as many rows as the app has index declarations, not resource rows.
+    // Patterns are matched here because SQLite has no regex operator.
+    const markers = selectMarkersStmt.all(scopeType, scopeId) as Array<{
+      collection: string;
+      index_name: string;
+    }>;
+    for (const marker of markers) {
+      if (listed.has(markerId(marker.collection, marker.index_name))) continue;
+      if (!matchesPattern(marker.collection, resourceKey)) continue;
+      deleteMarkerStmt.run(scopeType, scopeId, marker.collection, marker.index_name);
+    }
+  };
+
+  const completeBuildTx = db.transaction(
+    (
+      scopeType: StorageScopeType,
+      scopeId: string,
+      collection: string,
+      index: string,
+      build: string,
+      entries: ResourceIndexBuildEntry[]
+    ): boolean => {
+      if (markBuiltStmt.run(scopeType, scopeId, collection, index, build).changes === 0) return false;
+      for (const entry of entries) {
+        for (const value of new Set(entry.values)) {
+          insertEntryStmt.run(scopeType, scopeId, collection, index, value, entry.key);
+        }
+      }
+      return true;
+    }
+  ).immediate;
+
   /** Read the row and parse it into the shape the shared contract logic takes. */
   const readRow = (
     scopeType: StorageScopeType,
@@ -160,6 +269,127 @@ export function createSQLiteResourceStateStore(
     }
   ).immediate;
 
+  /** The row write of `set`, without its index upkeep. Runs inside `setTx`. */
+  const writeRow = (
+    scopeType: StorageScopeType,
+    scopeId: string,
+    resourceKey: string,
+    payload: string,
+    expectedVersion: ExpectedVersion
+  ): SetResult<JsonObject> => {
+    if (expectedVersion === "any") {
+      const written = upsertStmt.get(scopeType, scopeId, resourceKey, payload) as {
+        version: number;
+      };
+      return { ok: true, version: written.version };
+    }
+
+    if (expectedVersion === "absent") {
+      // "No row at all" is the insert, and nothing else: the PK arbitrates,
+      // and `DO NOTHING` turns any existing row — live OR tombstoned — into
+      // zero changes. That is the whole difference from the `0` branch
+      // below, which goes on to revive a tombstone. Deliberately one
+      // statement: a read-then-insert would let a delete land in between and
+      // put the write back on the resurrection path this exists to close.
+      //
+      // Insert and conflict-read run in ONE transaction, because the two
+      // apart are a time-of-check/time-of-use split: an explicit `create()`
+      // at `0` on another connection can revive the key between them, and
+      // the read would then describe a LIVE row where a tombstone did the
+      // refusing. `runResourceCAS` reads a conflict carrying a current value
+      // as retryable, so it would re-run the mutator and apply it to the
+      // recreated generation instead of throwing `ResourceDeletedError`.
+      // better-sqlite3 being synchronous closes that in-process, but not
+      // against a second process over the same file — which the store
+      // supports — so the guarantee is taken here rather than inherited.
+      return insertOrReportTx(scopeType, scopeId, resourceKey, payload);
+    }
+
+    if (expectedVersion === 0) {
+      // No row at all: a plain insert at version 1. `DO NOTHING` makes a
+      // lost race report zero changes rather than overwriting the winner.
+      const inserted = insertStmt.run(scopeType, scopeId, resourceKey, payload, 1);
+      if (inserted.changes > 0) return { ok: true, version: 1 };
+
+      // A row exists. Recreating over a tombstone continues from its
+      // version, so a version is never reused; a live row is a conflict.
+      const current = readRow(scopeType, scopeId, resourceKey);
+      if (current === undefined || current.lifecycle === "live") {
+        return resourceStateConflict(current);
+      }
+      const nextVersion = current.version + 1;
+      const revived = reviveIfDeletedStmt.run(
+        payload,
+        nextVersion,
+        scopeType,
+        scopeId,
+        resourceKey,
+        current.version
+      );
+      if (revived.changes === 0) {
+        return resourceStateConflict(readRow(scopeType, scopeId, resourceKey));
+      }
+      return { ok: true, version: nextVersion };
+    }
+
+    const nextVersion = expectedVersion + 1;
+    const updated = updateIfVersionStmt.run(
+      payload,
+      nextVersion,
+      scopeType,
+      scopeId,
+      resourceKey,
+      expectedVersion
+    );
+    if (updated.changes === 0) {
+      return resourceStateConflict(readRow(scopeType, scopeId, resourceKey));
+    }
+    return { ok: true, version: nextVersion };
+  };
+
+  // The row and its index upkeep, in one immediate transaction. The nested
+  // `insertOrReportTx` becomes a savepoint inside it.
+  const setTx = db.transaction(
+    (
+      scopeType: StorageScopeType,
+      scopeId: string,
+      resourceKey: string,
+      payload: string,
+      expectedVersion: ExpectedVersion,
+      entries: ResourceIndexEntry[]
+    ): SetResult<JsonObject> => {
+      const result = writeRow(scopeType, scopeId, resourceKey, payload, expectedVersion);
+      if (result.ok) keepIndexInStep(scopeType, scopeId, resourceKey, entries);
+      return result;
+    }
+  ).immediate;
+
+  /** A tombstone and the removal of its entries, in one transaction. */
+  const tombstoneTx = db.transaction(
+    (
+      scopeType: StorageScopeType,
+      scopeId: string,
+      resourceKey: string,
+      guard: number
+    ): { version: number } | undefined => {
+      const marked = tombstoneIfVersionStmt.get(scopeType, scopeId, resourceKey, guard, guard) as
+        | { version: number }
+        | undefined;
+      if (marked !== undefined) deleteKeyEntriesStmt.run(scopeType, scopeId, resourceKey);
+      return marked;
+    }
+  ).immediate;
+
+  const deleteAllTx = db.transaction((scopeType: StorageScopeType, scopeId: string): void => {
+    deleteAllStmt.run(scopeType, scopeId);
+    deleteScopeEntriesStmt.run(scopeType, scopeId);
+  }).immediate;
+
+  const purgeTombstonesTx = db.transaction((scopeType: StorageScopeType, scopeId: string): void => {
+    deleteTombstonedEntriesStmt.run(scopeType, scopeId, scopeType, scopeId);
+    purgeTombstonesStmt.run(scopeType, scopeId);
+  }).immediate;
+
   return {
     async get(
       scopeType: StorageScopeType,
@@ -176,79 +406,12 @@ export function createSQLiteResourceStateStore(
       scopeId: string,
       resourceKey: string,
       state: JsonObject,
-      expectedVersion: ExpectedVersion
+      expectedVersion: ExpectedVersion,
+      options?: ResourceStateSetOptions
     ): Promise<SetResult<JsonObject>> {
       assertSetExpectedVersion(expectedVersion);
       const payload = JSON.stringify(state);
-
-      if (expectedVersion === "any") {
-        const written = upsertStmt.get(scopeType, scopeId, resourceKey, payload) as {
-          version: number;
-        };
-        return { ok: true, version: written.version };
-      }
-
-      if (expectedVersion === "absent") {
-        // "No row at all" is the insert, and nothing else: the PK arbitrates,
-        // and `DO NOTHING` turns any existing row — live OR tombstoned — into
-        // zero changes. That is the whole difference from the `0` branch
-        // below, which goes on to revive a tombstone. Deliberately one
-        // statement: a read-then-insert would let a delete land in between and
-        // put the write back on the resurrection path this exists to close.
-        //
-        // Insert and conflict-read run in ONE transaction, because the two
-        // apart are a time-of-check/time-of-use split: an explicit `create()`
-        // at `0` on another connection can revive the key between them, and
-        // the read would then describe a LIVE row where a tombstone did the
-        // refusing. `runResourceCAS` reads a conflict carrying a current value
-        // as retryable, so it would re-run the mutator and apply it to the
-        // recreated generation instead of throwing `ResourceDeletedError`.
-        // better-sqlite3 being synchronous closes that in-process, but not
-        // against a second process over the same file — which the store
-        // supports — so the guarantee is taken here rather than inherited.
-        return insertOrReportTx(scopeType, scopeId, resourceKey, payload);
-      }
-
-      if (expectedVersion === 0) {
-        // No row at all: a plain insert at version 1. `DO NOTHING` makes a
-        // lost race report zero changes rather than overwriting the winner.
-        const inserted = insertStmt.run(scopeType, scopeId, resourceKey, payload, 1);
-        if (inserted.changes > 0) return { ok: true, version: 1 };
-
-        // A row exists. Recreating over a tombstone continues from its
-        // version, so a version is never reused; a live row is a conflict.
-        const current = readRow(scopeType, scopeId, resourceKey);
-        if (current === undefined || current.lifecycle === "live") {
-          return resourceStateConflict(current);
-        }
-        const nextVersion = current.version + 1;
-        const revived = reviveIfDeletedStmt.run(
-          payload,
-          nextVersion,
-          scopeType,
-          scopeId,
-          resourceKey,
-          current.version
-        );
-        if (revived.changes === 0) {
-          return resourceStateConflict(readRow(scopeType, scopeId, resourceKey));
-        }
-        return { ok: true, version: nextVersion };
-      }
-
-      const nextVersion = expectedVersion + 1;
-      const updated = updateIfVersionStmt.run(
-        payload,
-        nextVersion,
-        scopeType,
-        scopeId,
-        resourceKey,
-        expectedVersion
-      );
-      if (updated.changes === 0) {
-        return resourceStateConflict(readRow(scopeType, scopeId, resourceKey));
-      }
-      return { ok: true, version: nextVersion };
+      return setTx(scopeType, scopeId, resourceKey, payload, expectedVersion, options?.indexEntries ?? []);
     },
 
     async delete(
@@ -266,13 +429,7 @@ export function createSQLiteResourceStateStore(
       // raced or not, and the conformance suite exercises it every run.
       assertDeleteExpectedVersion(expectedVersion);
       const guard = expectedVersion === "any" ? -1 : expectedVersion;
-      const marked = tombstoneIfVersionStmt.get(
-        scopeType,
-        scopeId,
-        resourceKey,
-        guard,
-        guard
-      ) as { version: number } | undefined;
+      const marked = tombstoneTx(scopeType, scopeId, resourceKey, guard);
       // Read the retained version off the statement, not off a prior read.
       if (marked !== undefined) return { ok: true, version: marked.version };
 
@@ -353,11 +510,43 @@ export function createSQLiteResourceStateStore(
     },
 
     async deleteAll(scopeType: StorageScopeType, scopeId: string): Promise<void> {
-      deleteAllStmt.run(scopeType, scopeId);
+      deleteAllTx(scopeType, scopeId);
     },
 
     async purgeTombstones(scopeType: StorageScopeType, scopeId: string): Promise<void> {
-      purgeTombstonesStmt.run(scopeType, scopeId);
+      purgeTombstonesTx(scopeType, scopeId);
+    },
+
+    indexes: {
+      async state(scopeType, scopeId, collection, index): Promise<ResourceIndexBuildState> {
+        const row = selectMarkerStmt.get(scopeType, scopeId, collection, index) as
+          | { status: string }
+          | undefined;
+        if (row === undefined) return "unbuilt";
+        return row.status === "built" ? "built" : "building";
+      },
+
+      async beginBuild(scopeType, scopeId, collection, index): Promise<string> {
+        const build = randomUUID();
+        beginBuildStmt.run(scopeType, scopeId, collection, index, build);
+        return build;
+      },
+
+      async completeBuild(scopeType, scopeId, collection, index, build, entries): Promise<boolean> {
+        return completeBuildTx(scopeType, scopeId, collection, index, build, entries);
+      },
+
+      async findKeys(scopeType, scopeId, collection, index, value): Promise<string[]> {
+        const rows = findKeysStmt.all(scopeType, scopeId, collection, index, value) as Array<{
+          resource_key: string;
+        }>;
+        return rows.map((row) => row.resource_key).sort();
+      }
     }
   };
+}
+
+/** One (collection, index) pair as a set member. */
+function markerId(collection: string, index: string): string {
+  return JSON.stringify([collection, index]);
 }
