@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 770" role="img" aria-label="The closure manifest as a grid. Six Not done if rows down the side; across the top, where each is checked: a workspace ratchet run strictly on the tree, leg a the quick start, leg b tarball-only gaps, and leg c an app on the install. Surface: surface.root per package root the epic owns and surface.collisions over every root, both in the ratchet column, and surface.core-installed-dts in leg b, FIX-2448. One path: onepath.answer-task-stop, FIX-2450, and onepath.output-read, FIX-2455, both in leg c. First hour: first-hour.quickstart, FIX-2451, and first-hour.example per example, FIX-2461, both in leg a. Leakage: leakage.tracker-ids in the ratchet column, FIX-2453. Shims: shims.never-published, shims.human-approval-throws and shims.stored-human-approval in leg b, all FIX-2454. Types: types.typed-handler, FIX-2457, and types.fresh-session-default, FIX-2554, both in leg c. Every cell starts at expect fail; a cell names every contributor and the last to land flips it. A row passes when all its cells pass."
+<svg viewBox="0 0 940 770" role="img" aria-label="The closure manifest as a grid. Six Not done if rows down the side; across the top, where each is checked: a workspace ratchet run strictly on the tree, leg a the quick start, leg b tarball-only gaps, and leg c an app on the install. Surface: surface.root per package root the epic owns and surface.collisions over every root, both in the ratchet column, and surface.core-installed-dts in leg b, FIX-2448. One path: onepath.answer-task-stop, FIX-2450, and onepath.output-read, FIX-2455, both in leg c. First hour: first-hour.quickstart, FIX-2451, and first-hour.example per example, FIX-2461, both in leg a. Leakage: leakage.tracker-ids in the ratchet column, FIX-2453. Shims: shims.never-published, shims.human-approval-throws and shims.stored-human-approval in leg b, all FIX-2454. Types: types.typed-handler, FIX-2457, and types.fresh-session-default, FIX-2554 and FIX-2576, both in leg c. Every cell starts at expect fail; a cell names every contributor and the last to land flips it. A row passes when all its cells pass."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -110,7 +110,7 @@
     <text class="t-fail" x="924" y="635" text-anchor="end">fail</text>
     <rect class="cell" x="742" y="650" width="190" height="40" rx="4"/>
     <text class="t-id" x="750" y="666">types.fresh-session-default</text>
-    <text class="t-s" x="750" y="681">scope state · FIX-2554</text>
+    <text class="t-s" x="750" y="681">scope state · 2554, 2576</text>
     <text class="t-fail" x="924" y="681" text-anchor="end">fail</text>
   </g>
 
