@@ -2,5 +2,6 @@
   "buildCommand": "pnpm build",
   "outputDirectory": "build",
   "framework": "docusaurus-2",
-  "installCommand": "pnpm install"
+  "installCommand": "pnpm install",
+  "ignoreCommand": "bash scripts/vercel-ignore-build.sh"
 }
