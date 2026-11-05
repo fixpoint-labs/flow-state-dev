@@ -12,7 +12,7 @@
  * nothing else (BR-3): the sidebar, the tree and every other read wait behind
  * it. A first read that can't reach the Lab gets the couldn't-reach screen,
  * which reads again on its own. Once a read has landed, a later failure keeps
- * the shell and draws the connection bar above it instead (FIX-2373).
+ * the shell and draws the connection bar above it instead.
  */
 import { useEffect, useState } from "react";
 import { GAPS, type Gaps } from "./gaps";
@@ -74,17 +74,18 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
         setJumping((j) => (j === null ? (e.shiftKey ? MESSAGE_PREFIX : "") : null));
         return;
       }
-      // `[` and `]` toggle the sidebar and the right panel, except while typing,
-      // and `]` only where there is a panel. AltGr, which types `[` on some
-      // layouts, reports Ctrl and Alt held.
+      // `[` and `]` toggle the sidebar and the right panel, and R reads the Lab
+      // again, except while typing, and `]` only where there is a panel. AltGr,
+      // which types `[` on some layouts, reports Ctrl and Alt held.
       const altGraph = typeof e.getModifierState === "function" && e.getModifierState("AltGraph");
       if (e.repeat || e.metaKey || ((e.ctrlKey || e.altKey) && !altGraph) || isTypingTarget(e.target)) return;
       if (e.key === "[") toggleNav();
       else if (e.key === "]" && hasPanel) togglePanel();
+      else if (e.key === "r" || e.key === "R") void refresh();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleNav, togglePanel, hasPanel]);
+  }, [toggleNav, togglePanel, hasPanel, refresh]);
 
   if (snapshot === undefined) {
     return <p className="p-6 text-sm text-muted-foreground" data-testid="loading">Reading the Lab…</p>;

@@ -12,8 +12,8 @@
  */
 import { createClient, type Client, type ClientFetch } from "@flow-state-dev/client";
 import { createInProcessFetch } from "@flow-state-dev/engine";
+import { sleep } from "./time.mts";
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** One raw route call, and what it answered. */
 export type RouteAnswer = { status: number; text: string };

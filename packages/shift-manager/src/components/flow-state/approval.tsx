@@ -7,6 +7,7 @@ import type {
 import type { SuspensionStatus } from "@flow-state-dev/core/types";
 import { approveOptionsOf, useApproval } from "@flow-state-dev/react";
 import { CheckIcon, MinusIcon, XIcon } from "lucide-react";
+import { MarkdownText } from "./message-response";
 import { useSessionItems } from "./session-items-context";
 
 /**
@@ -76,7 +77,7 @@ export function Approval({ item }: { item: SuspensionItem }) {
       data-suspension={item.suspensionId}
       className="my-1.5 rounded-xl border bg-card p-4 text-card-foreground"
     >
-      <p className="mb-2.5 text-sm font-semibold">{item.message}</p>
+      {item.message ? <MarkdownText text={item.message} className="mb-2.5 text-sm font-semibold" /> : null}
 
       {hasDetails ? (
         <details className="mb-2.5 text-xs">

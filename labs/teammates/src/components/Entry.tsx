@@ -4,7 +4,7 @@ import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
 import type { AnswerState } from "./Popups";
 import { useSubmit } from "@flow-state-dev/react";
-import { AgentMarkdown } from "./flow-state/message-response";
+import { MarkdownText } from "./flow-state/message-response";
 import { RequestRecovery } from "./flow-state/request-recovery";
 import { ToolRun } from "./ToolRun";
 
@@ -67,7 +67,7 @@ export const Entry = memo(function Entry({
     case "assistant":
       return (
         <div className="py-1 text-sm leading-relaxed" data-entry="assistant" data-incomplete={entry.incomplete ? "true" : undefined}>
-          <AgentMarkdown text={entry.text} />
+          <MarkdownText text={entry.text} />
           {entry.incomplete ? <span className="mt-1 block text-xs text-muted-foreground">Incomplete</span> : null}
         </div>
       );
@@ -90,7 +90,7 @@ export const Entry = memo(function Entry({
             <Avatar look={lookOf(entry.from)} size="sm" />← {nameOf(entry.from)}
             {entry.noAnswer ? " · no answer" : entry.inReplyTo ? " · reply" : ""}
           </div>
-          <AgentMarkdown className="mt-0.5 text-sm" text={entry.text} />
+          <MarkdownText className="mt-0.5 text-sm" text={entry.text} />
         </section>
       );
     case "result": {
@@ -118,7 +118,7 @@ export const Entry = memo(function Entry({
               </button>
             ) : null}
           </div>
-          <AgentMarkdown className="mt-0.5 text-sm" text={entry.text} />
+          <MarkdownText className="mt-0.5 text-sm" text={entry.text} />
         </section>
       );
     }

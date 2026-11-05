@@ -224,7 +224,7 @@ const TURN_ACTIONS = new Set(["respond", "onTaskSettled"]);
 
 /**
  * The notices on a listed session's topic that may change its row: a turn (its running state, its
- * title), a board change (what it waits on you for, FIX-2429's `board`), and a resource. Never `items`.
+ * title), a board change (what it waits on you for), and a resource. Never `items`.
  */
 const ROW_CHANGES: ReadonlySet<string> = new Set(["request", "board", "resource"]);
 
@@ -306,7 +306,7 @@ function retryAfterFailure(again: () => void): { failed(): void; succeeded(): vo
 
 /**
  * Read `read` now, and again whenever a notice under `topics` passes `hears`
- * (FIX-2466), reporting a value only when it changed.
+ * reporting a value only when it changed.
  * A connect, a reconnect, a tick and a `resync` read too. One read at a time,
  * and one waiting for any number of notices. Wherever push can miss a change,
  * `client.subscribe` reads every `everyMs` instead, so the view keeps no
@@ -850,8 +850,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
     // Listed on open, and again when this tab opens a session. Each listed row reads again on its own
     // session's notices: a turn (request), a board change, a resource. Never on `items`, which a reply
     // sends per stored chunk. A session opened in another tab has no notice anyone hears yet, so it
-    // joins at the next reload (FIX-2466 D1). Where push can miss a change, the whole list reads
-    // every 3 s, as it always has.
+    // joins at the next reload. Where push can miss a change, the whole list reads every 3 s.
     watchSessions: (onChange) => {
       let live = true;
       let rows = new Map<string, SessionRow>();
@@ -1057,9 +1056,8 @@ export function createWiredLab(fsd: Client): LabAdapter {
         stopTurns();
       };
     },
-    // The board is a read, so listing it every tick while the pane is open stores nothing.
-    // The board's notices (FIX-2429): the topics are narrowed to the ledgers the read returns,
-    // so every notice on them is the board's, and a reply streaming in the session never wakes it.
+    // Topics narrowed to the ledgers the read returns: every notice on them is the board's,
+    // so a reply streaming in the session never wakes the read.
     watchTasks: (sessionId, onChange) =>
       onNotice(fsd, BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })), () => true, () => boardOf(sessionId), onChange, TASKS_EVERY_MS),
     // Shown only inside the tasks pane or the threads board, whose watch keeps `runSessionOf` current.

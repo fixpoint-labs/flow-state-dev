@@ -1794,10 +1794,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
              */
             spend: taskSpendViewSchema.nullable().optional(),
             /**
-             * When the row was last written (epoch ms), as the row records it
-             * (FIX-2429), so a client that holds the row from another source
-             * too (a run's own session) keeps the newer copy. On the board's
-             * action only, like `spend`.
+             * When the row was last written (epoch ms), so a client holding the
+             * row from another source too keeps the newer copy. Board action only.
              */
             updatedAt: z.number().optional(),
             /** A request is waiting on this task's ending (`getTask` with `wait`). */

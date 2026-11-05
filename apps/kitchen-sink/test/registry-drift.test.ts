@@ -26,12 +26,15 @@ const kitchenSinkTargetDir = join(testDir, "../components/flow-state");
 /**
  * Kitchen Sink follows sessions through `useSession`, so it draws neither the
  * connection bar nor the first-read screen. The task action row is not
- * installed here either: no screen here opens a task to draw. An installed copy nothing imports is dead code.
+ * installed here either: no screen here opens a task to draw. Nor are the
+ * harness readiness chips: the picker shows each mode's readiness itself. An
+ * installed copy nothing imports is dead code.
  */
 const NOT_INSTALLED_COMPONENTS = new Set([
   "connection-banner.tsx",
   "connection-screen.tsx",
   "task-actions.tsx",
+  "harness-readiness.tsx",
 ]);
 
 const drift = () =>
@@ -45,12 +48,12 @@ describe("kitchen-sink registry drift (FIX-1477 V8)", () => {
   it("has every registry component byte-identical to its installed kitchen-sink copy", () => {
     const { compared, mismatches } = drift();
 
-    // 43 of the registry's component-directory files (all non-`.stories.tsx`
+    // 44 of the registry's component-directory files (all non-`.stories.tsx`
     // files outside `generative/`, less the two connection components and
     // the task action row) are installed here. If that count moves,
     // this test's scope moved with it and needs re-reading before trusting a
     // green result.
-    expect(compared.length).toBe(43);
+    expect(compared.length).toBe(44);
 
     expect(mismatches).toEqual([]);
   });

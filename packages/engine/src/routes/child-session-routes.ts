@@ -25,7 +25,7 @@
  */
 import type { RequestStatus } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
-import type { RequestStore, SessionRecord, StoreRegistry } from "../stores/types";
+import type { RequestRecord, RequestStore, SessionRecord, StoreRegistry } from "../stores/types";
 import { toBareSessionId } from "../stores/scope-keys";
 import { jsonResponse, loadCheckedSession, unknownSessionResponse } from "./route-utils";
 import { DEFAULT_MAX_CHILD_SESSION_LIST_LIMIT } from "../runtime-config";
@@ -283,27 +283,43 @@ export async function resolveDispatchRunStatus(
   childSessionId: string,
   identity: ParentIdentity
 ): Promise<ChildSessionStatus | undefined> {
-  const live = await store.list({
-    sessionId: childSessionId,
-    status: LIVE_STATUSES,
-    orderBy: "none",
-    limit: 1,
-    ...identity
-  });
-  if (live.length > 0) return "active";
-
-  const [mostRecent] = await store.list({
-    sessionId: childSessionId,
-    orderBy: "startedAtMs",
-    limit: 1,
-    ...identity
-  });
-  if (mostRecent === undefined) return undefined;
-  if (isLiveWhenMostRecent(mostRecent.status)) return "active";
+  const governing = await governingRequest(store, { sessionId: childSessionId, ...identity });
+  if (governing === undefined) return undefined;
+  if (isLiveWhenMostRecent(governing.status)) return "active";
 
   // Terminal outcomes pass through unchanged, but through a total map rather
   // than a cast — see {@link TERMINAL_WIRE_STATUS}.
-  return TERMINAL_WIRE_STATUS[mostRecent.status];
+  return TERMINAL_WIRE_STATUS[governing.status];
+}
+
+/**
+ * The request that speaks for one session's runs: a live one
+ * ({@link LIVE_STATUSES}) wherever it sits, else the most recent.
+ *
+ * The one place this rule and its read order are written. The dispatch-run
+ * listing maps the answer to its wire status; the session listing's
+ * `include=status` (`session-request-status.ts`) sends the request's own.
+ *
+ * Live first, then most recent, because the two reads are not atomic. A run
+ * that ends between them is read as its finished self by read 2, which is
+ * true. A run that starts between them is read 2's most recent record and is
+ * still live, so a caller that treats a live most-recent record as live
+ * ({@link isLiveWhenMostRecent}) never reports it as an older outcome.
+ *
+ * At most two reads, each `limit: 1`; read 1 is unordered, so a session that
+ * has piled up suspended records costs one row.
+ *
+ * @param filter The session's request filter: its id plus the identity keys
+ *   the caller scopes by.
+ */
+export async function governingRequest(
+  store: RequestStore,
+  filter: Omit<NonNullable<Parameters<RequestStore["list"]>[0]>, "status" | "orderBy" | "limit">
+): Promise<RequestRecord | undefined> {
+  const [live] = await store.list({ ...filter, status: LIVE_STATUSES, orderBy: "none", limit: 1 });
+  if (live !== undefined) return live;
+  const [mostRecent] = await store.list({ ...filter, orderBy: "startedAtMs", limit: 1 });
+  return mostRecent;
 }
 
 /** How many runs one batched read names: keeps an `IN (…)` list within SQL parameter limits. */

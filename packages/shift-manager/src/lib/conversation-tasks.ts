@@ -13,9 +13,8 @@ import { CONVERSATION_BOARD_COLLECTION, describeFailure } from "./reads";
 const PLAN_COLLECTION = "plan";
 
 /**
- * The topics a view of the conversation's `listTasks` read subscribes
- * (FIX-2429): the conversation's session, narrowed to each ledger the read
- * returns. The read merges the board with the plan ledger, so its views hear
+ * The topics a view of the conversation's `listTasks` read subscribes: the
+ * conversation's session, narrowed to each ledger the read returns. The read merges the board with the plan ledger, so its views hear
  * both; a flow with no planning worker never publishes on `plan`. Narrowed,
  * so a reply streaming in the conversation never wakes the view.
  */

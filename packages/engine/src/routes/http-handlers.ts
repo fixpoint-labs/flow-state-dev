@@ -9,6 +9,7 @@ import { toError } from "@flow-state-dev/core/helpers";
 import { serializeActionSchema } from "@flow-state-dev/core/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
+import { withResourceIndexWriter } from "../resources/resource-indexes";
 import type { RuntimeConfig } from "../runtime-config";
 import { createInMemoryStores } from "../stores";
 import type { StoreRegistry } from "../stores/types";
@@ -245,7 +246,11 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   push: PushState;
 } {
   refuseRetiredDispatcherOption(options, "createFlowRouteHandlers");
-  const stores = resolveStores(options.stores);
+  // A router built straight over its stores keeps declared indexes in step
+  // too. Stores `createFlowState` already wrapped are left as they are.
+  const stores = withResourceIndexWriter(resolveStores(options.stores), () =>
+    options.registry.indexedCollections()
+  );
   const debugConfig: ResolvedDebugConfig = resolveDebugConfig({
     debugEndpointsEnabled: options.debugEndpointsEnabled,
     debugAllowedOrigins: options.debugAllowedOrigins,
@@ -534,6 +539,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleListSessions(request, route, {
           registry: options.registry,
           stores,
+          durabilityProvider: runtimeConfig.durabilityProvider,
           tenantId,
           principal,
           anonymousFlowIds,

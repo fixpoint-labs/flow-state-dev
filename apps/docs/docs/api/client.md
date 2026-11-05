@@ -203,6 +203,11 @@ const withRuns = await fsd.sessions.list({
   flowKind: "research",
   include: "dispatch-runs",
 });
+
+const withStatus = await fsd.sessions.list({
+  flowKind: "research",
+  include: ["dispatch-runs", "status"],
+});
 ```
 
 | Option | Type | Notes |
@@ -211,10 +216,14 @@ const withRuns = await fsd.sessions.list({
 | `flowId` | `string` | One copy of a collection flow, by its exact id. [`sessionQueryFor`](/docs/client/overview#listing-one-flows-sessions) picks `flowKind` or `flowId` for an address. |
 | `userId` | `string` | Whose sessions. Default: the client's own user. A server with sign-in returns only the signed-in user's sessions whatever you pass. |
 | `limit` / `offset` | `number` | Paging. |
-| `include` | `"dispatch-runs"` | Also return the sessions dispatchers ran work in. Any other value answers `400`. |
+| `include` | `SessionListInclude \| SessionListInclude[]` | `"dispatch-runs"`, `"status"`, or both as an array. `"dispatch-runs"` also returns the sessions dispatchers ran work in. `"status"` adds each row's `requestStatus`. Any other value answers `400`. |
 | `state` | `Record<string, string>` | Only sessions whose readonly state fields hold these values. Needs `flowKind` or `flowId`; a field that isn't readonly on that flow is refused. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project). |
 
-Without `include`, the response holds the sessions a person started. With it, a row a dispatcher started carries `parentSessionId`, the session it was started from, plus the `topic` and `coordinate` labels below. Sessions belonging to another user, organization or tenant are never returned.
+Without `"dispatch-runs"`, the response holds the sessions a person started. With it, a row a dispatcher started carries `parentSessionId`, the session it was started from, plus the `topic` and `coordinate` labels below. Sessions belonging to another user, organization or tenant are never returned.
+
+With `"status"`, each row carries `requestStatus`, a `RequestStatus`: the status of the session's latest request. A request that is still running or waiting on a person (`in_progress`, `suspended`) wins over a later one that ended. A session with no request has no `requestStatus`, so guard with `== null`. When it is `suspended`, `requestWaitsForUser` says what the request waits on: `true` for the user (a question, an approval), `false` for other work, such as a reply from another worker, which resumes by itself. It lets a list show which conversations are running or waiting on someone, without reading each session's requests.
+
+To keep a list current, [subscribe](#fsdsubscribetopics-options) to `topic.user()` and list again on a `"run"` notice. The server sends one whenever one of the user's sessions is created, titled or deleted, or one of its requests starts or ends, whether the change came from another tab, a script or a CLI run. A change written by another server process reaches the socket only on a [bus that crosses processes](/guides/realtime#one-process-several-processes). In React, [`useSessionList`](/docs/api/react#usesessionlistoptions) does both for you.
 
 ### `sessions.children(parentSessionId, options?)`
 
