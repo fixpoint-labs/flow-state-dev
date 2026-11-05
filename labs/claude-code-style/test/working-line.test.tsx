@@ -11,6 +11,7 @@ import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LabAdapter, TaskRow, TaskWork } from "../src/adapter";
 import { SheetArea, SheetProvider } from "../src/components/Sheet";
+import { TasksPane } from "../src/components/TasksPane";
 import { ThreadView } from "../src/components/ThreadView";
 import { toolRun } from "../src/lib/tool-steps";
 
@@ -91,6 +92,57 @@ describe("a running task's view ends in a live working line", () => {
 
   it("is not shown while the task waits on you", () => {
     const view = open({ ...RUNNING, status: "held", waitingOn: { kind: "question", prompt: "Which region?" } });
+    expect(view.line()).toBeNull();
+  });
+});
+
+/** Session mode's opened background task: the same line, in the sheet the tasks pane opens. */
+function openInPane(task: TaskRow) {
+  let showTasks: (rows: TaskRow[]) => void = () => {};
+  let showWork: (work: TaskWork) => void = () => {};
+  const adapter = {
+    watchTasks: (_: string, onChange: (rows: TaskRow[]) => void) => {
+      showTasks = onChange;
+      onChange([task]);
+      return () => {};
+    },
+    watchTaskWork: (_: string, __: string, onChange: (work: TaskWork) => void) => {
+      showWork = onChange;
+      onChange({ entries: DONE_SO_FAR });
+      return () => {};
+    },
+    taskActions: () => ({}),
+  } as unknown as LabAdapter;
+  render(
+    <SheetProvider>
+      <SheetArea>
+        <TasksPane adapter={adapter} sessionId="s-1" openId={task.id} onOpen={() => {}} onMissing={() => {}} />
+      </SheetArea>
+    </SheetProvider>,
+  );
+  const sheet = () => screen.getByRole("dialog", { name: `Work: ${task.title}` });
+  return {
+    line: () => within(sheet()).queryByTestId("streaming-indicator"),
+    setWork: (working: TaskWork["working"]) => act(() => showWork({ entries: DONE_SO_FAR, ...(working === undefined ? {} : { working }) })),
+    setTask: (next: Partial<TaskRow>) => act(() => showTasks([{ ...task, ...next }])),
+  };
+}
+
+describe("session mode's opened task ends in the same live working line", () => {
+  it("names what the run is doing now, and falls back to Working...", () => {
+    const view = openInPane(RUNNING);
+    view.setWork({ inFlight: { tool: "Edit", args: { file_path: "src/adapter.ts" } } });
+    expect(view.line()?.textContent).toContain("Edit src/adapter.ts");
+    view.setWork(undefined);
+    expect(view.line()?.textContent).toMatch(/^Working\.\.\./);
+  });
+
+  it("is gone once the task ends, and while it waits on you", () => {
+    const view = openInPane(RUNNING);
+    expect(view.line()).not.toBeNull();
+    view.setTask({ waitingOn: { kind: "question", prompt: "Which region?" } });
+    expect(view.line()).toBeNull();
+    view.setTask({ status: "completed" });
     expect(view.line()).toBeNull();
   });
 });
