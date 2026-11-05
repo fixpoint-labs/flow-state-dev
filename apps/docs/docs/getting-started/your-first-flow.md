@@ -144,7 +144,7 @@ A sequencer is composable but not deployable. To call it over HTTP, mount it in 
 
 ```ts title="src/flows/hello-chat/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
-import { chatPipeline, inputSchema, sessionStateSchema } from "./blocks.ts";
+import { chatPipeline, inputSchema, sessionStateSchema } from "./blocks";
 
 export default defineFlow({
   kind: "hello-chat",
@@ -179,7 +179,7 @@ The server side is a config object plus a single route. Describe the runtime wit
 
 ```ts title="fsdev.config.ts"
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import chatFlow from "./src/flows/hello-chat/flow.ts";
+import chatFlow from "./src/flows/hello-chat/flow";
 
 export default createFlowState({
   flows: { chatFlow },
@@ -199,13 +199,13 @@ export default createFlowState({
 
 The `intents` map is what `model: "intent/chat"` in step 1 resolves against. Keeping it here means the model list lives in one place instead of being spread across every block that calls an LLM.
 
-The file name matters. `fsdev run` and `fsdev dev` read the runtime only from `fsdev.config.*`, so a `createFlowState` in any other file leaves the CLI with no intents, and `intent/chat` has nothing to resolve to. The CLI loads the file with Node's built-in TypeScript support, which is why the imports it reaches (this one, and `./blocks.ts` in the flow) spell out the `.ts` extension. Add `"allowImportingTsExtensions": true` to `compilerOptions` in `tsconfig.json` so TypeScript accepts them.
+The file name matters. `fsdev run` and `fsdev dev` read the runtime only from `fsdev.config.*`, so a `createFlowState` in any other file leaves the CLI with no intents, and `intent/chat` has nothing to resolve to.
 
 The route imports the same object:
 
 ```ts title="src/app/api/flows/[[...path]]/route.ts"
 import { createNextHandler } from "@flow-state-dev/next";
-import flowstate from "../../../../../fsdev.config.ts";
+import flowstate from "../../../../../fsdev.config";
 
 export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
 export const runtime = "nodejs";

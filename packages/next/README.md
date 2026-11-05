@@ -18,7 +18,7 @@ deployments.
 ```ts
 // src/app/api/flows/[[...path]]/route.ts
 import { createNextHandler } from "@flow-state-dev/next";
-import flowstate from "../../../../../fsdev.config.ts";
+import flowstate from "../../../../../fsdev.config";
 
 export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
 export const runtime = "nodejs";

@@ -488,7 +488,7 @@ export default createFlowState({
 });
 ```
 
-A `.ts` config needs Node >= 22.18 (native type stripping) or tsx in a consumer repo; an `.mjs`/`.js` config works everywhere. See [App Configuration](https://flow-state.dev/docs/cli/configuration) for the full convention, runtime requirements, and caveats.
+The CLI loads a `.ts`/`.mts` config itself on Node 22 or newer, with extensionless relative imports and your `tsconfig` path aliases; no tsx or `tsconfig` changes needed. An `.mjs`/`.js` config is loaded by Node as plain JavaScript. See [App Configuration](https://flow-state.dev/docs/cli/configuration) for the full convention and runtime requirements.
 
 ## Programmatic API
 

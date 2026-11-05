@@ -39,7 +39,7 @@ Each flow has a single `flow.ts` that exports the flow instance. This file defin
 
 ```ts title="src/flows/my-chat/flow.ts"
 import { defineFlow, sequencer } from "@flow-state-dev/core";
-import { chatGen } from "./blocks/chat-gen.ts";
+import { chatGen } from "./blocks/chat-gen";
 
 const pipeline = sequencer({
   name: "chat-pipeline",
@@ -83,8 +83,8 @@ Describe the runtime once in `fsdev.config.ts` at the project root, then mount i
 
 ```ts title="fsdev.config.ts"
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import chatFlow from "./src/flows/my-chat/flow.ts";
-import agentFlow from "./src/flows/my-agent/flow.ts";
+import chatFlow from "./src/flows/my-chat/flow";
+import agentFlow from "./src/flows/my-agent/flow";
 
 export default createFlowState({
   flows: { chatFlow, agentFlow },
@@ -95,7 +95,7 @@ export default createFlowState({
 
 ```ts title="src/app/api/flows/[[...path]]/route.ts"
 import { createNextHandler } from "@flow-state-dev/next";
-import flowstate from "../../../../../fsdev.config.ts";
+import flowstate from "../../../../../fsdev.config";
 
 export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
 export const runtime = "nodejs";

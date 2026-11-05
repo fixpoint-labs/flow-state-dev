@@ -1214,6 +1214,9 @@ importers:
       commander:
         specifier: ^13.1.0
         version: 13.1.0
+      jiti:
+        specifier: ^2.7.0
+        version: 2.7.0
     devDependencies:
       '@flow-state-dev/devtool':
         specifier: workspace:*

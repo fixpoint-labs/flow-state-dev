@@ -76,6 +76,10 @@
       "types": "./dist/errors/suspension-error.d.ts",
       "default": "./src/errors/suspension-error.ts"
     },
+    "./errors/unresolved-intent-error": {
+      "types": "./dist/errors/unresolved-intent-error.d.ts",
+      "default": "./src/errors/unresolved-intent-error.ts"
+    },
     "./blocks/handler": {
       "types": "./dist/blocks/handler.d.ts",
       "default": "./src/blocks/handler.ts"
@@ -142,6 +146,10 @@
       "./errors/suspension-error": {
         "types": "./dist/errors/suspension-error.d.ts",
         "default": "./dist/errors/suspension-error.js"
+      },
+      "./errors/unresolved-intent-error": {
+        "types": "./dist/errors/unresolved-intent-error.d.ts",
+        "default": "./dist/errors/unresolved-intent-error.js"
       },
       "./blocks/handler": {
         "types": "./dist/blocks/handler.d.ts",

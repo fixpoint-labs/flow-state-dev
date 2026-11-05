@@ -46,7 +46,7 @@ Declare the map on `createFlowState`, alongside your flows and stores:
 
 ```ts title="fsdev.config.ts"
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import chatFlow from "./src/flows/hello-chat/flow.ts";
+import chatFlow from "./src/flows/hello-chat/flow";
 
 export default createFlowState({
   flows: { chatFlow },

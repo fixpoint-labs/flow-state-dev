@@ -10,7 +10,7 @@ If you already have a Next.js App Router or Node project, start at [Existing pro
 
 ## Prerequisites
 
-- Node.js 22.18 or newer (the CLI loads `fsdev.config.ts` with Node's built-in TypeScript support)
+- Node.js 22 or newer
 - pnpm (or npm/yarn)
 - An API key from OpenAI, Anthropic, or Google. See [Setting Up Models](/docs/getting-started/setting-up-models) for the full list.
 
@@ -103,7 +103,7 @@ Describe the runtime once, in `fsdev.config.ts` at your project root. Your API r
 
 ```ts title="fsdev.config.ts"
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import chatFlow from "./src/flows/hello-chat/flow.ts";
+import chatFlow from "./src/flows/hello-chat/flow";
 
 export default createFlowState({
   flows: { chatFlow },
@@ -123,21 +123,11 @@ export default createFlowState({
 
 This is where `intent/chat` gets its meaning. The framework takes the first candidate you have a key and an SDK package for, so whichever key you set in step 2 is the one that runs. `default` covers the case where none of an intent's candidates are reachable; declaring any intent makes it required, and it's a plain model string, so point it at a provider you have a key for.
 
-The CLI loads this file with Node's built-in TypeScript support, which needs full relative paths with the `.ts` extension and doesn't read `tsconfig` path aliases. Let TypeScript accept the extension by adding one line to `tsconfig.json`:
-
-```json title="tsconfig.json"
-{
-  "compilerOptions": {
-    "allowImportingTsExtensions": true
-  }
-}
-```
-
 Then mount it with one route file. The double brackets make the catch-all optional, so the same file answers the bare `/api/flows` (the flow list `useFlow` reads) and every path under it:
 
 ```ts title="src/app/api/flows/[[...path]]/route.ts"
 import { createNextHandler } from "@flow-state-dev/next";
-import flowstate from "../../../../../fsdev.config.ts";
+import flowstate from "../../../../../fsdev.config";
 
 export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
 export const runtime = "nodejs";

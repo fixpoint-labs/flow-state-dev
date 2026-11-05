@@ -12,7 +12,7 @@ import {
   type SessionRecord
 } from "@flow-state-dev/engine";
 import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
-import { UNRESOLVED_INTENT_CODE } from "@flow-state-dev/core";
+import { UNRESOLVED_INTENT_CODE } from "@flow-state-dev/core/errors/unresolved-intent-error";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve, isAbsolute } from "node:path";
 import type { Command } from "commander";
