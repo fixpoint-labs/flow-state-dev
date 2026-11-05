@@ -24,10 +24,13 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
-export const MANIFEST = "apps/docs/release-docs.json";
+const MANIFEST = "apps/docs/release-docs.json";
 
-/** A frontmatter line naming a package and a bump — `"@scope/pkg": patch`. */
-const PACKAGE_BUMP = /^\s*['"][^'"]+['"]\s*:\s*(patch|minor|major)\s*$/m;
+/**
+ * A frontmatter line naming a package and a bump: `"@scope/pkg": patch`, with
+ * the name quoted or bare and the bump optionally quoted, as YAML allows.
+ */
+const PACKAGE_BUMP = /^\s*(?:'[^']+'|"[^"]+"|[^\s'"#:][^#:]*?)\s*:\s*(['"]?)(patch|minor|major)\1\s*$/m;
 
 /** `.changeset/postgres-bus.md` → `postgres-bus`; null for README and non-fragments. */
 export function changesetId(path) {
@@ -37,7 +40,7 @@ export function changesetId(path) {
 }
 
 export function isEmptyChangeset(source) {
-  const frontmatter = /^---\n([\s\S]*?)\n---/.exec(source)?.[1] ?? "";
+  const frontmatter = /^---\n([\s\S]*?)\n---/.exec(source.replace(/\r\n/g, "\n"))?.[1] ?? "";
   return !PACKAGE_BUMP.test(frontmatter);
 }
 
@@ -47,18 +50,22 @@ export function findUndocumented(consumedIds, manifest) {
   return consumedIds.filter((id) => !reviewed.has(id));
 }
 
-function git(args) {
-  return execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim();
+function git(args, cwd = ROOT) {
+  return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 }
 
-function consumedChangesets(base) {
-  const out = git(["diff", "--name-only", "--diff-filter=D", `${base}...HEAD`, "--", ".changeset"]);
+/**
+ * Non-empty changesets this branch deletes, read at `base` since they are gone
+ * at HEAD. `--no-renames` keeps a deleted fragment from pairing with a new file.
+ */
+export function consumedChangesets(base, cwd = ROOT) {
+  const out = git(["diff", "--name-only", "--no-renames", "--diff-filter=D", `${base}...HEAD`, "--", ".changeset"], cwd);
   if (out === "") return [];
   return out
     .split("\n")
     .map((path) => ({ path, id: changesetId(path) }))
     .filter(({ id }) => id !== null)
-    .filter(({ path }) => !isEmptyChangeset(git(["show", `${base}:${path}`])))
+    .filter(({ path }) => !isEmptyChangeset(git(["show", `${base}:${path}`], cwd)))
     .map(({ id }) => id);
 }
 

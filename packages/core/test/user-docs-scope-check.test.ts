@@ -1,9 +1,17 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-// @ts-expect-error — root check script, plain .mjs with no type declarations.
-import { findBlocked as findBlockedUntyped } from "../../../scripts/validate-user-docs-scope.mjs";
+import {
+  changedFiles as changedFilesUntyped,
+  findBlocked as findBlockedUntyped,
+  // @ts-expect-error — root check script, plain .mjs with no type declarations.
+} from "../../../scripts/validate-user-docs-scope.mjs";
 
 type Context = { branch?: string; labels?: string[] };
 const findBlocked = findBlockedUntyped as (files: string[], ctx?: Context) => string[];
+const changedFiles = changedFilesUntyped as (base: string, cwd: string) => string[];
 
 const USER_DOCS = [
   "apps/docs/docs/state/overview.md",
@@ -53,5 +61,31 @@ describe("exemptions", () => {
 
   it("does not exempt a branch that only mentions release-docs", () => {
     expect(findBlocked(USER_DOCS, { branch: "feat/release-docs-skill" })).toEqual(USER_DOCS);
+  });
+});
+
+describe("reading what a PR changes", () => {
+  function git(cwd: string, ...args: string[]) {
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd, stdio: "pipe" });
+  }
+
+  it("still sees a page moved out of the docs", () => {
+    const repo = mkdtempSync(join(tmpdir(), "user-docs-scope-"));
+    try {
+      git(repo, "init", "-q", "-b", "main");
+      mkdirSync(join(repo, "apps/docs/docs"), { recursive: true });
+      mkdirSync(join(repo, "docs/contributing"), { recursive: true });
+      writeFileSync(join(repo, "apps/docs/docs/example.md"), "# Example\n\nA published page about sessions.\n");
+      git(repo, "add", ".");
+      git(repo, "commit", "-q", "-m", "base");
+
+      git(repo, "switch", "-q", "-c", "feat/move");
+      git(repo, "mv", "apps/docs/docs/example.md", "docs/contributing/example.md");
+      git(repo, "commit", "-q", "-m", "move");
+
+      expect(findBlocked(changedFiles("main", repo))).toEqual(["apps/docs/docs/example.md"]);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 });

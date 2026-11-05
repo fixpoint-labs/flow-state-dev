@@ -16,7 +16,12 @@ are planned, written and reviewed together.
 | `apps/docs/src/`, config, scripts | Any PR (site code, not prose) |
 
 `scripts/validate-user-docs-scope.mjs` (workflow **User docs scope**) fails a PR that edits a user-doc
-path, unless its branch starts with `release-docs/` or it has the `docs-fix` label.
+path, unless its branch starts with `release-docs/` or it has the `docs-fix` label. That script holds
+the path list; change this table with it.
+
+The PR author picks the branch name and the label, so the check catches accidents and review is the
+control. The same goes for the manifest that turns the release gate green. To make either a hard
+gate, put `apps/docs/` and `packages/*/README.md` under CODEOWNERS.
 
 ## In a normal PR
 
@@ -27,7 +32,8 @@ path, unless its branch starts with `release-docs/` or it has the `docs-fix` lab
 - If the issue has a spec, keep its docs line (which pages to create, update or remove) accurate. It
   is decided at spec time and used at release time.
 - Don't edit user docs. If you find a page that is wrong about something **already released**, fix it
-  in its own PR with the `docs-fix` label and `docs-fix` in the title.
+  in its own PR with the `docs-fix` label. It deploys when it merges, unless a release docs pass is
+  waiting to publish, in which case it goes live with that release.
 
 ## Cutting a release
 
@@ -40,9 +46,13 @@ path, unless its branch starts with `release-docs/` or it has the `docs-fix` lab
 3. **Review the docs PR** as a new user would: read the changed pages end to end. Merge it.
 4. **The Version Packages PR rebuilds** from `main` and its check goes green. A changeset merged after
    the docs pass turns it red again; run `/release-docs` once more and it covers only the new ones.
-5. **Merge the Version Packages PR.** Packages publish, and the docs site's production deploy runs on
-   that commit (`apps/docs/scripts/vercel-ignore-build.sh`), so the live docs change when the
-   packages do.
+5. **Merge the Version Packages PR.** Packages publish, and the docs site deploys to production on
+   that commit, so the live docs change when the packages do.
+
+Between steps 3 and 5, `main` holds docs for packages that haven't published. Production skips every
+docs deploy while that's true: while any changeset in `apps/docs/release-docs.json` is still a
+pending file in `.changeset/` (`apps/docs/scripts/vercel-ignore-build.sh`). The rest of the time, site
+code and `docs-fix` merges deploy as usual.
 
 ## Setup (once)
 

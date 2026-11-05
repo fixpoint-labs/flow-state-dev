@@ -28,7 +28,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
 
-/** Paths whose prose a user reads. Package READMEs ship to npm with the package. */
+/**
+ * Paths whose prose a user reads. Package READMEs ship to npm with the package.
+ * This is the one list; the table in docs/contributing/release-docs.md and the
+ * `/release-docs` skill restate it, so change them with it.
+ */
 const USER_DOC_PATHS = [
   /^apps\/docs\/docs\//,
   /^apps\/docs\/guides\//,
@@ -53,13 +57,16 @@ export function findBlocked(files, { branch = "", labels = [] } = {}) {
   return files.filter(isUserDoc);
 }
 
-function git(args) {
-  return execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim();
+function git(args, cwd = ROOT) {
+  return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 }
 
-function changedFiles() {
-  const base = process.env.GITHUB_BASE_REF ? `origin/${process.env.GITHUB_BASE_REF}` : "origin/main";
-  const out = git(["diff", "--name-only", "--diff-filter=ACMRD", `${base}...HEAD`]);
+/**
+ * Every path the PR changes. `--no-renames` reports a move as a delete plus an
+ * add, so moving a page out of the docs still shows the guarded source path.
+ */
+export function changedFiles(base, cwd = ROOT) {
+  const out = git(["diff", "--name-only", "--no-renames", "--diff-filter=ACMD", `${base}...HEAD`], cwd);
   return out === "" ? [] : out.split("\n");
 }
 
@@ -75,7 +82,8 @@ function prContext() {
 }
 
 function main() {
-  const blocked = findBlocked(changedFiles(), prContext());
+  const base = process.env.GITHUB_BASE_REF ? `origin/${process.env.GITHUB_BASE_REF}` : "origin/main";
+  const blocked = findBlocked(changedFiles(base), prContext());
   if (blocked.length === 0) {
     console.log("User docs untouched, or this is the release docs PR / a docs-fix.");
     process.exit(0);
