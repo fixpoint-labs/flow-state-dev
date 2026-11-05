@@ -269,7 +269,17 @@ export async function runTaskSignals(lab: SignalsLab): Promise<void> {
         const running = await runningRow(id);
         if (running === undefined) throw new Error(`setup: the long-step task never ran: ${JSON.stringify(await row(id))}`);
         aliveTask = { id, title, attempts: running.attempts };
-        if (legs.includes("alive")) {
+        // The page follows the board on its own notices, so it can trail the direct read that saw the run start:
+        // wait for the row's first working clock before grading the step.
+        const shown = legs.includes("alive")
+          ? await until(async () => {
+              const words = await board.words(title);
+              return words !== undefined && clockOf(words) !== undefined ? words : undefined;
+            }, PAGE_BOUND_MS)
+          : undefined;
+        if (legs.includes("alive") && shown === undefined) {
+          failures.push(`alive: the running row showed no working clock within ${PAGE_BOUND_MS / 1000}s; it reads ${JSON.stringify(await board.words(title))}`);
+        } else if (legs.includes("alive")) {
           const reads: { at: number; words: string }[] = [];
           const watchUntil = running.run.startedAt + STEP_MS;
           say(`alive: watching ${title} until ${new Date(watchUntil).toISOString()}`);
