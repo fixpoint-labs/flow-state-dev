@@ -29,6 +29,28 @@ function toNestedValue(state: unknown, field: string, key: string): unknown {
   return obj?.[field]?.[key];
 }
 
+/**
+ * Attempts for an increment or push onto a field that reads as its default.
+ * A lost race leaves the winner's write in the store, usually with the field
+ * now stored, so the next attempt takes the atomic delta.
+ */
+const MAX_ADDITIVE_ATTEMPTS = 4;
+
+/** Re-applies an increment or push to `state`, as `incState` / `pushState` do. */
+function applyAdditive<TState>(
+  state: TState,
+  hint: Extract<CASMutationHint, { kind: "incField" | "pushToArray" }>
+): TState {
+  const next = { ...(state as Record<string, unknown>) };
+  const field = hint.path[0];
+  const current = next[field];
+  next[field] =
+    hint.kind === "incField"
+      ? (typeof current === "number" ? current : 0) + hint.delta
+      : [...(Array.isArray(current) ? current : []), ...hint.values];
+  return next as TState;
+}
+
 export type ScopeStoreLike<TRecord> = DeltaStoreOps<TRecord> & {
   set(
     id: string,
@@ -100,6 +122,53 @@ export function createScopePersist<
       updatedAt
     });
 
+    // A store's `incField` / `pushToArray` start a field the record lacks at
+    // 0 / []. When the scope reads that field as its schema default instead,
+    // the delta would drop the default, so the write is a version-checked full
+    // `set` carrying the defaulted value. That `set` can lose to a concurrent
+    // writer, and the caller (`runCommutative`) does not retry, so a lost race
+    // is retried here: the hint alone says what to add, so it is re-applied to
+    // the store's current record. Once the field is stored, the atomic delta
+    // takes over and builds on it as usual.
+    const readsDefault = (field: string): boolean => {
+      const stored = ref.current.state as Record<string, unknown> | undefined;
+      if (stored?.[field] !== undefined) return false;
+      return (readState(ref.current.state) as Record<string, unknown>)[field] !== undefined;
+    };
+
+    const persistAdditive = async (
+      additive: Extract<CASMutationHint, { kind: "incField" | "pushToArray" }>,
+      proposed: TState,
+      expected: number
+    ): Promise<CASPersistResult<TState>> => {
+      const field = additive.path[0];
+      for (let attempt = 1; ; attempt++) {
+        if (!readsDefault(field)) {
+          const next = proposed;
+          const buildLocal = (version: number): TRecord => ({
+            ...ref.current,
+            state: next as TRecord["state"],
+            version,
+            updatedAt
+          });
+          const result =
+            additive.kind === "incField"
+              ? await store.incField!(id, additive.path, additive.delta, effectiveVersion, updatedAt)
+              : await store.pushToArray!(id, additive.path, additive.values, effectiveVersion, updatedAt);
+          return handleResult(result, buildLocal);
+        }
+        const nextRecord = buildSetRecord(expected, proposed);
+        const result = await store.set(id, nextRecord, expected);
+        const current = result.ok ? undefined : result.conflict.currentValue;
+        if (current === undefined || attempt === MAX_ADDITIVE_ATTEMPTS) {
+          return handleResult(result, () => nextRecord);
+        }
+        ref.current = current;
+        expected = current.version;
+        proposed = applyAdditive(readState(current.state), additive);
+      }
+    };
+
     if (hint.kind === "patchField" && typeof store.patchField === "function") {
       const value = hint.path.length === 2
         ? (toNestedValue(state, hint.path[0], hint.path[1]))
@@ -114,41 +183,11 @@ export function createScopePersist<
       return handleResult(result, buildDeltaLocal);
     }
 
-    // A store's `incField` / `pushToArray` start a field the record lacks at
-    // 0 / []. When the scope reads that field as its schema default instead,
-    // the delta would drop the default, so the write goes through the
-    // version-checked full `set` below, which carries the defaulted value. Once
-    // the field is stored, later deltas build on it as usual.
-    const readsDefault = (field: string): boolean => {
-      const stored = ref.current.state as Record<string, unknown> | undefined;
-      if (stored?.[field] !== undefined) return false;
-      return (readState(ref.current.state) as Record<string, unknown>)[field] !== undefined;
-    };
-
-    if (hint.kind === "incField" && typeof store.incField === "function" && !readsDefault(hint.path[0])) {
-      const result = await store.incField(
-        id,
-        hint.path,
-        hint.delta,
-        effectiveVersion,
-        updatedAt
-      );
-      return handleResult(result, buildDeltaLocal);
-    }
-
     if (
-      hint.kind === "pushToArray" &&
-      typeof store.pushToArray === "function" &&
-      !readsDefault(hint.path[0])
+      (hint.kind === "incField" && typeof store.incField === "function") ||
+      (hint.kind === "pushToArray" && typeof store.pushToArray === "function")
     ) {
-      const result = await store.pushToArray(
-        id,
-        hint.path,
-        hint.values,
-        effectiveVersion,
-        updatedAt
-      );
-      return handleResult(result, buildDeltaLocal);
+      return persistAdditive(hint, state, expectedVersion);
     }
 
     if (hint.kind === "deleteField" && typeof store.deleteField === "function") {
@@ -162,8 +201,7 @@ export function createScopePersist<
     }
 
     // Fallback: full set. Used for `set` hints, for delta hints when the
-    // adapter doesn't advertise the relevant verb (capability advertisement),
-    // and for a delta onto a field that reads as its schema default.
+    // adapter doesn't advertise the relevant verb (capability advertisement).
     const nextRecord = buildSetRecord(expectedVersion, state);
     const result = await store.set(id, nextRecord, expectedVersion);
     return handleResult(result, () => nextRecord);

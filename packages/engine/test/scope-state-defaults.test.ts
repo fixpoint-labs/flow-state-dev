@@ -225,6 +225,33 @@ describe("native delta writes start from the defaulted value", () => {
     expect((ctx.user.state as { tags: string[] }).tags).toEqual(["seed", "new"]);
     expect((await stores.user.get(USER_KEY))?.state).toMatchObject({ tags: ["seed", "new"] });
   });
+
+  // An increment or push is commutative: two runs that both add must both
+  // land. The first write onto a defaulted field can't use the store's delta
+  // (it would start at 0 / []), so it is version-checked, and the run that
+  // loses that race has to retry on the winner's record, not drop its write.
+  it("two runs incrementing the same defaulted counter both count", async () => {
+    const stores = createInMemoryStores();
+    const a = await openDeltas(stores, "req_inc_a");
+    const b = await openDeltas(stores, "req_inc_b");
+
+    const landed = await Promise.all([a.user.incState({ count: 1 }), b.user.incState({ count: 1 })]);
+
+    expect(landed).toEqual([true, true]);
+    expect((await stores.user.get(USER_KEY))?.state).toMatchObject({ count: 12 });
+  });
+
+  it("two runs pushing onto the same defaulted array both append", async () => {
+    const stores = createInMemoryStores();
+    const a = await openDeltas(stores, "req_push_a");
+    const b = await openDeltas(stores, "req_push_b");
+
+    const landed = await Promise.all([a.user.pushState("tags", "a"), b.user.pushState("tags", "b")]);
+
+    expect(landed).toEqual([true, true]);
+    const tags = ((await stores.user.get(USER_KEY))?.state as { tags: string[] }).tags;
+    expect([...tags].sort()).toEqual(["a", "b", "seed"]);
+  });
 });
 
 describe("the /state projection reads defaults too", () => {
