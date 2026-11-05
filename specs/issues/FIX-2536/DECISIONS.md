@@ -40,7 +40,7 @@ It comes down to a private repo: one user's token is not another user's access.
 |---|---|
 | **Instead of** | Moving `polledThrough` every poll, with a 20-event resend list sent straight to delivery · writing refusals into `seen` |
 | **Because** | A lost delivery is `unsent`, or accepted and never taken (`deliverToRow` returns `sent`, unseen: `service-flow.ts` ~336–343). With the mark held there, the next poll fetches it again; `seenBefore` and `screened` drop the rest before any screen. One delivery path; it lands once |
-| **Locks in** | A screen that judged (refused, or held as in observe mode) writes `[id, version, at]` to `screened`, so neither the screens nor Jev see it again. Cost: while the mark waits, each poll re-fetches the few objects changed since |
+| **Locks in** | A screen that judged (refused, or held as in observe mode) writes `[id, version, at]` to `screened`, so neither the screens nor Jev see it again. Cost: while the mark waits, each poll re-fetches the few objects changed since. **Bounded (EM call, 2026-11-05):** a version still not taken after 3 polls is written to `screened` as given up, with a visible line in the session, so the mark moves on. `screened` is capped like `seen` (500), and the hold cannot outlast that window |
 
 ![D2: hold the mark and record what was screened, chosen, beside a resend list; decided by a lost delivery](figures/d2-place.svg)
 
