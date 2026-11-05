@@ -71,6 +71,28 @@ describe("the first run", () => {
     expect(checks).toBe(2);
   });
 
+  it("lets Create through while the check its own click started is still out", async () => {
+    const lab = createFakeLab({ speed: 0.01 });
+    let release: () => void = () => undefined;
+    let creates = 0;
+    const slowCheck = async (repository: string) => {
+      await new Promise<void>((resolve) => (release = resolve));
+      return lab.checkRepository(repository);
+    };
+    render(<App adapter={{ ...lab, checkRepository: slowCheck, createProject: async (...args) => (creates++, lab.createProject(...args)) }} />);
+    const form = await screen.findByRole("form", { name: "New project" });
+    fireEvent.change(within(form).getByLabelText("Project name"), { target: { value: "notes" } });
+    const field = within(form).getByLabelText("Repository");
+    fireEvent.change(field, { target: { value: "file:///tmp/notes" } });
+    // Clicking Create leaves the field: its blur starts a check that is still out when the click lands.
+    await act(async () => fireEvent.blur(field));
+    const create = within(form).getByRole("button", { name: "Create project" }) as HTMLButtonElement;
+    expect(create.disabled).toBe(false);
+    await act(async () => fireEvent.click(create));
+    for (let i = 0; i < 3 && creates === 0; i++) await act(async () => release());
+    await waitFor(() => expect(creates).toBe(1));
+  });
+
   it("offers starter lines in an empty session; a click fills the composer and sends nothing", async () => {
     const lab = createFakeLab({ speed: 0.01 });
     let sends = 0;

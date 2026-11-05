@@ -119,9 +119,10 @@ export function ProjectPicker({
               Couldn't check the repository: {check.error}
             </p>
           )}
+          {/* Not held while a check is out: clicking Create leaves the field, and that blur's check would swallow the click. Create asks for itself. */}
           <button
             type="submit"
-            disabled={create.busy || check.busy || name.trim() === "" || repository.trim() === "" || current?.usable === false}
+            disabled={create.busy || name.trim() === "" || repository.trim() === "" || current?.usable === false}
             className="border border-border bg-background px-3 py-2 text-left text-sm font-semibold hover:bg-accent disabled:opacity-50"
           >
             Create project
