@@ -37,6 +37,8 @@ export function railSessions(client: RailClient, workforce: Pick<WorkforceClient
     const flow = options?.flowKind;
     if (flow === undefined || !isCoordinatorFlow(flow)) return await client.sessions.list(options);
     const include = options?.include === undefined ? [] : [options.include].flat();
+    // One find per declared coordinator (a fixed, small set) plus, when the
+    // navigator asks for state, one status listing of the flow to mark them.
     const [rows, listed] = await Promise.all([
       Promise.all(
         SHELL_COORDINATORS.map(

@@ -6,8 +6,9 @@
  * A mode has exactly one flow, so there is nothing to browse above its
  * sessions: `FlowNavigator` is built for many kinds and would draw the kind as a
  * row that opens closed. Here the sessions are the rail's content. Drawn from
- * the rows the frame read, so the frame reads the listing once. A failed read
- * says so with a retry, so it doesn't read as an empty list.
+ * the rows the frame's live read holds (`useSessionList`: it reads again on the
+ * user's change notices, or on the client's fallback timer where there is no
+ * push). A failed read says so with a retry, so it doesn't read as an empty list.
  *
  * Each row says what the navigator's rows say (the same label and turn state,
  * from the framework's helpers) plus the session's model, which a coding
