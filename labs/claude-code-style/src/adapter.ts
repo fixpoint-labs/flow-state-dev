@@ -67,6 +67,7 @@ import { projectIdOf, refuseExisting } from "./lib/new-project";
 import type { HarnessReadinessChipRow } from "./components/flow-state/harness-readiness";
 import { waitingOnYou } from "./lib/columns";
 import { resultSummary } from "./lib/result-summary";
+import { firstLineOfText, NEW_SESSION_TITLE, sessionTitle } from "./lib/session-title";
 import { toolRun, type ToolCallOf, type ToolRun } from "./lib/tool-steps";
 import { toolInFlight, type PlanRowNow, type ToolCallNow } from "./components/flow-state/working-status";
 
@@ -726,15 +727,18 @@ export function createWiredLab(fsd: Client): LabAdapter {
     }
   };
 
-  /** A session's title: its first line, once it has one. Kept, since a first line never changes. */
-  const titles = new Map<string, string>();
-  const titleOf = async (sessionId: string) => {
-    if (!titles.has(sessionId)) {
+  /**
+   * The first line of a session's first message: the fallback title (`sessionTitle`). Kept once
+   * read, since a first line never changes; a session with no message yet is read again.
+   */
+  const firstLines = new Map<string, string>();
+  const firstLineOf = async (sessionId: string): Promise<string | undefined> => {
+    if (!firstLines.has(sessionId)) {
       const first = (await itemsOf(sessionId)).find((item) => item.role === "user");
-      if (first === undefined) return "New session";
-      titles.set(sessionId, textOf(first).split("\n")[0]!.slice(0, 60));
+      if (first === undefined) return undefined;
+      firstLines.set(sessionId, firstLineOfText(textOf(first)));
     }
-    return titles.get(sessionId)!;
+    return firstLines.get(sessionId);
   };
 
   /**
@@ -743,17 +747,14 @@ export function createWiredLab(fsd: Client): LabAdapter {
    */
   type SessionRowRead = { row: SessionRow; complete: boolean };
   const rowOf = async (worker: string, sessionId: string, held?: SessionRow): Promise<SessionRowRead> => {
-    const [detail, turns, title, waiting] = await Promise.all([
-      fsd.sessions.get(sessionId),
-      runningTurns(sessionId),
-      titleOf(sessionId),
-      waitingCountFor(sessionId),
-    ]);
+    const [detail, turns, waiting] = await Promise.all([fsd.sessions.get(sessionId), runningTurns(sessionId), waitingCountFor(sessionId)]);
+    // The generated title, once it has landed; the first message only when no turn runs and none did.
+    const firstLine = detail.title?.trim() ? undefined : turns.length === 0 ? await firstLineOf(sessionId) : undefined;
     const project = (detail.state as Record<string, unknown> | undefined)?.[WORK_PROJECT_STATE_KEY];
     return {
       row: {
         id: sessionId,
-        title,
+        title: sessionTitle({ title: detail.title, firstLine, running: turns.length > 0 }),
         worker,
         updatedAt: detail.updatedAt,
         running: turns.length > 0,
@@ -1085,7 +1086,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
       const created = await fsd.flow(await flowOf(worker)).createSession({ state: { [WORKER_ID_STATE_KEY]: worker } });
       await workforce.setWorkProject(worker, project, { sessionId: created.id });
       for (const tell of [...sessionOpened]) tell();
-      return { id: created.id, title: "New session", worker, updatedAt: created.updatedAt, running: false, waiting: 0, projectId };
+      return { id: created.id, title: NEW_SESSION_TITLE, worker, updatedAt: created.updatedAt, running: false, waiting: 0, projectId };
     },
     send: async (sessionId, text) => {
       const flow = fsd.flow(await flowOfSession(sessionId));
