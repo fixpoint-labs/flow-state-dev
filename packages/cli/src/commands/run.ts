@@ -12,6 +12,7 @@ import {
   type SessionRecord
 } from "@flow-state-dev/engine";
 import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
+import { UNRESOLVED_INTENT_CODE } from "@flow-state-dev/core";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve, isAbsolute } from "node:path";
 import type { Command } from "commander";
@@ -35,6 +36,7 @@ import { resolveRuntimeSource, assertNoFlowDirWithConfig, createCliLogger, resol
 import { forceModelResolver } from "../model-override";
 import { parseInputArg } from "../parse-input";
 import { CliError } from "../resolve-block";
+import { CONFIG_FILENAMES } from "../load-config";
 import { collectValues } from "../cli-options";
 import {
   askFlowState,
@@ -520,7 +522,7 @@ export async function executeRunCommand(
 
     const startMs = Date.now();
     let result: ExecutionResult;
-    let error: { message: string; stack?: string } | undefined;
+    let error: { message: string; stack?: string; code?: string } | undefined;
     let success = true;
 
     try {
@@ -541,6 +543,7 @@ export async function executeRunCommand(
         error = {
           message: result.error.message,
           stack: result.error.stack,
+          code: result.error.code,
         };
       }
     } catch (err) {
@@ -575,9 +578,8 @@ export async function executeRunCommand(
         type: "error",
         message: error!.message,
       });
-      if (resolved.source === "discovery") {
-        const hint = describeMissingConfigIntent(error!.message, resolved.cwd);
-        if (hint !== undefined) process.stderr.write(hint);
+      if (resolved.source === "discovery" && error!.code === UNRESOLVED_INTENT_CODE && !options.quiet) {
+        process.stderr.write(describeMissingConfigIntent(resolved.cwd));
       }
     }
 
@@ -654,20 +656,16 @@ export async function heldStop(
   };
 }
 
-/** Leading text of core's resolver error for an `intent/*` with nothing to resolve it to. */
-const UNRESOLVED_INTENT_PREFIX = 'No model is configured for "intent/';
-
 /**
- * The stderr hint for a discovery run that failed on an `intent/*` model: no
- * `fsdev.config.*` was found, so the intents the app declared in some other
- * file were never read. Undefined for any other failure.
+ * Stderr hint for a discovery run that failed on an `intent/*` model: no
+ * `fsdev.config.*` was found, so the intents the app declared elsewhere were
+ * never read.
  */
-export function describeMissingConfigIntent(message: string, cwd: string): string | undefined {
-  if (!message.startsWith(UNRESOLVED_INTENT_PREFIX)) return undefined;
+function describeMissingConfigIntent(cwd: string): string {
   return (
-    `[fsdev] no fsdev.config.* found in ${cwd}; lib/flowstate.ts and other runtime files are not read.\n` +
-    `[fsdev]   fsdev takes the app's models, intents and stores only from fsdev.config.{ts,mts,js,mjs}.\n` +
-    `[fsdev]   Default-export your createFlowState(...) from fsdev.config.ts, or pass --config <path>.\n`
+    `[fsdev] no fsdev.config.* found in ${cwd}; the file that calls createFlowState is not read.\n` +
+    `[fsdev]   fsdev takes the app's models, intents and stores only from ${CONFIG_FILENAMES.join(", ")}.\n` +
+    `[fsdev]   Default-export your createFlowState(...) from ${CONFIG_FILENAMES[0]}, or pass --config <path>.\n`
   );
 }
 

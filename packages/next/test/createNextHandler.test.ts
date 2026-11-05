@@ -47,7 +47,7 @@ describe("createNextHandler — delegation", () => {
 });
 
 describe("createNextHandler — integration", () => {
-  it("drives a POST action through a real FlowState router", async () => {
+  it("drives a POST action and lists flows when the catch-all passes no path", async () => {
     const flow = defineFlow({
       kind: "next-test",
       actions: {
@@ -68,7 +68,7 @@ describe("createNextHandler — integration", () => {
       stores: { default: { primary: inMemoryStores() } }
     });
 
-    const { POST } = createNextHandler(flowstate);
+    const { GET, POST } = createNextHandler(flowstate);
 
     const res = await POST(
       new Request("http://localhost/api/flows/next-test/sess1/actions/run", {
@@ -83,41 +83,13 @@ describe("createNextHandler — integration", () => {
     expect(res.status).toBeLessThan(300);
     expect(res.status).toBeGreaterThanOrEqual(200);
 
-    await flowstate.dispose();
-  });
-
-  // The quick start mounts one `[[...path]]` file. On the bare `/api/flows`
-  // URL Next passes no `path` at all, and the client's `flows()` (which
-  // `useFlow` calls) GETs exactly that URL, so the handler must list flows
-  // from an absent path rather than 404.
-  it("lists flows on the bare mount, where an optional catch-all passes no path", async () => {
-    const flow = defineFlow({
-      kind: "next-bare",
-      actions: {
-        run: {
-          inputSchema: z.object({}).passthrough(),
-          block: handler({
-            name: "run",
-            inputSchema: z.object({}).passthrough(),
-            outputSchema: z.object({ ok: z.boolean() }),
-            execute: () => ({ ok: true })
-          })
-        }
-      }
-    })();
-    const flowstate = createFlowState({
-      flows: { nextBare: flow },
-      stores: { default: { primary: inMemoryStores() } }
-    });
-
-    const { GET } = createNextHandler(flowstate);
-    const res = await GET(new Request("http://localhost/api/flows"), {
+    // An optional catch-all passes no `path` for the bare `/api/flows` list.
+    const list = await GET(new Request("http://localhost/api/flows"), {
       params: Promise.resolve({})
     });
-
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { flows: Array<{ kind: string }> };
-    expect(body.flows.map((f) => f.kind)).toContain("next-bare");
+    expect(list.status).toBe(200);
+    const body = (await list.json()) as { flows: Array<{ kind: string }> };
+    expect(body.flows.map((listed) => listed.kind)).toContain("next-test");
 
     await flowstate.dispose();
   });

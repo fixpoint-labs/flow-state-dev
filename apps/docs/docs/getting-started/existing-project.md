@@ -30,14 +30,14 @@ The run writes only the files below, and only when they are absent or already ma
 
 - `fsdev.config.mts`: flows, stores, and the model resolver. Written only when no `fsdev.config.*` exists. If you already have a config, that file is left alone and the assistant hands back the one line that registers the new flow.
 - `flows/hello/flow.mts`: demo flow, kind `hello`, action `send`
-- `<appRoot>/api/flows/route.<ext>` and `<appRoot>/api/flows/[...path]/route.<ext>`: mount pair under the App Router root (`app` or `src/app`), with the project's route extension
+- `<appRoot>/api/flows/[[...path]]/route.<ext>`: the mount, one optional catch-all under the App Router root (`app` or `src/app`), with the project's route extension
 - `.gitignore`: a delimited section for `.env.local` and `.fsdev/`
 - `.env.local`: an empty provider-key line if you do not already have one, and a generated `FSD_DEMO_TOKEN` that is never printed, echoed, or read back
 - `AGENTS.md`: a delimited section so a coding assistant knows how to write flows here
 
 **Node**
 
-The same list without the two route files.
+The same list without the route file.
 
 `package.json` and the lockfile change only through your package manager. Authored-whole files start with `// fsd:generated`. Appended sections sit between `# flow-state-dev:start` / `# flow-state-dev:end` in `.gitignore`, or the matching HTML-comment pair in `AGENTS.md`.
 
@@ -207,9 +207,9 @@ export default defineFlow({
 
 ### Next.js mount
 
-Skip this section on Node. Both files export `createNextHandler` from `@flow-state-dev/next`. The bare file answers `GET /api/flows` (zero path segments). The catch-all answers everything under that path. Adjust the relative import if your App Router lives under `src/app`.
+Skip this section on Node. One optional catch-all route exports `createNextHandler` from `@flow-state-dev/next`. It answers `GET /api/flows` (zero path segments) and everything under that path. Adjust the relative import if your App Router lives under `src/app`.
 
-```ts title="app/api/flows/[...path]/route.ts"
+```ts title="app/api/flows/[[...path]]/route.ts"
 import { createNextHandler } from "@flow-state-dev/next";
 import flowstate from "../../../../fsdev.config.mts";
 
@@ -217,28 +217,7 @@ export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
 export const dynamic = "force-dynamic";
 ```
 
-```ts title="app/api/flows/route.ts"
-import { createNextHandler } from "@flow-state-dev/next";
-import flowstate from "../../../fsdev.config.mts";
-
-const handler = createNextHandler(flowstate);
-
-export function GET(req: Request) {
-  return handler.GET(req, { params: Promise.resolve({ path: [] }) });
-}
-
-export function POST(req: Request) {
-  return handler.POST(req, { params: Promise.resolve({ path: [] }) });
-}
-
-export function PATCH(req: Request) {
-  return handler.PATCH(req, { params: Promise.resolve({ path: [] }) });
-}
-
-export function DELETE(req: Request) {
-  return handler.DELETE(req, { params: Promise.resolve({ path: [] }) });
-}
-```
+If an earlier run wrote `app/api/flows/route.ts` and `app/api/flows/[...path]/route.ts`, delete both. Next refuses to build either one beside the catch-all, and the assistant stops until they are gone.
 
 On Vercel, `createVercelNextHandler` from `@flow-state-dev/vercel/next` is the same mount shape with SSE shaping. See [Next.js Setup](/guides/nextjs-setup).
 

@@ -4,6 +4,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MockLanguageModelV3 } from "ai/test";
 import { createModelResolver } from "../../src/models/createModelResolver";
+import { UNRESOLVED_INTENT_CODE } from "../../src/errors";
 import { __resetDeprecationWarningsForTests } from "../../src/helpers/deprecation.js";
 
 function mockProvider() {
@@ -142,6 +143,11 @@ describe("createModelResolver — intent resolution", () => {
       const resolver = createModelResolver({ env: {} });
       expect(() => resolver("intent/chat")).toThrow(
         /no model is configured for "intent\/chat".*models\.intents\.chat.*models\.default.*FSDEV_DEFAULT_MODEL/i,
+      );
+      // Callers (the fsdev CLI's missing-config hint) recognise this failure by
+      // its code, not its wording, so a copy edit here can't silence them.
+      expect(() => resolver("intent/chat")).toThrow(
+        expect.objectContaining({ code: UNRESOLVED_INTENT_CODE, details: { intent: "chat" } }),
       );
     } finally {
       warnSpy.mockRestore();

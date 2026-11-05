@@ -24,7 +24,7 @@ import { CliError } from "./resolve-block";
 import { EXIT_CONFIG_ERROR } from "./exit-codes";
 
 /** Conventional config filenames, in precedence order (TS-first). */
-const CONFIG_FILENAMES = [
+export const CONFIG_FILENAMES = [
   "fsdev.config.ts",
   "fsdev.config.mts",
   "fsdev.config.js",

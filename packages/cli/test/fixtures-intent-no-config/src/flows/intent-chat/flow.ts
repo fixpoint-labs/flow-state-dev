@@ -1,8 +1,6 @@
 /**
- * Test fixture: the quick start's flow shape — a generator asking for
- * `intent/chat`, found by directory discovery under `src/flows/`. The
- * fixture has no `fsdev.config.*`, so nothing declares the intent; its
- * `lib/flowstate.ts` stands for the file an adopter put the runtime in.
+ * Test fixture: a generator asking for `intent/chat`, found by directory
+ * discovery under `src/flows/`. No `fsdev.config.*` sits beside it.
  */
 import { defineFlow, generator } from "@flow-state-dev/core";
 import { z } from "zod";

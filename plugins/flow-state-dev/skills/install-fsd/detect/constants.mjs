@@ -76,9 +76,15 @@ export const SECTION_DELIMITERS = {
 /** The demo flow this run registers, and the module path it is registered from. */
 export const DEMO_FLOW = { kind: "hello", modulePath: "./flows/hello/flow.mts" };
 
-/** Where a Next mount lands, relative to the app root, and where it answers before any `basePath`. */
+/**
+ * Where a Next mount lands, relative to the app root, and where it answers before any `basePath`.
+ * One optional catch-all answers the bare mount and every path under it. `retiredSlots` is where
+ * an earlier run wrote the two-file mount: any route left there collides with the catch-all, so
+ * those slots are scanned and must be empty.
+ */
 export const MOUNT = {
-  slots: ["api/flows", "api/flows/[...path]"],
+  slots: ["api/flows/[[...path]]"],
+  retiredSlots: ["api/flows", "api/flows/[...path]"],
   leaf: "route",
   path: "/api/flows",
 };

@@ -234,6 +234,15 @@ export function buildReport(targetDir, { env = process.env, nodeVersion = proces
           "Move or remove that file, then ask again.",
         ),
       );
+    } else if (slot.verdict === "refuse-retired") {
+      refusals.push(
+        refusal(
+          "route-slot-retired",
+          `${here(slot.occupants.map((o) => o.path))} is half of the two-file mount an earlier run ` +
+            `wrote. The mount is now one optional catch-all, and Next refuses to build with both.`,
+          "Delete it — I never delete files I wrote.",
+        ),
+      );
     } else if (slot.verdict === "refuse-stale") {
       refusals.push(
         refusal(

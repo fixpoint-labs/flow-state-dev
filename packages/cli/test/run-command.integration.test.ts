@@ -799,7 +799,7 @@ describe("fsdev run with fsdev.config.ts", () => {
 describe("fsdev run — intent/* with no fsdev.config.*", () => {
   const noConfigDir = resolve(import.meta.dirname, "fixtures-intent-no-config");
 
-  it("says no fsdev.config.* was found and that lib/flowstate.ts is not read", async () => {
+  it("says no fsdev.config.* was found and that the file creating the FlowState is not read", async () => {
     const result = await executeRunCommand("intent-chat", "chat", {
       input: '{"message": "hi"}',
       cwd: noConfigDir,
@@ -809,9 +809,22 @@ describe("fsdev run — intent/* with no fsdev.config.*", () => {
     expect(result.success).toBe(false);
     expect(result.error?.message).toContain('No model is configured for "intent/chat"');
     const stderr = stderrLines.join("\n");
-    expect(stderr).toContain(`no fsdev.config.* found in ${noConfigDir}; lib/flowstate.ts`);
-    expect(stderr).toContain("are not read");
-    expect(stderr).toContain("fsdev.config.ts");
+    expect(stderr).toContain(
+      `no fsdev.config.* found in ${noConfigDir}; the file that calls createFlowState is not read`,
+    );
+    expect(stderr).toContain("fsdev.config.ts, fsdev.config.mts, fsdev.config.js, fsdev.config.mjs");
+  });
+
+  it("--quiet suppresses the hint", async () => {
+    const result = await executeRunCommand("intent-chat", "chat", {
+      input: '{"message": "hi"}',
+      cwd: noConfigDir,
+      stores: createInMemoryStores(),
+      quiet: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(stderrLines.join("\n")).not.toContain("no fsdev.config.* found");
   });
 
   it("stays quiet for a discovery run that failed for any other reason", async () => {
