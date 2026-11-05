@@ -13,6 +13,7 @@ import type { FlowInstance, RequestStatus } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
+  createCheckpointDurabilityProvider,
   createFlowApiRouter,
   createFlowRegistry,
   createInMemoryStores,
@@ -148,6 +149,39 @@ describe("GET /sessions?include=status", () => {
       s_reply: ["suspended", false],
       s_done: ["completed", undefined]
     });
+  });
+
+  it("reads a stopped row's stops where the host's durability provider keeps them", async () => {
+    const stores = createInMemoryStores();
+    // The provider writes stops to its own storage, not to `stores.suspensions`.
+    const elsewhere = createInMemoryStores();
+    const durabilityProvider = createCheckpointDurabilityProvider(elsewhere);
+    await seedSession(stores, "s_question");
+    await seedRequest(stores, "rq", "s_question", "suspended", 1000);
+    await durabilityProvider.suspend({
+      suspensionId: "stop_rq",
+      requestId: "rq",
+      flowKind: "notes",
+      actionName: "run",
+      sessionId: "s_question",
+      userId: "u_1",
+      reason: "user_input",
+      message: "",
+      status: "pending",
+      blockInstanceId: "b",
+      stepIndex: 0,
+      createdAt: 1
+    } as never);
+
+    const registry = createFlowRegistry();
+    registry.registerMany([notes() as unknown as FlowInstance]);
+    const router = createFlowApiRouter({ registry, stores, durabilityProvider });
+    const response = await router.GET(
+      new Request("http://localhost/api/flows/sessions?flowKind=notes&include=status"),
+      { params: { path: ["sessions"] } }
+    );
+    const body = (await response.json()) as { sessions: Array<{ id: string; requestWaitsForUser?: boolean }> };
+    expect(body.sessions.find((s) => s.id === "s_question")?.requestWaitsForUser).toBe(true);
   });
 
   it("lets a request still going win over a later one that ended", async () => {

@@ -4,7 +4,15 @@
 import type { JsonObject, RequestStatus } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../registry/flow-registry";
-import type { RequestActionResult, RequestRecord, SessionParentage, SessionRecord, StoreRegistry } from "../stores/types";
+import type {
+  RequestActionResult,
+  RequestRecord,
+  SessionParentage,
+  SessionRecord,
+  StoreRegistry,
+  SuspensionStore
+} from "../stores/types";
+import type { DurabilityProvider } from "../durability/types";
 import type { SessionRecordSeed } from "../context/session-birth";
 import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
@@ -129,6 +137,12 @@ function resolveSessionInclude(
 
 /** What the session listing needs beyond an addressed route's context. */
 type ListingRouteContext = SessionRouteContext & {
+  /**
+   * The host's durability provider, where a run's stops are written. The
+   * status include reads a stopped row's stops through it, so a host with its
+   * own suspension storage is read where it writes.
+   */
+  durabilityProvider?: DurabilityProvider;
   /**
    * The caller as each instance's own doors resolve it. A row owned by an
    * instance with a resolver of its own is judged by that resolver, not by
@@ -320,10 +334,18 @@ export async function handleListSessions(
   // shows which session needs its user without a read per row from the
   // browser. A few sessions at a time, so a long unlimited listing costs
   // time rather than a burst of store reads.
+  const provider = ctx.durabilityProvider;
+  const listSuspended: SuspensionStore["list"] =
+    provider !== undefined ? (filter) => provider.listSuspended(filter) : (filter) => ctx.stores.suspensions.list(filter);
   const statuses =
     include.status === true
       ? await mapBounded(visible, STATUS_READS_IN_FLIGHT, (s) =>
-          latestRequestStatus(ctx.stores, toBareSessionId(s.id, ctx.tenantId), s, ctx.tenantId)
+          latestRequestStatus(
+            { request: ctx.stores.request, listSuspended },
+            toBareSessionId(s.id, ctx.tenantId),
+            s,
+            ctx.tenantId
+          )
         )
       : undefined;
 

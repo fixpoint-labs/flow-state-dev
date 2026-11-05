@@ -32,7 +32,15 @@ export type LatestRequestStatus = {
 
 /** The status of `session`'s latest request, or `undefined` when it has none. */
 export async function latestRequestStatus(
-  stores: { readonly request: RequestStore; readonly suspensions: SuspensionStore },
+  stores: {
+    readonly request: RequestStore;
+    /**
+     * Where the run's stops are kept: the host's durability provider when it
+     * has one (`runAction` writes stops through it), else the suspension store
+     * the default provider writes to.
+     */
+    readonly listSuspended: SuspensionStore["list"];
+  },
   sessionId: string,
   session: Pick<SessionRecord, "userId" | "orgId" | "flowKind" | "flowId">,
   tenantId: string | undefined
@@ -45,7 +53,7 @@ export async function latestRequestStatus(
   // here. The request id came from the tenant's own request store, so
   // matching it keeps another tenant's suspension of the same bare session id
   // out.
-  const pending = await stores.suspensions.list({ sessionId, userId: session.userId, status: "pending" });
+  const pending = await stores.listSuspended({ sessionId, userId: session.userId, status: "pending" });
   return {
     status: "suspended",
     waitsForUser: pending.some((stop) => stop.requestId === latest.id && isUserSuspension(stop))
