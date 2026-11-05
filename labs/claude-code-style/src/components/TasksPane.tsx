@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
-import type { LabAdapter, TaskRow, TaskStatus } from "../adapter";
-import { TASK_STATUS } from "../lib/task-status";
+import type { LabAdapter, TaskRow } from "../adapter";
+import { FINISHED, TASK_STATUS } from "../lib/task-status";
 import { useMissing, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Entry } from "./Entry";
@@ -11,9 +11,6 @@ import { Spend } from "./flow-state/spend";
 import { TaskActions } from "./flow-state/task-actions";
 import { harnessLabelOf } from "./ThreadStatus";
 import { TaskCard, TaskDoneRow } from "./TaskCard";
-
-/** The endings a task stays in: these rows move to the pane's *Done* group. */
-const FINISHED: ReadonlySet<TaskStatus> = new Set(["completed", "errored", "cancelled"]);
 
 /**
  * The right pane: the main session's background tasks. A row opens the task's

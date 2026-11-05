@@ -118,6 +118,8 @@ describe("a thread's view", () => {
     const view = await billingTriage("Export failed invoices");
     expect(within(within(view).getByTestId("task-action-row")).getByRole("button", { name: "Retry" })).toBeTruthy();
     expect(within(view).getByRole("alert").textContent).toContain("The export timed out after 30s.");
+    // The alert says why it failed, once: no status line repeats it under the alert.
+    expect(within(view).queryByText(/^Failed · /)).toBeNull();
     expect(within(view).queryByText(/ask the main session/)).toBeNull();
     fireEvent.click(within(view).getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(within(view).getByTestId("task-action-row").dataset.status).toBe("in_progress"));

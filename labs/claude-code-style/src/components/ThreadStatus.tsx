@@ -1,5 +1,6 @@
 import type { TaskRow } from "../adapter";
 import { COLUMNS, columnOf } from "../lib/columns";
+import { FINISHED } from "../lib/task-status";
 import { cn } from "../lib/utils";
 
 /** A harness's name as a card and row tag it. */
@@ -39,9 +40,6 @@ export function ThreadIcon({ task }: { task: TaskRow }) {
 /** A run that completed at the review deadline: resolved, but never approved. */
 const notReviewed = (task: TaskRow) => task.status === "completed" && task.review === "deadline";
 
-/** A settled task: the board keeps its last progress note, which no longer says anything. */
-const settled = (task: TaskRow) => task.status === "completed" || task.status === "errored" || task.status === "cancelled";
-
 /** An error's first non-empty line, whitespace collapsed; `undefined` when it has none. */
 const firstLine = (text: string | undefined) => text?.split("\n").find((line) => line.trim() !== "")?.replace(/\s+/g, " ").trim();
 
@@ -55,14 +53,15 @@ export function statusLine(task: TaskRow): string {
   const column = statusColumn(task);
   const label =
     task.status === "errored" ? "Failed" : task.status === "cancelled" ? "Cancelled" : COLUMNS.find((c) => c.id === column)!.label;
-  const note = task.status === "errored" ? firstLine(task.error) : settled(task) ? undefined : (task.waitingOn?.prompt ?? task.statusNote);
+  const note = task.status === "errored" ? firstLine(task.error) : FINISHED.has(task.status) ? undefined : (task.waitingOn?.prompt ?? task.statusNote);
   return note ? `${label} · ${note}` : label;
 }
 
 /** A board row's note: its group already says the status, so only what it's on, or why it failed; nothing once resolved. */
 export function rowNote(task: TaskRow): string {
+  // `statusLine` already says how a failed or cancelled task ended, never its progress note.
   if (task.status === "errored" || task.status === "cancelled") return statusLine(task);
-  return settled(task) ? "" : (task.waitingOn?.prompt ?? task.statusNote ?? "");
+  return FINISHED.has(task.status) ? "" : (task.waitingOn?.prompt ?? task.statusNote ?? "");
 }
 
 /**

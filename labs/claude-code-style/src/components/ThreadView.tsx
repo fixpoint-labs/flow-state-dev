@@ -177,8 +177,8 @@ export function ThreadView({
           <ErrorBody message={task.error} />
         </div>
       ) : null}
-      {/* Ready for review is said once, by its card in the footer. */}
-      {column === "review" ? null : <div className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{statusLine(task)}</div>}
+      {/* Ready for review is said once, by its card in the footer; a failure's reason, by the alert above. */}
+      {column === "review" || (task.status === "errored" && task.error !== undefined) ? null : <div className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{statusLine(task)}</div>}
       <LoadEarlier load={work?.loadEarlier} />
       {work?.entries.map((entry) => (
         <Entry key={entry.id} entry={entry} mark={entry.kind === "user" ? feed.mine(entry.id) : undefined} />

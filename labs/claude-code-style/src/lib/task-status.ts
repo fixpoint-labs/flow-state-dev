@@ -1,5 +1,8 @@
 import type { TaskStatus } from "../adapter";
 
+/** The endings a task stays in: its row moves to the tasks pane's *Done* group, and its progress note no longer says anything. */
+export const FINISHED: ReadonlySet<TaskStatus> = new Set(["completed", "errored", "cancelled"]);
+
 /** How the pane names a task's status, and the token its dot and label take. */
 export const TASK_STATUS: Record<TaskStatus, { label: string; tone: string; dot: string }> = {
   pending: { label: "queued", tone: "text-muted-foreground", dot: "bg-muted-foreground" },

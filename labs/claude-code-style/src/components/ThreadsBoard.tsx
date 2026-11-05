@@ -7,7 +7,6 @@ import { Spend } from "./flow-state/spend";
 import { HarnessTag, rowNote, ThreadIcon } from "./ThreadStatus";
 import { ThreadView } from "./ThreadView";
 
-
 /**
  * Threads mode's right pane: the status board, titled *Tasks*. Every row is
  * one task row of the session's board, grouped by what you owe it (the
