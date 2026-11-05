@@ -188,7 +188,7 @@ function ProjectBody({
   const needsEntries = route.tab === "board" || route.tab === "workstreams";
   const { read, reread } = useProjectRead(address, needsEntries ? reader : null, snapshot.readAt);
   const { setup, retry: retrySetup } = useProjectSetup();
-  const roster = useRoster(snapshot.readAt);
+  const roster = useRoster();
   const { workers } = withRoster(snapshot, roster);
   const entries = read !== undefined && "value" in read && read.value !== null ? read.value.entries : undefined;
   const readFailure =

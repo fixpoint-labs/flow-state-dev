@@ -24,9 +24,10 @@ import { lookOf as lookOfRow } from "./lib/looks";
  * unless the page's address names what was open (`lib/address`): a reload, a
  * link and Back reopen the teammate and the task popup.
  *
- * The roster is read again after a hire or a fire made here. A first read
- * that fails draws the registry's `connection-screen`, which reads again on
- * its own until one lands. Once the screen is up, a conversation's feed that
+ * The list follows the roster (`watchWorkers`): a hire, an edit or a fire,
+ * made here, in another tab or by a worker's turn, shows without a reload. A
+ * first read that fails draws the registry's `connection-screen`, which
+ * watches again on its own until a read lands. Once the screen is up, a conversation's feed that
  * loses the server draws `connection-banner` over it and greys the status
  * lines drawn from that feed.
  *
@@ -45,6 +46,12 @@ const KEYS = [
   ["Enter", "Send, in the composer"],
   ["Esc", "Close a dialog"],
 ] as const;
+/** A failed roster read as the connection screen shows it: a status the server answered with, apart from a dead socket. */
+function failureOf(error: unknown): ConnectionFailure {
+  if (error instanceof ClientHttpError) return { httpStatus: error.status, message: error.message };
+  return { message: error instanceof Error ? error.message : String(error) };
+}
+
 export function App({ adapter }: { adapter: LabAdapter }) {
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
   const [sessions, setSessions] = useState<Record<string, string>>({});
@@ -60,54 +67,74 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const [ready, setReady] = useState(false);
   // The first roster read's failure, until a read lands: the page has nothing yet to keep on screen.
   const [unreachable, setUnreachable] = useState<ConnectionFailure>();
-  const live = useRef(true);
-  // Bumped by each boot read; only the newest read's answer lands, so a slow read a Retry overtook can't redraw the failure.
-  const boots = useRef(0);
+  // Bumped by each Retry: a new watch, which reads at once. Only the current watch's answers land,
+  // so a slow read a Retry overtook can't redraw the failure.
+  const [attempt, setAttempt] = useState(0);
   // How the next address write lands: a pick adds a Back step, anything else replaces.
   const how = useRef<AddressWrite>("replace");
   const conversations = useRef<Record<string, string>>({});
   // The popup the address opened. Only it is dropped when its task is gone: a
   // task filed a moment ago can be opened before its row arrives.
   const addressed = useRef<Popup | undefined>(undefined);
+  // The teammates the last landed roster drew, and a pick waiting for a roster: a hire picks its
+  // teammate once its row lands; a fire picks from the roster that no longer has the fired one.
+  const landedTalking = useRef<WorkerRow[]>([]);
+  const waitingPick = useRef<((talking: WorkerRow[]) => boolean) | null>(null);
+  const pickWhenLanded = (pick: (talking: WorkerRow[]) => boolean) => {
+    waitingPick.current = pick(landedTalking.current) ? null : pick;
+  };
   const fromAddress = (named: Address) => {
     addressed.current = taskIn(named, conversations.current);
     return addressed.current;
   };
 
-  const loadRoster = useCallback(async () => {
-    const roster = await adapter.listWorkers();
-    const talking = roster.filter((w) => !w.takesTasks);
-    const ids = await Promise.all(talking.map((w) => adapter.openConversation(w.id)));
-    const byWorker = Object.fromEntries(talking.map((w, i) => [w.id, ids[i]]));
-    conversations.current = byWorker;
-    setWorkers(roster);
-    setSessions(byWorker);
-    return { roster, talking };
-  }, [adapter]);
-
-  // The first read: the roster, then the address's teammate and task, when they are still here; the first teammate otherwise.
-  const boot = useCallback(async () => {
-    const mine = ++boots.current;
-    try {
-      const { talking } = await loadRoster();
-      if (!live.current || mine !== boots.current) return;
-      setUnreachable(undefined);
-      const named = start.current ?? {};
-      setSelected((current) => current ?? (talking.some((w) => w.id === named.worker) ? named.worker : talking[0]?.id));
-      setPopup((current) => current ?? fromAddress(named));
-      setReady(true);
-    } catch (error) {
-      if (live.current && mine === boots.current) setUnreachable(error instanceof ClientHttpError ? { httpStatus: error.status, message: error.message } : { message: error instanceof Error ? error.message : String(error) });
-    }
-  }, [loadRoster]);
+  // The roster, followed: each roster the watch reports opens the teammates' conversations and
+  // redraws the list. The first lands the page on the address's teammate and task, when they are
+  // still here, or the first teammate.
   useEffect(() => {
-    live.current = true;
-    void boot();
-    return () => {
-      live.current = false;
+    let current = true;
+    let landed = false;
+    let latest = 0;
+    const failed = (error: unknown) => {
+      if (current && !landed) setUnreachable(failureOf(error));
     };
-  }, [boot]);
+    const stop = adapter.watchWorkers((roster) => {
+      const mine = ++latest;
+      const talking = roster.filter((w) => !w.takesTasks);
+      Promise.allSettled(talking.map((w) => adapter.openConversation(w.id))).then((opened) => {
+        if (!current || mine !== latest) return;
+        // Before the page lands, a conversation that won't open is the lab being unreachable.
+        const refused = opened.find((o): o is PromiseRejectedResult => o.status === "rejected");
+        if (!landed && refused) return failed(refused.reason);
+        // After, one conversation that won't open never holds back the roster: that teammate keeps
+        // the conversation it had, or opens when picked.
+        const byWorker: Record<string, string> = {};
+        talking.forEach((w, i) => {
+          const o = opened[i]!;
+          const id = o.status === "fulfilled" ? o.value : conversations.current[w.id];
+          if (id !== undefined) byWorker[w.id] = id;
+        });
+        conversations.current = byWorker;
+        landedTalking.current = talking;
+        setWorkers(roster);
+        setSessions(byWorker);
+        if (waitingPick.current?.(talking)) waitingPick.current = null;
+        if (landed) return;
+        landed = true;
+        setUnreachable(undefined);
+        const named = start.current ?? {};
+        setSelected((open) => open ?? (talking.some((w) => w.id === named.worker) ? named.worker : talking[0]?.id));
+        setPopup((open) => open ?? fromAddress(named));
+        setReady(true);
+      }, failed);
+    }, failed);
+    return () => {
+      current = false;
+      stop();
+    };
+  }, [adapter, attempt]);
 
+  // The watch brings the new row and its conversation; the pick waits for them.
   // What the lab works on and with, and which harnesses can run: read once, the chips again on Re-check.
   const [context, setContext] = useState<LabContext>();
   const [harnesses, setHarnesses] = useState<HarnessRow[]>();
@@ -124,13 +151,19 @@ export function App({ adapter }: { adapter: LabAdapter }) {
 
   const hire = async (teammate: NewTeammate) => {
     const hired = await adapter.hire(teammate);
-    await loadRoster();
-    selectWorker(hired.id);
+    pickWhenLanded((talking) => {
+      if (!talking.some((w) => w.id === hired.id)) return false;
+      selectWorker(hired.id);
+      return true;
+    });
   };
   const fire = async (worker: string) => {
     await adapter.fire(worker);
-    const { talking } = await loadRoster();
-    setSelected(talking[0]?.id);
+    pickWhenLanded((talking) => {
+      if (talking.some((w) => w.id === worker)) return false;
+      setSelected(talking[0]?.id);
+      return true;
+    });
   };
 
   // Stable between roster reads, so a memoized entry doesn't redraw for a new function.
@@ -191,6 +224,20 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
   const sessionId = selected ? sessions[selected] : undefined;
+  // A teammate whose conversation didn't open with its roster opens when picked.
+  const unopened = ready && worker !== undefined && sessionId === undefined ? worker.id : undefined;
+  useEffect(() => {
+    if (unopened === undefined) return;
+    let current = true;
+    adapter.openConversation(unopened).then((id) => {
+      if (!current || conversations.current[unopened] !== undefined) return;
+      conversations.current = { ...conversations.current, [unopened]: id };
+      setSessions(conversations.current);
+    }, () => {});
+    return () => {
+      current = false;
+    };
+  }, [adapter, unopened]);
   // No teammate open, no panel column held for one.
   const panelShown = worker !== undefined && sessionId !== undefined;
   useLabKeys({
@@ -206,7 +253,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
 
   if (unreachable !== undefined) {
     return (
-      <ConnectionScreen kind="unreachable" title="Can't reach the lab" failure={unreachable} onRetry={boot}>
+      <ConnectionScreen kind="unreachable" title="Can't reach the lab" failure={unreachable} onRetry={() => setAttempt((n) => n + 1)}>
         The roster read failed. Check that the lab's server is running; this page tries again on its own.
       </ConnectionScreen>
     );
