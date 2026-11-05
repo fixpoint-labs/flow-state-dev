@@ -9,7 +9,7 @@
  * only what the host reports.
  */
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { localWorkspaceHost, WorkspaceRefusedError } from "../src/local-host";
@@ -38,7 +38,7 @@ beforeEach(() => {
   // `pr list` finds none open; `pr create` prints the link, as gh does.
   writeFileSync(
     gh,
-    `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\nif [ "$2" = "list" ]; then echo '[]'; else echo '${PR_URL}'; fi\n`,
+    `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\npwd >> '${ghLog}.cwd'\nif [ "$2" = "list" ]; then echo '[]'; else echo '${PR_URL}'; fi\n`,
   );
   chmodSync(gh, 0o755);
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -80,6 +80,22 @@ describe("accepting a run by opening a pull request", () => {
     // opened: gh was asked to create it, from the run's branch into main.
     expect(ghCalls().some((call) => call.startsWith("pr create") && call.includes("--head fsd/run-1") && call.includes("--base main"))).toBe(true);
     expect(landed).toEqual({ kind: "pull-request", url: PR_URL, number: 42, branch: "fsd/run-1", base: "main", remote: upstream.url });
+  });
+
+  it("runs gh outside every checkout the run can configure, so it can't push again through the run's config", async () => {
+    const { h, place } = await runWithCommit();
+
+    await h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "pull-request", title: "t", body: "b", gh });
+
+    const cwds = readFileSync(`${ghLog}.cwd`, "utf8").trim().split("\n");
+    expect(cwds.length).toBeGreaterThan(0);
+    for (const cwd of cwds) {
+      // Not the run's worktree or the person's repository, and not inside a git repository at all.
+      expect(cwd.startsWith(realpathSync(place.cwd))).toBe(false);
+      expect(cwd.startsWith(realpathSync(repo))).toBe(false);
+    }
+    // gh is told the branch, so it never pushes it itself.
+    expect(ghCalls().filter((call) => call.startsWith("pr create")).every((call) => call.includes("--head "))).toBe(true);
   });
 
   it("refuses to push to a remote repointed since the host started, and pushes nothing", async () => {

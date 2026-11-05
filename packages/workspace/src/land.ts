@@ -23,7 +23,7 @@
  */
 import { pullRequestRefFromUrl } from "@flow-state-dev/core";
 import { existsSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { run } from "./exec";
 import { scratchDir } from "./held-work";
 import { WorkspaceRefusedError } from "./refused";
@@ -462,40 +462,52 @@ async function openPullRequest(
 
   const gh = request.gh ?? "gh";
   const repo = repoOf(remote.url);
-  const ghEnv = { GH_PROMPT_DISABLED: "1" };
+  // gh runs in an empty directory of its own, never in a checkout whose config the run can write
+  // (`url.*.insteadOf`, `pushurl`, a credential helper), and git above it is never looked for.
+  // It is always told the head branch, so it never pushes: the push above is the only one.
+  const ghDir = scratchDir();
+  const ghEnv = { GH_PROMPT_DISABLED: "1", GIT_CEILING_DIRECTORIES: dirname(ghDir) };
   const where = repo === undefined ? [] : ["--repo", repo];
+  // `owner:branch` on GitHub's side, when the repository is known.
+  const head = repo === undefined ? target.branch : `${repo.split("/")[1]}:${target.branch}`;
   const failed = (step: string, error: unknown) =>
     new WorkspaceRefusedError(
       "pull-request-failed",
       `"${target.branch}" was pushed to ${redactRemote(remote.url)}, but ${step} failed: ${firstLine(error) ?? "gh gave no reason"}.`,
     );
-  // A try after one that pushed and opened it, but failed to record it: the open one, not a second.
-  let open: Array<{ url?: unknown; number?: unknown }> = [];
   try {
-    const { stdout } = await run(
-      gh,
-      ["pr", "list", ...where, "--head", target.branch, "--state", "open", "--json", "number,url", "--limit", "1"],
-      { cwd: target.cwd, timeoutMs: left(), env: ghEnv },
-    );
-    const parsed = JSON.parse(stdout || "[]") as unknown;
-    if (Array.isArray(parsed)) open = parsed;
-  } catch (error) {
-    throw failed("asking GitHub for its open pull request", error);
-  }
-  let url = typeof open[0]?.url === "string" ? open[0].url : undefined;
-  if (url === undefined) {
+    // A try after one that pushed and opened it, but failed to record it: the open one, not a second.
+    let open: Array<{ url?: unknown; number?: unknown }> = [];
     try {
       const { stdout } = await run(
         gh,
-        ["pr", "create", ...where, "--head", target.branch, "--base", remote.base, "--title", request.title, "--body", request.body],
-        { cwd: target.cwd, timeoutMs: left(), env: ghEnv },
+        ["pr", "list", ...where, "--head", target.branch, "--state", "open", "--json", "number,url", "--limit", "1"],
+        { cwd: ghDir, timeoutMs: left(), env: ghEnv },
       );
-      url = stdout.trim().split("\n").reverse().find((line) => pullRequestRefFromUrl(line.trim()) !== null)?.trim();
+      const parsed = JSON.parse(stdout || "[]") as unknown;
+      if (Array.isArray(parsed)) open = parsed;
     } catch (error) {
-      throw failed("opening its pull request", error);
+      throw failed("asking GitHub for its open pull request", error);
     }
+    let url = typeof open[0]?.url === "string" ? open[0].url : undefined;
+    if (url === undefined) {
+      try {
+        const { stdout } = await run(
+          gh,
+          ["pr", "create", ...where, "--head", head, "--base", remote.base, "--title", request.title, "--body", request.body],
+          { cwd: ghDir, timeoutMs: left(), env: ghEnv },
+        );
+        url = stdout.trim().split("\n").reverse().find((line) => pullRequestRefFromUrl(line.trim()) !== null)?.trim();
+      } catch (error) {
+        throw failed("opening its pull request", error);
+      }
+    }
+    const ref = url === undefined ? null : pullRequestRefFromUrl(url);
+    if (url === undefined || ref === null) throw failed("opening its pull request", new Error("gh printed no pull request link"));
+    return { kind: "pull-request", url, number: ref.number, branch: target.branch, base: remote.base, remote: redactRemote(remote.url) };
+  } finally {
+    try {
+      rmSync(ghDir, { recursive: true, force: true });
+    } catch {}
   }
-  const ref = url === undefined ? null : pullRequestRefFromUrl(url);
-  if (url === undefined || ref === null) throw failed("opening its pull request", new Error("gh printed no pull request link"));
-  return { kind: "pull-request", url, number: ref.number, branch: target.branch, base: remote.base, remote: redactRemote(remote.url) };
 }
