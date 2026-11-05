@@ -2,8 +2,8 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-Two decisions are the sign-off. One fork is open, because the recommendation departs from a line
-in the epic the owner approved.
+Three decisions are the sign-off. D3 departed from a line in the epic; the epic-agent decided it
+at set review on this card's recommendation and amended the epic to match.
 
 ## The tree
 
@@ -13,11 +13,11 @@ flowchart TD
   D1 -.->|"rejected · an in-repo example drifts to npm"| X1["published ranges linked to the workspace"]
   I --> D2["D2 · examples depend on the CLI · its workspace bin runs from source"]
   D2 -.->|"rejected · the copied script points into our repo"| X2["keep the tsx path · a README note"]
-  I --> O["open · keep Kitchen Sink's copies · one refresh command"]
-  O -.->|"recommended against · a setup no adopter has"| X3["alias to the registry · delete 43 files"]
+  I --> D3["D3 · keep Kitchen Sink's copies · one refresh command"]
+  D3 -.->|"rejected · a setup no adopter has"| X3["alias to the registry · delete 43 files"]
 ```
 
-Solid edges are what you're signing. The open edge is the owner's call.
+Solid edges are what you're signing.
 
 <a name="d1"></a>
 ## D1 · Examples keep `workspace:*`; one copy-out recipe rewrites it to the published versions
@@ -52,8 +52,11 @@ It comes down to the copied `package.json`: the `tsx` path fails outside the rep
 here (no install in this session): that `dist/bin.js` fails in the workspace, and that pnpm 10
 applies `publishConfig.bin`. Both are the implementer's first checks.
 
-<a name="open-registry-copies"></a>
-## Open · Kitchen Sink's registry copies: delete them, or stop syncing them by hand?
+<a name="d3"></a>
+## D3 · Kitchen Sink keeps its 43 registry copies; one refresh command replaces the hand sync
+
+Decided by the epic-agent at set review, on this recommendation. The epic's *Removes* row now
+reads "the hand sync of Kitchen Sink's registry copies". The reasoning, as it was put:
 
 **In plain terms.** Kitchen Sink keeps 43 copies of registry components, byte-identical and checked
 by a drift test in CI (the issue counted 37 and no check). What remains is the double edit. The
@@ -65,8 +68,8 @@ an install leaves in their app. Bare imports would resolve from `packages/ui`, w
 declare `ai`, and Turbopack resolving `@/` across that boundary is unproven. Keeping them costs
 one command after an edit; the drift test fails if it's forgotten.
 
-**My recommendation: keep the copies, add one refresh command** over the drift test's own options,
-so the two can't disagree. The epic's *Removes* row then names the hand sync, not the files.
+**The call: keep the copies, add one refresh command** over the drift test's own options, so the
+two can't disagree. The epic's *Removes* row names the hand sync, not the files.
 
 **What would change my mind.** Kitchen Sink no longer being the reference for how an app uses the
 registry. Then the alias wins, and the copies go.
@@ -74,7 +77,7 @@ registry. Then the alias wins, and the copies go.
 **What being wrong costs.** Keeping wrongly: 43 files and a refresh step. Deleting wrongly: a
 Kitchen Sink that builds only in this repo, after a resolution fix.
 
-![Open: keep the copies with one refresh command, recommended, beside an alias to the registry that deletes 43 files. Decides it: what Kitchen Sink shows an adopter. Price: one command after an edit. Flips if Kitchen Sink stops being the adopter reference](figures/open-registry-copies.svg)
+![D3: keep the copies with one refresh command, chosen, beside an alias to the registry that deletes 43 files. Decides it: what Kitchen Sink shows an adopter. Price: one command after an edit. Flips if Kitchen Sink stops being the adopter reference](figures/d3-registry-copies.svg)
 
 It comes down to what Kitchen Sink teaches: only kept copies match an adopter's app.
 
@@ -90,8 +93,11 @@ It comes down to what Kitchen Sink teaches: only kept copies match an adopter's 
   exist and there is nothing to compare.
 - **The refresh is a copy beside `compareRegistryCopies`**, not `fsdev ui add`, which runs
   `npx shadcn@latest` over the network and stops at overwrite prompts.
-- **Kitchen Sink goes last** after FIX-2554, FIX-2458 and FIX-2456, editing only its `fsdev`
-  script, the Codex comments, `.gitignore`, `CLAUDE.md` and the refresh script.
+- **Kitchen Sink goes last** after FIX-2554, FIX-2458, FIX-2456, FIX-2452 (the `scheduler` line
+  in `fsdev.config.ts`) and FIX-2450 (two `resumeSuspension` call sites), editing only its
+  `fsdev` script, the Codex comments, `.gitignore`, `CLAUDE.md` and the refresh script.
+- **Kitchen Sink's tracker ids stay.** It is unpublished, so its 145 sites sit outside the
+  Leakage rule; named in the spec's *Leaves*.
 - **CI's `pnpm --filter @flow-state-dev/kitchen-sink run fsdev gen --check`** must still pass
   through the new script.
 - **No changeset.** The CLI's published manifest doesn't change (BP-022).
@@ -115,5 +121,8 @@ spec set.
   two of the issue's items already true on `main` (Kitchen Sink's Codex README, a drift test).
   The copy-out gaps grew past the CLI path to `workspace:*`, `tsconfig` extends, a repo import in
   `next.config.mjs`, and tests that read docs pages.
-
-**Open:** [Kitchen Sink's registry copies](#open-registry-copies).
+- **Set review (Nov 5):** the open fork on Kitchen Sink's registry copies became D3, decided on
+  its recommendation; *Leaves* now credits Shift Manager's drift test and names only the labs'
+  copies as untested; the goal cells are admitted under *First hour* and shared with FIX-2562's
+  j1, with `--control=adopter-goal` as the control; Kitchen Sink's tracker ids are left; the
+  Kitchen Sink seam adds FIX-2452 and FIX-2450 ahead of this issue.

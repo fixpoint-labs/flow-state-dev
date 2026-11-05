@@ -10,7 +10,7 @@
 | **copies a guide's example out after reading its docs page** | `tsc` can't find `../../../tsconfig.base.json`. Two guides' tests read `apps/docs` pages and fail | The same recipe. `typecheck` and `test` pass; a docs-page comparison runs in the repo only |
 | **reads `hello-chat`'s README to learn the framework** | It promises `ctx.emit.message()` and `useClientData`; neither is in the code. No run steps | It names what the code does, and how to run it |
 | **opens `examples/` to find a starting point** | The table lists two examples. The five `guides/` examples aren't there | All seven, each with its docs page linked |
-| **edits a registry component** | Edits it twice; 15 of the last 18 commits to Kitchen Sink's copies edited the registry too. A drift test catches a miss | Edits the registry, runs one command. The drift test stays the gate ([open](DECISIONS.md#open-registry-copies)) |
+| **edits a registry component** | Edits it twice; 15 of the last 18 commits to Kitchen Sink's copies edited the registry too. A drift test catches a miss | Edits the registry, runs one command. The drift test stays the gate ([D3](DECISIONS.md#d3)) |
 | **reads Kitchen Sink's Codex mode, or clones the repo** | Comments describe a sandbox narrowed to the run's directory; the code turns it off. A Playwright run dirties a tracked `test-results/.last-run.json` | The comments say what runs. `test-results/` is ignored |
 
 The quick start (FIX-2451's) gets an adopter to a first answer; the examples are where they go next.
@@ -41,11 +41,11 @@ The check reads what an empty folder does with the example, never the repo's vie
 
 | How we verify | |
 |---|---|
-| **Goal check** | Assertions `first-hour.example.<name>.<step>` under the manifest's *First hour* row, in FIX-2564's `scripts/packed-install/run.mjs`, written `expect: fail` there; this issue flips them to `expect: pass`. If FIX-2564 doesn't take them, the closure runs this check as one the manifest doesn't cover. Model `n/a` |
+| **Goal check** | Cells `first-hour.example.<name>.<step>`, admitted under the manifest's *First hour* row in FIX-2564's `scripts/packed-install/run.mjs` (`run.mjs --goal`) at `expect: fail`. This issue flips them to `expect: pass`; FIX-2562's j1 reuses the same cells rather than adding its own. Model `n/a` |
 | **Signal** | Each example's *install*, *typecheck*, *test* and *fsdev* (`npm run fsdev -- --help`) exit 0. The keyless `board-lifecycle`, `custom-pattern` and `research-team` run their README's `fsdev run` lines to an answer; `hello-chat` passes `next build` |
 | **Input** | The seven folders under `examples/`. An eighth example added later is picked up by the folder walk, not a list |
 | **Anti-game** | A temporary folder outside the repo, no parent `node_modules`, tarballs under the resolution guard. Never assert on `package.json` text |
-| **Control that must fail** | `run.mjs --control` over `main` at the epic's pinned commit: `first-hour.example.board-lifecycle.fsdev` fails on the `tsx` path, and `.typecheck` on the missing `tsconfig.base.json` |
+| **Control that must fail** | `run.mjs --control=adopter-goal` over `main` at the epic's pinned commit: `first-hour.example.board-lifecycle.fsdev` fails on the `tsx` path, and `.typecheck` on the missing `tsconfig.base.json` |
 
 ## What changes
 
@@ -113,9 +113,9 @@ pointing at the recipe in the five `apps/docs` pages that link `examples/guides/
 
 | The debt | |
 |---|---|
-| **Removes** | Eight `tsx` scripts into `packages/cli`; six repo-relative `tsconfig` extends; `hello-chat`'s repo import and two false README claims; stale Codex sandbox comments; a tracked `test-results` file; the hand sync |
+| **Removes** | Eight `tsx` scripts into `packages/cli`; six repo-relative `tsconfig` extends; `hello-chat`'s repo import and two false README claims; stale Codex sandbox comments; a tracked `test-results` file; the hand sync of Kitchen Sink's registry copies |
 | **Adds** | A second `bin` in the CLI's manifest; a recipe to keep true, which the goal check runs; a refresh script |
-| **Leaves** | Shift Manager's 31 and the labs' 9 + 9 registry copies, with no drift test; the labs' `tsx` scripts. Unfiled; raised with the epic |
+| **Leaves** | Shift Manager's 31 registry copies, drift-tested by its own `test/static.test.ts`. The labs' 9 + 9 (`teammates`, `claude-code-style`), with no drift test. The labs' `tsx` scripts. Kitchen Sink's 145 tracker-id sites: it is unpublished and outside the Leakage rule. Unfiled; raised with the epic |
 
 **Net: down.** Every path from an example into the repo goes, for one manifest field and a recipe.
 
@@ -131,8 +131,8 @@ the folders it describes.
    If wrong: the tarball's bin changes. **The one to weigh.**
 2. [D1](DECISIONS.md#d1) · `workspace:*` stays; the recipe rewrites it. If wrong: one step a
    reader skips.
-
-**Open:** [Kitchen Sink's registry copies](DECISIONS.md#open-registry-copies). The epic says
-delete them. I recommend keeping them and dropping the hand sync.
+3. [D3](DECISIONS.md#d3) · Kitchen Sink keeps its 43 registry copies; one refresh command
+   replaces the hand sync. Decided at set review on this recommendation; the epic's *Removes*
+   row now names the hand sync. If wrong: 43 files and a refresh step.
 
 Improvement · examples, Kitchen Sink, `packages/cli` manifest, `packages/ui` script · S · epic [FIX-2447](../../epics/FIX-2447/SPEC.md)
