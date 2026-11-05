@@ -22,7 +22,7 @@
  */
 import { collapseToCanonicalLog, isSuspensionWait, resolveItemVisibility, type MessageItem, type ToolOutputItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
-import { isWaitGate, waitGateDataOf, type SuspensionRecord } from "@flow-state-dev/core/types";
+import { isWaitGate, waitGateDataOf } from "@flow-state-dev/core/types";
 import type { DurabilityProvider } from "../durability/types";
 import { parkedInterruptedIds } from "../durability/stop-suspended";
 import { PAST_TURN_STATUSES, retriedIds } from "../execution/past-turns";
@@ -104,7 +104,7 @@ export async function readSettledTurns(inputs: SettledTurnsInputs): Promise<Sett
   const start = listed.length > turns && window[0] !== undefined ? { requestId: window[0].id } : undefined;
   const retried = retriedIds([...window, ...(inputs.openTurns ?? [])], inputs.runningMetadata);
   let parked = new Set<string>();
-  let calls = new Map<string, SuspensionRecord>();
+  let waiting = new Set<string>();
   // The session's suspended turns no older than the window: those waiting on
   // a call are read as far as they got. Without a durability provider nothing
   // suspends, so there is nothing to list.
@@ -117,21 +117,20 @@ export async function readSettledTurns(inputs: SettledTurnsInputs): Promise<Sett
         );
   try {
     parked = await parkedInterruptedIds(inputs.durability, window, inputs.wakes);
-    calls = await callWaits(inputs.durability, [...suspended, ...window.filter((r) => parked.has(r.id) && !retried.has(r.id))]);
+    waiting = await callWaits(inputs.durability, inputs.scope, [...suspended, ...window.filter((r) => parked.has(r.id) && !retried.has(r.id))]);
   } catch (error) {
     inputs.onGateReadError(error);
   }
-  const waiting = new Set([...calls.keys()]);
-  const settled = [...window, ...suspended.filter((r) => calls.has(r.id))]
+  const settled = [...window, ...suspended.filter((r) => waiting.has(r.id))]
     .filter((r) => r.id !== runningRequestId)
     .filter((r) => r.status !== "interrupted" || waiting.has(r.id) || (!retried.has(r.id) && !parked.has(r.id)))
     .map((r) => {
       if (r.status === "completed" || r.items === undefined) return r;
-      const gate = calls.get(r.id);
+      const wait = waiting.has(r.id);
       // A waiting turn's parked call is recorded as a failed tool call (`isSuspensionWait`):
       // it has not failed, so the waiting line names it instead.
-      const items = r.items.filter((i) => i.status !== "in_progress" && (gate === undefined || !parkedCall(i)));
-      return { ...r, items: gate === undefined ? items : [...items, waitingLine(r, r.items)] };
+      const items = r.items.filter((i) => i.status !== "in_progress" && (!wait || !isSuspensionWait(i)));
+      return { ...r, items: wait ? [...items, waitingLine(r, r.items)] : items };
     })
     .sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.id, b.startedAtMs, b.id));
 
@@ -139,37 +138,29 @@ export async function readSettledTurns(inputs: SettledTurnsInputs): Promise<Sett
 }
 
 /**
- * The pending call gates of `records`, by request id: a wait gate bound to a
- * request, never a stop for the user or a wait on a task. One pending-gate read
- * per session. Without a durability provider nothing can wait.
+ * Ids among `records` whose only pending gate is a call: a wait gate bound to a
+ * request. A stop for the user, or a wait on a task, stays out. One pending-gate
+ * read of this session. Without a durability provider nothing can wait.
  */
 async function callWaits(
   provider: Pick<DurabilityProvider, "listSuspended"> | undefined,
-  records: readonly Pick<RequestRecord, "id" | "userId" | "sessionId">[]
-): Promise<Map<string, SuspensionRecord>> {
-  const calls = new Map<string, SuspensionRecord>();
+  scope: Pick<ReturnType<typeof sessionRequestScope>, "userId" | "sessionId">,
+  records: readonly { readonly id: string }[]
+): Promise<Set<string>> {
+  const calls = new Set<string>();
   if (provider === undefined || records.length === 0) return calls;
   const ids = new Set(records.map((r) => r.id));
-  const others = new Set<string>();
-  const sessions = new Map<string, { userId: string; sessionId: string | undefined }>();
-  for (const r of records) sessions.set(`${r.userId}\u0000${r.sessionId ?? ""}`, { userId: r.userId, sessionId: r.sessionId });
-  for (const { userId, sessionId } of sessions.values()) {
-    const pending = await provider.listSuspended({ userId, ...(sessionId !== undefined ? { sessionId } : {}), status: "pending" });
-    for (const gate of pending) {
-      if (!ids.has(gate.requestId)) continue;
-      const binding = isWaitGate(gate) ? waitGateDataOf(gate)?.binding : undefined;
-      if (binding !== undefined && "requestId" in binding) calls.set(gate.requestId, gate);
-      else others.add(gate.requestId);
-    }
+  const pending = await provider.listSuspended({ userId: scope.userId, sessionId: scope.sessionId, status: "pending" });
+  const blocked = new Set<string>();
+  for (const gate of pending) {
+    if (!ids.has(gate.requestId)) continue;
+    const binding = isWaitGate(gate) ? waitGateDataOf(gate)?.binding : undefined;
+    if (binding !== undefined && "requestId" in binding) calls.add(gate.requestId);
+    else blocked.add(gate.requestId);
   }
   // A request that also holds another gate (a stop for the user beside its call) stays out.
-  for (const id of others) calls.delete(id);
+  for (const id of blocked) calls.delete(id);
   return calls;
-}
-
-/** A tool call a park left on the log: recorded failed, coded `SUSPENSION` (`isSuspensionWait`). */
-function parkedCall(item: RuntimeItem): boolean {
-  return item.type === "tool_output" && isSuspensionWait(item as ToolOutputItem);
 }
 
 /** How much of a waiting tool call's arguments the waiting line quotes. */
@@ -186,7 +177,7 @@ function waitingLine(record: RequestRecord, items: readonly RuntimeItem[]): Runt
   // named again; and only calls the history view shows, so a hidden call's
   // name and arguments never reach a model through this line.
   const open = collapseToCanonicalLog(items).filter(
-    (i): i is ToolOutputItem & RuntimeItem => i.type === "tool_output" && (i.status === "in_progress" || parkedCall(i)) && resolveItemVisibility(i).history
+    (i): i is ToolOutputItem & RuntimeItem => i.type === "tool_output" && (i.status === "in_progress" || isSuspensionWait(i)) && resolveItemVisibility(i).history
   );
   const quote = (args: string) => (args.length > WAITING_ARGUMENTS_CHARS ? `${args.slice(0, WAITING_ARGUMENTS_CHARS)}…` : args);
   const on = open.length > 0 ? open.map((i) => `${i.toolCall.alias ?? i.toolCall.name}(${quote(i.toolCall.arguments)})`).join(", ") : "a call";
