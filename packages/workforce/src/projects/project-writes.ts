@@ -148,7 +148,29 @@ export interface ProjectBlocksOptions {
    * refused `unknown-mcp-server`.
    */
   mcpServers?: readonly string[];
+  /**
+   * The host's answer to whether a run on a repository would get a checkout
+   * on this machine — a workspace host's `checkRepository`, bound to the
+   * directory its runs must not commit. Given: `createProject` and
+   * `setRepository` refuse an unusable repository `repository-unusable`, with
+   * the host's words, and a read-only `checkRepository` action asks the same
+   * question before a write. Absent: no such refusal and no action; a
+   * repository is learned unusable at its first run, as before.
+   */
+  checkRepository?: RepositoryCheck;
 }
+
+/** The host's answer for one repository: where a run's checkout would be, or why there would be none. */
+export const repositoryCheckAnswerSchema = z.union([
+  z.object({ usable: z.literal(true), how: z.enum(["worktree", "clone"]) }),
+  z.object({ usable: z.literal(false), problem: z.string() })
+]);
+
+/** @see repositoryCheckAnswerSchema */
+export type RepositoryCheckAnswer = z.infer<typeof repositoryCheckAnswerSchema>;
+
+/** Asks the host whether a run on `repository` would get a checkout. See `ProjectBlocksOptions.checkRepository`. */
+export type RepositoryCheck = (repository: string) => Promise<RepositoryCheckAnswer>;
 
 /** What `setBrief` takes: the address and the new brief or `null`. No address: the linked project. */
 export const setBriefInputSchema = z
@@ -164,7 +186,7 @@ export const setBriefOutputSchema = z.object({ project: projectRowSchema });
 /** The project writes, the project read and the project files read, and the same blocks as an `actions` map. */
 export type ProjectBlocks = {
   createProject: ReturnType<typeof defineWriteProject>;
-  setRepository: typeof setRepository;
+  setRepository: ReturnType<typeof defineSetRepository>;
   setMcpServers: ReturnType<typeof defineSetMcpServers>;
   setChecks: typeof setChecks;
   setBrief: typeof setBrief;
@@ -180,6 +202,8 @@ export type ProjectBlocks = {
     readProject: ActionConfig;
     listProjects: ActionConfig;
     readProjectFiles: ActionConfig;
+    /** Present only when the host gave `checkRepository`. */
+    checkRepository?: ActionConfig;
   };
 };
 
@@ -201,6 +225,17 @@ function assertRepository(repository: string | null | undefined): void {
   if (problem !== undefined) throw new ProjectRefusedError("invalid-repository", `${problem}.`);
 }
 
+/**
+ * Refuse a repository the host says no run could check out. Asked after the
+ * value itself passed. A check that throws (git timed out, say) fails the
+ * write with its own error: it is neither a refusal nor a pass.
+ */
+async function assertRepositoryUsable(check: RepositoryCheck | undefined, repository: string | null | undefined): Promise<void> {
+  if (check === undefined || repository == null) return;
+  const answer = await check(repository);
+  if (!answer.usable) throw new ProjectRefusedError("repository-unusable", answer.problem);
+}
+
 /** The commands, trimmed, or refused `invalid-check` naming the first a row may not record. */
 function checkedChecks(checks: readonly string[]): string[] {
   const trimmed = checks.map((check) => check.trim());
@@ -212,7 +247,7 @@ function checkedChecks(checks: readonly string[]): string[] {
 }
 
 /** `createProject`, refusing an MCP server name outside `offered`. */
-function defineWriteProject(offered: readonly string[]) {
+function defineWriteProject(offered: readonly string[], check: RepositoryCheck | undefined) {
   return handler({
     name: "project-create",
     inputSchema: createProjectInputSchema,
@@ -229,7 +264,7 @@ function defineWriteProject(offered: readonly string[]) {
         throw new Error("createProject needs a session with an owner: the owner is the session's user.");
       }
       const visibility: ProjectVisibility = input.visibility ?? "shared";
-      if (visibility === "private") return writePrivateProject(ctx, input, owner, mcpServers, checks);
+      if (visibility === "private") return writePrivateProject(ctx, input, owner, mcpServers, checks, check);
       const { projects } = refsOf(ctx);
 
       const heldBy = (row: ProjectRow): CreateProjectOutput => {
@@ -242,6 +277,8 @@ function defineWriteProject(offered: readonly string[]) {
 
       const existing = await projects.getOptional(input.id);
       if (existing !== undefined) return heldBy(existing.state as ProjectRow);
+      // Only a create that makes a row asks the host: a re-sent create hands its row back whatever the repository is now.
+      await assertRepositoryUsable(check, input.repository);
 
       const row: ProjectRow = projectRowSchema.parse({
         id: input.id,
@@ -278,7 +315,8 @@ async function writePrivateProject(
   input: CreateProjectInput,
   owner: string,
   mcpServers: string[],
-  checks: string[]
+  checks: string[],
+  check: RepositoryCheck | undefined
 ): Promise<CreateProjectOutput> {
   const others = unique(input.members ?? []).filter((member) => member !== owner);
   if (others.length > 0) {
@@ -296,6 +334,7 @@ async function writePrivateProject(
   });
   const existing = await projects.getOptional(input.id);
   if (existing !== undefined) return done(existing.state, false);
+  await assertRepositoryUsable(check, input.repository);
   const row: ProjectRow = projectRowSchema.parse({
     id: input.id,
     title: input.title,
@@ -325,18 +364,39 @@ async function writePrivateProject(
  * `setRepository` writes at once the later one wins whole. A lost race is
  * retried past the engine's own budget, as the other contended row writes are.
  */
-const setRepository = handler({
-  name: "project-set-repository",
-  inputSchema: setRepositoryInputSchema,
-  outputSchema: setRepositoryOutputSchema,
-  resources: WRITE_RESOURCES,
-  execute: async (input, ctx) => {
-    const row = await projectRowToChange(ctx, input.project, "repository");
-    assertRepository(input.repository);
-    await retryOnConflict(() => row.updateState((state) => ({ ...state, repository: input.repository })));
-    return { project: projectRowSchema.parse(row.state) };
-  }
-});
+function defineSetRepository(check: RepositoryCheck | undefined) {
+  return handler({
+    name: "project-set-repository",
+    inputSchema: setRepositoryInputSchema,
+    outputSchema: setRepositoryOutputSchema,
+    resources: WRITE_RESOURCES,
+    execute: async (input, ctx) => {
+      const row = await projectRowToChange(ctx, input.project, "repository");
+      assertRepository(input.repository);
+      await assertRepositoryUsable(check, input.repository);
+      await retryOnConflict(() => row.updateState((state) => ({ ...state, repository: input.repository })));
+      return { project: projectRowSchema.parse(row.state) };
+    }
+  });
+}
+
+/**
+ * `checkRepository`: the same question `createProject` and `setRepository`
+ * ask, as a read a page asks before either, so its answer and the write's
+ * refusal are one answer. A value no row may record answers its problem too.
+ */
+function defineCheckRepository(check: RepositoryCheck) {
+  return handler({
+    name: "project-check-repository",
+    inputSchema: z.object({ repository: z.string() }).strict(),
+    outputSchema: repositoryCheckAnswerSchema,
+    execute: async (input): Promise<RepositoryCheckAnswer> => {
+      const problem = repositoryProblem(input.repository);
+      if (problem !== undefined) return { usable: false, problem: `${problem}.` };
+      return await check(input.repository);
+    }
+  });
+}
 
 /**
  * `setMcpServers`: replace a project's MCP server names whole; `[]` turns
@@ -405,13 +465,16 @@ async function projectRowToChange(ctx: BlockContext, named: ProjectAddress | und
  *
  * @param options `mcpServers`: the MCP server names this host offers its
  *   projects. Absent: none, and a project can name no server.
+ *   `checkRepository`: the host's repository check (see
+ *   `ProjectBlocksOptions.checkRepository`).
  * @example
  *   const projects = defineProjectBlocks({ mcpServers: ["linear"] });
  *   defineFlow({ kind: "lab", actions: { ...projects.actions } });
  */
 export function defineProjectBlocks(options: ProjectBlocksOptions = {}): ProjectBlocks {
   const offered = [...(options.mcpServers ?? [])];
-  const createProject = defineWriteProject(offered);
+  const createProject = defineWriteProject(offered, options.checkRepository);
+  const setRepository = defineSetRepository(options.checkRepository);
   const setMcpServers = defineSetMcpServers(offered);
   return {
     createProject,
@@ -459,7 +522,16 @@ export function defineProjectBlocks(options: ProjectBlocksOptions = {}): Project
       readProjectFiles: {
         block: readProjectFiles,
         description: "Read the files a project keeps: each file's path under the project and its size in bytes. Members only."
-      }
+      },
+      ...(options.checkRepository === undefined
+        ? {}
+        : {
+            checkRepository: {
+              block: defineCheckRepository(options.checkRepository),
+              description:
+                "Whether a coding run on this repository would get a checkout on this machine, and why not. The same check createProject and setRepository refuse with."
+            }
+          })
     }
   };
 }

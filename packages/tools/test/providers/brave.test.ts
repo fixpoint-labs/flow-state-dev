@@ -117,4 +117,42 @@ describe("braveAdapter", () => {
 
     expect(result.results).toHaveLength(3);
   });
+
+  it("applies domain filters with site: / -site: query operators", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({}), { status: 200 })
+    );
+
+    const result = await braveAdapter.search("react hooks", {
+      maxResults: 5,
+      searchDepth: "basic",
+      topic: "general",
+      includeDomains: ["react.dev", "github.com"],
+      excludeDomains: ["pinterest.com"],
+      apiKey: "test-key",
+    });
+
+    const url = new URL((fetch as any).mock.calls[0][0]);
+    expect(url.searchParams.get("q")).toBe(
+      "react hooks (site:react.dev OR site:github.com) -site:pinterest.com"
+    );
+    // The normalized query stays the original, un-augmented string.
+    expect(result.query).toBe("react hooks");
+  });
+
+  it("sends the query unchanged when no domain filter is set", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({}), { status: 200 })
+    );
+
+    await braveAdapter.search("react hooks", {
+      maxResults: 5,
+      searchDepth: "basic",
+      topic: "general",
+      apiKey: "test-key",
+    });
+
+    const url = new URL((fetch as any).mock.calls[0][0]);
+    expect(url.searchParams.get("q")).toBe("react hooks");
+  });
 });

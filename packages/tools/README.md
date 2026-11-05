@@ -49,8 +49,8 @@ search({
   agentControlsTier: true,   // expose `tier` to the model so it picks depth per query
   searchDepth: "advanced",   // "basic" (default) or "advanced" — content pulled per result
   searchMode: "neural",      // provider-native override of the tier mapping (e.g. Exa type)
-  includeDomains: ["arxiv.org"],   // restrict to these domains (where supported)
-  excludeDomains: ["pinterest.com"], // exclude these domains (where supported)
+  includeDomains: ["arxiv.org"],   // restrict to these domains
+  excludeDomains: ["pinterest.com"], // exclude these domains
   topic: "news",             // "general" (default) or "news"
   keys: { tavily: "sk-..." }, // explicit keys (default: env vars)
 });

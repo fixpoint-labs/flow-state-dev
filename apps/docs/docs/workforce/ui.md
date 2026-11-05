@@ -38,6 +38,25 @@ A flow with `cardinality: "singleton"` is one instance whose address is its flow
 
 There is no prop for choosing the depth. What the navigator shows always matches the flow, so a flow that changes its cardinality changes the navigator with it.
 
+## Session rows
+
+Each session row shows the session's title, a mark for the state of its latest request, and how long ago the session changed (`now`, `4m`, `3h`, `2d`, `5w`). Hover the mark for its label, or the age for the full time.
+
+| Mark | Label | Latest request |
+|------|------|----------------|
+| ● | Running | `in_progress` |
+| ◆ | Waiting on you | `suspended`, on a question or an approval for the user |
+| ◇ | Waiting | `suspended`, on other work, such as a reply from another worker |
+| ! | Interrupted | `interrupted` |
+| ✕ | Failed | `failed` |
+| ! | Incomplete | `incomplete` |
+
+A session whose latest request completed, one the user stopped, and one with no request yet show no mark. Every mark except Running and Waiting is drawn in `--fsd-nav-attention`, since those sessions need the user. A request still running or waiting counts as the latest, even when a later one has ended.
+
+With a `client` that has `subscribe`, as any client from `createClient` does, an open leaf's sessions stay current. A session created, titled or deleted, or a request starting or ending, shows up within about a second on a host that pushes and within a few seconds elsewhere, whether the change came from this tab, another one, a script or a CLI run. A change from another server process arrives that fast only on a [bus that crosses processes](/guides/realtime#one-process-several-processes). The list also reads again when the page becomes visible. A client you narrowed to `flows` and `sessions.list` reads the sessions once each time the leaf opens.
+
+To draw rows like these in a list of your own, use [`useSessionList`](../api/react.md#usesessionlistoptions) with the same helpers the navigator uses: `sessionLabel`, `sessionRowState` and `sessionAge`.
+
 ## Showing the roster and the boards
 
 `Roster`, `BoardColumns` and `BoardList` read collections through a session you pass in. `Roster` reads the user's worker collection under the key `roster`, so its session's flow has to declare it there:
@@ -143,7 +162,7 @@ No component draws the [messages your workers send each other](./messaging-worke
 
 <Figure svg={UiReadSourcesDrawing} caption="Three places a component reads" description={"Three columns. One session's items, read by messages, task plans and approval cards: they arrive live and are still there after a reload. An organization's collection, read by the roster, board columns and board list: everyone sees the same rows, read on mount, and with live again when they change. Your server's flow list, read by the navigator: read once, with a leaf's sessions read only when that leaf opens. A footer says how each reads again: items keep arriving, a panel with live reads again on any session's change and one without on a new React key, and the navigator's leafToolbar slot is handed a refresh function"} />
 
-What a component reads decides when it updates. Messages, task plans and approval cards from the [component registry](../ui/flow-aware-components) follow one session's items as they arrive. The roster and board panels read a standing collection once, when they mount, unless you pass `live`: a live `Roster` or `BoardColumns` reads again when any session changes its collection, and a live `BoardList` when the session it follows does ([A board as a list](#a-board-as-a-list)). The navigator reads the flow list once, and a leaf's sessions only when that leaf opens. A leaf is a singleton flow kind, or one instance of a collection flow kind, so opening a collection flow kind's own row reads nothing and a roster of two hundred workers costs one request to draw.
+What a component reads decides when it updates. Messages, task plans and approval cards from the [component registry](../ui/flow-aware-components) follow one session's items as they arrive. The roster and board panels read a standing collection once, when they mount, unless you pass `live`: a live `Roster` or `BoardColumns` reads again when any session changes its collection, and a live `BoardList` when the session it follows does ([A board as a list](#a-board-as-a-list)). The navigator reads the flow list once. It reads a leaf's sessions when that leaf opens, and again whenever one of them changes while it stays open ([Session rows](#session-rows)). A leaf is a singleton flow kind, or one instance of a collection flow kind, so opening a collection flow kind's own row reads nothing and a roster of two hundred workers costs one request to draw.
 
 To read again on demand, change a panel's React `key`, or use the `refresh` function the navigator's `leafToolbar` slot is handed. What that slot returns sits on the open leaf's own row, after any `rowTrailing` content.
 
@@ -153,6 +172,7 @@ The components ship with no CSS framework and no icon set. Style them with:
 
 - **CSS custom properties** for colour, spacing and type: `--fsd-nav-*` for the navigator,
   `--fsd-panel-*` for the roster, the board columns and the board list. Set them on any ancestor.
+  `--fsd-nav-attention` colours the marks on session rows that need the user; it defaults to an orange.
 - **Slots** for the parts that are yours. The navigator's are `rowTrailing` at the end of a row, `leafToolbar` on an open leaf's row, `leafDetail` under an open leaf's row for content that doesn't fit on it, `sectionHeader` beside a section label, and `emptySection` for a section whose flow kinds your server doesn't have.
 
 The navigator draws a dashed line down from each open row, past the rows under it, and indents each level by the width of the expand arrow. `--fsd-nav-guide` sets the line colour. Set it to `transparent` to hide the lines.
@@ -178,6 +198,7 @@ If your app also renders the `@flow-state-dev/ui` components (messages, tool cal
   --fsd-nav-selected-bg: var(--accent);
   --fsd-nav-selected-fg: var(--accent-foreground);
   --fsd-nav-guide: var(--border);
+  --fsd-nav-attention: var(--warning);
   --fsd-panel-fg: var(--foreground);
   --fsd-panel-muted-fg: var(--muted-foreground);
 }

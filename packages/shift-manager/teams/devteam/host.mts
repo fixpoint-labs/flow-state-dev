@@ -70,6 +70,8 @@ import {
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, type WorkspaceHost, type WorkspaceSetup } from "@flow-state-dev/workspace";
+import { fetch } from "@flow-state-dev/tools/fetch";
+import { search } from "@flow-state-dev/tools/search";
 import { z } from "zod";
 import {
   AGENT_FLOW,
@@ -88,6 +90,7 @@ import {
   defineWorkstreamBlocks,
   projectCoordinatorTools,
   projectChecks,
+  projectSourceTools,
   projectWorkspace,
   mergeWorkerFlows,
   openInventory,
@@ -1036,6 +1039,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // the roster writes; a project coordinator's line names `readProject`,
     // `setBrief`, `setRepository`, `listLeads`, `openWorkstream` and
     // `editWorkstream`, and a workstream's lead's `updateWorkstream`.
+    // The researcher's line names the lookups: web search, fetch, and the
+    // reads of its session's project, on the coder's host when the lab has
+    // one and otherwise on the answer host, which has the same run source.
     catalog: {
       ...(options.withoutProjectTools === true ? {} : projectTools),
       ...rosterTools,
@@ -1043,6 +1049,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       listLeads: workstreamBlocks.listLeadsTool,
       updateWorkstream: workstreamBlocks.updateWorkstreamTool,
       ...(options.withoutProjectTools === true ? {} : { editWorkstream: workstreamBlocks.editWorkstreamTool }),
+      ...projectSourceTools(workspaceHost ?? answerHost),
+      search: search(),
+      fetch: fetch(),
     },
     uses: [
       // The worker inventory, which the discovery door reads.

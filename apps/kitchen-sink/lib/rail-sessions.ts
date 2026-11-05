@@ -10,15 +10,22 @@
  * a session on the `coordinator` flow that names it, found the way any
  * worker's is (`ensureWorkerSession({ worker })`, which matches on the
  * criteria's keys and so never returns a delegate's session). Each row reads
- * as the coordinator's id, the name the user knows it by.
+ * as the coordinator's id, the name the user knows it by, and carries its
+ * turn state, when the navigator asks for it, from a listing of that
+ * coordinator's own sessions (never the flow whole), so its rows are marked
+ * like every other.
+ *
+ * `subscribe` passes through, so the navigator's open leaves stay live.
  */
 import type { Client, SessionSummary } from "@flow-state-dev/client";
 import type { WorkforceClient } from "@flow-state-dev/workforce/browser";
 
 import { isCoordinatorFlow } from "./workforce-shell";
 
-/** What the rail's navigator reads: the client's user, its flow list, and its session listing. */
-export type RailClient = Pick<Client, "userId" | "flows"> & { readonly sessions: Pick<Client["sessions"], "list"> };
+/** What the rail's navigator reads: the client's user, its flow list, its session listing, and `subscribe` to stay live. */
+export type RailClient = Pick<Client, "userId" | "flows" | "subscribe"> & {
+  readonly sessions: Pick<Client["sessions"], "list">;
+};
 
 /**
  * The client the rail's navigator reads through: the page's own, with the
@@ -36,14 +43,33 @@ export function railSessions(
     const flow = options?.flowKind;
     if (flow === undefined || !isCoordinatorFlow(flow)) return await client.sessions.list(options);
     const coordinators = (await workforce.roster()).filter((worker) => isCoordinatorFlow(worker.flow));
+    const include = options?.include === undefined ? [] : [options.include].flat();
+    const withStatus = include.includes("status");
+    // Per roster coordinator: find or start the user's conversation and, when
+    // the navigator asks for state, list that coordinator's own sessions.
     return await Promise.all(
-      coordinators.map(
-        async ({ id: worker }): Promise<SessionSummary> => ({
-          ...(await workforce.ensureWorkerSession({ worker })),
-          title: worker,
-        }),
-      ),
+      coordinators.map(async ({ id: worker }): Promise<SessionSummary> => {
+        const [session, listed] = await Promise.all([
+          workforce.ensureWorkerSession({ worker }),
+          withStatus
+            ? client.sessions.list({ flowKind: flow, state: { workerId: worker }, include: ["status"] })
+            : undefined,
+        ]);
+        const row: SessionSummary = { ...session, title: worker };
+        const state = listed?.find((candidate) => candidate.id === session.id);
+        if (state?.requestStatus == null) return row;
+        return {
+          ...row,
+          requestStatus: state.requestStatus,
+          ...(state.requestWaitsForUser === undefined ? {} : { requestWaitsForUser: state.requestWaitsForUser }),
+        };
+      }),
     );
   };
-  return { userId: client.userId, flows: () => client.flows(), sessions: { list } };
+  return {
+    userId: client.userId,
+    flows: () => client.flows(),
+    sessions: { list },
+    subscribe: (topics, options) => client.subscribe(topics, options),
+  };
 }
