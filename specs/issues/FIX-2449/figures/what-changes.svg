@@ -1,0 +1,73 @@
+<svg viewBox="0 0 940 430" role="img" aria-label="Before: one engine root of 383 names, filled by five export-star lines, with 26 core and contracts names re-exported, an unstable_ prefix for sibling seams, and ten names that collide across the foundation packages. After: three entries split by who imports. The root holds what an app author needs, about 36 names apps, examples and docs pages show. engine/host holds what host and store adapter authors implement or call, documented and semver-covered. engine/internal holds what only our own packages read, published but outside semver. 215 names nobody outside engine imports are no longer exported, the four package markers are gone, and collisions go from ten to zero."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .old   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .app   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .host  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .int   { fill:var(--surface); stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:5 4; }
+    .gone  { fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:3 3; }
+    .fence { stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:6 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-m   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .c-code{ fill:var(--code); } .c-acc{ fill:var(--accent); } .c-gone{ fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="430"/>
+
+  <g id="before">
+    <text class="t-lbl" x="16" y="28">TODAY · ONE ROOT</text>
+    <rect class="old" x="16" y="40" width="380" height="300" rx="6"/>
+    <text class="t-b" x="32" y="66">@flow-state-dev/engine</text>
+    <text class="t-s" x="32" y="86">383 names, for every reader at once</text>
+    <text class="t-m" x="32" y="116">export * from ./streaming</text>
+    <text class="t-m" x="32" y="132">export * from ./execution</text>
+    <text class="t-m" x="32" y="148">export * from ./registry</text>
+    <text class="t-m" x="32" y="164">export * from ./routes</text>
+    <text class="t-m" x="32" y="180">export * from ./transports</text>
+    <text class="t-s" x="32" y="208">+ 26 core and contracts names, re-exported</text>
+    <text class="t-s" x="32" y="226">+ unstable_ helpers for our own packages</text>
+    <text class="t-s" x="32" y="244">+ enginePackageMarker</text>
+    <text class="t-s" x="32" y="272">shown by an app, example or docs page: 36</text>
+    <text class="t-s" x="32" y="290">by an adapter or our packages: 132</text>
+    <text class="t-s c-gone" x="32" y="308">by nobody outside engine: 215</text>
+    <text class="t-s c-gone" x="32" y="326">collisions across foundation entries: 10</text>
+  </g>
+
+  <path class="arrow" d="M404 190 L436 190 M428 184 L436 190 L428 196"/>
+
+  <g id="after">
+    <text class="t-lbl" x="448" y="28">AFTER · THREE ENTRIES, BY WHO IMPORTS</text>
+    <rect class="app" x="448" y="40" width="476" height="70" rx="6"/>
+    <text class="t-lbl c-code" x="464" y="58">AN APP AUTHOR</text>
+    <text class="t-b" x="464" y="78">@flow-state-dev/engine</text>
+    <text class="t-s" x="464" y="96">createFlowState, stores, registry, runAction, in-process fetch, errors</text>
+    <rect class="host" x="448" y="120" width="476" height="70" rx="6"/>
+    <text class="t-lbl c-acc" x="464" y="138">A HOST OR STORE ADAPTER AUTHOR · DOCUMENTED · SEMVER</text>
+    <text class="t-b" x="464" y="158">@flow-state-dev/engine/host</text>
+    <text class="t-s" x="464" y="176">inbound transport host, stream bridge, leases, store contracts</text>
+    <line class="fence" x1="448" y1="204" x2="924" y2="204"/>
+    <text class="t-lbl" x="800" y="218">OUTSIDE SEMVER</text>
+    <rect class="int" x="448" y="226" width="476" height="62" rx="6"/>
+    <text class="t-lbl" x="464" y="244">OUR OWN PACKAGES ONLY</text>
+    <text class="t-b" x="464" y="264">@flow-state-dev/engine/internal</text>
+    <text class="t-s" x="464" y="280">runRead, the lease backend, mcp's resource helpers</text>
+    <rect class="gone" x="448" y="300" width="476" height="40" rx="6"/>
+    <text class="t-s c-gone" x="464" y="324">not exported: 215 names · 4 markers · 26 re-exports · collisions 10 to 0</text>
+  </g>
+
+  <g id="foot">
+    <text class="t-s" x="16" y="372">Unchanged: engine/testing, engine/prompt-file, engine/resource-template, and every name's behaviour.</text>
+    <text class="t-s" x="16" y="392">Collisions are checked on every public entry of contracts, core, engine, client, react and testing.</text>
+  </g>
+</svg>
