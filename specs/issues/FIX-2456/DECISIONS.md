@@ -97,8 +97,12 @@ It comes down to what the path says: who it's for, which is the epic's rule.
 - **E7 · Changesets (ER-7):** one `minor` line for `@flow-state-dev/react` naming
   `@flow-state-dev/react/workforce`; `patch` for Shift Manager and DevTool. The registry is private.
 - **E8 · Kitchen Sink:** its two pages move to the new Conversation API and its copies of
-  `conversation.tsx`, `request-group.tsx` and `prompt-input.tsx` stay byte-equal to the registry. No other Kitchen Sink
-  file is touched; FIX-2461 replaces the copies last.
+  `conversation.tsx`, `request-group.tsx` and `prompt-input.tsx` stay byte-equal to the registry,
+  gated by `test/registry-drift.test.ts`; those edits are this issue's. No other Kitchen Sink file is
+  touched. The copies stay; FIX-2461 adds a refresh command in place of the hand sync.
+- **E9 · The labs' new copies get a test.** Shift Manager's copies are already byte-equal by
+  `test/static.test.ts`; neither lab has one. Each lab gains a byte-equal test over the copies this
+  issue installs; its older copies are left as they are.
 
 ## Considered and dropped
 
@@ -131,5 +135,9 @@ whole set.
   the line marked by its item id, not the request id; `resetKey` on a feedless Conversation; the
   census widened to the root's exports, the composer and Kitchen Sink's copies, with the control's
   reds declared up front.
+- **Set review (Nov 5)** — Kitchen Sink's copies stay (a refresh command comes separately, not a
+  replacement); the drift claim corrected, with a byte-equal test added for the labs' new copies
+  (E9); the react row on the package-roots page confirmed as this issue's; the hook edge-case seam
+  noted; this issue may flip react's *Surface* cell if it lands last of the four.
 
 **Open: none.**
