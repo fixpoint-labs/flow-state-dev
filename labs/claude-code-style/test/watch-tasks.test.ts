@@ -1,5 +1,5 @@
 /**
- * A session's task list reads when its board changes (FIX-2429), not every two
+ * A session's task list reads when its board changes, not every two
  * seconds all day: the conversation's session topic narrowed to each ledger
  * its `listTasks` read returns, so a reply streaming in the session never wakes
  * it. Wherever push can miss a change, `client.subscribe` reads on its timer,

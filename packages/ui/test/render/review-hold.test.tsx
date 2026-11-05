@@ -34,8 +34,8 @@ describe("the review card draws a coding run's review", () => {
     expect(screen.getByText("Ready for review")).toBeTruthy();
     expect(screen.getByText("4 commits")).toBeTruthy();
     expect(screen.getByText("…/t-7f3c--change").getAttribute("title")).toBe(DATA.branch);
-    expect(screen.getByText("· Add the v2 endpoint")).toBeTruthy();
-    expect(screen.queryByText("· Update the README")).toBeNull();
+    expect(screen.getByTitle("Add the v2 endpoint").textContent).toBe("·Add the v2 endpoint");
+    expect(screen.queryByTitle("Update the README")).toBeNull();
     expect(screen.getByText("· and 1 more")).toBeTruthy();
     expect(screen.getByText("Judge: done, 0.91")).toBeTruthy();
     expect(screen.getByText(DATA.judge!.reason)).toBeTruthy();

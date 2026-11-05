@@ -211,6 +211,8 @@ It routes by best fit with Jev (`typesafe-ai/jev`, an evaluation model that repo
 
 A Shift Coordinator on the `coordinator` flow gets a DELEGATES list in the Shift Coordinator screen's right panel: the delegates of your conversation with it, a picker that adds one from your roster, and a remove beside each. A refused add shows the coordinator's reason. A delegate's answer appears in the conversation under the delegate's name, and each routing decision as a small note between the lines saying who the message went to and who was skipped. The Shift Coordinator comes first in its Roster group. The gear at the end of the Shift Coordinator's header opens its settings page, where its [standing rules](../../apps/docs/docs/workforce/standing-rules.md) are (see [Roster](#roster)).
 
+Before your first line, the Shift Coordinator's conversation offers a few lines to start with, built from those delegates by their roster names; with no conversation yet, and so no delegates, the lines name nobody. A click puts the line in the composer and sends nothing.
+
 Below DELEGATES, TASKS lists the active tasks your conversation filed for its delegates, each with its goal, status and delegate. The conversation goes on for the whole shift, so tasks that have ended fold away: the done ones into a count such as `12 done`, the errored ones into their own `1 errored` group, and each opens to its tasks when clicked. A workstream's Board lists all of its tasks, ended or not, since they are the parts of one piece of work. It is the conversation's own `listTasks`, so it shows that conversation's tasks and no other's. It is read again after each line you send, and every few seconds while a task is open. When a task ends, the conversation says so under the delegate's name, and the whole Lab is read again.
 
 A Lab with no Shift Coordinator needs nothing in its config. Every screen works, and Shift Coordinator shows the summary of asks and runs. Where the conversation would be, it says "This Lab declares no shift coordinator" and how to declare a `shift-coordinator` worker. That message needs an open inventory (above). With no inventory, the conversation area shows an error about the inventory instead.
@@ -327,7 +329,7 @@ A board that dispatches work keeps a running task on the worker it was given to,
 
 ## Roster
 
-Roster shows the signed-in user's workers: the standard workers the Lab's worker inventory lists, and their own, hired or forked, which no one else sees (marked YOURS). Their own are read through Workforce's client (`createWorkforceClient(...).roster()`), so the Lab has to register the roster flow `hireWorkforce` returns. Each worker is in one of two groups:
+Roster shows the signed-in user's workers: the standard workers the Lab's worker inventory lists, and their own, hired or forked, which no one else sees (marked YOURS). Their own are read through Workforce's client (`createWorkforceClient(...).watchRoster()`), so the Lab has to register the roster flow `hireWorkforce` returns. Each worker is in one of two groups:
 
 - **On shift**: it holds a task that is running, or it is waiting on you, either on a task waiting on questions or on an ask in Inbox.
 - **Off shift**: neither. A worker with only queued tasks is off shift until it claims one.
@@ -338,7 +340,7 @@ Every worker has a **Settings** button. It opens that worker's settings page (`/
 
 The same status appears in the sidebar and in a workstream's panel, so a worker reads the same everywhere. If the Lab's asks didn't load, each of those places marks its status *partial*: a worker waiting on you only through an ask would read off shift.
 
-Roster is read with the rest of the screen, when Shift Manager starts, on Retry, after you answer an ask, and after each message the Shift Coordinator takes (so a hire, a fire, or a project it starts for you, shows up at once). It says when it was read. It doesn't refresh on its own.
+The list of workers follows your roster on its own: a worker hired, forked, edited or fired, from another tab or by a worker's turn, shows on Roster, in TEAMS, in a project's lead picker and in DELEGATES without a reload. Each worker's status and tasks are read with the rest of the screen, when Shift Manager starts, on Retry, after you answer an ask, and after each message the Shift Coordinator takes. The screen says when it was read.
 
 Slots count what a worker holds now. Nothing in a Lab limits how many tasks a worker takes, so Roster shows no capacity and no free slots.
 

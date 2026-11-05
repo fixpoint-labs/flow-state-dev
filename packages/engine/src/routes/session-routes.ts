@@ -18,7 +18,7 @@ import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import { casMaxRetries, waitForCASRetry } from "../stores/cas";
 import { birthSession, SessionCreateRefusedError } from "../context/session-birth";
-import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
+import { getReadonlyStateKeys, mapLimit } from "@flow-state-dev/core/helpers";
 import { resolveRecordOwner } from "../context/record-owner";
 import { pinRejectsCaller, unknownFlowMessage } from "../context/instance-pin";
 import { isOrgAttributed } from "../context/org-attribution";
@@ -47,8 +47,6 @@ import {
 import { sessionRequestScope } from "../context/session-request-scope";
 import { toClientSession } from "./client-session";
 import { latestRequestStatus } from "./session-request-status";
-import { mapBounded } from "../utils/map-bounded";
-
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import {
   flowAuthenticates,
@@ -98,7 +96,7 @@ type SessionRouteContext = {
  */
 const DISPATCH_RUNS_INCLUDE = "dispatch-runs";
 
-/** The include that adds each row's latest request status (FIX-2411). */
+/** The include that adds each row's latest request status. */
 const STATUS_INCLUDE = "status";
 
 /**
@@ -329,17 +327,15 @@ export async function handleListSessions(
     if (own ?? hostRuleAdmits(s)) visible.push(s);
   }
 
-  // Each visible row's latest request status, only when asked (FIX-2411):
-  // read on the server, under each session's own request scope, so a list
-  // shows which session needs its user without a read per row from the
-  // browser. A few sessions at a time, so a long unlimited listing costs
+  // Each visible row's latest request status, only when asked, under each
+  // session's own request scope. A few at a time, so a long listing costs
   // time rather than a burst of store reads.
   const provider = ctx.durabilityProvider;
   const listSuspended: SuspensionStore["list"] =
     provider !== undefined ? (filter) => provider.listSuspended(filter) : (filter) => ctx.stores.suspensions.list(filter);
   const statuses =
     include.status === true
-      ? await mapBounded(visible, STATUS_READS_IN_FLIGHT, (s) =>
+      ? await mapLimit(visible, STATUS_READS_IN_FLIGHT, (s) =>
           latestRequestStatus(
             { request: ctx.stores.request, listSuspended },
             toBareSessionId(s.id, ctx.tenantId),

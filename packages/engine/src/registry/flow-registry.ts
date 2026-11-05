@@ -41,6 +41,12 @@
  * and never disarms. A registry that never holds one refuses nothing on that
  * account. Every registry, armed or not, refuses a single resource whose
  * storage key has a segment beginning `~` (`refuseOwnerMarkedSingleResources`).
+ *
+ * The registry also holds every collection that declares `indexes`, for the
+ * index writer on the runtime's stores, and refuses one index name at two
+ * versions on overlapping patterns in one scope
+ * (`admitIndexedCollections` in `resources/resource-indexes.ts`). Like the
+ * owner-key declarations, these are kept across unregister.
  */
 import type {
   DeclaredResourceEntry,
@@ -64,6 +70,7 @@ import {
   refuseOwnerMarkedSingleResources,
   type OwnerPrivateDeclaration
 } from "../resources/owner-private";
+import { admitIndexedCollections, type IndexedCollection } from "../resources/resource-indexes";
 
 /**
  * Registry contract used by server routing/execution layers.
@@ -114,6 +121,12 @@ export interface FlowRegistry {
    * surfaces consume this.
    */
   describeSharedSchemas(): SharedSchemasDescription;
+  /**
+   * Every collection that declares `indexes`, across every flow this registry
+   * has admitted, unregistered ones included. The runtime's index writer
+   * computes each write's entries from it.
+   */
+  indexedCollections(): readonly IndexedCollection[];
 }
 
 export interface SharedSchemasDescription {
@@ -164,6 +177,9 @@ export class InMemoryFlowRegistry implements FlowRegistry {
    */
   private ownerPrivate: readonly OwnerPrivateDeclaration[] = [];
 
+  /** Every indexed collection admitted, kept across unregister for the reason above. */
+  private indexed: readonly IndexedCollection[] = [];
+
   /**
    * Registers a single flow instance. Identity is validated first (see the
    * file header), then cross-flow schemas; a failure of either leaves every
@@ -178,6 +194,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
       this.flowsById.values(),
       this.ownerPrivate
     );
+    const indexed = admitIndexedCollections(flow, this.indexed);
 
     // Validate both scopes before mutating any state. If the org-scope
     // check throws after the user-scope check passes, no participant entry
@@ -198,6 +215,12 @@ export class InMemoryFlowRegistry implements FlowRegistry {
     this.indexParticipant("user", flow.kind, userDecl);
     this.indexParticipant("org", flow.kind, orgDecl);
     this.ownerPrivate = ownerPrivate;
+    this.indexed = indexed;
+  }
+
+  /** Every indexed collection admitted. See {@link FlowRegistry.indexedCollections}. */
+  indexedCollections(): readonly IndexedCollection[] {
+    return this.indexed;
   }
 
   /**

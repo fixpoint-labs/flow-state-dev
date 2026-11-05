@@ -280,7 +280,8 @@ describe("the teammates screen", () => {
     expect(tile.querySelector("[data-task-status]")?.textContent).toBe("running");
     // The lab has no projects: no select, no prompt, no card, and no word for one anywhere.
     expect(screen.queryByRole("combobox")).toBeNull();
-    expect(screen.queryByRole("group")).toBeNull();
+    // The one group on screen is the harness chips (FIX-2403), never a project choice.
+    expect(screen.queryAllByRole("group").map((g) => g.getAttribute("aria-label"))).toEqual(["Coding harnesses"]);
     expect(document.body.textContent).not.toMatch(/project/i);
 
     // The result lands as the coding task's, never a teammate's, and Chief of Staff's next line uses it.
@@ -363,7 +364,7 @@ describe("the teammates screen", () => {
     for (const coder of ["Claude Code", "Codex", "Cursor"]) expect(workers().querySelector(`[data-worker="${coder}"]`), coder).toBeNull();
   });
 
-  it("shows a coding run as plain steps, the same on every harness: the result first, what it said as text, and no bare tool name", async () => {
+  it("shows a coding run as plain steps, the same on every harness: what it said as text, the result last, and no bare tool name", async () => {
     // Each harness reports its own tools (Claude Code's Bash and Edit, Codex's command_execution and file_change, Cursor's shell and edit).
     const BARE = /^(Bash|Read|Edit|Write|command_execution|file_change|shell|read|edit)$/;
     render(<App adapter={fast({ speed: 0.3 })} />);
@@ -385,8 +386,8 @@ describe("the teammates screen", () => {
 
       const body = popup.querySelector("[data-step=result]")!.parentElement!;
       const kinds = [...body.querySelectorAll(":scope > [data-step]")].map((el) => el.getAttribute("data-step"));
-      // The result leads; under it, the harness, then what the run did in order.
-      expect(kinds).toEqual(["result", "harness", "tool", "said", "tools"]);
+      // The harness, then what the run did in order, then its result last: the popup opens on its latest entry.
+      expect(kinds).toEqual(["harness", "tool", "said", "tools", "result"]);
       expect(popup.querySelector("[data-step=harness]")?.textContent).toBe(`Started on ${harness}`);
       expect(popup.querySelector("[data-step=said]")?.textContent).toContain('The typo is on line 1: "Relay keps".');
       // A run of steps folds into one line, in the same words on every harness, and opens to each one.
@@ -795,6 +796,10 @@ describe("the teammates screen", () => {
 
     fireEvent.click(within(panel("tester")).getByRole("button", { name: "Edit instructions" }));
     const edit = within(panel("tester")).getByRole("form", { name: "Instructions for tester" });
+    // The name shows in the form but can't be changed yet, and the form says why.
+    const name = within(edit).getByLabelText("Name of tester") as HTMLInputElement;
+    expect([name.value, name.readOnly]).toEqual(["tester", true]);
+    expect(document.getElementById(name.getAttribute("aria-describedby")!)?.textContent).toMatch(/Renaming a teammate isn't possible yet/);
     fireEvent.change(within(edit).getByLabelText("New instructions for tester"), { target: { value: "Answer in one sentence." } });
     await act(async () => fireEvent.click(within(edit).getByRole("button", { name: "Save instructions" })));
     await waitFor(() => expect(screen.queryByRole("form", { name: "Instructions for tester" })).toBeNull());

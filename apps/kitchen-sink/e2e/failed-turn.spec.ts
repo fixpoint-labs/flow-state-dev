@@ -1,6 +1,6 @@
 /**
  * A failed turn in Flow State mode reads as a failure, once, with its reason
- * and a Retry that runs the turn again (specs/issues/FIX-2559).
+ * and a Retry that runs the turn again.
  *
  * The `fail-once` scenario's first assistant call throws, as a provider error
  * would (`lib/e2e-mock-script.ts` → `failsOnce`); the retry's call answers.

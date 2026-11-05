@@ -39,6 +39,7 @@ import {
 import { normalizeScopeResourceContent } from "../context/resource-registry";
 import { ValidationError } from "../errors/flow-error";
 import { ownerKeyAdmits, ownerKeyMaySeed, ownerWriteRefusal } from "../resources/owner-private";
+import { ownedWrite } from "../resources/resource-indexes";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { isJsonObject } from "../utils/json-helpers";
 import {
@@ -337,7 +338,8 @@ export async function handleCreateCollectionItem(
     scopeId,
     storageKey,
     initialState,
-    0
+    0,
+    ownedWrite(flow.id)
   );
   if (!inserted.ok) {
     return jsonResponse(409, { error: `Item "${topic}" already exists` });

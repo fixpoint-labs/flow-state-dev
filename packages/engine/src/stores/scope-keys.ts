@@ -407,6 +407,32 @@ export function resolveResourceScopeId(
 }
 
 /**
+ * The instance a user- or org-scoped resource cell is isolated to, read back
+ * from the `scopeId` {@link resolveResourceScopeId} built: `null` for a shared
+ * cell, `undefined` for a `scopeId` of no shape it builds. The inverse of the
+ * escaping in `encodeScopeKeyComponent`.
+ */
+export function resourceCellInstance(scope: "user" | "org", scopeId: string): string | null | undefined {
+  const parts: string[] = [];
+  let part = "";
+  for (let i = 0; i < scopeId.length; i++) {
+    const char = scopeId[i]!;
+    if (char === "\\" && i + 1 < scopeId.length) part += scopeId[++i];
+    else if (char === ":") {
+      parts.push(part);
+      part = "";
+    } else part += char;
+  }
+  parts.push(part);
+  if (scope === "user") {
+    if (parts.length < 3 || parts.length > 4 || parts[1] !== "~org") return undefined;
+    return parts[3] ?? null;
+  }
+  if (parts.length > 2) return undefined;
+  return parts[1] ?? null;
+}
+
+/**
  * The distinct storage `scopeId`s a flow's user/org-scoped resources occupy
  * for a given identity — at most two (the shared bucket and the
  * instance-namespaced bucket). Read paths consult every returned id and merge,

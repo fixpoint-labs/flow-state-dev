@@ -16,7 +16,10 @@
  * - `desk.coder` and `desk.thread-coder` are on the lab's one coding flow,
  *   `harness-thread`; only `desk.thread-coder` waits for your review.
  * - `projects` lists and creates the projects a session works in, and `pins`
- *   keeps the threads you pinned.
+ *   keeps the threads you pinned. A project's repository is checked when it is
+ *   made, by the workspace host's `checkRepository`: one no coding run could
+ *   use here (no such folder, not a git repository, `.fsdev/` not ignored) is
+ *   refused, and the picker asks the same check before Create.
  * - `harness-readiness` reads which coding harnesses can run on this machine
  *   (harness-manager's `harnessReadiness`, one check per harness from its
  *   integration): logged as a table at start, and returned by its `read`
@@ -57,7 +60,7 @@ import { checkCodexReadiness, CODEX_PASS } from "@flow-state-dev/codex";
 import { defineFlow, harnessEnv } from "@flow-state-dev/core";
 import { checkCursorReadiness, CURSOR_PASS } from "@flow-state-dev/cursor";
 import { createFlowState } from "@flow-state-dev/engine";
-import { formatHarnessReadiness, harnessReadiness, harnessReadinessAction } from "@flow-state-dev/harness-manager";
+import { ASK_MARKER_IGNORED, formatHarnessReadiness, harnessReadiness, harnessReadinessAction } from "@flow-state-dev/harness-manager";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { consultSessionsCapability, createWorkerInstallation, defineAgentWorkerFlow, defineCoordinatorFlow, hireWorkforce, projectSourceCapability, projectWorkspace } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
@@ -122,7 +125,16 @@ flows = {
   [HARNESS_THREAD_FLOW]: { flow: defineHarnessThreadFlow({ installation, workspace, ...scripted }), roles: ["contributor"], needsProject: true },
 };
 const workers = hireWorkforce(installation) as { id: string }[];
-const projects = defineProjectsFlow()({ id: PROJECTS_FLOW }) as { id: string };
+// A project is checked when it's made, by the same rule a run's checkout passes:
+// a repository no run could use here is refused before its first task (FIX-2403).
+// It is asked about the repository a run will get: a listed one by its real path, as
+// `source` hands it over, so the picker says worktree where the run makes one.
+// `GOAL_CONTROL=no-repository-check` leaves the check off, for the goal check's control.
+const checkRepository =
+  process.env.GOAL_CONTROL === "no-repository-check"
+    ? undefined
+    : (repository: string) => workspace.checkRepository!(listed(repository) ?? repository, { ignored: ASK_MARKER_IGNORED });
+const projects = defineProjectsFlow({ checkRepository })({ id: PROJECTS_FLOW }) as { id: string };
 const pins = definePinsFlow()({ id: PINS_FLOW }) as { id: string };
 
 /** Which harnesses a coding thread can run on here, over the environment each run gets. */

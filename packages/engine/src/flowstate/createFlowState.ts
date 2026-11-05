@@ -45,6 +45,7 @@ import {
 } from "../context/dispatch-operation";
 import type { InboundTransportHost } from "../transports/types";
 import type { StoreRegistry } from "../stores/types";
+import { withResourceIndexWriter } from "../resources/resource-indexes";
 import {
   createInboundTransportHost,
   resolveInProcessPrincipal,
@@ -925,7 +926,12 @@ class InternalFlowState<TSettings extends object>
   async #buildRuntime(): Promise<FlowStateRuntime> {
     const profileName = this.#resolveProfileName();
     const profile = this.#options.stores[profileName]!;
-    const { stores } = await resolveProfileStores({ profileName, profile });
+    const { stores: resolved } = await resolveProfileStores({ profileName, profile });
+    // Every resource write keeps the app's declared indexes in step (FIX-2532
+    // D2). Wrapped here, before the router, the worker or `runtime.stores`
+    // takes the registry, so every handle derived from it writes through the
+    // index writer, host code that writes the store directly included.
+    const stores = withResourceIndexWriter(resolved, () => this.#registry.indexedCollections());
 
     // Diagnostic on stderr (like the worker/dispose logs below): stdout is
     // reserved for data streams such as `fsdev run`'s NDJSON, which a config

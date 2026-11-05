@@ -265,6 +265,7 @@ export function TurnComposer({
   scale = "default",
   autoSend,
   onAutoSend,
+  seed,
   draftKey,
   legacyDraftKey,
 }: {
@@ -303,6 +304,11 @@ export function TurnComposer({
    */
   autoSend?: string | null;
   onAutoSend?: () => void;
+  /**
+   * A line to put in the draft, as a starter line's click hands it; never sent
+   * by itself. `at` makes a second click of the same line count.
+   */
+  seed?: { text: string; at: number };
 }) {
   // Before the drafts are read, so they open on what the old key held.
   const adopted = useRef<string | undefined>(undefined);
@@ -389,6 +395,12 @@ export function TurnComposer({
     // Taken once: `onAutoSend` clears the line, so a re-run finds nothing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoSend, blocked, sending]);
+
+  useEffect(() => {
+    if (seed !== undefined) setDraft(seed.text);
+    // Once per click: a setter that changes with the draft's key mustn't put the line back.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seed]);
 
   return (
     <ComposerShell

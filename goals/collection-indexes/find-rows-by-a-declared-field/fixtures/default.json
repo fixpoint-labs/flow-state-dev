@@ -1,0 +1,17 @@
+{
+  "legacyRows": [
+    { "partition": "conv-old-1", "id": "t-100" },
+    { "partition": "conv-old-2", "id": "t-101" },
+    { "partition": "conv-old-2", "id": "t-dup" }
+  ],
+  "legacyMarkers": [
+    { "partition": "conv-old-1", "id": "t-100" },
+    { "partition": "conv-ghost", "id": "t-100" }
+  ],
+  "filed": [
+    { "partition": "conv-a", "ids": ["t-200", "t-201"] },
+    { "partition": "conv-b", "ids": ["t-202", "t-dup"] },
+    { "partition": "conv_c.1", "ids": ["t-203", "t-201"] }
+  ],
+  "absent": ["t-2", "t-1000"]
+}

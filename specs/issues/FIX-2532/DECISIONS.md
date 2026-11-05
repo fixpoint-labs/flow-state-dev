@@ -49,7 +49,7 @@ acceptable. Then a command is added beside the lazy build, not instead of it.
 |---|---|
 | **Instead of** | Each engine write path (block writes, the browser create route) computing entries from the collection it already holds |
 | **Because** | A row written without its entries is never found again, and no read-side check can recover a missing entry (a stale one is filtered; an absent one is invisible). Writes reach the store from more than the block path: the resource routes, and host code that writes `stores.resourceState` directly. The owner-writes check is no model here: it lives in each run's resource registry (`engine/src/context/resource-registry.ts`), and direct store writers skip it. So the writer wraps the `StoreRegistry` that `createFlowState` resolves (`engine/src/flowstate/createFlowState.ts`), before the router, the worker or `runtime.stores` takes it, and every handle derives from the wrapped one ([tenet 5](../../../docs/philosophy.md)). That covers `harness-manager/src/upgrade-kept-turns.ts`, which the devteam host calls with `runtime.stores`, and goal seeds that write through `runtime.stores` |
-| **Locks in** | The app's index declarations are known at startup. The writer computes a key's entries from every registered declaration whose pattern matches it, not from the writing flow's, so a flow that declares the same pattern without `indexes` still writes the entries another flow declared, and is no conflict. Startup refuses one index name at two versions on overlapping patterns in one scope; functions can't be compared, so name and version are the identity. A process that registers no flow declaring an index writes no entries for it; its writes clear the built marker ([D1](#d1)), so the cost is a rebuild, not a missed row |
+| **Locks in** | The app's index declarations are known at startup. The writer computes a key's entries from every registered declaration whose pattern matches it, not from the writing flow's (for a flow-isolated or lineage-shared collection, "matches" means its flow keeps the key in the cell being written), so a flow that declares the same pattern without `indexes` still writes the entries another flow declared, and is no conflict. Startup refuses one index name at two versions on overlapping patterns in one scope; functions can't be compared, so name and version are the identity. A process that registers no flow declaring an index writes no entries for it; its writes clear the built marker ([D1](#d1)), so the cost is a rebuild, not a missed row |
 
 ![D2: one engine writer, chosen, beside per-path computation. Decides it: a write that skips the block path. Price: startup must know every index](figures/d2-one-writer.svg)
 
@@ -112,7 +112,9 @@ becomes a store read, and moves to `findBy` plus an in-memory filter as the last
   - `delete`, `deleteAll` and `purgeTombstones` keep their signatures and clear entries inside
     the store.
 - **SQL: one generic table**, `resource_index(scope_type, scope_id, collection, index_name, value,
-  resource_key)` with all six as the primary key, plus a built-marker table. A write replaces
+  resource_key)`, plus a built-marker table. On SQLite all six are the primary key; on Postgres
+  uniqueness is a unique index over the six with `md5(value)` in place of `value`, so a value
+  over the B-tree row limit still writes. A write replaces
   that row's entries in the same transaction. No per-field DDL, no `ALTER TABLE`.
 - **`collection` is the collection's full declared pattern**, not its storage prefix: two
   patterns can share a prefix (`data/[topic]/observations` and `data/[topic]/notes` are both

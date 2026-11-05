@@ -118,7 +118,21 @@ describe("the page's address", () => {
     const lab = fast();
     let release = () => {};
     const held = new Promise<void>((resolve) => (release = resolve));
-    const adapter: LabAdapter = { ...lab, listWorkers: async () => (await held, lab.listWorkers()) };
+    const adapter: LabAdapter = {
+      ...lab,
+      // The roster's first read lands only once the test releases it.
+      watchWorkers: (onChange, onError) => {
+        let stop = () => {};
+        let stopped = false;
+        void held.then(() => {
+          if (!stopped) stop = lab.watchWorkers(onChange, onError);
+        });
+        return () => {
+          stopped = true;
+          stop();
+        };
+      },
+    };
     render(<App adapter={adapter} />);
     await act(async () => {
       window.history.pushState(null, "", "/?worker=teammates.writer");

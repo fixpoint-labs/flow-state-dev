@@ -60,6 +60,51 @@ describe("a coding task's popup answers what its run waits on you for", () => {
     await waitFor(() => expect(within(popup).queryByRole("region", { name: "Ready for review" })).toBeNull());
   });
 
+  // The popup opens on the run's latest step, so a hold drawn at the top of the feed is off-screen:
+  // what you must act on sits outside the scrolling feed, below it, and the header says you're on.
+  it("a pending question or review sits below the scrolling feed, the header says so, and your verdict stays in the log", async () => {
+    render(<App adapter={fast({ asks: true, review: true })} />);
+    const popup = await fileCodingTask();
+    const status = () => popup.querySelector("[data-popup-status]")?.textContent;
+    const feedOf = () => popup.querySelector('[data-step="said"]')!.parentElement!;
+    const belowFeed = (panel: HTMLElement) => {
+      const feed = feedOf();
+      expect(feed.contains(panel)).toBe(false);
+      expect(feed.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    };
+
+    const asked = await within(popup).findByRole("region", { name: "Waiting on you" }, { timeout: 2000 });
+    belowFeed(asked);
+    expect(status()).toBe("Waiting on you");
+    fireEvent.change(within(asked).getByLabelText("Your answer"), { target: { value: "Only line 1." } });
+    fireEvent.click(within(asked).getByRole("button", { name: "Answer" }));
+    await waitFor(() => expect(within(popup).queryByRole("region", { name: "Waiting on you" })).toBeNull());
+
+    const review = await within(popup).findByRole("region", { name: "Ready for review" }, { timeout: 3000 });
+    belowFeed(review);
+    expect(status()).toBe("Needs review");
+    fireEvent.change(within(review).getByLabelText("What to change"), { target: { value: "Keep the old wording." } });
+    fireEvent.click(within(review).getByRole("button", { name: "Ask for changes" }));
+    await waitFor(() => expect(within(popup).queryByRole("region", { name: "Ready for review" })).toBeNull());
+    // The pending card is gone; the feed keeps what you decided, where you decided it.
+    const decisions = () => [...feedOf().querySelectorAll('[data-step="decision"]')].map((d) => d.textContent);
+    expect(decisions()).toEqual(["Asked for changes: Keep the old wording."]);
+    // It reads before the run's next turn, which it caused.
+    const revising = await within(popup).findByText(/Revising: Keep the old wording\./, undefined, { timeout: 3000 });
+    const decision = feedOf().querySelector('[data-step="decision"]')!;
+    expect(decision.compareDocumentPosition(revising) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    const again = await within(popup).findByRole("region", { name: "Ready for review" }, { timeout: 3000 });
+    belowFeed(again);
+    fireEvent.click(within(again).getByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(within(popup).queryByRole("region", { name: "Ready for review" })).toBeNull());
+    expect(decisions()).toEqual(["Asked for changes: Keep the old wording.", "Accepted"]);
+    // The result is the feed's last entry, where the popup opens.
+    const result = await within(popup).findByRole("region", { name: "Result" }, { timeout: 2000 });
+    expect(feedOf().contains(result)).toBe(true);
+    expect([...feedOf().querySelectorAll("[data-step]")].pop()).toBe(result);
+  });
+
   it("control: a run with nothing to ask and no review shows no box and no card, and completes on its own", async () => {
     render(<App adapter={fast()} />);
     const popup = await fileCodingTask();

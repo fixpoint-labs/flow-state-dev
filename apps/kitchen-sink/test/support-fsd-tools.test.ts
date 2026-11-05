@@ -1,6 +1,6 @@
 /**
- * `support.fsd` can look the framework up (FIX-2496). Its job is knowing how
- * flow-state-dev works, and with no tools it answered from the model's memory.
+ * `support.fsd` can look the framework up: its job is knowing how
+ * flow-state-dev works.
  *
  *   - its file grants `search-docs` and `fetch`, both registered in its own
  *     `blocks/` folder, and the workforce builds with them (a name nothing

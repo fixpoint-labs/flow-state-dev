@@ -149,13 +149,11 @@ export interface ProjectBlocksOptions {
    */
   mcpServers?: readonly string[];
   /**
-   * The host's answer to whether a run on a repository would get a checkout
-   * on this machine — a workspace host's `checkRepository`, bound to the
-   * directory its runs must not commit. Given: `createProject` and
-   * `setRepository` refuse an unusable repository `repository-unusable`, with
-   * the host's words, and a read-only `checkRepository` action asks the same
-   * question before a write. Absent: no such refusal and no action; a
-   * repository is learned unusable at its first run, as before.
+   * Whether a run on a repository would get a checkout on this machine (a
+   * workspace host's `checkRepository`). Given: `createProject` and
+   * `setRepository` refuse an unusable one `repository-unusable` with the
+   * host's words, and a read-only `checkRepository` action asks first. Absent:
+   * no refusal and no action.
    */
   checkRepository?: RepositoryCheck;
 }

@@ -506,15 +506,11 @@ export interface WorkspaceHost {
   readSource?(answer: RunSourceAnswer, request: SourceReadRequest): Promise<SourceReadResult>;
   /**
    * Whether a run on `repository` would get a checkout here, asked before any
-   * run, with nothing made: the host's remote allow-list, then for a listed
-   * repository or a `file://` remote that the folder exists and is a git
-   * repository, then that it has a commit and that its last commit ignores
-   * `ignored` — the same `ignoredProblem` a provision runs, on the tree a
-   * run's checkout is cut from, so a rule that is only in uncommitted changes
-   * is refused with "commit it" and the two can't disagree. A network
-   * remote the host allows answers usable without being reached: its reach
-   * is learned at the first run. Never rejects for an unusable repository;
-   * the answer says why. Optional, as `remove` is.
+   * run, with nothing made. Checks the remote allow-list; for a listed
+   * repository or `file://` remote, that the folder is a git repository with a
+   * commit whose tree ignores `ignored` (the same `ignoredProblem` a provision
+   * runs). An allowed network remote answers usable without being reached.
+   * Never rejects for an unusable repository; the answer says why. Optional.
    */
   checkRepository?(repository: string, options?: { ignored?: IgnoredDirectory }): Promise<RepositoryCheckResult>;
   /**
