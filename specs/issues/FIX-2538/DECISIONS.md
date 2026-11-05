@@ -13,7 +13,7 @@ flowchart TD
   I --> D2["D2 · in observe, a forwarded turn is a filing turn"]
   D2 -.->|"rejected · a model can ignore it"| X2["an instruction in the prompt"]
   D2 -.->|"rejected · breaks D8"| X3["the delivery files the held task"]
-  I --> S["Seams · asks are FIX-2535 · failed screens are FIX-2537"]
+  I --> S["Seams · FIX-2535 marks asks · FIX-2537 owns failed screens"]
 ```
 
 Solid edges are signed; dashed edges lost, for the reason on the label.
@@ -37,8 +37,8 @@ It comes down to a private repo: a forward address is a second read check to kee
 | | |
 |---|---|
 | **Instead of** | Telling the coordinator's model, in its prompt, to file held · the delivery filing the held task itself |
-| **Because** | A prompt only asks. The delivery writes a flag beside `addressedBy` on `workerMessageRowSchema`, server-written; the received entry copies it to request state. In `observe`, that turn gets read tools and `createTask`, wrapped through a request-dependent `uses` so every filing carries `questions: [{ kind: "confirm", prompt }]` whatever the model passed (BP-031); a No cancels, the default. No `sendMessage`, no catalog tools. A filing from the delivery breaks D8: the service flow never calls `createTask` |
-| **Locks in** | A turn whose tools depend on the message it answers. `off`: a forward lands as a line and wakes no turn. `auto`: the ordinary turn |
+| **Because** | A prompt only asks. The delivery writes `ask` or `inferred` beside `addressedBy` on `workerMessageRowSchema`, from the event's `addressed`, server-written; the received entry copies it to request state. In `observe`, an inferred turn gets read tools and `createTask`, wrapped through a request-dependent `uses` so every filing carries `questions: [{ kind: "confirm", prompt }]` whatever the model passed (BP-031); a No cancels, the default. No `sendMessage`, no catalog tools. A filing from the delivery breaks D8: the service flow never calls `createTask` |
+| **Locks in** | A turn whose tools depend on the message it answers. `off`: an inferred forward lands as a line and wakes no turn. Asks, and `auto`: the ordinary turn |
 
 ![D2: the filing turn, chosen, beside an instruction in the prompt. Decides it: a model that ignores it. Flips if a coordinator needs to message a delegate to judge work](figures/d2-observe-files-only.svg)
 
@@ -49,7 +49,7 @@ It comes down to a model that ignores the prompt: in the filing turn, every task
 
 | With | They own | This spec does |
 |---|---|---|
-| **FIX-2535** (EM call, 2026-11-05) | `addressed` on the event, filling it, and what counts as asking the agent | Every forward is inferred work. An ask to a subscribed coordinator rides an ordinary subscription as a normal message, in every mode |
+| **FIX-2535** (EM call, 2026-11-05) | Produces `addressed` on the event and `agentHandles` on `githubServiceFlow`: the one knob, and what counts as asking | Reads `addressed` only. An unmatched forward with it is an ask, delivered in every mode, `off` included; any other is inferred |
 | **FIX-2537** · epic D7, #4809 (EM call, 2026-11-05) | The screen chain's failed or held outcome (`interest: unjudged`, a hold-only owner run) | Consumes it: a content refusal is unheard and forwardable; a failed or held screen fans out to no unmatched coordinator. Signal (e) |
 
 <details>
@@ -65,11 +65,12 @@ It comes down to a model that ignores the prompt: in the filing turn, every task
 - **The count (epic D8).** `Routed` gains `unmatched: { forwarded, dropped? }` with a reason
   (`kind not forwarded`, `no coordinator follows`). No store: totals are the closure ledger's.
 - **The key.** Read at the turn, so a change applies to the next forward.
-- **The mark.** One flag, since every forward is inferred (EM call, 2026-11-05).
+- **The mark.** `ask | inferred`, the coordinator's only input to choose; written from `addressed`, never model input (BP-031) (EM call, 2026-11-05).
 - **Every routing policy.** A forward runs the coordinator's own turn; `round-robin` and
   `everyone` don't route it.
 - **The confirm.** Its prompt is the goal and the event's link; yes releases the task as filed.
-- **Cost.** One turn per forward in `observe` or `auto`, under the cap; an outage adds none.
+- **Cost.** One turn per forward in `observe` or `auto`, and per ask in any mode, under the cap;
+  an outage adds none.
 
 </details>
 
@@ -101,5 +102,5 @@ Concern: the review note above.
 ## How it got here
 
 - **Draft (2026-11-05):** from the epic's D8, D11 and Q3, on FIX-2534 as merged.
-- **Restraint and reuse fold (2026-11-05):** asks to FIX-2535, closing the fork; the confirm
-  reused; failed screens forward nothing (FIX-2537); one goal line cut. EM calls.
+- **Restraint and reuse fold (2026-11-05):** the ask fork and its knob to FIX-2535, read here as
+  `addressed`; the confirm reused; failed screens forward nothing (FIX-2537); one goal line cut. EM calls.
