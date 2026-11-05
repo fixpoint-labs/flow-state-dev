@@ -449,14 +449,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   // turn's filing on a turn routing a message.
   // -------------------------------------------------------------------------
 
-  /** The open rounds, as saved. A round saved before it counted its routings reads as having begun none (BP-030). */
+  /** The open rounds, as saved. A round saved with the retired `ended` field reads without it (BP-030). */
   const roundsIn = (state: Readonly<Record<string, unknown>>) =>
-    ((state[ROUNDS_STATE] ?? []) as Array<Omit<OpenRound, "begun"> & { begun?: number }>).map(
-      ({ ended: _ended, ...open }: Omit<OpenRound, "begun"> & { begun?: number; ended?: unknown }): OpenRound => ({
-        ...open,
-        begun: open.begun ?? 0
-      })
-    );
+    (state[ROUNDS_STATE] as Array<OpenRound & { ended?: unknown }>).map(({ ended: _ended, ...open }): OpenRound => open);
 
   /**
    * The open rounds' tasks, read off the conversation's board before a write
@@ -1014,7 +1009,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       });
       const hold =
         post.round === 0
-          ? coordinatorSessionStateSchema.shape[HOLD_STATE].parse(ctx.session.state[HOLD_STATE] ?? null)
+          ? coordinatorSessionStateSchema.shape[HOLD_STATE].parse(ctx.session.state[HOLD_STATE])
           : null;
       const held = hold === null ? undefined : delegateLabel(hold.delegate);
       const fallback = listed.fallback === null ? undefined : delegateLabel(listed.fallback);
@@ -1256,7 +1251,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
           ctx.session.atomicState(mutator as never),
         (state: Readonly<Record<string, unknown>>) => {
-          const cursor = roundRobinCursorSchema.nullable().parse(state[ROUND_ROBIN_STATE] ?? null);
+          const cursor = roundRobinCursorSchema.nullable().parse(state[ROUND_ROBIN_STATE]);
           const next = turnOrder(list, cursor).find((record) => !tried.has(delegateKey(record)));
           if (next === undefined) return { state: {}, result: null };
           return { state: { [ROUND_ROBIN_STATE]: { delegate: bare(next), index: indexIn(list, next) } }, result: next };
@@ -1444,7 +1439,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     outputSchema: routeOnsOutputSchema,
     ...blockBase,
     execute: async (_value: unknown, ctx) => {
-      if (!anyOverdue((ctx.session.state[ROUNDS_STATE] ?? []) as OpenRound[], Date.now())) return {};
+      if (!anyOverdue(ctx.session.state[ROUNDS_STATE] as OpenRound[], Date.now())) return {};
       const { closed } = await closeOverdueRounds(ctx as never);
       return routeOnsOutput(await routeOnsFor(ctx as never, { closed }));
     }
@@ -1494,7 +1489,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       const isThisRound = (open: OpenRound) => open.messageRequestId === post.messageRequestId && open.round === post.round;
       // A round at the limit was never opened, one closed at its deadline is
       // gone, and nothing is overdue: nothing to write.
-      const open = (ctx.session.state[ROUNDS_STATE] ?? []) as OpenRound[];
+      const open = ctx.session.state[ROUNDS_STATE] as OpenRound[];
       if (!open.some(isThisRound) && !anyOverdue(open, now)) return {};
       const rows = await roundRowsOf(ctx as never);
       const closed = await withOutcome(

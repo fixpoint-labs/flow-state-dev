@@ -31,7 +31,6 @@ import { mem } from "./run/cognition";
 import { bashCap } from "./shared/capabilities/features";
 import {
   coalesceThinkingStyle,
-  modeSchema,
   sessionStateSchema,
   userStateSchema,
 } from "./shared/schemas";
@@ -115,25 +114,18 @@ const chatAgentFlow = defineFlow({
     client: {
       derived: {
         modeStatus: (ctx) => {
-          // `activeSkills` is contributed by the skills capability's
-          // session-state schema (framework merges all schemas at flow
-          // registration). Project to the surface shape the top-bar UI
-          // wants — name + source tier, drop the rest.
-          const activeSkills =
-            (ctx.state as {
-              activeSkills?: Array<{ name: string; source?: string; mode?: string }>;
-            }).activeSkills ?? [];
+          // Project to the surface shape the top-bar UI wants — name +
+          // source tier, drop the rest.
           return {
-            currentMode: modeSchema.parse(ctx.state.mode ?? "ask"),
+            currentMode: ctx.state.mode,
             // The only surface that reads the stored style raw. A session
-            // written before FIX-1478 holds a style this app removed, and
-            // nothing parses session state on load — so it is folded to
-            // `default` here, before it leaves the server, rather than
-            // reaching a browser that has no entry for it (BP-030).
+            // written before FIX-1478 holds a style this app removed, so it
+            // is folded to `default` here, before it leaves the server,
+            // rather than reaching a browser that has no entry for it (BP-030).
             thinkingStyle: coalesceThinkingStyle(ctx.state.thinkingStyle),
-            requestCount: Number(ctx.state.requestCount ?? 0),
-            features: ctx.state.features ?? { biasCheck: false, search: true, fetch: true, crawl: true },
-            activeSkills: activeSkills.map((s) => ({
+            requestCount: ctx.state.requestCount,
+            features: ctx.state.features,
+            activeSkills: (ctx.state.activeSkills as Array<{ name: string; source?: string; mode?: string }>).map((s) => ({
               name: s.name,
               source: s.source ?? "tool",
               ...(s.mode !== undefined ? { mode: s.mode } : {}),

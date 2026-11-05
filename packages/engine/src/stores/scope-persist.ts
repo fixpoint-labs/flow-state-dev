@@ -37,6 +37,12 @@ export type ScopeStoreLike<TRecord> = DeltaStoreOps<TRecord> & {
   ): Promise<SetResult<TRecord>>;
 };
 
+/**
+ * `persist` for a scope record (see `RunWithCASOptions.persist`). `readState`
+ * maps a stored record's state to what the scope reads, applied to the record a
+ * delta write returns and to the one a conflict reports, the same way the
+ * scope's initial load did (the scope's schema defaults, FIX-2554).
+ */
 export function createScopePersist<
   TState,
   TRecord extends {
@@ -51,7 +57,8 @@ export function createScopePersist<
   buildSetRecord: (
     expectedVersion: number,
     state: Readonly<TState>
-  ) => TRecord
+  ) => TRecord,
+  readState: (state: unknown) => TState = (state) => state as TState
 ): CASPersist<TState> {
   return async (state, expectedVersion, hint) => {
     const id = ref.current.id;
@@ -72,7 +79,7 @@ export function createScopePersist<
         return {
           ok: true,
           version: result.version,
-          record: next.state as TState
+          record: readState(next.state)
         };
       }
       const current = result.conflict.currentValue;
@@ -81,7 +88,7 @@ export function createScopePersist<
       }
       return {
         ok: false,
-        currentState: current?.state as TState | undefined,
+        currentState: current === undefined ? undefined : readState(current.state),
         currentVersion: result.conflict.currentVersion
       };
     };
@@ -155,14 +162,17 @@ export function createScopePersist<
  * when the ref or the stored record is gone. Refreshes `ref.current` when the
  * stored record is newer than the one held when the read returns, so the
  * retry's full-record `set` is built from the stored record. A write that
- * landed during the read keeps its newer record.
+ * landed during the read keeps its newer record. `readState` maps the stored
+ * state to what the scope reads, the same way its initial load did (the
+ * scope's schema defaults, FIX-2554).
  */
 export function createScopeReread<
   TState,
   TRecord extends { id: string; state: unknown; version: number }
 >(
   ref: { current: TRecord | undefined },
-  store: { get(id: string): Promise<TRecord | undefined> }
+  store: { get(id: string): Promise<TRecord | undefined> },
+  readState: (state: unknown) => TState = (state) => state as TState
 ): CASReread<TState> {
   return async () => {
     const held = ref.current;
@@ -173,6 +183,6 @@ export function createScopeReread<
     if (latest === undefined || record.version > latest.version) {
       ref.current = record;
     }
-    return { state: record.state as TState, version: record.version };
+    return { state: readState(record.state), version: record.version };
   };
 }

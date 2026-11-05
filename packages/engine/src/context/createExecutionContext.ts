@@ -83,6 +83,7 @@ function waitedByStamp(source: string | undefined, metadata: unknown) {
   return waitedBy === undefined ? {} : { waitedBy };
 }
 import { ensureSessionRecord, refuseReadonlyStateChange } from "./session-birth";
+import { applyScopeStateDefaults } from "./scope-state-defaults";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { isTraceObservabilityEnabled, errorDetailsWithCause, estimateTokenCounter, isValidOrgId, buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
@@ -2434,19 +2435,30 @@ export async function createExecutionContext<
     requestRef.current.state as TRequestState,
     requestRef.current.version
   );
+  // Scope state reads with its schema's defaults filled in (FIX-2554), so a
+  // defaulted field is present on a fresh or older record, as the state's
+  // type promises. Nothing else of the stored blob changes. Every read of a
+  // stored record goes through these: the load here, and the records a write
+  // or a conflict hands back (`createScopePersist`, `createScopeReread`).
+  const readUserState = (state: unknown) =>
+    applyScopeStateDefaults(flow.user?.stateSchema, state) as TUserState;
+  const readSessionState = (state: unknown) =>
+    applyScopeStateDefaults(flow.session?.stateSchema, state) as TSessionState;
+  const readOrgState = (state: unknown) =>
+    applyScopeStateDefaults(flow.org?.stateSchema, state) as TOrgState;
   const userContainer = createStateContainer<TUserState>(
-    userRef.current.state as TUserState,
+    readUserState(userRef.current.state),
     userRef.current.version
   );
   const sessionContainer = createStateContainer<TSessionState>(
-    sessionRef.current.state as TSessionState,
+    readSessionState(sessionRef.current.state),
     sessionRef.current.version
   );
   const orgContainer =
     orgRef.current === undefined
       ? undefined
       : createStateContainer<TOrgState>(
-          orgRef.current.state as TOrgState,
+          readOrgState(orgRef.current.state),
           orgRef.current.version
         );
 
@@ -2525,16 +2537,17 @@ export async function createExecutionContext<
         state: state as TUserState,
         version: expectedVersion + 1,
         updatedAt: Date.now()
-      })
+      }),
+      readUserState
     ),
-    reread: createScopeReread<TUserState, UserRecord>(userRef, stores.user)
+    reread: createScopeReread<TUserState, UserRecord>(userRef, stores.user, readUserState)
   });
 
   // The session's readonly state fields, as it was created with them. A
   // mutation that would change one is refused before anything is written,
   // whichever path proposed it: a block, a tool, an action.
   const readonlyFields = getReadonlyStateKeys(flow.session?.stateSchema);
-  const createdWith = sessionRef.current.state as Record<string, unknown>;
+  const createdWith = sessionContainer.read() as Record<string, unknown>;
   const sessionOps = createScopeStateOps(sessionContainer, {
     cas: flow.session?.cas,
     ...(readonlyFields.length === 0
@@ -2551,9 +2564,10 @@ export async function createExecutionContext<
         state: state as TSessionState,
         version: expectedVersion + 1,
         updatedAt: Date.now()
-      })
+      }),
+      readSessionState
     ),
-    reread: createScopeReread<TSessionState, SessionRecord>(sessionRef, stores.session)
+    reread: createScopeReread<TSessionState, SessionRecord>(sessionRef, stores.session, readSessionState)
   });
 
   const orgOps = (():
@@ -2574,7 +2588,8 @@ export async function createExecutionContext<
         state: st as TOrgState,
         version: ev + 1,
         updatedAt: Date.now()
-      })
+      }),
+      readOrgState
     );
     return createScopeStateOps(orgContainer, {
       cas: flow.org?.cas,
@@ -2584,7 +2599,7 @@ export async function createExecutionContext<
         }
         return inner(state, expectedVersion, hint);
       },
-      reread: createScopeReread<TOrgState, OrgRecord>(orgRef, stores.org)
+      reread: createScopeReread<TOrgState, OrgRecord>(orgRef, stores.org, readOrgState)
     });
   })();
 

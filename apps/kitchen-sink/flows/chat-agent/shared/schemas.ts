@@ -8,6 +8,7 @@
  * another action's file.
  */
 import { z } from "zod";
+import { activeSkillsArraySchema } from "@flow-state-dev/orchestration";
 import {
   KITCHEN_SINK_MODELS,
   DEFAULT_KITCHEN_SINK_MODEL,
@@ -75,10 +76,9 @@ export type ThinkingStyleInput = ThinkingStyle;
  *
  * The mirror image of {@link thinkingStyleInputSchema}: history is tolerated
  * where a live claim is refused (BP-030). A session written before FIX-1478
- * holds a style name that no longer exists, and nothing parses session state
- * on load — the engine adopts the stored record with a bare cast — so the one
- * place that value is read raw is the `modeStatus` client-data projection in
- * `flow.ts`. It is folded there, before it leaves the server, so the browser
+ * holds a style name that no longer exists, and a stored value is read as
+ * stored, so the one place that value is read raw is the `modeStatus`
+ * client-data projection in `flow.ts`. It is folded there, before it leaves the server, so the browser
  * never sees a style it has no entry for.
  *
  * Unlike {@link persistedSelectedModelSchema} this coalesces rather than
@@ -118,6 +118,8 @@ export const sessionStateSchema = z.object({
   requestCount: z.number().default(0),
   lastAction: z.string().optional(),
   features: featuresSchema.default({}),
+  /** The skills the router and the load tool activated (see `capabilities/features.ts`). */
+  activeSkills: activeSkillsArraySchema,
 });
 
 /**

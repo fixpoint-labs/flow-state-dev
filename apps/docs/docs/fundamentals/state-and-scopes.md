@@ -185,6 +185,8 @@ If you call an action without a `sessionId`, the framework generates a fallback 
 
 A caller can pass initial `state` when it creates a session. It is parsed through the flow's session `stateSchema`, so missing fields take their defaults. A state that doesn't fit the schema is kept as sent, and your actions validate it when they run, unless the flow binds its sessions, meaning it declares a readonly field or a `createCheck`.
 
+Defaults also apply every time a run reads stored state. When a session, user or org record loads, each field of the flow's `stateSchema` (`session`, `user` or `org`) that the record doesn't hold reads as its default, so `ctx.user.state.count` is `0` on a brand-new user and on one stored before you added the field. Only missing values are filled in. A value already stored is read as stored, and keys the schema doesn't declare are kept, so another flow's fields on a shared user or org record survive your reads and writes.
+
 Initial state suits preferences and drafts. On its own it is the wrong place for a value that grants anything, because the caller wrote it; a `createCheck` that confirms the value (below) changes that.
 
 For a field your flow changes as it runs, and that a caller must never set, list it in `session.serverOwned`:
