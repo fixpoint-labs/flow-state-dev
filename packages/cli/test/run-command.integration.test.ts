@@ -827,6 +827,22 @@ describe("fsdev run — intent/* with no fsdev.config.*", () => {
     expect(stderrLines.join("\n")).not.toContain("no fsdev.config.* found");
   });
 
+  // --no-config also yields a discovery run, but the search never ran: a config
+  // may well be there, skipped on purpose, so "none found" would be false.
+  it("stays quiet when --no-config skipped a config that is present", async () => {
+    const skippedDir = resolve(import.meta.dirname, "fixtures-intent-skipped-config");
+    const result = await executeRunCommand("intent-chat", "chat", {
+      input: '{"message": "hi"}',
+      cwd: skippedDir,
+      stores: createInMemoryStores(),
+      config: false,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.message).toContain('No model is configured for "intent/chat"');
+    expect(stderrLines.join("\n")).not.toContain("no fsdev.config.* found");
+  });
+
   it("stays quiet for a discovery run that failed for any other reason", async () => {
     const result = await executeRunCommand("throwing", "fail", {
       input: '{"message": "test"}',

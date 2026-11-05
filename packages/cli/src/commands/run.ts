@@ -578,7 +578,10 @@ export async function executeRunCommand(
         type: "error",
         message: error!.message,
       });
-      if (resolved.source === "discovery" && error!.code === UNRESOLVED_INTENT_CODE && !options.quiet) {
+      // `--no-config` is a discovery run too, but the config search never ran, so
+      // "none found" would be false there.
+      const searchedForConfig = options.config !== false;
+      if (resolved.source === "discovery" && searchedForConfig && error!.code === UNRESOLVED_INTENT_CODE && !options.quiet) {
         process.stderr.write(describeMissingConfigIntent(resolved.cwd));
       }
     }
