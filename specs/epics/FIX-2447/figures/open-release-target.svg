@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="Q1, open, the owner&#x27;s call. 0.4.0 has shipped: how do adopters meet the names this epic moves. Three options. Recommended: keep each moved name as a deprecated alias that names its new home and a removal version, then remove all aliases in one minor. Instead of: holding the next minor of core, engine, client and react for every P1 move, or breaking as each child lands. It comes down to the first row: alias and hold both break an adopter once, and only the alias warns first; breaking as each lands breaks up to seven times. The second row is the price of holding: 19 pending changesets wait, and sibling packages pinned to exact versions wait with them. The third row is the alias&#x27;s price: the old names still autocomplete, struck out, until the removal minor. Locks in: a deprecated alias per move, one removal child, then the closure runs. Flips if adopters on 0.4.0 are few enough to ignore."
+<svg viewBox="0 0 940 418" role="img" aria-label="Q1, open, the owner&#x27;s call. 0.4.0 has shipped: how do adopters meet the names this epic moves. Three options. Recommended: keep each moved name as a deprecated alias that names its new home and a removal version, then remove all aliases in one minor. Instead of: holding the next minor of core, engine, client and react for every P1 move, or breaking as each child lands. It comes down to the first row: alias and hold both break an adopter once, and only the alias warns first; breaking as each lands breaks up to seven times. The second row is the price of holding: 19 pending changesets wait, and sibling packages pinned to exact versions wait with them. The third row is the alias&#x27;s price: the old names still autocomplete, struck out, until the removal minor. Locks in: a deprecated alias per move, exempt from the Shims row, removed at a named minor, by its own child or by the foundation minor itself, then the closure runs. Flips if adopters on 0.4.0 are few enough to ignore."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -97,7 +97,7 @@
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">LOCKS IN</text>
     <text class="t-b" x="32" y="369">Each move keeps a @deprecated alias</text>
-    <text class="t-s" x="32" y="387">one removal child, then the closure runs</text>
+    <text class="t-s" x="32" y="387">removed at a named minor, by a child or by that minor</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D1, the call: is the whole set worth doing now. Chosen: all 17 children and a closure. Instead of: the seven P1s only. It comes down to the first row: one way to do each thing is in the goal only with the P2s, because the duplicates live there. The price is the second row: a long epic of 18 children, two with collapse triggers. The review&#x27;s five rows are cleared by the P1s either way. Locks in an 18-child epic. Flips if the closure legs already pass after the P1s."
+<svg viewBox="0 0 940 418" role="img" aria-label="D1, the call: is the whole set worth doing now. Chosen: all 17 review children and a closure, with the goal's legs landed first as expected-fail rows. Instead of: the seven P1s only. It comes down to the first row: one way to do each thing is in the goal only with the P2s, because the duplicates live there. The price is the second row: a long epic of 19 children, two with exit triggers. The review&#x27;s five rows are cleared by the P1s either way. Locks in a 19-child epic. Flips if the P2s' rows already pass once the P1s merge, a CI fact from FIX-2564's manifest."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -41,7 +41,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">All 17 children and a closure</text>
+    <text class="t-h c-code" x="228" y="112">All 17 review children and a closure</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">The seven P1s only</text>
@@ -63,10 +63,10 @@
     <text class="t-lbl" x="32" y="222">EPIC</text>
     <text class="t-lbl" x="32" y="235">SLOT</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">Long: 18 children</text>
-    <text class="t-s" x="248" y="241">two of them carry collapse triggers</text>
+    <text class="t-b" x="248" y="223">Long: 19 children</text>
+    <text class="t-s" x="248" y="241">two of them carry exit triggers</text>
     <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">Short: 8 children</text>
+    <text class="t-b" x="612" y="223">Short: 9 children</text>
     <text class="t-s" x="612" y="241">a smaller goal, met sooner</text>
     <line class="row" x1="16" y1="254" x2="924" y2="254"/>
   </g>
@@ -84,13 +84,13 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">LOCKS IN</text>
-    <text class="t-b" x="32" y="369">An 18-child epic</text>
+    <text class="t-b" x="32" y="369">A 19-child epic</text>
     <text class="t-s" x="32" y="387">FIX-2463 and FIX-2462 can still leave it</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="349">FLIPS IF</text>
-    <text class="t-b" x="494" y="369">The closure legs pass after the P1s</text>
-    <text class="t-s" x="494" y="387">then the P2s are polish and the epic wraps</text>
+    <text class="t-b" x="494" y="369">The P2s' rows pass once the P1s merge</text>
+    <text class="t-s" x="494" y="387">a CI fact from FIX-2564; then the P2s are polish</text>
   </g>
 </svg>
