@@ -2277,8 +2277,16 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     const source = inScratch(gitDir);
     try {
       await source(["read-tree", "HEAD"]);
-      const ignoreFiles = (await source(["ls-files", "-z", "--", ":(glob)**/.gitignore"])).split("\0").filter((line) => line !== "");
-      if (ignoreFiles.length > 0) await source(["checkout-index", "-f", "--", ...ignoreFiles]);
+      // Each committed .gitignore is written from its raw blob: a checkout would run any filter the source configures.
+      const entries = (await source(["ls-files", "-s", "-z", "--", ":(glob)**/.gitignore"])).split("\0").filter((line) => line !== "");
+      for (const entry of entries) {
+        const [meta, path] = entry.split("\t") as [string, string];
+        const [mode, blob] = meta.split(" ") as [string, string];
+        if (mode !== "100644" && mode !== "100755") continue;
+        const { stdout } = await run("git", [...NO_HOOKS, `--git-dir=${gitDir}`, "cat-file", "blob", blob], { cwd: tree, timeoutMs: left(), env });
+        mkdirSync(dirname(join(tree, path)), { recursive: true });
+        writeFileSync(join(tree, path), stdout);
+      }
       let checked = source;
       if (!ownExcludes) {
         const empty = join(scratch, "git");

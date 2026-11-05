@@ -201,4 +201,15 @@ describe("checkRepository", () => {
     await expect(host().checkRepository!(pathToFileURL(uncommitted).href, { ignored: IGNORED })).resolves.toMatchObject({ usable: false });
     expect(existsSync(sentinel)).toBe(false);
   });
+
+  it("runs no filter program an unlisted repository assigns to its .gitignore", async () => {
+    const sentinel = join(tempDir("sentinel"), "ran");
+    const repo = repository();
+    writeFileSync(join(repo, ".gitattributes"), ".gitignore filter=probe\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", "attributes");
+    git(repo, "config", "filter.probe.smudge", `touch ${sentinel}; cat`);
+    await expect(host().checkRepository!(pathToFileURL(repo).href, { ignored: IGNORED })).resolves.toEqual({ usable: true, how: "clone" });
+    expect(existsSync(sentinel)).toBe(false);
+  });
 });
