@@ -19,7 +19,8 @@ import { readSettledTurns } from "../../src/context/settled-turns";
 import type { RequestRecord } from "../../src/stores/types";
 
 const SCOPE = { sessionId: "s1", tenantId: undefined, userId: "u1", orgId: undefined, flowKind: "agent" };
-const provenance = { blockName: "b", blockInstanceId: "b", phase: "main" as const };
+/** A generator's provenance (`<requestId>:<path>:<attempt>`), so the canonical log can key its tool calls. */
+const provenance = { blockName: "agent", blockInstanceId: "filing:agent:0", phase: "main" as const };
 
 function line(requestId: string, text: string, ts: number): MessageItem {
   return { id: `${requestId}-line`, type: "message", status: "completed", requestId, itemIndex: 0, provenance, ts, role: "user", content: [{ type: "output_text", text }] } as MessageItem;
@@ -38,6 +39,38 @@ function parkedCall(requestId: string, ts: number): ToolOutputItem {
     toolCall: { callId: "c1", name: "sendMessage", arguments: JSON.stringify({ to: "stopper", wait: true }) },
     error: { message: "Waiting on the reply to message m1", code: "SUSPENSION" }
   } as unknown as ToolOutputItem;
+}
+
+/** A tool call that finished before the park. */
+function finishedCall(requestId: string, ts: number): ToolOutputItem {
+  return {
+    id: `${requestId}-filed`,
+    type: "tool_output",
+    status: "completed",
+    requestId,
+    itemIndex: 2,
+    provenance,
+    ts,
+    toolCall: { callId: "c0", name: "createTask", arguments: JSON.stringify({ goal: "Book the caterer" }) },
+    output: { ok: true }
+  } as unknown as ToolOutputItem;
+}
+
+/**
+ * The tool-call ids that lack their other half: a call with no result, or a
+ * result with no call. Providers refuse either, so this must come back empty
+ * on the messages before any orphan trim runs.
+ */
+function unpairedToolCalls(messages: readonly { role: string; content: unknown }[]): string[] {
+  const ids = (role: string, type: string) =>
+    new Set(
+      messages
+        .filter((m) => m.role === role && Array.isArray(m.content))
+        .flatMap((m) => (m.content as Array<{ type?: string; toolCallId?: string }>).filter((p) => p.type === type).map((p) => p.toolCallId!))
+    );
+  const calls = ids("assistant", "tool-call");
+  const results = ids("tool", "tool-result");
+  return [...[...calls].filter((id) => !results.has(id)), ...[...results].filter((id) => !calls.has(id))];
 }
 
 function record(id: string, status: RequestRecord["status"], startedAtMs: number, items: OutputItem[]): RequestRecord {
@@ -66,11 +99,12 @@ async function read(records: RequestRecord[], gates: SuspensionRecord[]) {
   });
 }
 
-const text = (records: RequestRecord[]) => JSON.stringify(records.flatMap((r) => expandRequestToMessages(r.items ?? [], LLM_AUDIENCE_TYPES, undefined)));
+const messages = (records: RequestRecord[]) => records.flatMap((r) => expandRequestToMessages(r.items ?? [], LLM_AUDIENCE_TYPES, undefined));
+const text = (records: RequestRecord[]) => JSON.stringify(messages(records));
 
 describe("readSettledTurns, for the session's open turns", () => {
   const earlier = record("done", "completed", 1, [line("done", "Hello.", 1)]);
-  const filing = record("filing", "suspended", 2, [line("filing", "The gala is at Harbor Hall.", 2), parkedCall("filing", 3)]);
+  const filing = record("filing", "suspended", 2, [line("filing", "The gala is at Harbor Hall.", 2), finishedCall("filing", 2.5), parkedCall("filing", 3)]);
 
   it("reads a turn waiting on a call as far as it got, and says it still waits", async () => {
     const turns = await read([earlier, filing], [gate("filing", "wait", { requestId: "r-recipient", deadline: 9 })]);
@@ -81,6 +115,35 @@ describe("readSettledTurns, for the session's open turns", () => {
     // The parked call has not failed: it is named as still waiting, never replayed as a failure.
     expect(said).toContain("still waiting on sendMessage");
     expect(said).not.toContain("failed");
+    // Every tool call it is handed has its result, and every result its call,
+    // before any orphan trim: the parked call goes out whole, never half.
+    expect(said).toContain("createTask");
+    expect(unpairedToolCalls(messages(turns.settled))).toEqual([]);
+  });
+
+  it("never quotes a parked call the history view hides", async () => {
+    const hidden = { ...parkedCall("filing", 3), itemVisibility: { client: true, history: false } } as ToolOutputItem;
+    (hidden.toolCall as { arguments: string }).arguments = JSON.stringify({ to: "vault", text: "the hidden secret" });
+    const quiet = record("filing", "suspended", 2, [line("filing", "The gala is at Harbor Hall.", 2), hidden]);
+    const turns = await read([earlier, quiet], [gate("filing", "wait", { requestId: "r-recipient", deadline: 9 })]);
+    const said = text(turns.settled);
+    expect(said).toContain("Harbor Hall");
+    expect(said).toContain("still waiting on a call");
+    expect(said).not.toContain("hidden secret");
+    expect(said).not.toContain("sendMessage");
+  });
+
+  it("names only the call it waits on now, not one an earlier park resumed", async () => {
+    // Run 1 parked on approveSpend; the resume settled it (same callId, completed), then parked on sendMessage.
+    const resumedFrom = { ...parkedCall("filing", 2.2), id: "filing-a1", itemIndex: 1, toolCall: { callId: "cA", name: "approveSpend", arguments: "{}" } } as ToolOutputItem;
+    const settledA = { ...finishedCall("filing", 2.4), id: "filing-a2", itemIndex: 3, toolCall: { callId: "cA", name: "approveSpend", arguments: "{}" } } as ToolOutputItem;
+    const parkedB = { ...parkedCall("filing", 3), itemIndex: 4 } as ToolOutputItem;
+    const twice = record("filing", "suspended", 2, [line("filing", "The gala is at Harbor Hall.", 2), resumedFrom, settledA, parkedB]);
+    const turns = await read([earlier, twice], [gate("filing", "wait", { requestId: "r-recipient", deadline: 9 })]);
+    const said = text(turns.settled);
+    expect(said).toContain("still waiting on sendMessage");
+    expect(said).not.toMatch(/still waiting on[^)]*approveSpend/);
+    expect(unpairedToolCalls(messages(turns.settled))).toEqual([]);
   });
 
   it("reads an interrupted turn whose call gate is still pending the same way", async () => {

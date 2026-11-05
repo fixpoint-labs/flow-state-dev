@@ -99,6 +99,19 @@ function stopperFlow(installation: WorkerInstallation) {
   } as never);
 }
 
+/** The tool-call ids missing their call or their result; providers refuse either. */
+function unpairedToolCalls(messages: readonly unknown[]): string[] {
+  const parts = (role: string, type: string) =>
+    new Set(
+      (messages as Array<{ role?: string; content?: unknown }>)
+        .filter((m) => m.role === role && Array.isArray(m.content))
+        .flatMap((m) => (m.content as Array<{ type?: string; toolCallId?: string }>).filter((p) => p.type === type).map((p) => p.toolCallId!))
+    );
+  const calls = parts("assistant", "tool-call");
+  const results = parts("tool", "tool-result");
+  return [...[...calls].filter((id) => !results.has(id)), ...[...results].filter((id) => !calls.has(id))];
+}
+
 /** Poll `check` until it holds, for at most `ms`. Whether it held. */
 async function until(check: () => Promise<boolean> | boolean, ms = 15_000): Promise<boolean> {
   for (const deadline = Date.now() + ms; Date.now() < deadline; ) {
@@ -153,6 +166,9 @@ describe("a task's midway question heard while its filer's call waits", { timeou
     // read the call as failed would send it again.
     expect(handed).toContain("still waiting on sendMessage");
     expect(handed).not.toContain('Tool \\"sendMessage\\" failed');
+    // What the model is handed pairs every tool call with its result, and the reverse.
+    expect(handed).toContain('"toolName":"createTask"');
+    expect(unpairedToolCalls(heard()!.messages ?? [])).toEqual([]);
   });
 });
 

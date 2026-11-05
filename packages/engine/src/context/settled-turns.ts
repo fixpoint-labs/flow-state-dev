@@ -14,13 +14,13 @@
  * session back, so another turn can run there before it resumes. That turn
  * reads the waiting one's settled items, the line that started it and the
  * calls that finished, followed by a line saying it is still waiting, built
- * here from its own unfinished tool calls (or the gate's message). It is the
+ * here from its own unfinished tool calls that history shows. It is the
  * same whether the waiting request is `suspended` or `interrupted` with its
  * gate still pending. Any other turn still running, suspended or parked is
  * never read: a stop for the user (whose answer resumes the turn reading the
  * session as it left it), a wait on a task, or work still in progress.
  */
-import { isSuspensionWait, type MessageItem, type ToolOutputItem } from "@flow-state-dev/core/items";
+import { collapseToCanonicalLog, isSuspensionWait, resolveItemVisibility, type MessageItem, type ToolOutputItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { isWaitGate, waitGateDataOf, type SuspensionRecord } from "@flow-state-dev/core/types";
 import type { DurabilityProvider } from "../durability/types";
@@ -131,7 +131,7 @@ export async function readSettledTurns(inputs: SettledTurnsInputs): Promise<Sett
       // A waiting turn's parked call is recorded as a failed tool call (`isSuspensionWait`):
       // it has not failed, so the waiting line names it instead.
       const items = r.items.filter((i) => i.status !== "in_progress" && (gate === undefined || !parkedCall(i)));
-      return { ...r, items: gate === undefined ? items : [...items, waitingLine(r, r.items, gate)] };
+      return { ...r, items: gate === undefined ? items : [...items, waitingLine(r, r.items)] };
     })
     .sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.id, b.startedAtMs, b.id));
 
@@ -177,17 +177,19 @@ const WAITING_ARGUMENTS_CHARS = 300;
 
 /**
  * The line that closes a turn read while it waits on a call: what it still
- * waits on, from its unfinished tool calls (the parked one among them), else
- * the gate's message. Built at
+ * waits on, from its unfinished tool calls (the parked one among them) that
+ * history shows, else just "a call". Built at
  * read time and never stored; hidden from clients.
  */
-function waitingLine(record: RequestRecord, items: readonly RuntimeItem[], gate: SuspensionRecord): RuntimeItem {
-  const open = items.filter((i): i is ToolOutputItem & RuntimeItem => i.type === "tool_output" && (i.status === "in_progress" || parkedCall(i)));
+function waitingLine(record: RequestRecord, items: readonly RuntimeItem[]): RuntimeItem {
+  // The canonical log, so a call an earlier park resumed and settled is not
+  // named again; and only calls the history view shows, so a hidden call's
+  // name and arguments never reach a model through this line.
+  const open = collapseToCanonicalLog(items).filter(
+    (i): i is ToolOutputItem & RuntimeItem => i.type === "tool_output" && (i.status === "in_progress" || parkedCall(i)) && resolveItemVisibility(i).history
+  );
   const quote = (args: string) => (args.length > WAITING_ARGUMENTS_CHARS ? `${args.slice(0, WAITING_ARGUMENTS_CHARS)}…` : args);
-  const on =
-    open.length > 0
-      ? open.map((i) => `${i.toolCall.alias ?? i.toolCall.name}(${quote(i.toolCall.arguments)})`).join(", ")
-      : (gate.message ?? "a call");
+  const on = open.length > 0 ? open.map((i) => `${i.toolCall.alias ?? i.toolCall.name}(${quote(i.toolCall.arguments)})`).join(", ") : "a call";
   const last = items.reduce((max, i) => Math.max(max, i.ts), record.startedAtMs);
   const line: MessageItem = {
     id: `waiting:${record.id}`,
