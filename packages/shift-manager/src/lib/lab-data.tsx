@@ -9,17 +9,13 @@
  * app costs no reads. Inbox, the Stream's asks, the sidebar counts and the
  * Tasks list all come from the same snapshot.
  *
- * It also reads again on its own when another session changes what it shows
- * (FIX-2409): one subscription through the provider's client, on the topics
- * and notices `snapshot-subscribe.ts` names, and every
- * {@link SNAPSHOT_POLL_MS} wherever push can miss a change. Those reads give
- * no sign while they run; only a read the user asked for dims the counts
- * ({@link LabData.asking}).
+ * It also reads again, with no sign, when another session changes what it
+ * shows (the notices `snapshot-subscribe.ts` names), and every
+ * {@link SNAPSHOT_POLL_MS} wherever push can miss a change.
  *
- * A refresh that can't reach the Lab after a good read keeps the last good
- * snapshot on screen (FIX-2373 D2), reports the read `lapsed`, and reads again
- * on its own at 2, 4, 8… seconds until one lands. Only a first read that fails,
- * or a refusal, swaps the shell for a full-screen page.
+ * A read that can't reach the Lab after a good one keeps the last snapshot,
+ * reports `lapsed`, and retries with backoff. Only a failed first read, or a
+ * refusal, swaps the shell for a full-screen page.
  *
  * The connection bar reads one state for the page: the worst of the snapshot
  * read's and those of the session feeds on screen, which report theirs with
@@ -51,7 +47,7 @@ export type LabData = {
   /**
    * A read the user asked for is running: R, *refresh*, Retry, or the read
    * after their own action. Counts dim while it runs; a read a notice, the
-   * boot or the lapsed retry started gives no sign (D2).
+   * boot or the lapsed retry started gives no sign.
    */
   asking: boolean;
   /**

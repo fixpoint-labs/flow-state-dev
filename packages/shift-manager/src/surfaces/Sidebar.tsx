@@ -412,7 +412,7 @@ export function Sidebar({
   const { snapshot, refresh, client, asking } = useLab();
   const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? (snapshot as LoadedSnapshot) : undefined;
   const retry = () => void refresh();
-  // The counts dim only while a read the user asked for runs (FIX-2409 D2).
+  // The counts dim only while a read the user asked for runs.
   const dim = asking ? ` ${ASKING_CLASS}` : "";
 
   const inboxCount = loaded === undefined ? "…" : loaded.inbox.ok ? loaded.inbox.value.length : "!";

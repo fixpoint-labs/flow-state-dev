@@ -21,7 +21,7 @@ import { LabProvider, useLab } from "../src/lib/lab-data";
 import { inboxSection, PROJECT_READER_FLOW, readerSessionId, type LabSnapshot } from "../src/lib/reads";
 import type { LoadedSnapshot } from "../src/lib/derive";
 import { heard, heardSessionIds, SNAPSHOT_POLL_MS } from "../src/lib/snapshot-subscribe";
-import { clockTime } from "../src/components/ui";
+import { clockTime } from "../src/lib/shell";
 
 const USER = "u_test";
 

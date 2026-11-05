@@ -1,6 +1,6 @@
 /**
  * What the snapshot hears: the topics its provider subscribes, and which of
- * their notices read the Lab again (FIX-2409).
+ * their notices read the Lab again.
  *
  * A notice says *that* something changed, never what, so the snapshot hears
  * only what its read covers:
