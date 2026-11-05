@@ -105,7 +105,7 @@ describe("workerTaskEntry with a block", () => {
     }
   });
 
-  it("opens the task's session with its brief, marked as the brief, so no screen draws it as the person's line", async () => {
+  it("opens the task's session with its brief, marked as the brief, so no screen draws it as the user's line", async () => {
     const seen: Seen[] = [];
     const host = boot(seen);
     try {
@@ -121,7 +121,7 @@ describe("workerTaskEntry with a block", () => {
         .filter((item) => item.type === "message" && item.role === "user");
       // One user line: the task as filed, for a later turn's history. It is the
       // brief the session was handed, and says so, so a screen tells it from
-      // words the person typed (FIX-2575).
+      // words the user typed (FIX-2575).
       expect(userLines).toHaveLength(1);
       expect(userLines[0].content[0].text).toContain("look at the repo");
       expect(taskBriefOf(userLines[0])).toEqual({ taskId });

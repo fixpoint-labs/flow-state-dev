@@ -3,7 +3,7 @@
  * request opens with, the task as filed (or the answer that re-queued it) for
  * a later turn's history. Its message item names the task in `metadata`, so a
  * client draws it as the brief the session was handed, never as a line the
- * person typed. Imports nothing: a browser reads the marker by the rule the
+ * user typed. Imports nothing: a browser reads the marker by the rule the
  * server writes it by.
  */
 

@@ -313,7 +313,7 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
    * through the board's claim gate, so its input is the dispatch envelope and
    * the task is its payload. It is marked as the task's brief
    * (`taskBriefOf`), so a screen draws it as what the session was handed,
-   * not as a line the person typed.
+   * not as a line the user typed.
    */
   const userMessage = (dispatch: TaskDispatchInput) => {
     const task = dispatch.payload as TaskWorkerInput;
