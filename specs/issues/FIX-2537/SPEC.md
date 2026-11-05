@@ -80,9 +80,9 @@ The chain grows two stages behind the config screens, and only the last one read
 `screens` on the provider is illustrative; [D2](DECISIONS.md#d2) locks the `custom` listing and
 function shape.
 
-**Docs:** the workforce README's *Subscriptions*; `messaging-workers.md` → *Messages from a
-service* ("screens don't read it" no longer holds); the `subscriptions` row in
-`mechanisms.yaml`. No new page.
+**Docs:** in the change, the `subscriptions` row in `mechanisms.yaml`. At release (`/release-docs`,
+from the changeset's `Docs:` pointers): the workforce README's *Subscriptions*; `messaging-workers.md` →
+*Messages from a service* ("screens don't read it" no longer holds). No new page.
 
 ## How an event is screened
 
