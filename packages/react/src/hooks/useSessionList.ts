@@ -3,9 +3,12 @@
  * changes. The list `FlowNavigator` draws under an open leaf; each row can
  * carry its latest request's state (`requestStatus`) from the same listing.
  *
- * Live through the client's `subscribe` on the user topic (a `run` notice for
- * every write to one of the user's sessions), and again when the page becomes
- * visible. A client without `subscribe` reads once.
+ * Live through the client's `subscribe` on the caller's user topic, where the
+ * server publishes a `run` notice for every write to one of the user's
+ * sessions (created, titled, deleted, a request started or ended) from any
+ * tab or process the bus reaches. A burst of notices is one read in flight and
+ * one queued. It also reads when the page becomes visible, for a change the
+ * bus could not carry. A client without `subscribe` reads once.
  */
 import type { Client, SessionsApi, SessionSummary } from "@flow-state-dev/client";
 import { useLiveSessionRead } from "../internal/useLiveSessionRead";

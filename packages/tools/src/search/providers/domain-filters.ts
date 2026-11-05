@@ -6,7 +6,8 @@
 /**
  * The query with the domain filters written as `site:` / `-site:` operators,
  * as Google (Serper) and Brave read them. Several include domains are
- * OR-grouped, because the engine ANDs bare `site:` terms.
+ * OR-grouped, because the engine ANDs bare `site:` terms; excludes stay
+ * AND-chained, since every `-site:` must hold.
  */
 export function withSiteOperators(
   query: string,

@@ -48,6 +48,7 @@ import type { Browser, BrowserContext, Page } from "playwright";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { intentFreeEnv } from "./env.mts";
 import { REPO_ROOT, repoPath } from "./paths.mts";
+import { sleep } from "./time.mts";
 
 /** `packages/shift-manager`. */
 export const SHIFT_MANAGER: string = repoPath("packages", "shift-manager");
@@ -87,7 +88,6 @@ export function servedAddresses(log: string): { origin: string; devtool: string 
 const NODE_ENV_AT_LOAD = process.env.NODE_ENV;
 
 const TSX = repoPath("node_modules", ".bin", "tsx");
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** One edit to a file in the scratch copy. A patch that matches nothing fails the build's setup. */
 export type Patch = { file: string; from: string | RegExp; to: string; why: string };

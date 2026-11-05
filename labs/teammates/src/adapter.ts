@@ -1097,12 +1097,16 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       let rows = new Map<string, Record<string, any>>();
       /** Each row as the board's last read answered it: a task settles, and its run links, on its own session. */
       let listed = new Map<string, Record<string, any>>();
-      /** Each linked run's own copy of its row, which the run writes on its own session (its questions, its review). */
+      /**
+       * Each linked run's own copy of its row. A run writes its row on its own session (its link, its
+       * questions, its review), and the conversation hears of those only when the task ends, so the
+       * run's session is followed too.
+       */
       const runRows = new Map<string, Record<string, any>>();
       const runFeeds = new Map<string, Unsubscribe>();
       /**
-       * A row is the board read's: every write of a row sends a board notice, so a field it leaves
-       * out is cleared (an answered hold). Until the first read lands, the conversation's copy, else
+       * A row is the board read's: every committed write of a row sends a board notice, so the read
+       * is never more than one notice behind, and a field it leaves out is cleared (an answered hold). Until the first read lands, the conversation's copy, else
        * the run's, stands in. The copies add only what the read never carries: {@link BRIEF} and
        * {@link UNPROJECTED}.
        */

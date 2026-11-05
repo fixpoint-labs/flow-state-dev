@@ -6,8 +6,9 @@
  * will retry.
  *
  * An item renderer is handed only its item, so the chat panel decides which
- * request gets a Retry (`useFailedTurnRetry`) and hands that down through
- * `FailedTurnRetryProvider`.
+ * request gets a Retry and hands that down through `FailedTurnRetryProvider`.
+ * `useFailedTurnRetry` is that decision, and the page's error box reads its
+ * `shownError` so a refused retry, already on the line, shows once.
  */
 
 import { createContext, useCallback, useContext, useState } from "react";

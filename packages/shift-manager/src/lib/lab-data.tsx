@@ -14,8 +14,9 @@
  * {@link SNAPSHOT_POLL_MS} wherever push can miss a change.
  *
  * A read that can't reach the Lab after a good one keeps the last snapshot,
- * reports `lapsed`, and retries with backoff. Only a failed first read, or a
- * refusal, swaps the shell for a full-screen page.
+ * reports `lapsed`, and retries on its own at 2, 4, 8… seconds until one
+ * lands. Only a failed first read, or a refusal, swaps the shell for a
+ * full-screen page.
  *
  * The connection bar reads one state for the page: the worst of the snapshot
  * read's and those of the session feeds on screen, which report theirs with
