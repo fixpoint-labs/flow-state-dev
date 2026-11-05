@@ -115,7 +115,7 @@ export async function landRun(host: LandHost, target: LandTarget, request: LandR
   const left = () => Math.max(1, deadline - Date.now());
   const git = async (cwd: string, args: string[]) =>
     (await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs: left(), env: host.env })).stdout.trim();
-  const base = await baseBranch(git, host.repo, target.baseRef);
+  const base = await resolveBase(git, host.repo, host.pins, target.baseRef);
   return request.kind === "merge"
     ? await merge(git, host.repo, base, target.branch)
     : await openPullRequest(git, host, target, base, request, left);
@@ -123,21 +123,75 @@ export async function landRun(host: LandHost, target: LandTarget, request: LandR
 
 type Git = (cwd: string, args: string[]) => Promise<string>;
 
-/** The local branch the run was cut from: `baseRef`'s, or the repository's checked-out one for none or `HEAD`. */
-async function baseBranch(git: Git, repo: string, baseRef: string | null | undefined): Promise<string> {
-  if (baseRef != null && baseRef !== "HEAD") return baseRef.replace(/^refs\/heads\//, "");
-  try {
-    return await git(repo, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
-  } catch {
-    throw new WorkspaceRefusedError(
-      "base-unknown",
-      `${repo} has no branch checked out, so there is no base branch to land on. Check one out there, then try again.`,
-    );
-  }
+/**
+ * The base the run was cut from. `local` is the branch a merge lands on;
+ * `remote` is set when the base is a remote-tracking ref (`origin/main`,
+ * `refs/remotes/origin/main`): the pinned remote and its branch there, which a
+ * pull request targets.
+ */
+interface Base {
+  /** The local branch: `baseRef`'s own, or the one that tracks a remote base, as pinned. `undefined` when none does. */
+  readonly local: string | undefined;
+  /** For a remote-tracking base: the remote it is on and the branch's name there. */
+  readonly remote?: { readonly remoteName: string; readonly branch: string };
+  /** How the run named its base, for messages. */
+  readonly named: string;
 }
 
-/** Merge `from` into `base` where `base` is checked out; a conflict aborts and says which files. */
-async function merge(git: Git, repo: string, base: string, from: string): Promise<Landed> {
+/**
+ * Read `baseRef` as a {@link Base}: none or `HEAD` is the repository's
+ * checked-out branch; a local branch of that name wins over a remote-tracking
+ * ref spelled the same (a local `origin/main` is a branch); a remote-tracking
+ * ref is split by the remotes the host pinned, never by the live config.
+ */
+async function resolveBase(git: Git, repo: string, pins: KeptFetchPins | undefined, baseRef: string | null | undefined): Promise<Base> {
+  if (baseRef == null || baseRef === "HEAD") {
+    try {
+      const local = await git(repo, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+      return { local, named: local };
+    } catch {
+      throw new WorkspaceRefusedError(
+        "base-unknown",
+        `${repo} has no branch checked out, so there is no base branch to land on. Check one out there, then try again.`,
+      );
+    }
+  }
+  if (baseRef.startsWith("refs/heads/")) return { local: baseRef.slice("refs/heads/".length), named: baseRef };
+  const exists = (ref: string) => git(repo, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]).then(() => true, () => false);
+  let tracking: string;
+  if (baseRef.startsWith("refs/remotes/")) tracking = baseRef;
+  else if (await exists(`refs/heads/${baseRef}`)) return { local: baseRef, named: baseRef };
+  else if (await exists(`refs/remotes/${baseRef}`)) tracking = `refs/remotes/${baseRef}`;
+  else return { local: baseRef, named: baseRef };
+  const name = tracking.slice("refs/remotes/".length);
+  // The longest pinned remote name it starts with: a remote may itself have a slash.
+  const remoteName = [...(pins?.remotes.keys() ?? [])]
+    .filter((remote) => name.startsWith(`${remote}/`))
+    .sort((a, b) => b.length - a.length)[0];
+  if (remoteName === undefined) {
+    throw new WorkspaceRefusedError(
+      "base-unknown",
+      `The run's base "${baseRef}" is on a remote ${repo} didn't have when the host started, so there is no base to land on.`,
+    );
+  }
+  const local = [...(pins?.upstreams ?? [])].find(([, upstream]) => upstream.ref === tracking)?.[0].slice("refs/heads/".length);
+  return { local, remote: { remoteName, branch: name.slice(remoteName.length + 1) }, named: baseRef };
+}
+
+/**
+ * Merge `from` into the base where it is checked out, as a real merge commit
+ * whatever the repository's merge config says (`--commit --no-squash`), never
+ * overwriting an ignored file. A conflict aborts and says which files.
+ */
+async function merge(git: Git, repo: string, resolved: Base, from: string): Promise<Landed> {
+  const base = resolved.local;
+  if (base === undefined) {
+    throw new WorkspaceRefusedError(
+      "base-not-checked-out",
+      `No local branch in ${repo} tracks the run's base "${resolved.named}", so there is no checkout to merge into. ` +
+        `Check out a branch that tracks it, then try again. The run's commits are still on "${from}".`,
+    );
+  }
   const listed = await git(repo, ["worktree", "list", "--porcelain"]);
   let checkout: string | undefined;
   let current: string | undefined;
@@ -159,14 +213,18 @@ async function merge(git: Git, repo: string, base: string, from: string): Promis
         `Commit or stash them, then try again. The run's commits are still on "${from}".`,
     );
   }
+  const fromCommit = await git(checkout, ["rev-parse", "--verify", `refs/heads/${from}^{commit}`]);
   try {
-    await git(checkout, ["merge", "--no-edit", "--quiet", from]);
+    // Explicit, so `merge.ff`/`branch.<base>.mergeOptions` can't make it a squash or leave it uncommitted,
+    // and an ignored file in the checkout is refused, not overwritten.
+    await git(checkout, ["merge", "--no-edit", "--quiet", "--commit", "--no-squash", "--no-overwrite-ignore", from]);
   } catch (error) {
-    const conflicted = await git(checkout, ["diff", "--name-only", "--diff-filter=U"]).catch(() => "");
+    // The index's unmerged entries, not git's wording: `<mode> <object> <stage>\t<path>` per stage.
+    const unmerged = await git(checkout, ["ls-files", "--unmerged"]).catch(() => "");
     // Abort whatever the merge left, so the checkout is as it was.
     await git(checkout, ["merge", "--abort"]).catch(() => undefined);
-    if (conflicted !== "") {
-      const files = conflicted.split("\n");
+    if (unmerged !== "") {
+      const files = [...new Set(unmerged.split("\n").map((line) => line.slice(line.indexOf("\t") + 1)))];
       throw new WorkspaceRefusedError(
         "merge-conflict",
         `Merging "${from}" into "${base}" conflicts in ${files.join(", ")}, so it was stopped and nothing changed in ${checkout}. ` +
@@ -179,7 +237,16 @@ async function merge(git: Git, repo: string, base: string, from: string): Promis
         `The run's commits are still on "${from}".`,
     );
   }
-  return { kind: "merge", branch: base, commit: await git(checkout, ["rev-parse", "HEAD"]), checkout, from };
+  const commit = await git(checkout, ["rev-parse", "HEAD"]);
+  // Success means the run's commit is on the base now, whatever git printed.
+  if (!(await git(checkout, ["merge-base", "--is-ancestor", fromCommit, commit]).then(() => true, () => false))) {
+    throw new WorkspaceRefusedError(
+      "merge-failed",
+      `Merging "${from}" into "${base}" in ${checkout} didn't commit it, so it didn't land. ` +
+        `Check that checkout for staged changes. The run's commits are still on "${from}".`,
+    );
+  }
+  return { kind: "merge", branch: base, commit, checkout, from };
 }
 
 /**
@@ -187,7 +254,12 @@ async function merge(git: Git, repo: string, base: string, from: string): Promis
  * into there: the base branch's pinned upstream, else the pinned `origin`
  * (or the one pinned remote) and the base's own name.
  */
-function pushRemote(pins: KeptFetchPins | undefined, base: string): { remoteName: string; url: string; base: string } | undefined {
+function pushRemote(pins: KeptFetchPins | undefined, resolved: Base): { remoteName: string; url: string; base: string } | undefined {
+  if (resolved.remote !== undefined) {
+    const url = pins?.remotes.get(resolved.remote.remoteName);
+    return url === undefined ? undefined : { remoteName: resolved.remote.remoteName, url, base: resolved.remote.branch };
+  }
+  const base = resolved.local!;
   const upstream = pins?.upstreams.get(`refs/heads/${base}`);
   if (upstream !== undefined) {
     const url = pins!.remotes.get(upstream.remoteName);
@@ -218,7 +290,7 @@ async function openPullRequest(
   git: Git,
   host: LandHost,
   target: LandTarget,
-  base: string,
+  base: Base,
   request: Extract<LandRequest, { kind: "pull-request" }>,
   left: () => number,
 ): Promise<Landed> {
@@ -226,7 +298,7 @@ async function openPullRequest(
   if (remote === undefined) {
     throw new WorkspaceRefusedError(
       "no-push-remote",
-      `${host.repo} had no single remote to push to when the host started (an "origin", or "${base}"'s upstream), ` +
+      `${host.repo} had no single remote to push to when the host started (an "origin", or "${base.named}"'s upstream), ` +
         `so the run's branch "${target.branch}" was not pushed. Its commits are still there.`,
     );
   }

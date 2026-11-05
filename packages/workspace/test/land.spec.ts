@@ -141,4 +141,61 @@ describe("accepting a run by merging it locally", () => {
     await expect(h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "merge" })).rejects.toMatchObject({ reason: "checkout-dirty" });
     expect(() => git(repo, "merge-base", "--is-ancestor", commit, "refs/heads/main")).toThrow();
   });
+  it("never overwrites an ignored file in the person's checkout that the run tracks, and merges nothing", async () => {
+    writeFileSync(join(repo, ".gitignore"), "secret.txt\n");
+    git(repo, "add", ".gitignore");
+    git(repo, "commit", "-q", "-m", "Ignore the secret");
+    const h = host();
+    const place = await h.provision({ kind: "repo", repo }, { place: ["run-1"], branch: "fsd/run-1" });
+    writeFileSync(join(place.cwd, "secret.txt"), "the run's file\n");
+    git(place.cwd, "add", "-f", "secret.txt");
+    git(place.cwd, "commit", "-q", "-m", "Track the secret");
+    writeFileSync(join(repo, "secret.txt"), "the person's secret\n");
+    const before = git(repo, "rev-parse", "main");
+
+    await expect(h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "merge" })).rejects.toMatchObject({ reason: "merge-failed" });
+    expect(readFileSync(join(repo, "secret.txt"), "utf8")).toBe("the person's secret\n");
+    expect(git(repo, "rev-parse", "main")).toBe(before);
+  });
+
+  it("lands a real merge commit even when the checkout's config would squash it or leave it uncommitted", async () => {
+    const { h, place, commit } = await runWithCommit();
+    git(repo, "config", "branch.main.mergeOptions", "--squash --no-commit");
+
+    const landed = await h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "merge" });
+
+    git(repo, "merge-base", "--is-ancestor", commit, "refs/heads/main");
+    expect(landed).toMatchObject({ kind: "merge", branch: "main", commit: git(repo, "rev-parse", "main") });
+    expect(git(repo, "status", "--porcelain")).toBe("");
+  });
 });
+
+describe("a run whose base is a remote-tracking ref", () => {
+  for (const baseRef of ["origin/main", "refs/remotes/origin/main"]) {
+    it(`merges into the local branch that tracks ${baseRef}, and opens a pull request into main on origin`, async () => {
+      const { h, place, commit } = await runWithCommit();
+
+      const merged = await h.land!({ cwd: place.cwd, branch: "fsd/run-1", baseRef }, { kind: "merge" });
+      expect(merged).toMatchObject({ kind: "merge", branch: "main" });
+      git(repo, "merge-base", "--is-ancestor", commit, "refs/heads/main");
+
+      const pr = await h.land!({ cwd: place.cwd, branch: "fsd/run-1", baseRef }, { kind: "pull-request", title: "t", body: "b", gh });
+      expect(pr).toMatchObject({ kind: "pull-request", base: "main", remote: upstream.url });
+      expect(upstream.rev("refs/heads/fsd/run-1")).toBe(commit);
+      expect(ghCalls().some((call) => call.startsWith("pr create") && call.includes("--base main"))).toBe(true);
+    });
+  }
+
+  it("reads a local branch named origin/main as that branch, not as the remote's", async () => {
+    const { h, place, commit } = await runWithCommit();
+    git(repo, "checkout", "-q", "-b", "origin/main");
+    const main = git(repo, "rev-parse", "refs/heads/main");
+
+    const merged = await h.land!({ cwd: place.cwd, branch: "fsd/run-1", baseRef: "origin/main" }, { kind: "merge" });
+
+    expect(merged).toMatchObject({ kind: "merge", branch: "origin/main" });
+    git(repo, "merge-base", "--is-ancestor", commit, "refs/heads/origin/main");
+    expect(git(repo, "rev-parse", "refs/heads/main")).toBe(main);
+  });
+});
+

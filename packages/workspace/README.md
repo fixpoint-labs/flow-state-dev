@@ -365,7 +365,9 @@ const merged = await host.land!({ cwd, branch, baseRef }, { kind: "merge" });
 ```
 
 - **`pull-request`** pushes the run's branch to the remote the host pinned for the repository at start: the base branch's upstream, else `origin`, else the one remote it has. The push goes to the pinned URL, ignores any program set in the repository's own config, and uses your global credential helpers, the same way a [fetch of a listed repository](#a-repository-on-this-machine) runs. It never force-pushes. Then it opens the pull request into the base through the host's `gh` (`request.gh`, default `gh` on `PATH`). If that branch already has an open pull request, `land` returns it instead of opening a second, so a retry after a half-finished landing is safe.
-- **`merge`** merges the run's branch into the base where the base is checked out, with the repository's hooks off. It never resolves a conflict. If the merge conflicts, `land` aborts it, leaving the checkout as it was, and the refusal names the files.
+- **`merge`** merges the run's branch into the base where the base is checked out, with the repository's hooks off. It always makes a merge commit, whatever the repository's merge settings say, and it refuses to overwrite an ignored file in your checkout. It never resolves a conflict. If the merge conflicts, `land` aborts it, leaving the checkout as it was, and the refusal names the files.
+
+A base that names a pinned remote's branch, such as `origin/main`, is read the same way a provision reads it. The pull request targets `main` on that remote, and a merge lands on the local branch that tracks it. A local branch named `origin/main` is that local branch.
 
 The run's branch and checkout are left alone whatever happens, so its commits are never lost. A failure is a `WorkspaceRefusedError` whose message says what to do next:
 
