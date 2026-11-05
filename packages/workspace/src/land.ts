@@ -107,12 +107,37 @@ export interface LandHost {
   readonly pins: KeptFetchPins | undefined;
   /** The host's environment for git. */
   readonly env: Record<string, string>;
+  /**
+   * The GitHub repository (`host/owner/name`, gh's `--repo`) a pinned remote's
+   * URL names, or `undefined` when it names none. Default {@link repoOf}.
+   */
+  readonly pullRequestRepo?: (url: string) => string | undefined;
+}
+
+/**
+ * The ways a run's branch can land on this host, asked before the review is:
+ * `merge` for a run in a listed repository; `pull-request` too when its base
+ * has a pinned remote that names a GitHub repository, the same checks
+ * {@link landRun} makes before it pushes. Never throws: what can't be read
+ * offers nothing.
+ */
+export async function landWays(host: LandHost, target: LandTarget): Promise<Array<LandRequest["kind"]>> {
+  const git = async (cwd: string, args: string[]) =>
+    (await run("git", [...NO_HOOKS, "-c", "core.fsmonitor=false", ...args], { cwd, timeoutMs: RESTORE_TIMEOUT_MS, env: host.env })).stdout.trim();
+  try {
+    const base = await resolveBase(git, host.repo, host.pins, target.baseRef);
+    const remote = pushRemote(host.pins, base);
+    const repo = remote === undefined ? undefined : (host.pullRequestRepo ?? repoOf)(remote.url);
+    return repo === undefined ? ["merge"] : ["pull-request", "merge"];
+  } catch {
+    return [];
+  }
 }
 
 /**
  * Land a run's branch, by `request.kind`.
  *
- * @throws WorkspaceRefusedError `base-unknown`, `no-push-remote`,
+ * @throws WorkspaceRefusedError `base-unknown`, `no-push-remote`, `no-pull-request-repo`,
  *   `remote-repointed`, `push-failed`, `pull-request-failed`,
  *   `base-not-checked-out`, `checkout-dirty`, `checkout-busy`, `merge-conflict` or
  *   `merge-failed`, each saying what happened.
@@ -406,6 +431,15 @@ async function openPullRequest(
         `so the run's branch "${target.branch}" was not pushed. Its commits are still there.`,
     );
   }
+  // gh is always told the repository, from the pinned URL: it never falls back to the live remotes.
+  const repo = (host.pullRequestRepo ?? repoOf)(remote.url);
+  if (repo === undefined) {
+    throw new WorkspaceRefusedError(
+      "no-pull-request-repo",
+      `${redactRemote(remote.url)} names no GitHub repository, so no pull request can be opened there, ` +
+        `and the run's branch "${target.branch}" was not pushed. Its commits are still there.`,
+    );
+  }
   const live = await git(host.repo, ["remote", "get-url", remote.remoteName]).catch(() => undefined);
   if (live !== undefined && withoutCredential(live) !== remote.url) {
     throw new WorkspaceRefusedError(
@@ -461,15 +495,14 @@ async function openPullRequest(
   }
 
   const gh = request.gh ?? "gh";
-  const repo = repoOf(remote.url);
   // gh runs in an empty directory of its own, never in a checkout whose config the run can write
   // (`url.*.insteadOf`, `pushurl`, a credential helper), and git above it is never looked for.
   // It is always told the head branch, so it never pushes: the push above is the only one.
   const ghDir = scratchDir();
   const ghEnv = { GH_PROMPT_DISABLED: "1", GIT_CEILING_DIRECTORIES: dirname(ghDir) };
-  const where = repo === undefined ? [] : ["--repo", repo];
-  // `owner:branch` on GitHub's side, when the repository is known.
-  const head = repo === undefined ? target.branch : `${repo.split("/")[1]}:${target.branch}`;
+  const where = ["--repo", repo];
+  // `owner:branch` on GitHub's side.
+  const head = `${repo.split("/")[1]}:${target.branch}`;
   const failed = (step: string, error: unknown) =>
     new WorkspaceRefusedError(
       "pull-request-failed",

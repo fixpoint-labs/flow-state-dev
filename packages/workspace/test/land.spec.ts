@@ -50,8 +50,17 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-function host() {
-  return localWorkspaceHost({ root, remotes: { allow: [] }, localRepositories: [repo], source: () => ({ kind: "repo", repo }) });
+/** The GitHub repository the test's upstream stands for: its URL is a local `file://` one, which names none. */
+const GITHUB_REPO = "github.com/acme/widgets";
+
+function host(pullRequestRepo: ((url: string) => string | undefined) | null = () => GITHUB_REPO) {
+  return localWorkspaceHost({
+    root,
+    remotes: { allow: [] },
+    localRepositories: [repo],
+    source: () => ({ kind: "repo", repo }),
+    ...(pullRequestRepo === null ? {} : { pullRequestRepo }),
+  });
 }
 
 /** A run's place, with one commit on its branch touching `file`. */
@@ -78,7 +87,7 @@ describe("accepting a run by opening a pull request", () => {
     // pushed: the branch is on the upstream, at the run's commit.
     expect(upstream.rev("refs/heads/fsd/run-1")).toBe(commit);
     // opened: gh was asked to create it, from the run's branch into main.
-    expect(ghCalls().some((call) => call.startsWith("pr create") && call.includes("--head fsd/run-1") && call.includes("--base main"))).toBe(true);
+    expect(ghCalls().some((call) => call.startsWith("pr create") && call.includes(`--repo ${GITHUB_REPO}`) && call.includes("--head acme:fsd/run-1") && call.includes("--base main"))).toBe(true);
     expect(landed).toEqual({ kind: "pull-request", url: PR_URL, number: 42, branch: "fsd/run-1", base: "main", remote: upstream.url });
   });
 
@@ -94,8 +103,24 @@ describe("accepting a run by opening a pull request", () => {
       expect(cwd.startsWith(realpathSync(place.cwd))).toBe(false);
       expect(cwd.startsWith(realpathSync(repo))).toBe(false);
     }
-    // gh is told the branch, so it never pushes it itself.
-    expect(ghCalls().filter((call) => call.startsWith("pr create")).every((call) => call.includes("--head "))).toBe(true);
+    // gh is told the repository and the branch, so it never reads a remote or pushes it itself.
+    expect(ghCalls().length).toBeGreaterThan(0);
+    expect(ghCalls().every((call) => call.includes(`--repo ${GITHUB_REPO}`))).toBe(true);
+    expect(ghCalls().filter((call) => call.startsWith("pr create")).every((call) => call.includes("--head acme:fsd/run-1"))).toBe(true);
+  });
+
+  it("refuses a pull request where the pinned remote names no GitHub repository, before pushing anything", async () => {
+    const h = host(null);
+    const place = await h.provision({ kind: "repo", repo }, { place: ["run-1"], branch: "fsd/run-1" });
+    writeFileSync(join(place.cwd, "change.txt"), "the run's change\n");
+    git(place.cwd, "add", "change.txt");
+    git(place.cwd, "commit", "-q", "-m", "The run's change");
+
+    await expect(h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "pull-request", title: "t", body: "b", gh })).rejects.toMatchObject({
+      reason: "no-pull-request-repo",
+    });
+    expect(() => upstream.rev("refs/heads/fsd/run-1")).toThrow();
+    expect(ghCalls()).toEqual([]);
   });
 
   it("refuses to push to a remote repointed since the host started, and pushes nothing", async () => {
@@ -121,6 +146,28 @@ describe("accepting a run by opening a pull request", () => {
     await expect(landing).rejects.toBeInstanceOf(WorkspaceRefusedError);
     await expect(landing).rejects.toMatchObject({ reason: "push-failed" });
     expect(git(repo, "rev-parse", "refs/heads/fsd/run-1")).toBe(commit);
+  });
+});
+
+describe("the ways a run can land, asked before its review", () => {
+  it("offers both for a worktree of a listed repository whose remote names a GitHub repository", async () => {
+    const { h, place } = await runWithCommit();
+    expect(await h.landWays!({ cwd: place.cwd, branch: "fsd/run-1" })).toEqual(["pull-request", "merge"]);
+  });
+
+  it("offers only the merge when the remote names no GitHub repository", async () => {
+    const h = host(null);
+    const place = await h.provision({ kind: "repo", repo }, { place: ["run-1"], branch: "fsd/run-1" });
+    expect(await h.landWays!({ cwd: place.cwd, branch: "fsd/run-1" })).toEqual(["merge"]);
+  });
+
+  it("offers nothing for a checkout that isn't a worktree of a listed repository, where land would refuse", async () => {
+    const h = host();
+    const clone = join(tempDir("land-clone"), "clone");
+    git(join(clone, ".."), "clone", "-q", upstream.url, clone);
+    git(clone, "checkout", "-q", "-b", "fsd/run-1");
+    expect(await h.landWays!({ cwd: clone, branch: "fsd/run-1" })).toEqual([]);
+    await expect(h.land!({ cwd: clone, branch: "fsd/run-1" }, { kind: "merge" })).rejects.toMatchObject({ reason: "land-unsupported" });
   });
 });
 
