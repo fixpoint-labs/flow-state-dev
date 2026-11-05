@@ -17,9 +17,10 @@ afterEach(cleanup);
 /** Streamdown draws bold as a marked span, not `<strong>`. */
 const STRONG = '[data-streamdown="strong"]';
 
-/** An adapter that reports one finished task and an empty run: all the popup reads. */
+/** An adapter that reports one task and an empty run: all the popup reads. Its action row is never pressed. */
 function adapterWith(task: BoardTask): LabAdapter {
   return {
+    taskActions: () => ({}),
     watchTasks: (_sessionId: string, onChange: (tasks: BoardTask[]) => void) => {
       onChange([task]);
       return () => {};
@@ -36,12 +37,13 @@ function drawTask(task: BoardTask) {
       nameOf={(id) => id}
       lookOf={(id) => lookOf({ id, name: id })}
       isCoding={() => true}
+      coders={[]}
       onClose={() => {}}
     />,
   );
 }
 
-const drawResult = (result: string) => drawTask({ id: "t1", to: "coder", title: "Fix the adapter", status: "done", result });
+const drawResult = (result: string) => drawTask({ id: "t1", to: "coder", title: "Fix the adapter", goal: "Fix the adapter", status: "done", boardStatus: "completed", result });
 
 describe("a task popup's cards", () => {
   it("draws the result's Markdown: bold, inline code and a list, with no literal markers", async () => {
@@ -68,7 +70,9 @@ describe("a task popup's cards", () => {
       id: "t1",
       to: "coder",
       title: "Fix the adapter",
+      goal: "Fix the adapter",
       status: "running",
+      boardStatus: "in_progress",
       waiting: { kind: "question", prompt: "Fix **only** `src/adapter.ts`, or every caller?", unanswerable: null },
     });
     const asked = await within(document.body).findByRole("region", { name: "Waiting on you" });
