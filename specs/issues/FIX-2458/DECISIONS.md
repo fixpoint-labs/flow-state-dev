@@ -26,8 +26,8 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | The issue's proposal: add `aborted`, `sdk-not-installed`, `sdk-version-mismatch` and `config` to `HarnessFailureKind`, set by every harness |
-| **Because** | Each of the three questions already has its reader. A stop is `isAbortLike`, which the generator and the discovery tools act on; Codex's and Cursor's stop errors fail it today ([evidence](poc/facts/check.mjs)). "Can it run here" is the readiness check, the `harness-readiness` mechanism harness-manager serves; it misses only the version. A config error is thrown when the block is built, before any host can branch on it. A kind for each would be a second answer that can disagree with the first |
-| **Locks in** | Every harness's stop error carries the signal's reason as its `cause`, so it is abort-like and keeps its resumable session id. Every readiness check reports an absent SDK and one outside the tested range, with a remedy. A host with only the thrown error gets `null` for an unusable SDK and reads the message. Adding a kind later stays a one-member widening |
+| **Because** | Each of the three questions already has its reader. A stop is `isAbortLike`, which the generator and the discovery tools act on. Codex's and Cursor's stop errors fail it today ([evidence](poc/facts/check.mjs)), and so does Claude Code's when the signal has a reason: harness-manager stops runs with a timeout, a plain `Error` for a steer, and a superseded-attempt error. "Can it run here" is the readiness check, the `harness-readiness` mechanism harness-manager serves; it misses only the version. A config error is thrown when the block is built, before any host can branch on it. A kind for each would be a second answer that can disagree with the first |
+| **Locks in** | Every harness's stop error has an AbortError at the root of its `cause` chain, holding the signal's reason, so it is abort-like whatever the reason. Codex's and Cursor's keep their resumable session id; Claude Code's gains a stop error of its own. A harness used as a generator's tool now stops the generator when its run is stopped, where today the model is handed a failed call. Every readiness check reports an absent SDK and one outside the tested range, with a remedy. A host with only the thrown error gets `null` for an unusable SDK and reads the message. Adding a kind later stays a one-member widening |
 
 ![D1: four new failure kinds, beside the readers core has. Decides it: one answer per question. Price: a host with only the thrown error can't classify an unusable SDK. Flips if a host must classify one from the error alone](figures/d1-readers.svg)
 
@@ -42,7 +42,7 @@ no readiness check in its path. Then `sdk-not-installed` earns its kind.
 | | |
 |---|---|
 | **Instead of** | Exact pins for all three, which claude-code would join · or any version for all three, which Codex and Cursor would leave |
-| **Because** | Each package translates its vendor's wire, so an untested version produces malformed items, not an error; that is why Codex and Cursor gate. But claude-code's comments were measured on SDK 0.3.234 while Kitchen Sink runs ^0.3.316: an exact pin would need a claude-code release for each patch. A range covers both: one version wide for Codex and Cursor, a tested span for Claude |
+| **Because** | Each package translates its vendor's wire, so an untested version produces malformed items, not an error; that is why Codex and Cursor gate. But claude-code's comments were measured on SDK 0.3.234 while the lockfile pins 0.3.316: an exact pin would need a claude-code release for each patch. A range covers both: one version wide for Codex and Cursor, a tested span for Claude |
 | **Locks in** | Each package's `peerDependencies` range is what it tested, and the readiness check and the block refuse outside it, naming both. claude-code moves from `*` to a range: an adopter on an untested SDK gets a refusal with a remedy at build time. Widening a range is a release |
 
 ![D2: the peer range is the tested range, beside exact pins for all and any version for all. Decides it: keeping both a gate and claude-code's release cadence. Price: each new span is a release. Flips if a vendor breaks its wire inside a patch](figures/d2-version-policy.svg)
@@ -80,12 +80,18 @@ It comes down to an app with two harnesses: shared names collide, and Kitchen Si
   imports them. The version helpers leave too, once Kitchen Sink reads readiness instead.
 - **Error classes stay, one set per package, renamed under D3** (`ClaudeAgentRunError` becomes
   `ClaudeCode…`). claude-code gains a version-mismatch class for D2. Docs branch on core's readers.
-- **The convergence point for "a stop is abort-like"** is each stop error's constructor, not
-  its throw sites: Codex builds its in four places and Cursor in five (`abortRace`, the pre-run
-  signal check, the session-id rewrap, and Cursor's mid-run check). Claude Code's `rejectOnAbort`
-  already rejects with the signal's reason.
-- **No retired runtime value.** Nothing here retires a value or config key, so FIX-2454's refusal
-  helper is not used. Every change is a moved or removed export, under Q1.
+- **The convergence point for "a stop is abort-like"** is each stop error's constructor: it
+  defaults its root cause to an AbortError, so no construction site can miss it. Codex builds its
+  in four places and Cursor in five (`abortRace`, the pre-run signal check, the session-id
+  re-mint in `toRunFailure`, which must keep the cause, and Cursor's mid-run check); Kitchen
+  Sink's scripted Codex builds a fifth (`lib/codex-mode.ts`). Claude Code's `rejectOnAbort` is
+  its one site.
+- **No retired runtime value.** The error `code` strings (`CLAUDE_AGENT_RUN_FAILED`, …) and the
+  value of `SDK_SESSION_ID_KEY` are emitted into items and stored, so they keep their values when
+  their exported names change. FIX-2454's refusal helper is not used; every change is a moved or
+  removed export, under Q1.
+- **A range's lower bound is the version the lockfile pins** (claude-code: 0.3.316, held by the
+  root `pnpm.overrides`). Versions named only in comments are not tested.
 - **The goal check extends Kitchen Sink's parity suite**, the one place the three harnesses
   already share a table. These are Kitchen Sink's harness files, edited only by this issue.
 
@@ -100,8 +106,9 @@ It comes down to an app with two harnesses: shared names collide, and Kitchen Si
 
 ## Settled
 
-- **Codex's and Cursor's stop errors are not abort-like; Claude Code's is** — **CONFIRMED** by
-  [`poc/facts/check.mjs`](poc/facts/check.mjs), which runs core's `isAbortLike` on each.
+- **Codex's and Cursor's stop errors are not abort-like; Claude Code's is only when the stop has
+  no reason** — **CONFIRMED** by [`poc/facts/check.mjs`](poc/facts/check.mjs), which runs core's
+  `isAbortLike` on each, and on a timeout and a plain-`Error` reason.
 - **The factual base** (88 claude-code names in five spellings, 8 cross-package names, 5/5/2
   error classes, 13 shared environment names, no `./cli` consumer) — re-derived by the same
   checker; `--control` plants an unclassified name and it fails. It corrected one count in the
@@ -116,5 +123,8 @@ Skipped in member mode: the epic-agent runs `analysis` and `reuse-review` over t
 - **Draft** — framed as one reader per job across three harnesses; narrowed the issue's four
   failure kinds to core's existing readers (Step 3.5: *refine the substrate*), a tested-range
   version policy, and package-named exports with shared shapes in `core/harness`.
+- **Validation** — a stop must be abort-like whatever the signal's reason, since harness-manager
+  stops with timeouts and plain errors; the collision cell left for FIX-2449's check; the range
+  match, the `./sdk` consumers and four more docs pages named.
 
 **Open: none.**

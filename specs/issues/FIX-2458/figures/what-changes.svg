@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 396" role="img" aria-label="Five jobs a host does with a coding harness, by harness, today and after. A stop: abort-like for Claude Code only; after, abort-like in all three. An SDK that can't run: Codex and Cursor refuse when the block is built, Claude Code runs any version, no readiness check reads the version; after, readiness and the block refuse outside the tested range in all three. The model list: two lists under two type names, Cursor's kept by hand in Kitchen Sink; after, one HarnessModelList from each. The environment: three hand copies of 13 names; after, HARNESS_BASE_PASS plus each harness's own. The names: claude-code spells them five ways and 8 names sit on two or three packages; after, each name carries its package and none collides."
+<svg viewBox="0 0 940 396" role="img" aria-label="Five jobs a host does with a coding harness, by harness, today and after. A stop: abort-like only for a Claude Code stop with no reason; after, abort-like in all three whatever the reason. An SDK that can't run: Codex and Cursor refuse when the block is built, Claude Code runs any version, no readiness check reads the version; after, readiness and the block refuse outside the tested range in all three. The model list: two lists under two type names, Cursor's kept by hand in Kitchen Sink; after, one HarnessModelList from each. The environment: three hand copies of 13 names; after, HARNESS_BASE_PASS plus each harness's own. The names: claude-code spells them five ways and 8 names sit on two or three packages; after, each name carries its package and none collides."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -34,14 +34,14 @@
 
   <g id="row-stop">
     <text class="t-job" x="28" y="80">A stop</text>
-    <text class="mark ok" x="176" y="81">+</text><text class="t-b" x="192" y="80">abort-like</text>
-    <text class="t-s" x="192" y="96">the signal's own reason</text>
+    <text class="mark bad" x="176" y="81">−</text><text class="t-b" x="192" y="80">only with no reason</text>
+    <text class="t-s" x="192" y="96">a timeout reads as a failure</text>
     <text class="mark bad" x="346" y="81">−</text><text class="t-b" x="362" y="80">not abort-like</text>
     <text class="t-s" x="362" y="96">its own error class</text>
     <text class="mark bad" x="516" y="81">−</text><text class="t-b" x="532" y="80">not abort-like</text>
     <text class="t-s" x="532" y="96">its own error class</text>
     <text class="t-b" x="700" y="80">isAbortLike(err)</text>
-    <text class="t-s" x="700" y="96">the session id kept on the error</text>
+    <text class="t-s" x="700" y="96">whatever the stop's reason</text>
     <line class="row" x1="16" y1="114" x2="680" y2="114"/>
   </g>
 

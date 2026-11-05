@@ -110,9 +110,13 @@ const aborts = {
   cursor: isAbortLike(new cursorErr.CursorAgentAbortedError(null)),
   // claude-code rejects with the signal's own reason (agent.ts rejectOnAbort).
   "claude-code": isAbortLike(ctl.signal.reason ?? new DOMException("x", "AbortError")),
+  // harness-manager stops runs with a timeout reason too; claude-code then rejects with it.
+  "claude-code, timeout reason": isAbortLike(AbortSignal.timeout(0).reason ?? new DOMException("t", "TimeoutError")),
+  "claude-code, plain Error reason": isAbortLike(new Error("steer")),
 };
 console.log("isAbortLike(the harness's abort):", aborts);
-check(aborts.codex === false && aborts.cursor === false && aborts["claude-code"] === true, "abort is abort-like for claude-code only");
+check(aborts.codex === false && aborts.cursor === false && aborts["claude-code"] === true, "a reason-less abort is abort-like for claude-code only");
+check(aborts["claude-code, timeout reason"] === false && aborts["claude-code, plain Error reason"] === false, "a stop with a reason is not abort-like, even in claude-code");
 
 // ── 7 · environment pass lists ───────────────────────────────────────────────
 const passOf = (p, name) => {
