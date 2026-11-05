@@ -14,7 +14,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import { SuspensionResolverProvider, type SuspensionResolver } from "@flow-state-dev/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ReviewHold, shortBranch, takesReviewVerdict, NO_RESOLVER_UNANSWERABLE, type ReviewDetail } from "../../registry/components/review-hold";
+import { LandedOutcome, ReviewHold, shortBranch, takesReviewVerdict, NO_RESOLVER_UNANSWERABLE, type ReviewDetail } from "../../registry/components/review-hold";
 import { SuspensionCard } from "../../registry/components/suspension-card";
 import { SessionItemsProvider } from "../../registry/components/session-items-context";
 
@@ -39,6 +39,25 @@ describe("the review card draws a coding run's review", () => {
     expect(screen.getByText("· and 1 more")).toBeTruthy();
     expect(screen.getByText("Judge: done, 0.91")).toBeTruthy();
     expect(screen.getByText(DATA.judge!.reason)).toBeTruthy();
+  });
+
+  it("shows the project's checks, a red one open with its output, so the reviewer sees the code doesn't build before accepting", () => {
+    const checks = [
+      { command: "pnpm typecheck", exitCode: 0, timedOut: false, skipped: false, durationMs: 1200, tail: "" },
+      { command: "pnpm test", exitCode: 1, timedOut: false, skipped: false, durationMs: 900, tail: "CHECK-MARKER: 1 failed" },
+    ];
+    render(<ReviewHold review={{ ...DATA, checks }} answer={async () => {}} />);
+    expect(screen.getByText("Checks 1/2 passed")).toBeTruthy();
+    expect(screen.getByText(/CHECK-MARKER: 1 failed/)).toBeTruthy();
+    // Information, not a gate: the reviewer can still accept.
+    expect(screen.getByRole("button", { name: "Accept" })).toBeTruthy();
+  });
+
+  it("draws no checks line when none ran, rather than claiming 0/0", () => {
+    render(<ReviewHold review={{ ...DATA, checks: null }} />);
+    expect(screen.queryByText(/^Checks /)).toBeNull();
+    render(<ReviewHold review={DATA} />);
+    expect(screen.queryByText(/^Checks /)).toBeNull();
   });
 
   it("says so when git couldn't count the commits, and when no judge read the run", () => {
@@ -109,6 +128,40 @@ describe("the review card sends only the two answers a review takes", () => {
       </ReviewHold>,
     );
     expect(screen.getByTestId("diff")).toBeTruthy();
+  });
+});
+
+describe("a review whose host can land the work offers two labelled accepts", () => {
+  it("Open a PR and Merge locally each send an accept naming its land, and there is no bare Accept", async () => {
+    const answer = vi.fn(async () => {});
+    render(<ReviewHold review={{ ...DATA, lands: ["pull-request", "merge"] }} answer={answer} />);
+    expect(screen.queryByRole("button", { name: "Accept" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Accept: Merge locally" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Accept: Open a PR" }));
+    await waitFor(() => expect(screen.getByText("Accepted")).toBeTruthy());
+    expect(answer).toHaveBeenCalledWith({ verdict: "accepted", land: "pull-request" });
+  });
+
+  it("a landing that failed shows its error and a Retry of the same way first, with the other way still offered", async () => {
+    const answer = vi.fn(async () => {});
+    const landFailed = { land: "merge" as const, message: "Merging conflicts in README.md, so it was stopped." };
+    render(<ReviewHold review={{ ...DATA, lands: ["pull-request", "merge"], landFailed }} answer={answer} />);
+    expect(screen.getByRole("alert").textContent).toBe(`Merging locally failed: ${landFailed.message}`);
+    const buttons = screen.getAllByRole("button").map((b) => b.textContent);
+    expect(buttons.slice(0, 2)).toEqual(["Retry: Merge locally", "Accept: Open a PR"]);
+    fireEvent.click(screen.getByRole("button", { name: "Retry: Merge locally" }));
+    await waitFor(() => expect(answer).toHaveBeenCalledWith({ verdict: "accepted", land: "merge" }));
+  });
+
+  it("the done state says where the work went and what comes next", () => {
+    render(<LandedOutcome landed={{ kind: "pull-request", url: "https://github.com/acme/relay/pull/7", number: 7, branch: "b", base: "main" }} />);
+    expect(screen.getByRole("link", { name: "pull request #7" }).getAttribute("href")).toBe("https://github.com/acme/relay/pull/7");
+    expect(screen.getByText(/Next: review and merge it\./)).toBeTruthy();
+    cleanup();
+    render(<LandedOutcome landed={{ kind: "merge", branch: "main", commit: "c15d6f098abc0123", checkout: "/work/relay", from: "b" }} />);
+    expect(screen.getByText("c15d6f098abc")).toBeTruthy();
+    expect(screen.getByText("/work/relay")).toBeTruthy();
+    expect(screen.getByText(/Next: push main when you're ready\./)).toBeTruthy();
   });
 });
 
