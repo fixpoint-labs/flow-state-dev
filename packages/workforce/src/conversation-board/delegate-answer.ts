@@ -8,6 +8,10 @@
  *
  * A notice's line (any other ending a conversation hears) carries
  * orchestration's `noticeMetadata` instead, read with `parseNotice`.
+ *
+ * Also the text a completed task's output says (`answerTextOf`), here because
+ * this module imports nothing: a browser reads a task's answer by the rule the
+ * server lands it by.
  */
 
 /** The key a delegate's answer carries its marker under, in its message item's `metadata`. */
@@ -45,4 +49,14 @@ export function delegateAnswerOf(item: {
   const marked = item.metadata?.[DELEGATE_ANSWER_KEY] as { worker?: unknown; taskId?: unknown } | null | undefined;
   if (marked == null || typeof marked.worker !== "string" || typeof marked.taskId !== "string") return undefined;
   return { worker: marked.worker, taskId: marked.taskId };
+}
+
+/**
+ * A completed task's answer, as a line the user reads: its output when that
+ * is text (an agent worker's answer), or its `answer` (a coder's run, whose
+ * output also carries its branch and commits). `undefined` when blank or absent.
+ */
+export function answerTextOf(output: unknown): string | undefined {
+  const text = typeof output === "string" ? output : (output as { answer?: unknown } | null | undefined)?.answer;
+  return typeof text === "string" && text.trim() !== "" ? text : undefined;
 }

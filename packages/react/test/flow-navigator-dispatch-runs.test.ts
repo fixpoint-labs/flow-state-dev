@@ -111,9 +111,9 @@ describe("FlowNavigator — asking for dispatch runs", () => {
     screen.getByText("reports").click();
 
     await waitFor(() => expect(listSessions).toHaveBeenCalled());
-    // The default is the request this component has always sent. A host that
-    // wants machine sessions asks for them.
-    expect(listSessions.mock.calls[0]?.[0]).not.toHaveProperty("include");
+    // A host that wants machine sessions asks for them; every leaf asks for
+    // its rows' state (FIX-2411).
+    expect(listSessions.mock.calls[0]?.[0]).toMatchObject({ include: ["status"] });
   });
 
   it("passes the caller-facing include, and marks the row it brings back", async () => {
@@ -132,7 +132,7 @@ describe("FlowNavigator — asking for dispatch runs", () => {
     screen.getByText("reports").click();
 
     await waitFor(() => expect(listSessions).toHaveBeenCalled());
-    expect(listSessions.mock.calls[0]?.[0]).toMatchObject({ include: "dispatch-runs" });
+    expect(listSessions.mock.calls[0]?.[0]).toMatchObject({ include: ["dispatch-runs", "status"] });
 
     // The row says whose work it is, so a host slot can label it without
     // re-deriving the parentage the navigator already read.
