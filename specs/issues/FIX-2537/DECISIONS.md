@@ -13,7 +13,7 @@ flowchart TD
   I --> D2["D2 · custom screens are sync functions · declared once · listed by name"]
   D2 -.->|"rejected · a model hides in a screen"| X2["handler blocks or any block"]
   I --> QA["Q-A · open · an event that arrives twice"]
-  QA -.->|"recommended"| QA1["judged per routing run · polledThrough skips what the poll saw"]
+  QA -.->|"recommended"| QA1["judged per routing run · the cursor's screened field for the poll"]
   QA -.-> QA2["a verdict memo per thread · a third store"]
 ```
 
@@ -98,13 +98,14 @@ It comes down to a hidden model: anything async can await one.
 - **The trade-off:** a verdict memo per thread is one call per event but a third dedupe store,
   which epic D4 rules out. Per routing run keeps two stores and pays up to twice on overlap.
 - **My recommendation (EM call, 2026-11-05): one call per routing run,** the closure amended to
-  report calls per event, and FIX-2536's `polledThrough` mark (its spec adds it) as the poll-side
-  half, skipping what the poll took at no token cost.
+  report calls per event, and FIX-2536's cursor field `screened` as the poll-side half: a screen's
+  refusal or hold writes `[id, version]` there, and `polledThrough` holds at the oldest event
+  neither taken nor screened. One field on the existing cursor, not a memo, so D4 holds.
 - **What would change my mind:** push and poll on together by default, or calls per event well
-  over one after `polledThrough`.
+  over one with `screened` in place.
 - **If wrong:** fuzzy subscriptions pay twice on overlap; the other way, a store forever.
 
-![Q-A: judge per run with polledThrough, beside a verdict memo per thread. Decides it: a third dedupe store](figures/open-qa-twice.svg)
+![Q-A: judge per run with the cursor's screened field, beside a verdict memo per thread. Decides it: a third dedupe store](figures/open-qa-twice.svg)
 
 It comes down to a third dedupe store; it stays an owner fork because it amends the epic closure.
 
@@ -123,4 +124,5 @@ a classifier behind cheap filters, as mail filtering does it.
 
 - **Draft:** two stages behind the config screens, one call per routing run; Q-A raised.
 - **Restraint, reuse, cross-spec fold (EM call, 2026-11-05):** hold run and share split cut;
-  sync custom functions; `fitCallFailed`, `runOnce` reused; the unheard seam; the prompt guard.
+  sync custom functions; `fitCallFailed`, `runOnce` reused; the unheard seam; the prompt guard;
+  Q-A cites FIX-2536's `screened` cursor field, replacing the poll-skip rule.

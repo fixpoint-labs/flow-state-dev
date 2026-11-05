@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 430" role="img" aria-label="Q-A, open: when an event arrives twice, from push and then a poll, may the model judge it twice? Recommended: judge once per routing run, and take FIX-2536&#x27;s polledThrough mark so the poll skips events it already took. The other option: a memo of verdicts per thread. It comes down to the first row, a third dedupe store: the recommendation adds none, the memo adds one kept in step with the cursor, which epic D4 rules out. The price is the second row: up to two calls per event when push and poll overlap, on fuzzy subscriptions only. The third row: the closure&#x27;s assertion is amended to per routing run, an epic amendment. Locks in one call per routing run, with the closure reporting calls per event. Would change my mind: push and poll overlapping by default, or calls per event well over one after polledThrough."
+<svg viewBox="0 0 940 430" role="img" aria-label="Q-A, open: when an event arrives twice, from push and then a poll, may the model judge it twice? Recommended: judge once per routing run, and take FIX-2536&#x27;s screened field on the subscription cursor, written when a screen refuses or holds, so polledThrough holds at the oldest event neither taken nor screened. The other option: a memo of verdicts per thread. It comes down to the first row, a third dedupe store: the recommendation adds only a field on the existing cursor, the memo adds a store kept in step with the cursor, which epic D4 rules out. The price is the second row: up to two calls per event when push and poll overlap, on fuzzy subscriptions only. The third row: the closure&#x27;s assertion is amended to per routing run, an epic amendment. Locks in one call per routing run, with the closure reporting calls per event. Would change my mind: push and poll overlapping by default, or calls per event well over one."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -43,7 +43,7 @@
   <g id="options">
     <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
-    <text class="t-h c-code" x="228" y="112">Judge per run; polledThrough skips</text>
+    <text class="t-h c-code" x="228" y="112">Judge per run; the cursor screens</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">THE OTHER OPTION</text>
     <text class="t-h c-lost" x="592" y="112">A verdict memo per thread</text>
@@ -57,7 +57,7 @@
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
     <text class="t-b" x="248" y="161">None</text>
-    <text class="t-s" x="248" y="179">the cursor and the log id stay two</text>
+    <text class="t-s" x="248" y="179">a field on the cursor; still two stores</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">One, kept in step</text>
     <text class="t-s" x="612" y="179">epic D4 rules it out</text>
@@ -96,6 +96,6 @@
     <rect class="foot" x="478" y="340" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="361">WOULD CHANGE MY MIND</text>
     <text class="t-b" x="494" y="381">Push and poll overlap by default</text>
-    <text class="t-s" x="494" y="399">or leg c reads well over one per event</text>
+    <text class="t-s" x="494" y="399">or calls per event well over one</text>
   </g>
 </svg>

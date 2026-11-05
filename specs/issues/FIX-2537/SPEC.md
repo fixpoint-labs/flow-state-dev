@@ -123,7 +123,7 @@ that threw is not, so an outage forwards nothing.
 |---|---|
 | **Removes** | Nothing |
 | **Adds** | A model step in routing, opt-in: permanent (epic D2). User sentences in the org's server-only index, until FIX-2532 replaces it |
-| **Leaves** | `fit-check`'s generator fallback, fenced off. An event that arrives twice is judged twice unless the poll skips it ([Q-A](DECISIONS.md#qa)) |
+| **Leaves** | `fit-check`'s generator fallback, fenced off. An event that arrives twice may be judged twice, bar FIX-2536's `screened` ([Q-A](DECISIONS.md#qa)) |
 
 **Net: up, slightly.** One optional model step; no new store, sender, block kind or owner-run mode.
 
