@@ -28,7 +28,7 @@ factory.**
 |---|---|
 | **The real need** | The epic's *first hour*: the quick start is the adopter's first judgement, and today it shows defaults, not their app ([epic](../../epics/FIX-2447/SPEC.md#the-goal-and-how-well-know-its-met)) |
 | **Smaller, and rejected** | "`stores` accepts a bare adapter." The first file still writes a store line and an import, three slots still promise nothing, and the empty chat stays silent |
-| **Bigger, and not this issue's** | A real scheduler store (review item R-11, outside the epic) and a durable default store. Engine's own store names leave its root under FIX-2449's split, not as a goal here |
+| **Bigger, and not this issue's** | A real scheduler store (review item R-11, outside the epic) and a durable default store. Engine's own store names move here too, but only once FIX-2449's `engine/host` exists ([decided](DECISIONS.md#decided-not-asked)) |
 | **Not done if** | The quick start still writes a store line, or a getting-started page still declares an empty `session` · the in-memory notice fires when `stores` is set, or never fires · a profile with `scheduler`, `blobs` or `queue` constructs, or one with `primary` and `bus` stops constructing · a silent generator chat action builds with no warning in dev, or the warning doesn't name both fixes · the warning fires when `itemVisibility` is set, on an internal, task, webhook or schedule action, or in production · a store package's root lists a per-store constructor or `createXStores`, or a moved name doesn't resolve from `./advanced` · a docs page still lists `blobs`, `queue` or `scheduler` as a slot |
 
 ```mermaid
@@ -99,8 +99,9 @@ middle row's three dashed slots are [D2](DECISIONS.md#d2).
 **Docs:** update the getting-started pages (the store line and the empty `session` blocks;
 the quick start's snippet after FIX-2451 lands), `server/setup.md`,
 `configuration/runtime.md`, `persistence/overview.md` and `api/server.md` (the bare form
-first, three slots gone), the block-options page (the warning), and every guide that writes the
-store line. Update the engine, store-sqlite, store-postgres, vercel and cli READMEs: the bare
+first, three slots gone), `configuration/blocks.md` (the warning, beside its `itemVisibility` table), `server/schedule-index.md`
+and `streaming/trace-channel.md` (the `./advanced` paths), and every guide that writes the store
+line. Update the engine, store-sqlite, store-postgres, vercel and cli READMEs: the bare
 form, and an *Advanced* section on `./advanced`. Add the store packages' rows to FIX-2448's
 *what each package root is for* page. No new page.
 
@@ -122,7 +123,8 @@ asked](DECISIONS.md#decided-not-asked).
 ## What stays as it is
 
 - Named profiles, `defaultProfile`, `FSD_ENV`, and the `primary` and `bus` slots, unchanged.
-- `StoreAdapter`, and the five adapters. Vercel's adapter keeps its `scheduleIndex`.
+- `StoreAdapter`, and the five adapters. Vercel's adapter keeps its `scheduleIndex` and drops
+  `scheduler` from its `capabilities` ([D2](DECISIONS.md#d2)).
 - Durability's default: on wherever the stores persist (FIX-2063 D2), so off in memory.
 - Generator emission: no position-inferred `itemVisibility` default. The warning names the
   choice; it doesn't make it.
@@ -132,10 +134,10 @@ asked](DECISIONS.md#decided-not-asked).
 
 | Already here | What this does with it |
 |---|---|
-| `store` · the `stores` profile map on `createFlowState` | **Extends**: one entry with two more accepted shapes. Searched `stores:`, `StoresConfig`, `profile` across `packages/`: no other entry configures the runtime's store. The CLI's no-config SQLite store (`cli/src/local-store.ts`) serves runs with no app config, and stays |
+| `store` · the `stores` profile map on `createFlowState` | **Extends**: one entry with two more accepted shapes. Searched `stores:`, `StoresConfig`, `profile` across `packages/`: no other entry configures `createFlowState`'s store. Two lower entries already default omitted stores to memory, silently: `createFlowApiRouter`'s `stores` (`http-handlers.ts`) and `testFlow`'s. D1 follows them and adds the notice. The CLI's no-config SQLite store (`cli/src/local-store.ts`) serves runs with no app config, and stays |
 | `CapabilitySlotMap`, `FORWARD_COMPATIBLE_SLOTS` in `resolve-slots.ts` | **Removes** `blobs`, `queue`, `scheduler` and the skip branch |
-| `refuseRetiredDispatcherOption` in `createFlowState`; FIX-2454's refusal helper | **Builds on** the helper for the slot refusals ([D3 of the epic](../../epics/FIX-2447/DECISIONS.md#d3)) |
-| `warnOnceDev` (`core/src/helpers/deprecation.ts`); defineFlow's definition-time checks | **Builds on** `warnOnceDev` for the generator warning. The 2nd definition-time check on an action's block, after the description check |
+| `refuseRetiredDispatcherOption` in `createFlowState`; FIX-2454's refusal helper | **Builds on** FIX-2454's helper for the slot refusals ([D3 of the epic](../../epics/FIX-2447/DECISIONS.md#d3)); today's helper carries no version, so that part waits on FIX-2454 |
+| `warnOnceDev` (`core/src/helpers/deprecation.ts`); defineFlow's definition-time checks | **Builds on** `warnOnceDev` for the generator warning. One more definition-time check, after `mergeActions` so instance-override actions are covered |
 | `xStores` beside `createXStores` in engine, store-sqlite and store-postgres | **Moves** the registry factory and the per-store constructors off each root ([D3](DECISIONS.md#d3)) |
 | `docs/architecture/generator-identity.md` → *No position-inferred defaults* | **Kept.** The warning respects it |
 | [FIX-2426 SPEC](../FIX-2426/SPEC.md) and [FIX-2367 D5](../../epics/FIX-2367/DECISIONS.md#d5): the `bus` slot | **Kept**; the bare form's primary backs the bus when it declares it |

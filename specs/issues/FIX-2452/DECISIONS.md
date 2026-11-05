@@ -26,7 +26,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Keeping `stores` required and accepting a bare adapter, so the first file writes `stores: inMemoryStores()` |
-| **Because** | The first file's job is a working chat, and a store the adopter didn't choose is ceremony. LangGraph's checkpointer is optional the same way. The risk sits in production, so that is where the warning goes |
+| **Because** | The first file's job is a working chat, and a store the adopter didn't choose is ceremony. `createFlowApiRouter` and `testFlow` already default an omitted store to memory, silently, and LangGraph's checkpointer is optional the same way. The risk sits in production, so that is where the warning goes |
 | **Locks in** | An app with no store config persists nothing, in every environment. Moving that default to a durable store later changes behaviour for every app that relied on it. The dev line extends today's `active profile` line; production gets a `console.warn` once per process naming `stores` as the fix |
 
 ![D1: what happens when an app names no store. Runs in memory and says so, chosen, beside keeping stores required with a bare adapter. Decides it: the first runtime file has no store line. Price: a deploy that forgot its store runs, losing data on restart, behind a warning. An app that names its store writes one line either way. Flips if deploys are seen shipping in memory](figures/d1-default-store.svg)
@@ -43,7 +43,7 @@ refuses when `NODE_ENV` is `production`, a one-line fix at boot.
 |---|---|
 | **Instead of** | Keeping them as reserved slots that construct and do nothing |
 | **Because** | Each is a promise nothing keeps. Queues come from a worker adapter and schedules from the schedule index, and three docs pages explain the gap. Old code that names one gets the epic's D3: a loud refusal naming the replacement and a removal version, through FIX-2454's helper |
-| **Locks in** | A slot arrives with the store that backs it, never as a placeholder in the type. Kitchen Sink's `scheduler: pgStores` is the one repo caller, and goes with this change. An adapter's own `capabilities` list may still say `scheduler`; that is ignored, not refused |
+| **Locks in** | A slot arrives with the store that backs it, never as a placeholder in the type. Kitchen Sink's `scheduler: pgStores` is the one repo caller, and goes with this change. `CapabilitySlot` is the map's keys, so Vercel's adapter drops `scheduler` from its `capabilities` and its test changes. At runtime an unknown name in an adapter's list, from an older adapter, is ignored, not refused |
 
 ![D2: what happens to the three slots that back nothing. Removed and refused, chosen, beside kept as reserved no-ops. Decides it: every slot a reader can name does something. Price: code that names one fails at construction. Adding a real one later is the same work either way. Flips if a store for one of them is in the next minor](figures/d2-retired-slots.svg)
 
@@ -68,10 +68,16 @@ the move. Then delete them in the minor that removes Q1's aliases, if Q1 takes t
 ## Decided, not asked
 
 - **One normalisation point for `stores`.** The `createFlowState` constructor turns a bare
-  adapter or nothing into `{ default: { primary } }` before anything reads it. Every reader goes
+  adapter or nothing into `{ default: { primary } }` before anything reads it, replacing the raw options it keeps. Every reader goes
   through it: profile keys, the `defaultProfile` and `FSD_ENV` checks, `collectAdapters`,
   `meta.declaredSlots`, runtime resolution. The retired-slot refusal runs there too. An object
   with a `resolve` function and a `capabilities` array is an adapter; a slot map never has one.
+- **Order and owners.** The engine half of D3 (its registry factories and per-store constructors to
+  `engine/host`) is this issue's, per the epic's seam, and lands after FIX-2449 creates that subpath
+  and its explicit root list; until then it waits as its own PR. The slot refusals use FIX-2454's
+  helper, which carries the removal version, so they land after it; the rest of the change does not
+  wait. Kitchen Sink's `fsdev.config.ts` edit is this issue's too, though the epic's Kitchen Sink
+  seam doesn't list it.
 - **The bare form is exactly the one-profile map.** `FSD_ENV` naming another profile still
   refuses, and a primary that declares `bus` backs the bus.
 - **The generator warning.** At flow-instance build, for each caller action (`actions`, not
@@ -125,5 +131,8 @@ whole set.
 - **Draft** — framed as defaults that leak into the first file; the `stores` entry widened and
   normalised at one point, the three no-op slots refused, each store root down to its adapter
   factory, and a dev warning on `warnOnceDev`.
+- **Validation** — the goal's check tightened (persistence read from the app's file, negatives on
+  every signal, a docs signal); Vercel's `scheduler` capability, the engine move's order behind
+  FIX-2449, the FIX-2454 dependency and the two silent in-memory precedents written in.
 
 **Open: none.**
