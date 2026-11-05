@@ -51,7 +51,7 @@ export type DeclaredResourceIndex = {
 const VERSION_SEPARATOR = "@";
 
 /** The name an index's entries are stored under, so entries of another version are never read. */
-export function storedIndexName(name: string, version: number): string {
+function storedIndexName(name: string, version: number): string {
   return `${name}${VERSION_SEPARATOR}${version}`;
 }
 

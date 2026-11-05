@@ -113,7 +113,7 @@ export function admitIndexedCollections(
  * A row's entries for every declared index whose scope and pattern cover its
  * key. Every index function sees the key and the state being written.
  */
-export function indexEntriesFor(
+function indexEntriesFor(
   collections: readonly IndexedCollection[],
   scopeType: StorageScopeType,
   key: string,

@@ -365,7 +365,6 @@ export {
   canonicalIndexValue,
   canonicalIndexValues,
   declaredIndexes,
-  storedIndexName,
 } from "./resource-index";
 
 export { isCollectionConfig, resourceStorageKeys } from "./storage-identity";
