@@ -795,6 +795,10 @@ describe("the teammates screen", () => {
 
     fireEvent.click(within(panel("tester")).getByRole("button", { name: "Edit instructions" }));
     const edit = within(panel("tester")).getByRole("form", { name: "Instructions for tester" });
+    // The name shows in the form but can't be changed yet, and the form says why.
+    const name = within(edit).getByLabelText("Name of tester") as HTMLInputElement;
+    expect([name.value, name.readOnly]).toEqual(["tester", true]);
+    expect(document.getElementById(name.getAttribute("aria-describedby")!)?.textContent).toMatch(/Renaming a teammate isn't possible yet/);
     fireEvent.change(within(edit).getByLabelText("New instructions for tester"), { target: { value: "Answer in one sentence." } });
     await act(async () => fireEvent.click(within(edit).getByRole("button", { name: "Save instructions" })));
     await waitFor(() => expect(screen.queryByRole("form", { name: "Instructions for tester" })).toBeNull());

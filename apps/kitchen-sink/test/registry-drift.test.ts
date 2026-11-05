@@ -26,12 +26,15 @@ const kitchenSinkTargetDir = join(testDir, "../components/flow-state");
 /**
  * Kitchen Sink follows sessions through `useSession`, so it draws neither the
  * connection bar nor the first-read screen. The task action row is not
- * installed here either: no screen here opens a task to draw. An installed copy nothing imports is dead code.
+ * installed here either: no screen here opens a task to draw. Nor are the
+ * harness readiness chips: the picker shows each mode's readiness itself. An
+ * installed copy nothing imports is dead code.
  */
 const NOT_INSTALLED_COMPONENTS = new Set([
   "connection-banner.tsx",
   "connection-screen.tsx",
   "task-actions.tsx",
+  "harness-readiness.tsx",
 ]);
 
 const drift = () =>

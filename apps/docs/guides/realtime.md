@@ -44,7 +44,7 @@ On the Node host, `refresh` runs as soon as the change is saved: the server send
 | Topic | What changes it covers |
 |-------|------------------------|
 | `topic.session(id)` | One session: its requests, their items, runs started under it, and changes to its task boards. |
-| `topic.user()` | The signed-in user's own scope. |
+| `topic.user()` | The signed-in user's own scope, and their sessions: a `"run"` notice when one is created, titled or deleted, or a request in one starts or ends. |
 | `topic.org()` | The signed-in user's organization. |
 
 Each takes `{ resource }` to narrow it to one resource, such as `topic.session(id, { resource: "tasks" })`. User and org topics name no id. The server uses the caller it signed in, so a screen can only hear its own user and organization.

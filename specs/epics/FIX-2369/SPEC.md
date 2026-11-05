@@ -58,6 +58,12 @@ every day for FSD's own work". It adds restart goals in three apps (FIX-2407) an
 end-to-end checks, all with a real model, to the goal corpus. It does nothing for subsystems
 these apps don't touch.
 
+| | |
+|---|---|
+| **Lead measure** | The children whose goal check has passed, listed by name, not counted. A Done count says nothing about the closure's legs |
+| **Not doing** | Anything past a reviewed branch (push, PR, review comments are FIX-1768's), and everything in [What stays as it is](#what-stays-as-it-is) |
+| **Kill line** | If the first closure run shows the coding harness, not the apps, is why a change can't reach a reviewed branch (runs can't commit or run checks reliably), stop app work and redirect to harness reliability |
+
 ## What's in the box
 
 ![In the box: five package areas, built once: client and react, orchestration, harness-manager, workforce and devtool, the ui registry. Composed in by each of four apps: its layout and which pieces it draws. Replaced in one line: a registry component, checks on the project row, a host option. Below a fence, not built here: the push channel, PR and cleanup, a follow-up continuing its root, task timing fields, worktree staleness](figures/end-state.svg)
@@ -147,6 +153,8 @@ in FIX-1763), FIX-2168 and FIX-2164 (task timing and step fields), and FIX-2252 
 staleness) are inputs that don't block it: the goal stops at a reviewed branch.
 
 **Moved to [FIX-2430](https://linear.app/fixpoint-labs/issue/FIX-2430):** FIX-2402, FIX-2404 and FIX-2423, which no closure check needs ([decided in review](DECISIONS.md#decided-recorded-so-no-child-reopens-them)).
+
+**Left the epic 2026-11-04:** FIX-2489, FIX-2516, FIX-2553 and FIX-2552, which don't serve the goal; they stay in the project backlog ([decided](DECISIONS.md#decided-recorded-so-no-child-reopens-them)).
 
 ## How the issues flow into each other
 
