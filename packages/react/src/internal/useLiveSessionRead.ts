@@ -66,10 +66,13 @@ export function useLiveSessionRead({
   enabled,
   extraIdentity = []
 }: LiveSessionReadOptions): SessionList {
-  const canSubscribe = source.subscribe !== undefined;
+  // A disabled list subscribes to nothing: no user topic, timer or
+  // visibility listener, so closing the last open leaf lets the push
+  // connection go.
+  const live = enabled && source.subscribe !== undefined;
   const driver = useMemo(
-    () => (canSubscribe ? liveListDriver(source as Pick<Client, "subscribe">) : undefined),
-    [source, canSubscribe]
+    () => (live ? liveListDriver(source as Pick<Client, "subscribe">) : undefined),
+    [source, live]
   );
   const include = [
     ...(includeDispatchRuns ? (["dispatch-runs"] as const) : []),

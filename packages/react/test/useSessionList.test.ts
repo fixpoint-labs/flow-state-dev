@@ -69,6 +69,24 @@ describe("useSessionList", () => {
     expect(result.current.sessions).toEqual([]);
   });
 
+  it("subscribes only while enabled, and lets the subscription go when disabled", async () => {
+    const live = liveClient([[row("s1")]]);
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) => useSessionList({ flowKind: "chat", client: live.client, enabled }),
+      { initialProps: { enabled: false } }
+    );
+    expect(live.subscriptions).toHaveLength(0);
+    expect(live.list).not.toHaveBeenCalled();
+
+    rerender({ enabled: true });
+    await waitFor(() => expect(result.current.sessions.map((s) => s.id)).toEqual(["s1"]));
+    expect(live.subscriptions).toHaveLength(1);
+
+    rerender({ enabled: false });
+    expect(live.subscriptions[0]!.closed).toBe(true);
+    expect(live.subscriptions).toHaveLength(1);
+  });
+
   it("reads again on a run notice, so a session made elsewhere joins the list", async () => {
     const live = liveClient([[row("s1")], [row("s2"), row("s1")]]);
     const { result } = renderHook(() => useSessionList({ flowKind: "chat", client: live.client }));
