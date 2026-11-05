@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 470" role="img" aria-label="Core's root before and after. Left, today: one root of 563 names, with 337 names an app author uses or the docs teach, 107 the check flags, 6 benchmark types, 55 harness and pull-request names, 54 runtime seams, and 4 unused names, plus the items/internal entry. Right, after: the root keeps the 337 and whichever flagged names earn a README line, and the benchmark types until they move to testing. core/harness, a documented public subpath, takes the 55 harness names and 30 more from core/types. A fence follows: behind it, core/internal, published for our own packages only and outside semver, takes the 54 seams, 27 more from core/types, and the folded items/internal. Four unused names are deleted. BlockContext's public type loses requestHost and five symbol slots."
+<svg viewBox="0 0 940 470" role="img" aria-label="Core's root before and after. Left, today: one root of 563 names, with 339 names an app author uses or the docs teach, 107 the check flags, 6 benchmark types, 55 harness and pull-request names, 54 runtime seams, and 2 names only core itself calls, plus the items/internal entry. Right, after: the root keeps the 339 and whichever flagged names earn a README line, and the benchmark types until they move to testing. core/harness, a documented public subpath, takes the 55 harness names and 30 more from core/types. A fence follows: behind it, core/internal, published for our own packages only and outside semver, takes the 54 seams, 27 more from core/types, and the folded items/internal. Those two stop being exported. BlockContext's public type loses requestHost and five symbol slots."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -30,7 +30,7 @@
     <text class="t-lbl" x="16" y="26">TODAY</text>
     <rect class="n-box" x="16" y="36" width="318" height="400" rx="6"/>
     <text class="t-b" x="32" y="60">@flow-state-dev/core · 563 names</text>
-    <text class="t-r" x="32" y="92">337 an app author uses or the docs teach</text>
+    <text class="t-r" x="32" y="92">339 an app author uses or the docs teach</text>
     <text class="t-r" x="32" y="116">107 the check flags</text>
     <text class="t-r" x="32" y="140">6 benchmark types</text>
     <text class="t-r" x="32" y="204">55 harness and pull-request names</text>
@@ -38,7 +38,7 @@
     <text class="t-r" x="32" y="316">54 runtime seams</text>
     <text class="t-s" x="32" y="332">RequestHost · parkOnWait · waitGateDataOf</text>
     <text class="t-r" x="32" y="356">./items/internal, a second hidden entry</text>
-    <text class="t-r" x="32" y="414">4 names nothing uses</text>
+    <text class="t-r" x="32" y="414">2 names only core itself calls</text>
     <text class="t-s" x="32" y="428">core/types carries 57 harness and 66 seam names too</text>
   </g>
 
@@ -56,7 +56,7 @@
     <text class="t-lbl" x="420" y="26">AFTER</text>
     <rect class="z-pub" x="420" y="36" width="504" height="122" rx="6"/>
     <text class="t-lbl c-code" x="436" y="56">THE ROOT · FOR APP AUTHORS</text>
-    <text class="t-r" x="436" y="96">the 337, unchanged</text>
+    <text class="t-r" x="436" y="96">the 339, unchanged</text>
     <text class="t-r" x="436" y="120">each flagged name: a README line, internal, or deleted</text>
     <text class="t-r" x="436" y="144">until they move to testing/benchmark</text>
 
@@ -74,7 +74,7 @@
     <text class="t-s" x="436" y="352">requestHost and five symbol slots leave the public BlockContext</text>
 
     <rect class="z-gone" x="420" y="392" width="504" height="44" rx="6"/>
-    <text class="t-lbl c-gone" x="436" y="410">DELETED</text>
-    <text class="t-r" x="436" y="428">dispatchWaitResultSchema · findOpenedPullRequests · two more</text>
+    <text class="t-lbl c-gone" x="436" y="410">UNEXPORTED · KEPT INSIDE CORE</text>
+    <text class="t-r" x="436" y="428">planConversationPrefix · findOpenedPullRequests</text>
   </g>
 </svg>

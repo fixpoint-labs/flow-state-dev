@@ -167,29 +167,33 @@ const INTERNAL_FILES = ["types/request-host.ts", "types/request-end.ts", "types/
   "types/wait-gate.ts", "blocks/wait-on-request.ts", "execution/request-side-chain-pool.ts", "helpers/cache-tokens.ts",
   "blocks/internal/replay-log.ts", "blocks/internal/resolve-active-status-message.ts"];
 const INTERNAL_NAMES = ["resolveAllowedActions", "isFiveFieldCron", "DISPATCH_SEAM", "DispatchSeam", "dispatchThroughSeam", "NoDispatchSeamError"];
-const DELETE_NAMES = ["dispatchWaitResultSchema", "DispatchWaitResult", "planConversationPrefix", "findOpenedPullRequests"];
+// Called inside core, imported by nobody outside it: they stop being exported.
+const UNEXPORT_NAMES = ["planConversationPrefix", "findOpenedPullRequests"];
+// A value a public signature names through `typeof` (dispatcher({ wait: true })'s output): the
+// census's type-only reach misses it, so it is held on the root by name.
+const STAY_NAMES = ["dispatchWaitResultSchema", "DispatchWaitResult"];
 const SIBLING_FILES = { "benchmark/types.ts": "testing/benchmark (its own issue)" };
 function split() {
   const pkg = "@flow-state-dev/core";
   const exp = roots.get(pkg);
   const cls = new Map(Object.entries(classify(pkg)).flatMap(([k, l]) => l.map((n) => [n, k])));
   const dir = "packages/core/src/";
-  const out = { delete: [], harness: [], internal: [], sibling: [], check: [], stays: [] };
+  const out = { unexport: [], harness: [], internal: [], sibling: [], check: [], stays: [] };
   for (const [n, e] of exp) {
     const f = e.file.replace(dir, "");
-    const dest = DELETE_NAMES.includes(n) ? "delete" : HARNESS_FILES.includes(f) ? "harness"
+    const dest = UNEXPORT_NAMES.includes(n) ? "unexport" : STAY_NAMES.includes(n) ? "stays" : HARNESS_FILES.includes(f) ? "harness"
       : INTERNAL_FILES.includes(f) || INTERNAL_NAMES.includes(n) ? "internal" : SIBLING_FILES[f] ? "sibling"
       : ["sibling", "none"].includes(cls.get(n)) ? "check" : "stays";
     out[dest].push(n);
   }
   const sum = Object.values(out).reduce((a, l) => a + l.length, 0);
   if (sum !== exp.size) throw new Error(`totality: split ${sum} of ${exp.size}`);
-  for (const n of [...DELETE_NAMES, ...INTERNAL_NAMES]) if (!exp.has(n)) throw new Error(`stale name in split: ${n}`);
+  for (const n of [...UNEXPORT_NAMES, ...STAY_NAMES, ...INTERNAL_NAMES]) if (!exp.has(n)) throw new Error(`stale name in split: ${n}`);
   console.log(`core root today: ${exp.size}`);
   // The same files on the ./types subpath: a moved name leaves every public core entry.
   const types = entryOnly("./types").get(pkg);
   const onTypes = (files) => [...types].filter(([n, e]) => files.includes(e.file.replace(dir, "")) || INTERNAL_NAMES.includes(n));
-  const th = onTypes(HARNESS_FILES.concat(["types/harness-usage.ts"])), ti = onTypes(INTERNAL_FILES);
+  const th = onTypes(HARNESS_FILES), ti = onTypes(INTERNAL_FILES);
   console.log(`./types today: ${types.size} · from the harness files ${th.length} (${th.filter(([n]) => !exp.has(n)).length} not on the root) · from the internal files ${ti.length} (${ti.filter(([n]) => !exp.has(n)).length} not on the root)`);
   for (const [k, l] of Object.entries(out)) console.log(`${k.padEnd(9)} ${String(l.length).padStart(4)}  ${args.includes("--names") ? l.sort().join(" ") : ""}`);
 }

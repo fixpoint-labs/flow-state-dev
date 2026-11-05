@@ -24,7 +24,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Reading ER-1's "outside consumer" as any import from outside the package, sibling packages included |
-| **Because** | 58 of core's root names are imported only by our own packages, and 18 more, `RequestHost`'s, pass today only because the README section this issue moves names them. If a sibling's import counts, every seam passes and the check can't hold the epic's fence: a name our packages share belongs on `/internal` ([epic D2](../../epics/FIX-2447/DECISIONS.md#d2)). Tenet 2: the root is the adopter's surface, not our wiring |
+| **Because** | 58 of core's root names are imported only by our own packages, and 26 of the 54 seams this issue moves pass today only because a README passage names them, or a covered signature reaches them. If a sibling's import counts, every seam passes and the check can't hold the epic's fence: a name our packages share belongs on `/internal` ([epic D2](../../epics/FIX-2447/DECISIONS.md#d2)). Tenet 2: the root is the adopter's surface, not our wiring |
 | **Locks in** | From the check's first PR, a name only our packages use lives on `/internal` or earns a README line, in every published package. A type an adopter meets only through a covered function's signature counts as used through it, so config and option types need no line of their own. Adopter code is `apps/` (not `apps/docs` or `apps/devtool`), `examples/` and `labs/`; the docs are the package's README and `apps/docs` |
 
 ![D1: what counts as using a root name. Adopter code or the docs, chosen, beside any import outside the package. Decides it: a seam only our packages import, which fails the check instead of passing. Price: a public type only our packages import today needs a README line. Ties: a name an app imports passes either way](figures/d1-used-means.svg)
@@ -68,14 +68,19 @@ that adopters are told to use. It isn't: 163 of its 442 names are not on the roo
 - **Each of the 107 flagged names gets one of three rulings**: a README line if an adopter
   needs it, `core/internal` if only our packages do, deletion if nobody does. The implementer
   rules name by name; `census.mjs core --files` is the list.
-- **Deleted, not moved:** `dispatchWaitResultSchema` and `DispatchWaitResult`, imported nowhere;
-  `planConversationPrefix` and `findOpenedPullRequests`, whose only reference anywhere is their
-  own docs line. Their removal follows ER-3 / Q1's answer, since 0.4.0 carries them.
+- **Unexported, not moved:** `planConversationPrefix` and `findOpenedPullRequests`. Core's own
+  plan and pull-request code calls them and nothing outside core imports them; their docs lines
+  go. Their removal follows ER-3 / Q1's answer, since 0.4.0 carries them.
+  `dispatchWaitResultSchema` and `DispatchWaitResult` **stay**: they are the documented output of
+  `dispatcher({ wait: true })`, which the census's source reach missed.
   `utility.historySummary` **stays**: the Teammates lab and the generator-context page use it.
 - **`BlockContext`'s public type loses `requestHost` and the five symbol slots.** They move to
   an internal context type in `core/internal` that the engine builds and the readers
   (`requireRequestHost`, `onRequestEnded`, `reportHarnessSpend`, `publishBoardChange`,
-  `requestResumeOf`, `dispatchThroughSeam`) read through. `reportHarnessSpend` is called by a
+  `requestResumeOf`, `dispatchThroughSeam`) read through. A framework package holding a public
+  `ctx` reads the host with `requestHostOf(ctx)`, `undefined` when none is wired, which is what
+  today's 52 `ctx.requestHost?.` reads expect; `requireRequestHost` stays the throwing form. Four
+  goals patch core source by matching `ctx.requestHost?.` text; they move with it. `reportHarnessSpend` is called by a
   harness, so it is exported from `core/harness` and reads the seam inside.
 - **`core/items/internal` folds into `core/internal`** (ER-2), so core has one hidden entry.
   Kitchen Sink's two imports of it move to public names; where none exists, the name goes public
@@ -85,6 +90,17 @@ that adopters are told to use. It isn't: 163 of its 442 names are not on the roo
   are the only failing core names this issue leaves.
 - **A deprecated alias passes the check** only if Q1 lands on aliases, and only while it names
   its new home and a removal version (D3's shape). It is the check's one exemption.
+- **The ratchet refuses a name newly failing, for any cause**: new on the root, or its last
+  adopter import or README line removed. A PR that removes an app's last use of a name rules on
+  that name in the same PR, as Fallow's check makes a PR answer for the export it orphaned.
+- **A README mention counts, and the README is reviewed prose.** Framework-facing passages leave
+  it for `docs/architecture/`, which counts for nothing, so what remains is adopter material.
+  `--after` lists each name a README line added in the PR clears, for the reviewer.
+- **Both subpaths are real entries**: `exports` and `publishConfig.exports` in core's manifest,
+  `tsconfig.base.json` paths, and the seven vitest configs that alias core's subpaths.
+  `items/internal`'s fold touches about 48 importing files.
+- **Seams:** draft PR #4757 adds three root types to `packages/core/src/index.ts`; whichever lands
+  second rebases. The export check, not this spec, decides whether they need a README line.
 - **One changeset** for core naming each moved name's new home, and one per importer package
   whose own surface changes (ER-7).
 
@@ -102,7 +118,7 @@ that adopters are told to use. It isn't: 163 of its 442 names are not on the roo
 
 - **The counted facts — CONFIRMED** by [`poc/export-census/census.mjs`](poc/export-census/census.mjs)
   on `origin/main` d6a38c09. Core's root is 563 names; the split is 55 harness, 54 internal,
-  4 deleted, 6 benchmark, 107 for the check, 337 passing (`--split`, which throws unless every
+  2 unexported, 6 benchmark, 107 for the check, 339 passing (`--split`, which throws unless every
   name lands in one place). Across all 28 published roots, 1,030 names fail today, 457 of them
   in the eleven roots no child owns. `--control` plants an app import, a sibling-only import and
   an adopter `/internal` import, and the census moves or names each.
@@ -117,7 +133,10 @@ Not run on this spec alone: it is a spec-set member, and the epic-agent runs `an
 
 - **Draft** — framed as the root every adopter imports plus a ratchet that keeps every root from
   regrowing; the review's moves kept, three corrected by the census (`historySummary` stays,
-  two deletes have docs lines, the named seams sit on `core/types`); built on `packageExports`,
+  two of its "deletes" are called inside core and two are a documented output, the named seams sit on `core/types`); built on `packageExports`,
   FIX-2162's census and Fallow's base compare.
+- **Validation** — the blind goal pass added the first-PR and README-dump states, reading moved
+  names from the installed `.d.ts`, and every `/internal` import form; the technical pass turned
+  four deletes into two unexports, added `requestHostOf`, and widened the docs line and importers.
 
 **Open: none.**

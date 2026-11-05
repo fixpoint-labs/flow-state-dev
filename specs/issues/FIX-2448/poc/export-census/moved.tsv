@@ -1,7 +1,5 @@
-delete	DispatchWaitResult
-delete	dispatchWaitResultSchema
-delete	findOpenedPullRequests
-delete	planConversationPrefix
+unexport	findOpenedPullRequests
+unexport	planConversationPrefix
 harness	DEFAULT_PULL_REQUEST_RULES
 harness	HarnessEnvOptions
 harness	HarnessSteerActionOptions
@@ -111,9 +109,9 @@ internal	resolveActiveStatusMessage
 internal	resolveAllowedActions
 internal	waitGateDataOf
 internal	waitOnRequest
-sibling	BenchmarkAdapter
-sibling	BenchmarkAdapterOptions
-sibling	BenchmarkCategory
-sibling	BenchmarkRegistry
-sibling	BenchmarkSubject
-sibling	BenchmarkTask
+benchmark	BenchmarkAdapter
+benchmark	BenchmarkAdapterOptions
+benchmark	BenchmarkCategory
+benchmark	BenchmarkRegistry
+benchmark	BenchmarkSubject
+benchmark	BenchmarkTask
