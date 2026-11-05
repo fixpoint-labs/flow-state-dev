@@ -1,5 +1,5 @@
 /**
- * The adapter's task changes go through the board's own calls (FIX-2382):
+ * The adapter's task changes go through the board's own calls:
  * orchestration's `inbox.board(at)` on the session that holds the board, so the
  * lab spells no task action of its own. A steer typed in a thread with no open
  * question is that client's `steer`, not a raw `updateTask` send, and a failed

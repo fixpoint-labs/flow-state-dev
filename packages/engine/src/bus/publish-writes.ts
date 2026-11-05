@@ -135,7 +135,7 @@ function noticeKey(notice: ChangeNotice): string {
  * fails the write that raised it. Every publisher goes through this one:
  * the request and session store wrappers here, and the run's resource and
  * scope-state seams and the client's resource routes (FIX-1506), and the
- * board-notice seam (FIX-2429).
+ * board-notice seam.
  */
 export function publishNotices(bus: ChangeBus, notices: readonly ChangeNotice[]): void {
   let queued = pending.get(bus);
@@ -183,7 +183,7 @@ function sessionTopic(id: string, tenantId: string | undefined): BusTopic {
 
 /**
  * A user's topic under its tenant: a session's owner, which hears `run` for
- * every write to one of its sessions, as a parent hears its runs (FIX-2411).
+ * every write to one of its sessions, as a parent hears its runs.
  * The id is the bare user id, as the push socket names a caller's user topic.
  */
 function userTopic(userId: string, tenantId: string | undefined): BusTopic {
@@ -203,7 +203,7 @@ type SessionIdentity = {
   id: string;
   tenantId: string | undefined;
   parentSessionId: string | undefined;
-  /** The owner, whose user topic hears every change to the session (FIX-2411). */
+  /** The owner, whose user topic hears every change to the session. */
   userId: string | undefined;
 };
 /** What a request write needs to name its topics. */

@@ -110,9 +110,8 @@ export interface StateBackedOptions extends TaskCapOptions {
    */
   onChange?: (event: TaskChangeEvent) => void;
   /**
-   * Fired after a committed write that is no lifecycle change, so emits no
-   * `task-change` (a run's spend, a cleared marker): with `onChange`, every
-   * write that changes a row reaches one of the two (FIX-2429).
+   * Fired after a committed write that is no lifecycle change (a run's spend, a
+   * cleared marker): with `onChange`, every row write reaches one of the two.
    */
   onWrite?: (task: Task) => void;
   /**

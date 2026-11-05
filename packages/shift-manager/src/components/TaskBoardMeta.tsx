@@ -64,8 +64,8 @@ function isConversationTaskChange(item: OutputItem): boolean {
 }
 
 /**
- * Reads on mount, when the Lab is read again, and on each board notice
- * (FIX-2429). Wherever push can miss a change it reads on a timer, only while a
+ * Reads on mount, when the Lab is read again, and on each board notice.
+ * Wherever push can miss a change it reads on a timer, only while a
  * task could be moving. A failed read leaves the last one, or the feed's
  * record, and keeps the timer. The snapshot hears the same moves on its own
  * (`lab-data.tsx`), so what it counts agrees with the card.
