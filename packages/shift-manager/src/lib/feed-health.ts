@@ -1,6 +1,6 @@
 /**
  * How a session feed on screen tells the page its connection state, so the
- * connection bar and the stale styling count it (FIX-2373). `LabProvider`
+ * connection bar and the stale styling count it. `LabProvider`
  * provides the reporter; outside one, reports go nowhere.
  */
 import { createContext, useContext, useEffect, useId } from "react";

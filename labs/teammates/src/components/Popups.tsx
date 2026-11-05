@@ -100,7 +100,8 @@ export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, coders, fo
 }
 
 /**
- * A task's run session and its result, with its action row: Cancel and Steer
+ * A task's run session and its result (or, done with none written, a line
+ * saying so), with its action row: Cancel and Steer
  * while it is open (the popup has no composer, so Steer is its own box),
  * Release while held, Retry and a Re-run per other harness once it failed or
  * was cancelled. The board decides each; the row shows its words.
@@ -166,6 +167,11 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp,
       {task?.result ? (
         <section aria-label="Result" data-step="result" data-tone={task.status} className={cn("rounded-md border border-dashed px-3 py-2 text-sm whitespace-pre-wrap", RESULT_TONE[task.status])}>
           {task.result}
+        </section>
+      ) : task?.status === "done" ? (
+        // Done with nothing written is not a plain success: say so, where the result would be.
+        <section aria-label="No result" data-step="no-result" className="rounded-md border border-dashed border-warning/60 bg-warning/10 px-3 py-2 text-sm">
+          {isCoding(task.to) ? "The coding task" : nameOf(task.to)} finished without writing a result. Its steps below show what it did.
         </section>
       ) : null}
       <Steps steps={steps} nameOf={nameOf} empty={starting} />

@@ -166,15 +166,11 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   // host sets a deadline for a person (the epic's D3): server-set.
   const filing = filingStampOf(options.ctx);
 
-  // Whose board a change is on (FIX-2429): the session that filed the row,
-  // whose view shows the board. A row with no filer (a board that hands nothing
-  // out, or a row filed before `Task.filer`) uses the ledger's legacy filer
-  // where it declares one, else the running session.
+  // A board notice for every committed write of a row, lifecycle change or not,
+  // to the session that filed it (whose view shows the board); server-written
+  // (BP-031). No `Task.filer`: the ledger's legacy filer, else the running session.
   const legacyFiler = legacyFilerOf(options);
   const runningSession = options.ctx.session?.identity?.id;
-  // A board notice for every committed write of a row, lifecycle change or not
-  // (a run's spend, a cleared marker): it reaches every open view of the filer's
-  // board, from whichever session and process wrote. Server-written (BP-031).
   const onWrite = (task: Task): void => {
     const filer = task.filer?.sessionId ?? legacyFiler?.(task) ?? runningSession;
     if (filer !== undefined) publishBoardChange(options.ctx, { sessionId: filer, board: options.collectionId });

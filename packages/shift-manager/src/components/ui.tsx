@@ -2,7 +2,8 @@
  * Shift Manager's small shared pieces: the named empty state, a failed section with
  * Retry, tabs whose selection lives in the URL, a worker's status mark, a feed's
  * jump-to-latest arrow and Load earlier, and the parts of design v2's look every screen draws with: a screen's title,
- * mono meta text, and a task's state square.
+ * mono meta text, a task's state square, and the snapshot's *as of* line with
+ * the dimming its counts take while a read the user asked for runs.
  *
  * Every piece is square (v2 draws no rounded corner) and paints only tokens.
  */
@@ -11,6 +12,7 @@ import { ArrowDownIcon } from "lucide-react";
 import type { JumpToLatest } from "@flow-state-dev/react";
 import type { Column } from "../lib/columns";
 import type { ShiftStatus } from "../lib/derive";
+import { clockTime } from "../lib/shell";
 import type { Failure } from "../lib/reads";
 import { cn } from "../lib/utils";
 
@@ -215,6 +217,28 @@ export function Meta({
     <span className={cn("font-mono font-medium", META_SIZE[role], className)} data-look={`meta-${role}`} data-testid={testId}>
       {children}
     </span>
+  );
+}
+
+/**
+ * Classes for counts while a read the user asked for runs (`useLab().asking`):
+ * dimmed until it lands. A read nobody asked for gives no sign.
+ */
+export const ASKING_CLASS = "opacity-60 transition-opacity";
+
+/**
+ * When the snapshot was last read, *as of 14:02 · refresh*, never that it is
+ * live. *refresh* reads the Lab now, as R does.
+ */
+export function AsOf({ readAt, onRefresh, testId }: { readAt: number; onRefresh: () => void; testId?: string }) {
+  return (
+    <p className="font-mono text-[11px] font-medium text-muted-foreground" data-testid={testId}>
+      as of <time dateTime={new Date(readAt).toISOString()}>{clockTime(readAt)}</time>
+      {" · "}
+      <button type="button" className="underline hover:text-foreground" onClick={onRefresh} title="Read the Lab again (R)" data-testid={testId === undefined ? undefined : `${testId}-refresh`}>
+        refresh
+      </button>
+    </p>
   );
 }
 

@@ -15,6 +15,7 @@ describe("reviewDetail", () => {
       commits: 2,
       subjects: ["B", "A"],
       judge,
+      checks: null,
     });
   });
 
@@ -33,6 +34,7 @@ describe("reviewDetail", () => {
       commits: null,
       subjects: ["ok"],
       judge: null,
+      checks: null,
     });
     expect(reviewDetail({ branch: "b", commits: -1 })?.commits).toBeNull();
     expect(reviewDetail({ commits: null, judge: { verdict: "not_done", confidence: 0.4 } })).toEqual({
@@ -40,6 +42,21 @@ describe("reviewDetail", () => {
       commits: null,
       subjects: [],
       judge: { verdict: "not_done", confidence: 0.4, reason: "" },
+      checks: null,
     });
+  });
+
+  it("reads the checks the phase ran, red ones included, so the card can say which command failed", () => {
+    const red = { command: "pnpm test", exitCode: 1, timedOut: false, skipped: false, durationMs: 900, tail: "1 failed" };
+    const green = { command: "pnpm typecheck", exitCode: 0, timedOut: false, skipped: false, durationMs: 1200, tail: "" };
+    expect(reviewDetail({ branch: "b", checks: [green, red] })?.checks).toEqual([green, red]);
+    // A review with nothing but checks is still a review.
+    expect(reviewDetail({ checks: [red] })?.checks).toEqual([red]);
+  });
+
+  it("drops a check it can't read, and is null when none ran", () => {
+    const ok = { command: "pnpm test", exitCode: null, timedOut: true, skipped: false, durationMs: 5, tail: "" };
+    expect(reviewDetail({ branch: "b", checks: [ok, { command: 4 }, "x", { command: "c", exitCode: "0", timedOut: false, skipped: false }] })?.checks).toEqual([ok]);
+    for (const checks of [undefined, null, [], "pnpm test", [{ exitCode: 0 }]]) expect(reviewDetail({ branch: "b", checks })?.checks).toBeNull();
   });
 });

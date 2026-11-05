@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * An opened task's action row (FIX-2382), on fixtures: the tasks pane's sheet
+ * An opened task's action row, on fixtures: the tasks pane's sheet
  * and a thread's view draw the registry's `task-actions` row by the task's
  * board status. The sheet has no composer, so it carries the Steer box; a
  * thread's view steers through its own composer, so its row has none. A

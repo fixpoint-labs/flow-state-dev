@@ -322,6 +322,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
           commits,
           subjects: Array.from({ length: commits }, (_, i) => (i === 0 ? "docs: fix the README typo" : "docs: keep the old wording")).reverse(),
           judge: { verdict: "done", confidence: 0.91, reason: "The typo on line 1 is fixed." },
+          checks: null,
         });
         notify();
         const answer = await waitOn({ kind: "review", prompt: `${commits} commit${commits === 1 ? "" : "s"} on teammates/${task.id}--change`, unanswerable: null });

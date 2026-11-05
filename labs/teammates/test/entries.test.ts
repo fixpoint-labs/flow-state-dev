@@ -141,7 +141,7 @@ describe("the turn a message's popup shows", () => {
   });
 });
 
-// FIX-2393: a worker's tool steps show in the conversation during its turn, not only in a popup.
+// A worker's tool steps show in the conversation during its turn, not only in a popup.
 describe("a worker's tool steps in its conversation", () => {
   const call = (id: string, name: string, args: Record<string, unknown>, status: string, output?: unknown, requestId = "r1") =>
     ({ id, type: "tool_output", status, requestId, toolCall: { name, arguments: JSON.stringify(args) }, ...(output === undefined ? {} : { output }) });

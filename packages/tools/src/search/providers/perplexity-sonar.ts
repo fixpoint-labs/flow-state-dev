@@ -8,10 +8,12 @@
  *
  * Uses the `sonar` model by default. The normalized `tier` selects the model
  * variant (deep → "sonar-reasoning", otherwise "sonar"); a `searchMode` override
- * sets the model name verbatim. Same API key as the Perplexity Search API.
+ * sets the model name verbatim. Domain filters map as for the Perplexity Search
+ * API (see `perplexityDomainFilter`). Same API key as the Perplexity Search API.
  */
 
 import type { SearchProviderAdapter, SearchOutput } from "../types";
+import { perplexityDomainFilter } from "./domain-filters";
 
 export const perplexitySonarAdapter: SearchProviderAdapter = {
   name: "perplexity-sonar",
@@ -21,6 +23,7 @@ export const perplexitySonarAdapter: SearchProviderAdapter = {
     const model =
       options.searchMode ??
       (options.tier === "deep" ? "sonar-reasoning" : "sonar");
+    const domainFilter = perplexityDomainFilter(options.includeDomains, options.excludeDomains);
     const response = await globalThis.fetch(
       "https://api.perplexity.ai/chat/completions",
       {
@@ -32,6 +35,9 @@ export const perplexitySonarAdapter: SearchProviderAdapter = {
         body: JSON.stringify({
           model,
           messages: [{ role: "user", content: query }],
+          ...(domainFilter.length
+            ? { search_domain_filter: domainFilter }
+            : {}),
         }),
       }
     );

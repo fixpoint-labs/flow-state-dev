@@ -247,12 +247,15 @@ describe("the teammates screen", () => {
     const tasks = [ended("t-1", "Look up the launch date", "done"), ended("t-2", "Check the beta numbers", "failed"), ended("t-3", "Find a customer quote", "done"), ended("t-4", "Pull the survey", "cancelled")];
     render(<App adapter={fast({ tasks })} />);
     const side = await screen.findByRole("complementary", { name: "Chief of Staff's panel" });
-    const groups = () => [...side.querySelectorAll("button[aria-expanded]")].map((b) => b.textContent);
+    const groups = () => [...side.querySelectorAll("button[aria-expanded]")].map((b) => b.getAttribute("aria-label"));
     // Ended tasks are folded: their groups show counts, and none of their rows.
-    await waitFor(() => expect(groups()).toEqual(["Done (2)▸", "Failed (1)▸", "Cancelled (1)▸"]));
+    await waitFor(() => expect(groups()).toEqual(["Done (2)", "Failed (1)", "Cancelled (1)"]));
+    const folded = () => [...side.querySelectorAll("button[aria-expanded]")].map((b) => b.getAttribute("aria-expanded"));
+    expect(folded()).toEqual(["false", "false", "false"]);
     expect(within(side).queryByRole("button", { name: "Asked researcher to look up the launch date" })).toBeNull();
     // Opening a group shows its rows, and only its own.
     fireEvent.click(within(side).getByRole("button", { name: /^Done \(2\)/ }));
+    expect(folded()).toEqual(["true", "false", "false"]);
     const done = within(side).getByRole("list", { name: "Done" });
     expect(within(done).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Asked researcher to look up the launch date", "Asked researcher to find a customer quote"]);
     expect(within(side).queryByRole("button", { name: "Asked researcher to check the beta numbers" })).toBeNull();
@@ -792,6 +795,10 @@ describe("the teammates screen", () => {
 
     fireEvent.click(within(panel("tester")).getByRole("button", { name: "Edit instructions" }));
     const edit = within(panel("tester")).getByRole("form", { name: "Instructions for tester" });
+    // The name shows in the form but can't be changed yet, and the form says why.
+    const name = within(edit).getByLabelText("Name of tester") as HTMLInputElement;
+    expect([name.value, name.readOnly]).toEqual(["tester", true]);
+    expect(document.getElementById(name.getAttribute("aria-describedby")!)?.textContent).toMatch(/Renaming a teammate isn't possible yet/);
     fireEvent.change(within(edit).getByLabelText("New instructions for tester"), { target: { value: "Answer in one sentence." } });
     await act(async () => fireEvent.click(within(edit).getByRole("button", { name: "Save instructions" })));
     await waitFor(() => expect(screen.queryByRole("form", { name: "Instructions for tester" })).toBeNull());

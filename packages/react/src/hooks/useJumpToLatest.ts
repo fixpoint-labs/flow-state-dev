@@ -120,20 +120,6 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
   // Whether the person has sent in the conversation shown: in one that arrives where there was none, the send created it.
   const sentHere = useRef(false);
 
-  /** End the opening a frame after the feed overflows; a feed emptied before then, such as one switching conversations, keeps opening. */
-  const closeOpening = useCallback((el: HTMLElement) => {
-    if (el.scrollHeight <= el.clientHeight) {
-      if (frame.current !== undefined) cancelAnimationFrame(frame.current);
-      frame.current = undefined;
-      return;
-    }
-    if (frame.current !== undefined) return;
-    frame.current = requestAnimationFrame(() => {
-      frame.current = undefined;
-      opening.current = false;
-    });
-  }, []);
-
   // Before paint, so the first frame of a feed that opens at the end is already there.
   useLayoutEffect(() => {
     if (node === null) return;
@@ -167,6 +153,20 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
       return Math.min(height, end + below);
     };
     const near = () => contentHeight() - node.scrollTop - node.clientHeight <= AT_END_SLACK;
+
+    /** End the opening a frame after the feed overflows; a feed emptied before then, such as one switching conversations, keeps opening. */
+    const closeOpening = () => {
+      if (node.scrollHeight <= node.clientHeight) {
+        if (frame.current !== undefined) cancelAnimationFrame(frame.current);
+        frame.current = undefined;
+        return;
+      }
+      if (frame.current !== undefined) return;
+      frame.current = requestAnimationFrame(() => {
+        frame.current = undefined;
+        opening.current = false;
+      });
+    };
 
     /** A line of the person's drawn while nothing waits for one counts as shown two frames on: long enough for a send learned of in an effect to claim it. */
     const settleLater = () => {
@@ -235,7 +235,7 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
         showAll();
         scrollToTop(node, node.scrollHeight, "instant");
         lastTop = node.scrollTop;
-        closeOpening(node);
+        closeOpening();
         setAtEnd(true);
         return;
       }
@@ -335,7 +335,7 @@ export function useJumpToLatest(options: JumpToLatestOptions = {}): JumpToLatest
       mutations.disconnect();
       sizes?.disconnect();
     };
-  }, [node, closeOpening]);
+  }, [node]);
 
   // A different thing shown opens at the end again; the same thing in a new element leaves the reader be.
   const shownKey = useRef(options.resetKey);

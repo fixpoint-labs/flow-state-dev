@@ -77,12 +77,10 @@ export interface TaskChangeEvent<TInput = unknown, TOutput = unknown> {
  * Build the `emit` a collection backing calls after every committed write of a
  * row, whatever it changed.
  *
- * A write with a `kind` is a lifecycle change: `onChange` gets the event (the
- * `task-change` item). A write with kind `null` changes the row without being
- * one (a run's spend, a cleared marker, steers taken): only `onWrite` hears of
- * it (FIX-2429), so a view of the board still reads again. Both backings
- * publish the identical envelope; only how they resolve the task differs.
- * Absent callbacks are no-ops, so call sites stay unconditional.
+ * A write with a `kind` is a lifecycle change and goes to `onChange` (the
+ * `task-change` item); kind `null` (a run's spend, a cleared marker) goes only
+ * to `onWrite`, so a view of the board still reads again. Absent callbacks are
+ * no-ops, so call sites stay unconditional.
  */
 export function createTaskChangeEmitter<TInput, TOutput>(
   collectionId: string,
