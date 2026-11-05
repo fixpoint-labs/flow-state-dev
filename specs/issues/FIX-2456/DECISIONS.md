@@ -44,7 +44,7 @@ It comes down to a line the reader didn't send: inferred, it rises and takes the
 |---|---|
 | **Instead of** | The issue's proposal: move them into the registry (or a react subpath) |
 | **Because** | They are rules with no markup, so they are not chrome. Each has outside consumers and a README entry, so ER-1 holds. Copied into the registry, a fix such as the Safari composition guard stops at every installed copy. FIX-2413 D1 and FIX-2401 E9 put key rules in `react` for that reason. The registry composer can import it: four registry items already depend on `react`, and today the composer carries its own Enter rule without that guard |
-| **Locks in** | Both stay root API under semver. The registry composer gains Cmd/Ctrl+Enter and the Safari guard; its plain-Enter-sends behaviour is unchanged (`enterSends: true`) |
+| **Locks in** | Both stay root API under semver. The registry composer gains the Safari composition guard (`keyCode` 229); every other key behaves as today (`enterSends: true`) |
 
 ![D2, where the send-key and typing-target rules live. On the react root and used by the registry, chosen, beside moved into the registry as a copy. Decides it: a fix to the send rule, which reaches every app on upgrade only when imported. Price: two key helpers stay on the root. Flips if the registry ships as an installed package](figures/d2-send-key-stays.svg)
 
@@ -72,24 +72,32 @@ It comes down to what the path says: who it's for, which is the epic's rule.
   registry goes through it: the registry `Conversation` (and so Kitchen Sink's two pages), Shift
   Manager's `Conversation` and `TaskSession`, DevTool's stream view, and the labs' views. No
   component keeps an at-the-bottom check of its own. The census's `--after` mode is the check.
-- **E2 · The registry marks the line by the request id**, in `RequestGroupRenderer`, from the
-  Conversation's context. Outside a Conversation it marks nothing. FIX-2360 E2 holds.
+- **E2 · The registry marks the person's line by that item's id**, in `RequestGroupRenderer`, from
+  the Conversation's context: the segment holding the user item, never the request id, since one
+  request can own several segments and two marks with one key would size the kept room for the
+  wrong one. Outside a Conversation it marks nothing. FIX-2360 E2 holds.
 - **E3 · `RequestGroupRenderer`'s 70dvh last group goes.** It is a second kept room; by FIX-2360
   E6 the hook's room is not content, and the group's is.
 - **E4 · One button, the registry's `ConversationScrollButton`**, taking an optional `feed`
   (inside a Conversation it reads the context's). It takes no height, as the copies do, so showing
-  it never moves the feed. Shift Manager, DevTool and both labs install `conversation` and style the
-  button by `className`; DevTool installs its first registry item. Its `aria-label` is *Jump to
-  latest*, which DevTool's test already reads.
+  it never moves the feed. Shift Manager and both labs install `conversation` and style the button
+  by `className`. **DevTool keeps its own button**: it is a published package built by `tsc`, with
+  no `@/` alias and `fs-`-prefixed tokens so a host's never collide, and FIX-1477 D1 keeps copy-in
+  chrome out of it. Its button already wraps `useJumpToLatest`, so the rule is still one. The
+  `aria-label` is *Jump to latest* everywhere.
+- **E4b · A `Conversation` without `feed` takes `resetKey`**, which it passes to the hook it
+  makes. Kitchen Sink's picked-session view stays mounted across picks; without the key it would
+  stop reopening at its end (FIX-2346).
 - **E5 · `useJumpToLatest` stays on the root.** The FIX-2360 docs publish it, and the registry
   imports it from there. The issue left this open; it is derivable.
-- **E6 · The subpath carries what the README documents.** The `*PropNames` lists and the
-  `Panel*Source` types have no outside consumer and no README entry, so they leave public surface
-  (ER-1). The implementer settles each against the export check.
+- **E6 · The subpath carries what has a consumer or a README entry.** The `Panel*Source` types go
+  there (the ui stories' fixtures import them). The three `*PropNames` lists have neither, so they
+  leave public surface (ER-1). They shipped in 0.4.0, so their removal reaches adopters the way
+  Q1's answer says, like the moved names. The implementer settles each against the export check.
 - **E7 · Changesets (ER-7):** one `minor` line for `@flow-state-dev/react` naming
   `@flow-state-dev/react/workforce`; `patch` for Shift Manager and DevTool. The registry is private.
 - **E8 · Kitchen Sink:** its two pages move to the new Conversation API and its copies of
-  `conversation.tsx` and `request-group.tsx` stay byte-equal to the registry. No other Kitchen Sink
+  `conversation.tsx`, `request-group.tsx` and `prompt-input.tsx` stay byte-equal to the registry. No other Kitchen Sink
   file is touched; FIX-2461 replaces the copies last.
 
 ## Considered and dropped
@@ -107,7 +115,7 @@ It comes down to what the path says: who it's for, which is the epic's rule.
   It classifies every source file that mentions a scroll marker, or exits 1. Negative control run:
   `--plant` adds a hand-rolled at-the-bottom check and exits 1, `UNCLASSIFIED (1)`. A first plant,
   a button wired to `feed.jump`, was absorbed by the button rule; the plant now uses a marker no
-  rule claims. `--after` on `main` d6a38c09 exits 1 with 20 items. The premise held.
+  rule claims. `--after` on `main` d6a38c09 exits 1 with 46 items: three hand-written buttons (DevTool's is allowed), two `ScrollOnNewRequest` sites, the registry's own rule and its missing hook, 13 doc, story and fixture imports, 25 plain root exports, the composer. The premise held.
 
 ## Analysis
 
@@ -119,5 +127,9 @@ whole set.
 - **Draft** — framed as bringing the registry to FIX-2360's rule through the hook, with the app
   saying when it sent; the registry's existing button extended and the four copies removed; the
   panels to a `workforce` subpath, and the key rules kept on the root against the issue's proposal.
+- **Validation** — DevTool carved out of the shared button (a published package takes no copy-in);
+  the line marked by its item id, not the request id; `resetKey` on a feedless Conversation; the
+  census widened to the root's exports, the composer and Kitchen Sink's copies, with the control's
+  reds declared up front.
 
 **Open: none.**

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 470" role="img" aria-label="Three lanes, today beside after. The scroll rule: today two rules, useJumpToLatest in DevTool, Shift Manager and both labs, and the registry Conversation's own 50 pixel stick, ScrollOnNewRequest and a 70dvh last group in adopters' apps and Kitchen Sink; after, one rule, useJumpToLatest, in every conversation including the registry's. The jump button: today five, the registry's ConversationScrollButton plus hand copies in Shift Manager, DevTool and both labs; after, one, the registry's ConversationScrollButton taking the feed, installed by each app and styled by its className. The react root: today it carries hooks, renderers, FlowNavigator, the key helpers and the four workforce panels; after, the panels move to the react/workforce subpath and everything else stays."
+<svg viewBox="0 0 940 470" role="img" aria-label="Three lanes, today beside after. The scroll rule: today two rules, useJumpToLatest in DevTool, Shift Manager and both labs, and the registry Conversation's own 50 pixel stick, ScrollOnNewRequest and a 70dvh last group in adopters' apps and Kitchen Sink; after, one rule, useJumpToLatest, in every conversation including the registry's. The jump button: today five, the registry's ConversationScrollButton plus hand copies in Shift Manager, DevTool and both labs; after, two, the registry's ConversationScrollButton taking the feed, installed by every app but DevTool and styled by its className, and DevTool's own, which stays because a published package takes no copy-in. The react root: today it carries hooks, renderers, FlowNavigator, the key helpers and the four workforce panels; after, the panels move to the react/workforce subpath and everything else stays."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -50,16 +50,16 @@
     <rect class="lane" x="16" y="176" width="908" height="128" rx="6"/>
     <text class="t-lbl" x="28" y="198">THE JUMP</text>
     <text class="t-lbl" x="28" y="211">BUTTON</text>
-    <text class="t-s" x="28" y="230">five → one</text>
+    <text class="t-s" x="28" y="230">five → two</text>
     <rect class="n-box" x="140" y="188" width="390" height="40" rx="5"/>
     <text class="t-b" x="154" y="206">registry ConversationScrollButton</text>
     <text class="t-s" x="154" y="221">reads its own context; takes height when it shows</text>
     <rect class="gone" x="140" y="236" width="92" height="56" rx="5"/>
     <text class="t-g" x="150" y="258">Shift</text>
     <text class="t-g" x="150" y="274">Manager</text>
-    <rect class="gone" x="239" y="236" width="92" height="56" rx="5"/>
-    <text class="t-g" x="249" y="258">DevTool</text>
-    <text class="t-s" x="249" y="274">inline</text>
+    <rect class="n-box" x="239" y="236" width="92" height="56" rx="5"/>
+    <text class="t-b" x="249" y="258">DevTool</text>
+    <text class="t-s" x="249" y="274">stays its own</text>
     <rect class="gone" x="338" y="236" width="92" height="56" rx="5"/>
     <text class="t-g" x="348" y="258">Claude</text>
     <text class="t-s" x="348" y="274">Code lab</text>
@@ -69,8 +69,8 @@
     <path class="arrow" d="M540 240 L582 240 M576 235 L582 240 L576 245"/>
     <rect class="keep" x="592" y="204" width="320" height="72" rx="5"/>
     <text class="t-b" x="606" y="228">ConversationScrollButton({ feed })</text>
-    <text class="t-s" x="606" y="246">installed by every app; no height, so it never</text>
-    <text class="t-s" x="606" y="262">moves the feed; each app's look by className</text>
+    <text class="t-s" x="606" y="246">installed by every app but DevTool; no height,</text>
+    <text class="t-s" x="606" y="262">so it never moves the feed; look by className</text>
   </g>
 
   <g id="lane-root">

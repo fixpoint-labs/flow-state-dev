@@ -35,6 +35,8 @@ if (process.argv.includes("--plant")) {
 }
 
 const REGISTRY = "packages/ui/registry/components/conversation.tsx";
+const read = (p) => readFileSync(join(repo, p), "utf8");
+const rootText = read("packages/react/src/index.ts");
 const registryText = readFileSync(join(repo, REGISTRY), "utf8");
 
 /** What makes a file part of the scroll rule's census. */
@@ -58,7 +60,9 @@ for (const f of files.filter((f) => MARKERS.test(f.text))) {
 }
 
 // Importers of the names this spec moves off react's root.
-const MOVED = ["Roster", "BoardColumns", "BoardList", "WorkerDetail", "groupIntoColumns", "BOARD_STATUS_COLUMNS", "rosterPropNames", "boardColumnsPropNames", "boardListPropNames"];
+const MOVED = ["Roster", "BoardColumns", "BoardList", "WorkerDetail", "groupIntoColumns", "BOARD_STATUS_COLUMNS", "rosterPropNames", "boardColumnsPropNames", "boardListPropNames",
+  "BoardCard", "BoardCardRow", "BoardColumn", "BoardColumnsProps", "BoardColumnsSlots", "BoardListProps", "BoardListSlots", "BoardStatus",
+  "PanelRowSource", "PanelItemSource", "PanelLiveSource", "RosterProps", "RosterWorker", "RosterWorkerRow", "RosterSlots", "WorkerDetailProps"];
 const rootImport = /import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*["']@flow-state-dev\/react["']/g;
 const importers = [];
 for (const f of tracked.map((p) => ({ path: p, text: readFileSync(join(repo, p), "utf8") })).concat(
@@ -78,11 +82,18 @@ console.log(`importers of moved panel names from the react root (${new Set(impor
 if (process.argv.includes("--after")) {
   // The end state this spec promises. Each line names what is still there.
   const left = [
-    ...table["hand-written jump button"].map((p) => `hand-written jump button: ${p}`),
+    // DevTool keeps its own button by design: a published package takes no copy-in (E4).
+    ...table["hand-written jump button"].filter((p) => !p.startsWith("packages/devtool/")).map((p) => `hand-written jump button: ${p}`),
     ...table["ScrollOnNewRequest call site"].map((p) => `ScrollOnNewRequest call site: ${p}`),
     ...(/\bScrollOnNewRequest\b|scrollHeight - el\.scrollTop - el\.clientHeight/.test(registryText) ? [`registry keeps its own rule: ${REGISTRY}`] : []),
     ...(/useJumpToLatest/.test(registryText) ? [] : [`registry Conversation is not on useJumpToLatest: ${REGISTRY}`]),
     ...[...new Set(importers)].map((p) => `moved name imported from the react root: ${p}`),
+    // The root itself: a moved name is gone, or (Q1's alias option) carries @deprecated naming the subpath.
+    ...MOVED.filter((n) => new RegExp(`\\b${n}\\b`).test(rootText) && !/@deprecated[^*]*react\/workforce/.test(rootText)).map((n) => `still a plain react root export: ${n}`),
+    // The registry composer sends by the one rule.
+    ...(/\bisSendKey\b/.test(read("packages/ui/registry/components/prompt-input.tsx")) ? [] : ["registry prompt-input keeps its own Enter rule"]),
+    // Kitchen Sink's copies are the registry's, byte for byte.
+    ...["conversation.tsx", "request-group.tsx", "prompt-input.tsx"].filter((f) => read(`apps/kitchen-sink/components/flow-state/${f}`) !== read(`packages/ui/registry/components/${f}`)).map((f) => `Kitchen Sink's ${f} differs from the registry`),
   ];
   if (left.length) {
     console.error(`NOT THE END STATE (${left.length}):\n${left.map((p) => `  ${p}`).join("\n")}`);
