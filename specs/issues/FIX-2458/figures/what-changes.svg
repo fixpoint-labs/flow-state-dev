@@ -1,0 +1,100 @@
+<svg viewBox="0 0 940 396" role="img" aria-label="Five jobs a host does with a coding harness, by harness, today and after. A stop: abort-like for Claude Code only; after, abort-like in all three. An SDK that can't run: Codex and Cursor refuse when the block is built, Claude Code runs any version, no readiness check reads the version; after, readiness and the block refuse outside the tested range in all three. The model list: two lists under two type names, Cursor's kept by hand in Kitchen Sink; after, one HarnessModelList from each. The environment: three hand copies of 13 names; after, HARNESS_BASE_PASS plus each harness's own. The names: claude-code spells them five ways and 8 names sit on two or three packages; after, each name carries its package and none collides."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .head  { fill:var(--surface-2); }
+    .after { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .row   { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-job { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .mark  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:14px; font-weight:700; }
+    .ok    { fill:var(--code); }
+    .bad   { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="396"/>
+
+  <g id="header">
+    <rect class="head" x="16" y="14" width="908" height="30" rx="5"/>
+    <text class="t-lbl" x="28" y="33">THE JOB</text>
+    <text class="t-lbl" x="176" y="33">TODAY · CLAUDE CODE</text>
+    <text class="t-lbl" x="346" y="33">TODAY · CODEX</text>
+    <text class="t-lbl" x="516" y="33">TODAY · CURSOR</text>
+    <text class="t-lbl" x="700" y="33">AFTER · ALL THREE</text>
+    <rect class="after" x="688" y="52" width="236" height="330" rx="5"/>
+  </g>
+
+  <g id="row-stop">
+    <text class="t-job" x="28" y="80">A stop</text>
+    <text class="mark ok" x="176" y="81">+</text><text class="t-b" x="192" y="80">abort-like</text>
+    <text class="t-s" x="192" y="96">the signal's own reason</text>
+    <text class="mark bad" x="346" y="81">−</text><text class="t-b" x="362" y="80">not abort-like</text>
+    <text class="t-s" x="362" y="96">its own error class</text>
+    <text class="mark bad" x="516" y="81">−</text><text class="t-b" x="532" y="80">not abort-like</text>
+    <text class="t-s" x="532" y="96">its own error class</text>
+    <text class="t-b" x="700" y="80">isAbortLike(err)</text>
+    <text class="t-s" x="700" y="96">the session id kept on the error</text>
+    <line class="row" x1="16" y1="114" x2="680" y2="114"/>
+  </g>
+
+  <g id="row-sdk">
+    <text class="t-job" x="28" y="140">An SDK that</text>
+    <text class="t-job" x="28" y="156">can't run</text>
+    <text class="mark bad" x="176" y="141">−</text><text class="t-b" x="192" y="140">any version runs</text>
+    <text class="t-s" x="192" y="156">peer range *</text>
+    <text class="mark bad" x="346" y="141">−</text><text class="t-b" x="362" y="140">refused at build</text>
+    <text class="t-s" x="362" y="156">readiness misses it</text>
+    <text class="mark bad" x="516" y="141">−</text><text class="t-b" x="532" y="140">refused at build</text>
+    <text class="t-s" x="532" y="156">readiness misses it</text>
+    <text class="t-b" x="700" y="140">the readiness check</text>
+    <text class="t-s" x="700" y="156">and the block · outside the tested range</text>
+    <line class="row" x1="16" y1="174" x2="680" y2="174"/>
+  </g>
+
+  <g id="row-models">
+    <text class="t-job" x="28" y="200">The model list</text>
+    <text class="mark ok" x="176" y="201">+</text><text class="t-b" x="192" y="200">listClaudeModels</text>
+    <text class="t-s" x="192" y="216">ClaudeModelList</text>
+    <text class="mark ok" x="346" y="201">+</text><text class="t-b" x="362" y="200">listCodexModels</text>
+    <text class="t-s" x="362" y="216">CodexModelList · same fields</text>
+    <text class="mark bad" x="516" y="201">−</text><text class="t-b" x="532" y="200">none</text>
+    <text class="t-s" x="532" y="216">Kitchen Sink's hand list</text>
+    <text class="t-b" x="700" y="200">HarnessModelList</text>
+    <text class="t-s" x="700" y="216">list&lt;Harness&gt;Models in each</text>
+    <line class="row" x1="16" y1="234" x2="680" y2="234"/>
+  </g>
+
+  <g id="row-env">
+    <text class="t-job" x="28" y="260">The environment</text>
+    <text class="mark bad" x="176" y="261">−</text><text class="t-b" x="192" y="260">16 names by hand</text>
+    <text class="t-s" x="192" y="276">13 shared</text>
+    <text class="mark bad" x="346" y="261">−</text><text class="t-b" x="362" y="260">17 names by hand</text>
+    <text class="t-s" x="362" y="276">13 shared</text>
+    <text class="mark bad" x="516" y="261">−</text><text class="t-b" x="532" y="260">15 names by hand</text>
+    <text class="t-s" x="532" y="276">13 shared</text>
+    <text class="t-b" x="700" y="260">HARNESS_BASE_PASS</text>
+    <text class="t-s" x="700" y="276">plus each harness's own</text>
+    <line class="row" x1="16" y1="294" x2="680" y2="294"/>
+  </g>
+
+  <g id="row-names">
+    <text class="t-job" x="28" y="320">The names</text>
+    <text class="mark bad" x="176" y="321">−</text><text class="t-b" x="192" y="320">88, five spellings</text>
+    <text class="t-s" x="192" y="336">translate, emit, ./cli</text>
+    <text class="mark bad" x="346" y="321">−</text><text class="t-b" x="362" y="320">emit, version</text>
+    <text class="t-s" x="362" y="336">shared with the others</text>
+    <text class="mark bad" x="516" y="321">−</text><text class="t-b" x="532" y="320">emit, version</text>
+    <text class="t-s" x="532" y="336">shared with the others</text>
+    <text class="t-b" x="700" y="320">each carries its package</text>
+    <text class="t-s" x="700" y="336">8 collisions gone · no internals</text>
+    <text class="t-s" x="700" y="364">old names per ER-3 and Q1</text>
+  </g>
+</svg>
