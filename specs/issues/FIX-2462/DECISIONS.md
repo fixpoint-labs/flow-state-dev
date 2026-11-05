@@ -25,7 +25,7 @@ Solid edges are what you sign. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | FIX-2462 staying a child of the epic, with its own PR and its own place in the closure |
 | **Because** | The epic keeps this child only for a distinct export win. There is none. The 38 methods sit behind `TaskCollectionRef`, which doesn't change. Neither backing constructor changes, and where they live is FIX-2459's call. The table deletes none of the 65 names orchestration exports that only workforce reads (counted outside orchestration and tests): filing checks, notice helpers and board repairs, none a duplicated method |
-| **Locks in** | FIX-2459 carries an internal refactor beside its surface moves, as a separate PR after them, so a surface review never reads through it. FIX-2462 closes as folded. The rewrite owns no closure-manifest row |
+| **Locks in** | FIX-2459 implements the method table as its own follow-on PR after its surface moves, so a surface review never reads through it, with this spec as the retained design. FIX-2462 closes as folded when the epic's spec-set PR merges. The rewrite owns no closure-manifest row |
 
 ![D1: fold into FIX-2459 as its own PR, chosen, beside staying a child. Decides it: the export win, none. Price: FIX-2459 grows by an internal refactor. Flips if FIX-2459 merges the two backing constructors into one](figures/d1-fold.svg)
 
@@ -69,8 +69,11 @@ callers would make the reservation a real orchestration job.
 - **Order inside FIX-2459.** After its `./internal` move and constructor placement, so this PR
   edits the files at their final paths.
 - **The FIX-2532 seam.** `findBy`'s index write moves into the resource storage's
-  compare-and-set write, so a row and its index entries still commit together. Whichever lands
-  second rebases.
+  compare-and-set write, so a row and its index entries still commit together. FIX-2532 is
+  partly merged: the store's index verbs are on `main` at `45c158b4`, the add path that writes
+  them is not yet. Whichever lands second rebases.
+- **`delivery.passEntry` is not this spec's.** The method table doesn't touch it; FIX-2459
+  decides it.
 - **No changeset** (BP-022): no published name, option or behaviour changes.
 
 ## Considered and dropped
@@ -79,7 +82,7 @@ callers would make the reservation a real orchestration job.
 |---|---|
 | Unify the decline form only | The smaller goal. Clears today's visible drift and leaves 38 bodies to drift on the next feature |
 | One backing, the state slot read through a resource | Removes a backing, which is a public constructor and FIX-2459's surface, and changes per-request durability |
-| Leave the epic, as a standalone orchestration issue | The rewrite owns no manifest row, but the epic's debt line counts it and the owner confirmed it in the set. Moving it is the epic's call, raised in the return |
+| Leave the epic, as a standalone orchestration issue | The rewrite owns no manifest row, but the epic's debt line counts it and the owner confirmed it in the set. The epic decided under its D1: folded into FIX-2459, not moved out |
 
 ## Open / settled
 
@@ -93,5 +96,8 @@ only workforce reads.
 - **Draft** — the method table is written once over each backing's read, compare-and-set write
   and list, on the one-task-primitive helpers; the workforce half found no parallel board, only a
   wrapper; no export changes, so the epic's trigger fires and the table folds into FIX-2459.
+- **Set review (Nov 5)** — the epic confirmed D1 (folded, not moved out): FIX-2459 implements the
+  table as its own follow-on PR and this issue closes as folded at spec-set merge;
+  `delivery.passEntry` named FIX-2459's; the FIX-2532 seam stands, now partly merged.
 
 **Open:** none.
