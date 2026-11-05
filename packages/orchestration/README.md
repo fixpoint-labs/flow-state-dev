@@ -127,14 +127,15 @@ A request loads a partition's rows on that partition's first read, never the who
 ledger. The rows sit in the user's own storage, which every flow of theirs reads, even on a flow
 that isolates its user state (`isolateUserState`).
 
-A partitioned ledger keeps an id index beside its rows, so a task can be found by id
-alone. Install the ledger with `taskLedgerResources(ledger)`, which returns the ledger
-under its id and, for a partitioned one, the index beside it; adding a task through a flow
-that installs the ledger without the index throws, naming `taskLedgerResources`. An
-unpartitioned ledger gets only itself back. `findTaskPartitions(ctx, ledgerId, taskId)`
-returns the running user's partitions holding that id: none, one, or several when the
-same id was picked in more than one. It returns partitions only; read the row through
-`getOrCreateTaskCollection({ partition })`.
+A partitioned ledger declares a `byTaskId` index on its rows, so a task can be found by id
+alone without reading every partition. `findTaskPartitions(ctx, ledgerId, taskId)` returns
+the running user's partitions holding that id: none, one, or several when the same id was
+picked in more than one. It returns partitions only; read the row through
+`getOrCreateTaskCollection({ partition })`. On SQLite and Postgres the lookup reads the
+index; on the memory and filesystem stores it scans the user's rows. The first lookup in a
+user's scope builds the index from the rows already there.
+`taskLedgerResources(ledger)` returns the ledger under its id, ready to spread into a flow's
+`resources`.
 
 ```ts
 import { findTaskPartitions, taskLedgerResources } from "@flow-state-dev/orchestration/tasks";
@@ -1224,8 +1225,10 @@ request takes mid-run shows in the task's session as a line from its sender
 
 ### Upgrading from stores written by an older version
 
-A task an older version added to a partitioned ledger isn't in the ledger's id index, so
-`findTaskPartitions` doesn't find it. Everything else about the row is unaffected.
+`findTaskPartitions` finds tasks an older version added to a partitioned ledger: the first
+lookup in each user's scope reads their rows and indexes them. The `<ledger id>__ids/...`
+rows an older version kept beside a partitioned ledger are no longer read or written. They
+stay in the store and can be deleted at any time.
 
 Rows written before steers existed read in their new shape, with nothing to run. A row stored with
 `reopened: true` reads unmarked; while it is still open, it carries one untaken message pointing
