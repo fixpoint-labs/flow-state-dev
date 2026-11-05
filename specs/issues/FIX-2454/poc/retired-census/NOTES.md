@@ -19,4 +19,5 @@ on the flipped `row-questions` entry, as it must.
 
 **What it changed.** The issue named three never-published task-row shims. The census found six
 of the seven, plus core's `waitForUser` resume map and ten refused keys no published version
-accepted. The implementer promotes its totality scan into the CI check (DECISIONS.md).
+accepted. The implementer moves its refusal shape and totality scan into the vocabulary sweep
+(DECISIONS.md); the 19 become leg b's `shims.unpublished-shapes` scope.
