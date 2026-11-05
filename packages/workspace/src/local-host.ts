@@ -2198,32 +2198,45 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     const how = listed !== undefined ? "worktree" : "clone";
     if (!existsSync(folder)) return { usable: false, problem: `there is no folder at ${folder} on this machine.` };
     const left = () => provisionTimeoutMs;
+    // Nothing the repository's config names is run while it is read: no hooks (`git`), no fsmonitor.
+    const read = (cwd: string, args: string[]) => git(cwd, ["-c", "core.fsmonitor=false", ...args], left());
     const notRepository = { usable: false, problem: `${folder} is not a git repository. Run \`git init\` there, or name a repository's folder.` } as const;
     let workTree: string | undefined;
     try {
-      workTree = await git(folder, ["rev-parse", "--show-toplevel"], left());
+      workTree = await read(folder, ["rev-parse", "--show-toplevel"]);
     } catch {
       // A bare repository has no working tree, but a clone of one does: an unlisted one is checked through its commit.
       let bare = false;
       try {
-        bare = (await git(folder, ["rev-parse", "--is-bare-repository"], left())) === "true";
+        bare = (await read(folder, ["rev-parse", "--is-bare-repository"])) === "true";
       } catch {
         return notRepository;
       }
       if (!bare || listed !== undefined) return notRepository;
     }
+    // A clone reads the folder it is given, never the repository around it.
+    if (how === "clone" && workTree !== undefined && realpathSync(workTree) !== realpathSync(folder)) {
+      return { usable: false, problem: `${folder} is inside the repository at ${workTree}, and a clone needs the repository's own folder. Name ${workTree}.` };
+    }
     const repo = workTree ?? folder;
     try {
-      await git(repo, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"], left());
+      await read(repo, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
     } catch {
       return { usable: false, problem: `${repo} has no commit yet, and a coding run's checkout is cut from one. Commit its files first.` };
+    }
+    // A clone starts from the default branch its source's HEAD names, as a provision reads it.
+    if (how === "clone") {
+      const head = await read(repo, ["symbolic-ref", "--quiet", "HEAD"]).catch(() => "");
+      if (!head.startsWith("refs/heads/")) {
+        return { usable: false, problem: `${repo} has no default branch: its HEAD is detached. Check out a branch there.` };
+      }
     }
     if (options.ignored !== undefined) {
       const problem = await committedIgnoredProblem(repo, options.ignored, { ownExcludes: how === "worktree", left });
       if (problem !== undefined) {
         // Only to choose the sentence: the working tree may hold the rule already, and then what is missing is the commit.
         const uncommitted =
-          workTree !== undefined && (await ignoredProblem(workTree, options.ignored, (args) => git(workTree!, args, left()))) === undefined;
+          workTree !== undefined && (await ignoredProblem(workTree, options.ignored, (args) => read(workTree!, args))) === undefined;
         return {
           usable: false,
           problem: uncommitted
@@ -2254,7 +2267,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     const tree = join(scratch, "tree");
     mkdirSync(tree);
     const inScratch = (dir: string) => async (args: string[]) => {
-      const { stdout } = await run("git", [...NO_HOOKS, `--git-dir=${dir}`, `--work-tree=${tree}`, ...args], {
+      const { stdout } = await run("git", [...NO_HOOKS, "-c", "core.fsmonitor=false", `--git-dir=${dir}`, `--work-tree=${tree}`, ...args], {
         cwd: tree,
         timeoutMs: left(),
         env: { ...env, GIT_INDEX_FILE: join(scratch, "index") },
