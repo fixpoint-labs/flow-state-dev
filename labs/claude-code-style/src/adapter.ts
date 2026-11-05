@@ -748,13 +748,13 @@ export function createWiredLab(fsd: Client): LabAdapter {
   type SessionRowRead = { row: SessionRow; complete: boolean };
   const rowOf = async (worker: string, sessionId: string, held?: SessionRow): Promise<SessionRowRead> => {
     const [detail, turns, waiting] = await Promise.all([fsd.sessions.get(sessionId), runningTurns(sessionId), waitingCountFor(sessionId)]);
-    // The generated title, once it has landed; the first message only when no turn runs and none did.
-    const firstLine = detail.title?.trim() ? undefined : turns.length === 0 ? await firstLineOf(sessionId) : undefined;
+    // The first message's first line is the fallback until the generated title lands.
+    const firstLine = detail.title?.trim() ? undefined : await firstLineOf(sessionId);
     const project = (detail.state as Record<string, unknown> | undefined)?.[WORK_PROJECT_STATE_KEY];
     return {
       row: {
         id: sessionId,
-        title: sessionTitle({ title: detail.title, firstLine, running: turns.length > 0 }),
+        title: sessionTitle({ title: detail.title, firstLine }),
         worker,
         updatedAt: detail.updatedAt,
         running: turns.length > 0,
