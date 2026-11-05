@@ -601,10 +601,7 @@ describe("the built-in agent worker flow's skills switch — gates only the mode
     });
 
     expect(result.error).toBeUndefined();
-    const activeSkills = (runtime.ctx.session.state.activeSkills ?? []) as Array<{
-      name: string;
-      source: string;
-    }>;
+    const activeSkills = runtime.ctx.session.state.activeSkills as Array<{ name: string; source: string }>;
     expect(activeSkills.map((s) => s.name)).not.toContain("known");
   });
 });

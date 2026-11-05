@@ -85,7 +85,7 @@ describe("createApplySkillActivation — honors each skill's contextMode", () =>
     const state = (ctx as { session: { state: Record<string, Array<{ name: string }>> } }).session
       .state;
     // Legacy slot untouched; the bound skill lands in the explicit field only.
-    expect(state.activeSkills ?? []).toHaveLength(0);
+    expect(state.activeSkills).toHaveLength(0);
     expect(state.activeAnalystSkills).toHaveLength(1);
     expect(state.activeAnalystSkills[0]!.name).toBe("bound");
   });
