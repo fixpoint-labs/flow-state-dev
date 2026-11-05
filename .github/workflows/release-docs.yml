@@ -1,0 +1,49 @@
+name: Release docs
+
+# Runs `/release-docs` with Claude Code on demand: Actions > Release docs > Run
+# workflow. It writes the user docs for every pending changeset in one pass and
+# opens one `release-docs/*` PR for a person to review. The same skill runs
+# locally in a fresh Claude session; this is the button for when nobody wants to.
+#
+# Needs the ANTHROPIC_API_KEY secret (or swap in claude_code_oauth_token).
+# Manual only: docs are written when someone decides to cut a release, never
+# on a push. See docs/contributing/release-docs.md.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: release-docs
+  cancel-in-progress: false
+
+jobs:
+  release-docs:
+    name: Write release docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+      # claude-code-action exchanges an OIDC token for its GitHub App token when
+      # no github_token is passed.
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Pinned to a commit: this step holds the API key and repo write access.
+      - uses: anthropics/claude-code-action@c0949c50a78c1ec8ce2647db36629b870e715d0c # v1.0.268
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: "/release-docs"
+          claude_args: "--max-turns 200"

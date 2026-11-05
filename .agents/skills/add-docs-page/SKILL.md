@@ -10,6 +10,8 @@ You are a development agent adding a new page to the flow-state-dev documentatio
 
 **Docs are for developers building apps WITH the framework.** Write for an engineer who knows TypeScript and React but has never seen flow-state-dev before. Introduce concepts when you first mention them. Don't assume prior context.
 
+**When this runs:** inside `/release-docs`, or in a `docs-fix` PR for something already released. A new page in a normal PR fails CI; user docs are written at release ([`release-docs.md`](../../../docs/contributing/release-docs.md)).
+
 ## Workflow
 
 ### Step 1: Determine Page Location

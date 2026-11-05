@@ -9,13 +9,16 @@
  * conversation with that worker, or starts one, through Workforce's client.
  * Opening one may create a session, so every "Talk" is held until it settles:
  * a slow create can't be clicked into two.
+ *
+ * The list follows the roster (`watchRoster`): a hire, fork, edit or fire made
+ * in another tab, or by a worker's turn, shows without a reload.
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { useSubmit } from "@flow-state-dev/react";
 import type { RosterEntry, WorkforceClient } from "@flow-state-dev/workforce/browser";
 
 export interface TeamPanelProps {
-  /** The user's workforce client. Pass a stable one: the roster is read again only when it changes. */
+  /** The user's workforce client. Pass a stable one: a new one starts a new watch of the roster. */
   workforce: WorkforceClient;
   /** Open the user's conversation with a worker. */
   onTalk: (worker: RosterEntry) => Promise<void>;
@@ -41,13 +44,10 @@ function WorkerRoster({ workforce, onTalk }: { workforce: WorkforceClient; onTal
   // The worker last clicked: the one "Opening…" and a refusal belong to.
   const [clicked, setClicked] = useState<string | null>(null);
   const talk = useSubmit(onTalk);
-  if (roster.error !== null) {
+  if (roster.error !== null && roster.workers === undefined) {
     return (
       <p className="px-2 pb-1 text-xs text-destructive" role="alert">
-        The roster could not be read: {roster.error}{" "}
-        <button type="button" className="underline" onClick={roster.retry}>
-          Retry
-        </button>
+        The roster could not be read: {roster.error}. It is read again on the next change.
       </p>
     );
   }
@@ -85,28 +85,23 @@ function WorkerRoster({ workforce, onTalk }: { workforce: WorkforceClient; onTal
   );
 }
 
+/** The user's roster as the workforce client's watch reports it, and the last read's failure until one lands. */
 function useRoster(workforce: WorkforceClient): {
   workers: readonly RosterEntry[] | undefined;
   error: string | null;
-  retry: () => void;
 } {
   const [workers, setWorkers] = useState<readonly RosterEntry[] | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    setError(null);
-    let current = true;
-    workforce
-      .roster()
-      .then((entries) => {
-        if (current) setWorkers(entries);
-      })
-      .catch((reason: unknown) => {
-        if (current) setError(reason instanceof Error ? reason.message : String(reason));
-      });
-    return () => {
-      current = false;
-    };
-  }, [workforce, attempt]);
-  return { workers, error, retry: () => setAttempt((n) => n + 1) };
+  useEffect(
+    () =>
+      workforce.watchRoster(
+        (entries) => {
+          setWorkers(entries);
+          setError(null);
+        },
+        { onError: (reason) => setError(reason instanceof Error ? reason.message : String(reason)) },
+      ),
+    [workforce],
+  );
+  return { workers, error };
 }

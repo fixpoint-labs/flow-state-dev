@@ -22,7 +22,7 @@ import type { RequestWakes, WakeSettleResult, WakeView } from "@flow-state-dev/c
 import { logRuntimeEvent, type RuntimeLogger } from "../execution/logging";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import type { SessionStore, WakeRecord, WakeStore } from "../stores/types";
-import { INTERNAL_SOURCE } from "../execution/transport-sources";
+import { dispatchInternalAs } from "./dispatch-internal";
 import type { InboundTransportHost } from "../transports/types";
 
 type Listener = (dueAt: number) => void;
@@ -61,17 +61,13 @@ export async function fireWakeThrough(
   onStarted?: (run: { finished: Promise<unknown>; abort(): void }) => void
 ): Promise<void> {
   const controller = new AbortController();
-  const handle = host.dispatch({
-    source: INTERNAL_SOURCE,
+  const handle = dispatchInternalAs(host, {
     flowKind: wake.flowKind,
-    action: wake.entry,
+    entry: wake.entry,
     input: {},
     sessionId: wake.sessionId,
-    principal: { userId: wake.userId, orgId: wake.orgId },
-    orgId: wake.orgId,
-    ...(wake.tenantId !== undefined ? { tenantId: wake.tenantId } : {}),
+    as: { userId: wake.userId, orgId: wake.orgId, ...(wake.tenantId !== undefined ? { tenantId: wake.tenantId } : {}) },
     metadata: { wake: { entry: wake.entry, dueAt: wake.dueAt } },
-    responseEmitter: null,
     signal: controller.signal
   });
   onStarted?.({ finished: handle.finished, abort: () => controller.abort() });

@@ -15,8 +15,9 @@ const rowNote = (task: TaskRow) =>
  * Threads mode's right pane: the status board, titled *Tasks*. Every row is
  * one task row of the session's board, grouped by what you owe it (the
  * columns table), and pinned ones on top. Each group has a count and
- * collapses; *Resolved* starts collapsed. Opening a thread replaces the board
- * with its view, with a back arrow; the main thread stays in the center.
+ * collapses; *Resolved* starts collapsed. Opening a thread draws its view as a
+ * sheet over the main thread, as session mode's tasks open; the board stays
+ * in the pane behind it.
  */
 export function ThreadsBoard({
   adapter,
@@ -40,19 +41,6 @@ export function ThreadsBoard({
   const now = useNow(true, 30_000);
 
   const open = tasks.find((t) => t.id === openId);
-  if (open) {
-    return (
-      <ThreadView
-        key={open.id}
-        adapter={adapter}
-        sessionId={sessionId}
-        task={open}
-        pinned={pins.includes(open.id)}
-        onBack={() => onOpen(undefined)}
-      />
-    );
-  }
-
   const groups = COLUMNS.map((column) => ({
     ...column,
     rows: tasks.filter((t) => columnOf(t, pins.includes(t.id)) === column.id),
@@ -115,6 +103,16 @@ export function ThreadsBoard({
           })}
         </div>
       )}
+      {open ? (
+        <ThreadView
+          key={open.id}
+          adapter={adapter}
+          sessionId={sessionId}
+          task={open}
+          pinned={pins.includes(open.id)}
+          onClose={() => onOpen(undefined)}
+        />
+      ) : null}
     </aside>
   );
 }

@@ -638,7 +638,7 @@ export interface BlockContext<
   [REQUEST_SPEND_SEAM]?: RequestSpendSeam;
 
   /**
-   * @internal The running request's board-notice seam (FIX-2429), under a
+   * @internal The running request's board-notice seam, under a
    * symbol key. Read only by `publishBoardChange`, which the task
    * collection's change adapter calls. See `types/board-notice.ts`.
    */

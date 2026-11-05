@@ -1,5 +1,5 @@
-import { useJumpToLatest } from "@flow-state-dev/react";
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { useJumpToLatest, type JumpToLatest } from "@flow-state-dev/react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { JumpToLatestButton } from "./JumpToLatest";
 
@@ -31,39 +31,56 @@ export function SheetArea({ children }: { children: ReactNode }) {
 }
 
 /**
- * A read-only sheet over the main thread. It closes with its close button,
- * Esc, or a click on the main thread around it. What it shows is the opener's
- * to keep live; the sheet only frames it.
+ * A sheet over the main thread. It closes with its close button, Esc, or a
+ * click on the main thread around it. What it shows is the opener's to keep
+ * live; the sheet only frames it.
  */
-export function Sheet({ label, title, subtitle, onClose, children, footer }: {
+export function Sheet({ label, title, subtitle, onClose, feed: shared, children, footer }: {
   /** The sheet's accessible name. */
   label: string;
   title: ReactNode;
   subtitle?: ReactNode;
   onClose: () => void;
+  /**
+   * The opener's `useJumpToLatest`, when the opener also scrolls the body after
+   * its own sends (`sent()`). Absent, the sheet keeps its own, which opens on
+   * the latest of what it shows.
+   */
+  feed?: JumpToLatest;
   children: ReactNode;
   footer?: ReactNode;
 }) {
   const { host } = useContext(SheetHost);
-  // Opens on the latest of the work it shows; what arrives after waits below the arrow.
-  const feed = useJumpToLatest();
+  const own = useJumpToLatest();
+  const feed = shared ?? own;
+  const section = useRef<HTMLElement>(null);
+  // Held in a ref so the listener subscribes once, not on every render of an opener that passes a fresh `onClose`.
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
   useEffect(() => {
     // Capture phase, and the Esc is spent: it closed the sheet, so it never also counts toward stopping the turn.
-    // Every Esc while the sheet is open closes it, from any focus: the sheet is read-only and holds no text field.
+    // Esc closes it from any focus, its text boxes included; a draft is kept per task, so a close loses no words.
+    // The one exception is a dialog opened over it (the keys sheet): focus sits in that dialog, so its Esc is its own.
+    // An IME's Esc ends a composition, not the sheet.
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.isComposing) return;
+      const focused = document.activeElement?.closest('[role="dialog"]');
+      if (focused && focused !== section.current) return;
       event.preventDefault();
-      onClose();
+      close.current();
     };
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
-  }, [onClose]);
+  }, []);
   if (host === null) return null;
   return createPortal(
     <div className="absolute inset-0 flex justify-center bg-background/60 p-6 backdrop-blur-[1px]" onClick={onClose}>
       <section
         role="dialog"
         aria-label={label}
+        ref={section}
         className="flex h-full w-full max-w-3xl min-h-0 flex-col border border-border bg-card shadow-lg"
         onClick={(event) => event.stopPropagation()}
       >
@@ -80,7 +97,7 @@ export function Sheet({ label, title, subtitle, onClose, children, footer }: {
           {children}
           <JumpToLatestButton feed={feed} />
         </div>
-        {footer ? <footer className="border-t border-border px-5 py-3 text-xs text-muted-foreground">{footer}</footer> : null}
+        {footer ? <footer className="border-t border-border px-5 py-3">{footer}</footer> : null}
       </section>
     </div>,
     host,

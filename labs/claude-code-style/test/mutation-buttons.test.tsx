@@ -79,7 +79,7 @@ describe("buttons that change something", () => {
     const requestChanges = held();
     await reviewReady({ ...createFakeLab({ speed: 0.01 }), requestChanges: requestChanges.run });
     fireEvent.click(button(card("Vendor C · summary"), "Request changes"));
-    const view = screen.getByRole("complementary", { name: "Task: Vendor C · summary" });
+    const view = screen.getByRole("dialog", { name: "Task: Vendor C · summary" });
     const box = within(view).getByLabelText("Message this task") as HTMLTextAreaElement;
     fireEvent.change(box, { target: { value: "Add the EU pricing." } });
     fireEvent.click(button(view, "Request changes"));
@@ -97,7 +97,7 @@ describe("buttons that change something", () => {
     const sayInThread = held();
     await reviewReady({ ...createFakeLab({ speed: 0.01 }), sayInThread: sayInThread.run });
     fireEvent.click(button(card("Vendor A · pricing and uptime"), "View task"));
-    const view = screen.getByRole("complementary", { name: "Task: Vendor A · pricing and uptime" });
+    const view = screen.getByRole("dialog", { name: "Task: Vendor A · pricing and uptime" });
     const box = within(view).getByLabelText("Message this task") as HTMLTextAreaElement;
     const sendButton = () => within(view).getByRole("button", { name: /^(Send|Answer)$/ }) as HTMLButtonElement;
 
@@ -119,7 +119,7 @@ describe("buttons that change something", () => {
     const pin = held();
     await reviewReady({ ...createFakeLab({ speed: 0.01 }), pin: pin.run });
     fireEvent.click(button(card("Vendor C · summary"), "View task"));
-    const view = screen.getByRole("complementary", { name: "Task: Vendor C · summary" });
+    const view = screen.getByRole("dialog", { name: "Task: Vendor C · summary" });
     fireEvent.click(button(view, "Pin"));
     fireEvent.click(button(view, "Pin"));
     expect(pin.calls).toBe(1);
@@ -159,7 +159,8 @@ describe("buttons that change something", () => {
     const create = button(form, "Create project");
     fireEvent.click(create);
     fireEvent.click(create);
-    expect(createProject.calls).toBe(1);
+    // The repository is checked first, so the create starts a tick later; still once.
+    await waitFor(() => expect(createProject.calls).toBe(1));
     expect(create.disabled).toBe(true);
 
     await createProject.settle(new Error("repository not found"));

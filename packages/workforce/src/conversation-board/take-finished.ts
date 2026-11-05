@@ -53,6 +53,7 @@ import { isUserTurn } from "../standing-rules/user-turn";
 import { taskChainResources } from "./chain";
 import { CONVERSATION_LEDGER_ID, conversationLedgerResources, ownConversationLedger } from "./ledger";
 import { conversationBoardStateShape, settleTakenNotice } from "./task-settled";
+import { subscriptionResources } from "../subscriptions/rows";
 import { noteTaskEndingRead, taskEndingReadsStateSchema } from "./task-ending-read";
 
 /** One task that finished while the turn ran, as {@link takeFinishedTasks} hands it back. */
@@ -90,7 +91,8 @@ export const takeFinishedTasks = handler({
   outputSchema: z.array(finishedTaskSchema),
   sessionStateSchema: z.object(conversationBoardStateShape),
   requestStateSchema: taskEndingReadsStateSchema,
-  resources: { ...conversationLedgerResources, ...taskChainResources },
+  // `settleTakenNotice` ends a failed task's subscriptions (FIX-2534).
+  resources: { ...conversationLedgerResources, ...taskChainResources, ...subscriptionResources },
   execute: async (_input, rawCtx): Promise<FinishedTask[]> => {
     const ctx = rawCtx as unknown as BlockContext;
     if (!isUserTurn(ctx)) return [];

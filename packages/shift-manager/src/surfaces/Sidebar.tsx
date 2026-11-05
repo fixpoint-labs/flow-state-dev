@@ -412,14 +412,14 @@ export function Sidebar({
   const { snapshot, refresh, client, asking } = useLab();
   const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? (snapshot as LoadedSnapshot) : undefined;
   const retry = () => void refresh();
-  // The counts dim only while a read the user asked for runs (FIX-2409 D2).
+  // The counts dim only while a read the user asked for runs.
   const dim = asking ? ` ${ASKING_CLASS}` : "";
 
   const inboxCount = loaded === undefined ? "…" : loaded.inbox.ok ? loaded.inbox.value.length : "!";
   const tasksCount = loaded === undefined ? "…" : openRows(loaded).length;
   const waiting = loaded !== undefined && loaded.inbox.ok && loaded.inbox.value.length > 0;
   // The user's own workers are on their roster, not in the inventory: joined as Roster joins them.
-  const roster = useRoster(loaded?.readAt);
+  const roster = useRoster();
   const joined = loaded === undefined ? undefined : withRoster(loaded, roster);
   // With the inventory unread and nobody on the roster, TEAMS has only its failure to show.
   const drawn = joined !== undefined && (loaded?.inventory.ok === true || joined.workers.length > 0) ? joined : undefined;
