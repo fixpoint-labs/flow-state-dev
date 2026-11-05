@@ -4,10 +4,10 @@
  *
  * Scans tracked .ts/.tsx/.mts/.mjs files outside packages/engine for
  * `import|export { … } from "@flow-state-dev/engine"` and groups each imported
- * name by the kinds of consumer that use it: app (apps/, examples/), host (the
- * host and transport adapters), store (store adapters), lib (first-party library
- * packages), docs (apps/docs pages and guides, code blocks included), repo (goals/,
- * labs/, plugins/, scripts/, specs/). Tests count as their directory's kind. This is the split
+ * name by the kinds of consumer that use it: app (adopter code per the epic's ER-1:
+ * apps/ except apps/devtool, examples/, labs/), host (the host and transport adapters),
+ * store (store adapters), lib (first-party library packages), docs (apps/docs pages and
+ * guides, code blocks included), repo (apps/devtool, goals/, plugins/, scripts/, specs/). Tests count as their directory's kind. This is the split
  * the spec's three entries follow: app → root, host/store → engine/host,
  * lib only → engine/internal, nobody → not exported.
  */
@@ -22,7 +22,8 @@ const kind = (file) => {
   const [top, pkg] = file.split("/");
   if (top === "packages") return HOST.includes(pkg) ? "host" : STORE.includes(pkg) ? "store" : LIB.includes(pkg) ? "lib" : `pkg:${pkg}`;
   if (top === "apps" && pkg === "docs") return "docs";
-  return top === "apps" || top === "examples" ? "app" : "repo";
+  if (top === "apps" && pkg === "devtool") return "repo";
+  return top === "apps" || top === "examples" || top === "labs" ? "app" : "repo";
 };
 const ROOT = new URL("../../../../../", import.meta.url).pathname;
 const files = execFileSync("git", ["ls-files", "*.ts", "*.tsx", "*.mts", "*.mjs", "apps/docs/docs/*.md", "apps/docs/guides/*.md"], { encoding: "utf8", cwd: ROOT }).split("\n")

@@ -15,10 +15,9 @@ engine root: 383 names; imported outside engine: 168; by nobody outside engine: 
 2	app+lib+repo	createExecutionContext executeBlock
 2	app+lib+repo+store	continueRequest createCheckpointDurabilityProvider
 2	repo+store	ChangeBus createInboundTransportHost
-2	lib+repo	PrincipalResolver toBareStates
 1	docs+host	resolveDurabilityProvider
 1	docs+host+lib	InboundTransportAdapter
-1	docs+host+repo	createFilesystemStores
+1	app+docs+host+repo	createFilesystemStores
 1	app+docs+repo	filesystemStores
 1	docs+host+lib+repo	PrincipalResolutionError
 1	docs+lib	ResolvePrincipalFn
@@ -26,6 +25,8 @@ engine root: 383 names; imported outside engine: 168; by nobody outside engine: 
 1	app+host+repo+store	defaultBodyUserIdPrincipalResolver
 1	app+host+lib+repo	FlowState
 1	lib+repo+store	createInMemoryBus
+1	app+lib	toBareStates
 1	lib+store	ChangeNotice
+1	lib+repo	PrincipalResolver
 
-shown by an app, example or docs page (36): ConcurrentModificationError ErrorCaptureEvent FlowState InboundTransportAdapter PrincipalResolutionError ResolvePrincipalFn StoreAdapter StoreRegistry continueRequest createBearerSecretPrincipalResolver createCheckpointDurabilityProvider createExecutionContext createFilesystemStores createFlowApiRouter createFlowRegistry createFlowState createHmacVerifier createHs256JwtVerifier createInMemoryStores createInProcessFetch createWebhookTransportAdapter createWebhookVerifier decodePathSegments defaultBodyUserIdPrincipalResolver disposeFlowApiRouter executeBlock extractBearerToken filesystemStores githubWebhookVerifier inMemoryStores resolveDurabilityProvider resolveUserStorageKey runAction slackWebhookVerifier stripeWebhookVerifier voiceContext
+shown by an app, example or docs page (37): ConcurrentModificationError ErrorCaptureEvent FlowState InboundTransportAdapter PrincipalResolutionError ResolvePrincipalFn StoreAdapter StoreRegistry continueRequest createBearerSecretPrincipalResolver createCheckpointDurabilityProvider createExecutionContext createFilesystemStores createFlowApiRouter createFlowRegistry createFlowState createHmacVerifier createHs256JwtVerifier createInMemoryStores createInProcessFetch createWebhookTransportAdapter createWebhookVerifier decodePathSegments defaultBodyUserIdPrincipalResolver disposeFlowApiRouter executeBlock extractBearerToken filesystemStores githubWebhookVerifier inMemoryStores resolveDurabilityProvider resolveUserStorageKey runAction slackWebhookVerifier stripeWebhookVerifier toBareStates voiceContext
