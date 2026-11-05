@@ -6,14 +6,14 @@
 
 | Someone who… | Today | After |
 |---|---|---|
-| **autocompletes `@flow-state-dev/engine` in an app** | 383 names: lease planners, `BoundedQueue`, 24 of core's names again. Apps import 20 | Only what an app needs, each in the README |
+| **autocompletes `@flow-state-dev/engine` in an app** | 383 names: lease planners, `BoundedQueue`, 26 of core's and contracts' names again. Apps, examples and docs show 36 | Only what an app needs, each in the README |
 | **writes a host or store adapter** | Hunts the same 383 names. Some carry an `unstable_` prefix | Imports `engine/host`: documented, semver-covered |
 | **imports `DispatchHandle` from core and from engine** | Two different types, one name | Engine's is `InboundDispatchHandle` |
-| **calls `isRetryableError`** | Core's takes an error; engine's also a policy | Engine's is `isRetryableUnder` |
+| **calls `isRetryableError`** | Core's takes an error; engine's also a policy | Engine's leaves the root; if a reader keeps it, it is `isRetryableUnder` |
 | **autocompletes `react`, `client` or `testing`** | `reactPackageMarker`, `coreItemImportProof`, two more markers | Gone; the proof is a type test |
 | **adds an export whose name another foundation package uses** | Nothing notices; ten exist | The export check fails, naming both |
 
-Engine's root ends in five `export *` lines, so whatever a sub-barrel exports lands on it unreviewed.
+Engine's root has five `export *` lines, so whatever a sub-barrel exports lands on it unreviewed.
 
 ## The goal, and how we'll know it's met
 
@@ -36,7 +36,7 @@ flowchart LR
   B --> M
   M -->|"engine root all consumed · zero collisions · no marker"| P["PASS · goal met"]
   C["control · main at d6a38c09 · a name planted on two roots"] -.-> X
-  X -.->|"under the control"| F["must FAIL · 10 collisions · 223 orphans"]
+  X -.->|"under the control"| F["must FAIL · 10 collisions · 215 orphans"]
 ```
 
 The check reads every public entry, not one root, and the control is today's tree.
@@ -47,11 +47,11 @@ The check reads every public entry, not one root, and the control is today's tre
 | **Signal** | Every engine root name is imported by an app or example (`apps/`, `examples/`) or sits in the README's app section; a name only adapters or our packages import is on `engine/host` or `engine/internal`. Zero engine root names declared in another package. Zero names shared by two public foundation entries with different declaring files. The seven marker and proof names, and the smoke file, exported from no entry |
 | **Input** | Every public entry of `contracts`, `core`, `engine`, `client`, `react`, `testing`; not `/internal` or repo-test entries. Prototype: [`poc/root-census/`](poc/root-census/README.md) |
 | **Anti-game** | Adapter imports never count toward the root, so leaning on first-party adapters can't keep a name there. A README app-section line added for a name no app imports is a scope change the reviewer rejects. A renamed marker has no outside consumer, so ER-1 fails it. Collisions compare declaring files, so a type alias is caught; `/internal` is excluded, so moving a colliding name there must be justified by D1's reader rule |
-| **Control that must fail** | `main` at `d6a38c09`: 10 collisions, 223 engine root names nobody imports. `--plant` puts one name on two roots: the count must rise by one |
+| **Control that must fail** | `main` at `d6a38c09`: 10 collisions, 215 engine root names no file or docs page outside engine imports. `--plant` puts one name on two roots: the count must rise by one |
 
 ## What changes
 
-![Before: one engine root of 383 names from five export-star lines. After: the root for app authors, engine/host for adapter authors, engine/internal for our packages, and 223 names no longer exported](figures/what-changes.svg)
+![Before: one engine root of 383 names from five export-star lines. After: the root for app authors, engine/host for adapter authors, engine/internal for our packages, and 215 names no longer exported](figures/what-changes.svg)
 
 Read the bands by who imports: an app, an adapter, or our packages. The red strip is what nobody outside engine uses.
 
@@ -72,17 +72,17 @@ Read the bands by who imports: an app, an adapter, or our packages. The red stri
 |---|---|
 | engine `DispatchHandle` | `InboundDispatchHandle`, on `engine/host` |
 | engine `FlowDispatchHandle` | `RunnerHandle`, on `engine/host`, beside `FlowRunner` |
-| engine `isRetryableError` | `isRetryableUnder` |
+| engine `isRetryableError` | `isRetryableUnder`, if it stays exported; no reader imports it today |
 | engine `StreamEvent` (the bridge frame) | `StreamBridgeEvent`, on `engine/host` |
 | core `SessionView` | `PeerSessionView`; React's keeps the name |
 | core/models `RetryPolicy` | `ModelRetryPolicy`; the block's keeps the name |
-| `ExpectedVersion`, `FlowCardinality`, `ChildSessionStatus`, `ChildSessionSummary` | One declaration each, re-exported. The wire pair moves to contracts |
+| `ExpectedVersion`, `FlowCardinality`, `ChildSessionStatus`, `ChildSessionSummary` | One declaration each, re-exported. The child-session pair has no engine reader, so engine stops exporting it and client's copy moves to contracts |
 | `executeBlock` on `core/blocks/sequencer` | Gone there: the subpath carries the builder |
 
-**Docs:** add engine's row to *what each package root is for*, the page FIX-2448 publishes; split
+**Docs:** every page and README that imports a moved name, which `consumers.mjs` lists (about 32 pages and the adapters' READMEs). Specifically: add engine's row to *what each package root is for*, the page FIX-2448 publishes; split
 `packages/engine/README.md`'s *Public API* into the root and `engine/host`; update the import
 lines in `server/host-adapters.md`, `advanced/inbound-transports.md`, `persistence/overview.md`
-and `api/server.md`. No new page.
+and `api/server.md`, `server/webhooks.md`, `server/authentication.md`, `advanced/durable-execution.md`. No new page.
 
 ## What stays as it is
 
@@ -108,7 +108,7 @@ and `api/server.md`. No new page.
 
 | The debt | |
 |---|---|
-| **Removes** | Five `export *` lines; 223 root exports nobody outside engine imports; 24 core names re-exported; the `unstable_` prefix; ten collisions; four package markers and react's import proof; client's copy of the child-session wire types |
+| **Removes** | Five `export *` lines; 215 root exports no file or docs page outside engine imports; 26 re-exported core and contracts names, `unstable_isCollectionConfig` included; the `unstable_` prefix; ten collisions; four package markers and react's import proof; client's copy of the child-session wire types |
 | **Adds** | Two engine entries to keep; one assertion; six renames. Under Q1's alias answer, deprecated aliases until the removal minor |
 | **Leaves** | Collisions outside the six (leg b); core's root (FIX-2448); store factory names (FIX-2452) |
 

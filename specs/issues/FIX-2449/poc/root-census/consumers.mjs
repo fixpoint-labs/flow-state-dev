@@ -6,7 +6,8 @@
  * `import|export { … } from "@flow-state-dev/engine"` and groups each imported
  * name by the kinds of consumer that use it: app (apps/, examples/), host (the
  * host and transport adapters), store (store adapters), lib (first-party library
- * packages), repo (goals/, labs/, plugins/, scripts/, specs/). This is the split
+ * packages), docs (apps/docs pages and guides, code blocks included), repo (goals/,
+ * labs/, plugins/, scripts/, specs/). Tests count as their directory's kind. This is the split
  * the spec's three entries follow: app → root, host/store → engine/host,
  * lib only → engine/internal, nobody → not exported.
  */
@@ -20,9 +21,11 @@ const LIB = ["orchestration", "workforce", "testing", "shift-manager", "harness-
 const kind = (file) => {
   const [top, pkg] = file.split("/");
   if (top === "packages") return HOST.includes(pkg) ? "host" : STORE.includes(pkg) ? "store" : LIB.includes(pkg) ? "lib" : `pkg:${pkg}`;
+  if (top === "apps" && pkg === "docs") return "docs";
   return top === "apps" || top === "examples" ? "app" : "repo";
 };
-const files = execFileSync("git", ["ls-files", "*.ts", "*.tsx", "*.mts", "*.mjs"], { encoding: "utf8" }).split("\n")
+const ROOT = new URL("../../../../../", import.meta.url).pathname;
+const files = execFileSync("git", ["ls-files", "*.ts", "*.tsx", "*.mts", "*.mjs", "apps/docs/docs/*.md", "apps/docs/guides/*.md"], { encoding: "utf8", cwd: ROOT }).split("\n")
   .filter((f) => f && !f.startsWith("packages/engine/") && !f.startsWith("specs/issues/FIX-2449/"));
 const re = /(?:import|export)\s+(?:type\s+)?\{([^}]*)\}\s*from\s*["']@flow-state-dev\/engine["']/g;
 // Only names engine's root really exports (a test fixture string like `export { x }` is not one).
@@ -42,7 +45,7 @@ const rootNames = (() => {
 const use = new Map();
 for (const f of files) {
   let text;
-  try { text = readFileSync(f, "utf8"); } catch { continue; }
+  try { text = readFileSync(ROOT + f, "utf8"); } catch { continue; }
   for (const m of text.matchAll(re)) for (let n of m[1].split(",")) {
     n = n.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0].trim();
     if (!rootNames.has(n)) continue;
@@ -58,5 +61,5 @@ for (const [n, kinds] of use) {
 }
 console.log(`engine root: ${rootNames.size} names; imported outside engine: ${use.size}; by nobody outside engine: ${rootNames.size - use.size}`);
 for (const [k, names] of [...groups].sort((a, b) => b[1].length - a[1].length)) console.log(`${names.length}\t${k}\t${names.sort().join(" ")}`);
-const app = [...use].filter(([, k]) => k.has("app")).map(([n]) => n).sort();
-console.log(`\nused by an app or example (${app.length}): ${app.join(" ")}`);
+const app = [...use].filter(([, k]) => k.has("app") || k.has("docs")).map(([n]) => n).sort();
+console.log(`\nshown by an app, example or docs page (${app.length}): ${app.join(" ")}`);
