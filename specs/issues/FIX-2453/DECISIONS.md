@@ -50,6 +50,7 @@ It comes down to a hover that reads *"per BP-030"*: FIX-and-LAB-only leaves 249 
 
 ## Decided, not asked
 
+- **From the epic, cited, not restated:** [ER-4](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-5](../../epics/FIX-2447/DECISIONS.md#who-owns-what) · **cells owned** in [FIX-2564's grid](../FIX-2564/SPEC.md#what-changes): `leakage.tracker-ids`.
 - **One lexical rule over every JSDoc block in shipped source**, not the issue's "JSDoc
   attached to an export", which needs a walk over export lists, overloads and members. The
   cost is JSDoc on non-exported helpers, swept the same way.

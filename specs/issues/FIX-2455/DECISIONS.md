@@ -60,7 +60,7 @@ It comes down to a suspension: rejecting makes every approval step a catch block
 |---|---|
 | **Instead of** | A `useActionResult` hook, and the issue's `useFlowRead` |
 | **Because** | `useAction` is the hook that sends one action, and its `execute` can only hand back the acceptance, so a React app builds a second client to read the answer; the provider's client is not public. Flow reads already have their React path: `client/react.md` runs `fsd.flow(…).read(…)` through `useSubscription`, FIX-2428's hook. A `useFlowRead` beside it would be the second hook watching one scope that FIX-2367's *not done if* bans |
-| **Locks in** | One option name on `useAction`, public; with it `execute` resolves to `result()`'s shape and `loading` spans the run; without it, today's behaviour. An unmount stops the wait through `signal`. `useReadFence` leaves the root for `react/internal` ([ER-3 / Q1's answer](../../epics/FIX-2447/DECISIONS.md#q1)); the PR that creates that entry ships the completions fix if one exists, and if none does, D2's closure spot-check stands as a recorded finding |
+| **Locks in** | One option name on `useAction`, public; with it `execute` resolves to `result()`'s shape and `loading` spans the run; without it, today's behaviour. An unmount stops the wait through `signal`. `useReadFence` leaves the root for `react/internal` ([ER-3 / Q1's answer](../../epics/FIX-2447/DECISIONS.md#q1)), a plain published subpath (epic D2, settled) |
 
 ![D3: how a React screen reads an output. Chosen: an option on useAction. Instead of: a new hook. It comes down to FIX-2367's rule: no two hooks watching one scope, which a flow-read hook beside useSubscription breaks. Price: execute resolves to two shapes, by an option. Sending one action is a tie. Locks in one option name. Flips if React screens want the output held as state across renders](figures/d3-use-action.svg)
 
@@ -68,6 +68,7 @@ It comes down to FIX-2367's rule: a read hook beside `useSubscription` is a seco
 
 ## Decided, not asked
 
+- **From the epic, cited, not restated:** [ER-3](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-6](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what) · **cells owned** in [FIX-2564's grid](../FIX-2564/SPEC.md#what-changes): `onepath.output-read`; contributes to `surface.root.react`.
 - **`result()` is `wait()` plus one read.** One polling loop on the handle; `result()` never
   polls on its own. The convergence point for "settled" is `wait()`'s predicate (not
   `in_progress`, no live heartbeat), and every copy that waits goes through it.
@@ -81,8 +82,7 @@ It comes down to FIX-2367's rule: a read hook beside `useSubscription` is a seco
   listing is the copy the next app copies.
 - **The status route's flag sends the list's projection**: the output when asked, `hasOutput`
   always. The shared helper is a projection, not the list read; the list path is not used.
-- **Changesets** (ER-7): client, engine and react, one line each, react's naming
-  `useReadFence`'s new home. The labs are private and get none (BP-022).
+- **Changesets:** client, engine and react. The labs are private and get none (BP-022).
 
 ## Considered and dropped
 

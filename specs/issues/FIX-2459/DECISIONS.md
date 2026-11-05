@@ -68,12 +68,12 @@ It comes down to two names for one body: the alias keeps "behave identically" in
 
 ## Decided, not asked
 
+- **From the epic, cited, not restated:** [ER-1](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-2](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-3](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-6](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what) · **cells owned** in [FIX-2564's grid](../FIX-2564/SPEC.md#what-changes): `surface.root.orchestration`, `surface.root.patterns` (with FIX-2460); contributes to `surface.collisions`.
 - **No `./browser`.** The owner's answer to the epic: ER-6 keeps `./tasks` as orchestration's one
   browser-safe entry. `./inbox` stays a feature entry the same guard covers.
 - **`./internal` follows the epic's D2 exactly:** in both `exports` and `publishConfig.exports`,
-  undocumented except one README line saying it is not for apps. One per package. The PR that
-  creates it ships the import-completions fix if one exists; if none does, the epic D2 closure
-  spot-check stands as a recorded finding.
+  undocumented except one README line saying it is not for apps. One per package. A plain
+  published subpath, with no completions fix (epic D2 settled that none works).
 - **A type in a public signature stays public with it** (`DefinedTaskCollection` with
   `defineTaskCollection`), whatever the census says about the type alone.
 - **The two backing constructors go behind `./internal`.** Only a harness-manager test reads
@@ -84,21 +84,22 @@ It comes down to two names for one body: the alias keeps "behave identically" in
 - **Patterns:** subpaths become kebab-case (`./routed-specialists`, `./event-actors`); the README
   links to the task-board docs instead of copying them. No subpath is added for `parallelTasks`.
   The benchmark adapters and both benchmark entries are FIX-2460's (its D2), not this issue's.
-- **Surface cells:** orchestration's and patterns' are this issue's. FIX-2460 contributes to
-  patterns, and the last of the two to land flips it, naming both.
 - **The method table is FIX-2462's design, as this issue's last PR.** The storage interface, one
   decline form (`decide` returns a decline reason as a value), the table's `patch` and
   `transition` as the one convergence point every row write passes through, and the `findBy` seam
-  are as [FIX-2462's Decided](../FIX-2462/DECISIONS.md#decided-not-asked) sets them. Workforce
-  keeps its wrapped board ([FIX-2462 D2](../FIX-2462/DECISIONS.md#d2)).
+  are as [the appendix's Decided](appendix-method-table.md#decided-not-asked) sets them. Workforce
+  keeps its wrapped board ([appendix D2](appendix-method-table.md#mt-d2)).
+- **The FIX-2532 / #4757 seam.** The `./internal` move takes
+  `orchestration/src/tasks/collection/partition.ts`, which #4757 (`findBy`) edits, and the method
+  table's PR is where `findBy` is written on the storage primitives. Whichever lands second
+  rebases ([epic seam](../../epics/FIX-2447/DECISIONS.md#coordination-seams)).
 - **PR order.** The surface moves and the constructor placement first, since the manifest cells
   wait on them; the claim-order refusal when FIX-2454 lands; the method table last, editing files
   at their final paths. A surface review never reads through the rewrite.
 - **`delivery.passEntry` stays a typed option on `defineTaskCollection`, documented with the pass
   pair in `docs/architecture/`.** Only workforce sets it, but taking it off the public type needs a
   second declaration path for one caller. It is a field, not an entry name, so no root carries it.
-- **Changesets:** one each for orchestration and patterns, naming each moved name's new home
-  (ER-7). Workforce and harness-manager change imports only. The method table needs none
+- **Changesets:** orchestration and patterns. Workforce and harness-manager change imports only. The method table needs none
   (BP-022): no published name, option or behaviour changes.
 
 ## Considered and dropped
@@ -114,7 +115,7 @@ It comes down to two names for one body: the alias keeps "behave identically" in
 
 **No POC.** The one premise that could fail, a published `./internal` missing from a tarball,
 is what the packed-install leg b checks, if FIX-2564 takes the assertion. Whether a published
-`./internal` can be hidden from import completions is the epic's open POC, not this spec's. The
+`./internal` can be hidden from import completions was settled at the epic: no (D2). The
 method table's counts (38 shared methods, 8 returned declines, 13 thrown) are FIX-2462's, read
 on `main` at `d6a38c09`. The export census and its numbers (346 root
 names, 222 shared with `./tasks`, about 60 read only by our packages) were run on `origin/main`

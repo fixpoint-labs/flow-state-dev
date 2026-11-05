@@ -10,7 +10,7 @@
  *   node specs/issues/FIX-2460/poc/surface-census/census.mjs [--plant]
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { execSync } from "node:child_process";
 
 const root = execSync("git rev-parse --show-toplevel").toString().trim();

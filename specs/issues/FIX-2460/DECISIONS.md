@@ -71,6 +71,7 @@ It comes down to the pick: three names for one job is the choice the epic exists
 
 ## Decided, not asked
 
+- **From the epic, cited, not restated:** [ER-1](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-3](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-6](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what) · **cells owned** in [FIX-2564's grid](../FIX-2564/SPEC.md#what-changes): `surface.root.testing`; contributes to `surface.root.core` and `surface.root.patterns`.
 - **Durable by default, in memory.** `testFlow` passes `durable: true` unless the test says
   `durable: false`: FIX-2063 D2's name and its test case. A flow that failed on
   `suspendForUser` now parks, which is the point.
@@ -97,25 +98,16 @@ It comes down to the pick: three names for one job is the choice the epic exists
   status read that follows the stream's close.
 - **The scanners** (`findImportsFromEntry`, `findNodeBuiltinsFromEntry`) move to a `./bundle`
   entry hidden by `publishConfig`, epic D2's second kind. All four importers are repo tests.
-- **Moved and retired names follow ER-3 / Q1's answer**: the benchmark names, the core types,
-  the patterns adapters, the scanners and the two folded helpers. Under the alias option each
-  stays on its root as a deprecated alias naming its new home until the removal minor; under the
-  others it goes. The direction holds either way.
+- **The moves Q1's answer covers here:** the benchmark names, the core types, the patterns
+  adapters, the scanners and the two folded helpers. The direction holds under each answer.
 - **The goal check is this issue's own, not a manifest cell.** No *Not done if* in the epic's
   *One path* row names `testFlow`, so the manifest carries no stop-answer cell. The leg c
   assertion and the subpath-presence check run under `run.mjs --goal`, with
   `--control=adopter-goal` as the control; the closure re-runs them.
-- **Surface cells.** This issue owns `surface.root.testing` and flips it. It contributes to
-  core's (the six `Benchmark*` types) and patterns' (the benchmark adapters) cells, which
-  name every contributor and are flipped by the last one to land.
-- **Seams.** The router, in-process fetch, dispose and durability entries this uses may move to
-  `engine/host` under FIX-2449; testing imports them from wherever that split puts them, and
-  counts as their outside consumer for ER-1. FIX-2448 lands first on `core/src/index.ts`; this issue removes the six types from
-  its split. This issue owns both benchmark entries. FIX-2459 × FIX-2460: patterns' root is
-  FIX-2459's surface, and this issue edits only patterns' benchmark export block and its
-  `package.json` peer entry. FIX-2455 × FIX-2460: the status route's flag and the client's
-  `client.ts` handle are FIX-2455's; this issue reads the route in process and edits neither. The testing package marker is FIX-2449's, with the other three.
-- **Changesets** per ER-7: testing, core and patterns, one line each naming the new homes.
+- **Seams** are [the epic's](../../epics/FIX-2447/DECISIONS.md#coordination-seams). One it doesn't list: the router, in-process fetch,
+  dispose and durability entries this uses may move to `engine/host` under FIX-2449; testing
+  imports them from wherever that split puts them, and counts as their outside consumer.
+- **Changesets:** testing, core and patterns.
 
 ## Notes for the implementer
 

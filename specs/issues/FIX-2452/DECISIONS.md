@@ -67,6 +67,7 @@ the move. Then delete them in the minor that removes Q1's aliases, if Q1 takes t
 
 ## Decided, not asked
 
+- **From the epic, cited, not restated:** [ER-3](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-5](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what) · **cells owned** in [FIX-2564's grid](../FIX-2564/SPEC.md#what-changes): `surface.root.store-sqlite`, `surface.root.store-postgres`; contributes to `surface.root.engine` and `surface.collisions`.
 - **One normalisation point for `stores`.** The `createFlowState` constructor turns a bare
   adapter or nothing into `{ default: { primary } }` before anything reads it, replacing the raw options it keeps. Every reader goes
   through it: profile keys, the `defaultProfile` and `FSD_ENV` checks, `collectAdapters`,
@@ -77,9 +78,8 @@ the move. Then delete them in the minor that removes Q1's aliases, if Q1 takes t
   and its explicit root list; until then it waits as its own PR. The slot refusals call FIX-2454's
   `refuseRetired`, which carries the removal version, so their PR is blocked by FIX-2454; the rest
   of the change does not wait. Kitchen Sink's `fsdev.config.ts` edit (dropping `scheduler: pgStores`)
-  is this issue's, on the epic's Kitchen Sink seam, and FIX-2461 lands after it. This issue owns the
-  store-sqlite and store-postgres *Surface* cells and edits their rows on FIX-2448's root page;
-  engine's cell is FIX-2449's, and whichever of the two lands last flips it, naming both.
+  is this issue's, on the epic's Kitchen Sink seam, and FIX-2461 lands after it. It edits the two
+  stores' rows on FIX-2448's root page.
 - **The bare form is exactly the one-profile map.** `FSD_ENV` naming another profile still
   refuses, and a primary that declares `bus` backs the bus.
 - **The generator warning.** At flow-instance build, for each caller action (`actions`, not
@@ -95,9 +95,7 @@ the move. Then delete them in the minor that removes Q1's aliases, if Q1 takes t
   examples drop the store line or use the bare form. The 74 tests may keep the profile form.
 - **`docs/mechanisms/mechanisms.yaml`'s `store` row anchors `createInMemoryStores`**, which
   leaves engine's root; the implementation re-anchors it on `inMemoryStores`.
-- **Changesets:** one each for engine, core, store-sqlite, store-postgres and vercel, naming
-  each moved name's new home (ER-7). No tracker id in the warning, the refusals or test titles
-  (ER-5).
+- **Changesets:** engine, core, store-sqlite, store-postgres and vercel.
 
 ## Considered and dropped
 

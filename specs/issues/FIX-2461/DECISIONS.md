@@ -83,6 +83,7 @@ It comes down to what Kitchen Sink teaches: only kept copies match an adopter's 
 
 ## Decided, not asked
 
+- **From the epic, cited, not restated:** [ER-5](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-8](../../epics/FIX-2447/DECISIONS.md#who-owns-what) · **cells owned** in [FIX-2564's grid](../FIX-2564/SPEC.md#what-changes): `first-hour.example.<name>.<step>`.
 - **One recipe, in `examples/README.md`.** Copy the folder, rewrite `workspace:*` to `latest`,
   `npm install`. It links the quick start for a project that starts empty.
 - **`tsconfig.json` is self-contained** in each example, as `hello-chat`'s already is.
@@ -114,6 +115,12 @@ It comes down to what Kitchen Sink teaches: only kept copies match an adopter's 
 
 Not run on this spec alone: the epic-agent runs `analysis` and `reuse-review` over the whole
 spec set.
+
+## Notes from review
+
+Spec-set review round 1 (Nov 5), recorded, not folded.
+
+- **Cursor, one visualization** ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/4772#pullrequestreview-5778749039)): "One visualization per 'what changes' where mermaid and diff blocks say the same thing (e.g. FIX-2461)." For the implementer when the spec is next amended.
 
 ## How it got here
 

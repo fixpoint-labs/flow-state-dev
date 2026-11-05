@@ -56,11 +56,14 @@ Read across a row: a row passes only when all its cells do, so expectations sit 
 ([D1](DECISIONS.md#d1)). A cell names every child that contributes to it, and the last of them to
 land flips it.
 
-*Surface* covers the roots the epic owns: core, engine, client, react, testing, orchestration,
-patterns, the three harnesses, both stores, and workforce's `*_ENTRY` names. Every other published
-root (workforce's wider root, memory, contracts, harness-manager, fsdev, workspace, tools, bullmq,
-mcp, scheduled, voice-openai) is held by the export check's ratchet, so it can't grow, and goes to
-follow-up issues outside the epic. It has no cell.
+This grid is the epic's one statement of each row's assertions, checks and flippers; the epic
+and the children cite it rather than restating it.
+
+*Surface*, pending the owner and in the recommended reading, covers the roots the epic owns: core,
+engine, client, react, testing, orchestration, patterns, the three harnesses, both stores, and
+workforce's `*_ENTRY` names. Every other published root (workforce's wider root, memory, contracts,
+harness-manager, fsdev, workspace, tools, bullmq, mcp, scheduled, voice-openai) is held by the
+export check's ratchet, so it can't grow, and goes to [FIX-2568](https://linear.app/fixpoint-labs/issue/FIX-2568) (workforce's wider root and memory, first) and [FIX-2569](https://linear.app/fixpoint-labs/issue/FIX-2569) (the other nine), related issues outside the epic. It has no cell.
 
 | Row | Assertion | Checked in | Flipped by (the last to land) |
 |---|---|---|---|
@@ -77,7 +80,7 @@ follow-up issues outside the epic. It has no cell.
 | Shims | `shims.human-approval-throws`: `ctx.suspend({ reason: "human_approval" })` throws on the installed tarballs, naming `user_approval` | leg b | FIX-2454 |
 | Shims | `shims.stored-human-approval`: a stored `human_approval` suspension reads as a user's stop | leg b | FIX-2454 |
 | Types | `types.typed-handler`: a handler that declares `uses: [cap]` (or declared targets) calls `getOrCreateTaskCollection` from orchestration's `./tasks`, a helper that stays on a public entry, and compiles against the installed `.d.ts` with no cast | leg c | FIX-2457 |
-| Types | `types.fresh-session-default`: a fresh session reads its state schema's default | leg c | FIX-2554 |
+| Types | `types.fresh-session-default`: a fresh session reads its state schema's default, both the flow's and one declared only by a block or capability the flow uses; a flow whose block and capability declare one field with conflicting defaults is refused at flow definition, as FIX-2554 refuses a hire at registration. One merge, the one the type-level `extendSchema` describes, with no second runtime mechanism; the conflict error is not a retired value, so it doesn't use `refuseRetired` and carries no tracker id | leg c | FIX-2554 |
 
 FIX-2562's journeys reuse these cells (`first-hour.example.*` for copying an example out) rather
 than restating them. FIX-2460's stop answer and FIX-2453's tarball scan get no cell: they stay those

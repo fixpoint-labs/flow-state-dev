@@ -21,9 +21,9 @@ a change to how a task write behaves is made once and holds on both backings.
 
 | Is it the right goal? | |
 |---|---|
-| **The real need** | The epic's *Surface* and *One path* rows, for the two packages a Layer-2 adopter meets first ([FIX-2447](../../epics/FIX-2447/SPEC.md#the-goal-and-how-well-know-its-met)). And the epic's Removes line, "a second copy of 38 collection methods", folded in from [FIX-2462](../FIX-2462/SPEC.md) under the epic's D1 |
+| **The real need** | The epic's *Surface* and *One path* rows, for the two packages a Layer-2 adopter meets first ([FIX-2447](../../epics/FIX-2447/SPEC.md#the-goal-and-how-well-know-its-met)). And the epic's Removes line, "a second copy of 38 collection methods", folded in from FIX-2462 ([the appendix](appendix-method-table.md)) under the epic's D1 |
 | **Smaller, and rejected** | "Workforce's helpers move to `./internal`." Leaves 222 names on two paths and the copied root import that breaks a browser bundle |
-| **Bigger, and not this issue's** | Every other published root (memory, tools, workforce beyond its entry names): held by ER-1's ratchet, for follow-up issues. Merging the two backings into one constructor that takes a storage |
+| **Bigger, and not this issue's** | Every other published root (memory, tools, workforce beyond its entry names): held by ER-1's ratchet, for [FIX-2568](https://linear.app/fixpoint-labs/issue/FIX-2568) (workforce's wider root and memory, first) and [FIX-2569](https://linear.app/fixpoint-labs/issue/FIX-2569) (the other nine), related issues outside the epic. Merging the two backings into one constructor that takes a storage |
 | **Not done if** | A name is exported from both the root and `./tasks` · a public export's only outside reader is another `@flow-state-dev/*` package · `fifoClaimOrder` and `topologicalClaimOrder` are both exported · workforce's installed tarball can't import `orchestration/internal` · an app or example imports an `/internal` path · a README states a dependency the `package.json` contradicts · a backing file still defines a `TaskCollectionRef` method itself · the parity tests pass on one backing only |
 
 ```mermaid
@@ -73,7 +73,7 @@ How each moved name reaches an adopter is ER-3, per Q1's answer; this spec doesn
 method table over a storage interface each backing supplies (read a row, read it committed, list,
 a compare-and-set write, an after-commit hook). Every write goes through the table's `patch` and
 `transition`, with one decline form. No name, option or behaviour changes. The design is
-[FIX-2462's](../FIX-2462/SPEC.md), retained there.
+FIX-2462's, retained as [this spec's appendix](appendix-method-table.md).
 
 **Docs:** update both READMEs (dependencies, imports, claim orders; patterns links to the
 task-board docs), `orchestration/task-substrate.md`, `task-board.md`, and the pages and guides

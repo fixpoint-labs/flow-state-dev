@@ -16,7 +16,7 @@ flowchart TD
   I --> Q["Q1 is the epic's · the plan holds under each answer"]
   I --> R["run the manifest whole · not rebuilt"]
   R -.->|"rejected · FIX-2564 owns the assertions"| X2["a second copy of legs a to c"]
-  R --> J["two journeys · only what no cell or child check grades"]
+  R --> J["one journey · only what no cell or child check grades"]
   J -.->|"rejected · a journey that duplicates a cell is that cell"| X3["a journey per team"]
 ```
 
@@ -58,7 +58,7 @@ every answer, so FIX-2454's *Shims* cells don't move.
 | # | What runs | PASS means |
 |---|---|---|
 | 1 | FIX-2564's `run.mjs --goal` and manifest, whole, then `run.mjs --control=adopter-goal` | Every row PASS with its assertion ids printed; under the control, every row FAILs |
-| 2 | The [journeys](SPEC.md#the-journeys): j2 and j5, the only things no cell or child's check grades | Each assertion green, and red under its planted control; j2 is a recorded finding instead if no completions fix exists |
+| 2 | The [journey](SPEC.md#the-journeys): j5, the only thing no cell or child's check grades | Green, and red under its planted control |
 | 3 | Every child's own goal check, read from its merged spec's *How we verify* at run time and printed. Skipped only where a manifest cell carries that check's assertion; the manifest is the skip list. FIX-2462's check runs as FIX-2459's. FIX-2451's and FIX-2554's regression tests re-run. A check that needs a browser, a model or a signed-in harness runs here first; a browser check goes to `fsd-qa` only if that fails | Each PASS beside its documented control's FAIL |
 | 4 | The gap sweep below, the docs pages followed as written, every *Not done if* state checked absent | The *Surface* row as narrowed; every seam two-sided; every page holds |
 
@@ -85,7 +85,8 @@ ratchet baseline.
 | The quick start · FIX-2451, 2452 | Leg a runs it; its snippet uses FIX-2452's shorthand if that shipped, never both forms |
 | Kitchen Sink · FIX-2554, 2461, 2458, 2456, 2452, 2450 | Builds, its tests pass, and each mode opens in a browser after all six edits |
 | `eslint.config.mjs` · FIX-2453, 2457 | Both rules are on for their file sets, neither entry overwrites the other, and `pnpm lint` passes with each rule's planted case reported |
-| Task-collection storage primitives · FIX-2459 (FIX-2462's method table) × FIX-2532 | `findBy` is written on those primitives, with no second copy of the method |
+| Task-collection storage primitives · FIX-2459's method-table PR × FIX-2532 (#4757) | `findBy` is written on those primitives, with no second copy of the method; `partition.ts` sits behind `orchestration/internal` with #4757's edit intact |
+| Scope-state defaults · FIX-2457 × FIX-2554 | A block- or capability-declared default reads on a fresh session through the same merge the type-level `extendSchema` describes; a conflicting declaration is refused at flow definition, with no tracker id and not through `refuseRetired` |
 | Retired `sessionId` · FIX-2535 × FIX-2454 | It refuses through `refuseRetired` on its package's retired table. If FIX-2535 hasn't merged at the pinned commit, the seam is recorded on FIX-2535, not graded |
 | React's notice coalescer · FIX-2551 × FIX-2455 | One coalescer, resolved from the client; no copy left in react's internals; no name on both react's root and `react/internal`. Recorded on FIX-2551 if it hasn't merged |
 | `useJumpToLatest` · FIX-2540 × FIX-2456 | FIX-2540's edge-case tests pass on FIX-2456's change, whichever landed second. Recorded on FIX-2540 if it hasn't merged |
@@ -98,30 +99,30 @@ FIX-2447 blocks this issue in Linear.
 
 ## Decided, not asked
 
+- **From the epic, cited, not restated:** [ER-5](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-9](../../epics/FIX-2447/DECISIONS.md#who-owns-what).
 - **Run the manifest whole, never rebuild it.** FIX-2564 owns the assertions; the closure
   reads its verdicts and adds only the journeys.
-- **ER-9 binds child PRs; the closure is the manifest's last writer.** It adds the two journeys
-  as `closure` rows and never edits an assertion or an expectation. Every child has merged by
+- **ER-9 binds child PRs; the closure is the manifest's last writer.** It adds the journey
+  as a `closure` row and never edits an assertion or an expectation. Every child has merged by
   then, so no child's own cell can be gamed by them.
-- **Two journeys, not one per team.** A journey that restates a cell or a child's goal check is
+- **One journey, not one per team.** A journey that restates a cell or a child's goal check is
   that cell or check. Each team in the epic's table is walked by a cell, a re-run goal check or a
   kept journey ([the mapping](SPEC.md#the-journeys)).
 - **Grade the *Surface* row as narrowed** (pending the owner's sign-off on the epic): owned roots
   clean, every other published root at or below its ratchet baseline. Cleaning those roots is
-  follow-up work outside the epic.
+  FIX-2568's and FIX-2569's, outside the epic.
 - **The journeys run on the installed project, like the legs.** A journey on workspace `src` reads
   what the adopter never installs.
-- **j2 is conditional on the completions POC.** The PR that creates an `/internal` entry ships the
-  completions fix if one exists, and j2 asserts it with the TypeScript language service, the calls
-  an editor makes, plus one look by hand recorded in the report. If none exists, D2's closure
-  spot-check stands as a recorded finding, not an assertion.
+- **No completions journey.** Epic D2 settled that `/internal` may appear in completions; the
+  export check's import census and the path name hold the fence, so j2 and its VS Code screenshot
+  are dropped.
 - **The controls are FIX-2564's.** `run.mjs --control=adopter-goal` is the goal control; plain
   `--control` stays the 0.1.1 control.
 - **Packed tarballs at the pinned commit, not the registry,** except j5's 0.4.0 and alias-minor
   installs. One commit is the closure rule, and the packer is the one `changeset publish` uses.
-- **Nothing that ships carries a tracker id** (ER-5): journey ids, titles and fixtures name behaviour only.
+- **Journey ids, titles and fixtures** name behaviour only.
 - **j5's fixture lives beside the legs' fixtures** in `scripts/packed-install/fixtures/`, and must pass on 0.4.0 before it is upgraded, so a broken fixture can't pass as a refusal.
-- **Model `n/a`.** The quick start's first snippets and both journeys compute with handlers; an example that needs a key is its `first-hour.example.*` cell's concern.
+- **Model `n/a`.** The quick start's first snippets and the journey computes with handlers; an example that needs a key is its `first-hour.example.*` cell's concern.
 - **Necessity:** build as scoped. The closure rule requires it; nothing else grades the set.
 - **No counted facts of its own,** so no fact checker: every count is the epic's.
 
@@ -141,6 +142,12 @@ FIX-2447 blocks this issue in Linear.
 Skipped in this dispatch by the spec-set rule: the epic-agent runs `analysis` and `reuse-review`
 over the whole set.
 
+## Notes from review
+
+Spec-set review round 1 (Nov 5), recorded, not folded.
+
+- **Second look, finding 2** ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4772#issuecomment-6647549943)): "The gap is non-gating, not detection... once a row flips to `expect: pass`, make it a gating ratchet (or alert on `main` red). Then the closure shrinks to what no row covers: j2, j5 and the fifteen-seam sweep. Drop item 3: it re-runs every child's own goal check on the pinned commit... Keep only the checks that span children." Not folded this round; the implementer weighs item 3's re-run cost against D1, which already makes the legs gating at the wrap.
+
 ## How it got here
 
 - **Draft** — the closure rule's four rows over FIX-2564's manifest, run whole on one pinned
@@ -154,5 +161,8 @@ over the whole set.
   (conditional on the completions POC) and j5 kept, team mapping re-derived; ER-9 read as binding
   child PRs; the *Surface* row graded as narrowed; five seams added and Kitchen Sink widened;
   hold or break grades the changelog line and reports the gap.
+- **Spec-set review round 1 (Nov 5)** — j2 dropped (epic D2's completions POC refuted), so one
+  journey; the findBy seam moved to FIX-2459's method-table PR and a scope-state defaults seam
+  added (sixteen); the follow-up issues named; ER cited, not restated.
 
 **Open: none of its own.**

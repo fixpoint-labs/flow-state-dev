@@ -40,7 +40,7 @@ The check reads the roots and the hire's verdict, not the source of the factorie
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/entry-names/refused-at-hire/`, no model, run by the implementer at completion, for the hire half. For the root half, the closure manifest's workforce entry-name cell, which this issue flips to `expect: pass`, read through the epic's one census module (FIX-2448's per-entry index of `packageExports`), not a second census. `poc/entry-census/census.mjs --expect-none` is the spec-time stand-in. Verdict on the implementation PR |
-| **Signal** | The cell passes: zero `*_ENTRY` on workforce's root. Every misnamed-entry flow is refused, the problem naming the right string |
+| **Signal** | The cell passes: zero `*_ENTRY` on workforce's root, or, if [Q1](../../epics/FIX-2447/DECISIONS.md#q1) takes the alias, only `@deprecated` aliases naming the documented string and a removal version. Every misnamed-entry flow is refused, the problem naming the right string |
 | **Input** | One flow per entry factory (`workerTaskEntry`, `steerTurnEntry`, `messageReceivedEntry`, `workstreamOpenedEntry`, orchestration's `taskSettledEntry`), each under a one-letter typo. A different typo must fail the same way |
 | **Anti-game** | Not the factories' unit tests: they pass while the hire ignores a misplaced piece. The census reads the exports map, not a list the diff writes |
 | **Control that must fail** | `main`. The cell fails on five names (the stand-in exits 1 on five); `onTaskSteerd: steerTurnEntry(...)` is hired with no problem |

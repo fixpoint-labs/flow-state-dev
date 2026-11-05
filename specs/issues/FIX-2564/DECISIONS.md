@@ -63,6 +63,7 @@ It comes down to the gate: inside the PR job, an expected fail blocks unrelated 
 
 ## Decided, not asked
 
+- **From the epic, cited, not restated:** [ER-6](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-9](../../epics/FIX-2447/DECISIONS.md#who-owns-what) · **cells owned** in [FIX-2564's grid](../FIX-2564/SPEC.md#what-changes): every assertion; it flips none.
 - **The judge is the convergence point, and it is `runChecks`.** Each assertion is a goal `CHECKS`
   entry with no runner of its own. Every assertion reports `pass`, `fail`, `pending` (its
   check doesn't exist yet) or `error` (it could not run). The job is red when an outcome differs

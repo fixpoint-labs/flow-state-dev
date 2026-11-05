@@ -68,6 +68,7 @@ It comes down to an app with two harnesses: shared names collide, and Kitchen Si
 
 ## Decided, not asked
 
+- **From the epic, cited, not restated:** [ER-1](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-3](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what) · **cells owned** in [FIX-2564's grid](../FIX-2564/SPEC.md#what-changes): `surface.root.claude-code`, `surface.root.codex`, `surface.root.cursor`; contributes to `surface.collisions`.
 - **The shared model type is the shape both lists already have:** `id`, `label`,
   `description?`, `isDefault`, and `{ status: "models" | "failed" }`. Cursor's variants (Grok's
   effort) ride a Cursor-only extension, not the shared type.

@@ -27,8 +27,8 @@ any other root is its owner's.
 |---|---|
 | **The real need** | The epic's *Surface* row, for the root every adopter imports ([FIX-2447](../../epics/FIX-2447/SPEC.md#the-goal-and-how-well-know-its-met)), and the issue's "orchestration vocabulary they never opted into" |
 | **Smaller, and rejected** | "The issue's list moves." It clears the 111 names the review named, leaves the 107 more the check finds, and nothing stops the next window adding 70 again |
-| **Bigger, and not this issue's** | Every published root clean. The epic's *Surface* row is narrowed to the roots the set owns: engine, client, react, testing, orchestration, patterns, the harness packages and the stores are their own children's cells. The eleven roots with no owner (workforce's wider root, memory, contracts, harness-manager, fsdev, workspace, tools, bullmq, mcp, scheduled, voice-openai; 457 failing names today) can't grow under this issue's ratchet and go to follow-up issues |
-| **Not done if** | The export check is not the first PR to merge, or not a required check, while core's root is emptied · core's root still fails the check on a name outside the six benchmark types · a moved name still resolves from the root or `core/types`, other than as ER-3 / Q1's answer allows · a name only our packages or a goal import counts as used · any root gains a failing name and CI stays green · an app or a docs page imports any package's `/internal` path, by `import`, `import type`, `import()` or `require` · a flagged name stays on the root through a README line nobody reviewed · `core/harness` or `core/internal` is missing from the installed tarball · core's tarball ships a compiled test file · `BlockContext` still shows `requestHost` or a symbol slot |
+| **Bigger, and not this issue's** | Every published root clean. The epic's *Surface* row is narrowed to the roots the set owns: engine, client, react, testing, orchestration, patterns, the harness packages and the stores are their own children's cells. The eleven roots with no owner (workforce's wider root, memory, contracts, harness-manager, fsdev, workspace, tools, bullmq, mcp, scheduled, voice-openai; 457 failing names today) can't grow under this issue's ratchet and go to [FIX-2568](https://linear.app/fixpoint-labs/issue/FIX-2568) (workforce's wider root and memory, first) and [FIX-2569](https://linear.app/fixpoint-labs/issue/FIX-2569) (the other nine), related issues outside the epic |
+| **Not done if** | The export check is not the first PR to merge, or not a required check, while core's root is emptied · core's root still fails the check on a name outside the six benchmark types · a moved name still resolves from the root or `core/types`, other than as ER-3 / Q1's answer allows · a name only our packages or a goal import counts as used · any root gains a failing name and CI stays green · an app, an example or a docs page imports any package's `/internal` path, by `import`, `import type`, `import()` or `require` · a flagged name stays on the root through a README line nobody reviewed · `core/harness` or `core/internal` is missing from the installed tarball · core's tarball ships a compiled test file · `BlockContext` still shows `requestHost` or a symbol slot |
 
 ```mermaid
 flowchart LR
@@ -58,9 +58,9 @@ which must fail on both the check and the moved list.
 
 Position is audience: above the fence is what an adopter may import, and the fence is
 [epic D2](../../epics/FIX-2447/DECISIONS.md#d2). Behind it, across the set: core, engine,
-orchestration, react and contracts each get an `/internal`, beside client's existing one. The PR
-that creates `core/internal` ships the fix that hides it from import completions, if one exists;
-if none does, D2's closure spot-check stands as a recorded finding.
+orchestration, react and contracts each get an `/internal`, beside client's existing one. Each is
+a plain published subpath and may show in an editor's completions: the import census and the path
+name hold the fence, not hiding ([settled](../../epics/FIX-2447/DECISIONS.md#d2-completions)).
 
 **What a harness package writes:**
 
@@ -145,7 +145,7 @@ package's import never does ([D1](DECISIONS.md#d1)).
 |---|---|
 | **Removes** | 111 names from core's root (55 moved to `core/harness`, 54 to `core/internal` with `WAIT_DEADLINE_ENTRY` among them, 2 unexported), the same files' names from `core/types`, `requestHost` and five symbol slots from the public `BlockContext`, the `core/items/internal` entry, the README's runtime-seam section, and the four compiled test files in core's tarball. The check rules on 107 more |
 | **Adds** | Two subpaths and one check, each permanent by design. Under Q1's alias option, a deprecated alias per moved name until the removal minor Q1 names |
-| **Leaves** | The eleven unowned roots, 457 failing names today, held by the ratchet for follow-up issues outside the epic · `core/types`, a 442-name barrel the check doesn't read · 14 `_`-prefixed internal members on `BlockContext` · the task-dispatch vocabulary on core's root, which the README documents, for FIX-2459 to weigh under its D2 rule |
+| **Leaves** | The eleven unowned roots, 457 failing names today, held by the ratchet for FIX-2568 and FIX-2569, outside the epic · `core/types`, a 442-name barrel the check doesn't read · 14 `_`-prefixed internal members on `BlockContext` · the task-dispatch vocabulary on core's root, which the README documents, for FIX-2459 to weigh under its D2 rule |
 
 **Net: down.** Core's root loses 111 names now and more as the check rules; two entries and
 one check are added.

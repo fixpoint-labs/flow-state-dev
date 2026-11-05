@@ -53,6 +53,7 @@ that adopters are told to use. It isn't: 163 of its 442 names are not on the roo
 
 ## Decided, not asked
 
+- **From the epic, cited, not restated:** [ER-1](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-2](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-9](../../epics/FIX-2447/DECISIONS.md#who-owns-what) · **cells owned** in [FIX-2564's grid](../FIX-2564/SPEC.md#what-changes): `surface.root.core` (with FIX-2460), `surface.core-installed-dts`.
 - **The first PR is the export check**, a ratchet over every published root, before any name
   moves (the epic's sequencing). It refuses a failing name the base ref doesn't have, reading the
   base through `mechanism-exports.mjs`'s `gitReader` as `classify-mechanism-pr.mjs` does, so
@@ -67,8 +68,7 @@ that adopters are told to use. It isn't: 163 of its 442 names are not on the roo
   the same imports.
 - **The refusal covers every `/internal`**: any `@flow-state-dev/*/internal` path, which today
   is client's and, as the set lands, core's, engine's, orchestration's, react's and contracts'.
-  The PR that creates `core/internal` ships the fix that hides it from import completions if one
-  exists; if none does, epic D2's closure spot-check stands as a recorded finding.
+  `core/internal` ships no completions fix: epic D2 settled that none works.
 - **The installed-tarball read is a packed-install leg assertion**, on `run.mjs`'s `packAll` /
   `npmInstall` through FIX-2564, not a second pack and install in this goal's check.
 - **Core's tarball stops shipping tests.** Its build `tsconfig.json` includes `src/**/*`, so four
@@ -102,8 +102,7 @@ that adopters are told to use. It isn't: 163 of its 442 names are not on the roo
   import `/internal`.
 - **The benchmark types stay on the root** until FIX-2460 moves them to `testing/benchmark`; they
   are the only failing core names this issue leaves.
-- **A deprecated alias passes the check** only if Q1 lands on aliases, and only while it names
-  its new home and a removal version (D3's shape). It is the check's one exemption.
+- **The check's one exemption is a Q1 alias**, if [Q1](../../epics/FIX-2447/DECISIONS.md#q1) lands on aliases.
 - **The ratchet refuses a name newly failing, for any cause**: new on the root, or its last
   adopter import or README line removed. A PR that removes an app's last use of a name rules on
   that name in the same PR, as Fallow's check makes a PR answer for the export it orphaned.
@@ -119,8 +118,6 @@ that adopters are told to use. It isn't: 163 of its 442 names are not on the roo
   `items/internal`'s fold touches about 48 importing files.
 - **Seams:** draft PR #4757 adds three root types to `packages/core/src/index.ts`; whichever lands
   second rebases. The export check, not this spec, decides whether they need a README line.
-- **One changeset** for core naming each moved name's new home, and one per importer package
-  whose own surface changes (ER-7).
 
 ## Considered and dropped
 
@@ -149,6 +146,12 @@ that adopters are told to use. It isn't: 163 of its 442 names are not on the roo
 
 Not run on this spec alone: it is a spec-set member, and the epic-agent runs `analysis` and
 `reuse-review` over the whole set.
+
+## Notes from review
+
+Spec-set review round 1 (Nov 5), recorded, not folded.
+
+- **Second look, sign-off 1** ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4772#issuecomment-6647549943)): "FIX-2448's export check must cover every published root on day one, not only the owned ones. Worth stating as a *Not done if* line." Already covered by *any root gains a failing name and CI stays green*; ER-1 now says "from its first day".
 
 ## How it got here
 

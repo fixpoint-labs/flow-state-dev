@@ -58,6 +58,7 @@ It comes down to one helper type: the alternative teaches a second one forever.
 
 ## Decided, not asked
 
+- **From the epic, cited, not restated:** [ER-4](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-5](../../epics/FIX-2447/DECISIONS.md#who-owns-what) · **cells owned** in [FIX-2564's grid](../FIX-2564/SPEC.md#what-changes): `types.typed-handler`.
 - **The ban is one `no-restricted-syntax` entry** (ER-4), over `packages/*/src`, with three
   selectors: `ctx as never`, `ctx as BlockContext`, `ctx as unknown as BlockContext`. One
   spelling alone would move the casts. Tests are out: their mocks are partial on purpose.
@@ -73,6 +74,10 @@ It comes down to one helper type: the alternative teaches a second one forever.
   and `settlePassWake` move to `orchestration/internal`, which an adopter can't import. This one
   takes `BlockContext` first and has a docs-site example, so it stays public.
 - **No runtime change**, so `pnpm typecheck` is the evidence, not `fsdev run`.
+- **The FIX-2554 seam** ([epic](../../epics/FIX-2447/DECISIONS.md#coordination-seams)): `CapabilityPresetCtx` and the type-level
+  `extendSchema` in `core/src/capability/merge.ts` stay the one statement of how block- and
+  capability-declared state merges; FIX-2554's runtime defaults merge must match it, not add a
+  second one. Whichever lands second checks the two agree.
 
 ## Considered and dropped
 
@@ -103,6 +108,12 @@ implementer's first test.
 
 Skipped in spec-set member mode: the epic-agent runs `analysis` and `reuse-review` over the
 whole set.
+
+## Notes from review
+
+Spec-set review round 1 (Nov 5), recorded, not folded.
+
+- **Second look, finding 5** ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4772#issuecomment-6647549943)): "keep the type fix (`CapabilityPresetCtx` aliasing `BlockContext`) and the lint ban as the child's core, and let the cast deletion be mechanical and reviewed as such. It can land as a separate PR so the semantic change isn't buried under about 180 one-line diffs." The PR split is the implementer's.
 
 ## How it got here
 

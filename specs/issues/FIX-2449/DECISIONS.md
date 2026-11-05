@@ -21,7 +21,7 @@ flowchart TD
 |---|---|
 | **Instead of** | One public `engine/host` that carries every name a first-party package imports, the `unstable_` resource helpers and `runRead` included. Or the issue's smaller reading: the `export *` lines written out as today's 383 names |
 | **Because** | The census sorts the 168 names a file or docs page outside engine imports by reader: 37 by adopter code (apps, examples, labs) and docs pages, 124 by host and store adapters, 7 only by our library packages (`runRead`, `createInMemoryLeaseBackend`). Four `unstable_` resource helpers sit in the adapter group, but only `mcp` reads them, for its own projection; the fifth is core's `isCollectionConfig` and goes with the other re-exports. A public subpath is documented and semver-covered ([epic D2](../../epics/FIX-2447/DECISIONS.md#d2)), so putting the third group on `host` promises adopters seams that reached the root unreviewed, through `export *`. The other 215 nobody imports |
-| **Locks in** | Three entries and their names: the root for app authors, `@flow-state-dev/engine/host` for what any host or store adapter author needs, `@flow-state-dev/engine/internal` for what only our packages read, the `unstable_` helpers included. Store contracts live on `host`, not a fourth entry, and `host`'s reader set holds FIX-2452's twenty store names, which its own PR moves there after this one. `host` carries the type closure of its contracts: a type its functions take or return (`ResponseEmitter`, through `DispatchHandle`) is on it even when nobody imports it by name. A docs page counts as a reader: an app-author page keeps a name on the root, an adapter-author page puts it on `host`. A name moves from `internal` to `host` only with a README entry. The PR that creates `engine/internal` ships the completions fix if one exists; if none does, the closure's spot-check stands as a recorded finding |
+| **Locks in** | Three entries and their names: the root for app authors, `@flow-state-dev/engine/host` for what any host or store adapter author needs, `@flow-state-dev/engine/internal` for what only our packages read, the `unstable_` helpers included. Store contracts live on `host`, not a fourth entry, and `host`'s reader set holds FIX-2452's twenty store names, which its own PR moves there after this one. `host` carries the type closure of its contracts: a type its functions take or return (`ResponseEmitter`, through `DispatchHandle`) is on it even when nobody imports it by name. A docs page counts as a reader: an app-author page keeps a name on the root, an adapter-author page puts it on `host`. A name moves from `internal` to `host` only with a README entry. `engine/internal` is a plain published subpath with no completions fix (epic D2, settled) |
 
 ![D1: three entries by who imports, chosen, beside one public host entry. Decides it: whether our own seams get a semver promise](figures/d1-three-entries.svg)
 
@@ -42,6 +42,7 @@ It comes down to `RetryPolicy`: a roots-only check can't see two in core.
 
 ## Decided, not asked
 
+- **From the epic, cited, not restated:** [ER-1](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-3](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-4](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what) · **cells owned** in [FIX-2564's grid](../FIX-2564/SPEC.md#what-changes): `surface.root.engine` (with FIX-2452), `surface.root.client`, `surface.root.react` (with FIX-2450, 2455, 2456), `surface.collisions` (with FIX-2452, 2458, 2459).
 - **The convergence point for "one name, one meaning"** is the collision assertion in FIX-2448's
   export check, over its per-entry index of `packageExports`. Every writer passes it: hand-written
   barrels, a subpath that points at a whole module (`core/blocks/sequencer` today), a type alias
@@ -60,12 +61,10 @@ It comes down to `RetryPolicy`: a roots-only check can't see two in core.
 - **A collision whose side has no reader** (engine's `isRetryableError`, the child-session pair, react's `RosterWorker`) is resolved by unexporting it. Its new name in SPEC.md binds only if a reader keeps it.
 - **Vercel's `FlowApiRouter`** is a hand copy of engine's router shape, so it re-exports engine's from `engine/host`. Vercel already depends on engine.
 - **Client's root** keeps `CollectionItemHandle`, now in its README: React's collection hooks return it. FIX-2448's census, which stops at a package edge, counts it sibling-only.
-- **Removed names reach 0.4.0 adopters per ER-3 and Q1's answer**, like moved ones. Under the alias answer that is about 200 deprecated names on engine's root until the removal minor.
-- **Seams.** `engine/src/index.ts`: this issue writes the list; FIX-2452 moves its twenty store
-  names to `engine/host`, and whichever lands last flips engine's root cell. `react/src/index.ts`:
-  this issue removes the markers, the proof, `RosterWorker` and `FlowCardinality`'s copy;
-  FIX-2450, 2455 and 2456 remove their own names. Core: this issue renames `SessionView` and
-  `core/models`' `RetryPolicy` and narrows `core/blocks/sequencer`, on FIX-2448's split.
+- **Under Q1's alias answer**, about 200 deprecated names sit on engine's root until the removal minor.
+- **Seams** are [the epic's](../../epics/FIX-2447/DECISIONS.md#coordination-seams). This issue's share: engine's list; on react's root the
+  markers, the proof, `RosterWorker` and `FlowCardinality`'s copy; on core, `SessionView`,
+  `core/models`' `RetryPolicy` and `core/blocks/sequencer`.
 - **The first-party adapters** (`next`, `vercel`, `node`, `bullmq`, `mcp`, `scheduled`,
   `fsdev`, both stores) and the library packages (`orchestration`, `workforce`, `harness-manager`, `shift-manager`, `testing`, `integration-tests`, `memory`) move their imports to `engine/host` or `engine/internal`.
 
@@ -103,4 +102,6 @@ whole FIX-2447 set, by the epic's agent.
   three engine entries over `packageExports` and FIX-2448's export check; a census that found ten
   collisions where the issue named three.
 - **Validation (Step 5)** — the reader census now counts the docs site (215 unread, not 223); `engine/host` carries its contracts' type closure; a collision with no reader on the engine side is unexported, not renamed; the goal check names what keeps adapter imports off the root.
+- **Spec-set review round 1 (Nov 5)** — the completions fix dropped (epic D2 settled that none
+  works); seams and ER rules cited from the epic, cells from FIX-2564's grid.
 - **Set review (Nov 5)** — the collision assertion runs strict over every published root plus the foundation's subpaths and is the one collisions cell (leg b drops its copy; 22 found, twelve this issue's); client's root joins the goal; checks read FIX-2448's census module and per-entry index; consumers follow ER-1 (labs count, devtool doesn't: 37/124/7); `engine/internal` ships its completions fix; engine's and client's rows on the package-roots page; FIX-2452's store names sit in `engine/host`'s reader set.

@@ -140,7 +140,7 @@ record and checks the caller reaches it; the flag only stops it dropping the sto
 | `include_result_output` on the status route; an optional `result` on its snapshot | The status route's by-id read; the session list's flag and its result projection | Extends: the list's flag name and wire shape, on the read that already loads the one record |
 | `signal` on `wait()` and `result()` | Each copy's own stop | One option on the one wait |
 | An option on `useAction` | `react` · `useAction`; `useSubscription` | Extends the hook that already sends one action |
-| `@flow-state-dev/react/internal` | `client/./internal`, [D2](../../epics/FIX-2447/DECISIONS.md#d2) | Reuse of that kind: react's one hidden entry. Its PR ships the fix that keeps it out of import completions, if one exists; if none does, D2's closure spot-check stands as a recorded finding |
+| `@flow-state-dev/react/internal` | `client/./internal`, [D2](../../epics/FIX-2447/DECISIONS.md#d2) | Reuse of that kind: react's one hidden entry, a plain published subpath with no completions fix ([D2, settled](../../epics/FIX-2447/DECISIONS.md#d2-completions)) |
 
 | The debt | |
 |---|---|

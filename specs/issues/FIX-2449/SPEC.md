@@ -67,8 +67,7 @@ Read the bands by who imports: an app, an adapter, or our packages. The red stri
 
 `engine/host`'s reader set also holds FIX-2452's twenty store names (the two registry factories
 and 18 per-store constructors): this PR creates the subpath, and FIX-2452's PR moves them onto it.
-The PR that creates `engine/internal` ships the completions fix if one exists; if none does, the
-epic's closure spot-check stands as a recorded finding.
+`engine/internal` is a plain published subpath, as [epic D2](../../epics/FIX-2447/DECISIONS.md#d2-completions) settled; no completions fix.
 
 **Client's root** fails on three names: `clientPackageMarker` is deleted, `ExecuteActionRequestBody`
 has no reader and is unexported, and `CollectionItemHandle` stays, documented in client's README.

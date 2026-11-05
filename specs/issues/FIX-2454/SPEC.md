@@ -59,10 +59,10 @@ solid red cell is the bug.
 -   throw new Error("hireWorkforce: messages.hopLimit was renamed messages.budget; …");
 - }
 + // packages/workforce/src/retired.ts: the package's one table
-+ export const RETIRED = retiredNames("@flow-state-dev/workforce", {
++ export const REFUSALS = retiredNames("@flow-state-dev/workforce", {
 +   agents: { replacement: "roster and inventory", removeIn: "0.7.0" },
 + });
-+ refuseRetired(RETIRED, options, "workforceCapability");
++ refuseRetired(REFUSALS, options, "workforceCapability");
 ```
 
 **What an adopter sees:**
@@ -119,7 +119,7 @@ outside the epic. Their PRs land after the helper; nothing else waits on it.
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
-| `@flow-state-dev/contracts/internal`, a new hidden entry | `client/./internal`, epic D2's published hidden kind | Same kind. Its PR ships the completions fix if one exists; if none does, D2's closure spot-check stands as a recorded finding |
+| `@flow-state-dev/contracts/internal`, a new hidden entry | `client/./internal`, epic D2's published hidden kind | Same kind: a plain published subpath, with no completions fix ([D2, settled](../../epics/FIX-2447/DECISIONS.md#d2-completions)) |
 | `retiredNames`, `refuseRetired`, `RetiredNameError` on it | `refuseRetiredDispatcherOption`; `retired-shapes.ts`'s table | Extends the engine helper with that table's form |
 | Table ownership and expiry | The vocabulary sweep; the census's totality scan | **Extends the sweep**: the census's refusal shape moves into `rules.mjs`, a pass reads the tables. Not a third scanner; not ESLint (ER-4) |
 
@@ -142,9 +142,9 @@ helper and a pass in the existing sweep. If wrong: a helper every package import
 
 1. [D1](DECISIONS.md#d1) · A stored 0.2.0 `human_*` stop reads as a user's stop; a new one is
    refused. If wrong: adopters' waiting approvals vanish on upgrade.
-2. [D2](DECISIONS.md#d2) · A refusal, and a Q1 `@deprecated` alias, lives at least two minors
-   past the first version that carries it. If wrong: an adopter who skips minors meets the
-   silent case again.
+2. [D2](DECISIONS.md#d2) · A refusal lives at least two minors past the first version that
+   carries it; whether a Q1 `@deprecated` alias does too is Q1's, open with the owner. If wrong: an
+   adopter who skips minors meets the silent case again.
 
 **Open: none.** D2 is the one to weigh. BP-034 is written so the sweep and Q1 agree under each answer.
 

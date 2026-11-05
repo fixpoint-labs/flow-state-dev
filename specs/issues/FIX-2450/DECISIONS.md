@@ -52,6 +52,7 @@ method on a returned object stays put. Then the name stays and its doc says it a
 
 ## Decided, not asked
 
+- **From the epic, cited, not restated:** [ER-3](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-5](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-6](../../epics/FIX-2447/DECISIONS.md#who-owns-what) · **cells owned** in [FIX-2564's grid](../FIX-2564/SPEC.md#what-changes): `onepath.answer-task-stop`; contributes to `surface.root.react`.
 - **One pick; every React caller passes through it.** The convergence point is the pick on
   `isUserSuspension`. Its writers: `useApproval` and `useSuspensionForm` on both paths (alone, and
   through the provider's resolver), `session.answerSuspension` (behind `useSuspensions` and the
@@ -69,7 +70,7 @@ method on a returned object stays put. Then the name stays and its doc says it a
   every approval from an app still serving a 0.4.0 bundle. FIX-2454's helper is not used; the type
   removal follows ER-3 and Q1's answer, and its deprecation since 0.3.0 is already the warning.
 - **The routes don't change** ([FIX-2129 D2](../FIX-2129/DECISIONS.md#d2)).
-- **Changed lines carry no tracker id** (ER-5); older ids in these files are FIX-2453's sweep.
+- **Older tracker ids in these files** are FIX-2453's sweep, not this issue's.
 
 ## Considered and dropped
 

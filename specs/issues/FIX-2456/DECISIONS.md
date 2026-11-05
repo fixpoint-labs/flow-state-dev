@@ -68,6 +68,7 @@ It comes down to what the path says: who it's for, which is the epic's rule.
 
 ## Decided, not asked
 
+- **From the epic, cited, not restated:** [ER-1](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-3](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-6](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what) · **cells owned** in [FIX-2564's grid](../FIX-2564/SPEC.md#what-changes): contributes to `surface.root.react`.
 - **E1 · The convergence point is `useJumpToLatest`.** Every conversation in the repo and the
   registry goes through it: the registry `Conversation` (and so Kitchen Sink's two pages), Shift
   Manager's `Conversation` and `TaskSession`, DevTool's stream view, and the labs' views. No
@@ -94,8 +95,7 @@ It comes down to what the path says: who it's for, which is the epic's rule.
   there (the ui stories' fixtures import them). The three `*PropNames` lists have neither, so they
   leave public surface (ER-1). They shipped in 0.4.0, so their removal reaches adopters the way
   Q1's answer says, like the moved names. The implementer settles each against the export check.
-- **E7 · Changesets (ER-7):** one `minor` line for `@flow-state-dev/react` naming
-  `@flow-state-dev/react/workforce`; `patch` for Shift Manager and DevTool. The registry is private.
+- **E7 · Changesets:** `minor` for react, `patch` for Shift Manager and DevTool. The registry is private.
 - **E8 · Kitchen Sink:** its two pages move to the new Conversation API and its copies of
   `conversation.tsx`, `request-group.tsx` and `prompt-input.tsx` stay byte-equal to the registry,
   gated by `test/registry-drift.test.ts`; those edits are this issue's. No other Kitchen Sink file is

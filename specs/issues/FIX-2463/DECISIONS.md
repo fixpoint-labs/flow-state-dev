@@ -55,6 +55,7 @@ flow is never hired or defined with it. Then that entry keeps a constant, on its
 
 ## Decided, not asked
 
+- **From the epic, cited, not restated:** [ER-1](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-3](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-6](../../epics/FIX-2447/DECISIONS.md#who-owns-what) · **cells owned** in [FIX-2564's grid](../FIX-2564/SPEC.md#what-changes): `surface.root.workforce` (the five `*_ENTRY` names).
 - **The trigger fired; the issue stays in the set as a removal, narrowed.** Epic D1, as amended,
   records it: no new primitive, and this child stays, pending the owner's sign-off on the
   spec-set PR. What it keeps is workforce's entry-name cell of the epic's *Surface* row: five
