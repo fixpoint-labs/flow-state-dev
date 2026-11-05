@@ -39,11 +39,7 @@ vi.mock("../src/lib/connection", () => ({
   connect: (connection: { userId: string }) => ({ userId: connection.userId, subscribe }),
   readConnection: () => ({ userId: USER }),
 }));
-// Shift Manager follows the roster through Workforce's watch; this one reports an empty roster once.
-const workforce = {
-  roster: async () => [],
-  watchRoster: (onRoster: (entries: never[]) => void) => (void Promise.resolve([] as never[]).then(onRoster), () => {}),
-};
+const workforce = { watchRoster: () => () => {} };
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
 
 let sessions: SessionSummary[] = [];
