@@ -113,6 +113,18 @@ describe("a running task's working line, as the adapter reads it", () => {
     expect(listed.some((read) => read.startsWith("plan:") && read.includes("req_run"))).toBe(true);
   });
 
+  it("never names a call an earlier, crashed request left half-done in the same session", async () => {
+    // A reused run session: `req_old` crashed mid-call and left its call `in_progress` for good.
+    const crashed = { ...tool("t0", "in_progress", "rm -rf build"), requestId: "req_old" };
+    const { client } = clientWith([crashed, tool("t1", "completed", "ls")]);
+    const seen: WorkingNow[] = [];
+    const stop = createLabAdapter(client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => seen.push(next));
+    await until(() => seen.length > 0);
+    await new Promise((r) => setTimeout(r, 50));
+    stop();
+    expect(seen.some((now) => now.inFlight !== undefined)).toBe(false);
+  });
+
   it("names a call that started after the view opened, which only the run request's own stream sends", async () => {
     // The session stream sends an item once it is finished: stored is the finished `ls` only.
     const lab = clientWith([tool("t1", "completed", "ls")], undefined, [tool("t1", "completed", "ls"), tool("t2", "in_progress", "pnpm test")]);

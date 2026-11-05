@@ -678,9 +678,12 @@ const STREAM_GONE: ReadonlySet<number> = new Set([401, 403, 404]);
  * stream, which sends a call as it starts, and the session feed, whose
  * finished copy of a call wins over a streamed copy that never heard its end.
  */
-function inFlightOf(streamed: readonly OutputItem[], fed: readonly OutputItem[]): ToolCallNow | undefined {
+function inFlightOf(streamed: readonly OutputItem[], fed: readonly OutputItem[], requestId: string | undefined): ToolCallNow | undefined {
   const finished = new Set(fed.filter((item) => item.status !== "in_progress").map((item) => item.id));
-  return toolInFlight(streamed.filter((item) => !finished.has(item.id))) ?? toolInFlight(fed);
+  // The feed's own candidates are the run request's only, else the newest request's: a reused session keeps
+  // the call a crashed earlier request left half-done for good, and that is not what the run is doing now.
+  const request = requestId ?? fed[fed.length - 1]?.requestId;
+  return toolInFlight(streamed.filter((item) => !finished.has(item.id))) ?? toolInFlight(fed.filter((item) => item.requestId === request));
 }
 
 /** A request notice: one of the session's requests was created, moved or deleted. Never `items`, sent per stored chunk. */
@@ -1458,7 +1461,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       let fed: readonly OutputItem[] = [];
       let streamed: readonly OutputItem[] = [];
       const tellInFlight = () => {
-        const inFlight = inFlightOf(streamed, fed);
+        const inFlight = inFlightOf(streamed, fed, run.requestId);
         const { inFlight: _, ...rest } = now;
         tell(inFlight === undefined ? rest : { ...rest, inFlight });
       };

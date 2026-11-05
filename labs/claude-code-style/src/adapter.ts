@@ -577,10 +577,14 @@ const STREAM_GONE: ReadonlySet<number> = new Set([401, 403, 404]);
  * The call a run is in now, from both of its sources: the request's own
  * stream, which sends a call as it starts, and the session feed, whose
  * finished copy of a call wins over a streamed copy that never heard its end.
+ * The feed's own candidates are the run request's only (`requestId`, else the
+ * newest request's): a reused session keeps the call a crashed earlier request
+ * left half-done for good, and that is not what the run is doing now.
  */
-function inFlightOf(streamed: readonly Item[], fed: readonly Item[]): ToolCallNow | undefined {
+function inFlightOf(streamed: readonly Item[], fed: readonly Item[], requestId: string | null | undefined): ToolCallNow | undefined {
   const finished = new Set(fed.filter((item) => item.status !== "in_progress").map((item) => item.id));
-  return toolInFlight(streamed.filter((item) => !finished.has(item.id)) as never) ?? toolInFlight(fed as never);
+  const request = requestId ?? fed[fed.length - 1]?.requestId;
+  return toolInFlight(streamed.filter((item) => !finished.has(item.id)) as never) ?? toolInFlight(fed.filter((item) => item.requestId === request) as never);
 }
 
 /** The adapter over one client. */
@@ -1136,10 +1140,17 @@ export function createWiredLab(fsd: Client): LabAdapter {
       let fed: readonly Item[] = [];
       let streamed: readonly Item[] = [];
       let plan: PlanRowNow[] | undefined;
+      // What was last told: a stream delta that moves neither the work nor what it is doing now tells nothing.
+      let toldWork: TaskWork | undefined;
+      let toldWorking = "";
       const tell = () => {
         if (work === undefined) return;
-        const inFlight = inFlightOf(streamed, fed);
+        const inFlight = inFlightOf(streamed, fed, followingRun);
         const working: WorkingNow = { ...(inFlight === undefined ? {} : { inFlight }), ...(plan === undefined ? {} : { plan }) };
+        const seen = JSON.stringify(working);
+        if (work === toldWork && seen === toldWorking) return;
+        toldWork = work;
+        toldWorking = seen;
         onChange(Object.keys(working).length === 0 ? work : { ...work, working });
       };
       const followRun = (runSession: string) => {

@@ -148,6 +148,35 @@ describe("a running task's working line, as the adapter reads it", () => {
     ]);
   });
 
+  it("tells the view nothing new for a stream delta that moves neither the work nor the call in flight", async () => {
+    // `pnpm test` starts, then two calls under it finish: the call in flight is still `pnpm test`.
+    const h = host({
+      stored: [tool("c1", "q1", "completed", "ls")],
+      live: { q1: [tool("c2", "q1", "in_progress", "pnpm test"), tool("c3", "q1", "completed", "cat a.ts"), tool("c4", "q1", "completed", "cat b.ts")] },
+    });
+    h.list(running("q1"));
+    const lab = createWiredLab(h.client);
+    const seen: TaskWork[] = [];
+    stops.push(lab.watchTaskWork("s1", "t1", (next) => seen.push(next)));
+    stops.push(lab.watchTasks("s1", () => {}));
+    await until(() => seen.some((work) => work.working?.inFlight !== undefined));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(seen.filter((work) => work.working?.inFlight !== undefined)).toHaveLength(1);
+  });
+
+  it("never names a call an earlier, crashed request left half-done in the same session", async () => {
+    // A reused run session: `q0` crashed mid-call and left its call `in_progress` for good. The board names `q1`.
+    const h = host({ stored: [tool("c0", "q0", "in_progress", "rm -rf build"), tool("c1", "q1", "completed", "ls")], live: { q1: [tool("c1", "q1", "completed", "ls")] } });
+    h.list(running("q1"));
+    const lab = createWiredLab(h.client);
+    const seen: TaskWork[] = [];
+    stops.push(lab.watchTaskWork("s1", "t1", (next) => seen.push(next)));
+    stops.push(lab.watchTasks("s1", () => {}));
+    await until(() => h.calls.some((call) => call.startsWith("GET /api/flows/f/requests/q1/stream")) && seen.length > 0);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(seen.some((work) => work.working?.inFlight !== undefined)).toBe(false);
+  });
+
   it("has nothing in flight once the feed holds the call's finished copy", async () => {
     // The request stream dropped before the call's done arrived; the session stream has the finished copy.
     const h = host({ stored: [tool("c2", "q1", "completed", "pnpm test")], live: { q1: [tool("c2", "q1", "in_progress", "pnpm test")] } });
