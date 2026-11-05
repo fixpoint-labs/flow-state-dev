@@ -28,7 +28,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | An id filter on the session request list (FIX-2043's proposal, and the epic's "reuses `withListedResult`"), or a new route that returns one request's result |
 | **Because** | The status route already loads the one record by id and checks the caller reaches it and the addressed flow owns it. The flag reuses the list's name and the result's wire shape, so one request reads the same in both places. The list filter keeps a session-scoped read with paging and needs the session id; a new route repeats the reach check for the same record, which [FIX-1661 D1](../FIX-1661/DECISIONS.md#d1) rejected as a second read for one fact (tenet 5) |
-| **Locks in** | `include_result_output` on `GET …/requests/:requestId/status`, and an optional `result` on `RequestStatusSnapshot`, are public HTTP and type surface. Without the flag the snapshot stays as it is, so `wait()`'s polls stay small |
+| **Locks in** | `include_result_output` on `GET …/requests/:requestId/status`, and an optional `result` on `RequestStatusSnapshot`, are public HTTP and type surface. Without the flag the snapshot stays as it is, so `wait()`'s polls stay small. FIX-2460's `testFlow` answer helper settles through the same read, in process, so the flag and field are its seam as well |
 
 ![D1: where one request's output is read. Chosen: the status route, behind a flag. Instead of: an id filter on the session list, or a new result route. It comes down to the reach check: the status route already loads the one record and checks the caller; the list read is scoped by session and paged, and a new route repeats the check. Price: the status probe has an optional payload. A request found by id is a tie for the route and the new route. Locks in a flag and a field on the status route. Flips if the status route had to stay a cacheable probe](figures/d1-by-id-read.svg)
 
@@ -60,7 +60,7 @@ It comes down to a suspension: rejecting makes every approval step a catch block
 |---|---|
 | **Instead of** | A `useActionResult` hook, and the issue's `useFlowRead` |
 | **Because** | `useAction` is the hook that sends one action, and its `execute` can only hand back the acceptance, so a React app builds a second client to read the answer; the provider's client is not public. Flow reads already have their React path: `client/react.md` runs `fsd.flow(…).read(…)` through `useSubscription`, FIX-2428's hook. A `useFlowRead` beside it would be the second hook watching one scope that FIX-2367's *not done if* bans |
-| **Locks in** | One option name on `useAction`, public; with it `execute` resolves to `result()`'s shape and `loading` spans the run; without it, today's behaviour. An unmount stops the wait through `signal`. `useReadFence` leaves the root for `react/internal` ([ER-3 / Q1's answer](../../epics/FIX-2447/DECISIONS.md#q1)) |
+| **Locks in** | One option name on `useAction`, public; with it `execute` resolves to `result()`'s shape and `loading` spans the run; without it, today's behaviour. An unmount stops the wait through `signal`. `useReadFence` leaves the root for `react/internal` ([ER-3 / Q1's answer](../../epics/FIX-2447/DECISIONS.md#q1)); the PR that creates that entry ships the completions fix if one exists, and if none does, D2's closure spot-check stands as a recorded finding |
 
 ![D3: how a React screen reads an output. Chosen: an option on useAction. Instead of: a new hook. It comes down to FIX-2367's rule: no two hooks watching one scope, which a flow-read hook beside useSubscription breaks. Price: execute resolves to two shapes, by an option. Sending one action is a tie. Locks in one option name. Flips if React screens want the output held as state across renders](figures/d3-use-action.svg)
 
@@ -111,5 +111,9 @@ Not run on this spec alone: in spec-set member mode `epic-agent` runs `analysis`
 - **Draft** — framed as the epic's *One path* output row; the owner's answer (read by id)
   turned into a flag on the status route, `result()` on `wait()`, and an option on `useAction`;
   built on FIX-1661's stored result and FIX-2162's request handle; a census of the copies.
+- **Set review (Nov 5)** — consumed FIX-2513 (its DevTool copy left in *Leaves*); the goal is
+  cell `onepath.output-read` with its two cases; FIX-2460's settle reads the status-route flag;
+  FIX-2551 is a rebase seam; `react/internal` ships its completions fix if one exists and joins
+  the package-roots page.
 
 **Open: none.**
