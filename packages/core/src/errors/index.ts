@@ -18,8 +18,6 @@ export type {
 } from "./sequencer-output-schema-error";
 export { RouteUnavailableError } from "./route-unavailable-error";
 export type { RouteUnavailableDetails } from "./route-unavailable-error";
-export { UnresolvedIntentError, UNRESOLVED_INTENT_CODE } from "./unresolved-intent-error";
-export type { UnresolvedIntentDetails } from "./unresolved-intent-error";
 export { RecordedValueOmittedError, RECORDED_VALUE_OMITTED } from "./recorded-value-omitted-error";
 export type { RecordedValueOmittedDetails } from "./recorded-value-omitted-error";
 export { rootCause, isAbortLike } from "./abort";

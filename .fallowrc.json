@@ -27,7 +27,7 @@
     "packages/*/test/**/*.test-d.ts",
     "packages/cli/bin/*.ts",
     // Each fixtures* directory is a project the CLI tests load by cwd.
-    "packages/cli/test/fixtures*/**/*.ts",
+    "packages/cli/test/fixtures*/**/*.{ts,mjs}",
     // Fake Codex programs the codex specs spawn by path.
     "packages/codex/test/fake-*.mjs",
     // A fake Claude Code CLI the claude-code settings spec spawns by path.

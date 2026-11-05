@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MockLanguageModelV3 } from "ai/test";
 import { createModelResolver } from "../../src/models/createModelResolver";
-import { UNRESOLVED_INTENT_CODE } from "../../src/errors";
+import { UNRESOLVED_INTENT_CODE } from "../../src/errors/unresolved-intent-error";
 import { __resetDeprecationWarningsForTests } from "../../src/helpers/deprecation.js";
 
 function mockProvider() {
