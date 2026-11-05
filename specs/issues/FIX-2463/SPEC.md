@@ -1,10 +1,10 @@
-# FIX-2463 · A flow-level composition unit so Layer-2 features stop handing adopters bundles to spread by hand
+# FIX-2463 · Entry names are strings, refused at hire
 
 **Spec** · [Decisions](DECISIONS.md)
 
 | Someone who… | Today | After |
 |---|---|---|
-| **autocompletes a package root** | Seven `*_ENTRY` constants across core, orchestration and workforce, two of them framework seams no app reads | None. The names an app declares are documented strings, like action names |
+| **autocompletes workforce's root** | Five `*_ENTRY` constants beside the entry factories that use them | None. The names an app declares are documented strings, like action names |
 | **writes a worker flow of their own** | The docs name an entry two ways: `work` as a string, `[MESSAGE_RECEIVED_ENTRY]` as an imported constant | One way: `work`, `onMessageReceived`, `onTaskSteered`, the same as `respond` |
 | **misspells an entry, `onTaskSteerd: steerTurnEntry(...)`** | Hired without a word; a late steer is owed to an entry that isn't there | Refused at hire, naming `onTaskSteered` |
 | **holds a task board in an app flow** | Writes `onTaskSettled`, as Kitchen Sink does; core refuses the flow without it | Unchanged |
@@ -13,25 +13,25 @@
 ## The goal, and how we'll know it's met
 
 **An app author who writes a worker flow of their own, or holds a task board, finds no entry-key
-constant on any package root, names every entry the framework calls by its documented string,
+constant on workforce's root, names every entry the framework calls by its documented string,
 and has a wrong or missing name refused when the flow is defined or hired, naming the entry.**
 
 | Is it the right goal? | |
 |---|---|
-| **The real need** | The epic's *Surface* and *One path*: a root shows what an app author needs, with one way to do each thing. The issue asks that the `*_ENTRY` keys leave the public barrels and that a mistake not wait for run time |
+| **The real need** | The epic's *One path*, and the one *Surface* cell this issue owns: workforce's entry names. A root shows what an app author needs, with one way to do each thing. The issue asks that the `*_ENTRY` keys leave the public barrels and that a mistake not wait for run time |
 | **Smaller, and rejected** | "Delete the constants." A string with no refusal behind it trades a compile error for a silent run-time miss, which is worse |
-| **Bigger, and not this issue's** | A `defineFlow({ parts })` primitive. Considered and rejected ([D1](DECISIONS.md#d1)). The rest of workforce's root is outside the set |
-| **Not done if** | A `*_ENTRY` is reachable from a published root · a docs page or README names an entry through a constant · an entry factory's piece under any other name is hired or defined without a refusal · core gains a flow-composition slot |
+| **Bigger, and not this issue's** | A `defineFlow({ parts })` primitive: considered and rejected ([D1](DECISIONS.md#d1)). Core's `WAIT_DEADLINE_ENTRY` and orchestration's `TASK_SETTLED_ENTRY`, framework seams no app reads: FIX-2448 and FIX-2459 move them with their roots. The rest of workforce's root: held by the epic's ratchet, outside the epic |
+| **Not done if** | A `*_ENTRY` is reachable from workforce's root · a docs page or README names an entry through a constant · an entry factory's piece under any other name is hired or defined without a refusal · core gains a flow-composition slot |
 
 ```mermaid
 flowchart LR
-  R["every published package root"] --> C["the entry census · roots only"]
+  R["workforce's root"] --> C["the epic's export census · workforce's entry-name cell"]
   F["a worker flow per entry factory · each under a misspelled name"] --> H["hireWorkforce and defineFlow · the real path"]
-  C -->|"zero *_ENTRY on any root"| P["PASS · the goal is met"]
+  C -->|"zero *_ENTRY on the root"| P["PASS · the goal is met"]
   H -->|"each refused · the problem names the right entry"| P
   K["control · main"] -.-> C
   K -.-> H
-  C -.->|"seven constants"| X["must FAIL"]
+  C -.->|"five constants"| X["must FAIL"]
   H -.->|"onTaskSteerd hired"| X
 ```
 
@@ -39,18 +39,18 @@ The check reads the roots and the hire's verdict, not the source of the factorie
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/entry-names/refused-at-hire/`, no model, run by the implementer at completion; and the census, `poc/entry-census/census.mjs --expect-none`. Verdict on the implementation PR |
-| **Signal** | The census exits 0 with zero root constants. Every misnamed-entry flow is refused, the problem naming the right string |
+| **Goal check** | `goals/entry-names/refused-at-hire/`, no model, run by the implementer at completion, for the hire half. For the root half, the closure manifest's workforce entry-name cell, which this issue flips to `expect: pass`, read through the epic's one census module (FIX-2448's per-entry index of `packageExports`), not a second census. `poc/entry-census/census.mjs --expect-none` is the spec-time stand-in. Verdict on the implementation PR |
+| **Signal** | The cell passes: zero `*_ENTRY` on workforce's root. Every misnamed-entry flow is refused, the problem naming the right string |
 | **Input** | One flow per entry factory (`workerTaskEntry`, `steerTurnEntry`, `messageReceivedEntry`, `workstreamOpenedEntry`, orchestration's `taskSettledEntry`), each under a one-letter typo. A different typo must fail the same way |
 | **Anti-game** | Not the factories' unit tests: they pass while the hire ignores a misplaced piece. The census reads the exports map, not a list the diff writes |
-| **Control that must fail** | `main`. The census reports seven and exits 1; `onTaskSteerd: steerTurnEntry(...)` is hired with no problem |
+| **Control that must fail** | `main`. The cell fails on five names (the stand-in exits 1 on five); `onTaskSteerd: steerTurnEntry(...)` is hired with no problem |
 
 ## What changes
 
-![Seven root constants sorted by where each goes: WAIT_DEADLINE_ENTRY to core's internal subpath, read only by the engine; orchestration's TASK_SETTLED_ENTRY to its internal subpath, read only by workforce; five workforce constants become module-private, each replaced by its documented string. A greyed box: defineFlow parts, not built](figures/what-changes.svg)
+![Workforce's five root constants become module-private, each replaced by its documented string, behind one hire rule. A dashed box: core's WAIT_DEADLINE_ENTRY and orchestration's TASK_SETTLED_ENTRY, not this issue's, move with their own roots. A greyed box: defineFlow parts, not built](figures/what-changes.svg)
 
-Each name lands where its readers are. No app reads the two framework seams, and an app writes
-each of the other five as a string.
+An app writes each of workforce's five as a string, and a misplaced piece is refused at hire.
+The two framework seams no app reads move with their own roots, not here.
 
 **A worker flow of your own, as the app writes it:**
 
@@ -101,6 +101,7 @@ an entry factory built, found under any other name, is refused.
 | The hire's role table, `markRolePiece` (`workforce/src/worker-roles.ts`) | **Extends**: the new refusal is a row there, not a second check |
 | `defineFlow`'s refusal of a held board with no `onTaskSettled` | **Kept**; it already names the string |
 | [FIX-2084 D2](../FIX-2084/DECISIONS.md#d2): the hire finds every entry by name | **Kept**, and extended to the steer and message entries' placement |
+| The epic's one census module and its closure manifest (FIX-2448's census, FIX-2564's manifest) | **Builds on**: the root half of the goal is this issue's cell there, not a second census |
 | [FIX-2070](../../epics/FIX-2070/DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them): derived names `messageReceivedEntry`, `MESSAGE_RECEIVED_ENTRY` | **Amended in part**: the factory name is kept, the constant leaves the root |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
@@ -109,25 +110,25 @@ an entry factory built, found under any other name, is refused.
 
 | The debt | |
 |---|---|
-| **Removes** | Seven root constants; the docs' second spelling of an entry |
-| **Adds** | One hire rule. Deprecated aliases for the seven, if [Q1](../../epics/FIX-2447/DECISIONS.md#q1) takes them, until the removal minor |
-| **Leaves** | The board's five-slot spread, which the hire already guards. Workforce's 439-name root, outside the set |
+| **Removes** | Five constants on workforce's root; the docs' second spelling of an entry |
+| **Adds** | One hire rule. Deprecated aliases for the five, if [Q1](../../epics/FIX-2447/DECISIONS.md#q1) takes them, until the removal minor |
+| **Leaves** | The board's five-slot spread, which the hire already guards. Workforce's other 434 root names, held by the epic's ratchet and outside the epic. Core's and orchestration's seams, which FIX-2448 and FIX-2459 move |
 
-**Net: down.** Seven public names and a second spelling go, for one rule in an existing table.
+**Net: down.** Five public names and a second spelling go, for one rule in an existing table.
 
 ## Sign off
 
-**[The goal](#the-goal-and-how-well-know-its-met):** no entry constant on a root, one spelling,
+**[The goal](#the-goal-and-how-well-know-its-met):** no entry constant on workforce's root, one spelling,
 every misplaced piece refused at hire. If wrong: we remove a compile check and keep a silent miss.
 
-**[The debt](#whats-already-here-and-the-debt):** net down, seven names and a spelling for one
-rule. If wrong: apps lose constants they relied on, for a five-percent cut of one root.
+**[The debt](#whats-already-here-and-the-debt):** net down, five names and a spelling for one
+rule. If wrong: apps lose constants they relied on, for about one percent of one root.
 
 1. [D1](DECISIONS.md#d1) · No new flow-composition primitive; the board's spread stays. If wrong:
    every Layer-2 feature keeps handing out bundles, and the next one asks again.
-2. [D2](DECISIONS.md#d2) · An entry is named by its string, like an action; the seven constants
-   leave the roots. If wrong: a typo surfaces at hire, not in the editor. **The one to weigh.**
+2. [D2](DECISIONS.md#d2) · An entry is named by its string, like an action; workforce's five
+   constants leave its root. If wrong: a typo surfaces at hire, not in the editor. **The one to weigh.**
 
 **Open: none.** How a removed name reaches adopters follows ER-3 and [Q1](../../epics/FIX-2447/DECISIONS.md#q1)'s answer.
 
-Improvement · `core`, `orchestration`, `workforce`, `shift-manager` · small · epic FIX-2447
+Improvement · `workforce`, `shift-manager` · small · epic FIX-2447

@@ -6,7 +6,9 @@
  *   node specs/issues/FIX-2463/poc/entry-census/census.mjs [--plant]
  * `--plant` adds a fake root export to prove the census sees a name nobody listed
  * (the negative control: the totality assertion must then fail).
- * `--expect-none` is the after state: it fails while any root `*_ENTRY` remains.
+ * `--expect-none` is the after state: it fails while any `*_ENTRY` remains on
+ * workforce's root, the one root this issue owns. Core's and orchestration's are
+ * printed as their own roots' issues' to move.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -100,7 +102,11 @@ if (unclassified.length) {
   process.exit(1);
 }
 console.log("PASS: every root *_ENTRY constant is classified in the spec");
-if (process.argv.includes("--expect-none") && consts.length > 0) {
-  console.error(`FAIL: ${consts.length} *_ENTRY constants are still on a package root`);
+const OWNED = "@flow-state-dev/workforce";
+const elsewhere = consts.filter((r) => r.pkg !== OWNED);
+if (elsewhere.length) console.log(`not this issue's (moved with their own roots): ${elsewhere.map((r) => `${r.pkg}:${r.name}`).join(", ")}`);
+const owned = consts.filter((r) => r.pkg === OWNED);
+if (process.argv.includes("--expect-none") && owned.length > 0) {
+  console.error(`FAIL: ${owned.length} *_ENTRY constants are still on workforce's root`);
   process.exit(1);
 }

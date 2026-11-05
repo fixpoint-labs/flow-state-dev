@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 352" role="img" aria-label="Where the seven root entry constants go. Today all seven sit on package roots: one on core, one on orchestration, five on workforce. After: WAIT_DEADLINE_ENTRY moves to core's internal subpath, read only by the engine. Orchestration's TASK_SETTLED_ENTRY moves to orchestration's internal subpath, read only by workforce. Workforce's five become module-private, and an app writes each one's string: work, onTaskSteered, onMessageReceived, onWorkstreamOpened, fileScheduledTask. Not built: a defineFlow parts primitive."
+<svg viewBox="0 0 940 352" role="img" aria-label="Where workforce's five root entry constants go. Today WORKER_TASK_ENTRY, STEER_TURN_ENTRY, MESSAGE_RECEIVED_ENTRY, WORKSTREAM_OPENED_ENTRY and FILE_SCHEDULED_TASK_ENTRY sit on workforce's root. After: each becomes module-private, and an app writes its string: work, onTaskSteered, onMessageReceived, onWorkstreamOpened; fileScheduledTask is the board's alone. One hire rule refuses a factory's piece under any other name. Not this issue's: core's WAIT_DEADLINE_ENTRY and orchestration's TASK_SETTLED_ENTRY, which move with their own roots. Not built: a defineFlow parts primitive."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -25,37 +25,26 @@
   <rect class="bg" x="0" y="0" width="940" height="352"/>
   <g id="today">
     <rect class="root" x="16" y="16" width="908" height="62" rx="6"/>
-    <text class="t-lbl gone" x="32" y="36">TODAY · ON A PUBLISHED PACKAGE ROOT · 7</text>
-    <text class="t-m" x="32" y="58">core: WAIT_DEADLINE_ENTRY   orchestration: TASK_SETTLED_ENTRY</text>
-    <text class="t-m" x="460" y="58">workforce: WORKER_TASK_ENTRY  STEER_TURN_ENTRY  MESSAGE_RECEIVED_ENTRY</text>
-    <text class="t-m" x="460" y="72">WORKSTREAM_OPENED_ENTRY  FILE_SCHEDULED_TASK_ENTRY</text>
+    <text class="t-lbl gone" x="32" y="36">TODAY · ON WORKFORCE'S ROOT · 5</text>
+    <text class="t-m" x="32" y="58">WORKER_TASK_ENTRY   STEER_TURN_ENTRY   MESSAGE_RECEIVED_ENTRY</text>
+    <text class="t-m" x="32" y="72">WORKSTREAM_OPENED_ENTRY   FILE_SCHEDULED_TASK_ENTRY</text>
   </g>
   <g id="arrows">
-    <path class="arrow" d="M150 82 V108"/>
-    <path class="arrow" d="M410 82 V108"/>
-    <path class="arrow" d="M720 82 V108"/>
-  </g>
-  <g id="core-internal">
-    <rect class="intl" x="16" y="112" width="264" height="120" rx="6"/>
-    <text class="t-lbl acc" x="32" y="132">CORE/INTERNAL · OURS</text>
-    <text class="t-m" x="32" y="156">WAIT_DEADLINE_ENTRY</text>
-    <text class="t-s" x="32" y="180">read by: the engine only</text>
-    <text class="t-s" x="32" y="198">no app declares it</text>
-  </g>
-  <g id="orch-internal">
-    <rect class="intl" x="296" y="112" width="264" height="120" rx="6"/>
-    <text class="t-lbl acc" x="312" y="132">ORCHESTRATION/INTERNAL · OURS</text>
-    <text class="t-m" x="312" y="156">TASK_SETTLED_ENTRY</text>
-    <text class="t-s" x="312" y="180">read by: workforce only</text>
-    <text class="t-s" x="312" y="198">an app writes "onTaskSettled"</text>
+    <path class="arrow" d="M300 82 V108"/>
   </g>
   <g id="strings">
-    <rect class="str" x="576" y="112" width="348" height="120" rx="6"/>
-    <text class="t-lbl code" x="592" y="132">WORKFORCE · MODULE-PRIVATE · APP WRITES</text>
-    <text class="t-m" x="592" y="156">"work"   "onTaskSteered"</text>
-    <text class="t-m" x="592" y="174">"onMessageReceived"</text>
-    <text class="t-m" x="592" y="192">"onWorkstreamOpened"</text>
-    <text class="t-m" x="592" y="210">"fileScheduledTask" · board only</text>
+    <rect class="str" x="16" y="112" width="580" height="120" rx="6"/>
+    <text class="t-lbl code" x="32" y="132">WORKFORCE · MODULE-PRIVATE · AN APP WRITES THE STRING</text>
+    <text class="t-m" x="32" y="160">"work"   "onTaskSteered"   "onMessageReceived"</text>
+    <text class="t-m" x="32" y="182">"onWorkstreamOpened"</text>
+    <text class="t-m" x="32" y="208">"fileScheduledTask" · the board's alone, no app writes it</text>
+  </g>
+  <g id="elsewhere">
+    <rect class="nb" x="612" y="112" width="312" height="120" rx="6"/>
+    <text class="t-lbl" x="628" y="132">NOT THIS ISSUE'S · MOVED WITH THEIR ROOTS</text>
+    <text class="t-m" x="628" y="160">core: WAIT_DEADLINE_ENTRY</text>
+    <text class="t-m" x="628" y="182">orchestration: TASK_SETTLED_ENTRY</text>
+    <text class="t-s" x="628" y="208">framework seams, no app reads either</text>
   </g>
   <g id="rule">
     <rect class="str" x="16" y="248" width="908" height="40" rx="6"/>
