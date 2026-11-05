@@ -11,7 +11,7 @@ import { z } from "zod";
 export const PINS_FLOW = "pins";
 
 const pinsSchema = z.object({ pinned: z.array(z.string()) });
-const pinnedOf = (ctx: { user: { state: unknown } }) => (ctx.user.state as { pinned?: string[] }).pinned ?? [];
+const pinsUserStateSchema = z.object({ pinned: z.array(z.string()).default([]) });
 
 /** A handler that changes your pins by `change` and answers them. */
 const pinsBlock = (name: string, change: (pinned: string[], taskId: string) => string[]) =>
@@ -19,8 +19,9 @@ const pinsBlock = (name: string, change: (pinned: string[], taskId: string) => s
     name,
     inputSchema: z.object({ taskId: z.string().min(1) }),
     outputSchema: pinsSchema,
+    userStateSchema: pinsUserStateSchema,
     execute: async (input, ctx) => {
-      const pinned = change(pinnedOf(ctx), input.taskId);
+      const pinned = change(ctx.user.state.pinned, input.taskId);
       await ctx.user.patchState({ pinned });
       return { pinned };
     },
@@ -31,7 +32,7 @@ export function definePinsFlow() {
   const taskInput = z.object({ taskId: z.string().min(1) });
   return defineFlow({
     kind: PINS_FLOW,
-    user: { stateSchema: z.object({ pinned: z.array(z.string()).default([]) }) },
+    user: { stateSchema: pinsUserStateSchema },
     // A read, not an action: the screen reads your pins whenever they change, and a read stores no request.
     reads: {
       listPins: {
@@ -39,7 +40,8 @@ export function definePinsFlow() {
           name: "listPins",
           inputSchema: z.object({}),
           outputSchema: pinsSchema,
-          execute: async (_input, ctx) => ({ pinned: pinnedOf(ctx) }),
+          userStateSchema: pinsUserStateSchema,
+          execute: async (_input, ctx) => ({ pinned: ctx.user.state.pinned }),
         }),
       },
     },

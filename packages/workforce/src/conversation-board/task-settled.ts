@@ -187,7 +187,7 @@ function noteSeen(ctx: BlockContext, key: string) {
     (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
       ctx.session.atomicState(mutator as never),
     (state: Readonly<Record<string, unknown>>) => {
-      const seen = (state[TASK_NOTICES_STATE] ?? []) as string[];
+      const seen = state[TASK_NOTICES_STATE] as string[];
       if (seen.includes(key)) return { state: {}, result: false };
       return { state: { [TASK_NOTICES_STATE]: [...seen, key].slice(-MAX_NOTICE_KEYS) }, result: true };
     }
@@ -342,7 +342,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
    */
   const settleConversationResult = async (ctx: BlockContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<Settled> => {
     const key = noticeKey(notice);
-    const acted = ((ctx.session.state as Record<string, unknown>)[TASK_NOTICES_STATE] ?? []) as string[];
+    const acted = (ctx.session.state as Record<string, unknown>)[TASK_NOTICES_STATE] as string[];
     // Acted on already, by a run that stopped before clearing the marker.
     if (acted.includes(key)) {
       await ref.patchMetadata(row.id, clearNotice(notice));

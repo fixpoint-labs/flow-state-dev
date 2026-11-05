@@ -79,8 +79,9 @@ the architecture doc, not a file path, is the durable anchor.
 - [ ] Specific, testable criterion 2
 - [ ] (If a generator output schema is affected) Asserted with
        `makeSchemaStrict` per BP-016
-- [ ] (If user-facing) Updates to `packages/<pkg>/README.md` and any
-       affected `apps/docs` pages land in the same change set
+- [ ] (If user-facing) A changeset says what a user can now do or must
+       change; `packages/<pkg>/README.md` and `apps/docs` are untouched
+       (written at release, `docs/contributing/release-docs.md`)
 - [ ] `pnpm --filter @flow-state-dev/<pkg> typecheck && pnpm --filter @flow-state-dev/<pkg> test` passes
 
 ## Out of scope
@@ -190,10 +191,8 @@ with that string at emission time. Existing capabilities without
       every context slot with `[Workspace] `
 - [ ] Capabilities without `contextPrefix` are byte-identical to before
 - [ ] Vitest spec next to the source covers both cases
-- [ ] `packages/core/README.md` `defineCapability` section documents
-      the new option
-- [ ] `apps/docs/docs/capabilities/<page>.md` reflects the option in
-      its API reference
+- [ ] Changeset describes the new option, ending
+      `Docs: packages/core/README.md, apps/docs/docs/capabilities/<page>.md`
 - [ ] `pnpm --filter @flow-state-dev/core typecheck && pnpm --filter @flow-state-dev/core test` passes
 
 ## Out of scope
