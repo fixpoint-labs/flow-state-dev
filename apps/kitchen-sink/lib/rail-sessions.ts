@@ -37,8 +37,7 @@ export function railSessions(client: RailClient, workforce: Pick<WorkforceClient
   const list: RailClient["sessions"]["list"] = async (options) => {
     const flow = options?.flowKind;
     if (flow === undefined || !isCoordinatorFlow(flow)) return await client.sessions.list(options);
-    const include = options?.include === undefined ? [] : [options.include].flat();
-    const withStatus = include.includes("status");
+    const withStatus = [options?.include].flat().includes("status");
     // Per declared coordinator (a fixed, small set): find or start the user's
     // conversation and, when the navigator asks for state, list that
     // coordinator's own sessions with status. The flow is never listed whole.
