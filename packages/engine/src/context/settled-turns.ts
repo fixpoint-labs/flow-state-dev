@@ -107,13 +107,16 @@ export async function readSettledTurns(inputs: SettledTurnsInputs): Promise<Sett
   let parked = new Set<string>();
   let waiting = new Set<string>();
   // The session's suspended turns no older than the window: those waiting on
-  // a call are read as far as they got. Without a durability provider nothing
-  // suspends, so there is nothing to list.
+  // a call are read as far as they got. Not limited here: a limit would be spent
+  // on turns `callWaits` then leaves out (a stop for the user, a wait on a
+  // task), hiding an older call behind them; the merged window below is what
+  // is held to `turns`, and a session's open turns are few. Without a
+  // durability provider nothing suspends, so there is nothing to list.
   const first = listed.length > turns ? past[0] : undefined;
   const suspended =
     inputs.durability === undefined
       ? []
-      : (await inputs.requests.list({ ...inputs.scope, status: ["suspended"], limit: turns, orderBy: "startedAtMs", withItems: true })).filter(
+      : (await inputs.requests.list({ ...inputs.scope, status: ["suspended"], orderBy: "startedAtMs", withItems: true })).filter(
           (r) => r.id !== runningRequestId && (first === undefined || compareTurnsOldestFirst(r.startedAtMs, r.id, first.startedAtMs, first.id) >= 0)
         );
   try {

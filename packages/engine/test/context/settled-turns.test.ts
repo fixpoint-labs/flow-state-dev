@@ -156,6 +156,12 @@ describe("readSettledTurns, for the session's open turns", () => {
     expect(turns.start).toEqual({ requestId: "done" });
   });
 
+  it("finds a turn waiting on a call behind a newer turn stopped for its user, in a window of one", async () => {
+    const stopped = record("stopped", "suspended", 3, [line("stopped", "Book it once I say yes.", 3)]);
+    const turns = await read([filing, stopped], [gate("filing", "wait", { requestId: "r-recipient", deadline: 9 }), { ...gate("stopped", "approval", {}), suspensionId: "g-stop" }], 1);
+    expect(turns.settled.map((r) => r.id)).toEqual(["filing"]);
+  });
+
   it("reads a turn once when both reads caught it, as it stands now", async () => {
     // Read interrupted by the window, then re-driven and parked again before the suspended read.
     const died = { ...filing, status: "interrupted" as const };
