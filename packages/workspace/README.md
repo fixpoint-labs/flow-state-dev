@@ -365,7 +365,7 @@ const merged = await host.land!({ cwd, branch, baseRef }, { kind: "merge" });
 ```
 
 - **`pull-request`** pushes the run's branch to the remote the host pinned for the repository at start: the base branch's upstream, else `origin`, else the one remote it has. The push goes to the pinned URL, ignores any program set in the repository's own config, and uses your global credential helpers, the same way a [fetch of a listed repository](#a-repository-on-this-machine) runs. It never force-pushes. Then it opens the pull request into the base through the host's `gh` (`request.gh`, default `gh` on `PATH`). If that branch already has an open pull request, `land` returns it instead of opening a second, so a retry after a half-finished landing is safe.
-- **`merge`** merges the run's branch into the base where the base is checked out, with the repository's hooks off. It always makes a merge commit, whatever the repository's merge settings say, and it refuses to overwrite an ignored file in your checkout. It never resolves a conflict. If the merge conflicts, `land` aborts it, leaving the checkout as it was, and the refusal names the files.
+- **`merge`** merges the run's branch into the base where the base is checked out, with the repository's hooks off. The run's commits always land on the base branch, by fast-forward or a merge commit, whatever the repository's squash or no-commit settings say. If they don't, `land` puts the checkout back where it was. It refuses to overwrite an ignored file in your checkout, and it refuses a checkout in the middle of a merge, rebase, cherry-pick or revert, which it leaves alone. It never resolves a conflict. If the merge conflicts, `land` aborts it, leaving the checkout as it was, and the refusal names the files.
 
 A base that names a pinned remote's branch, such as `origin/main`, is read the same way a provision reads it. The pull request targets `main` on that remote, and a merge lands on the local branch that tracks it. A local branch named `origin/main` is that local branch.
 
@@ -381,6 +381,7 @@ The run's branch and checkout are left alone whatever happens, so its commits ar
 | `pull-request-failed` | The branch was pushed, but `gh` couldn't open or find its pull request |
 | `base-not-checked-out` | No worktree has the base branch checked out to merge into |
 | `checkout-dirty` | The base's checkout has uncommitted changes |
+| `checkout-busy` | The base's checkout is in the middle of a merge, rebase, cherry-pick or revert; nothing changed |
 | `merge-conflict` | The merge conflicts; nothing changed |
 | `merge-failed` | The merge failed for another reason; nothing changed |
 

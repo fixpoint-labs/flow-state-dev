@@ -8,6 +8,7 @@
  * and prints a pull request link. Every assertion reads git or that log, not
  * only what the host reports.
  */
+import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -45,6 +46,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -167,6 +169,56 @@ describe("accepting a run by merging it locally", () => {
     git(repo, "merge-base", "--is-ancestor", commit, "refs/heads/main");
     expect(landed).toMatchObject({ kind: "merge", branch: "main", commit: git(repo, "rev-parse", "main") });
     expect(git(repo, "status", "--porcelain")).toBe("");
+  });
+});
+
+describe("a checkout in the middle of the person's own merge", () => {
+  it("refuses before merging, and leaves the person's unfinished merge as it was", async () => {
+    const { h, place, commit } = await runWithCommit();
+    // The person's own merge, unfinished with a clean index: a side branch whose tree matches main's.
+    git(repo, "checkout", "-q", "-b", "side");
+    git(repo, "commit", "-q", "--allow-empty", "-m", "Side");
+    git(repo, "checkout", "-q", "main");
+    git(repo, "commit", "-q", "--allow-empty", "-m", "Main");
+    git(repo, "merge", "-q", "--no-commit", "--no-ff", "side");
+    const mergeHead = readFileSync(join(repo, ".git", "MERGE_HEAD"), "utf8");
+    const before = git(repo, "rev-parse", "main");
+
+    await expect(h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "merge" })).rejects.toMatchObject({ reason: "checkout-busy" });
+    expect(readFileSync(join(repo, ".git", "MERGE_HEAD"), "utf8")).toBe(mergeHead);
+    expect(git(repo, "rev-parse", "main")).toBe(before);
+    expect(() => git(repo, "merge-base", "--is-ancestor", commit, "refs/heads/main")).toThrow();
+  });
+});
+
+describe("a merge that git reports done but that didn't commit the run's work", () => {
+  it("puts the checkout back where it was and says so, so nothing is left staged", async () => {
+    const { h, place, commit } = await runWithCommit();
+    const before = git(repo, "rev-parse", "main");
+    // A git that squashes every merge, as a config the flags didn't reach would.
+    const bin = tempDir("land-git");
+    const real = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+    writeFileSync(
+      join(bin, "git"),
+      [
+        "#!/bin/sh",
+        'case " $* " in *" merge --abort "*|*" merge "*" --abort "*) exec ' + `'${real}'` + ' "$@";; esac',
+        'case " $* " in *" merge "*) ;; *) exec ' + `'${real}'` + ' "$@";; esac',
+        // Drop the flags the host passes, and squash.
+        'for a in "$@"; do shift; case "$a" in --commit|--no-squash) ;; *) set -- "$@" "$a";; esac; done',
+        "exec " + `'${real}'` + ' "$@" --squash',
+        "",
+      ].join("\n"),
+    );
+    chmodSync(join(bin, "git"), 0o755);
+    vi.stubEnv("PATH", `${bin}:${process.env.PATH}`);
+
+    const landing = h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "merge" });
+
+    await expect(landing).rejects.toMatchObject({ reason: "merge-failed", message: expect.stringContaining("Nothing changed in that checkout") });
+    expect(git(repo, "rev-parse", "main")).toBe(before);
+    expect(git(repo, "status", "--porcelain")).toBe("");
+    expect(() => git(repo, "merge-base", "--is-ancestor", commit, "refs/heads/main")).toThrow();
   });
 });
 

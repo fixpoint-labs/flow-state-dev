@@ -22,7 +22,7 @@
  * happened and, where there is one, what clears it.
  */
 import { pullRequestRefFromUrl } from "@flow-state-dev/core";
-import { rmSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { run } from "./exec";
 import { scratchDir } from "./held-work";
@@ -107,7 +107,7 @@ export interface LandHost {
  *
  * @throws WorkspaceRefusedError `base-unknown`, `no-push-remote`,
  *   `remote-repointed`, `push-failed`, `pull-request-failed`,
- *   `base-not-checked-out`, `checkout-dirty`, `merge-conflict` or
+ *   `base-not-checked-out`, `checkout-dirty`, `checkout-busy`, `merge-conflict` or
  *   `merge-failed`, each saying what happened.
  */
 export async function landRun(host: LandHost, target: LandTarget, request: LandRequest): Promise<Landed> {
@@ -213,7 +213,21 @@ async function merge(git: Git, repo: string, resolved: Base, from: string): Prom
         `Commit or stash them, then try again. The run's commits are still on "${from}".`,
     );
   }
+  // The person's own unfinished merge, rebase, cherry-pick or revert is theirs: refuse before
+  // starting, so every merge state this function aborts or resets below is one it began.
+  const busy: string[] = [];
+  for (const name of ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "REBASE_HEAD", "rebase-merge", "rebase-apply"]) {
+    if (existsSync(await git(checkout, ["rev-parse", "--path-format=absolute", "--git-path", name]))) busy.push(name);
+  }
+  if (busy.length > 0) {
+    throw new WorkspaceRefusedError(
+      "checkout-busy",
+      `${checkout} is in the middle of a merge, rebase, cherry-pick or revert (${busy.join(", ")}), so nothing was merged and it was left as it was. ` +
+        `Finish or abort it, then try again. The run's commits are still on "${from}".`,
+    );
+  }
   const fromCommit = await git(checkout, ["rev-parse", "--verify", `refs/heads/${from}^{commit}`]);
+  const before = await git(checkout, ["rev-parse", "--verify", "HEAD"]);
   try {
     // Explicit, so `merge.ff`/`branch.<base>.mergeOptions` can't make it a squash or leave it uncommitted,
     // and an ignored file in the checkout is refused, not overwritten.
@@ -240,10 +254,20 @@ async function merge(git: Git, repo: string, resolved: Base, from: string): Prom
   const commit = await git(checkout, ["rev-parse", "HEAD"]);
   // Success means the run's commit is on the base now, whatever git printed.
   if (!(await git(checkout, ["merge-base", "--is-ancestor", fromCommit, commit]).then(() => true, () => false))) {
+    // Put the checkout back where it was: whatever the merge staged or committed is dropped.
+    // `--merge` refuses rather than lose a change the merge didn't make; the checkout was clean before it.
+    await git(checkout, ["merge", "--abort"]).catch(() => undefined);
+    const restored = await git(checkout, ["reset", "--quiet", "--merge", before]).then(
+      async () => (await git(checkout, ["status", "--porcelain", "--untracked-files=no"])) === "",
+      () => false,
+    );
     throw new WorkspaceRefusedError(
       "merge-failed",
       `Merging "${from}" into "${base}" in ${checkout} didn't commit it, so it didn't land. ` +
-        `Check that checkout for staged changes. The run's commits are still on "${from}".`,
+        (restored
+          ? `Nothing changed in that checkout. `
+          : `Putting that checkout back at ${before.slice(0, 12)} failed, so check it for staged changes. `) +
+        `The run's commits are still on "${from}".`,
     );
   }
   return { kind: "merge", branch: base, commit, checkout, from };
