@@ -50,7 +50,7 @@ threads, each a task in a session of its own, and the right pane is the status b
 - **The page's address** names the view, the open session and the task open in its pane
   (`?session=<id>&task=<id>`), so a reload or a link reopens them, and Back returns to what you
   had open before. A link to a session or task that is gone opens *New session* instead.
-- **A thread's view** replaces the board, with a back arrow. You can talk in it: your line steers
+- **A thread's view** opens as a sheet over the main thread, the same flyout a session's background task opens in, and the board stays in the pane beside it. You can talk in it: your line steers
   the thread's task and answers its open question. Cmd+Enter (Ctrl+Enter) answers, or requests
   changes when it is ready for review; plain Enter is a new line. You can pin it there. Under its
   header, the same actions as a sheet's, without the *Steer* box, since the composer steers.
@@ -153,6 +153,7 @@ a package call:
 | A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
 | The main session reading the project's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |
 | Interrupting | aborting the session's running turn; its tasks keep running |
+| A failed turn and *Retry* | the engine's `error` item for the turn, drawn by the UI registry's `request-recovery` (installed in `src/components/flow-state/`); Retry is the client's `request(id).retry()`, on the newest turn only |
 | The tasks pane and a task's work | the `listTasks_tasks` read (stores nothing per poll), and the items of the task's run session |
 | Threads mode's sessions | the same, with `desk.lead`, a `coordinator`, as the main worker |
 | A thread card, and *Sent to a task* | the lead's `createTask` call in the session's items |

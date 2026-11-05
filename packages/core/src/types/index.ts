@@ -247,6 +247,14 @@ export type {
 
 export { defineWebhookBinding, validateWebhookConfig } from "./webhooks";
 
+export {
+  MAX_SUBSCRIPTION_EVENT_TEXT,
+  SUBSCRIPTION_SENDER_ROLES,
+  subscriptionEventSchema,
+  type SubscriptionEvent,
+  type SubscriptionSenderRole
+} from "./subscription-event";
+
 export type {
   CompositeVoiceProviderConfig,
   ListVoicesCapable,

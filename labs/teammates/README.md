@@ -30,7 +30,9 @@ theme so it reads as the app it copies.
   new line.
 - **Popup:** a message line or a task line in the conversation opens that piece of work in a popup
   over it: the other worker's session, live. A task's popup also has the task's buttons (below). It closes with Esc, its close button, or
-  a click outside it, and the conversation under it keeps its place.
+  a click outside it, and the conversation under it keeps its place. While a task runs, its feed
+  ends in a live line: the command or file it is on, else its plan step, else its last progress
+  note, else "Working...", with how long it has been running.
 - **Right:** the open teammate's panel. At the top, its name and role, and *Edit instructions*.
   Under that, the tasks its conversation started, coding tasks and teammates' jobs alike. Running
   tasks come first. *Done*, *Failed* and *Cancelled* each fold into one line with a count, and a
@@ -206,6 +208,7 @@ names the package call it makes.
 | On screen | Package piece |
 |---|---|
 | The worker list, sending, the conversation, busy status | the workforce client's `watchRoster()` and `ensureWorkerSession`, the flow's `respond`, session items, `listSessionRequests` |
+| A failed turn and *Retry* | the engine's `error` item for the turn, drawn by the UI registry's `request-recovery`, installed in `src/components/flow-state/`; Retry is the client's `request(id).retry()`, on the newest turn only |
 | Workers messaging each other | `sendMessage`, the received-message item (`workforce:received`), and the message log |
 | Hiring, changing and firing your own teammates | the workforce client's `hire`, `edit` and `fire`, on the roster flow |
 | Task lines | the conversation board's rows |

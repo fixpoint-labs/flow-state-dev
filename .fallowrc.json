@@ -26,7 +26,8 @@
     // Type tests `tsc -p tsconfig.test-d.json` compiles; nothing imports them.
     "packages/*/test/**/*.test-d.ts",
     "packages/cli/bin/*.ts",
-    "packages/cli/test/fixtures/**/*.ts",
+    // Each fixtures* directory is a project the CLI tests load by cwd.
+    "packages/cli/test/fixtures*/**/*.{ts,mjs}",
     // Fake Codex programs the codex specs spawn by path.
     "packages/codex/test/fake-*.mjs",
     // A fake Claude Code CLI the claude-code settings spec spawns by path.
@@ -108,6 +109,8 @@
     "labs/claude-code-style/src/components/flow-state/tool-grouping.ts",
     // and of the registry's error, whose `ErrorDisplay` export its sheet doesn't draw.
     "labs/claude-code-style/src/components/flow-state/error.tsx",
+    // and of the registry's request-recovery, whose interrupted-turn default the failed-turn line doesn't read.
+    "labs/claude-code-style/src/components/flow-state/request-recovery.tsx",
     // The stock shadcn copies the Teammates lab and Shift Manager palettes are built on.
     "labs/teammates/src/components/ui/**",
     "packages/shift-manager/src/components/ui/command.tsx",
@@ -121,6 +124,8 @@
     "labs/teammates/src/components/flow-state/review-hold.tsx",
     // and of the registry's error, whose `ErrorDisplay` export its task popup doesn't draw.
     "labs/teammates/src/components/flow-state/error.tsx",
+    // and of the registry's request-recovery, whose interrupted-turn default the failed-turn line doesn't read.
+    "labs/teammates/src/components/flow-state/request-recovery.tsx",
     // The Teammates lab's byte copy of the registry's connection screen; its
     // backoff export is for apps that time their own retries.
     "labs/teammates/src/components/flow-state/connection-screen.tsx",
@@ -180,7 +185,14 @@
     { "file": "labs/teammates/src/components/flow-state/message-response.tsx", "exports": ["MessageResponse", "MessageResponseProps"] },
     // Kitchen Sink's byte copy of the registry's message: it re-exports `MessageResponseProps`
     // so installs that typed it from `message` keep compiling; the app itself doesn't name the type.
-    { "file": "apps/kitchen-sink/components/flow-state/message.tsx", "exports": ["MessageResponseProps"] }
+    { "file": "apps/kitchen-sink/components/flow-state/message.tsx", "exports": ["MessageResponseProps"] },
+    // The two labs' byte copies of the registry's streaming-indicator and shimmer, for a running
+    // task's working line: the line draws `StreamingIndicator`; `WorkedFor` and `TextShimmerProps`
+    // are the registry's for installs that show a finished turn's time or type the shimmer.
+    { "file": "labs/claude-code-style/src/components/flow-state/streaming-indicator.tsx", "exports": ["WorkedFor"] },
+    { "file": "labs/teammates/src/components/flow-state/streaming-indicator.tsx", "exports": ["WorkedFor"] },
+    { "file": "labs/claude-code-style/src/components/flow-state/shimmer.tsx", "exports": ["TextShimmerProps"] },
+    { "file": "labs/teammates/src/components/flow-state/shimmer.tsx", "exports": ["TextShimmerProps"] }
   ],
 
   // Dead code fails `fallow audit` at its default severity. Complexity reports

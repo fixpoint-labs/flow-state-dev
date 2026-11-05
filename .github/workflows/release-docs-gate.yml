@@ -1,0 +1,35 @@
+name: Release docs gate
+
+# Blocks the Version Packages PR until `/release-docs` has reviewed every
+# changeset it releases. Make "Release docs cover this release" a required check
+# on main: on every other PR the job is skipped, which a required check treats
+# as passing.
+#
+# This only runs on the Version Packages PR because release.yml opens it with
+# CHANGESETS_TOKEN (a PAT). A PR opened with the default GITHUB_TOKEN triggers
+# no workflows, and the gate would never report.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  release-docs-gate:
+    name: Release docs cover this release
+    if: github.head_ref == 'changeset-release/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Release docs cover this release
+        run: node scripts/validate-release-docs.mjs

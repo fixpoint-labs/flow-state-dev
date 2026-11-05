@@ -406,12 +406,24 @@ describe("a route slot is checked across the scan set and classified by marker",
     // the assertion that fails on the contradiction rather than reporting it.
     const root = makeTree({
       ...base,
+      "app/api/flows/[[...path]]/route.ts": "// fsd:generated\nexport function GET() {}\n",
+    });
+    const report = buildReport(root);
+    expect(codes(report)).not.toContain("route-slot-occupied");
+    expect(report.routeSlots.filter((s) => !s.retired).every((s) => s.verdict === "ours")).toBe(true);
+  });
+
+  it("refuses the two-file mount an earlier run wrote, which collides with the catch-all", () => {
+    // Next refuses to build a bare `route.ts` or a `[...path]` beside `[[...path]]`, so a rerun
+    // over the old pair must stop rather than add the third file.
+    const root = makeTree({
+      ...base,
       "app/api/flows/route.ts": "// fsd:generated\nexport function GET() {}\n",
       "app/api/flows/[...path]/route.ts": "// fsd:generated\nexport function GET() {}\n",
     });
     const report = buildReport(root);
+    expect(report.refusals.filter((r) => r.code === "route-slot-retired")).toHaveLength(2);
     expect(codes(report)).not.toContain("route-slot-occupied");
-    expect(report.routeSlots.every((s) => s.verdict === "ours")).toBe(true);
   });
 
   it("refuses when our file shares the slot with an unmarked one", () => {
@@ -430,7 +442,7 @@ describe("a route slot is checked across the scan set and classified by marker",
     const root = makeTree({
       ...base,
       "next.config.js": "module.exports = { pageExtensions: ['tsx'] }\n",
-      "app/api/flows/route.ts": "// fsd:generated\nexport function GET() {}\n",
+      "app/api/flows/[[...path]]/route.ts": "// fsd:generated\nexport function GET() {}\n",
     });
     const report = buildReport(root);
     expect(codes(report)).toContain("route-slot-stale");

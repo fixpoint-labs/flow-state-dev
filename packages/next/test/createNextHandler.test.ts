@@ -47,7 +47,7 @@ describe("createNextHandler — delegation", () => {
 });
 
 describe("createNextHandler — integration", () => {
-  it("drives a POST action through a real FlowState router", async () => {
+  it("drives a POST action and lists flows when the catch-all passes no path", async () => {
     const flow = defineFlow({
       kind: "next-test",
       actions: {
@@ -68,7 +68,7 @@ describe("createNextHandler — integration", () => {
       stores: { default: { primary: inMemoryStores() } }
     });
 
-    const { POST } = createNextHandler(flowstate);
+    const { GET, POST } = createNextHandler(flowstate);
 
     const res = await POST(
       new Request("http://localhost/api/flows/next-test/sess1/actions/run", {
@@ -82,6 +82,14 @@ describe("createNextHandler — integration", () => {
     // The router accepted and dispatched the action (2xx).
     expect(res.status).toBeLessThan(300);
     expect(res.status).toBeGreaterThanOrEqual(200);
+
+    // An optional catch-all passes no `path` for the bare `/api/flows` list.
+    const list = await GET(new Request("http://localhost/api/flows"), {
+      params: Promise.resolve({})
+    });
+    expect(list.status).toBe(200);
+    const body = (await list.json()) as { flows: Array<{ kind: string }> };
+    expect(body.flows.map((listed) => listed.kind)).toContain("next-test");
 
     await flowstate.dispose();
   });

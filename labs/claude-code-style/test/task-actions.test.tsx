@@ -103,7 +103,7 @@ describe("a thread's view", () => {
     fireEvent.click(within(screen.getByRole("navigation", { name: "Sessions" })).getByRole("button", { name: /Billing triage/ }));
     const board = screen.getByRole("complementary", { name: "Tasks" });
     fireEvent.click(await within(board).findByRole("button", { name: new RegExp(title) }));
-    return screen.getByRole("complementary", { name: `Task: ${title}` });
+    return screen.getByRole("dialog", { name: `Task: ${title}` });
   }
 
   it("offers Cancel on a running thread with no Steer box: its composer steers", async () => {

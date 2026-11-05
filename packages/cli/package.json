@@ -62,7 +62,8 @@
     "@flow-state-dev/store-sqlite": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@flow-state-dev/workspace": "workspace:*",
-    "commander": "^13.1.0"
+    "commander": "^13.1.0",
+    "jiti": "^2.7.0"
   },
   "peerDependencies": {
     "@flow-state-dev/devtool": "workspace:>=0.0.0"
