@@ -7,10 +7,10 @@
 | Someone who… | Today | After |
 |---|---|---|
 | **owns the epic and asks how far along it is** | "0 of 6 rows" is a line in a spec. Nothing on `main` moves when a child lands | Every push to `main` prints how many of the six *Not done if* rows hold on installed tarballs |
-| **finishes a child, say the one-call output read** | Proves its own goal check. Nothing ties that to the epic's row | Flips its own assertion from `fail` to `pass` in one manifest line, and shows a branch run where it passes |
+| **finishes a child, say the one-call output read** | Proves its own goal check. Nothing ties that to the epic's row | Flips its own assertion from `fail` to `pass` in one manifest line, and shows a branch run where it passes. Where a cell has several contributors, the last to land flips it |
 | **lands a change that moves someone else's assertion** | Nobody sees it until the closure | `main` goes red, naming the assertion whose outcome no longer matches its expectation |
 | **reviews a child PR and suspects a hollow pass** | Has no fixed bar to hold it to | Sees the child's manifest diff touch expectation lines only. The assertions are this issue's and don't move |
-| **runs the closure** | Would build all three legs at the end and find the misses then | Runs a manifest that has tracked `main` since the first child merged |
+| **runs the closure** | Would build all three legs at the end and find the misses then | Runs a manifest that has tracked `main` since the first child merged, then folds the passing legs into the gating check and deletes the manifest |
 
 The epic's lead measure, and [epic D1](../../epics/FIX-2447/DECISIONS.md#d1)'s trigger, read off
 this from day one.
@@ -50,32 +50,46 @@ Green means outcomes agree with the manifest, not that the epic is done.
 
 ## What changes
 
-![The manifest as a grid: six rows down the side, where each is checked across the top (a workspace ratchet, leg a, leg b, leg c). Surface is the export check per package plus a collisions check. One path is two leg c assertions. First hour is the quick start in leg a. Leakage is the tracker-id lint. Shims is the unpublished shapes in leg b. Types is two leg c assertions. Every cell starts at expect fail, and each cell names the one child that may flip it](figures/manifest.svg)
+![The manifest as a grid: six rows down the side, where each is checked across the top (a workspace ratchet, leg a, leg b, leg c). Surface is the export check per owned root and the collision check over every root, both ratchets, plus core's installed declarations in leg b. One path is two leg c assertions. First hour is the quick start and each example in leg a. Leakage is the tracker-id lint. Shims is three leg b assertions. Types is two leg c assertions. Every cell starts at expect fail, names every contributor, and the last of them to land flips it](figures/manifest.svg)
 
 Read across a row: a row passes only when all its cells do, so expectations sit on cells
-([D1](DECISIONS.md#d1)).
+([D1](DECISIONS.md#d1)). A cell names every child that contributes to it, and the last of them to
+land flips it.
 
-| Row | Assertion | Checked in | Flipped by |
+*Surface* covers the roots the epic owns: core, engine, client, react, testing, orchestration,
+patterns, the three harnesses, both stores, and workforce's `*_ENTRY` names. Every other published
+root (workforce's wider root, memory, contracts, harness-manager, fsdev, workspace, tools, bullmq,
+mcp, scheduled, voice-openai) is held by the export check's ratchet, so it can't grow, and goes to
+follow-up issues outside the epic. It has no cell.
+
+| Row | Assertion | Checked in | Flipped by (the last to land) |
 |---|---|---|---|
-| Surface | `surface.root.<package>`, one per published root that fails under the control: the export check, baseline set aside | ratchet | core FIX-2448 · engine, client FIX-2449 · react FIX-2456 · orchestration, patterns FIX-2459 · testing FIX-2460 · the three harnesses FIX-2458 · workforce FIX-2463 (FIX-2459 if it exits) · both stores FIX-2452 · any other root FIX-2448 |
-| Surface | `surface.collisions`: no two installed roots export one name for different declarations | leg b | FIX-2449 |
+| Surface | `surface.root.<package>`, one per owned root: the export check, baseline set aside, finds nothing on that root | ratchet | core FIX-2448, FIX-2460 (its benchmark types) · engine FIX-2449, FIX-2452 (store constructors) · client FIX-2449 · react FIX-2449, FIX-2450, FIX-2455, FIX-2456 · orchestration FIX-2459 · patterns FIX-2459, FIX-2460 · testing FIX-2460 · claude-code, codex, cursor FIX-2458 · store-sqlite, store-postgres FIX-2452 |
+| Surface | `surface.root.workforce`: the five `*_ENTRY` names only, not workforce's wider root | ratchet | FIX-2463 |
+| Surface | `surface.collisions`: the workspace collision check, run strict over every published root, finds no two roots exporting one name for different declarations | ratchet | FIX-2449 (foundation renames), FIX-2458 (harness renames) |
+| Surface | `surface.core-installed-dts`: on the installed core tarball, read through the TypeScript compiler from its `.d.ts`, no moved name is on the root or `core/types`, each sits on the entry its move names, and `BlockContext` has no `requestHost` | leg b | FIX-2448 |
 | One path | `onepath.answer-task-stop`: installed React's approval hook answers a stop raised in a task-board run | leg c | FIX-2450 |
-| One path | `onepath.action-output`: the installed client returns an action's output in one call, read by request id, never by listing | leg c | FIX-2455 |
-| First hour | `firsthour.quickstart`: the quick start's own blocks, in order, then its `fsdev run` returns an answer | leg a | FIX-2451 |
+| One path | `onepath.output-read`: the installed client's `request(firstId).result()`, with 101 newer requests in the session, returns the output the action computed; a failing action resolves `failed` with its `error.code`. Read by request id, never by listing | leg c | FIX-2455 |
+| First hour | `first-hour.quickstart`: the quick start's own blocks, in order, then its `fsdev run` returns an answer | leg a | FIX-2451 |
+| First hour | `first-hour.example.<name>.<step>`: each example under `examples/`, copied to an empty folder and run by the recipe in `examples/README.md`. Only the steps that fail under the control are admitted | leg a | FIX-2461 |
 | Leakage | `leakage.tracker-ids`: the tracker-id lint, any allow-list set aside | ratchet | FIX-2453 |
-| Shims | `shims.unpublished-shapes`: the installed task store reads none of the three shapes no published version wrote | leg b | FIX-2454 |
-| Types | `types.typed-handler`: a handler with typed state calls an exported board helper and compiles against the installed `.d.ts` with no cast | leg c | FIX-2457 |
+| Shims | `shims.never-published`: the installed packages read or refuse none of the names no published version accepted, as listed by FIX-2454's census (19) | leg b | FIX-2454 |
+| Shims | `shims.human-approval-throws`: `ctx.suspend({ reason: "human_approval" })` throws on the installed tarballs, naming `user_approval` | leg b | FIX-2454 |
+| Shims | `shims.stored-human-approval`: a stored `human_approval` suspension reads as a user's stop | leg b | FIX-2454 |
+| Types | `types.typed-handler`: a handler that declares `uses: [cap]` (or declared targets) calls `getOrCreateTaskCollection` from orchestration's `./tasks`, a helper that stays on a public entry, and compiles against the installed `.d.ts` with no cast | leg c | FIX-2457 |
 | Types | `types.fresh-session-default`: a fresh session reads its state schema's default | leg c | FIX-2554 |
 
-FIX-2461 and FIX-2462 own no cell; the closure runs their goal checks. *A closure bug is open* is a
-Linear fact the closure reads, not a cell.
+FIX-2562's journeys reuse these cells (`first-hour.example.*` for copying an example out) rather
+than restating them. FIX-2460's stop answer and FIX-2453's tarball scan get no cell: they stay those
+children's own goal checks, which the closure re-runs. *A closure bug is open* is a Linear fact the
+closure reads, not a cell.
 
 **What a child types to flip its cell:**
 
 ```diff
    "expect": {
--    "onepath.action-output": "fail",
-+    "onepath.action-output": "pass",
+-    "onepath.output-read": "fail",
++    "onepath.output-read": "pass",
 ```
 
 **Docs:** no documentation impact: CI tooling with no adopter surface. The script header carries it (BP-007).
@@ -87,18 +101,19 @@ flowchart LR
   B["release build"] --> K["pack and install, as the packed-install check does"]
   K --> L["legs a to c · fixtures inside the installed project"]
   T["repo tree"] --> W["ratchets · baseline set aside"]
-  L --> J["judge · outcome vs expectation per assertion"]
+  L --> J["judge · runChecks · outcome vs expectation per assertion"]
   W --> J
   M["the manifest"] --> J
   J -->|"rows passing · mismatches · errors"| S["log and job summary"]
 ```
 
-Packing and installing are the existing check's code; the judge and the assertions are new.
+Packing and installing are the existing check's code (`packAll`, `npmInstall`), and the judge is its
+`runChecks` over a goal `CHECKS` list. The assertions and the manifest are new.
 
 ## What stays as it is
 
 - The gating packed-install job, its `CHECKS`, its two controls and the two-users suite. Goal mode
-  runs none of them, so it needs no Redis.
+  runs `runChecks` over its own list and none of those checks, so it needs no Redis.
 - The workspace ratchets, which gate PRs; FIX-2448 and FIX-2453 build them.
 - Each child's own goal check. A cell is the epic's view of it, not a replacement.
 
@@ -106,23 +121,23 @@ Packing and installing are the existing check's code; the judge and the assertio
 
 | Already here | What this does with it |
 |---|---|
-| `scripts/packed-install/run.mjs`: pack, install, fixtures run inside the consumer project, a pinned control | **Extends.** A goal mode and a second named control, on its packing and install code |
+| `scripts/packed-install/run.mjs`: pack, install, fixtures run inside the consumer project, `runChecks` over `CHECKS`, a pinned control | **Extends.** A goal mode, a goal `CHECKS` list and a second named control, on its `packAll`, `npmInstall` and `runChecks` |
 | The suite's resolution guard (`suite.mjs`) | **Builds on**, for any leg that runs under vitest |
 | `--control`, already the 0.1.1 control | **Leaves alone.** The new control follows the `--control=<name>` form `workspace-link` set |
 | `goals/` goal checks with `GOAL_CONTROL` | **Leaves alone.** Run by hand on the workspace; these legs run in CI on tarballs ([D3](DECISIONS.md#d3)) |
-| The export check and the tracker-id lint, to come | **Reads** their strict runs; until each exists its cells report `pending` ([D2](DECISIONS.md#d2)) |
+| The export check, the workspace collision check and the tracker-id lint, to come | **Reads** their strict runs; until each exists its cells report `pending` ([D2](DECISIONS.md#d2)). Leg b keeps no collision copy of its own |
 | Anything else that tracks an epic's rows | **None.** Searched `manifest`, `expect`, `closure` in `scripts/` and `.github/` |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | The manifest, one JSON file beside `run.mjs`: rows, assertion ids, expectations, the control's pins | `goal.md`'s verdict log; `CONTROL`'s pin in `run.mjs` | A log records runs; this records expectations a child edits. The pins extend `CONTROL`'s integrity-hash pattern |
-| Goal mode and the judge in `run.mjs` | `runChecks` | `runChecks` is pass/fail; the judge compares outcome with expectation and keeps `error` separate |
+| Goal mode and the judge in `run.mjs` | `runChecks`/`CHECKS` | **Extends**, with no runner of its own: each goal check is a `CHECKS` entry, and the judge compares the outcome `runChecks` reports with the manifest's expectation, keeping `error` separate |
 | A workflow on `main` pushes and manual dispatch | The `packed-install` job | Composed: the same script, its own job, so an expected fail never blocks a PR or a release ([D3](DECISIONS.md#d3)) |
 
 | The debt | |
 |---|---|
 | **Removes** | Nothing. |
-| **Adds** | The manifest, the goal mode and its workflow, and a second CI install of every tarball on each `main` push. Scaffolding, not permanent: the closure folds the passing legs into `CHECKS`, where they gate, and deletes the manifest and the workflow |
+| **Adds** | The manifest, the goal mode and its workflow, and a second CI install of every tarball on each `main` push. Scaffolding, not permanent: the closure folds the passing legs into `CHECKS`, where they gate, and deletes the manifest and the workflow. Until then the closure is the manifest's last writer: it may add rows, never edit an assertion |
 | **Leaves** | `run.mjs`'s `CHECKS` comment already says "legs b and c" for the two-users suite; the new ids are named by row so the two don't collide |
 
 **Net: up, until the closure.** One file, one mode and one job are added and nothing goes; the
@@ -136,10 +151,12 @@ each cell flipped only by its owner. If wrong: the epic's progress stays a claim
 **[The debt](#whats-already-here-and-the-debt):** net up until the closure, which folds the legs
 into the gating check. If wrong: a second packed-install job nobody removes.
 
-1. [D1](DECISIONS.md#d1) · Expectations sit on assertions; a row's outcome is derived. **The one to
-   weigh.** If wrong: a child's flip can't show until its last row-mate lands.
+1. [D1](DECISIONS.md#d1) · Expectations sit on assertions; a row's outcome is derived; a cell
+   with several contributors is flipped by the last to land. **The one to weigh.** If wrong: a
+   child's flip can't show until its last row-mate lands.
 2. [D2](DECISIONS.md#d2) · Surface and Leakage read the ratchets' strict runs; the legs hold only
-   what the tree can't show. If wrong: two cells read `pending` until FIX-2448 and FIX-2453 land.
+   what the tree can't show. If wrong: the ratchet cells read `pending` until FIX-2448's export
+   check, FIX-2449's collision check and FIX-2453's lint land.
 3. [D3](DECISIONS.md#d3) · Its own workflow, on `main` pushes and manual dispatch. If wrong: a
    second job's minutes on every push.
 
