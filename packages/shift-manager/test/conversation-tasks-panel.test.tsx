@@ -209,7 +209,7 @@ describe("the tasks panel (S11)", () => {
       ]);
     });
 
-    it("reads again on a board notice, and reloads the Lab when a task moved, so the coordinator's turn on it shows", async () => {
+    it("reads again on a board notice, and leaves reloading the Lab to the snapshot's own subscription when a task moved", async () => {
       rows = [{ id: "t1", goal: "Audit the licenses", status: "in_progress", assignee: "licenses", attempts: 1 }];
       render(<TasksPanel worker={shiftCoordinator} sessionId="s1" readAt={1} />);
       await settle();
@@ -218,7 +218,8 @@ describe("the tasks panel (S11)", () => {
       await hear({ topic: { scope: "session", id: "s1", resource: "tasks" }, kind: "board" });
       expect(calls).toHaveLength(2);
       expect(shown()).toEqual([{ id: "t1", status: "completed", text: expect.stringContaining("Audit the licenses") }]);
-      expect(refreshes).toHaveLength(1);
+      // The snapshot hears the same move itself (FIX-2409): a second read here would be a second way.
+      expect(refreshes).toHaveLength(0);
     });
 
     it("keeps a timer for where push can miss a change only while a task is open or just moved", async () => {

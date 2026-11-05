@@ -534,6 +534,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleListSessions(request, route, {
           registry: options.registry,
           stores,
+          durabilityProvider: runtimeConfig.durabilityProvider,
           tenantId,
           principal,
           anonymousFlowIds,

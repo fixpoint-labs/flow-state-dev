@@ -91,6 +91,19 @@ describe("client.sessions", () => {
     ]);
   });
 
+  it("sends include as one comma-separated parameter, and none for an empty list", async () => {
+    const fetcher = vi.fn<ClientFetch>(async () => createJsonResponse({ sessions: [] }));
+    const client = createClient({ userId: "devuser", baseUrl: "", fetcher });
+    await client.sessions.list({ include: "status" });
+    await client.sessions.list({ include: ["dispatch-runs", "status"] });
+    await client.sessions.list({ include: [] });
+    expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
+      "/api/flows/sessions?userId=devuser&include=status",
+      "/api/flows/sessions?userId=devuser&include=dispatch-runs%2Cstatus",
+      "/api/flows/sessions?userId=devuser"
+    ]);
+  });
+
   it("sends a listing's state filter as one state.<field> parameter per field", async () => {
     const fetcher = vi.fn<ClientFetch>(async () => createJsonResponse({ sessions: [] }));
     const client = createClient({ userId: "devuser", baseUrl: "", fetcher });

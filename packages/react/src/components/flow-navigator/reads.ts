@@ -1,10 +1,11 @@
 /**
  * The navigator's two reads (FIX-1477 S2, S3).
  *
- * Internal on purpose. Three public hooks would let three consumers each
- * trigger their own flow-list read, which is the one-read-per-host rule lost
- * by export rather than by bug — so the navigator mounts them once and nothing
- * else can.
+ * The flow-list read is internal on purpose. Three public hooks would let
+ * three consumers each trigger their own flow-list read, which is the
+ * one-read-per-host rule lost by export rather than by bug — so the navigator
+ * mounts it once and nothing else can. The leaf's session read is the public
+ * `useSessionList`'s (FIX-2411), which reads no flow list.
  *
  * Both are fenced on their identity, which includes the client they read
  * through: a host that rebuilds its transport on a token or `baseUrl` change
@@ -22,6 +23,7 @@ import {
   type SessionSummary
 } from "@flow-state-dev/client";
 import { useFencedRead } from "../../internal/useFencedRead";
+import { useLiveSessionRead } from "../../internal/useLiveSessionRead";
 import type { FlowNavigatorLeaf } from "./grouping";
 
 /**
@@ -29,11 +31,12 @@ import type { FlowNavigatorLeaf } from "./grouping";
  * says which. A host passes the client it already holds — with its own
  * `fetcher`, so every request carries whatever credential that transport adds.
  */
-export type FlowNavigatorClient = Pick<Client, "flows"> & { readonly sessions: Pick<SessionsApi, "list"> };
+export type FlowNavigatorClient = Pick<Client, "flows"> & {
+  readonly sessions: Pick<SessionsApi, "list">;
+} & Partial<Pick<Client, "subscribe">>;
 
-/** Stable empty lists, so a stale hold hands back the same reference each render. */
+/** A stable empty list, so a stale hold hands back the same reference each render. */
 const EMPTY_FLOWS: FlowListEntry[] = [];
-const EMPTY_SESSIONS: SessionSummary[] = [];
 
 export type FlowInventory = {
   readonly flows: readonly FlowListEntry[];
@@ -110,23 +113,17 @@ export function useLeafSessions(
   }));
   if (visit.open !== isOpen) setVisit({ open: isOpen, token: isOpen ? {} : null });
 
-  const { data, isLoading, error, refresh } = useFencedRead<readonly SessionSummary[]>(
-    [source, address, cardinality, includeDispatchRuns, visit.token],
-    EMPTY_SESSIONS,
-    "Failed to load sessions",
-    () =>
-      source.sessions.list({
-        // The branch itself is `client`'s, written once there. This passes the
-        // one entry it already knows about, which is all the helper reads.
-        // No user: the client lists its own user's sessions.
-        ...sessionQueryFor(address, [{ id: address, cardinality }]),
-        // Omitted unless asked for, so the request this hook has always sent
-        // is the request it still sends by default.
-        ...(includeDispatchRuns ? { include: "dispatch-runs" as const } : {})
-      }),
-    // A closed leaf asks for nothing, a refresh included. The visit token in
-    // the identity is what starts a fresh read when it opens.
-    { enabled: visit.token !== null }
-  );
-  return { sessions: data, isLoading, error, refresh };
+  // The branch itself is `client`'s, written once there. This passes the one
+  // entry it already knows about, which is all the helper reads. Live when
+  // the client can subscribe (FIX-2411): the same read `useSessionList` makes.
+  // A closed leaf asks for nothing; the visit token in the identity is what
+  // starts a fresh read when it opens.
+  return useLiveSessionRead({
+    source,
+    query: sessionQueryFor(address, [{ id: address, cardinality }]),
+    includeDispatchRuns,
+    includeStatus: true,
+    enabled: visit.token !== null,
+    extraIdentity: [cardinality, visit.token]
+  });
 }
