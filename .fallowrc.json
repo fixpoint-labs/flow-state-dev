@@ -170,7 +170,13 @@
     // the cancel outcome are exported for tests and goals that read them off the page.
     { "file": "packages/shift-manager/src/components/flow-state/task-actions.tsx", "exports": ["CANCEL_CONFIRM", "cancelOutcome"] },
     // and the Claude Code-style lab's copy of it, for the same reason.
-    { "file": "labs/claude-code-style/src/components/flow-state/task-actions.tsx", "exports": ["CANCEL_CONFIRM", "cancelOutcome"] }
+    { "file": "labs/claude-code-style/src/components/flow-state/task-actions.tsx", "exports": ["CANCEL_CONFIRM", "cancelOutcome"] },
+    // The Teammates lab's byte copy of the registry's message-response: its cards draw
+    // `MarkdownText`; `MessageResponse` is what the registry's `message` imports, which the lab doesn't install.
+    { "file": "labs/teammates/src/components/flow-state/message-response.tsx", "exports": ["MessageResponse", "MessageResponseProps"] },
+    // Kitchen Sink's byte copy of the registry's message: it re-exports `MessageResponseProps`
+    // so installs that typed it from `message` keep compiling; the app itself doesn't name the type.
+    { "file": "apps/kitchen-sink/components/flow-state/message.tsx", "exports": ["MessageResponseProps"] }
   ],
 
   // Dead code fails `fallow audit` at its default severity. Complexity reports
