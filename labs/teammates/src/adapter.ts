@@ -601,33 +601,50 @@ function onNotice<T>(
 /**
  * The tool calls of one request as its own stream sends them: each one as it
  * starts, not only once finished, as the session stream sends them. For what
- * a running task is in now. A failed or closed stream reports no more, and
- * the session feed's finished copies stand.
+ * a running task is in now. A dropped connection is opened again after a
+ * backoff (1 s, doubling to 30 s), resuming after the last event it heard,
+ * until the request ends or the watch stops. An answer that says the request
+ * is not there for you (401, 403, 404) stops it; the session feed's finished
+ * copies stand.
  */
 function followRequestCalls(client: Client, flow: Promise<string>, requestId: string, onItems: (items: readonly OutputItem[]) => void): Unsubscribe {
   const store = createRequestStreamStore();
   let live = true;
   let handle: { close(): void } | undefined;
-  flow.then(
-    (flowId) => {
-      if (!live) return;
-      handle = client.flow(flowId).request(requestId).stream({
-        ...bindStoreToCallbacks(store, {
-          itemFilter: (item) => item.type === "tool_output",
-          onChange: () => {
-            store.flushDeltas();
-            if (live) onItems(store.getSorted());
-          },
-        }),
-      });
-    },
-    (error) => console.error("teammates: a run's request couldn't be followed", error),
-  );
+  let retry: ReturnType<typeof setTimeout> | undefined;
+  let failures = 0;
+  const open = (flowId: string): void => {
+    if (!live) return;
+    const heard = store.lastSequenceNumber;
+    handle = client.flow(flowId).request(requestId).stream({
+      ...(heard > 0 ? { startingAfter: heard } : {}),
+      ...bindStoreToCallbacks(store, {
+        itemFilter: (item) => item.type === "tool_output",
+        onChange: () => {
+          failures = 0;
+          store.flushDeltas();
+          if (live) onItems(store.getSorted());
+        },
+      }),
+      onError: (error) => {
+        handle?.close();
+        handle = undefined;
+        if (!live || store.status !== "in_progress" || STREAM_GONE.has((error as { status?: number }).status ?? 0)) return;
+        retry = setTimeout(() => open(flowId), Math.min(30_000, 1_000 * 2 ** failures));
+        failures += 1;
+      },
+    });
+  };
+  flow.then(open, (error) => console.error("teammates: a run's request couldn't be followed", error));
   return () => {
     live = false;
+    if (retry !== undefined) clearTimeout(retry);
     handle?.close();
   };
 }
+
+/** A request stream's answers that mean it is not there for this caller: opening it again cannot help. */
+const STREAM_GONE: ReadonlySet<number> = new Set([401, 403, 404]);
 
 /**
  * The call a run is in now, from both of its sources: the request's own

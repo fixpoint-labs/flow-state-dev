@@ -24,7 +24,7 @@ const tool = (id: string, status: string, command: string) => ({
  * A run session holding `items`, and recording a plan when `plan` is given.
  * Its run request's own stream sends `live`, as each item is added.
  */
-function clientWith(items: unknown[], plan?: { title: string; status: string }[], live: unknown[] = []) {
+function clientWith(items: unknown[], plan?: { title: string; status: string }[], live: unknown[] = [], dropAfter?: number) {
   const listed: string[] = [];
   const streamed: string[] = [];
   const heard: Array<(notice: WireNotice | null) => void> = [];
@@ -35,9 +35,25 @@ function clientWith(items: unknown[], plan?: { title: string; status: string }[]
     },
     flow: (flow: string) => ({
       request: (requestId: string) => ({
-        stream: (callbacks: { onItemAdded?: (event: { item: unknown }) => void }) => {
-          streamed.push(`${flow}/${requestId}`);
-          queueMicrotask(() => live.forEach((item) => callbacks.onItemAdded?.({ item })));
+        // Each event carries its sequence number; a connection resumes after the one it asks for.
+        // With `dropAfter`, the first connection sends that many items, then fails.
+        stream: (callbacks: {
+          startingAfter?: number;
+          onEvent?: (event: { sequence_number: number }) => void;
+          onItemAdded?: (event: { item: unknown }) => void;
+          onError?: (error: Error) => void;
+        }) => {
+          const first = streamed.length === 0;
+          streamed.push(`${flow}/${requestId}${callbacks.startingAfter === undefined ? "" : `@${callbacks.startingAfter}`}`);
+          const after = callbacks.startingAfter ?? 0;
+          const end = first && dropAfter !== undefined ? dropAfter : live.length;
+          queueMicrotask(() => {
+            live.slice(after, end).forEach((item, i) => {
+              callbacks.onEvent?.({ sequence_number: after + i + 1 });
+              callbacks.onItemAdded?.({ item });
+            });
+            if (end < live.length) callbacks.onError?.(new TypeError("network connection lost"));
+          });
           return { close() {} };
         },
       }),
@@ -106,6 +122,17 @@ describe("a running task's working line, as the adapter reads it", () => {
     stop();
     expect(now.inFlight).toEqual({ tool: "Bash", args: { command: "pnpm test" } });
     expect(lab.streamed).toEqual(["coder/req_run"]);
+  });
+
+  it("reconnects a dropped request stream and resumes it, so a call that starts after the drop still shows", async () => {
+    const lab = clientWith([tool("t1", "completed", "ls")], undefined, [tool("t1", "completed", "ls"), tool("t2", "in_progress", "pnpm test")], 1);
+    let now: WorkingNow = {};
+    const stop = createLabAdapter(lab.client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => (now = next));
+    await until(() => now.inFlight !== undefined);
+    stop();
+    expect(now.inFlight).toEqual({ tool: "Bash", args: { command: "pnpm test" } });
+    // The second connection resumes after what the first one heard, rather than replaying it.
+    expect(lab.streamed).toEqual(["coder/req_run", "coder/req_run@1"]);
   });
 
   it("has nothing in flight once the feed holds the call's finished copy, whatever the request stream last said", async () => {
