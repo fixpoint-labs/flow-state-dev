@@ -41,11 +41,14 @@ App glue only, in `labs/teammates`.
   the last two minutes reads *Coding task finished / failed: …*, from its `completedAt`
   ([FIX-2395](../FIX-2395/SPEC.md) puts it on the row). `statusLine` returns a tone beside the
   text, so the row can colour it. For a task, the tone and the *waiting* / *failed* word come from
-  FIX-2395's `lib/task-state.ts`, the lab's one owner of a task's tone. An approval is not a task,
-  so its *Needs your OK* tone (the attention colour) stays in `status.ts`.
+  FIX-2395's `taskRowPresentation` beside `taskLine`, the lab's one owner of a task's tone. An approval is not a task,
+  so its *Needs your OK* tone (the attention colour) stays in `status.ts`. `status.ts` exports one
+  `needsYou` / `openApproval` predicate; the status line, the badge, the `(N) Teammates` title and
+  the notifier's eligibility all read it, none restates the rule (Jake, 2026-11-05).
 - **`WorkersList.tsx`:** the attention badge on a row that needs you; the rows report what they
   hold, so the list sets the tab's title; the *Notify me* toggle in the foot.
-- **`lib/attention.ts`:** the title count and the notifier, both pure over what the rows report.
+- **`lib/attention.ts`:** only `document.title`, `Notification`, permission and dedup, over what
+  the rows report via `needsYou`; it copies no rule from `status.ts`.
 - **Docs:** the lab README's *Left* paragraph. No site page describes the lab.
 
 ## What stays as it is

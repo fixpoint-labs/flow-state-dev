@@ -69,3 +69,8 @@ no one reads it as a duration. No `runStartedAt` field is added to `BoardTask`.
 
 - **Drafted (Nov 4):** the issue's *Background* list had already moved to the panel (FIX-2525), so
   the scope is what the panel still lacks.
+
+Round 4 (#4717), Jake 2026-11-05: no `lib/task-state.ts`. The word and tone helper is
+`taskRowPresentation(...)` beside `taskLine` in `Popups.tsx`, fed by the `state` / `times`
+`toBoardTask` takes from `taskRowView(...)`; this replaces Round 1's own-module answer, and every
+`lib/task-state.ts` above now means that helper.

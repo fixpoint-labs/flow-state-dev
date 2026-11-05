@@ -55,10 +55,12 @@ model's tool. The lab's adapter test confirms `toBoardTask` passes them through.
   (collapsed, newest five, then *Show all N*), *Cancelled* (collapsed). Newest first throughout.
   A plain total in the heading (`Tasks (32)`); per-state counts are FIX-2394's `taskCounts`. A
   failed row shows its reason, one line ([D2](DECISIONS.md#d2)).
-- **One helper for a task's word and tone** (`lib/task-state.ts`), read by the panel row and
-  `TaskCard`, so the two can't drift. It is the lab's only owner of a task's tone: FIX-2396's task
-  popup and FIX-2397's status line read it too, rather than deciding again. Its words are a row's short subline
-  (`waiting on you`, `failed`); the worker status line's sentences are FIX-2397's.
+- **One helper for a task's word and tone, beside `taskLine`** (`taskRowPresentation(...)` in
+  `Popups.tsx`, no new `lib/task-state.ts`), fed by the `state` / `times` that `toBoardTask` takes
+  from the existing `taskRowView(...)` call, so there is no third vocabulary beside ER-4. The panel
+  row and `TaskCard` read it, so the two can't drift; FIX-2396's task popup and FIX-2397's status
+  line read it too, rather than deciding again. Its words are a row's short subline (`waiting on
+  you`, `failed`); the worker status line's sentences are FIX-2397's (Jake, 2026-11-05).
 - **This spec owns a task's times on `BoardTask`:** when it was filed, first started and ended.
   `startedAt` is the task's first start and a retry keeps it, so nothing here reads it as an
   attempt's length. The attempt's start is the row's `run.startedAt`, which FIX-2394's clock and

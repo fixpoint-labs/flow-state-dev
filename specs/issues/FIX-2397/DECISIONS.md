@@ -67,3 +67,8 @@ Both specs now say so.
 ## How it got here
 
 - **Drafted (Nov 4).** Stacked on FIX-2395, whose row times the ending line reads.
+
+Round 4 (#4717), Jake 2026-11-05: one `needsYou` / `openApproval` predicate from `status.ts` drives
+the status line, badge, `(N) Teammates` title and notifier eligibility; `attention.ts` keeps only
+`document.title`, `Notification`, permission and dedup. The task word and tone come from FIX-2395's
+`taskRowPresentation` beside `taskLine`, not `lib/task-state.ts`.
