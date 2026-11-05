@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 360" role="img" aria-label="What changes. A fence splits what an adopter reads from what stays ours. On the adopter's side, the rule covers three surfaces: editor hovers, from JSDoc in the published type files, 1,670 ids across six published packages today, core alone 307; runtime text, from string, template and JSX literals, errors, logs, UI copy and conformance test titles, 39 ids in the same six packages' JavaScript; and files an adopter copies whole, the UI registry and the examples, 21 sites counting every comment. Each goes to zero. On our side, kept as BP-006 provenance pointers: line and block comments in package source, which reach compiled JavaScript only, tests outside src, changelogs and changesets, specs and internal docs, and Kitchen Sink, which FIX-2461 owns."
+<svg viewBox="0 0 940 360" role="img" aria-label="What changes. A fence splits what an adopter reads from what stays ours. On the adopter's side, the rule covers three surfaces: editor hovers, from JSDoc in the published type files, 1,670 ids across six published packages today, core alone 307; runtime text, from string, template and JSX literals, errors, logs, UI copy and conformance test titles, 39 ids in the same six packages' JavaScript; and files an adopter copies whole, the UI registry and the examples, 21 sites counting every comment. Each goes to zero. On our side, kept as BP-006 provenance pointers: line and block comments in package source, which reach compiled JavaScript only, tests outside src, changelogs and changesets, specs and internal docs, and Kitchen Sink, which is not published and sits outside the rule."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -56,6 +56,6 @@
     <text class="t-b" x="644" y="232">Specs and internal docs</text>
     <text class="t-s" x="644" y="250">docs/internal, specs/</text>
     <text class="t-b" x="644" y="286">Kitchen Sink</text>
-    <text class="t-s" x="644" y="304">not published; FIX-2461 owns its copy</text>
+    <text class="t-s" x="644" y="304">not published; outside the rule</text>
   </g>
 </svg>

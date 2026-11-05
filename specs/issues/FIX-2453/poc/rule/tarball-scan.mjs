@@ -3,7 +3,7 @@
  * POC, throwaway: what an adopter reads in an unpacked tarball. Counts the
  * rule's pattern in .d.ts JSDoc (the hovers) and in .js string and template
  * literals (runtime text), and, for contrast, in .js `//` comments, which D1
- * keeps. A reference for FIX-2564's leg-b assertion, not that assertion.
+ * keeps. A reference for this issue's tarball-scan goal check, not that check.
  *
  *   node specs/issues/FIX-2453/poc/rule/tarball-scan.mjs <unpacked-package-dir>...
  */
