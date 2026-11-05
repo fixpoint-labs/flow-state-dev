@@ -3807,7 +3807,7 @@ export async function createExecutionContext<
       ...(requestHostBuild !== undefined
         ? { requestHost: requestHostBuild.host, [DISPATCH_SEAM]: requestHostBuild.seam }
         : {}),
-      // A task board's change reaches this run's bus (FIX-2429), under the
+      // A task board's change reaches this run's bus, under the
       // request's tenant. No bus (a registry no entry wrapped): no seam.
       ...(boardNoticeSeam !== undefined ? { [BOARD_NOTICE_SEAM]: boardNoticeSeam } : {}),
       settings: options.settings ?? {},
