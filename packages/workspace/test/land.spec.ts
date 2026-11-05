@@ -27,6 +27,10 @@ beforeEach(() => {
   upstream = createRemote("marker A");
   repo = join(tempDir("land-person"), "repo");
   git(join(repo, ".."), "clone", "-q", upstream.url, repo);
+  // The person's own identity, in their checkout: a merge commit is theirs, so the host never
+  // supplies one, and a machine with no global git identity (CI) must not decide these tests.
+  git(repo, "config", "user.name", "The Person");
+  git(repo, "config", "user.email", "person@example.com");
   const bin = tempDir("land-gh");
   ghLog = join(bin, "gh.log");
   gh = join(bin, "gh");
