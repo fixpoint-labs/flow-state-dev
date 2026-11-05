@@ -197,6 +197,30 @@ Workforce's worker lookup is the one function shipped for this
 (`createWorkerLookup(...).flowKind`); Core and the board see a task, a name and
 a flow id, and nothing about workers.
 
+### A run as a row's owner, fired by the host
+
+A block starts no request as anyone but its own request's principal. A
+service flow (Workforce's subscriptions) runs as the service, and what it
+decides must run as each subscriber. So the host starts those runs, not a
+block: `fireOwnerRunThrough` (`engine/src/durability/owner-runs.ts`), the
+sibling of `fireWakeThrough`. It is not a `RequestHost` verb, so nothing a
+running request holds can call it.
+
+The nomination (a user, an org, an optional tenant, a row key) only picks a
+cell. The run starts only when that user's cell for collections shared across
+flows (`resolveSharedUserCellKey`, the one the schedule resolver reads) holds
+the row, the row's stored `orgId` and `tenantId` are the nominated ones, and
+the row is not `enabled: false`. A
+nomination for a cell that holds no such row refuses as `no_row`, the same
+answer whether the row is another user's or nobody's. `routeServiceEvent`
+runs the service's entry, then reads each run its output names at the fence
+(a run of another flow, or of an owner in another org, fires nothing) and
+fires the rest, a bounded number at once, each run's failure recorded on it
+so the others still fire. Every run of one row starts in one session, and
+every routing of one service in another, so a busy thread stores no session
+per event. The three host-side starts (a wake, an owner run, a routing) share
+one dispatch, `dispatchInternalAs`.
+
 ## The claim gate and the fence ticket
 
 A task dispatch leaves the row `in_progress` in the parent's ledger, owned by
