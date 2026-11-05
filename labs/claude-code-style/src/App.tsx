@@ -164,8 +164,9 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     },
     [adapter, selected?.id],
   );
-  const taskRows = selected !== undefined && read?.sessionId === selected.id ? read.rows : undefined;
-  const tasksStale = read?.stale === true;
+  const current = selected !== undefined && read?.sessionId === selected.id ? read : undefined;
+  const taskRows = current?.rows;
+  const tasksStale = current?.stale === true;
   useLabKeys({
     palette: () => setSwitching((open) => !open),
     step: (by) => {
