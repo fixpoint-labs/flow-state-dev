@@ -45,6 +45,32 @@ describe("the first run", () => {
     await waitFor(() => expect(creates).toBe(1));
   });
 
+  it("asks again when the field is left after a refusal, so a fixed repository can be made", async () => {
+    const lab = createFakeLab({ speed: 0.01 });
+    let fixed = false;
+    let checks = 0;
+    const onCheck = async (_repository: string) => {
+      checks++;
+      return fixed ? { usable: true as const, how: "worktree" as const } : lab.checkRepository("file:///tmp/not-a-repo");
+    };
+    render(<App adapter={{ ...lab, checkRepository: onCheck }} />);
+    const form = await screen.findByRole("form", { name: "New project" });
+    fireEvent.change(within(form).getByLabelText("Project name"), { target: { value: "notes" } });
+    const field = within(form).getByLabelText("Repository");
+    fireEvent.change(field, { target: { value: "file:///tmp/notes" } });
+    fireEvent.blur(field);
+    await within(form).findByTestId("repository-problem");
+    const create = within(form).getByRole("button", { name: "Create project" }) as HTMLButtonElement;
+    expect(create.disabled).toBe(true);
+
+    // The person commits the rule and leaves the field again, same address.
+    fixed = true;
+    fireEvent.blur(field);
+    await within(form).findByTestId("repository-disclosure");
+    await waitFor(() => expect(create.disabled).toBe(false));
+    expect(checks).toBe(2);
+  });
+
   it("offers starter lines in an empty session; a click fills the composer and sends nothing", async () => {
     const lab = createFakeLab({ speed: 0.01 });
     let sends = 0;

@@ -99,7 +99,8 @@ export function ProjectPicker({
             onChange={(event) => setRepository(event.target.value)}
             onBlur={() => {
               const value = repository.trim();
-              if (value !== "" && checked?.repository !== value) void check.submit(undefined, value);
+              // A refusal is asked again: the person may have fixed the repository since.
+              if (value !== "" && (checked?.repository !== value || !checked.answer.usable)) void check.submit(undefined, value);
             }}
             className="border border-border bg-background px-3 py-2 font-mono text-sm"
           />
