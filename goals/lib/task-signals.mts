@@ -171,10 +171,15 @@ async function holdWakes(file: string, dueAt: number): Promise<number> {
   }
 }
 
-/** Poll `check` every `everyMs` until it answers, or `forMs` passes. */
+/** Poll `check` every `everyMs` until it answers, or `forMs` passes. A throwing check counts as "not yet"; the first throw is logged so a red goal still says why. */
 async function until<T>(check: () => Promise<T | undefined>, forMs: number, everyMs = 1_000): Promise<T | undefined> {
+  let logged = false;
   for (const end = Date.now() + forMs; Date.now() < end; await sleep(everyMs)) {
-    const value = await check().catch(() => undefined);
+    const value = await check().catch((error: unknown) => {
+      if (!logged) console.warn(`  (a poll threw, retrying: ${error instanceof Error ? error.message : String(error)})`);
+      logged = true;
+      return undefined;
+    });
     if (value !== undefined) return value;
   }
   return undefined;
@@ -229,12 +234,19 @@ export async function runTaskSignals(lab: SignalsLab): Promise<void> {
         const again = await runningRow(id, first.run.startedAt);
         if (again === undefined) throw new Error(`setup: the retried task never ran again: ${JSON.stringify(await row(id))}`);
         say(`clock: first attempt started ${new Date(first.run.startedAt).toISOString()}, retry ${new Date(again.run.startedAt).toISOString()}`);
+        // Keep reading until the page's clock agrees with this attempt: a page whose task read
+        // lags the board's can still show the first attempt's clock for a moment. The last
+        // reading that disagreed is the one graded if the page never catches up.
         let last: string | undefined;
-        const read = await until(async () => {
+        let shownLast: { shown: number; expected: number } | undefined;
+        const agreed = await until(async () => {
           last = await board.words(title);
           const shown = clockOf(last);
-          return shown === undefined ? undefined : { shown, expected: Date.now() - again.run.startedAt };
+          if (shown === undefined) return undefined;
+          shownLast = { shown, expected: Date.now() - again.run.startedAt };
+          return Math.abs(shownLast.shown - shownLast.expected) <= CLOCK_SLACK_MS ? shownLast : undefined;
         }, PAGE_BOUND_MS);
+        const read = agreed ?? shownLast;
         tell.over("clock · the retried row's clock on the page", read === undefined ? [] : [read]);
         if (read === undefined) failures.push(`clock: the retried task's row shows no working clock within ${PAGE_BOUND_MS / 1000}s; it reads ${JSON.stringify(last)}`);
         else if (Math.abs(read.shown - read.expected) > CLOCK_SLACK_MS) {

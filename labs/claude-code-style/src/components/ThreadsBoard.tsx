@@ -46,7 +46,7 @@ export function ThreadsBoard({
   useMissing(listed, openId, onMissing);
   const pins = useWatch((emit: (ids: string[]) => void) => adapter.watchPins(emit), [adapter]) ?? [];
   const [collapsed, setCollapsed] = useState<Partial<Record<Column, boolean>>>({ resolved: true });
-  const now = useNow(true);
+  const now = useNow(tasks.length > 0);
 
   const open = tasks.find((t) => t.id === openId);
   if (open) {

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useInterruptKeys, useJumpToLatest } from "@flow-state-dev/react";
 import type { LabAdapter, ProjectRow, SessionRow, TaskRow } from "../adapter";
 import { elapsed, useNow, useWatch } from "../lib/use-watch";
@@ -40,7 +41,7 @@ export function Thread({
   const view = useWatch((emit: Parameters<LabAdapter["watchThread"]>[1]) => adapter.watchThread(session.id, emit), [adapter, session.id]);
   const mode = modeOfWorker(session.worker);
   // What a line that names a task reads of it, and opens it with.
-  const feedTasks = { rows: tasks, open: onOpenThread };
+  const feedTasks = useMemo(() => ({ rows: tasks, open: onOpenThread }), [tasks, onOpenThread]);
   const running = view?.running ?? false;
   // What the thread's feed last heard from the server; a stale one greys the working line and stops its clock.
   const connection = view?.connection ?? "connecting";
