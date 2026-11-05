@@ -119,12 +119,11 @@ import { workerTaskEntry } from "../conversation-board/task-entry";
 import {
   CONVERSATION_BOARD_SERVER_OWNED,
   REPLY_CONCURRENCY,
-  answerTextOf,
   conversationBoardStateShape,
   routedEndingSchema,
   type RoutedEnding
 } from "../conversation-board/task-settled";
-import { delegateAnswerMetadata } from "../conversation-board/delegate-answer";
+import { answerTextOf, delegateAnswerMetadata } from "../conversation-board/delegate-answer";
 import { WORKER_TASK_ENTRY } from "../worker-task-entry";
 import { doorTask, RESPOND_ACTION } from "../worker-door";
 import { declareBuiltInRoles, markRolePiece } from "../worker-roles";

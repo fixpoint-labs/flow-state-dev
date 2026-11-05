@@ -2695,7 +2695,7 @@ coordinator's own turn's answer name, which its messages carry as `agentName`) a
 `WORK_PROJECT_STATE_KEY`, `SEND_MESSAGE_TOOL` (the
 tool a sent message is a call to), `MESSAGE_RECEIVED_ENTRY`, `RECEIVED_MESSAGE_COMPONENT` (the
 component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
-`WORKER_MESSAGES_RESOURCE` and `workerMessageRowSchema`, `delegateAnswerOf`, the same values the root exports, and reaches no Node built-in.
+`WORKER_MESSAGES_RESOURCE` and `workerMessageRowSchema`, `delegateAnswerOf`, `answerTextOf`, the same values the root exports, and reaches no Node built-in.
 
 ## Exports
 
@@ -2706,6 +2706,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `takeFinishedTasks` / `finishedTaskSchema` / `FinishedTask` | A handler block that takes the tasks this conversation filed whose endings haven't been heard yet, says each as a line under its delegate's name, and returns them as `{ taskId, ending, worker?, line }[]`. Input is ignored. `[]` outside a turn a user's own message started (see [Answering again with finished tasks](#answering-again-with-finished-tasks)). |
 | `finishedTasksAnswerAgain({ message? })` / `FinishedTasksAnswerAgainOptions` | The block `answerAgain: true` uses: `takeFinishedTasks`, then `{ message }` naming each finished task and how it ended, or `{}` when nothing finished. `message(finished)` replaces the default wording. |
 | `delegateAnswerOf(item)` / `delegateAnswerMetadata({ worker, taskId })` / `DelegateAnswer` | A delegate's answer that landed in a conversation as written (a task filed with `resultTo: "conversation"`, routed or not), as its message item marks it: `{ worker, taskId }`, or `undefined` for any other item. `delegateAnswerMetadata` is the `metadata` such a line is emitted with. Also on `./browser`. |
+| `answerTextOf(output)` | A completed task's answer as text, from its row's `output`: the output itself when it is a string (an agent worker's answer), else its `answer` field (a coding run's). `undefined` when blank or absent. The rule the conversation lands a task's answer by. Also on `./browser`. |
 | `MAX_ANSWERS_AGAIN` | `3`, the most times one request answers again after its turn, the answer after a plan included. |
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability({ roster, inventory, sources? })` | The discovery door. Installs the `workers` source plus whatever other domains' sources you pass, and contributes one control tool, `discover`, which lists the standard workers the files declare. |
