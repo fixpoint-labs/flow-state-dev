@@ -435,13 +435,7 @@ export const harnessJudgeInputSchema = z.object({
   answer: z.string().nullable(),
   /** The commits the run made: how many, and their subjects, newest first (at most 20). */
   commits: z.object({ count: z.number().int().nonnegative(), subjects: z.array(z.string()) }),
-  /**
-   * What those commits changed against the run's base, file by file: each
-   * file's added and removed lines, at most 200 files (`MAX_DIFF_FILES`)
-   * listed, with totals over all of them. A subject alone can't show a judge
-   * that a change was made. `null` for a run with no branch (kept files only)
-   * or one whose commits couldn't be read.
-   */
+  /** The files those commits changed against the run's base. `null` when the run has no branch or the diff could not be read. */
   diff: runDiffSchema.nullable().default(null),
 });
 export type HarnessJudgeInput = z.infer<typeof harnessJudgeInputSchema>;
@@ -2749,9 +2743,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const keep = async (
         settle: "asked" | "complete",
         commits: RunCommits,
-        judgeInput: HarnessJudgeInput | null = null,
+        judgeInput: Omit<HarnessJudgeInput, "diff"> | null = null,
         checks: CommandCheckResult[] | null = null,
-        read: RunDiff | null = null,
       ): Promise<HarnessJudgeInput | null> => {
         const output: ManagerOutput = {
           issue: state.issue!,
@@ -2766,13 +2759,16 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           judged: false,
           review: null,
         };
-        // Read once here, so the review's prompt and data come from state alone.
-        const diff: RunDiff | null =
-          reviewChanges && settle === "complete" && state.filesOnly !== true && commits.verified && commits.count > 0
-            ? (read ?? (await readRunDiff(state.workspacePath!, state.baseRef, state.baseCommit)))
-            : null;
-        await ctx.sequencer!.patchState({ decided: { settle, output, changes: commits, diff, reviewed: null, checks } });
-        return judgeInput;
+        // Read once here, so the review's prompt and data come from state alone and the judge sees this read.
+        const reviewable =
+          reviewChanges && settle === "complete" && state.filesOnly !== true && commits.verified && commits.count > 0;
+        const judgeable = judgeInput !== null && state.filesOnly !== true && commits.verified;
+        const read: RunDiff | null =
+          reviewable || judgeable ? await readRunDiff(state.workspacePath!, state.baseRef, state.baseCommit) : null;
+        await ctx.sequencer!.patchState({
+          decided: { settle, output, changes: commits, diff: reviewable ? read : null, reviewed: null, checks },
+        });
+        return judgeInput === null ? null : { ...judgeInput, diff: read?.verified === true ? read : null };
       };
       // A run of kept files alone has no branch, so nothing on one to review: a verified none.
       const commitsOf = (): Promise<RunCommits> =>
@@ -2947,21 +2943,15 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           // run gets one) has read it: only a board read from the claim, and
           // only a task with a goal to read the answer against.
           const commits = await commitsOf();
-          const judged = judge !== undefined && state.claim !== null && (state.goal ?? "").trim() !== "";
-          // The judge reads what the commits changed, read once and kept for the review too.
-          const diff =
-            judged && state.filesOnly !== true && commits.verified
-              ? await readRunDiff(state.workspacePath!, state.baseRef, state.baseCommit)
+          const judgeInput =
+            judge !== undefined && state.claim !== null && (state.goal ?? "").trim() !== ""
+              ? {
+                  goal: state.goal!,
+                  answer: handle.finalMessage === null ? null : handle.finalMessage.slice(0, MAX_ANSWER_CHARS),
+                  commits: { count: commits.count, subjects: commits.subjects },
+                }
               : null;
-          const judgeInput = judged
-            ? {
-                goal: state.goal!,
-                answer: handle.finalMessage === null ? null : handle.finalMessage.slice(0, MAX_ANSWER_CHARS),
-                commits: { count: commits.count, subjects: commits.subjects },
-                diff: diff?.verified === true ? diff : null,
-              }
-            : null;
-          return keep("complete", commits, judgeInput, verdict.checks ?? null, diff);
+          return keep("complete", commits, judgeInput, verdict.checks ?? null);
         }
       }
 

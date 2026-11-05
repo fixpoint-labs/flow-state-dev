@@ -11,10 +11,6 @@
  * question to the person that names the goal and quotes the start of the
  * answer, since a person can only judge what they can see.
  *
- * The model reads the goal, the answer, the run's commits and the files they
- * changed, so a change the goal asks for is judged on the branch, not on a
- * commit subject.
- *
  * The model is a string the flow's model resolver resolves through its
  * evaluation hook; a check scripts it through the same resolver.
  */
