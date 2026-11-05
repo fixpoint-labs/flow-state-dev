@@ -26,7 +26,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 | | |
 |---|---|
-| **Instead of** | An id filter on the session request list (FIX-2043's proposal, and the epic's "reuses `withListedResult`"), or a new route that returns one request's result |
+| **Instead of** | An id filter on the session request list (FIX-2043's proposal, and the epic's first draft, which reused `withListedResult`), or a new route that returns one request's result |
 | **Because** | The status route already loads the one record by id and checks the caller reaches it and the addressed flow owns it. The flag reuses the list's name and the result's wire shape, so one request reads the same in both places. The list filter keeps a session-scoped read with paging and needs the session id; a new route repeats the reach check for the same record, which [FIX-1661 D1](../FIX-1661/DECISIONS.md#d1) rejected as a second read for one fact (tenet 5) |
 | **Locks in** | `include_result_output` on `GET …/requests/:requestId/status`, and an optional `result` on `RequestStatusSnapshot`, are public HTTP and type surface. Without the flag the snapshot stays as it is, so `wait()`'s polls stay small. FIX-2460's `testFlow` answer helper settles through the same read, in process, so the flag and field are its seam as well |
 
@@ -96,6 +96,11 @@ It comes down to FIX-2367's rule: a read hook beside `useSubscription` is a seco
 
 ## Settled
 
+- **The adopter path is read-by-request-id** (the owner's answer to the epic review's
+  implementer note, Nov 5). The primary path an app is shown, in docs, READMEs and the
+  migrated copies, is `result()` over the status route by id. List-and-find through
+  `withListedResult` is not an adopter path: the session list keeps its flag for list views
+  only. D1 already encodes this; it is recorded here so the implementer does not re-derive it.
 - **The counts** — **CONFIRMED** by [`poc/output-read-census/`](poc/output-read-census/census.mjs)
   on `main` at d6a38c09: 6 output reads by list-and-find (four packages, two labs), 1 list view
   (the DevTool's rows), 5 files with a hand-rolled status loop. Every site is classified, and
