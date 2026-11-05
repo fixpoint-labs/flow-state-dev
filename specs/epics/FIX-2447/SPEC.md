@@ -103,7 +103,7 @@ PR after this one merges.
 | **P3** | | | |
 | FIX-2461 | Examples and Kitchen Sink that run when copied out, and say true things | *First hour*, past the quick start | Backlog · spec route |
 | FIX-2462 | Task-collection methods written once over storage primitives, building on FIX-2056's task primitive | *One path* inside orchestration. Trigger fired: no export win, so it folds into FIX-2459, which builds it; this spec is the retained design ([D1](DECISIONS.md#d1)) | Backlog · spec route · **folded into FIX-2459**, closes on the spec-set merge |
-| FIX-2463 | Entry names are documented strings, refused at hire; workforce's five `*_ENTRY` constants go private. No new primitive | *Surface*: no `*_ENTRY` constant on a root (core's and orchestration's move with FIX-2448 and FIX-2459). Trigger fired; the narrowed child stays, pending the owner ([D1](DECISIONS.md#d1)) | Backlog · spec route |
+| FIX-2463 | Entry names are documented strings, refused at hire; workforce's five `*_ENTRY` constants go private. No new primitive | *Surface*: no `*_ENTRY` constant on a root (core's and orchestration's move with FIX-2448 and FIX-2459). Trigger fired; the narrowed child stays, pending the owner ([D1](DECISIONS.md#d1)) | Backlog · spec route · blocked by FIX-2448 (no longer by FIX-2459) |
 | FIX-2554 | Scope state applies its schema's defaults on load; about 20 `?? default` fallbacks and 5 helpers such as `pinnedOf` go | *Types*: the type already promises the default | Backlog · **direct** (Bug) |
 | FIX-2562 · closure · **required** | FIX-2564's manifest run whole on one pinned `main`, each team's journey, every child's goal check the manifest doesn't cover, the seam sweep | The only child that proves the goal | Backlog · blocked by every other child |
 
@@ -126,8 +126,8 @@ child waits on it. FIX-2448's first PR is the export check, as a ratchet on toda
 flowchart LR
   A["FIX-2448 · core root split"] -->|"core/internal and the export check"| B["FIX-2449 · engine root"]
   A -->|"the core/harness subpath"| H["FIX-2458 · harness contract"]
-  A -->|"a cleaned core root"| P["FIX-2463 · entry names at hire"]
-  O["FIX-2459 · orchestration surface · method table"] -->|"orchestration/internal"| P
+  A -->|"the import census"| P["FIX-2463 · entry names at hire"]
+  O["FIX-2459 · orchestration surface · method table"]
   R["FIX-2450 · one answer call"] -->|"the one verb"| T["FIX-2460 · testing"]
   G["FIX-2451 to 2457, 2461, 2554 · no hand-off"]
   Q["FIX-2564 · goal legs · expected-fail"] -->|"the legs and the manifest"| C
@@ -136,6 +136,7 @@ flowchart LR
   B --> C["FIX-2562 · closure · required"]
   H --> C
   P --> C
+  O --> C
   T --> C
   G --> C
 ```
