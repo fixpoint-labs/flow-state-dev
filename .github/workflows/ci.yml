@@ -190,9 +190,27 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      # A real Postgres for store-postgres's multi-connection cases (PGlite is
+      # one connection, so it cannot overlap two statements). Like the Redis
+      # cases, they fail rather than skip when `CI` is set and
+      # `FSD_TEST_POSTGRES_URL` is not. Pinned by tag and digest; see
+      # "Postgres in CI" in docs/contributing/development-setup.md.
+      postgres:
+        image: postgres:16.12@sha256:23af655ba1ddf74eaa002e3deaf5fce022ab8791672336a7c1fb0ef2d57efb7f
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fsd_test
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
 
     env:
       REDIS_URL: redis://127.0.0.1:6379
+      FSD_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/fsd_test
 
     steps:
       - uses: actions/checkout@v4

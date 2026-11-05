@@ -46,6 +46,7 @@ createContentStoreConformanceTests({
 
 createResourceStateStoreConformanceTests({
   name: "SQLiteResourceStateStore",
+  indexes: true,
   createStore: () => {
     const db = freshDb();
     const store = createSQLiteResourceStateStore(db);
@@ -238,5 +239,34 @@ describe("SQLite resource_state versioning migration", () => {
     expect(row.version).toBe(1); // retained
     expect(JSON.parse(row.state)).toEqual({}); // payload dropped
     check.close();
+  });
+});
+
+/**
+ * Index entries commit with their row or not at all. The shared conformance
+ * suite cannot make the entry write fail; here it fails for real, because its
+ * table is gone, and the row must not be there afterwards.
+ */
+describe("SQLite resource state: a row and its index entries commit together", () => {
+  const entries = { indexEntries: [{ collection: "work/**", index: "byId@1", values: ["a"] }] };
+
+  it("leaves no row behind when its entries cannot be written", async () => {
+    const db = freshDb();
+    const store = createSQLiteResourceStateStore(db);
+    db.exec("DROP TABLE resource_index");
+    await expect(store.set("session", "s1", "work/k", { n: 1 }, 0, entries)).rejects.toThrow();
+    await expect(store.set("session", "s1", "work/j", { n: 1 }, "any", entries)).rejects.toThrow();
+    expect(await store.getAll("session", "s1")).toEqual({});
+    db.close();
+  });
+
+  it("keeps the row live when its tombstone's entries cannot be removed", async () => {
+    const db = freshDb();
+    const store = createSQLiteResourceStateStore(db);
+    await store.set("session", "s1", "work/k", { n: 1 }, 0, entries);
+    db.exec("DROP TABLE resource_index");
+    await expect(store.delete("session", "s1", "work/k", 1)).rejects.toThrow();
+    expect(await store.get("session", "s1", "work/k")).toEqual({ state: { n: 1 }, version: 1 });
+    db.close();
   });
 });

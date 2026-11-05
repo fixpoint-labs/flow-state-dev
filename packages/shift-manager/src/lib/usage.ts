@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { HarnessUsageLevel } from "@flow-state-dev/core/types";
 import { ActionRefused, runAction } from "./action";
-import { newSessionId } from "./ids";
+import { newSessionId, USAGE_SESSION_PREFIX } from "./ids";
 import { useLab } from "./lab-data";
 import { describeFailure, readerSessionId, type Failure } from "./reads";
 import type { Client } from "@flow-state-dev/client";
@@ -69,9 +69,6 @@ function usageFlowOf(client: Client, action: string = HARNESS_USAGE_ACTION): Pro
   }
   return found;
 }
-
-/** The prefix of the usage session opened when the user's one reader id is another organization's. */
-const USAGE_SESSION_PREFIX = "usage-own";
 
 /**
  * Run the query on the user's reading session on `flow`. Session ids are not

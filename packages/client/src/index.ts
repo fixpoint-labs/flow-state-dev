@@ -17,6 +17,7 @@ export {
   type ListCollectionItemsOptions,
   type ListSessionRequestsOptions,
   type ListSessionsOptions,
+  type SessionListInclude,
   type RequestHandle,
   type RequestStreamOptions,
   type ResourceContentResponse,

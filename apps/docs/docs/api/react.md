@@ -195,6 +195,47 @@ useSubscription([topic.session(sessionId, { resource: "tasks" })], refresh, { po
 
 Returns nothing. It doesn't read on mount.
 
+### `useSessionList(options)`
+
+A flow's sessions, kept current. Use it to draw your own list of conversations, with each one's state.
+
+```tsx
+import { useSessionList, sessionLabel, sessionRowState } from "@flow-state-dev/react";
+
+function Conversations({ onPick }: { onPick: (id: string) => void }) {
+  const { sessions, isLoading, error, refresh } = useSessionList({ flowKind: "support" });
+
+  if (error) return <button onClick={refresh}>Retry: {error}</button>;
+  if (isLoading && sessions.length === 0) return <p>Loading…</p>;
+
+  return (
+    <ul>
+      {sessions.map((session) => (
+        <li key={session.id}>
+          <button onClick={() => onPick(session.id)}>{sessionLabel(session)}</button>
+          {sessionRowState(session)?.label}
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+| Option | Type | Notes |
+|--------|------|-------|
+| `flowKind` | `string` | Every session of a flow kind. |
+| `flowId` | `string` | One copy of a collection flow, by its exact id. |
+| `includeDispatchRuns` | `boolean` | Also list the sessions dispatchers ran work in. Default `false`. |
+| `includeStatus` | `boolean` | Ask for each row's `requestStatus`. Default `true`. |
+| `enabled` | `boolean` | `false` reads nothing and holds nothing. Default `true`. |
+| `client` | `SessionListClient` | Your own client. It needs `sessions.list`, and `subscribe` to stay current. Pass a stable reference. Default: the provider's client. |
+
+Returns `{ sessions, isLoading, error, refresh }`. `sessions` is a `SessionSummary[]`, newest first; `error` is a message string or `null`; `refresh()` reads again now.
+
+It reads on mount, again on each `"run"` notice on [`topic.user()`](/docs/api/client#fsdsubscribetopics-options), and again when the page becomes visible. A session created or changed in another tab, a script or a CLI run shows up without a reload. A change from another server process arrives at once only on a [bus that crosses processes](/guides/realtime#one-process-several-processes); otherwise it shows up at the next read, such as when the page next becomes visible. A client without `subscribe` reads once. The rows are the ones [`sessions.list`](/docs/api/client#sessionslistoptions) returns.
+
+`sessionLabel(session)`, `sessionRowState(session)` and `sessionAge(updatedAt, now)` are the helpers `FlowNavigator` draws its rows with, so your list can say the same things. `sessionLabel` gives the title, or a shortened id. `sessionRowState` gives `{ status, label, mark, needsYou }` or `null`; see [the navigator's session rows](/docs/workforce/ui#session-rows) for which states it covers. `sessionAge` gives `now`, `4m`, `3h`, `2d` or `5w`.
+
 ### `useJumpToLatest(options?)`
 
 Scrolls a conversation the way ChatGPT and Claude do. When the person sends a line, the line rises to near the top of the view and the reply streams in under it, where they can read it. After that the view stays where it is until the reader moves it.
