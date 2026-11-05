@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, what keeps the first hour green after the epic wraps. Chosen: the legs and journeys gate every PR in the packed-install job. Instead of: a non-gating job on main. It comes down to the first row: when a regression is seen. Gating sees it before the merge, in the PR that caused it; the main job sees it after the merge, only if someone reads it. The price is the second row: every PR pays the legs' minutes, where the main job costs PRs nothing. The third row is a tie: both run on the same packed install. Locks in: the legs live inside the job's 20-minute budget, and a flaky leg blocks merges. Flips if the legs push the job past its budget or flake on a clean commit; then they gate the release instead."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, what keeps the first hour green after the epic wraps. Chosen: the passing legs and journeys fold into the packed-install job's checks and gate every PR, and the manifest is deleted. Instead of: keeping the manifest as a non-gating job on main. It comes down to the first row: when a regression is seen. Gating sees it before the merge, in the PR that caused it; the main job sees it after the merge, only if someone reads it. The price is the second row: every PR pays the legs' minutes, where the main job costs PRs nothing. The third row is a tie: both run on the same packed install. Locks in: the legs live inside the job's 20-minute budget, a flaky leg blocks merges, and the manifest and its workflow are deleted. Flips if the legs push the job past its budget or flake on a clean commit; then they gate the release instead."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -42,10 +42,10 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">The legs and journeys gate every PR</text>
+    <text class="t-h c-code" x="228" y="112">Fold into CHECKS, gate every PR</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">A non-gating job on main</text>
+    <text class="t-h c-lost" x="592" y="112">Keep the manifest, a job on main</text>
   </g>
 
   <g id="row-decides">
@@ -88,7 +88,7 @@
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
     <text class="t-b" x="32" y="371">The legs live inside the job's 20-minute budget</text>
-    <text class="t-s" x="32" y="389">a flaky leg is fixed, never retried green</text>
+    <text class="t-s" x="32" y="389">a flaky leg is fixed, never retried green; the manifest goes</text>
   </g>
 
   <g id="flips-if">
