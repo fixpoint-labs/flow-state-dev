@@ -92,15 +92,14 @@ export function sameDelegate(a: DelegateRef, b: DelegateRef): boolean {
 
 /** The conversation's list as it stands, or the defaults when it was never set. */
 export function currentDelegates(state: Readonly<Record<string, unknown>>, defaults: DelegateDefaults): DelegateList {
-  const parsed = delegateSessionStateSchema.partial().safeParse(state);
-  const stored = parsed.success ? parsed.data : {};
-  if (stored[DELEGATES_STATE] === null || stored[DELEGATES_STATE] === undefined) {
+  const delegates = state[DELEGATES_STATE] as DelegateRecord[] | null;
+  if (delegates === null) {
     return {
       delegates: [...defaults.delegates.map((worker) => ({ worker })), ...(defaults.records ?? []).map((record) => ({ ...record }))],
       fallback: defaults.fallback === undefined ? null : { worker: defaults.fallback }
     };
   }
-  return { delegates: stored[DELEGATES_STATE], fallback: stored[FALLBACK_STATE] ?? null };
+  return { delegates, fallback: state[FALLBACK_STATE] as DelegateRef | null };
 }
 
 /** A change to a conversation's delegates. */
