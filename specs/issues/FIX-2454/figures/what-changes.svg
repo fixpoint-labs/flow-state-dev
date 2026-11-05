@@ -1,0 +1,89 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="A grid of retired names. Rows: a value, a config key, a stored shape. Columns: never on npm, and on npm. Today the never-on-npm column holds 10 refusals of keys and 9 readers of stored shapes that no adopter could reach; after, it is empty, deleted. On npm, today a retired value such as human_approval runs silently as a custom reason, six keys are refused each in its own words, and one task-row shape is read while a stored human_approval stop is not. After, all ten go through one helper and one table per package, each with its replacement and a removal version, and the stored stop is read as a user's stop."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; --gone-soft:#F4E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; --gone-soft:#3A1F1D; } }
+    .bg    { fill:var(--surface); }
+    .head  { fill:var(--surface-2); }
+    .cell  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .gone  { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .bug   { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.8; }
+    .after { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-c   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="columns">
+    <rect class="head" x="172" y="14" width="300" height="40" rx="5"/>
+    <text class="t-lbl" x="188" y="31">NEVER ON NPM</text>
+    <text class="t-s" x="188" y="46">no published version accepted or wrote it</text>
+    <rect class="head" x="488" y="14" width="436" height="40" rx="5"/>
+    <text class="t-lbl" x="504" y="31">ON NPM</text>
+    <text class="t-s" x="504" y="46">a published version accepted or wrote it</text>
+  </g>
+
+  <g id="row-value">
+    <text class="t-lbl" x="16" y="88">A VALUE</text>
+    <text class="t-s" x="16" y="104">human_approval</text>
+    <text class="t-s" x="16" y="118">backing "sequencer"</text>
+    <rect class="cell" x="172" y="68" width="300" height="94" rx="5"/>
+    <text class="t-s" x="188" y="120">none today</text>
+    <rect class="bug" x="488" y="68" width="210" height="94" rx="5"/>
+    <text class="t-g" x="502" y="86">TODAY · 3</text>
+    <text class="t-b" x="502" y="106">human_* runs silently</text>
+    <text class="t-s" x="502" y="124">a custom reason, no Inbox item</text>
+    <text class="t-s" x="502" y="140">the other two: own wording</text>
+    <rect class="after" x="714" y="68" width="210" height="94" rx="5"/>
+    <text class="t-c" x="728" y="86">AFTER</text>
+    <text class="t-b" x="728" y="106">Refused by the helper</text>
+    <text class="t-s" x="728" y="124">replacement and removal version</text>
+  </g>
+
+  <g id="row-key">
+    <text class="t-lbl" x="16" y="196">A CONFIG KEY</text>
+    <text class="t-s" x="16" y="212">dispatcher, onReview,</text>
+    <text class="t-s" x="16" y="226">workforce agents</text>
+    <rect class="gone" x="172" y="176" width="300" height="94" rx="5"/>
+    <text class="t-g" x="188" y="194">TODAY · 10 · DELETED</text>
+    <text class="t-b" x="188" y="214">Refusals no adopter can reach</text>
+    <text class="t-s" x="188" y="232">middleware, work, hopLimit, expectAttempt…</text>
+    <text class="t-s" x="188" y="248">six refused in their first published version</text>
+    <rect class="cell" x="488" y="176" width="210" height="94" rx="5"/>
+    <text class="t-lbl" x="502" y="194">TODAY · 6</text>
+    <text class="t-b" x="502" y="214">Each in its own words</text>
+    <text class="t-s" x="502" y="232">agents, catalog: literal types</text>
+    <rect class="after" x="714" y="176" width="210" height="94" rx="5"/>
+    <text class="t-c" x="728" y="194">AFTER</text>
+    <text class="t-b" x="728" y="214">One error, one table</text>
+    <text class="t-s" x="728" y="232">no literal types</text>
+  </g>
+
+  <g id="row-shape">
+    <text class="t-lbl" x="16" y="304">A STORED SHAPE</text>
+    <text class="t-s" x="16" y="320">a task row, a stop,</text>
+    <text class="t-s" x="16" y="334">session state</text>
+    <rect class="gone" x="172" y="284" width="300" height="100" rx="5"/>
+    <text class="t-g" x="188" y="302">TODAY · 9 · DELETED</text>
+    <text class="t-b" x="188" y="322">Readers for rows nobody stored</text>
+    <text class="t-s" x="188" y="340">six task-row shapes, the waitForUser</text>
+    <text class="t-s" x="188" y="356">resume map, two workforce state keys</text>
+    <rect class="cell" x="488" y="284" width="210" height="100" rx="5"/>
+    <text class="t-lbl" x="502" y="302">TODAY · 1</text>
+    <text class="t-b" x="502" y="322">blocked reads as held</text>
+    <text class="t-s" x="502" y="340">a stored human_* stop: unread</text>
+    <rect class="after" x="714" y="284" width="210" height="100" rx="5"/>
+    <text class="t-c" x="728" y="302">AFTER</text>
+    <text class="t-b" x="728" y="322">Read through the table</text>
+    <text class="t-s" x="728" y="340">the stored stop is a user's (D1)</text>
+    <text class="t-s" x="728" y="356">each with a removal version</text>
+  </g>
+</svg>
