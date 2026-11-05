@@ -81,8 +81,9 @@ export {
   type FinishedTask,
   type FinishedTasksAnswerAgainOptions
 } from "./conversation-board/take-finished";
-// A delegate's answer, as its message item marks it (FIX-2378).
+// A delegate's answer, as its message item marks it (FIX-2378), and a completed task's answer text.
 export {
+  answerTextOf,
   delegateAnswerMetadata,
   delegateAnswerOf,
   type DelegateAnswer

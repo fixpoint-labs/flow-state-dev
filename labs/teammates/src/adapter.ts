@@ -58,6 +58,7 @@ import {
 import { isSuspensionWait, type OutputItem } from "@flow-state-dev/core/items";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
+  answerTextOf,
   createWorkforceClient,
   delegateAnswerOf,
   RECEIVED_MESSAGE_COMPONENT,
@@ -143,7 +144,7 @@ export interface BoardTask {
    * actions follow this one, since the board decides by it.
    */
   boardStatus: string;
-  /** What the run reported when it completed. */
+  /** What the run reported when it completed: a teammate's text answer, or a coding run's `answer`. Absent when blank. */
   result?: string;
   /** Why it failed, or the reason it was cancelled with, when the row says one. */
   error?: string;
@@ -616,7 +617,8 @@ export function toBoardTask(
   const error = typeof row.error === "string" ? row.error : undefined;
   const status: BoardTask["status"] =
     row.status === "completed" ? "done" : row.status === "errored" ? "failed" : row.status === "cancelled" ? "cancelled" : "running";
-  const answer = typeof row.output?.answer === "string" ? row.output.answer : undefined;
+  // A teammate's answer is the output as is; a coding run's is its output's `answer`. Blank is none.
+  const answer = answerTextOf(row.output);
   // One read of the row as orchestration's task-row view: its folded spend, and its oldest open hold.
   const view = typeof row.id === "string" && typeof row.status === "string" ? taskRowView({ ...row, board: row.board ?? "" } as InboxRow, holds) : null;
   const spend = view?.spend ?? null;

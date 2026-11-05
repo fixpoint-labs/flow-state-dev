@@ -97,6 +97,7 @@ export type {
   RemovedWorktree,
   RemoveOptions,
   RemoveTarget,
+  RepositoryCheckResult,
   WorkspaceHost,
   WorkspacePlace,
 } from "./local-host";
