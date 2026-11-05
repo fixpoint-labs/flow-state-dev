@@ -2,7 +2,7 @@
  * A coding task's run shows while it runs. The run links itself to its row on
  * its own session, so the conversation's own stream hears of the link only
  * when the task ends; until then the popup would show nothing, and then every
- * step at once. The link is a board change (FIX-2429): `watchTasks` reads the
+ * step at once. The link is a board change: `watchTasks` reads the
  * board on each notice of the conversation's board, and on a timer only where
  * push can miss a change (`client.subscribe` owns that timer).
  */

@@ -3,12 +3,12 @@
 /**
  * Flow State mode's failed turn: the engine's `error` item drawn as the
  * registry's request-recovery line, with Retry on the request the session
- * will retry (specs/issues/FIX-2559).
+ * will retry.
  *
  * An item renderer is handed only its item, so the chat panel decides which
- * request gets a Retry and hands that down through `FailedTurnRetryProvider`
- * (D1). `useFailedTurnRetry` is that decision, and the page's error box reads
- * its `shownError` so a refused retry, already on the line, shows once (E1).
+ * request gets a Retry and hands that down through `FailedTurnRetryProvider`.
+ * `useFailedTurnRetry` is that decision, and the page's error box reads its
+ * `shownError` so a refused retry, already on the line, shows once.
  */
 
 import { createContext, useCallback, useContext, useState } from "react";
@@ -48,10 +48,8 @@ type RetrySession = Pick<
  * still shows.
  *
  * A request gets Retry when it is the session's newest, its status is
- * `failed`, and no turn runs (D2): `resumeLatestRequest` retries that request
- * and does nothing for any other. A retry the server refuses sets
- * `session.error` and rejects; the line reports the rejection, so
- * `shownError` leaves that one error out.
+ * `failed`, and no turn runs: `resumeLatestRequest` retries only that one.
+ * A refused retry is reported on the line, so `shownError` leaves it out.
  */
 export function useFailedTurnRetry(session: RetrySession): {
   retryFor: RetryFor;

@@ -1,5 +1,5 @@
 /**
- * The engine's half of the board-notice seam (FIX-2429): a task board's
+ * The engine's half of the board-notice seam: a task board's
  * change, named by orchestration as a session and a board, published on the
  * running request's bus.
  *

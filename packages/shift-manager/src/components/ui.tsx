@@ -12,6 +12,7 @@ import { ArrowDownIcon } from "lucide-react";
 import type { JumpToLatest } from "@flow-state-dev/react";
 import type { Column } from "../lib/columns";
 import type { ShiftStatus } from "../lib/derive";
+import { clockTime } from "../lib/shell";
 import type { Failure } from "../lib/reads";
 import { cn } from "../lib/utils";
 
@@ -221,19 +222,13 @@ export function Meta({
 
 /**
  * Classes for counts while a read the user asked for runs (`useLab().asking`):
- * dimmed until it lands. A read nobody asked for gives no sign (FIX-2409 D2).
+ * dimmed until it lands. A read nobody asked for gives no sign.
  */
 export const ASKING_CLASS = "opacity-60 transition-opacity";
 
-/** `ms` as the hour and minute of the local day, `14:02`. */
-export function clockTime(ms: number): string {
-  const at = new Date(ms);
-  return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
-}
-
 /**
  * When the snapshot was last read, *as of 14:02 · refresh*, never that it is
- * live (FIX-2409 D1). *refresh* reads the Lab now, as R does.
+ * live. *refresh* reads the Lab now, as R does.
  */
 export function AsOf({ readAt, onRefresh, testId }: { readAt: number; onRefresh: () => void; testId?: string }) {
   return (

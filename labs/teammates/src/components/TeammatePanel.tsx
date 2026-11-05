@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { ChevronRightIcon, TerminalIcon } from "lucide-react";
 import type { BoardTask, LabAdapter, WorkerRow } from "../adapter";
 import type { Look } from "../lib/looks";
-import { useNow, useWatch } from "../lib/use-watch";
+import { useNow, useStale, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { STALE_CLASS } from "./flow-state/connection-banner";
@@ -10,7 +10,6 @@ import { costAmount, tokenCount } from "./flow-state/spend";
 import { TaskTime, taskCounts, taskSignal, type TaskSignalKind } from "./flow-state/task-signals";
 import { runsOn, taskLabel, taskLine, type Popup } from "./Popups";
 import { InstructionsForm } from "./TeammateForms";
-import { useStale } from "./WorkersList";
 
 /** The heading over each of the panel's sections. */
 const HEADING = "font-mono text-[10px] tracking-widest text-muted-foreground uppercase";

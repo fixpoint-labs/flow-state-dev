@@ -19,8 +19,7 @@ const FINISHED: ReadonlySet<TaskStatus> = new Set(["completed", "errored", "canc
 /**
  * The right pane: the main session's background tasks. A row opens the task's
  * work in a sheet over the main thread, and the sheet's action row changes the
- * task on its board (FIX-2382 D1, which amends FIX-2153 D2's read-only pane):
- * Cancel, Steer, Release or Retry, by its status. Asking the main session to
+ * task on its board: Cancel, Steer, Release or Retry, by its status. Asking the main session to
  * stop or steer a task still works too. Running and waiting tasks show as
  * cards; finished ones fold into a *Done* group, collapsed until you open it,
  * or until the open task is one of them: then it opens, and the marked row
