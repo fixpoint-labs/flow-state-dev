@@ -62,7 +62,7 @@ It comes down to the readers: a status changes every board reader, a hold kind c
 |---|---|
 | **Instead of** | Completing it (the issue's other option) · failing it (`errored`) |
 | **Because** | `completed` tells the filer, the board and the task notice that the work was delivered, and it wasn't. `errored` says the run broke. Closing a PR is a person's choice to drop the work, which is what a cancel records, with the reason *its pull request was closed without merging*. The manager ends a claim-board refusal as `errored` today because "a cancel there reaches nobody" (`manager.ts` ~1222); this cancel is not a refusal of the run, it reports a person's act, and the task notice carries it to the filer. The claim holder cancels through `board.cancel(id, reason, { claim })`. A cancel also ends the task's subscriptions (`task_cancelled`) |
-| **Locks in** | A closed PR's task is `cancelled`, with that reason. Reopening the PR does not reopen the task; the person files the work again |
+| **Locks in** | A task whose PRs all closed without merging is `cancelled`, with that reason; if any of them merged, some work landed and the task completes, with the closed ones noted (Gitar, round 2). Reopening the PR does not reopen the task; the person files the work again |
 
 ![D2: cancelled, chosen, beside completed. Decides it: what the filer is told. Flips if a closed PR usually means the work landed another way](figures/d2-closed-cancels.svg)
 
@@ -121,6 +121,8 @@ graded, and legs for an unreadable PR, a delivered message, a restart, and a sec
 ## Notes from review
 
 Round 1 (2026-11-05): Codex, one finding, folded inline as a correction: the first settle reads every PR the task owns, closed ones included, so D2 holds when a PR closes before the run ends.
+
+Round 2 (2026-11-05): Gitar, one finding, folded inline as a correction: a task with one PR merged and one closed unmerged completes, with the closed one noted; only all closed unmerged cancels (D2, SPEC → What changes).
 
 Round 1, Cursor (simplify, approved), recorded for the implementer:
 

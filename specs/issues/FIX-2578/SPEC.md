@@ -134,11 +134,12 @@ The calling code, in each coding host:
 - **harness-manager: `awaitPullRequests`**, off by default. At the settle, after the judge and
   the review, the manager takes every PR in the record stamped with one of this task's requests,
   whatever state it was seen in, and decides as on a wake (below). Any still open holds the task
-  on one `external` hold listing those PRs, instead of completing; one already closed unmerged
-  with none open cancels it here. On the turn the hold's release owes, the manager reads each PR
+  on one `external` hold listing those PRs, instead of completing; all already closed unmerged
+  cancels it here. On the turn the hold's release owes, the manager reads each PR
   first ([D3](DECISIONS.md#d3)): **all merged**
-  completes the task with its PRs on the output, with no harness run; **any closed unmerged, none
-  open** cancels it ([D2](DECISIONS.md#d2)); **any open** runs the steer on the same coding
+  completes the task with its PRs on the output, with no harness run; **none open, some merged**
+  completes it the same way, with the closed ones noted on the output; **all closed unmerged**
+  cancels it ([D2](DECISIONS.md#d2)); **any open** runs the steer on the same coding
   session, and the run's end comes back to the same check; **unreadable** runs the steer and
   holds again, with a status note. FIX-2543's Accept → Open a PR enters the same wait.
 - **workspace: the PR read** is `pullRequestHead`'s fetch of `repos/{owner}/{repo}/pulls/<n>`,
