@@ -118,7 +118,7 @@ page. The method table has no docs impact.
 
 | The debt | |
 |---|---|
-| **Removes** | 222 duplicate paths; about 60 first-party-only names from public view; unread, undocumented exports; `topologicalClaimOrder`; two public collection constructors; patterns' copy of the `taskBoard` docs; two false dependency claims; the second copy of 38 method bodies and one of two decline forms |
+| **Removes** | 222 duplicate paths; orchestration's own `camelToKebab`, which collides with `contracts/helpers`' copy (FIX-2449's collision check), replaced by a re-export or dropped; about 60 first-party-only names from public view; unread, undocumented exports; `topologicalClaimOrder`; two public collection constructors; patterns' copy of the `taskBoard` docs; two false dependency claims; the second copy of 38 method bodies and one of two decline forms |
 | **Adds** | One `./internal` entry to keep. An internal storage interface and a source test. A `"topological"` row in orchestration's retired table until its removal version (epic D3). With Q1's alias option, deprecated aliases for a minor |
 | **Leaves** | `delivery.passEntry`, a typed option only workforce sets ([Decided](DECISIONS.md#decided-not-asked)). Workforce's wrapper re-runs filing checks before it reserves chain room, so seven filing names stay behind `./internal` |
 

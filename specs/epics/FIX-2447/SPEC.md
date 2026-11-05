@@ -65,7 +65,7 @@ day FIX-2564 merges. 0 of 6 today.
 
 ## What's in the box
 
-![In the box: what an app author imports. Curated package roots, one call per job, a quick start that runs, no tracker ids. Composed in by the adopter who goes further: named public subpaths, documented and semver-covered, such as core/harness, engine/host, testing/benchmark, the stores' advanced entry, and orchestration/tasks as today. Behind a fence: internal subpaths, published for our own packages only and outside semver, and workspace-only entries for repo tests. Not built: the review's unfiled items](figures/end-state.svg)
+![In the box: what an app author imports. Curated package roots, one call per job, a quick start that runs, no tracker ids. Composed in by the adopter who goes further: named public subpaths, documented and semver-covered, such as core/harness, engine/host, testing/benchmark, each store's /host entry, and orchestration/tasks as today. Behind a fence: internal subpaths, published for our own packages only and outside semver, and workspace-only entries for repo tests. Not built: the review's unfiled items](figures/end-state.svg)
 
 The top band is the whole adopter promise. The middle band is opt-in and documented. The fence is
 [D2](DECISIONS.md#d2): what sits behind it is ours, and says so in its path.
@@ -176,7 +176,7 @@ blocks the closure in Linear.
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
-| Public subpaths: `core/harness`, `engine/host`, `testing/benchmark`, `patterns/benchmark`, `react/workforce`, each store's `./advanced` | Each package's `exports` map; core already has 13 subpaths. Orchestration's `./tasks`, already the browser-safe entry | Extends the maps. No new package, and no second browser entry for orchestration |
+| Public subpaths: `core/harness`, `engine/host`, `testing/benchmark`, `patterns/benchmark`, `react/workforce`, each store's `./host` | Each package's `exports` map; core already has 13 subpaths. Orchestration's `./tasks`, already the browser-safe entry | Extends the maps. No new package, and no second browser entry for orchestration |
 | `/internal` in core, engine, orchestration, react, contracts | `client/./internal`; core's `./items/internal` | Reuse of that kind ([D2](DECISIONS.md#d2)); one hidden entry per package |
 | An export-surface check (FIX-2448, FIX-2449) | `mechanism-exports.mjs`'s `packageExports`; FIX-2162's caller census | Extends both; not Fallow, whose graph is workspace dead code, not outside consumers |
 | A tracker-id rule (FIX-2453), a `ctx as never` ban (FIX-2457), a refusal-expiry check (FIX-2454) | ESLint's `no-restricted-syntax`; the ad-hoc refusal helpers | One custom rule; the ban is config; the expiry lives in the shared refusal helper |
@@ -189,7 +189,7 @@ blocks the closure in Linear.
 | The debt | |
 |---|---|
 | **Removes** | The harness vertical and seams on core's root, engine's `export *`, four output-polling copies, the hand-copied jump buttons, two claim orders, a second copy of 38 collection methods, 196 casts, about 20 default fallbacks and 5 helpers, the never-published shims, four package markers, the hand sync of Kitchen Sink's 43 registry copies, which stay and gain one refresh command (FIX-2461; an adopter's installed components are owned copies by design), the ad-hoc refusal helpers |
-| **Adds** | Seven public subpaths (`core/harness`, `engine/host`, `testing/benchmark`, `patterns/benchmark`, `react/workforce`, two stores' `./advanced`) and five `/internal` ones, each an entry to keep; one export check and one lint rule; three packed-install legs and their manifest, until the wrap; `sent.result()`. With Q1's alias option, deprecated aliases for a minor or two |
+| **Adds** | Seven public subpaths (`core/harness`, `engine/host`, `testing/benchmark`, `patterns/benchmark`, `react/workforce`, two stores' `./host`) and five `/internal` ones, each an entry to keep; one export check and one lint rule; three packed-install legs and their manifest, until the wrap; `sent.result()`. With Q1's alias option, deprecated aliases for a minor or two |
 | **Leaves** | The unfiled review items above, and the eleven published roots outside the set, held at their ratchet baseline |
 
 **Net: down.** The adopter surface shrinks and four duplicated mechanisms become one each. The
