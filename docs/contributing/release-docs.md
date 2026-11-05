@@ -46,13 +46,20 @@ gate, put `apps/docs/` and `packages/*/README.md` under CODEOWNERS.
 3. **Review the docs PR** as a new user would: read the changed pages end to end. Merge it.
 4. **The Version Packages PR rebuilds** from `main` and its check goes green. A changeset merged after
    the docs pass turns it red again; run `/release-docs` once more and it covers only the new ones.
-5. **Merge the Version Packages PR.** Packages publish, and the docs site deploys to production on
-   that commit, so the live docs change when the packages do.
+5. **Merge the Version Packages PR.** `release.yml` publishes the packages, then triggers the docs
+   production deploy, so the live docs change when the packages are installable.
 
-Between steps 3 and 5, `main` holds docs for packages that haven't published. Production skips every
-docs deploy while that's true: while any changeset in `apps/docs/release-docs.json` is still a
-pending file in `.changeset/` (`apps/docs/scripts/vercel-ignore-build.sh`). The rest of the time, site
-code and `docs-fix` merges deploy as usual.
+From step 3 until the publish finishes, `main` holds docs for versions nobody can install yet.
+Production skips every docs deploy while either of these is true
+(`apps/docs/scripts/docs-deploy-gate.mjs`):
+
+- a changeset in `apps/docs/release-docs.json` is still a pending file in `.changeset/` (docs merged,
+  Version Packages not yet), or
+- a public package's version on `main` isn't on npm (versions bumped, publish not done, failed or
+  skipped). If npm can't be reached, it skips too.
+
+The rest of the time, site code and `docs-fix` merges deploy as usual. If a publish fails, rerunning
+`release.yml` publishes and deploys the docs.
 
 ## Setup (once)
 
@@ -63,3 +70,6 @@ code and `docs-fix` merges deploy as usual.
   only runs because that PR is opened with it.
 - `ANTHROPIC_API_KEY` for the **Release docs** workflow, if you want the button.
 - The `docs-fix` label.
+- `VERCEL_DOCS_DEPLOY_HOOK`: a Vercel deploy hook for the docs project on `main` (Project Settings >
+  Git > Deploy Hooks). `release.yml` calls it after a publish. Without it, a release's docs go live on
+  the next push to `main`, and the run shows a warning.

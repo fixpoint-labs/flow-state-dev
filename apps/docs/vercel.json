@@ -3,5 +3,5 @@
   "outputDirectory": "build",
   "framework": "docusaurus-2",
   "installCommand": "pnpm install",
-  "ignoreCommand": "bash scripts/vercel-ignore-build.sh"
+  "ignoreCommand": "node scripts/docs-deploy-gate.mjs"
 }

@@ -63,7 +63,7 @@ This is the normal path. No manual steps beyond merging PRs.
 1. Land PRs. A minority carry a changeset fragment — the ones a consumer of a published package needs to hear about (see [release-notes-workflow.md](./release-notes-workflow.md)).
 2. `release.yml` runs on every push to `main`. When pending changesets exist, the `changesets/action` opens (or updates) a **Version Packages** PR that bumps versions and updates per-package `CHANGELOG.md` files. With no pending fragments it does nothing, which is the normal state between releases — a release happens when a batch of consumer-visible changes has accumulated, not on every merge.
 3. Run `/release-docs` (fresh Claude session, or Actions > **Release docs**) and review and merge its docs PR. Until then the Version Packages PR's **Release docs cover this release** check is red. See [release-docs.md](./release-docs.md).
-4. Merge the Version Packages PR. `release.yml` runs again, this time publishing all changed packages to npm with provenance and creating GitHub Releases from the generated changelogs. The docs site deploys to production on this commit.
+4. Merge the Version Packages PR. `release.yml` runs again, this time publishing all changed packages to npm with provenance and creating GitHub Releases from the generated changelogs. After a successful publish it triggers the docs production deploy; until then the docs site holds the previous release.
 
 ### Snapshot releases
 
