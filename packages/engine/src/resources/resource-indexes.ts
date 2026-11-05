@@ -11,6 +11,10 @@
  * flow that declares the same pattern without `indexes` still keeps another
  * flow's index whole, and a flow-isolated collection's index never runs on
  * another flow's isolated rows (whose schema it was never checked against).
+ * A session or lineage cell's id names no flow, so there the writer takes the
+ * cell's owner from the engine's own write ({@link ownedWrite}, stamped from
+ * the flow the session record resolved to), or, for a write that carries none,
+ * from the session record; only that flow's session declarations apply.
  *
  * **The lookup** ({@link findIndexedKeys}) answers from the store's index
  * when the scope's index is built, and otherwise builds it: it marks the build
@@ -37,6 +41,7 @@ import type {
   ResourceIndexBuildEntry,
   ResourceIndexEntry,
   ResourceStateIndexes,
+  ResourceStateSetOptions,
   ResourceStateStore,
   StorageScopeType,
   StoreRegistry,
@@ -188,7 +193,8 @@ function indexEntriesFor(
   scopeType: StorageScopeType,
   scopeId: string,
   key: string,
-  state: Record<string, unknown>
+  state: Record<string, unknown>,
+  owner: string | undefined
 ): ResourceIndexEntry[] {
   const scope = declarationScopeOf(scopeType);
   const cell = cellOfWrite(scopeType, scopeId);
@@ -197,6 +203,7 @@ function indexEntriesFor(
   for (const collection of collections) {
     if (collection.scope !== scope || !matchesPattern(collection.pattern, key)) continue;
     if (cell !== undefined && collection.cellOf(key) !== cell) continue;
+    if (owner !== undefined && collection.flowId !== owner) continue;
     for (const index of collection.indexes) {
       const id = `${collection.pattern}\n${index.stored}`;
       if (seen.has(id)) continue;
@@ -209,6 +216,39 @@ function indexEntriesFor(
     }
   }
   return entries;
+}
+
+/** Where {@link ownedWrite} stamps the owning flow on a write's options. */
+const CELL_OWNER = Symbol("resourceCellOwner");
+
+type OwnedSetOptions = ResourceStateSetOptions & { [CELL_OWNER]?: string };
+
+/**
+ * The `set` options that name `flowId` as the owner of the session or lineage
+ * cell being written. For the engine's own writes, which hold the flow the
+ * session record resolved to; a symbol, so no request input can carry it.
+ * Ignored at user and org scope, whose cell ids already name their flow.
+ */
+export function ownedWrite(flowId: string): ResourceStateSetOptions {
+  return { [CELL_OWNER]: flowId } as OwnedSetOptions;
+}
+
+/**
+ * The flow whose session declarations apply to a write: the stamped owner,
+ * else for a session cell the session record's `flowId`. `undefined` (every
+ * declaration applies) at user and org scope, for a lineage cell written
+ * without a stamp, and for a session with no record or a legacy one.
+ */
+async function cellOwnerOf(
+  sessions: StoreRegistry["session"],
+  scopeType: StorageScopeType,
+  scopeId: string,
+  options: OwnedSetOptions | undefined
+): Promise<string | undefined> {
+  if (scopeType !== "session" && scopeType !== "lineage") return undefined;
+  const stamped = options?.[CELL_OWNER];
+  if (stamped !== undefined || scopeType === "lineage") return stamped;
+  return (await sessions.get(scopeId))?.flowId ?? undefined;
 }
 
 /** Every resource-state store this module has wrapped, so a registry is wrapped once. */
@@ -227,12 +267,14 @@ export function withResourceIndexWriter<T extends StoreRegistry>(
 ): T {
   if (WRITERS.has(stores.resourceState)) return stores;
   const store = stores.resourceState;
-  const set: ResourceStateStore["set"] = (scopeType, scopeId, key, state, expectedVersion, options) => {
-    const computed = indexEntriesFor(collections(), scopeType, scopeId, key, state);
+  const set: ResourceStateStore["set"] = async (scopeType, scopeId, key, state, expectedVersion, options) => {
+    const { [CELL_OWNER]: _stamp, ...rest } = (options ?? {}) as OwnedSetOptions;
+    const owner = await cellOwnerOf(stores.session, scopeType, scopeId, options);
+    const computed = indexEntriesFor(collections(), scopeType, scopeId, key, state, owner);
     const ids = new Set(computed.map((entry) => `${entry.collection}\n${entry.index}`));
-    const passed = (options?.indexEntries ?? []).filter((entry) => !ids.has(`${entry.collection}\n${entry.index}`));
+    const passed = (rest.indexEntries ?? []).filter((entry) => !ids.has(`${entry.collection}\n${entry.index}`));
     return store.set(scopeType, scopeId, key, state, expectedVersion, {
-      ...options,
+      ...rest,
       indexEntries: [...computed, ...passed],
     });
   };

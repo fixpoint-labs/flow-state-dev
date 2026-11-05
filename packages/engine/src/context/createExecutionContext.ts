@@ -151,7 +151,7 @@ import { refuseInstancePin } from "./instance-pin";
 import { requestInSessionScope, sessionRequestScope } from "./session-request-scope";
 import { recordRequestStop } from "../execution/record-request-stop";
 import { ownerKeyMaySeed, patternsReach } from "../resources/owner-private";
-import { findIndexedKeys } from "../resources/resource-indexes";
+import { findIndexedKeys, ownedWrite } from "../resources/resource-indexes";
 import {
   compareTurnsOldestFirst,
   outputItemToSessionItem,
@@ -2330,7 +2330,14 @@ export async function createExecutionContext<
             // included, doesn't stop on it (FIX-2145).
             signal: writesOutlivingAbort > 0 ? undefined : options.sideChainSignal,
             persist: (next, expectedVersion) =>
-              stores.resourceState.set(storageScopeOf(scope, scopeId), scopeId, key, next, expectedVersion),
+              stores.resourceState.set(
+                storageScopeOf(scope, scopeId),
+                scopeId,
+                key,
+                next,
+                expectedVersion,
+                ownedWrite(flow.id)
+              ),
             reread: () => stores.resourceState.get(storageScopeOf(scope, scopeId), scopeId, key)
           });
         } catch (err) {

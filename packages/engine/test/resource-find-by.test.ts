@@ -307,6 +307,52 @@ describe("the index writer and flow-isolated collections", () => {
   });
 });
 
+describe("the index writer and session cells", () => {
+  it("takes a session cell's owner from its record when a write names none", async () => {
+    // Two flows declare session `docs/*`; only A indexes it, reading `tags`.
+    // Host code writing into B's session through the runtime's stores names no
+    // flow, so the writer reads B's session record and runs none of A's index.
+    const tagged = defineResourceCollection({
+      pattern: "docs/*",
+      scope: "session",
+      stateSchema: z.object({ tags: z.array(z.string()) }),
+      indexes: { byTag: (_key, state) => state.tags.map((tag: string) => tag.toLowerCase()) },
+    });
+    const titled = defineResourceCollection({ pattern: "docs/*", scope: "session", stateSchema: z.object({ title: z.string() }) });
+    const flowOf = (kind: string, docs: typeof tagged | typeof titled) =>
+      defineFlow({
+        kind,
+        actions: {
+          noop: {
+            inputSchema: z.object({}),
+            block: handler({ name: `noop-${kind}`, resources: { docs }, execute: () => ({}) }),
+          },
+        },
+      })();
+    const b = flowOf("titled", titled);
+    const h = await boot({ tagged: flowOf("tagged", tagged), titled: b });
+    const opened = await runAction({
+      flow: b,
+      actionName: "noop",
+      input: {},
+      userId: "alice",
+      orgId: ORG,
+      sessionId: "s-titled",
+      stores: h.runtime.stores,
+      runtimeConfig: { modelResolver: createMockModelResolver({}) },
+    });
+    if (opened.error !== undefined) throw opened.error;
+    const seen: Array<ResourceStateSetOptions | undefined> = [];
+    const real = h.raw.resourceState.set.bind(h.raw.resourceState);
+    h.raw.resourceState.set = async (scopeType, scopeId, key, state, expected, options) => {
+      seen.push(options);
+      return real(scopeType, scopeId, key, state, expected, options);
+    };
+    await h.runtime.stores.resourceState.set("session", "s-titled", "docs/b", { title: "x" }, "any");
+    expect(seen).toEqual([{ indexEntries: [] }]);
+  });
+});
+
 describe("startup check on index declarations", () => {
   const declare = (pattern: string, scope: "org" | "user", version: number, kind: string) => {
     const collection = defineResourceCollection({

@@ -366,6 +366,87 @@ export function createFindByConformanceTests(options: CreateFindByConformanceTes
       });
     });
 
+    for (const sharedToLineage of [false, true]) {
+      it(`runs only the session's own flow's indexes on its rows (${sharedToLineage ? "lineage-shared" : "session"} cells)`, async () => {
+        await withStores(async (raw) => {
+          // Two flows declare session `docs/*` with different schemas. A's
+          // index reads `tags`, which B's rows do not have: B's session must
+          // never run it, and A's lookups still answer from A's rows.
+          const tagged = defineResourceCollection({
+            pattern: "docs/*",
+            scope: "session",
+            sharedToLineage,
+            stateSchema: z.object({ tags: z.array(z.string()) }),
+            indexes: { byTag: (_key, state) => state.tags.map((tag: string) => tag.toLowerCase()) },
+          });
+          const titled = defineResourceCollection({
+            pattern: "docs/*",
+            scope: "session",
+            sharedToLineage,
+            stateSchema: z.object({ title: z.string() }),
+          });
+          const tagInput = z.object({ tag: z.string() });
+          const taggedFlow = defineFlow({
+            kind: "find-by-tagged",
+            actions: {
+              file: {
+                inputSchema: tagInput,
+                block: handler({
+                  name: "file-tagged",
+                  inputSchema: tagInput,
+                  outputSchema: z.array(z.string()),
+                  resources: { docs: tagged },
+                  execute: async (input, ctx) => {
+                    const ref = ctx.resources.docs as unknown as ResourceCollectionRef;
+                    await ref.upsert("a", { tags: [input.tag] });
+                    return (await ref.findBy("byTag", input.tag.toLowerCase())).map((row) => row.path);
+                  },
+                }),
+              },
+            },
+          })();
+          const titledFlow = defineFlow({
+            kind: "find-by-titled",
+            actions: {
+              file: {
+                inputSchema: tagInput,
+                block: handler({
+                  name: "file-titled",
+                  inputSchema: tagInput,
+                  outputSchema: z.array(z.string()),
+                  resources: { docs: titled },
+                  execute: async (input, ctx) => {
+                    await (ctx.resources.docs as unknown as ResourceCollectionRef).upsert("a", { title: input.tag });
+                    return [];
+                  },
+                }),
+              },
+            },
+          })();
+          const state = createFlowState({
+            flows: { tagged: taggedFlow, titled: titledFlow } as never,
+            stores: { default: { primary: { capabilities: ["primary"], resolve: () => Promise.resolve(raw) } } },
+          });
+          const runtime = await state.getRuntime();
+          const run = async (flow: FlowInstance) => {
+            const result = await runAction({
+              flow,
+              actionName: "file",
+              input: { tag: "Red" },
+              userId: "alice",
+              orgId: ORG,
+              stores: runtime.stores,
+              runtimeConfig: runtime.runtimeConfig,
+            } as never);
+            if (result.error !== undefined) throw result.error;
+            return result.output;
+          };
+          expect(await run(titledFlow)).toEqual([]);
+          expect(await run(taggedFlow)).toEqual(["docs/a"]);
+        });
+      });
+    }
+
     if (indexes) {
       it("answers a lookup on a built index without a prefix or whole-scope read of resource state", async () => {
         await withStores(async (raw) => {
