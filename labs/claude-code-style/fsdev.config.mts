@@ -127,11 +127,13 @@ flows = {
 const workers = hireWorkforce(installation) as { id: string }[];
 // A project is checked when it's made, by the same rule a run's checkout passes:
 // a repository no run could use here is refused before its first task (FIX-2403).
+// It is asked about the repository a run will get: a listed one by its real path, as
+// `source` hands it over, so the picker says worktree where the run makes one.
 // `GOAL_CONTROL=no-repository-check` leaves the check off, for the goal check's control.
 const checkRepository =
   process.env.GOAL_CONTROL === "no-repository-check"
     ? undefined
-    : (repository: string) => workspace.checkRepository!(repository, { ignored: ASK_MARKER_IGNORED });
+    : (repository: string) => workspace.checkRepository!(listed(repository) ?? repository, { ignored: ASK_MARKER_IGNORED });
 const projects = defineProjectsFlow({ checkRepository })({ id: PROJECTS_FLOW }) as { id: string };
 const pins = definePinsFlow()({ id: PINS_FLOW }) as { id: string };
 
