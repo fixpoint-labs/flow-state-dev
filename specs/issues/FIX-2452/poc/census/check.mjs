@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Throwaway evidence for the FIX-2452 spec. Re-derives the counted facts SPEC.md rests on:
- *   1. every root export of store-sqlite and store-postgres is classified (root · advanced),
+ *   1. every root export of store-sqlite and store-postgres is classified (root · host),
  *      and every store name engine's root publishes is classified (root · host) — totality;
  *   2. which of them anything outside the owning package imports (the consumer census);
  *   3. how many files spell the stores ceremony, split into tests and the rest.
@@ -25,7 +25,7 @@ const ROOT = {
   "@flow-state-dev/store-sqlite": ["sqliteStores", "SQLiteStoreOptions", "createSQLiteScheduleIndex"],
   "@flow-state-dev/store-postgres": ["postgresStores", "PostgresStoreOptions", "PoolConfig", "createPostgresScheduleIndex"]
 };
-const ADVANCED = {
+const HOST = {
   "@flow-state-dev/store-sqlite": ["createSQLiteStores", "SQLiteStoreRegistry", "SQLiteTraceStoreOptions", "CreateSQLiteRequestStoreOptions",
     "initializeSchema", "initializeSchemaDDL", "applyConnectionPragmas", "createSQLiteSessionStore", "createSQLiteRequestStore",
     "createSQLiteUserStore", "createSQLiteOrgStore", "createSQLiteActiveRequestRegistry", "createSQLiteCheckpointStore",
@@ -70,16 +70,16 @@ function consumers(pkg, selfDir) {
 for (const [pkg, keep] of Object.entries(ROOT)) {
   const names = [...index.get(pkg).keys()];
   const used = consumers(pkg, `packages/${pkg.split("/")[1]}`);
-  const advanced = names.filter((n) => ADVANCED[pkg].includes(n));
-  for (const n of names) if (!keep.includes(n) && !ADVANCED[pkg].includes(n)) fail(`${pkg}: root export "${n}" is in neither the root nor the ./advanced list`);
-  for (const n of ADVANCED[pkg]) if (!names.includes(n)) fail(`${pkg}: spec moves "${n}" to ./advanced, but the root does not export it`);
-  console.log(`\n${pkg}: ${names.length} root exports → root ${keep.length} · ./advanced ${advanced.length}`);
+  const moved = names.filter((n) => HOST[pkg].includes(n));
+  for (const n of names) if (!keep.includes(n) && !HOST[pkg].includes(n)) fail(`${pkg}: root export "${n}" is in neither the root nor the ./host list`);
+  for (const n of HOST[pkg]) if (!names.includes(n)) fail(`${pkg}: spec moves "${n}" to ./host, but the root does not export it`);
+  console.log(`\n${pkg}: ${names.length} root exports → root ${keep.length} · ./host ${moved.length}`);
   for (const n of keep) if (!names.includes(n)) fail(`${pkg}: spec keeps "${n}" on the root, but it is not exported`);
-  for (const n of advanced) {
+  for (const n of moved) {
     const by = used.get(n);
-    console.log(`  advanced  ${n.padEnd(36)} ${by ? [...by].join(" ") : "— no outside consumer"}`);
+    console.log(`  host      ${n.padEnd(36)} ${by ? [...by].join(" ") : "— no outside consumer"}`);
   }
-  const perStore = advanced.filter((n) => /^create(SQLite|Postgres)\w+(Store|Registry)$/.test(n));
+  const perStore = moved.filter((n) => /^create(SQLite|Postgres)\w+(Store|Registry)$/.test(n));
   const usedPerStore = perStore.filter((n) => used.has(n));
   console.log(`  per-store constructors: ${perStore.length}, imported outside the package: ${usedPerStore.length}`);
 }

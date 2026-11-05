@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D3, what a store package&#x27;s root shows an app author. Chosen: the adapter factory and schedule index on the root, everything else in ./advanced, nothing deleted. Instead of: both families on the root as today, or deleting the 21 per-store constructors. It comes down to the first row: autocomplete shows 3 or 4 names, the factory the docs teach, where today shows 20 or 22 in two families; deleting also shows 3 or 4. The price is the second row: a caller of a moved name changes one import, per Q1&#x27;s answer, where today changes nothing and deleting loses a documented constructor. Third row: ./advanced is one more semver-covered entry each; today has the same names in one entry; deleting has 21 fewer names. Locks in: ./advanced is public on both store packages. Flips if: its constructors stay unused for a minor."
+<svg viewBox="0 0 940 418" role="img" aria-label="D3, what a store package&#x27;s root shows an app author. Chosen: the adapter factory and schedule index on the root, everything else in ./host, nothing deleted. Instead of: both families on the root as today, or deleting the 21 per-store constructors. It comes down to the first row: autocomplete shows 3 or 4 names, the factory the docs teach, where today shows 20 or 22 in two families; deleting also shows 3 or 4. The price is the second row: a caller of a moved name changes one import, per Q1&#x27;s answer, where today changes nothing and deleting loses a documented constructor. Third row: ./host is one more semver-covered entry each; today has the same names in one entry; deleting has 21 fewer names. Locks in: ./host is public on both store packages. Flips if: its constructors stay unused for a minor."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -40,7 +40,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Adapter; rest in ./advanced</text>
+    <text class="t-h c-code" x="228" y="112">Adapter; rest in ./host</text>
     <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
     <text class="t-tag c-mute" x="468" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="468" y="112">Both families on the root</text>
@@ -83,7 +83,7 @@
     <text class="t-lbl" x="32" y="289">SURFACE</text>
     <text class="mark minus" x="228" y="282">−</text>
     <text class="t-b" x="248" y="281">One more entry each</text>
-    <text class="t-s" x="248" y="299">./advanced is semver-covered</text>
+    <text class="t-s" x="248" y="299">./host is semver-covered</text>
     <text class="mark tie" x="468" y="282">=</text>
     <text class="t-b" x="488" y="281">Same names</text>
     <text class="t-s" x="488" y="299">in one entry</text>
@@ -95,7 +95,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">LOCKS IN</text>
-    <text class="t-b" x="32" y="369">./advanced is public on both store packages</text>
+    <text class="t-b" x="32" y="369">./host is public on both store packages</text>
     <text class="t-s" x="32" y="387">documented and semver-covered, one more entry each</text>
   </g>
   <g id="flips-if">

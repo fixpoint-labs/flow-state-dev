@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 446" role="img" aria-label="Before and after, three rows. The runtime file: today an engine import that names inMemoryStores and the line stores: default, primary, inMemoryStores; after, neither, and startup says it runs in memory. A profile's slots: today primary, bus, blobs, queue and scheduler, the last three doing nothing; after primary and bus, and naming one of the three is refused. A store package root: today 20 names in store-sqlite, the adapter factory, the registry factory and 10 per-store constructors among them; after the adapter factory, its options and the schedule index, with the other 17 under store-sqlite/advanced."
+<svg viewBox="0 0 940 446" role="img" aria-label="Before and after, three rows. The runtime file: today an engine import that names inMemoryStores and the line stores: default, primary, inMemoryStores; after, neither, and startup says it runs in memory. A profile's slots: today primary, bus, blobs, queue and scheduler, the last three doing nothing; after primary and bus, and naming one of the three is refused. A store package root: today 20 names in store-sqlite, the adapter factory, the registry factory and 10 per-store constructors among them; after the adapter factory, its options and the schedule index, with the other 17 under store-sqlite/host."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -78,7 +78,7 @@
     <text class="t-c" x="570" y="312">createSQLiteScheduleIndex</text>
     <text class="t-n" x="570" y="328">3 names on the root</text>
     <rect class="chip" x="556" y="348" width="368" height="80" rx="5"/>
-    <text class="t-lbl" x="570" y="368">STORE-SQLITE/ADVANCED</text>
+    <text class="t-lbl" x="570" y="368">STORE-SQLITE/HOST</text>
     <text class="t-c" x="570" y="388">createSQLiteStores · the 10 constructors</text>
     <text class="t-c" x="570" y="406">initializeSchema · the rest</text>
     <text class="t-s" x="570" y="422">17 names, documented, nothing deleted</text>
