@@ -66,7 +66,9 @@ written only by delivery, *seen only when taken*.
 - **The cursor (EM call, 2026-11-05).** `polledThrough`, `screened` and per-read ETags: one
   optional extension of `subscriptionCursorSchema` (BP-030). `screened` prunes once the mark
   passes an entry's `at`; `seen` keeps its 500-object bound. Delivery's kind and read refusals
-  are final, so they write `screened` too; otherwise they would hold the mark.
+  are final, so they write `screened` too; otherwise they would hold the mark. While the mark
+  is held, the poll sends no ETag, so a quiet provider's `304` cannot hide a pending retry;
+  ETags resume once nothing is pending.
 - <a name="seam-2537"></a>**The seam with FIX-2537 (#4809) (EM call, 2026-11-05).** Judge-once
   holds via `screened`; the mark holds at the oldest not-taken, not-screened event. This
   replaces "the mark moves every poll". **Left:** with push and poll both on, a version push

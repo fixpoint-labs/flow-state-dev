@@ -45,10 +45,10 @@ flowchart LR
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/webhook-routing/polls-each-event-once-without-a-webhook/` · no model (the outage uses a stub screen) |
-| **Signal** | (a) Each session's rows equal FIX-2534's push oracle, every leg. (b) A row's fires are ≥ 5 minutes apart. (c) Fires equal due rows claimed. (d) Unchanged polls deliver nothing and send ETags. (e) Each lost delivery, and each accepted but never taken, lands exactly once, later. (f) 0 cross-user reads. (g) A version a screen refused or held is screened once, across polls. (h) Stub screen down, then up: each of its events is judged on the next poll, exactly once. (i) A delivery never taken is given up after 3 polls, then the mark moves and nothing taken is sent again. Leg 3 counts versions push refused that a poll judged again |
+| **Signal** | (a) Each session's rows equal FIX-2534's push oracle, every leg. (b) A row's fires are ≥ 5 minutes apart. (c) Fires equal due rows claimed. (d) Unchanged polls deliver nothing and send ETags, except while the mark is held: then no ETag, so a pending retry is fetched even from a quiet provider. (e) Each lost delivery, and each accepted but never taken, lands exactly once, later. (f) 0 cross-user reads. (g) A version a screen refused or held is screened once, across polls. (h) Stub screen down, then up: each of its events is judged on the next poll, exactly once. (i) A delivery never taken is given up after 3 polls, then the mark moves and nothing taken is sent again. Leg 3 counts versions push refused that a poll judged again |
 | **Input** | FIX-2534's `fixtures/` as a timeline, a fake provider with ETags, the shared tick on a fake clock over SQLite |
 | **Anti-game** | Assert on stored rows and claims, not poll calls; losses drawn from a fixed seed |
-| **Control that must fail** | `mark-moves` (mark moves every poll): (e). `walk-all` (every row each tick): (c). `under-floor` (a 1-minute row): (b). `no-screened`: (g). `outage-screened` (unjudged recorded as screened): (h). `hold-forever` (no give-up): (i). Today's `main`: (a) |
+| **Control that must fail** | `mark-moves` (mark moves every poll): (e). `walk-all` (every row each tick): (c). `under-floor` (a 1-minute row): (b). `no-screened`: (g). `outage-screened` (unjudged recorded as screened): (h). `hold-forever` (no give-up): (i). `etag-while-held` (a quiet provider answers `304` during a held retry): (e). Today's `main`: (a) |
 
 ## What changes
 
