@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 446" role="img" aria-label="Before and after, three rows. The runtime file: today an engine import that names inMemoryStores and the line stores: default, primary, inMemoryStores; after, neither, and startup says it runs in memory. A profile's slots: today primary, bus, blobs, queue and scheduler, the last three doing nothing; after primary and bus, and naming one of the three is refused. A store package root: today 20 names in store-sqlite, the adapter factory, the registry factory and 10 per-store constructors among them; after the adapter factory, its options and the schedule index, with the other 17 under store-sqlite/host."
+<svg viewBox="0 0 940 446" role="img" aria-label="Before and after, three rows. The runtime file: today an engine import that names inMemoryStores and the line stores: default, primary, inMemoryStores; after, neither, and startup says it runs in memory. A profile's slots: today primary, bus, blobs, queue and scheduler, the last three doing nothing; after primary, bus and blobs, reserved for attachments, and naming queue or scheduler is refused. A store package root: today 20 names in store-sqlite, the adapter factory, the registry factory and 10 per-store constructors among them; after the adapter factory, its options and the schedule index, with the other 17 under store-sqlite/host."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -15,6 +15,7 @@
     .chip  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
     .chipn { fill:var(--surface); stroke:var(--code); stroke-width:1.2; }
     .chipx { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .chipr { fill:var(--surface); stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
     .strike{ stroke:var(--gone); stroke-width:1.4; }
     .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
     .t-c   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
@@ -51,14 +52,15 @@
     <rect class="old" x="180" y="182" width="360" height="72" rx="5"/>
     <rect class="chipn" x="194" y="196" width="62" height="24" rx="4"/><text class="t-c" x="204" y="212">primary</text>
     <rect class="chipn" x="262" y="196" width="40" height="24" rx="4"/><text class="t-c" x="272" y="212">bus</text>
-    <rect class="chipx" x="308" y="196" width="50" height="24" rx="4"/><text class="t-g" x="316" y="212">blobs</text>
+    <rect class="chipr" x="308" y="196" width="50" height="24" rx="4"/><text class="t-c" x="316" y="212">blobs</text>
     <rect class="chipx" x="364" y="196" width="50" height="24" rx="4"/><text class="t-g" x="372" y="212">queue</text>
     <rect class="chipx" x="420" y="196" width="74" height="24" rx="4"/><text class="t-g" x="428" y="212">scheduler</text>
     <text class="t-s" x="194" y="242">the last three construct and do nothing</text>
     <rect class="new" x="556" y="182" width="368" height="72" rx="5"/>
     <rect class="chipn" x="570" y="196" width="62" height="24" rx="4"/><text class="t-c" x="580" y="212">primary</text>
     <rect class="chipn" x="638" y="196" width="40" height="24" rx="4"/><text class="t-c" x="648" y="212">bus</text>
-    <text class="t-s" x="570" y="242">naming blobs, queue or scheduler is refused</text>
+    <rect class="chipr" x="684" y="196" width="50" height="24" rx="4"/><text class="t-c" x="692" y="212">blobs</text>
+    <text class="t-s" x="570" y="242">blobs reserved for attachments; queue or scheduler refused</text>
   </g>
 
   <g id="row-store-root">

@@ -11,8 +11,9 @@ surface. Moves off a root follow ER-3 and Q1's answer; retired keys follow the e
 flowchart TD
   I["FIX-2452"] --> D1["D1 · no stores runs in memory · said at startup"]
   D1 -.->|"rejected · the first file still writes a store line"| X1["stores required · a bare adapter accepted"]
-  I --> D2["D2 · blobs, queue and scheduler leave · naming one is refused"]
+  I --> D2["D2 · queue and scheduler leave · naming one is refused · blobs stays reserved"]
   D2 -.->|"rejected · the type promises what nothing delivers"| X2["kept as reserved no-ops"]
+  D2 -.->|"rejected · FIX-824 backs blobs · flip taken"| X2b["blobs refused too"]
   I --> D3["D3 · the adapter factory on the root · the rest in ./host"]
   D3 -.->|"rejected · two families on the first thing autocomplete shows"| X3["both families on the root"]
   D3 -.->|"rejected · a documented constructor disappears"| X4["delete the per-store constructors"]
@@ -37,17 +38,19 @@ It comes down to the first file: a required option keeps one line and an import 
 refuses when `NODE_ENV` is `production`, a one-line fix at boot.
 
 <a name="d2"></a>
-## D2 · `blobs`, `queue` and `scheduler` leave the profile; naming one is refused
+## D2 · `queue` and `scheduler` leave the profile; naming one is refused. `blobs` stays reserved
 
 | | |
 |---|---|
-| **Instead of** | Keeping them as reserved slots that construct and do nothing |
-| **Because** | Each is a promise nothing keeps. Queues come from a worker adapter and schedules from the schedule index, and three docs pages explain the gap. Old code that names one gets the epic's D3: a loud refusal naming the replacement and a removal version, through FIX-2454's `refuseRetired` |
-| **Locks in** | A slot arrives with the store that backs it, never as a placeholder in the type. Kitchen Sink's `scheduler: pgStores` is the one repo caller, and goes with this change. `CapabilitySlot` is the map's keys, so Vercel's adapter drops `scheduler` from its `capabilities` and its test changes. At runtime an unknown name in an adapter's list, from an older adapter, is ignored, not refused |
+| **Instead of** | Keeping them as reserved slots that construct and do nothing; or refusing `blobs` too |
+| **Because** | Each is a promise nothing keeps, and none has a store coming. Queues come from a worker adapter and schedules from the schedule index, and three docs pages explain the gap. Old code that names one gets the epic's D3: a loud refusal naming the replacement and a removal version, through FIX-2454's `refuseRetired` |
+| **Locks in** | A slot arrives with the store that backs it, and is reserved only while that store is in flight. `blobs` is: FIX-824 (epic FIX-2516) backs it with attachment bytes, so this flip is taken for `blobs` alone (EM call on #4772, Nov 5). It stays in `CapabilitySlotMap` and in `FORWARD_COMPATIBLE_SLOTS`'s skip branch until FIX-824 fills it, and the docs keep it as reserved. Kitchen Sink's `scheduler: pgStores` is the one repo caller, and goes with this change. `CapabilitySlot` is the map's keys, so Vercel's adapter drops `scheduler` from its `capabilities` and its test changes. At runtime an unknown name in an adapter's list, from an older adapter, is ignored, not refused |
 
-![D2: what happens to the three slots that back nothing. Removed and refused, chosen, beside kept as reserved no-ops. Decides it: every slot a reader can name does something. Price: code that names one fails at construction. Adding a real one later is the same work either way. Flips if a store for one of them is in the next minor](figures/d2-retired-slots.svg)
+![D2: what happens to queue and scheduler, the slots with no store coming. Removed and refused, chosen, beside kept as reserved no-ops. Decides it: every slot a reader can name does something or has its store coming; blobs stays reserved for attachments. Price: code that names one fails at construction. Adding a real one later is the same work either way. Flips if a store for one of them is in the next minor, already taken for blobs](figures/d2-retired-slots.svg)
 
-It comes down to what a reader learns: reserved slots teach three things that don't exist.
+It comes down to what a reader learns: `queue` and `scheduler` teach two things that don't exist
+and aren't coming. `blobs` is coming, so refusing it now would have FIX-824 un-refuse it and walk
+back goal check (c).
 
 <a name="d3"></a>
 ## D3 · A store package's root carries its adapter factory and schedule index; the rest moves to `./host`, nothing deleted
@@ -135,6 +138,10 @@ whole set.
 - **Validation** — the goal's check tightened (persistence read from the app's file, negatives on
   every signal, a docs signal); Vercel's `scheduler` capability, the engine move's order behind
   FIX-2449, the FIX-2454 dependency and the two silent in-memory precedents written in.
+- **Cross-epic coherence (Nov 5)** — FIX-2516's FIX-824 makes `blobs` real, which met D2's
+  flip. EM call: refuse only `queue` and `scheduler`, keep `blobs` reserved; goal check (c) 2 of
+  2, (f)'s docs census excludes `blobs`, the D2 and what-changes figures redrawn. The matching
+  *Who owns what* row is FIX-2516's, on #4787.
 - **Set review (Nov 5)** — the stores' entry renamed `./advanced` to `./host`, one rule with
   `engine/host`; D1's production warning listed as an Adds item, a `warnOnceDev` sibling; the slot
   refusals named as `refuseRetired` calls, blocked by FIX-2454; the stores' *Surface* cells, their
