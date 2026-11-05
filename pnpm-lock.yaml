@@ -599,6 +599,9 @@ importers:
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@flow-state-dev/next':
+        specifier: workspace:*
+        version: link:../../packages/next
       '@flow-state-dev/react':
         specifier: workspace:*
         version: link:../../packages/react

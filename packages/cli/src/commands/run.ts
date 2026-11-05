@@ -657,12 +657,8 @@ export async function heldStop(
 /** Leading text of core's resolver error for an `intent/*` with nothing to resolve it to. */
 const UNRESOLVED_INTENT_PREFIX = 'No model is configured for "intent/';
 
-/**
- * The stderr hint for a discovery run that failed on an `intent/*` model: no
- * `fsdev.config.*` was found, so the intents the app declared in some other
- * file were never read. Undefined for any other failure.
- */
-export function describeMissingConfigIntent(message: string, cwd: string): string | undefined {
+/** Stderr hint when a discovery run failed on an `intent/*` model. Undefined for any other failure. */
+function describeMissingConfigIntent(message: string, cwd: string): string | undefined {
   if (!message.startsWith(UNRESOLVED_INTENT_PREFIX)) return undefined;
   return (
     `[fsdev] no fsdev.config.* found in ${cwd}; lib/flowstate.ts and other runtime files are not read.\n` +
