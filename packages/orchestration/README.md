@@ -1221,7 +1221,8 @@ Where a message lands:
 
 `getTask` returns the messages as `steers` (`{ message, from, by?, at, taken }`). A message a
 request takes mid-run shows in the task's session as a line from its sender
-(`showTakenSteers`); a line typed in the session is there already.
+(`showTakenSteers`, awaited): a person's is a `user` line with their words alone, the filer's or
+the board's says who sent it. A line typed in the session is there already.
 
 ### Upgrading from stores written by an older version
 
