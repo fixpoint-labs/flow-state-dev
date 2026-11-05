@@ -36,7 +36,7 @@
  * |                     | named by the UI registry's `tool-naming` (`components/flow-state/`)           |
  * | `watchExchange`     | the receiving worker's conversation: the turn that read one message          |
  *
- * `watchTalk` and `watchTasks`' board read still read on a clock (`poll`); every other watch reads on a change.
+ * `watchTalk` still reads on a clock (`poll`); every other watch reads on a change.
  *
  * A received message is drawn from its own item (`workforce:received`), which
  * carries its message id, so the pending line joins the log to the
@@ -515,7 +515,7 @@ function retryAfterFailure(again: () => void): { failed(): void; succeeded(): vo
 
 /**
  * Read `read` now, and again whenever a notice under `topics` passes `hears`
- * (FIX-2466), reporting a value only when it changed, as {@link poll} does.
+ * reporting a value only when it changed, as {@link poll} does.
  * A connect, a reconnect, a tick and a `resync` read too. One read at a time,
  * and one waiting for any number of notices. Wherever push can miss a change,
  * `client.subscribe` reads every `everyMs` instead, so the view keeps no timer
@@ -577,27 +577,18 @@ function onNotice<T>(
 /** A request notice: one of the session's requests was created, moved or deleted. Never `items`, sent per stored chunk. */
 const isRequest = (notice: WireNotice): boolean => notice.kind === "request";
 
-/** The latest copy of each board row in a conversation's items, oldest filing first. */
-/**
- * Whether `copy` of a row is of the attempt `row` is on: the same try, on the same
- * run. A retry runs the task again, and a copy from before it speaks only for the
- * attempt that ended.
- */
+/** Whether `copy` of a row is of the same attempt (try count and run) as `row`: a retry's copies speak only for it. */
 function sameAttempt(copy: Record<string, any> | undefined, row: Record<string, any>): boolean {
   return copy !== undefined && (copy.attempts ?? 0) === (row.attempts ?? 0) && (copy.run?.sessionId ?? null) === (row.run?.sessionId ?? null);
 }
 
+/** The latest copy of each board row in a conversation's items, oldest filing first. */
 function boardRows(items: readonly Item[]): Map<string, Record<string, any>> {
   const rows = new Map<string, Record<string, any>>();
   for (const item of items) {
     if (item.type === "component" && item.component === TASK_CHANGE && item.data?.task?.id) rows.set(item.data.task.id, item.data.task);
   }
   return rows;
-}
-
-/** What a row's spend says ran it: the harness and model its run reported, or nothing. */
-function spendOf(view: TaskSpendView | null): { harness?: string; model?: string } {
-  return { ...(view?.harness == null ? {} : { harness: view.harness }), ...(view?.model == null ? {} : { model: view.model }) };
 }
 
 /**
@@ -630,7 +621,7 @@ export function toBoardTask(
     ...(Array.isArray(row.labels) ? { labels: row.labels.filter((label: unknown): label is string => typeof label === "string") } : {}),
     ...(typeof row.priority === "number" ? { priority: row.priority } : {}),
     ...(typeof row.run?.sessionId === "string" ? { runSessionId: row.run.sessionId } : {}),
-    ...harnessAndModel(spendOf(spend), harnessOf(row.assignee ?? "")),
+    ...harnessAndModel(spend, harnessOf(row.assignee ?? "")),
     ...(spend === null ? {} : { spend }),
     ...waitingOf(view),
   };
@@ -694,11 +685,11 @@ function inboxAnswerOf(answer: TaskAnswer): InboxAnswer {
 }
 
 /** The harness by its name (the run's, else the worker's), and the run's model. */
-function harnessAndModel(spend: { harness?: string; model?: string }, setting: string | undefined): { harness?: string; model?: string } {
-  const harness = spend.harness ?? setting;
+function harnessAndModel(spend: TaskSpendView | null, setting: string | undefined): { harness?: string; model?: string } {
+  const harness = spend?.harness ?? setting;
   return {
-    ...(harness === undefined ? {} : { harness: harnessName(harness) }),
-    ...(spend.model === undefined ? {} : { model: spend.model }),
+    ...(harness == null ? {} : { harness: harnessName(harness) }),
+    ...(spend?.model == null ? {} : { model: spend.model }),
   };
 }
 
@@ -1104,25 +1095,16 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     watchTasks(sessionId, onChange) {
       const show = stableList(onChange);
       let rows = new Map<string, Record<string, any>>();
-      /**
-       * Each row as the board's last read answered it. A task settles, and its run links itself, in
-       * the task's own session, which the conversation's stream doesn't carry; the board's notice
-       * does, and the read says what changed.
-       */
+      /** Each row as the board's last read answered it: a task settles, and its run links, on its own session. */
       let listed = new Map<string, Record<string, any>>();
-      /**
-       * Each linked run's own copy of its row. A run writes its row on its own session (its link, its
-       * questions, its review), so the conversation hears of those only when the task ends: the run's
-       * session is followed too.
-       */
+      /** Each linked run's own copy of its row, which the run writes on its own session (its questions, its review). */
       const runRows = new Map<string, Record<string, any>>();
       const runFeeds = new Map<string, Unsubscribe>();
       /**
-       * A row is the board read's (FIX-2429): every committed write of a row sends a board notice, so
-       * the read is never more than one notice behind, and a field it leaves out is cleared (an
-       * answered hold). Until the first read lands, the conversation's copy, else the run's, stands in.
-       * The run's and the conversation's copies give only what the read never carries: the task's
-       * brief ({@link BRIEF}), and an ended task's output and error ({@link UNPROJECTED}).
+       * A row is the board read's: every write of a row sends a board notice, so a field it leaves
+       * out is cleared (an answered hold). Until the first read lands, the conversation's copy, else
+       * the run's, stands in. The copies add only what the read never carries: {@link BRIEF} and
+       * {@link UNPROJECTED}.
        */
       const rowOf = (id: string): Record<string, any> => {
         const board = listed.get(id);
@@ -1196,9 +1178,8 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           }),
         ).then(publish, (error) => console.error("teammates: a session's flow couldn't be read", error));
       };
-      // A run links itself, and a task settles, on its own session: the board's notice says so
-      // (FIX-2429). The topics are narrowed to the ledgers the read returns, so every notice on
-      // them is the board's: a reply streaming in the conversation never reaches them.
+      // Topics narrowed to the ledgers the read returns: every notice on them is the board's,
+      // so a reply streaming in the conversation never wakes the read.
       const stopBoard = onNotice(
         client,
         BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })),
