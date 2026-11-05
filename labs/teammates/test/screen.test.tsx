@@ -360,7 +360,7 @@ describe("the teammates screen", () => {
     for (const coder of ["Claude Code", "Codex", "Cursor"]) expect(workers().querySelector(`[data-worker="${coder}"]`), coder).toBeNull();
   });
 
-  it("shows a coding run as plain steps, the same on every harness: the result first, what it said as text, and no bare tool name", async () => {
+  it("shows a coding run as plain steps, the same on every harness: what it said as text, the result last, and no bare tool name", async () => {
     // Each harness reports its own tools (Claude Code's Bash and Edit, Codex's command_execution and file_change, Cursor's shell and edit).
     const BARE = /^(Bash|Read|Edit|Write|command_execution|file_change|shell|read|edit)$/;
     render(<App adapter={fast({ speed: 0.3 })} />);
@@ -382,8 +382,8 @@ describe("the teammates screen", () => {
 
       const body = popup.querySelector("[data-step=result]")!.parentElement!;
       const kinds = [...body.querySelectorAll(":scope > [data-step]")].map((el) => el.getAttribute("data-step"));
-      // The result leads; under it, the harness, then what the run did in order.
-      expect(kinds).toEqual(["result", "harness", "tool", "said", "tools"]);
+      // The harness, then what the run did in order, then its result last: the popup opens on its latest entry.
+      expect(kinds).toEqual(["harness", "tool", "said", "tools", "result"]);
       expect(popup.querySelector("[data-step=harness]")?.textContent).toBe(`Started on ${harness}`);
       expect(popup.querySelector("[data-step=said]")?.textContent).toContain('The typo is on line 1: "Relay keps".');
       // A run of steps folds into one line, in the same words on every harness, and opens to each one.

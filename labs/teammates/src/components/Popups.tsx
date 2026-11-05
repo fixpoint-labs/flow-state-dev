@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { BoardTask, LabAdapter, TalkRow, WorkerRow } from "../adapter";
 import { harnessName } from "../lib/harness";
 import type { Look } from "../lib/looks";
 import { useWatch } from "../lib/use-watch";
 import { Avatar } from "./Avatar";
 import { ErrorBody } from "./flow-state/error";
-import { ReviewHold } from "./flow-state/review-hold";
+import { ReviewHold, type ReviewAnswer } from "./flow-state/review-hold";
 import { Spend } from "./flow-state/spend";
 import { TaskActions, type TaskRerunOption } from "./flow-state/task-actions";
 import { SessionPopup, Steps } from "./SessionPopup";
@@ -124,8 +124,20 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, 
     task === undefined || !isCoding(task.to)
       ? []
       : rerunTargets(task, coders).map((worker) => ({ label: harnessName(worker.harness!), run: () => actions.rerun(task, worker.id) }));
+  // A verdict you gave here stays in the feed, after the steps it was given over.
+  const [decisions, setDecisions] = useState<readonly Decision[]>([]);
+  const decided = (answer: ReviewAnswer) => setDecisions((all) => [...all, { id: `decision-${all.length}`, after: steps.length, text: decisionLine(answer) }]);
+  const waiting = task?.waiting?.kind;
+  // What waits on you is held below the feed, which opens on the latest step, so it can't scroll out of view.
+  const pinned =
+    task && waiting === "review" ? (
+      <TaskReview adapter={adapter} sessionId={popup.sessionId} task={task} onAnswered={decided} />
+    ) : task && waiting === "question" ? (
+      <TaskQuestion adapter={adapter} sessionId={popup.sessionId} task={task} />
+    ) : null;
+  const status = waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : task?.status;
   return (
-    <SessionPopup label={line} title={title} status={task?.status} onClose={onClose}>
+    <SessionPopup label={line} title={title} status={status} onClose={onClose} pinned={pinned}>
       {task === undefined ? null : <TaskActions key={task.id} id={task.id} status={task.boardStatus} actions={actions} steer rerun={rerun} />}
       {/* What a coding task's runs spent, in and out apart, with the vendor's charge when it reported one. */}
       {task?.spend && isCoding(task.to) ? (
@@ -133,32 +145,59 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, 
           <Spend spend={task.spend} split className="text-[11px]" />
         </div>
       ) : null}
-      {/* Why it failed, as an error; the result leads otherwise. How the run got there is below. */}
+      {/* Why it failed, as an error. How the run got there is below. */}
       {task?.error ? (
         <section aria-label="Error" role="alert" data-step="error" className="flex flex-col gap-1 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           <ErrorBody message={task.error} />
         </section>
       ) : null}
-      {task?.waiting?.kind === "review" ? <TaskReview adapter={adapter} sessionId={popup.sessionId} task={task} /> : null}
-      {task?.waiting?.kind === "question" ? <TaskQuestion adapter={adapter} sessionId={popup.sessionId} task={task} /> : null}
+      {steps.length === 0 ? <Steps steps={steps} nameOf={nameOf} empty={starting} /> : null}
+      {[...decisions, undefined].map((decision, i) => {
+        const shown = steps.slice(decisions[i - 1]?.after ?? 0, decision?.after);
+        return (
+          <Fragment key={decision?.id ?? "latest"}>
+            {shown.length === 0 ? null : <Steps steps={shown} nameOf={nameOf} empty="" />}
+            {decision === undefined ? null : (
+              <p data-step="decision" className="font-mono text-xs whitespace-pre-wrap text-muted-foreground">
+                {decision.text}
+              </p>
+            )}
+          </Fragment>
+        );
+      })}
+      {/* The run's result is its last entry. */}
       {task?.result ? (
         <section aria-label="Result" data-step="result" className="rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-2 text-sm whitespace-pre-wrap">
           {task.result}
         </section>
       ) : null}
-      <Steps steps={steps} nameOf={nameOf} empty={starting} />
     </SessionPopup>
   );
 }
 
+/** A review verdict given in this popup, placed after the steps it was given over (`after` of them). */
+type Decision = { id: string; after: number; text: string };
+
+/** "Accepted", or "Asked for changes: …" with the words sent. */
+const decisionLine = (answer: ReviewAnswer) => (answer.verdict === "accepted" ? "Accepted" : `Asked for changes: ${answer.words}`);
+
 /** A coding run's review, with the registry's card: its commits and the judge's verdict, and Accept or Ask for changes. */
-function TaskReview({ adapter, sessionId, task }: { adapter: LabAdapter; sessionId: string; task: BoardTask }) {
+function TaskReview({ adapter, sessionId, task, onAnswered }: {
+  adapter: LabAdapter;
+  sessionId: string;
+  task: BoardTask;
+  /** The answer went through. */
+  onAnswered: (answer: ReviewAnswer) => void;
+}) {
   const review = useWatch(adapter.watchReview, task.runSessionId);
   return (
     <ReviewHold
       review={review}
       prompt={review === undefined ? task.waiting?.prompt : undefined}
-      answer={(answer) => adapter.answerTask(sessionId, task.id, answer)}
+      answer={async (answer) => {
+        await adapter.answerTask(sessionId, task.id, answer);
+        onAnswered(answer);
+      }}
       unanswerable={task.waiting?.unanswerable ?? null}
     />
   );

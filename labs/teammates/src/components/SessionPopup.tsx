@@ -13,7 +13,7 @@ import { ToolRun } from "./ToolRun";
  * thread under it keeps its place. What it shows is the opener's to keep
  * live; the popup only frames it.
  */
-export function SessionPopup({ label, title, status, onClose, children }: {
+export function SessionPopup({ label, title, status, onClose, children, pinned }: {
   /** The popup's accessible name. */
   label: string;
   title: ReactNode;
@@ -21,6 +21,8 @@ export function SessionPopup({ label, title, status, onClose, children }: {
   status?: ReactNode;
   onClose: () => void;
   children: ReactNode;
+  /** What waits on you, held below the feed where it can't scroll out of view. */
+  pinned?: ReactNode;
 }) {
   const close = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLElement>(null);
@@ -65,6 +67,7 @@ export function SessionPopup({ label, title, status, onClose, children }: {
           {children}
           <JumpToLatestButton feed={feed} />
         </div>
+        {pinned ? <div className="max-h-[60%] shrink-0 overflow-y-auto border-t border-border px-5 py-3">{pinned}</div> : null}
       </section>
     </div>,
     document.body,
