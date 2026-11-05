@@ -236,6 +236,15 @@ The image is official `redis`, pinned by tag and index digest
 `docker buildx imagetools inspect redis:<tag>` and put the `Digest:` line on
 that anchor.
 
+### Postgres in CI
+
+The `test` job also runs a `postgres` service and sets `FSD_TEST_POSTGRES_URL`.
+store-postgres's `*.postgres.test.ts` files need a real server, because PGlite is
+one connection and cannot overlap two statements. Without the variable they skip
+locally (the suite name says so) and fail in CI. To run them locally, point
+`FSD_TEST_POSTGRES_URL` at a scratch database. The image is official `postgres`,
+pinned by tag and index digest the same way as Redis.
+
 ### Type-level assertions
 
 Type-level assertions (`expectTypeOf`, a `// @ts-expect-error` with its reason, an `Assert<…>` helper) go in whichever test file they belong to: a `.test.ts`, a `.test-d.ts`, or a `.type-test.ts` under the package's `test/`. Vitest strips types, so it never fails them; `pnpm typecheck` compiles every one of those files and fails on a wrong one. When you add an assertion, prove it can fail once: negate it (add or drop `.not`, change the asserted type, or delete the directive), run `pnpm --filter <package> typecheck`, see it fail on that line, then put it back. Workforce's `.test.ts` files are not compiled yet, so a type assertion there goes in a `.test-d.ts` for now. How test files are compiled and guarded (`tsconfig.test.json`, `scripts/validate-test-typecheck.mjs`, its `DEFERRED` list) is under [TypeScript Configuration](#typescript-configuration).

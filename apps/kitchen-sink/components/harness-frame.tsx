@@ -12,7 +12,9 @@
  * (the mode's default preselected), and opens it in the stream slot. A
  * session's model never changes; another model is another session. The open
  * session is named in the address (`?session=<id>`), so a reload comes back to
- * it, as long as it is one of this mode's sessions. Each mode's
+ * it, as long as it is one of this mode's sessions. The list is live
+ * (`useSessionList`): a session created here, in another tab or by a script
+ * joins it, and each row's turn state moves as the turn does. Each mode's
  * own issue fills the slot (`stream`); until then a picked session shows a
  * placeholder.
  *
@@ -21,10 +23,11 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createClient, type Client } from "@flow-state-dev/client";
+import { useSessionList, type SessionListClient } from "@flow-state-dev/react";
 import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
 import { Plus } from "lucide-react";
 
-import { HarnessSessionList, type SessionRows } from "@/components/harness-session-list";
+import { HarnessSessionList } from "@/components/harness-session-list";
 import { ModeRailHeader } from "@/components/mode-rail-header";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -32,8 +35,11 @@ import type { ModelChoices } from "@/lib/harness-models";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import { BASE_PATH } from "@/lib/base-path";
 
-/** The slice of the one client the frame reads and writes: the session listing, and a flow's session create. */
-export type HarnessClient = Pick<Client, "flow"> & { readonly sessions: Pick<Client["sessions"], "list"> };
+/**
+ * The slice of the one client the frame reads and writes: the session listing,
+ * `subscribe` to keep it live, and a flow's session create.
+ */
+export type HarnessClient = Pick<Client, "flow"> & SessionListClient;
 
 export interface HarnessFrameProps {
   /** The mode's name, at the top of the rail. */
@@ -44,11 +50,8 @@ export interface HarnessFrameProps {
   readonly note?: string;
   /** The models New session offers. With none, New session is off and the reason shows. */
   readonly models: ModelChoices;
-  /**
-   * The mode's session view for the picked session. `refreshSessions` reads the
-   * rail again, for a session whose listing changed (it was titled).
-   */
-  readonly stream?: (sessionId: string, refreshSessions: () => void) => ReactNode;
+  /** The mode's session view for the picked session. */
+  readonly stream?: (sessionId: string) => ReactNode;
   /** Where sessions are listed and created. Defaults to this app's server, as its user; stable. */
   readonly client?: HarnessClient;
 }
@@ -65,11 +68,11 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // The mode's sessions: the one read the list draws and the address's session
-  // is checked against. `reads` is bumped to read again, by a session created
-  // or a Retry.
-  const [rows, setRows] = useState<SessionRows | null>(null);
-  const [listError, setListError] = useState<string | null>(null);
-  const [reads, setReads] = useState(0);
+  // is checked against, live on the user's change notices.
+  const list = useSessionList({ flowKind, client });
+  const listError = list.error;
+  // `null` until a read answers with rows: still loading, or failed.
+  const rows = (list.isLoading || listError !== null) && list.sessions.length === 0 ? null : list.sessions;
   // The session the address names, until the listing has said whether it is this mode's.
   const named = useRef<string | null>(null);
 
@@ -83,23 +86,6 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
   useEffect(() => {
     named.current = new URLSearchParams(window.location.search).get(SESSION_ADDRESS_PARAM);
   }, []);
-
-  useEffect(() => {
-    let current = true;
-    client.sessions.list({ flowKind, userId: KITCHEN_SINK_USER_ID }).then(
-      (listed) => {
-        if (!current) return;
-        setRows(listed);
-        setListError(null);
-      },
-      (cause: unknown) => {
-        if (current) setListError(cause instanceof Error ? cause.message : String(cause));
-      },
-    );
-    return () => {
-      current = false;
-    };
-  }, [client, flowKind, reads]);
 
   // After mount, since the server draws no session: the one the address names,
   // when it is one of this mode's. Anything else leaves the picker. A failed
@@ -118,8 +104,6 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
     }
   }, [rows, listError]);
 
-  const refreshSessions = useCallback(() => setReads((n) => n + 1), []);
-
   const handleNewSession = useCallback(async () => {
     if (picked === null) return;
     setCreating(true);
@@ -128,8 +112,8 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
       // Born with its model: the flow refuses a session that names none, and
       // no later write can change it.
       const created = await client.flow(flowKind).createSession({ state: { model: picked } });
+      // The rail hears the new session on the user's topic.
       open(created.id);
-      setReads((n) => n + 1);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -194,8 +178,9 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
           <HarnessSessionList
             rows={rows}
             error={listError}
-            onRetry={() => setReads((n) => n + 1)}
+            onRetry={list.refresh}
             flowKind={flowKind}
+            models={models}
             selectedId={selected}
             onSelect={open}
           />
@@ -210,7 +195,7 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
             Pick a session, or start one with New session.
           </p>
         ) : stream !== undefined ? (
-          stream(selected, refreshSessions)
+          stream(selected)
         ) : (
           <p className="m-auto px-4 text-center text-sm text-muted-foreground">This mode's session view is not built yet.</p>
         )}

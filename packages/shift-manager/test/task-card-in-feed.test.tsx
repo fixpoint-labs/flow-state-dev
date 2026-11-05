@@ -164,8 +164,9 @@ describe("a delegated post's task in the feed", () => {
     rows = [{ ...rows[0]!, status: "completed" }];
     await hear(boardNotice);
     expect(cards()[0]).toMatchObject({ status: "completed", text: expect.stringContaining("completed") });
-    // The task moved: the Lab is read again, so what it counts agrees with the card.
-    expect(refreshes).toBe(1);
+    // The task moved, and the card reloads nothing: the snapshot hears the same
+    // move on its own subscription, one way to keep it fresh (FIX-2409).
+    expect(refreshes).toBe(0);
     expect(open().options.pollIntervalMs).toBeUndefined();
     const read = calls.length;
     await tick(TASKS_POLL_MS * 20);

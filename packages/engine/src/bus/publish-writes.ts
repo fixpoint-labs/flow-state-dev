@@ -24,8 +24,14 @@
  * | Write | Notice |
  * |---|---|
  * | a request's items land (`persistItems`, after its batch) | `items` on the request's session |
- * | any other request write | `request` on its session, and `run` on that session's parent |
- * | any session write | `run` on the session, and on its parent |
+ * | a request's state field delta (`patchField`, `incField`, `pushToArray`, `deleteField`) | `request` on its session, and `run` on that session's parent |
+ * | any other request write | the same, and `run` on its owner's user topic |
+ * | a session's state field delta | `run` on the session and on its parent |
+ * | any other session write | the same, and `run` on its owner's user topic |
+ *
+ * The user topic is what a list of the user's sessions watches: it hears a
+ * session made, titled or deleted and a request's status written, not the
+ * state writes a busy turn makes many of.
  *
  * A task board's change (`board`, narrowed to the board) is not a store write
  * here: orchestration names it through the board-notice seam (`board-notice.ts`).
@@ -175,6 +181,15 @@ function sessionTopic(id: string, tenantId: string | undefined): BusTopic {
   return { scope: "session", id, tenantId: tenantId ?? "" };
 }
 
+/**
+ * A user's topic under its tenant: a session's owner, which hears `run` for
+ * every write to one of its sessions, as a parent hears its runs (FIX-2411).
+ * The id is the bare user id, as the push socket names a caller's user topic.
+ */
+function userTopic(userId: string, tenantId: string | undefined): BusTopic {
+  return { scope: "user", id: userId, tenantId: tenantId ?? "" };
+}
+
 function notice(topic: BusTopic, kind: ChangeKind): ChangeNotice {
   return { topic, kind };
 }
@@ -184,9 +199,15 @@ function notice(topic: BusTopic, kind: ChangeKind): ChangeNotice {
 // ---------------------------------------------------------------------------
 
 /** What a session write needs to name its topics. */
-type SessionIdentity = { id: string; tenantId: string | undefined; parentSessionId: string | undefined };
-/** What a request write needs to name its topic. */
-type RequestIdentity = { sessionId: string | undefined; tenantId: string | undefined };
+type SessionIdentity = {
+  id: string;
+  tenantId: string | undefined;
+  parentSessionId: string | undefined;
+  /** The owner, whose user topic hears every change to the session (FIX-2411). */
+  userId: string | undefined;
+};
+/** What a request write needs to name its topics. */
+type RequestIdentity = { sessionId: string | undefined; tenantId: string | undefined; userId: string | undefined };
 
 /** Most identities a store keeps before it forgets the oldest. */
 const IDENTITY_CACHE_LIMIT = 10_000;
@@ -222,7 +243,8 @@ class Identities {
     const identity: SessionIdentity = {
       id: toBareSessionId(storageKey, record.tenantId),
       tenantId: record.tenantId,
-      parentSessionId: record.parentSessionId ?? undefined
+      parentSessionId: record.parentSessionId ?? undefined,
+      userId: record.userId ?? undefined
     };
     remember(cacheOf(sessionIdentities, this.sessions), storageKey, identity);
     return identity;
@@ -243,7 +265,11 @@ class Identities {
   }
 
   rememberRequest(id: string, record: RequestRecord): RequestIdentity {
-    const identity: RequestIdentity = { sessionId: record.sessionId ?? undefined, tenantId: record.tenantId ?? undefined };
+    const identity: RequestIdentity = {
+      sessionId: record.sessionId ?? undefined,
+      tenantId: record.tenantId ?? undefined,
+      userId: record.userId ?? undefined
+    };
     remember(cacheOf(requestIdentities, this.requests), id, identity);
     return identity;
   }
@@ -262,25 +288,38 @@ class Identities {
     return record === undefined ? undefined : this.rememberRequest(id, record);
   }
 
-  /** A session's topic, and its parent's when it is a run, each with `kind`. */
-  sessionNotices(identity: SessionIdentity, kind: ChangeKind): ChangeNotice[] {
+  /**
+   * A session's topic, its parent's when it is a run, and its owner's user
+   * topic: `kind` on the first, `run` on the others. `toOwner: false` (a
+   * state field's delta) skips the user topic: it changes nothing a list of
+   * sessions shows, and a busy turn writes many.
+   */
+  sessionNotices(identity: SessionIdentity, kind: ChangeKind, toOwner = true): ChangeNotice[] {
     const notices = [notice(sessionTopic(identity.id, identity.tenantId), kind)];
     if (identity.parentSessionId !== undefined) {
       notices.push(notice(sessionTopic(identity.parentSessionId, identity.tenantId), "run"));
     }
+    if (toOwner && identity.userId !== undefined) notices.push(notice(userTopic(identity.userId, identity.tenantId), "run"));
     return notices;
   }
 
   /**
    * A request write's notices: `kind` on its session, and `run` on that
    * session's parent when the session is a run (the parent's view lists its
-   * runs by their requests' status). `items` skip the parent: they move no
-   * run's status.
+   * runs by their requests' status) and on the owner's user topic (a list of
+   * the user's sessions shows each one's latest request). `items` skip both:
+   * they move no request's status. `toOwner: false` (a state field's delta)
+   * skips the user topic alone: the parent's view still hears it.
    */
-  async requestNotices(identity: RequestIdentity | undefined, kind: ChangeKind): Promise<ChangeNotice[]> {
+  async requestNotices(
+    identity: RequestIdentity | undefined,
+    kind: ChangeKind,
+    toOwner = true
+  ): Promise<ChangeNotice[]> {
     if (identity?.sessionId === undefined) return [];
     const notices = [notice(sessionTopic(identity.sessionId, identity.tenantId), kind)];
     if (kind === "items") return notices;
+    if (toOwner && identity.userId !== undefined) notices.push(notice(userTopic(identity.userId, identity.tenantId), "run"));
     const session = await this.session(resolveSessionStorageKey(identity.sessionId, identity.tenantId));
     if (session?.parentSessionId !== undefined) {
       notices.push(notice(sessionTopic(session.parentSessionId, identity.tenantId), "run"));
@@ -362,7 +401,7 @@ function sessionWrites(store: SessionStore, bus: ChangeBus, identities: Identiti
     if (result?.ok !== true) return result;
     const identity =
       result.record !== undefined ? identities.rememberSession(id, result.record) : await identities.session(id);
-    if (identity !== undefined) publishNotices(bus, identities.sessionNotices(identity, "run"));
+    if (identity !== undefined) publishNotices(bus, identities.sessionNotices(identity, "run", false));
     return result;
   };
 
@@ -383,16 +422,20 @@ function sessionWrites(store: SessionStore, bus: ChangeBus, identities: Identiti
 }
 
 function requestWrites(store: RequestStore, bus: ChangeBus, identities: Identities): Writes {
-  const after = (identity: RequestIdentity | undefined, kind: ChangeKind): void => {
+  const after = (identity: RequestIdentity | undefined, kind: ChangeKind, toOwner = true): void => {
     void identities
-      .requestNotices(identity, kind)
+      .requestNotices(identity, kind, toOwner)
       .then((notices) => publishNotices(bus, notices))
       .catch((error: unknown) => debugUnassembled(error, { store: "session", id: identity?.sessionId ?? "" }));
   };
   const delta = (original: AnyMethod) => async (id: string, ...rest: unknown[]) => {
     const result = await original(id, ...rest);
     if (result?.ok !== true) return result;
-    after(result.record !== undefined ? identities.rememberRequest(id, result.record) : await identities.request(id), "request");
+    after(
+      result.record !== undefined ? identities.rememberRequest(id, result.record) : await identities.request(id),
+      "request",
+      false
+    );
     return result;
   };
   const flushItems = (requestId: string): Promise<void> => store.flushItems(requestId);

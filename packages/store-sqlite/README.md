@@ -89,9 +89,12 @@ Everything this adapter stores survives a process restart, including resource st
 | Scope records (session, user, org) | Yes | `sessions` / `users` / `orgs` |
 | Request items and stream events | Yes | `request_items` / `request_events` |
 | Resource state (single + collection instances) | Yes | `resource_state` |
+| Collection index entries and build markers | Yes | `resource_index` / `resource_index_built` |
 | Resource content (artifacts, collection bodies, client data) | Yes | `resource_content` |
 | Sequencer checkpoints, suspensions, leases, traces | Yes | dedicated tables |
 | Wakes (when a session's pending work falls due) | Yes | `wakes` |
+
+Every resource state write keeps `resource_index` and `resource_index_built` in step in the same transaction, so a database opened with `skipSchemaInit: true` must already have them: run `initializeSchema` against it with this version first.
 
 ### Resource state carries a version, and deletes leave a row behind
 
