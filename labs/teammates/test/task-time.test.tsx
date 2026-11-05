@@ -36,9 +36,13 @@ const listed = (id: string, status: string, times: { updatedAt: number; startedA
   ...(times.leaseUntil === undefined ? {} : { leaseUntil: times.leaseUntil }),
 });
 
-function panel(rows: Record<string, any>[], connection: SessionConnectionState = "live") {
+function panel(rows: Record<string, any>[], connection: SessionConnectionState = "live", boardStale = false) {
   const adapter = {
-    watchTasks: (_session: string, emit: (tasks: unknown[]) => void) => (emit(rows.map((row) => toBoardTask(row))), () => {}),
+    watchTasks: (_session: string, emit: (tasks: unknown[]) => void, onStale?: (stale: boolean) => void) => {
+      emit(rows.map((row) => toBoardTask(row)));
+      if (boardStale) onStale?.(true);
+      return () => {};
+    },
     watchConnection: (_session: string, emit: (state: SessionConnectionState) => void) => (emit(connection), () => {}),
   } as unknown as LabAdapter;
   render(
@@ -70,6 +74,13 @@ describe("a teammate's task rows and their time", () => {
   it("never says quiet while the panel's feed is stale", () => {
     const now = Date.now();
     const shown = panel([listed("b", "in_progress", { updatedAt: now - 40 * MIN, startedAt: now - 45 * MIN, leaseUntil: now - 38 * MIN })], "stopped");
+    expect(within(shown).queryByText(/quiet/)).toBeNull();
+    expect(within(shown).getByText(/^working · 45m/)).toBeTruthy();
+  });
+
+  it("never says quiet while the board's read fails, though the conversation's feed is live", () => {
+    const now = Date.now();
+    const shown = panel([listed("b", "in_progress", { updatedAt: now - 40 * MIN, startedAt: now - 45 * MIN, leaseUntil: now - 38 * MIN })], "live", true);
     expect(within(shown).queryByText(/quiet/)).toBeNull();
     expect(within(shown).getByText(/^working · 45m/)).toBeTruthy();
   });

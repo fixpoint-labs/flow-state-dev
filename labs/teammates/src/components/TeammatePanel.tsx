@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { BoardTask, LabAdapter, WorkerRow } from "../adapter";
 import type { Look } from "../lib/looks";
 import { useNow, useWatch } from "../lib/use-watch";
@@ -66,8 +66,17 @@ export function TeammatePanel({
   isCoding: (id: string) => boolean;
   onOpen: (popup: Popup) => void;
 }) {
-  const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
-  const stale = useStale(adapter, sessionId);
+  // The board's read can fail while the conversation's feed is live: its rows are then the last read, and stale too.
+  const [boardStale, setBoardStale] = useState(false);
+  const watchTasks = useCallback(
+    (key: string, onChange: (tasks: BoardTask[]) => void) => {
+      setBoardStale(false);
+      return adapter.watchTasks(key, onChange, setBoardStale);
+    },
+    [adapter],
+  );
+  const tasks = useWatch(watchTasks, sessionId) ?? [];
+  const stale = useStale(adapter, sessionId) || boardStale;
   const { active, ended } = groupTasks(tasks);
   // A running clock ticks each second; it holds while the feed is stale, as the status line's age does.
   const now = useNow(1_000, !stale);
