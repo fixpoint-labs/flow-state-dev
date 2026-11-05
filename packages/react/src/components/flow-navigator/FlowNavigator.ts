@@ -222,8 +222,10 @@ function sessionMeta(session: SessionSummary, now: number): ReactNode[] {
           "span",
           {
             key: "state",
-            role: "img",
-            "aria-label": state.label,
+            // Drawn only: the row's button names its session and carries the
+            // state as its description (`aria-description`), so the button's
+            // name stays the session's name.
+            "aria-hidden": "true",
             title: state.label,
             "data-request-status": state.status,
             ...(state.needsYou ? { "data-needs-you": "" } : {}),
@@ -238,6 +240,7 @@ function sessionMeta(session: SessionSummary, now: number): ReactNode[] {
         "span",
         {
           key: "age",
+          "aria-hidden": "true",
           "data-session-age": "",
           title: new Date(session.updatedAt).toLocaleString(),
           style: { ...metaText, color: muted }
@@ -515,6 +518,7 @@ function SessionList(props: {
                     "aria-current": isSelected ? "true" : undefined,
                     "data-session-id": session.id,
                     title: session.id,
+                    "aria-description": sessionRowState(session)?.label,
                     ...(dispatchRun === undefined
                       ? {}
                       : { "data-dispatch-run-of": dispatchRun.parentSessionId }),
