@@ -173,7 +173,7 @@ const READINESS_FLOW = "harness-readiness";
 const LAB_CONTEXT_FLOW = "lab-context";
 
 /** What the page's context strip and first run read: the lab's settings and the declared delegates. */
-export const labContextSchema = z.object({
+const labContextSchema = z.object({
   /** The working folder, as an absolute path. */
   folder: z.string(),
   /** Why a coding run's checkout of the folder would be refused, or `null` when it wouldn't. */

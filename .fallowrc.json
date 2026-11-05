@@ -139,6 +139,10 @@
     "labs/claude-code-style/src/components/flow-state/run-checks.tsx",
     "labs/teammates/src/components/flow-state/run-checks.tsx",
     "packages/shift-manager/src/components/flow-state/run-checks.tsx",
+    // The labs' byte copies of the registry's harness readiness: they draw the chips;
+    // `readinessChipText` is for apps that word a harness's state on their own.
+    "labs/claude-code-style/src/components/flow-state/harness-readiness.tsx",
+    "labs/teammates/src/components/flow-state/harness-readiness.tsx",
     // Kitchen Sink's byte copy of the registry's spend: its harness session draws
     // the line; the copy's other formatters are for apps that show them apart.
     "apps/kitchen-sink/components/flow-state/spend.tsx",
