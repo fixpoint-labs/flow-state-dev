@@ -11,7 +11,7 @@
  * A task that ends done with nothing written says so in its popup, rather
  * than reading as a plain success with nothing under it.
  */
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import { createLabAdapter, toBoardTask, type BoardTask, type LabAdapter } from "../src/adapter";
@@ -114,9 +114,13 @@ const openTask = (rows: Record<string, unknown>[]) => {
 };
 
 describe("a teammate's finished task's popup", () => {
-  it("shows the answer it wrote in its result box", () => {
+  it("shows the answer it wrote in its result box", async () => {
     const popup = openTask([doneRow(REVIEW)]);
-    expect(within(popup).getByRole("region", { name: "Result" }).textContent).toBe(REVIEW);
+    // The result box draws the answer as Markdown: its table is a table, not pipes.
+    const box = within(popup).getByRole("region", { name: "Result" });
+    await waitFor(() => expect([...box.querySelectorAll("td")].map((td) => td.textContent)).toEqual(["#4735", "ready"]));
+    expect(box.textContent).toContain("Here are the 20 newest pull requests, reviewed:");
+    expect(box.textContent).not.toContain("| --- |");
     expect(within(popup).queryByRole("region", { name: "No result" })).toBeNull();
   });
 

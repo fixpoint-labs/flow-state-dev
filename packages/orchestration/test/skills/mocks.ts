@@ -87,6 +87,9 @@ export function createMockSkillsCollection(
       }
       return makeRef(entry);
     }) as never,
+    findBy: async () => {
+      throw new Error("findBy is not used by the skills runtime");
+    },
     upsert: vi.fn(async (key, update, createOnly) => {
       const k = typeof key === "string" ? key : "";
       const full = prefixed(pattern, k);

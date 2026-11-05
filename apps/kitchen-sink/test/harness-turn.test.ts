@@ -65,9 +65,8 @@ describe("turnNotice", () => {
 });
 
 // The page holds a message back while a turn waits on an approval, because
-// the session flow would refuse it, and a refused message used to take the
-// latest-turn slot and hide the waiting turn's Stop. So the read must match
-// the flow's refusal exactly, and let go the moment the turn is stopped.
+// the session flow would refuse it. So the read must match the flow's
+// refusal exactly, and let go the moment the turn is stopped.
 describe("turnWaitingOnApproval", () => {
   const waiting = { ...blank, waitsOnApproval: true };
   const stopItem = (requestId: string) => ({ requestId, type: "status", detail: { code: "system.request_aborted" } });

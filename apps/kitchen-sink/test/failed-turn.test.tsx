@@ -1,13 +1,13 @@
 // @vitest-environment happy-dom
 /**
- * Flow State mode's failed turn (specs/issues/FIX-2559): an `error` item draws
+ * Flow State mode's failed turn: an `error` item draws
  * the request-recovery line with its reason, Retry shows only on the request
  * the session will retry, and a refused retry shows once.
  *
  * Why each case matters: a Retry drawn on a request `resumeLatestRequest`
  * won't retry is a button that does nothing; a refused retry shown both on
- * the line and in the page's box is the double failure FIX-2370's E6 rules
- * out; a refused send has no line, so the box is its only place.
+ * the line and in the page's box is a double failure; a refused send has
+ * no line, so the box is its only place.
  *
  * Red states produced before these were trusted:
  *   - render the item with `ErrorDisplay` again: the reason-and-Retry case

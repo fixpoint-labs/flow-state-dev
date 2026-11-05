@@ -3,10 +3,10 @@ import type { LabAdapter, NewTeammate, WorkerRow } from "../adapter";
 import type { Look } from "../lib/looks";
 import { statusLine } from "../lib/status";
 import { useSeen } from "../lib/unread";
-import { useNow, useWatch } from "../lib/use-watch";
+import { useNow, useStale, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
-import { isFeedStale, STALE_CLASS } from "./flow-state/connection-banner";
+import { STALE_CLASS } from "./flow-state/connection-banner";
 import { HireForm } from "./TeammateForms";
 
 /** The entries that count toward unread: everything but your own lines. */
@@ -153,10 +153,4 @@ function WorkerItem({
       </span>
     </button>
   );
-}
-
-/** Whether a conversation's feed has lost the server, so what it last said may be out of date. */
-export function useStale(adapter: LabAdapter, sessionId: string | undefined): boolean {
-  const connection = useWatch(adapter.watchConnection, sessionId);
-  return connection !== undefined && isFeedStale(connection);
 }

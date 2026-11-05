@@ -19,7 +19,7 @@ import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus
  * You can talk inside a task (spec D3): your line is a steer on it, and
  * answers its open question when it has one. When it is ready for
  * review, *Resolve* accepts it and *Request changes* sends your words back.
- * Under the header, the task's action row (FIX-2382): Cancel and Release
+ * Under the header, the task's action row: Cancel and Release
  * while it is open, Retry once it failed or was cancelled. It has no Steer
  * box, since the composer steers. A failed task's error shows as an error.
  * A finished task's composer is off.
