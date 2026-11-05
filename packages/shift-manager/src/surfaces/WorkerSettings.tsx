@@ -13,7 +13,7 @@ import { RouteLink } from "../components/RouteLink";
 const SHIFT_COORDINATOR_NAME = "Shift Coordinator";
 
 export function WorkerSettingsView({ snapshot, workerId, devtoolUrl }: { snapshot: LoadedSnapshot; workerId: string; devtoolUrl?: string }) {
-  const roster = useRoster(snapshot.readAt);
+  const roster = useRoster();
   const { workers } = withRoster(snapshot, roster);
   const worker = workers.find((w) => w.id === workerId);
   const shiftCoordinator = shiftCoordinatorOf(workers);

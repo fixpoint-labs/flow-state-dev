@@ -6,7 +6,7 @@
  *
  * | Function            | Bound to                                                                     |
  * |---------------------|------------------------------------------------------------------------------|
- * | `listWorkers`       | the workforce client's `roster()`                                            |
+ * | `watchWorkers`      | the workforce client's `watchRoster()`: every hire, edit and fire, anywhere   |
  * | `openConversation`  | `ensureWorkerSession({ worker })`: the worker's default conversation         |
  * | `send`              | the worker's door, `respond`, streamed, so its answer shows as it is written  |
  * | `watchConversation` | the session's items, from its snapshot and then its stream (`sessionFeed`), |
@@ -96,6 +96,7 @@ import {
 import { harnessName } from "./lib/harness";
 import { sessionFeeds, type SessionFeed } from "./lib/session-feed";
 import { stableList } from "./lib/stable";
+import type { HarnessReadinessChipRow } from "./components/flow-state/harness-readiness";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
@@ -318,9 +319,35 @@ export interface WindowMark {
   summarized: boolean;
 }
 
+/** One coding harness's readiness, as harness-manager's readiness action answers it. */
+export type HarnessRow = HarnessReadinessChipRow;
+
+/** What the lab works on and with, from its `lab-context` flow: the context strip and the first run read it. */
+export interface LabContext {
+  /** The working folder. */
+  folder: string;
+  /** Why a coding run's checkout of the folder would be refused, or `null`. */
+  folderProblem: string | null;
+  model: string;
+  /** The harness a coding worker whose file names none runs on. */
+  harness: string;
+  /** Each worker's declared delegates, by id: ids, or `"all"`. */
+  delegates: Record<string, "all" | string[]>;
+}
+
 /** Everything the screen reads and writes. */
 export interface LabAdapter {
+  /**
+   * The roster's rows, and again each time a hire, an edit or a fire, from
+   * any tab or any worker's turn, changes them. `onError` hears a failed read;
+   * the next read that lands reports the rows.
+   */
+  watchWorkers(onChange: (workers: WorkerRow[]) => void, onError?: (error: unknown) => void): Unsubscribe;
   listWorkers(): Promise<WorkerRow[]>;
+  /** What the lab works on and with, read once for the context strip. */
+  readContext(): Promise<LabContext>;
+  /** Which coding harnesses can run on this machine; `refresh` checks them again (Re-check). */
+  readHarnesses(refresh?: boolean): Promise<HarnessRow[]>;
   /** The worker's one conversation; the same id every time. */
   openConversation(worker: string): Promise<string>;
   send(sessionId: string, text: string): Promise<void>;
@@ -908,7 +935,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const flowOfSession = new Map<string, string>();
   /** The workers, by id, so a line under a worker's name reads as a task's ending. */
   let workerIds = new Set<string>();
-  /** Each coding worker's `harness:`, from the last roster read. */
+  /** Each coding worker's `harness:`, from the last roster the watch reported. */
   let harnesses = new Map<string, string>();
 
   const conversationOf = async (worker: string) => {
@@ -928,7 +955,46 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const watchFeed = <T>(sessionId: string, map: (items: Item[]) => T, onChange: (value: T) => void): Unsubscribe =>
     (feeds(sessionId) as SessionFeed).watch((items: readonly OutputItem[]) => onChange(map(items as unknown as Item[])));
 
+  /** The user's one session on a lab flow (`harness-readiness`, `lab-context`), found or made once. */
+  const labSessions = new Map<string, Promise<string>>();
+  const labSession = (flow: string) => {
+    const known = labSessions.get(flow);
+    if (known !== undefined) return known;
+    const made = (async () => {
+      const [latest] = (await client.sessions.list({ flowKind: flow, userId: client.userId })).sort((a, b) => b.updatedAt - a.updatedAt);
+      return latest?.id ?? (await client.flow(flow).createSession()).id;
+    })();
+    labSessions.set(flow, made);
+    made.catch(() => labSessions.delete(flow));
+    return made;
+  };
+  /** Run one of a lab flow's actions and hand back its output, or throw why it failed. */
+  const runLab = async (flow: string, action: string, input: unknown): Promise<any> => {
+    const sessionId = await labSession(flow);
+    const sent = await client.flow(flow).send(action, input, { sessionId });
+    const { status } = await sent.wait();
+    const found = (await client.sessions.requests(sessionId, { includeResultOutput: true, limit: 20 })).find((r) => r.id === sent.id);
+    if (status !== "completed") throw new Error(found?.result?.error?.message ?? `${action} ended ${status}`);
+    return found?.result?.output;
+  };
+
   return {
+    watchWorkers(onChange, onError) {
+      return workforce.watchRoster(
+        (roster) => {
+          workerIds = new Set(roster.map((w) => w.id));
+          harnesses = new Map(roster.flatMap((w) => (typeof w.settings?.harness === "string" ? [[w.id, w.settings.harness] as const] : [])));
+          onChange(roster.map(toWorkerRow));
+        },
+        onError === undefined ? undefined : { onError },
+      );
+    },
+    async readContext() {
+      return (await runLab("lab-context", "read", {})) as LabContext;
+    },
+    async readHarnesses(refresh = false) {
+      return ((await runLab("harness-readiness", "read", { refresh })) as { harnesses: HarnessRow[] }).harnesses;
+    },
     async listWorkers() {
       const roster = await workforce.roster();
       workerIds = new Set(roster.map((w) => w.id));

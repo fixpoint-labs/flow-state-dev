@@ -258,12 +258,6 @@ export interface ResourceBackedOptions {
    */
   partition?: string;
   /**
-   * Record that this partition holds a task id, before the row is written
-   * (FIX-2160): the partitioned ledger's id index. Omitted on a ledger with
-   * no partitions.
-   */
-  recordTaskId?: (taskId: string) => Promise<void>;
-  /**
    * The ledger's ending recorder (`defineTaskCollection({ recordEnding })`),
    * run inside every write that records how a task ended. Its `metadata`
    * lands in that same write. See `./ending`.
@@ -932,7 +926,6 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       await refreshDeps([task as Task]);
       assertDepsFileable([task as Task], lookupRow);
       assertParentsOpen([task as Task], lookupRow);
-      await options.recordTaskId?.(task.id);
       const created = await options.collection.create(
         task.id,
         task as unknown as JsonObject
@@ -955,7 +948,6 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       assertParentsOpen(built as Task[], lookupRow);
       const created: Task<TInput, TOutput>[] = [];
       for (const task of built) {
-        await options.recordTaskId?.(task.id);
         const createdRef = await options.collection.create(
           task.id,
           task as unknown as JsonObject

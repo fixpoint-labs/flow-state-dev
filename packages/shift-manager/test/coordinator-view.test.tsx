@@ -21,6 +21,7 @@ import { toWorker } from "../src/lib/reads";
 let listed: Array<{ worker: string; note?: string }> = [];
 const calls: string[] = [];
 let refuseAdd: string | null = null;
+const rosterViews = new Set<(entries: unknown[]) => void>();
 
 // One connection and one workforce client, as the app memoizes them per Lab.
 vi.mock("../src/lib/lab-data", () => {
@@ -29,6 +30,12 @@ vi.mock("../src/lib/lab-data", () => {
 });
 vi.mock("../src/lib/workforce", () => {
   const workforce = {
+    // The roster watch: reports one read, and each roster a test tells it of.
+    watchRoster(onRoster: (entries: unknown[]) => void) {
+      rosterViews.add(onRoster);
+      void this.roster().then(onRoster);
+      return () => rosterViews.delete(onRoster);
+    },
     roster: async () => [
       { id: "shift-coordinator", flow: "coordinator", standard: true, description: null },
       { id: "eng.em", flow: "em", standard: true, description: null, name: "Engineering Manager" },
@@ -108,6 +115,23 @@ describe("the delegates panel (BR-33)", () => {
     await settle();
     expect(screen.getAllByTestId("shift-coordinator-delegate").map((li) => li.getAttribute("data-worker"))).toEqual(["licenses"]);
     expect(calls).toEqual(["list coordinator s1", "add coordinator s1 licenses", "remove coordinator s1 eng.em"]);
+  });
+
+  it("offers a worker the roster watch reports, with no remount and no new read of the delegates", async () => {
+    render(<DelegatesPanel worker={shiftCoordinator} sessionId="s1" />);
+    await settle();
+    await act(async () => {
+      for (const view of [...rosterViews]) {
+        view([
+          { id: "shift-coordinator", flow: "coordinator", standard: true, description: null },
+          { id: "eng.em", flow: "em", standard: true, description: null, name: "Engineering Manager" },
+          { id: "scribe", flow: "agent", standard: false, description: null, name: null },
+        ]);
+      }
+    });
+    const options = [...(screen.getByTestId("shift-coordinator-delegate-pick") as HTMLSelectElement).options].map((o) => o.value);
+    expect(options).toEqual(["", "scribe"]);
+    expect(calls).toEqual(["list coordinator s1"]);
   });
 
   it("shows a refused add's reason and keeps the list as it was", async () => {
