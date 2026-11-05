@@ -30,9 +30,9 @@ requests.**
 flowchart LR
   I["installed tarballs · empty project · Node host"] --> S["send compute · then 101 more requests in its session"]
   S --> R["request of the first · result"]
-  R -->|"completed · the computed output · a failing action reads failed with its code"| P["PASS · manifest row One path, output read"]
+  R -->|"completed · the computed output · a failing action reads failed with its code"| P["PASS · cell onepath.output-read"]
   K["census · repo source"] -->|"0 output reads by listing"| P
-  C["control · the 0.4.0 tarballs"] -.-> R
+  C["control=adopter-goal · the 0.4.0 tarballs"] -.-> R
   R -.->|"under the control"| F["must FAIL · no result to read"]
 ```
 
@@ -41,11 +41,11 @@ ones; the 0.4.0 tarballs have no such call and must fail.
 
 | How we verify | |
 |---|---|
-| **Goal check** | FIX-2564's leg c in `scripts/packed-install/run.mjs`, on its manifest row *One path · output read*; this issue flips it to `expect: pass`. Run by the implementer at completion, verdict in the implementation PR. Plus [`poc/output-read-census/`](poc/output-read-census/census.mjs), run on the PR head |
+| **Goal check** | FIX-2564's leg c, `scripts/packed-install/run.mjs --goal`, on the manifest cell `onepath.output-read` with its two cases: the request read under 101 newer ones, and a failing action. This issue flips it to `expect: pass`; react's *Surface* cell is flipped by whichever of FIX-2449, FIX-2450, this issue and FIX-2456 lands last. Run by the implementer at completion, verdict in the implementation PR. Plus [`poc/output-read-census/`](poc/output-read-census/census.mjs), run on the PR head |
 | **Signal** | `result()` resolves `{ status: "completed", output }` equal to what the action computed; a failing action resolves `failed` with its `error.code`. The census prints *0 output reads by list-and-find* |
 | **Input** | An action that returns a value computed from its input, so a stub can't pass. Any other input, or 500 newer requests, must pass too |
 | **Anti-game** | Assert on what the installed client returns, never on the route handler, a mocked transport or workspace `src` (ER-9). The census's `--plant` run must fail |
-| **Control that must fail** | `run.mjs --control`, the 0.4.0 tarballs: fails on *`result()` resolves the output*. Today's `main` fails the census: 6 output reads |
+| **Control that must fail** | `run.mjs --control=adopter-goal`, the 0.4.0 tarballs: both cases of `onepath.output-read` fail, on *`result()` resolves the output*. Today's `main` fails the census: 6 output reads |
 
 ## What changes
 
@@ -90,7 +90,8 @@ last step can't miss.
 `signal`), `client/react.md` and `api/react.md` (`useAction`'s option), and
 `fundamentals/flows.md` → *Reads*, one line pointing at the `useSubscription` recipe in
 `client/react.md`. Update `docs/architecture/server-and-client.md` and the client, react and
-engine READMEs. No new page; the epic's *what each package root is for* page is FIX-2448's.
+engine READMEs. No new page: on FIX-2448's *What each package root is for*
+(`api/package-roots.md`), react's row gains `react/internal`, our packages' entry and not for apps.
 
 ## How it reaches the record
 
@@ -114,6 +115,8 @@ record and checks the caller reaches it; the flag only stops it dropping the sto
 - Where results are written: the engine's one result builder, in the final status write.
 - Flow `reads`. A React screen runs one through `useSubscription`, as `client/react.md` shows.
 - The answer verb on the same handle, FIX-2450's (the epic's `client.ts` seam).
+- React's notice coalescer. FIX-2551 lifts it out of react's internals into the client while
+  this adds `react/internal`; whichever lands second rebases.
 
 ## What's already here, and the debt
 
@@ -126,6 +129,8 @@ record and checks the caller reaches it; the flag only stops it dropping the sto
 | [FIX-1661 D1](../FIX-1661/DECISIONS.md#d1): the result on the record; the list carries the output on request; no result route | **Amended in part.** The status route carries the same stored result on the same flag. Still no new route and no stream event |
 | [FIX-2162 D2](../FIX-2162/DECISIONS.md#d2): a request is an object and its lifecycle lives on it | **Builds on.** `result()` is on every request handle |
 | FIX-2043 (Linear only): read a result by request id, through an id filter on the session list | **Consumed, not re-parented** (ER-8). Its need and *done when* are met here; its list filter is not taken ([D1](DECISIONS.md#d1)) |
+| FIX-2513 (Linear only): `handle.result()` by id, and the Inbox's, Shift Manager's and the harness line's loops moved onto it | **Consumed, not re-parented** (ER-8): same job, files and call, all in the census. Its extra, the DevTool's `taskToolSuffix` copy, is in *Leaves*. The coordinator closes or re-parents it on merge |
+| FIX-2460's `testFlow` answer helper | **Consumer.** It settles by reading this status route with `include_result_output`, in process, not its own wait loop: the flag is its seam ([D1](DECISIONS.md#d1)) |
 | [FIX-2367](../../epics/FIX-2367/SPEC.md#the-goal-and-how-well-know-its-met)'s *not done if*: no two hooks for watching one scope; [FIX-2428](../FIX-2428/SPEC.md)'s `useSubscription` | **Kept.** No new hook; React flow reads stay `useSubscription`'s ([D3](DECISIONS.md#d3)) |
 | [FIX-2466 → Decided, not asked](../FIX-2466/DECISIONS.md#decided-not-asked): the three Shift Manager waits are this issue's | **Kept.** They move onto `wait()` |
 
@@ -135,13 +140,13 @@ record and checks the caller reaches it; the flag only stops it dropping the sto
 | `include_result_output` on the status route; an optional `result` on its snapshot | The status route's by-id read; the session list's flag and its result projection | Extends: the list's flag name and wire shape, on the read that already loads the one record |
 | `signal` on `wait()` and `result()` | Each copy's own stop | One option on the one wait |
 | An option on `useAction` | `react` · `useAction`; `useSubscription` | Extends the hook that already sends one action |
-| `@flow-state-dev/react/internal` | `client/./internal`, [D2](../../epics/FIX-2447/DECISIONS.md#d2) | Reuse of that kind: react's one hidden entry |
+| `@flow-state-dev/react/internal` | `client/./internal`, [D2](../../epics/FIX-2447/DECISIONS.md#d2) | Reuse of that kind: react's one hidden entry. Its PR ships the fix that keeps it out of import completions, if one exists; if none does, D2's closure spot-check stands as a recorded finding |
 
 | The debt | |
 |---|---|
 | **Removes** | Six list-and-find output reads and their page constants; five hand-rolled status loops; `useReadFence` from the react root |
 | **Adds** | One method, one query flag, one optional field, one option on `wait()`, one on `useAction`, one hidden subpath. Each extends the closest entry; none is a second way to do a job |
-| **Leaves** | `useSession().sendAction` still resolves on acceptance, a second React send with no output. Not this job's: a session view reads its answer off the stream. The devtool's list views keep listing, which is a list's job |
+| **Leaves** | `useSession().sendAction` still resolves on acceptance, a second React send with no output. Not this job's: a session view reads its answer off the stream. The devtool's list views keep listing, which is a list's job. The DevTool's copy of `taskToolSuffix` (FIX-2513's extra) stays: a tool-name rule, not an output read, and removing it reopens which packages the DevTool may depend on |
 
 **Net: down.** Six copies of one read and five of one wait become one call each.
 
