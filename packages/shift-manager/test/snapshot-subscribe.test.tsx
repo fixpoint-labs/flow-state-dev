@@ -39,11 +39,7 @@ vi.mock("../src/lib/connection", () => ({
   connect: (connection: { userId: string }) => ({ userId: connection.userId, subscribe }),
   readConnection: () => ({ userId: USER }),
 }));
-const workforce = {
-  roster: async () => [],
-  // The roster watch `useRoster` follows, reporting one empty read.
-  watchRoster: (onRoster: (entries: never[]) => void, options?: { onError?: (error: unknown) => void }) => (void Promise.resolve([] as never[]).then(onRoster, options?.onError), () => {}),
-};
+const workforce = { watchRoster: () => () => {} };
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
 
 let sessions: SessionSummary[] = [];
