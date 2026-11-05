@@ -6,9 +6,10 @@
  * proves the package at wiring.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { App } from "../src/App";
 import { createFakeLab } from "./fake-lab";
+import { layOutFeeds } from "./feed-layout";
 
 // The app keeps what is open in the page's address; each test starts on a bare one.
 afterEach(() => {
@@ -40,6 +41,15 @@ async function startThreadsSession(speed: number) {
   await screen.findByLabelText("Message the main session");
 }
 
+// Opens the thread that is ready for review, as a sheet over the main thread.
+async function openReviewThread() {
+  await startThreadsSession(0.01);
+  await ask("Research three vendors for a status page, one thread each.");
+  await waitFor(() => expect(card("Vendor C · summary").dataset.column).toBe("review"));
+  fireEvent.click(within(card("Vendor C · summary")).getByRole("button", { name: "View task" }));
+  return screen.getByRole("dialog", { name: "Task: Vendor C · summary" });
+}
+
 describe("the threads-mode screen", () => {
   it("starts a session in the Projects view with the lead and the threads board", async () => {
     await startThreadsSession(0.01);
@@ -63,9 +73,9 @@ describe("the threads-mode screen", () => {
     await startThreadsSession(0.01);
     await ask("Research three vendors for a status page, one thread each.");
     await waitFor(() => expect(rowsIn("Waiting on you").join()).toMatch(/Which region matters, EU or US\?/));
-    // The card offers Answer; answering happens in the thread's view, which replaces the board.
+    // The card offers Answer; answering happens in the thread's sheet, over the main thread.
     fireEvent.click(within(card("Vendor B · regions")).getByRole("button", { name: "Answer" }));
-    const view = screen.getByRole("complementary", { name: "Task: Vendor B · regions" });
+    const view = screen.getByRole("dialog", { name: "Task: Vendor B · regions" });
     expect(within(view).getByRole("note").textContent).toMatch(/Waiting on you · Which region matters/);
     fireEvent.change(within(view).getByLabelText("Message this task"), { target: { value: "EU" } });
     fireEvent.click(within(view).getByRole("button", { name: "Answer" }));
@@ -73,7 +83,7 @@ describe("the threads-mode screen", () => {
     // It comes back for review with what the answer asked for.
     await waitFor(() => expect(card("Vendor B · regions").dataset.column).toBe("review"));
     expect(card("Vendor B · regions").textContent).toMatch(/Summary for EU ready/);
-    fireEvent.click(within(view).getByRole("button", { name: "Back to tasks" }));
+    fireEvent.click(within(view).getByRole("button", { name: "Close" }));
     expect(rowsIn("Ready for review").join()).toMatch(/Vendor B · regions/);
   });
 
@@ -82,7 +92,7 @@ describe("the threads-mode screen", () => {
     await ask("Research three vendors for a status page, one thread each.");
     await waitFor(() => expect(rowsIn("Waiting on you").join()).toMatch(/Which region matters/));
     fireEvent.click(within(card("Vendor B · regions")).getByRole("button", { name: "Answer" }));
-    const view = screen.getByRole("complementary", { name: "Task: Vendor B · regions" });
+    const view = screen.getByRole("dialog", { name: "Task: Vendor B · regions" });
     const box = within(view).getByLabelText("Message this task");
     // An empty box sends nothing, shortcut or not.
     fireEvent.keyDown(box, { key: "Enter", metaKey: true });
@@ -103,7 +113,7 @@ describe("the threads-mode screen", () => {
     await ask("Research three vendors for a status page, one thread each.");
     await waitFor(() => expect(card("Vendor C · summary").dataset.column).toBe("review"));
     fireEvent.click(within(card("Vendor C · summary")).getByRole("button", { name: "Request changes" }));
-    const view = screen.getByRole("complementary", { name: "Task: Vendor C · summary" });
+    const view = screen.getByRole("dialog", { name: "Task: Vendor C · summary" });
     const box = within(view).getByPlaceholderText("What should change…");
     fireEvent.change(box, { target: { value: "Add the EU pricing." } });
     fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
@@ -131,7 +141,7 @@ describe("the threads-mode screen", () => {
     await ask("Research three vendors for a status page, one thread each.");
     await waitFor(() => expect(card("Vendor C · summary").dataset.column).toBe("review"));
     fireEvent.click(within(card("Vendor C · summary")).getByRole("button", { name: "Request changes" }));
-    const view = screen.getByRole("complementary", { name: "Task: Vendor C · summary" });
+    const view = screen.getByRole("dialog", { name: "Task: Vendor C · summary" });
     const change = within(view).getByRole("button", { name: "Request changes" }) as HTMLButtonElement;
     expect(change.disabled).toBe(true);
     fireEvent.change(within(view).getByLabelText("Message this task"), { target: { value: "Add their support hours." } });
@@ -165,10 +175,10 @@ describe("the threads-mode screen", () => {
     expect(rowsIn("Resolved").filter((row) => /Not reviewed/.test(row))).toHaveLength(1);
 
     fireEvent.click(within(group("Pinned")).getByRole("button", { name: /Weekly uptime digest/ }));
-    const view = screen.getByRole("complementary", { name: "Task: Weekly uptime digest" });
+    const view = screen.getByRole("dialog", { name: "Task: Weekly uptime digest" });
     fireEvent.click(within(view).getByRole("button", { name: "Unpin" }));
     await within(view).findByRole("button", { name: "Pin" });
-    fireEvent.click(within(view).getByRole("button", { name: "Back to tasks" }));
+    fireEvent.click(within(view).getByRole("button", { name: "Close" }));
     expect(within(board()).queryByRole("region", { name: "Pinned" })).toBeNull();
     expect(rowsIn("Working").join()).toMatch(/Weekly uptime digest/);
   });
@@ -193,7 +203,7 @@ describe("the threads-mode screen", () => {
     await ask("Research three vendors for a status page, one thread each.");
     await waitFor(() => expect(card("Vendor C · summary").dataset.column).toBe("review"));
     fireEvent.click(within(card("Vendor C · summary")).getByRole("button", { name: "View task" }));
-    const view = screen.getByRole("complementary", { name: "Task: Vendor C · summary" });
+    const view = screen.getByRole("dialog", { name: "Task: Vendor C · summary" });
     expect(within(view).getByLabelText("Message this task")).toBeTruthy();
     fireEvent.click(within(view).getByRole("button", { name: "Resolve" }));
     await waitFor(() => expect(within(view).queryByLabelText("Message this task")).toBeNull());
@@ -206,7 +216,7 @@ describe("the threads-mode screen", () => {
     const coder = await waitFor(() => card("Add a CHANGELOG line for the vendor pick"));
     await waitFor(() => expect(coder.dataset.column).toBe("review"));
     fireEvent.click(within(coder).getByRole("button", { name: "View task" }));
-    const view = screen.getByRole("complementary", { name: "Task: Add a CHANGELOG line for the vendor pick" });
+    const view = screen.getByRole("dialog", { name: "Task: Add a CHANGELOG line for the vendor pick" });
     const review = await within(view).findByRole("region", { name: "Ready for review" });
     // Said once: the header carries no second copy of the review.
     expect(view.textContent!.match(/Ready for review/g)).toHaveLength(1);
@@ -219,6 +229,52 @@ describe("the threads-mode screen", () => {
     // The stop's boilerplate is for the prompt, not the card.
     expect(view.textContent).not.toMatch(/information, not approval/);
     expect(within(view).getByRole("button", { name: "Resolve" })).toBeTruthy();
+  });
+
+  it("opens a thread as a sheet over the main thread, with the board still in the pane, as session mode's tasks open", async () => {
+    await startThreadsSession(0.01);
+    await ask("Research three vendors for a status page, one thread each.");
+    await waitFor(() => expect(card("Vendor C · summary").dataset.column).toBe("review"));
+    fireEvent.click(within(card("Vendor C · summary")).getByRole("button", { name: "View task" }));
+    // The sheet draws over the main thread; the board is still in the pane beside it.
+    expect(screen.getByRole("dialog", { name: "Task: Vendor C · summary" })).toBeTruthy();
+    expect(rowsIn("Ready for review").join()).toMatch(/Vendor C · summary/);
+    // Esc closes it, and the thread's cards stay where they were.
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task: Vendor C · summary" })).toBeNull());
+    expect(within(thread()).getAllByRole("region", { name: /^Task: / })).toHaveLength(3);
+  });
+
+  it("scrolls the thread's body to your line when you send from its composer, as the main thread does", async () => {
+    // Every scroll the sheet's body is asked for is recorded. Your line rises smoothly, as it does in the main thread.
+    const feeds = layOutFeeds();
+    onTestFinished(feeds.restore);
+    const view = await openReviewThread();
+    const body = view.querySelector<HTMLElement>(":scope > .overflow-y-auto")!;
+    feeds.scrolls.length = 0;
+    fireEvent.change(within(view).getByLabelText("Message this task"), { target: { value: "Shorter, please." } });
+    fireEvent.click(within(view).getByRole("button", { name: "Request changes" }));
+    await waitFor(() => expect(feeds.scrolls.some((s) => s.feed === body && s.behavior === "smooth")).toBe(true));
+  });
+
+  it("keeps the thread open when Esc only ends an IME composition in its box", async () => {
+    const view = await openReviewThread();
+    const box = within(view).getByLabelText("Message this task");
+    fireEvent.keyDown(box, { key: "Escape", isComposing: true });
+    expect(screen.getByRole("dialog", { name: "Task: Vendor C · summary" })).toBeTruthy();
+    fireEvent.keyDown(box, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task: Vendor C · summary" })).toBeNull());
+  });
+
+  it("lets Esc close the keys sheet opened over a thread, and leaves the thread open", async () => {
+    const view = await openReviewThread();
+    fireEvent.keyDown(document.body, { key: "?" });
+    const keys = await screen.findByRole("dialog", { name: "Keys" });
+    await waitFor(() => expect(keys.contains(document.activeElement)).toBe(true));
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Keys" })).toBeNull());
+    expect(view.isConnected).toBe(true);
+    expect(screen.getByRole("dialog", { name: "Task: Vendor C · summary" })).toBeTruthy();
   });
 
   it("widens the side panel from its edge and remembers the width", async () => {

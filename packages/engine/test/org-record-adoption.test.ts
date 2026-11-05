@@ -121,7 +121,7 @@ describe("BR-20 · initializing an organization's shared record", () => {
 
     // The seed carries no state — the schema's defaults are applied on read,
     // not baked into the row — so the record EXISTING is the claim here.
-    expect(first.org!.state).toEqual({});
-    expect(await stores.org.get(ORG_ID)).toBeDefined();
+    expect(first.org!.state).toEqual({ tier: "free" });
+    expect((await stores.org.get(ORG_ID))?.state).toEqual({});
   });
 });

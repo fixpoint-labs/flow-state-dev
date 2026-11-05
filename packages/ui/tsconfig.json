@@ -13,7 +13,8 @@
     "test/**/*",
     "registry/components/tool-grouping.ts",
     "registry/components/tool-naming.ts",
-    "registry/components/task-plan-state.ts"
+    "registry/components/task-plan-state.ts",
+    "registry/components/working-status.ts"
   ],
   "exclude": ["registry/**/*.tsx", "test/render/**"],
   "references": [{ "path": "../contracts" }, { "path": "../core" }]

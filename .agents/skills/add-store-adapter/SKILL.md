@@ -233,9 +233,12 @@ Test categories:
 9. Complex nested JSON round-trip
 10. Drop-in replacement compatibility (same behavior as in-memory stores)
 
-### Step 8: Write README
+### Step 8: README at release
 
-Follow the established structure: Purpose, Quick Start, API Surface, Scripts.
+Don't write the package `README.md` here: package READMEs ship to npm and are written at release by
+`/release-docs` (CI blocks them in a normal PR). Write the changeset for the new package and end it
+with `Docs: packages/<name>/README.md` plus the persistence overview page. The README follows the
+established structure: Purpose, Quick Start, API Surface, Scripts.
 
 ### Step 9: Register in Workspace
 

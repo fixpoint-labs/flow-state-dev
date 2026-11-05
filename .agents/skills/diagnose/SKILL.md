@@ -154,7 +154,7 @@ Required before declaring done:
 - [ ] Throwaway prototypes deleted (or moved to a clearly-marked debug location)
 - [ ] The hypothesis that turned out correct is stated in the commit / PR message — so the next debugger learns
 - [ ] **Per-package check passes:** `pnpm --filter <pkg> typecheck && pnpm --filter <pkg> test` for any package you touched. Run `pnpm typecheck` at the root if your fix crossed package boundaries — it also runs the boundary validator.
-- [ ] **User-facing doc updates** (CLAUDE.md rule): any new or changed end-user functionality requires updates to the relevant `packages/*/README.md` and any affected `apps/docs` pages in the same change set.
+- [ ] **Changeset for user-visible fixes** (CLAUDE.md rule): if a user of a published package can observe the fix, write the changeset. Don't edit `packages/*/README.md` or `apps/docs`; they're written at release.
 - [ ] **BP-007:** if you added a new file, give it a header comment and doc-comment every export.
 
 **Then ask: what would have prevented this bug?** If the answer involves architectural change (no good test seam, tangled callers, hidden coupling between packages, missing capability), capture the specifics — the right place depends on scope:

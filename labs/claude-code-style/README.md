@@ -50,7 +50,7 @@ threads, each a task in a session of its own, and the right pane is the status b
 - **The page's address** names the view, the open session and the task open in its pane
   (`?session=<id>&task=<id>`), so a reload or a link reopens them, and Back returns to what you
   had open before. A link to a session or task that is gone opens *New session* instead.
-- **A thread's view** replaces the board, with a back arrow. You can talk in it: your line steers
+- **A thread's view** opens as a sheet over the main thread, the same flyout a session's background task opens in, and the board stays in the pane beside it. You can talk in it: your line steers
   the thread's task and answers its open question. Cmd+Enter (Ctrl+Enter) answers, or requests
   changes when it is ready for review; plain Enter is a new line. You can pin it there. Under its
   header, the same actions as a sheet's, without the *Steer* box, since the composer steers.

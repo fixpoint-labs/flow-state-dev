@@ -48,6 +48,8 @@ function liveAdapter(initial: { tasks: BoardTask[]; runs: Record<string, Session
       return () => set.delete(onChange);
     },
     watchReview: (_run: string, onChange: (review: undefined) => void) => (onChange(undefined), () => {}),
+    // A running task's feed ends in its working line: nothing in flight here.
+    watchWorking: (_run: unknown, onChange: (now: object) => void) => (onChange({}), () => {}),
     answerTask: async () => {},
     taskActions: () => ({}),
   } as unknown as LabAdapter;

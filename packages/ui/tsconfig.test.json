@@ -17,7 +17,8 @@
     "test/**/*",
     "registry/components/tool-grouping.ts",
     "registry/components/tool-naming.ts",
-    "registry/components/task-plan-state.ts"
+    "registry/components/task-plan-state.ts",
+    "registry/components/working-status.ts"
   ],
   // tsconfig.json also excludes test/render/**; this program does not.
   "exclude": ["registry/**/*.tsx"]

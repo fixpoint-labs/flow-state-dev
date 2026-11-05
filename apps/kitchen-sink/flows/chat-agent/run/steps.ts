@@ -68,7 +68,7 @@ export const incrementRequestCount = handler({
     lastAction: z.string().optional(),
   }),
   execute: async (_input, ctx) => {
-    const count = ctx.session.state.requestCount ?? 0;
+    const count = ctx.session.state.requestCount;
     await ctx.session.patchState({
       requestCount: count + 1,
       lastAction: "run",

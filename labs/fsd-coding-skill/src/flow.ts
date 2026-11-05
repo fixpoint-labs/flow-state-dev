@@ -55,10 +55,10 @@ export interface FsdCodingHostOptions {
 }
 
 function readStateId(
-  state: Partial<z.infer<typeof sessionStateSchema>> | undefined,
+  state: z.infer<typeof sessionStateSchema>,
   harness: HostHarness,
 ): string | null {
-  const id = state?.harnessSessions?.[harness];
+  const id = state.harnessSessions[harness];
   return typeof id === "string" && id !== "" ? id : null;
 }
 
