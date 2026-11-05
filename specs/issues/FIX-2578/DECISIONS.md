@@ -74,7 +74,7 @@ It comes down to the filer: *completed* would tell them the work landed.
   `reviewChanges`: a host with no way to wake a waiting task would leave it open. The lab,
   Teammates and Shift Manager turn it on; Jake's rule holds in every app that ships.
 - **One hold per wait, listing its PRs.** Rows of the session's PR record stamped with one of
-  this task's requests (`requestId`) and seen open or draft. One `external` hold carries one
+  this task's requests (`requestId`), in any state: the settle decides over all of them as a wake does, so a PR closed before the run ended still cancels (Codex, round 1). One `external` hold carries one
   `{ by: "event", event: "pull-request", key }` per PR, so one line wakes it. A PR found on the
   branch from before the run never counts (`openedSince`, FIX-2268).
 - **The read on a wake** runs inside the network-call bound the drain budget already reserves
@@ -117,6 +117,10 @@ nulls (extended), the answer source can't be `"board"` (now `"service"`), the ki
 from `wait`, the BP-030 claim corrected, and one hold per wait instead of one per PR. Goal check
 widened from the blind goal read: the moved review-routing line is stated, the card and link are
 graded, and legs for an unreadable PR, a delivered message, a restart, and a second control.
+
+## Notes from review
+
+Round 1 (2026-11-05): Codex, one finding, folded inline as a correction: the first settle reads every PR the task owns, closed ones included, so D2 holds when a PR closes before the run ends.
 
 ## Open
 

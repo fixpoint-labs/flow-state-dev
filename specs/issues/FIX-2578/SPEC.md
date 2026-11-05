@@ -132,9 +132,11 @@ The calling code, in each coding host:
     question today (`tasks/steers.ts`).
   - **The steer and answer sources** gain `"service"`, for words from outside the app.
 - **harness-manager: `awaitPullRequests`**, off by default. At the settle, after the judge and
-  the review, a run whose PR record holds a PR stamped with one of this task's requests and still
-  open holds its task on one `external` hold listing those PRs, instead of completing. On the
-  turn its release owes, the manager reads each PR first ([D3](DECISIONS.md#d3)): **all merged**
+  the review, the manager takes every PR in the record stamped with one of this task's requests,
+  whatever state it was seen in, and decides as on a wake (below). Any still open holds the task
+  on one `external` hold listing those PRs, instead of completing; one already closed unmerged
+  with none open cancels it here. On the turn the hold's release owes, the manager reads each PR
+  first ([D3](DECISIONS.md#d3)): **all merged**
   completes the task with its PRs on the output, with no harness run; **any closed unmerged, none
   open** cancels it ([D2](DECISIONS.md#d2)); **any open** runs the steer on the same coding
   session, and the run's end comes back to the same check; **unreadable** runs the steer and
