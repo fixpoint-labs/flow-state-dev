@@ -331,4 +331,40 @@ describe("applyScopeStateDefaults", () => {
     expect(applyScopeStateDefaults(schema, undefined)).toEqual({ a: 1 });
     expect(applyScopeStateDefaults(undefined, undefined)).toEqual({});
   });
+
+  it("fills a nested object from its own field schemas, not a transform's swapped output", () => {
+    const row = z.object({ flag: z.boolean().default(false) });
+    const schema = z.object({
+      obj: z.object({ a: row, b: row }).transform(({ a, b }) => ({ a: b, b: a }))
+    });
+    // Sourced from the swapped parse, "b" would take "a"'s stored `true`.
+    expect(applyScopeStateDefaults(schema, { obj: { a: { flag: true }, b: {} } })).toEqual({
+      obj: { a: { flag: true }, b: { flag: false } }
+    });
+  });
+
+  it("fills array elements reached through a record's value schema", () => {
+    const schema = z.object({ rows: z.record(z.array(z.object({ flag: z.boolean().default(false) }))) });
+    expect(applyScopeStateDefaults(schema, { rows: { x: [{}, { flag: true }] } })).toEqual({
+      rows: { x: [{ flag: false }, { flag: true }] }
+    });
+  });
+
+  it("a transform's default fills in its declared value, never the transformed one", () => {
+    const schema = z.object({
+      before: z.string().transform((s) => s.toUpperCase()).default("anon"),
+      after: z.string().default("anon").transform((s) => s.toUpperCase())
+    });
+    expect(applyScopeStateDefaults(schema, {})).toEqual({ before: "anon", after: "anon" });
+  });
+
+  it("leaves a union value as stored, even where a variant declares a default", () => {
+    // Bounded on purpose: only objects, arrays, records and their wrappers are
+    // walked. A union is never given a value, so it can never be given a wrong one.
+    const schema = z.object({
+      pick: z.union([z.object({ kind: z.literal("a"), flag: z.boolean().default(false) }), z.string()])
+    });
+    const stored = { pick: { kind: "a" } };
+    expect(applyScopeStateDefaults(schema, stored)).toBe(stored);
+  });
 });
