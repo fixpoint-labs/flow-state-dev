@@ -57,13 +57,18 @@ export function HireForm({ onHire, onCancel }: { onHire: (teammate: NewTeammate)
 /**
  * Replace a teammate's instructions. Its next turn reads them; a turn already
  * running keeps the ones it started with. The page can't read the old ones
- * back, since instructions stay on the server, so this sets them whole.
+ * back, since instructions stay on the server, so this sets them whole. Its
+ * name shows read only, with why: a teammate can't be renamed yet.
  */
 export function InstructionsForm({ name, onSave, onCancel }: { name: string; onSave: (instructions: string) => Promise<void>; onCancel: () => void }) {
   const [instructions, setInstructions] = useState("");
   const { error, busy, submit } = useSubmit(() => onSave(instructions));
   return (
     <Shell label={`Instructions for ${name}`} error={error} onSubmit={(e) => void submit(e)}>
+      <input aria-label={`Name of ${name}`} aria-describedby="teammate-name-reason" readOnly value={name} className={`${field} text-muted-foreground`} />
+      <p id="teammate-name-reason" className="text-muted-foreground">
+        Renaming a teammate isn't possible yet, so its name stays as it is.
+      </p>
       <textarea
         aria-label={`New instructions for ${name}`}
         placeholder={`${name}'s new instructions, in full. They replace the old ones from its next turn.`}
