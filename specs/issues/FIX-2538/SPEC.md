@@ -10,7 +10,7 @@
 | **has set the coordinator to `auto`** | n/a | The same task is filed and runs |
 | **has set it to `off`** | n/a | An unasked event wakes no model and runs nothing; it is counted as dropped |
 | **asks the agent on the repo** (FIX-2535 marks it `addressed`) | Dropped | Runs in every mode, if the sender passes [Q1](../../epics/FIX-2471/DECISIONS.md#q1) |
-| **watches a repo while a screen is down** (the evaluator fails) | n/a | FIX-2537 holds the event for its subscriber; no unmatched coordinator hears it, so an outage is not a flood |
+| **watches a repo while a screen is down** | n/a | FIX-2537 holds the event; no unmatched coordinator hears it, so an outage is no flood |
 | **is an outsider, or posts a kind the app doesn't forward** | Dropped | Still dropped, and counted. No coordinator hears it |
 
 The epic ([FIX-2471](../../epics/FIX-2471/SPEC.md)) gives this issue D8, D11, Q3 and ER-2. What
@@ -38,15 +38,15 @@ flowchart LR
   O -->|"held tasks · 0 attempts · Inbox green"| P["PASS"]
   A -->|"the same tasks · each ran"| P
   X -->|"0 model calls on inferred · asks ran"| P
-  C["control · no-gate · board tools static"] -.->|"observe starts attempts"| Q["must FAIL"]
+  C["control · no-gate · the write adds no confirm"] -.->|"observe starts attempts"| Q["must FAIL"]
 ```
 
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/webhook-routing/inferred-work-waits-in-observe/` · scripted model · a test service flow |
-| **Signal** | (a) 0 board rows written by the service principal. (b) `observe`: every task a forward filed has an open confirm and 0 attempts, and `reconcileInbox` is green. (c) `auto`: those tasks ran. (d) `off`: 0 model calls on inferred forwards, and asks ran in all three modes. (e) A forwarded kind whose screen failed reached no unmatched coordinator. (f) Unlisted kinds and outsiders reached no coordinator; the dropped count equals the fixture's. (g) An inferred turn in `observe` offers the model exactly one `createTask`, the wrapped one |
+| **Signal** | (a) 0 board rows written by the service principal. (b) `observe`: every task a forward filed has an open confirm and 0 attempts, and `reconcileInbox` is green. (c) `auto`: those tasks ran. (d) `off`: 0 model calls on inferred forwards, and asks ran in all three modes. (e) A forwarded kind whose screen failed reached no unmatched coordinator. (f) Unlisted kinds and outsiders reached no coordinator; the dropped count equals the fixture's. (g) Every row filed on an inferred `observe` turn carries the confirm hold, whichever tool path filed it |
 | **Anti-game** | The scripted model files with `questions: []`. Assert on rows, attempts and holds, never on tool calls |
-| **Control that must fail** | `GOAL_CONTROL=no-gate` (the board's tools stay static): (b) and (g) FAIL. Today's `main`: (c) FAILS, since nothing is forwarded |
+| **Control that must fail** | `GOAL_CONTROL=no-gate` (the write adds no confirm): (b) and (g) FAIL. Today's `main`: (c) FAILS, since nothing is forwarded |
 
 ## What changes
 
@@ -58,7 +58,7 @@ flowchart LR
   subgraph After
     A1["event · no subscription passed"] --> A2{"refused on content · kind forwarded?"}
     A2 -->|"no"| A3["dropped · counted"]
-    A2 -->|"yes"| A4["unmatched subscriptions on its threads · screens · as each user"]
+    A2 -->|"yes"| A4["unmatched subscriptions · judged in the same screen run · as each user"]
     A4 --> A5["coordinator turn · by inferredWork"]
   end
 ```
@@ -87,7 +87,8 @@ Right of the check is FIX-2534's path; only the coordinator's turn is new.
 The names are illustrations, except `unmatched`, `inferredWork` and its three values, which
 [D1](DECISIONS.md#d1) and the epic's D11 lock.
 
-**Docs:** the workforce README, `messaging-workers.md`, the coordinator guide.
+**Docs:** in the implementation PR, `mechanisms.yaml`; at release (`/release-docs`, via the
+changeset's `Docs:` line), the workforce README, `messaging-workers.md`, the coordinator guide.
 
 ## How an unasked event reaches a coordinator
 
@@ -100,39 +101,32 @@ flowchart LR
   U --> M["delivery as the user · row marked ask or inferred"]
   M --> T{"coordinator · inferredWork"}
   T -->|"ask, or auto"| W["ordinary turn"]
-  T -->|"observe"| H["filing turn · createTask adds a confirm"]
+  T -->|"observe"| H["ordinary turn · each filing held on a confirm"]
   T -->|"off"| N["a line · no turn"]
 ```
 
 The delivery writes the mark, never the model ([D2](DECISIONS.md#d2)).
-**Stays:** `routing` and its four policies, the Inbox, the confirm hold, `createTask`, and
-FIX-2534's delivery for every ordinary subscription.
+**Stays:** `routing`, the Inbox, the confirm hold, the turn's tools, FIX-2534's ordinary delivery.
 
 ## What's already here, and the debt
 
 | Already here | What this does with it |
 |---|---|
-| **The job, "notice work nobody asked for".** Searched `mechanisms.yaml`, `packages/`: rules and schedules file work a person set up; nothing hears events nobody follows | **New** |
-| FIX-2534's routing: an event no subscription passes gets no owner run; **nothing counts it** (`service-flow.ts` `finish`, ~216) | **Extends:** a second pass in `finish` over unmatched entries when nothing passed; the drop count extends `Routed` (~90) |
-| The subscription row and index entry (`rows.ts`, `screenSettingsSchema`) | **Extends:** `unmatched` is new here, on `screenSettingsSchema` and so on the index entry; ER-5 holds |
-| `SubscriptionServiceOptions` (`trustedBots`) | **Extends:** `forwards` beside `trustedBots` |
-| The message row (`messages/log-row.ts`, `workerMessageRowSchema`) | **Extends:** one server-written field beside `addressedBy`: ask or inferred |
-| `createTask`'s confirm: `questions: [{ kind: "confirm", prompt }]` (`skills/task-tools-capability.ts` ~1033); a No cancels by default (`tasks/collection/holds.ts` ~129) | **Reuses:** the board's task tools move from the static `uses` (`agent-worker-flow.ts` ~1079) to a request-dependent entry. No new filing path; the Inbox lists it (Q3) |
-| `routing` (`coordinator-config.ts` ~62) | **Leaves alone;** `inferredWork` sits beside it |
-
-| Adds | Composed from |
-|---|---|
-| `unmatched` subscriptions | `screenSettingsSchema`, coordinator sessions only |
-| `forwards.kinds` on the service flow | `trustedBots`' place in the options |
-| `inferredWork` | One key beside `routing`, default `observe` (epic D11) |
-| The filing turn | The coordinator's turn with read tools and a wrapped `createTask` |
+| Routing's one screen run (`service-flow.ts` ~191-257); nothing counts a drop | **Extends:** `nominate` tags unmatched entries, `screens` judges them with the rest, `finish` takes one only when no ordinary verdict passed and none failed or held. Still one evaluator call (FIX-2537). The count extends `Routed` |
+| `outsiders` on `screenSettingsSchema` (`rows.ts`), read by `nominate` | **Extends** the same way with `unmatched`; ER-5 holds |
+| `trustedBots` in `SubscriptionServiceOptions` | **Extends** with `forwards.kinds` |
+| `endOnly` on `deliverInputSchema`; `addressedBy` (`log-row.ts:54`); `RECEIVED_LANDED_STATE` (`message-received-entry.ts` ~227) | **Extends:** the mark rides like `endOnly`, lands beside `addressedBy`, and reaches request state beside the landed flag |
+| The received entry's turnless landing and `stepIf(got.act === "heard")` (~205, ~275) | **Extends** the predicate for `off`. No second no-turn path |
+| The board ref's `createTask`, branching per request on `routes.routing(ctx)` (`board.ts` ~1258), fed from request state (`coordinator-flow.ts` ~414) | **Extends:** on an inferred turn in `observe`, the write adds `questions: [{ kind: "confirm", prompt }]` (`TaskInit.questions`) |
+| The confirm hold: a `holds[]` entry the Inbox lists; a No cancels (`holds.ts` ~129) | **Reuses** as it is (Q3) |
+| `coordinatorShape().routing` (`coordinator-config.ts` ~62) | **Extends** with `inferredWork` beside it; `routing` unchanged |
 
 | The debt | |
 |---|---|
 | **Removes** | The silent drop: unmatched events are counted |
-| **Adds** | A second routing pass. One saved flag, one config key, one message-row field. A turn whose tools depend on its message |
+| **Adds** | One saved flag, one config key, one delivered mark, one branch on the board's write |
 
-**Net: up, small.** No new store, sender, hold kind or filing path.
+**Net: up, small.** No new store, sender, hold kind, routing pass, tool or filing path.
 
 ## Sign off
 
@@ -141,11 +135,11 @@ inferred work waits in `observe`, proved on rows. If wrong: a mode a prompt can 
 
 **[The debt](#whats-already-here-and-the-debt): up, small.** If wrong: a second recipient path for forwards.
 
-1. **[D2](DECISIONS.md#d2) · In `observe`, a forwarded turn is a filing turn, enforced in code.**
+1. **[D2](DECISIONS.md#d2) · In `observe`, an inferred turn's filings are held on the board's write.**
    The one to weigh. If wrong: the coordinator can't message a delegate to judge an unasked event.
 2. **[D1](DECISIONS.md#d1) · A forward is a subscription with `unmatched: true`, from a
    coordinator.** If wrong: a second way to address a coordinator grows later.
 
 **No open fork.** What counts as asking is FIX-2535's; failed screens are FIX-2537's ([seams](DECISIONS.md#seams)).
 
-Feature · workforce · medium: one package, four adds, no new store · epic FIX-2471
+Feature · workforce · medium: one package, extensions only, no new store · epic FIX-2471

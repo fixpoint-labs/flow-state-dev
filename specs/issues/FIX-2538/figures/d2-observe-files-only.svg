@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 488" role="img" aria-label="D2: in observe, what stops a coordinator&#x27;s turn from starting inferred work? Chosen: the turn is a filing turn. Instead of: an instruction in the coordinator&#x27;s prompt. It comes down to a model that ignores the instruction: a filing turn has only filing and read tools and every task it files is held behind a confirm, so it cannot start work; a prompt only asks. What it can do: file, read, answer, against everything it can do today. Where it lives: a wrapped createTask that adds the existing confirm, and the turn&#x27;s tools, from request state, against the prompt. What a person sees is a tie: a held task in the Inbox. Locks in that forwarded turns in observe file held, in code. Flips if a coordinator needs to message a delegate to judge work."
+<svg viewBox="0 0 940 488" role="img" aria-label="D2: in observe, what stops a coordinator&#x27;s turn from starting inferred work? Chosen: the board's write holds each filing. Instead of: an instruction in the coordinator&#x27;s prompt. It comes down to a model that ignores the instruction: every task filed on that turn is held behind a confirm on the write, whichever tool filed it, so it cannot start work; a prompt only asks. What it can do: file, read, answer, against everything it can do today. Where it lives: the board&#x27;s write, reading the turn&#x27;s mark, against the prompt. What a person sees is a tie: a held task in the Inbox. Locks in that inferred filings in observe are held on the write. Flips if a coordinator needs to message a delegate to judge work."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -43,7 +43,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">The turn is a filing turn</text>
+    <text class="t-h c-code" x="228" y="112">The board&#x27;s write holds each filing</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">An instruction in the coordinator&#x27;s prompt</text>
@@ -57,7 +57,7 @@
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
     <text class="t-b" x="248" y="161">It cannot start work</text>
-    <text class="t-s" x="248" y="179">read tools and createTask; each filing confirmed</text>
+    <text class="t-s" x="248" y="179">every filing on that turn waits on a confirm</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">It starts work</text>
     <text class="t-s" x="612" y="179">a message to a delegate, a task, its own tools</text>
@@ -75,8 +75,8 @@
   <g id="row-2">
     <text class="t-lbl" x="32" y="280">WHERE IT LIVES</text>
     <text class="mark minus" x="228" y="282">−</text>
-    <text class="t-b" x="248" y="281">A wrapped createTask, and the tool set</text>
-    <text class="t-s" x="248" y="299">from request state; the confirm reused</text>
+    <text class="t-b" x="248" y="281">On the board&#x27;s write</text>
+    <text class="t-s" x="248" y="299">createTask reads the turn&#x27;s mark; the confirm reused</text>
     <text class="mark plus" x="592" y="282">+</text>
     <text class="t-b" x="612" y="281">In the prompt</text>
     <text class="t-s" x="612" y="299">no code path</text>
@@ -96,7 +96,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="398" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="419">LOCKS IN</text>
-    <text class="t-b" x="32" y="439">Forwarded turns in observe file held, in code</text>
+    <text class="t-b" x="32" y="439">Inferred filings in observe held, on the write</text>
     <text class="t-s" x="32" y="457">a mark on the message row, never model input</text>
   </g>
 
