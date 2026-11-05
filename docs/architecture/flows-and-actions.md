@@ -80,7 +80,7 @@ actions: {
 |-------|---------|
 | `block` | Root block to execute for this action |
 | `inputSchema` | Optional override for action-level validation. Defaults to `block.inputSchema`. |
-| `userMessage` | Optional function extracting display text → emits a `MessageItem` (role: "user") as the first stream item |
+| `userMessage` | Optional function returning the display text, or `{ text, metadata }`, → emits a `MessageItem` (role: "user") as the first stream item; `metadata` lands on the item so a renderer can tell a machine-written echo (such as a task brief) from typed words |
 | `onCompleted` | Block executed on terminal success |
 | `onErrored` | Block executed on terminal failure |
 
