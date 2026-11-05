@@ -1,0 +1,104 @@
+<svg viewBox="0 0 940 380" role="img" aria-label="Before and after. Today, on the left, a lookup by a field outside the key either lists every row in the scope and filters in code, or reads a hand-built marker collection that the ledger writes in a separate step from the row, so a marker can exist without its row. After, on the right, the collection declares its indexes; one write commits the row and its index entries inside one transaction; findBy reads the entries, then the rows, and re-checks each against the index function. On memory and filesystem stores findBy scans instead, with the same results."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+      .box    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .tx     { fill:none; stroke:var(--code); stroke-width:1.6; stroke-dasharray:6 4; }
+    .apart  { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 4; }
+    .arr    { stroke:var(--ink-3); stroke-width:1.3; fill:none; marker-end:url(#a); }
+    .arrg   { stroke:var(--code); stroke-width:1.5; fill:none; marker-end:url(#ag); }
+    .arrr   { stroke:var(--gone); stroke-width:1.3; fill:none; marker-end:url(#ar); }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7A828B"/></marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2C7C69"/></marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#A9544F"/></marker>
+  </defs>
+  <rect class="bg" x="0" y="0" width="940" height="380"/>
+
+  <g id="today">
+    <rect class="ask" x="16" y="14" width="446" height="40" rx="6"/>
+    <text class="t-lbl" x="32" y="31">TODAY</text>
+    <text class="t-b" x="32" y="47">Two ways to find a row by a field</text>
+
+    <rect class="box" x="32" y="76" width="160" height="44" rx="5"/>
+    <text class="t-b" x="44" y="96">list() then .find()</text>
+    <text class="t-s" x="44" y="112">every row in the scope</text>
+    <path class="arr" d="M192,98 L256,98"/>
+    <rect class="box" x="260" y="76" width="186" height="44" rx="5"/>
+    <text class="t-b" x="272" y="96">rows · loaded whole</text>
+    <text class="t-s" x="272" y="112">filtered in code, per lookup</text>
+
+    <rect class="box" x="32" y="170" width="160" height="44" rx="5"/>
+    <text class="t-b" x="44" y="190">__ids marker</text>
+    <text class="t-s" x="44" y="206">hand-built collection</text>
+    <rect class="box" x="260" y="170" width="186" height="44" rx="5"/>
+    <text class="t-b" x="272" y="190">ledger row</text>
+    <text class="t-s" x="272" y="206">at its partition</text>
+    <path class="arrr" d="M192,192 L256,192"/>
+    <rect class="apart" x="24" y="160" width="430" height="64" rx="7"/>
+    <text class="t-tag minus" x="32" y="246">− TWO WRITES</text>
+    <text class="t-s" x="32" y="264">a marker can exist without its row,</text>
+    <text class="t-s" x="32" y="280">and each new lookup needs another one</text>
+  </g>
+
+  <line class="row" x1="470" y1="20" x2="470" y2="360"/>
+
+  <g id="after">
+    <rect class="ask" x="478" y="14" width="446" height="40" rx="6"/>
+    <text class="t-lbl" x="494" y="31">AFTER</text>
+    <text class="t-b" x="494" y="47">indexes declared · findBy served by the framework</text>
+
+    <rect class="tx" x="486" y="66" width="430" height="70" rx="7"/>
+    <text class="t-tag plus" x="498" y="84">+ ONE TRANSACTION</text>
+    <rect class="chosen" x="498" y="92" width="190" height="36" rx="5"/>
+    <text class="t-b" x="510" y="114">row</text>
+    <rect class="chosen" x="710" y="92" width="194" height="36" rx="5"/>
+    <text class="t-b" x="722" y="114">index entries</text>
+
+    <rect class="box" x="498" y="170" width="190" height="44" rx="5"/>
+    <text class="t-b" x="510" y="190">findBy(name, value)</text>
+    <text class="t-s" x="510" y="206">SQLite · Postgres</text>
+    <path class="arrg" d="M688,176 L770,134"/>
+    <text class="t-s" x="700" y="200">reads entries, then rows,</text>
+    <text class="t-s" x="700" y="216">re-checks each row</text>
+
+    <rect class="box" x="498" y="250" width="190" height="44" rx="5"/>
+    <text class="t-b" x="510" y="270">findBy(name, value)</text>
+    <text class="t-s" x="510" y="286">memory · filesystem</text>
+    <path class="arr" d="M688,272 L740,272"/>
+    <text class="t-b" x="746" y="270">scans the scope</text>
+    <text class="t-s" x="746" y="286">same rows, slower</text>
+
+    <text class="t-s" x="498" y="326">First lookup on an unbuilt index scans,</text>
+    <text class="t-s" x="498" y="342">writes the entries, and marks it built (D1)</text>
+  </g>
+</svg>

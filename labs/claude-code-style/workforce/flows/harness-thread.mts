@@ -39,6 +39,7 @@ import {
   harnessSessionDoor,
   harnessTalkTurn,
   resolveOwnership,
+  scriptedHarness,
   taskIssueSegment,
   type CommandCheckCommands,
   type CompletionRunContext,
@@ -207,10 +208,18 @@ export interface HarnessThreadFlowOptions {
   installation: WorkerInstallation;
   /** Where each run gets its checkout of its project, from `projectWorkspace()`. */
   workspace: WorkspaceHost;
+  /**
+   * Set, every harness a worker names is harness-manager's scripted coder, a
+   * step every this many ms and no model: for a goal check of what the lab
+   * does around a run, not of the run itself.
+   */
+  scriptedStepMs?: number;
 }
 
 /** Build the flow `hireWorkforce` registers one copy of, which every coding worker runs on. */
-export function defineHarnessThreadFlow({ installation, workspace }: HarnessThreadFlowOptions) {
+export function defineHarnessThreadFlow({ installation, workspace, scriptedStepMs }: HarnessThreadFlowOptions) {
+  const scripted = scriptedStepMs === undefined ? undefined : (scriptedHarness({ stepEveryMs: scriptedStepMs }).slot as unknown as (feeds: HarnessFeeds) => HarnessBlock);
+  const harnesses = scripted === undefined ? HARNESSES : Object.fromEntries(Object.keys(HARNESSES).map((name) => [name, scripted]));
   // The board a run's session reads its task on: the conversation's that filed it. The run is
   // keyed the way the manager wrote it, so a routed id still finds its run.
   const board = async (ctx: Parameters<typeof filingConversationBoard>[0]) => {
@@ -233,7 +242,7 @@ export function defineHarnessThreadFlow({ installation, workspace }: HarnessThre
     } as never) as unknown as BlockDefinition<any, any>;
   // Per builder: the managers that run a task, and the door a line typed in its run's session takes.
   const built = Object.fromEntries(
-    Object.entries(HARNESSES).map(([name, harness]) => [
+    Object.entries(harnesses).map(([name, harness]) => [
       name,
       {
         manager: manager(name, harness, false),

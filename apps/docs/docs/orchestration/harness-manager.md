@@ -327,7 +327,7 @@ The phase's own `isDone` runs first. Only when it says done do the commands run,
 }
 ```
 
-With [`reviewChanges`](#reviewing-a-runs-changes) on, a done run's review carries the same results as `checks` in its data, and its prompt says "Checks 2/2 passed." For the screen, `fsdev ui add run-checks` adds a `RunChecks` component: give it `checks` and it shows the count, open on the failures when any are red, each command opening into its output. It draws nothing for `null`.
+With [`reviewChanges`](#reviewing-a-runs-changes) on, a done run's review carries the same results as `checks` in its data, and its prompt says "Checks 2/2 passed." For the screen, `fsdev ui add run-checks` adds a `RunChecks` component: give it `checks` and it shows the count, open on the failures when any are red, each command opening into its output. It draws nothing for `null`. The `review-hold` card already draws it: read the review with `reviewDetail` from `@flow-state-dev/harness-manager/browser` and the checks come with it.
 
 The options:
 

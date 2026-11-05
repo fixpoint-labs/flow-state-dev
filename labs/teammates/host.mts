@@ -146,12 +146,13 @@ const HARNESSES: Record<string, Harness> = {
       client: { env: harnessEnv({ pass: CODEX_PASS }) },
       thread: { sandboxMode: "workspace-write" },
     } as never) as unknown as HarnessBlock,
-  cursor: ({ cwd, resume, onSession, onSteerable }) =>
+  cursor: ({ cwd, resume, onSession, onSteerable, onActivity }) =>
     cursorAgent({
       cwd,
       resume,
       onSession,
       onSteerable,
+      onActivity,
       env: harnessEnv({ pass: CURSOR_PASS }),
       // A local Cursor run must name its model; Kitchen Sink's default.
       model: "composer-2.5",

@@ -2,8 +2,13 @@
  * The in-memory change bus: the default `bus`, and the in-process fan-out a
  * cross-process adapter can compose.
  *
- * It reaches subscribers in this process only, so it never says it crosses
- * processes, and the session stream keeps its timed read beside it.
+ * It is the bus for an app that runs as one process. Every change is made in
+ * the process its subscribers are in, so it reaches them all and says it
+ * crosses processes: the session stream drops its timed read, and a client
+ * stops its fallback poll while its socket is open. An app that writes its
+ * stores from several processes (several servers, a worker, `fsdev run` or
+ * `fsdev chat` on the same SQLite file) needs a bus that crosses, such as the
+ * Postgres bus; on this one, the other processes' changes don't push.
  */
 import type { BusTopic, ChangeBus, ChangeListener, ChangeNotice } from "./types";
 
@@ -28,13 +33,13 @@ function deliver(listener: ChangeListener, notice: ChangeNotice): void {
 /**
  * Create a bus that delivers each notice to this process's subscribers, in
  * one microtask after `publish` (one per publish, however many subscribe).
- * `crossesProcesses` is always `false`.
+ * `crossesProcesses` is always `true`: the app it serves runs as one process.
  */
 export function createInMemoryBus(): ChangeBus {
   const byScope = new Map<string, Set<{ resource?: string; listener: ChangeListener }>>();
 
   return {
-    crossesProcesses: false,
+    crossesProcesses: true,
 
     publish(notice) {
       const subscribers = byScope.get(scopeKey(notice.topic));

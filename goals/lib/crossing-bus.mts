@@ -1,13 +1,12 @@
 /**
  * The one crossing double, for goal checks only (FIX-2426).
  *
- * The in-memory bus, saying it crosses processes. A goal check that runs on
- * one process (two registries, or one host) and must assert "no read between
- * changes" needs a bus whose answer is "crosses", or the session stream keeps
- * its once-a-second read and the assertion can't fail. This is that bus.
+ * The in-memory bus with its crossing answer settable. It starts crossing, as
+ * the in-memory bus itself does (it serves an app that runs as one process,
+ * FIX-2545). A check flips it with `setCrossing(false)` to stand for a bus that
+ * doesn't reach every writer, on which views keep their timed reads.
  *
- * Not re-exported from `index.mts`, and no package exports it: no app option
- * makes the in-memory bus cross (FIX-2426 D1). Import it directly:
+ * Not re-exported from `index.mts`, and no package exports it. Import it directly:
  *
  *   import { crossingBus } from "../../lib/crossing-bus.mts";
  *
@@ -23,7 +22,8 @@ export type CrossingBus = ChangeBus & {
 };
 
 /**
- * Create the in-memory bus reporting `crossesProcesses: true`. Notices reach
+ * Create the in-memory bus reporting `crossesProcesses: true` until a check
+ * sets it otherwise. Notices reach
  * every registry in this process that holds it, and only those.
  */
 export function crossingBus(): CrossingBus {

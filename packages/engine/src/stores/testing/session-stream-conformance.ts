@@ -27,6 +27,7 @@ import {
 import { SESSION_STREAM_TIMINGS } from "../../routes/session-stream-routes";
 import type { RequestRecord, SessionRecord, StoreRegistry } from "../types";
 import { createInMemoryBus } from "../../bus/in-memory-bus";
+import { withChangeBus } from "../../bus/publish-writes";
 import type { ChangeBus } from "../../bus/types";
 
 export type CreateSessionStreamConformanceTestsOptions = {
@@ -576,7 +577,7 @@ export function createSessionStreamConformanceTests(
       await tabB.waitFor(isItemWithText("seen by both"));
     });
 
-    it("hears a line written by another server on the same store (BR-17)", async () => {
+    it("hears a line written by another server on the same store, on a bus that doesn't cross (BR-17)", async () => {
       let a: StoreRegistry;
       let b: StoreRegistry;
       let pairCleanup: (() => Promise<void> | void) | undefined;
@@ -584,6 +585,15 @@ export function createSessionStreamConformanceTests(
         ({ a, b, cleanup: pairCleanup } = await createSharedPair());
       } else {
         a = b = await createStores();
+      }
+      // Two servers on one store are two processes, which the in-memory bus
+      // doesn't reach: the holding server hears the other's line by its timed
+      // read, on a bus that says it doesn't cross. A store with its own bus
+      // (Postgres) keeps it.
+      if (a.bus === undefined) {
+        const notCrossing = crossingBus();
+        notCrossing.setCrossing(false);
+        a = { ...a, bus: notCrossing };
       }
       try {
         const holding = router(a);
@@ -763,7 +773,9 @@ export function createSessionStreamConformanceTests(
     ] as const)(
       "ends when its session is %s, sending nothing kept after",
       async (_what, recreatedBy, reopened) => {
-        const stores = await createStores();
+        // Written through the bus wrapper, as the engine writes: the delete's
+        // notice is what wakes the stream to find the session gone.
+        const stores = withChangeBus(await createStores());
         const r = router(stores);
         const alice = { "x-verified-user": "alice" };
         await seedSession(stores, "owned", {
@@ -917,7 +929,9 @@ export function createSessionStreamConformanceTests(
     });
 
     it("nudges when a run under the session starts and again when it ends (BR-7)", async () => {
-      const stores = await createStores();
+      // Written through the bus wrapper, as the engine writes: each write's
+      // notice is what wakes the stream.
+      const stores = withChangeBus(await createStores());
       const r = router(stores);
       await seedSession(stores, "s1");
       const live = await stream(r, "s1");
@@ -1081,8 +1095,42 @@ export function createSessionStreamConformanceTests(
     // processes, nothing else does.
     // -------------------------------------------------------------------------
 
-    it("keeps reading each interval on the in-memory bus, which can't cross processes (FIX-2426 D1)", async () => {
+    // The in-memory bus (the default) serves an app that runs as one process:
+    // every change publishes where the stream listens, so nothing needs the
+    // timed read.
+    it("reads nothing while the session is idle, on the in-memory bus", async () => {
       const stores = await createStores();
+      const counted = countSessionReads({ ...stores, bus: createInMemoryBus() }, "s1");
+      const r = router(counted.stores);
+      await seedSession(stores, "s1");
+      const live = await stream(r, "s1");
+      await live.waitFor((e) => e.type === "session.runs");
+      await delay(FAST_TIMINGS.intervalMs * 3);
+      const settled = counted.reads();
+      await delay(FAST_TIMINGS.intervalMs * 10);
+      expect(counted.reads()).toBe(settled);
+    });
+
+    it("keeps reading each interval on a bus that doesn't cross processes (FIX-2426 D1)", async () => {
+      const bus = crossingBus();
+      bus.setCrossing(false);
+      const stores = await createStores();
+      const counted = countSessionReads({ ...stores, bus }, "s1");
+      const r = router(counted.stores);
+      await seedSession(stores, "s1");
+      const live = await stream(r, "s1");
+      await live.waitFor((e) => e.type === "session.runs");
+      const atOpen = counted.reads();
+      await delay(FAST_TIMINGS.intervalMs * 6);
+      expect(counted.reads() - atOpen).toBeGreaterThanOrEqual(3);
+    });
+
+    // A store that brings its own bus (Postgres) and can't hear other
+    // processes on it (no tail pool: PGlite here, or a Vercel deployment's
+    // pool) says so, and its views keep the timed read.
+    it("keeps reading each interval on the store's own bus when that bus doesn't cross", async () => {
+      const stores = await createStores();
+      if (stores.bus === undefined || stores.bus.crossesProcesses) return;
       const counted = countSessionReads(stores, "s1");
       const r = router(counted.stores);
       await seedSession(stores, "s1");
@@ -1260,10 +1308,10 @@ export function createSessionStreamConformanceTests(
 }
 
 /**
- * The in-memory bus, saying it crosses processes, with the answer settable.
- * One process with one bus is all a conformance case runs, so this is how a
- * case asks "no read between changes". Not exported: no app can make the
- * in-memory bus cross (FIX-2426 D1).
+ * The in-memory bus with its crossing answer settable. It starts crossing,
+ * as the in-memory bus does; a case sets it to `false` to stand for a bus
+ * that doesn't reach every writer (a cross-process bus that stopped hearing
+ * itself), whose stream keeps the timed read.
  */
 function crossingBus(): ChangeBus & { setCrossing(crosses: boolean): void } {
   const inner = createInMemoryBus();

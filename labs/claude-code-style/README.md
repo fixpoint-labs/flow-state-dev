@@ -23,8 +23,11 @@ needs is a gap filed against the package.
   nothing and answers with a plan), *Codex* or *Cursor*. Any choice but *Auto* adds one line to
   what you send, such as `Coder: Codex`, and the main session hands the change to that coder. It
   holds while the session is open. You can also say it in words ("plan it first", "use Cursor").
-- **Right:** the background tasks, read only. A row opens to show the task's work. To stop or steer
-  a task, ask the main session.
+- **Right:** the background tasks. A row opens a sheet with the task's work and a row of actions
+  by its status: *Cancel* (it asks once, since tasks waiting on it go too) and a *Steer* box while
+  it runs or waits, *Release* when it is held, *Retry* once it failed or was cancelled. A failed
+  task shows its error. Each action is the board's own, and a refusal shows in the board's words.
+  You can still ask the main session to stop or steer a task.
 - **Keys:** ⌘K (Ctrl+K) finds any session by its title, in either view, or starts a new one.
   Alt+↑ and Alt+↓ move to the previous or next session in the view. `/` puts the cursor in the
   composer, and `?` lists every key. Opening a session puts the cursor in its composer. The view
@@ -40,8 +43,8 @@ threads, each a task in a session of its own, and the right pane is the status b
   *Request changes* when it is ready for review.
 - **Right:** the board groups threads by what you owe them: *Pinned*, *Working*, *Waiting on you*,
   *Ready for review* and *Resolved*, collapsed to a count. A column is read from the task's
-  status and what it waits on, never a mark the lab keeps. A failed thread waits on you; ask the
-  main session to retry it.
+  status and what it waits on, never a mark the lab keeps. A failed thread waits on you; its view
+  shows the error and offers *Retry*.
 - **The right pane** is as wide as you drag its left edge (or move it with the arrow keys once it
   has focus), and keeps that width across reloads.
 - **The page's address** names the view, the open session and the task open in its pane
@@ -49,7 +52,8 @@ threads, each a task in a session of its own, and the right pane is the status b
   had open before. A link to a session or task that is gone opens *New session* instead.
 - **A thread's view** replaces the board, with a back arrow. You can talk in it: your line steers
   the thread's task and answers its open question. Cmd+Enter (Ctrl+Enter) answers, or requests
-  changes when it is ready for review; plain Enter is a new line. You can pin it there.
+  changes when it is ready for review; plain Enter is a new line. You can pin it there. Under its
+  header, the same actions as a sheet's, without the *Steer* box, since the composer steers.
 - **A thread's goal** carries what it needs, since a thread sees nothing else: what to do, the ids,
   links and branches you named, where the work lives, and what done means. A thread starts at
   once and looks before it asks: it asks you only what depends on you, a choice only you can make
@@ -75,7 +79,7 @@ store. One command builds the pages and serves them with the lab's workers:
 pnpm --filter @flow-state-dev/claude-code-style dev
 ```
 
-That builds the pages and serves them on `fsdev dev`, from the repository root:
+It is the same as running these two from the repository root:
 
 ```bash
 pnpm --filter @flow-state-dev/claude-code-style build
@@ -105,6 +109,8 @@ are read from the environment, all optional:
 | `CLAUDE_CODE_STYLE_USER` | `u_lab` | The person the pages are served for |
 | `CLAUDE_CODE_STYLE_ANSWER_AGAIN` | on | `off` leaves `answerAgain` off the main worker: the goal check's control |
 | `CLAUDE_CODE_STYLE_SETUP` | none | One command each fresh worktree runs before its coding run starts, such as `pnpm install --frozen-lockfile`, with no shell |
+| `CLAUDE_CODE_STYLE_HARNESS` | the harness each coder names | `stub` runs every coding task on harness-manager's scripted coder, with no model, for a goal check |
+| `CLAUDE_CODE_STYLE_HARNESS_STEP_MS` | `2000` | With `stub`, the pause before each of the scripted coder's five steps |
 
 *New session* lists your projects and has a *New project* form: a name and the repository its
 coding runs work on. The host allows `file://` repositories only, and the repository must ignore

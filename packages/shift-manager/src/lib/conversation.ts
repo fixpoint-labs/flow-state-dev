@@ -12,9 +12,10 @@
  * first read keeps it on screen; only a failed first read shows.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SessionSummary } from "@flow-state-dev/client";
+import type { SessionConnectionState, SessionSummary } from "@flow-state-dev/client";
 import { COORDINATOR_FLOW, deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
+import { useReportFeedState } from "./feed-health";
 import { describeFailure, workerOf, type Failure, type Worker } from "./reads";
 import { followSessionItems, type SessionItems } from "./run";
 import { useWorkforce } from "./workforce";
@@ -133,11 +134,15 @@ export function useWorkerConversation(worker: Worker, sessions: readonly Session
   // Bumped to follow again: only a follow whose first read failed needs it.
   const [follows, setFollows] = useState(0);
   const failed = useRef(false);
+  // The followed feed's connection, for the page's bar; nothing while no session is followed.
+  const [feedState, setFeedState] = useState<SessionConnectionState | undefined>(undefined);
+  useReportFeedState(sessionId === null ? undefined : feedState);
 
   useEffect(() => {
     if (sessionId === null) return;
     let closed = false;
     failed.current = false;
+    setFeedState(undefined);
     const stop = followSessionItems(client, sessionId, {
       onRead: (read) => {
         if (closed) return;
@@ -149,6 +154,9 @@ export function useWorkerConversation(worker: Worker, sessions: readonly Session
         if (closed) return;
         failed.current = true;
         setFailure(why);
+      },
+      onState: (state) => {
+        if (!closed) setFeedState(state);
       },
     });
     return () => {

@@ -319,9 +319,10 @@ describe("a coding run that made changes waits for a person's review", () => {
         commits: 1,
         subjects: ["Change 1"],
         judge: null,
-        // This host can land an accept either way (FIX-2543).
+        // This host can land an accept either way.
         lands: ["pull-request", "merge"],
         landFailed: null,
+        checks: null,
       });
       expect(hold.ask.prompt).toContain(`1 commit on ${detail!.branch}`);
       expect(held.attempts).toBe(1);

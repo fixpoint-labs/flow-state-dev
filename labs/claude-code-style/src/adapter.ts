@@ -18,11 +18,14 @@
  * |                 | and that feed's connection state, for the connection bar; `loadEarlier`    |
  * |                 | is the feed's, for a thread longer than its first read; its running turn   |
  * |                 | is the session's requests, read on each request notice                     |
- * | `watchTasks`    | the conversation board's `listTasks_tasks` read, and the rows' open holds  |
- * |                 | again on each notice of the board, through `client.subscribe`              |
+ * | `watchTasks`    | the conversation board's `listTasks` read, and the rows' open holds        |
+ * |                 | again on each notice of the board, through `client.subscribe`; a failed   |
+ * |                 | row's error from its `getTask`, once per attempt                           |
  * | `watchTaskWork` | the items of a task's run session, followed through `sessionFeed`, with   |
  * |                 | its `loadEarlier` too, from the moment the board's read names that session |
- * | `sayInThread`   | the Inbox client's answer to the thread's open question, else `updateTask_tasks` with your line |
+ * | `sayInThread`   | the Inbox client's answer to the thread's open question, else the board's `steer` |
+ * | `taskActions`   | the Inbox client's `board(at)` on the session that holds the board: `cancel`, |
+ * |                 | `steer`, `release` and `retry`, each the board's own action                 |
  * | `resolve`       | the Inbox client's answer to the thread's review: `{ verdict: "accepted" }` |
  * | `requestChanges`| the same answer with `{ verdict: "revise", words }`                        |
  * | `watchPins`, `pin`, `unpin` | the lab's `pins` flow, your own user state; `watchPins` is its |
@@ -32,7 +35,16 @@
  */
 import { createClient, sessionFeed, topic, type Client, type SessionConnectionState, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
-import { createInboxClient, inboxItems, type InboxAnswer, type InboxHold, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
+import {
+  createInboxClient,
+  inboxItems,
+  taskActionName,
+  type BoardActions,
+  type InboxAnswer,
+  type InboxHold,
+  type InboxRow,
+  type TaskHold,
+} from "@flow-state-dev/orchestration/inbox";
 import { parseNotice, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import {
@@ -43,10 +55,12 @@ import {
   WORK_PROJECT_STATE_KEY,
   WORKER_ID_STATE_KEY,
 } from "@flow-state-dev/workforce/browser";
+import { isSuspensionWait } from "@flow-state-dev/core/items";
 import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
 import { projectIdOf, refuseExisting } from "./lib/new-project";
 import { waitingOnYou } from "./lib/columns";
 import { resultSummary } from "./lib/result-summary";
+import { toolRun, type ToolCallOf, type ToolRun } from "./lib/tool-steps";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
@@ -84,8 +98,8 @@ export type ThreadEntry = (
       sentToThread?: boolean;
     }
   | { kind: "assistant"; id: string; text: string }
-  /** A tool call, by its tool's name; the thread says it in words (`toolLine`). */
-  | { kind: "tool"; id: string; name: string }
+  /** A run of consecutive tool calls in one turn, in words (`toolRun`): one line that opens to a line per call. */
+  | ({ kind: "tool"; id: string } & ToolRun)
   | {
       kind: "result";
       id: string;
@@ -146,7 +160,12 @@ export interface TaskRow {
   updatedAt?: number;
   /** What its runs spent, as the board's `listTasks` reads it (`taskSpendView`): model, harness, tokens; none before it runs. */
   spend?: TaskSpendView;
+  /** Why its last attempt failed, as the board recorded it; only on a failed task. */
+  error?: string;
 }
+
+/** A board's task changes, as the opened task's action row makes them: the board's own calls, refusals in its words. */
+export type TaskBoardCalls = Pick<BoardActions, "cancel" | "steer" | "release" | "retry">;
 
 /** A coding run's review stop's data, as harness-manager's browser reader reads it. */
 export type { ReviewDetail };
@@ -176,6 +195,8 @@ export interface LabAdapter {
   watchTaskWork(sessionId: string, taskId: string, onChange: (work: TaskWork) => void): Unsubscribe;
   /** Talk inside a thread: a steer on its task, which answers its open question if it has one. */
   sayInThread(sessionId: string, taskId: string, line: string): Promise<void>;
+  /** The task changes you make from an opened task, on the board of session `sessionId`. */
+  taskActions(sessionId: string): TaskBoardCalls;
   /** Accept a thread's work: answers its review wait. */
   resolve(sessionId: string, taskId: string): Promise<void>;
   /** Send a thread back to work: answers its review wait with your words. */
@@ -198,8 +219,11 @@ const TURN_ACTIONS = new Set(["respond", "onTaskSettled"]);
  */
 const ROW_CHANGES: ReadonlySet<string> = new Set(["request", "board", "resource"]);
 
-/** The board action your line on a thread goes through: the task tools' `updateTask` on the conversation's board. */
-const UPDATE_TASK_ACTION = "updateTask_tasks";
+/** The conversation board's collection id: every task action the lab names is on it. */
+const TASKS_BOARD = "tasks";
+
+/** The action a row's hold is answered through, for the Inbox's reader: the board's `updateTask`. */
+const UPDATE_TASK_ACTION = taskActionName("updateTask", TASKS_BOARD);
 
 /** The flow a coding worker runs on: its run sessions answer which harness it is (`harness`). */
 const CODING_FLOW = "harness-thread";
@@ -222,6 +246,11 @@ export interface Item {
   data?: Record<string, unknown>;
   /** A message's data a client reads: a task's line names its task here (`parseNotice`, `delegateAnswerOf`). */
   metadata?: Record<string, unknown>;
+  /** A `tool_output` item's: the call it answers, and whether it is still going or threw. */
+  toolCall?: { name?: string; arguments?: string };
+  status?: string;
+  /** A failed `tool_output` item's error: a `SUSPENSION` one is a call waiting on you (`isSuspensionWait`). */
+  error?: { code?: string };
 }
 
 
@@ -328,6 +357,18 @@ export function reviewStopOf(items: readonly Item[]): ReviewDetail | undefined {
 
 const textOf = (item: Item) => (item.content ?? []).map((part) => part.text ?? "").join("");
 
+/** A `tool_output` item as the call it answers: its tool, its args, its status and its result. */
+function callOf(item: Item): ToolCallOf {
+  let args: unknown;
+  try {
+    args = JSON.parse(item.toolCall?.arguments ?? "{}");
+  } catch {
+    args = {};
+  }
+  const status = isSuspensionWait(item) ? "waiting" : item.status === "failed" ? "failed" : item.status === "in_progress" ? "running" : "done";
+  return { id: item.id, name: item.toolCall?.name ?? item.blockName ?? "tool", args, status, ...(status === "done" ? { output: item.output } : {}) };
+}
+
 /** The task a `createTask` call filed, from its output, or undefined for any other tool or a refused call. */
 function filedTaskOf(item: Item): string | undefined {
   if (item.blockName !== "createTask") return undefined;
@@ -347,6 +388,7 @@ export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[
   const userTurns = new Set(items.filter((item) => item.type === "message" && item.role === "user").map((item) => item.requestId));
   const filingTurns = new Set(items.filter((item) => filedTaskOf(item) !== undefined).map((item) => item.requestId));
   const entries: ThreadEntry[] = [];
+  const runs = new Map<string, ToolCallOf[]>();
   for (const item of items) {
     const requestId = item.requestId;
     const filed = threads ? filedTaskOf(item) : undefined;
@@ -355,7 +397,14 @@ export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[
       continue;
     }
     if (item.type === "tool_output") {
-      entries.push({ kind: "tool", id: item.id, name: item.blockName ?? "tool", requestId });
+      // A call right after another of the same turn joins its run.
+      const last = entries[entries.length - 1];
+      const calls = last?.kind === "tool" && last.requestId === requestId ? [...runs.get(last.id)!, callOf(item)] : [callOf(item)];
+      const id = calls.length > 1 ? last!.id : item.id;
+      runs.set(id, calls);
+      const entry: ThreadEntry = { kind: "tool", id, ...toolRun(calls), requestId };
+      if (calls.length > 1) entries[entries.length - 1] = entry;
+      else entries.push(entry);
       continue;
     }
     const text = textOf(item);
@@ -468,36 +517,44 @@ export function createWiredLab(fsd: Client): LabAdapter {
     return output;
   };
 
+  /**
+   * Keep `pending` under `key` in `cache` while it may succeed: a lookup that failed is dropped, so
+   * the next read (a retry after a failure) asks again instead of failing on the kept rejection.
+   */
+  const keptUnlessFailed = <K, V>(cache: Map<K, Promise<V>>, key: K, pending: Promise<V>): Promise<V> => {
+    cache.set(key, pending);
+    pending.catch(() => {
+      if (cache.get(key) === pending) cache.delete(key);
+    });
+    return pending;
+  };
+
   /** The user's one session on a lab flow (`projects`, `pins`), found or made once. */
   const ownSessions = new Map<string, Promise<string>>();
-  const ownSession = (flow: string) => {
-    if (!ownSessions.has(flow)) {
-      ownSessions.set(
-        flow,
-        (async () => {
-          const [latest] = (await fsd.sessions.list({ flowKind: flow, userId: fsd.userId })).sort((a, b) => b.updatedAt - a.updatedAt);
-          return latest?.id ?? (await fsd.flow(flow).createSession()).id;
-        })(),
-      );
-    }
-    return ownSessions.get(flow)!;
-  };
+  const ownSession = (flow: string) =>
+    ownSessions.get(flow) ??
+    keptUnlessFailed(
+      ownSessions,
+      flow,
+      (async () => {
+        const [latest] = (await fsd.sessions.list({ flowKind: flow, userId: fsd.userId })).sort((a, b) => b.updatedAt - a.updatedAt);
+        return latest?.id ?? (await fsd.flow(flow).createSession()).id;
+      })(),
+    );
   const projects = () => ownSession("projects");
 
   /** Whether a session is threads mode's: its main worker is that mode's. Kept, since a session's worker never changes. */
   const threadsSessions = new Map<string, Promise<boolean>>();
-  const isThreads = (sessionId: string) => {
-    if (!threadsSessions.has(sessionId)) {
-      threadsSessions.set(
-        sessionId,
-        fsd.sessions.get(sessionId).then((detail) => {
-          const worker = (detail.state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY];
-          return typeof worker === "string" && modeOfWorker(worker)?.pane === "board";
-        }),
-      );
-    }
-    return threadsSessions.get(sessionId)!;
-  };
+  const isThreads = (sessionId: string) =>
+    threadsSessions.get(sessionId) ??
+    keptUnlessFailed(
+      threadsSessions,
+      sessionId,
+      fsd.sessions.get(sessionId).then((detail) => {
+        const worker = (detail.state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY];
+        return typeof worker === "string" && modeOfWorker(worker)?.pane === "board";
+      }),
+    );
 
   /** The turns running in a session, oldest first. */
   const runningTurns = async (sessionId: string) =>
@@ -530,7 +587,12 @@ export function createWiredLab(fsd: Client): LabAdapter {
     return titles.get(sessionId)!;
   };
 
-  const rowOf = async (worker: string, sessionId: string): Promise<SessionRow> => {
+  /**
+   * One row of the sessions list. `complete` is false when its board couldn't be read: `waiting`
+   * is then the count `held` showed (none for a row not shown yet), and the list reads it again.
+   */
+  type SessionRowRead = { row: SessionRow; complete: boolean };
+  const rowOf = async (worker: string, sessionId: string, held?: SessionRow): Promise<SessionRowRead> => {
     const [detail, turns, title, waiting] = await Promise.all([
       fsd.sessions.get(sessionId),
       runningTurns(sessionId),
@@ -539,32 +601,36 @@ export function createWiredLab(fsd: Client): LabAdapter {
     ]);
     const project = (detail.state as Record<string, unknown> | undefined)?.[WORK_PROJECT_STATE_KEY];
     return {
-      id: sessionId,
-      title,
-      worker,
-      updatedAt: detail.updatedAt,
-      running: turns.length > 0,
-      waiting,
-      projectId: typeof project === "string" ? project : null,
+      row: {
+        id: sessionId,
+        title,
+        worker,
+        updatedAt: detail.updatedAt,
+        running: turns.length > 0,
+        waiting: waiting ?? held?.waiting ?? 0,
+        projectId: typeof project === "string" ? project : null,
+      },
+      complete: waiting !== undefined,
     };
   };
 
   /**
    * How many of a session's tasks wait on you, read as the board reads them (its tasks and their
    * open holds), without the harness and review reads the board's cards add. A board that can't be
-   * read counts none and says why in the console, so the list never fails on it.
+   * read is `undefined`, not none: the row keeps the count it showed, and the list reads it again
+   * ({@link SessionRowRead}), so the list never fails on it and never shows a guess as read.
    */
-  const waitingCountFor = async (sessionId: string): Promise<number> => {
+  const waitingCountFor = async (sessionId: string): Promise<number | undefined> => {
     try {
       return waitingOnYou(await listedWithWaitingOn(sessionId));
     } catch (cause) {
       console.warn(`[claude-code-style] couldn't count what session ${sessionId} waits on you for:`, cause);
-      return 0;
+      return undefined;
     }
   };
 
   /** A listed task row, as much as the screen reads. */
-  type Listed = TaskRow & { runSessionId?: string; run?: { sessionId: string; requestId: string }; holds?: TaskHold[] };
+  type Listed = TaskRow & { runSessionId?: string; run?: { sessionId: string; requestId: string }; holds?: TaskHold[]; attempts?: number };
 
   /** Each listed task's run session, by task id, as the last list saw it. */
   const runSessionOf = new Map<string, string>();
@@ -578,7 +644,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
   const tasksOf = async (sessionId: string): Promise<Listed[]> => {
     const listed = await fsd
       .flow(await flowOfSession(sessionId))
-      .read<{ ok: boolean; error?: string; tasks: any[] }>("listTasks_tasks", {}, { sessionId });
+      .read<{ ok: boolean; error?: string; tasks: any[] }>(taskActionName("listTasks", TASKS_BOARD), {}, { sessionId });
     if (!listed.ok) throw new Error(listed.error);
     let moved = false;
     for (const task of listed.tasks as any[]) {
@@ -598,6 +664,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
       ...(task.run?.sessionId === undefined ? {} : { runSessionId: task.run.sessionId, run: task.run }),
       ...(Array.isArray(task.holds) ? { holds: task.holds } : {}),
       ...(task.spend == null ? {} : { spend: task.spend }),
+      ...(typeof task.attempts === "number" ? { attempts: task.attempts } : {}),
     }));
   };
 
@@ -659,26 +726,51 @@ export function createWiredLab(fsd: Client): LabAdapter {
       reviews.set(
         task.id,
         flowOfSession(sessionId)
-          .then((flow) => run(flow, sessionId, "getTask_tasks", { id: task.id }))
+          .then((flow) => run(flow, sessionId, taskActionName("getTask", TASKS_BOARD), { id: task.id }))
           .then((read) => (read.task?.output?.review as TaskRow["review"]) ?? null),
       );
     }
     return reviews.get(task.id)!;
   };
 
+  /**
+   * Why a failed task's last attempt failed, from its `getTask` (a `listTasks` row carries no error).
+   * Kept per attempt: a failed attempt's error never changes, and a retry is a new attempt.
+   */
+  const errors = new Map<string, Promise<string | undefined>>();
+  const errorOf = (sessionId: string, task: Listed) => {
+    const key = `${task.id}#${task.attempts ?? 0}`;
+    return (
+      errors.get(key) ??
+      keptUnlessFailed(
+        errors,
+        key,
+        flowOfSession(sessionId)
+          .then((flow) => run(flow, sessionId, taskActionName("getTask", TASKS_BOARD), { id: task.id }))
+          .then((read) => (typeof read.task?.error === "string" ? (read.task.error as string) : undefined)),
+      )
+    );
+  };
+
+  /** Session `sessionId`'s board, bound once its flow is known: every task change goes through it. */
+  const boardAt = async (sessionId: string): Promise<BoardActions> =>
+    inbox.board({ flowId: await flowOfSession(sessionId), sessionId, board: TASKS_BOARD });
+
   /** A session's board as the screen draws it: each row with what it waits on you for, its harness and its review. */
   const boardOf = async (sessionId: string) => {
     const listed = await listedWithWaitingOn(sessionId);
     const rows = await Promise.all(
       listed.map(async (task): Promise<TaskRow> => {
-        const { runSessionId: _session, run: _run, holds: _holds, ...row } = task;
+        const { runSessionId: _session, run: _run, holds: _holds, attempts: _attempts, ...row } = task;
         // The harness its run reported; until one reports, the assignee's `harness` setting.
         const harness = task.spend?.harness ?? (await harnessOf(task));
         const review = harness !== undefined && row.status === "completed" ? await reviewOf(sessionId, task) : undefined;
+        const error = row.status === "errored" ? await errorOf(sessionId, task) : undefined;
         return {
           ...row,
           ...(harness === undefined ? {} : { harness }),
           ...(review === undefined ? {} : { review }),
+          ...(error === undefined ? {} : { error }),
         };
       }),
     );
@@ -763,6 +855,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
         if (running) return;
         running = true;
         while (live && (relist || dirty.size > 0)) {
+          let complete = true;
           try {
             if (relist) {
               relist = false;
@@ -770,19 +863,27 @@ export function createWiredLab(fsd: Client): LabAdapter {
               const next = new Map<string, SessionRow>();
               for (const mode of modes) {
                 const listed = await workforce.listWorkerSessions(mode.worker);
-                for (const row of await Promise.all(listed.map((entry) => rowOf(mode.worker, entry.session.id)))) next.set(row.id, row);
+                for (const read of await Promise.all(listed.map((entry) => rowOf(mode.worker, entry.session.id, rows.get(entry.session.id))))) {
+                  next.set(read.row.id, read.row);
+                  complete &&= read.complete;
+                }
               }
               rows = next;
             } else {
               const ids = [...dirty];
               dirty.clear();
-              const read = await Promise.all(ids.flatMap((id) => (rows.has(id) ? [rowOf(rows.get(id)!.worker, id)] : [])));
-              for (const row of read) if (rows.has(row.id)) rows.set(row.id, row);
+              const reads = await Promise.all(ids.flatMap((id) => (rows.has(id) ? [rowOf(rows.get(id)!.worker, id, rows.get(id))] : [])));
+              for (const read of reads) {
+                if (rows.has(read.row.id)) rows.set(read.row.id, read.row);
+                complete &&= read.complete;
+              }
             }
             if (!live) break;
-            retry.succeeded();
             tell();
             listen();
+            // A row whose board couldn't be read is shown as it was, and read again like any failure.
+            if (complete) retry.succeeded();
+            else retry.failed();
           } catch (error) {
             console.warn("[claude-code-style]", error);
             if (live) retry.failed();
@@ -948,8 +1049,15 @@ export function createWiredLab(fsd: Client): LabAdapter {
         await inbox.answerOne(question, { text: line });
         return;
       }
-      await run(await flowOfSession(sessionId), sessionId, UPDATE_TASK_ACTION, { id: taskId, message: line });
+      await (await boardAt(sessionId)).steer(taskId, line);
     },
+    // Bound per call, so the session's flow is read when a button is pressed, not when the row draws.
+    taskActions: (sessionId) => ({
+      cancel: async (id) => (await boardAt(sessionId)).cancel(id),
+      steer: async (id, message) => (await boardAt(sessionId)).steer(id, message),
+      release: async (id) => (await boardAt(sessionId)).release(id),
+      retry: async (id) => (await boardAt(sessionId)).retry(id),
+    }),
     resolve: (sessionId, taskId) => answerReview(sessionId, taskId, { value: { verdict: "accepted" } }),
     requestChanges: (sessionId, taskId, words) => answerReview(sessionId, taskId, { value: { verdict: "revise", words } }),
     // Pins are your user state: a state notice on your topic, from this tab or another, says they may have changed.

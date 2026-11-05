@@ -1,10 +1,10 @@
 import { useJumpToLatest } from "@flow-state-dev/react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { SessionStep } from "../adapter";
+import { stepRun, type SessionStep } from "../adapter";
 import { AgentMarkdown } from "./flow-state/message-response";
 import { JumpToLatestButton } from "./JumpToLatest";
-import { composeToolGroupLabel } from "./flow-state/tool-grouping";
+import { ToolRun } from "./ToolRun";
 
 // Framed after the Claude Code-style lab's `Sheet`; one overlay both labs share is FIX-2340.
 /**
@@ -92,8 +92,8 @@ function keepFocusIn(container: HTMLElement | null, event: KeyboardEvent) {
 /**
  * A session's steps, drawn like a conversation: what the worker was given on
  * the right, what it wrote as Markdown, a message it sent as a line, and each
- * run of tool steps folded into one line ("Ran 3 commands and edited a file")
- * that opens to what each one did.
+ * run of tool steps as one line ("Ran 3 commands and edited a file") that
+ * opens to what each one did: open while it runs, folded once it doesn't.
  */
 export function Steps({ steps, nameOf, empty }: { steps: readonly SessionStep[]; nameOf: (id: string) => string; empty: string }) {
   if (steps.length === 0) return <p className="text-sm text-muted-foreground">{empty}</p>;
@@ -104,27 +104,7 @@ export function Steps({ steps, nameOf, empty }: { steps: readonly SessionStep[];
     else groups.push(step.kind === "tool" ? [step] : step);
   }
   return groups.map((group) => {
-    if (Array.isArray(group) && group.length === 1) {
-      return (
-        <div key={group[0].id} data-step="tool" className="text-xs text-muted-foreground">
-          <ToolText step={group[0]} />
-        </div>
-      );
-    }
-    if (Array.isArray(group)) {
-      return (
-        <details key={group[0].id} data-step="tools" className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer">{composeToolGroupLabel(group.map((t) => t.tool ?? t.text))}</summary>
-          <ol className="mt-1 pl-4">
-            {group.map((t) => (
-              <li key={t.id}>
-                · <ToolText step={t} />
-              </li>
-            ))}
-          </ol>
-        </details>
-      );
-    }
+    if (Array.isArray(group)) return <ToolRun key={group[0]!.id} steps={group} run={stepRun(group)} />;
     switch (group.kind) {
       case "given":
         return (
@@ -156,9 +136,4 @@ export function Steps({ steps, nameOf, empty }: { steps: readonly SessionStep[];
         return null;
     }
   });
-}
-
-/** What one tool step did; a shell command is shown as the code it ran. */
-function ToolText({ step }: { step: SessionStep }) {
-  return step.code ? <code className="font-mono">{step.text}</code> : <>{step.text}</>;
 }

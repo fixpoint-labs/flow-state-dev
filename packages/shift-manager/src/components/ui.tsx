@@ -1,12 +1,12 @@
 /**
  * Shift Manager's small shared pieces: the named empty state, a failed section with
  * Retry, tabs whose selection lives in the URL, a worker's status mark, a feed's
- * jump-to-latest arrow, and the parts of design v2's look every screen draws with: a screen's title,
+ * jump-to-latest arrow and Load earlier, and the parts of design v2's look every screen draws with: a screen's title,
  * mono meta text, and a task's state square.
  *
  * Every piece is square (v2 draws no rounded corner) and paints only tokens.
  */
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ArrowDownIcon } from "lucide-react";
 import type { JumpToLatest } from "@flow-state-dev/react";
 import type { Column } from "../lib/columns";
@@ -47,6 +47,43 @@ export function JumpToLatestButton({ feed }: { feed: JumpToLatest }) {
           <ArrowDownIcon className="size-4" />
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * *Load earlier*, above a feed that holds older items than it shows: each press
+ * adds the page before its first item. Drawn only while `load` is set, which
+ * the feed's read does while there is more. A failed read says so and can be
+ * pressed again.
+ */
+export function LoadEarlierButton({ load, testId }: { load: (() => Promise<void>) | undefined; testId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  if (load === undefined) return null;
+  const press = () => {
+    setBusy(true);
+    setFailed(false);
+    load()
+      .catch(() => setFailed(true))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <div className="flex items-center justify-center gap-2 py-1 text-xs text-muted-foreground" data-testid={testId}>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={press}
+        className="border border-border px-2 py-0.5 hover:bg-accent disabled:opacity-40"
+        data-testid={`${testId}-button`}
+      >
+        {busy ? "Loading…" : "Load earlier"}
+      </button>
+      {failed ? (
+        <span role="alert" data-testid={`${testId}-failed`}>
+          Couldn't load the earlier items.
+        </span>
+      ) : null}
     </div>
   );
 }

@@ -490,7 +490,7 @@ That posts to the engine's answer route, `POST /api/flows/:flow/requests/:reques
 
 To draw the review in a browser, add the ui registry's `review-hold` component (`fsdev ui add review-hold`). It offers Accept and Ask for changes, and sends only these two answers; it doesn't offer the ways to land yet. The registry's `SuspensionCard` draws it for this stop, with the stop's prompt.
 
-The stop's `data` names the run's branch, commit count, commit subjects, the judge's verdict, the ways an accept can land the work (`lands`), and the last landing that failed (`landFailed`). Read it in the browser with `reviewDetail` from `@flow-state-dev/harness-manager/browser`, an entry that imports no Node built-in, and hand the result to the card as `review`:
+The stop's `data` names the run's branch, commit count, commit subjects, the judge's verdict, the checks the phase ran (`commandCheck`; `null` when none ran), the ways an accept can land the work (`lands`), and the last landing that failed (`landFailed`). The card shows the checks as "Checks 2/2 passed", with a red one open on its output. Read it in the browser with `reviewDetail` from `@flow-state-dev/harness-manager/browser`, an entry that imports no Node built-in, and hand the result to the card as `review`:
 
 ```tsx
 import { reviewDetail } from "@flow-state-dev/harness-manager/browser";
@@ -512,11 +512,11 @@ Reviews need a host with durable execution. A host can restart while a review wa
 On a workspace host that can land a branch (`localWorkspaceHost` with the repository in `localRepositories`; see the workspace package's *Landing a run's branch*), the review's data lists `lands: ["pull-request", "merge"]`. An accept can then say where the work goes:
 
 - `{ verdict: "accepted", land: "pull-request" }` pushes the run's branch and opens a pull request into its base. The title is the run's one commit subject, or the task's goal. The body has the goal, the commits, the checks and the judge's verdict. The pull request is written to the run session's `observed-pull-requests` record, so anything that lists the session's pull requests shows it.
-- `{ verdict: "accepted", land: "merge" }` merges the run's branch into the base branch of the person's checkout. The base is whatever that checkout has checked out.
+- `{ verdict: "accepted", land: "merge" }` merges the run's branch into the base branch of the user's checkout. The base is whatever that checkout has checked out.
 
 The output's `landed` is `{ kind: "pull-request", url, number, branch, base, remote }` or `{ kind: "merge", branch, commit, checkout, from }`, and the stream says where the work went and what to do next.
 
-If the landing fails (the push is refused, `gh` can't open the pull request, the checkout has uncommitted changes, or the merge conflicts), the task doesn't complete. The review is asked again, titled "The accepted changes didn't land". Its prompt leads with the error, and its data carries `landFailed: { land, message }`, so the person can retry or pick the other way. A merge conflict is never resolved for you. The run's branch and checkout stay as they were, so nothing is lost. A plain `{ verdict: "accepted" }` still completes the task without landing anything.
+If the landing fails (the push is refused, `gh` can't open the pull request, the checkout has uncommitted changes, or the merge conflicts), the task doesn't complete. The review is asked again, titled "The accepted changes didn't land". Its prompt leads with the error, and its data carries `landFailed: { land, message }`, so the user can retry or pick the other way. A merge conflict is never resolved for you. The run's branch and checkout stay as they were, so nothing is lost. A plain `{ verdict: "accepted" }` still completes the task without landing anything.
 
 ### Reading one file's patch
 

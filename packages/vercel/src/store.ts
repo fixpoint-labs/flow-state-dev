@@ -9,6 +9,11 @@
  * pgbouncer). User code declares it as a profile slot — no `process.env.VERCEL`
  * checks, no URL sniffing.
  *
+ * It also backs the `bus` slot with the stores' Postgres bus. With no tail
+ * pool it never listens, so it says it doesn't cross processes and open
+ * session views keep their once-a-second read across the deployment's
+ * instances; its writes still send their notices.
+ *
  * It also declares the `scheduler` capability and exposes a `scheduleIndex`
  * backed by the same pool. `scheduler` is a forward-compatible slot (it backs
  * no `StoreRegistry` sub-store), so the index reaches scheduled flows through
@@ -132,7 +137,11 @@ export function vercelPostgresStores(
   };
 
   return {
-    capabilities: ["primary", "scheduler"],
+    // `bus` too: the registry's Postgres bus. With no tail pool it never says
+    // it crosses, so a deployment's many instances keep the session stream's
+    // timed read instead of falling back to the in-memory bus, which is for an
+    // app that runs as one process.
+    capabilities: ["primary", "bus", "scheduler"],
     resolve() {
       building ??= build();
       return building;

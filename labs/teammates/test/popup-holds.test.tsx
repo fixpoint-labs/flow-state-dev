@@ -69,14 +69,14 @@ describe("a coding task's popup answers what its run waits on you for", () => {
   });
 });
 
-describe("accepting a coding task's review says where its work goes (FIX-2543)", () => {
+describe("accepting a coding task's review says where its work goes", () => {
   it("offers Open a PR and Merge locally; a merge that conflicts shows the error and a Retry, and a PR after it shows its link and what's next", async () => {
     render(<App adapter={fast({ review: true, lands: true })} />);
     const popup = await fileCodingTask();
 
     const review = await within(popup).findByRole("region", { name: "Ready for review" }, { timeout: 3000 });
     // Two clearly labelled ways to accept, and no bare Accept.
-    expect(within(review).getByRole("button", { name: "Accept: Open a PR" })).toBeTruthy();
+    expect(await within(review).findByRole("button", { name: "Accept: Open a PR" })).toBeTruthy();
     expect(within(review).queryByRole("button", { name: "Accept" })).toBeNull();
     fireEvent.click(within(review).getByRole("button", { name: "Accept: Merge locally" }));
 
