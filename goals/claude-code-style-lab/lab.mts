@@ -119,8 +119,8 @@ export async function until<T>(check: () => Promise<T | undefined>, forMs: numbe
 }
 
 /** The lab's main worker's flow, which holds the session's board, and the board's name. */
-export const MAIN_FLOW = "agent";
-export const BOARD = "tasks";
+const MAIN_FLOW = "agent";
+const BOARD = "tasks";
 
 /** A session's board through the public client: its rows (`listTasks`), one task whole, a filing, and any other board action. */
 export function boardOf(fsd: Client) {
