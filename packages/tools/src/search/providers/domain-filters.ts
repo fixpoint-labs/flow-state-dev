@@ -1,13 +1,12 @@
 /**
- * The two ways a search adapter carries `includeDomains` / `excludeDomains`
- * to a provider that has no first-class filter field of its own, shared so
- * the providers that use the same form cannot drift apart.
+ * Shared encodings of `includeDomains` / `excludeDomains` for providers that
+ * have no first-class include/exclude filter fields.
  */
 
 /**
  * The query with the domain filters written as `site:` / `-site:` operators,
- * the form Google (Serper) and Brave read in the query text. Several include
- * domains are OR-grouped, so the engine does not AND them.
+ * as Google (Serper) and Brave read them. Several include domains are
+ * OR-grouped, because the engine ANDs bare `site:` terms.
  */
 export function withSiteOperators(
   query: string,
@@ -27,14 +26,11 @@ export function withSiteOperators(
 }
 
 /**
- * Perplexity's `search_domain_filter` value, read by both its Search API and
- * Sonar. The filter is an allowlist or a denylist, never both in one request.
- * With include domains it is the allowlist alone: an exclude outside every
- * included domain is already ruled out, and one inside an included domain
- * (include `example.com`, exclude `docs.example.com`) cannot be expressed, so
- * results can be wider than asked rather than the request being invalid.
- * With excludes only it is a denylist, each domain prefixed with `-`. Empty
- * when no filter is set, so callers can omit the field.
+ * Perplexity's `search_domain_filter` (Search API and Sonar): an allowlist or
+ * a denylist, never both. With include domains it is the allowlist alone, so
+ * an exclude inside an included domain is not applied (results wider than
+ * asked, rather than an invalid request). Otherwise a denylist of `-`-prefixed
+ * domains; empty when no filter is set, so callers can omit the field.
  */
 export function perplexityDomainFilter(
   includeDomains: readonly string[] = [],
