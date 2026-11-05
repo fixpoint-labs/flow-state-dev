@@ -2,6 +2,10 @@
 
 **Spec** · [Decisions](DECISIONS.md)
 
+**Folded into FIX-2459.** This issue closes as folded when the epic's spec-set PR merges.
+FIX-2459 implements the method table as its own follow-on PR, after its surface moves, with this
+spec as the retained design ([D1](DECISIONS.md#d1)).
+
 ## Four people, before and after
 
 | Someone who… | Today | After |
@@ -75,7 +79,7 @@ flowchart LR
 | `filing.ts`, `holds.ts`, `task-caps.ts`: the convergence points for filing rules, holds and caps | **Leaves alone.** The table calls each once instead of twice |
 | `describe.each(BACKINGS)` across 26 collection test files | **Builds on** as the parity suite. No new suite |
 | Workforce's `conversation-board/board.ts`: `taskBoard({ mode: "delegation" })` plus a ref wrapper | **Leaves alone** ([D2](DECISIONS.md#d2)) |
-| [FIX-2532](../FIX-2532/SPEC.md)'s `findBy`, in review, which changes the resource backing's add path | **Seam.** Whichever lands second rebases its add onto the other's |
+| [FIX-2532](../FIX-2532/SPEC.md)'s `findBy`. Partly merged: the store's index verbs (`set` with `{ indexEntries }`) are on `main` at `45c158b4`; the add path that writes them is still to land | **Seam.** `findBy`'s index write moves into the resource storage's compare-and-set write. Whichever lands second rebases its add onto the other's |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
@@ -98,7 +102,8 @@ both backings. If wrong: the backings drift again on the next feature.
 **[The debt](#whats-already-here-and-the-debt):** net down, 38 duplicated bodies for one internal
 interface. If wrong: we pay a large refactor for no adopter-visible change.
 
-1. [D1](DECISIONS.md#d1) · **The one to weigh.** No export win, so this folds into FIX-2459 as its
+1. [D1](DECISIONS.md#d1) · **Decided at the epic: folded.** No export win, so the epic's trigger
+   fires. This issue closes as folded when the spec-set PR merges; FIX-2459 implements it as its
    own PR. If wrong: FIX-2459 grows by an internal refactor it didn't need.
 2. [D2](DECISIONS.md#d2) · Workforce's board stays a wrapped orchestration board; its filing helpers
    stay. If wrong: orchestration keeps workforce-only names behind `./internal`.
