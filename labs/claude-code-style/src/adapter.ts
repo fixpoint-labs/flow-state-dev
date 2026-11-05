@@ -24,8 +24,9 @@
  * | `watchTaskWork` | the items of a task's run session, followed through `sessionFeed`, with   |
  * |                 | its `loadEarlier` too, from the moment the board's read names that session; |
  * |                 | while the task runs, the tool call in flight (the UI registry's            |
- * |                 | `working-status`) and harness-manager's `readRecordedWork`, for the plan  |
- * |                 | its harness recorded, read on each write to it                             |
+ * |                 | `working-status`), from the run request's own stream too, which sends a   |
+ * |                 | call as it starts; and harness-manager's `readRecordedWork`, for the plan |
+ * |                 | its harness recorded, read on each write to it and on a re-run's request  |
  * | `sayInThread`   | the Inbox client's answer to the thread's open question, else the board's `steer` |
  * | `taskActions`   | the Inbox client's `board(at)` on the session that holds the board: `cancel`, |
  * |                 | `steer`, `release` and `retry`, each the board's own action                 |
@@ -36,7 +37,7 @@
  *
  * Every watch reads on a change, through `onNotice`.
  */
-import { createClient, sessionFeed, topic, type Client, type SessionConnectionState, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
+import { bindStoreToCallbacks, createClient, createRequestStreamStore, sessionFeed, topic, type Client, type SessionConnectionState, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   createInboxClient,
@@ -510,6 +511,47 @@ function followItems(
   };
 }
 
+/**
+ * The items of one request as its own stream sends them: each one as it
+ * starts, not only once finished, as the session stream sends them. Tool calls
+ * only; for what a running task is in now. A failed or closed stream reports
+ * no more, and the session feed's finished copies stand.
+ */
+function followRequestCalls(fsd: Client, flow: Promise<string>, requestId: string, onItems: (items: readonly Item[]) => void): Unsubscribe {
+  const store = createRequestStreamStore();
+  let live = true;
+  let handle: { close(): void } | undefined;
+  flow.then(
+    (flowKind) => {
+      if (!live) return;
+      handle = fsd.flow(flowKind).request(requestId).stream({
+        ...bindStoreToCallbacks(store, {
+          itemFilter: (item) => item.type === "tool_output",
+          onChange: () => {
+            store.flushDeltas();
+            if (live) onItems(store.getSorted() as unknown as Item[]);
+          },
+        }),
+      });
+    },
+    (error) => console.warn("[claude-code-style]", error),
+  );
+  return () => {
+    live = false;
+    handle?.close();
+  };
+}
+
+/**
+ * The call a run is in now, from both of its sources: the request's own
+ * stream, which sends a call as it starts, and the session feed, whose
+ * finished copy of a call wins over a streamed copy that never heard its end.
+ */
+function inFlightOf(streamed: readonly Item[], fed: readonly Item[]): ToolCallNow | undefined {
+  const finished = new Set(fed.filter((item) => item.status !== "in_progress").map((item) => item.id));
+  return toolInFlight(streamed.filter((item) => !finished.has(item.id)) as never) ?? toolInFlight(fed as never);
+}
+
 /** The adapter over one client. */
 export function createWiredLab(fsd: Client): LabAdapter {
   const workforce = createWorkforceClient(fsd);
@@ -677,9 +719,12 @@ export function createWiredLab(fsd: Client): LabAdapter {
     if (!listed.ok) throw new Error(listed.error);
     let moved = false;
     for (const task of listed.tasks as any[]) {
+      const ranAs = runningRunOf.get(task.id)?.requestId;
       if (task.status === "in_progress" && typeof task.run?.sessionId === "string" && typeof task.run?.requestId === "string") {
         runningRunOf.set(task.id, { sessionId: task.run.sessionId, requestId: task.run.requestId });
       } else runningRunOf.delete(task.id);
+      // A re-run in the same session is a new request: what the task is in now moved with it.
+      if (runningRunOf.get(task.id)?.requestId !== ranAs) moved = true;
       if (task.run?.sessionId === undefined || runSessionOf.get(task.id) === task.run.sessionId) continue;
       runSessionOf.set(task.id, task.run.sessionId);
       moved = true;
@@ -1047,64 +1092,90 @@ export function createWiredLab(fsd: Client): LabAdapter {
     watchTaskWork: (_sessionId, taskId, onChange) => {
       // The task's run session is known once the board has listed it, and a re-run moves it: follow
       // whichever session the board names now, from the moment a list names it, and show no work
-      // until one does. The run's items come from its session stream.
+      // until one does. The run's items come from its session stream. While the task runs, what it
+      // is in now follows the request the board names: its own stream for the call in flight, and
+      // the plan it recorded, read again on each write to it. A re-run in the same session is a new
+      // request, followed from the list that names it.
       let stopItems: Unsubscribe | undefined;
+      let stopRun: Unsubscribe | undefined;
       let following: string | null | undefined;
-      const follow = () => {
-        const runSession = runSessionOf.get(taskId) ?? null;
-        if (runSession === following) return;
-        following = runSession;
-        stopItems?.();
-        stopItems = undefined;
-        if (runSession === null) {
-          onChange({ entries: [] });
-          return;
-        }
-        let work: TaskWork | undefined;
-        let plan: PlanRowNow[] | undefined;
-        const tell = () => {
-          if (work === undefined) return;
-          const { working: _, ...rest } = work;
-          const inFlight = work.working?.inFlight;
-          const working: WorkingNow = { ...(inFlight === undefined ? {} : { inFlight }), ...(plan === undefined ? {} : { plan }) };
-          onChange(Object.keys(working).length === 0 ? rest : { ...rest, working });
-        };
-        const stopFeed = followItems(fsd, runSession, [...THREAD_ITEMS, "suspension"], (items, loadEarlier) => {
-          const review = reviewStopOf(items);
-          const inFlight = toolInFlight(items as never);
-          work = {
-            entries: entriesOf(items.filter((item) => item.type !== "suspension")),
-            ...(review === undefined ? {} : { review }),
-            ...(loadEarlier === undefined ? {} : { loadEarlier }),
-            ...(inFlight === undefined ? {} : { working: { inFlight } }),
-          };
+      let followingRun: string | null | undefined;
+      let work: TaskWork | undefined;
+      let fed: readonly Item[] = [];
+      let streamed: readonly Item[] = [];
+      let plan: PlanRowNow[] | undefined;
+      const tell = () => {
+        if (work === undefined) return;
+        const inFlight = inFlightOf(streamed, fed);
+        const working: WorkingNow = { ...(inFlight === undefined ? {} : { inFlight }), ...(plan === undefined ? {} : { plan }) };
+        onChange(Object.keys(working).length === 0 ? work : { ...work, working });
+      };
+      const followRun = (runSession: string) => {
+        const run = runningRunOf.get(taskId);
+        const requestId = run !== undefined && run.sessionId === runSession ? run.requestId : null;
+        if (requestId === followingRun) return;
+        followingRun = requestId;
+        stopRun?.();
+        stopRun = undefined;
+        streamed = [];
+        plan = undefined;
+        tell();
+        if (requestId === null) return;
+        const stopCalls = followRequestCalls(fsd, flowOfSession(runSession), requestId, (items) => {
+          streamed = items;
           tell();
-        }).stop;
-        // A harness records its plan apart from the run's items: read again on each write to it, while the task runs.
+        });
         const stopPlan = onNotice(
           fsd,
           [topic.session(runSession)],
           isPlanWrite,
-          async () => {
-            const run = runningRunOf.get(taskId);
-            if (run === undefined || run.sessionId !== runSession) return null;
-            return (await readRecordedWork(fsd, run)).plan?.rows.map(({ title, status }) => ({ title, status })) ?? null;
-          },
+          async () => (await readRecordedWork(fsd, { sessionId: runSession, requestId })).plan?.rows.map(({ title, status }) => ({ title, status })) ?? null,
           (rows) => {
             plan = rows ?? undefined;
             tell();
           },
         );
-        stopItems = () => {
-          stopFeed();
+        stopRun = () => {
+          stopCalls();
           stopPlan();
         };
+      };
+      const follow = () => {
+        const runSession = runSessionOf.get(taskId) ?? null;
+        if (runSession !== following) {
+          following = runSession;
+          stopItems?.();
+          stopItems = undefined;
+          stopRun?.();
+          stopRun = undefined;
+          followingRun = undefined;
+          work = undefined;
+          fed = [];
+          streamed = [];
+          plan = undefined;
+          if (runSession === null) {
+            onChange({ entries: [] });
+            return;
+          }
+          stopItems = followItems(fsd, runSession, [...THREAD_ITEMS, "suspension"], (items, loadEarlier) => {
+            const review = reviewStopOf(items);
+            fed = items;
+            work = {
+              entries: entriesOf(items.filter((item) => item.type !== "suspension")),
+              ...(review === undefined ? {} : { review }),
+              ...(loadEarlier === undefined ? {} : { loadEarlier }),
+            };
+            tell();
+          }).stop;
+        }
+        if (runSession !== null) followRun(runSession);
       };
       runLinkMoved.add(follow);
       follow();
       return () => {
         runLinkMoved.delete(follow);
         stopItems?.();
+        stopRun?.();
       };
     },
     sayInThread: async (sessionId, taskId, line) => {

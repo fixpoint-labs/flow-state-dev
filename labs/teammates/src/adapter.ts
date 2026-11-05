@@ -35,7 +35,8 @@
  * | `watchRun`          | the items of the session the task's row names as its run, each tool call      |
  * |                     | named by the UI registry's `tool-naming` (`components/flow-state/`)           |
  * | `watchExchange`     | the receiving worker's conversation: the turn that read one message          |
- * | `watchWorking`      | the run session's items, for the tool call in flight (the UI registry's      |
+ * | `watchWorking`      | the run session's items and its run request's own stream (which sends a call |
+ * |                     | as it starts), for the tool call in flight (the UI registry's               |
  * |                     | `working-status`), and harness-manager's browser `readRecordedWork`, for the |
  * |                     | plan its harness recorded, read on each write to it                          |
  *
@@ -49,7 +50,9 @@
  * block), with the bearer token when there is one, on the server it came from.
  */
 import {
+  bindStoreToCallbacks,
   createClient,
+  createRequestStreamStore,
   readEveryCollectionPage,
   topic,
   type Client,
@@ -593,6 +596,47 @@ function onNotice<T>(
     retry.stop();
     subscription.close();
   };
+}
+
+/**
+ * The tool calls of one request as its own stream sends them: each one as it
+ * starts, not only once finished, as the session stream sends them. For what
+ * a running task is in now. A failed or closed stream reports no more, and
+ * the session feed's finished copies stand.
+ */
+function followRequestCalls(client: Client, flow: Promise<string>, requestId: string, onItems: (items: readonly OutputItem[]) => void): Unsubscribe {
+  const store = createRequestStreamStore();
+  let live = true;
+  let handle: { close(): void } | undefined;
+  flow.then(
+    (flowId) => {
+      if (!live) return;
+      handle = client.flow(flowId).request(requestId).stream({
+        ...bindStoreToCallbacks(store, {
+          itemFilter: (item) => item.type === "tool_output",
+          onChange: () => {
+            store.flushDeltas();
+            if (live) onItems(store.getSorted());
+          },
+        }),
+      });
+    },
+    (error) => console.error("teammates: a run's request couldn't be followed", error),
+  );
+  return () => {
+    live = false;
+    handle?.close();
+  };
+}
+
+/**
+ * The call a run is in now, from both of its sources: the request's own
+ * stream, which sends a call as it starts, and the session feed, whose
+ * finished copy of a call wins over a streamed copy that never heard its end.
+ */
+function inFlightOf(streamed: readonly OutputItem[], fed: readonly OutputItem[]): ToolCallNow | undefined {
+  const finished = new Set(fed.filter((item) => item.status !== "in_progress").map((item) => item.id));
+  return toolInFlight(streamed.filter((item) => !finished.has(item.id))) ?? toolInFlight(fed);
 }
 
 /** A request notice: one of the session's requests was created, moved or deleted. Never `items`, sent per stored chunk. */
@@ -1342,11 +1386,31 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         last = seen;
         onChange(now);
       };
-      const stopFeed = watchFeed(run.sessionId, (items) => toolInFlight(items as never), (inFlight) => {
+      // The session stream sends a call once it is finished; the run request's own stream sends it as it starts.
+      let fed: readonly OutputItem[] = [];
+      let streamed: readonly OutputItem[] = [];
+      const tellInFlight = () => {
+        const inFlight = inFlightOf(streamed, fed);
         const { inFlight: _, ...rest } = now;
         tell(inFlight === undefined ? rest : { ...rest, inFlight });
+      };
+      const stopFeed = watchFeed(run.sessionId, (items) => items as unknown as OutputItem[], (items) => {
+        fed = items;
+        tellInFlight();
       });
       const requestId = run.requestId;
+      const stopCalls =
+        requestId === undefined
+          ? () => {}
+          : followRequestCalls(
+              client,
+              client.sessions.get(run.sessionId).then((detail) => detail.flowId ?? detail.flowKind),
+              requestId,
+              (items) => {
+                streamed = items;
+                tellInFlight();
+              },
+            );
       // A harness records its plan apart from the run's items: read again on each write to it.
       const stopPlan =
         requestId === undefined
@@ -1363,6 +1427,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
             );
       return () => {
         stopFeed();
+        stopCalls();
         stopPlan();
       };
     },

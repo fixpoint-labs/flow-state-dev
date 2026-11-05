@@ -20,16 +20,30 @@ const tool = (id: string, status: string, command: string) => ({
   toolCall: { callId: id, name: "Bash", arguments: JSON.stringify({ command }), generatorBlock: "claude-code" },
 });
 
-/** A run session holding `items`, and recording a plan when `plan` is given. */
-function clientWith(items: unknown[], plan?: { title: string; status: string }[]) {
+/**
+ * A run session holding `items`, and recording a plan when `plan` is given.
+ * Its run request's own stream sends `live`, as each item is added.
+ */
+function clientWith(items: unknown[], plan?: { title: string; status: string }[], live: unknown[] = []) {
   const listed: string[] = [];
+  const streamed: string[] = [];
   const heard: Array<(notice: WireNotice | null) => void> = [];
   const client = {
     subscribe: (_topics: unknown, options: { onChange: (notice: WireNotice | null) => void }) => {
       heard.push(options.onChange);
       return { close() {} };
     },
+    flow: (flow: string) => ({
+      request: (requestId: string) => ({
+        stream: (callbacks: { onItemAdded?: (event: { item: unknown }) => void }) => {
+          streamed.push(`${flow}/${requestId}`);
+          queueMicrotask(() => live.forEach((item) => callbacks.onItemAdded?.({ item })));
+          return { close() {} };
+        },
+      }),
+    }),
     sessions: {
+      get: async (id: string) => ({ id, flowKind: "coder" }),
       state: async () => ({ at: 1, sessionCreatedAt: 1, items, pagination: { hasMore: false, nextOffset: items.length } }),
       stream: () => ({ close() {} }),
     },
@@ -52,7 +66,7 @@ function clientWith(items: unknown[], plan?: { title: string; status: string }[]
   } as unknown as Client;
   /** A notice on the run session, as push delivers it. */
   const notify = (notice: WireNotice) => act(() => heard.forEach((hear) => hear(notice)));
-  return { client, listed, notify, setPlan: (rows: { title: string; status: string }[]) => (plan = rows) };
+  return { client, listed, streamed, notify, setPlan: (rows: { title: string; status: string }[]) => (plan = rows) };
 }
 
 /** Lets the reads a notice started settle. */
@@ -81,6 +95,27 @@ describe("a running task's working line, as the adapter reads it", () => {
       { title: "Add regression test", status: "in_progress" },
     ]);
     expect(listed.some((read) => read.startsWith("plan:") && read.includes("req_run"))).toBe(true);
+  });
+
+  it("names a call that started after the view opened, which only the run request's own stream sends", async () => {
+    // The session stream sends an item once it is finished: stored is the finished `ls` only.
+    const lab = clientWith([tool("t1", "completed", "ls")], undefined, [tool("t1", "completed", "ls"), tool("t2", "in_progress", "pnpm test")]);
+    let now: WorkingNow = {};
+    const stop = createLabAdapter(lab.client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => (now = next));
+    await until(() => now.inFlight !== undefined);
+    stop();
+    expect(now.inFlight).toEqual({ tool: "Bash", args: { command: "pnpm test" } });
+    expect(lab.streamed).toEqual(["coder/req_run"]);
+  });
+
+  it("has nothing in flight once the feed holds the call's finished copy, whatever the request stream last said", async () => {
+    const lab = clientWith([tool("t2", "completed", "pnpm test")], undefined, [tool("t2", "in_progress", "pnpm test")]);
+    const seen: WorkingNow[] = [];
+    const stop = createLabAdapter(lab.client).watchWorking({ sessionId: "dsx_run", requestId: "req_run" }, (next) => seen.push(next));
+    await until(() => lab.streamed.length > 0 && seen.length > 0);
+    await new Promise((r) => setTimeout(r, 50));
+    stop();
+    expect(seen.at(-1)?.inFlight).toBeUndefined();
   });
 
   it("reads the plan again when the harness writes it, and not on the run's other notices", async () => {

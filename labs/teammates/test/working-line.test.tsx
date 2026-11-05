@@ -112,6 +112,13 @@ describe("a running task's feed ends in a live working line", () => {
     expect(line(popup)?.textContent).toMatch(/^Working\.\.\./);
   });
 
+  it("follows a re-run in the same session: the new request is the run it reads", () => {
+    const lab = stub(RUNNING);
+    open(lab);
+    lab.setTask({ runRequestId: "req-2" });
+    expect(lab.watched).toEqual(["run-1/req-1", "run-1/req-2"]);
+  });
+
   it("counts the time since the run started, and keeps counting", () => {
     vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
     vi.setSystemTime(STARTED + 4 * 60_000 + 12_000);
