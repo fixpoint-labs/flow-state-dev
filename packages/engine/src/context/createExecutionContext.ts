@@ -2435,7 +2435,7 @@ export async function createExecutionContext<
     requestRef.current.state as TRequestState,
     requestRef.current.version
   );
-  // Scope state reads with its schema's defaults filled in (FIX-2554), so a
+  // Scope state reads with its schema's defaults filled in, so a
   // defaulted field is present on a fresh or older record, as the state's
   // type promises. Nothing else of the stored blob changes. Every read of a
   // stored record goes through these: the load here, and the records a write

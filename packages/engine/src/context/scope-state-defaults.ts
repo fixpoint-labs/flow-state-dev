@@ -10,10 +10,19 @@
  * schema extends, are kept as stored. A strip-mode parse would delete them on
  * the next save. Values already present are kept as stored too: a transform
  * or coercion in the schema does not rewrite them on read.
+ *
+ * Array elements are filled from the element schema, one element at a time,
+ * never by lining the stored array up against a parsed one (a transform may
+ * reorder or resize it). A field whose present value fails its schema, which
+ * includes a union or record no variant matches, is left exactly as stored.
+ *
+ * Cost: each top-level field is parsed on every read of a stored record (the
+ * load, and the record a write or a conflict hands back), so a schema's
+ * transforms, refinements and default factories run on each read.
  */
 import type { ZodTypeAny } from "zod";
 import type { JsonObject } from "@flow-state-dev/core/types";
-import { getZodInnerType, getZodObjectShape, isZodObject } from "@flow-state-dev/core/helpers";
+import { getZodArrayElement, getZodInnerType, getZodObjectShape, isZodObject } from "@flow-state-dev/core/helpers";
 import { isJsonObject } from "../utils/json-helpers";
 
 /**
@@ -33,7 +42,7 @@ export function applyScopeStateDefaults(
   const shape = objectShapeOf(schema);
   if (shape === undefined) {
     const parsed = schema.safeParse(stored);
-    return parsed.success ? (fillMissing(stored, parsed.data) as JsonObject) : stored;
+    return parsed.success ? (fillMissing(schema, stored, parsed.data) as JsonObject) : stored;
   }
 
   let out: JsonObject | undefined;
@@ -41,7 +50,7 @@ export function applyScopeStateDefaults(
     const current = stored[key];
     const parsed = field.safeParse(current);
     if (!parsed.success || parsed.data === undefined) continue;
-    const filled = fillMissing(current, parsed.data);
+    const filled = fillMissing(field, current, parsed.data);
     if (filled === current) continue;
     out ??= { ...stored };
     out[key] = filled as JsonObject[string];
@@ -49,30 +58,43 @@ export function applyScopeStateDefaults(
   return out ?? stored;
 }
 
-/**
- * The shape of the `z.object` under a schema's wrappers (`.default({})`,
- * `.optional()`, effects), or `undefined` when there is none.
- */
-function objectShapeOf(schema: ZodTypeAny): Record<string, ZodTypeAny> | undefined {
+/** The first schema under `schema`'s wrappers (`.default()`, `.optional()`, effects) that `pick` accepts. */
+function unwrapTo<T>(schema: ZodTypeAny | undefined, pick: (s: ZodTypeAny) => T | undefined): T | undefined {
   const seen = new Set<ZodTypeAny>();
-  for (let s: ZodTypeAny | undefined = schema; s !== undefined && !seen.has(s); s = getZodInnerType(s)) {
+  for (let s = schema; s !== undefined && !seen.has(s); s = getZodInnerType(s)) {
     seen.add(s);
-    if (isZodObject(s)) return getZodObjectShape(s);
+    const found = pick(s);
+    if (found !== undefined) return found;
   }
   return undefined;
 }
 
+/** The shape of the `z.object` under a schema's wrappers, or `undefined` when there is none. */
+function objectShapeOf(schema: ZodTypeAny | undefined): Record<string, ZodTypeAny> | undefined {
+  return unwrapTo(schema, (s) => (isZodObject(s) ? getZodObjectShape(s) : undefined));
+}
+
+/** The element schema of the `z.array` under a schema's wrappers, or `undefined` when there is none. */
+function arrayElementOf(schema: ZodTypeAny | undefined): ZodTypeAny | undefined {
+  return unwrapTo(schema, getZodArrayElement);
+}
+
 /**
  * `stored` with every value `parsed` has and `stored` lacks copied in,
- * recursing into objects and same-length arrays. Returns `stored` itself when
- * nothing was missing, so callers can tell a no-op by identity.
+ * recursing into objects by key. An array is filled element by element from
+ * its element schema, never from `parsed`'s positions. Returns `stored`
+ * itself when nothing was missing, so callers can tell a no-op by identity.
  */
-function fillMissing(stored: unknown, parsed: unknown): unknown {
+function fillMissing(schema: ZodTypeAny | undefined, stored: unknown, parsed: unknown): unknown {
   if (stored === undefined) return parsed;
-  if (Array.isArray(stored) && Array.isArray(parsed) && stored.length === parsed.length) {
+  if (Array.isArray(stored)) {
+    const element = arrayElementOf(schema);
+    if (element === undefined) return stored;
     let out: unknown[] | undefined;
     stored.forEach((value, i) => {
-      const filled = fillMissing(value, parsed[i]);
+      const own = element.safeParse(value);
+      if (!own.success) return;
+      const filled = fillMissing(element, value, own.data);
       if (filled === value) return;
       out ??= [...stored];
       out[i] = filled;
@@ -80,9 +102,10 @@ function fillMissing(stored: unknown, parsed: unknown): unknown {
     return out ?? stored;
   }
   if (isJsonObject(stored) && isJsonObject(parsed)) {
+    const shape = objectShapeOf(schema);
     let out: Record<string, unknown> | undefined;
     for (const [key, value] of Object.entries(parsed)) {
-      const filled = fillMissing(stored[key], value);
+      const filled = fillMissing(shape?.[key], stored[key], value);
       if (filled === stored[key]) continue;
       out ??= { ...stored };
       out[key] = filled;

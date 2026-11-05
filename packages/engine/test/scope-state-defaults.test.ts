@@ -1,5 +1,5 @@
 /**
- * Scope state reads with its schema's defaults (FIX-2554).
+ * Scope state reads with its schema's defaults.
  *
  * `ctx.session/user/org.state` is typed `z.infer` of the flow's scope
  * `stateSchema`, which says a defaulted field is always present. These tests
@@ -86,7 +86,7 @@ async function open(stores: ReturnType<typeof createInMemoryStores>, requestId: 
   });
 }
 
-describe("scope state defaults on load (FIX-2554)", () => {
+describe("scope state defaults on load", () => {
   it("a fresh user, session and org read every defaulted field with no fallback", async () => {
     const ctx = await open(createInMemoryStores(), "req_fresh");
 
@@ -164,7 +164,70 @@ describe("scope state defaults on load (FIX-2554)", () => {
   });
 });
 
-describe("the /state projection reads defaults too (FIX-2554)", () => {
+describe("native delta writes start from the defaulted value", () => {
+  // The in-memory store advertises `incField` / `pushToArray`, which start a
+  // field the record lacks at 0 / []. The scope reads the field's default, so
+  // a delta write must build on that, not on the store's empty start.
+  const deltas = defineFlow({
+    kind: "scope-defaults-deltas",
+    user: {
+      stateSchema: z.object({
+        count: z.number().default(10),
+        tags: z.array(z.string()).default(["seed"])
+      })
+    },
+    actions: {
+      run: {
+        inputSchema: z.number(),
+        block: handler({ name: "noop", inputSchema: z.number(), outputSchema: z.number(), execute: (input) => input })
+      }
+    }
+  })();
+
+  async function openDeltas(stores: ReturnType<typeof createInMemoryStores>, requestId: string) {
+    return createExecutionContext({
+      flow: deltas,
+      actionName: "run",
+      requestId,
+      sessionId: "sess_deltas",
+      userId: USER,
+      orgId: ORG,
+      stores,
+      response: createResponseEmitter({ requestId }),
+      modelResolver: stubResolver((modelId) => ({
+        modelId,
+        async generate() {
+          return { text: "ok" };
+        }
+      }))
+    });
+  }
+
+  it("an increment on a defaulted counter adds to its default", async () => {
+    const stores = createInMemoryStores();
+    const ctx = await openDeltas(stores, "req_inc");
+
+    await ctx.user.incState({ count: 1 });
+
+    expect((ctx.user.state as { count: number }).count).toBe(11);
+    expect((await stores.user.get(USER_KEY))?.state).toMatchObject({ count: 11 });
+    // Once the field is stored, later increments take the delta path and still add up.
+    await ctx.user.incState({ count: 1 });
+    expect((await stores.user.get(USER_KEY))?.state).toMatchObject({ count: 12 });
+  });
+
+  it("a push onto a defaulted array appends to its default", async () => {
+    const stores = createInMemoryStores();
+    const ctx = await openDeltas(stores, "req_push");
+
+    await ctx.user.pushState("tags", "new");
+
+    expect((ctx.user.state as { tags: string[] }).tags).toEqual(["seed", "new"]);
+    expect((await stores.user.get(USER_KEY))?.state).toMatchObject({ tags: ["seed", "new"] });
+  });
+});
+
+describe("the /state projection reads defaults too", () => {
   it("exposes a defaulted field the stored record never held", async () => {
     const projected = defineFlow({
       kind: "scope-defaults-projected",
@@ -211,6 +274,23 @@ describe("applyScopeStateDefaults", () => {
     const stored = { name: "ada", tags: [{}, { on: false }] };
     // The transform never rewrites a stored value; array elements get theirs.
     expect(applyScopeStateDefaults(schema, stored)).toEqual({ name: "ada", tags: [{ on: true }, { on: false }] });
+  });
+
+  it("fills each array element from its own schema, not a transform's reordered output", () => {
+    const schema = z.object({
+      rows: z
+        .array(z.object({ id: z.string(), flag: z.boolean().default(false) }))
+        .transform((rows) => [...rows].reverse())
+        .default([])
+    });
+    const stored = { rows: [{ id: "a", flag: true }, { id: "b" }] };
+    // Lined up by position against the reversed parse, "b" would take "a"'s stored `true`.
+    expect(applyScopeStateDefaults(schema, stored)).toEqual({
+      rows: [
+        { id: "a", flag: true },
+        { id: "b", flag: false }
+      ]
+    });
   });
 
   it("returns the stored object itself when nothing was missing", () => {

@@ -41,7 +41,7 @@ export type ScopeStoreLike<TRecord> = DeltaStoreOps<TRecord> & {
  * `persist` for a scope record (see `RunWithCASOptions.persist`). `readState`
  * maps a stored record's state to what the scope reads, applied to the record a
  * delta write returns and to the one a conflict reports, the same way the
- * scope's initial load did (the scope's schema defaults, FIX-2554).
+ * scope's initial load did (the scope's schema defaults).
  */
 export function createScopePersist<
   TState,
@@ -114,7 +114,18 @@ export function createScopePersist<
       return handleResult(result, buildDeltaLocal);
     }
 
-    if (hint.kind === "incField" && typeof store.incField === "function") {
+    // A store's `incField` / `pushToArray` start a field the record lacks at
+    // 0 / []. When the scope reads that field as its schema default instead,
+    // the delta would drop the default, so the write goes through the
+    // version-checked full `set` below, which carries the defaulted value. Once
+    // the field is stored, later deltas build on it as usual.
+    const readsDefault = (field: string): boolean => {
+      const stored = ref.current.state as Record<string, unknown> | undefined;
+      if (stored?.[field] !== undefined) return false;
+      return (readState(ref.current.state) as Record<string, unknown>)[field] !== undefined;
+    };
+
+    if (hint.kind === "incField" && typeof store.incField === "function" && !readsDefault(hint.path[0])) {
       const result = await store.incField(
         id,
         hint.path,
@@ -127,7 +138,8 @@ export function createScopePersist<
 
     if (
       hint.kind === "pushToArray" &&
-      typeof store.pushToArray === "function"
+      typeof store.pushToArray === "function" &&
+      !readsDefault(hint.path[0])
     ) {
       const result = await store.pushToArray(
         id,
@@ -149,8 +161,9 @@ export function createScopePersist<
       return handleResult(result, buildDeltaLocal);
     }
 
-    // Fallback: full set. Used for `set` hints and for delta hints when the
-    // adapter doesn't advertise the relevant verb (capability advertisement).
+    // Fallback: full set. Used for `set` hints, for delta hints when the
+    // adapter doesn't advertise the relevant verb (capability advertisement),
+    // and for a delta onto a field that reads as its schema default.
     const nextRecord = buildSetRecord(expectedVersion, state);
     const result = await store.set(id, nextRecord, expectedVersion);
     return handleResult(result, () => nextRecord);
@@ -164,7 +177,7 @@ export function createScopePersist<
  * retry's full-record `set` is built from the stored record. A write that
  * landed during the read keeps its newer record. `readState` maps the stored
  * state to what the scope reads, the same way its initial load did (the
- * scope's schema defaults, FIX-2554).
+ * scope's schema defaults).
  */
 export function createScopeReread<
   TState,

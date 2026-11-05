@@ -31,6 +31,7 @@ import { mem } from "./run/cognition";
 import { bashCap } from "./shared/capabilities/features";
 import {
   coalesceThinkingStyle,
+  modeSchema,
   sessionStateSchema,
   userStateSchema,
 } from "./shared/schemas";
@@ -117,7 +118,9 @@ const chatAgentFlow = defineFlow({
           // Project to the surface shape the top-bar UI wants — name +
           // source tier, drop the rest.
           return {
-            currentMode: ctx.state.mode,
+            // A retired mode stored before the enum changed is refused here
+            // rather than reaching the browser raw (BP-030).
+            currentMode: modeSchema.parse(ctx.state.mode),
             // The only surface that reads the stored style raw. A session
             // written before FIX-1478 holds a style this app removed, so it
             // is folded to `default` here, before it leaves the server,

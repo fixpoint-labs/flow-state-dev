@@ -97,7 +97,9 @@ const modeSwitch = handler({
 });
 ```
 
-When these blocks are composed into a flow, their state declarations are collected and merged. The flow ends up with a combined session state of `{ messageCount: number, mode: "chat" | "agent" }` — without you repeating those fields in a flow-level `stateSchema`.
+When these blocks are composed into a flow, their state declarations are collected and merged into the type of `ctx.session.state`. The flow's session state is typed `{ messageCount: number, mode: "chat" | "agent" }` without you repeating those fields in a flow-level `stateSchema`.
+
+Block declarations shape the types. They don't fill in defaults when a run reads stored state; only the flow's own `stateSchema` does that (see [Creating sessions](#creating-sessions)). Until something writes `mode`, a block that reads `ctx.session.state.mode` gets `undefined` unless the flow declares the field too.
 
 You *can* still define a flow-level schema if you want one place to see everything:
 
@@ -113,7 +115,7 @@ defineFlow({
 });
 ```
 
-But you don't have to. The flow-level schema only needs to declare fields that aren't already declared by blocks, or fields the flow itself references (like in a `client.expose` list or a `client.derived` compute function).
+The flow-level schema needs the fields a block reads before anything writes them, so their defaults apply, and the fields the flow itself references (like in a `client.expose` list or a `client.derived` compute function).
 
 ### Why bubbling matters
 
@@ -531,6 +533,7 @@ In practice, most state declarations live on blocks, not flows. A counter block 
 Reach for flow-level `session.stateSchema` (or `user`, `org`) when:
 
 - You write a `client.derived` compute function that reads the field — the compute function lives on the flow config, so the field has to be visible there.
+- A block reads the field before anything writes it, and needs its default. Defaults apply on read only from the flow's schema.
 - You want one place to see the canonical schema for code review or onboarding.
 - A field doesn't belong to any one block (rare).
 

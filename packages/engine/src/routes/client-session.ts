@@ -52,7 +52,7 @@ export function toClientSession(
         ...getReadonlyStateKeys(owner.flow.session?.stateSchema)
       ]
     : [];
-  // The fields read as a run reads them: with the schema's defaults (FIX-2554).
+  // The fields read as a run reads them: with the schema's defaults.
   const read = owner.ok ? applyScopeStateDefaults(owner.flow.session?.stateSchema, state) : state;
   return { ...envelope, id: bareId, state: visibleState(read, visible) };
 }
