@@ -24,14 +24,11 @@ import { createFakeResourceCollection } from "../helpers";
 
 const LEDGER = "convo-tasks";
 
-/** The ledger's id index, installed beside it as a flow's resources would. */
-const idIndex = createFakeResourceCollection<JsonObject>(`${LEDGER}__ids/**`);
-
-/** Minimal block context: the factory reads only `emit`, identity, and the id index. */
+/** Minimal block context: the factory reads only `emit` and identity. */
 function ctxFor(userId = "alice"): BlockContext {
   return {
     emit: { component: () => undefined },
-    resources: { [`${LEDGER}__ids`]: idIndex },
+    resources: {},
     session: { identity: { type: "session", id: "s_1", userId } },
     request: { identity: { type: "request", id: "r_1" } },
   } as unknown as BlockContext;
