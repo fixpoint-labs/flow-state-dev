@@ -155,6 +155,43 @@ The timer reads `42s` under a minute, `1m 24s` from there, and `1h 3m` (no secon
 
 `RequestGroupRenderer` renders a request's items in the chat and sets `since` from the first item of the latest request, so you set `since` yourself only when you render the indicator directly. While a tool call or thought is in progress, the indicator shows "Working..." and the clock instead of the status words, so the line never collapses to a bare timer. The timer disappears when the request stops streaming. Pass `showWorkedFor` to `RequestGroupRenderer` and a finished request ends in a line like "Worked for 3m 24s • 4:28 PM" (`WorkedFor`, exported from the same file). The end time comes from the items unless you also pass `latestCompletedAtMs`, the request record's end, which is exact.
 
+### What a running task is doing now
+
+Some work runs outside the chat request, such as a background task or a [coding agent](/docs/tools/coding-agents) run, and you render its items as a feed of their own. `working-status` gives that feed a live last line. It holds two pure functions. `toolInFlight` finds the newest tool call in a list of items that hasn't returned yet. `workingStatus` picks the most specific status it has: that call, then the plan step in progress, then the task's last progress note. When there is none of them it returns `undefined`, and `StreamingIndicator` keeps its "Working..." label.
+
+```bash
+fsdev ui add working-status
+```
+
+`workingStatus` takes one object, and every field in it is optional:
+
+- `inFlight`: the result of `toolInFlight(items)`. Pass only the items of the request the task is running now. A session that runs more than one request can still hold a call from an earlier request that never finished, and that call isn't what the task is doing.
+- `plan`: the task's plan as `PlanRowNow[]`, each row `{ title: string; status: string | null }`. A coding agent's rows come from [the run's plan](/docs/tools/coding-agents#the-runs-plan). Pass `null` or leave it out when there is no plan.
+- `note`: the task's last progress note, a `string` or `null`. Blank text counts as no note.
+
+Show the line only while the task is running, and not while it waits on someone. The indicator doesn't know the task's status, so the condition is yours.
+
+```tsx
+import type { OutputItem } from "@flow-state-dev/core/items";
+import { StreamingIndicator } from "@/components/flow-state/streaming-indicator";
+import { toolInFlight, workingStatus, type PlanRowNow } from "@/components/flow-state/working-status";
+
+function TaskWorkingLine({ items, plan, note, startedAt }: {
+  items: OutputItem[]; // the current request's items
+  plan: PlanRowNow[] | null;
+  note: string | null;
+  startedAt: number;
+}) {
+  const message = workingStatus({ inFlight: toolInFlight(items), plan, note });
+  return <StreamingIndicator message={message} since={startedAt} />;
+}
+// Renders one line, for example either of:
+//   Running pnpm test (4m 12s)
+//   Step 3 of 5: Add regression test (4m 12s)
+```
+
+A tool call that states what it's doing, such as a shell command's `description`, reads as that statement. Otherwise a shell command reads "Running" and the command, other calls read like a [Tool](#tool) row ("Edit src/adapter.ts"), and a call with nothing to name reads "Using" and the tool's name. A plan step reads "Step 3 of 5:" and the title of the first row in progress. A row counts as in progress whatever the task calls it (`in_progress`, `IN_PROGRESS`, `in-progress`).
+
 ## Status
 
 Status message display with a shimmer animation for in-progress states. Renders the current request status slot.
