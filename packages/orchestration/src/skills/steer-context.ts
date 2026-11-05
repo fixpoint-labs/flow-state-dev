@@ -49,19 +49,30 @@ export function renderSteers(steers: readonly ShownSteer[], lead: string): strin
 
 /**
  * Show steers a request just took as lines in its session, each from its
- * sender (FIX-2086): the filer's, or a person's sent from a screen. A line
- * typed in the session (`line:` keyed) is there already, as the person's own.
- * Call it once per take, with only the steers that take newly took.
+ * sender (FIX-2086). A person's (sent from a screen, or a review's request for
+ * changes) is a `user` line with their words alone, as if typed there
+ * (FIX-2574); the filer's or the board's says who sent it. A line typed in the
+ * session (`line:` keyed) is there already, as the person's own. Call it once
+ * per take, with only the steers that take newly took.
+ *
+ * A person's line goes through the context's stored emitter, the one that
+ * writes a `user` line; a hand-built context without one shows it through
+ * `emit.message`.
  */
-export function showTakenSteers(
-  ctx: Pick<BlockContext, "emit">,
+export async function showTakenSteers(
+  ctx: Pick<BlockContext, "emit" | "_emitMessageAwaited">,
   steers: ReadonlyArray<{ readonly id: string; readonly message: string; readonly from: "filer" | "user" | "board"; readonly by?: string }>
-): void {
+): Promise<void> {
   for (const steer of steers) {
     if (steer.id.startsWith("line:")) continue;
-    const sender = steer.from === "filer" ? "the task's filer" : steer.from === "board" ? "the board" : (steer.by ?? "the user");
-    const agentName = steer.from === "filer" ? "filer" : steer.from === "board" ? "board" : (steer.by ?? "user");
-    ctx.emit.message(`Message from ${sender}: ${steer.message}`, { agentName });
+    if (steer.from === "user") {
+      const agentName = steer.by ?? "user";
+      if (ctx._emitMessageAwaited !== undefined) await ctx._emitMessageAwaited(steer.message, { role: "user", agentName });
+      else ctx.emit.message(steer.message, { agentName });
+      continue;
+    }
+    const sender = steer.from === "filer" ? "the task's filer" : "the board";
+    ctx.emit.message(`Message from ${sender}: ${steer.message}`, { agentName: steer.from });
   }
 }
 
@@ -116,7 +127,7 @@ export async function runningTaskOf(
 export async function takeRunningSteers(
   running: RunningTask,
   takenIn: string,
-  show?: Pick<BlockContext, "emit">
+  show?: Pick<BlockContext, "emit" | "_emitMessageAwaited">
 ): Promise<ShownSteer[]> {
   const { ledger, claim, row } = running;
   if (ledger.takeSteers === undefined || row.status !== "in_progress") return [];
@@ -131,7 +142,7 @@ export async function takeRunningSteers(
   if (now === undefined) return [];
   // Shown once: only the steers this write took, as it says. A read under the
   // same name that ran beside it, or again, took none.
-  if (show !== undefined) showTakenSteers(show, (now.steers ?? []).filter((steer) => outcome.taken?.includes(steer.id) === true));
+  if (show !== undefined) await showTakenSteers(show, (now.steers ?? []).filter((steer) => outcome.taken?.includes(steer.id) === true));
   return steersTakenIn(now, takenIn).map((steer) => shownSteer(now, steer));
 }
 

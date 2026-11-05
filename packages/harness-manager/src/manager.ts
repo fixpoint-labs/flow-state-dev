@@ -3461,7 +3461,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           const taking = (async () => {
             const take = await takeSteersFor(ctx, takenIn, (now, id) => steersTakenIn(now, id));
             if (take === null || take.steers.length === 0) return;
-            showTakenSteers(ctx, take.taken);
+            await showTakenSteers(ctx, take.taken);
             // The step ended, or its run withdrew the offer, while the take wrote
             // the row: these lines are the next step's, never dropped (D2).
             if (!live() || watch.steer !== steer) {
@@ -3658,7 +3658,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     const steers = [...carried.steers, ...take.steers];
     if (steers.length === 0 && !stopped) return undefined;
     // The steers this take wrote, as lines in the run's session from their senders.
-    showTakenSteers(ctx, take.taken);
+    await showTakenSteers(ctx, take.taken);
     const lease = await acquireCheckout(state.workspacePath!, `${state.taskId}#${state.attempt}`, ownership, Date.now, ctx.signal);
     await ctx.sequencer!.patchState({ lockPath: lease.lockPath, leaseToken: lease.token, previousSessionId: session, steerSteps: loop });
     // A turn's save points let a place with kept files go (`saveKeptFiles`):

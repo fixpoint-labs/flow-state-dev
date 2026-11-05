@@ -88,6 +88,8 @@ export {
   delegateAnswerOf,
   type DelegateAnswer
 } from "./conversation-board/delegate-answer";
+// A task's brief, as its session's `user` line marks it: what the session was handed, not the person's words.
+export { taskBriefMetadata, taskBriefOf, type TaskBrief } from "./conversation-board/task-brief";
 export { MAX_ANSWERS_AGAIN } from "./conversation-board/plan";
 export {
   backfillBoardWakes,

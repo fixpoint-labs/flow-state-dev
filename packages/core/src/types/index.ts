@@ -165,6 +165,7 @@ export type {
   ReadConfig,
   TypedEntries,
   ActionCore,
+  UserMessageEcho,
   ActionMcpConfig,
   CostEstimator,
   ModelUsageEntry,

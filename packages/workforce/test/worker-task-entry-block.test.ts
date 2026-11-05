@@ -18,6 +18,7 @@ import { workerConfigSchema } from "../src/worker-config";
 import type { WorkerInstallation } from "../src/workers/installation";
 import { bootBoardHost, boardWorkers, messageOf, type BoardHost, hearsMessages } from "./conversation-board-harness";
 import { workerMessagesResources } from "../src/messages/message-log";
+import { taskBriefOf } from "../src/conversation-board/task-brief";
 
 /** What the block was handed, per run. */
 type Seen = { taskId: string; goal: string; input: unknown; claim: unknown };
@@ -99,6 +100,31 @@ describe("workerTaskEntry with a block", () => {
       });
       const lines = (await host.messages(conv)).map((message) => message.text);
       expect(lines.filter((line) => line.includes("look at the repo") && line.includes("completed"))).toHaveLength(1);
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  it("opens the task's session with its brief, marked as the brief, so no screen draws it as the person's line", async () => {
+    const seen: Seen[] = [];
+    const host = boot(seen);
+    try {
+      const conv = await host.conversation("alice", "intake");
+      const filing = await host.filingOf("alice", conv);
+      const taskId = await file(host, conv, { title: "Fix the title", goal: "look at the repo", assignee: "eng.blocker" });
+      await host.settled();
+
+      const runSession = (await host.row("alice", filing, taskId))?.run?.sessionId;
+      expect(runSession).toEqual(expect.any(String));
+      const userLines = (await host.requestsOf(runSession!))
+        .flatMap((request) => (request as unknown as { items?: any[] }).items ?? [])
+        .filter((item) => item.type === "message" && item.role === "user");
+      // One user line: the task as filed, for a later turn's history. It is the
+      // brief the session was handed, and says so, so a screen tells it from
+      // words the person typed (FIX-2575).
+      expect(userLines).toHaveLength(1);
+      expect(userLines[0].content[0].text).toContain("look at the repo");
+      expect(taskBriefOf(userLines[0])).toEqual({ taskId });
     } finally {
       await host.dispose();
     }

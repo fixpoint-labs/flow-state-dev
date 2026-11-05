@@ -462,7 +462,8 @@ export type MessageItem = OutputItemBase & {
   content: Content[];
   /**
    * Structured data a handler attached to the message with
-   * `ctx.emit.message(text, { metadata })`, for a client to read instead of
+   * `ctx.emit.message(text, { metadata })`, or an action's `userMessage`
+   * returned with its echo's text, for a client to read instead of
    * parsing `content`. Opaque to the engine and never sent to a model: the
    * package that emits the message owns the keys it writes, and exports the
    * reader for them. Absent when nothing was attached, and on every

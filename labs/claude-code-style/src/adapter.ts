@@ -51,6 +51,7 @@ import {
   createWorkforceClient,
   delegateAnswerOf,
   parseProjectRef,
+  taskBriefOf,
   projectRef,
   WORK_PROJECT_STATE_KEY,
   WORKER_ID_STATE_KEY,
@@ -99,6 +100,8 @@ export type ThreadEntry = (
       sentToThread?: boolean;
     }
   | { kind: "assistant"; id: string; text: string }
+  /** What a task's session was handed: its brief, as filed or re-queued. One folded line, never your line. */
+  | { kind: "brief"; id: string; text: string }
   /** A run of consecutive tool calls in one turn, in words (`toolRun`): one line that opens to a line per call. */
   | ({ kind: "tool"; id: string } & ToolRun)
   | {
@@ -399,7 +402,9 @@ function filedTaskOf(item: Item): string | undefined {
  */
 export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[] {
   // A turn a user's line started holds that line; a notice's own turn holds none.
-  const userTurns = new Set(items.filter((item) => item.type === "message" && item.role === "user").map((item) => item.requestId));
+  const userTurns = new Set(
+    items.filter((item) => item.type === "message" && item.role === "user" && taskBriefOf(item) === undefined).map((item) => item.requestId),
+  );
   const filingTurns = new Set(items.filter((item) => filedTaskOf(item) !== undefined).map((item) => item.requestId));
   const entries: ThreadEntry[] = [];
   const runs = new Map<string, ToolCallOf[]>();
@@ -422,6 +427,11 @@ export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[
       continue;
     }
     const text = textOf(item);
+    // A task's brief is a `user` line for its model's history, but you never typed it.
+    if (item.role === "user" && taskBriefOf(item) !== undefined) {
+      entries.push({ kind: "brief", id: item.id, text, requestId });
+      continue;
+    }
     if (item.role === "user") {
       entries.push({ kind: "user", id: item.id, text, requestId, ...(threads && filingTurns.has(requestId) ? { sentToThread: true } : {}) });
       continue;

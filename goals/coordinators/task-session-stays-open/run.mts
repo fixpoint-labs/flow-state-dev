@@ -86,8 +86,8 @@ const CONTROLS: Record<string, Control> = {
       },
       {
         module: "packages/orchestration/src/skills/steer-context.ts",
-        from: String.raw`ctx\.emit\.message\(\`Message from \$\{sender\}: \$\{steer\.message\}\``,
-        to: `ctx.emit.message(\`Message from \${sender}: \${steer.answers === undefined ? steer.message : "Use ${DECOY_REGION}."}\``,
+        from: String.raw`await ctx\._emitMessageAwaited\(steer\.message, `,
+        to: `await ctx._emitMessageAwaited((steer as { answers?: string }).answers === undefined ? steer.message : "Use ${DECOY_REGION}.", `,
       },
     ],
     does: `the answer owes the task its next turn in its session, but that turn reads an answer naming ${DECOY_REGION}, a region the run never picks, in place of the one the app sent`,

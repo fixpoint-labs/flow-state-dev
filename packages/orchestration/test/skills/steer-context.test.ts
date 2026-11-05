@@ -23,12 +23,16 @@ async function runningTurn(requestId = "r-turn") {
   const ticket = ticketForClaim(BOARD_FIELD, claimed);
   await ref.linkRun("t", { sessionId: "s-task", requestId, attempt: claimed.attempts }, { claim: ticket });
   // The lines a turn shows in its session.
-  const lines: Array<{ text: string; agentName?: string }> = [];
+  const lines: Array<{ text: string; agentName?: string; role?: string }> = [];
   const turn = (id: string) => ({
     ...(ctx as object),
     session: { identity: { id: "s-task" }, state: { taskId: "t" } },
     request: { identity: { id } },
     emit: { message: (text: string, options?: { agentName?: string }) => lines.push({ text, ...options }) },
+    // The stored emitter a real context has: a person's words land through it as their own line.
+    _emitMessageAwaited: async (text: string, options?: { agentName?: string; role?: string }) => {
+      lines.push({ text, ...options });
+    },
   });
   return { ref, ticket, turn, lines, read: createSteerContext({ resolve: ownStateResolver }) };
 }
@@ -51,7 +55,7 @@ describe("the steer context entry", () => {
     expect(ref.get("t")).toMatchObject({ status: "in_progress", attempts: 1 });
   });
 
-  it("shows a taken steer once as a line in the task's session, from its sender; a line typed there is there already", async () => {
+  it("shows a taken steer once as a line in the task's session, from its sender; a person's as their own line; a line typed there is there already", async () => {
     const { ref, turn, lines, read } = await runningTurn();
     await steer(ref, "Use the North America numbers");
     await ref.steer!("t", { message: "Typed here.", from: "user", by: "alice", key: "line:r-door" });
@@ -62,8 +66,19 @@ describe("the steer context entry", () => {
 
     expect(lines).toEqual([
       { text: "Message from the task's filer: Use the North America numbers", agentName: "filer" },
-      { text: "Message from alice: From the screen.", agentName: "alice" },
+      // A person's words (sent from a screen, or a review's request for changes)
+      // are a user line with their words alone, never the run's own (FIX-2574).
+      { text: "From the screen.", agentName: "alice", role: "user" },
     ]);
+  });
+
+  it("shows a review's request for changes, which names no person, as the user's own line", async () => {
+    const { ref, turn, lines, read } = await runningTurn();
+    await ref.steer!("t", { message: "Fall back to what we have now.", from: "user", key: "review:r-turn:0" });
+
+    await read(undefined, turn("r-turn") as never);
+
+    expect(lines).toEqual([{ text: "Fall back to what we have now.", agentName: "user", role: "user" }]);
   });
 
   it("shows a steer once when two reads of the same call run side by side: the line is the write's, not the read's", async () => {
