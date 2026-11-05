@@ -1,0 +1,61 @@
+<svg viewBox="0 0 940 360" role="img" aria-label="What changes. A fence splits what an adopter reads from what stays ours. On the adopter's side, the rule covers three surfaces: editor hovers, from JSDoc in the published type files, 1,670 ids across six published packages today, core alone 307; runtime text, from string, template and JSX literals, errors, logs, UI copy and conformance test titles, 39 ids in the same six packages' JavaScript; and files an adopter copies whole, the UI registry and the examples, 21 sites counting every comment. Each goes to zero. On our side, kept as BP-006 provenance pointers: line and block comments in package source, which reach compiled JavaScript only, tests outside src, changelogs and changesets, specs and internal docs, and Kitchen Sink, which FIX-2461 owns."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .in    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .ours  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .fence { stroke:var(--gone); stroke-width:2; stroke-dasharray:6 5; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-hd  { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; letter-spacing:.1em; font-weight:600; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-n   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; font-weight:600; }
+    .t-z   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; font-weight:600; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="360"/>
+
+  <g id="adopter-side">
+    <text class="t-hd" x="20" y="30">WHAT AN ADOPTER READS · THE RULE COVERS IT</text>
+    <rect class="in" x="20" y="44" width="560" height="88" rx="5"/>
+    <text class="t-b" x="36" y="68">Editor hovers</text>
+    <text class="t-s" x="36" y="88">JSDoc blocks, which tsc copies into every published .d.ts</text>
+    <text class="t-n" x="36" y="114">today 1,670 ids in six packages · core 307</text>
+    <text class="t-z" x="440" y="114">after 0</text>
+
+    <rect class="in" x="20" y="142" width="560" height="88" rx="5"/>
+    <text class="t-b" x="36" y="166">Runtime text</text>
+    <text class="t-s" x="36" y="186">string, template and JSX literals: errors, logs, UI copy, conformance titles</text>
+    <text class="t-n" x="36" y="212">today 39 ids in the same six packages' .js</text>
+    <text class="t-z" x="440" y="212">after 0</text>
+
+    <rect class="in" x="20" y="240" width="560" height="88" rx="5"/>
+    <text class="t-b" x="36" y="264">Files an adopter copies whole</text>
+    <text class="t-s" x="36" y="284">the UI registry and the examples: every comment counts</text>
+    <text class="t-n" x="36" y="310">today 21 sites</text>
+    <text class="t-z" x="440" y="310">after 0</text>
+  </g>
+
+  <line class="fence" x1="604" y1="20" x2="604" y2="340"/>
+
+  <g id="our-side">
+    <text class="t-lbl" x="628" y="30">STAYS OURS · BP-006 POINTERS</text>
+    <rect class="ours" x="628" y="44" width="292" height="284" rx="5"/>
+    <text class="t-b" x="644" y="70">// and /* */ comments in src</text>
+    <text class="t-s" x="644" y="88">reach compiled .js only, never a hover</text>
+    <text class="t-b" x="644" y="124">Tests outside src</text>
+    <text class="t-s" x="644" y="142">not in any tarball</text>
+    <text class="t-b" x="644" y="178">Changelogs and changesets</text>
+    <text class="t-s" x="644" y="196">a release note may cite its issue</text>
+    <text class="t-b" x="644" y="232">Specs and internal docs</text>
+    <text class="t-s" x="644" y="250">docs/internal, specs/</text>
+    <text class="t-b" x="644" y="286">Kitchen Sink</text>
+    <text class="t-s" x="644" y="304">not published; FIX-2461 owns its copy</text>
+  </g>
+</svg>
