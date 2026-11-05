@@ -127,13 +127,13 @@ A request loads a partition's rows on that partition's first read, never the who
 ledger. The rows sit in the user's own storage, which every flow of theirs reads, even on a flow
 that isolates its user state (`isolateUserState`).
 
-A partitioned ledger declares a `byTaskId` index on its rows, so a task can be found by id
-alone without reading every partition. `findTaskPartitions(ctx, ledgerId, taskId)` returns
-the running user's partitions holding that id: none, one, or several when the same id was
-picked in more than one. It returns partitions only; read the row through
-`getOrCreateTaskCollection({ partition })`. On SQLite and Postgres the lookup reads the
-index; on the memory and filesystem stores it scans the user's rows. The first lookup in a
-user's scope builds the index from the rows already there.
+A partitioned ledger can find a task by id alone. `findTaskPartitions(ctx, ledgerId, taskId)`
+returns the running user's partitions holding that id: none, one, or several when the same id
+was picked in more than one. It returns partitions only; read the row through
+`getOrCreateTaskCollection({ partition })`. On SQLite and Postgres the lookup is indexed,
+though the first lookup in a user's scope reads all of that user's rows in the ledger once.
+On the memory and filesystem stores every lookup reads all of the user's rows in the ledger.
+
 `taskLedgerResources(ledger)` returns the ledger under its id, ready to spread into a flow's
 `resources`.
 
@@ -1225,8 +1225,8 @@ request takes mid-run shows in the task's session as a line from its sender
 
 ### Upgrading from stores written by an older version
 
-`findTaskPartitions` finds tasks an older version added to a partitioned ledger: the first
-lookup in each user's scope reads their rows and indexes them. The `<ledger id>__ids/...`
+`findTaskPartitions` finds tasks an older version added to a partitioned ledger. On SQLite
+and Postgres, the first lookup in each user's scope reads their rows and indexes them. The `<ledger id>__ids/...`
 rows an older version kept beside a partitioned ledger are no longer read or written. They
 stay in the store and can be deleted at any time.
 
