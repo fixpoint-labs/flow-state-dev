@@ -13,6 +13,7 @@ flowchart TD
   D1 -.->|"rejected · its waiting approvals vanish"| X1["refuse it too, as FIX-2151 planned"]
   I --> D2["D2 · a refusal lives two minors past its first"]
   D2 -.->|"rejected · tables grow to 1.0"| X2["every refusal until 1.0"]
+  D2 -.->|"rejected · the sweep's compare and Q1 disagree"| X4["an alias exempt, one minor"]
   D2 -.->|"rejected · a skipped minor goes silent"| X3["one minor"]
 ```
 
@@ -40,9 +41,10 @@ checks it first (below).
 
 | | |
 |---|---|
-| **Instead of** | Every refusal until 1.0; or one minor |
+| **Instead of** | Every refusal until 1.0; or one minor; or a looser rule for a Q1 `@deprecated` alias |
 | **Because** | Pre-1.0 minors are breaking and came three days apart (0.3.0 to 0.4.0), so adopters skip them. One minor means a skip lands on the bare failure, and for an open-string value like `human_approval` that is silence again. Until 1.0 grows every table for the whole run-up and moves the cleanup into one big minor. Two minors covers one skip, and the author may name a later version with a reason |
-| **Locks in** | A version in every refusal message, which adopters read and plan by. Removing an entry is a breaking change in the minor its version names, written in that minor's changeset |
+| **Applies to** | A Q1 `@deprecated` alias too. Q1's "one removal minor" is the one version the tag names, and this floor bounds it: an alias that goes the next minor fails the same skip. The sweep checks a tag like a table entry |
+| **Locks in** | A version in every refusal message and alias tag, which adopters read and plan by. Removing an entry is a breaking change in the minor its version names, written in that minor's changeset |
 
 ![D2: how long a refusal stays. Two minors past the first, chosen, beside until 1.0 and one minor. Decides it: an adopter who skips a minor. Price: an adopter who skips two meets the bare failure](figures/d2-removal-window.svg)
 
@@ -65,9 +67,21 @@ month of warning, and the floor drops to one.
   direct dependency.
 - **One message, one error class** (`RetiredNameError`), no tracker id (ER-5): `<where>:
   "<old>" was retired. Use <new>. This refusal is removed in <package> <version>.`
-- **The check gates CI** beside the vocabulary sweep: reads every table and its package's
-  version, fails at or past `removeIn` and on any refusal-shaped `src` line no table owns, and
-  runs a planted control. Not ESLint (ER-4).
+- **The vocabulary sweep gates it**, in CI's existing step: `rules.mjs` gains the census's
+  refusal shape; a pass reads every `packages/<pkg>/src/retired.ts` and its package's version,
+  fails at or past `removeIn`, and fails a refusal-shaped `src` line no table owns. `--control`
+  gains two plants (an unowned refusal, an expired entry), each caught by its own rule id. The
+  never-published scope is leg b's, on installed tarballs: npm stays out of CI. Not ESLint (ER-4).
+- **`contracts/internal`** is a new hidden entry, epic D2's kind. Its PR ships the completions
+  fix if one exists; if none does, D2's closure spot-check stands as a recorded finding.
+  Contracts' row on *What each package root is for* says the root is the shared layer core
+  re-exports and `/internal` is ours.
+- **Leg b holds three cells, admitted in FIX-2564's manifest:** a `human_approval` refusal on
+  installed tarballs; a stored `human_approval` stop read as a user's; and
+  `shims.unpublished-shapes`, whose scope is the census's 19.
+- **Blocks only the PRs that call the helper:** FIX-2452's slot refusals and FIX-2459's
+  `"topological"` claim order, which sits in orchestration's table. FIX-2535, outside the epic,
+  retires GitHub webhooks' `sessionId` through `refuseRetired` too.
 - **`agents` and `catalog`** lose their literal types and are refused at runtime.
 - **Our dev stores** holding a never-published shape are not read; they are reset, as before.
 - **Published changelogs stay**; the next changeset says those shapes no longer read.
@@ -75,7 +89,8 @@ month of warning, and the floor drops to one.
   or key through the helper, with replacement and a removal version at least two minors out;
   delete what no published version accepted. `removeIn` replaces its `TODO(FIX-NNN)` pointer.
 - **BP-034, amended to the epic's Q1.** *Alias:* the old path stays a `@deprecated` alias
-  naming the new path and removal minor, and the check reads those tags. *Hold* or *break as
+  naming the new path and the one minor that removes it, at least two minors past the first
+  version that carries the alias (D2); the sweep reads those tags as it reads table entries. *Hold* or *break as
   each lands:* re-export from every path the docs name after the move; the old root path goes;
   the changeset names the new home.
 - **ER-7 supersedes "one fragment per logical change"** (`release-notes-workflow.md`): one
@@ -87,9 +102,10 @@ month of warning, and the floor drops to one.
 
 | Alternative | Why not |
 |---|---|
-| Delete only the three shims the issue named | The census found 16 more of the same kind; the *Shims* row fails on any |
-| Keep each package's own helper, add `removeIn` to each | Ten wordings stay, and the check would read ten shapes |
+| Delete only the three shims the issue named | The census found 16 more of the same kind; `shims.unpublished-shapes` fails on any |
+| Keep each package's own helper, add `removeIn` to each | Ten wordings stay, and the sweep would read ten shapes |
 | Close `SuspensionReason`'s open arm | Breaks every flow's custom reason, which the arm exists for |
+| A retired-name check of its own: the census promoted as a scanner | The vocabulary sweep already owns the marker, `human-reasons` and the plants; a third source scanner splits one job |
 | An ESLint rule for expiry | ER-4 allows one custom rule; a version comparison needs `package.json`, not an AST |
 
 ## Settled
@@ -111,6 +127,10 @@ Skipped in this spec: the epic-agent runs `analysis` and `reuse-review` over the
 
 ## How it got here
 
+- **Set review (Nov 5)** — ownership and expiry extend the vocabulary sweep, not a new
+  scanner; `contracts/internal` listed with call 6's completions line; D2's floor covers a Q1
+  alias, and BP-034 says so; leg b's three cells and the 19 as their scope; blocks only
+  FIX-2452's and FIX-2459's calling PRs; FIX-2535 named; contracts' package-roots row.
 - **Draft** — framed as epic D3's rule built once; one helper and table per package over the
   engine helper and `retired-shapes`' table; the census, run on npm tarballs, decides what goes.
 
