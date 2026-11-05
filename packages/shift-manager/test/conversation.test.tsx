@@ -118,6 +118,16 @@ describe("what a view of its own draws", () => {
     expect(screen.queryByTestId("shift-coordinator")).toBeNull();
   });
 
+  it("offers its starter lines before a first line; a click fills the composer and sends nothing", async () => {
+    drawn([], { starters: ["What can the team do for me?", "Hand Triage something to look into"] });
+    expect((await screen.findByTestId("rev-conversation-empty")).textContent).toBe("Nothing said to the reviewer yet.");
+    fireEvent.click(screen.getByRole("button", { name: "Hand Triage something to look into" }));
+    const input = screen.getByTestId("rev-composer-input") as HTMLInputElement;
+    await waitFor(() => expect(input.value).toBe("Hand Triage something to look into"));
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(sendTurn).not.toHaveBeenCalled();
+  });
+
   it("says what it is in a session opened before a first line, rather than drawing nothing", async () => {
     // A project's Stream opens its coordinator session as the tab opens, so the
     // session exists and reads empty: the screen must still say what it is.

@@ -443,6 +443,20 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       return project;
     },
 
+    async checkRepository(repository: string) {
+      // The fake's one unusable shape: a folder named for it. Everything else is a listed repository.
+      return repository.includes("not-a-repo")
+        ? { usable: false as const, problem: "there is no git repository there. Run `git init` there, or name a repository's folder." }
+        : { usable: true as const, how: "worktree" as const };
+    },
+
+    async readHarnesses() {
+      return [
+        { harness: "claude-code", label: "Claude Code", ready: true, reason: null, remedy: null, unanswered: false },
+        { harness: "codex", label: "Codex", ready: false, reason: "Codex has no credential", remedy: "Run `codex login`", unanswered: false },
+      ];
+    },
+
     async openSession(mode: ModeId, projectId: string) {
       if (!mayWorkIn.some((p) => p.id === projectId)) throw new Error(`not-a-member: ${projectId}`);
       const id = nextId("session");

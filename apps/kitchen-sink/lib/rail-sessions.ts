@@ -1,8 +1,10 @@
 /**
  * The rail's session reads: the coordinator flow's sessions are the user's
- * conversations with the coordinators the tree declares, one each, found or
- * started by the coordinator's id; every other flow's are listed as the store
- * has them.
+ * conversations with the coordinators on their roster (each worker whose flow
+ * is a coordinator flow), one each, found or started by the coordinator's id;
+ * every other flow's are listed as the store has them. The roster is read at
+ * each listing, so a coordinator added to the tree is listed with nothing to
+ * edit here.
  *
  * A coordinator is a worker, so a user's conversation with `support.help` is
  * a session on the `coordinator` flow that names it, found the way any
@@ -18,7 +20,7 @@
 import type { Client, SessionSummary } from "@flow-state-dev/client";
 import type { WorkforceClient } from "@flow-state-dev/workforce/browser";
 
-import { isCoordinatorFlow, SHELL_COORDINATORS } from "./workforce-shell";
+import { isCoordinatorFlow } from "./workforce-shell";
 
 /** What the rail's navigator reads: the client's user, its flow list, its session listing, and `subscribe` to stay live. */
 export type RailClient = Pick<Client, "userId" | "flows" | "subscribe"> & {
@@ -30,19 +32,23 @@ export type RailClient = Pick<Client, "userId" | "flows" | "subscribe"> & {
  * coordinator flow's listing replaced.
  *
  * @param client The page's client; a stable reference, so the navigator's reads stay fenced on it.
- * @param workforce The user's workforce client, which finds or starts their conversation with a coordinator.
- * @returns A client whose coordinator-flow listing is one conversation per declared coordinator.
+ * @param workforce The user's workforce client: it names the coordinators (the roster) and finds or starts the conversation with each.
+ * @returns A client whose coordinator-flow listing is one conversation per coordinator on the roster.
  */
-export function railSessions(client: RailClient, workforce: Pick<WorkforceClient, "ensureWorkerSession">): RailClient {
+export function railSessions(
+  client: RailClient,
+  workforce: Pick<WorkforceClient, "roster" | "ensureWorkerSession">,
+): RailClient {
   const list: RailClient["sessions"]["list"] = async (options) => {
     const flow = options?.flowKind;
     if (flow === undefined || !isCoordinatorFlow(flow)) return await client.sessions.list(options);
-    const withStatus = [options?.include].flat().includes("status");
-    // Per declared coordinator (a fixed, small set): find or start the user's
-    // conversation and, when the navigator asks for state, list that
-    // coordinator's own sessions with status. The flow is never listed whole.
+    const coordinators = (await workforce.roster()).filter((worker) => isCoordinatorFlow(worker.flow));
+    const include = options?.include === undefined ? [] : [options.include].flat();
+    const withStatus = include.includes("status");
+    // Per roster coordinator: find or start the user's conversation and, when
+    // the navigator asks for state, list that coordinator's own sessions.
     return await Promise.all(
-      SHELL_COORDINATORS.map(async (worker): Promise<SessionSummary> => {
+      coordinators.map(async ({ id: worker }): Promise<SessionSummary> => {
         const [session, listed] = await Promise.all([
           workforce.ensureWorkerSession({ worker }),
           withStatus

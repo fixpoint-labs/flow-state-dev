@@ -184,7 +184,11 @@ describe("a message to a task", () => {
     }
   });
 
-  it("lands though a failed add left the same id's marker in another conversation", async () => {
+  it("lands though an older release's id markers are still in the store, one naming another conversation", async () => {
+    // BP-030: that release kept a `tasks__ids` marker per (task id,
+    // conversation), and a failed add could leave one naming a conversation
+    // that holds no row. Filing no longer writes them, and the lookup never
+    // reads the ones left behind.
     const ids: { task?: string } = {};
     const agentAnswer = mockGenerator({
       script: [
@@ -199,20 +203,21 @@ describe("a message to a task", () => {
       await h.settled();
       const [task] = await h.rows("alice");
       ids.task = task!.id;
-      // A marker is written before its row: plant the one an add that then failed would leave.
       const runtime = await h.state.getRuntime();
       const cell = `alice:~org:${ORG}`;
-      const markers = await runtime.stores.resourceState.getByPrefix("user", cell, "tasks__ids");
-      const [key] = Object.keys(markers).filter((k) => decodeURIComponent(k.split("/")[1] ?? "") === task!.id);
-      expect(key, "the task's own marker").toBeDefined();
-      const ghost = "conv_failed_add";
-      const planted = await runtime.stores.resourceState.set("user", cell, `${key!.slice(0, key!.lastIndexOf("/") + 1)}${ghost}`, { partition: ghost } as never, "absent");
-      expect(planted.ok).toBe(true);
+      expect(await runtime.stores.resourceState.getByPrefix("user", cell, "tasks__ids"), "a filing writes no marker").toEqual({});
+      // Markers as the older release left them: one per conversation, one of which holds no row.
+      const markerOf = (conversation: string) => `tasks__ids/${encodeURIComponent(task!.id)}/${encodeURIComponent(conversation)}`;
+      for (const conversation of [task!.run!.sessionId!, "conv_failed_add"]) {
+        const planted = await runtime.stores.resourceState.set("user", cell, markerOf(conversation), { partition: conversation } as never, "absent");
+        expect(planted.ok).toBe(true);
+      }
 
       const curious = await h.client("alice").ensureWorkerSession({ worker: "curious" });
       await h.post("alice", curious.id, "respond", { message: "Please ask about the notes" }, "agent");
       await h.settled();
       expect(await logRows(h, "alice")).toEqual([expect.objectContaining({ addressedBy: "task", toSession: task!.run!.sessionId, status: "delivered" })]);
+      expect(Object.keys(await runtime.stores.resourceState.getByPrefix("user", cell, "tasks__ids")), "the old markers stay, untouched").toHaveLength(2);
     } finally {
       await h.dispose();
     }
