@@ -5,7 +5,7 @@
  * its session back, so another turn can run there before it resumes, and
  * that turn must read what the waiting one has said so far: the line that
  * started it is often the only place a fact it needs was told. Every other
- * open turn stays out, since what it says is not final: a stop for a person
+ * open turn stays out, since what it says is not final: a stop for the user
  * (whose answer resumes the turn reading the session as it left it), a wait
  * on a task, and a request still running.
  *
@@ -90,13 +90,13 @@ describe("readSettledTurns, for the session's open turns", () => {
     expect(text(turns.settled)).toContain("Harbor Hall");
   });
 
-  it("leaves out a turn stopped for a person", async () => {
+  it("leaves out a turn stopped for its user", async () => {
     const turns = await read([earlier, filing], [gate("filing", "input", {})]);
     expect(turns.settled.map((r) => r.id)).toEqual(["done"]);
     expect(turns.waiting.size).toBe(0);
   });
 
-  it("leaves out a turn that holds a stop for a person beside its call", async () => {
+  it("leaves out a turn that holds a stop for its user beside its call", async () => {
     const turns = await read([earlier, filing], [gate("filing", "wait", { requestId: "r-recipient", deadline: 9 }), { ...gate("filing", "approval", {}), suspensionId: "g-stop" }]);
     expect(turns.settled.map((r) => r.id)).toEqual(["done"]);
   });

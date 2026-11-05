@@ -17,7 +17,7 @@
  * here from its own unfinished tool calls (or the gate's message). It is the
  * same whether the waiting request is `suspended` or `interrupted` with its
  * gate still pending. Any other turn still running, suspended or parked is
- * never read: a stop for a person (whose answer resumes the turn reading the
+ * never read: a stop for the user (whose answer resumes the turn reading the
  * session as it left it), a wait on a task, or work still in progress.
  */
 import { isSuspensionWait, type MessageItem, type ToolOutputItem } from "@flow-state-dev/core/items";
@@ -140,7 +140,7 @@ export async function readSettledTurns(inputs: SettledTurnsInputs): Promise<Sett
 
 /**
  * The pending call gates of `records`, by request id: a wait gate bound to a
- * request, never a person's stop or a wait on a task. One pending-gate read
+ * request, never a stop for the user or a wait on a task. One pending-gate read
  * per session. Without a durability provider nothing can wait.
  */
 async function callWaits(
@@ -162,7 +162,7 @@ async function callWaits(
       else others.add(gate.requestId);
     }
   }
-  // A request that also holds another gate (a person's stop beside its call) stays out.
+  // A request that also holds another gate (a stop for the user beside its call) stays out.
   for (const id of others) calls.delete(id);
   return calls;
 }

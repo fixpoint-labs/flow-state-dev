@@ -157,8 +157,8 @@ describe("a task's midway question heard while its filer's call waits", { timeou
 });
 
 /**
- * The other side of the line: a request stopped for a person stays out of a
- * turn that runs meanwhile. The person's answer resumes it at the same step,
+ * The other side of the line: a request stopped for its user stays out of a
+ * turn that runs meanwhile. The user's answer resumes it at the same step,
  * reading the session as it left it, so nothing it has said yet is final, and
  * only a call's park (a wait on another request) is read as far as it got.
  */
