@@ -2,9 +2,11 @@
  * The rail's coordinator rows carry their turn state like every other row.
  *
  * A coordinator's row is built from the user's conversation with it, not from
- * the listing, so its state has to be read in: the coordinator flow's own
- * listing, asked for status, matched by id. Without that, a coordinator
- * waiting on its person would be the one row in the rail with no mark.
+ * the listing, so its state has to be read in: a listing of that
+ * coordinator's own sessions, asked for status, matched by id. Without that,
+ * a coordinator waiting on its person would be the one row in the rail with
+ * no mark. The flow is never listed whole, which would read every
+ * coordinator's sessions.
  */
 import type { SessionSummary } from "@flow-state-dev/client";
 import { describe, expect, it, vi } from "vitest";
@@ -41,6 +43,14 @@ describe("the rail's coordinator rows", () => {
     expect(rows.map((row) => [row.title, row.requestStatus, row.requestWaitsForUser])).toEqual([
       [COORDINATOR, "suspended", true],
     ]);
+  });
+
+  it("list only each coordinator's own sessions, never the flow whole", async () => {
+    const { client, workforce, list } = fakes();
+    await railSessions(client, workforce as never).sessions.list({ flowKind: "coordinator", include: ["status"] });
+    expect(list.mock.calls.map(([options]) => (options as { state?: unknown }).state)).toEqual(
+      SHELL_COORDINATORS.map((worker) => ({ workerId: worker })),
+    );
   });
 
   it("read nothing more when no state is asked for", async () => {

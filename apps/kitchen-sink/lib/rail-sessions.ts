@@ -9,8 +9,9 @@
  * worker's is (`ensureWorkerSession({ worker })`, which matches on the
  * criteria's keys and so never returns a delegate's session). Each row reads
  * as the coordinator's id, the name the user knows it by, and carries its
- * turn state from the coordinator flow's own listing when the navigator asks
- * for it, so its rows are marked like every other.
+ * turn state, when the navigator asks for it, from a listing of that
+ * coordinator's own sessions (never the flow whole), so its rows are marked
+ * like every other.
  *
  * `subscribe` passes through, so the navigator's open leaves stay live.
  */
@@ -37,30 +38,28 @@ export function railSessions(client: RailClient, workforce: Pick<WorkforceClient
     const flow = options?.flowKind;
     if (flow === undefined || !isCoordinatorFlow(flow)) return await client.sessions.list(options);
     const include = options?.include === undefined ? [] : [options.include].flat();
-    // One find per declared coordinator (a fixed, small set) plus, when the
-    // navigator asks for state, one status listing of the flow to mark them.
-    const [rows, listed] = await Promise.all([
-      Promise.all(
-        SHELL_COORDINATORS.map(
-          async (worker): Promise<SessionSummary> => ({
-            ...(await workforce.ensureWorkerSession({ worker })),
-            title: worker,
-          }),
-        ),
-      ),
-      include.includes("status") ? client.sessions.list({ flowKind: flow, include: ["status"] }) : undefined,
-    ]);
-    if (listed === undefined) return rows;
-    const states = new Map(listed.map((row) => [row.id, row]));
-    return rows.map((row) => {
-      const state = states.get(row.id);
-      if (state?.requestStatus == null) return row;
-      return {
-        ...row,
-        requestStatus: state.requestStatus,
-        ...(state.requestWaitsForUser === undefined ? {} : { requestWaitsForUser: state.requestWaitsForUser }),
-      };
-    });
+    const withStatus = include.includes("status");
+    // Per declared coordinator (a fixed, small set): find or start the user's
+    // conversation and, when the navigator asks for state, list that
+    // coordinator's own sessions with status. The flow is never listed whole.
+    return await Promise.all(
+      SHELL_COORDINATORS.map(async (worker): Promise<SessionSummary> => {
+        const [session, listed] = await Promise.all([
+          workforce.ensureWorkerSession({ worker }),
+          withStatus
+            ? client.sessions.list({ flowKind: flow, state: { workerId: worker }, include: ["status"] })
+            : undefined,
+        ]);
+        const row: SessionSummary = { ...session, title: worker };
+        const state = listed?.find((candidate) => candidate.id === session.id);
+        if (state?.requestStatus == null) return row;
+        return {
+          ...row,
+          requestStatus: state.requestStatus,
+          ...(state.requestWaitsForUser === undefined ? {} : { requestWaitsForUser: state.requestWaitsForUser }),
+        };
+      }),
+    );
   };
   return {
     userId: client.userId,
