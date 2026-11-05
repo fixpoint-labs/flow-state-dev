@@ -6,7 +6,7 @@
  *
  * | Function            | Bound to                                                                     |
  * |---------------------|------------------------------------------------------------------------------|
- * | `listWorkers`       | the workforce client's `roster()`                                            |
+ * | `watchWorkers`      | the workforce client's `watchRoster()`: every hire, edit and fire, anywhere   |
  * | `openConversation`  | `ensureWorkerSession({ worker })`: the worker's default conversation         |
  * | `send`              | the worker's door, `respond`, streamed, so its answer shows as it is written  |
  * | `watchConversation` | the session's items, from its snapshot and then its stream (`sessionFeed`), |
@@ -387,6 +387,12 @@ export interface LabContext {
 
 /** Everything the screen reads and writes. */
 export interface LabAdapter {
+  /**
+   * The roster's rows, and again each time a hire, an edit or a fire, from
+   * any tab or any worker's turn, changes them. `onError` hears a failed read;
+   * the next read that lands reports the rows.
+   */
+  watchWorkers(onChange: (workers: WorkerRow[]) => void, onError?: (error: unknown) => void): Unsubscribe;
   listWorkers(): Promise<WorkerRow[]>;
   /** What the lab works on and with, read once for the context strip. */
   readContext(): Promise<LabContext>;
@@ -983,7 +989,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const flowOfSession = new Map<string, string>();
   /** The workers, by id, so a line under a worker's name reads as a task's ending. */
   let workerIds = new Set<string>();
-  /** Each coding worker's `harness:`, from the last roster read. */
+  /** Each coding worker's `harness:`, from the last roster the watch reported. */
   let harnesses = new Map<string, string>();
 
   const conversationOf = async (worker: string) => {
@@ -1027,6 +1033,16 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   };
 
   return {
+    watchWorkers(onChange, onError) {
+      return workforce.watchRoster(
+        (roster) => {
+          workerIds = new Set(roster.map((w) => w.id));
+          harnesses = new Map(roster.flatMap((w) => (typeof w.settings?.harness === "string" ? [[w.id, w.settings.harness] as const] : [])));
+          onChange(roster.map(toWorkerRow));
+        },
+        onError === undefined ? undefined : { onError },
+      );
+    },
     async readContext() {
       return (await runLab("lab-context", "read", {})) as LabContext;
     },

@@ -1,14 +1,15 @@
 /**
  * The user's roster beside the worker inventory: their own workers, read
  * through Workforce's client, joined to the inventory's rows so Roster and
- * the sidebar's TEAMS draw the same workers.
+ * the sidebar's TEAMS draw the same workers. The roster is followed, not
+ * read once: a hire shows on every surface that draws it.
  *
  * A worker the user hired is theirs alone, so the organization's worker
- * inventory never names it. Workforce's `roster()` answers for the caller
- * only, and every surface that lists workers joins the inventory to it.
+ * inventory never names it. Workforce's roster answers for the caller only,
+ * and every surface that lists workers joins the inventory to it.
  */
-import { useEffect, useState } from "react";
-import type { RosterEntry } from "@flow-state-dev/workforce/browser";
+import { useEffect, useRef, useState } from "react";
+import type { RosterEntry, WorkforceClient } from "@flow-state-dev/workforce/browser";
 import type { LoadedSnapshot } from "./derive";
 import { describeFailure, workerNames, type Failure, type Worker } from "./reads";
 import { useLab } from "./lab-data";
@@ -17,43 +18,60 @@ import { useWorkforce } from "./workforce";
 /** The roster read: its entries, its failure, or `undefined` until the first read lands. */
 export type RosterRead = { entries: RosterEntry[] } | { failure: Failure } | undefined;
 
-/**
- * The roster read in flight or landed for each Lab connection, and the
- * snapshot it was read for. Sidebar and Roster both draw the roster; sharing
- * one read per snapshot keeps them from racing two first reads, which could
- * each open the user's roster session.
- */
-const reads = new WeakMap<object, { readAt: number; read: Promise<RosterEntry[]> }>();
+/** One roster watch, the last read it reported, and the views drawing it. */
+type SharedWatch = { read: RosterRead; views: Set<(read: RosterRead) => void>; stop: () => void };
 
 /**
- * The user's roster, read through Workforce's client with every snapshot
- * (`readAt`): `undefined` until the first read lands, and not read until
- * there is a snapshot. Every caller on one connection shares one read per
- * snapshot.
+ * The roster watch for each Lab connection. Roster, the sidebar's TEAMS, a
+ * project's lead picker, worker settings and DELEGATES all draw the roster;
+ * sharing one watch keeps them on the same roster, and keeps them from
+ * racing two first reads, which could each open the user's roster session.
+ * The last view to go stops it.
  */
-export function useRoster(readAt: number | undefined): RosterRead {
+const watches = new WeakMap<object, SharedWatch>();
+
+function joinWatch(client: object, workforce: WorkforceClient, view: (read: RosterRead) => void): () => void {
+  let shared = watches.get(client);
+  if (shared === undefined) {
+    const created: SharedWatch = { read: undefined, views: new Set(), stop: () => {} };
+    const tell = (read: RosterRead) => {
+      created.read = read;
+      for (const each of [...created.views]) each(read);
+    };
+    created.stop = workforce.watchRoster((entries) => tell({ entries }), {
+      // A failed re-read keeps the roster already drawn; the next read that lands replaces it.
+      onError: (error) => {
+        if (created.read === undefined || "failure" in created.read) tell({ failure: describeFailure(error) });
+      },
+    });
+    watches.set(client, created);
+    shared = created;
+  }
+  const held = shared;
+  held.views.add(view);
+  view(held.read);
+  return () => {
+    held.views.delete(view);
+    if (held.views.size > 0) return;
+    held.stop();
+    if (watches.get(client) === held) watches.delete(client);
+  };
+}
+
+/**
+ * The user's roster, followed through Workforce's client (`watchRoster`): a
+ * hire, fork, edit or fire, from any tab or by any worker's turn, redraws
+ * it. `undefined` until the first read lands. Every caller on one connection
+ * shares one watch.
+ */
+export function useRoster(): RosterRead {
   const { client } = useLab();
   const workforce = useWorkforce();
-  const [read, setRead] = useState<RosterRead>(undefined);
-  useEffect(() => {
-    if (readAt === undefined) return;
-    let held = reads.get(client);
-    if (held?.readAt !== readAt) {
-      held = { readAt, read: workforce.roster() };
-      reads.set(client, held);
-    }
-    let closed = false;
-    held.read
-      .then((entries) => {
-        if (!closed) setRead({ entries });
-      })
-      .catch((error: unknown) => {
-        if (!closed) setRead({ failure: describeFailure(error) });
-      });
-    return () => {
-      closed = true;
-    };
-  }, [client, workforce, readAt]);
+  // The connection decides the watch; its workforce client is the one built over it.
+  const workforceRef = useRef(workforce);
+  workforceRef.current = workforce;
+  const [read, setRead] = useState<RosterRead>(() => watches.get(client)?.read);
+  useEffect(() => joinWatch(client, workforceRef.current, setRead), [client]);
   return read;
 }
 

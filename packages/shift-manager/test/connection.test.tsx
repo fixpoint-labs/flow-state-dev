@@ -30,7 +30,11 @@ let answer: () => LabSnapshot;
 let reads = 0;
 
 // One object, as the provider hands one: a new one each render re-reads the roster on every render.
-const workforce = { roster: async () => [] };
+const workforce = {
+  roster: async () => [],
+  // The roster watch, reporting one read.
+  watchRoster: (onRoster: (entries: never[]) => void, options?: { onError?: (error: unknown) => void }) => (void Promise.resolve([] as never[]).then(onRoster, options?.onError), () => {}),
+};
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
 vi.mock("../src/lib/reads", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/lib/reads")>();
