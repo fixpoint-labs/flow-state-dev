@@ -48,6 +48,21 @@ jobs:
           GITHUB_TOKEN: ${{ env.CHANGESETS_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      # The docs site skips production builds until every package on main is on
+      # npm (apps/docs/scripts/docs-deploy-gate.mjs), so the build on the Version
+      # Packages push skips. Now that the publish succeeded, deploy the docs.
+      - name: Deploy the docs for this release
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          DOCS_DEPLOY_HOOK: ${{ secrets.VERCEL_DOCS_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$DOCS_DEPLOY_HOOK" ]; then
+            echo "::warning title=Docs not deployed::VERCEL_DOCS_DEPLOY_HOOK is not set, so the docs for this release go live on the next push to main. See docs/contributing/release-docs.md."
+            exit 0
+          fi
+          curl -fsS -X POST "$DOCS_DEPLOY_HOOK" > /dev/null
+          echo "Triggered the docs production deploy."
+
       - name: Report disabled release automation
         if: env.CHANGESETS_TOKEN == ''
         run: |

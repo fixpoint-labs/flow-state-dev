@@ -123,7 +123,7 @@ Record the discipline; you'll inject it into the implementer prompt at Step 5.
 
 - **Order, surfaces and edge cases** — what changes where, in what sequence.
 - **Tests** — at least one check per decision card, plus its second path (BP-035).
-- **Docs destinations** — from `SPEC.md`'s docs line. Step 5C writes the prose.
+- **Docs destinations** — from `SPEC.md`'s docs line. Step 5C keeps it accurate; `/release-docs` writes the prose.
 - **The debt verdict holds.** Debt you'd add that the spec's debt table doesn't list is a direction finding for the challenger, never a silent addition.
 - **One PR or several.** If more than one, write the PR plan: a small DAG, one row per sub-PR, `id · deliverables · depends_on`. Under a lifecycle, return the table and stop; the coordinator seeds `subPrs` from it and dispatches each slice back here (Step 3's sub-PR form). Standalone, build the slices in its order. An older spec that already carries a PR plan: use that one.
 
@@ -289,57 +289,24 @@ Repeat 5B.2–5B.3 for each task in order. After all tasks:
   - **Feature/Enhancement:** run the goal check the spec names. If the spec documented that no goal check applies, skip and note the documented justification.
   - **Bug** (complex bugs route through 5B, not 5A): if the original symptom was user-visible, re-run the **original repro through the real path** (`fsdev run` against a real model) on the assembled fix and confirm it's gone — this is the bug's goal verdict Step 6 expects. For a pure type/unit regression, note "N/A — type/unit-only" with the regression test as the proof.
 
-### Step 5C: Document the change (both paths)
+### Step 5C: Record the docs impact (both paths)
 
-Runs after 5A or 5B, before review. Applies whenever the change touched anything a user of the
-framework can observe — a public API, a returned shape, a tool result, a documented contract.
+Runs after 5A or 5B, before review. **You do not edit user docs** (`apps/docs/`, package READMEs):
+CI fails the PR if you do. They describe what a person can install, and `/release-docs` writes them
+once per release from the changeset, this issue's docs line and the public surface
+([`release-docs.md`](../../../docs/contributing/release-docs.md)). Your job is to leave those inputs
+right.
 
-**You do not write the user-facing prose. Dispatch `docs-writer`, then `docs-editor`.** By this point
-you are holding the spec, the diff, the review argument, and the defect, and that context leaks into
-published pages in a predictable way — before/after framing, design defense, the bug report retold as
-docs. Knowing the rules doesn't prevent it; not having the context does. The standard both agents
-work to is [`docs/contributing/user-docs.md`](../../../docs/contributing/user-docs.md).
-
-1. **Write the surface brief.** This is your only job here, and the brief is deliberately
-   shape-constrained so it can't carry narrative:
-
-   - **Surface** — the symbols a user touches, with signatures.
-   - **Behavior** — what a caller sees, including failure results and their exact shapes.
-   - **Limits** — what it won't do, where a reader would assume otherwise.
-   - **Targets** — pages and READMEs that state the affected contract today.
-   - **Docs line** — `SPEC.md`'s create/update/remove destinations or its no-impact reason,
-     and under an epic whether this child publishes the shared story. An older set's docs
-     draft goes in as it is; no other spec narrative.
-
-   No design *why*, defect story, or alternatives considered. A labelled migration
-   section may carry only the actions readers need to move from the old public contract.
-
-2. **Dispatch `docs-writer`** with the brief (and an older set's draft, when there is one). It
-   writes from public behavior and current docs, performs the destination operations,
-   and publishes to the actual docs. Honor justified no-impact outcomes; don't duplicate
-   unchanged pages or shared epic prose. Report unfulfilled destination operations explicitly.
-
-3. **Dispatch `docs-editor`** on the result. Send its findings back to the same writer and re-check.
-   **Three rounds**, then bring it to the user rather than looping — prose that hasn't converged by
-   then usually means the brief was wrong, not the writing.
-
-4. **Reconcile the writer's report.** Two returns are yours to act on, not the writer's: a fact where
-   **the code contradicted your brief** (check whether the brief or the code is wrong — this
-   sometimes surfaces a real bug), and a behavior it **couldn't find an observable surface for**
-   (either it isn't user-facing, or it isn't reachable and that's a gap).
-
-5. **Re-run this step whenever observable behavior changes again.** Step 5C runs before review, so
-   anything that moves the public surface afterwards — a Step 6 review finding, a Step 8 change
-   request, a Step 10 PR-feedback round — leaves the pages describing a surface that no longer
-   exists. Rebuild the brief for what changed and dispatch the pair again. It is a small,
-   well-scoped pass, not a repeat of the whole step: the brief covers the delta, not the feature.
-   **Never hand-patch the published prose to save the round trip** — that is the leak arriving by
-   the back door, at the point in the process where your head is fullest of the review argument.
-
-Architecture docs (`docs/architecture/`), `docs/internal/*`, the changeset, and the PR body are
-**yours**, not the writer's. Those are for framework developers and reviewers, where the rationale,
-the tradeoffs, and the defect belong. The split is the point: write the internal record fully, and
-keep it out of `apps/docs/`.
+1. **Changeset.** If a user of a published package can observe the change, write one (BP-022): what
+   they can now do or must change, in one to three sentences, no mechanism. If the docs line names a
+   page, end with `Docs: <page>`.
+2. **Docs line.** If what shipped differs from `SPEC.md`'s docs line (a destination it now needs, or
+   one it no longer does), update the docs line in this PR. It is the release pass's map.
+3. **Contributor docs are yours.** `docs/architecture/`, `docs/internal/*`, the changeset and the PR
+   body change here, rationale and all.
+4. **Re-check whenever observable behavior changes again.** A Step 6 finding, a Step 8 change request
+   or a Step 10 feedback round can move the public surface; the changeset and docs line must
+   describe the final one.
 
 **When the change narrows a rule stated elsewhere** — a new exception, or a new layer that now
 enforces it — the old statement is a superseded claim: before review, run 10.6's word and surface
@@ -561,7 +528,7 @@ Before you end this PR-feedback pass, **enumerate every code comment in the batc
 
 Then the two sweeps — the **word sweep** and the **surface sweep**. The word sweep: **grep** the superseded claim's distinctive noun repo-wide, treating a hit as a site even in `--help` and error strings, package READMEs and the changeset — the places a match is easiest to wave off. The surface sweep: **go to every surface that states the claim more briefly than the place you just corrected it** — summary tables, matrices, locked-contract bullets, README condensations, diagrams — including ones in the file you are already editing, since a summary restates a claim in its own words, or in an arrow, and no string sweep sees either. **For a surface that paraphrases, enumerate the surface instead of the words** — a figure is three representations that move together (its visible text, its `aria-label`, its caption sentence), a tagged table is its N tags, a status column is its N rows — and resolve each instance against the corrected claim. An empty grep over a paraphrasing surface is not coverage of it. **One label can cover more than one claim, so resolve every claim under it, not the opening subject** — and where those claims differ in status or layer, **split the label** rather than picking the reading that makes it true. **Report both sweeps by name, and say whether enumeration ran and over what** — a surface sweep reported without it is a word sweep twice. Converge every hit in one pass, routing the user-facing ones per the next paragraph rather than editing them here. Re-reading the diff cannot find a stale claim in a file the diff never opened, and that is exactly where these survive. The body was written at Step 9; this loop has been changing the code ever since, and a claim written before the last commit is the one that ships wrong.
 
-**User-facing pages are the exception: don't correct those yourself.** `apps/docs/` and package README API sections go back through **Step 5C** — rebuild the brief for what this round changed and dispatch `docs-writer` + `docs-editor` again. Editing them by hand here is how the review argument reaches published prose, and this is the moment you are least able to tell that it has.
+**User-facing pages are out of this sweep.** `apps/docs/` and package READMEs describe the last release and are rewritten by `/release-docs`; don't edit them here (CI blocks it). Make sure the changeset states the corrected claim, since that is what the release pass works from.
 
 Any code comment with the `eyes` reaction but **no reply is not done**: post its reply now. **Do not end the round, and do not treat the batch as processed, while any actionable comment sits at eyes-only.** The reviewer relies on the reply as the visible outcome — a comment that was silently read, considered, and even acted on, but never answered, is a failure of this gate, not a completed item. (Non-code conversation is exempt — it's done at the `eyes` reaction.)
 
