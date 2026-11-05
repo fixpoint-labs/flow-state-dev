@@ -139,7 +139,7 @@ After all tests pass, look for:
 After the refactor:
 - Per-package check: `pnpm --filter @flow-state-dev/<pkg> typecheck && pnpm --filter @flow-state-dev/<pkg> test`
 - Cross-package: root `pnpm typecheck` (also runs the package boundary validator)
-- User-facing API change: update `packages/<pkg>/README.md` and any affected `apps/docs` page in the same change set (CLAUDE.md rule)
+- User-facing API change: write the changeset (BP-022); don't edit `packages/<pkg>/README.md` or `apps/docs`, they're written at release (CLAUDE.md rule)
 - BP-007: any new file gets a header comment and doc-comment on every export
 
 ### 5. Verify the goal

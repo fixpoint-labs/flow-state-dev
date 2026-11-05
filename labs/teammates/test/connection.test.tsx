@@ -49,6 +49,24 @@ describe("the server going away", () => {
     expect(rowStatus("Chief of Staff").className).not.toContain(STALE);
   });
 
+  it("greys a running task's dot and stops its pulse in the panel while the feed is stale", async () => {
+    const tasks = [{ filer: "teammates.chief-of-staff", id: "t-1", to: "teammates.researcher", title: "Check the beta numbers", goal: "Check the beta numbers", status: "running" as const, boardStatus: "in_progress" }];
+    const lab = createFixtureLab({ speed: 0.05, tasks });
+    render(<App adapter={lab} />);
+    const panel = await screen.findByRole("complementary", { name: "Chief of Staff's panel" });
+    const row = () => panel.querySelector<HTMLElement>("[data-task=running]")!;
+    expect(row().className).not.toContain(STALE);
+
+    act(() => lab.setConnection("lapsed"));
+    // The dot sits inside the greyed row, where STALE_CLASS's pulse suppression reaches it.
+    expect(row().className).toContain(STALE);
+    expect(row().className).toContain("[&_.animate-pulse]:animate-none");
+    expect(row().querySelector("[data-task-dot]")).not.toBeNull();
+
+    act(() => lab.setConnection("live"));
+    expect(row().className).not.toContain(STALE);
+  });
+
   it("says a stopped feed has ended and offers Retry", async () => {
     const lab = createFixtureLab({ speed: 0.05 });
     render(<App adapter={lab} />);
@@ -69,7 +87,13 @@ describe("the server going away", () => {
 
   it("a roster read the server answered with an error shows its status, so a 502 reads apart from a dead socket", async () => {
     const lab = createFixtureLab({ speed: 0.05 });
-    const failing = { ...lab, listWorkers: () => Promise.reject(new ClientHttpError("Bad Gateway", { status: 502, body: undefined })) };
+    const failing = {
+      ...lab,
+      watchWorkers: (_onChange: unknown, onError?: (error: unknown) => void) => {
+        queueMicrotask(() => onError?.(new ClientHttpError("Bad Gateway", { status: 502, body: undefined })));
+        return () => {};
+      },
+    };
     render(<App adapter={failing} />);
     expect((await screen.findByTestId("unreachable-message")).textContent).toBe("502 · Bad Gateway");
   });
@@ -78,13 +102,20 @@ describe("the server going away", () => {
     const lab = createFixtureLab({ speed: 0.05 });
     let rejectSlow: (error: Error) => void = () => {};
     let call = 0;
-    const flaky = {
+    const flaky: typeof lab = {
       ...lab,
-      listWorkers: () => {
+      watchWorkers: (onChange, onError) => {
         call += 1;
-        if (call === 1) return Promise.reject(new Error("fetch failed"));
-        if (call === 2) return new Promise<never>((_, reject) => (rejectSlow = reject));
-        return lab.listWorkers();
+        if (call === 1) {
+          queueMicrotask(() => onError?.(new Error("fetch failed")));
+          return () => {};
+        }
+        // A watch whose read is still out: its failure arrives after the next Retry.
+        if (call === 2) {
+          rejectSlow = (error) => onError?.(error);
+          return () => {};
+        }
+        return lab.watchWorkers(onChange, onError);
       }
     };
     render(<App adapter={flaky} />);

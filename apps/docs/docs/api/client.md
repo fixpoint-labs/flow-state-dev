@@ -203,6 +203,11 @@ const withRuns = await fsd.sessions.list({
   flowKind: "research",
   include: "dispatch-runs",
 });
+
+const withStatus = await fsd.sessions.list({
+  flowKind: "research",
+  include: ["dispatch-runs", "status"],
+});
 ```
 
 | Option | Type | Notes |
@@ -211,10 +216,14 @@ const withRuns = await fsd.sessions.list({
 | `flowId` | `string` | One copy of a collection flow, by its exact id. [`sessionQueryFor`](/docs/client/overview#listing-one-flows-sessions) picks `flowKind` or `flowId` for an address. |
 | `userId` | `string` | Whose sessions. Default: the client's own user. A server with sign-in returns only the signed-in user's sessions whatever you pass. |
 | `limit` / `offset` | `number` | Paging. |
-| `include` | `"dispatch-runs"` | Also return the sessions dispatchers ran work in. Any other value answers `400`. |
+| `include` | `SessionListInclude \| SessionListInclude[]` | `"dispatch-runs"`, `"status"`, or both as an array. `"dispatch-runs"` also returns the sessions dispatchers ran work in. `"status"` adds each row's `requestStatus`. Any other value answers `400`. |
 | `state` | `Record<string, string>` | Only sessions whose readonly state fields hold these values. Needs `flowKind` or `flowId`; a field that isn't readonly on that flow is refused. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project). |
 
-Without `include`, the response holds the sessions a person started. With it, a row a dispatcher started carries `parentSessionId`, the session it was started from, plus the `topic` and `coordinate` labels below. Sessions belonging to another user, organization or tenant are never returned.
+Without `"dispatch-runs"`, the response holds the sessions a person started. With it, a row a dispatcher started carries `parentSessionId`, the session it was started from, plus the `topic` and `coordinate` labels below. Sessions belonging to another user, organization or tenant are never returned.
+
+With `"status"`, each row carries `requestStatus`, a `RequestStatus`: the status of the session's latest request. A request that is still running or waiting on a person (`in_progress`, `suspended`) wins over a later one that ended. A session with no request has no `requestStatus`, so guard with `== null`. When it is `suspended`, `requestWaitsForUser` says what the request waits on: `true` for the user (a question, an approval), `false` for other work, such as a reply from another worker, which resumes by itself. It lets a list show which conversations are running or waiting on someone, without reading each session's requests.
+
+To keep a list current, [subscribe](#fsdsubscribetopics-options) to `topic.user()` and list again on a `"run"` notice. The server sends one whenever one of the user's sessions is created, titled or deleted, or one of its requests starts or ends, whether the change came from another tab, a script or a CLI run. A change written by another server process reaches the socket only on a [bus that crosses processes](/guides/realtime#one-process-several-processes). In React, [`useSessionList`](/docs/api/react#usesessionlistoptions) does both for you.
 
 ### `sessions.children(parentSessionId, options?)`
 
@@ -378,7 +387,7 @@ Besides the callbacks, it takes `startingAfter` (resume after a sequence number)
 
 `fsd.sessions.stream(sessionId, options)` opens one stream for a whole session. It delivers each finished item from any request in the session, with the id of the request that kept it, and a notice naming the session's unfinished background runs whenever that set changes. Items the session snapshot hides are never sent.
 
-The server sends a change once it is saved: each write to the session wakes the stream's read, at most once a second. How much an idle view costs depends on the server's stores. On a bus that carries changes between processes, a view of a quiet session reads nothing. On the in-memory bus, which every store uses today, the server also reads about once a second per open view, so a reply another server writes still arrives. Either way the client sees the same events and needs no option for it. See [Store adapters](../persistence/overview.md#store-adapters).
+The server sends a change once it is saved: each write to the session wakes the stream's read, at most once a second. How much an idle view costs depends on the server's stores. On the default in-memory bus, for an app that runs as one process, and on a bus that carries changes between processes, a view of a quiet session reads nothing. On a bus that doesn't reach every process, such as a Postgres bus with no listening pool, the server also reads about once a second per open view, so a reply another server writes still arrives. Either way the client sees the same events and needs no option for it. See [Store adapters](../persistence/overview.md#store-adapters).
 
 To build a live view, read the whole session snapshot, then open the stream from its first page's `at`, the server time that read began. The pages hold everything saved before that time, and the stream picks up everything saved after. Pass the snapshot's `sessionCreatedAt` too, so the stream follows the session you read and not a later one that takes its id. The example calls `readHistory`, from [Reading a live session's history](#reading-a-live-sessions-history) below, to read every page without missing an item. `useSession` with `live: true` does all of this for you.
 
@@ -497,7 +506,7 @@ A notice's `kind` is `"items"`, `"request"`, `"run"`, `"state"`, `"resource"`, `
 
 **On a host with no push** (Vercel, Next.js, `createServerApp` alone), `onChange(null)` runs on the `pollIntervalMs` timer and nothing else. The same code works on both.
 
-**On several processes**: Each server keeps a *change bus*, the `bus` slot of its stores profile (the stores you hand `createFlowState`; see [Store adapters](/docs/persistence/overview#store-adapters)). A bus that *crosses processes* hands a change made in one server process to every other one. Push reaches every socket only on such a bus. The default in-memory bus doesn't cross processes, even when you run one, so a subscription with `pollIntervalMs` keeps reading on its timer between notices there. Give every process behind one address the same `pushSecret` (see [server setup](/docs/server/setup)).
+**On several processes**: Each server keeps a *change bus*, the `bus` slot of its stores profile (the stores you hand `createFlowState`; see [Store adapters](/docs/persistence/overview#store-adapters)). A bus that *crosses processes* hands a change made in one server process to every other one. Push reaches every socket only on such a bus. The default in-memory bus is for an app that runs as one process: it counts as crossing, so a subscription's `pollIntervalMs` timer stays off while the socket is up, and a change another process writes reaches an open view only at its next read. Give every process behind one address the same `pushSecret` (see [server setup](/docs/server/setup)).
 
 See the [realtime guide](/guides/realtime) for the whole picture.
 

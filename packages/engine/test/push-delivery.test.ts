@@ -324,6 +324,16 @@ describe("the socket session", () => {
     expect(ws.closed()).toBeUndefined();
   });
 
+  // An app on the default bus runs as one process, so push covers every
+  // change and the client stops its fallback poll while the socket is open.
+  it("tells a socket on the default in-memory bus that push covers it", async () => {
+    const { router, delivery } = app();
+    const ws = socket(delivery!);
+    ws.send({ type: "subscribe", ticket: await ticketFor(router, [topic.user()]) });
+    expect(ws.frames).toEqual([{ type: "subscribed" }, { type: "crossing", crosses: true }]);
+    ws.end();
+  });
+
   it("says whether its bus crosses processes after the first ticket, and on every change", async () => {
     const inner = createInMemoryBus();
     const crossingListeners = new Set<(crosses: boolean) => void>();
@@ -488,7 +498,7 @@ describe("the socket session", () => {
         )
       })
     );
-    expect(frames).toEqual([{ type: "subscribed" }, { type: "crossing", crosses: false }]);
+    expect(frames).toEqual([{ type: "subscribed" }, { type: "crossing", crosses: true }]);
     session.closed();
   });
 });
@@ -521,7 +531,7 @@ describe("enablePushDelivery", () => {
       const ws = socket(delivery);
       ws.send({ type: "subscribe", ticket: answer.ticket });
       expect(ws.closed()).toBeUndefined();
-      expect(ws.frames).toEqual([{ type: "subscribed" }, { type: "crossing", crosses: false }]);
+      expect(ws.frames).toEqual([{ type: "subscribed" }, { type: "crossing", crosses: true }]);
     }
   });
 

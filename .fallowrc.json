@@ -23,6 +23,8 @@
 
     "packages/*/test/**/*.{test,spec}.{ts,tsx}",
     "packages/*/test/**/*.type-test.ts",
+    // Type tests `tsc -p tsconfig.test-d.json` compiles; nothing imports them.
+    "packages/*/test/**/*.test-d.ts",
     "packages/cli/bin/*.ts",
     "packages/cli/test/fixtures/**/*.ts",
     // Fake Codex programs the codex specs spawn by path.
@@ -104,20 +106,29 @@
     "labs/claude-code-style/src/components/flow-state/spend.tsx",
     // and of the registry's tool grouping, which its tool lines read.
     "labs/claude-code-style/src/components/flow-state/tool-grouping.ts",
+    // and of the registry's error, whose `ErrorDisplay` export its sheet doesn't draw.
+    "labs/claude-code-style/src/components/flow-state/error.tsx",
     // The stock shadcn copies the Teammates lab and Shift Manager palettes are built on.
     "labs/teammates/src/components/ui/**",
     "packages/shift-manager/src/components/ui/command.tsx",
     "packages/shift-manager/src/components/ui/dialog.tsx",
     // The Teammates lab's copy of the registry's tool grouping.
     "labs/teammates/src/components/flow-state/tool-grouping.ts",
+    // The Teammates lab's byte copy of the registry's spend: its card, popup and panel
+    // draw the line and the totals; the copy's other formatters are for other apps.
+    "labs/teammates/src/components/flow-state/spend.tsx",
     // and of the registry's review card, which the task popup draws.
     "labs/teammates/src/components/flow-state/review-hold.tsx",
+    // and of the registry's error, whose `ErrorDisplay` export its task popup doesn't draw.
+    "labs/teammates/src/components/flow-state/error.tsx",
     // The Teammates lab's byte copy of the registry's connection screen; its
     // backoff export is for apps that time their own retries.
     "labs/teammates/src/components/flow-state/connection-screen.tsx",
-    // Kitchen Sink's and Shift Manager's byte-identical copies of the registry's
-    // error.tsx, whose `ErrorBody` export is for `request-recovery`, which neither draws yet.
-    "apps/kitchen-sink/components/flow-state/error.tsx",
+    // Kitchen Sink's byte copy of the registry's request-recovery: its failed-turn
+    // line draws `RequestRecovery`; `INTERRUPTED_REASON` is for apps that word their own.
+    "apps/kitchen-sink/components/flow-state/request-recovery.tsx",
+    // Shift Manager's byte-identical copy of the registry's error.tsx, whose
+    // `ErrorBody` export is for `request-recovery`, which it doesn't draw yet.
     "packages/shift-manager/src/components/flow-state/error.tsx",
     // Kitchen Sink's copy of the registry's run-changes, which the registry
     // drift test requires installed; its Changes section imports it later.
@@ -125,6 +136,15 @@
     // Kitchen Sink's copy of the registry's run-checks, which the registry
     // drift test requires installed; its turn notice imports it later.
     "apps/kitchen-sink/components/flow-state/run-checks.tsx",
+    // The labs' and Shift Manager's copies of the registry's run-checks: their
+    // review-hold copies draw RunChecks; `runCheckPassed` is for apps that count apart.
+    "labs/claude-code-style/src/components/flow-state/run-checks.tsx",
+    "labs/teammates/src/components/flow-state/run-checks.tsx",
+    "packages/shift-manager/src/components/flow-state/run-checks.tsx",
+    // The labs' byte copies of the registry's harness readiness: they draw the chips;
+    // `readinessChipText` is for apps that word a harness's state on their own.
+    "labs/claude-code-style/src/components/flow-state/harness-readiness.tsx",
+    "labs/teammates/src/components/flow-state/harness-readiness.tsx",
     // Kitchen Sink's byte copy of the registry's spend: its harness session draws
     // the line; the copy's other formatters are for apps that show them apart.
     "apps/kitchen-sink/components/flow-state/spend.tsx",
@@ -146,7 +166,21 @@
   // registry's own ToolGroup keeps its `defaultOpen` prop, so neither app calls it.
   "ignoreExports": [
     { "file": "apps/kitchen-sink/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen"] },
-    { "file": "packages/shift-manager/src/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen"] }
+    { "file": "packages/shift-manager/src/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen"] },
+    // The Teammates lab's copy of the registry's task-actions, with its Re-run buttons:
+    // the confirm words and the cancel outcome are exported for tests and goals that read them off the page.
+    { "file": "labs/teammates/src/components/flow-state/task-actions.tsx", "exports": ["CANCEL_CONFIRM", "cancelOutcome"] },
+    // Shift Manager's byte copy of the registry's task-actions: the confirm words and
+    // the cancel outcome are exported for tests and goals that read them off the page.
+    { "file": "packages/shift-manager/src/components/flow-state/task-actions.tsx", "exports": ["CANCEL_CONFIRM", "cancelOutcome"] },
+    // and the Claude Code-style lab's copy of it, for the same reason.
+    { "file": "labs/claude-code-style/src/components/flow-state/task-actions.tsx", "exports": ["CANCEL_CONFIRM", "cancelOutcome"] },
+    // The Teammates lab's byte copy of the registry's message-response: its cards draw
+    // `MarkdownText`; `MessageResponse` is what the registry's `message` imports, which the lab doesn't install.
+    { "file": "labs/teammates/src/components/flow-state/message-response.tsx", "exports": ["MessageResponse", "MessageResponseProps"] },
+    // Kitchen Sink's byte copy of the registry's message: it re-exports `MessageResponseProps`
+    // so installs that typed it from `message` keep compiling; the app itself doesn't name the type.
+    { "file": "apps/kitchen-sink/components/flow-state/message.tsx", "exports": ["MessageResponseProps"] }
   ],
 
   // Dead code fails `fallow audit` at its default severity. Complexity reports

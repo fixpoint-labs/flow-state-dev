@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import type { LabAdapter, TaskRow, TaskStatus } from "../adapter";
 import { TASK_STATUS } from "../lib/task-status";
 import { useMissing, useWatch } from "../lib/use-watch";
@@ -6,21 +6,21 @@ import { cn } from "../lib/utils";
 import { Entry } from "./Entry";
 import { LoadEarlier } from "./LoadEarlier";
 import { Sheet } from "./Sheet";
+import { ErrorBody } from "./flow-state/error";
 import { Spend } from "./flow-state/spend";
+import { TaskActions } from "./flow-state/task-actions";
 import { harnessLabelOf } from "./ThreadStatus";
 import { TaskCard, TaskDoneRow } from "./TaskCard";
 
 /** The endings a task stays in: these rows move to the pane's *Done* group. */
 const FINISHED: ReadonlySet<TaskStatus> = new Set(["completed", "errored", "cancelled"]);
 
-/** What the pane and the sheet say about steering a task. */
-const READ_ONLY_NOTE = "Read only. To stop or steer a task, ask the main session.";
-
 /**
- * The right pane: the main session's background tasks. Read only (spec D2):
- * a row opens the task's work in a sheet over the main thread, and to stop or
- * steer it you ask the main session. Running and waiting tasks show as cards;
- * finished ones fold into a *Done* group, collapsed until you open it.
+ * The right pane: the main session's background tasks. A row opens the task's
+ * work in a sheet over the main thread, and the sheet's action row changes the
+ * task on its board: Cancel, Steer, Release or Retry, by its status. Asking the main session to
+ * stop or steer a task still works too. Running and waiting tasks show as
+ * cards; finished ones fold into a *Done* group, collapsed until you open it.
  */
 export function TasksPane({
   adapter,
@@ -83,13 +83,17 @@ export function TasksPane({
         </div>
       )}
       {open ? <TaskSheet adapter={adapter} sessionId={sessionId} task={open} onClose={close} /> : null}
-      <p className="mt-auto px-4 py-3 text-xs text-muted-foreground">{READ_ONLY_NOTE}</p>
     </aside>
   );
 }
 
-/** One task's work in a sheet over the main thread: live while it runs, read only throughout. */
+/**
+ * One task's work in a sheet over the main thread, live while it runs, with
+ * its action row at the foot. The sheet has no composer, so the row carries
+ * the Steer box. A failed task's error shows as an error.
+ */
 function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter; sessionId: string; task: TaskRow; onClose: () => void }) {
+  const actions = useMemo(() => adapter.taskActions(sessionId), [adapter, sessionId]);
   const work = useWatch(
     (emit: Parameters<LabAdapter["watchTaskWork"]>[2]) => adapter.watchTaskWork(sessionId, task.id, emit),
     [adapter, sessionId, task.id],
@@ -115,8 +119,13 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
         </>
       }
       onClose={onClose}
-      footer={READ_ONLY_NOTE}
+      footer={<TaskActions key={task.id} id={task.id} status={task.status} actions={actions} steer />}
     >
+      {task.status === "errored" && task.error !== undefined ? (
+        <div role="alert" className="mb-3 flex flex-col gap-1 border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <ErrorBody message={task.error} />
+        </div>
+      ) : null}
       {work === undefined || work.entries.length === 0 ? <p className="text-sm text-muted-foreground">Nothing yet.</p> : null}
       <LoadEarlier load={work?.loadEarlier} />
       {work?.entries.map((entry) => <Entry key={entry.id} entry={entry} />)}

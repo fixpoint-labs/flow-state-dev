@@ -23,8 +23,11 @@ needs is a gap filed against the package.
   nothing and answers with a plan), *Codex* or *Cursor*. Any choice but *Auto* adds one line to
   what you send, such as `Coder: Codex`, and the main session hands the change to that coder. It
   holds while the session is open. You can also say it in words ("plan it first", "use Cursor").
-- **Right:** the background tasks, read only. A row opens to show the task's work. To stop or steer
-  a task, ask the main session.
+- **Right:** the background tasks. A row opens a sheet with the task's work and a row of actions
+  by its status: *Cancel* (it asks once, since tasks waiting on it go too) and a *Steer* box while
+  it runs or waits, *Release* when it is held, *Retry* once it failed or was cancelled. A failed
+  task shows its error. Each action is the board's own, and a refusal shows in the board's words.
+  You can still ask the main session to stop or steer a task.
 - **Keys:** ⌘K (Ctrl+K) finds any session by its title, in either view, or starts a new one.
   Alt+↑ and Alt+↓ move to the previous or next session in the view. `/` puts the cursor in the
   composer, and `?` lists every key. Opening a session puts the cursor in its composer. The view
@@ -40,8 +43,8 @@ threads, each a task in a session of its own, and the right pane is the status b
   *Request changes* when it is ready for review.
 - **Right:** the board groups threads by what you owe them: *Pinned*, *Working*, *Waiting on you*,
   *Ready for review* and *Resolved*, collapsed to a count. A column is read from the task's
-  status and what it waits on, never a mark the lab keeps. A failed thread waits on you; ask the
-  main session to retry it.
+  status and what it waits on, never a mark the lab keeps. A failed thread waits on you; its view
+  shows the error and offers *Retry*.
 - **The right pane** is as wide as you drag its left edge (or move it with the arrow keys once it
   has focus), and keeps that width across reloads.
 - **The page's address** names the view, the open session and the task open in its pane
@@ -49,7 +52,8 @@ threads, each a task in a session of its own, and the right pane is the status b
   had open before. A link to a session or task that is gone opens *New session* instead.
 - **A thread's view** replaces the board, with a back arrow. You can talk in it: your line steers
   the thread's task and answers its open question. Cmd+Enter (Ctrl+Enter) answers, or requests
-  changes when it is ready for review; plain Enter is a new line. You can pin it there.
+  changes when it is ready for review; plain Enter is a new line. You can pin it there. Under its
+  header, the same actions as a sheet's, without the *Steer* box, since the composer steers.
 - **A thread's goal** carries what it needs, since a thread sees nothing else: what to do, the ids,
   links and branches you named, where the work lives, and what done means. A thread starts at
   once and looks before it asks: it asks you only what depends on you, a choice only you can make
@@ -105,10 +109,16 @@ are read from the environment, all optional:
 | `CLAUDE_CODE_STYLE_USER` | `u_lab` | The person the pages are served for |
 | `CLAUDE_CODE_STYLE_ANSWER_AGAIN` | on | `off` leaves `answerAgain` off the main worker: the goal check's control |
 | `CLAUDE_CODE_STYLE_SETUP` | none | One command each fresh worktree runs before its coding run starts, such as `pnpm install --frozen-lockfile`, with no shell |
+| `CLAUDE_CODE_STYLE_HARNESS` | the harness each coder names | `stub` runs every coding task on harness-manager's scripted coder, with no model, for a goal check |
+| `CLAUDE_CODE_STYLE_HARNESS_STEP_MS` | `2000` | With `stub`, the pause before each of the scripted coder's five steps |
 
 *New session* lists your projects and has a *New project* form: a name and the repository its
 coding runs work on. The host allows `file://` repositories only, and the repository must ignore
-`.fsdev/` (a run refuses one that doesn't). A run works in a git worktree of the repository under
+`.fsdev/`. The form checks the repository as you leave its field, with the same check a run's
+checkout gets, and keeps Create off with the problem shown when it fails; the server refuses the
+same project (`repository-unusable`). The picker also says what its view does and shows which
+coding harnesses can run here, with Re-check, and an empty session offers starter lines that fill
+the composer. A run works in a git worktree of the repository under
 the data folder, on a branch of its own that you'll find in the repository, so your checked-out
 branch and files don't change. A repository not in `CLAUDE_CODE_STYLE_REPOSITORIES` gets a clone
 under the data folder instead. Before a run settles, a judge (harness-manager's `goalJudge`) reads
@@ -137,7 +147,8 @@ a package call:
 |---|---|
 | The sessions list | `listWorkerSessions("desk.main")` from `@flow-state-dev/workforce/browser` |
 | *New session* and a session's project | a session of `desk.main`'s flow, then `setWorkProject` |
-| The project picker and *New project* | `listProjects` and `createProject`, from `defineProjectBlocks` (`workforce/flows/projects.mts`) |
+| The project picker and *New project* | `listProjects`, `createProject` and `checkRepository`, from `defineProjectBlocks` with the workspace host's check (`workforce/flows/projects.mts`) |
+| The picker's harness chips | the `harness-readiness` flow's `read` action |
 | Sending and the thread | the `respond` action, and the session's message and tool items |
 | A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
 | The main session reading the project's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |

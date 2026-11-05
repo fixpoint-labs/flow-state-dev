@@ -36,7 +36,7 @@ import { projectReaderOf, useProjectRead, type WorkstreamEntry } from "../lib/pr
 import type { Project } from "../lib/reads";
 import { initialsOf } from "../lib/shell";
 import { useShiftCoordinatorWorking } from "../lib/working";
-import { Meta, PartialMark, SectionFailure, ShiftMark } from "../components/ui";
+import { ASKING_CLASS, Meta, PartialMark, SectionFailure, ShiftMark } from "../components/ui";
 import { ShiftManagerMark } from "../components/ShiftManagerMark";
 import { RouteLink } from "../components/RouteLink";
 import type { Gaps } from "../gaps";
@@ -409,15 +409,17 @@ export function Sidebar({
   collapsed: boolean;
   onToggle: () => void;
 }) {
-  const { snapshot, refresh, client } = useLab();
+  const { snapshot, refresh, client, asking } = useLab();
   const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? (snapshot as LoadedSnapshot) : undefined;
   const retry = () => void refresh();
+  // The counts dim only while a read the user asked for runs.
+  const dim = asking ? ` ${ASKING_CLASS}` : "";
 
   const inboxCount = loaded === undefined ? "…" : loaded.inbox.ok ? loaded.inbox.value.length : "!";
   const tasksCount = loaded === undefined ? "…" : openRows(loaded).length;
   const waiting = loaded !== undefined && loaded.inbox.ok && loaded.inbox.value.length > 0;
   // The user's own workers are on their roster, not in the inventory: joined as Roster joins them.
-  const roster = useRoster(loaded?.readAt);
+  const roster = useRoster();
   const joined = loaded === undefined ? undefined : withRoster(loaded, roster);
   // With the inventory unread and nobody on the roster, TEAMS has only its failure to show.
   const drawn = joined !== undefined && (loaded?.inventory.ok === true || joined.workers.length > 0) ? joined : undefined;
@@ -453,10 +455,11 @@ export function Sidebar({
                 mark={
                   // v2's badge (v2:60): the highlighter only while an ask waits on the user.
                   <span
-                    className={`px-[5px] font-mono text-[10.5px] font-semibold tabular-nums ${waiting ? "bg-attention text-attention-foreground" : "text-muted-foreground"}`}
+                    className={`px-[5px] font-mono text-[10.5px] font-semibold tabular-nums ${waiting ? "bg-attention text-attention-foreground" : "text-muted-foreground"}${dim}`}
                     data-look="meta-count"
                     data-testid="nav-inbox-count"
                     data-waiting={waiting}
+                    data-asking={asking ? "true" : undefined}
                   >
                     {inboxCount}
                   </span>
@@ -469,7 +472,7 @@ export function Sidebar({
                 label="Tasks"
                 icon={<NavIcon name="tasks" />}
                 mark={
-                  <Meta role="count" className="ml-2 tabular-nums text-info" testId="nav-tasks-count">
+                  <Meta role="count" className={`ml-2 tabular-nums text-info${dim}`} testId="nav-tasks-count">
                     {tasksCount}
                   </Meta>
                 }

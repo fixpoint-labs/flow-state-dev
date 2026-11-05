@@ -1,5 +1,5 @@
 /**
- * The lab's request views read on a change instead of every 1.5 s (FIX-2466):
+ * The lab's request views read on a change instead of every 1.5 s:
  * whether a conversation is answering, a worker's busy dot and last activity,
  * and the context-window divider read the conversation's requests on a
  * request notice, and the divider its history summary on that resource's

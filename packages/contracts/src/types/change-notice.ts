@@ -21,7 +21,7 @@
  * - `state` — the scope's state was written: a session, user or org patch.
  * - `resource` — a resource under the scope was written, created or deleted.
  *   The topic names it in `resource`.
- * - `board` — a row on a task board changed (FIX-2429), on the topic of the
+ * - `board` — a row on a task board changed, on the topic of the
  *   session that filed it, narrowed to the board's id. The session stream
  *   ignores it: a board is read through its own read.
  * - `resync` — the bus may have missed notices (it reconnected). Every

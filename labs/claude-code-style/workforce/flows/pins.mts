@@ -10,7 +10,8 @@ import { z } from "zod";
 /** The flow kind the screen reads and writes pins through. */
 export const PINS_FLOW = "pins";
 
-const userStateSchema = z.object({ pinned: z.array(z.string()).default([]) });
+const pinsSchema = z.object({ pinned: z.array(z.string()) });
+const pinsUserStateSchema = z.object({ pinned: z.array(z.string()).default([]) });
 
 /**
  * Your pins as stored. The engine doesn't apply the schema's `.default([])` to
@@ -23,8 +24,8 @@ const pinsBlock = (name: string, change: (pinned: string[], taskId: string) => s
   handler({
     name,
     inputSchema: z.object({ taskId: z.string().min(1) }),
-    outputSchema: userStateSchema,
-    userStateSchema,
+    outputSchema: pinsSchema,
+    userStateSchema: pinsUserStateSchema,
     execute: async (input, ctx) => {
       const pinned = change(pinnedOf(ctx.user.state), input.taskId);
       await ctx.user.patchState({ pinned });
@@ -36,15 +37,15 @@ const pinsBlock = (name: string, change: (pinned: string[], taskId: string) => s
 export function definePinsFlow() {
   return defineFlow({
     kind: PINS_FLOW,
-    user: { stateSchema: userStateSchema },
+    user: { stateSchema: pinsUserStateSchema },
     // A read, not an action: the screen reads your pins whenever they change, and a read stores no request.
     reads: {
       listPins: {
         block: handler({
           name: "listPins",
           inputSchema: z.object({}),
-          outputSchema: userStateSchema,
-          userStateSchema,
+          outputSchema: pinsSchema,
+          userStateSchema: pinsUserStateSchema,
           execute: async (_input, ctx) => ({ pinned: pinnedOf(ctx.user.state) }),
         }),
       },

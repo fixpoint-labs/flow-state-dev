@@ -8,12 +8,21 @@
 // this file and the tree disagree. Committed on purpose — a fresh clone has to
 // typecheck before anything has been generated.
 
+import type { BlockDefinition } from "@flow-state-dev/core";
+import workerblock_support__fsd__fetch from "./teams/support/workers/fsd/blocks/fetch";
+import workerblock_support__fsd__search_docs from "./teams/support/workers/fsd/blocks/search-docs";
+
 export const workerFlows = {};
 
 export const blocks = {};
 
 export const resourceModules = {};
 
-export const workerBlocks = {};
+export const workerBlocks = {
+  "support.fsd": {
+    "fetch": workerblock_support__fsd__fetch,
+    "search-docs": workerblock_support__fsd__search_docs,
+  },
+} satisfies Record<string, Record<string, BlockDefinition>>;
 
 export const packageBlocks = {};

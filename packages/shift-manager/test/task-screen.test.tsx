@@ -13,8 +13,8 @@ import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import { connect } from "../src/lib/connection";
 import { readSessionItems } from "../src/lib/run";
-import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef, toBoardRow, type BoardRow } from "../src/lib/reads";
-import { openRunLab, RUN_LAB_ASK, RUN_LAB_SPEND, RUN_LAB_USER_ID } from "./fixtures/run-lab/lab.mts";
+import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef, createLabReader, toBoardRow, type BoardRow } from "../src/lib/reads";
+import { openRunLab, RUN_LAB_ASK, RUN_LAB_FAILURE, RUN_LAB_SPEND, RUN_LAB_USER_ID } from "./fixtures/run-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
 type Opened = Awaited<ReturnType<typeof openRunLab>>;
@@ -61,7 +61,7 @@ async function renderAt(baseUrl: string, path: string, devtoolUrl?: string) {
 /** A held row on the shared flow (or on a worker's flow of its own), once its run is linked. */
 async function heldRow(opened: Awaited<ReturnType<typeof openLab>>, own: boolean): Promise<BoardRow> {
   const worker = opened.lab.workers.find((w) => (own ? w.id === opened.lab.ownWorker!.id : w.flow === opened.lab.sharedFlow!))!;
-  const filed = opened.lab.filed.find((f) => f.kind === "held" && f.workerId === worker.id)!;
+  const filed = opened.lab.filed.find((f) => f.kind === "running" && f.workerId === worker.id)!;
   return eventually(async () => (await opened.rows()).find((r) => r.id === filed.taskId && r.run !== null), "the held run's link");
 }
 
@@ -208,6 +208,12 @@ describe("a row with no run (BR-3)", () => {
     expect((screen.getByTestId("task-interrupt") as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByTestId("run-state").textContent).toBe("nothing is running");
     const reads = () => seen.filter(isBoardRead).length;
+    // The snapshot reads the board again as the lab's held runs start and link
+    // their rows (it hears their notices): wait for those to end, then watch.
+    for (let last = -1; last !== reads(); ) {
+      last = reads();
+      await act(() => new Promise((r) => setTimeout(r, 1_000)));
+    }
     const after = reads();
     await act(() => new Promise((r) => setTimeout(r, 2_500)));
     expect(reads()).toBe(after);
@@ -669,4 +675,95 @@ describe("a task whose run waits on a user (BR-17)", () => {
     expect(screen.queryByTestId("inspector-needs")).toBeNull();
     expect(within(screen.getByTestId("task-activity")).getByText("", { selector: "[data-state-square]" }).getAttribute("data-state-square")).toBe("run");
   });
+});
+
+/**
+ * The row filed for `kind`, read from the store once `ready` says it is there,
+ * after the Lab's boot has settled: the short runs done and the failing one
+ * failed, so the screen's first read isn't racing their notices.
+ */
+async function filedRow(opened: Awaited<ReturnType<typeof openLab>>, kind: "held" | "cancellable" | "failing", ready: (row: BoardRow) => boolean): Promise<BoardRow> {
+  const settling = opened.lab.filed.filter((f) => f.kind === "short" || f.kind === "failing").map((f) => f.taskId);
+  await eventually(async () => {
+    const rows = await opened.rows();
+    return settling.every((id) => ["completed", "errored"].includes(rows.find((r) => r.id === id)?.status ?? "")) ? true : undefined;
+  }, "the short and failing runs to end");
+  const filed = opened.lab.filed.find((f) => f.kind === kind)!;
+  return eventually(async () => (await opened.rows()).find((r) => r.id === filed.taskId && ready(r)), `the ${kind} row`);
+}
+
+const storedStatus = async (opened: Awaited<ReturnType<typeof openLab>>, id: string) => (await opened.rows()).find((r) => r.id === id)?.status;
+
+describe("the task's actions, in the frame's header beside Interrupt", () => {
+  it("releases a held task: the board's row goes back to pending, and the header follows it", async () => {
+    const opened = await openLab({ taskActions: true });
+    const row = await filedRow(opened, "held", (r) => r.status === "held");
+    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
+    const actions = await screen.findByTestId("task-action-row");
+    expect(actions.getAttribute("data-status")).toBe("held");
+    // The frame has a composer, so no Steer box; Interrupt and the gap buttons stay.
+    expect(screen.queryByTestId("task-action-steer-input")).toBeNull();
+    expect(screen.getByTestId("task-interrupt")).toBeTruthy();
+    expect(screen.getAllByTestId("task-disabled-action")).toHaveLength(3);
+    fireEvent.click(screen.getByTestId("task-action-release"));
+    await waitFor(async () => expect(["pending", "in_progress"]).toContain(await storedStatus(opened, row.id)), { timeout: 10_000 });
+    await waitFor(() => expect(screen.getByTestId("task-action-row").getAttribute("data-status")).not.toBe("held"), { timeout: 10_000 });
+    // The board hands the released row to a run on its next dispatch pass, after
+    // the press's own reads: the frame keeps reading until it shows that run.
+    await eventually(async () => ((await opened.rows()).find((r) => r.id === row.id)?.run != null ? true : undefined), "the released row's run");
+    await waitFor(() => expect(screen.getByTestId("task-action-row").getAttribute("data-status")).toBe("in_progress"), { timeout: 10_000 });
+  }, 30_000);
+
+  it("cancels a running task once confirmed, then retries it as the same task", async () => {
+    const opened = await openLab({ taskActions: true });
+    const row = await filedRow(opened, "cancellable", (r) => r.status === "in_progress" && r.run !== null);
+    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
+    fireEvent.click(await screen.findByTestId("task-action-cancel"));
+    expect(await storedStatus(opened, row.id)).toBe("in_progress");
+    fireEvent.click(screen.getByTestId("task-action-confirm-yes"));
+    await waitFor(async () => expect(await storedStatus(opened, row.id)).toBe("cancelled"), { timeout: 10_000 });
+    const retry = await screen.findByTestId("task-action-retry", {}, { timeout: 10_000 });
+    fireEvent.click(retry);
+    await waitFor(async () => expect(["pending", "in_progress"]).toContain(await storedStatus(opened, row.id)), { timeout: 10_000 });
+    // The cancelled attempt's run stops on its lease's next renewal (the goal check
+    // holds that bound). Stop it now, and the retry runs as the same task, on a run
+    // of its own, which the cleanup stops.
+    const flow = opened.lab.workers.find((w) => w.id === row.assignee)!.flow;
+    await opened.client.flow(flow).request(row.run!.requestId).abort();
+    const again = await eventually(async () => {
+      const now = (await opened.rows()).find((r) => r.id === row.id)!;
+      return now.run !== null && now.run.requestId !== row.run!.requestId ? now : undefined;
+    }, "the retry's run");
+    expect(again.status).toBe("in_progress");
+  }, 30_000);
+
+  it("shows a refusal in the board's own words, and changes nothing", async () => {
+    const opened = await openLab({ taskActions: true });
+    const row = await filedRow(opened, "held", (r) => r.status === "held");
+    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
+    await screen.findByTestId("task-action-row");
+    // Cancelled behind the screen's back, so the screen still offers Release.
+    await createLabReader(opened.client).taskActions({ id: opened.lab.conversation, flowId: opened.lab.leadFlow }).cancel(row.id);
+    expect(await storedStatus(opened, row.id)).toBe("cancelled");
+    fireEvent.click(screen.getByTestId("task-action-release"));
+    const refusal = await screen.findByTestId("task-action-refusal", {}, { timeout: 10_000 });
+    expect(refusal.textContent).toMatch(/cancelled|finished/i);
+    expect(await storedStatus(opened, row.id)).toBe("cancelled");
+  }, 30_000);
+});
+
+describe("a failed task's error", () => {
+  it("shows as an error in the frame, and as a line on its row in Tasks", async () => {
+    const opened = await openLab({ taskActions: true });
+    const row = await filedRow(opened, "failing", (r) => r.status === "errored");
+    expect(row.error).toBe(RUN_LAB_FAILURE);
+    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
+    expect((await screen.findByTestId("task-error")).textContent).toContain(RUN_LAB_FAILURE);
+    expect(screen.getByTestId("task-action-retry")).toBeTruthy();
+    cleanup();
+    await renderAt(opened.served.baseUrl, "/tasks");
+    const tasks = await screen.findByTestId("tasks-table");
+    const line = within(tasks).getAllByTestId("task-row").find((el) => el.getAttribute("data-task-id") === row.id)!;
+    expect(within(line).getByTestId("task-row-error").textContent).toContain(RUN_LAB_FAILURE);
+  }, 30_000);
 });

@@ -1,20 +1,20 @@
 /**
  * The names the shell and its flow agree on — which flows the rail groups,
- * which coordinators it lists, and what a worker's composer sends.
+ * which flow makes a worker a coordinator, and what a worker's composer sends.
  *
  * A leaf module on purpose (BP-019): the page is a client bundle and the flow
  * is server code, and both import these. Nothing here imports anything, so the
  * page gets the names without pulling the flow into the browser.
  *
- * The workers themselves are not here: the right panel reads the user's
- * roster through Workforce's client (`@flow-state-dev/workforce/browser`),
- * which answers with each worker's flow and description.
+ * The workers themselves are not here: the right panel and the rail read the
+ * user's roster through Workforce's client (`@flow-state-dev/workforce/browser`),
+ * which answers with each worker's flow and description. A coordinator is a
+ * worker on a coordinator flow, so the rail reads the coordinators off it.
  *
- * The flow names and coordinator ids are written down rather than derived,
- * because the only place that knows them at run time is the server-side tree
- * under `workforce/`, which a browser cannot read. `test/workforce-shell.test.ts`
- * holds them to that tree and fails when a flow or a coordinator changes there
- * and not here.
+ * The flow names are written down rather than derived, because the only place
+ * that knows them at run time is the server-side tree under `workforce/`,
+ * which a browser cannot read. `test/workforce-shell.test.ts` holds them to
+ * that tree and fails when a flow changes there and not here.
  */
 
 /** The flow the stream talks to. */
@@ -31,13 +31,6 @@ export const COORDINATOR_FLOWS = ["coordinator"] as const;
 export function isCoordinatorFlow(flow: string): boolean {
   return (COORDINATOR_FLOWS as readonly string[]).includes(flow);
 }
-
-/**
- * The coordinators the tree declares, by worker id: what the rail lists under
- * the coordinator flow. Each is the user's own conversation with that
- * coordinator, found or started by its id (`lib/rail-sessions.ts`).
- */
-export const SHELL_COORDINATORS = ["support.help"] as const;
 
 /** What a coordinator's composer sends: the user's post, through the flow's door. */
 export const COORDINATOR_ASK = { action: "respond", field: "message" } as const;

@@ -1,0 +1,13 @@
+{
+  "filer": "teammates.chief-of-staff",
+  "coder": "teammates.cursor",
+  "rerunOn": {
+    "worker": "teammates.claude-code",
+    "label": "Claude Code"
+  },
+  "task": {
+    "title": "Run note",
+    "goal": "Write SCRIPTED-RUN.md in the checkout, saying which row the run worked, and commit it.",
+    "context": "One short file is enough; touch nothing else."
+  }
+}

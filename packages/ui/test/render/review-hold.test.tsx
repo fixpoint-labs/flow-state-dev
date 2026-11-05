@@ -34,11 +34,30 @@ describe("the review card draws a coding run's review", () => {
     expect(screen.getByText("Ready for review")).toBeTruthy();
     expect(screen.getByText("4 commits")).toBeTruthy();
     expect(screen.getByText("…/t-7f3c--change").getAttribute("title")).toBe(DATA.branch);
-    expect(screen.getByText("· Add the v2 endpoint")).toBeTruthy();
-    expect(screen.queryByText("· Update the README")).toBeNull();
+    expect(screen.getByTitle("Add the v2 endpoint").textContent).toBe("·Add the v2 endpoint");
+    expect(screen.queryByTitle("Update the README")).toBeNull();
     expect(screen.getByText("· and 1 more")).toBeTruthy();
     expect(screen.getByText("Judge: done, 0.91")).toBeTruthy();
     expect(screen.getByText(DATA.judge!.reason)).toBeTruthy();
+  });
+
+  it("shows the project's checks, a red one open with its output, so the reviewer sees the code doesn't build before accepting", () => {
+    const checks = [
+      { command: "pnpm typecheck", exitCode: 0, timedOut: false, skipped: false, durationMs: 1200, tail: "" },
+      { command: "pnpm test", exitCode: 1, timedOut: false, skipped: false, durationMs: 900, tail: "CHECK-MARKER: 1 failed" },
+    ];
+    render(<ReviewHold review={{ ...DATA, checks }} answer={async () => {}} />);
+    expect(screen.getByText("Checks 1/2 passed")).toBeTruthy();
+    expect(screen.getByText(/CHECK-MARKER: 1 failed/)).toBeTruthy();
+    // Information, not a gate: the reviewer can still accept.
+    expect(screen.getByRole("button", { name: "Accept" })).toBeTruthy();
+  });
+
+  it("draws no checks line when none ran, rather than claiming 0/0", () => {
+    render(<ReviewHold review={{ ...DATA, checks: null }} />);
+    expect(screen.queryByText(/^Checks /)).toBeNull();
+    render(<ReviewHold review={DATA} />);
+    expect(screen.queryByText(/^Checks /)).toBeNull();
   });
 
   it("says so when git couldn't count the commits, and when no judge read the run", () => {

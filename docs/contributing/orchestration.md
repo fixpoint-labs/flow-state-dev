@@ -928,10 +928,11 @@ what the change removes, what it adds that a later reader would call debt (each 
 filed issue that pays it, unless permanent by design), what it leaves, and the net. The net
 is a sign-off line, so approving a spec approves its debt.
 
-**Docs are named at spec time and written at implementation.** `SPEC.md` → *What changes*
+**Docs are named at spec time and written at release.** `SPEC.md` → *What changes*
 names the reader-facing destinations that change, or states why there is no
-documentation impact. Implementation writes the prose against tested behavior (`docs-writer`,
-then `docs-editor`). An epic's docs line names the shared story and the child that
+documentation impact. Implementation keeps that line accurate and writes the changeset; the
+prose is written once per release by `/release-docs` against what shipped (`docs-writer`,
+then `docs-editor`), and CI blocks user-doc edits in normal PRs ([release-docs.md](release-docs.md)). An epic's docs line names the shared story and the child that
 publishes it. Worked examples live in the [issue](spec-template.md) and
 [epic](epic-spec-template.md) templates, not in another policy copy.
 

@@ -74,7 +74,7 @@ import { noteTaskAnswer } from "@flow-state-dev/orchestration/task-board";
 import { admitOwnTask, markAdmittedTask } from "./task-admission";
 import { anotherTurnWaitsOnItsPlan } from "./plan";
 import { noteTaskEndingRead, taskEndingReadsStateSchema } from "./task-ending-read";
-import { delegateAnswerMetadata } from "./delegate-answer";
+import { answerTextOf, delegateAnswerMetadata } from "./delegate-answer";
 
 /** A notice, as the entries take it. */
 export const taskNoticeSchema = z
@@ -141,16 +141,6 @@ export interface TaskSettledOptions {
   readonly onRouted?: BlockDefinition<any, any>;
 }
 
-/**
- * A completed task's answer, as a line the user reads: its output when that
- * is text (an agent worker's answer), or its `answer` (a coder's run, whose
- * output also carries its branch and commits). `undefined` when blank or absent.
- */
-export function answerTextOf(output: unknown): string | undefined {
-  const text = typeof output === "string" ? output : (output as { answer?: unknown } | null | undefined)?.answer;
-  return typeof text === "string" && text.trim() !== "" ? text : undefined;
-}
-
 /** What a conversation-result task's ending hands {@link TaskSettledOptions.onRouted}. */
 export const routedEndingSchema = z.object({
   taskId: z.string(),
@@ -197,7 +187,7 @@ function noteSeen(ctx: BlockContext, key: string) {
     (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
       ctx.session.atomicState(mutator as never),
     (state: Readonly<Record<string, unknown>>) => {
-      const seen = (state[TASK_NOTICES_STATE] ?? []) as string[];
+      const seen = state[TASK_NOTICES_STATE] as string[];
       if (seen.includes(key)) return { state: {}, result: false };
       return { state: { [TASK_NOTICES_STATE]: [...seen, key].slice(-MAX_NOTICE_KEYS) }, result: true };
     }
@@ -352,7 +342,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
    */
   const settleConversationResult = async (ctx: BlockContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<Settled> => {
     const key = noticeKey(notice);
-    const acted = ((ctx.session.state as Record<string, unknown>)[TASK_NOTICES_STATE] ?? []) as string[];
+    const acted = (ctx.session.state as Record<string, unknown>)[TASK_NOTICES_STATE] as string[];
     // Acted on already, by a run that stopped before clearing the marker.
     if (acted.includes(key)) {
       await ref.patchMetadata(row.id, clearNotice(notice));

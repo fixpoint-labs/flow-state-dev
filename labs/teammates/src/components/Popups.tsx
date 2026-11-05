@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
-import type { BoardTask, LabAdapter, TalkRow } from "../adapter";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import type { BoardTask, LabAdapter, TalkRow, WorkerRow } from "../adapter";
+import { harnessName } from "../lib/harness";
 import type { Look } from "../lib/looks";
 import { useWatch } from "../lib/use-watch";
 import { Avatar } from "./Avatar";
-import { ReviewHold } from "./flow-state/review-hold";
+import { ErrorBody } from "./flow-state/error";
+import { MarkdownText } from "./flow-state/message-response";
+import { ReviewHold, type ReviewAnswer } from "./flow-state/review-hold";
+import { Spend } from "./flow-state/spend";
+import { TaskActions, type TaskRerunOption } from "./flow-state/task-actions";
 import { SessionPopup, Steps } from "./SessionPopup";
 
 /** What a popup shows: a task one conversation filed, or one message a worker sent. */
@@ -31,6 +36,17 @@ export const taskLabel = (line: string, task: { harness?: string; model?: string
   return on === undefined ? line : `${line}, on ${on}`;
 };
 
+/**
+ * The coding workers a coding task can be re-run on: each one whose
+ * `harness:` differs from the harness of the worker the task was filed for.
+ * A task that isn't a coding task, or whose worker's harness isn't known, has none.
+ */
+function rerunTargets(task: Pick<BoardTask, "to">, coders: readonly WorkerRow[]): WorkerRow[] {
+  const own = coders.find((w) => w.id === task.to)?.harness;
+  if (own === undefined) return [];
+  return coders.filter((w) => w.takesTasks && w.harness !== undefined && w.harness !== own);
+}
+
 /** How a sent message stands. */
 export type AnswerState = "working" | "replied" | "no answer";
 
@@ -46,34 +62,44 @@ export const answerIn = (talk: readonly TalkRow[], messageId: string): AnswerSta
 };
 
 /** The open popup, live: it reads what it shows by itself, so it stays current while the work goes on. */
-export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, onClose, onMissing }: {
+export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, onMissing }: {
   adapter: LabAdapter;
   popup: Popup;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
+  /** The roster's coding workers: a failed or cancelled coding task can be re-run on another's harness. */
+  coders: readonly WorkerRow[];
   onClose: () => void;
   /** A task popup's conversation holds no such task, once its tasks are read: a link to a task that is gone. */
   onMissing?: () => void;
 }) {
   return popup.kind === "task" ? (
     // Keyed by conversation: a switch never judges the task against the last conversation's rows.
-    <TaskPopup key={popup.sessionId} adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} onClose={onClose} onMissing={onMissing} />
+    <TaskPopup key={popup.sessionId} adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} coders={coders} onClose={onClose} onMissing={onMissing} />
   ) : (
     <MessagePopup adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} onClose={onClose} />
   );
 }
 
-/** A task's run session and its result. */
-function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, onClose, onMissing }: {
+/**
+ * A task's run session and its result (or, done with none written, a line
+ * saying so), with its action row: Cancel and Steer
+ * while it is open (the popup has no composer, so Steer is its own box),
+ * Release while held, Retry and a Re-run per other harness once it failed or
+ * was cancelled. The board decides each; the row shows its words.
+ */
+function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, onMissing }: {
   adapter: LabAdapter;
   popup: Extract<Popup, { kind: "task" }>;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
+  coders: readonly WorkerRow[];
   onClose: () => void;
   onMissing?: () => void;
 }) {
+  const actions = useMemo(() => adapter.taskActions(popup.sessionId), [adapter, popup.sessionId]);
   const tasks = useWatch(adapter.watchTasks, popup.sessionId);
   const task = tasks?.find((t) => t.id === popup.taskId);
   const missing = tasks !== undefined && task === undefined;
@@ -95,29 +121,99 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, onClose, onMissin
     );
   // A coding task says what it starts on from the moment it is filed, before its run reports anything.
   const starting = task?.harness !== undefined && isCoding(task.to) ? `Starting on ${task.harness}…` : task?.runSessionId ? "Starting…" : "Not started yet.";
+  // A coding task's re-runs, one per other harness on the roster.
+  const rerun: TaskRerunOption[] =
+    task === undefined || !isCoding(task.to)
+      ? []
+      : rerunTargets(task, coders).map((worker) => ({ label: harnessName(worker.harness!), run: () => actions.rerun(task, worker.id) }));
+  // A verdict you gave here stays in the feed, after the steps it was given over.
+  // Each is kept with the task and run it was given on: Back can move this popup to another task, and a run's steps can be read again.
+  const [given, setGiven] = useState<readonly Decision[]>([]);
+  const run = `${task?.id}:${task?.runSessionId}`;
+  const decided = (answer: ReviewAnswer) => setGiven((all) => [...all, { id: `decision-${all.length}`, run, after: steps.length, text: decisionLine(answer) }]);
+  const decisions = placeDecisions(given.filter((d) => d.run === run), steps.length);
+  const waiting = task?.waiting?.kind;
+  // What waits on you is held below the feed, which opens on the latest step, so it can't scroll out of view.
+  const pinned =
+    task && waiting === "review" ? (
+      <TaskReview adapter={adapter} sessionId={popup.sessionId} task={task} onAnswered={decided} />
+    ) : task && waiting === "question" ? (
+      <TaskQuestion adapter={adapter} sessionId={popup.sessionId} task={task} />
+    ) : null;
+  const status = waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : task?.status;
   return (
-    <SessionPopup label={line} title={title} status={task?.status} onClose={onClose}>
-      {/* The result leads; how the run got there is below it. */}
-      {task?.waiting?.kind === "review" ? <TaskReview adapter={adapter} sessionId={popup.sessionId} task={task} /> : null}
-      {task?.waiting?.kind === "question" ? <TaskQuestion adapter={adapter} sessionId={popup.sessionId} task={task} /> : null}
-      {task?.result ? (
-        <section aria-label="Result" data-step="result" className="rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-2 text-sm whitespace-pre-wrap">
-          {task.result}
+    <SessionPopup label={line} title={title} status={status} onClose={onClose} pinned={pinned}>
+      {task === undefined ? null : <TaskActions key={task.id} id={task.id} status={task.boardStatus} actions={actions} steer rerun={rerun} />}
+      {/* What a coding task's runs spent, in and out apart, with the vendor's charge when it reported one. */}
+      {task?.spend && isCoding(task.to) ? (
+        <div data-task-spend>
+          <Spend spend={task.spend} split className="text-[11px]" />
+        </div>
+      ) : null}
+      {/* Why it failed, as an error. How the run got there is below. */}
+      {task?.error ? (
+        <section aria-label="Error" role="alert" data-step="error" className="flex flex-col gap-1 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <ErrorBody message={task.error} />
         </section>
       ) : null}
-      <Steps steps={steps} nameOf={nameOf} empty={starting} />
+      {steps.length === 0 ? <Steps steps={steps} nameOf={nameOf} empty={starting} /> : null}
+      {[...decisions, undefined].map((decision, i) => {
+        const shown = steps.slice(decisions[i - 1]?.after ?? 0, decision?.after);
+        return (
+          <Fragment key={decision?.id ?? "latest"}>
+            {shown.length === 0 ? null : <Steps steps={shown} nameOf={nameOf} empty="" />}
+            {decision === undefined ? null : (
+              <p data-step="decision" className="font-mono text-xs whitespace-pre-wrap text-muted-foreground">
+                {decision.text}
+              </p>
+            )}
+          </Fragment>
+        );
+      })}
+      {/* The run's result is its last entry. */}
+      {task?.result ? (
+        <section aria-label="Result" data-step="result" className="rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-2 text-sm">
+          <MarkdownText text={task.result} />
+        </section>
+      ) : task?.status === "done" ? (
+        // Done with nothing written is not a plain success: say so, where the result would be.
+        <section aria-label="No result" data-step="no-result" className="rounded-md border border-dashed border-warning/60 bg-warning/10 px-3 py-2 text-sm">
+          {isCoding(task.to) ? "The coding task" : nameOf(task.to)} finished without writing a result. Its steps below show what it did.
+        </section>
+      ) : null}
     </SessionPopup>
   );
 }
 
+/** A review verdict given in this popup on one task's run (`run`), placed after the steps it was given over (`after` of them). */
+type Decision = { id: string; run: string; after: number; text: string };
+
+/** Each verdict no earlier than the one before it and no later than the steps there are now, so no step is drawn twice. */
+const placeDecisions = (decisions: readonly Decision[], count: number): Decision[] => {
+  let at = 0;
+  return decisions.map((d) => ({ ...d, after: (at = Math.min(count, Math.max(at, d.after))) }));
+};
+
+/** "Accepted", or "Asked for changes: …" with the words sent. */
+const decisionLine = (answer: ReviewAnswer) => (answer.verdict === "accepted" ? "Accepted" : `Asked for changes: ${answer.words}`);
+
 /** A coding run's review, with the registry's card: its commits and the judge's verdict, and Accept or Ask for changes. */
-function TaskReview({ adapter, sessionId, task }: { adapter: LabAdapter; sessionId: string; task: BoardTask }) {
+function TaskReview({ adapter, sessionId, task, onAnswered }: {
+  adapter: LabAdapter;
+  sessionId: string;
+  task: BoardTask;
+  /** The answer went through. */
+  onAnswered: (answer: ReviewAnswer) => void;
+}) {
   const review = useWatch(adapter.watchReview, task.runSessionId);
   return (
     <ReviewHold
       review={review}
       prompt={review === undefined ? task.waiting?.prompt : undefined}
-      answer={(answer) => adapter.answerTask(sessionId, task.id, answer)}
+      answer={async (answer) => {
+        await adapter.answerTask(sessionId, task.id, answer);
+        onAnswered(answer);
+      }}
       unanswerable={task.waiting?.unanswerable ?? null}
     />
   );
@@ -146,7 +242,7 @@ function TaskQuestion({ adapter, sessionId, task }: { adapter: LabAdapter; sessi
   return (
     <section aria-label="Waiting on you" data-step="question" className="rounded-md border border-warning/60 bg-warning/10 px-3 py-2 text-sm">
       <div className="font-semibold">Waiting on you</div>
-      <p className="mt-0.5 whitespace-pre-wrap">{task.waiting?.prompt}</p>
+      {task.waiting?.prompt ? <MarkdownText className="mt-0.5" text={task.waiting.prompt} /> : null}
       {unanswerable !== null ? (
         <p className="mt-1.5 text-xs text-muted-foreground">{unanswerable}</p>
       ) : (

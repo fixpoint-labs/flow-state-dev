@@ -69,7 +69,7 @@ const EMPTY: PanelRow<never>[] = [];
 
 
 /**
- * Read a board, and read it again whenever it changes (FIX-2429).
+ * Read a board, and read it again whenever it changes.
  *
  * The list subscribes its session's topic narrowed to the board, through the
  * client's `subscribe`, so a task settled in any session, on any process,

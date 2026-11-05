@@ -84,6 +84,9 @@ export function partitionedSkillsCollection(
       const rows = await inner.list(`${segment}/${within ?? ""}`);
       return rows.filter((ref) => ref.path.startsWith(inside));
     },
+    // The partition's rows only, like `list`.
+    findBy: async (index, value) =>
+      (await inner.findBy(index, value)).filter((ref) => ref.path.startsWith(inside)),
     count: async () => (await view.list()).length,
   };
   byPartition.set(partition, view);
@@ -117,6 +120,7 @@ function noPartitionView(inner: ResourceCollectionRef, key: string): ResourceCol
     upsert: refuse,
     delete: refuse,
     list: async () => [],
+    findBy: async () => [],
     count: async () => 0,
   } as ResourceCollectionRef;
 }

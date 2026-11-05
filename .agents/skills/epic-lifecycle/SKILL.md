@@ -820,16 +820,10 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   `analysis: <comment link> [N filed]` and surface the verdict in the wrap report. **It never
   gates the wrap and never reopens the epic.**
 
-- **Polish the docs.** Each issue edited the docs in isolation, so the corpus accretes the same
-  way code does — the same concept re-explained across pages, guides swollen into walls of text,
-  navigation that stopped cohering. At epic wrap, once the batch's impl PRs have merged, dispatch
-  **one bounded sub-agent** (worktree, like `epic-agent`) to run **`polish-docs`** scoped to
-  the docs the batch touched: it consolidates, streamlines, and re-arranges for readability, then
-  opens a **draft** docs-cleanup PR against the default branch. Keep it **draft** — bold
-  rearrangement is exactly what a human should eyeball before merge. The coordinator holds only the PR
-  handle and surfaces it; it never reads or applies the edits itself. Separate from the "lessons"
-  PR (grounding) and the retained epic spec. Skip only if the epic touched no docs;
-  record `docs_polish: skipped: <why>` so wrap does not wait for a nonexistent PR.
+- **Docs polish is skipped at wrap.** User docs are written once per release by `/release-docs`,
+  which runs `polish-docs` over the release's pages ([release-docs.md](../../../docs/contributing/release-docs.md));
+  the epic's issues didn't edit them. Record `docs_polish: skipped: user docs are written at release`.
+  Contributor docs the epic changed were changed in its PRs.
 
 - **Wrap record.** Derive final status from Linear and implementation PRs; report the
   retained `SPEC.md` and implementation outcomes. Dispatch `epic-agent` only if findings

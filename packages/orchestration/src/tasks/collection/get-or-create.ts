@@ -28,7 +28,6 @@ import { createStateBackedTaskCollection } from "./state-backed";
 import { createResourceBackedTaskCollection } from "./resource-backed";
 import { isDefinedTaskCollection } from "./define-task-collection";
 import { partitionedResourceCollection } from "./partition";
-import { recordTaskIdPartition, resolveTaskIdIndex } from "./id-index";
 import { createDelivery } from "../notice/delivery";
 import type { TaskCapOptions } from "./task-caps";
 import type { FilingStamp } from "./internal";
@@ -166,15 +165,11 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   // host sets a deadline for a person (the epic's D3): server-set.
   const filing = filingStampOf(options.ctx);
 
-  // Whose board a change is on (FIX-2429): the session that filed the row,
-  // whose view shows the board. A row with no filer (a board that hands nothing
-  // out, or a row filed before `Task.filer`) uses the ledger's legacy filer
-  // where it declares one, else the running session.
+  // A board notice for every committed write of a row, lifecycle change or not,
+  // to the session that filed it (whose view shows the board); server-written
+  // (BP-031). No `Task.filer`: the ledger's legacy filer, else the running session.
   const legacyFiler = legacyFilerOf(options);
   const runningSession = options.ctx.session?.identity?.id;
-  // A board notice for every committed write of a row, lifecycle change or not
-  // (a run's spend, a cleared marker): it reaches every open view of the filer's
-  // board, from whichever session and process wrote. Server-written (BP-031).
   const onWrite = (task: Task): void => {
     const filer = task.filer?.sessionId ?? legacyFiler?.(task) ?? runningSession;
     if (filer !== undefined) publishBoardChange(options.ctx, { sessionId: filer, board: options.collectionId });
@@ -236,14 +231,6 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   // The ledger's filed-task payer, bound to this context (FIX-2080 D2).
   const filed = isDefinedTaskCollection(declared) ? declared.__taskCollection.cascadeFiled : undefined;
   const ctx = options.ctx;
-  // A partitioned ledger's add records which partition holds the id
-  // (FIX-2160), through the index the running flow installs beside it.
-  const idIndexOf = isDefinedTaskCollection(declared) ? declared.__taskCollection.idIndex : undefined;
-  const ledgerId = isDefinedTaskCollection(declared) ? declared.__taskCollection.id : options.collectionId;
-  const recordTaskId =
-    partition !== undefined && idIndexOf !== undefined
-      ? (taskId: string) => recordTaskIdPartition(resolveTaskIdIndex(ctx, ledgerId), taskId, partition)
-      : undefined;
   // A ledger a board hands rows out from delivers each ending to its filer
   // (FIX-2078), bound to this request; and stamps the filer on each row it files.
   const declaredDelivery = isDefinedTaskCollection(declared) ? declared.__taskCollection.delivery : undefined;
@@ -276,7 +263,6 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     filing,
     immutableAssignee: options.immutableAssignee,
     ...(partition !== undefined ? { partition } : {}),
-    ...(recordTaskId !== undefined ? { recordTaskId } : {}),
     ...(recordEnding !== undefined ? { recordEnding } : {}),
     ...(settings !== undefined ? { settings } : {}),
     ...(filed !== undefined ? { cascadeFiled: { owes: filed.owes, pay: (row: Task) => filed.pay(ctx, row) } } : {}),

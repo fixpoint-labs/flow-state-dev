@@ -59,6 +59,7 @@ const SHIFT_MANAGER_WORDS: Record<string, string> = {
   worker: "the Tasks screen's group-by key (State / Worker / Stream); multi-worker-collab also names a worker flow `worker`",
   "shift-coordinator":
     "the worker id the Shift Coordinator screen finds its worker by; DevTeam declares an org worker under it so it has one",
+  em: "the HTML emphasis element the registry copy `message-response.tsx` keeps on a one-line text; DevTeam also names a worker `eng.em`",
 };
 
 /** Quoted string literals in a file that equal a tree name. */
@@ -168,13 +169,16 @@ describe("V8", () => {
     );
   });
 
-  it("makes no write from the task screen but the abort and the one send path (ER-15, D2)", () => {
+  it("makes no write from the task screen but the abort, the one send path and the board's own task actions (ER-15, D2)", () => {
     const taskFiles = ["lib/run.ts", "lib/task.tsx", "surfaces/TaskFrame.tsx", "surfaces/TaskSession.tsx", "surfaces/TaskInspector.tsx"];
     const WRITES = /\.(send|resume|answer|retry|continue|delete|updateMetadata)\(|\b(postLine|createCollectionItem|updateCollectionItem|deleteCollectionItem|createSession|retryRequest|continueRequest)\b|method:\s*"(POST|PUT|PATCH|DELETE)"/;
     const writes = (text: string) =>
       text.split("\n").filter((line) => WRITES.test(line) || (/\.request\([^)]*\)\.abort\(/.test(line) && !/await actions\.request\(run\.requestId\)\.abort\(\)/.test(line)));
     for (const file of taskFiles) expect(writes(readFileSync(join(src, file), "utf8")), file).toEqual([]);
     expect(readFileSync(join(src, "lib/run.ts"), "utf8")).toContain("await actions.request(run.requestId).abort()");
+    // The header's action row changes the task only through the board's own
+    // actions, the reader's `taskActions`, handed to the registry's row whole.
+    expect(readFileSync(join(src, "surfaces/TaskFrame.tsx"), "utf8")).toContain("reader.taskActions(");
     // Planted: a second write is caught.
     expect(writes(`await client.flow(f).send("run", {});`)).toHaveLength(1);
     expect(writes(`await client.flow(f).request(id).abort();`)).toHaveLength(1);

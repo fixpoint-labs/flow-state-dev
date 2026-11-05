@@ -44,7 +44,7 @@ On the Node host, `refresh` runs as soon as the change is saved: the server send
 | Topic | What changes it covers |
 |-------|------------------------|
 | `topic.session(id)` | One session: its requests, their items, runs started under it, and changes to its task boards. |
-| `topic.user()` | The signed-in user's own scope. |
+| `topic.user()` | The signed-in user's own scope, and their sessions: a `"run"` notice when one is created, titled or deleted, or a request in one starts or ends. |
 | `topic.org()` | The signed-in user's organization. |
 
 Each takes `{ resource }` to narrow it to one resource, such as `topic.session(id, { resource: "tasks" })`. User and org topics name no id. The server uses the caller it signed in, so a screen can only hear its own user and organization.
@@ -109,7 +109,7 @@ You don't write different code for either. The client asks the server what it su
 
 ## One process, several processes
 
-Each server keeps a *change bus*, the `bus` slot of its stores profile (the stores you hand `createFlowState`; see [Store adapters](/docs/persistence/overview#store-adapters)). A bus that *crosses processes* hands a change made in one server process to every other one. The default bus lives in memory and reaches only its own process, so it doesn't cross processes. On it, a subscription with `pollIntervalMs` keeps reading on its timer between notices, even when you run a single process. On a bus that crosses processes, the timer stays off while the socket is up.
+Each server keeps a *change bus*, the `bus` slot of its stores profile (the stores you hand `createFlowState`; see [Store adapters](/docs/persistence/overview#store-adapters)). A bus that *crosses processes* hands a change made in one server process to every other one. The default bus lives in memory and is for an app that runs as one process. Every change is made where the socket is, so it counts as crossing, and the `pollIntervalMs` timer stays off while the socket is up. If your app writes its stores from several processes, use a bus that crosses, such as the one Postgres stores fill by default. On the in-memory bus, another process's changes reach an open view only at its next read. That covers several servers on one SQLite file, or `fsdev run` writing the file a running `fsdev dev` serves.
 
 When several processes serve one address, give them all the same signing key, so a connection that lands on any of them is accepted:
 

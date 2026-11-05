@@ -1,20 +1,22 @@
 /**
  * The task level (S1, BR-1 to BR-4): the route `/tasks/:boardRef/:taskId/:tab`
- * inside FIX-1662's frame. A header from the row, the one working control
- * (Interrupt), the controls with no shipped operation disabled with their gap
- * line, and four tabs: Session (the run the row names, live), Diff and Checks
- * (named empty states), and Brief (the row as stored). Above the composer, a
- * line says what the worker is doing.
+ * inside FIX-1662's frame. A header from the row: Interrupt, the task's
+ * actions by its board status (the registry's `task-actions` row: Cancel,
+ * Release, Retry), a failed task's error, the controls with no shipped
+ * operation disabled with their gap line, and four tabs: Session (the run the
+ * row names, live), Diff and Checks (named empty states), and Brief (the row
+ * as stored). Above the composer, a line says what the worker is doing.
  *
  * What the screen reads is held by {@link TaskProvider}; this file only draws
- * it. The screen writes twice: the abort behind Interrupt, and the composer's
- * message, which goes through the one send path (`lib/send.ts`).
+ * it. The screen writes three ways: the abort behind Interrupt, the
+ * composer's message, which goes through the one send path (`lib/send.ts`),
+ * and the task actions, the board's own through the reader's `taskActions`.
  *
  * The keyboard stop is deliberate: Esc twice within the window, or Cmd/Ctrl+.
  * One Esc only dismisses, and an Esc in the composer is the composer's.
  */
 import { interruptChordLabel, useInterruptKeys } from "@flow-state-dev/react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { EmptyState, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { columnFor } from "../lib/columns";
 import { asksOfTask, doorOf, doorTakesTaskOf, rosterOf, workerFor, workerLabel, waited } from "../lib/derive";
@@ -22,13 +24,15 @@ import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
 import { RouteLink } from "../components/RouteLink";
 import { sendTurn } from "../lib/send";
-import { useTask } from "../lib/task";
+import { holderSessionOf, isConversationBoard, useTask } from "../lib/task";
 import { distinctTitle, legacyTaskDraftKey, taskDraftKey } from "../lib/tasks";
 import { TurnComposer } from "../components/TurnComposer";
 import type { Gaps } from "../gaps";
 import { TaskSession } from "./TaskSession";
 import { cn } from "../lib/utils";
 import { STALE_CLASS } from "../components/flow-state/connection-banner";
+import { ErrorBody } from "../components/flow-state/error";
+import { TaskActions } from "../components/flow-state/task-actions";
 
 export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
   const task = useTask();
@@ -85,6 +89,11 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
             <SectionFailure what="This task's board" failure={task.rowFailure} onRetry={task.retryRow} testId="task-board-failure" />
           </div>
         )}
+        {row?.status === "errored" && row.error !== null ? (
+          <div role="alert" className="mt-2 flex flex-col gap-1 border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive" data-testid="task-error">
+            <ErrorBody message={row.error} />
+          </div>
+        ) : null}
         <Actions gaps={gaps} />
       </header>
       <Tabs label="Task" tabs={TASK_TABS} selected={tab} onSelect={(next) => /* in place: the task's tabs */ navigate({ level: "task", boardRef, taskId, tab: next })} />
@@ -180,11 +189,20 @@ function Activity({ worker, armed }: { worker: string | null; armed: boolean }) 
   );
 }
 
-/** Interrupt, and the controls with no shipped operation (D2). */
+/** Interrupt, the task's actions, and the controls with no shipped operation (D2). */
 function Actions({ gaps }: { gaps: Gaps }) {
   const task = useTask();
+  const { reader, snapshot, refresh } = useLab();
   const running = task.run.kind === "open" && task.status === "in_progress";
   const pending = task.interrupt.kind === "pending";
+  // The board's actions run on the conversation that holds it, through the
+  // flow that conversation's session names as its owner. No owner, no actions.
+  const holder = holderSessionOf(task.boardRef);
+  const flowId =
+    snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined || !isConversationBoard(task.boardRef)
+      ? undefined
+      : (snapshot.sessions.find((session) => session.id === holder)?.flowId ?? undefined);
+  const board = useMemo(() => (flowId === undefined ? undefined : reader.taskActions({ id: holder, flowId })), [reader, holder, flowId]);
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2 pb-2" data-testid="task-actions">
       <button
@@ -202,6 +220,22 @@ function Actions({ gaps }: { gaps: Gaps }) {
           {task.interrupt.message}
         </span>
       ) : null}
+      {board === undefined || task.row === undefined ? null : (
+        // No Steer box: the composer below reaches the run. After each press the
+        // row is read again, so the buttons follow the board's new status (and a
+        // released or retried row is followed until a run claims it); the Lab is
+        // read too, for the Tasks list and the sidebar's counts, which a cancel's
+        // dependents also change.
+        <TaskActions
+          id={task.taskId}
+          status={task.row.status}
+          actions={board}
+          onSettled={() => {
+            task.retryRow();
+            void refresh();
+          }}
+        />
+      )}
       <span className="ml-auto flex items-center gap-2">
         {["Hand off", "Reassign", "Open PR"].map((label) => (
           <button

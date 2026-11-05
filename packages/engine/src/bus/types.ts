@@ -8,10 +8,14 @@
  * Notices are at most once: no replay, no acks, nothing stored. A listener
  * that may have missed some reads again.
  *
- * The bus is the `bus` slot of a stores profile. The in-memory bus is the
- * default; an adapter that carries notices between processes (the Postgres
- * bus) says so through `crossesProcesses`, and only that turns the session
- * stream's once-a-second read off.
+ * The bus is the `bus` slot of a stores profile. `crossesProcesses` says a
+ * change made in any process that serves this app reaches this subscriber;
+ * while it is `true`, the session stream's once-a-second read is off and a
+ * client stops its fallback poll. The in-memory bus, the default, is for an
+ * app that runs as one process, and says `true`. An app that writes its stores
+ * from several processes uses a bus that carries notices between them (the
+ * Postgres bus, which Postgres stores fill by default), which says `true` only
+ * while it does.
  */
 import type { ChangeKind, TopicScope } from "@flow-state-dev/core";
 
@@ -67,9 +71,10 @@ export interface ChangeBus {
    */
   subscribe(topic: BusTopic, listener: ChangeListener): () => void;
   /**
-   * Whether a notice published in another process reaches this process's
-   * subscribers right now. May change at runtime; each change is delivered
-   * through {@link ChangeBus.onCrossingChange}.
+   * Whether a change made in any process that serves this app reaches this
+   * process's subscribers right now. The in-memory bus meets that because the
+   * app it serves runs as one process. May change at runtime; each change is
+   * delivered through {@link ChangeBus.onCrossingChange}.
    */
   readonly crossesProcesses: boolean;
   /**

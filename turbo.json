@@ -22,7 +22,7 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "env": ["CI", "REDIS_URL"]
+      "env": ["CI", "REDIS_URL", "FSD_TEST_POSTGRES_URL"]
     },
     "dev": {
       "cache": false,

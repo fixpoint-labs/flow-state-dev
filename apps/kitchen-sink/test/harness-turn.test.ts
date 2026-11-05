@@ -22,6 +22,7 @@ import {
   PREDATES_REASON,
   turnNotice,
   turnNumbers,
+  turnWaitingOnApproval,
   UNKNOWN_CONVERSATION,
   type PlanPanelInput,
 } from "@/lib/harness-turn";
@@ -60,6 +61,29 @@ describe("turnNotice", () => {
       conversation: "c2",
       previous: "c1",
     });
+  });
+});
+
+// The page holds a message back while a turn waits on an approval, because
+// the session flow would refuse it. So the read must match the flow's
+// refusal exactly, and let go the moment the turn is stopped.
+describe("turnWaitingOnApproval", () => {
+  const waiting = { ...blank, waitsOnApproval: true };
+  const stopItem = (requestId: string) => ({ requestId, type: "status", detail: { code: "system.request_aborted" } });
+
+  it("names the turn the flow would refuse a new one for", () => {
+    expect(turnWaitingOnApproval({ r1: blank, r2: waiting }, [])).toBe("r2");
+  });
+
+  it("names none once the waiting turn's record ended, as the flow reads it", () => {
+    expect(turnWaitingOnApproval({ r2: { ...waiting, endedAt: 5 } }, [])).toBeNull();
+    expect(turnWaitingOnApproval({ r1: blank }, [])).toBeNull();
+    expect(turnWaitingOnApproval(null, [])).toBeNull();
+  });
+
+  it("lets go of a turn the items show stopped, before its ended record is read", () => {
+    expect(turnWaitingOnApproval({ r2: waiting }, [stopItem("r2")])).toBeNull();
+    expect(turnWaitingOnApproval({ r2: waiting }, [stopItem("r1")])).toBe("r2");
   });
 });
 

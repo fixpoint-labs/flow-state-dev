@@ -401,10 +401,12 @@ Pattern factories have failure modes that only emerge from full `runAction` comp
 
 Skip this step if the pattern is a thin sequencer (e.g., a static `.step` chain with no loops). Authoring pattern: synthetic fixture flow under `src/scenarios/fixtures/` + scenario file under `src/scenarios/`. Use `unmockedGeneratorPolicy: "error"` so missing mocks surface loudly. See `apps/docs/docs/testing/flow-integration-tests.md` and `packages/integration-tests/README.md`.
 
-### Step 8: Update Documentation
+### Step 8: Record the docs impact
 
-1. Add a section to `packages/patterns/README.md` for the new pattern
-2. If it demonstrates a novel framework capability, add a page under `apps/docs/docs/patterns/`
+Don't edit `packages/patterns/README.md` or `apps/docs/`: user docs are written at release by
+`/release-docs`, and CI blocks them here. Write the changeset (what a user can now build with the
+pattern) and end it with a `Docs:` line: the `packages/patterns/README.md` section, plus a page under
+`apps/docs/docs/patterns/` if it demonstrates a novel framework capability.
 
 ### Step 9: Verify
 

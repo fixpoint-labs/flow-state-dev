@@ -64,43 +64,37 @@ function isConversationTaskChange(item: OutputItem): boolean {
 }
 
 /**
- * Reads on mount, when the Lab is read again, and on each board notice
- * (FIX-2429). Wherever push can miss a change it reads on a timer, only while a
+ * Reads on mount, when the Lab is read again, and on each board notice.
+ * Wherever push can miss a change it reads on a timer, only while a
  * task could be moving. A failed read leaves the last one, or the feed's
- * record, and keeps the timer. A read that shows a task moved reloads the Lab,
- * so what the snapshot counts agrees with the card.
+ * record, and keeps the timer. The snapshot hears the same moves on its own
+ * (`lab-data.tsx`), so what it counts agrees with the card.
  */
 function LiveBoard({ flow, sessionId, boardRef, children }: { flow: string; sessionId: string; boardRef: string; children: ReactNode }) {
-  const { client, snapshot, refresh } = useLab();
+  const { client, snapshot } = useLab();
   const readAt = snapshot !== undefined && "readAt" in snapshot ? snapshot.readAt : undefined;
   const [read, setRead] = useState<{ sessionId: string; tasks: ReadonlyMap<string, ConversationTask> } | undefined>(undefined);
   // Whether the last read left a task that can still move; before any read lands, assume one can.
   const [moving, setMoving] = useState(true);
-  // Each task and where it stood at the last read.
-  const standing = useRef<string | undefined>(undefined);
   // Only the latest read started may land.
   const latest = useRef(0);
   useEffect(() => {
     setMoving(true);
-    standing.current = undefined;
   }, [flow, sessionId]);
 
   // `signal` aborts once the read's subscription or effect is gone: a read that lands after the
-  // board unmounted sets nothing and reloads nothing.
+  // board unmounted sets nothing.
   const readBoard = useCallback(async (_notice?: unknown, signal?: AbortSignal) => {
     const mine = ++latest.current;
     try {
       const tasks = await readConversationTasks(client, flow, sessionId);
       if (mine !== latest.current || signal?.aborted === true) return;
       setRead({ sessionId, tasks: new Map(tasks.map((task) => [task.id, task])) });
-      const now = tasks.map((task) => `${task.id}:${task.status}`).join(",");
-      if (standing.current !== undefined && standing.current !== now) void refresh();
-      standing.current = now;
       setMoving(tasks.some(isOpen));
     } catch {
       // The last read stands; the timer, if any, stays on.
     }
-  }, [client, refresh, flow, sessionId]);
+  }, [client, flow, sessionId]);
 
   useEffect(() => {
     const ended = new AbortController();

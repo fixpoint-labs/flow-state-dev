@@ -6,7 +6,7 @@
  *
  * | Function            | Bound to                                                                     |
  * |---------------------|------------------------------------------------------------------------------|
- * | `listWorkers`       | the workforce client's `roster()`                                            |
+ * | `watchWorkers`      | the workforce client's `watchRoster()`: every hire, edit and fire, anywhere   |
  * | `openConversation`  | `ensureWorkerSession({ worker })`: the worker's default conversation         |
  * | `send`              | the worker's door, `respond`, streamed, so its answer shows as it is written  |
  * | `watchConversation` | the session's items, from its snapshot and then its stream (`sessionFeed`), |
@@ -23,18 +23,20 @@
  * | `editInstructions`  | the workforce client's `edit`, on one of the user's own workers               |
  * | `fire`              | the workforce client's `fire`, on one of the user's own workers               |
  * | `watchTasks`        | the board's rows, as the conversation's stream carries each one (`task-change`) |
- * |                     | and the board's `listTasks` read, on each notice of the conversation's board   |
- * |                     | and `taskSpendView` on a row, for the harness and model its run reported      |
+ * |                     | and the board's `listTasks` read (`taskActionName`), on each notice of the     |
+ * |                     | conversation's board                                                          |
  * |                     | and each linked run's session, where the run writes its row (its holds)      |
  * |                     | and `taskRowView` with the Inbox's holds (`inboxItems`), for what it waits on |
- * |                     | you for                                                                      |
+ * |                     | you for, and what its runs spent (the harness and model they reported)       |
  * | `answerTask`        | the Inbox client's `answerOne`, on the task's open question or review         |
+ * | `taskActions`       | the Inbox client's `board(at)` on the conversation that filed the task, its   |
+ * |                     | `"tasks"` board: cancel, steer, release, retry, and `refile` for a re-run      |
  * | `watchReview`       | the run's review stop, read by harness-manager's browser `reviewDetail`        |
  * | `watchRun`          | the items of the session the task's row names as its run, each tool call      |
  * |                     | named by the UI registry's `tool-naming` (`components/flow-state/`)           |
  * | `watchExchange`     | the receiving worker's conversation: the turn that read one message          |
  *
- * `watchTalk` and `watchTasks`' board read still read on a clock (`poll`); every other watch reads on a change.
+ * `watchTalk` still reads on a clock (`poll`); every other watch reads on a change.
  *
  * A received message is drawn from its own item (`workforce:received`), which
  * carries its message id, so the pending line joins the log to the
@@ -56,6 +58,7 @@ import {
 import { isSuspensionWait, type OutputItem } from "@flow-state-dev/core/items";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
+  answerTextOf,
   createWorkforceClient,
   delegateAnswerOf,
   RECEIVED_MESSAGE_COMPONENT,
@@ -65,8 +68,19 @@ import {
   type RosterEntry,
   type WorkforceClient,
 } from "@flow-state-dev/workforce/browser";
-import { isTerminalStatus, parseNotice, taskSpendView, taskSpendViewSchema } from "@flow-state-dev/orchestration/tasks";
-import { createInboxClient, inboxItems, taskRowView, type InboxAnswer, type InboxHold, type InboxRow } from "@flow-state-dev/orchestration/inbox";
+import { isTerminalStatus, parseNotice, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
+import {
+  createInboxClient,
+  inboxItems,
+  taskActionName,
+  taskRowView,
+  type InboxAnswer,
+  type InboxHold,
+  type InboxRow,
+  type RefileOverrides,
+  type RefileRow,
+  type TaskRowView,
+} from "@flow-state-dev/orchestration/inbox";
 import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
@@ -82,6 +96,7 @@ import {
 import { harnessName } from "./lib/harness";
 import { sessionFeeds, type SessionFeed } from "./lib/session-feed";
 import { stableList } from "./lib/stable";
+import type { HarnessReadinessChipRow } from "./components/flow-state/harness-readiness";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
@@ -123,14 +138,32 @@ export interface BoardTask {
   title: string;
   /** `cancelled` is its own ending: a task someone withdrew did not fail. */
   status: "running" | "done" | "failed" | "cancelled";
-  /** What the run reported when it ended, or why it failed or was cancelled. */
+  /**
+   * The row's own board status (`pending`, `held`, `in_progress`, `completed`,
+   * `errored`, `cancelled`), which `status` folds for the screen. The task's
+   * actions follow this one, since the board decides by it.
+   */
+  boardStatus: string;
+  /** What the run reported when it completed: a teammate's text answer, or a coding run's `answer`. Absent when blank. */
   result?: string;
+  /** Why it failed, or the reason it was cancelled with, when the row says one. */
+  error?: string;
+  /** What the task is to do: its goal as filed. A re-run files it again. */
+  goal: string;
+  /** The brief it was filed with beside its goal, when it has one. */
+  context?: string;
+  /** Its labels, as filed. */
+  labels?: string[];
+  /** Its priority, as filed. */
+  priority?: number;
   /** The session its run works in, once it started. */
   runSessionId?: string;
   /** For a coding task, the harness it runs on: the one its run reported, else its worker's `harness:`. */
   harness?: string;
   /** The model its run reported, when it reported one; never guessed. */
   model?: string;
+  /** What its runs spent, as orchestration's task-row view folds it (`taskRowView`); absent before any ran. */
+  spend?: TaskSpendView;
   /** What it waits on you for, while something does: its oldest open hold. */
   waiting?: TaskWaiting;
 }
@@ -148,6 +181,28 @@ export interface TaskWaiting {
 
 /** A coding run's review: its branch, commits and the judge's verdict. */
 export type { ReviewDetail };
+
+/**
+ * The board's actions on the tasks one conversation filed, each resolving on
+ * the board's yes and rejecting with its own words on a refusal. Shaped as the
+ * registry's `task-actions` row takes them, plus `rerun`.
+ */
+export interface TaskActions {
+  /** Cancel a task. Resolves to the ids of the waiting tasks the board cancelled with it. */
+  cancel(taskId: string): Promise<string[]>;
+  /** Send words to an open task's run: they join its brief. */
+  steer(taskId: string, message: string): Promise<void>;
+  /** Release a held task: it goes back to pending. */
+  release(taskId: string): Promise<void>;
+  /** Run a failed or cancelled task again, as the same task. */
+  retry(taskId: string): Promise<void>;
+  /**
+   * File `task` again as a new task on `worker`, its brief kept and a line
+   * naming the task it re-runs added ({@link rerunOverrides}). The old task
+   * stays as it was. Resolves to the new task's id.
+   */
+  rerun(task: BoardTask, worker: string): Promise<string>;
+}
 
 /** Your answer to what a task waits on: the words to a question, or a review's verdict. */
 export type TaskAnswer = { text: string } | { verdict: "accepted" } | { verdict: "revise"; words: string };
@@ -224,6 +279,8 @@ export interface ConversationView {
   running: boolean;
   /** Present while the conversation holds turns older than its first entry: adds the page before them. */
   loadEarlier?: () => Promise<void>;
+  /** When the conversation's first loaded item was written, in ms. A message sent before it is outside the window. */
+  since?: number;
 }
 
 /** One row of the message log: one message from one worker to another. */
@@ -262,9 +319,35 @@ export interface WindowMark {
   summarized: boolean;
 }
 
+/** One coding harness's readiness, as harness-manager's readiness action answers it. */
+export type HarnessRow = HarnessReadinessChipRow;
+
+/** What the lab works on and with, from its `lab-context` flow: the context strip and the first run read it. */
+export interface LabContext {
+  /** The working folder. */
+  folder: string;
+  /** Why a coding run's checkout of the folder would be refused, or `null`. */
+  folderProblem: string | null;
+  model: string;
+  /** The harness a coding worker whose file names none runs on. */
+  harness: string;
+  /** Each worker's declared delegates, by id: ids, or `"all"`. */
+  delegates: Record<string, "all" | string[]>;
+}
+
 /** Everything the screen reads and writes. */
 export interface LabAdapter {
+  /**
+   * The roster's rows, and again each time a hire, an edit or a fire, from
+   * any tab or any worker's turn, changes them. `onError` hears a failed read;
+   * the next read that lands reports the rows.
+   */
+  watchWorkers(onChange: (workers: WorkerRow[]) => void, onError?: (error: unknown) => void): Unsubscribe;
   listWorkers(): Promise<WorkerRow[]>;
+  /** What the lab works on and with, read once for the context strip. */
+  readContext(): Promise<LabContext>;
+  /** Which coding harnesses can run on this machine; `refresh` checks them again (Re-check). */
+  readHarnesses(refresh?: boolean): Promise<HarnessRow[]>;
   /** The worker's one conversation; the same id every time. */
   openConversation(worker: string): Promise<string>;
   send(sessionId: string, text: string): Promise<void>;
@@ -292,6 +375,8 @@ export interface LabAdapter {
   watchReview(runSessionId: string, onChange: (review: ReviewDetail | undefined) => void): Unsubscribe;
   /** Answer what a task waits on you for; the run goes on, or the task completes on an accept. */
   answerTask(sessionId: string, taskId: string, answer: TaskAnswer): Promise<void>;
+  /** The board's actions on the tasks conversation `sessionId` filed, sent to that conversation's board. */
+  taskActions(sessionId: string): TaskActions;
   /**
    * What `worker` did with one message it was sent: the turn in its own
    * conversation that read it, from the message to the turn's end, live.
@@ -308,12 +393,18 @@ const TASK_CHANGE = "task-change";
 const CREATE_TASK = "createTask";
 /** What a board row's `listTasks` read never carries: an ended task's output and error, read from the row's other copies. */
 const UNPROJECTED = ["output", "error"] as const;
+/** Nor the brief a re-run copies beside its goal and title, read from those copies too, open or ended. */
+const BRIEF = ["context", "labels", "priority"] as const;
+/** The board a conversation files its tasks on: Workforce's `"tasks"`. */
+const TASK_BOARD = "tasks";
 /** The board's read of its rows, on a conversation's flow. */
-const LIST_TASKS = "listTasks_tasks";
+const LIST_TASKS = taskActionName("listTasks", TASK_BOARD);
 /** The ledgers that read returns: the conversation's board and its planning worker's steps. */
 const BOARD_LEDGERS = ["tasks", "plan"] as const;
 /** The board's action a question on a row is answered through, on the conversation that filed it. */
-const UPDATE_TASK = "updateTask_tasks";
+const UPDATE_TASK = taskActionName("updateTask", TASK_BOARD);
+/** The board's one-task read: a re-run copies the whole brief from it. */
+const GET_TASK = taskActionName("getTask", TASK_BOARD);
 /** Requests that are a worker answering: everything but the board's own passes. */
 const QUIET_ACTIONS = new Set(["dispatch"]);
 /** The harness a run's items came from, by the block that emitted them: each harness block's own name, which the host keeps. */
@@ -452,7 +543,7 @@ function retryAfterFailure(again: () => void): { failed(): void; succeeded(): vo
 
 /**
  * Read `read` now, and again whenever a notice under `topics` passes `hears`
- * (FIX-2466), reporting a value only when it changed, as {@link poll} does.
+ * reporting a value only when it changed, as {@link poll} does.
  * A connect, a reconnect, a tick and a `resync` read too. One read at a time,
  * and one waiting for any number of notices. Wherever push can miss a change,
  * `client.subscribe` reads every `everyMs` instead, so the view keeps no timer
@@ -514,6 +605,11 @@ function onNotice<T>(
 /** A request notice: one of the session's requests was created, moved or deleted. Never `items`, sent per stored chunk. */
 const isRequest = (notice: WireNotice): boolean => notice.kind === "request";
 
+/** Whether `copy` of a row is of the same attempt (try count and run) as `row`: a retry's copies speak only for it. */
+function sameAttempt(copy: Record<string, any> | undefined, row: Record<string, any>): boolean {
+  return copy !== undefined && (copy.attempts ?? 0) === (row.attempts ?? 0) && (copy.run?.sessionId ?? null) === (row.run?.sessionId ?? null);
+}
+
 /** The latest copy of each board row in a conversation's items, oldest filing first. */
 function boardRows(items: readonly Item[]): Map<string, Record<string, any>> {
   const rows = new Map<string, Record<string, any>>();
@@ -521,23 +617,6 @@ function boardRows(items: readonly Item[]): Map<string, Record<string, any>> {
     if (item.type === "component" && item.component === TASK_CHANGE && item.data?.task?.id) rows.set(item.data.task.id, item.data.task);
   }
   return rows;
-}
-
-/**
- * What a row's spend says ran it: the harness and model its run reported, or nothing.
- *
- * A row reaches here in one of two shapes: the stored ledger (`spend.requests`), as a
- * `task-change` item carries it, or the view the board's `listTasks` read already folded
- * (`taskSpendViewSchema`). Folding a view again would read as nothing spent.
- */
-function spendOf(row: Record<string, any>): { harness?: string; model?: string } {
-  try {
-    const folded = taskSpendViewSchema.safeParse(row.spend);
-    const view = folded.success ? folded.data : taskSpendView(row as never);
-    return { ...(view?.harness == null ? {} : { harness: view.harness }), ...(view?.model == null ? {} : { model: view.model }) };
-  } catch {
-    return {};
-  }
 }
 
 /**
@@ -553,23 +632,49 @@ export function toBoardTask(
   const error = typeof row.error === "string" ? row.error : undefined;
   const status: BoardTask["status"] =
     row.status === "completed" ? "done" : row.status === "errored" ? "failed" : row.status === "cancelled" ? "cancelled" : "running";
-  const answer = typeof row.output?.answer === "string" ? row.output.answer : undefined;
+  // A teammate's answer is the output as is; a coding run's is its output's `answer`. Blank is none.
+  const answer = answerTextOf(row.output);
+  // One read of the row as orchestration's task-row view: its folded spend, and its oldest open hold.
+  const view = typeof row.id === "string" && typeof row.status === "string" ? taskRowView({ ...row, board: row.board ?? "" } as InboxRow, holds) : null;
+  const spend = view?.spend ?? null;
   return {
     id: row.id,
     to: row.assignee ?? "",
     title: row.title ?? row.goal ?? row.id,
     status,
-    ...((answer ?? error) === undefined ? {} : { result: answer ?? error }),
+    boardStatus: String(row.status ?? ""),
+    goal: String(row.goal ?? ""),
+    ...(answer === undefined ? {} : { result: answer }),
+    ...(error === undefined ? {} : { error }),
+    ...(typeof row.context === "string" ? { context: row.context } : {}),
+    ...(Array.isArray(row.labels) ? { labels: row.labels.filter((label: unknown): label is string => typeof label === "string") } : {}),
+    ...(typeof row.priority === "number" ? { priority: row.priority } : {}),
     ...(typeof row.run?.sessionId === "string" ? { runSessionId: row.run.sessionId } : {}),
-    ...harnessAndModel(spendOf(row), harnessOf(row.assignee ?? "")),
-    ...waitingOf(row, holds),
+    ...harnessAndModel(spend, harnessOf(row.assignee ?? "")),
+    ...(spend === null ? {} : { spend }),
+    ...waitingOf(view),
   };
 }
 
+/** The fields a re-file copies from a task, as the board's `refile` takes them. */
+function refileRowOf(task: BoardTask): RefileRow {
+  return { goal: task.goal, title: task.title, context: task.context ?? null, assignee: task.to, labels: task.labels ?? null, priority: task.priority ?? null };
+}
+
+/**
+ * What a re-run sets over the copied task: the worker it now goes to, and its
+ * brief with one line added naming the task it re-runs, by title, so the old
+ * brief is kept and the link shows. Exported for its tests.
+ */
+export function rerunOverrides(task: BoardTask, worker: string): RefileOverrides {
+  const ended = task.status === "cancelled" ? "was cancelled" : "failed";
+  const line = `This re-runs the task "${task.title}", which ${ended}${task.harness === undefined ? "" : ` on ${task.harness}`}.`;
+  return { assignee: worker, context: task.context === undefined || task.context === "" ? line : `${task.context}\n\n${line}` };
+}
+
 /** What a row waits on you for, as `taskRowView` reads it: its oldest open hold, or nothing. */
-function waitingOf(row: Record<string, any>, holds: readonly InboxHold[] | undefined): { waiting?: TaskWaiting } {
-  if (typeof row.id !== "string" || typeof row.status !== "string") return {};
-  const hold = taskRowView({ ...row, board: row.board ?? "" } as InboxRow, holds).hold;
+function waitingOf(view: TaskRowView | null): { waiting?: TaskWaiting } {
+  const hold = view?.hold ?? null;
   if (hold === null) return {};
   const kind = hold.ask.kind === "question" || hold.ask.kind === "review" ? hold.ask.kind : "other";
   return { waiting: { kind, prompt: hold.ask.prompt, unanswerable: hold.unanswerable } };
@@ -609,11 +714,11 @@ function inboxAnswerOf(answer: TaskAnswer): InboxAnswer {
 }
 
 /** The harness by its name (the run's, else the worker's), and the run's model. */
-function harnessAndModel(spend: { harness?: string; model?: string }, setting: string | undefined): { harness?: string; model?: string } {
-  const harness = spend.harness ?? setting;
+function harnessAndModel(spend: TaskSpendView | null, setting: string | undefined): { harness?: string; model?: string } {
+  const harness = spend?.harness ?? setting;
   return {
-    ...(harness === undefined ? {} : { harness: harnessName(harness) }),
-    ...(spend.model === undefined ? {} : { model: spend.model }),
+    ...(harness == null ? {} : { harness: harnessName(harness) }),
+    ...(spend?.model == null ? {} : { model: spend.model }),
   };
 }
 
@@ -646,7 +751,7 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>, 
         id: item.id,
         taskId,
         from: item.agentName,
-        text: task?.result ?? textOf(item),
+        text: task?.result ?? task?.error ?? textOf(item),
         ...(task?.title === undefined ? {} : { title: task.title }),
         ...(failed ? { failed: true } : {}),
         ...(cancelled ? { cancelled: true } : {}),
@@ -830,7 +935,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const flowOfSession = new Map<string, string>();
   /** The workers, by id, so a line under a worker's name reads as a task's ending. */
   let workerIds = new Set<string>();
-  /** Each coding worker's `harness:`, from the last roster read. */
+  /** Each coding worker's `harness:`, from the last roster the watch reported. */
   let harnesses = new Map<string, string>();
 
   const conversationOf = async (worker: string) => {
@@ -850,7 +955,46 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const watchFeed = <T>(sessionId: string, map: (items: Item[]) => T, onChange: (value: T) => void): Unsubscribe =>
     (feeds(sessionId) as SessionFeed).watch((items: readonly OutputItem[]) => onChange(map(items as unknown as Item[])));
 
+  /** The user's one session on a lab flow (`harness-readiness`, `lab-context`), found or made once. */
+  const labSessions = new Map<string, Promise<string>>();
+  const labSession = (flow: string) => {
+    const known = labSessions.get(flow);
+    if (known !== undefined) return known;
+    const made = (async () => {
+      const [latest] = (await client.sessions.list({ flowKind: flow, userId: client.userId })).sort((a, b) => b.updatedAt - a.updatedAt);
+      return latest?.id ?? (await client.flow(flow).createSession()).id;
+    })();
+    labSessions.set(flow, made);
+    made.catch(() => labSessions.delete(flow));
+    return made;
+  };
+  /** Run one of a lab flow's actions and hand back its output, or throw why it failed. */
+  const runLab = async (flow: string, action: string, input: unknown): Promise<any> => {
+    const sessionId = await labSession(flow);
+    const sent = await client.flow(flow).send(action, input, { sessionId });
+    const { status } = await sent.wait();
+    const found = (await client.sessions.requests(sessionId, { includeResultOutput: true, limit: 20 })).find((r) => r.id === sent.id);
+    if (status !== "completed") throw new Error(found?.result?.error?.message ?? `${action} ended ${status}`);
+    return found?.result?.output;
+  };
+
   return {
+    watchWorkers(onChange, onError) {
+      return workforce.watchRoster(
+        (roster) => {
+          workerIds = new Set(roster.map((w) => w.id));
+          harnesses = new Map(roster.flatMap((w) => (typeof w.settings?.harness === "string" ? [[w.id, w.settings.harness] as const] : [])));
+          onChange(roster.map(toWorkerRow));
+        },
+        onError === undefined ? undefined : { onError },
+      );
+    },
+    async readContext() {
+      return (await runLab("lab-context", "read", {})) as LabContext;
+    },
+    async readHarnesses(refresh = false) {
+      return ((await runLab("harness-readiness", "read", { refresh })) as { harnesses: HarnessRow[] }).harnesses;
+    },
     async listWorkers() {
       const roster = await workforce.roster();
       workerIds = new Set(roster.map((w) => w.id));
@@ -891,8 +1035,9 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       const emit = () => {
         const running = answeringOf(items, inProgress, ended);
         const earlier = feed.hasEarlier();
-        if (shown?.entries === entries && shown.running === running && (shown.loadEarlier !== undefined) === earlier) return;
-        shown = { entries, running, ...(earlier ? { loadEarlier } : {}) };
+        const since: number | undefined = items[0]?.ts;
+        if (shown?.entries === entries && shown.running === running && (shown.loadEarlier !== undefined) === earlier && shown.since === since) return;
+        shown = { entries, running, ...(earlier ? { loadEarlier } : {}), ...(since === undefined ? {} : { since }) };
         onChange(shown);
       };
       const stopFeed = watchFeed(sessionId, (next) => next, (next) => {
@@ -1018,36 +1163,38 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     watchTasks(sessionId, onChange) {
       const show = stableList(onChange);
       let rows = new Map<string, Record<string, any>>();
-      /**
-       * Each row as the board's last read answered it. A task settles, and its run links itself, in
-       * the task's own session, which the conversation's stream doesn't carry; the board's notice
-       * does, and the read says what changed.
-       */
+      /** Each row as the board's last read answered it: a task settles, and its run links, on its own session. */
       let listed = new Map<string, Record<string, any>>();
       /**
        * Each linked run's own copy of its row. A run writes its row on its own session (its link, its
-       * questions, its review), so the conversation hears of those only when the task ends: the run's
-       * session is followed too.
+       * questions, its review), and the conversation hears of those only when the task ends, so the
+       * run's session is followed too.
        */
       const runRows = new Map<string, Record<string, any>>();
       const runFeeds = new Map<string, Unsubscribe>();
       /**
-       * A row is the board read's (FIX-2429): every committed write of a row sends a board notice, so
-       * the read is never more than one notice behind, and a field it leaves out is cleared (an
-       * answered hold). Until the first read lands, the conversation's copy, else the run's, stands in.
-       * The run's and the conversation's copies give only what the read never carries: an ended
-       * task's output and error ({@link UNPROJECTED}).
+       * A row is the board read's: every committed write of a row sends a board notice, so the read
+       * is never more than one notice behind, and a field it leaves out is cleared (an answered hold). Until the first read lands, the conversation's copy, else
+       * the run's, stands in. The copies add only what the read never carries: {@link BRIEF} and
+       * {@link UNPROJECTED}.
        */
       const rowOf = (id: string): Record<string, any> => {
         const board = listed.get(id);
         if (board === undefined) return rows.get(id) ?? runRows.get(id)!;
-        if (!isTerminalStatus(board.status)) return board;
-        const ended: Record<string, unknown> = {};
-        for (const field of UNPROJECTED) {
+        const kept: Record<string, unknown> = {};
+        for (const field of BRIEF) {
           const value = runRows.get(id)?.[field] ?? rows.get(id)?.[field];
-          if (value !== undefined) ended[field] = value;
+          if (value !== undefined) kept[field] = value;
         }
-        return { ...board, ...ended };
+        // An ended task's output and error are its last attempt's: a copy from before a retry says nothing of this one.
+        if (isTerminalStatus(board.status)) {
+          const current = [runRows.get(id), rows.get(id)].filter((copy) => sameAttempt(copy, board));
+          for (const field of UNPROJECTED) {
+            const value = current.find((copy) => copy![field] !== undefined)?.[field];
+            if (value !== undefined) kept[field] = value;
+          }
+        }
+        return { ...board, ...kept };
       };
       const followRuns = (current: readonly Record<string, any>[]) => {
         for (const row of current) {
@@ -1055,7 +1202,8 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           if (typeof runSession !== "string") continue;
           // An ended task's run is let go once the run's own copy says it ended (it carries the output
           // the board read doesn't), or never followed when no copy of it was ever read.
-          if (isTerminalStatus((runRows.get(row.id) ?? row).status)) {
+          const copy = runRows.get(row.id);
+          if (isTerminalStatus((sameAttempt(copy, row) ? copy! : row).status)) {
             runFeeds.get(runSession)?.();
             runFeeds.set(runSession, () => {});
             continue;
@@ -1102,9 +1250,8 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           }),
         ).then(publish, (error) => console.error("teammates: a session's flow couldn't be read", error));
       };
-      // A run links itself, and a task settles, on its own session: the board's notice says so
-      // (FIX-2429). The topics are narrowed to the ledgers the read returns, so every notice on
-      // them is the board's: a reply streaming in the conversation never reaches them.
+      // Topics narrowed to the ledgers the read returns: every notice on them is the board's,
+      // so a reply streaming in the conversation never wakes the read.
       const stopBoard = onNotice(
         client,
         BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })),
@@ -1143,6 +1290,52 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         last = seen;
         onChange(review);
       });
+    },
+    taskActions(sessionId) {
+      // The board is the conversation's own: its flow, the session that filed the task, and its `"tasks"` collection.
+      const flowOf = async () => {
+        let flowId = flowOfSession.get(sessionId);
+        if (flowId === undefined) {
+          const detail = await client.sessions.get(sessionId);
+          flowId = detail.flowId ?? detail.flowKind;
+          flowOfSession.set(sessionId, flowId);
+        }
+        return flowId;
+      };
+      const board = async () => inbox.board({ flowId: await flowOf(), sessionId, board: TASK_BOARD });
+      /**
+       * `task` with its brief as the board holds it. The list read leaves the brief out, and an old
+       * task's copy in the conversation may be past the loaded history, so a re-run reads it whole
+       * rather than file the task again without it.
+       */
+      const withBrief = async (task: BoardTask): Promise<BoardTask> => {
+        const flow = client.flow(await flowOf());
+        const { id: requestId } = await flow.send(GET_TASK, { id: task.id }, { sessionId });
+        const { status } = await flow.request(requestId).wait();
+        const found = (await client.sessions.requests(sessionId, { includeResultOutput: true, limit: 20 })).find((r) => r.id === requestId);
+        const output = found?.result?.output as { ok?: boolean; error?: string; task?: Record<string, any> } | undefined;
+        if (status !== "completed" || output?.ok === false || output?.task === undefined) {
+          throw new Error(output?.error ?? found?.result?.error?.message ?? "The task couldn't be read, so it wasn't filed again.");
+        }
+        const held = output.task;
+        const { context: _context, labels: _labels, priority: _priority, ...rest } = task;
+        return {
+          ...rest,
+          ...(typeof held.context === "string" ? { context: held.context } : {}),
+          ...(Array.isArray(held.labels) ? { labels: held.labels as string[] } : {}),
+          ...(typeof held.priority === "number" ? { priority: held.priority } : {}),
+        };
+      };
+      return {
+        cancel: async (taskId) => (await board()).cancel(taskId),
+        steer: async (taskId, message) => (await board()).steer(taskId, message),
+        release: async (taskId) => (await board()).release(taskId),
+        retry: async (taskId) => (await board()).retry(taskId),
+        rerun: async (task, worker) => {
+          const whole = await withBrief(task);
+          return (await board()).refile(refileRowOf(whole), rerunOverrides(whole, worker));
+        },
+      };
     },
     async answerTask(sessionId, taskId, answer) {
       const kind = "text" in answer ? "question" : "review";

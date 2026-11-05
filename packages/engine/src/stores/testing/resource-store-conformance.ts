@@ -205,6 +205,13 @@ export type CreateResourceStateStoreConformanceTestsOptions = {
   createStore: () => ResourceStateStore | Promise<ResourceStateStore>;
   /** Optional teardown hook for adapters with external resources. */
   cleanup?: (store: ResourceStateStore) => Promise<void> | void;
+  /**
+   * Whether the store keeps index entries (`store.indexes`). When `true`, the
+   * index-verb cases run against it; when omitted or `false`, the suite
+   * asserts the store has no index verbs and only checks that a `set`
+   * carrying entries behaves exactly like one without.
+   */
+  indexes?: boolean;
 };
 
 /**
@@ -223,6 +230,7 @@ export function createResourceStateStoreConformanceTests(
 ): void {
   const { name, createStore, cleanup } = options;
   const makeState = (i: number): JsonObject => ({ n: i, label: `state-${i}` });
+  if (options.indexes === true) createIndexConformanceTests(options);
 
   describe(`${name} (resource state store conformance)`, () => {
     async function withStore(fn: (store: ResourceStateStore) => Promise<void>): Promise<void> {
@@ -1090,6 +1098,20 @@ export function createResourceStateStoreConformanceTests(
       });
     });
 
+    it("a set carrying index entries keeps every row semantic of one without", async () => {
+      await withStore(async (store) => {
+        expect(store.indexes === undefined).toBe(options.indexes !== true);
+        const entries = { indexEntries: [{ collection: "work/**", index: "byId@1", values: ["a"] }] };
+        const created = await store.set("session", "s1", "work/k", makeState(1), 0, entries);
+        expect(created).toEqual({ ok: true, version: 1 });
+        const conflict = await store.set("session", "s1", "work/k", makeState(2), 0, entries);
+        expect(conflict.ok).toBe(false);
+        const updated = await store.set("session", "s1", "work/k", makeState(3), 1, entries);
+        expect(updated).toEqual({ ok: true, version: 2 });
+        expect(await store.get("session", "s1", "work/k")).toEqual({ state: makeState(3), version: 2 });
+      });
+    });
+
     it("purgeTombstones on a scope with nothing to reclaim is a no-op, not an error", async () => {
       await withStore(async (store) => {
         // The ordinary case at the call site: every newborn scope purges,
@@ -1101,6 +1123,331 @@ export function createResourceStateStoreConformanceTests(
         await seed(store, "k", makeState(1));
         await store.purgeTombstones("session", "s1");
         expect((await store.get("session", "s1", "k"))?.version).toBe(1);
+      });
+    });
+  });
+}
+
+const WORK = "work/**";
+const BY_ID = "byId@1";
+
+/** One index entry for `WORK`'s `BY_ID`. */
+function byId(...values: string[]) {
+  return { indexEntries: [{ collection: WORK, index: BY_ID, values }] };
+}
+
+/**
+ * The index-verb cases (`store.indexes`), for stores that keep entries.
+ *
+ * Every case reads entries back through `findKeys` and markers through
+ * `state`, never through a table, so an adapter is free in how it stores
+ * them. What they pin is the superset rule on `ResourceStateIndexes`: a
+ * successful write's entries commit with it, a failed one changes nothing,
+ * and a write that does not know an index clears that index's marker.
+ */
+function createIndexConformanceTests(options: CreateResourceStateStoreConformanceTestsOptions): void {
+  const { name, createStore, cleanup } = options;
+  const state = (i: number): JsonObject => ({ n: i });
+
+  describe(`${name} (resource state index conformance)`, () => {
+    async function withIndexes(
+      fn: (store: ResourceStateStore, indexes: NonNullable<ResourceStateStore["indexes"]>) => Promise<void>
+    ): Promise<void> {
+      const store = await createStore();
+      try {
+        const indexes = store.indexes;
+        if (indexes === undefined) throw new Error(`${name} declares indexes but has no index verbs`);
+        await fn(store, indexes);
+      } finally {
+        await cleanup?.(store);
+      }
+    }
+
+    /** Mark `BY_ID` of `WORK` built in session s1, with no entries. */
+    async function markBuilt(indexes: NonNullable<ResourceStateStore["indexes"]>, collection = WORK): Promise<void> {
+      const build = await indexes.beginBuild("session", "s1", collection, BY_ID);
+      expect(await indexes.completeBuild("session", "s1", collection, BY_ID, build, [])).toBe(true);
+    }
+
+    it("implements all four index verbs", async () => {
+      await withIndexes(async (_store, indexes) => {
+        for (const verb of ["state", "beginBuild", "completeBuild", "findKeys"] as const) {
+          expect(typeof indexes[verb]).toBe("function");
+        }
+      });
+    });
+
+    it("an index nothing has built reads unbuilt and finds nothing", async () => {
+      await withIndexes(async (_store, indexes) => {
+        expect(await indexes.state("session", "s1", WORK, BY_ID)).toBe("unbuilt");
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "a")).toEqual([]);
+      });
+    });
+
+    it("finds a written row by each of its values, keys in ascending order", async () => {
+      await withIndexes(async (store, indexes) => {
+        await store.set("session", "s1", "work/p2/t", state(1), 0, byId("t", "shared"));
+        await store.set("session", "s1", "work/p1/t", state(2), 0, byId("t"));
+        await store.set("session", "s1", "work/p1/u", state(3), 0, byId("u", "shared"));
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "t")).toEqual(["work/p1/t", "work/p2/t"]);
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "shared")).toEqual(["work/p1/u", "work/p2/t"]);
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "nope")).toEqual([]);
+      });
+    });
+
+    it("finds a row by a long, poorly compressible value, written by a set and by a build", async () => {
+      await withIndexes(async (store, indexes) => {
+        // Random hex well past a B-tree entry's ~2.7 KB limit: a store that
+        // keys entries on the raw value refuses the write.
+        const long = (seed: number) => {
+          let x = seed;
+          return Array.from({ length: 6000 }, () => {
+            x = (Math.imul(x, 1103515245) + 12345) >>> 0;
+            return (x >>> 28).toString(16);
+          }).join("");
+        };
+        const [written, built] = [long(1), long(2)];
+        await store.set("session", "s1", "work/w", state(1), 0, byId(written));
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, written)).toEqual(["work/w"]);
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, `${written.slice(0, -1)}x`)).toEqual([]);
+
+        const build = await indexes.beginBuild("session", "s1", WORK, BY_ID);
+        expect(await indexes.completeBuild("session", "s1", WORK, BY_ID, build, [{ key: "work/b", values: [built] }])).toBe(true);
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, built)).toEqual(["work/b"]);
+      });
+    });
+
+    it("keeps one scope's entries out of every other scope", async () => {
+      await withIndexes(async (store, indexes) => {
+        await store.set("session", "s1", "work/a", state(1), 0, byId("a"));
+        await store.set("session", "s2", "work/b", state(2), 0, byId("a"));
+        await store.set("user", "s1", "work/c", state(3), 0, byId("a"));
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "a")).toEqual(["work/a"]);
+        expect(await indexes.findKeys("session", "s2", WORK, BY_ID, "a")).toEqual(["work/b"]);
+        expect(await indexes.findKeys("user", "s1", WORK, BY_ID, "a")).toEqual(["work/c"]);
+      });
+    });
+
+    it("keys entries by the full collection pattern and the stored index name", async () => {
+      await withIndexes(async (store, indexes) => {
+        // Both patterns have the storage prefix `data`; neither may answer for the other.
+        const notes = "data/[topic]/notes";
+        const observations = "data/[topic]/observations";
+        await store.set("session", "s1", "data/x/notes", state(1), 0, {
+          indexEntries: [
+            { collection: notes, index: BY_ID, values: ["a"] },
+            { collection: notes, index: "byId@2", values: ["b"] }
+          ]
+        });
+        expect(await indexes.findKeys("session", "s1", notes, BY_ID, "a")).toEqual(["data/x/notes"]);
+        expect(await indexes.findKeys("session", "s1", notes, "byId@2", "b")).toEqual(["data/x/notes"]);
+        expect(await indexes.findKeys("session", "s1", notes, "byId@2", "a")).toEqual([]);
+        expect(await indexes.findKeys("session", "s1", observations, BY_ID, "a")).toEqual([]);
+      });
+    });
+
+    it("a successful set makes the key's entries exactly the ones it lists", async () => {
+      await withIndexes(async (store, indexes) => {
+        await store.set("session", "s1", "work/k", state(1), 0, byId("old", "kept"));
+        await store.set("session", "s1", "work/k", state(2), 1, byId("new", "kept"));
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "old")).toEqual([]);
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "new")).toEqual(["work/k"]);
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "kept")).toEqual(["work/k"]);
+
+        // A set that lists nothing leaves the key with no entries.
+        await store.set("session", "s1", "work/k", state(3), "any");
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "new")).toEqual([]);
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "kept")).toEqual([]);
+      });
+    });
+
+    it("writes entries on every create path: create-if-absent, absent, any, and a recreate", async () => {
+      await withIndexes(async (store, indexes) => {
+        await store.set("session", "s1", "work/zero", state(1), 0, byId("zero"));
+        await store.set("session", "s1", "work/absent", state(1), "absent", byId("absent"));
+        await store.set("session", "s1", "work/any", state(1), "any", byId("any"));
+        await store.set("session", "s1", "work/re", state(1), 0, byId("first"));
+        await store.delete("session", "s1", "work/re", 1);
+        await store.set("session", "s1", "work/re", state(2), 0, byId("again"));
+        for (const value of ["zero", "absent", "any"]) {
+          expect(await indexes.findKeys("session", "s1", WORK, BY_ID, value)).toEqual([`work/${value}`]);
+        }
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "first")).toEqual([]);
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "again")).toEqual(["work/re"]);
+      });
+    });
+
+    it("a set that conflicts changes no entry", async () => {
+      await withIndexes(async (store, indexes) => {
+        await store.set("session", "s1", "work/k", state(1), 0, byId("before"));
+        const stale = await store.set("session", "s1", "work/k", state(2), 7, byId("after"));
+        const lostCreate = await store.set("session", "s1", "work/k", state(2), 0, byId("after"));
+        const lostAbsent = await store.set("session", "s1", "work/k", state(2), "absent", byId("after"));
+        expect([stale.ok, lostCreate.ok, lostAbsent.ok]).toEqual([false, false, false]);
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "before")).toEqual(["work/k"]);
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "after")).toEqual([]);
+      });
+    });
+
+    it("delete removes the key's entries, and a delete that conflicts keeps them", async () => {
+      await withIndexes(async (store, indexes) => {
+        await store.set("session", "s1", "work/k", state(1), 0, byId("a"));
+        await store.set("session", "s1", "work/j", state(1), 0, byId("a"));
+        expect((await store.delete("session", "s1", "work/k", 9)).ok).toBe(false);
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "a")).toEqual(["work/j", "work/k"]);
+        await store.delete("session", "s1", "work/k", 1);
+        await store.delete("session", "s1", "work/j", "any");
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "a")).toEqual([]);
+      });
+    });
+
+    it("deleteAll removes the scope's entries and no other scope's", async () => {
+      await withIndexes(async (store, indexes) => {
+        await store.set("session", "s1", "work/k", state(1), 0, byId("a"));
+        await store.set("session", "s2", "work/k", state(1), 0, byId("a"));
+        await store.deleteAll("session", "s1");
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "a")).toEqual([]);
+        expect(await indexes.findKeys("session", "s2", WORK, BY_ID, "a")).toEqual(["work/k"]);
+      });
+    });
+
+    it("purgeTombstones removes entries a build added for a key deleted since its scan", async () => {
+      await withIndexes(async (store, indexes) => {
+        await store.set("session", "s1", "work/live", state(1), 0, byId("a"));
+        await store.set("session", "s1", "work/gone", state(1), 0);
+        const build = await indexes.beginBuild("session", "s1", WORK, BY_ID);
+        // The build read `work/gone` before this delete landed.
+        await store.delete("session", "s1", "work/gone", 1);
+        await indexes.completeBuild("session", "s1", WORK, BY_ID, build, [{ key: "work/gone", values: ["a"] }]);
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "a")).toEqual(["work/gone", "work/live"]);
+        await store.purgeTombstones("session", "s1");
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "a")).toEqual(["work/live"]);
+      });
+    });
+
+    it("a build moves the index from unbuilt to building to built and adds its entries", async () => {
+      await withIndexes(async (store, indexes) => {
+        await store.set("session", "s1", "work/legacy", state(1), 0);
+        const build = await indexes.beginBuild("session", "s1", WORK, BY_ID);
+        expect(await indexes.state("session", "s1", WORK, BY_ID)).toBe("building");
+        const built = await indexes.completeBuild("session", "s1", WORK, BY_ID, build, [
+          { key: "work/legacy", values: ["a", "b"] }
+        ]);
+        expect(built).toBe(true);
+        expect(await indexes.state("session", "s1", WORK, BY_ID)).toBe("built");
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "a")).toEqual(["work/legacy"]);
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "b")).toEqual(["work/legacy"]);
+        expect(await indexes.state("session", "s2", WORK, BY_ID)).toBe("unbuilt");
+      });
+    });
+
+    it("a build only adds: an entry a live write made during the scan survives it", async () => {
+      await withIndexes(async (store, indexes) => {
+        await store.set("session", "s1", "work/k", state(1), 0);
+        const build = await indexes.beginBuild("session", "s1", WORK, BY_ID);
+        // The build scanned `work/k` at value "old"; this write lands before it completes.
+        await store.set("session", "s1", "work/k", state(2), 1, byId("new"));
+        await indexes.completeBuild("session", "s1", WORK, BY_ID, build, [{ key: "work/k", values: ["old"] }]);
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "new")).toEqual(["work/k"]);
+        // The stale entry is allowed: the engine re-checks every hit against its row.
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "old")).toEqual(["work/k"]);
+      });
+    });
+
+    it("completeBuild with no building marker writes nothing and reports false", async () => {
+      await withIndexes(async (store, indexes) => {
+        await store.set("session", "s1", "work/k", state(1), 0);
+        expect(
+          await indexes.completeBuild("session", "s1", WORK, BY_ID, "no-such-build", [{ key: "work/k", values: ["a"] }])
+        ).toBe(false);
+        expect(await indexes.state("session", "s1", WORK, BY_ID)).toBe("unbuilt");
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "a")).toEqual([]);
+      });
+    });
+
+    it("a write that does not list a covering index clears its marker; one that lists it keeps it", async () => {
+      await withIndexes(async (store, indexes) => {
+        await markBuilt(indexes);
+        await store.set("session", "s1", "work/a", state(1), 0, byId("a"));
+        expect(await indexes.state("session", "s1", WORK, BY_ID)).toBe("built");
+
+        // Listed with no values still counts as knowing the index.
+        await store.set("session", "s1", "work/b", state(1), 0, byId());
+        expect(await indexes.state("session", "s1", WORK, BY_ID)).toBe("built");
+
+        await store.set("session", "s1", "work/c", state(1), 0);
+        expect(await indexes.state("session", "s1", WORK, BY_ID)).toBe("unbuilt");
+      });
+    });
+
+    it("a write during a build clears the building marker, so the build does not mark itself built", async () => {
+      await withIndexes(async (store, indexes) => {
+        const build = await indexes.beginBuild("session", "s1", WORK, BY_ID);
+        // Its scan missed this row, and this writer knows no index.
+        await store.set("session", "s1", "work/late", state(1), 0);
+        expect(await indexes.state("session", "s1", WORK, BY_ID)).toBe("unbuilt");
+        expect(await indexes.completeBuild("session", "s1", WORK, BY_ID, build, [])).toBe(false);
+        expect(await indexes.state("session", "s1", WORK, BY_ID)).toBe("unbuilt");
+      });
+    });
+
+    it("a build a write invalidated cannot complete on a later build's marker", async () => {
+      await withIndexes(async (store, indexes) => {
+        const first = await indexes.beginBuild("session", "s1", WORK, BY_ID);
+        // The first build scanned an empty collection; this write clears its marker.
+        await store.set("session", "s1", "work/late", state(1), 0);
+        const second = await indexes.beginBuild("session", "s1", WORK, BY_ID);
+        expect(await indexes.completeBuild("session", "s1", WORK, BY_ID, first, [])).toBe(false);
+        expect(await indexes.state("session", "s1", WORK, BY_ID)).toBe("building");
+        expect(
+          await indexes.completeBuild("session", "s1", WORK, BY_ID, second, [{ key: "work/late", values: ["a"] }])
+        ).toBe(true);
+        expect(await indexes.findKeys("session", "s1", WORK, BY_ID, "a")).toEqual(["work/late"]);
+      });
+    });
+
+    it("clears only the markers whose pattern covers the written key, in the written scope", async () => {
+      await withIndexes(async (store, indexes) => {
+        const single = "flat/*";
+        const notes = "data/[topic]/notes";
+        for (const collection of [WORK, single, notes]) await markBuilt(indexes, collection);
+
+        await store.set("session", "s1", "other/k", state(1), 0);
+        await store.set("session", "s1", "flat/a/deep", state(1), 0);
+        await store.set("session", "s1", "data/x/observations", state(1), 0);
+        await store.set("session", "s2", "work/k", state(1), 0);
+        await store.set("user", "s1", "work/k", state(1), 0);
+        for (const collection of [WORK, single, notes]) {
+          expect(await indexes.state("session", "s1", collection, BY_ID)).toBe("built");
+        }
+
+        await store.set("session", "s1", "flat/a", state(1), 0);
+        await store.set("session", "s1", "data/x/notes", state(1), 0);
+        expect(await indexes.state("session", "s1", single, BY_ID)).toBe("unbuilt");
+        expect(await indexes.state("session", "s1", notes, BY_ID)).toBe("unbuilt");
+        expect(await indexes.state("session", "s1", WORK, BY_ID)).toBe("built");
+      });
+    });
+
+    it("a set that conflicts clears no marker", async () => {
+      await withIndexes(async (store, indexes) => {
+        await store.set("session", "s1", "work/k", state(1), 0, byId("a"));
+        await markBuilt(indexes);
+        expect((await store.set("session", "s1", "work/k", state(2), 5)).ok).toBe(false);
+        expect((await store.set("session", "s1", "work/k", state(2), 0)).ok).toBe(false);
+        expect((await store.set("session", "s1", "work/k", state(2), "absent")).ok).toBe(false);
+        expect(await indexes.state("session", "s1", WORK, BY_ID)).toBe("built");
+      });
+    });
+
+    it("delete and deleteAll leave the markers alone", async () => {
+      await withIndexes(async (store, indexes) => {
+        await store.set("session", "s1", "work/k", state(1), 0, byId("a"));
+        await markBuilt(indexes);
+        await store.delete("session", "s1", "work/k", 1);
+        await store.deleteAll("session", "s1");
+        await store.purgeTombstones("session", "s1");
+        expect(await indexes.state("session", "s1", WORK, BY_ID)).toBe("built");
       });
     });
   });

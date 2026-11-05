@@ -133,11 +133,8 @@ const DEFAULT_MODEL = "intent/chat";
 
 /**
  * How many model steps a worker's turn may take when the app sets no
- * `maxSteps`. Sized for real work rather than core's generator cap (8): a
- * question about a codebase spends a step per glob, read and grep, and a
- * knowledge question a step per lookup, so eight ran out before the worker had
- * seen enough to answer. Core's own default stays 8 for generators outside
- * workforce.
+ * `maxSteps`: above core's generator cap (8), since a worker spends a step per
+ * lookup (glob, read, grep) before it can answer.
  */
 const DEFAULT_MAX_STEPS = 50;
 

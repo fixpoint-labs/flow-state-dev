@@ -159,7 +159,8 @@ describe("buttons that change something", () => {
     const create = button(form, "Create project");
     fireEvent.click(create);
     fireEvent.click(create);
-    expect(createProject.calls).toBe(1);
+    // The repository is checked first, so the create starts a tick later; still once.
+    await waitFor(() => expect(createProject.calls).toBe(1));
     expect(create.disabled).toBe(true);
 
     await createProject.settle(new Error("repository not found"));
