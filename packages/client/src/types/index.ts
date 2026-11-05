@@ -157,6 +157,20 @@ export type SessionSummary = {
   topic?: string;
   /** The entry the run was dispatched for, as `<type>:<target>`. Display only. */
   coordinate?: string;
+  /**
+   * The state of the session's latest request: one still going
+   * (`in_progress`, or `suspended` while it is stopped) wins over a later
+   * one that ended, else the most recent request's status. Only when the
+   * listing was asked for it (`include: "status"`), and absent on a session
+   * with no request; guard with `== null`.
+   */
+  requestStatus?: RequestStatus;
+  /**
+   * With `requestStatus: "suspended"`: `true` when the stop waits for the
+   * user (a question, an approval), `false` when it waits on other work and
+   * resumes by itself. Absent otherwise, and from a server that predates it.
+   */
+  requestWaitsForUser?: boolean;
 };
 
 /**
