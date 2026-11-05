@@ -790,3 +790,67 @@ describe("fsdev run with fsdev.config.ts", () => {
     expect(second.success).toBe(true);
   });
 });
+
+// An adopter who puts createFlowState in lib/flowstate.ts (where the quick
+// start once put it) gets a discovery run: fsdev reads only fsdev.config.*, so
+// the app's intents are never seen. Core's error then says to set the model
+// "where the app creates its FlowState", which is the place they already set
+// it. The hint has to name the file fsdev actually reads.
+describe("fsdev run — intent/* with no fsdev.config.*", () => {
+  const noConfigDir = resolve(import.meta.dirname, "fixtures-intent-no-config");
+
+  it("says no fsdev.config.* was found and that the file creating the FlowState is not read", async () => {
+    const result = await executeRunCommand("intent-chat", "chat", {
+      input: '{"message": "hi"}',
+      cwd: noConfigDir,
+      stores: createInMemoryStores(),
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.message).toContain('No model is configured for "intent/chat"');
+    const stderr = stderrLines.join("\n");
+    expect(stderr).toContain(
+      `no fsdev.config.* found in ${noConfigDir}; the file that calls createFlowState is not read`,
+    );
+    expect(stderr).toContain("fsdev.config.ts, fsdev.config.mts, fsdev.config.js, fsdev.config.mjs");
+  });
+
+  it("--quiet suppresses the hint", async () => {
+    const result = await executeRunCommand("intent-chat", "chat", {
+      input: '{"message": "hi"}',
+      cwd: noConfigDir,
+      stores: createInMemoryStores(),
+      quiet: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(stderrLines.join("\n")).not.toContain("no fsdev.config.* found");
+  });
+
+  // --no-config also yields a discovery run, but the search never ran: a config
+  // may well be there, skipped on purpose, so "none found" would be false.
+  it("stays quiet when --no-config skipped a config that is present", async () => {
+    const skippedDir = resolve(import.meta.dirname, "fixtures-intent-skipped-config");
+    const result = await executeRunCommand("intent-chat", "chat", {
+      input: '{"message": "hi"}',
+      cwd: skippedDir,
+      stores: createInMemoryStores(),
+      config: false,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.message).toContain('No model is configured for "intent/chat"');
+    expect(stderrLines.join("\n")).not.toContain("no fsdev.config.* found");
+  });
+
+  it("stays quiet for a discovery run that failed for any other reason", async () => {
+    const result = await executeRunCommand("throwing", "fail", {
+      input: '{"message": "test"}',
+      cwd: fixturesDir,
+      stores: createInMemoryStores(),
+    });
+
+    expect(result.success).toBe(false);
+    expect(stderrLines.join("\n")).not.toContain("no fsdev.config.* found");
+  });
+});
