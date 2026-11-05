@@ -41,7 +41,7 @@ vi.mock("../src/lib/connection", () => ({
 }));
 const workforce = {
   roster: async () => [],
-  // The roster watch `useRoster` follows (FIX-2412), reporting one empty read.
+  // The roster watch `useRoster` follows, reporting one empty read.
   watchRoster: (onRoster: (entries: never[]) => void, options?: { onError?: (error: unknown) => void }) => (void Promise.resolve([] as never[]).then(onRoster, options?.onError), () => {}),
 };
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
