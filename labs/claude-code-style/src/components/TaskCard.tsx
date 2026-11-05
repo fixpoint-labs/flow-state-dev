@@ -1,17 +1,21 @@
 import type { TaskRow } from "../adapter";
-import { TASK_STATUS } from "../lib/task-status";
+import { TASK_STATUS, taskSignalTone } from "../lib/task-status";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
+import { TaskTime } from "./flow-state/task-signals";
 import { harnessLabelOf } from "./ThreadStatus";
 
 /*
  * A background task as a list shows it: a full card while it runs or waits,
  * one line once it has finished. Each is a button that opens the task; what
- * opening does is the list's.
+ * opening does is the list's. A running card times this attempt's run, or
+ * says *quiet* once its run stopped answering; a finished row says how long
+ * ago it ended (the registry's `task-signals`, at the list's `now`). While the
+ * list's read is `stale`, a running card never says *quiet*: its rows may be old.
  */
 
 /** A running or waiting task, at full size. */
-export function TaskCard({ task, selected, onOpen }: { task: TaskRow; selected: boolean; onOpen: () => void }) {
+export function TaskCard({ task, selected, onOpen, now, stale = false }: { task: TaskRow; selected: boolean; onOpen: () => void; now: number; stale?: boolean }) {
   const status = TASK_STATUS[task.status];
   return (
     <button
@@ -27,7 +31,7 @@ export function TaskCard({ task, selected, onOpen }: { task: TaskRow; selected: 
           {task.title}
         </span>
         <span className={cn("block truncate text-xs", status.tone)}>
-          {status.label}
+          {task.view === undefined ? status.label : <TaskTime view={task.view} run={task.run} now={now} stale={stale} tone={taskSignalTone} fallback={status.label} />}
           {task.statusNote ? ` · "${task.statusNote}"` : ""}
         </span>
         {task.assignee ? <span className="block text-xs text-muted-foreground">{task.assignee}</span> : null}
@@ -37,8 +41,8 @@ export function TaskCard({ task, selected, onOpen }: { task: TaskRow; selected: 
   );
 }
 
-/** A finished task, on one line: its mark, title, worker and what it spent. */
-export function TaskDoneRow({ task, selected, onOpen }: { task: TaskRow; selected: boolean; onOpen: () => void }) {
+/** A finished task, on one line: its mark, title, worker, what it spent and how long ago it ended. */
+export function TaskDoneRow({ task, selected, onOpen, now }: { task: TaskRow; selected: boolean; onOpen: () => void; now: number }) {
   const status = TASK_STATUS[task.status];
   return (
     <button
@@ -55,6 +59,11 @@ export function TaskDoneRow({ task, selected, onOpen }: { task: TaskRow; selecte
       </span>
       {task.assignee ? <span className="shrink-0 text-muted-foreground">{task.assignee}</span> : null}
       <Spend spend={task.spend} className="shrink-0" />
+      {task.view === undefined ? null : (
+        <span className="shrink-0 font-mono text-[10px]">
+          <TaskTime view={task.view} run={task.run} now={now} tone={taskSignalTone} />
+        </span>
+      )}
     </button>
   );
 }

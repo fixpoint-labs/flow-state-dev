@@ -150,12 +150,22 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const selected = inView.find((s) => s.id === selectedId);
   // The open session's task rows, read once for the main thread and its pane (FIX-2399 E1). Each read
   // carries the session it was read for, so a switch never hands one session the last one's rows.
+  // `stale` while the last read failed: the rows are the last ones read, and a task's quiet can't be told from them.
   const read = useWatch(
-    (emit: (read: { sessionId: string; rows: TaskRow[] }) => void) =>
-      selected === undefined ? () => undefined : adapter.watchTasks(selected.id, (rows) => emit({ sessionId: selected.id, rows })),
+    (emit: (read: { sessionId: string; rows: TaskRow[]; stale: boolean }) => void) => {
+      if (selected === undefined) return () => undefined;
+      let last: { sessionId: string; rows: TaskRow[]; stale: boolean } | undefined;
+      const send = (next: { rows?: TaskRow[]; stale?: boolean }) => {
+        if (next.rows === undefined && last === undefined) return;
+        last = { sessionId: selected.id, rows: next.rows ?? last!.rows, stale: next.stale ?? last?.stale ?? false };
+        emit(last);
+      };
+      return adapter.watchTasks(selected.id, (rows) => send({ rows }), (stale) => send({ stale }));
+    },
     [adapter, selected?.id],
   );
   const taskRows = selected !== undefined && read?.sessionId === selected.id ? read.rows : undefined;
+  const tasksStale = read?.stale === true;
   useLabKeys({
     palette: () => setSwitching((open) => !open),
     step: (by) => {
@@ -212,6 +222,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
               adapter={adapter}
               sessionId={selected.id}
               tasks={taskRows}
+              stale={tasksStale}
               openId={openTask[selected.id]}
               onOpen={(taskId) => openTaskOf(selected.id, taskId)}
               onMissing={() => dropMissing(selected.id)}
@@ -223,6 +234,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
               adapter={adapter}
               sessionId={selected.id}
               tasks={taskRows}
+              stale={tasksStale}
               openId={openTask[selected.id]}
               onOpen={(taskId) => openTaskOf(selected.id, taskId)}
               onMissing={() => dropMissing(selected.id)}

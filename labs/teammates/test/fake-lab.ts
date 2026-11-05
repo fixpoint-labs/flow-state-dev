@@ -20,6 +20,7 @@
  * Chief of Staff's conversation starts past the 50-turn history window.
  */
 import type { SessionConnectionState } from "@flow-state-dev/client";
+import { taskRowView } from "@flow-state-dev/orchestration/inbox";
 import {
   rerunOverrides,
   runSteps,
@@ -554,7 +555,14 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
     },
 
     watchTasks(sessionId, onChange) {
-      return watch(() => onChange(tasks.filter((t) => t.sessionId === sessionId).map(({ sessionId: _, ...card }) => card)));
+      // Each row with its view, as the adapter reads one from the board's row (no holds: a fixture's wait is its `waiting`).
+      return watch(() =>
+        onChange(
+          tasks
+            .filter((t) => t.sessionId === sessionId)
+            .map(({ sessionId: _, ...card }) => ({ ...card, view: taskRowView({ id: card.id, status: card.boardStatus, title: card.title, goal: card.goal, board: sessionId }) })),
+        ),
+      );
     },
 
     watchReview(runSessionId, onChange) {

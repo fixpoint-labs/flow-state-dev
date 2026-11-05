@@ -974,7 +974,14 @@ the drain runs.
 
 Each `listTasks` row can also carry a `run` link, `{ sessionId, requestId }`, naming the run
 working the task or the one that last did. A row has none until a run starts on it, and a new
-claim clears it until the next run starts.
+claim clears it until the next run starts. Its `startedAt` is when this attempt's first run
+started, so a screen can time the attempt rather than the task.
+
+The board's `listTasks` action (a client's read; the model's tool carries none of it) also
+answers a running row's `leaseUntil`, the deadline a live run keeps pushing forward while it
+works. Pass the row to `leaseLapsed(row, now)` from `@flow-state-dev/orchestration/tasks` to tell
+a task whose run stopped answering, as the board itself does when it takes such a row back. A
+row nobody holds has no `leaseUntil`, and never reads lapsed.
 
 `getTask({ id })` returns one task whole, for a model that has to answer from what the
 task found rather than from its `listTasks` row: its goal, `context`, `input`, the fields

@@ -44,6 +44,8 @@ import {
   type InboxHold,
   type InboxRow,
   type TaskHold,
+  type TaskRowView,
+  taskRowView,
 } from "@flow-state-dev/orchestration/inbox";
 import { parseNotice, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
@@ -162,6 +164,13 @@ export interface TaskRow {
   spend?: TaskSpendView;
   /** Why its last attempt failed, as the board recorded it; only on a failed task. */
   error?: string;
+  /** The row as orchestration's `taskRowView` reads it, once per read: its state and times, for its time signal and the pane's counts. */
+  view?: TaskRowView;
+  /**
+   * What the view doesn't carry, for the time signal: when this attempt's run started (its run link's
+   * `startedAt`), and the row's lease deadline, which a live run keeps renewing. Each absent until the row has it.
+   */
+  run?: { startedAt?: number; leaseUntil?: number };
 }
 
 /** A board's task changes, as the opened task's action row makes them: the board's own calls, refusals in its words. */
@@ -191,7 +200,11 @@ export interface LabAdapter {
   send(sessionId: string, text: string): Promise<void>;
   interrupt(sessionId: string): Promise<void>;
   watchThread(sessionId: string, onChange: (view: ThreadView) => void): Unsubscribe;
-  watchTasks(sessionId: string, onChange: (rows: TaskRow[]) => void): Unsubscribe;
+  /**
+   * The session's task rows, on each change; `onStale` hears `true` when a read fails (the
+   * rows handed last are kept, so they may be old) and `false` when one succeeds again.
+   */
+  watchTasks(sessionId: string, onChange: (rows: TaskRow[]) => void, onStale?: (stale: boolean) => void): Unsubscribe;
   watchTaskWork(sessionId: string, taskId: string, onChange: (work: TaskWork) => void): Unsubscribe;
   /** Talk inside a thread: a steer on its task, which answers its open question if it has one. */
   sayInThread(sessionId: string, taskId: string, line: string): Promise<void>;
@@ -291,7 +304,8 @@ function retryAfterFailure(again: () => void): { failed(): void; succeeded(): vo
  * and one waiting for any number of notices. Wherever push can miss a change,
  * `client.subscribe` reads every `everyMs` instead, so the view keeps no
  * timer of its own. A failed read tries again on its own ({@link retryAfterFailure}).
- * A read still out when the watch stops reports nothing.
+ * A read still out when the watch stops reports nothing. `onStale` hears `true`
+ * when a read fails and `false` when one succeeds after it.
  */
 function onNotice<T>(
   fsd: Client,
@@ -300,8 +314,10 @@ function onNotice<T>(
   read: () => Promise<T>,
   onChange: (value: T) => void,
   everyMs = READ_EVERY_MS,
+  onStale?: (stale: boolean) => void,
 ): Unsubscribe {
   let live = true;
+  let stale = false;
   let last: string | undefined;
   let running = false;
   let queued = false;
@@ -321,9 +337,17 @@ function onNotice<T>(
         last = key;
         onChange(value);
       }
+      if (live && stale) {
+        stale = false;
+        onStale?.(false);
+      }
     } catch (error) {
       console.warn("[claude-code-style]", error);
       if (live) retry.failed();
+      if (live && !stale) {
+        stale = true;
+        onStale?.(true);
+      }
     }
     running = false;
     if (queued) {
@@ -626,7 +650,13 @@ export function createWiredLab(fsd: Client): LabAdapter {
   };
 
   /** A listed task row, as much as the screen reads. */
-  type Listed = TaskRow & { runSessionId?: string; run?: { sessionId: string; requestId: string }; holds?: TaskHold[]; attempts?: number };
+  type Listed = Omit<TaskRow, "run"> & {
+    runSessionId?: string;
+    run?: { sessionId: string; requestId: string; startedAt?: number };
+    holds?: TaskHold[];
+    attempts?: number;
+    leaseUntil?: number;
+  };
 
   /** Each listed task's run session, by task id, as the last list saw it. */
   const runSessionOf = new Map<string, string>();
@@ -661,6 +691,8 @@ export function createWiredLab(fsd: Client): LabAdapter {
       ...(Array.isArray(task.holds) ? { holds: task.holds } : {}),
       ...(task.spend == null ? {} : { spend: task.spend }),
       ...(typeof task.attempts === "number" ? { attempts: task.attempts } : {}),
+      ...(typeof task.leaseUntil === "number" ? { leaseUntil: task.leaseUntil } : {}),
+      view: taskRowView({ ...task, board: sessionId }),
     }));
   };
 
@@ -757,13 +789,15 @@ export function createWiredLab(fsd: Client): LabAdapter {
     const listed = await listedWithWaitingOn(sessionId);
     const rows = await Promise.all(
       listed.map(async (task): Promise<TaskRow> => {
-        const { runSessionId: _session, run: _run, holds: _holds, attempts: _attempts, ...row } = task;
+        const { runSessionId: _session, run: link, holds: _holds, attempts: _attempts, leaseUntil, ...row } = task;
+        const run = { ...(typeof link?.startedAt === "number" ? { startedAt: link.startedAt } : {}), ...(leaseUntil === undefined ? {} : { leaseUntil }) };
         // The harness its run reported; until one reports, the assignee's `harness` setting.
         const harness = task.spend?.harness ?? (await harnessOf(task));
         const review = harness !== undefined && row.status === "completed" ? await reviewOf(sessionId, task) : undefined;
         const error = row.status === "errored" ? await errorOf(sessionId, task) : undefined;
         return {
           ...row,
+          ...(Object.keys(run).length === 0 ? {} : { run }),
           ...(harness === undefined ? {} : { harness }),
           ...(review === undefined ? {} : { review }),
           ...(error === undefined ? {} : { error }),
@@ -1003,8 +1037,8 @@ export function createWiredLab(fsd: Client): LabAdapter {
     // The board is a read, so listing it every tick while the pane is open stores nothing.
     // The board's notices (FIX-2429): the topics are narrowed to the ledgers the read returns,
     // so every notice on them is the board's, and a reply streaming in the session never wakes it.
-    watchTasks: (sessionId, onChange) =>
-      onNotice(fsd, BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })), () => true, () => boardOf(sessionId), onChange, TASKS_EVERY_MS),
+    watchTasks: (sessionId, onChange, onStale) =>
+      onNotice(fsd, BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })), () => true, () => boardOf(sessionId), onChange, TASKS_EVERY_MS, onStale),
     // Shown only inside the tasks pane or the threads board, whose rows the app's `watchTasks` reads, which keeps `runSessionOf` current.
     watchTaskWork: (_sessionId, taskId, onChange) => {
       // The task's run session is known once the board has listed it, and a re-run moves it: follow

@@ -1,17 +1,21 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { BoardTask, LabAdapter, WorkerRow } from "../adapter";
 import type { Look } from "../lib/looks";
-import { useWatch } from "../lib/use-watch";
+import { useNow, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { STALE_CLASS } from "./flow-state/connection-banner";
 import { costAmount, tokenCount } from "./flow-state/spend";
+import { TaskTime, taskCounts, taskSignal, type TaskSignalKind } from "./flow-state/task-signals";
 import { runsOn, taskLabel, taskLine, type Popup } from "./Popups";
 import { InstructionsForm } from "./TeammateForms";
 import { useStale } from "./WorkersList";
 
 /** The heading over each of the panel's sections. */
 const HEADING = "font-mono text-[10px] tracking-widest text-muted-foreground uppercase";
+
+/** A task's time signal's colour: a run that stopped answering (*quiet*) in the warning colour; the rest keep their row's. */
+const signalTone = (kind: TaskSignalKind) => (kind === "quiet" ? "text-warning" : "");
 
 /** The ended groups, in the order the panel draws them, each collapsed to its count until opened. */
 const ENDED = [
@@ -36,7 +40,10 @@ function groupTasks(tasks: readonly BoardTask[]) {
  * teammates' jobs alike: the running ones first, then *Done*, *Failed* and
  * *Cancelled*, each one line with its count that opens to its rows. A task
  * that ends moves to its group as its row changes. Each row opens the task
- * in a popup. At the foot, a place for its routines, empty for now.
+ * in a popup, and carries its time: a running one's clock on this attempt,
+ * *quiet* once its run stopped answering, an ended one's age. The heading
+ * counts the tasks by state. At the foot, a place for its routines, empty
+ * for now.
  */
 export function TeammatePanel({
   adapter,
@@ -59,9 +66,21 @@ export function TeammatePanel({
   isCoding: (id: string) => boolean;
   onOpen: (popup: Popup) => void;
 }) {
-  const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
-  const stale = useStale(adapter, sessionId);
+  // The board's read can fail while the conversation's feed is live: its rows are then the last read, and stale too.
+  const [boardStale, setBoardStale] = useState(false);
+  const watchTasks = useCallback(
+    (key: string, onChange: (tasks: BoardTask[]) => void) => {
+      setBoardStale(false);
+      return adapter.watchTasks(key, onChange, setBoardStale);
+    },
+    [adapter],
+  );
+  const tasks = useWatch(watchTasks, sessionId) ?? [];
+  const stale = useStale(adapter, sessionId) || boardStale;
   const { active, ended } = groupTasks(tasks);
+  // A running clock ticks each second; it holds while the feed is stale, as the status line's age does.
+  const now = useNow(1_000, !stale);
+  const counts = taskCounts(tasks.flatMap((t) => (t.view === undefined ? [] : [t.view])));
   const [editing, setEditing] = useState(false);
   // Every ended group starts collapsed; a click opens it.
   const [opened, setOpened] = useState<Record<string, boolean>>({});
@@ -84,7 +103,8 @@ export function TeammatePanel({
             {line}
           </span>
           <span className={cn("block truncate text-xs", t.status === "failed" ? "text-destructive" : "text-muted-foreground", stale && STALE_CLASS)} data-status>
-            {[t.waiting ? "waiting on you" : t.status, runsOn(t)].filter(Boolean).join(" · ")}
+            {t.waiting ? "waiting on you" : <StatusWords task={t} now={now} stale={stale} />}
+            {runsOn(t) ? ` · ${runsOn(t)}` : ""}
           </span>
         </button>
       </li>
@@ -133,7 +153,7 @@ export function TeammatePanel({
       <div className="flex-1 overflow-y-auto pb-4">
         <section aria-labelledby="tasks-heading">
           <div id="tasks-heading" className={cn(HEADING, "px-4 pt-4 pb-2")}>
-            Tasks
+            Tasks{counts === "" ? "" : ` · ${counts}`}
           </div>
           {tasks.length === 0 ? <p className="px-4 text-xs text-muted-foreground">{worker.name} hasn't started any tasks yet.</p> : null}
           <CodingSpend tasks={tasks.filter((t) => isCoding(t.to))} />
@@ -168,6 +188,22 @@ export function TeammatePanel({
         </section>
       </div>
     </aside>
+  );
+}
+
+/**
+ * A task row's status words with its time: a running one's signal stands in
+ * for "running" ("working · 4m 12s", "quiet for 7m"), and an ended one's age
+ * follows its status ("done · 12m ago").
+ */
+function StatusWords({ task, now, stale }: { task: BoardTask; now: number; stale: boolean }) {
+  if (task.view === undefined) return <>{task.status}</>;
+  const time = <TaskTime view={task.view} run={task.run} now={now} stale={stale} tone={signalTone} fallback={task.status} />;
+  if (task.status === "running" || taskSignal(task.view, task.run, now, { stale }) === null) return time;
+  return (
+    <>
+      {task.status} · {time}
+    </>
   );
 }
 
