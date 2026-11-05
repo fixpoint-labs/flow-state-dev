@@ -122,6 +122,13 @@ graded, and legs for an unreadable PR, a delivered message, a restart, and a sec
 
 Round 1 (2026-11-05): Codex, one finding, folded inline as a correction: the first settle reads every PR the task owns, closed ones included, so D2 holds when a PR closes before the run ends.
 
+Round 1, Cursor (simplify, approved), recorded for the implementer:
+
+- *"Extract shared `holdIfOpenPrs` / `settleFromPrStates` helpers mirroring review's 'complete without another harness run when terminal' pattern, so the manager doesn't grow a third copy of the same state machine."*
+- *"Consider a single exported predicate (extend `waitsOnUser` or add `holdsUser(row)`) and switching board-meta, goal-seek, and `queueBehindUser` to it."* Note: an actor-aware `queueBehindUser` alone is not enough, since a message to an open task's session is otherwise a talk turn that refuses an open task; the answer route stays.
+- *"For the first implementation PR, it may be enough to prove typed steers + gh read + hold persistence (legs a, c, d, e, f) and add the `service` steer source + delivery answer in the same PR that lands FIX-2535 wiring."* The PR split is the implementer's.
+- *"Share one read helper and avoid duplicate listing on every steer cycle."*
+
 ## Open
 
 None.
