@@ -1,5 +1,5 @@
 /**
- * What a row in a list of sessions says about its session (FIX-2411): its
+ * What a row in a list of sessions says about its session: its
  * label, the state of its latest request, and how long ago it changed.
  *
  * Shared by `FlowNavigator` and any host that draws its own rows over

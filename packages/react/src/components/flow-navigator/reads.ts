@@ -5,7 +5,7 @@
  * three consumers each trigger their own flow-list read, which is the
  * one-read-per-host rule lost by export rather than by bug — so the navigator
  * mounts it once and nothing else can. The leaf's session read is the public
- * `useSessionList`'s (FIX-2411), which reads no flow list.
+ * `useSessionList`'s, which reads no flow list.
  *
  * Both are fenced on their identity, which includes the client they read
  * through: a host that rebuilds its transport on a token or `baseUrl` change
@@ -113,11 +113,8 @@ export function useLeafSessions(
   }));
   if (visit.open !== isOpen) setVisit({ open: isOpen, token: isOpen ? {} : null });
 
-  // The branch itself is `client`'s, written once there. This passes the one
-  // entry it already knows about, which is all the helper reads. Live when
-  // the client can subscribe (FIX-2411): the same read `useSessionList` makes.
-  // A closed leaf asks for nothing; the visit token in the identity is what
-  // starts a fresh read when it opens.
+  // The same read `useSessionList` makes. A closed leaf asks for nothing; the
+  // visit token in the identity starts a fresh read when it opens.
   return useLiveSessionRead({
     source,
     query: sessionQueryFor(address, [{ id: address, cardinality }]),
