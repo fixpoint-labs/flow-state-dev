@@ -81,16 +81,16 @@ function gate(requestId: string, reason: string, data: Record<string, unknown>):
   return { suspensionId: `g-${requestId}`, requestId, reason, data, status: "pending", userId: "u1", sessionId: "s1", flowKind: "agent", actionName: "respond", message: "Waiting" } as unknown as SuspensionRecord;
 }
 
-async function read(records: RequestRecord[], gates: SuspensionRecord[]) {
+async function read(records: RequestRecord[], gates: SuspensionRecord[], turns = 20) {
   return readSettledTurns({
     requests: {
-      list: async (filter: { status?: readonly string[] | string }) => {
+      list: async (filter: { status?: readonly string[] | string; limit?: number }) => {
         const statuses = ([] as string[]).concat(filter.status ?? []);
-        return records.filter((r) => statuses.includes(r.status)).sort((a, b) => b.startedAtMs - a.startedAtMs);
+        return records.filter((r) => statuses.includes(r.status)).sort((a, b) => b.startedAtMs - a.startedAtMs).slice(0, filter.limit);
       }
     } as never,
     scope: SCOPE,
-    turns: 20,
+    turns,
     runningRequestId: "now",
     durability: { listSuspended: async () => gates, loadSuspension: async () => null },
     onGateReadError: (error) => {
@@ -143,6 +143,25 @@ describe("readSettledTurns, for the session's open turns", () => {
     const said = text(turns.settled);
     expect(said).toContain("still waiting on sendMessage");
     expect(said).not.toMatch(/still waiting on[^)]*approveSpend/);
+    expect(unpairedToolCalls(messages(turns.settled))).toEqual([]);
+  });
+
+  it("holds the window to its turn count, a waiting turn counted among them", async () => {
+    // Two past turns fill a window of two; the waiting turn is newer, so the oldest falls out.
+    const older = record("older", "completed", 0, [line("older", "Oldest.", 0)]);
+    const late = { ...filing, startedAtMs: 5 };
+    const turns = await read([older, earlier, late], [gate("filing", "wait", { requestId: "r-recipient", deadline: 9 })], 2);
+    expect(turns.settled.map((r) => r.id)).toEqual(["done", "filing"]);
+    // The marker names the first turn the window now holds.
+    expect(turns.start).toEqual({ requestId: "done" });
+  });
+
+  it("reads a turn once when both reads caught it, as it stands now", async () => {
+    // Read interrupted by the window, then re-driven and parked again before the suspended read.
+    const died = { ...filing, status: "interrupted" as const };
+    const turns = await read([earlier, died, filing], [gate("filing", "wait", { requestId: "r-recipient", deadline: 9 })]);
+    expect(turns.settled.map((r) => r.id)).toEqual(["done", "filing"]);
+    expect(turns.settled.find((r) => r.id === "filing")?.status).toBe("suspended");
     expect(unpairedToolCalls(messages(turns.settled))).toEqual([]);
   });
 

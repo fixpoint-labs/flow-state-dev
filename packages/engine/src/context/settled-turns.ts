@@ -60,11 +60,13 @@ export type SettledTurnsInputs = {
 
 export type SettledTurns = {
   /**
-   * The window: the `turns` most recently started past turns, oldest first,
-   * before any is left out. A retried or parked turn still holds its place.
+   * The window: the past turns among the `turns` most recently started
+   * turns read, oldest first, before any is left out. A turn waiting on a call
+   * takes a place too, though only an `interrupted` one is listed here (a
+   * `suspended` one is open). A retried or parked turn still holds its place.
    */
   window: RequestRecord[];
-  /** The first turn the window holds, when an earlier turn fell out of it. */
+  /** The first turn the window holds (a waiting one included), when an earlier turn fell out of it. */
   start?: { requestId: string };
   /** The ids of turns a retry re-ran. */
   retried: Set<string>;
@@ -100,15 +102,14 @@ export async function readSettledTurns(inputs: SettledTurnsInputs): Promise<Sett
 
   // The store's newest-first order breaks a start-time tie by id; trimming
   // before reversing keeps the turn at the edge the same as without the extra row.
-  const window = listed.slice(0, turns).reverse();
-  const start = listed.length > turns && window[0] !== undefined ? { requestId: window[0].id } : undefined;
-  const retried = retriedIds([...window, ...(inputs.openTurns ?? [])], inputs.runningMetadata);
+  const past = listed.slice(0, turns).reverse();
+  const retried = retriedIds([...past, ...(inputs.openTurns ?? [])], inputs.runningMetadata);
   let parked = new Set<string>();
   let waiting = new Set<string>();
   // The session's suspended turns no older than the window: those waiting on
   // a call are read as far as they got. Without a durability provider nothing
   // suspends, so there is nothing to list.
-  const first = start !== undefined ? window[0] : undefined;
+  const first = listed.length > turns ? past[0] : undefined;
   const suspended =
     inputs.durability === undefined
       ? []
@@ -116,12 +117,23 @@ export async function readSettledTurns(inputs: SettledTurnsInputs): Promise<Sett
           (r) => r.id !== runningRequestId && (first === undefined || compareTurnsOldestFirst(r.startedAtMs, r.id, first.startedAtMs, first.id) >= 0)
         );
   try {
-    parked = await parkedInterruptedIds(inputs.durability, window, inputs.wakes);
-    waiting = await callWaits(inputs.durability, inputs.scope, [...suspended, ...window.filter((r) => parked.has(r.id) && !retried.has(r.id))]);
+    parked = await parkedInterruptedIds(inputs.durability, past, inputs.wakes);
+    waiting = await callWaits(inputs.durability, inputs.scope, [...suspended, ...past.filter((r) => parked.has(r.id) && !retried.has(r.id))]);
   } catch (error) {
     inputs.onGateReadError(error);
   }
-  const settled = [...window, ...suspended.filter((r) => waiting.has(r.id))]
+  // The past turns and the waiting ones, each once: a request the window read
+  // `interrupted` that was re-driven and parked again before the suspended read
+  // is in both, and the suspended read is how it stands now. Then the newest
+  // `turns` of them, so a waiting turn takes a place in the window like any other.
+  const byId = new Map<string, RequestRecord>();
+  for (const r of [...suspended.filter((r) => waiting.has(r.id)), ...past]) if (!byId.has(r.id)) byId.set(r.id, r);
+  const merged = [...byId.values()].sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.id, b.startedAtMs, b.id));
+  const held = merged.slice(Math.max(0, merged.length - turns));
+  const start = (listed.length > turns || merged.length > turns) && held[0] !== undefined ? { requestId: held[0].id } : undefined;
+  // The window is the past turns it holds; a waiting `suspended` turn is listed among the open ones.
+  const window = held.filter((r) => r.status !== "suspended");
+  const settled = held
     .filter((r) => r.id !== runningRequestId)
     .filter((r) => r.status !== "interrupted" || waiting.has(r.id) || (!retried.has(r.id) && !parked.has(r.id)))
     .map((r) => {
@@ -131,8 +143,7 @@ export async function readSettledTurns(inputs: SettledTurnsInputs): Promise<Sett
       // it has not failed, so the waiting line names it instead.
       const items = r.items.filter((i) => i.status !== "in_progress" && (!wait || !isSuspensionWait(i as ToolOutputItem)));
       return { ...r, items: wait ? [...items, waitingLine(r, r.items)] : items };
-    })
-    .sort((a, b) => compareTurnsOldestFirst(a.startedAtMs, a.id, b.startedAtMs, b.id));
+    });
 
   return { window, ...(start !== undefined ? { start } : {}), retried, parked, waiting, settled };
 }
