@@ -177,8 +177,7 @@ the run's `branch` (`null` for a run with only kept files), how many `commits` i
 `commitsVerified` (`false` when git couldn't read the count, so `commits` is a stand-in zero),
 `baseCommit` (the commit the branch was cut at) and `path` (the run's checkout), both `null` for
 a run with only kept files, `judged`, and `review`: `"accepted"` or `"deadline"` when the run's changes were
-[reviewed](#reviewing-a-runs-changes), `null` otherwise. `landed` says where an accepted run's work went when
-the accept named a way to land it, `null` otherwise. A feature row's output gains the same fields.
+[reviewed](#reviewing-a-runs-changes), `null` otherwise. A feature row's output gains the same fields.
 
 On a board read from the claim:
 
@@ -474,9 +473,9 @@ The recorded session is the one the harness *confirmed* it was in. If the agent 
 
 A run's changes are the commits it made over the base its branch was cut from. A run that would complete (the judge said done, there is no judge, or the judge's verdict was under its `floor`) and has commits on its branch waits for a review. So does a run whose commit count git couldn't read; its review says the commits couldn't be read. A run with no commits completes unreviewed. A failed run fails its attempt unreviewed. A judge's confident verdicts skip the review: *not done* fails the attempt, and *ask* holds the task on a question.
 
-While it waits, the task stays `in_progress` on the same attempt and keeps its claim, and the checkout is free. The row lists the wait among its open `holds`, with `source.kind: "suspension"` and `ask.kind: "review"`, titled "Review the run's changes". Its prompt gives the commit count and up to 20 commit subjects, a line "N files changed (+a −d).", then "Checks n/m passed." when the phase ran [checks](#checking-the-work-with-commands), then the judge's verdict, confidence and reason ("No judge read this run." without one), and the line "The judge's verdict is information, not approval." The hold's data is `{ branch, commits, subjects, files, fileCount, added, removed, judge, checks, lands, landFailed }`, where `checks` is the phase's check results, or `null` when it ran none. `files` lists up to `MAX_DIFF_FILES` (200) changed files as `{ path, added, removed }`, with `added` and `removed` `null` for a binary file. `fileCount`, `added` and `removed` count every changed file, listed or not. `files`, `fileCount`, `added` and `removed` are all `null` when git couldn't read the diff. Only committed changes count: uncommitted work in the checkout isn't part of it. A rename reads as the old path removed and the new path added. The Inbox lists it as a review.
+While it waits, the task stays `in_progress` on the same attempt and keeps its claim, and the checkout is free. The row lists the wait among its open `holds`, with `source.kind: "suspension"` and `ask.kind: "review"`, titled "Review the run's changes". Its prompt gives the commit count and up to 20 commit subjects, a line "N files changed (+a −d).", then "Checks n/m passed." when the phase ran [checks](#checking-the-work-with-commands), then the judge's verdict, confidence and reason ("No judge read this run." without one), and the line "The judge's verdict is information, not approval." The hold's data is `{ branch, commits, subjects, files, fileCount, added, removed, judge, checks }`, where `checks` is the phase's check results, or `null` when it ran none. `files` lists up to `MAX_DIFF_FILES` (200) changed files as `{ path, added, removed }`, with `added` and `removed` `null` for a binary file. `fileCount`, `added` and `removed` count every changed file, listed or not. `files`, `fileCount`, `added` and `removed` are all `null` when git couldn't read the diff. Only committed changes count: uncommitted work in the checkout isn't part of it. A rename reads as the old path removed and the new path added. The Inbox lists it as a review.
 
-The answer is a `HarnessReviewAnswer`, checked against `harnessReviewAnswerSchema`: `{ verdict: "accepted" }`, `{ verdict: "accepted", land }` (see [Landing accepted work](#landing-accepted-work)), or `{ verdict: "revise", words }` with non-blank `words`. With the Inbox client:
+The answer is a `HarnessReviewAnswer`, checked against `harnessReviewAnswerSchema`: `{ verdict: "accepted" }`, or `{ verdict: "revise", words }` with non-blank `words`. With the Inbox client:
 
 ```ts
 import { createInboxClient } from "@flow-state-dev/orchestration/inbox";
@@ -488,9 +487,9 @@ await inbox.answer(item, { value: { verdict: "revise", words: "Keep the old endp
 
 That posts to the engine's answer route, `POST /api/flows/:flow/requests/:requestId/answer` with `{ suspensionId, action: "submit", data }`. Blank `words` are refused with a 400, and the review stays open.
 
-To draw the review in a browser, add the ui registry's `review-hold` component (`fsdev ui add review-hold`). It offers Accept and Ask for changes. When the review lists `lands`, Accept is two buttons, **Open a PR** and **Merge locally**, each sending `{ verdict: "accepted", land }`. The registry's `SuspensionCard` draws it for this stop, with the stop's prompt.
+To draw the review in a browser, add the ui registry's `review-hold` component (`fsdev ui add review-hold`). It offers Accept and Ask for changes, and sends only these two answers. The registry's `SuspensionCard` draws it for this stop, with the stop's prompt.
 
-The stop's `data` names the run's branch, commit count, commit subjects, the judge's verdict, the checks the phase ran (`commandCheck`; `null` when none ran), the ways an accept can land the work (`lands`), and the last landing that failed (`landFailed`). The card shows the checks as "Checks 2/2 passed", with a red one open on its output. Read it in the browser with `reviewDetail` from `@flow-state-dev/harness-manager/browser`, an entry that imports no Node built-in, and hand the result to the card as `review`:
+The stop's `data` names the run's branch, commit count, commit subjects, the judge's verdict and the checks the phase ran (`commandCheck`; `null` when none ran). The card shows the checks as "Checks 2/2 passed", with a red one open on its output. Read it in the browser with `reviewDetail` from `@flow-state-dev/harness-manager/browser`, an entry that imports no Node built-in, and hand the result to the card as `review`:
 
 ```tsx
 import { reviewDetail } from "@flow-state-dev/harness-manager/browser";
@@ -500,23 +499,12 @@ import { reviewDetail } from "@flow-state-dev/harness-manager/browser";
 
 A field it can't read comes back `null` (or `[]` for the subjects), and data that isn't a review comes back `null`.
 
-- **Accepted**: the task completes with no further run, output `review: "accepted"`. An accept that names `land` lands the work first.
+- **Accepted**: the task completes with no further run, output `review: "accepted"`.
 - **Revise**: the words are written on the task as the user's steer, and one more run starts on the same attempt, continuing the same coding session with the words in its prompt, as any steer is taken. If it commits again it is reviewed again, over all the branch's commits. Each revision counts toward the task's steer limit; past it the attempt fails. If the harness confirmed no coding session, the revision fails the attempt instead, and the next attempt's brief carries the words.
 - **Deadline**: none unless the host sets `userDeadlineMs`. At the deadline the task completes with no further run, output `review: "deadline"`. Show that as not reviewed, never as approved.
 - **Cancel** (the board's `updateTask` cancel): the review closes, no run starts, and the branch's commits and kept files stay.
 
 Reviews need a host with durable execution. A host can restart while a review waits; the answer continues the run.
-
-### Landing accepted work
-
-On a workspace host that can land a branch (`localWorkspaceHost` with the repository in `localRepositories`; see the workspace package's *Landing a run's branch*), the review's data lists `lands: ["pull-request", "merge"]`. An accept can then say where the work goes:
-
-- `{ verdict: "accepted", land: "pull-request" }` pushes the run's branch and opens a pull request into its base. The title is the run's one commit subject, or the task's goal. The body has the goal, the commits, the checks and the judge's verdict. The pull request is written to the run session's `observed-pull-requests` record, so anything that lists the session's pull requests shows it.
-- `{ verdict: "accepted", land: "merge" }` merges the run's branch into the base branch of the user's checkout. The base is whatever that checkout has checked out.
-
-The output's `landed` is `{ kind: "pull-request", url, number, branch, base, remote }` or `{ kind: "merge", branch, commit, checkout, from }`, and the stream says where the work went and what to do next.
-
-If the landing fails (the push is refused, `gh` can't open the pull request, the checkout has uncommitted changes, or the merge conflicts), the task doesn't complete. The review is asked again, titled "The accepted changes didn't land". Its prompt leads with the error, and its data carries `landFailed: { land, message }`, so the user can retry or pick the other way. A merge conflict is never resolved for you. The run's branch and checkout stay as they were, so nothing is lost. A plain `{ verdict: "accepted" }` completes the task without landing anything.
 
 ### Reading one file's patch
 

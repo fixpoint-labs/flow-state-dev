@@ -353,38 +353,6 @@ It rejects for a target that isn't a worktree `list` reports, and refuses with a
 
 A refusal removes nothing. Kept files and held work are left where they are, in their collection and store. `fsdev worktrees` runs the same `list` and `remove` from a terminal.
 
-### Landing a run's branch
-
-Once someone accepts a run's work, `host.land(target, request)` sends it somewhere: a pull request, or a merge into the base branch of the person's own checkout. It works for a run in a repository listed in `localRepositories`. `target` is `{ cwd, branch, baseRef? }`: the run's checkout, its branch, and the ref its place recorded as `repo.baseRef`. With no `baseRef`, or `"HEAD"`, the base is the branch the listed repository has checked out right now.
-
-```ts
-const pr = await host.land!({ cwd, branch, baseRef }, { kind: "pull-request", title, body });
-// { kind: "pull-request", url, number, branch, base, remote }
-const merged = await host.land!({ cwd, branch, baseRef }, { kind: "merge" });
-// { kind: "merge", branch, commit, checkout, from }
-```
-
-- **`pull-request`** pushes the run's branch to the remote the host pinned for the repository at start: the base branch's upstream, else `origin`, else the one remote it has. The push goes to the pinned URL, ignores any program set in the repository's own config, and uses your global credential helpers, the same way a [fetch of a listed repository](#a-repository-on-this-machine) runs. It never force-pushes. Then it opens the pull request into the base through the host's `gh` (`request.gh`, default `gh` on `PATH`). If that branch already has an open pull request, `land` returns it instead of opening a second, so a retry after a half-finished landing is safe.
-- **`merge`** merges the run's branch into the base where the base is checked out, with the repository's hooks off. The run's commits always land on the base branch, by fast-forward or a merge commit, whatever the repository's squash or no-commit settings say. If they don't, `land` puts the checkout back where it was. It refuses to overwrite an ignored file in your checkout, and it refuses a checkout in the middle of a merge, rebase, cherry-pick or revert, which it leaves alone. It never resolves a conflict. If the merge conflicts, `land` aborts it, leaving the checkout as it was, and the refusal names the files.
-
-A base that names a pinned remote's branch, such as `origin/main`, is read the same way a provision reads it. The pull request targets `main` on that remote, and a merge lands on the local branch that tracks it. A local branch named `origin/main` is that local branch.
-
-The run's branch and checkout are left alone whatever happens, so its commits are never lost. A failure is a `WorkspaceRefusedError` whose message says what to do next:
-
-| `reason` | When |
-| --- | --- |
-| `land-unsupported` | The checkout isn't a worktree of a listed repository |
-| `base-unknown` | No base was named and the repository has no branch checked out |
-| `no-push-remote` | The repository had no single remote to push to when the host started |
-| `remote-repointed` | The remote's URL changed after the host pinned it; the message names the pin file to delete |
-| `push-failed` | The push failed |
-| `pull-request-failed` | The branch was pushed, but `gh` couldn't open or find its pull request |
-| `base-not-checked-out` | No worktree has the base branch checked out to merge into |
-| `checkout-dirty` | The base's checkout has uncommitted changes |
-| `checkout-busy` | The base's checkout is in the middle of a merge, rebase, cherry-pick or revert; nothing changed |
-| `merge-conflict` | The merge conflicts; nothing changed |
-| `merge-failed` | The merge failed for another reason; nothing changed |
-
 ### The user's list of worktrees
 
 `worktreesCollection` holds one row for each worktree a host made, in a user-scoped collection named `worktrees`. Each session and agent of that user can read it. A page reads it through the flow's resource routes, and an agent reads it with core's resource tools because the collection is `llmReadable`. Neither can write it. Only the host writes rows. Give it the collection, which a block reads off `ctx.resources.worktrees` once its flow declares `worktreesCollection`, and it writes the row whenever it changes the worktree:
@@ -645,7 +613,7 @@ Git itself runs with `GIT_ALLOW_PROTOCOL` set to the listed schemes, with `--` b
 | `principalFromContext(ctx)` | The scoping identity, read off a block's execution context. |
 | `collectionIdFor(collection, principal)` | A `Mount.collectionId` for a scoped door. |
 | `unscopedCollectionId(collection)` | A `Mount.collectionId` for a door with no principal. |
-| `localWorkspaceHost({ root, remotes, source, localRepositories?, provisionTimeoutMs?, heldWork?, setup? })` | A workspace host on this machine. Returns `{ root, source, provisionTimeoutMs, locate, provision, save, hostId, holds, list, remove, land, checkpoint, dropHeld, readSource, restore, release }`. `land(target, request)` pushes a run's branch and opens its pull request, or merges it locally; see [Landing a run's branch](#landing-a-runs-branch). `readSource(answer, request)` reads without a run; see [Reading without a run](#reading-without-a-run). `list()` and `remove(target, options?)` are covered in [Listing and removing worktrees](#listing-and-removing-worktrees). `checkRepository(repository, { ignored? })` answers whether a run on a repository would get a checkout, without making one; see [Keeping a directory out of git](#keeping-a-directory-out-of-git). With a `heldWork` store, `checkpoint(place, previous?)` saves a repository run's work to it and returns a `HeldWork` (or `null` when holding doesn't apply), `dropHeld(place, key)` deletes one of the place's earlier keys, and `provision` takes `recorded` and rebuilds a lost checkout from it, reporting `origin`. With `setup`, `provision` runs that command in each new checkout, calls the request's `onSetup` first, and reports the outcome on `place.setup`; see [Setting up a fresh checkout](#setting-up-a-fresh-checkout). |
+| `localWorkspaceHost({ root, remotes, source, localRepositories?, provisionTimeoutMs?, heldWork?, setup? })` | A workspace host on this machine. Returns `{ root, source, provisionTimeoutMs, locate, provision, save, hostId, holds, list, remove, checkpoint, dropHeld, readSource, restore, release }`. `readSource(answer, request)` reads without a run; see [Reading without a run](#reading-without-a-run). `list()` and `remove(target, options?)` are covered in [Listing and removing worktrees](#listing-and-removing-worktrees). `checkRepository(repository, { ignored? })` answers whether a run on a repository would get a checkout, without making one; see [Keeping a directory out of git](#keeping-a-directory-out-of-git). With a `heldWork` store, `checkpoint(place, previous?)` saves a repository run's work to it and returns a `HeldWork` (or `null` when holding doesn't apply), `dropHeld(place, key)` deletes one of the place's earlier keys, and `provision` takes `recorded` and rebuilds a lost checkout from it, reporting `origin`. With `setup`, `provision` runs that command in each new checkout, calls the request's `onSetup` first, and reports the outcome on `place.setup`; see [Setting up a fresh checkout](#setting-up-a-fresh-checkout). |
 | `HeldWorkStore` | Where held work goes: `put(key, bytes)`, `get(key)`, `delete(key)`, `list(prefix)`. `put` must be atomic. |
 | `fileHeldWorkStore({ dir })` | A `HeldWorkStore` that keeps each key as a file under `dir`, written atomically. |
 | `HeldWorkMismatchError` | What `provision` rejects with when held work disagrees with the run's record, or this host has no store to rebuild from. `field` is one of `remote`, `branch`, `scope`, `base`, `pack`, `head`, `snapshot`, `tree`, `disabled`. |
