@@ -9,9 +9,12 @@ import { toError } from "@flow-state-dev/core/helpers";
 import { serializeActionSchema } from "@flow-state-dev/core/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
+import { withResourceIndexWriter } from "../resources/resource-indexes";
 import type { RuntimeConfig } from "../runtime-config";
 import { createInMemoryStores } from "../stores";
 import type { StoreRegistry } from "../stores/types";
+import { withChangeBus } from "../bus/publish-writes";
+import type { ChangeBus } from "../bus/types";
 import { detectInterruptedRequests, internalEntriesFrom } from "../execution/request-recovery";
 import {
   parseFlowRoute,
@@ -83,6 +86,7 @@ import { installWakes } from "../durability/request-wakes";
 import { installWaits } from "../durability/wait-chain";
 import { DEFAULT_RUNTIME_LOGGER } from "../execution/logging";
 import { createParkedStopDeps } from "../durability/stop-suspended";
+import { createPushState, handleMintPush, pushCapability, type PushState } from "../push/push-delivery";
 
 export type RequestContext = {
   method: string;
@@ -203,9 +207,12 @@ export type FlowRouteContext = {
   path?: string[];
 };
 
-export function resolveStores(partial: Partial<StoreRegistry> | undefined): StoreRegistry {
+export function resolveStores(partial: Partial<StoreRegistry> | undefined): StoreRegistry & { bus: ChangeBus } {
   const fallback = createInMemoryStores();
-  return {
+  // Every request and session write publishes on its session's topic
+  // (FIX-2426), on the given bus or an in-memory one.
+  return withChangeBus({
+    ...(partial?.bus !== undefined ? { bus: partial.bus } : {}),
     session: partial?.session ?? fallback.session,
     request: partial?.request ?? fallback.request,
     user: partial?.user ?? fallback.user,
@@ -222,7 +229,7 @@ export function resolveStores(partial: Partial<StoreRegistry> | undefined): Stor
     // a crash when they don't. Only a host given no stores at all keeps them
     // in memory, with everything else.
     ...(partial === undefined ? { wakes: fallback.wakes } : partial.wakes !== undefined ? { wakes: partial.wakes } : {})
-  };
+  });
 }
 
 /**
@@ -235,9 +242,15 @@ export function resolveStores(partial: Partial<StoreRegistry> | undefined): Stor
 export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions): {
   handle: (request: Request, context: FlowRouteContext) => Promise<Response>;
   host: InboundTransportHost;
+  /** Push delivery's state (FIX-2428): empty until a host turns push on. */
+  push: PushState;
 } {
   refuseRetiredDispatcherOption(options, "createFlowRouteHandlers");
-  const stores = resolveStores(options.stores);
+  // A router built straight over its stores keeps declared indexes in step
+  // too. Stores `createFlowState` already wrapped are left as they are.
+  const stores = withResourceIndexWriter(resolveStores(options.stores), () =>
+    options.registry.indexedCollections()
+  );
   const debugConfig: ResolvedDebugConfig = resolveDebugConfig({
     debugEndpointsEnabled: options.debugEndpointsEnabled,
     debugAllowedOrigins: options.debugAllowedOrigins,
@@ -259,6 +272,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   };
 
   const hostResolver = options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver;
+  const push = createPushState(stores.bus);
 
   const host: InboundTransportHost = createInboundTransportHost({
     registry: options.registry,
@@ -486,7 +500,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       }
 
       if (route.kind === "capabilities") {
-        return jsonResponse(200, { userStream: false });
+        return jsonResponse(200, { userStream: false, push: pushCapability(push) });
       }
 
       if (route.kind === "execute_action") {
@@ -525,6 +539,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleListSessions(request, route, {
           registry: options.registry,
           stores,
+          durabilityProvider: runtimeConfig.durabilityProvider,
           tenantId,
           principal,
           anonymousFlowIds,
@@ -605,9 +620,22 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         });
       }
 
+      // The socket (FIX-2428): the host takes the upgrade before a request
+      // reaches here, so what arrives is a plain GET.
       if (route.kind === "user_stream") {
-        return jsonResponse(501, {
-          error: "User stream is not enabled in Phase 1"
+        return jsonResponse(426, { error: "This route takes a WebSocket upgrade" });
+      }
+
+      if (route.kind === "user_stream_mint") {
+        return await handleMintPush(request, route.userId, {
+          registry: options.registry,
+          stores,
+          host,
+          hostResolver,
+          tenantId,
+          state: push,
+          ...(principal !== undefined ? { principal } : {}),
+          anonymous: anonymousFlowIds !== undefined
         });
       }
 
@@ -856,7 +884,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
   return {
     handle,
-    host
+    host,
+    push
   };
 }
 

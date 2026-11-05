@@ -12,6 +12,7 @@
  * <root>/<place…>/
  *     .lock        held while a provision works on this place
  *     .checkout.provisioning   present while `git worktree add` runs
+ *     .checkout.setup          present while the operator's setup command is owed
  *     checkout/    a git worktree on the run's own branch (a repository run)
  *     project/     the kept files, beside the checkout and never inside it
  *     workspace/   the kept files as the working directory (a run with no repository)
@@ -19,7 +20,8 @@
  * <root>/<place…>/                  a repository the operator named in
  *                                   `localRepositories`, with no kept files: the
  * <root>/<place…>.provisioning      place IS the checkout, with its marker and lock
- * <root>/<place…>.place.lock        beside it, and the branch kept in that
+ * <root>/<place…>.place.lock        beside it (and `<place…>.setup`, its setup
+ *                                   marker), and the branch kept in that
  *                                   repository, never cloned
  * <root>/.fetch-pins/<key>.json     each such repository's remote URLs and branch
  *                                   upstreams, as a host start first saw them
@@ -65,8 +67,10 @@
  * ```
  */
 import { randomUUID } from "node:crypto";
-import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { GIT_TIMEOUT_MS, run } from "./exec";
 import {
   asideName,
@@ -105,8 +109,22 @@ import {
 } from "./source-read";
 import type { FlushReport, Place } from "./types";
 import { pinFetchSettings } from "./repository";
+import { checkedOutBranch, worktreeLockPath } from "./occupancy";
+import {
+  attachToWorktree,
+  markWorktreeProvisioning,
+  markWorktreeReady,
+  markWorktreeRemoved,
+  recordWorktreeCheckout,
+  worktreeKey,
+  type CheckoutSnapshot,
+  type WorktreeCollection,
+  type WorktreeOwner,
+  type WorktreeRecording,
+} from "./worktrees";
 import { WorkspaceRefusedError } from "./refused";
-import { firstLine, gitAnsweredNo, ignoredProblem, isAncestor, NO_HOOKS, provisionWorktree, remainingBudget, type IgnoredDirectory, type MovedBack, type OffBranch } from "./worktree";
+import { setUpCheckout, type PlaceSetup, type WorkspaceSetup } from "./setup";
+import { firstLine, gitAnsweredNo, ignoredProblem, isAncestor, isStrictlyInside, NO_HOOKS, provisionWorktree, remainingBudget, type IgnoredDirectory, type MovedBack, type OffBranch } from "./worktree";
 
 /** The directory names inside a place. People and agents read them. */
 const CHECKOUT_DIR = "checkout";
@@ -141,6 +159,20 @@ const PROVISIONING_MARKER = ".checkout.provisioning";
  */
 const LOCAL_MARKER_SUFFIX = ".provisioning";
 const LOCAL_LOCK_SUFFIX = ".place.lock";
+/**
+ * Present beside a checkout from just before the operator's setup command
+ * starts until it succeeds (`./setup`), so a failed or killed setup runs again
+ * on the next provision.
+ */
+const SETUP_MARKER = ".checkout.setup";
+const LOCAL_SETUP_SUFFIX = ".setup";
+/**
+ * Written in a local repository's worktree's own directory under git's
+ * (`.git/worktrees/<id>/`), which outlives the checkout: this worktree is its
+ * place's `checkout/`, beside kept files. `list` reads it to place a worktree
+ * whose directory has gone missing.
+ */
+const NESTED_LAYOUT_MARKER = "fsd-nested-place";
 /** This host's identity, in its root. Dot-prefixed, so no place is named over it. */
 const HOST_ID_FILE = ".host-id";
 /** Where a held snapshot is laid out for a person, beside the checkout. */
@@ -202,6 +234,18 @@ export interface LocalWorkspaceHostOptions {
   /** The clock the provision budget is measured on. For tests. */
   now?: () => number;
   /**
+   * A command run in each repository checkout this host makes, before it is
+   * handed over: `{ command: ["pnpm", "install", "--frozen-lockfile",
+   * "--prefer-offline"] }`, say. Absent by default, and then nothing runs.
+   *
+   * It runs once per fresh checkout, and again on the next provision until it
+   * exits 0. It is the last step of the provision and draws from its one
+   * budget, so raise `provisionTimeoutMs` to cover it. A failure doesn't fail
+   * the provision: the checkout is handed over with `place.setup` saying what
+   * went wrong. A place with no repository runs nothing. See `./setup`.
+   */
+  setup?: WorkspaceSetup;
+  /**
    * Where a run's held work goes. Absent by default, and then holding is off:
    * `checkpoint` returns `null` and starts no process, and `provision` does
    * what it always did, except that it rejects a recorded hold it cannot use
@@ -225,6 +269,16 @@ export interface PlaceRequest {
   /** The run's own branch. Required for a repository run. */
   branch?: string;
   /**
+   * `branch` is an existing branch to work on, never one to cut: a pull
+   * request's head, say. The run commits to it as it stands, and the source's
+   * `baseRef` is not read. A branch the repository lacks is made from the
+   * remote's branch of that name, freshly fetched (in a listed repository,
+   * from `origin`'s pinned URL, and set to track it); with no copy anywhere
+   * the provision is refused, `no-such-branch`. The place's `repo.baseCommit`
+   * is the tip it was checked out at.
+   */
+  existing?: boolean;
+  /**
    * A directory inside the checkout that the repository must keep out of git.
    * A checkout whose repository tracks the caller's files there, or does not
    * ignore the directory, is refused before it is handed over, and one this
@@ -246,6 +300,18 @@ export interface PlaceRequest {
    * can record each before it happens. Awaited.
    */
   progress?: (state: "lost" | "restoring") => void | Promise<void>;
+  /**
+   * Told just before the host's setup command starts in this place's checkout
+   * (`LocalWorkspaceHostOptions.setup`), so the caller can say the run is
+   * waiting on it. Awaited. Never called when nothing runs.
+   */
+  onSetup?: () => void | Promise<void>;
+  /**
+   * Write the worktree's row in the user's list (`./worktrees`): marked
+   * `provisioning` before the worktree is made and `ready` with its path,
+   * branch and base after. A repository run only. Absent: no row is written.
+   */
+  worktrees?: WorktreeRecording;
 }
 
 /** What a run's record says about its place. Every field may be absent. */
@@ -296,8 +362,18 @@ export interface WorkspacePlace {
      */
     clone: string;
     branch: string;
-    /** Whether this call cut the branch. `false` for a checkout handed back. */
+    /**
+     * Whether this call made the checkout: it cut the branch, or checked out a
+     * branch that already existed into a new tree (a rebuild from held work
+     * included). `false` for a checkout handed back.
+     */
     created: boolean;
+    /**
+     * Whether this call cut the branch itself, not only made a new checkout
+     * of a branch that already existed (after a removal that kept the
+     * branch). Absent on places made before it existed.
+     */
+    branchCut?: boolean;
     /**
      * The ref the run's branch was cut from, as asked (`"HEAD"` when none was
      * named). Only when `created`.
@@ -321,6 +397,14 @@ export interface WorkspacePlace {
   };
   /** Where a repository place came from. */
   origin?: PlaceOrigin;
+  /** The key of the worktree's row, when the provision was given `worktrees`. */
+  worktree?: string;
+  /**
+   * What the host's setup command came to, when this provision ran it
+   * (`LocalWorkspaceHostOptions.setup`). Absent when nothing ran: no setup
+   * configured, or a checkout already set up.
+   */
+  setup?: PlaceSetup;
   /**
    * Present only when holding applies to this place: the host has a held-work
    * store, the source named a `heldPrefix`, and the branch came from a remote.
@@ -419,6 +503,108 @@ export interface WorkspaceHost {
    * host may not reach, or a path that is not a repository path.
    */
   readSource?(answer: RunSourceAnswer, request: SourceReadRequest): Promise<SourceReadResult>;
+  /**
+   * Whether a run on `repository` would get a checkout here, asked before any
+   * run, with nothing made. Checks the remote allow-list; for a listed
+   * repository or `file://` remote, that the folder is a git repository with a
+   * commit whose tree ignores `ignored` (the same `ignoredProblem` a provision
+   * runs). An allowed network remote answers usable without being reached.
+   * Never rejects for an unusable repository; the answer says why. Optional.
+   */
+  checkRepository?(repository: string, options?: { ignored?: IgnoredDirectory }): Promise<RepositoryCheckResult>;
+  /**
+   * Every worktree this host holds: each one git knows, in a clone under the
+   * root or a listed repository, whose directory is strictly inside the root.
+   * A directory git does not know is not listed. Optional, as `remove` is.
+   */
+  list?(): Promise<readonly ListedWorktree[]>;
+  /**
+   * Remove one place's worktree, and with `deleteBranch` its branch: **the**
+   * removal path, which every cleanup calls. Never loses work:
+   *
+   * - refused, `uncommitted-work`, while the worktree holds uncommitted or
+   *   untracked changes (ignored files go with it);
+   * - refused, `place-busy`, while a provision of the place holds its lock;
+   * - refused, `in-use`, while a run holds the worktree in use
+   *   (`occupyWorktree`);
+   * - with `deleteBranch`, refused, `unique-commits`, while the branch holds
+   *   commits no other branch or remote-tracking ref holds, unless `force`.
+   *
+   * A refusal removes nothing. Kept files and held work are left alone: the
+   * collection and the held-work store are their record. Rejects for a
+   * target that names no worktree this host lists.
+   */
+  remove?(target: RemoveTarget, options?: RemoveOptions): Promise<RemovedWorktree>;
+  /**
+   * Record that `by` (a session or run) works in the place's worktree beside
+   * its owner (`start: { worktreeOf }`): added to the row's `attached`, once.
+   * The row's key, or `null` when the place has no row (made before rows were
+   * written, or with none asked for). Optional, as `remove` is.
+   */
+  attach?(target: { place: readonly string[] }, options: { worktrees: WorktreeCollection; by: WorktreeOwner }): Promise<string | null>;
+  /**
+   * Read the place's worktree at a turn's end and write it to its row: the
+   * branch HEAD is on and the commits past the row's `baseCommit` (`null`
+   * when there is no base or git can't count), with the time, in one write.
+   * A directory that is gone marks the row `lost`. `by`, when attached, has
+   * its own last-turn time set. Answers what it read, so a caller that reports
+   * the branch or count uses this one read; `null` for a place with no row.
+   * Optional, as `remove` is.
+   */
+  recordCheckout?(
+    target: { place: readonly string[] },
+    options: { worktrees: WorktreeCollection; by?: WorktreeOwner },
+  ): Promise<CheckoutSnapshot | null>;
+}
+
+/**
+ * What `WorkspaceHost.checkRepository` answers. `how` says where a run's
+ * checkout would be: a worktree of a repository the host lists, or a clone
+ * under the host's root. `problem` is a sentence for a person, naming the fix,
+ * and never repeats a credential.
+ */
+export type RepositoryCheckResult =
+  | { usable: true; how: "worktree" | "clone" }
+  | { usable: false; problem: string };
+
+/** One worktree a host holds, as `WorkspaceHost.list` reports it. */
+export interface ListedWorktree {
+  /** The place's segments under the root, as a `PlaceRequest` names them. */
+  place: readonly string[];
+  /** The place's directory. */
+  dir: string;
+  /** The worktree's directory. */
+  cwd: string;
+  /** The repository it is a worktree of: a clone under the root, or a listed repository. */
+  repository: string;
+  /** The branch checked out; `null` for a detached HEAD. */
+  branch: string | null;
+  /** The commit checked out; `null` when git could not say. */
+  head: string | null;
+  /** Whether it holds uncommitted or untracked changes; `null` when its directory is gone. */
+  dirty: boolean | null;
+}
+
+/** Which worktree `WorkspaceHost.remove` removes: by its place, or by its directory. */
+export type RemoveTarget = { place: readonly string[] } | { cwd: string };
+
+/** Options for `WorkspaceHost.remove`. */
+export interface RemoveOptions {
+  /** Delete the branch the worktree is on, too. */
+  deleteBranch?: boolean;
+  /** Delete the branch even when it holds the only copy of some commits. Ignored without `deleteBranch`. */
+  force?: boolean;
+  /** The user's worktree rows: a removal marks the worktree's row `removed`. */
+  worktrees?: WorktreeCollection;
+}
+
+/** What `WorkspaceHost.remove` removed. */
+export interface RemovedWorktree {
+  cwd: string;
+  /** The branch the worktree was on; `null` for a detached HEAD. */
+  branch: string | null;
+  /** Whether the branch was deleted. */
+  branchDeleted: boolean;
 }
 
 const EMPTY_REPORT: FlushReport = { outcomes: [], conflicts: [], contested: [] };
@@ -744,6 +930,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     branch: string,
     ignored: IgnoredDirectory | undefined,
     deadline: number,
+    existing = false,
   ): Promise<NonNullable<WorkspacePlace["repo"]>> {
     const clone = join(root, CLONES_DIR, `${remote.cloneKey}.git`);
     const shown = redactRemote(remote.url);
@@ -768,27 +955,32 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         // that exists is the run's own, put back where it was without a fetch.
         base: async (left) => {
           const defaultBranch = made.fresh ? made.defaultBranch! : await refresh(clone, remote, left);
-          const base = baseRef ?? defaultBranch;
+          // An existing branch is the remote's branch of that name, as just fetched.
+          const base = existing ? branch : (baseRef ?? defaultBranch);
           let commit: string;
           try {
             commit = await git(clone, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${base}^{commit}`], left());
           } catch (error) {
             if (!gitAnsweredNo(error)) throw error;
             throw new WorkspaceRefusedError(
-              "remote-unreadable",
-              `the remote "${shown}" has no branch "${base}" to cut the run's branch from.`,
+              existing ? "no-such-branch" : "remote-unreadable",
+              existing
+                ? `the remote "${shown}" has no branch "${base}" to check out, and neither has its clone.`
+                : `the remote "${shown}" has no branch "${base}" to cut the run's branch from.`,
             );
           }
           return { ref: base, commitish: commit, commit };
         },
       });
+      const started = existing ? await existingStart(clone, branch, worktree, deadline) : worktree;
       return {
         remote: remote.url,
         clone,
         branch,
         created: worktree.created,
-        ...(worktree.baseRef !== undefined ? { baseRef: worktree.baseRef } : {}),
-        ...(worktree.baseCommit !== undefined ? { baseCommit: worktree.baseCommit } : {}),
+        branchCut: worktree.baseRef !== undefined,
+        ...(started.baseRef !== undefined ? { baseRef: started.baseRef } : {}),
+        ...(started.baseCommit !== undefined ? { baseCommit: started.baseCommit } : {}),
         ...(worktree.movedBack !== undefined ? { movedBack: worktree.movedBack } : {}),
         ...(worktree.offBranch !== undefined ? { offBranch: worktree.offBranch } : {}),
       };
@@ -813,6 +1005,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     branch: string,
     ignored: IgnoredDirectory | undefined,
     deadline: number,
+    existing = false,
   ): Promise<NonNullable<WorkspacePlace["repo"]>> {
     const worktree = await provisionWorktree({
       repo,
@@ -827,15 +1020,18 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       // Read before anything is made, so a ref the repository doesn't have,
       // or a base that has split from its upstream, fails naming it and
       // leaves no marker, tree or branch behind. Only a NEW branch gets here.
-      base: (left) => localBase(repo, baseRef, left),
+      // An existing branch absent here is made from its remote's, tracking it.
+      base: (left) => (existing ? remoteBranchStart(repo, branch, left) : localBase(repo, baseRef, left)),
     });
+    const started = existing ? await existingStart(repo, branch, worktree, deadline) : worktree;
     return {
       remote: repo,
       clone: repo,
       branch,
       created: worktree.created,
-      ...(worktree.baseRef !== undefined ? { baseRef: worktree.baseRef } : {}),
-      ...(worktree.baseCommit !== undefined ? { baseCommit: worktree.baseCommit } : {}),
+      branchCut: worktree.baseRef !== undefined,
+      ...(started.baseRef !== undefined ? { baseRef: started.baseRef } : {}),
+      ...(started.baseCommit !== undefined ? { baseCommit: started.baseCommit } : {}),
       ...(worktree.movedBack !== undefined ? { movedBack: worktree.movedBack } : {}),
       ...(worktree.offBranch !== undefined ? { offBranch: worktree.offBranch } : {}),
     };
@@ -854,6 +1050,22 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     left: () => number,
   ): Promise<{ ref: string; commitish: string; commit: string }> {
     const base = baseRef ?? "HEAD";
+    // A pinned remote's branch (`origin/main`) is that branch as the remote
+    // has it now: fetched first, then cut from. Only a commit this fetch
+    // brought is used. The tracking ref on disk is shared with every run, which
+    // can move it, so a fetch that fails refuses rather than cut from it.
+    const remoteBranch = await pinnedRemoteBranch(repo, base, left);
+    if (remoteBranch !== undefined) {
+      const fetched = await fetchPinned(repo, base, remoteBranch, left);
+      if (fetched === undefined) {
+        throw new WorkspaceRefusedError(
+          "remote-unreadable",
+          `${repo}: "${base}" could not be fetched, so there is no fresh copy of it to cut the run's branch from. ` +
+            `The tracking ref on disk is not used: any run can move it.`,
+        );
+      }
+      return { ref: base, commitish: fetched.commit, commit: fetched.commit };
+    }
     try {
       await git(repo, ["rev-parse", "--verify", "--quiet", `${base}^{commit}`], left());
     } catch (error) {
@@ -942,7 +1154,25 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           `${ref} is used.${acceptChange}`,
       );
     }
+    return await fetchPinned(repo, base, { ref, remoteName, remoteRef }, left);
+  }
 
+  /**
+   * Fetch one branch of a pinned remote of a listed repository into its
+   * tracking ref, by the rules `fetchUpstream` describes: the pinned URL,
+   * judged for shape, in an empty repository of its own, and a fetch that
+   * fails or is skipped is a warning naming `base`, never a refusal. Returns
+   * the commit this fetch brought, or `undefined`.
+   */
+  async function fetchPinned(
+    repo: string,
+    base: string,
+    pinnedBranch: { ref: string; remoteName: string; remoteRef: string },
+    left: () => number,
+  ): Promise<{ ref: string; commit: string } | undefined> {
+    const { ref, remoteName, remoteRef } = pinnedBranch;
+    const pins = fetchPins.get(repo);
+    const acceptChange = pins === undefined ? "" : ` To pin the repository's current config, delete ${pins.file} and restart the host.`;
     const skip = (why: string, after = "") =>
       console.warn(`[workspace] ${repo}: ${why}, so the run starts from the local "${base}", not ${ref}.${after}`);
     const pinned = pins?.remotes.get(remoteName);
@@ -1048,6 +1278,86 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   }
 
 
+  /**
+   * The pinned remote branch `base` names in a listed repository
+   * (`origin/main`, or `refs/remotes/origin/main`), or `undefined` when it
+   * names none. A local branch spelled like one (`refs/heads/origin/main`)
+   * is the local branch.
+   */
+  async function pinnedRemoteBranch(
+    repo: string,
+    base: string,
+    left: () => number,
+  ): Promise<{ ref: string; remoteName: string; remoteRef: string } | undefined> {
+    const remotes = [...(fetchPins.get(repo)?.remotes.keys() ?? [])].sort((a, b) => b.length - a.length);
+    const spelled = base.startsWith("refs/remotes/") ? base.slice("refs/remotes/".length) : base;
+    const remoteName = remotes.find((name) => spelled.startsWith(`${name}/`));
+    if (remoteName === undefined) return undefined;
+    const name = spelled.slice(remoteName.length + 1);
+    if (name === "HEAD" || !/^[^\s:]+$/.test(name)) return undefined;
+    if (!base.startsWith("refs/") && (await trackedCommit(repo, `refs/heads/${base}`, left)) !== undefined) return undefined;
+    return { ref: `refs/remotes/${remoteName}/${name}`, remoteName, remoteRef: `refs/heads/${name}` };
+  }
+
+  /** The commit `ref` names in `repo`, or `undefined` when it names none. A failed probe is raised. */
+  async function trackedCommit(repo: string, ref: string, left: () => number): Promise<string | undefined> {
+    try {
+      return await git(repo, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], left());
+    } catch (error) {
+      if (gitAnsweredNo(error)) return undefined;
+      throw error;
+    }
+  }
+
+  /**
+   * Where an existing branch a listed repository lacks starts: its remote's
+   * branch of the same name, fetched first. The remote is `origin` when it is
+   * pinned, else the one pinned remote. Refused, `no-such-branch`, when no
+   * copy of the branch is to be had.
+   */
+  async function remoteBranchStart(
+    repo: string,
+    branch: string,
+    left: () => number,
+  ): Promise<{ ref: string; commitish: string; commit: string }> {
+    const remotes = [...(fetchPins.get(repo)?.remotes.keys() ?? [])];
+    const remoteName = remotes.includes("origin") ? "origin" : remotes.length === 1 ? remotes[0] : undefined;
+    if (remoteName !== undefined) {
+      const pinned = { ref: `refs/remotes/${remoteName}/${branch}`, remoteName, remoteRef: `refs/heads/${branch}` };
+      // Only what this fetch brought: the tracking ref on disk is any run's to move.
+      const fetched = await fetchPinned(repo, branch, pinned, left);
+      if (fetched !== undefined) return { ref: `${remoteName}/${branch}`, commitish: fetched.commit, commit: fetched.commit };
+    }
+    throw new WorkspaceRefusedError(
+      "no-such-branch",
+      `${repo} has no branch "${branch}" to check out, and ${remoteName === undefined ? "no single remote to fetch it from" : `it could not be fetched from "${remoteName}"`}.`,
+    );
+  }
+
+  /**
+   * An existing branch's start, for the run's record: the tip it was checked
+   * out at, so `git log base..branch` is the run's own work. A branch made
+   * from its remote's tracks that branch. A checkout handed back reports
+   * nothing, as a cut one does.
+   */
+  async function existingStart(
+    repo: string,
+    branch: string,
+    worktree: { created: boolean; baseRef?: string; baseCommit?: string },
+    deadline: number,
+  ): Promise<{ baseRef?: string; baseCommit?: string }> {
+    if (!worktree.created) return {};
+    const left = () => remainingBudget(deadline, now);
+    if (worktree.baseRef !== undefined && localRepositories.has(repo)) {
+      // Made from the remote's branch here: track it, as `git switch <branch>` would.
+      await git(repo, ["branch", `--set-upstream-to=${worktree.baseRef}`, branch], left()).catch((error) =>
+        console.warn(`[workspace] ${repo}: "${branch}" was made from ${worktree.baseRef} but does not track it (${firstLine(error)}).`),
+      );
+    }
+    if (worktree.baseCommit !== undefined) return { baseRef: worktree.baseRef ?? branch, baseCommit: worktree.baseCommit };
+    return { baseRef: branch, baseCommit: await git(repo, ["rev-parse", "--verify", `refs/heads/${branch}^{commit}`], left()) };
+  }
+
   /** The repository a source's `repo` names, when the operator listed it as local. */
   function localRepository(repo: string): string | undefined {
     if (!isAbsolute(repo)) return undefined;
@@ -1066,6 +1376,34 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   }
 
   async function provision(answer: RunSourceAnswer, request: PlaceRequest): Promise<WorkspacePlace> {
+    const recording = answer.kind === "repo" ? request.worktrees : undefined;
+    if (recording === undefined) return await provisionPlace(answer, request);
+    const key = worktreeKey(hostId(), request.place);
+    // Both writes run under the place's lock, the one `remove` takes, so a
+    // removal lands wholly before the provision or wholly after it.
+    const place = await provisionPlace(answer, request, {
+      before: () => markWorktreeProvisioning(recording, key, request.place),
+      after: (made) =>
+        markWorktreeReady(recording, key, request.place, {
+          path: made.cwd,
+          branch: made.repo?.branch ?? null,
+          repo: made.repo !== undefined ? redactRemote(made.repo.remote) : null,
+          baseCommit: made.repo?.baseCommit ?? null,
+          fresh: made.repo?.branchCut === true,
+        }),
+    });
+    return { ...place, worktree: key };
+  }
+
+  /**
+   * Make the place. `rows` are the worktree row's writes, run inside the
+   * place's lock: `before` ahead of the checkout, `after` once it is made.
+   */
+  async function provisionPlace(
+    answer: RunSourceAnswer,
+    request: PlaceRequest,
+    rows?: { before: () => Promise<void>; after: (place: WorkspacePlace) => Promise<void> },
+  ): Promise<WorkspacePlace> {
     if (answer.kind === "refused") throw new WorkspaceRefusedError(answer.reason, answer.message);
     const dir = placeDir(request.place);
     // One budget for the whole provision, lock waits included.
@@ -1101,15 +1439,29 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         // No kept files: the place is the checkout, with its marker and lock
         // beside it, exactly as places already on disk were made.
         mkdirSync(root, { recursive: true });
-        const repo = await locked(`${dir}${LOCAL_LOCK_SUFFIX}`, deadline, () =>
-          provisionLocalCheckout(local, answer.baseRef, dir, `${dir}${LOCAL_MARKER_SUFFIX}`, branch, request.ignored, deadline),
-        );
-        return { kind: "repo", dir, cwd: dir, repo, origin: repo.created ? "new" : "live" };
+        return await locked(`${dir}${LOCAL_LOCK_SUFFIX}`, deadline, async () => {
+          await rows?.before();
+          const repo = await provisionLocalCheckout(
+            local,
+            answer.baseRef,
+            dir,
+            `${dir}${LOCAL_MARKER_SUFFIX}`,
+            branch,
+            request.ignored,
+            deadline,
+            request.existing === true,
+          );
+          const place: WorkspacePlace = { kind: "repo", dir, cwd: dir, repo, origin: repo.created ? "new" : "live" };
+          const placed = await withSetup(place, `${dir}${LOCAL_SETUP_SUFFIX}`, request, deadline);
+          await rows?.after(placed);
+          return placed;
+        });
       }
       // Kept files: laid out like a remote run's place, the worktree in
       // checkout/ and the files in project/ beside it, never inside it.
       const { projectId, files } = answer;
       return await locked(join(dir, LOCK_SUFFIX), deadline, async () => {
+        await rows?.before();
         const repo = await provisionLocalCheckout(
           local,
           answer.baseRef,
@@ -1118,10 +1470,13 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           branch,
           request.ignored,
           deadline,
+          request.existing === true,
         );
+        oweSetup(repo, join(dir, SETUP_MARKER));
+        writeFileSync(join(await git(join(dir, CHECKOUT_DIR), ["rev-parse", "--absolute-git-dir"], remainingBudget(deadline, now)), NESTED_LAYOUT_MARKER), "");
         const filesDir = join(dir, PROJECT_DIR);
         await provisionFiles(dir, PROJECT_DIR, projectId, files);
-        return {
+        const place: WorkspacePlace = {
           kind: "repo",
           dir,
           cwd: join(dir, CHECKOUT_DIR),
@@ -1129,7 +1484,10 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           holder: hold(filesDir),
           repo,
           origin: repo.created ? "new" : "live",
-        } satisfies WorkspacePlace;
+        };
+        const placed = await withSetup(place, join(dir, SETUP_MARKER), request, deadline);
+        await rows?.after(placed);
+        return placed;
       });
     }
 
@@ -1156,6 +1514,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       let repo: NonNullable<WorkspacePlace["repo"]>;
       let origin: PlaceOrigin;
       let extra: Pick<WorkspacePlace, "holding" | "heldDir"> = {};
+      await rows?.before();
       if (holding) {
         const made = await provisionHolding(answer as RepoRunSource & { heldPrefix: string }, remote, request, dir, branch, deadline);
         ({ repo, origin } = made);
@@ -1164,17 +1523,42 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
           ...(made.heldDir !== undefined ? { heldDir: made.heldDir } : {}),
         };
       } else {
-        repo = await provisionClonedCheckout(remote, answer.baseRef, dir, branch, request.ignored, deadline);
+        repo = await provisionClonedCheckout(remote, answer.baseRef, dir, branch, request.ignored, deadline, request.existing === true);
         origin = repo.created ? "new" : "live";
       }
+      oweSetup(repo, join(dir, SETUP_MARKER));
       const place: WorkspacePlace = { kind: "repo", dir, cwd: join(dir, CHECKOUT_DIR), repo, origin, ...extra };
       if (answer.projectId !== undefined && answer.files !== undefined) {
         await provisionFiles(dir, PROJECT_DIR, answer.projectId, answer.files);
         place.filesDir = join(dir, PROJECT_DIR);
         place.holder = hold(place.filesDir);
       }
-      return place;
+      const placed = await withSetup(place, join(dir, SETUP_MARKER), request, deadline);
+      await rows?.after(placed);
+      return placed;
     });
+  }
+
+  /**
+   * Mark setup as owed the moment a provision makes the tree, before any step
+   * after it that can fail (filling kept files), so a retry that hands this
+   * checkout back still runs the setup.
+   */
+  function oweSetup(repo: NonNullable<WorkspacePlace["repo"]>, marker: string): void {
+    if (options.setup !== undefined && repo.created) writeFileSync(marker, "");
+  }
+
+  /**
+   * `place`, with the operator's setup command run in its checkout when it is
+   * owed: this provision made the tree (`repo.created`, which every `worktree
+   * add` sets, a rebuild from held work included, and a hand-back never does),
+   * or the last setup there never finished. The last step of a provision,
+   * holding the place's lock, on what is left of its budget.
+   */
+  async function withSetup(place: WorkspacePlace, marker: string, request: PlaceRequest, deadline: number): Promise<WorkspacePlace> {
+    const fresh = place.repo?.created === true;
+    const outcome = await setUpCheckout(options.setup, place.cwd, marker, fresh, () => remainingBudget(deadline, now), request.onSetup);
+    return outcome === undefined ? place : { ...place, setup: outcome };
   }
 
   /**
@@ -1212,7 +1596,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     // holding was on.
     const live = isLive(dir);
     if (recorded?.host == null || (recorded.host === hostId() && live)) {
-      const repo = await provisionClonedCheckout(remote, answer.baseRef, dir, branch, request.ignored, deadline);
+      const repo = await provisionClonedCheckout(remote, answer.baseRef, dir, branch, request.ignored, deadline, request.existing === true);
       const base =
         repo.baseCommit ?? held?.base ?? (await mergeBase(checkout, recorded?.baseRef ?? answer.baseRef, left));
       return { repo, origin: repo.created ? "new" : "live", base };
@@ -1229,7 +1613,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       // Nothing held, or held work its owner has answered for: start again
       // from the base, and lay the snapshot out beside the checkout.
       if (existsSync(clone)) await locked(cloneLock, deadline, () => branchAside(clone, branch, [], left));
-      const repo = await provisionClonedCheckout(remote, answer.baseRef, dir, branch, request.ignored, deadline);
+      const repo = await provisionClonedCheckout(remote, answer.baseRef, dir, branch, request.ignored, deadline, request.existing === true);
       let heldDir: string | undefined;
       if (held !== null) {
         // A pack that cannot be read, or is not the one recorded, leaves no
@@ -1591,15 +1975,341 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     return await (await projection).flush();
   }
 
+  /** The repositories this host cuts worktrees from: each clone under the root, and each listed repository. */
+  function repositories(): string[] {
+    const clones = join(root, CLONES_DIR);
+    const cloned = existsSync(clones)
+      ? readdirSync(clones, { withFileTypes: true })
+          .filter((entry) => entry.isDirectory() && entry.name.endsWith(".git"))
+          .map((entry) => join(clones, entry.name))
+      : [];
+    return [...cloned, ...localRepositories];
+  }
+
+  /** The worktrees of a local repository marked nested (`NESTED_LAYOUT_MARKER`), by the path git recorded. */
+  async function nestedWorktrees(repository: string, timeoutMs: number): Promise<Set<string>> {
+    const admin = join(await git(repository, ["rev-parse", "--path-format=absolute", "--git-common-dir"], timeoutMs), "worktrees");
+    const marked = new Set<string>();
+    if (!existsSync(admin)) return marked;
+    for (const entry of readdirSync(admin, { withFileTypes: true })) {
+      const own = join(admin, entry.name);
+      if (!entry.isDirectory() || !existsSync(join(own, NESTED_LAYOUT_MARKER)) || !existsSync(join(own, "gitdir"))) continue;
+      // `gitdir` holds the worktree's `.git` file's path.
+      marked.add(resolve(dirname(readFileSync(join(own, "gitdir"), "utf8").trim())));
+    }
+    return marked;
+  }
+
+  async function list(): Promise<readonly ListedWorktree[]> {
+    const deadline = now() + provisionTimeoutMs;
+    const left = () => remainingBudget(deadline, now);
+    const realRoot = existsSync(root) ? realpathSync(root) : root;
+    const listed: ListedWorktree[] = [];
+    for (const repository of repositories()) {
+      if (!existsSync(repository)) continue;
+      const porcelain = await git(repository, ["worktree", "list", "--porcelain"], left());
+      const marked = localRepositories.has(repository) ? await nestedWorktrees(repository, left()) : new Set<string>();
+      for (const block of porcelain.split("\n\n")) {
+        const lines = block.split("\n");
+        const path = lines.find((line) => line.startsWith("worktree "))?.slice("worktree ".length);
+        // A clone under `.clones` is bare and lists itself; it is no one's worktree.
+        if (path === undefined || lines.includes("bare")) continue;
+        const cwd = existsSync(path) ? realpathSync(path) : path;
+        if (!isStrictlyInside(cwd, realRoot)) continue;
+        const branchLine = lines.find((line) => line.startsWith("branch "));
+        const head = lines.find((line) => line.startsWith("HEAD "))?.slice("HEAD ".length) ?? null;
+        // A clone's worktree is always its place's `checkout/`. A listed repository's is the place
+        // itself, unless kept files sit beside it (`locate`): then it is `checkout/` next to `project/`.
+        // Read from the layout, never the name alone, so a place named "checkout" stays itself.
+        // The marker git keeps answers even when the place is gone; the kept files beside it
+        // answer for a worktree made before the marker was written.
+        const nested =
+          !localRepositories.has(repository) ||
+          marked.has(resolve(path)) ||
+          (basename(cwd) === CHECKOUT_DIR && existsSync(join(dirname(cwd), PROJECT_DIR)));
+        const dir = nested ? dirname(cwd) : cwd;
+        const dirty = existsSync(cwd)
+          ? (await git(cwd, ["status", "--porcelain", "--untracked-files=normal"], left())) !== ""
+          : null;
+        listed.push({
+          place: relative(realRoot, dir).split(sep),
+          dir,
+          cwd,
+          repository,
+          branch: branchLine === undefined ? null : branchLine.slice("branch ".length).replace(/^refs\/heads\//, ""),
+          head,
+          dirty,
+        });
+      }
+    }
+    return listed;
+  }
+
+  async function remove(target: RemoveTarget, removeOptions: RemoveOptions = {}): Promise<RemovedWorktree> {
+    const wanted =
+      "place" in target
+        ? (entry: ListedWorktree) => entry.dir === (existsSync(placeDir(target.place)) ? realpathSync(placeDir(target.place)) : placeDir(target.place))
+        : (entry: ListedWorktree) => entry.cwd === (existsSync(target.cwd) ? realpathSync(target.cwd) : resolve(target.cwd));
+    const entry = (await list()).find(wanted);
+    if (entry === undefined) {
+      throw new Error(`no worktree this host holds is at ${"place" in target ? JSON.stringify(target.place) : target.cwd}.`);
+    }
+    const deadline = now() + provisionTimeoutMs;
+    const left = () => remainingBudget(deadline, now);
+    // The lock a provision of this place holds, so a removal never races one.
+    const lockPath = entry.cwd === entry.dir ? `${entry.dir}${LOCAL_LOCK_SUFFIX}` : join(entry.dir, LOCK_SUFFIX);
+    const lease = tryAcquireLock(lockPath, HOST_LOCK_BOUNDS, { now });
+    if (lease === undefined) {
+      throw new WorkspaceRefusedError("place-busy", `${entry.cwd} is being provisioned right now; nothing was removed. Try again once it is ready.`);
+    }
+    // A run working there holds its in-use lock (`occupyWorktree`) for as long
+    // as it works. Taken here, a holder never judged stale, so one that is
+    // running is never removed from under it; and refreshed while held, so a
+    // run can't judge this one stale and start while the tree goes.
+    const use = tryAcquireLock(worktreeLockPath(entry.cwd), { ...HOST_LOCK_BOUNDS, staleAfterMs: Number.MAX_SAFE_INTEGER }, { now });
+    if (use === undefined) {
+      releaseLock(lease);
+      throw new WorkspaceRefusedError(
+        "in-use",
+        `a run is working in ${entry.cwd}; nothing was removed. Try again once it ends. If nothing runs there, ` +
+          `delete ${worktreeLockPath(entry.cwd)}, left by a run that stopped without letting go.`,
+      );
+    }
+    try {
+      if (existsSync(entry.cwd)) {
+        const changes = await git(entry.cwd, ["status", "--porcelain", "--untracked-files=normal"], left());
+        if (changes !== "") {
+          const paths = changes.split("\n").slice(0, 5).map((line) => line.slice(3));
+          throw new WorkspaceRefusedError(
+            "uncommitted-work",
+            `${entry.cwd} holds uncommitted or untracked changes (${paths.join(", ")}${changes.split("\n").length > 5 ? ", …" : ""}), ` +
+              `which exist nowhere else; nothing was removed. Commit or discard them in it first.`,
+          );
+        }
+      }
+      // Read again under the lease: a run that ended between `list()` and here may have moved HEAD.
+      const present = existsSync(entry.cwd);
+      const branch = present
+        ? (await git(entry.cwd, ["symbolic-ref", "--short", "-q", "HEAD"], left()).catch(() => "")) || null
+        : entry.branch;
+      const head = present ? await git(entry.cwd, ["rev-parse", "HEAD"], left()) : entry.head;
+      // A detached HEAD's commits live only in this worktree's HEAD and reflog,
+      // which removal deletes: refused like a branch's, unless forced.
+      // Checked even when the directory is gone: git still keeps that HEAD, and pruning drops it.
+      if (branch === null && head !== null && removeOptions.force !== true) {
+        const only = Number(await git(entry.repository, ["rev-list", "--count", head, "--not", "--branches", "--remotes", "--tags"], left()));
+        if (only > 0) {
+          throw new WorkspaceRefusedError(
+            "unique-commits",
+            `${entry.cwd} is on a detached HEAD holding ${only} commit${only === 1 ? "" : "s"} no branch, tag or remote holds; ` +
+              `nothing was removed. Put ${only === 1 ? "it" : "them"} on a branch first, or remove with force.`,
+          );
+        }
+      }
+      if (removeOptions.deleteBranch === true && branch !== null && removeOptions.force !== true) {
+        const only = Number(
+          await git(
+            entry.repository,
+            ["rev-list", "--count", `refs/heads/${branch}`, "--not", `--exclude=${branch}`, "--branches", "--remotes"],
+            left(),
+          ),
+        );
+        if (only > 0) {
+          throw new WorkspaceRefusedError(
+            "unique-commits",
+            `branch "${branch}" holds ${only} commit${only === 1 ? "" : "s"} no other branch or remote holds; ` +
+              `nothing was removed. Push or merge ${only === 1 ? "it" : "them"}, or delete the branch with force.`,
+          );
+        }
+      }
+      // With its directory gone, `remove` drops only this worktree's metadata;
+      // `prune` would drop every missing worktree's, and any detached HEAD with it.
+      await git(entry.repository, ["worktree", "remove", entry.cwd], left());
+      let branchDeleted = false;
+      if (removeOptions.deleteBranch === true && branch !== null) {
+        await git(entry.repository, ["branch", "-D", branch], left());
+        branchDeleted = true;
+      }
+      if (removeOptions.worktrees !== undefined) {
+        await markWorktreeRemoved(removeOptions.worktrees, worktreeKey(hostId(), "place" in target ? target.place : entry.place));
+      }
+      return { cwd: entry.cwd, branch, branchDeleted };
+    } finally {
+      releaseLock(use);
+      releaseLock(lease);
+    }
+  }
+
+  async function attach(
+    target: { place: readonly string[] },
+    attachOptions: { worktrees: WorktreeCollection; by: WorktreeOwner },
+  ): Promise<string | null> {
+    const key = worktreeKey(hostId(), target.place);
+    return (await attachToWorktree(attachOptions.worktrees, key, attachOptions.by)) ? key : null;
+  }
+
+  async function recordCheckout(
+    target: { place: readonly string[] },
+    recordOptions: { worktrees: WorktreeCollection; by?: WorktreeOwner },
+  ): Promise<CheckoutSnapshot | null> {
+    const key = worktreeKey(hostId(), target.place);
+    const row = (await recordOptions.worktrees.getOptional(key))?.state;
+    if (row === undefined) return null;
+    const at = now();
+    const path = row.path;
+    if (path === null || !existsSync(path)) {
+      const gone: CheckoutSnapshot = { present: false, at };
+      await recordWorktreeCheckout(recordOptions.worktrees, key, gone, recordOptions.by);
+      return gone;
+    }
+    const branch = await checkedOutBranch(path);
+    let commits: number | null = null;
+    if (row.baseCommit !== null) {
+      try {
+        const counted = Number.parseInt(await git(path, ["rev-list", "--count", "HEAD", "--not", row.baseCommit], GIT_TIMEOUT_MS), 10);
+        commits = Number.isNaN(counted) ? null : counted;
+      } catch {
+        // Unknown, never 0.
+      }
+    }
+    const read: CheckoutSnapshot = { present: true, branch, commits, at };
+    await recordWorktreeCheckout(recordOptions.worktrees, key, read, recordOptions.by);
+    return read;
+  }
+
+  async function checkRepository(repository: string, options: { ignored?: IgnoredDirectory } = {}): Promise<RepositoryCheckResult> {
+    // Listed exactly as a provision matches it (`localRepository`), so the two can't disagree on `how`.
+    const listed = localRepository(repository);
+    let folder: string;
+    if (listed !== undefined) folder = listed;
+    else {
+      const remote = checkRemote(repository, allow);
+      if ("reason" in remote) return { usable: false, problem: remote.message };
+      // A network remote is not reached here (see the method's doc).
+      if (remote.scheme !== "file") return { usable: true, how: "clone" };
+      const path = repository.startsWith("file://") ? fileUrlPath(repository) : repository;
+      if (path === undefined) return { usable: false, problem: `${repository} names no folder on this machine.` };
+      folder = path;
+    }
+    const how = listed !== undefined ? "worktree" : "clone";
+    if (!existsSync(folder)) return { usable: false, problem: `there is no folder at ${folder} on this machine.` };
+    const left = () => provisionTimeoutMs;
+    // Nothing the repository's config names is run while it is read: no hooks (`git`), no fsmonitor.
+    const read = (cwd: string, args: string[]) => git(cwd, ["-c", "core.fsmonitor=false", ...args], left());
+    const notRepository = { usable: false, problem: `${folder} is not a git repository. Run \`git init\` there, or name a repository's folder.` } as const;
+    let workTree: string | undefined;
+    try {
+      workTree = await read(folder, ["rev-parse", "--show-toplevel"]);
+    } catch {
+      // A bare repository has no working tree, but a clone of one does: an unlisted one is checked through its commit.
+      let bare = false;
+      try {
+        bare = (await read(folder, ["rev-parse", "--is-bare-repository"])) === "true";
+      } catch {
+        return notRepository;
+      }
+      if (!bare || listed !== undefined) return notRepository;
+    }
+    // A clone reads the folder it is given, never the repository around it.
+    if (how === "clone" && workTree !== undefined && realpathSync(workTree) !== realpathSync(folder)) {
+      return { usable: false, problem: `${folder} is inside the repository at ${workTree}, and a clone needs the repository's own folder. Name ${workTree}.` };
+    }
+    const repo = workTree ?? folder;
+    try {
+      await read(repo, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
+    } catch {
+      return { usable: false, problem: `${repo} has no commit yet, and a coding run's checkout is cut from one. Commit its files first.` };
+    }
+    // A clone starts from the default branch its source's HEAD names, as a provision reads it.
+    if (how === "clone") {
+      const head = await read(repo, ["symbolic-ref", "--quiet", "HEAD"]).catch(() => "");
+      if (!head.startsWith("refs/heads/")) {
+        return { usable: false, problem: `${repo} has no default branch: its HEAD is detached. Check out a branch there.` };
+      }
+    }
+    if (options.ignored !== undefined) {
+      const problem = await committedIgnoredProblem(repo, options.ignored, { ownExcludes: how === "worktree", left });
+      if (problem !== undefined) {
+        // Only to choose the sentence: the working tree may hold the rule already, and then what is missing is the commit.
+        const uncommitted =
+          workTree !== undefined && (await ignoredProblem(workTree, options.ignored, (args) => read(workTree!, args))) === undefined;
+        return {
+          usable: false,
+          problem: uncommitted
+            ? `${repo} ignores "${options.ignored.dir}" only in uncommitted changes. A coding run's checkout is cut from the last commit, which doesn't. Commit the .gitignore change.`
+            : problem,
+        };
+      }
+    }
+    return { usable: true, how };
+  }
+
+  /**
+   * `ignoredProblem` on the tree a run's checkout gets: the last commit's,
+   * not the working tree's. The commit's .gitignore files are written to a
+   * scratch folder under a scratch index, and the same check runs there, so
+   * an uncommitted rule (or an uncommitted removal of one) doesn't count.
+   * `ownExcludes`: a worktree shares the repository's `info/exclude`, so it
+   * counts; a clone gets none of it, so the check runs against an empty git
+   * directory instead.
+   */
+  async function committedIgnoredProblem(
+    repo: string,
+    ignored: IgnoredDirectory,
+    { ownExcludes, left }: { ownExcludes: boolean; left: () => number },
+  ): Promise<string | undefined> {
+    const gitDir = await git(repo, ["rev-parse", "--absolute-git-dir"], left());
+    const scratch = mkdtempSync(join(tmpdir(), "fsdev-check-"));
+    const tree = join(scratch, "tree");
+    mkdirSync(tree);
+    const inScratch = (dir: string) => async (args: string[]) => {
+      const { stdout } = await run("git", [...NO_HOOKS, "-c", "core.fsmonitor=false", `--git-dir=${dir}`, `--work-tree=${tree}`, ...args], {
+        cwd: tree,
+        timeoutMs: left(),
+        env: { ...env, GIT_INDEX_FILE: join(scratch, "index") },
+      });
+      return stdout.trim();
+    };
+    const source = inScratch(gitDir);
+    try {
+      await source(["read-tree", "HEAD"]);
+      // Each committed .gitignore is written from its raw blob: a checkout would run any filter the source configures.
+      const entries = (await source(["ls-files", "-s", "-z", "--", ":(glob)**/.gitignore"])).split("\0").filter((line) => line !== "");
+      for (const entry of entries) {
+        const [meta, path] = entry.split("\t") as [string, string];
+        const [mode, blob] = meta.split(" ") as [string, string];
+        if (mode !== "100644" && mode !== "100755") continue;
+        const { stdout } = await run("git", [...NO_HOOKS, `--git-dir=${gitDir}`, "cat-file", "blob", blob], { cwd: tree, timeoutMs: left(), env });
+        mkdirSync(dirname(join(tree, path)), { recursive: true });
+        writeFileSync(join(tree, path), stdout);
+      }
+      let checked = source;
+      if (!ownExcludes) {
+        const empty = join(scratch, "git");
+        await git(scratch, ["init", "-q", "--bare", empty], left());
+        checked = inScratch(empty);
+      }
+      // `repo` names the repository in the sentence; the git calls read the scratch tree and index.
+      return await ignoredProblem(repo, ignored, checked);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  }
+
   return {
     root,
     source: options.source,
     provisionTimeoutMs,
     locate,
     provision,
+    checkRepository,
     save,
     hostId,
     holds,
+    list,
+    remove,
+    attach,
+    recordCheckout,
     async checkpoint(place, recorded) {
       const holding = place.holding;
       if (heldWork === undefined || holding === undefined || place.kind !== "repo") return null;
@@ -1678,6 +2388,15 @@ async function hasCommit(g: Git, cwd: string, commit: string): Promise<boolean> 
   } catch (error) {
     if (gitAnsweredNo(error)) return false;
     throw error;
+  }
+}
+
+/** The folder a `file://` URL names, or `undefined` for one that names none. */
+function fileUrlPath(url: string): string | undefined {
+  try {
+    return fileURLToPath(url);
+  } catch {
+    return undefined;
   }
 }
 

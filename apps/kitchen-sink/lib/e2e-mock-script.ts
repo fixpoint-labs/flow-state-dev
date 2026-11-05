@@ -11,8 +11,8 @@
  * worker could see from before the turn. Under the goal checks' `no-history` control the scripted model is
  * handed only the system messages and the latest turn.
  * A scenario can hold its answer for a while first (`holdMs`), which
- * `test/mock-flowstate.ts` applies before the model runs.
- * `policy: "allow"` (set in `test/mock-flowstate.ts`) catches anything else
+ * `test-model-resolver.ts` applies before the model runs.
+ * `policy: "allow"` (set in `test-model-resolver.ts`) catches anything else
  * with a no-op model.
  *
  * A coordinator's best-fit evaluation, block name `coordinator-route`, is
@@ -84,6 +84,11 @@ const SCENARIO_SCRIPTS: ScenarioScript[] = [
   {
     match: (turn) => turn.includes("[scenario:smoke]"),
     steps: [{ text: "Smoke test response." }],
+  },
+  {
+    // The answer the retry gets: the first call fails (`failsOnce`).
+    match: (turn) => turn.includes("[scenario:fail-once]"),
+    steps: [{ text: "Answered on the retry." }],
   },
 ];
 
@@ -277,6 +282,29 @@ export function holdBeforeAnswer(generator: string, input: unknown): number {
   if (scripts === undefined) return 0;
   const turn = latestUserTurn(input);
   return scripts.find((s) => s.match(turn))?.holdMs ?? 0;
+}
+
+/** The `fail-once` turns whose first assistant call has already failed. */
+const failedTurns = new Set<string>();
+
+/** What the failing call says, as a provider error would. */
+export const FAIL_ONCE_REASON = "Scripted model failure: the provider refused this call.";
+
+/**
+ * Whether this call of `generator` fails, so a page can show a failed turn and
+ * its Retry. The assistant's first call for a turn carrying
+ * `[scenario:fail-once]` fails; every later one for the same turn, the
+ * retry's, answers. Keyed on the turn's text, so each check sends its own.
+ *
+ * @param generator The generator block's name, as the model resolver gets it.
+ * @param input The call's messages.
+ */
+export function failsOnce(generator: string, input: unknown): boolean {
+  if (generator !== "assistant-generator") return false;
+  const turn = latestUserTurn(input);
+  if (!turn.includes("[scenario:fail-once]") || failedTurns.has(turn)) return false;
+  failedTurns.add(turn);
+  return true;
 }
 
 /**

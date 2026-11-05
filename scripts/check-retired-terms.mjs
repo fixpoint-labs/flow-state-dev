@@ -41,6 +41,21 @@
  * Manager's rows name its screens (its Roster screen beside Workforce's
  * roster), so they don't count toward a term.
  *
+ * ## Collection item
+ *
+ * Stored collection data is an item, not a row
+ * (`goals/vocabulary/one-word-per-thing` → `COLLECTION_ITEM`). The sweep does
+ * not apply it: the existing tree keeps its names. This guard flags a line the
+ * checkout adds against the base ref, and only that line. A `type` or
+ * `interface` whose name ends in `Row` counts when it names collection data:
+ * the file is a collection module, the line says collection, or the name
+ * contains `Collection`. Docs prose that calls collection data a row counts.
+ * A rendered table row does not: panels, the flow navigator, BoardColumns, a
+ * table or grid path, a `TableRow`-style name, a DOM `<tr>`, or the words
+ * "table row" / "grid row". Core's `OutputItem` and `getItems` are response
+ * items and do not match. Record and entry do not match. History, process,
+ * goals and root config stay out of scope, same as the other terms.
+ *
  * Run: node scripts/check-retired-terms.mjs [--root <dir>] [--list [term]] [--control]
  *   --root     scan another checkout (default: this repository)
  *   --list     print every counted line, or only one term's
@@ -53,6 +68,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { COLLECTION_ITEM } from "../goals/vocabulary/one-word-per-thing/rules.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -154,7 +170,7 @@ export const EXCEPTIONS = [
   {
     id: "kind-type-names",
     terms: ["kind"],
-    strip: /\b\w+ErrorKind\b|\bEntryKind\b|\bTaskChangeKind\b|\bPathReport<Kind\b|\bKind extends\b|:\s*Kind\b|\b(?:WRITER|PLAIN)_KIND\b|\bworkerWriterKind\b|\b(?:waitForUserKindOf|WaitForUserKind)\b|`Kind`/g,
+    strip: /\b\w+ErrorKind\b|\bEntryKind\b|\bTaskChangeKind\b|\bPathReport<Kind\b|\bKind extends\b|:\s*Kind\b|\b(?:WRITER|PLAIN)_KIND\b|\bworkerWriterKind\b|\b(?:suspendForUserKindOf|SuspendForUserKind)\b|`Kind`/g,
     why: "a type discriminant's own type, core's names for what a user's stop asks (FIX-2129), and the engine flow kinds a test registers (BR-10)",
   },
   {
@@ -186,6 +202,13 @@ export const EXCEPTIONS = [
     terms: ["room"],
     strip: /\b(?:make|makes|making|made|leave|leaves|leaving|left|have|has|had|ran out of|run out of|out of|given|give|gives|enough|reserve|reserves|reserved|no|more|less|little|plenty of)\s+room\b|\broom\s+(?:for|to)\b|room-temperature/gi,
     why: "the English 'room for'",
+  },
+  {
+    id: "landing-room-metaphor",
+    terms: ["room"],
+    where: (path) => path === "apps/build-site/public/index.html",
+    strip: /\binside their room\b|\brebuild the room\b/g,
+    why: "flow-state.build's headline metaphor (an assistant's room you can rebuild), not the retired coordinator term",
   },
   {
     id: "project-member",
@@ -225,6 +248,13 @@ export const EXCEPTIONS = [
     where: (path) => path === "apps/docs/docusaurus.config.ts",
     strip: /(?<=from: ")\/docs\/workforce\/mailboxes(?=")/g,
     why: "a redirect from a removed page's address, so an old link still lands",
+  },
+  {
+    id: "registry-copies",
+    terms: ["kind", "person"],
+    where: (path) => /^packages\/shift-manager\/src\/components\/flow-state\//.test(path),
+    strip: /\bkinds?\b|\bpersons?\b|\bperson's\b/gi,
+    why: "an installed copy of a ui registry component, held byte-equal to its source in packages/ui (outside Workforce) by Shift Manager's static test: its words are the registry's",
   },
   {
     id: "person-any-human",
@@ -280,6 +310,222 @@ export function scanFile(path, text, exceptions, stripped = {}) {
       }
       if (count(term.re, line) > 0) hits.push({ term: term.id, line: i + 1, text: raw.trim().slice(0, 160) });
     }
+  }
+  return hits;
+}
+
+/**
+ * A collection module: a `collection` directory, or a file whose name says collection.
+ * `tasks/collection/types.ts` and `collections.md` both count. `overview.md` does not.
+ */
+const COLLECTION_FILE = /(?:^|\/)collections?(?:\/|$)|(?:^|\/)[^/]*collection[^/]*\.(?:[cm]?[jt]sx?|mdx?)$/i;
+
+/**
+ * Where a row is a rendered table, not stored collection data. Panels and the
+ * flow navigator draw board and session rows; BoardColumns is one of those
+ * components; a `table` or `grid` path is the same thing.
+ */
+const UI_ROW_PATH = /(?:^|\/)components\/(?:panels|flow-navigator)\/|BoardColumns|(?:^|\/)(?:table|grid)s?(?:\/|$)|\.(?:table|grid)\.[cm]?[jt]sx?$/i;
+
+/** Type names that are table rows. `WidgetRow` does not match. `DataTableRow` does. */
+const UI_ROW_NAME = /(?:Table|Grid|BoardCard|BoardColumn|RosterWorker|FlowNavigator|Panel)Row$/;
+
+/** A declaration of a type whose name ends in Row. Uses of an existing name do not match. */
+const TYPE_ROW = /\b(?:export\s+)?(?:declare\s+)?(?:type|interface)\s+(\w*Row)\b/g;
+
+/**
+ * Docs calling stored collection data a row: "collection row", "collection's row",
+ * "collections' rows", or "the row of the collection".
+ */
+const PROSE_ROW = /\bcollection\s+rows?\b|\bcollection(?:'s|s')\s+rows?\b|\brows?\s+(?:in|of|from|inside|on)\s+(?:the\s+|a\s+|an\s+)?(?:[\w'-]+\s+){0,4}collection\b/i;
+
+/** A line that is itself a rendered table row, so the collection-item rule leaves it. */
+const UI_ROW_LINE = /<tr\b|<\/tr>|\b(?:table|grid)\s+rows?\b/i;
+
+const DOC_FILE = /\.(?:md|mdx)$/;
+
+/**
+ * Whether a `*Row` declaration is stored collection data.
+ * @param {string} path
+ * @param {string} line
+ * @param {string} name
+ */
+function inCollectionContext(path, line, name) {
+  if (COLLECTION_FILE.test(path)) return true;
+  if (/\bcollections?\b/i.test(line)) return true;
+  if (name.includes("Collection")) return true;
+  return false;
+}
+
+/**
+ * Collection-item violations on lines a change adds. `added` is the 1-based
+ * line numbers added in `path`. A line the change did not add is ignored, and
+ * so is a file outside this guard's in-scope areas.
+ * @param {string} path
+ * @param {string} text
+ * @param {Set<number>} added
+ * @returns {{ term: string; line: number; text: string }[]}
+ */
+export function scanCollectionRows(path, text, added) {
+  const area = areaOf(path);
+  if (area === undefined || !area.scope) return [];
+  if (added === undefined || added.size === 0) return [];
+  const lines = text.split("\n");
+  const hits = [];
+  const isDoc = DOC_FILE.test(path);
+  const uiPath = UI_ROW_PATH.test(path);
+  for (const n of [...added].sort((a, b) => a - b)) {
+    const raw = lines[n - 1];
+    if (raw === undefined) continue;
+    if (UI_ROW_LINE.test(raw)) continue;
+    if (isDoc && PROSE_ROW.test(raw)) {
+      hits.push({ term: COLLECTION_ITEM.id, line: n, text: raw.trim().slice(0, 160) });
+      continue;
+    }
+    if (uiPath) continue;
+    TYPE_ROW.lastIndex = 0;
+    let match;
+    while ((match = TYPE_ROW.exec(raw)) !== null) {
+      const name = match[1];
+      if (UI_ROW_NAME.test(name)) continue;
+      if (!inCollectionContext(path, raw, name)) continue;
+      hits.push({ term: COLLECTION_ITEM.id, line: n, text: raw.trim().slice(0, 160) });
+      break;
+    }
+  }
+  return hits;
+}
+
+/**
+ * Added-line numbers from one unified diff (`git diff -U0`). Keys are repo-relative
+ * paths. Context and deletions are not added lines. A `+++` header is read only
+ * outside a hunk, so an added line whose text starts with `++` still counts.
+ * @param {string} diff
+ * @returns {Map<string, Set<number>>}
+ */
+export function parseUnifiedAddedLines(diff) {
+  /** @type {Map<string, Set<number>>} */
+  const map = new Map();
+  let path = null;
+  let newLine = 0;
+  let inHunk = false;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      path = null;
+      inHunk = false;
+      continue;
+    }
+    if (!inHunk && line.startsWith("+++ ")) {
+      const raw = line.slice(4);
+      if (raw === "/dev/null") path = null;
+      else if (raw.startsWith("b/")) path = raw.slice(2);
+      else path = raw;
+      continue;
+    }
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+    if (hunk) {
+      newLine = Number(hunk[1]);
+      inHunk = path !== null;
+      continue;
+    }
+    if (!inHunk || path === null || line === "") continue;
+    if (line.startsWith("\\")) continue;
+    if (line.startsWith("+")) {
+      let set = map.get(path);
+      if (set === undefined) map.set(path, (set = new Set()));
+      set.add(newLine);
+      newLine++;
+      continue;
+    }
+    if (line.startsWith("-")) continue;
+    newLine++;
+  }
+  return map;
+}
+
+/**
+ * The ref added lines are measured against. CI's pull_request event sets
+ * `GITHUB_BASE_REF`. A local checkout uses `origin/main` when it exists.
+ * @param {string} root
+ */
+export function baseRef(root) {
+  const fromEnv = process.env.GITHUB_BASE_REF;
+  if (fromEnv !== undefined && fromEnv !== "") return `origin/${fromEnv}`;
+  try {
+    execFileSync("git", ["rev-parse", "--verify", "--quiet", "origin/main"], { cwd: root, stdio: "ignore" });
+    return "origin/main";
+  } catch {
+    return "main";
+  }
+}
+
+/**
+ * Run git in `root` and return stdout.
+ * @param {string} root
+ * @param {string[]} args
+ */
+function git(root, args) {
+  return execFileSync("git", ["-c", "color.ui=false", ...args], {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+/**
+ * Lines this working tree adds relative to {@link baseRef}, plus every line of
+ * an untracked file. One diff against the base, so the line numbers match the
+ * files on disk (committed changes and uncommitted edits together).
+ * @param {string} root
+ * @returns {Map<string, Set<number>>}
+ */
+export function addedLines(root) {
+  const base = baseRef(root);
+  let diff;
+  try {
+    diff = git(root, ["diff", "-U0", "--no-color", base]);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Could not diff against ${base} to find added lines. In CI this means the checkout is shallow. Locally, fetch the base branch first. ${message}`,
+    );
+  }
+  const map = parseUnifiedAddedLines(diff);
+  const untracked = git(root, ["ls-files", "--others", "--exclude-standard", "-z"]);
+  for (const path of untracked.split("\0").filter(Boolean)) {
+    if (BINARY.test(path)) continue;
+    let text;
+    try {
+      text = readFileSync(join(root, path), "utf8");
+    } catch {
+      continue;
+    }
+    if (text.includes("\0")) continue;
+    let set = map.get(path);
+    if (set === undefined) map.set(path, (set = new Set()));
+    const count = text.split("\n").length;
+    for (let i = 1; i <= count; i++) set.add(i);
+  }
+  return map;
+}
+
+/**
+ * Added lines, in scope, that name stored collection data as a row.
+ * @param {string} [root]
+ * @returns {{ path: string; term: string; line: number; text: string }[]}
+ */
+export function findAddedCollectionRows(root = ROOT) {
+  const hits = [];
+  for (const [path, lines] of addedLines(root)) {
+    let text;
+    try {
+      text = readFileSync(join(root, path), "utf8");
+    } catch {
+      continue;
+    }
+    if (text.includes("\0")) continue;
+    for (const hit of scanCollectionRows(path, text, lines)) hits.push({ path, ...hit });
   }
   return hits;
 }
@@ -399,6 +645,9 @@ export const PLANTS = [
   { path: PERSON_PINS[0].path, line: "If you can't help, say how to reach a person, and tell the person who signed in.", term: "person" },
   { path: GLOSSARY, line: "| **Worker** | workforce | A second definition. | Worker |", term: null },
   { path: "zz-planted-folder/notes.md", line: "Nothing retired here.", term: null },
+  // Stored collection data named as a row. In memory, so the control does not need a dirty tree.
+  { path: "packages/orchestration/src/tasks/collection/zz-planted.ts", line: "export type WidgetRow = { id: string };", term: COLLECTION_ITEM.id },
+  { path: "apps/docs/docs/zz-collection-planted.md", line: "Each collection row is stored beside the worker.", term: COLLECTION_ITEM.id },
 ];
 
 /** An exception that matches nothing, which the run must report stale. */
@@ -421,23 +670,34 @@ export function control(tree) {
     lineOf.set(plant, text.split("\n").length);
   }
   const r = census({ files, paths }, { extraExceptions: [STALE_PLANT] });
-  const results = PLANTS.filter((p) => p.term !== null).map((p) => ({
-    what: `${p.path}:${lineOf.get(p)} (${p.term})`,
-    refused: r.hits.some((h) => h.path === p.path && h.line === lineOf.get(p) && h.term === p.term),
-  }));
+  const results = PLANTS.filter((p) => p.term !== null).map((p) => {
+    const line = lineOf.get(p);
+    const refused = p.term === COLLECTION_ITEM.id
+      ? scanCollectionRows(p.path, files.get(p.path) ?? "", new Set([line])).some((h) => h.line === line)
+      : r.hits.some((h) => h.path === p.path && h.line === line && h.term === p.term);
+    return { what: `${p.path}:${line} (${p.term})`, refused };
+  });
   results.push({ what: "a second glossary row for Worker", refused: r.glossary.repeated.includes("Worker") });
   results.push({ what: "an exception that strips nothing", refused: r.stale.includes(STALE_PLANT.id) });
   results.push({ what: "a folder no area names", refused: r.unscoped.includes("zz-planted-folder/notes.md") });
   return { results, ok: results.every((x) => x.refused) };
 }
 
-function print(r) {
+/**
+ * @param {ReturnType<typeof census>} r
+ * @param {{ path: string; term: string; line: number; text: string }[]} rowHits
+ */
+function print(r, rowHits) {
   console.log(`tracked files: ${r.files}`);
   console.log("areas: " + AREAS.map((a) => `${a.id}${a.scope ? "" : " (kept)"} ${r.areaCounts[a.id] ?? 0}`).join(" · "));
   for (const e of EXCEPTIONS.map((x) => x.id)) console.log(`exception ${e}: ${r.stripped[e] ?? 0} stripped`);
   const byTerm = {};
   for (const h of r.hits) byTerm[h.term] = (byTerm[h.term] ?? 0) + 1;
   for (const t of TERMS) if (byTerm[t.id]) console.log(`  ${t.id}: ${byTerm[t.id]} counted (say ${t.say})`);
+  if (rowHits.length > 0) {
+    console.error(`  ${COLLECTION_ITEM.id}: ${rowHits.length} added line(s) name stored collection data as a row (say ${COLLECTION_ITEM.say}: ${COLLECTION_ITEM.anchor.join(", ")})`);
+    for (const h of rowHits) console.error(`  ${h.path}:${h.line}  ${h.text}`);
+  }
   if (r.unscoped.length > 0) console.error(`UNSCOPED (no area): ${r.unscoped.join(", ")}`);
   if (r.stale.length > 0) console.error(`STALE EXCEPTIONS (remove them): ${r.stale.join(", ")}`);
   if (r.glossary.missing.length > 0) console.error(`GLOSSARY: no row for ${r.glossary.missing.join(", ")}`);
@@ -445,7 +705,8 @@ function print(r) {
   const lines = new Set(r.hits.map((h) => `${h.path}:${h.line}`));
   const inFiles = new Set(r.hits.map((h) => h.path));
   if (r.hits.length > 0) console.error(`FAIL · ${lines.size} lines in ${inFiles.size} files use a retired term`);
-  if (r.ok) console.log("check-retired-terms: PASS · no retired term outside its exceptions, every exception strips something, every file has an area, one glossary row per term");
+  if (rowHits.length > 0) console.error(`FAIL · ${rowHits.length} added line(s) name stored collection data as a row`);
+  if (r.ok && rowHits.length === 0) console.log("check-retired-terms: PASS · no retired term outside its exceptions, every exception strips something, every file has an area, one glossary row per term, no added line names collection data as a row");
 }
 
 function main() {
@@ -460,12 +721,25 @@ function main() {
     return;
   }
   const r = census(tree);
+  let rowHits = [];
+  let rowError = null;
+  try {
+    rowHits = findAddedCollectionRows(root);
+  } catch (error) {
+    rowError = error instanceof Error ? error.message : String(error);
+  }
   if (process.argv.includes("--list")) {
     const which = process.argv[process.argv.indexOf("--list") + 1];
     for (const h of r.hits) if (which === undefined || which.startsWith("--") || h.term === which) console.log(`${h.path}:${h.line}  [${h.term}]  ${h.text}`);
+    for (const h of rowHits) if (which === undefined || which.startsWith("--") || h.term === which) console.log(`${h.path}:${h.line}  [${h.term}]  ${h.text}`);
   }
-  print(r);
-  process.exitCode = r.ok ? 0 : 1;
+  print(r, rowHits);
+  if (rowError !== null) {
+    console.error(rowError);
+    process.exitCode = 1;
+    return;
+  }
+  process.exitCode = r.ok && rowHits.length === 0 ? 0 : 1;
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) main();

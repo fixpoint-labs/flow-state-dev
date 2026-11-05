@@ -51,7 +51,7 @@ async function harness() {
     inputSchema: taskWorkerInputSchema,
     outputSchema: z.unknown(),
     execute: async (_input: TaskWorkerInput, ctx) => {
-      seen.push(await ctx.waitForUser({ kind: "input", prompt: "Which region?" }));
+      seen.push(await ctx.suspendForUser({ kind: "input", prompt: "Which region?" }));
       seen.push(await runForTest(createTask, { goal: "a piece", assignee: "coder" }, ctx as never));
       return "done";
     },

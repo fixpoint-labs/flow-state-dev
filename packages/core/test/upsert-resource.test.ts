@@ -41,6 +41,9 @@ function makeCollectionRef(initial: Record<string, NoteState> = {}): ResourceCol
       return makeRef(k, store.get(k)!, store);
     },
     list: async () => [...store.entries()].map(([k, entry]) => makeRef(k, entry, store)),
+    findBy: async () => {
+      throw new Error("findBy is not used by upsertResource");
+    },
     upsert: async () => {
       throw new Error("not used: upsertResource writes through getOrCreate");
     },

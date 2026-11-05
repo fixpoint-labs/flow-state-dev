@@ -13,6 +13,7 @@ import { useCallback } from "react";
 import { HarnessFrame } from "@/components/harness-frame";
 import { HarnessSessionView } from "@/components/harness-session";
 import type { ModelChoices } from "@/lib/harness-models";
+import type { RepoLine } from "@/lib/harness-trust";
 import { useSuppressHistoryKeys } from "@/lib/use-suppress-history-keys";
 
 /** A harness mode's frame and session view. */
@@ -21,25 +22,28 @@ export function HarnessModeView({
   flowKind,
   note,
   models,
+  repoLine,
 }: {
   label: string;
   flowKind: string;
   note?: string;
   models: ModelChoices;
+  /** What each session's harness loads from the repository, for its header. */
+  repoLine?: RepoLine;
 }) {
   useSuppressHistoryKeys();
   const stream = useCallback(
-    (sessionId: string, refreshSessions: () => void) => (
+    (sessionId: string) => (
       <HarnessSessionView
         key={sessionId}
         label={label}
         flowKind={flowKind}
         sessionId={sessionId}
         models={models}
-        onTitled={refreshSessions}
+        repoLine={repoLine}
       />
     ),
-    [label, flowKind, models],
+    [label, flowKind, models, repoLine],
   );
   return <HarnessFrame label={label} flowKind={flowKind} note={note} models={models} stream={stream} />;
 }

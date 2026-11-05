@@ -17,6 +17,7 @@ export {
   type ListCollectionItemsOptions,
   type ListSessionRequestsOptions,
   type ListSessionsOptions,
+  type SessionListInclude,
   type RequestHandle,
   type RequestStreamOptions,
   type ResourceContentResponse,
@@ -32,11 +33,33 @@ export {
   type TypedFlow,
   type UntypedFlow,
   type UpdateResourceContentOptions,
-  type UpdateSessionMetadataOptions,
-  type UserStreamOptions
+  type UpdateSessionMetadataOptions
 } from "./client";
 
+export type { SubscribeOptions, Subscription } from "./subscribe/push-hub";
+// The wire topics `subscribe` takes, and the notice `onChange` gets.
+export { topic } from "@flow-state-dev/contracts";
+export type { ChangeKind, PushCapability, TopicOptions, WireNotice, WireTopic } from "@flow-state-dev/contracts";
+
 export { sessionQueryFor } from "./session-client/session-query";
+export { interruptedBySession, type InterruptedBySessionOptions } from "./interrupted-by-session";
+export type { SessionConnectionState } from "./session-client/follow-session";
+export {
+  sessionFeed,
+  type SessionFeed,
+  type SessionFeedOptions,
+  type SessionFeedSnapshot
+} from "./session-client/session-feed";
+export {
+  readSessionTail,
+  readSessionEarlier,
+  refreshSessionWindow,
+  SESSION_WINDOW_PAGE,
+  type ReadSessionEarlierOptions,
+  type ReadSessionTailOptions,
+  type SessionItemsSource,
+  type SessionItemsWindow
+} from "./session-client/session-window";
 export {
   harnessLines,
   sendHarnessLine,
@@ -113,8 +136,6 @@ export type {
   SessionStreamHandle,
   SessionStateSnapshotResponse,
   SessionSummary,
-  UserSSECallbacks,
-  UserStreamHandle,
   ChildSessionStatus,
   ChildSessionSummary
 } from "./types";

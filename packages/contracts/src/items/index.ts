@@ -95,7 +95,6 @@ export type {
   RequestStreamEvent,
   RequestStatus,
   RequestStatusEvent,
-  ScopeStateChangedEvent,
   SessionEventBase,
   SessionItemEvent,
   SessionMetadataChangedEvent,
@@ -104,13 +103,5 @@ export type {
   SessionRunsChangedEvent,
   SessionStreamEvent,
   ResourceChangedEvent,
-  ResourceContentCreatedEvent,
-  ResourceContentDeletedEvent,
-  ResourceContentUpdatedEvent,
-  StreamEvent,
-  UserDebugEvent,
-  UserEventBase,
-  UserPingEvent,
-  UserResourceChangedEvent,
-  UserStreamEvent
+  StreamEvent
 } from "./events";

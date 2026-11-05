@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import type { Unsubscribe } from "../adapter";
+import type { LabAdapter, Unsubscribe } from "../adapter";
+import { isFeedStale } from "../components/flow-state/connection-banner";
 
 /**
  * The latest value a keyed `watch*` reports. `undefined` until the first
@@ -15,13 +16,23 @@ export function useWatch<T>(watch: (key: string, onChange: (value: T) => void) =
   return value;
 }
 
-/** The current time, in ms, re-read every `everyMs`. */
-export function useNow(everyMs = 30_000): number {
+/** Whether a conversation's feed has lost the server, so what it last said may be out of date. */
+export function useStale(adapter: LabAdapter, sessionId: string | undefined): boolean {
+  const connection = useWatch(adapter.watchConnection, sessionId);
+  return connection !== undefined && isFeedStale(connection);
+}
+
+/**
+ * The current time, in ms, re-read every `everyMs`. With `running` false it
+ * holds where it was, so an age drawn from it stops with the data.
+ */
+export function useNow(everyMs = 30_000, running = true): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    if (!running) return;
     const timer = setInterval(() => setNow(Date.now()), everyMs);
     return () => clearInterval(timer);
-  }, [everyMs]);
+  }, [everyMs, running]);
   return now;
 }
 

@@ -17,7 +17,7 @@ import { readDispatchStamp } from "./dispatch-metadata";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, blockPathObserver, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
-import { SESSION_REQUEST_END_HOOK, onRequestEnded, type BackgroundFailure, type RequestEnding, type TaskEntry } from "@flow-state-dev/core/types";
+import { REQUEST_SPEND_SEAM, SESSION_REQUEST_END_HOOK, onRequestEnded, type BackgroundFailure, type HarnessRunSpend, type RequestEnding, type RequestSpendSeam, type TaskEntry } from "@flow-state-dev/core/types";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
@@ -88,6 +88,7 @@ import { WRITES_OUTLIVE_ABORT, requestEndRegistryOf, type WritesOutliveAbort } f
 import { holdInterruptedEnding } from "./request-spend-ledger";
 import { WAIT_DEADLINE_ENTRY, isUserSuspension, isWaitGate, continuesAtExpiry, waitGateDataOf } from "@flow-state-dev/core/types";
 import { clearParkOwed, parkOwedKey } from "../durability/park-owed";
+import { withChangeBus } from "../bus/publish-writes";
 
 type RunActionInternalOptions<
   TFlow extends FlowInstance = FlowInstance,
@@ -590,19 +591,10 @@ async function settleFreshRequestSetupFailure(options: {
 /** Record fields a patch may carry beside the status and the result. */
 type RequestRecordFields = Omit<Partial<RequestRecord>, "status" | "result">;
 
-/**
- * Applies a partial request-record update that does not end the request.
- *
- * Typed so it cannot write a final status: ending a request goes through
- * {@link settleRequestRecord}, which writes the action's result in the same
- * write (FIX-1661).
- */
-async function patchRequestRecord(
-  stores: StoreRegistry,
-  requestId: string,
-  patch: RequestRecordFields & { status?: "in_progress" }
-): Promise<string | undefined> {
-  return writeRequestRecordPatch(stores, requestId, patch);
+/** Every harness run the request has spent so far, as its ledger holds them, for its record. */
+function spentHarnessRunsOf(ctx: object): HarnessRunSpend[] | undefined {
+  const runs = (ctx as { readonly [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM]?.total?.().harnessRuns;
+  return runs === undefined || runs.length === 0 ? undefined : runs.map((run) => ({ ...run }));
 }
 
 /**
@@ -614,7 +606,7 @@ async function recordSettledSpend(
   stores: StoreRegistry,
   requestId: string,
   incarnation: string,
-  spend: { spentByModel: RequestRecord["spentByModel"]; spentThroughItemIndex: number }
+  spend: { spentByModel: RequestRecord["spentByModel"]; spentHarnessRuns: RequestRecord["spentHarnessRuns"]; spentThroughItemIndex: number }
 ): Promise<void> {
   const current = await stores.request.get(requestId);
   if (current?.status !== "interrupted" || (current.spentThroughItemIndex ?? -1) > spend.spentThroughItemIndex) return;
@@ -643,7 +635,7 @@ async function settleRequestRecord(
  * Applies a partial request-record update when a record exists.
  * Strips ephemeral content from items before writing to the store.
  *
- * Internal: call {@link patchRequestRecord} or {@link settleRequestRecord},
+ * Internal: call {@link settleRequestRecord},
  * whose types keep a final status from landing without its result.
  *
  * @returns The incarnation of the record written, or `undefined` when there
@@ -857,12 +849,19 @@ async function runObserverSafely(
   }
 }
 
+/** The request's task stamp for an item the runtime builds itself, or nothing. */
+function requestTaskStamp(taskId: string | undefined): { taskId?: string } {
+  return taskId !== undefined ? { taskId } : {};
+}
+
 /**
  * Emits an internal terminal error item when the response emitter supports item events.
+ * `taskId` is the request's task (the action's `taskOf`), stamped on the item.
  */
 async function emitTerminalError(
   ctx: ExecutionContext,
-  error: FlowError
+  error: FlowError,
+  taskId?: string
 ): Promise<void> {
   if (
     typeof ctx.response !== "object" ||
@@ -895,7 +894,8 @@ async function emitTerminalError(
     ts: Date.now(),
     message: error.message,
     code: error.code,
-    ...(details ? { details } : {})
+    ...(details ? { details } : {}),
+    ...requestTaskStamp(taskId)
   };
 
   await response.emitItemAdded(item);
@@ -921,7 +921,8 @@ function getActionTokenBudget(action: ActionCore): {
 
 async function emitBudgetWarning(
   ctx: ExecutionContext,
-  message: string
+  message: string,
+  taskId?: string
 ): Promise<void> {
   if (
     typeof ctx.response !== "object" ||
@@ -947,7 +948,8 @@ async function emitBudgetWarning(
     provenance: RUNTIME_PROVENANCE,
     ts: Date.now(),
     message,
-    detail: { code: "system.token_budget_warning" }
+    detail: { code: "system.token_budget_warning" },
+    ...requestTaskStamp(taskId)
   };
 
   await response.emitItemAdded(item);
@@ -956,9 +958,11 @@ async function emitBudgetWarning(
 
 /**
  * Emits a persistent status item indicating the request was stopped by the user.
+ * `taskId` is the request's task (the action's `taskOf`), stamped on the item.
  */
 async function emitAbortedMessage(
-  ctx: ExecutionContext
+  ctx: ExecutionContext,
+  taskId?: string
 ): Promise<void> {
   if (
     typeof ctx.response !== "object" ||
@@ -983,7 +987,8 @@ async function emitAbortedMessage(
     provenance: RUNTIME_PROVENANCE,
     ts: Date.now(),
     message: "Request was stopped.",
-    detail: { code: "system.request_aborted" }
+    detail: { code: "system.request_aborted" },
+    ...requestTaskStamp(taskId)
   };
 
   await response.emitItemAdded(item);
@@ -1016,8 +1021,11 @@ export async function runActionInternal<
   TFlow extends FlowInstance = FlowInstance,
   TActionName extends keyof TFlow["actions"] & string = keyof TFlow["actions"] & string
 >(
-  options: RunActionInternalOptions<TFlow, TActionName>
+  received: RunActionInternalOptions<TFlow, TActionName>
 ): Promise<ExecutionResult> {
+  // A caller may hand a raw registry (FIX-2426): its request and session
+  // writes publish on the bus all the same, so a view elsewhere hears them.
+  const options = { ...received, stores: withChangeBus(received.stores) };
   const requestId = options.requestId ?? generateId("req");
   // Caller metadata never carries a resume instruction (BP-031, FIX-1707):
   // drop `resumeContext` / `resumeOf` before anything reads or persists it. A
@@ -1609,6 +1617,17 @@ async function runActionAttempt<
     const next = prior.then(op, op);
     checkpointChains.set(k, next);
   }
+  // Checkpoints taken at a suspension (`suspensionId`), held until the
+  // suspension is in the log (FIX-2444). Saved before it, a crash in between
+  // leaves a checkpoint holding the waiting step's writes with no logged gate
+  // for the re-run to settle them at, so they would count twice. Dropped on
+  // any other ending: only a logged suspension resumes from one.
+  let heldSuspensionCheckpoints: Array<() => void> = [];
+  function releaseSuspensionCheckpoints(): void {
+    const held = heldSuspensionCheckpoints;
+    heldSuspensionCheckpoints = [];
+    for (const release of held) release();
+  }
   async function flushCheckpoints(): Promise<void> {
     if (checkpointChains.size === 0) return;
     await Promise.allSettled(checkpointChains.values());
@@ -1656,13 +1675,14 @@ async function runActionAttempt<
               );
             }
           } else {
-            chainCheckpoint(blockInstanceId, () =>
+            const save = () => chainCheckpoint(blockInstanceId, () =>
               options.stores.checkpoints.write({
                 requestId: requestIdForCheckpoint,
                 blockInstanceId,
                 parentBlockInstanceId,
                 stepIndex: item.stepIndex,
                 state: item.state,
+                ...(item.suspensionId !== undefined ? { suspensionId: item.suspensionId } : {}),
                 version: item.version,
                 createdAt: item.ts
               }).catch((err) => {
@@ -1673,6 +1693,8 @@ async function runActionAttempt<
                 });
               })
             );
+            if (item.suspensionId !== undefined) heldSuspensionCheckpoints.push(save);
+            else save();
           }
         }
         // state_snapshot items are transient by design — no items-log persist.
@@ -1747,8 +1769,14 @@ async function runActionAttempt<
   // throw until after context creation.
   let parsedInput: unknown;
   let parseError: unknown;
+  // The task this request is for, named by the action's `taskOf`. Stamped on
+  // the echo below and handed to the context as the default task of every
+  // scope, so a replayed request still stamps what it emits.
+  let requestTaskId: string | undefined;
   try {
     parsedInput = parseActionInput(action, options.input);
+    const namedTask = action.taskOf?.(parsedInput);
+    requestTaskId = typeof namedTask === "string" && namedTask.length > 0 ? namedTask : undefined;
 
     // Skip the user-message echo on a continuation (FIX-811): it represents the
     // INITIAL caller input and is already in the merged prior log, so emitting
@@ -1768,6 +1796,7 @@ async function runActionAttempt<
         itemIndex: getResponseItemCount(response),
         provenance: RUNTIME_PROVENANCE,
         ts: Date.now(),
+        ...requestTaskStamp(requestTaskId),
         content: [{ type: "output_text", text }]
       };
       await response.emitItemAdded(userItem);
@@ -2025,6 +2054,7 @@ async function runActionAttempt<
       metadata: options.metadata,
       resumeContext,
       input: options.input,
+      requestTaskId,
       signal: composedSignal,
       sideChainSignal: sideChainController.signal,
       modelResolver: options.runtimeConfig.modelResolver,
@@ -2123,6 +2153,7 @@ async function runActionAttempt<
           );
           (ctx as any)._resumeState = {
             state: checkpoint?.state as Record<string, unknown> | undefined,
+            suspensionId: checkpoint?.suspensionId,
             blockInstanceId: suspension.blockInstanceId
           };
         }
@@ -2145,7 +2176,8 @@ async function runActionAttempt<
         );
         if (checkpoint !== null) {
           (ctx as any)._resumeState = {
-            state: checkpoint.state as Record<string, unknown> | undefined
+            state: checkpoint.state as Record<string, unknown> | undefined,
+            suspensionId: checkpoint.suspensionId
           };
         }
       }
@@ -2211,22 +2243,35 @@ async function runActionAttempt<
   // durable terminal `failed`. A suspension resume additionally emits the
   // `suspension_resume` audit item; crash recovery (no `resumeContext`) does
   // not — it just continues the interrupted run.
+  // Set when a stop ended the request between admission and the point of no
+  // return below: the run stops before its action block executes.
+  let endedBeforeRun = false;
   if (isReplayMode && replayLog !== undefined) {
     (ctx as any)._replayLog = replayLog;
 
     // Point of no return: suspended / interrupted → in_progress.
     // A run is writing under this id again, so an earlier run's finalization
-    // no longer holds.
-    await patchRequestRecord(options.stores, requestId, {
-      status: "in_progress",
-      finalizedAtMs: null,
-      heartbeatsUntilFinalized: false
-    });
-    ctx.requestRuntime.status = "in_progress";
-    await response.emitRequestStatus("in_progress");
+    // no longer holds. Fenced on the status and this run's incarnation: a stop
+    // that ended the request after admission (an interrupted request no gate
+    // holds is ended `aborted`, FIX-2377) leaves it ended, and this run is
+    // stopped before any block executes instead of running the discarded turn.
+    const took = await options.stores.request.setFieldsIfStatus(
+      requestId,
+      { status: "in_progress", result: undefined, finalizedAtMs: null, heartbeatsUntilFinalized: false },
+      ["suspended", "interrupted"],
+      Date.now(),
+      currentIncarnation
+    );
+    if (took.applied) {
+      ctx.requestRuntime.status = "in_progress";
+      await response.emitRequestStatus("in_progress");
+    } else {
+      endedBeforeRun = true;
+      if (abortRequest(requestId, currentIncarnation)) deliveredAbort = true;
+    }
   }
 
-  if (isReplayMode && replayLog !== undefined && resumeContext !== undefined) {
+  if (isReplayMode && replayLog !== undefined && resumeContext !== undefined && !endedBeforeRun) {
     // Audit item, positioned immediately after the `suspension` it resolves
     // (it is the first item appended to the re-entry emitter).
     const resumeItem: SuspensionResumeItem = {
@@ -2246,11 +2291,12 @@ async function runActionAttempt<
       // counter and collide with the first replayed block's index.
       itemIndex: ctx._reserveItemIndex?.() ?? getResponseItemCount(response),
       provenance: RUNTIME_PROVENANCE,
-      ts: Date.now()
+      ts: Date.now(),
+      ...requestTaskStamp(requestTaskId)
     };
     await response.emitItemAdded(resumeItem);
     await response.emitItemDone(resumeItem);
-  } else if (isReplayMode && replayLog !== undefined && resumeContext === undefined) {
+  } else if (isReplayMode && replayLog !== undefined && resumeContext === undefined && !endedBeforeRun) {
     // Crash-recovery continuation (FIX-865): audit item marking a `/continue`
     // re-entry. Mirrors the `suspension_resume` boundary item's shape and
     // placement (immediately after the point-of-no-return transition, before
@@ -2267,7 +2313,8 @@ async function runActionAttempt<
       requestId,
       itemIndex: ctx._reserveItemIndex?.() ?? getResponseItemCount(response),
       provenance: RUNTIME_PROVENANCE,
-      ts: Date.now()
+      ts: Date.now(),
+      ...requestTaskStamp(requestTaskId)
     };
     await response.emitItemAdded(continuationItem);
     await response.emitItemDone(continuationItem);
@@ -2340,6 +2387,10 @@ async function runActionAttempt<
     // Re-throw deferred parse error now that we have ctx for error handling.
     if (parseError !== undefined) {
       throw parseError;
+    }
+    // Ended by a stop before the point of no return: the abort path settles it.
+    if (endedBeforeRun) {
+      throw abortController.signal.reason ?? new DOMException("Request stopped", "AbortError");
     }
 
     let result;
@@ -2467,12 +2518,14 @@ async function runActionAttempt<
           // count on a normal run, where this is the terminal item.
           itemIndex: ctx._reserveItemIndex?.() ?? getResponseItemCount(response),
           provenance: RUNTIME_PROVENANCE,
-          ts: Date.now()
+          ts: Date.now(),
+          ...requestTaskStamp(requestTaskId)
         };
         await response.emitItemAdded(suspItem);
         await response.emitItemDone(suspItem);
 
         await options.stores.request.flushItems(requestId);
+        releaseSuspensionCheckpoints();
         // The logged gate is what continues the request now: the park its wait
         // owed is paid. Not before the log: a gate the log doesn't name yet
         // can't be resumed, and the owe is what continues it then (FIX-2269).
@@ -2516,6 +2569,7 @@ async function runActionAttempt<
         await settleRequestRecord(options.stores, requestId, { status: "suspended" }, {
           items: suspendedItems,
           spentByModel: ctx.request.tokenUsage.byModel,
+          spentHarnessRuns: spentHarnessRunsOf(ctx),
           spentThroughItemIndex: lastItemIndexOf(suspendedItems)
         });
         ctx.requestRuntime.status = "suspended";
@@ -2646,7 +2700,8 @@ async function runActionAttempt<
 
         await emitBudgetWarning(
           ctx,
-          `Token budget exceeded: consumed ${consumed} of ${tokenBudget.maxTotalTokens}`
+          `Token budget exceeded: consumed ${consumed} of ${tokenBudget.maxTotalTokens}`,
+          requestTaskId
         );
 
         if (tokenBudget.onExceeded === "stop") {
@@ -2655,7 +2710,8 @@ async function runActionAttempt<
       } else if (warningThreshold !== undefined && consumed >= warningThreshold) {
         await emitBudgetWarning(
           ctx,
-          `Token budget warning: consumed ${consumed} of ${tokenBudget.maxTotalTokens}`
+          `Token budget warning: consumed ${consumed} of ${tokenBudget.maxTotalTokens}`,
+          requestTaskId
         );
       }
     }
@@ -3019,9 +3075,9 @@ async function runActionAttempt<
       // The item, not the status event: the status event ends the stream for
       // every subscriber, so it has to wait until the record is written.
       if (wasIntentionalAbort) {
-        await emitAbortedMessage(ctx);
+        await emitAbortedMessage(ctx, requestTaskId);
       } else if (!signalAborted) {
-        await emitTerminalError(ctx, normalizedError!);
+        await emitTerminalError(ctx, normalizedError!, requestTaskId);
       }
 
       // Stop synthesis before the drain, not after the record write. The drain
@@ -3253,6 +3309,7 @@ async function runActionAttempt<
       if (ending.status === "interrupted" && terminalRecordIncarnation !== undefined) {
         await recordSettledSpend(options.stores, requestId, terminalRecordIncarnation, {
           spentByModel: ctx.request.tokenUsage.byModel,
+          spentHarnessRuns: spentHarnessRunsOf(ctx),
           spentThroughItemIndex: lastItemIndexOf(itemsToPersist())
         });
       }

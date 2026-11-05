@@ -1,4 +1,4 @@
-import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
+import { defineFlow, defineResource, estimateTokenCounter, handler } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { ModelResolver, GeneratorModel, ResourceRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
@@ -757,6 +757,51 @@ describe("loadLLMHistory — turn-aware windowing (FIX-608)", () => {
 
     const messages = await ctx.session.items.history({ limit: { tokens: 0 } });
     expect(messages.map(textOf)).toEqual(["u2", "a2"]);
+  });
+
+  it("a flow with no tokenCounter counts with core's estimateTokenCounter, for the model in use, and hands blocks that counter", async () => {
+    // Why: one estimator. The engine's default must be core's model-aware
+    // estimate, not a private flat 4-characters-a-token copy, and a block that
+    // budgets tokens must count them the way the history window does.
+    const flow = defineFlow({
+      kind: "fix608-flow",
+      actions: { run: { inputSchema: z.object({ value: z.string() }), block: handler({ name: "noop", execute: () => ({ ok: true }) }) } }
+    })();
+    const stores = createInMemoryStores();
+    // Each turn is 60 characters of stringified content: 15 tokens at 4 a
+    // token, 18 at gpt-5's 3.5 a token. A budget of 30 fits two turns at the
+    // flat rate and one at gpt-5's.
+    for (const t of [
+      { requestId: "r1", startedAtMs: 100, userText: "a".repeat(54), assistantText: "ok" },
+      { requestId: "r2", startedAtMs: 200, userText: "b".repeat(54), assistantText: "ok" }
+    ]) {
+      const rec = makeTurn(t);
+      await stores.request.set(rec.id, rec, "any");
+    }
+    const ctx = await createExecutionContext({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      requestId: "req_current",
+      sessionId: "sess",
+      userId: "user_1",
+      stores,
+      modelResolver: createStubModelResolver()
+    });
+
+    expect(ctx.tokenCounter).toBe(estimateTokenCounter);
+    // A promise reaction scopes the model `resolveModel` records to this read.
+    const texts = await Promise.resolve().then(async () => {
+      ctx.resolveModel("openai/gpt-5");
+      return (await ctx.session.items.history({ limit: { tokens: 30 } })).map(textOf);
+    });
+    expect(texts).toEqual(["b".repeat(54), "ok"]);
+  });
+
+  it("hands blocks the flow's own tokenCounter when it sets one", async () => {
+    const own = { count: async () => 1, countMessages: async () => 1 };
+    const ctx = await makeCtx([], { tokenCounter: own });
+    expect(ctx.tokenCounter).toBe(own);
   });
 
   it("sub-agent items in a retained turn are filtered out by resolveItemVisibility", async () => {

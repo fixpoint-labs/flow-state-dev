@@ -3,8 +3,9 @@ import type { ConversationEntry } from "../adapter";
 import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
 import type { AnswerState } from "./Popups";
-import { useSubmit } from "../lib/use-submit";
+import { useSubmit } from "@flow-state-dev/react";
 import { AgentMarkdown } from "./flow-state/message-response";
+import { ToolRun } from "./ToolRun";
 
 /**
  * One entry of a conversation. Your lines sit on the right; the worker's
@@ -14,8 +15,10 @@ import { AgentMarkdown } from "./flow-state/message-response";
  * line, "researcher finished: …", that opens the task's popup, where its
  * result is; a routed answer, which names no task, is shown as said. A worker's text is
  * Markdown; your own lines are shown as typed. A worker that waits for your
- * yes (`waitForUser` with an approval) is a card with Approve and Deny until
- * you answer. Memoized: a streamed chunk redraws only the entry that changed.
+ * yes (`suspendForUser` with an approval) is a card with Approve and Deny until
+ * you answer. The tool calls a turn makes show inline as it makes them, a run
+ * of them as one line that is open while it runs and folds once it is done.
+ * Memoized: a streamed chunk redraws only the entry that changed.
  */
 export const Entry = memo(function Entry({
   entry,
@@ -107,6 +110,8 @@ export const Entry = memo(function Entry({
     case "task":
       // Drawn by the conversation, from the board's row.
       return null;
+    case "steps":
+      return <ToolRun steps={entry.steps} run={entry} />;
     case "approval":
       return <ApprovalCard workerName={workerName} text={entry.text} resolution={entry.resolution} onAnswer={onAnswer} />;
   }

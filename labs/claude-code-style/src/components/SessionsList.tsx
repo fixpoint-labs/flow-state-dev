@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from "react";
 import type { SessionRow } from "../adapter";
 import { cn } from "../lib/utils";
 import { age, useNow } from "../lib/use-watch";
@@ -7,7 +8,10 @@ import { MODES, type ModeId } from "../modes";
  * The left pane: the view switch (Sessions or Projects) on top, then
  * *New session*, then the view's sessions, newest first. The view sets the
  * mode, so *New session* opens one in the view's mode. Each row is a title,
- * its age, and a dot while its turn runs.
+ * its age, a dot while its turn runs, and how many of its tasks wait on you.
+ *
+ * The view switch is one Tab stop, as a tab list is: ← and → (Home, End)
+ * move to the other view and select it, skipping one the adapter doesn't serve.
  */
 export function SessionsList({
   view,
@@ -28,6 +32,20 @@ export function SessionsList({
   modes: readonly ModeId[];
 }) {
   const now = useNow(true, 30_000);
+  const served = MODES.filter((mode) => mode.available && modes.includes(mode.id)).map((mode) => mode.id);
+  const onTabKey = (event: KeyboardEvent<HTMLButtonElement>) => {
+    const at = served.indexOf(view);
+    const to =
+      event.key === "ArrowRight" ? served[(at + 1) % served.length]
+      : event.key === "ArrowLeft" ? served[(at - 1 + served.length) % served.length]
+      : event.key === "Home" ? served[0]
+      : event.key === "End" ? served[served.length - 1]
+      : undefined;
+    if (to === undefined) return;
+    event.preventDefault();
+    onView(to);
+    event.currentTarget.parentElement?.querySelector<HTMLElement>(`[data-view="${to}"]`)?.focus();
+  };
   return (
     <nav aria-label="Sessions" className="flex h-full min-h-0 flex-col bg-sidebar">
       <div role="tablist" aria-label="View" className="flex gap-1 px-3 pt-4 pb-3">
@@ -39,6 +57,9 @@ export function SessionsList({
             type="button"
             role="tab"
             aria-selected={mode.id === view}
+            tabIndex={mode.id === view ? 0 : -1}
+            data-view={mode.id}
+            onKeyDown={onTabKey}
             disabled={!available}
             title={available ? undefined : "Coming soon"}
             onClick={() => onView(mode.id)}
@@ -77,13 +98,17 @@ export function SessionsList({
                 )}
               >
                 <span
-                  aria-label={row.running ? "running" : undefined}
-                  className={cn("mt-1.5 size-2 shrink-0 rounded-full", row.running ? "bg-info animate-pulse" : "bg-transparent")}
+                  aria-label={row.running ? "running" : row.waiting > 0 ? "waiting on you" : undefined}
+                  className={cn(
+                    "mt-1.5 size-2 shrink-0 rounded-full",
+                    row.running ? "bg-info animate-pulse" : row.waiting > 0 ? "bg-attention" : "bg-transparent",
+                  )}
                 />
                 <span className="min-w-0">
                   <span className={cn("block truncate text-sm", selected && "font-semibold")}>{row.title}</span>
                   <span className="block text-xs text-muted-foreground">
                     {row.running ? "running" : age(row.updatedAt, now)}
+                    {row.waiting > 0 && <span className="text-foreground"> · {row.waiting} waiting on you</span>}
                   </span>
                 </span>
               </button>

@@ -34,10 +34,11 @@
  * {@link buildShiftManagerPages} (the checkout as it stands), {@link labRoutes}
  * ({@link labApi} read as one verified user) and {@link personPage}.
  * {@link startShiftManager} serves another checkout when given `root`, `tsx`
- * and `timeoutMs`. `personPage` types against Playwright; only those goals
+ * and `timeoutMs`. It spawns the command `detached` and stops the whole group,
+ * so `crashAndRestart` (`server.mts`) can crash it. `personPage` types against Playwright; only those goals
  * open a browser.
  */
-import { onClosed } from "./server.mts";
+import { onClosed, stopProcessGroup } from "./server.mts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -47,6 +48,7 @@ import type { Browser, BrowserContext, Page } from "playwright";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { intentFreeEnv } from "./env.mts";
 import { REPO_ROOT, repoPath } from "./paths.mts";
+import { sleep } from "./time.mts";
 
 /** `packages/shift-manager`. */
 export const SHIFT_MANAGER: string = repoPath("packages", "shift-manager");
@@ -86,7 +88,6 @@ export function servedAddresses(log: string): { origin: string; devtool: string 
 const NODE_ENV_AT_LOAD = process.env.NODE_ENV;
 
 const TSX = repoPath("node_modules", ".bin", "tsx");
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** One edit to a file in the scratch copy. A patch that matches nothing fails the build's setup. */
 export type Patch = { file: string; from: string | RegExp; to: string; why: string };
@@ -177,6 +178,8 @@ export async function startShiftManager(options: {
     cwd: workDir,
     env,
     stdio: ["ignore", "pipe", "pipe"],
+    // Its own process group, so a stop or a crash reaches the server under the `tsx` wrapper.
+    detached: true,
   });
   child.stdout!.on("data", (d) => (log += String(d)));
   child.stderr!.on("data", (d) => (log += String(d)));
@@ -188,7 +191,7 @@ export async function startShiftManager(options: {
     }),
   );
   const stop = async () => {
-    child.kill("SIGTERM");
+    stopProcessGroup(child);
     await exited;
   };
   for (let waited = 0; waited < (options.timeoutMs ?? 90_000); waited += 250) {
@@ -197,7 +200,7 @@ export async function startShiftManager(options: {
     if (gone) break;
     await sleep(250);
   }
-  child.kill("SIGTERM");
+  stopProcessGroup(child);
   throw new Error(`Shift Manager's command never served ${options.label}. Log tail:\n${log.slice(-2000)}`);
 }
 

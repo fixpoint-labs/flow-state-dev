@@ -7,7 +7,7 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { INTAKE_SESSION_ID } from "@flow-state-dev/workforce";
-import { harnessStub } from "../teams/devteam/harness-stub.mts";
+import { harnessStub } from "@flow-state-dev/harness-manager";
 import { errorReporterHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab } from "../teams/devteam/host.mts";
 
@@ -45,7 +45,7 @@ function watchedStores(filename: string): { adapter: StoreAdapter; seen: Seen; a
   };
   // A held write stays pending in the store, so the store's flush waits for it too.
   let pending: Promise<void> = Promise.resolve();
-  const questionWrite = async () => {
+  const holdWrite = async () => {
     if (!writeArmed) return pending;
     writeArmed = false;
     writeReached();
@@ -74,12 +74,12 @@ function watchedStores(filename: string): { adapter: StoreAdapter; seen: Seen; a
         request: {
           ...request,
           persistItems: async (requestId: string, items: Parameters<typeof request.persistItems>[1]) => {
-            await questionWrite();
+            await holdWrite();
             if (seen.closed) seen.writesAfterClose.push(`items ${requestId}`);
             return request.persistItems(requestId, items);
           },
           persistEvents: async (requestId: string, events: Parameters<typeof request.persistEvents>[1]) => {
-            await questionWrite();
+            await holdWrite();
             if (seen.closed) seen.writesAfterClose.push(`events ${requestId}`);
             return request.persistEvents(requestId, events);
           },

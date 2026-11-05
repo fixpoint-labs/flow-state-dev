@@ -5,7 +5,7 @@
  *     <Conversation worker={worker} sessions={snapshot.sessions} gaps={gaps} name="Shift Coordinator" />
  *
  * That is the whole of it: the read, the feed (the registry's renderers, with
- * tool calls as quiet lines), following the latest turn, the working line, the
+ * tool calls as quiet lines), the jump to the latest turn, the working line, the
  * composer, and the one send path. A view varies it by props, never by a fork:
  * the session it is (`session`, for one a view found itself: a project
  * coordinator's, a workstream's lead's; otherwise the user's conversation
@@ -22,15 +22,17 @@ import { useEffect, useMemo, type ReactNode } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { RECEIVED_MESSAGE_COMPONENT } from "@flow-state-dev/workforce/browser";
 import type { SessionSummary } from "@flow-state-dev/client";
-import { buildItemRenderStream, FlowProvider, ItemRenderer, useFollowLatest } from "@flow-state-dev/react";
+import { buildItemRenderStream, FlowProvider, ItemRenderer, useJumpToLatest, type JumpToLatest } from "@flow-state-dev/react";
 import type { Gaps } from "../gaps";
 import { callRuns, shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
-import { SectionFailure } from "./ui";
+import { JumpToLatestButton, LoadEarlierButton, SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
 import { knownWorkers, senderOf, useWorkerConversation } from "../lib/conversation";
 import { workerLabel } from "../lib/derive";
 import { SessionScope } from "./TaskBoardMeta";
 import { useLab } from "../lib/lab-data";
+import { cn } from "../lib/utils";
+import { STALE_CLASS } from "./flow-state/connection-banner";
 import type { Worker } from "../lib/reads";
 import { sendTurn } from "../lib/send";
 import { clockTime } from "../lib/shell";
@@ -50,17 +52,18 @@ export function ConversationFrame({
 }: {
   children: ReactNode;
   composer?: ReactNode;
-  /** The ref that makes the column follow the latest turn ({@link useFollowLatest}). */
-  feed?: (node: HTMLElement | null) => void;
+  /** Where the column scrolls to, and its jump-to-latest arrow ({@link useJumpToLatest}). */
+  feed?: JumpToLatest;
   /** Prefix for the frame's test ids: `shift-coordinator` gives `shift-coordinator` and `shift-coordinator-feed`. */
   testId?: string;
 }) {
   return (
     <div className="flex h-full flex-col" data-testid={testId}>
-      <div ref={feed} className="min-h-0 flex-1 overflow-y-auto px-8 pt-9 pb-3" data-testid={`${testId}-feed`} data-look="conversation-feed">
+      <div ref={feed?.ref} className="min-h-0 flex-1 overflow-y-auto px-8 pt-9 pb-10" data-testid={`${testId}-feed`} data-look="conversation-feed">
         <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6" data-look="conversation-column">
           {children}
         </div>
+        {feed === undefined ? null : <JumpToLatestButton feed={feed} />}
       </div>
       {composer === undefined ? null : (
         <div className="px-8 pt-2.5 pb-[22px]">
@@ -115,20 +118,20 @@ export function Conversation({
   /** Prefix for every test id inside: `shift-coordinator` gives `shift-coordinator`, `shift-coordinator-conversation`, `shift-coordinator-item`. */
   testId?: string;
   /**
-   * Open on the latest turn, and follow it, rather than at the top. A view
+   * Open on the latest turn rather than at the top. A view
    * with a `lead` above the feed leaves this off so it opens on the lead.
    */
   startAtEnd?: boolean;
   /** Why nothing can be sent here, whatever the worker: the session is read, never written to. */
   readOnly?: string;
 }) {
-  const { client, refresh, answered, snapshot } = useLab();
+  const { client, refresh, answered, snapshot, stale } = useLab();
   const conversation = useWorkerConversation(worker, sessions, session);
   const inventory = snapshot !== undefined && "inventory" in snapshot && snapshot.inventory?.ok ? snapshot.inventory.value.workers : undefined;
   const known = useMemo(() => knownWorkers(inventory ?? [], sessions), [inventory, sessions]);
-  // The feed opens where it starts, and follows once the user reaches the end or sends a line;
-  // with `startAtEnd`, it opens on the latest turn, and again on each conversation it is shown.
-  const feed = useFollowLatest({ startAtEnd, resetKey: conversation.sessionId });
+  // The feed opens where it starts; with `startAtEnd`, on the latest turn, and again on each
+  // conversation it is shown. What arrives after stays below the arrow, except the user's own line.
+  const feed = useJumpToLatest({ startAtEnd, resetKey: conversation.sessionId });
   const { sessionId, opened, read, failure, reread } = conversation;
 
   // An ask in this conversation answered in Inbox or the summary: read the conversation back.
@@ -169,6 +172,8 @@ export function Conversation({
   const composer = (
     <TurnComposer
       testId={`${testId}-composer`}
+      // A session the view names (a project's, a workstream's) keeps its own draft; otherwise the worker's conversation does.
+      draftKey={session !== undefined ? `session:${session}` : `conversation:${worker.id}`}
       scale={scale}
       label={`Message ${name}`}
       placeholder={`Message ${name}…`}
@@ -177,7 +182,7 @@ export function Conversation({
       onAutoSend={onAutoSend}
       send={async (message, held) => {
         const settled = startWork?.();
-        feed.follow();
+        feed.sent();
         try {
           // A first line opens the conversation at the worker's derived address before the door's request runs in it.
           const target = await conversation.ensure();
@@ -201,7 +206,7 @@ export function Conversation({
   );
 
   return (
-    <ConversationFrame testId={testId} feed={feed.ref} composer={composer}>
+    <ConversationFrame testId={testId} feed={feed} composer={composer}>
       {lead}
       <section
         aria-label={`Conversation with ${name}`}
@@ -226,11 +231,7 @@ export function Conversation({
         ) : (
           <FlowProvider renderers={shiftManagerRenderers}>
             <SessionScope sessionId={sessionId} flow={worker.kind} items={read.items}>
-              {read.truncated ? (
-                <p className="text-xs text-muted-foreground" data-testid={`${testId}-truncated`}>
-                  More than shown: this conversation holds more than one read returns.
-                </p>
-              ) : null}
+              <LoadEarlierButton load={read.loadEarlier} testId={`${testId}-load-earlier`} />
               <ol className="flex flex-col gap-2.5" data-testid={`${testId}-items`}>
                 {shown.map((segment) => {
                   if (segment.kind === "group") {
@@ -262,6 +263,7 @@ export function Conversation({
                       data-request-id={item.requestId}
                       data-item-type={item.type}
                       data-role={role}
+                      {...(item.type === "message" && role === "user" ? feed.mine(item.id) : {})}
                     >
                       {item.type === "message" && role === "assistant" ? (
                         // v2's label over each of the worker's messages: its name and the time it was written (v2:135).
@@ -288,7 +290,8 @@ export function Conversation({
         )}
         {working ? (
           // v2's thinking line (v2:167-169), saying only what is true: the worker has the line.
-          <p className="flex items-center gap-2 font-mono text-[11.5px] font-medium text-muted-foreground" data-testid={`${testId}-working`}>
+          // Greyed while the server is gone: the worker had the line when it last said so.
+          <p className={cn("flex items-center gap-2 font-mono text-[11.5px] font-medium text-muted-foreground", stale && STALE_CLASS)} data-testid={`${testId}-working`}>
             <span className="size-[7px] shrink-0 bg-info" data-look="working" aria-hidden />
             {name} is working on it…
           </p>

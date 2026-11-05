@@ -9,7 +9,7 @@
  * Filters are AND'd; an unset field is unconstrained.
  */
 import type { Task, TaskStatus } from "./task";
-import type { QuestionInit } from "./question";
+import type { QuestionInit } from "./hold";
 
 /** Where a task runs: a session of its own, or the delegate's ongoing one for the conversation (`Task.session`). */
 export type TaskSessionSetting = "new" | "ongoing";
@@ -58,7 +58,7 @@ export type TaskInit<TInput = unknown> = {
   held?: boolean;
   /**
    * Questions the task waits on before it starts (FIX-2133): each a row hold
-   * (`Task.questions`) the user answers, a plain question or a `confirm` (a yes or
+   * (`Task.holds`) the user answers, a plain question or a `confirm` (a yes or
    * a no). The task stays `pending` and starts no attempt until every one is
    * answered, or a deadline the host set passes; every answer joins its
    * brief. Composes with `held`: both must clear. Refused by name past

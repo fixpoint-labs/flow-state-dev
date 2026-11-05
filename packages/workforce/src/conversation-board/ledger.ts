@@ -46,6 +46,7 @@ import {
 import { FILED_HOP, FILED_MARKER, FILED_PROJECT, PIECE_OF, SPLIT_MARKER } from "./board-entries";
 import { filedCascadeOver } from "./cascade";
 import { filingSessionIdOf } from "./filing-session";
+import { boardAboveOf } from "./board-above";
 import { withoutReportMarkers } from "./report-owed";
 import { conversationDelivery } from "./delivery";
 
@@ -72,12 +73,15 @@ export function conversationPartition(view: TaskPartitionContext): Promise<strin
  * draws, and nothing a run keeps for itself (its input, output, metadata and
  * write log stay on the server, BP-015). What holds a row for the user is
  * `holds`, with the `steers` that answer its questions (FIX-2133): the one
- * thing that says what waits on the user.
+ * thing that says what waits on the user. `spend` is what its runs spent, so
+ * a task's tokens and cost read from the row.
  */
 export const CONVERSATION_BOARD_CLIENT_FIELDS = [
   "id",
   "title",
   "goal",
+  // The rest of the brief, beside the goal: a re-file from a browser's row copies it (FIX-2381 D3).
+  "context",
   "status",
   "assignee",
   "run",
@@ -90,8 +94,12 @@ export const CONVERSATION_BOARD_CLIENT_FIELDS = [
   "feedback",
   // What holds a task for the user (FIX-2133): the Inbox lists the task's item from its open holds,
   // and a question is open while no steer carries its id.
+  "holds",
+  // A row stored before FIX-2317 keeps its holds as `questions`; a reader maps it with `withRetiredShapes` (BP-030).
   "questions",
   "steers",
+  // What its runs spent (FIX-2398): the stored ledger, which a reader folds with `taskRowView`.
+  "spend",
   "createdAt",
   "updatedAt",
   "startedAt",
@@ -155,6 +163,15 @@ export async function conversationLedgerAt(
     partition,
     immutableAssignee: hasFrozenLedgerAssignee(conversationLedger)
   });
+}
+
+/**
+ * The ledger this session's task is on: the board above it (`./board-above`),
+ * server-set state. `undefined` in a session that works no conversation's task.
+ */
+export async function ledgerAboveOf(ctx: BlockContext): Promise<TaskCollectionRef | undefined> {
+  const partition = boardAboveOf(ctx);
+  return partition === undefined ? undefined : conversationLedgerAt(ctx, partition);
 }
 
 /** The running session's own board: the ledger at its own partition. */

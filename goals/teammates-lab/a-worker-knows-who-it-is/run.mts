@@ -15,9 +15,7 @@
  *
  * Run: pnpm tsx goals/teammates-lab/a-worker-knows-who-it-is/run.mts
  */
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { randomInt } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@flow-state-dev/client";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
@@ -25,16 +23,14 @@ import {
   assertPatched,
   describePatches,
   goalTmpDir,
-  intentFreeEnv,
   loadFixture,
   modulePatchEnv,
-  refuseIfAnswering,
-  repoPath,
   REPO_ROOT,
   runGoal,
   stopProcessGroup,
   type ModulePatch,
 } from "../../lib/index.mts";
+import { itemsOf, sleep, startTeammates, type Fsd } from "../lab.mts";
 
 const fixture = loadFixture<{
   workers: { id: string; name: string }[];
@@ -45,7 +41,6 @@ const fixture = loadFixture<{
 }>(import.meta.url);
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const RUNS = Number(process.env.GOAL_RUNS ?? 3);
-const LAB = repoPath("labs", "teammates");
 const USER = "u_goal";
 
 /** The `no-identity` control: the default layer's prompt entry, patched out as the server loads it. */
@@ -57,60 +52,6 @@ const NO_IDENTITY: ModulePatch[] = [
   },
 ];
 if (!["", "no-identity"].includes(CONTROL)) throw new Error(`unknown GOAL_CONTROL "${CONTROL}"`);
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-type Fsd = ReturnType<typeof createClient>;
-type Item = { type: string; role?: string; requestId?: string; blockName?: string; content?: { text?: string }[] };
-
-/** The Teammates lab on a fresh store, over an empty scratch checkout as its working folder. */
-async function startTeammates(dir: string, env: Record<string, string>): Promise<{ child: ChildProcess; origin: string }> {
-  const workdir = join(dir, "workdir");
-  mkdirSync(workdir, { recursive: true });
-  execFileSync("git", ["init", "-q", workdir]);
-  const port = 46_000 + randomInt(0, 9_000);
-  const origin = `http://127.0.0.1:${port}`;
-  await refuseIfAnswering(origin);
-  let log = "";
-  const child = spawn("npx", ["tsx", "../../packages/cli/bin/fsdev.ts", "dev", "--app", "@flow-state-dev/teammates", "--port", String(port), "--no-open"], {
-    cwd: LAB,
-    detached: true,
-    stdio: ["ignore", "pipe", "pipe"],
-    env: intentFreeEnv(process.env, {
-      GOAL_CONTROL: "",
-      TEAMMATES_STORE: join(dir, "teammates.sqlite"),
-      TEAMMATES_USER: USER,
-      TEAMMATES_WORKDIR: workdir,
-      ...env,
-    }),
-  });
-  const keep = (chunk: Buffer) => {
-    log += chunk.toString();
-    writeFileSync(join(dir, "server.log"), log);
-  };
-  child.stdout!.on("data", keep);
-  child.stderr!.on("data", keep);
-  for (const until = Date.now() + 120_000; Date.now() < until; ) {
-    if (child.exitCode !== null) throw new Error(`setup: the lab exited (${child.exitCode}); log tail:\n${log.slice(-2000)}`);
-    if (await fetch(origin, { signal: AbortSignal.timeout(2_000) }).then((r) => r.ok, () => false)) return { child, origin };
-    await sleep(500);
-  }
-  stopProcessGroup(child);
-  throw new Error(`setup: the lab did not answer on ${origin} within 120s; log tail:\n${log.slice(-2000)}`);
-}
-
-/** Every item of a session. */
-async function itemsOf(fsd: Fsd, sessionId: string): Promise<Item[]> {
-  const items: Item[] = [];
-  for (let offset = 0; ; ) {
-    const page = (await fsd.sessions.state(sessionId, { includeItems: true, offset, limit: 100 })) as {
-      items?: Item[];
-      pagination?: { hasMore: boolean; nextOffset: number };
-    };
-    items.push(...(page.items ?? []));
-    if (page.pagination?.hasMore !== true) return items;
-    offset = page.pagination.nextOffset;
-  }
-}
 
 /** Say one line in a worker's conversation and wait for its turns to end: the turn's reply and how many tools it called. */
 async function ask(fsd: Fsd, worker: string, line: string) {
@@ -140,7 +81,7 @@ await runGoal(async (failures, tell) => {
     const fail = (what: string) => failures.push(`run ${n} · ${what}`);
     const dir = goalTmpDir(`knows-who-it-is-${n}`);
     const mark = join(dir, "patched.txt");
-    const lab = await startTeammates(dir, CONTROL === "no-identity" ? modulePatchEnv(NO_IDENTITY, REPO_ROOT, mark) : {});
+    const lab = await startTeammates(dir, USER, CONTROL === "no-identity" ? modulePatchEnv(NO_IDENTITY, REPO_ROOT, mark) : {});
     try {
       const me = createClient({ userId: USER, baseUrl: lab.origin });
 

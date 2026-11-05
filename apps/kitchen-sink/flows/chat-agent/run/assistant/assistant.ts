@@ -35,7 +35,9 @@ export const assistantGenerator = generator({
   // tags; same-key contributions across sources aggregate cleanly. See
   // docs/fundamentals/generator-context.md for the full contract.
   context: {
-    todaysDate: new Date().toLocaleDateString(),
+    // A function, so it is read on every turn — a value here would be fixed
+    // at module load and go stale on a long-running server.
+    todaysDate: () => new Date().toLocaleDateString(),
     voice: voiceContext
   },
 

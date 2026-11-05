@@ -197,9 +197,10 @@ function segmentIsOpen(segment: string): boolean {
 /**
  * Whether two patterns can resolve onto one key, segment by segment: a
  * literal meets an equal literal, a parameter or `*` meets any segment, and a
- * `**` meets whatever is left, as long as something is.
+ * `**` meets whatever is left, as long as something is. The index-declaration
+ * check (`resource-indexes.ts`) reads overlap the same way.
  */
-function patternsReach(left: string, right: string): boolean {
+export function patternsReach(left: string, right: string): boolean {
   const a = left.split("/");
   const b = right.split("/");
   for (let i = 0; ; i++) {

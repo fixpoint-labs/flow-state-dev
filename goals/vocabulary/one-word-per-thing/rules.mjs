@@ -6,6 +6,9 @@
  * reader, or FIX-1872's refusal of a worker file naming `handOff`) is not kept here: it carries
  * the `retired-name-refusal` marker on that line, so a reviewer sees it in the diff. It is the
  * marker FIX-1875's sweep uses, so the repository has one spelling for a deliberate old name.
+ *
+ * Collection data is an item, not a row. That rule is COLLECTION_ITEM, not a RETIRED
+ * entry: this sweep reads the whole tree, and the existing names are not swept.
  */
 
 /** The roots the sweep owns. Every tracked file under one is scanned or excluded by name. */
@@ -94,15 +97,23 @@ export const RETIRED = [
   {
     id: "hold-names",
     files: CODE_OR_PUBLISHED,
-    // FIX-2183: hold keeps one meaning, the filer's hold before a start. A task's open asks are its
-    // questions, what keeps a running task open is keptOpenBy, a request's right on its task is its claim.
-    pattern: /\b(TaskHold|taskHoldSchema|RowHold|rowHoldSchema|SuspensionHold|suspensionHoldSchema|RowHoldSource|SuspensionHoldSource|InboxHold|HoldAsk|HoldReleaser|HoldAnswer|MAX_HOLD_PROMPT|openHolds|hasOpenHold|openRowHolds|isRowHold|isSuspensionHold|suspensionHoldOf|holdsDue|nextHoldDue|newRowHolds|holdWrite|HoldChange|HoldWriteResult|payHoldDeadlines|holdDueMs|holdOfSuspension|openUserHolds|whileHoldOpen|refuseWhenHeld|answerHold|done_without_question|waitingOn|TaskWaitingOn|setWaitingOn|filedWorkHolds|holdsItsFiler|heldTask|heldTaskId|heldRowOf|ticketHoldsRow|holderSessionId|holderOf)\b|\bno-such-hold\b/
+    // FIX-2183: what keeps a running task open is keptOpenBy, a request's right on its task is its claim.
+    // FIX-2317 brought a task's holds back (a question is one kind of hold), so only the names neither
+    // change kept stay retired here.
+    pattern: /\b(HoldAsk|HoldReleaser|HoldAnswer|MAX_HOLD_PROMPT|refuseWhenHeld|answerHold|done_without_question|waitingOn|TaskWaitingOn|setWaitingOn|filedWorkHolds|holdsItsFiler|heldTask|heldTaskId|heldRowOf|ticketHoldsRow|holderSessionId|holderOf)\b|\bno-such-hold\b/
   },
   {
     id: "hold-prose",
     files: PUBLISHED,
-    // FIX-2183: a task waits on its questions; no question holds it.
-    pattern: /\bheld on (a|its|the) questions?\b|\bheld on questions\b|\bquestions? holds?\b|\b(a|the|one|its|open) (row|suspension) holds?\b|\bopen holds\b/i
+    // FIX-2183: no task is "held on questions"; FIX-2317: a question is one kind of hold on its task.
+    pattern: /\bheld on (a|its|the) questions?\b|\bheld on questions\b/i
+  },
+  {
+    id: "question-hold-names",
+    files: CODE_OR_PUBLISHED,
+    // FIX-2317: a question is one kind of task hold. The row's list is `holds`, a request's stop for a
+    // person is `suspendForUser`, and a worker's question is `holdTaskForUser`.
+    pattern: /\b(TaskQuestion|taskQuestionSchema|RowQuestion|rowQuestionSchema|SuspensionQuestion|suspensionQuestionSchema|RowQuestionSource|SuspensionQuestionSource|InboxQuestion|QuestionCloser|QuestionChange|QuestionWriteResult|openQuestions|hasOpenQuestion|openRowQuestions|isRowQuestion|isSuspensionQuestion|suspensionQuestionOf|questionsDue|nextQuestionDue|newRowQuestions|questionWrite|payQuestionDeadlines|questionDueMs|questionOfSuspension|openUserQuestions|whileQuestionOpen|refuseWithOpenQuestion|createAskQuestion|createWaitForUserTool|waitForUser\w*|WaitForUser\w*|askQuestion)\b|wait-for-user/
   },
   {
     id: "task-tool-names",
@@ -233,6 +244,39 @@ export const RETIRED = [
   }
 ];
 
+/**
+ * Stored collection data is an item, not a row. Not in RETIRED: the sweep reads
+ * every tracked file, and the existing names stay until someone next edits that
+ * file. `scripts/check-retired-terms.mjs` flags a line a change adds. A `type` or
+ * `interface` whose name ends in `Row` counts when the file is a collection
+ * module, the line mentions a collection, or the name contains `Collection`.
+ * Docs prose counts when it calls that data a "collection row", a "collection's
+ * row", or "the row of the collection".
+ *
+ * Say "collection item". The anchor is the public client API:
+ * `CreateCollectionItemOptions`, `CollectionItemHandle`.
+ *
+ * Record stays a verb (`recordHarnessUsage`, a run record). It is not the noun
+ * for collection data. Entry is already taken (inbox entries, flow entries,
+ * `CollectionSnapshotEntry`). It is not the noun for collection data either.
+ *
+ * Core's `OutputItem` and `getItems` are response items: what a run streams back
+ * (a message, a tool result, a status). A collection item is the value a
+ * collection stores. The two share the word "item" and nothing else.
+ *
+ * A real UI table row is exempt: a rendered table, a grid row, a DOM `<tr>`,
+ * a component such as BoardColumns.
+ *
+ * Scope is new code and new docs only.
+ */
+export const COLLECTION_ITEM = {
+  id: "collection-row",
+  say: "collection item",
+  anchor: ["CreateCollectionItemOptions", "CollectionItemHandle"],
+  scope: "added-lines",
+  enforcedBy: "scripts/check-retired-terms.mjs"
+};
+
 /** Tracked files under ROOTS that are deliberately not swept, each with its reason. */
 export const EXCLUDE = [
   { path: /(^|\/)CHANGELOG\.md$/, over: true, why: "release history: records what shipped under the old names" },
@@ -330,12 +374,12 @@ export const KEEP = [
   {
     path: /^packages\/orchestration\/(src\/inbox\/|test\/inbox(-truth-control)?\.test\.ts$)/,
     rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
-    why: "the Inbox read (FIX-2133): a question's `ask`, what it asks the user, as FIX-2058's TaskQuestion names it"
+    why: "the Inbox read (FIX-2133): a question's `ask`, what it asks the user, as its `TaskHold` names it"
   },
   {
-    path: /^packages\/orchestration\/(src\/tasks\/(schema\/question|collection\/questions)\.ts|test\/(collection\/(questions|waiting-on-user)|skills\/questions-tools)\.test\.ts)$/,
+    path: /^packages\/orchestration\/(src\/tasks\/(schema\/hold|collection\/holds)\.ts|test\/(collection\/(questions|waiting-on-user)|skills\/questions-tools)\.test\.ts)$/,
     rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
-    why: "a task's questions (FIX-2133): a question's `ask`, a question to the user, and the collection's `ask` that opens one midway, as FIX-2058's TaskQuestion names them"
+    why: "a task's questions (FIX-2133): a question's `ask`, a question to the user, and the collection's `ask` that opens one midway, as its `TaskHold` names them"
   },
   {
     path: /^(packages\/orchestration\/(src|test)\/|packages\/integration-tests\/src\/scenarios\/|packages\/workforce\/src\/conversation-board\/board\.ts$|apps\/docs\/docs\/orchestration\/task-board\.md$)/,
@@ -347,16 +391,16 @@ export const KEEP = [
   {
     path: /^(packages\/(orchestration|workforce)\/(src|test)\/|apps\/docs\/(docs|guides)\/|packages\/(orchestration|workforce)\/README\.md$)/,
     // The worker's question tool and the one-wait-per-turn rule's names only: a question to the user.
-    line: /\b(askQuestion|createAskQuestion|turnAsked|askMidway)\b|\.ask(\.(kind|prompt)\b|\)\.toMatchObject)/,
+    line: /\b(turnAsked|askMidway)\b|\.ask(\.(kind|prompt)\b|\)\.toMatchObject)/,
     rules: ["ask-symbol", "ask-symbol-in-docs", "ask-mark"],
-    why: "FIX-2131: the worker's `askQuestion`, a question to the user that its task waits on, and the turn-asked fact it is refused on"
+    why: "FIX-2131: the worker's question, which holds its task for the user, and the turn-asked fact it is refused on"
   },
   {
-    path: /^packages\/devtool\/(src\/react\/lib\/task-collection-state\.ts|test\/task-collections-reason\.test\.tsx)$/,
+    path: /^packages\/devtool\/(src\/react\/lib\/task-collection-state\.ts|test\/(task-collections-reason\.test\.tsx|task-collection-state\.test\.ts))$/,
     // The DevTool's wire mirror of a question's `ask` only, and the reason slot reading its prompt.
     line: /^\s*ask: \{ kind: string|\bask: \{ kind: "(question|review)"|\)\?\.ask\.prompt;$/,
     rules: ["ask-mark"],
-    why: "FIX-2131: the DevTool's mirror of a task's questions (FIX-2133's TaskQuestion), whose `ask` is what the user was asked"
+    why: "FIX-2131: the DevTool's mirror of a task's questions (FIX-2133's `TaskHold`), whose `ask` is what the user was asked"
   },
   {
     path: /^packages\/harness-manager\//,

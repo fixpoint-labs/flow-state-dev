@@ -10,11 +10,17 @@ If you've cloned the flow-state-dev repository, Shift Manager comes with two Lab
 
 ## Before you start
 
-The `fsd` profile's coding agent is Claude Code. Sign in to Claude Code, or set `ANTHROPIC_API_KEY`, before you start. Without either, the Lab refuses to start and says so.
+The `fsd` profile's coding agent is Claude Code. Sign in to Claude Code, or set `ANTHROPIC_API_KEY`, before you start. Without either, the Lab still starts, and its start log says Claude Code isn't ready and what to set. Coding tasks fail until you fix it. The projects flow's `harnessReadiness` action returns the same answer, and `{ refresh: true }` checks again after you sign in.
 
 The [Shift Coordinator](../workforce/shift-coordinator.md) answers on a model of its own, so its turns need `ANTHROPIC_API_KEY` or `AI_GATEWAY_API_KEY`. A worker that names no `model:`, such as one the Shift Coordinator hires, answers on the Lab's default model, `openai/gpt-6-luna`, so its turns need `OPENAI_API_KEY` or `AI_GATEWAY_API_KEY`.
 
 To run the scripted coder (`stub`) instead of Claude Code, set `DEVFORCE_LAB_HARNESS=stub`. It writes one file and costs nothing. A `Coder:` line at start names the coder the Lab started with.
+
+### A coder on another harness
+
+The coder the Lab starts with is the one every coding worker uses unless it names another. Ask the Shift Coordinator for an engineer on a harness, such as "hire Cursor, an engineer on the Cursor harness", and it hires a worker on the `coder` flow with that harness as a setting. The harnesses a coder can name are `claude-code`, `codex` and `cursor`, plus the one the Lab started with. Roster shows each worker's harness.
+
+That worker's tasks run on its harness and nothing else. The Lab checks only its starting coder's sign-in at start, so a worker on Codex or Cursor needs that tool signed in on your machine, or its runs fail with that tool's own error. Asked for a harness it doesn't run, the Lab refuses the hire and lists the ones it does.
 
 ## Start it
 

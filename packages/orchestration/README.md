@@ -28,7 +28,10 @@ import { taskSchema, type Task } from "@flow-state-dev/orchestration";
 A `Task` is the unified work-unit record: `id`, `goal`, `status`, `deps`, `lease`,
 `attempts`, `retryLedger`, optional typed `input`/`output`. Status enum:
 `pending | in_progress | held | completed | errored | cancelled`. A task waiting on a
-person is `in_progress`: what it waits on is in its `questions`.
+person is `pending` when it was filed with questions, and `in_progress` when it asked midway or
+its run stopped for the user. `holds` lists the task's questions and confirms and any stop its
+run is suspended on; the filer's hold is separate, the `held` status. No worker claims a task
+while anything holds it.
 
 ```
 pending ─┬─→ in_progress ─┬─→ completed
@@ -39,14 +42,30 @@ pending ─┬─→ in_progress ─┬─→ completed
          ├─→ held ─┬─→ pending                  (release)
          │         └─→ cancelled
          └─→ cancelled
+
+errored ───→ pending                            (retry)
+cancelled ─→ pending                            (retry)
 ```
 
 `completed`, `errored`, and `cancelled` are terminal: every write treats them as
-final, and a finished task's output never changes. A follow-up (`followUpOf`) corrects
-or extends one.
+final, apart from `retry(id)`. A completed task never reopens and its output never
+changes; a follow-up (`followUpOf`) corrects or extends one.
 A move to the status a task already holds is on the table, so a repeat write doesn't throw. Anything else
 throws an `IllegalTaskTransitionError` carrying `taskId`, `from`, and `to`, and
 writes nothing.
+
+`retry(id)` on a `TaskCollectionRef` (optional; both built-in backings implement it) puts an
+`errored` or `cancelled` task back to `pending` as the same task, keeping its id, steers,
+output so far, items and spend. A failure's error becomes the next attempt's `feedback`; a
+cancel's reason doesn't. The retry adds one to `retryLedger.granted`, and the next claim is a
+new attempt. `maxAttempts` is unchanged, except that a task with no tries left gets one more.
+A retry isn't an ending, so it cancels no dependents and sends the filer no notice. A
+dependent a failure cancelled stays cancelled until it is retried itself. `retry` publishes a
+`retry_requested` change and returns a `TaskWriteOutcome`. It declines with `disallowed` (the
+task hasn't ended, or it completed), `settling` (its last ending is still being delivered; try
+again shortly), `dependency-ended` (retry the failed dependency first), or `retry-budget` (the
+state backing's `maxTotalRetries` is spent; the resource backing counts retries but doesn't
+cap them).
 
 **`retryLedger`** records the task's standing against the collection's
 `maxTotalRetries` budget:
@@ -72,7 +91,12 @@ denied.
 (the `taskBoard` default; survives block boundaries within a request), or on a state ref you
 pass, such as `ctx.sequencer` for one board invocation. `backing: "resource"` outlives the
 request: a user's queue, an org work pool, declared with `defineTaskCollection`. Every
-mutation that changes a field emits a `task-change` component item.
+mutation that changes a field emits a `task-change` component item on the writing session's
+stream, and publishes a `board` change notice on the topic of the session that filed the row
+(the row's `filer`, or the running session when the row has none), narrowed to the
+`collectionId`. A screen of the board subscribes that topic (`topic.session(id, { resource })`)
+and reads again, whichever session or process settled the task. A test context you build by hand,
+without the engine, publishes no notices.
 
 **A ledger per partition.** A `user`-scoped collection can take a `partitionBy`
 function, keeping one set of rows per partition at the user's scope:
@@ -168,9 +192,11 @@ before the task is checked. The write is `recordSpend(id, { requestId, part, spe
 { claim })`, fenced by the row's identity only, so a failed attempt's tokens land even
 after its row settled; it emits no `task-change`. A row written before this field reads
 `spend: null`. `taskSpendView(task)` folds it to `{ harness, model, inputTokens,
-outputTokens, unreported, live }`, the shape `listTasks` returns from
+outputTokens, costUsd, unreported, live }`, the shape `listTasks` returns from
 `taskToolActions` (never to a model): tokens are `null` until something reports one,
-never 0. If you implement `TaskCollectionRef` yourself, implement `recordSpend` too, or
+never 0. `costUsd` is the sum of the charges vendors reported (an API-key harness
+run), or `null` when none did; a subscription run reports none, and nothing estimates
+one. If you implement `TaskCollectionRef` yourself, implement `recordSpend` too, or
 the board writes no spend.
 
 `rowsInSession(ledger, sessionId)` returns the rows that run in a session, in ledger
@@ -203,7 +229,7 @@ a task until it resolves again.
 Every lifecycle transition — `complete`, `fail`, `cancel` — takes an optional
 trailing `TaskTransitionOptions` argument that makes the write advisory. `ifAllowed`
 skips the write when the task is already settled, or when the transition is one the
-state machine refuses. No write moves a task out of a finished status. `in_progress → pending` sits in the status table too,
+state machine refuses. No write but `retry` moves a task out of a finished status. `in_progress → pending` sits in the status table too,
 but it belongs to `reclaim()`. `claim` takes a
 `TaskClaimTicket` (mint one with `ticketForClaim(collectionId, claimedTask)`) and
 skips the write unless the task in front of it is the one that ticket was issued
@@ -405,8 +431,11 @@ positive integer or `null` (explicitly unbounded); `maxTotalRetries` takes a
 **nonnegative** integer or `null`, so `0` means "run every task once, never retry".
 
 `taskToolActions(board)` returns the filer's task tools over `board` as a flow `actions`
-map, each named `<tool>_<suffix>` where `taskToolSuffix(collectionId)` turns every
-character outside `[a-zA-Z0-9_-]` into `_` (`updateTask_todos`). Spread it into
+map, plus `retryTask`. Each is named `<tool>_<suffix>`, where `taskToolSuffix(collectionId)` turns every
+character outside `[a-zA-Z0-9_-]` into `_` (`updateTask_todos`, `retryTask_todos`). `retryTask` takes `{ id }`
+and calls the collection's `retry`, answering `{ ok: true }` or `{ ok: false, error, taskId }`
+(`task_finished`, `not_finished`, `dependency_ended`, `settling`, `retry_budget_spent`,
+`task_not_found`, `retry_not_supported`); it is an action only, not a model tool. Spread it into
 `defineFlow({ actions })`. Each action composes `board.capability`, so the flow need not
 declare the collection; none claims or drains; a transition the task cannot make returns
 `{ ok: false, error }` and writes nothing. It throws unless the board is on a
@@ -576,6 +605,24 @@ back. Once the session is free, apply `resendNowPatch(row)` to each row that sti
 with `ref.patchMetadata(row.id, resendNowPatch(row))`, and run the pass: the patch drops the resend
 backoff, so the pass sends the notice at once rather than at its next resend.
 
+**Reading a notice's line in a client.** `noticeText(notice, task)` is the notice in words, for a
+line in the conversation. Emit that line with `noticeMetadata(notice, task)` as its message's
+`metadata`, and a client reads it back with `parseNotice(item)`, from
+`@flow-state-dev/orchestration/tasks`, which is safe to import in a browser:
+
+```ts
+import { noticeMetadata, noticeText, parseNotice } from "@flow-state-dev/orchestration/tasks";
+
+ctx.emit.message(noticeText(notice, row), { metadata: noticeMetadata(notice, row) });
+
+// In the client:
+const line = parseNotice(item); // { taskId, ending, title, detail?, attempt?, boardId?, cancelled? } | undefined
+```
+
+`parseNotice` reads the data on the item, so a change to the line's wording doesn't break a client.
+A line stored before its item carried the data is read off its words; that read has no `attempt`
+or `boardId`. Any other item, a user's message included, is `undefined`.
+
 A notice that couldn't be sent when the row ended (the process died, the send failed) is sent
 about two seconds later, or as soon as the server is running again if it was down then: on a host with durable execution and a store that keeps wakes, the
 durability sweeper runs `onTaskSettled` in the filing session with an empty input, which sends
@@ -687,8 +734,8 @@ only when that row is one the running session may take; it arrives on the dispat
 too, and the gate re-reads the row it names. `uses` declares the ledgers' resources,
 `onError` defaults to `"skip"`, and `allowSessionState` accepts an entry whose blocks
 keep session state. Each run of the entry is a task turn (`isTaskTurn(ctx)`): the run
-gets `askQuestion`, whose question the task waits on until the user answers, and
-`waitForUser`. The entry runs
+gets `holdTaskForUser`, whose question the task waits on until the user answers, and
+`suspendForUser`. The entry runs
 only if its claim on the task is still current, and task-tool writes from the run can
 touch only the task it holds.
 
@@ -764,23 +811,23 @@ session. Until then the row stays `in_progress`, and `keptOpenBy` says why:
 | `keptOpenBy` | Waiting on | Lease |
 | --- | --- | --- |
 | `"filed"` | tasks it filed that are open, or whose ending is still owed to the child's session | none |
-| `"wait"` | a suspension, a stop for a person included | none |
+| `"suspended"` | its request is suspended, a stop for a person included | none |
 
 A row with no lease is never reclaimed, so a waiting task isn't run twice. A resume
-continues the same attempt. A stop for a person (a `ctx.waitForUser()`, or a `ctx.suspend()`
-for `user_approval` or `user_input`) is also mirrored on the row as a question.
+continues the same attempt. A stop for a person (a `ctx.suspendForUser()`, or a `ctx.suspend()`
+for `user_approval` or `user_input`) is also mirrored on the row as a hold.
 
 **A task waiting on a user.** `getTask` and `listTasks` show `keptOpenBy` on a running
-task, and its `questions`. A stop for a person is one with `source.kind: "suspension"`: its
+task, and its `holds`. A stop for a person is one with `source.kind: "suspension"`: its
 `ask` (`kind` is `approval`, `review` or `input`, with the `prompt` and `title`), its `due`
 (epoch ms, absent when it has none), and the `requestId` and `suspensionId` a screen
 answers it by. A screen answers it through the engine's answer route (a request handle's
-`answer` in `@flow-state-dev/client`); `questions` is a read convenience, never where a screen
+`answer` in `@flow-state-dev/client`); `holds` is a read convenience, never where a screen
 lists what waits for a user (that is the Inbox read, below). Three other endings:
 
 - **Cancelled.** `updateTask({ id, status: "cancelled" })` cancels the row under the stop's
   own fence (`cancelAndResume`), so an answer that arrives at the same moment is told the stop is
-  resolved. The run resumes with `waitForUser` returning `{ cancelled: true }` and runs to its
+  resolved. The run resumes with `suspendForUser` returning `{ cancelled: true }` and runs to its
   end holding no claim: its progress writes are refused, nothing it returns is recorded, and a
   task it files is refused (`parent_cancelled`). Any other ending of the row (a cascade)
   owes the run the same resume on the row's `resumeOwed` mark, and the board's next touch
@@ -869,8 +916,8 @@ import { createTaskToolsCapability } from "@flow-state-dev/orchestration";
 ```
 
 `taskTools` are the tools a model uses to plan on a task board: the filer's `createTask`,
-`getTask`, `listTasks` and `updateTask`. The worker's own tools, `reportProgress`, `askQuestion` and
-`waitForUser`, are built apart ([below](#progress-from-the-worker)). No tool finishes a task: a task ends when its worker's turn
+`getTask`, `listTasks` and `updateTask`. The worker's own tools, `reportProgress`, `holdTaskForUser` and
+`suspendForUser`, are built apart ([below](#progress-from-the-worker)). No tool finishes a task: a task ends when its worker's turn
 returns or throws.
 `createTaskToolsCapability(resolver, roster?)` points them at a
 board, and an optional roster makes `createTask` and `updateTask` refuse
@@ -938,7 +985,7 @@ the latest completed follow-up of the task's chain, `{ id, output, outputCut? }`
 A `listTasks` row names it by id only (`current: { id }`).
 `output` is the result as the worker recorded it. A result longer than 20,000 characters as JSON
 comes back as that text cut to 20,000 characters, with `outputCut: true`; an `input` or
-`metadata` that long is cut the same way, with `inputCut` or `metadataCut`. `questions` lists what the
+`metadata` that long is cut the same way, with `inputCut` or `metadataCut`. `holds` lists what the
 task waits on. `run` is the same link `listTasks` carries. A task the
 board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
 
@@ -1090,8 +1137,8 @@ sure the flow holding the board declares `onTaskSettled`.
 
 ### When a worker waits on a person
 
-A worker that can't go on without an answer asks the user. `createAskQuestion({ resolve })` builds
-the worker's side: `askQuestion({ question })` asks it on the task the current turn is working
+A worker that can't go on without an answer asks the user. `createHoldTaskForUser({ resolve })` builds
+the worker's side: `holdTaskForUser({ question })` asks it on the task the current turn is working
 on, and the turn ends without settling it; `offered(ctx)` says whether the turn gets the
 tool, on a task turn for a running task. The answer is a message naming the question,
 `updateTask({ id, answers, message })`, from the Inbox, a line the user types in the task's
@@ -1099,22 +1146,24 @@ session, or the filer's own tool. The coordinator answers a question only when t
 wins, and it owes the task one more turn on the same attempt, which starts from the brief, the last
 checkpoint and the answer.
 
-`createWaitForUserTool({ resolve })` builds `waitForUser({ kind, prompt })`, the model's stop for
+`createSuspendForUserTool({ resolve })` builds `suspendForUser({ kind, prompt })`, the model's stop for
 the user: an approval or a review on a task turn, whose answer is the tool's result, or, on a turn
-working no task, an input. On a task turn it refuses `input` and names `askQuestion`. It takes the
+working no task, an input. On a task turn it refuses `input` and names `holdTaskForUser`. It takes the
 host's person-stop deadline (`userDeadlineMs`) and none otherwise, and at a deadline it returns
-`answered: false` rather than throwing. A turn waits on a person once: `askQuestion` and
-`waitForUser` in the same step open one wait, and the other is refused with a tool error naming it.
+`answered: false` rather than throwing. A turn waits on a person once: `holdTaskForUser` and
+`suspendForUser` in the same step open one wait, and the other is refused with a tool error naming it.
 
-**Moving from the question and review parks.** `createParkOnQuestion` and `parkOnQuestion` are gone: build `createAskQuestion`. <!-- retired-name-refusal: migration note -->
+**Moving from the question and review parks.** `createParkOnQuestion` and `parkOnQuestion` are gone: build `createHoldTaskForUser`. <!-- retired-name-refusal: migration note -->
+`askQuestion` and `createAskQuestion` are `holdTaskForUser` and `createHoldTaskForUser`; `waitForUser` and `createWaitForUserTool` are `suspendForUser` and `createSuspendForUserTool`, and `ctx.waitForUser` is `ctx.suspendForUser`. <!-- retired-name-refusal: migration note -->
+`Task.questions` and an Inbox item's `questions` are `holds` (`TaskQuestion` is `TaskHold`, `openQuestions` is `openHolds`, and so on), and `keptOpenBy: "wait"` is `"suspended"`. A row stored with the old names still reads. <!-- retired-name-refusal: migration note -->
 `answerTask` and its action are gone: answer with `updateTask({ id, answers, message })`. <!-- retired-name-refusal: migration note -->
-`TaskCollectionRef.awaitReview` and `unpark`, `board.unparkAndDrain` and a board's `onReview` are gone: a block asks for a review with `ctx.waitForUser({ kind: "review", prompt })`. <!-- retired-name-refusal: migration note -->
+`TaskCollectionRef.awaitReview` and `unpark`, `board.unparkAndDrain` and a board's `onReview` are gone: a block asks for a review with `ctx.suspendForUser({ kind: "review", prompt })`. <!-- retired-name-refusal: migration note -->
 The `parked` status, `counts.parked`, the `parked-for-review` termination reason and the `parked` notice ending are gone. <!-- retired-name-refusal: migration note -->
 
 ### Progress from the worker
 
 `createReportProgress({ resolve })` builds the worker's `reportProgress({ statusNote?, output? })`
-and an `offered(ctx)` check, the way `createAskQuestion` does. It is offered only on a task
+and an `offered(ctx)` check, the way `createHoldTaskForUser` does. It is offered only on a task
 turn and acts on the task the turn holds, fenced by its claim, so it takes no id. `statusNote`
 (at most `STATUS_NOTE_LIMIT` characters) shows on `listTasks` rows; `output` is a checkpoint the
 task carries as its output (`Task.checkpointed: true`; `getTask` shows `checkpoint: true`). Neither changes the task's status. When the
@@ -1320,8 +1369,46 @@ await createInboxClient(client).answer(items[0], { approved: true });
 - **One item per task row** that waits on the user. A stop in that task's run lists under the row, never a second time on its own.
 - **One item per suspension** that no open task's run holds, such as a user's ask in a session of their own.
 - **Each question** says what it asks, where its answer goes, and whether the Inbox can answer it. An item is `answerable` when one of its questions is.
-- **One item per task, however many questions it has.** A task's questions and confirms, asked at filing or midway, list oldest first as its `questions`, beside a stop in its run.
+- **One item per task, however many questions it has.** A task's questions and confirms, asked at filing or midway, list oldest first as its `holds`, beside a stop in its run.
 - **The answer is typed by what the question asks:** an approval takes `{ approved, data? }`, an input or a review `{ value }` (or `{ skipped: true }`), a question `{ text }`, a confirm `{ done, note? }` (a No cancels the task unless the confirm was filed with `onNo: "continue"`). `answer(item, value, questionId?)` answers the item's first question, or the one named; `answerOne(question, value)` answers one question directly. A task run's stop goes to the engine's answer route, which records who answered. A question or a confirm goes to its board's `updateTask` action, as the signed-in user, in the session that board lives in, and the call rejects with the board's refusal. A question on a board the reader can't reach says so in `unanswerable`.
+
+### Changing a task from a screen
+
+The same client changes a task on a board. Bind the board once, then call its actions:
+
+```ts
+import { createInboxClient } from "@flow-state-dev/orchestration/inbox";
+
+const tasks = createInboxClient(client).board({ flowId: "coordinator", sessionId, board: "tasks" });
+
+await tasks.release(id);                     // a held task goes back to pending
+await tasks.steer(id, "Skip the dev deps");  // words for an open task; they join its brief
+const alsoCancelled = await tasks.cancel(id); // the dependents the board cancelled with it
+await tasks.retry(id);                       // a failed or cancelled task, as the same task
+const newId = await tasks.refile(row, { assignee: "eng.writer" });
+```
+
+- **`at` names where the board lives:** the flow and the session that hold it, and the board's collection id (Workforce's `"tasks"`, not a row's `<sessionId>.tasks` ref). Each action runs there, as the signed-in user.
+- **Each call resolves when the board says yes and rejects with its words when it says no:** a finished task, a locked field, an action the flow doesn't have. A refusal writes nothing. One rejection can follow a write: the board finished the action but its answer couldn't be read, so check the board before trying again (before a `refile` especially, which would otherwise file a duplicate). The board's rules stay the board's.
+- **`retry` keeps the task:** its id, its history and its spend, with one more try. **`refile` files a new task** from the row's `goal`, `title`, `context`, `assignee`, `labels` and `priority`, with your overrides winning. An override of `null` is left out like an unset one, so it can't stop a field being copied. Use it for a task that should run again changed. It doesn't copy `input`, `metadata` or `deps`; an override can set them. The new task doesn't record which one it came from.
+- **Answering a question stays `answerOne`.** There is no second answer call on the board.
+- **`taskActionName(tool, board)`** gives a board action's name (`taskActionName("updateTask", "tasks")` is `"updateTask_tasks"`), for a reader that builds a row's `holder` or a test that calls the action directly. To change a task, call `board(at)`.
+
+### A task row, as a person sees it
+
+`taskRowView(row, holds?)` turns one task row into what a task screen draws, so every screen uses the same words for the same row:
+
+```ts
+import { taskRowView } from "@flow-state-dev/orchestration/inbox";
+
+const view = taskRowView(row, item?.holds);
+view.state;     // "queued" | "held" | "running" | "waiting" | "failed" | "done" | "cancelled"
+view.hold;  // the oldest open hold on the user (its ask, where the answer goes), or null
+```
+
+- **`waiting` wins over the stored status.** Any open hold on the user makes a row that isn't finished read `waiting`, whether it's `in_progress`, `held` or `pending`. A finished row reads as its ending, whatever an old hold says.
+- **`holds` is optional.** Pass the row's Inbox item's holds when you have them: they also include a stop found in the task's run before the row records it, and they know where each answer goes. Without them, the view reads the row's own holds; those say they can't be answered from here.
+- **It also carries** the stored `status` (a stored `blocked` reads `held`), `spend` with its `harness` and `model` (a raw row's stored spend is folded with `taskSpendView`; the spend `listTasks` already folded is kept as it is), `error`, `statusNote`, and `times` (created, updated, started, completed; `null` where the row has none). A stored spend it can't read comes back `null` instead of throwing.
 
 ## Documentation
 

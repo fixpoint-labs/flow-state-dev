@@ -6,8 +6,9 @@
  * tokenCounter / readLiveItems. No live server, no ExecutionContext.
  */
 
-import type { LLMMessage, SessionItem, TokenCounter } from "@flow-state-dev/core/types";
+import type { SessionItem, TokenCounter } from "@flow-state-dev/core/types";
 import type { MessageItem, OutputItem } from "@flow-state-dev/core/items";
+import { estimateTokenCounter } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import type { RequestRecord } from "../../src/stores/types";
 import {
@@ -24,16 +25,8 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const mockTokenCounter: TokenCounter = {
-  count: async (text: string, _model: string) => Math.ceil(text.length / 4),
-  countMessages: async (messages: LLMMessage[], _model: string) => {
-    const total = messages.reduce(
-      (acc, m) => acc + JSON.stringify(m.content).length,
-      0
-    );
-    return Math.ceil(total / 4);
-  },
-};
+// "test-model" matches no lookup entry, so this counts 4 characters a token.
+const mockTokenCounter: TokenCounter = estimateTokenCounter;
 
 const resolveModelId = () => "test-model";
 

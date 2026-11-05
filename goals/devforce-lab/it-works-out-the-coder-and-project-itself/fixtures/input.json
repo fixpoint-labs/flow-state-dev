@@ -1,0 +1,9 @@
+{
+  "ask": "Can you have {harness} review the super app for any security concerns",
+  "harnesses": [
+    { "word": "cursor", "label": "Cursor" },
+    { "word": "codex", "label": "Codex" },
+    { "word": "claude", "label": "Claude Code" }
+  ],
+  "otherHarness": "Claude Code"
+}

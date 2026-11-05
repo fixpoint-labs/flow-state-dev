@@ -56,6 +56,16 @@ export type {
   StoreAdapter,
   StoresConfig
 } from "./stores";
+// The change bus (FIX-2426): the `bus` slot's contract, its in-memory
+// default, and the wrap that makes a raw registry's writes publish.
+export { createInMemoryBus } from "./bus/in-memory-bus";
+export { withChangeBus } from "./bus/publish-writes";
+// Push delivery (FIX-2428): a host that serves the socket turns it on, then
+// hands each socket that opens on `/users/:userId/stream` to the delivery.
+export { enablePushDelivery } from "./push/push-delivery";
+export type { EnablePushDeliveryOptions, PushDelivery } from "./push/push-delivery";
+export type { PushSocket, PushSocketIO } from "./push/socket-session";
+export type { BusTopic, ChangeBus, ChangeListener, ChangeNotice } from "./bus/types";
 export { createFlowState, isFlowState } from "./flowstate/createFlowState";
 export type {
   CreateFlowStateOptions,
@@ -86,6 +96,11 @@ export type {
   ResourceStateStore,
   VersionedResourceState,
   ExpectedVersion,
+  ResourceIndexEntry,
+  ResourceStateSetOptions,
+  ResourceIndexBuildState,
+  ResourceIndexBuildEntry,
+  ResourceStateIndexes,
   ResourceStateConflict,
   ResourceStateRow,
   OrgListOptions,

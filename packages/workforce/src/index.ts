@@ -81,6 +81,13 @@ export {
   type FinishedTask,
   type FinishedTasksAnswerAgainOptions
 } from "./conversation-board/take-finished";
+// A delegate's answer, as its message item marks it (FIX-2378), and a completed task's answer text.
+export {
+  answerTextOf,
+  delegateAnswerMetadata,
+  delegateAnswerOf,
+  type DelegateAnswer
+} from "./conversation-board/delegate-answer";
 export { MAX_ANSWERS_AGAIN } from "./conversation-board/plan";
 export {
   backfillBoardWakes,
@@ -94,7 +101,7 @@ export {
   type WorkerLookupOptions
 } from "./worker-lookup";
 export { mergeWorkerFlows } from "./merge-worker-flows";
-export { workerDoorOf, type WorkerDoor } from "./worker-door";
+export { doorTask, workerDoorOf, type WorkerDoor } from "./worker-door";
 export { resourcesFromDocs } from "./resources-from-docs";
 export { referencesFromDocs, referenceBody } from "./references-from-docs";
 export {

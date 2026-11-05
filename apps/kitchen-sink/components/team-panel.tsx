@@ -7,8 +7,11 @@
  * app's files declare, which everyone has, and any worker the user hired or
  * forked, each with the flow it runs on. "Talk" opens the user's
  * conversation with that worker, or starts one, through Workforce's client.
+ * Opening one may create a session, so every "Talk" is held until it settles:
+ * a slow create can't be clicked into two.
  */
 import { useEffect, useState, type ReactNode } from "react";
+import { useSubmit } from "@flow-state-dev/react";
 import type { RosterEntry, WorkforceClient } from "@flow-state-dev/workforce/browser";
 
 export interface TeamPanelProps {
@@ -35,7 +38,9 @@ export function TeamPanel({ workforce, onTalk, top }: TeamPanelProps) {
 /** The user's roster, each worker with its flow, what it handles, and "Talk". */
 function WorkerRoster({ workforce, onTalk }: { workforce: WorkforceClient; onTalk: (worker: RosterEntry) => Promise<void> }) {
   const roster = useRoster(workforce);
-  const [talkError, setTalkError] = useState<{ id: string; message: string } | null>(null);
+  // The worker last clicked: the one "Opening…" and a refusal belong to.
+  const [clicked, setClicked] = useState<string | null>(null);
+  const talk = useSubmit(onTalk);
   if (roster.error !== null) {
     return (
       <p className="px-2 pb-1 text-xs text-destructive" role="alert">
@@ -56,22 +61,22 @@ function WorkerRoster({ workforce, onTalk }: { workforce: WorkforceClient; onTal
             <span className="text-muted-foreground">{worker.flow}</span>
             <button
               type="button"
-              className="underline"
+              className="underline disabled:opacity-50"
               data-testid="roster-talk"
+              disabled={talk.busy}
+              aria-busy={talk.busy && clicked === worker.id}
               onClick={() => {
-                setTalkError(null);
-                onTalk(worker).catch((cause: unknown) =>
-                  setTalkError({ id: worker.id, message: cause instanceof Error ? cause.message : String(cause) }),
-                );
+                setClicked(worker.id);
+                void talk.submit(undefined, worker);
               }}
             >
-              Talk
+              {talk.busy && clicked === worker.id ? "Opening…" : "Talk"}
             </button>
           </div>
           {worker.description !== null && <p className="text-muted-foreground">{worker.description}</p>}
-          {talkError?.id === worker.id && (
+          {talk.error !== undefined && clicked === worker.id && (
             <p role="alert" className="text-destructive" data-testid="roster-talk-error">
-              Could not open a conversation: {talkError.message}
+              Could not open a conversation: {talk.error}
             </p>
           )}
         </li>

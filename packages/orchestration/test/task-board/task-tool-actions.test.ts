@@ -1,7 +1,7 @@
 /**
  * `taskToolActions` — a durable board's task tools, as flow actions: the
  * filer's four (`createTask`, `getTask`, `listTasks`, `updateTask`)
- * (FIX-2081). None settles a task.
+ * (FIX-2081), and a person's retry (`retryTask`, FIX-2383). None settles a task.
  *
  * What the actions are for is changing a task from OUTSIDE the request that
  * filed it: a person in the DevTool cancelling a stuck row, holding or
@@ -136,11 +136,12 @@ async function host(options: { declareResource?: boolean } = {}) {
 }
 
 describe("taskToolActions — the set", () => {
-  it("names the filer's four for the board, and nothing that settles a task", async () => {
+  it("names the filer's four and a retry for the board, and nothing that settles a task", async () => {
     const h = await host();
     try {
       const names = Object.keys(taskToolActions(h.board)).sort();
-      expect(names).toEqual(TOOLS.map((tool) => `${tool}_${h.id}`).sort());
+      // The retry is a person's move, so only the actions carry it (FIX-2383).
+      expect(names).toEqual([...TOOLS, "retryTask"].map((tool) => `${tool}_${h.id}`).sort());
     } finally {
       await h.dispose();
     }

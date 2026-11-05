@@ -35,7 +35,7 @@ export const MODES: readonly Mode[] = [
   },
   {
     id: "threads",
-    label: "Threads",
+    label: "Tasks",
     view: "Projects",
     worker: "desk.lead",
     pane: "board",

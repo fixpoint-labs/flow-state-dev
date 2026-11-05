@@ -51,7 +51,7 @@ Structural items ignore `itemVisibility` for visibility resolution. `itemVisibil
 
 ### External items — what the user sees
 
-**`message`** is the primary content item. Generators emit these automatically; any block can call `ctx.emit.message()`. Messages enter LLM history so future model calls know what was said. This is the item type you'll work with most.
+**`message`** is the primary content item. Generators emit these automatically; any block can call `ctx.emit.message()`. Messages enter LLM history so future model calls know what was said. This is the item type you'll work with most. A handler-emitted message may carry `metadata` (`ctx.emit.message(text, { metadata })`): structured data for a client, opaque to the engine and never part of history. The emitting package owns its keys and exports their reader, as orchestration's `parseNotice` does for a task notice's line.
 
 **`reasoning`** holds chain-of-thought output when a model produces thinking. Rendered as a collapsible block in the UI. Goes into LLM history.
 
@@ -167,6 +167,10 @@ Streaming TTS audio (FIX-523, `content.audio.delta`) follows the same rule for t
 Pattern aggregators (synthesizer prompt builders, reviewer input builders, replanners) often want a slice of the item log: "what did worker X emit while it held its claim?". Since FIX-480, that's first-class via `TaskHandle.items()` on the `TaskCollectionRef.list / get` returns.
 
 Attribution is by **execution scope** — which worker/turn produced the item — captured at emit time, not by a timestamp range. A worker scope marks itself with the task it claimed (`ctx._markTaskScope`), and every item that scope and its descendants emit is stamped with that task id (`OutputItem.taskId`) as it is produced. The earlier timestamp-window approach could not separate concurrent producers — while a worker was still looping, its window stayed open, so a sibling worker that ran inside that interval was wrongly absorbed into it. Stamping the origin at emit time removes the ambiguity.
+
+**A second source of the stamp: the request's task.** An action may declare `taskOf(input)` (FIX-2422), which names the task the whole request is for. `runAction` stamps that id on the `userMessage` echo and makes it the default task of every scope in the request, so a line a person sends from a task's screen, and the reply, carry the task id with no app memory. A scope marked with `_markTaskScope` keeps its own id; clearing a mark (`_markTaskScope(null)`) falls back to the request's task. Trace items stay unstamped either way. Workforce's doors opt in through `doorTask`.
+
+**The id is a label, not a credential.** `taskOf` reads it from caller input, so nothing in the engine checks it, and nothing may decide by it: it never routes, admits or authorizes. Readers already gate a stamp on the session's own `task-change` items (`itemsForTask`), so an id for a task the session never ran attaches to nothing. A reader that starts deciding by `taskId` checks it first (BP-031).
 
 The attribution guarantee: each item belongs to **at most one** task. Concurrent sibling workers and sequential turns of one worker are separated by execution scope, not by time, so neither overlaps the other. A re-claim — a retry, or the turn after a person answers — runs in a fresh scope but marks the same task id, so all attempts union under that task. Synthesizers iterating completed tasks never see an item twice. Items emitted outside any task scope (seed-time events, board scaffolding) carry no task id and are excluded.
 

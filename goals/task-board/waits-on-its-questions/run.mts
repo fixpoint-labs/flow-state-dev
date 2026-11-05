@@ -9,7 +9,7 @@
  * **Model-free.** A real `createFlowState` host on a durable SQLite store, the
  * Workforce session board on two flows (`desk`, the conversation that files,
  * and `doer`, whose task sessions work), deterministic scripted turns that
- * call the real verbs (`askMidway`, `reportProgress`, `waitForUser`), driven
+ * call the real verbs (`askMidway`, `reportProgress`, `suspendForUser`), driven
  * as a verified caller. The Inbox is Shift Manager's own snapshot
  * (`createLabReader().read()`), every answer goes through orchestration's
  * Inbox client (`createInboxClient`), the way the Inbox answers, and the task
@@ -48,7 +48,7 @@ import { createClient, type Client, type ClientFetch } from "@flow-state-dev/cli
 import { createFlowState, createInProcessFetch, runAction } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { askMidway, currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
-import { openQuestions, type Task } from "@flow-state-dev/orchestration/tasks";
+import { openHolds, type Task } from "@flow-state-dev/orchestration/tasks";
 import { createInboxClient, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { reconcileInbox, rowTruthOf, suspensionTruthOf, type InboxTruth } from "@flow-state-dev/orchestration/inbox/check";
 import { TASK_ID_STATE_KEY } from "../../../packages/workforce/src/workers/keys.ts";
@@ -125,8 +125,8 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[] }> = {
     patches: [
       {
         module: "packages/orchestration/src/tasks/collection/internal.ts",
-        from: String.raw`  if \(hasOpenQuestion\(task\)\) return false;\n  if \(task\.status !== "pending"`,
-        to: '  if (openRowQuestions(task).length > 1) return false;\n  if (task.status !== "pending"'
+        from: String.raw`  if \(hasOpenHold\(task\)\) return false;\n  if \(task\.status !== "pending"`,
+        to: '  if (openRowHolds(task).length > 1) return false;\n  if (task.status !== "pending"'
       }
     ],
     legs: ["a", "b"]
@@ -169,8 +169,8 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[] }> = {
     patches: [
       {
         module: "packages/orchestration/src/tasks/collection/get-or-create.ts",
-        from: String.raw`const questionDueMs = ctx\.requestHost\?\.userDeadlineMs;`,
-        to: "const questionDueMs = ctx.requestHost?.userDeadlineMs ?? 1500;"
+        from: String.raw`const holdDueMs = ctx\.requestHost\?\.userDeadlineMs;`,
+        to: "const holdDueMs = ctx.requestHost?.userDeadlineMs ?? 1500;"
       }
     ],
     legs: ["e"]
@@ -190,7 +190,7 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[] }> = {
   "drop-row-holds": {
     patches: [
       {
-        module: "packages/orchestration/src/inbox/questions.ts",
+        module: "packages/orchestration/src/inbox/holds.ts",
         from: String.raw`    if \(hold\.source\.kind === "row"\) \{\n      const holder`,
         to: '    if (hold.source.kind === "row") {\n      continue;\n      const holder'
       }
@@ -202,7 +202,7 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[] }> = {
     patches: [
       {
         module: "packages/orchestration/src/tasks/collection/internal.ts",
-        from: String.raw`const resumed = options\.resume === true \? questionWrite\(task, \{ op: "resume" \}\) : "unchanged";`,
+        from: String.raw`const resumed = options\.resume === true \? holdWrite\(task, \{ op: "resume" \}\) : "unchanged";`,
         to: 'const resumed = "unchanged" as const;'
       }
     ],
@@ -318,12 +318,12 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
       }
       if (message.includes("[ask-then-approve]") && !answered && board !== undefined) {
         prove({ kind: "asked", ...base, outcome: await askMidway(ctx, board.tasks, [{ prompt: COLUMN }]) });
-        const outcome = await ctx.waitForUser({ kind: "approval", prompt: "Ship it now?" } as never);
+        const outcome = await ctx.suspendForUser({ kind: "approval", prompt: "Ship it now?" } as never);
         prove({ kind: "resumed", ...base, outcome });
         return "went on";
       }
       if (message.includes("[approve]")) {
-        const outcome = await ctx.waitForUser({ kind: "approval", prompt: "Ship the release?" } as never);
+        const outcome = await ctx.suspendForUser({ kind: "approval", prompt: "Ship the release?" } as never);
         prove({ kind: "resumed", ...base, outcome });
         return `approved: ${JSON.stringify(outcome)}`;
       }
@@ -485,13 +485,13 @@ async function answerDirect(run: Run, id: string, questionId: string, message: s
     return { status: `refused: ${(error as Error).message.slice(0, 120)}` };
   }
 }
-const openIds = (row: Task | undefined) => (row === undefined ? [] : openQuestions(row).map((hold) => hold.id));
+const openIds = (row: Task | undefined) => (row === undefined ? [] : openHolds(row).map((hold) => hold.id));
 
 /** The Inbox's truth, read apart from the list: the board's `listTasks` rows, and every task session's suspended requests. */
 async function truthOf(run: Run): Promise<InboxTruth> {
   const listed = (await run.h.http.act("desk", run.conversation, "listTasks_tasks", {}))?.tasks ?? [];
   const board = `${run.conversation}.tasks`;
-  const rows = listed.map((t: any) => ({ board, id: t.id, status: t.status, questions: t.questions ?? [], steers: [] }));
+  const rows = listed.map((t: any) => ({ board, id: t.id, status: t.status, holds: t.holds ?? [], steers: [] }));
   const sessions = new Set<string>(listed.flatMap((t: any) => (t.run?.sessionId === undefined ? [] : [t.run.sessionId])));
   const suspensions = [];
   for (const sessionId of sessions) {
@@ -519,13 +519,13 @@ async function legsABC(run: Run): Promise<void> {
   // a. One item for t1 with both prompts; nothing starts it.
   const item = await itemOf(run, t1);
   const read = await getTask(run, t1);
-  if (item?.questions.length !== 2 || item.questions.map((hold) => hold.ask.prompt).join("|") !== `${CSV}|${COLUMN}`) {
-    run.failures.push(`a:one-item — wanted one item for t1 with both prompts, oldest first; the Inbox shows ${show(item?.questions.map((h) => h.ask.prompt))}`);
+  if (item?.holds.length !== 2 || item.holds.map((hold) => hold.ask.prompt).join("|") !== `${CSV}|${COLUMN}`) {
+    run.failures.push(`a:one-item — wanted one item for t1 with both prompts, oldest first; the Inbox shows ${show(item?.holds.map((h) => h.ask.prompt))}`);
   }
   const t1Items = (await inbox(run)).filter((i) => i.task?.taskId === t1).length;
   if (t1Items !== 1) run.failures.push(`a:one-item — wanted t1 listed once; it is listed ${t1Items} times`);
-  if (read?.status !== "pending" || read.attempts !== 0 || (read.questions ?? []).length !== 2) {
-    run.failures.push(`a:not-started — wanted getTask to show t1 pending on attempt 0 with two open holds; it shows ${show(read && { status: read.status, attempts: read.attempts, questions: read.questions?.length })}`);
+  if (read?.status !== "pending" || read.attempts !== 0 || (read.holds ?? []).length !== 2) {
+    run.failures.push(`a:not-started — wanted getTask to show t1 pending on attempt 0 with two open holds; it shows ${show(read && { status: read.status, attempts: read.attempts, holds: read.holds?.length })}`);
   }
   // A drain, a claim on a dispatching board: touched twice more, past a lease.
   await sleep(LEASE_MS + 200);
@@ -539,7 +539,7 @@ async function legsABC(run: Run): Promise<void> {
   run.closed.push(csv!);
   await touch(run);
   const afterOne = await itemOf(run, t1);
-  if (afterOne?.questions.map((h) => h.id).join() !== column) run.failures.push(`b:one-left — wanted t1's item to show only "${COLUMN}"; it shows ${show(afterOne?.questions.map((h) => h.ask.prompt))}`);
+  if (afterOne?.holds.map((h) => h.id).join() !== column) run.failures.push(`b:one-left — wanted t1's item to show only "${COLUMN}"; it shows ${show(afterOne?.holds.map((h) => h.ask.prompt))}`);
   if (proofsOf(t1, "turn").length !== 0) run.failures.push(`b:still-held — t1 started on its first answer (${proofsOf(t1, "turn").length} turns)`);
   await reconciled(run, "b");
 
@@ -596,8 +596,8 @@ async function legD(run: Run, leg: "d" | "dnowake"): Promise<void> {
       run.failures.push(`${leg}:not-reclaimed — wanted t4 untouched past its lease; it is attempt ${still.attempts}, lease ${still.leaseUntil}, ${proofsOf(t4, "turn").length} turns`);
     }
     const item = await itemOf(run, t4);
-    const hold = item?.questions[0];
-    if (hold?.ask.prompt !== COLUMN) run.failures.push(`${leg}:listed — wanted t4's midway question in the Inbox; it shows ${show(item?.questions)}`);
+    const hold = item?.holds[0];
+    if (hold?.ask.prompt !== COLUMN) run.failures.push(`${leg}:listed — wanted t4's midway question in the Inbox; it shows ${show(item?.holds)}`);
     const said = hold === undefined ? "no hold" : await answer(run, t4, hold.id, { text: "signup_date" });
     if (said !== "ok") run.failures.push(`${leg}:answered — the Inbox's answer was refused: ${said}`);
     if (hold !== undefined) run.closed.push(hold.id);
@@ -670,32 +670,32 @@ async function legE(run: Run): Promise<void> {
   await sleep(DUE_MS + 1_500);
   await touch(run);
   const t6Row = await run.h.byId(t6);
-  if (openIds(t6Row).length !== 1 || openQuestions(t6Row!)[0]?.due !== undefined || (await itemOf(run, t6)) === undefined || proofsOf(t6, "turn").length !== 0) {
-    run.failures.push(`e:no-deadline — wanted t6's question still open with no due time, listed, unstarted; it is ${show({ open: openIds(t6Row), due: t6Row && openQuestions(t6Row)[0]?.due, steers: t6Row?.steers, turns: proofsOf(t6, "turn").length })}`);
+  if (openIds(t6Row).length !== 1 || openHolds(t6Row!)[0]?.due !== undefined || (await itemOf(run, t6)) === undefined || proofsOf(t6, "turn").length !== 0) {
+    run.failures.push(`e:no-deadline — wanted t6's question still open with no due time, listed, unstarted; it is ${show({ open: openIds(t6Row), due: t6Row && openHolds(t6Row)[0]?.due, steers: t6Row?.steers, turns: proofsOf(t6, "turn").length })}`);
   }
-  // t9: a task run's waitForUser approval: one open suspension hold, listed once, answered through FIX-2129's route, closed by the resume.
+  // t9: a task run's suspendForUser approval: one open suspension hold, listed once, answered through FIX-2129's route, closed by the resume.
   const t9 = await file(run, word("t9 Ship the release [approve]"));
-  const mirrored = await run.h.until(async () => openQuestions((await run.h.byId(t9)) ?? ({ status: "pending" } as Task)).some((h) => h.source.kind === "suspension"), 15_000);
+  const mirrored = await run.h.until(async () => openHolds((await run.h.byId(t9)) ?? ({ status: "pending" } as Task)).some((h) => h.source.kind === "suspension"), 15_000);
   const t9Row = await run.h.byId(t9);
   const t9Item = await itemOf(run, t9);
-  if (!mirrored || t9Item?.questions.length !== 1 || t9Item.questions[0]!.source.kind !== "suspension" || "waitingFor" in (t9Row ?? {})) {
-    run.failures.push(`e:t9-mirror — wanted one open suspension hold on t9 and one item for it; row ${show(t9Row?.questions)}, item ${show(t9Item?.questions)}`);
+  if (!mirrored || t9Item?.holds.length !== 1 || t9Item.holds[0]!.source.kind !== "suspension" || "waitingFor" in (t9Row ?? {})) {
+    run.failures.push(`e:t9-mirror — wanted one open suspension hold on t9 and one item for it; row ${show(t9Row?.holds)}, item ${show(t9Item?.holds)}`);
   }
   await reconciled(run, "e:t9-held");
-  const t9Said = t9Item === undefined ? "no item" : await answer(run, t9, t9Item.questions[0]!.id, { approved: true });
+  const t9Said = t9Item === undefined ? "no item" : await answer(run, t9, t9Item.holds[0]!.id, { approved: true });
   if (t9Said !== "ok") run.failures.push(`e:t9-answered — the Inbox's answer through the engine's route was refused: ${t9Said}`);
-  if (t9Item !== undefined) run.closed.push(t9Item.questions[0]!.id);
+  if (t9Item !== undefined) run.closed.push(t9Item.holds[0]!.id);
   await run.h.until(async () => (await run.h.byId(t9))?.status === "completed", 15_000);
   await run.h.idle();
-  if ((await run.h.byId(t9))?.questions !== undefined || (await run.h.byId(t9))?.status !== "completed") {
-    run.failures.push(`e:t9-resume-closes — wanted the resume to close t9's hold and t9 to complete; it is ${show({ status: (await run.h.byId(t9))?.status, holds: (await run.h.byId(t9))?.questions })}`);
+  if ((await run.h.byId(t9))?.holds !== undefined || (await run.h.byId(t9))?.status !== "completed") {
+    run.failures.push(`e:t9-resume-closes — wanted the resume to close t9's hold and t9 to complete; it is ${show({ status: (await run.h.byId(t9))?.status, holds: (await run.h.byId(t9))?.holds })}`);
   }
   // t10: a confirm, filed: one item with a yes and a no; the yes starts it.
   const t10 = await file(run, word("t10 Run the migration"), { questions: [{ kind: "confirm", prompt: "Run it against production?" }] });
   const t10Item = await itemOf(run, t10);
-  if (t10Item?.questions[0]?.ask.kind !== "confirm" || proofsOf(t10, "turn").length !== 0) run.failures.push(`e:t10-confirm — wanted one confirm item, unstarted; it shows ${show(t10Item?.questions)}`);
-  const yes = t10Item === undefined ? "no item" : await answer(run, t10, t10Item.questions[0]!.id, { done: true });
-  if (t10Item !== undefined) run.closed.push(t10Item.questions[0]!.id);
+  if (t10Item?.holds[0]?.ask.kind !== "confirm" || proofsOf(t10, "turn").length !== 0) run.failures.push(`e:t10-confirm — wanted one confirm item, unstarted; it shows ${show(t10Item?.holds)}`);
+  const yes = t10Item === undefined ? "no item" : await answer(run, t10, t10Item.holds[0]!.id, { done: true });
+  if (t10Item !== undefined) run.closed.push(t10Item.holds[0]!.id);
   await run.h.until(async () => (await run.h.byId(t10))?.status === "completed", 15_000);
   if (yes !== "ok" || proofsOf(t10, "turn").length !== 1 || !(proofsOf(t10, "turn")[0]?.message ?? "").includes("Yes, go ahead.")) {
     run.failures.push(`e:t10-yes-starts — wanted the yes to start t10 once with it in its brief; ${yes}, ${proofsOf(t10, "turn").length} turns`);
@@ -703,8 +703,8 @@ async function legE(run: Run): Promise<void> {
   // t12: a confirm's No, the default (owner, 2026-10-25): the task is cancelled, never started, its item gone.
   const t12 = await file(run, word("t12 Drop the old table"), { questions: [{ kind: "confirm", prompt: "Drop it now?" }] });
   const t12Item = await itemOf(run, t12);
-  const no = t12Item === undefined ? "no item" : await answer(run, t12, t12Item.questions[0]!.id, { done: false, note: "keep it a week" });
-  if (t12Item !== undefined) run.closed.push(t12Item.questions[0]!.id);
+  const no = t12Item === undefined ? "no item" : await answer(run, t12, t12Item.holds[0]!.id, { done: false, note: "keep it a week" });
+  if (t12Item !== undefined) run.closed.push(t12Item.holds[0]!.id);
   await touch(run);
   const t12Read = await getTask(run, t12);
   if (no !== "ok" || t12Read?.status !== "cancelled" || proofsOf(t12, "turn").length !== 0 || (await itemOf(run, t12)) !== undefined) {
@@ -717,8 +717,8 @@ async function legE(run: Run): Promise<void> {
   const t11Row = await run.h.byId(t11);
   const resumed = proofsOf(t11, "resumed")[0]?.outcome as { cancelled?: boolean } | undefined;
   const t11Item = await itemOf(run, t11);
-  if (resumed?.cancelled !== true || openQuestions(t11Row!).map((h) => h.source.kind).join() !== "row" || t11Item?.questions.map((h) => h.source.kind).join() !== "row") {
-    run.failures.push(`e:one-wait-per-turn — wanted the stop refused and cancelled (resumed cancelled), t11 held on its question alone; resumed ${show(resumed)}, holds ${show(t11Row?.questions)}, item ${show(t11Item?.questions)}`);
+  if (resumed?.cancelled !== true || openHolds(t11Row!).map((h) => h.source.kind).join() !== "row" || t11Item?.holds.map((h) => h.source.kind).join() !== "row") {
+    run.failures.push(`e:one-wait-per-turn — wanted the stop refused and cancelled (resumed cancelled), t11 held on its question alone; resumed ${show(resumed)}, holds ${show(t11Row?.holds)}, item ${show(t11Item?.holds)}`);
   }
   // t8: a line typed in a held session answers the oldest open question, and leaves the other.
   const t8 = await file(run, word("t8 Reconcile the two exports [ask:2]"));
@@ -743,8 +743,8 @@ async function legE(run: Run): Promise<void> {
 /** edue: a deadline the host set (t5): past due and a touch later, it closes "no answer came", and t5 starts. */
 async function legEDue(run: Run): Promise<void> {
   const t5 = await file(run, word("t5 Go on without an answer"), { questions: [COLUMN] });
-  const due = openQuestions((await run.h.byId(t5))!)[0]?.due;
-  const openedAt = openQuestions((await run.h.byId(t5))!)[0]?.openedAt ?? 0;
+  const due = openHolds((await run.h.byId(t5))!)[0]?.due;
+  const openedAt = openHolds((await run.h.byId(t5))!)[0]?.openedAt ?? 0;
   if (due !== openedAt + DUE_MS) run.failures.push(`edue:due — wanted t5's question due ${DUE_MS} ms after it opened; it is due ${due}, opened ${openedAt}`);
   await sleep(DUE_MS + 500);
   await touch(run);
@@ -761,7 +761,7 @@ async function legEDue(run: Run): Promise<void> {
 /** f: the host's setting for a person's stop: a held question reads it (FIX-2129 leg f's held-question half). */
 async function legF(run: Run): Promise<void> {
   const tf = await file(run, word("tf The host's setting"), { questions: [COLUMN] });
-  const hold = openQuestions((await run.h.byId(tf))!)[0];
+  const hold = openHolds((await run.h.byId(tf))!)[0];
   if (hold?.due === undefined || hold.due - hold.openedAt !== HOST_DEADLINE_MS) {
     run.failures.push(`f:host-setting — wanted the question due ${HOST_DEADLINE_MS} ms after it opened; it is ${show(hold)}`);
   }

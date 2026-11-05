@@ -8,7 +8,9 @@
  * Shift Manager is built with Vite into a scratch directory and served by its own
  * command over the run-lab's `fsdev.config.mts`, devtool included: the lead
  * files tasks on its own conversation's board, each handed to a scripted run
- * that narrates a step a second and holds until aborted. Chromium reaches each
+ * that narrates a step a second and runs until aborted. With the Lab's task
+ * action rows filed too: one held on the board, one more running to cancel,
+ * and one that fails at once. Chromium reaches each
  * row by clicking, from Tasks or, once done, from Jump to. What the page draws
  * is graded against the tree on disk and the store, read by this script
  * through the Lab's routes and through each run's own flow, never against
@@ -16,9 +18,10 @@
  *
  * Legs (each failure is tagged `[<row>] <leg>`):
  *
- *   store         the board holds a held run on the flow two workers share, a
- *                 held run on a worker's flow of its own, a finished run, and a
- *                 row no run has claimed (a precondition)
+ *   store         the board holds a running task on the flow two workers share,
+ *                 a running task on a worker's flow of its own, a finished run,
+ *                 a row no run has claimed, and the action rows: one held, one
+ *                 running to cancel, one failed (a precondition)
  *   items equal the run session's
  *                 the Session's items equal, by id and in order, the items the
  *                 run session and its request stream hold for this task
@@ -34,11 +37,20 @@
  *                 its owner, or saying it is not planned in the first cut; the
  *                 composer takes a message, since every worker flow has a door
  *   no run        the unclaimed row says no run has started and can't be stopped
+ *   release       Release on the held row: the board's row reads pending (or
+ *                 the board has already handed it on)
+ *   cancel        Cancel, confirmed, on a running task: the row reads
+ *                 cancelled, and the run's request leaves in_progress within
+ *                 the lease's renewal bound, the row still cancelled after
+ *   retry         Retry on it, and on the failed row: the same row, no new
+ *                 one, runs again (the board counts one more try on it)
+ *   error         the failed row's error, as the board stores it, is on its
+ *                 task frame and on its Tasks row
  *   reach         each row opens by clicking, and the page throws nothing
  *
- * Controls rebuild Shift Manager with `src/lib/run.ts` swapped for a module under
- * `controls/` (a Vite `resolveId` plugin; the build fails if the swap never
- * fired):
+ * Controls rebuild Shift Manager with one of its modules swapped for a module
+ * under `controls/` (a Vite `resolveId` plugin; the build fails if the swap
+ * never fired):
  *
  *   worker-session        the Session reads the worker's newest other session.
  *                         Must fail at "items equal the run session's".
@@ -47,6 +59,11 @@
  *   board-flow            the run is opened through the board's flow, the
  *                         lead's. Must fail at "items equal the run session's"
  *                         on every row, since no run is on the lead's flow.
+ *   wrong-board           (`src/lib/reads.ts`) the action row is built against
+ *                         board id "plan", not "tasks". Must fail at release,
+ *                         cancel and retry, the rows unchanged.
+ *   no-error-body         (the `error` registry copy) `ErrorBody` draws
+ *                         nothing. Must fail at error, on the frame and on Tasks.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-shows-and-stops-a-task-run/run.mts
  * Control:  GOAL_CONTROL=board-flow PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-shows-and-stops-a-task-run/run.mts
@@ -61,6 +78,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Page } from "playwright";
 import { compareItemOrder, createClient } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
+import { OBSERVED_PLAN, OBSERVED_PLAN_LIST, planRowsPrefix, readPlanTarget } from "@flow-state-dev/core/types";
+import { DEFAULT_LEASE_DURATION_MS, RENEWAL_DIVISOR } from "@flow-state-dev/orchestration/tasks";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
@@ -68,7 +87,7 @@ import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.
 import { launchChromium } from "../../lib/playwright.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const CONTROLS = ["worker-session", "optimistic-interrupt", "board-flow"] as const;
+const CONTROLS = ["worker-session", "optimistic-interrupt", "board-flow", "wrong-board", "no-error-body"] as const;
 if (CONTROL === "list") {
   console.log(`controls: ${CONTROLS.join(", ")}`);
   process.exit(0);
@@ -89,6 +108,18 @@ const TREE = join(RUN_LAB, "workforce");
 const OWNED = /\bFIX-\d+\b|not planned in the first cut/;
 /** How soon a stored item must be drawn. */
 const LIVE_MS = 2_000;
+/** How soon the board must show what a pressed action did. */
+const ACTED_MS = 10_000;
+/**
+ * How soon a cancelled task's run must stop. The run-lab's stub isn't
+ * harness-manager's, so nothing watches the row for it: it stops when its
+ * lease's next renewal is refused, at most a third of the lease after the
+ * cancel, plus slack for the request to end.
+ */
+const CANCEL_STOPS_MS = DEFAULT_LEASE_DURATION_MS / RENEWAL_DIVISOR + 15_000;
+/** How each action row is filed (the run-lab's goals), so the other legs never pick one. */
+const ACTION_ROWS = { held: ": held until released", cancellable: ": run until cancelled", failing: ": fail at once" } as const;
+const actionKind = (row: Row) => (Object.keys(ACTION_ROWS) as Array<keyof typeof ACTION_ROWS>).find((k) => row.goal.endsWith(ACTION_ROWS[k]));
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -122,11 +153,18 @@ type Board = { conversation: string };
 
 // ---- building Shift Manager --------------------------------------------------------
 
+/** The module each control swaps out: the run's reads, unless it says otherwise. */
+const SWAPPED: Record<string, string[]> = {
+  "wrong-board": ["src", "lib", "reads.ts"],
+  "no-error-body": ["src", "components", "flow-state", "error.tsx"],
+};
+
 async function buildShiftManager(control: string, boardFlow: string): Promise<string> {
   const outDir = join(SCRATCH, `pages-${control === "" ? "as-written" : control}`);
   const viteEntry = createRequire(join(SHIFT_MANAGER, "package.json")).resolve("vite");
   const vite = (await import(pathToFileURL(viteEntry).href)) as { build(config: Record<string, unknown>): Promise<unknown> };
-  const swap = control === "" ? undefined : { target: join(SHIFT_MANAGER, "src", "lib", "run.ts"), with: join(HERE, "controls", `${control}.ts`) };
+  const swap =
+    control === "" ? undefined : { target: join(SHIFT_MANAGER, ...(SWAPPED[control] ?? ["src", "lib", "run.ts"])), with: join(HERE, "controls", `${control}.ts`) };
   let swapped = 0;
   await vite.build({
     root: SHIFT_MANAGER,
@@ -165,7 +203,7 @@ async function startLab(pages: string): Promise<Running> {
   let log = "";
   const child = spawn(TSX, [SHIFT_MANAGER_COMMAND, "--config", CONFIG, "--port", "0", "--no-open", "--assets", pages], {
     cwd: workDir,
-    env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "" }),
+    env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "", RUN_LAB_TASK_ACTIONS: "1" }),
     stdio: ["ignore", "pipe", "pipe"],
   });
   child.stdout!.on("data", (d) => (log += String(d)));
@@ -196,7 +234,11 @@ async function startLab(pages: string): Promise<Running> {
 type Row = {
   id: string;
   title: string;
+  goal: string;
   status: string;
+  error: string | null;
+  /** How many tries the board has counted. */
+  attempts: number;
   assignee: string | null;
   startedAt: number | null;
   run: { sessionId: string; requestId: string } | null;
@@ -225,7 +267,10 @@ function labApi(origin: string) {
     return mine.map(({ clientData: r = {} }) => ({
       id: String(r.id),
       title: String(r.title ?? r.goal),
+      goal: String(r.goal ?? ""),
       status: String(r.status),
+      error: typeof r.error === "string" ? r.error : null,
+      attempts: typeof r.attempts === "number" ? r.attempts : 0,
       assignee: typeof r.assignee === "string" ? r.assignee : null,
       startedAt: typeof r.startedAt === "number" ? r.startedAt : null,
       run: r.run == null ? null : { sessionId: String(r.run.sessionId), requestId: String(r.run.requestId) },
@@ -248,16 +293,31 @@ function labApi(origin: string) {
     }
     return out;
   };
-  /** The rows a run recorded under its own request id, per recorded collection; `null` when its flow records none. */
-  const recorded = async (run: NonNullable<Row["run"]>, pattern: string): Promise<string[] | null> => {
+  /** A recorded collection's rows under one key prefix, as stored; `null` when the run's flow declares no such collection. */
+  const recordedRows = async (run: NonNullable<Row["run"]>, pattern: string, prefix: string) => {
     const manifest = await get(`/sessions/${enc(run.sessionId)}/manifest`);
     const ref = (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
     if (ref === undefined) return null;
-    const prefix = `${pattern.slice(0, -"/**".length)}/${run.requestId}/`;
     const body = await get(`/sessions/${enc(run.sessionId)}/resources/${enc(ref)}?limit=200&topicPrefix=${enc(prefix)}`);
-    return ((body.items ?? []) as Array<{ topic: string }>).map((i) => i.topic.split("/").slice(2).join("/"));
+    return (body.items ?? []) as Array<{ topic: string; clientData?: Record<string, unknown> }>;
   };
-  return { board, rows, ownerOf, requestStatus, sessionItems, recorded };
+  /** A row's key past its first two segments: `<request>/<invocation>/…`, or a plan's `<conversation>/…`. */
+  const keyOf = (topic: string) => topic.split("/").slice(2).join("/");
+  /** The files a run recorded under its own request id; `null` when its flow records none. */
+  const recordedFiles = async (run: NonNullable<Row["run"]>): Promise<string[] | null> =>
+    (await recordedRows(run, "observed-file-ops/**", `observed-file-ops/${run.requestId}/`))?.map((i) => keyOf(i.topic)) ?? null;
+  /**
+   * The plan a run recorded; `null` when its flow records none. A harness keeps
+   * the plan under its conversation and leaves a pointer to it under the run's
+   * request, so the pointer is followed by core's one reader rule.
+   */
+  const recordedPlan = async (run: NonNullable<Row["run"]>): Promise<string[] | null> => {
+    const markers = await recordedRows(run, `${OBSERVED_PLAN_LIST}/**`, planRowsPrefix(run.requestId, OBSERVED_PLAN_LIST));
+    const pointers = (markers ?? []).map((m) => ({ topic: m.topic, conversation: m.clientData?.conversation as string | null | undefined }));
+    const rows = await recordedRows(run, `${OBSERVED_PLAN}/**`, readPlanTarget(run.requestId, pointers).rowsPrefix);
+    return rows?.map((i) => keyOf(i.topic)) ?? null;
+  };
+  return { board, rows, ownerOf, requestStatus, sessionItems, recordedPlan, recordedFiles };
 }
 type LabApi = ReturnType<typeof labApi>;
 
@@ -318,9 +378,11 @@ async function reach(page: Page, origin: string, row: Row) {
   await page.goto(`${origin}/tasks`);
   await page.getByTestId("shell").waitFor({ timeout: 20_000 });
   if (row.status === "completed" || row.status === "cancelled") {
-    await page.getByTestId("jump-to").click();
+    // Jump to opens on ⌘K, as the sidebar footer's tip says (Ctrl+K off a Mac).
+    await page.keyboard.press("ControlOrMeta+K");
+    await page.getByTestId("jump-dialog").waitFor({ timeout: 5_000 });
     await page.getByTestId("jump-input").fill(row.title);
-    await page.locator(`[data-testid=jump-dialog] section[aria-label="Tasks"] [data-testid=jump-result]`).filter({ hasText: row.title }).first().click();
+    await page.locator(`[data-testid=jump-dialog] [data-testid=jump-result]`).filter({ hasText: row.title }).first().click();
   } else {
     await page.getByTestId("tasks-table").waitFor({ timeout: 20_000 });
     // Tasks hides queued rows until Queued is on; a person looking for any open row turns it on.
@@ -437,8 +499,8 @@ async function checkInspector({ page, devtool, api, tree, fail }: Ctx, row: Row)
   const started = await page.getByTestId("inspector-started-at").getAttribute("data-started-at");
   if (started !== String(row.startedAt ?? "")) fail("inspector", `started ${started}, stored ${row.startedAt}`);
 
-  const plan = await api.recorded(row.run!, "observed-plan/**");
-  const files = await api.recorded(row.run!, "observed-file-ops/**");
+  const plan = await api.recordedPlan(row.run!);
+  const files = await api.recordedFiles(row.run!);
   const sectionAgrees = async (stored: string[] | null, item: string, attr: string, none: string, what: string) => {
     if (stored === null) {
       if (!(await visible(page, none, 5_000))) fail("inspector", `the run's flow records no ${what}, and the inspector doesn't say so`);
@@ -503,7 +565,6 @@ async function checkGaps({ page, fail }: Ctx, running: boolean): Promise<void> {
   if (await page.getByTestId("task-composer-input").isDisabled()) fail("gaps", `the composer is disabled on a ${state} task whose worker has a door`);
   if ((await page.getByTestId("task-composer-blocked").count()) > 0) fail("gaps", `the composer says it is blocked on a ${state} task whose worker has a door`);
   await owned("task-also-post", true);
-  await owned("inspector-harness-gap", false);
   await owned("inspector-acceptance-gap", false);
   await owned("inspector-review-gap", false);
   for (const [tab, testId] of [
@@ -520,6 +581,103 @@ async function checkGaps({ page, fail }: Ctx, running: boolean): Promise<void> {
   await page.locator("[role=tab][data-tab=session]").click();
 }
 
+// ---- the task's actions -----------------------------------------------------
+
+/** Read the board until `done` holds for row `id`, or `ms` pass; the row as last read either way. */
+async function rowWhen(api: LabApi, board: Board, id: string, done: (row: Row) => boolean, ms: number): Promise<Row | undefined> {
+  let row: Row | undefined;
+  for (let waited = 0; waited <= ms; waited += 250) {
+    row = (await api.rows(board)).find((r) => r.id === id);
+    if (row !== undefined && done(row)) return row;
+    await sleep(250);
+  }
+  return row;
+}
+
+/** What the action row said back, if it refused: the board's own words, the one page text graded. */
+async function refusal(page: Page): Promise<string> {
+  const words = await page.getByTestId("task-action-refusal").textContent({ timeout: 500 }).catch(() => null);
+  return words === null ? "" : `; the page shows the board's refusal "${words}"`;
+}
+
+/** Press one of the action row's buttons, failing `leg` with what the row offers when it isn't there. */
+async function press(page: Page, testId: string, fail: Ctx["fail"], leg: string): Promise<boolean> {
+  try {
+    await page.locator(`[data-testid=${testId}]:not([disabled])`).first().waitFor({ timeout: ACTED_MS });
+  } catch {
+    const offered = await page.getByTestId("task-action-row").getAttribute("data-status", { timeout: 500 }).catch(() => null);
+    fail(leg, `no ${testId} to press (the action row ${offered === null ? "isn't drawn" : `is drawn for ${offered}`})`);
+    return false;
+  }
+  await page.getByTestId(testId).first().click();
+  return true;
+}
+
+async function checkRelease({ page, api, fail, evidence }: Ctx, board: Board, row: Row): Promise<void> {
+  if (!(await press(page, "task-action-release", fail, "release"))) return;
+  const now = await rowWhen(api, board, row.id, (r) => r.status !== "held", ACTED_MS);
+  // The board hands a released row on at once, so it may already be running.
+  if (now?.status !== "pending" && now?.status !== "in_progress") fail("release", `the row reads ${now?.status ?? "nowhere"} ${ACTED_MS} ms after Release${await refusal(page)}`);
+  else evidence.push(`released: the row reads ${now.status}`);
+}
+
+/** Cancel, confirmed; then the run must stop. Returns whether the row reads cancelled. */
+async function checkCancel({ page, api, fail, evidence }: Ctx, board: Board, row: Row): Promise<boolean> {
+  if (!(await press(page, "task-action-cancel", fail, "cancel"))) return false;
+  if (!(await press(page, "task-action-confirm-yes", fail, "cancel"))) return false;
+  const now = await rowWhen(api, board, row.id, (r) => r.status === "cancelled", ACTED_MS);
+  if (now?.status !== "cancelled") {
+    fail("cancel", `the row reads ${now?.status ?? "nowhere"} ${ACTED_MS} ms after a confirmed Cancel${await refusal(page)}`);
+    return false;
+  }
+  const cancelledAt = Date.now();
+  const owner = await api.ownerOf(row.run!.sessionId);
+  let record = await api.requestStatus(owner, row.run!.requestId);
+  while (record === "in_progress" && Date.now() - cancelledAt < CANCEL_STOPS_MS) {
+    await sleep(500);
+    record = await api.requestStatus(owner, row.run!.requestId);
+  }
+  if (record === "in_progress") fail("cancel", `the run's request still reads in_progress ${CANCEL_STOPS_MS} ms after the row read cancelled`);
+  // The run stopping must not rewrite the row: it stays cancelled, never errored.
+  const after = (await api.rows(board)).find((r) => r.id === row.id);
+  if (after?.status !== "cancelled") fail("cancel", `once the run stopped the row reads ${after?.status}, not cancelled`);
+  evidence.push(`cancelled: the run's request read ${record} ${Math.round((Date.now() - cancelledAt) / 1000)} s after`);
+  return true;
+}
+
+/**
+ * Retry runs the same row again: the board counts one more try on it, and
+ * files no new row. Graded on the count, since a task that fails at once is
+ * back to errored before a status read could catch it pending.
+ */
+async function checkRetry({ page, api, fail, evidence }: Ctx, board: Board, row: Row): Promise<void> {
+  const before = await api.rows(board);
+  const tries = before.find((r) => r.id === row.id)?.attempts ?? 0;
+  if (!(await press(page, "task-action-retry", fail, "retry"))) return;
+  const now = await rowWhen(api, board, row.id, (r) => r.attempts > tries, ACTED_MS);
+  if (now === undefined || now.attempts <= tries) {
+    fail("retry", `the row reads ${now?.status ?? "nowhere"} with ${now?.attempts ?? 0} tries ${ACTED_MS} ms after Retry, ${tries} before${await refusal(page)}`);
+    return;
+  }
+  const added = (await api.rows(board)).filter((r) => !before.some((b) => b.id === r.id));
+  if (added.length > 0) fail("retry", `Retry filed ${added.length} new row(s) [${added.map((r) => r.id).join(", ")}]; it should run the same task again`);
+  else evidence.push(`retried: the same row reads ${now.status}, try ${now.attempts}`);
+}
+
+async function checkError({ page, origin, fail, evidence }: Ctx, row: Row): Promise<void> {
+  if (row.error === null) return fail("error", "the failed row stores no error, so there is nothing to look for");
+  const banner = await page.getByTestId("task-error").textContent({ timeout: 5_000 }).catch(() => null);
+  if (banner === null || !banner.includes(row.error)) fail("error", `the task frame's error reads ${JSON.stringify(banner)}; the row's error is ${JSON.stringify(row.error)}`);
+  await page.goto(`${origin}/tasks`);
+  await page.getByTestId("tasks-table").waitFor({ timeout: 20_000 });
+  const line = await page
+    .locator(`[data-testid=task-row][data-task-id="${row.id}"] [data-testid=task-row-error]`)
+    .textContent({ timeout: 5_000 })
+    .catch(() => null);
+  if (line === null || !line.includes(row.error)) fail("error", `its Tasks row's error line reads ${JSON.stringify(line)}; the row's error is ${JSON.stringify(row.error)}`);
+  else evidence.push(`failed: its error on the frame and its Tasks row`);
+}
+
 // ---- the goal ----------------------------------------------------------------
 
 await runGoal(async (failures) => {
@@ -532,27 +690,41 @@ await runGoal(async (failures) => {
   const browser = await launchChromium();
   try {
     const api = labApi(served.origin);
-    // The held runs are linked once the board has handed them over. Both short
-    // tasks must have finished too: one still running reads as a held run, and
-    // picked as one it finishes under the screen and leaves Tasks.
+    // The running tasks are linked once the board has handed them over. Both
+    // short tasks must have finished too: one still running reads as a running
+    // task, and picked as one it finishes under the screen and leaves Tasks.
+    // The action rows settle too: held, the one to cancel running, the failing one failed.
     const board = await api.board(tree);
     let rows: Row[] = [];
-    const settled = (rs: Row[]) => rs.filter((r) => r.status === "in_progress" && r.run !== null).length >= 2 && rs.filter((r) => r.status === "completed").length >= 2;
+    const plain = (rs: Row[]) => rs.filter((r) => actionKind(r) === undefined);
+    const action = (rs: Row[], kind: keyof typeof ACTION_ROWS) => rs.find((r) => actionKind(r) === kind);
+    const settled = (rs: Row[]) =>
+      plain(rs).filter((r) => r.status === "in_progress" && r.run !== null).length >= 2 &&
+      plain(rs).filter((r) => r.status === "completed").length >= 2 &&
+      action(rs, "held")?.status === "held" &&
+      action(rs, "cancellable")?.status === "in_progress" &&
+      action(rs, "cancellable")?.run != null &&
+      action(rs, "failing")?.status === "errored";
     for (let waited = 0; waited < 30_000 && !settled(rows); waited += 250) {
       rows = await api.rows(board);
       if (!settled(rows)) await sleep(250);
     }
     if (!settled(rows)) {
-      throw new Error(`store: within 30 s the board never held two held runs and both short runs finished: ${rows.map((r) => `${r.id} ${r.status}`).join("; ")}`);
+      throw new Error(
+        `store: within 30 s the board never held two running tasks, both short runs finished, and the action rows held, running and failed: ${rows.map((r) => `${r.id} ${r.status} ${r.goal}`).join("; ")}`,
+      );
     }
     const owners = new Map<string, string>();
     for (const row of rows) if (row.run !== null) owners.set(row.id, await api.ownerOf(row.run.sessionId));
-    const held = rows.filter((r) => r.status === "in_progress" && r.run !== null);
+    const running = plain(rows).filter((r) => r.status === "in_progress" && r.run !== null);
     // A run's owner is the flow its session is on: the shared flow, or a worker's flow of its own.
-    const onShared = held.find((r) => owners.get(r.id) === tree.sharedFlow);
-    const ownFlow = held.find((r) => owners.get(r.id) !== tree.sharedFlow);
-    const finished = rows.find((r) => r.status === "completed" && r.run !== null);
-    const unclaimed = rows.find((r) => r.run === null && r.status !== "in_progress");
+    const onShared = running.find((r) => owners.get(r.id) === tree.sharedFlow);
+    const ownFlow = running.find((r) => owners.get(r.id) !== tree.sharedFlow);
+    const finished = plain(rows).find((r) => r.status === "completed" && r.run !== null);
+    const unclaimed = plain(rows).find((r) => r.run === null && r.status !== "in_progress");
+    const toRelease = action(rows, "held")!;
+    const toCancel = action(rows, "cancellable")!;
+    const failed = action(rows, "failing")!;
     if (onShared === undefined || ownFlow === undefined || finished === undefined || unclaimed === undefined) {
       throw new Error(`store: the board does not hold the rows the goal reads: ${rows.map((r) => `${r.id} ${r.status} ${r.run === null ? "no run" : owners.get(r.id)}`).join("; ")}`);
     }
@@ -561,8 +733,8 @@ await runGoal(async (failures) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (e) => pageErrors.push(e.message));
     const cases: Array<{ name: string; row: Row; running: boolean }> = [
-      { name: `held on ${tree.sharedFlow}`, row: onShared, running: true },
-      { name: `held on ${owners.get(ownFlow.id)}`, row: ownFlow, running: true },
+      { name: `running on ${tree.sharedFlow}`, row: onShared, running: true },
+      { name: `running on ${owners.get(ownFlow.id)}`, row: ownFlow, running: true },
       { name: "finished", row: finished, running: false },
     ];
     // Anything the screen doesn't draw is a failure of the leg that looked for
@@ -600,6 +772,33 @@ await runGoal(async (failures) => {
         if (!(await page.getByTestId("task-interrupt").isDisabled())) unclaimedFail("no run", "Interrupt is enabled with nothing running");
       });
     }
+
+    // The task's actions, each on a row of its own, graded on the board's rows and the run's request.
+    const actionCtx = (name: string): Ctx => ({
+      page,
+      origin: served.origin,
+      devtool: served.devtool,
+      api,
+      tree,
+      fail: (leg, why) => failures.push(`[${name}] ${leg}: ${why}`),
+      evidence,
+    });
+    const heldCtx = actionCtx("held");
+    if (await reached(heldCtx, board, toRelease)) await leg(heldCtx.fail, "release", () => checkRelease(heldCtx, board, toRelease));
+    const cancelCtx = actionCtx("cancelled");
+    if (await reached(cancelCtx, board, toCancel)) {
+      let cancelled = false;
+      await leg(cancelCtx.fail, "cancel", async () => {
+        cancelled = await checkCancel(cancelCtx, board, toCancel);
+      });
+      // Retry is pressed on the frame the cancel left open: without a cancelled row it has nothing to offer.
+      if (!cancelled) cancelCtx.fail("retry", "the row was never cancelled, so there is nothing to retry");
+      else await leg(cancelCtx.fail, "retry", () => checkRetry(cancelCtx, board, toCancel));
+    }
+    const failedCtx = actionCtx("failed");
+    if (await reached(failedCtx, board, failed)) await leg(failedCtx.fail, "error", () => checkError(failedCtx, failed));
+    // Retry on a failed task too, so the leg stands on a row no other press touched.
+    if (await reached(failedCtx, board, failed)) await leg(failedCtx.fail, "retry", () => checkRetry(failedCtx, board, failed));
 
     if (pageErrors.length > 0) failures.push(`[page] reach: the page threw: ${pageErrors.join(" | ")}`);
   } finally {

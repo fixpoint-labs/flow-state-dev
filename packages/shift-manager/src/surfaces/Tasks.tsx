@@ -6,18 +6,23 @@
  * summary line, GROUP BY as a segmented control, and the Queued toggle, off
  * by default and saying how many rows it hides (BR-14). The columns are
  * v2's: the state square, ID, TASK, NOW, STREAM, WORKER, TIME (elapsed from
- * the row's start, by a clock) and COST. Columns with no shipped read say who
- * ships them (BR-16).
+ * the row's start, by a clock) and COST (the vendor's charge its runs
+ * reported, FIX-2398). Columns with no shipped read say who ships them (BR-16).
+ * A failed row carries its error as a line under its title.
  */
 import { useEffect, useState } from "react";
 import { COLUMNS, columnFor } from "../lib/columns";
 import { boardOwnerOf, openRows, rosterOf, workerFor, workerLabel, type LoadedSnapshot } from "../lib/derive";
 import type { BoardRow } from "../lib/reads";
-import { navigate, TASK_GROUPINGS, type TaskGrouping } from "../lib/routes";
+import { navigate, TASK_GROUPINGS, type Route, type TaskGrouping } from "../lib/routes";
 import { elapsed, isQueued, tasksSummary } from "../lib/tasks";
 import { EmptyState, Meta, ScreenTitle, SectionFailure, STATE_OF_COLUMN, StateSquare } from "../components/ui";
+import { RouteLink, isPlainClick } from "../components/RouteLink";
 import { useLab } from "../lib/lab-data";
+import { STALE_CLASS } from "../components/flow-state/connection-banner";
 import { cn } from "../lib/utils";
+import { costAmount, spendLine } from "../components/flow-state/spend";
+import { ErrorBody } from "../components/flow-state/error";
 import type { Gaps } from "../gaps";
 
 /** The columns Tasks groups by State, done excluded. */
@@ -34,6 +39,11 @@ function useNow(running: boolean): number {
   return now;
 }
 
+/** A row's task screen, at its session tab. */
+function taskRoute(row: BoardRow): Route {
+  return { level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" };
+}
+
 /** A mono cell: the id, NOW, STREAM, TIME and COST columns (v2:677-683). */
 const MONO_CELL = "py-2 pr-3 font-mono text-[11.5px] font-medium whitespace-nowrap";
 
@@ -43,13 +53,14 @@ function streamLabel(holder: string): string {
 }
 
 export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: TaskGrouping; gaps: Gaps }) {
-  const { refresh } = useLab();
+  const { refresh, stale } = useLab();
   const [showQueued, setShowQueued] = useState(false);
   const roster = rosterOf(snapshot);
   const all = openRows(snapshot);
   const queued = all.filter(isQueued).length;
   const rows = showQueued ? all : all.filter((row) => !isQueued(row));
-  const now = useNow(rows.some((row) => row.status === "in_progress"));
+  // While the server is gone the TIME column stops where the data did.
+  const now = useNow(!stale && rows.some((row) => row.status === "in_progress"));
   const failed = Object.entries(snapshot.boards).filter(([, b]) => !b.ok);
 
   const keyOf = (row: BoardRow): string =>
@@ -85,7 +96,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                 role="tab"
                 aria-selected={g === by}
                 data-grouping={g}
-                onClick={() => navigate({ level: "tasks", by: g })}
+                onClick={() => /* in place: the group-by tab regroups this screen */ navigate({ level: "tasks", by: g })}
                 className={cn("px-3 py-[5px] capitalize", i > 0 && "border-l border-foreground", g === by && "bg-foreground text-background")}
               >
                 {g}
@@ -141,7 +152,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                 <th className="pt-[9px] pb-[7px] font-medium">STREAM</th>
                 <th className="pt-[9px] pb-[7px] font-medium">WORKER</th>
                 <th className="pt-[9px] pb-[7px] font-medium">TIME</th>
-                <th className="pt-[9px] pb-[7px] text-right font-medium" title={gaps.cost}>
+                <th className="pt-[9px] pb-[7px] text-right font-medium">
                   COST
                 </th>
               </tr>
@@ -170,16 +181,28 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                       data-board-ref={row.boardRef}
                       data-task-id={row.id}
                       data-status={row.status}
-                      onClick={() => navigate({ level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" })}
+                      onClick={(event) => {
+                        // The title is the row's link. A click on it, or on any link a row comes to hold, is
+                        // that link's; a click the browser owns (a new tab) is the browser's. Neither is the row's.
+                        if ((event.target as Element).closest("a") !== null || !isPlainClick(event)) return;
+                        navigate(taskRoute(row)); // in place: a plain click anywhere on a row; its title is the row's link
+                      }}
                     >
-                      <td className="px-2 py-2" title={row.status} data-testid="task-row-status">
+                      <td className={cn("px-2 py-2", stale && STALE_CLASS)} title={row.status} data-testid="task-row-status">
                         <StateSquare state={STATE_OF_COLUMN[columnFor(row.status)]} className="align-middle" />
                       </td>
                       <td className={cn(MONO_CELL, "truncate text-muted-foreground")} title={row.id} data-testid="task-row-id">
                         {row.id}
                       </td>
                       <td className="truncate py-2 pr-3 text-[13.5px]" data-testid="task-row-title">
-                        {row.title}
+                        <RouteLink to={taskRoute(row)} className="hover:underline" data-testid="task-row-link">
+                          {row.title}
+                        </RouteLink>
+                        {row.status === "errored" && row.error !== null ? (
+                          <div className="truncate text-xs text-destructive" title={row.error} data-testid="task-row-error">
+                            <ErrorBody message={row.error} />
+                          </div>
+                        ) : null}
                       </td>
                       <td className={cn(MONO_CELL, "text-muted-foreground")} title={gaps.now} data-testid="task-row-now">
                         —
@@ -190,11 +213,15 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                       <td className="truncate py-2 pr-3 text-[13px]" title={worker?.id ?? row.assignee ?? undefined} data-testid="task-row-worker">
                         {workerLabel(worker?.displayName ?? row.assignee ?? "—")}
                       </td>
-                      <td className={cn(MONO_CELL, "text-muted-foreground")} data-testid="task-row-time">
+                      <td className={cn(MONO_CELL, "text-muted-foreground", stale && STALE_CLASS)} data-testid="task-row-time">
                         {time ?? "—"}
                       </td>
-                      <td className={cn(MONO_CELL, "pr-0 text-right text-muted-foreground")} title={gaps.cost} data-testid="task-row-cost">
-                        —
+                      <td
+                        className={cn(MONO_CELL, "pr-0 text-right text-muted-foreground")}
+                        title={spendLine(row.spend, { split: true }) || undefined}
+                        data-testid="task-row-cost"
+                      >
+                        {row.spend?.costUsd == null ? "—" : costAmount(row.spend.costUsd)}
                       </td>
                     </tr>
                   );

@@ -1,0 +1,81 @@
+<svg viewBox="0 0 940 354" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: nine rules, each with one owner. FIX-2448 owns the root-export rule, which FIX-2449 extends with collisions, and owns the two kinds of hidden surface. FIX-2454 owns the rename rule and the changeset rule. FIX-2453 owns where new checks live and the ban on tracker ids. Each child owns not adding a second way to do a job. The coordinator owns keeping consumed issues where they are. FIX-2564 owns asserting on installed tarballs, with a child changing only its own manifest rows, and the closure FIX-2562 uses it and five other rules.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; } }
+    .bg    { fill:var(--surface); }
+    .own   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .use   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-row { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-own { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.06em; }
+    .t-use { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="354"/>
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT · ONE OWNER PER RULE · COLUMNS ARE FIX- ISSUES · EACH = EVERY CHILD · COORD. = THE COORDINATOR</text>
+  <g id="columns">
+    <text class="t-col" x="410" y="46">2448</text>
+    <text class="t-col" x="476" y="46">2449</text>
+    <text class="t-col" x="542" y="46">2453</text>
+    <text class="t-col" x="608" y="46">2454</text>
+    <text class="t-col" x="674" y="46">each</text>
+    <text class="t-col" x="740" y="46">coord.</text>
+    <text class="t-col" x="806" y="46">2562</text>
+    <text class="t-col" x="872" y="46">2564</text>
+  </g>
+  <g id="er1">
+    <text class="t-row" x="16" y="76">ER-1 a root name has a consumer or README</text>
+    <rect class="own" x="404" y="58" width="60" height="26" rx="3"/><text class="t-own" x="410" y="75">OWNS</text>
+    <rect class="use" x="470" y="58" width="60" height="26" rx="3"/><text class="t-use" x="476" y="75">extends</text>
+    <rect class="use" x="668" y="58" width="60" height="26" rx="3"/><text class="t-use" x="674" y="75">uses</text>
+    <rect class="use" x="800" y="58" width="60" height="26" rx="3"/><text class="t-use" x="806" y="75">uses</text>
+  </g>
+  <g id="er2">
+    <text class="t-row" x="16" y="108">ER-2 two kinds of hidden surface (D2)</text>
+    <rect class="own" x="404" y="90" width="60" height="26" rx="3"/><text class="t-own" x="410" y="107">OWNS</text>
+    <rect class="use" x="668" y="90" width="60" height="26" rx="3"/><text class="t-use" x="674" y="107">uses</text>
+    <rect class="use" x="800" y="90" width="60" height="26" rx="3"/><text class="t-use" x="806" y="107">uses</text>
+  </g>
+  <g id="er3">
+    <text class="t-row" x="16" y="140">ER-3 every move follows the rename rule (D3)</text>
+    <rect class="own" x="602" y="122" width="60" height="26" rx="3"/><text class="t-own" x="608" y="139">OWNS</text>
+    <rect class="use" x="668" y="122" width="60" height="26" rx="3"/><text class="t-use" x="674" y="139">uses</text>
+    <rect class="use" x="800" y="122" width="60" height="26" rx="3"/><text class="t-use" x="806" y="139">uses</text>
+  </g>
+  <g id="er4">
+    <text class="t-row" x="16" y="172">ER-4 a new check extends an existing walker</text>
+    <rect class="use" x="404" y="154" width="60" height="26" rx="3"/><text class="t-use" x="410" y="171">uses</text>
+    <rect class="use" x="470" y="154" width="60" height="26" rx="3"/><text class="t-use" x="476" y="171">uses</text>
+    <rect class="own" x="536" y="154" width="60" height="26" rx="3"/><text class="t-own" x="542" y="171">OWNS</text>
+    <rect class="use" x="602" y="154" width="60" height="26" rx="3"/><text class="t-use" x="608" y="171">uses</text>
+  </g>
+  <g id="er5">
+    <text class="t-row" x="16" y="204">ER-5 nothing that ships carries a tracker id</text>
+    <rect class="own" x="536" y="186" width="60" height="26" rx="3"/><text class="t-own" x="542" y="203">OWNS</text>
+    <rect class="use" x="668" y="186" width="60" height="26" rx="3"/><text class="t-use" x="674" y="203">uses</text>
+    <rect class="use" x="800" y="186" width="60" height="26" rx="3"/><text class="t-use" x="806" y="203">uses</text>
+  </g>
+  <g id="er6">
+    <text class="t-row" x="16" y="236">ER-6 no second way to do a job</text>
+    <rect class="own" x="668" y="218" width="60" height="26" rx="3"/><text class="t-own" x="674" y="235">OWNS</text>
+  </g>
+  <g id="er7">
+    <text class="t-row" x="16" y="268">ER-7 one changeset line per package</text>
+    <rect class="own" x="602" y="250" width="60" height="26" rx="3"/><text class="t-own" x="608" y="267">OWNS</text>
+    <rect class="use" x="668" y="250" width="60" height="26" rx="3"/><text class="t-use" x="674" y="267">uses</text>
+  </g>
+  <g id="er8">
+    <text class="t-row" x="16" y="300">ER-8 consumed issues stay where they are</text>
+    <rect class="own" x="734" y="282" width="60" height="26" rx="3"/><text class="t-own" x="740" y="299">OWNS</text>
+  </g>
+  <g id="er9">
+    <text class="t-row" x="16" y="332">ER-9 tarballs; a child flips only its rows</text>
+    <rect class="use" x="800" y="314" width="60" height="26" rx="3"/><text class="t-use" x="806" y="331">uses</text>
+    <rect class="own" x="866" y="314" width="60" height="26" rx="3"/><text class="t-own" x="872" y="331">OWNS</text>
+    <rect class="use" x="668" y="314" width="60" height="26" rx="3"/><text class="t-use" x="674" y="331">uses</text>
+  </g>
+</svg>

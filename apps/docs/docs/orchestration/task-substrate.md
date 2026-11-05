@@ -40,7 +40,7 @@ A `Task` is one unit of work. It carries what to do, where it is in its lifecycl
 | `leaseUntil` | `number?` | When the current claim expires. The worker holding the task pushes this out while it works. |
 | `leaseDurationMs` | `number?` | How long the current claim was granted, as the claim wrote it. Read it with `committedLeaseSpan(task)` rather than subtracting the stamps yourself — every other write to the task moves `updatedAt`. |
 | `abandonments` | `number?` | How many times this task was handed back out after its worker stopped renewing the lease. |
-| `questions` | `TaskQuestion[]?` | What the task is waiting on a person for: its questions and confirms, and a stop its run waits on. See [waiting on questions](#waiting-on-questions). |
+| `holds` | `TaskHold[]?` | What holds the task for a person: its questions and confirms, and a stop its run is suspended on. See [waiting on questions](#waiting-on-questions). |
 | `turn` | `number?` | Counts the turns the task has run. Every claim advances it, so two turns of one attempt hold different claims. |
 | `labels` | `string[]?` | Free-form tags, filterable via `hasLabel` / `hasAllLabels`. |
 | `metadata` | `Record<string, unknown>?` | Arbitrary structured data. |
@@ -105,16 +105,16 @@ A held task keeps a board from finishing: nothing will start it, so a [task boar
 
 ### Waiting on questions
 
-A task can also wait on a person's answers. Its `questions` list what it waits on, each with an `id`, the `ask` (`kind` and `prompt`), when it was opened (`openedAt`), and a `due` time when a deadline applies. `openQuestions(task)` returns the ones still open. A task with an open question starts no turn: no claim takes it, and nothing renews or reclaims its lease.
+A task can also wait on a person's answers. `holds` lists the task's questions and confirms and any stop its run is suspended on; the filer's hold is separate, the `held` status. The task's `holds` list what it waits on, each with an `id`, the `ask` (`kind` and `prompt`), when it was opened (`openedAt`), and a `due` time when a deadline applies. `openHolds(task)` returns the ones still open. A task with an open question starts no turn: no claim takes it, and nothing renews or reclaims its lease.
 
 There are two kinds, told apart by `source.kind`:
 
 - **A question or a confirm** (`"row"`). File the task with `createTask({ ..., questions: [{ kind: "question", prompt }] })` and it stays `pending` until each is answered. A worker asks midway with `ask(id, asks, { claim })`, from the turn holding the task's claim: the write drops the lease and the turn ends without settling the task, which stays `in_progress`. A `confirm` asks for a yes or a no. Its `ask.onNo` says what a No does: `"cancel"`, the default, or `"continue"`. The collection stores it; the board's `updateTask` acts on it, cancelling the task on a `"cancel"` No.
-- **A stop its run waits on** (`"suspension"`). When a run working the task waits for a person (`ctx.waitForUser`), the task records the stop here with its `requestId` and `suspensionId`, and the run's resume closes it.
+- **A stop its run waits on** (`"suspension"`). When a run working the task waits for a person (`ctx.suspendForUser`), the task records the stop here with its `requestId` and `suspensionId`, and the run's resume closes it.
 
 `answer(id, { questionId, message, from })` answers one question. The answer is kept on the task as a message carrying the question's id, so it joins the next turn's brief. The last answer lets the work go on in the same write: a task that hadn't started can be claimed, and one asked midway owes one more turn on its same attempt, which the next claim takes without charging `maxAttempts`. Sending the same words again reports `unchanged`, even after the task has finished. Different words for a question already answered are declined `answered`.
 
-A question has no deadline unless the host sets [`userDeadlineMs`](/docs/configuration/runtime#createflowstate-fields). Past one, `payQuestionDeadlines()` (which a board runs on every touch) closes the question with "No answer came before this question's deadline. Go on from your brief without it.", which lets the work go on as an answer would.
+A question has no deadline unless the host sets [`userDeadlineMs`](/docs/configuration/runtime#createflowstate-fields). Past one, `payHoldDeadlines()` (which a board runs on every touch) closes the question with "No answer came before this question's deadline. Go on from your brief without it.", which lets the work go on as an answer would.
 
 A task with open questions settles only by a cancel, which closes every question; an answer closes its own question and the work goes on. A turn waits once: it can't ask questions while its run waits on a stop, and its run can't stop for a person while its own questions are open.
 
@@ -544,6 +544,20 @@ Every mutation that changes a field emits a `task-change` component item onto th
 The `task` snapshot is the post-mutation row minus the fields the substrate keeps server-side. `claimedBy` is one of those, so it is absent from the item even while a task is claimed. `run`, the dispatched run working the task, is not: a UI can open that run from it. A `run_linked` item is published on the run's own session when the run records itself on its task. A view following another session sees `run` on its next read of the board; see [Which run is working a task](./task-board.md#which-run-is-working-a-task).
 
 UIs stay in sync off that stream rather than by polling. The `<TaskPlan />` component and the DevTool subscribe to `task-change` items, filter by `collectionId`, and rebuild the board's state from them. You don't wire any of it up: every collection `getOrCreateTaskCollection` hands you emits these items itself.
+
+### Board notices
+
+The item lands on the stream of the session that made the change. A task often settles somewhere else: in its own task session, or on another process. So every change also publishes a board notice. It goes on the topic of the session that filed the row (the session that filed the row, or the running session when the row names no filer), narrowed to the board's `collectionId`, with kind `board`. It carries no rows. A screen subscribes `topic.session(conversationId, { resource: "tasks" })` with `client.subscribe` or `useSubscription`, and reads the board again when one arrives:
+
+```ts
+useSubscription(
+  [topic.session(conversationId, { resource: "tasks" }), topic.session(conversationId, { resource: "plan" })],
+  refresh, // your board read, run again on each notice
+  { pollIntervalMs: 3000 },
+);
+```
+
+Subscribe each board your read returns. Workforce's `listTasks_tasks` read merges the conversation board with its planning worker's steps, so its screens subscribe `tasks` and `plan`. Because the topic is narrowed, a reply streaming in the conversation never wakes the screen. `useSession`'s live stream doesn't react to board notices. As with any notice, `pollIntervalMs` is the fallback wherever push can't reach (see [Keeping a screen current](/guides/realtime#task-boards)).
 
 ## Related pages
 

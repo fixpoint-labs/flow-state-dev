@@ -125,6 +125,7 @@ import {
   DEFAULT_MAX_ABANDONMENTS,
   defaultOrder,
   grantRetry,
+  retryWrite,
   isClaimable,
   listTasks,
   routeFailure,
@@ -140,7 +141,7 @@ import {
   type TaskSettingsPatch,
   type FilingStamp,
 } from "./internal";
-import { assertAskable, hasOpenQuestion, questionWrite, questionsDue, newRowQuestions, type QuestionChange } from "./questions";
+import { assertAskable, hasOpenHold, holdWrite, holdsDue, newRowHolds, type HoldChange } from "./holds";
 import { stampWrite } from "../write-provenance";
 import { spendAfterWrite } from "../spend";
 import { ticketNamesIncarnation } from "../claim-ticket";
@@ -208,6 +209,11 @@ export interface ResourceBackedOptions {
    * to publish lifecycle changes onto the framework item stream.
    */
   onChange?: (event: TaskChangeEvent) => void;
+  /**
+   * Fired after a committed write that is no lifecycle change (a run's spend, a
+   * cleared marker): with `onChange`, every row write reaches one of the two.
+   */
+  onWrite?: (task: Task) => void;
   /**
    * Item-log accessor for `TaskHandle.items()` (FIX-480). Reads the
    * response's persistent item buffer at call time so synthesizer
@@ -528,7 +534,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
   const emit = createTaskChangeEmitter<TInput, TOutput>(
     options.collectionId,
-    onChange
+    onChange,
+    options.onWrite
   );
 
   function listAll(): Task<TInput, TOutput>[] {
@@ -632,7 +639,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     // The outcome describes the invocation that committed, so a replay that
     // took a different branch cannot report an earlier attempt's write.
     if (committed === undefined) return { outcome: "unchanged" };
-    if (kind !== null) emit(kind, committed.task, committed.prevStatus);
+    emit(kind, committed.task, committed.prevStatus);
     // The ending's own pass pays the cascade it owes (FIX-2080 D2).
     await payCascadeAfterWrite(cascadeWrites, committed.task as Task);
     // Then the delivery, so a notice names the dependents just cancelled.
@@ -707,9 +714,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
     if (written === undefined) return { outcome: "unchanged" };
     const changeKind = typeof kind === "function" ? kind(written.prev, written.next) : kind;
-    if (changeKind !== null) {
-      emit(changeKind, written.next, written.prev.status !== written.next.status ? written.prev.status : undefined);
-    }
+    emit(changeKind, written.next, written.prev.status !== written.next.status ? written.prev.status : undefined);
     return { outcome: "recorded" };
   }
 
@@ -783,7 +788,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
    * took, and a throw from the updater skips the store's check of that
    * snapshot, so a row another request has moved on since (claimed,
    * dispatched, its wait slot released) could be refused on a stale read. A
-   * `terminal` decline needs no second look: an ending is final.
+   * `terminal` decline needs no second look: an ending is final unless a
+   * retry reopens it (FIX-2383), and a stale refusal then costs one more try.
    */
   async function confirmedDecline(id: string, write: () => Promise<TaskWriteOutcome>): Promise<TaskWriteOutcome> {
     const outcome = await write();
@@ -801,13 +807,13 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
   function writeHolds(
     id: string,
     kind: TaskChangeKind,
-    change: QuestionChange,
+    change: HoldChange,
     decline?: (task: Task<TInput, TOutput>) => TaskWriteDeclineReason | undefined
   ): Promise<TaskWriteOutcome> {
     return patchRef(id, kind, (task) => {
       const fenced = decline?.(task);
       if (fenced !== undefined) throw new WriteDeclined(fenced, task.status);
-      const decided = questionWrite(task as Task, change);
+      const decided = holdWrite(task as Task, change);
       if (decided === "unchanged") return undefined;
       if ("decline" in decided) throw new WriteDeclined(decided.decline, task.status);
       return decided.patch as Partial<Task<TInput, TOutput>>;
@@ -1099,7 +1105,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         "in_progress",
         null,
         () => ({ leaseUntil }),
-        { ...renewOptions, ifAllowed: true, refuseWithOpenQuestion: "any" }
+        { ...renewOptions, ifAllowed: true, refuseWithOpenHold: "any" }
       );
     },
 
@@ -1135,7 +1141,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         null,
         (task) => waitingOnPatch(task as Task, keptOpenBy, waitOptions) as Partial<Task<TInput, TOutput>>,
         // A mirror of a run's stop is refused on a row a question holds (FIX-2133).
-        { ...linkRunGuards({ claim: waitOptions.claim }), ...(waitOptions.question !== undefined ? { refuseWithOpenQuestion: "row" as const } : {}) }
+        { ...linkRunGuards({ claim: waitOptions.claim }), ...(waitOptions.hold !== undefined ? { refuseWithOpenHold: "row" as const } : {}) }
       );
     },
 
@@ -1144,9 +1150,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       assertAskable(asks);
       const guards = linkRunGuards({ claim: askOptions.claim });
       // Minted once, outside the write, so a retried write opens the same holds.
-      const holds = newRowQuestions(asks, now(), { ...(options.filing?.questionDueMs !== undefined ? { dueMs: options.filing.questionDueMs } : {}), midway: true });
+      const holds = newRowHolds(asks, now(), { ...(options.filing?.holdDueMs !== undefined ? { dueMs: options.filing.holdDueMs } : {}), midway: true });
       const outcome = await confirmedDecline(id, () =>
-        writeHolds(id, "asked", { op: "ask", questions: holds }, (task) =>
+        writeHolds(id, "asked", { op: "ask", holds: holds }, (task) =>
           transitionDeclineReason(task as Task, "in_progress", guards, options.collectionId, now())
         )
       );
@@ -1155,17 +1161,17 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
     async answer(id, answer) {
       // Minted once, outside the write, so a retried write keeps one steer.
-      const change: QuestionChange = { op: "answer", answer, steerId: generateId("steer"), at: now() };
+      const change: HoldChange = { op: "answer", answer, steerId: generateId("steer"), at: now() };
       return confirmedDecline(id, () => writeHolds(id, "answered", change));
     },
 
-    async payQuestionDeadlines() {
+    async payHoldDeadlines() {
       // Rows another process filed are read too, so their deadlines are paid.
       await adoptUnknownRows(mirror, options.collection);
       const at = now();
       const paid: string[] = [];
       for (const row of listAll() as Task[]) {
-        if (questionsDue(row, at).length === 0) continue;
+        if (holdsDue(row, at).length === 0) continue;
         const outcome = await writeHolds(row.id, "answered", { op: "deadline", at });
         if (outcome.outcome === "recorded") paid.push(row.id);
       }
@@ -1272,6 +1278,21 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       return outcome;
     },
 
+    async retry(id) {
+      // Dependencies are read as stored now, so one another request ended is refused here (FIX-2383).
+      await refreshDeps([lookupRow(id) ?? { id }]);
+      // A request reads the row as the snapshot it first took: a refusal is
+      // confirmed against the committed row (`confirmedDecline`). The grant is
+      // counted, not capped: this backing enforces no `maxTotalRetries`.
+      return confirmedDecline(id, () =>
+        patchRef(id, "retry_requested", (task) => {
+          const decided = retryWrite(task as Task, lookupRow, () => false);
+          if ("decline" in decided) throw new WriteDeclined(decided.decline, task.status);
+          return decided.patch as Partial<Task<TInput, TOutput>>;
+        })
+      );
+    },
+
     async steer(id, input) {
       // Minted once, outside the write, so a retried write keeps one id and one time.
       const steerId = generateId("steer");
@@ -1338,7 +1359,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           task.leaseUntil === undefined ||
           task.leaseUntil >= at ||
           // A held row is never taken back (FIX-2133).
-          hasOpenQuestion(task as Task)
+          hasOpenHold(task as Task)
         ) {
           continue;
         }
@@ -1349,7 +1370,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
             t.status !== "in_progress" ||
             t.leaseUntil === undefined ||
             t.leaseUntil >= at ||
-            hasOpenQuestion(t as Task)
+            hasOpenHold(t as Task)
           ) {
             return { state: current, result: undefined };
           }

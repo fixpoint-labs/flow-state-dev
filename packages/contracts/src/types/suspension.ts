@@ -47,7 +47,7 @@ export type SuspensionReason =
 export type ResumeAction = "approve" | "reject" | "submit" | "skip";
 
 /**
- * What a suspension for a user asks for (`ctx.waitForUser`, FIX-2129):
+ * What a suspension for a user asks for (`ctx.suspendForUser`, FIX-2129):
  *
  * - `approval`: a yes or a no. At a deadline, a no.
  * - `review`: a verdict on work the user looks at.
@@ -55,7 +55,7 @@ export type ResumeAction = "approve" | "reject" | "submit" | "skip";
  *
  * Never a question: a question with a task row holds its task instead.
  */
-export type WaitForUserKind = "approval" | "review" | "input";
+export type SuspendForUserKind = "approval" | "review" | "input";
 
 /** The suspension reasons that wait for a user. */
 const USER_REASONS: ReadonlySet<string> = new Set(["user_approval", "user_input"]);
@@ -63,7 +63,7 @@ const USER_REASONS: ReadonlySet<string> = new Set(["user_approval", "user_input"
 /**
  * Whether a suspension waits for a user: the one predicate every reader keys
  * on (the claim gate, the answer route, the Inbox). True for a
- * `ctx.waitForUser` stop and for a raw `ctx.suspend` with `user_approval` or
+ * `ctx.suspendForUser` stop and for a raw `ctx.suspend` with `user_approval` or
  * `user_input`. `external_event` and a custom reason (the open `string & {}`
  * arm of {@link SuspensionReason}) are never a user's.
  */
@@ -77,10 +77,10 @@ export function isUserSuspension(suspension: { readonly reason: string }): boole
  * an approval, `user_input` input. `undefined` for a suspension that does
  * not wait for a user.
  */
-export function waitForUserKindOf(suspension: {
+export function suspendForUserKindOf(suspension: {
   readonly reason: string;
-  readonly kind?: WaitForUserKind | undefined;
-}): WaitForUserKind | undefined {
+  readonly kind?: SuspendForUserKind | undefined;
+}): SuspendForUserKind | undefined {
   if (!isUserSuspension(suspension)) return undefined;
   if (suspension.kind !== undefined) return suspension.kind;
   return suspension.reason === "user_approval" ? "approval" : "input";

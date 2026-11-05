@@ -26,6 +26,9 @@ import {
 } from "../../routes/createFlowApiRouter";
 import { SESSION_STREAM_TIMINGS } from "../../routes/session-stream-routes";
 import type { RequestRecord, SessionRecord, StoreRegistry } from "../types";
+import { createInMemoryBus } from "../../bus/in-memory-bus";
+import { withChangeBus } from "../../bus/publish-writes";
+import type { ChangeBus } from "../../bus/types";
 
 export type CreateSessionStreamConformanceTestsOptions = {
   /** Display name surfaced in the `describe` block, e.g. `"SQLite"`. */
@@ -53,6 +56,12 @@ export type CreateSessionStreamConformanceTestsOptions = {
 };
 
 const SHIPPED_TIMINGS = { ...SESSION_STREAM_TIMINGS };
+/**
+ * How soon a reply a notice woke must arrive, on the shipped clock: half an
+ * interval. A wake that was missed, or a read slot already spent, shows as one
+ * interval or more.
+ */
+const WOKEN_WITHIN_MS = SHIPPED_TIMINGS.intervalMs / 2;
 const FAST_TIMINGS = {
   intervalMs: 40,
   maxAgeMs: 60_000,
@@ -270,6 +279,27 @@ async function finished(stores: StoreRegistry, requestId: string): Promise<void>
     if (Date.now() > deadline) throw new Error(`request ${requestId} never finished`);
     await delay(10);
   }
+}
+
+/**
+ * Wait until a view of the session has a quiet interval behind it, so the
+ * next change's read can't be held by the one-read-an-interval cap.
+ *
+ * A request's last write is not its settle: its run stamps `finalizedAtMs`
+ * just after, and that write's notice can wake a view that opened in
+ * between. The read it wakes comes up to an interval after the view's last
+ * one, and a change inside the interval after that read waits for the next.
+ * So wait for the stamp, then two intervals.
+ */
+async function quietAfter(stores: StoreRegistry, requestId: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  for (;;) {
+    const record = await stores.request.get(requestId);
+    if (record?.finalizedAtMs != null) break;
+    if (Date.now() > deadline) throw new Error(`request ${requestId} was never finalized`);
+    await delay(10);
+  }
+  await delay(SESSION_STREAM_TIMINGS.intervalMs * 2 + 300);
 }
 
 async function seedSession(
@@ -547,7 +577,7 @@ export function createSessionStreamConformanceTests(
       await tabB.waitFor(isItemWithText("seen by both"));
     });
 
-    it("hears a line written by another server on the same store (BR-17)", async () => {
+    it("hears a line written by another server on the same store, on a bus that doesn't cross (BR-17)", async () => {
       let a: StoreRegistry;
       let b: StoreRegistry;
       let pairCleanup: (() => Promise<void> | void) | undefined;
@@ -555,6 +585,15 @@ export function createSessionStreamConformanceTests(
         ({ a, b, cleanup: pairCleanup } = await createSharedPair());
       } else {
         a = b = await createStores();
+      }
+      // Two servers on one store are two processes, which the in-memory bus
+      // doesn't reach: the holding server hears the other's line by its timed
+      // read, on a bus that says it doesn't cross. A store with its own bus
+      // (Postgres) keeps it.
+      if (a.bus === undefined) {
+        const notCrossing = crossingBus();
+        notCrossing.setCrossing(false);
+        a = { ...a, bus: notCrossing };
       }
       try {
         const holding = router(a);
@@ -734,7 +773,9 @@ export function createSessionStreamConformanceTests(
     ] as const)(
       "ends when its session is %s, sending nothing kept after",
       async (_what, recreatedBy, reopened) => {
-        const stores = await createStores();
+        // Written through the bus wrapper, as the engine writes: the delete's
+        // notice is what wakes the stream to find the session gone.
+        const stores = withChangeBus(await createStores());
         const r = router(stores);
         const alice = { "x-verified-user": "alice" };
         await seedSession(stores, "owned", {
@@ -888,7 +929,9 @@ export function createSessionStreamConformanceTests(
     });
 
     it("nudges when a run under the session starts and again when it ends (BR-7)", async () => {
-      const stores = await createStores();
+      // Written through the bus wrapper, as the engine writes: each write's
+      // notice is what wakes the stream.
+      const stores = withChangeBus(await createStores());
       const r = router(stores);
       await seedSession(stores, "s1");
       const live = await stream(r, "s1");
@@ -1046,5 +1089,268 @@ export function createSessionStreamConformanceTests(
 
       expect(await openingReads(40)).toBe(await openingReads(4));
     });
+
+    // -------------------------------------------------------------------------
+    // The wake (FIX-2426): a notice wakes the read; on a bus that crosses
+    // processes, nothing else does.
+    // -------------------------------------------------------------------------
+
+    // The in-memory bus (the default) serves an app that runs as one process:
+    // every change publishes where the stream listens, so nothing needs the
+    // timed read.
+    it("reads nothing while the session is idle, on the in-memory bus", async () => {
+      const stores = await createStores();
+      const counted = countSessionReads({ ...stores, bus: createInMemoryBus() }, "s1");
+      const r = router(counted.stores);
+      await seedSession(stores, "s1");
+      const live = await stream(r, "s1");
+      await live.waitFor((e) => e.type === "session.runs");
+      await delay(FAST_TIMINGS.intervalMs * 3);
+      const settled = counted.reads();
+      await delay(FAST_TIMINGS.intervalMs * 10);
+      expect(counted.reads()).toBe(settled);
+    });
+
+    it("keeps reading each interval on a bus that doesn't cross processes (FIX-2426 D1)", async () => {
+      const bus = crossingBus();
+      bus.setCrossing(false);
+      const stores = await createStores();
+      const counted = countSessionReads({ ...stores, bus }, "s1");
+      const r = router(counted.stores);
+      await seedSession(stores, "s1");
+      const live = await stream(r, "s1");
+      await live.waitFor((e) => e.type === "session.runs");
+      const atOpen = counted.reads();
+      await delay(FAST_TIMINGS.intervalMs * 6);
+      expect(counted.reads() - atOpen).toBeGreaterThanOrEqual(3);
+    });
+
+    // A store that brings its own bus (Postgres) and can't hear other
+    // processes on it (no tail pool: PGlite here, or a Vercel deployment's
+    // pool) says so, and its views keep the timed read.
+    it("keeps reading each interval on the store's own bus when that bus doesn't cross", async () => {
+      const stores = await createStores();
+      if (stores.bus === undefined || stores.bus.crossesProcesses) return;
+      const counted = countSessionReads(stores, "s1");
+      const r = router(counted.stores);
+      await seedSession(stores, "s1");
+      const live = await stream(r, "s1");
+      await live.waitFor((e) => e.type === "session.runs");
+      const atOpen = counted.reads();
+      await delay(FAST_TIMINGS.intervalMs * 6);
+      expect(counted.reads() - atOpen).toBeGreaterThanOrEqual(3);
+    });
+
+    it("reads nothing while the session is idle, on a bus that crosses processes (FIX-2426)", async () => {
+      const stores = await createStores();
+      const counted = countSessionReads({ ...stores, bus: crossingBus() }, "s1");
+      const r = router(counted.stores);
+      await seedSession(stores, "s1");
+      const live = await stream(r, "s1");
+      await live.waitFor((e) => e.type === "session.runs");
+      await delay(FAST_TIMINGS.intervalMs * 3);
+      const settled = counted.reads();
+      await delay(FAST_TIMINGS.intervalMs * 10);
+      expect(counted.reads()).toBe(settled);
+    });
+
+    // A reply is several writes a few milliseconds apart (accepted, items,
+    // settled). The read its first notice wakes waits `settleMs` for the rest,
+    // so it is not left to the read an interval later.
+    it("sends another request's reply within a second, on the notice alone (FIX-2426)", async () => {
+      Object.assign(SESSION_STREAM_TIMINGS, SHIPPED_TIMINGS);
+      const stores = { ...(await createStores()), bus: crossingBus() };
+      const r = router(stores);
+      const opening = await say(r, "s1", { text: "opening" });
+      await finished(stores, opening);
+      const live = await stream(r, "s1");
+      await live.waitFor((e) => e.type === "session.runs");
+      await quietAfter(stores, opening);
+
+      const sentAt = Date.now();
+      await finished(stores, await say(r, "s1", { text: "woken by the write" }));
+      await live.waitFor(isItemWithText("woken by the write"), 2_000);
+      expect(Date.now() - sentAt).toBeLessThan(WOKEN_WITHIN_MS);
+    });
+
+    // The shape a loaded machine gives the case above: the reply's writes
+    // spread over tens of milliseconds, here 80 ms between its first write
+    // and its last. A read taken a fixed time after the first notice finds it
+    // unfinished, and the reply waits a whole interval for the next read; the
+    // read must wait for its notices to go quiet instead.
+    it("sends a reply whose writes spread out in one read, not an interval later (FIX-2426)", async () => {
+      Object.assign(SESSION_STREAM_TIMINGS, SHIPPED_TIMINGS);
+      const stores = { ...(await createStores()), bus: crossingBus() };
+      const r = router(stores);
+      const opening = await say(r, "s1", { text: "opening" });
+      await finished(stores, opening);
+      const live = await stream(r, "s1");
+      await live.waitFor((e) => e.type === "session.runs");
+      await quietAfter(stores, opening);
+
+      const release = hold("spread");
+      const sentAt = Date.now();
+      // Accepted now; its message is kept 80 ms later.
+      const requestId = await say(r, "s1", { text: "written slowly", before: "spread" });
+      setTimeout(release, 80);
+      await finished(stores, requestId);
+      await live.waitFor(isItemWithText("written slowly"), 2_000);
+      expect(Date.now() - sentAt).toBeLessThan(WOKEN_WITHIN_MS);
+    });
+
+    it("hears a reply written by another server through a shared bus that crosses (FIX-2426)", async () => {
+      let a: StoreRegistry;
+      let b: StoreRegistry;
+      let pairCleanup: (() => Promise<void> | void) | undefined;
+      if (createSharedPair !== undefined) {
+        ({ a, b, cleanup: pairCleanup } = await createSharedPair());
+      } else {
+        a = b = await createStores();
+      }
+      const bus = crossingBus();
+      try {
+        const counted = countSessionReads({ ...a, bus }, "s1");
+        const holding = router(counted.stores);
+        const writing = router({ ...b, bus });
+        await finished(b, await say(writing, "s1", { text: "opening" }));
+        const live = await stream(holding, "s1");
+        await live.waitFor((e) => e.type === "session.runs");
+        await delay(FAST_TIMINGS.intervalMs * 3);
+        const idle = counted.reads();
+        await delay(FAST_TIMINGS.intervalMs * 5);
+        expect(counted.reads()).toBe(idle);
+
+        await finished(b, await say(writing, "s1", { text: "from the other server" }));
+        await live.waitFor(isItemWithText("from the other server"));
+      } finally {
+        await Promise.all(streams.splice(0).map((s) => s.close()));
+        await Promise.all(routers.splice(0).map((r) => disposeFlowApiRouter(r)));
+        await pairCleanup?.();
+      }
+    });
+
+    it("reads at most once an interval however many notices arrive (FIX-2426)", async () => {
+      SESSION_STREAM_TIMINGS.intervalMs = 200;
+      const stores = await createStores();
+      const bus = crossingBus();
+      const counted = countSessionReads({ ...stores, bus }, "s1");
+      const r = router(counted.stores);
+      await seedSession(stores, "s1");
+      const live = await stream(r, "s1");
+      await live.waitFor((e) => e.type === "session.runs");
+      await delay(250);
+      const before = counted.reads();
+      // A streaming reply: a notice every 20 ms for a second.
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < 1_000) {
+        await bus.publish({ topic: { scope: "session", id: "s1", tenantId: "" }, kind: "items" });
+        await delay(20);
+      }
+      await delay(250);
+      // About fifty notices; one read per 200 ms interval, and one at the end.
+      const reads = counted.reads() - before;
+      expect(reads).toBeGreaterThan(0);
+      expect(reads).toBeLessThanOrEqual(Math.ceil(1_250 / 200) + 1);
+    });
+
+    it("is not woken by a notice of a kind it doesn't send (FIX-2426)", async () => {
+      const stores = await createStores();
+      const bus = crossingBus();
+      const counted = countSessionReads({ ...stores, bus }, "s1");
+      const r = router(counted.stores);
+      await seedSession(stores, "s1");
+      const live = await stream(r, "s1");
+      await live.waitFor((e) => e.type === "session.runs");
+      await delay(FAST_TIMINGS.intervalMs * 3);
+      const settled = counted.reads();
+      for (const kind of ["state", "resource", "board"]) {
+        await bus.publish({ topic: { scope: "session", id: "s1", tenantId: "" }, kind: kind as never });
+      }
+      await delay(FAST_TIMINGS.intervalMs * 4);
+      expect(counted.reads()).toBe(settled);
+      // A kind it sends does wake it: the count above could move.
+      await bus.publish({ topic: { scope: "session", id: "s1", tenantId: "" }, kind: "request" });
+      await delay(FAST_TIMINGS.intervalMs * 4);
+      expect(counted.reads()).toBeGreaterThan(settled);
+    });
+
+    it("goes back to the timed read once its bus stops crossing processes (FIX-2426)", async () => {
+      const stores = await createStores();
+      const bus = crossingBus();
+      const counted = countSessionReads({ ...stores, bus }, "s1");
+      const r = router(counted.stores);
+      await seedSession(stores, "s1");
+      const live = await stream(r, "s1");
+      await live.waitFor((e) => e.type === "session.runs");
+      await delay(FAST_TIMINGS.intervalMs * 3);
+      const crossing = counted.reads();
+      await delay(FAST_TIMINGS.intervalMs * 4);
+      expect(counted.reads()).toBe(crossing);
+
+      bus.setCrossing(false);
+      await delay(FAST_TIMINGS.intervalMs * 6);
+      expect(counted.reads() - crossing).toBeGreaterThanOrEqual(3);
+    });
+
+    it("still pings and still closes at its age limit while idle on a crossing bus (FIX-2426)", async () => {
+      SESSION_STREAM_TIMINGS.pingMs = 100;
+      SESSION_STREAM_TIMINGS.maxAgeMs = 600;
+      const stores = { ...(await createStores()), bus: crossingBus() };
+      const r = router(stores);
+      await seedSession(stores, "s1");
+      const live = await stream(r, "s1");
+      await live.waitFor((e) => e.type === "ping", 1_000);
+      const deadline = Date.now() + 2_000;
+      while (!live.ended && Date.now() < deadline) await delay(20);
+      expect(live.ended).toBe(true);
+    });
   });
+}
+
+/**
+ * The in-memory bus with its crossing answer settable. It starts crossing,
+ * as the in-memory bus does; a case sets it to `false` to stand for a bus
+ * that doesn't reach every writer (a cross-process bus that stopped hearing
+ * itself), whose stream keeps the timed read.
+ */
+function crossingBus(): ChangeBus & { setCrossing(crosses: boolean): void } {
+  const inner = createInMemoryBus();
+  const listeners = new Set<(crosses: boolean) => void>();
+  let crosses = true;
+  return {
+    publish: (notice) => inner.publish(notice),
+    subscribe: (topic, listener) => inner.subscribe(topic, listener),
+    get crossesProcesses() {
+      return crosses;
+    },
+    onCrossingChange(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    setCrossing(next) {
+      crosses = next;
+      for (const listener of [...listeners]) listener(next);
+    }
+  };
+}
+
+/**
+ * `stores`, counting the session stream's reads of one session: each list of
+ * that session's unfinished requests, which every read asks for once.
+ */
+function countSessionReads(stores: StoreRegistry, sessionId: string): { stores: StoreRegistry; reads(): number } {
+  let reads = 0;
+  const request = new Proxy(stores.request, {
+    get(target, key) {
+      const value = Reflect.get(target, key, target) as unknown;
+      if (key === "list") {
+        return (...args: Parameters<typeof target.list>) => {
+          if (args[0]?.sessionId === sessionId && args[0]?.status !== undefined) reads += 1;
+          return target.list(...args);
+        };
+      }
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+  return { stores: { ...stores, request }, reads: () => reads };
 }

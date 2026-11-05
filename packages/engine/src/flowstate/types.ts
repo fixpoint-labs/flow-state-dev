@@ -303,7 +303,7 @@ export interface CreateFlowStateOptions<
 
   /**
    * The deadline a stop that waits for a user gets when it names none
-   * (FIX-2129): every `ctx.waitForUser` without a `deadline`, and every held
+   * (FIX-2129): every `ctx.suspendForUser` without a `deadline`, and every held
    * question. Unset by default, so such a stop waits until it is answered,
    * stopped or cancelled. One second to 365 days.
    */

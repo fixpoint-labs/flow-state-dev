@@ -1,14 +1,18 @@
 /**
  * Shift Manager's small shared pieces: the named empty state, a failed section with
- * Retry, tabs whose selection lives in the URL, a worker's status mark, and
- * the parts of design v2's look every screen draws with: a screen's title,
- * mono meta text, and a task's state square.
+ * Retry, tabs whose selection lives in the URL, a worker's status mark, a feed's
+ * jump-to-latest arrow and Load earlier, and the parts of design v2's look every screen draws with: a screen's title,
+ * mono meta text, a task's state square, and the snapshot's *as of* line with
+ * the dimming its counts take while a read the user asked for runs.
  *
  * Every piece is square (v2 draws no rounded corner) and paints only tokens.
  */
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { ArrowDownIcon } from "lucide-react";
+import type { JumpToLatest } from "@flow-state-dev/react";
 import type { Column } from "../lib/columns";
 import type { ShiftStatus } from "../lib/derive";
+import { clockTime } from "../lib/shell";
 import type { Failure } from "../lib/reads";
 import { cn } from "../lib/utils";
 
@@ -21,6 +25,67 @@ export function EmptyState({ title, children, testId }: { title: string; childre
     <div className="mx-auto max-w-md px-6 py-12 text-center" data-testid={testId ?? "empty-state"}>
       <p className="text-sm font-medium">{title}</p>
       <p className="mt-1 text-sm text-muted-foreground">{children}</p>
+    </div>
+  );
+}
+
+/**
+ * The arrow at the foot of a scrolling feed while there is more below: new content never moves
+ * the view ({@link JumpToLatest}), so this is how the user gets to it. The last child of the
+ * scrolling element; it takes no height, so showing it never moves the feed either.
+ */
+export function JumpToLatestButton({ feed }: { feed: JumpToLatest }) {
+  return (
+    <div className="pointer-events-none sticky bottom-0 flex h-0 justify-center">
+      {feed.atEnd ? null : (
+        <button
+          type="button"
+          aria-label="Jump to latest"
+          title="Jump to latest"
+          onClick={feed.jump}
+          className="pointer-events-auto flex size-8 translate-y-[calc(-100%-0.75rem)] items-center justify-center border border-border bg-card text-foreground shadow-sm hover:bg-accent"
+          data-testid="jump-to-latest"
+        >
+          <ArrowDownIcon className="size-4" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * *Load earlier*, above a feed that holds older items than it shows: each press
+ * adds the page before its first item. Drawn only while `load` is set, which
+ * the feed's read does while there is more. A failed read says so and can be
+ * pressed again.
+ */
+export function LoadEarlierButton({ load, testId }: { load: (() => Promise<void>) | undefined; testId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  if (load === undefined) return null;
+  const press = () => {
+    setBusy(true);
+    setFailed(false);
+    load()
+      .catch(() => setFailed(true))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <div className="flex items-center justify-center gap-2 py-1 text-xs text-muted-foreground" data-testid={testId}>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={press}
+        className="border border-border px-2 py-0.5 hover:bg-accent disabled:opacity-40"
+        data-testid={`${testId}-button`}
+      >
+        {busy ? "Loading…" : "Load earlier"}
+      </button>
+      {failed ? (
+        <span role="alert" data-testid={`${testId}-failed`}>
+          Couldn't load the earlier items.
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -152,6 +217,28 @@ export function Meta({
     <span className={cn("font-mono font-medium", META_SIZE[role], className)} data-look={`meta-${role}`} data-testid={testId}>
       {children}
     </span>
+  );
+}
+
+/**
+ * Classes for counts while a read the user asked for runs (`useLab().asking`):
+ * dimmed until it lands. A read nobody asked for gives no sign.
+ */
+export const ASKING_CLASS = "opacity-60 transition-opacity";
+
+/**
+ * When the snapshot was last read, *as of 14:02 · refresh*, never that it is
+ * live. *refresh* reads the Lab now, as R does.
+ */
+export function AsOf({ readAt, onRefresh, testId }: { readAt: number; onRefresh: () => void; testId?: string }) {
+  return (
+    <p className="font-mono text-[11px] font-medium text-muted-foreground" data-testid={testId}>
+      as of <time dateTime={new Date(readAt).toISOString()}>{clockTime(readAt)}</time>
+      {" · "}
+      <button type="button" className="underline hover:text-foreground" onClick={onRefresh} title="Read the Lab again (R)" data-testid={testId === undefined ? undefined : `${testId}-refresh`}>
+        refresh
+      </button>
+    </p>
   );
 }
 

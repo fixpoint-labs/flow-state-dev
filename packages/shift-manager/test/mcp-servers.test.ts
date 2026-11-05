@@ -23,7 +23,7 @@ import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { mcpCredentialsCapability, projectWorkspaceCapability, type ProjectMcpServers } from "@flow-state-dev/workforce";
 import { commitScriptedWork, type HarnessFeeds } from "../teams/devteam/harness.mts";
-import { harnessStub } from "../teams/devteam/harness-stub.mts";
+import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LAB_USER_ID, openLab, type Lab, type OpenLabOptions } from "../teams/devteam/host.mts";
 
 const CODER = "eng.coder";
@@ -104,7 +104,7 @@ function recordingHarness(runs: Relayed[]) {
           await Promise.all([...new Set(Object.values(relayed).map((server) => server.close))].map((close) => close()));
         }
         runs.push(run);
-        commitScriptedWork({ prompt: input.prompt, cwd: dir, resume: null });
+        await commitScriptedWork({ prompt: input.prompt, cwd: dir, resume: null });
         return {
           source: "recording-harness",
           status: "completed" as const,
@@ -293,20 +293,30 @@ describe("the harness a Lab runs", () => {
       ...((await original()) as object),
       claudeCodeAgent: (options: Record<string, unknown>) => (handed.push(options), handler({ name: "x", execute: async () => null } as never)),
     }));
-    const { claudeCodeHarness } = await import("../teams/devteam/harness.mts");
+    const { claudeCodeHarness, errorReporterHarness } = await import("../teams/devteam/harness.mts");
     process.env.FSD_TEST_LINEAR_SEED = SENTINEL;
     try {
       const feeds = { cwd: () => "/w", resume: () => null, onSession: () => {}, onUsage: () => {} };
       claudeCodeHarness(feeds);
       claudeCodeHarness({ ...feeds, mcpTools: Object.assign(async () => ({}), { named: async () => [] }) });
+      errorReporterHarness({ cwd: () => "/w" } as never);
     } finally {
       delete process.env.FSD_TEST_LINEAR_SEED;
       vi.doUnmock("@flow-state-dev/claude-code/sdk");
     }
-    const [without, withTools] = handed;
+    const [without, withTools, reporter] = handed;
+    expect(reporter).toMatchObject({ settingSources: ["project"], settings: { disableAllHooks: true } });
     expect(Object.keys(without!).sort()).toEqual(
-      ["allowedTools", "cwd", "detached", "env", "onSession", "onUsage", "permissionMode", "recordWork", "resume", "systemPrompt"].sort(),
+      ["allowedTools", "cwd", "detached", "env", "onSession", "onUsage", "permissionMode", "recordWork", "resume", "settingSources", "settings", "systemPrompt"].sort(),
     );
+    expect(without!.allowedTools).toEqual(["Read", "Write", "Edit", "Bash", "Grep", "Glob"]);
+    expect(without!.systemPrompt).toMatchObject({ type: "preset", preset: "claude_code" });
+    const append = (without!.systemPrompt as { append?: string }).append;
+    expect(append).toEqual(expect.any(String));
+    expect(append!.length).toBeGreaterThan(0);
+    expect(append).not.toMatch(/Do nothing else/);
+    // The checkout's conventions with every hook off, and never the operator's own user settings (FIX-2421 D2).
+    expect(without).toMatchObject({ settingSources: ["project"], settings: { disableAllHooks: true } });
     const { mcpTools, uses, ...rest } = withTools!;
     expect(rest).toEqual(without);
     expect(typeof mcpTools).toBe("function");
@@ -315,7 +325,7 @@ describe("the harness a Lab runs", () => {
   });
 
   it("says in its session that the scripted coder runs without the project's servers (BR-24)", async () => {
-    const stub = harnessStub({ duringRun: commitScriptedWork, finalMessage: "done" });
+    const stub = harnessStub({ duringRun: commitScriptedWork, finalMessage: "done", mcpUses: [projectWorkspaceCapability] });
     const { lab } = await open({ slot: stub.slot });
     await lab.door("POST", "mcp-credentials/linear", { body: { value: SENTINEL } });
     mcp.keys.length = 0;

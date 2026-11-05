@@ -97,6 +97,8 @@ It's the same on every attempt, so a retry or a run that resumes after someone's
 
 Ending cleanly and finishing the job are two different answers. A run that exhausts its turn or spend budget commits the part it got through and reports `stopped-at-limit`. A completion check that answers from the branch alone (a commit exists, a pull request exists) settles that row as done with half the work in it. Reading `stopReport` is how a phase refuses that, as the sample above does.
 
+`isDone` can also answer `{ done, reason?, checks? }` instead of a boolean, to say why a run isn't done. To make done mean your project's own commands pass, wrap the phase in `commandCheck`; see [Checking the work with commands](#checking-the-work-with-commands).
+
 If a phase reads collections of its own, ship them as a capability and put it on the manager's `uses`:
 
 ```ts
@@ -133,9 +135,9 @@ Build the manager with `reviewChanges: true` and a user looks at a run's commits
 harnessManager({ ledgers: conversationLedgers, judge: { block: answerJudge, floor: 0.6 }, reviewChanges: true /* , … */ });
 ```
 
-A run's changes are the commits it made over the base its branch was cut from. A run is reviewed when it would otherwise complete (the [judge](#checking-the-work-with-a-judge) said done, there is no judge, or the judge's verdict fell under its floor) and its branch has commits. If git can't read the count, the run is reviewed anyway, and the review says the commits couldn't be read. A run with no commits completes without a review, and a failed run fails its attempt without one. A judge's confident verdicts skip the review: *not done* fails the attempt, and *ask* has the task wait on a question.
+A run's changes are the commits it made over the base its branch was cut from. A run is reviewed when it would otherwise complete (the [judge](#checking-the-work-with-a-judge) said done, there is no judge, or the judge's verdict fell under its floor) and its branch has commits. If git can't read the count, the run is reviewed anyway, and the review says the commits couldn't be read. A run with no commits completes without a review, and a failed run fails its attempt without one. A judge's confident verdicts skip the review: *not done* fails the attempt, and *ask* holds the task on a question.
 
-While the review waits, the task stays `in_progress` on the same attempt and keeps its claim. The checkout is released. The user's Inbox lists it as a review titled "Review the run's changes". The prompt gives the number of commits and up to 20 of their subjects, then what the judge said: its verdict, confidence and reason, or "No judge read this run." The judge's verdict is information, not approval, and the prompt says so. On the task row, the review is listed among the open `questions`, with `source.kind: "suspension"` and `ask.kind: "review"` (see [A task waiting on a user](./task-board.md#a-task-waiting-on-a-user)), and its data carries `{ branch, commits, subjects, judge }`.
+While the review waits, the task stays `in_progress` on the same attempt and keeps its claim. The checkout is released. The user's Inbox lists it as a review titled "Review the run's changes". The prompt gives the number of commits and up to 20 of their subjects, a line "N files changed (+a −d).", then "Checks n/m passed." when the phase ran commands, then what the judge said: its verdict, confidence and reason, or "No judge read this run." The judge's verdict is information, not approval, and the prompt says so. On the task row, the review is an open hold with `source.kind: "suspension"` and `ask.kind: "review"` (see [A task waiting on a user](./task-board.md#a-task-waiting-on-a-user)), and its data carries `{ branch, commits, subjects, files, fileCount, added, removed, judge, checks }`, where `checks` holds the results of the phase's [commands](#checking-the-work-with-commands), or `null` when it ran none. `files` lists up to 200 changed files as `{ path, added, removed }`, where `added` and `removed` are `null` for a binary file, and `fileCount`, `added` and `removed` count every changed file. `files`, `fileCount`, `added` and `removed` are all `null` when git couldn't read the diff. Only committed changes count, so uncommitted work in the checkout isn't part of it, and a rename shows as the old path removed and the new path added.
 
 The user answers from the Inbox. A screen of your own answers with the Inbox client, and the answer must match `harnessReviewAnswerSchema`:
 
@@ -163,6 +165,82 @@ A revision with blank words is refused with a 400, and the review stays open.
 
 Reviews need a host with [durable execution](../advanced/durable-execution.md). A host can restart while a review waits. The answer picks the run back up.
 
+To show a file's lines, declare `harnessRunChangesRead` on the coding flow beside its [session door](#the-session-door), with the same `board` resolver: `reads: { changes: harnessRunChangesRead({ board, uses }) }`. It's a [flow read](../fundamentals/flows.md#reads-looking-without-storing), so the answer comes back in the response and is stored nowhere. Call it on the run's own session. The input is `{ taskId?, path? }`, and `taskId` defaults to the session's task. With no `path` it answers the run's `diff`; with `{ path }` it answers that file's `patch`, its unified diff cut at 64,000 characters with `truncated` set when it was cut. `verified: false` on either means git couldn't read it. A session that ran no task is refused with `HarnessRunChangesRefused`, and so is a `taskId` from another session.
+
+```ts
+const { diff } = await client.flow("coder").read("changes", {}, { sessionId });
+const { patch } = await client.flow("coder").read("changes", { path: "src/api.ts" }, { sessionId });
+```
+
+For the screen, `fsdev ui add run-changes` adds a `RunChanges` component. Give it the review's `files`, `fileCount`, `added` and `removed`, and it shows "N files changed (+a −d)", opening into the list of changed files. Pass `loadPatch={async (path) => (await client.flow("coder").read("changes", { path }, { sessionId })).patch}` and each file opens into its patch, read the first time it's opened. With `files={null}` it draws nothing, so say in your own words that the changes couldn't be read.
+
+## Approving a run's tool calls
+
+Build the manager with `approveTools: true` and a user approves each tool call the harness hasn't been told it may make. It's off by default.
+
+```ts
+harnessManager({
+  ledgers: conversationLedgers,
+  approveTools: true,
+  harness: (feeds) =>
+    claudeCodeAgent({
+      ...feeds,
+      detached: true,
+      allowedTools: ["Read"],
+      permissionMode: "default",
+    }),
+  /* , … */
+});
+```
+
+With the option on, the manager hands the harness one more feed, `onToolApproval`, and `...feeds` passes it on. A call the harness already allows never reaches it: here `Read` runs unasked, and so would anything `permissionMode` lets through. Every other call stops the run before it runs.
+
+While it waits, the task stays `in_progress` on the same attempt, and nothing of the run is kept alive. The coding process has exited, its work is saved, and the checkout is released. The user's Inbox lists it as an approval titled, for example, "Allow Bash?". The prompt names the tool, what the call touches (the command, or the file) and the folder the run works in. On the task row it's an open hold with `source.kind: "suspension"` and `ask.kind: "approval"`, and its data carries `{ tool, touches, cwd, approveOptions }`.
+
+There are three answers. Through the Inbox client:
+
+```ts
+import { ALLOW_FOR_RUN } from "@flow-state-dev/harness-manager";
+
+// Allow: the call runs once
+await inbox.answer(item, { approved: true });
+
+// Allow for this run: the same call runs without asking again in this attempt
+await inbox.answer(item, { approved: true, data: ALLOW_FOR_RUN.data });
+
+// Deny, with an optional note the run is told
+await inbox.answer(item, { approved: false, data: { note: "Not on this branch." } });
+```
+
+Each answer resumes the coding session that asked, in the same checkout. On a yes the model is told to make the call again, and this time it runs. On a no it's told it may not, with your note if you gave one, and the run goes on without it.
+
+**Allow for this run is narrow.** It covers the same tool on the same command or the same file, never the tool as a whole, and the approval says so. Allowing `pnpm test` still asks about `pnpm test -- foo`, and allowing edits to one file still asks about the next file. Any other call, such as a search, is covered only with the same arguments, so the same search with another option asks again. A retry of the task starts with no allowances.
+
+**An approval has no deadline** unless the host sets `userDeadlineMs`. At the deadline it reads as a no, and the run goes on without the call. **A cancel while it waits** closes it and starts nothing.
+
+Each answer costs a few seconds: the harness starts again and resumes its session. A run that asks for more than 25 approvals in one attempt fails that attempt and says why.
+
+Only Claude Code asks per call. Codex and Cursor take their sandbox and approval settings for the whole run, so they ignore the feed. Approvals need a host with [durable execution](../advanced/durable-execution.md), and a host can restart while one waits.
+
+### In a coding chat
+
+`harnessSessionFlow`, the flow behind a chat with one harness session, takes the same `approveTools` option. A call the harness doesn't allow stops the turn, and the turn's request waits for the same approval, with the same prompt, data and three answers. Your screen answers it through the engine's answer route, as it answers any paused request, and the answer resumes the conversation. Allow for this run lasts until the turn ends. While a turn waits for an answer, the session refuses any other turn sent to it. Answer or stop the waiting one first.
+
+```ts
+harnessSessionFlow({
+  kind: "claude-code-session",
+  workspace,
+  approveTools: true,
+  agent: (feeds) =>
+    claudeCodeAgent({
+      ...feeds,
+      detached: true,
+      permissionMode: "default",
+      allowedTools: ["Read", "Glob", "Grep"],
+    }),
+});
+```
+
 ## Running tasks from more than one board
 
 A manager built with `boardCollectionId` works one board. A worker that also takes tasks a coordinator files in a conversation needs more. Each conversation keeps its own board, the list of tasks filed from it, so there is no single board to name.
@@ -185,9 +263,15 @@ const answering = harnessManager({
 
 `conversationLedgers` comes from Workforce. It finds the board of the conversation the task came from, for the user the run belongs to, and nothing else. The manager reads the board and partition from the claim, never from the task. Each run's checkout, branch and run record are kept apart by board and partition, so two conversations that file the same task never share a tree. Pass `boardCollectionId` as well, and the manager also runs that board's rows.
 
-A task from a conversation usually carries a goal and no feature work. The manager then runs it in its own phase, with the task's id standing in for the issue. Feature work is named under one key, `HARNESS_FEATURE_KEY` (`"harnessFeature"`), as `input: { harnessFeature: { issue, phase } }`. The rest of `input` belongs to whoever filed the task, so a model that writes its own `issue` field, meaning "the problem", files an ordinary task. A task whose `harnessFeature` names only one of the two is refused. `namesHarnessFeature(input)` and `harnessFeatureOf(input)` read the key the same way the manager does, for a flow that routes tasks between managers. A completed run's output carries the agent's last message as `answer` (up to 8,000 characters), the run's `branch`, or `null` when it worked on files alone, and how many `commits` it made. With [`reviewChanges`](#reviewing-a-runs-changes) on, `review` says how the review ended.
+A task from a conversation usually carries a goal and no feature work. The manager then runs it in its own phase, with the task's id standing in for the issue. Feature work is named under one key, `HARNESS_FEATURE_KEY` (`"harnessFeature"`), as `input: { harnessFeature: { issue, phase? } }`. The rest of `input` belongs to whoever filed the task, so a model that writes its own `issue` field, meaning "the problem", files an ordinary task. Leave out `phase` and the task runs in the manager's own phase, so a lead filing "implement FIX-2165" only has to name the issue. A `harnessFeature` with a phase and no issue is refused. `namesHarnessFeature(input)` and `harnessFeatureOf(input)` read the key the same way the manager does, for a flow that routes tasks between managers. A completed run's output carries the agent's last message as `answer` (up to 8,000 characters), the run's `branch`, or `null` when it worked on files alone, and how many `commits` it made. With [`reviewChanges`](#reviewing-a-runs-changes) on, `review` says how the review ended.
 
-A run refused before it starts (no project, a remote the host doesn't allow) fails a conversation's task for good, so the conversation hears why; on a fixed board the row is cancelled. A question the run asks has the task wait on it, the same on either kind of board (see [Asking and being answered](#asking-and-being-answered)).
+A run refused before it starts (no project, a remote the host doesn't allow) fails a conversation's task for good, so the conversation hears why; on a fixed board the row is cancelled. A question the run asks holds the task on it, the same on either kind of board (see [Asking and being answered](#asking-and-being-answered)).
+
+### Telling a run its issue
+
+A task that names an issue under `harnessFeature` gets a branch that leads with it: `conductor/<scope>/<issue>--<task-id>--<phase>`. Its checkout and run record are keyed by the task id, so two tasks for one issue never share a tree. A run whose record already names a branch keeps that branch. An issue that can't be a branch component is refused before anything runs. Phases see the issue as `run.trackerIssue`, or `null` when the task names none.
+
+Pass `issueSpec: true` and the run's prompt also opens with the issue's spec, read from its own checkout on every attempt. The default file is `specs/issues/<ISSUE>/SPEC.md`; pass `issueSpec: { path: (issue) => ... }` to point elsewhere. A spec over 64 KB is cut with a line saying so, a missing file is one line saying there is none and the run goes ahead, and a path outside the checkout is never read. `harnessSessionFlow`, the flow behind a coding chat, takes the same option for a session created with `state.issue`. The package README's [Briefing a run on its issue](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/harness-manager/README.md#briefing-a-run-on-its-issue) has the details.
 
 ### Checking the work with a judge
 
@@ -199,6 +283,71 @@ harnessManager({ ledgers: conversationLedgers, judge: { block: answerJudge, floo
 
 `confidence` and `floor` run from 0 to 1. A judge adds a step after the completion check, so pass `judge: true` to `harnessDrainBudgetMs` when you size your shutdown.
 
+## Checking the work with commands
+
+A judge reads the run. `commandCheck` runs your project's own commands in the run's checkout, such as a typecheck and a test suite, and the run is done only when they pass. It wraps a phase and hands back a phase, so it works on any board, with or without a judge.
+
+```ts
+import { commandCheck, harnessManager } from "@flow-state-dev/harness-manager";
+
+const codePhase = commandCheck(
+  {
+    phase: "code",
+    buildPrompt: (run) =>
+      run.feedback === undefined ? run.task.goal : `${run.task.goal}\n\nWhy the last attempt stopped:\n${run.feedback}`,
+    isDone: (run) => run.stopReport === "finished",
+  },
+  { commands: ["pnpm typecheck", "pnpm --filter web test"], timeoutMs: 10 * 60_000 },
+);
+
+harnessManager({ /* board, workspace, harness, … */ phase: codePhase, reviewChanges: true });
+```
+
+The phase's own `isDone` runs first. Only when it says done do the commands run, so under the phase above a run that stopped at its limit runs none. They run in order, and a failing command doesn't stop the ones after it. `timeoutMs` is one wall clock for all of them: when it runs out, the running command is stopped with its process group and recorded as timed out, and the rest are skipped.
+
+**A red command makes the attempt not done.** Red means it exited non-zero, timed out, was skipped or couldn't run. The attempt fails and goes back to the board, and the next attempt's `run.feedback` names each red command, why it's red, and the end of its output. Put `run.feedback` in your prompt, as the example does, so the agent sees what broke.
+
+**The results are kept.** The run record has them as `checks`, whatever the verdict, so a failed attempt's record says which command was red. Each result looks like this:
+
+```ts
+{
+  command: "pnpm --filter web test",
+  exitCode: 1,         // null when stopped, skipped or refused
+  timedOut: false,
+  skipped: false,
+  durationMs: 41_220,
+  tail: "FAIL src/cart.test.ts\n  expected 3, received 2\n…", // the last 4,000 characters of stdout and stderr together
+}
+```
+
+With [`reviewChanges`](#reviewing-a-runs-changes) on, a done run's review carries the same results as `checks` in its data, and its prompt says "Checks 2/2 passed." For the screen, `fsdev ui add run-checks` adds a `RunChecks` component: give it `checks` and it shows the count, open on the failures when any are red, each command opening into its output. It draws nothing for `null`. The `review-hold` card already draws it: read the review with `reviewDetail` from `@flow-state-dev/harness-manager/browser` and the checks come with it.
+
+The options:
+
+| Option | What it takes |
+|---|---|
+| `commands` | A list of commands, or a function handed the run (the same context `isDone` gets) that answers one, sync or async. Asked again on every attempt. An empty list runs nothing and passes |
+| `timeoutMs` | The wall clock for all the commands together, a positive whole number of milliseconds. Anything else throws when you call `commandCheck` |
+| `env` | Extra environment variables, laid over the server process's own |
+
+**A command is a program and its arguments, run with no shell.** Quotes group words, as `node scripts/check.mjs "two words"`. A line with `&&`, `||`, `|`, `;`, `&`, `<`, `>`, `$(` or a backtick in it is refused, even inside quotes, so `pnpm build && pnpm test` is two entries: `["pnpm build", "pnpm test"]`. A refused line never starts. Its result has `exitCode: null` with the refusal in `tail`. A program that isn't installed exits `127`.
+
+**Size your shutdown for it.** `commandCheck` sets the phase's `doneTimeoutMs` (how long its completion check may take) to the phase's own bound, a minute unless it set one, plus `timeoutMs`. Pass the same number to `harnessDrainBudgetMs({ ..., doneTimeoutMs: codePhase.doneTimeoutMs })`, or a shutdown can stop a check partway.
+
+The commands run the checkout's own scripts, and the agent can edit those. Treat a green result as evidence for whoever reviews the run, not as proof the agent left the scripts alone.
+
+A phase of your own can answer the same way without `commandCheck`: `isDone` may return `{ done, reason?, checks? }` instead of a boolean. `reason` reaches the next attempt as `run.feedback` when `done` is false, and `checks` goes on the run record. `commandChecksPassed`, `commandChecksSummary` and `commandChecksFailure` build the pass test, the "Checks n/m passed" line and the next attempt's text from a list of results.
+
+**In a coding chat.** `harnessSessionFlow`, the flow behind a chat with one harness session, takes a `verify` option with the same fields as `commandCheck`: `{ commands, timeoutMs, env? }`.
+
+```ts
+harnessSessionFlow({ /* agent, workspace, … */ verify: { commands: ["pnpm typecheck"], timeoutMs: 5 * 60_000 } });
+```
+
+After a turn the harness finished, and that wasn't stopped, it runs the commands in the session's working directory and records the results on that turn's record as `checks`. A red check doesn't fail the turn: the user reads it and decides what to ask next. A `commands` function there is handed `{ place, cwd }`.
+
+For a project on Workforce, the project's members can name the commands. See [Checks a project's coding work runs](../workforce/projects.md#checks-a-projects-coding-work-runs).
+
 ## Talking to a run
 
 A user talks to a coding run by typing in the run's own session, the one the task's run link names. What a line does depends on whether the task has finished.
@@ -209,7 +358,7 @@ A user talks to a coding run by typing in the run's own session, the one the tas
 
 ### Steering a run
 
-By default a step that is running finishes first, and the next step takes the message. If your harness's abort resolves only once its process has exited, build the manager with `stopsOnAbort: true`. The manager then checks the task about once a second while a step runs, and once the harness has confirmed a coding session to resume, a new message stops the running step, and the next step starts at once with it. A message that arrives before then waits for the step's own end. The stop costs the step the run was in the middle of; the checkout keeps whatever it wrote. Leave `stopsOnAbort` off for a harness whose abort can return while its process still runs, so two processes never work one checkout.
+By default a step that is running finishes first, and the next step takes the message. A harness can be stopped instead when, once its abort signal fires, the block returns only after its process has exited. Claude Code's harness declares this itself (`stopsOnAbort: true` on its block), so a manager over Claude Code stops for a message with no option set. For another such harness, build the manager with `stopsOnAbort: true`. Set the option to `false` to keep a Claude Code step running. The manager then checks the task about once a second while a step runs, and once the harness has confirmed a coding session to resume, a new message stops the running step, and the next step starts at once with it. A message that arrives before then waits for the step's own end. The stop ends the step, not the request, and the checkout keeps what the stopped step wrote. Leave `stopsOnAbort` off for a harness whose abort can return while its process still runs. Even with it on, only the harness's own process is sure to have exited: a command it started, such as a shell command a Claude Code run began, can keep writing to the checkout while the next step works there. If your agent can start long-lived commands, set `stopsOnAbort: false`, so a message waits for the run to end.
 
 A message that arrives after the run's last step, even while its result is being checked, gets one more step before the task settles. That step resumes the coding session the run confirmed, so it needs one: if the harness never confirmed a session, the message is left on the task unread, and only the late-message turn below (`STEER_TURN_ENTRY`) acts on it. A host that doesn't declare that entry completes the task without it. The first attempt of a task filed with messages already on it carries them all in its prompt. A message the run takes mid-run shows in its session as a line from its sender.
 
@@ -296,11 +445,109 @@ The lease is not a mutex. Checking the lock and removing it are two steps, so a 
 
 A checkout lives on the machine that made it, unless you give the manager somewhere to save it. With a workspace host from `@flow-state-dev/workspace` that has a held-work store, and a source that returns a `heldPrefix` for the run (the key prefix its work is stored under), the manager saves the run's commits and uncommitted changes at the end of each turn and when the harness fails. A retry that lands on another machine gets the checkout back from the last save, with the changes unstaged, and the coding agent starts a fresh conversation there. If the saved work doesn't match the run's record, the harness doesn't run: the task waits on a question for the run's owner, naming what disagreed. The run record's `place` and `held` fields show which machine the run is on and what the last save held. The package README's [Running a project's work](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/harness-manager/README.md#running-a-projects-work) has the setup.
 
+A new checkout has no installed dependencies, so a run's first build or test would fail. Give the workspace host a setup command, such as `pnpm install --frozen-lockfile --prefer-offline`, and it runs that command in each new checkout before the harness starts. The run's stream says "Setting up the worktree…" while it runs. If it fails, the stream keeps "Setup failed:" with the last lines of output, and the run carries on in the checkout, since the agent can often fix the cause itself. The command runs once per checkout, and again on the next attempt if it didn't succeed. It counts against the provisioning budget, so raise `provisionTimeoutMs` if your install is slow. The workspace README's [Setting up a fresh checkout](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/workspace/README.md#setting-up-a-fresh-checkout) has the details.
+
 ## The deadline
 
 `runTimeoutMs` bounds **the harness step**. The manager composes it into the step's abort signal and fires that signal when the deadline passes. That is the manager's half, and all it promises.
 
 How promptly the harness then returns is the harness's own business, and harnesses differ. Neither bounds what the run *spawned*: a command the agent's process started can outlive the kill. The sandbox you configure on the harness is the fence for a runaway command, not this deadline.
+
+## Which harnesses can run here
+
+A coding agent can only run on a machine where its SDK is installed and a user
+is signed in or a key is set. `harnessReadiness` checks each harness you offer,
+keeps the answers, and tells a screen, a coordinator or a gate which ones are
+ready and what to run for the rest.
+
+Hand it one check per harness, keyed by the harness's name, with the `label`
+the user sees. Each integration ships its check:
+
+```ts
+import { harnessEnv } from "@flow-state-dev/core";
+import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS } from "@flow-state-dev/claude-code/sdk";
+import { checkCodexReadiness, CODEX_PASS } from "@flow-state-dev/codex";
+import { checkCursorReadiness } from "@flow-state-dev/cursor";
+import { formatHarnessReadiness, harnessReadiness } from "@flow-state-dev/harness-manager";
+
+const readiness = harnessReadiness({
+  "claude-code": {
+    label: "Claude Code",
+    check: (o) => checkClaudeCodeReadiness({ env: harnessEnv({ pass: CLAUDE_CODE_PASS }), signal: o?.signal }),
+  },
+  codex: {
+    label: "Codex",
+    check: (o) => checkCodexReadiness({ env: harnessEnv({ pass: CODEX_PASS }), timeoutMs: 30_000, signal: o?.signal }),
+  },
+  cursor: {
+    label: "Cursor",
+    check: () => checkCursorReadiness(harnessEnv({ pass: ["PATH", "HOME", "CURSOR_API_KEY"] })),
+  },
+});
+
+// At start. read() never throws, so a missing sign-in never stops the server.
+void readiness.read().then((rows) => console.log(formatHarnessReadiness(rows)));
+// Coding harnesses on this machine:
+// ✓ Cursor
+// ✗ Codex: Codex has no credential: Not logged in. Run `codex login`, or set CODEX_API_KEY.
+```
+
+Pass the check's `signal` through, as above, so a check that runs past `timeoutMs` stops its Claude Code or Codex process. Cursor's sign-in read starts no process, so its check takes none.
+
+A check answers whether a credential is there, not whether it works. A key that
+is set but rejected reads as ready and fails on the run's first turn.
+
+### Reading the rows
+
+`read({ refresh? })` returns one `HarnessReadinessRow` per harness, in the order
+you gave them:
+
+```ts
+{
+  harness: "codex",
+  label: "Codex",
+  ready: false,
+  reason: "Codex has no credential: Not logged in",  // null when ready
+  remedy: "Run `codex login`, or set CODEX_API_KEY", // null when ready or none named
+  unanswered: false,       // true when the check gave no answer either way
+  checkedAt: 1798012000000,
+}
+```
+
+The first read runs every check. Later reads return the kept rows, and nothing
+polls. `refresh: true` checks every harness again, and `refresh: "codex"` checks
+one. Reads that arrive together share one check per harness.
+
+A check that throws, rejects or takes longer than `timeoutMs` (default
+`READINESS_CHECK_TIMEOUT_MS`, 30 seconds) comes back as a row with
+`ready: false`, `unanswered: true` and a plain `reason`. Pass
+`harnessReadiness(slots, { timeoutMs })` to change the limit.
+
+The rows describe this machine, so they live in the process and are never
+stored. Another process checks its own machine.
+
+### Using them
+
+- **A screen.** `harnessReadinessAction(readiness)` is a flow-level action. Its input is `{ refresh?: boolean }` and it answers `{ harnesses: HarnessReadinessRow[] }`, with no model call. Draw a chip per row, and send `{ refresh: true }` for Re-check.
+- **A coordinator.** Add `harnessReadinessCapability(readiness)` to its `uses`. It puts the rows in the generator's context, followed by `READINESS_GUIDANCE`, which tells the model to file coding work only on a ready harness and to say what to run for one that isn't. A turn reads the kept rows and runs no check. The rows change on a Re-check, or when a task start checks a harness again, which the guidance tells the model to try when the user says they've just signed in.
+- **A gate before a task starts.** `readiness.refusal(harness)` returns `undefined` when the harness can run. A harness that isn't marked ready gets one fresh check first, so a sign-in made since the last read counts. Otherwise it returns a sentence that names the harness, says why and says what to run. When the check got no answer, the sentence says it couldn't tell rather than that the harness isn't set up. A harness you didn't pass to `harnessReadiness` answers `undefined`.
+
+```ts
+import { defineFlow } from "@flow-state-dev/core";
+import { harnessReadinessAction } from "@flow-state-dev/harness-manager";
+
+defineFlow({
+  kind: "projects",
+  actions: { harnessReadiness: harnessReadinessAction(readiness) },
+});
+
+const why = await readiness.refusal("codex");
+// "Codex isn't set up on this machine: Codex has no credential: Not logged in.
+//  Run `codex login`, or set CODEX_API_KEY. Then start the task again."
+```
+
+`harnessManager` doesn't consult readiness on its own. Call `refusal` from your
+flow's gate if you want a task refused before it reaches a harness that can't run.
 
 ## Subscription usage
 
@@ -448,14 +695,16 @@ stable.
 
 `@flow-state-dev/harness-manager` is the supported host API: everything above,
 plus the pieces you need around it: `harnessManager` and its options,
-`harnessSessionDoor`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer`, `PhaseSpec`
-and the run-context types, `WorkspaceConfig`, the construction-time guards
+`harnessSessionDoor`, `harnessReviewAnswerSchema` and `HarnessReviewAnswer`, `PhaseSpec`,
+`PhaseDoneVerdict` and the run-context types, `commandCheck` and its helpers, `WorkspaceConfig`, the construction-time guards
 (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`,
 `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing
 your own shutdown, `runOwnerClaimOrder` and `runOwnerOf` for a board kept per
 organization, the run-record collection for building a status
-surface (a run's questions are on its task's row), and the [usage query](#subscription-usage) with its collection and
-helpers.
+surface (a run's questions are on its task's row), the [usage query](#subscription-usage) with its collection and
+helpers, and the [readiness read](#which-harnesses-can-run-here) (`harnessReadiness`,
+`harnessReadinessAction`, `harnessReadinessCapability`, `formatHarnessReadiness`,
+`harnessReadinessRowSchema`, `READINESS_CHECK_TIMEOUT_MS`, `READINESS_GUIDANCE`).
 
 `@flow-state-dev/harness-manager/checkout` is how a run gets a directory:
 `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the
@@ -475,6 +724,7 @@ If the coding agent switches its checkout to another branch, the next attempt st
 - **No retention policy.** Run records grow without bound. Fine for a board driving a few tasks; a long-lived one needs pruning, which is not built.
 - **A harness that can't resume can't be talked to once finished.** Talk resumes the coding session the run confirmed, so a finished run whose harness never confirmed one is refused (`cannot-continue`). A steer to an open task needs no session to be kept, but the step that takes it resumes one: on a run with none confirmed, only the late-message turn (`STEER_TURN_ENTRY`) acts on it.
 - **Reviewing changes needs durable execution.** On a host without it, a manager built with `reviewChanges: true` refuses each run before the harness starts, and cancels the task with a message naming durable execution.
+- **Approving tool calls needs durable execution, and covers Claude Code only.** A manager built with `approveTools: true` refuses each run on a host without durable execution, as `reviewChanges` does. Codex and Cursor offer no per-call question, so their runs are governed by their own sandbox settings.
 - **Git worktrees for a repository.** A run on a repository works in a `git worktree` of it. Where the repository comes from is up to the workspace host you pass as `workspace`; see the package README's "Running a project's work". For a project's work, Workforce's `projectWorkspace` is that source: see [A project's code and files](../workforce/projects.md#coding-work-in-a-project).
 
 ## Related pages

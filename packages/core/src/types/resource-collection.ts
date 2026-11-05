@@ -6,6 +6,7 @@ import type { ResourceTemplate } from "../resource-template/resource-template";
 import type { EdgeSlotConfig } from "../graph";
 import type { ProjectedClient } from "../helpers/client-projection";
 import type { ReactiveBindings } from "./resource-change";
+import type { ResourceIndexDeclaration, ResourceIndexValue } from "./resource-index";
 
 // Re-export pattern utilities for consumers
 export {
@@ -132,8 +133,9 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
 
   /**
    * Expose this collection's instance content to the LLM via the generic content
-   * tools (`readResourceContentTool`) and content search (`grepResourceContent` /
-   * `searchResources`). Collection-wide — applies to every instance, the same way
+   * tools (`readResourceContentTool`), content search (`grepResourceContent` /
+   * `searchResources`), and instance state via `resourceTools()`'s
+   * `readResource`, which also leaves out `secret` fields. Collection-wide — applies to every instance, the same way
    * `client` is declared once at the collection level. Default `false`: a
    * collection that doesn't opt in stays invisible to those tools.
    */
@@ -222,6 +224,17 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
    * itself a block to run, not just a side effect.
    */
   reactTo?: ReactiveBindings<TState>;
+
+  /**
+   * Fields this collection's rows can be looked up by with
+   * `findBy(name, value)`. Each entry is an index function of the row's key
+   * and state (version 1), or `{ version, value }`. The function must answer
+   * from `key` and `state` alone. Bump `version` when it changes what it
+   * returns for existing rows: the next lookup in each scope rebuilds the
+   * index from the rows, as the first lookup after the index is added does.
+   * Names must be non-empty and must not contain `@`.
+   */
+  indexes?: Record<string, ResourceIndexDeclaration<TState>>;
 };
 
 type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
@@ -323,6 +336,17 @@ export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
   list(prefix?: string): Promise<ResourceRef<TState>[]>;
 
   /**
+   * The instances whose declared index `index` has `value`, in key order.
+   * Reads the same rows `list()` does and passes the same owner fence. On a
+   * store that keeps index entries (SQLite, Postgres) it reads the index, plus
+   * one row read per hit; elsewhere it scans the collection. Every hit is
+   * checked against its row, so a row whose value changed is never returned.
+   * Equality only. Throws when the collection declares no index named
+   * `index`.
+   */
+  findBy(index: string, value: ResourceIndexValue): Promise<ResourceRef<TState>[]>;
+
+  /**
    * Delete an instance. No-op if the instance does not exist.
    * Throws the same read-only error as `setState` when the collection
    * is `writable: false`.
@@ -344,6 +368,7 @@ import { z } from "zod";
 import { extractPatternParams, validatePattern } from "./collection-patterns";
 import { validateClientProjection } from "../helpers/client-projection";
 import { validateReactTo } from "./resource-change";
+import { validateIndexDeclarations } from "./resource-index";
 import { edgeListSchema } from "../graph";
 
 export function defineResourceCollection<
@@ -437,6 +462,7 @@ export function defineResourceCollection<
   });
 
   validateReactTo("defineResourceCollection()", config.reactTo);
+  validateIndexDeclarations(config.pattern, config.indexes);
 
   if (
     config.stampOrgId === true &&

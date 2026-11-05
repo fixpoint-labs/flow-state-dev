@@ -15,7 +15,6 @@ import {
   followRequest,
   interruptRun,
   mergeItems,
-  readRecordedWork,
   readRunStatus,
   readSessionItems,
   resolveRunFlow,
@@ -23,6 +22,7 @@ import {
   taskItems,
 } from "../src/lib/run";
 import { ClientHttpError } from "@flow-state-dev/client";
+import { readRecordedWork } from "@flow-state-dev/harness-manager/browser";
 import { openRunLab, RUN_LAB_USER_ID } from "./fixtures/run-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -36,8 +36,8 @@ async function rows(): Promise<BoardRow[]> {
   return createLabReader(client).readBoard(lab.conversation);
 }
 
-/** The row for a filed task, once its run has linked itself: held on the shared flow, or on a worker's own. */
-async function linked(kind: "held" | "short", workerFlow: "own" | "shared"): Promise<BoardRow> {
+/** The row for a filed task, once its run has linked itself: running on the shared flow, or on a worker's own. */
+async function linked(kind: "running" | "short", workerFlow: "own" | "shared"): Promise<BoardRow> {
   const worker = lab.workers.find((w) => (workerFlow === "own" ? w.id === lab.ownWorker!.id : w.flow === lab.sharedFlow!));
   const filed = lab.filed.find((f) => f.kind === kind && (kind === "short" || f.workerId === worker!.id))!;
   return eventually(async () => (await rows()).find((r) => r.id === filed.taskId && r.run !== null), `${filed.taskId}'s run link`);
@@ -56,8 +56,8 @@ afterAll(async () => {
 
 describe("finding the run (V1, D1)", () => {
   it("reads the link off the row, and the run's flow off its session, for a worker on the shared flow and one on its own", async () => {
-    const same = await linked("held", "shared");
-    const own = await linked("held", "own");
+    const same = await linked("running", "shared");
+    const own = await linked("running", "own");
     const runtime = await lab.flowState.getRuntime();
     for (const row of [same, own]) {
       const stored = (await runtime.stores.session.get(row.run!.sessionId)) as { flowId?: string } | undefined;
@@ -69,7 +69,7 @@ describe("finding the run (V1, D1)", () => {
   });
 
   it("opens the cross-flow run through its session's flow, and fails through the lead's", async () => {
-    const own = await linked("held", "own");
+    const own = await linked("running", "own");
     const flowId = await resolveRunFlow(client, own.run!.sessionId);
     expect(await readRunStatus(client, { flowId, requestId: own.run!.requestId })).toBe("in_progress");
     // The negative: the flow of the board the task is on does not own this request.
@@ -86,7 +86,7 @@ describe("finding the run (V1, D1)", () => {
 
 describe("the Session's items (V1, V2; BR-5, BR-8)", () => {
   it("a running request's items are in the session read while it runs, the stream brings the rest, and both are this task's alone", async () => {
-    const row = await linked("held", "shared");
+    const row = await linked("running", "shared");
     const collection = collectionOfBoard(row.boardRef);
     // The session read already holds what the running request has finished so far, and only its own.
     const { items: stored } = await readSessionItems(client, row.run!.sessionId);
@@ -145,7 +145,7 @@ describe("the Session's items (V1, V2; BR-5, BR-8)", () => {
 
 describe("what the run recorded (V5; BR-19, BR-20)", () => {
   it("lists the plan, files and pull requests a recording flow wrote under this request, and says a flow that records none does", async () => {
-    const own = await linked("held", "own");
+    const own = await linked("running", "own");
     const recorded = await eventually(async () => {
       const work = await readRecordedWork(client, own.run!);
       return (work.files?.rows.length ?? 0) > 0 ? work : undefined;
@@ -160,25 +160,26 @@ describe("what the run recorded (V5; BR-19, BR-20)", () => {
       { url: "https://github.com/acme/audit/pull/7", repository: "acme/audit", number: 7, title: "Audit note 7", state: "open", source: "tool" },
     ]);
 
-    const same = await linked("held", "shared");
+    const same = await linked("running", "shared");
     expect(await readRecordedWork(client, same.run!)).toEqual({ plan: null, files: null, pullRequests: null });
   });
 });
 
 describe("Interrupt (V3; BR-11, BR-12, BR-14)", () => {
   it("aborts the linked request through the run's flow, resolves only once the record reads aborted, and writes nothing to the row", async () => {
-    const own = await linked("held", "own");
+    const own = await linked("running", "own");
     const flowId = await resolveRunFlow(client, own.run!.sessionId);
     const before = (await rows()).find((r) => r.id === own.id)!;
     const outcome = await interruptRun(client, { flowId, requestId: own.run!.requestId }, { pollMs: 50 });
-    expect(outcome).toEqual({ kind: "aborted" });
+    // With the time the record says the run stopped, for the activity line.
+    expect(outcome).toEqual({ kind: "aborted", endedAtMs: expect.any(Number) });
     expect(await readRunStatus(client, { flowId, requestId: own.run!.requestId })).toBe("aborted");
     // The link still names the run that was stopped; whatever the board did next is the board's.
     const after = (await rows()).find((r) => r.id === own.id)!;
     expect(after.run).toEqual(before.run);
 
     // Again, on the finished request: already terminal, so it answers what the record says.
-    expect(await interruptRun(client, { flowId, requestId: own.run!.requestId })).toEqual({ kind: "aborted" });
+    expect(await interruptRun(client, { flowId, requestId: own.run!.requestId })).toEqual({ kind: "aborted", endedAtMs: outcome.kind === "aborted" ? outcome.endedAtMs : -1 });
   });
 
   it("an abort of a request that had already finished answers with the record's status (BR-12)", async () => {

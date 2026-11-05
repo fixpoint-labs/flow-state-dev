@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * A harness session, picked in a harness mode's rail: the model it runs and
- * the conversation it is bound to, the conversation with the harness's own items, a composer whose stop control stops the turn, the
+ * A harness session, picked in a harness mode's rail: the model it runs, what
+ * its harness loads from the repository, the conversation it is bound to, the conversation with the harness's own items, a composer whose stop control stops the turn, the
  * notice for the latest turn, and the plan panel beside it, which shows the
  * bound conversation's plan and the pull requests the session opened.
  *
@@ -20,13 +20,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { SquareIcon } from "lucide-react";
-import { createClient, type SessionRequestSummary } from "@flow-state-dev/client";
 import {
   FlowProvider,
   useResourceCollectionList,
   useResourceManifest,
+  clearDraft,
+  useDraft,
   useHarnessLines,
   useSession,
+  SuspensionResolverProvider,
   type SessionView,
 } from "@flow-state-dev/react";
 import {
@@ -53,12 +55,15 @@ import {
   type PromptInputMessage,
 } from "@/components/flow-state/prompt-input";
 import { RequestGroupRenderer } from "@/components/flow-state/request-group";
+import { Spend } from "@/components/flow-state/spend";
+import { RunChecks } from "@/components/flow-state/run-checks";
 import { PlanRowLine } from "@/components/plan-row";
 import { PullRequestsPanel } from "@/components/pull-requests-panel";
 import { SessionConversationLoading } from "@/components/session-conversation-loading";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { sendLine, type LineOutcome, type LineSender } from "@/lib/harness-line";
 import type { ModelChoices } from "@/lib/harness-models";
+import type { RepoLine } from "@/lib/harness-trust";
 import { pageGoalControl } from "@/lib/goal-control";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import {
@@ -68,12 +73,15 @@ import {
   planSource,
   turnNotice,
   turnNumbers,
-  type HarnessSessionState,
+  turnWaitingOnApproval,
   type PlanMarkerItem,
   type PlanRowItem,
   type TurnNotice,
+  type TurnStatus,
 } from "@/lib/harness-turn";
-import { useSessionDraft } from "@/lib/use-session-draft";
+import type { HarnessSessionState } from "@flow-state-dev/harness-manager";
+import { SESSION_DRAFT } from "@/lib/session-draft";
+import { BASE_PATH } from "@/lib/base-path";
 
 export interface HarnessSessionViewProps {
   /** The mode's label, from the mode list. */
@@ -83,18 +91,18 @@ export interface HarnessSessionViewProps {
   readonly sessionId: string;
   /** The mode's models, for the name of the session's. */
   readonly models: ModelChoices;
-  /** Called when the session's title arrives or changes, so the rail can pick it up. */
-  readonly onTitled?: () => void;
+  /** What the session's harness loads from the repository, from the server. Unset, the header leaves the line out. */
+  readonly repoLine?: RepoLine;
 }
 
 /** How the page sends one line: the framework's rule, with Kitchen Sink's goal controls on it. */
 const sendLineOnce = (prompt: string, running: boolean, sender: LineSender) => sendLine(prompt, running, sender);
 
 /** One harness session's conversation and plan. */
-export function HarnessSessionView({ label, flowKind, sessionId, models, onTitled }: HarnessSessionViewProps) {
+export function HarnessSessionView({ label, flowKind, sessionId, models, repoLine }: HarnessSessionViewProps) {
   return (
-    <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAssistantRenderers}>
-      <SessionBody label={label} sessionId={sessionId} models={models} onTitled={onTitled} />
+    <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl={BASE_PATH} renderers={chatAssistantRenderers}>
+      <SessionBody label={label} sessionId={sessionId} models={models} repoLine={repoLine} />
     </FlowProvider>
   );
 }
@@ -103,64 +111,43 @@ function SessionBody({
   label,
   sessionId,
   models,
-  onTitled,
+  repoLine,
 }: {
   label: string;
   sessionId: string;
   models: ModelChoices;
-  onTitled?: () => void;
+  repoLine?: RepoLine;
 }) {
   const session = useSession(sessionId, { items: true, autoResume: true });
-  const [message, setMessage] = useSessionDraft(sessionId);
+  const [message, setMessage] = useDraft(SESSION_DRAFT, sessionId);
   const messageRef = useRef(message);
   messageRef.current = message;
 
-  // Session state is read from the snapshot, which a turn's end alone does
-  // not refresh: re-read it when a turn stops streaming.
-  const wasStreaming = useRef(false);
   const { refresh } = session;
-  useEffect(() => {
-    if (wasStreaming.current && !session.isStreaming) void refresh();
-    wasStreaming.current = session.isStreaming;
-  }, [session.isStreaming, refresh]);
-
-  // The rail lists sessions by title. The flow sets it in a session's first
-  // turn, so re-read the rail when it arrives.
-  const title = session.detail?.title;
-  useEffect(() => {
-    if (title !== undefined) onTitled?.();
-  }, [title, onTitled]);
 
   const state = (session.snapshot?.clientData.session ?? {}) as Partial<HarnessSessionState>;
   const bound = state.binding?.confirmed ?? null;
-  const { items, isStreaming, latestRequest } = session;
-  // Requests are listed beside the session hook, which reads only its latest.
-  const client = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "" }), []);
+  const { items, isStreaming, followedRequest } = session;
   // The session's newest request can be a `steer` sent beside the turn, so the
-  // turn's status is read off the turn's own request.
+  // turn's status is the hook's followed request: the one the turn's items are.
   const turnId = useMemo(() => latestTurn({ items, streaming: false, request: null })?.requestId ?? null, [items]);
-  const [listedTurn, setListedTurn] = useState<SessionRequestSummary | null>(null);
-  useEffect(() => {
-    if (turnId === null || latestRequest === null || latestRequest.id === turnId) return;
-    let current = true;
-    client.sessions.requests(sessionId, { limit: 20 }).then(
-      (requests) => {
-        if (current) setListedTurn(requests.find((request) => request.id === turnId) ?? null);
-      },
-      // Unread, the turn reads as running until the next read, as before a summary arrives.
-      () => undefined,
-    );
-    return () => {
-      current = false;
-    };
-  }, [client, sessionId, turnId, latestRequest]);
-  const turnRequest = latestRequest?.id === turnId ? latestRequest : listedTurn?.id === turnId ? listedTurn : null;
+  const turnRequest = followedRequest?.id === turnId ? followedRequest : null;
   const turn = useMemo(
     () => latestTurn({ items, streaming: isStreaming, request: turnRequest }),
     [items, isStreaming, turnRequest],
   );
   const turnsByRequest = useMemo(() => turnNumbers(items), [items]);
-  const notice = turn === null ? null : turnNotice(state.turns?.[turn.requestId] ?? null, turn.status, bound);
+  // A turn waiting on an answer about a tool call, as the session's record
+  // says: the flow refuses any other turn until it is answered or stopped, so
+  // the page holds a message back and keeps that turn's notice and Stop up,
+  // whatever turn the items show last.
+  const heldBy = useMemo(() => (isStreaming ? null : turnWaitingOnApproval(state.turns, items)), [isStreaming, state.turns, items]);
+  const shown: { requestId: string; status: TurnStatus } | null = heldBy !== null ? { requestId: heldBy, status: "waiting" } : turn;
+  const notice = shown === null ? null : turnNotice(state.turns?.[shown.requestId] ?? null, shown.status, bound);
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    if (heldBy === null) setHeld(false);
+  }, [heldBy]);
   // Lines reach the run in the order they were typed, and the page stays on
   // the running turn while a line's turn waits behind it.
   const lines = useHarnessLines(session, { sendOne: sendLineOnce });
@@ -169,32 +156,53 @@ function SessionBody({
     async (msg: PromptInputMessage) => {
       const prompt = msg.text.trim();
       if (prompt.length === 0) return;
+      if (heldBy !== null) {
+        // Not sent: the message stays in the composer, and the card it waits on comes into view.
+        setHeld(true);
+        document.querySelector('[data-testid="conversation"] [data-suspension]:not([data-resolved])')?.scrollIntoView({ block: "center" });
+        // In case the record this read is stale, re-read it, so the next send sees the turn as it stands.
+        void refresh({ items: false });
+        return;
+      }
       try {
         const outcome = await lines.send(prompt);
         setLastLine(outcome);
+        // The view may have closed (a session switch) while it ran: the stored draft goes only if it is still this line.
+        clearDraft(SESSION_DRAFT, sessionId, prompt);
         if (messageRef.current.trim() === prompt) setMessage("");
         // The steer request records a taken line in session state, and this
-        // view follows only the turn's stream: re-read it so the line shows now.
-        if (outcome === "taken") void refresh();
+        // view follows only the turn's stream: re-read state (not the
+        // history) so the line shows now.
+        if (outcome === "taken") void refresh({ items: false });
       } catch {
         // Keep the persisted draft so a failed send can be retried.
       }
     },
-    [lines, refresh, setMessage],
+    [heldBy, lines, refresh, setMessage, sessionId],
+  );
+  // A turn waiting on an answer has no stream to close: the session stops it by request id.
+  const waiting = shown?.status === "waiting";
+  const stopTurn = useCallback(
+    () => (waiting && shown !== null ? session.dismissRequest(shown.requestId) : session.abortRequest()),
+    [waiting, shown, session],
   );
   const steered = turn === null ? [] : (state.turns?.[turn.requestId]?.steered ?? []);
+  const turnRecord = turn === null ? null : (state.turns?.[turn.requestId] ?? null);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col lg:flex-row" data-testid="harness-session">
       <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="border-b px-4 py-2 text-xs text-muted-foreground">
           {session.snapshot !== null && <SessionModel model={state.model} models={models} label={label} />}
+          {repoLine !== undefined && <SessionRepoLine line={repoLine} />}
           Conversation:{" "}
           <span className="font-mono" data-testid="bound-conversation">
             {bound ?? "none yet"}
           </span>
         </div>
         <Conversation className="min-h-0 flex-1" data-testid="conversation">
+          {/* An answer to a card goes through the session, so the turn it resumes streams in here. */}
+          <SuspensionResolverProvider resolve={session.resumeSuspension}>
           <SessionItemsProvider value={session.items}>
             <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
               {session.isLoading ? (
@@ -217,11 +225,14 @@ function SessionBody({
               )}
             </ConversationContent>
           </SessionItemsProvider>
+          </SuspensionResolverProvider>
           <ConversationScrollButton />
         </Conversation>
         <div className="border-t">
-          <LineNotes steered={steered} last={lastLine} running={isStreaming} label={label} />
+          <LineNotes steered={steered} last={lastLine} running={isStreaming} held={held} label={label} />
           {notice !== null && <Notice notice={notice} label={label} />}
+          {turnRecord !== null && <TurnSpend record={turnRecord} />}
+          {turn !== null && <TurnWork record={state.turns?.[turn.requestId] ?? null} label={label} />}
           <div className="mx-auto max-w-3xl px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 sm:px-4 sm:pb-4">
             <PromptInput onSubmit={handleSubmit}>
               <PromptInputTextarea
@@ -231,8 +242,8 @@ function SessionBody({
                 onChange={(e) => setMessage(e.target.value)}
               />
               {/* While a turn runs, Stop and Send are two buttons: one that did both would stop the turn when a line was meant. */}
-              {session.isStreaming && (
-                <PromptInputButton aria-label="Stop" data-testid="turn-stop" onClick={() => void session.abortRequest()}>
+              {(session.isStreaming || waiting) && (
+                <PromptInputButton aria-label="Stop" data-testid="turn-stop" onClick={() => void stopTurn()}>
                   <SquareIcon className="size-4" />
                 </PromptInputButton>
               )}
@@ -245,7 +256,7 @@ function SessionBody({
         session={session}
         label={label}
         turn={turn}
-        ended={turn !== null && turn.status !== "running"}
+        ended={turn !== null && turn.status !== "running" && turn.status !== "waiting"}
         bound={bound}
         turnsByRequest={turnsByRequest}
         records={state.turns ?? null}
@@ -271,20 +282,43 @@ function SessionModel({ model, models, label }: { model: string | undefined; mod
   );
 }
 
-/** While a turn runs, what a line sent now does; the lines the latest turn took; and where the last line sent went. */
+/** What the session's harness loads from the repository, and the names of the keys it is handed. */
+function SessionRepoLine({ line }: { line: RepoLine }) {
+  return (
+    <p className="mb-1">
+      Repo conventions: <span data-testid="repo-conventions">{line.conventions}</span>
+      {line.keys.length > 0 && (
+        <>
+          {" · Keys passed: "}
+          <span className="font-mono" data-testid="repo-keys">
+            {line.keys.join(", ")}
+          </span>
+        </>
+      )}
+    </p>
+  );
+}
+
+/**
+ * While a turn runs, what a line sent now does; the lines the latest turn took; where the last line sent went; and
+ * why a message was held back while a turn waits on an answer about a tool call.
+ */
 function LineNotes({
   steered,
   last,
   running,
+  held,
   label,
 }: {
   steered: readonly string[];
   last: LineOutcome | null;
   running: boolean;
+  /** Whether the last message was held back because a turn waits on an answer about a tool call. */
+  held: boolean;
   label: string;
 }) {
   const after = running && last === "after-this-turn";
-  if (steered.length === 0 && !running) return null;
+  if (steered.length === 0 && !running && !held) return null;
   return (
     <div className="mx-auto max-w-3xl px-3 pt-2 text-sm text-muted-foreground sm:px-4" data-testid="line-notes">
       {running && !after && (
@@ -297,6 +331,11 @@ function LineNotes({
           You, taken into the running turn: {line}
         </p>
       ))}
+      {held && (
+        <p data-testid="line-held">
+          Not sent: {label} is waiting on your answer to the card above. Approve or reject it, or Stop that turn, then send your message.
+        </p>
+      )}
       {after && (
         <p data-testid="line-after">{label} couldn&apos;t take your line into this turn. It runs after this turn.</p>
       )}
@@ -320,6 +359,8 @@ function Notice({ notice, label }: { notice: TurnNotice; label: string }) {
         return `This turn failed${notice.error === null ? "." : `: ${notice.error}`} ${notice.conversation === null ? "" : `The session stays on conversation ${notice.conversation}.`}`;
       case "stopped":
         return `Stopped. ${notice.conversation === null ? "" : `The session stays on conversation ${notice.conversation}, and your next turn continues it.`}`;
+      case "waiting":
+        return `Waiting on you. ${label} asked to use a tool; your answer on the card above goes back to ${notice.conversation === null ? "this conversation" : `conversation ${notice.conversation}`}.`;
     }
   })();
   const warn = notice.kind === "refused" || notice.kind === "error";
@@ -336,6 +377,61 @@ function Notice({ notice, label }: { notice: TurnNotice; label: string }) {
     </div>
   );
 }
+
+/**
+ * What the latest turn spent, as the session flow recorded it when the turn
+ * ended (FIX-2398): model, tokens, the vendor's charge when it reported one,
+ * and how long the turn took. Nothing while the turn runs or when it spent
+ * nothing.
+ */
+function TurnSpend({ record }: { record: NonNullable<HarnessSessionState["turns"]>[string] }) {
+  if (record.spend == null) return null;
+  const durationMs = record.endedAt == null || record.at == null ? null : record.endedAt - record.at;
+  return (
+    <div className="mx-auto max-w-3xl px-3 pt-2 sm:px-4" data-testid="turn-spend">
+      <Spend spend={record.spend} split durationMs={durationMs} className="text-[11px]" />
+    </div>
+  );
+}
+
+/**
+ * What the host ran around the latest turn: its setup command in the session's
+ * fresh worktree, and its checks once the harness finished. A red check is
+ * information, not a failed turn: the person decides what to say next.
+ */
+function TurnWork({ record, label }: { record: HarnessTurnWork | null; label: string }) {
+  const setup = record?.setup ?? null;
+  const checks = record?.checks ?? null;
+  const shownSetup = setup !== null && setup.state !== "done";
+  if (!shownSetup && (checks === null || checks.length === 0)) return null;
+  return (
+    // Bounded and scrolled: a long failed check's output must never push the composer off the fixed-height page.
+    <div className="mx-auto max-h-[35dvh] max-w-3xl space-y-2 overflow-y-auto px-3 pt-2 sm:px-4" data-testid="turn-work">
+      {setup?.state === "running" && (
+        <p className="rounded-md border px-3 py-2 text-sm text-muted-foreground" data-testid="turn-setup" data-state="running" role="status">
+          Running the setup command in this session&apos;s worktree before {label} starts.
+        </p>
+      )}
+      {setup?.state === "failed" && (
+        <div
+          className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          data-testid="turn-setup"
+          data-state="failed"
+          role="alert"
+        >
+          <p>The setup command failed in this session&apos;s worktree. {label} worked without it, and the next turn runs it again.</p>
+          {setup.tail !== null && setup.tail.trim() !== "" && (
+            <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs">{setup.tail}</pre>
+          )}
+        </div>
+      )}
+      <RunChecks checks={checks} />
+    </div>
+  );
+}
+
+/** The parts of a turn's record {@link TurnWork} reads. */
+type HarnessTurnWork = Pick<NonNullable<HarnessSessionState["turns"]>[string], "setup" | "checks">;
 
 /** The patterns the plan record and its markers are declared under. */
 const PLAN_PATTERN = `${OBSERVED_PLAN}/**`;

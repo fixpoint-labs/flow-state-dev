@@ -20,8 +20,10 @@
  * when the turn ends.
  */
 import type {
+  ConnectionState,
   LabAdapter,
   ProjectRow,
+  ReviewDetail,
   SessionRow,
   TaskRow,
   TaskWork,
@@ -29,6 +31,8 @@ import type {
   ThreadView,
   Unsubscribe,
 } from "../src/adapter";
+import { waitingOnYou } from "../src/lib/columns";
+import { toolRun } from "../src/lib/tool-steps";
 import { modeById, modeOfWorker, type ModeId } from "../src/modes";
 
 /** How the fake keeps time. Tests pass `speed` to run the script fast. */
@@ -39,8 +43,18 @@ export interface FakeOptions {
   now?: () => number;
 }
 
+/** The fake, plus what a test does to its server. */
+export interface FakeLab extends LabAdapter {
+  /** Every thread's feed reports `state` from now on. */
+  setConnection(state: ConnectionState): void;
+  /** The open task titled `title`, in any session, fails with `error`, as its run would. */
+  fail(title: string, error: string): void;
+}
+
 interface FixtureTask extends TaskRow {
   work: ThreadEntry[];
+  /** What its run's review stop carries, for a harness thread ready for review. */
+  reviewDetail?: ReviewDetail;
 }
 
 interface FixtureSession {
@@ -52,7 +66,7 @@ interface FixtureSession {
   queue: { id: string; text: string }[];
   /** The running turn's steps: Stop clears these. */
   timers: ReturnType<typeof setTimeout>[];
-  /** Background tasks' steps: they outlive the turn, and only asking the main session stops a task. */
+  /** Background tasks' steps: they outlive the turn; a step skips a task that is no longer running. */
   taskTimers: ReturnType<typeof setTimeout>[];
   tasks: FixtureTask[];
 }
@@ -65,13 +79,46 @@ const MINUTE = 60_000;
 const RESEARCH_MODEL = "openai/gpt-6-luna";
 const CODE_MODEL = "claude-sonnet-4-5";
 
+/** A coding run's review, as its stop carries it: a real run's branch is this long. */
+const CODE_REVIEW: ReviewDetail = {
+  branch: "conductor/t0/ha62422c9f1e0b7d4c2a8e5f3b1d6a9c0e4f7b2d-h0163a0cb8e2d4f6a1c3b5d7e9f0a2c4e6b8d0f1a/t-7f3c2e1a9b--code",
+  commits: 1,
+  subjects: ["docs(changelog): note the vendor pick, with the status-page comparison it came from and the date it was made"],
+  judge: {
+    verdict: "done",
+    confidence: 0.91,
+    reason: "The CHANGELOG gains one line naming Vendor C and why; nothing else in the repository changed, and the line follows the file's existing format.",
+  },
+  checks: null,
+};
+
+/** The run's last words, as a real one ends: a long path and its branch, unbroken. */
+const CODE_ANSWER = [
+  "One commit, CHANGELOG.md only.",
+  "",
+  "**Remaining / caveats**",
+  "",
+  `- Committed on \`${CODE_REVIEW.branch}\`; nothing is pushed.`,
+  "- The line links `docs/internal/vendor-comparisons/2026-10-30-status-page-vendors-pricing-uptime-regions.md`, which this run did not write.",
+].join("\n");
+
+/** The prompt harness-manager's review stop writes for `CODE_REVIEW` (its `reviewPrompt`). */
+const CODE_REVIEW_PROMPT = [
+  `1 commit on ${CODE_REVIEW.branch}:`,
+  `- ${CODE_REVIEW.subjects[0]}`,
+  "",
+  `The judge: done (0.91): ${CODE_REVIEW.judge!.reason}`,
+  "The judge's verdict is information, not approval. Accept the changes, or ask for changes in words.",
+].join("\n");
+
 /** fake: stands in for the whole package until wiring. */
-export function createFakeLab(options: FakeOptions = {}): LabAdapter {
+export function createFakeLab(options: FakeOptions = {}): FakeLab {
   const speed = options.speed ?? 1;
   const now = options.now ?? (() => Date.now());
   const sessions = new Map<string, FixtureSession>();
   const listeners = new Set<() => void>();
   let seq = 0;
+  let connection: ConnectionState = "live";
   const nextId = (prefix: string) => `${prefix}-${++seq}`;
 
   const notify = () => {
@@ -167,7 +214,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
   const file = (s: FixtureSession, title: string, goal: string, note: string): Step[1] => () => {
     const task = startTask(title, goal, note, { assignee: "desk.researcher", spend: spent(RESEARCH_MODEL, 1200, 300, true) });
     s.tasks = [...s.tasks, task];
-    push(s, { kind: "tool", id: nextId("tool"), name: "createTask", summary: `${title} → researcher` });
+    push(s, { kind: "tool", id: nextId("tool"), ...toolRun([{ id: "c", name: "createTask", args: { title, goal }, status: "done", output: { ok: true, taskId: task.id } }]) });
   };
 
   const progress = (s: FixtureSession, title: string, note: string) => () =>
@@ -211,7 +258,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
         push(s, { kind: "assistant", id: nextId("a"), text: `"${task.title}" had already finished, so there was nothing to stop.` });
         return;
       }
-      push(s, { kind: "tool", id: nextId("tool"), name: "updateTask", summary: `${task.title} → cancelled` });
+      push(s, { kind: "tool", id: nextId("tool"), ...toolRun([{ id: "c", name: "updateTask", args: { taskId: task.id, status: "cancelled" }, status: "done", output: { ok: true } }]) });
       setTask(s, task.id, { status: "cancelled", statusNote: undefined, waitingOn: undefined });
       push(s, { kind: "assistant", id: nextId("a"), text: `Stopped "${task.title}". The summary covers what is done so far.` });
     }],
@@ -267,7 +314,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
       [400, say(s, "I've started a Claude Code thread for it, in this session's project.")],
       [200, () => endTurn(s)],
       [1200, advance(s, ref, { statusNote: "Committing", spend: spent(CODE_MODEL, 8200, 1100, true, "claude-code") }, "Committing: docs: note the vendor pick"), "background"],
-      [800, advance(s, ref, { ...review("Judge: pass · 1 commit · adds the vendor line to CHANGELOG.md"), spend: spent(CODE_MODEL, 12000, 1600, true, "claude-code") }, "One commit, CHANGELOG.md only."), "background"],
+      [800, advance(s, ref, { ...review(CODE_REVIEW_PROMPT), reviewDetail: CODE_REVIEW, spend: spent(CODE_MODEL, 12000, 1600, true, "claude-code") }, CODE_ANSWER), "background"],
     ];
   };
 
@@ -312,7 +359,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
   const seed = (title: string, ago: number, projectId: string | null, lines: [string, string]) => {
     const id = nextId("session");
     sessions.set(id, {
-      row: { id, title, worker: modeById("session").worker, updatedAt: now() - ago, running: false, projectId },
+      row: { id, title, worker: modeById("session").worker, updatedAt: now() - ago, running: false, waiting: 0, projectId },
       entries: [
         { kind: "user", id: nextId("u"), text: lines[0] },
         { kind: "assistant", id: nextId("a"), text: lines[1] },
@@ -339,7 +386,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
       startTask(title, title, note, { status, updatedAt: now() - ago });
     const tasks = [
       thread("Weekly uptime digest", "in_progress", "Collecting this week's incidents"),
-      thread("Export failed invoices", "errored", "The export timed out"),
+      { ...thread("Export failed invoices", "errored", "The export timed out"), error: "The export timed out after 30s." },
       thread("Refund report", "completed"),
       thread("Dunning emails", "completed"),
       // A harness run nobody reviewed by the person-stop deadline: it completed, marked so.
@@ -347,7 +394,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
     ];
     pins.add(tasks[0].id);
     sessions.set(id, {
-      row: { id, title: "Billing triage", worker: modeById("threads").worker, updatedAt: now() - ago, running: false, projectId: "project-vendor-notes" },
+      row: { id, title: "Billing triage", worker: modeById("threads").worker, updatedAt: now() - ago, running: false, waiting: 0, projectId: "project-vendor-notes" },
       entries: [
         { kind: "user", id: nextId("u"), text: "Triage this week's billing work, a thread each.", sentToThread: true },
         ...tasks.map((t): ThreadEntry => ({ kind: "thread", id: nextId("card"), taskId: t.id })),
@@ -362,10 +409,28 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
   };
   seedThreads();
 
+  /** An open task's row, by id, or the board's refusal in words. */
+  const openTask = (s: FixtureSession, id: string): FixtureTask => {
+    const task = s.tasks.find((t) => t.id === id);
+    if (!task) throw new Error(`No task "${id}" on this board.`);
+    if (task.status === "completed" || task.status === "errored" || task.status === "cancelled") throw new Error(`Task "${id}" is already ${task.status}.`);
+    return task;
+  };
+
   return {
+    setConnection(state) {
+      connection = state;
+      notify();
+    },
+    fail(title, error) {
+      for (const s of sessions.values()) {
+        const task = s.tasks.find((t) => t.title === title && t.status === "in_progress");
+        if (task) setTask(s, task.id, { status: "errored", statusNote: undefined, error });
+      }
+    },
     modes: ["session", "threads"],
     watchSessions(onChange) {
-      return watch(() => onChange([...sessions.values()].map((s) => s.row).sort((a, b) => b.updatedAt - a.updatedAt)));
+      return watch(() => onChange([...sessions.values()].map((s) => ({ ...s.row, waiting: waitingOnYou(s.tasks) })).sort((a, b) => b.updatedAt - a.updatedAt)));
     },
 
     async listProjects() {
@@ -381,7 +446,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
     async openSession(mode: ModeId, projectId: string) {
       if (!mayWorkIn.some((p) => p.id === projectId)) throw new Error(`not-a-member: ${projectId}`);
       const id = nextId("session");
-      const row: SessionRow = { id, title: "New session", worker: modeById(mode).worker, updatedAt: now(), running: false, projectId };
+      const row: SessionRow = { id, title: "New session", worker: modeById(mode).worker, updatedAt: now(), running: false, waiting: 0, projectId };
       sessions.set(id, { row, entries: [], running: false, queue: [], timers: [], taskTimers: [], tasks: [] });
       notify();
       return row;
@@ -414,7 +479,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
       return watch(() => {
         const s = sessions.get(sessionId);
         if (!s) return;
-        const view: ThreadView = { entries: s.entries, running: s.running, turnStartedAt: s.turnStartedAt };
+        const view: ThreadView = { entries: s.entries, running: s.running, turnStartedAt: s.turnStartedAt, connection };
         onChange(view);
       });
     },
@@ -422,7 +487,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
     watchTasks(sessionId, onChange) {
       return watch(() => {
         const s = sessions.get(sessionId);
-        onChange(s ? s.tasks.map(({ work: _work, ...row }) => row) : []);
+        onChange(s ? s.tasks.map(({ work: _work, reviewDetail: _review, ...row }) => row) : []);
       });
     },
 
@@ -437,6 +502,33 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
       }
       setTask(s, taskId, { status: "in_progress", waitingOn: undefined, statusNote: "Working with your answer", work });
       play(s, [[1200, advance(s, { id: taskId }, review(`Summary for ${line} ready`), `Done, going by your answer: ${line}.`), "background"]]);
+    },
+
+    // fake: stands in for the board's own calls (`inbox.board(at)`); a refusal rejects with words as the board's do.
+    taskActions(sessionId) {
+      return {
+        async cancel(id) {
+          openTask(session(sessionId), id);
+          setTask(session(sessionId), id, { status: "cancelled", statusNote: undefined, waitingOn: undefined });
+          return [];
+        },
+        async steer(id, message) {
+          const s = session(sessionId);
+          const task = openTask(s, id);
+          setTask(s, id, { work: [...task.work, { kind: "user", id: nextId("w"), text: message }] });
+        },
+        async release(id) {
+          const s = session(sessionId);
+          if (openTask(s, id).status !== "held") throw new Error(`Task "${id}" isn't held.`);
+          setTask(s, id, { status: "pending", waitingOn: undefined });
+        },
+        async retry(id) {
+          const s = session(sessionId);
+          const task = s.tasks.find((t) => t.id === id);
+          if (task?.status !== "errored" && task?.status !== "cancelled") throw new Error(`Task "${id}" hasn't failed or been cancelled.`);
+          setTask(s, id, { status: "in_progress", error: undefined, statusNote: "Running again" });
+        },
+      };
     },
 
     async resolve(sessionId, taskId) {
@@ -482,7 +574,7 @@ export function createFakeLab(options: FakeOptions = {}): LabAdapter {
     watchTaskWork(sessionId, taskId, onChange) {
       return watch(() => {
         const task = sessions.get(sessionId)?.tasks.find((t) => t.id === taskId);
-        const work: TaskWork = { entries: task?.work ?? [] };
+        const work: TaskWork = { entries: task?.work ?? [], ...(task?.reviewDetail === undefined ? {} : { review: task.reviewDetail }) };
         onChange(work);
       });
     },

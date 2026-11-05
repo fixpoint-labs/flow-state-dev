@@ -11,7 +11,7 @@ import { z } from "zod";
 import {
   createStateBackedTaskCollection,
   MIN_LEASE_DURATION_MS,
-  openQuestions,
+  openHolds,
   type TaskCollectionRef,
   type ClaimOrder,
   type TaskWorker,
@@ -94,6 +94,6 @@ describe("an inline board's drain, after a turn that asked midway", () => {
     expect(aborted).toBe(false);
     const row = collection.get("t")!;
     expect(row).toMatchObject({ status: "in_progress", attempts: 1 });
-    expect(openQuestions(row).map((hold) => hold.ask.prompt)).toEqual(["Which date column?"]);
+    expect(openHolds(row).map((hold) => hold.ask.prompt)).toEqual(["Which date column?"]);
   });
 });

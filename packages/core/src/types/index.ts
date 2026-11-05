@@ -20,6 +20,7 @@ export type {
   InferFlowConfigFromSchema,
   RescueHandlerSpec,
   ResponseEmitterHandle,
+  EmitMessageOptions,
   RetryPolicy,
   StateRef,
   TargetRef,
@@ -106,9 +107,13 @@ export type {
 export { REQUEST_RESUME_SEAM, requestResumeOf } from "./request-resume";
 export type { RequestResume } from "./request-resume";
 
-/** Waiting for a user (FIX-2129): `ctx.waitForUser`, its options and what it returns. */
-export { waitForUserOn } from "./wait-for-user";
-export type { ApprovalAnswer, UserAnswer, WaitForUser, WaitForUserCancelled, WaitForUserContext, WaitForUserOptions } from "./wait-for-user";
+/** Waiting for a user (FIX-2129): `ctx.suspendForUser`, its options and what it returns. */
+export { suspendForUserOn } from "./suspend-for-user";
+export type { ApprovalAnswer, UserAnswer, SuspendForUser, SuspendForUserCancelled, SuspendForUserContext, SuspendForUserOptions } from "./suspend-for-user";
+
+/** The board-notice seam: a task board's change reaches the change bus. */
+export { BOARD_NOTICE_SEAM, publishBoardChange } from "./board-notice";
+export type { BoardChange, BoardNoticeSeam } from "./board-notice";
 
 /** The request-end seam (FIX-2077): a framework package's hook after a request's last drain. */
 export {
@@ -118,6 +123,7 @@ export {
   addRequestSpendSource,
   onRequestEnded,
   readRequestSpend,
+  readRequestTotalSpend,
   requestSpendSources
 } from "./request-end";
 export type {
@@ -349,6 +355,18 @@ export {
   ownerSegment,
 } from "./resource-collection";
 
+export type {
+  DeclaredResourceIndex,
+  ResourceIndexDeclaration,
+  ResourceIndexFunction,
+  ResourceIndexValue,
+} from "./resource-index";
+export {
+  canonicalIndexValue,
+  canonicalIndexValues,
+  declaredIndexes,
+} from "./resource-index";
+
 export { isCollectionConfig, resourceStorageKeys } from "./storage-identity";
 
 export type {
@@ -420,12 +438,12 @@ export type {
   SuspensionRecord,
   SuspensionSkipped,
   SuspensionStatus,
-  WaitForUserKind
+  SuspendForUserKind
 } from "./suspension";
 export {
   RESUME_ACTION_STATUS,
   isUserSuspension,
-  waitForUserKindOf,
+  suspendForUserKindOf,
   SUSPENSION_SKIPPED,
   TERMINAL_SUSPENSION_STATUSES,
   isTerminalSuspensionStatus,
@@ -511,6 +529,8 @@ export type {
   HarnessCallbackContext,
   HarnessCostBasis,
   HarnessFailureKind,
+  HarnessReadiness,
+  HarnessReadinessCheck,
   HarnessResolver,
   HarnessRunCost,
   HarnessRunEnvelope,

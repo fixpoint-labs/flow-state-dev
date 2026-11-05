@@ -106,10 +106,13 @@ const session = useSession(sessionId, {
 
 `live: true` makes the view hear requests it didn't send, for a session with more than one writer (a conversation other participants answer in, the same conversation in two tabs). The hook opens one session stream after its first snapshot: each finished item from any request joins `items` about a second after the server saves it, and `childSessions` is re-read when a run is dispatched, even one still waiting its turn, and again when the run finishes. Items are keyed by request and id together, so two requests that each save an item with the same id both appear in `items`. An item one request emits more than once under the same id, such as a keyed component, shows its latest copy, whatever order the copies arrive in. Default `false`; a server without the stream, or one that refuses it when the view first connects, leaves the view as it would be without `live`, with no error. Once the stream is open, a drop the first reconnect recovers from, such as the server's routine close, shows no change. If that reconnect fails, `childSessionsStale` is raised and `items` stays as it is, with no error, until a connection gets through. A reconnect is refused when the session is deleted while the view is open, when the reader's access is revoked, or when a new session takes its id. The flag then stays raised until a snapshot read, such as `refresh()`, finds a new session under the id that the reader can open, and moves the view onto it.
 
+A live view also hears what other sessions change in the scopes it reads. After its first snapshot it subscribes its session's, user's and organization's topics through `client.subscribe`. A state change, to the session's, the user's or the organization's state, reads state again without the item history, so `useClientData` shows it, `client.derived` values included. A resource change is added to `resourceChanges` and the resource hooks read again. If the snapshot includes that resource, or the scope has client data, the view also re-reads state. A change this view's own request made is skipped while the view's own stream for that request is open; once that stream closes (the request ended, the connection dropped, or another stream replaced it), the request's changes are heard again. The view also reads once on each connect and reconnect, and every few seconds on a host that can't push.
+
 Returns:
 - `detail` — Session metadata
 - `snapshot` — Current state snapshot with clientData
 - `latestRequest` — Most recent request on this session as a `SessionRequestSummary`, regardless of status. `null` until first fetch resolves. Refreshed on mount and on every terminal SSE event so consumers can render recovery affordances.
+- `followedRequest` — The request the view shows last, as `{ id, status, startedAtMs?, completedAtMs?, failedAtMs? }`: the one the newest item in `items` belongs to. A request sent beside it that adds no items, such as a steered line, doesn't replace it, so read a turn's status here when `latestRequest` may name something else. `status` comes from the stream while it runs; when it ends, or after a reload, the record comes from the `latestRequest` read if it is the newest request, else from one status read. `null` until `items` holds an item, and always with `items: false`.
 - `items`, `messages`, `blockOutputs`, `functionCalls` — Filtered item views
 - `isLoading`, `isStreaming`, `error` — Status flags. The hook reads a long history a page at a time and starts over when the pages shift under it, as when a keyed component is emitted again partway through the read; if they still shift after five tries, it sets `error` rather than show part of the history. A snapshot read started after the failure, such as `refresh()`, clears that error when it succeeds, as it clears any error a failed snapshot read left; it leaves an action's error alone.
 - `statusMessage` — Request-scoped status slot mirror. Latest `ctx.emit.status()` value from the in-flight request (empty string when unset; resets on request termination). Pair with a streaming indicator to show "what's happening right now" with a "Working..." fallback.
@@ -125,7 +128,7 @@ Returns:
 - `continueRequest(requestId)` — Continue a crash-interrupted request under its OWN id and stream the re-entry's items back into `session.items`. Unlike `resumeLatestRequest` (which re-dispatches the most recent request via `/retry` under a new id), this targets a specific `requestId` — the caller resolves which interrupted request to continue rather than assuming "latest". POSTs inline with `Accept: text/event-stream`; on a 202 fallback it reconnects via GET rather than re-POSTing.
 - `followRequest(requestId)` — Follow a request of this session that was sent without the hook: stream its items into `session.items` from the start, and make it the request `abortRequest` stops. Closes the stream followed now and sends nothing. Followed again after its stream dropped, it picks up after the last event the view had, so a state change is not applied twice. Returns `false` and follows nothing for a request the person stopped or dismissed, even while the server still lists it as running. For a request sent beside the one the page follows, such as a turn that waits for the running one: send it through the client, and follow it once the running turn ends. `useHarnessLines` does this for a harness session's lines.
 - `getOwnedItems(ownedBy)` — Items owned by a container scope (O(1) indexed lookup)
-- `refresh()` — Manually refetch
+- `refresh(options?)` — Re-read the view: the snapshot with its whole item history, and `childSessions`. `refresh({ items: false })` re-reads state, `detail` and `childSessions` with one state read and no item pages, and leaves `items` as they are. Use it when only state changed, such as after a request sent beside the one the view follows. A state read that lands late never rewinds state a newer read set. The hook re-reads state itself after `abortRequest()` and when a request it follows ends without completing; a completed request gets the full read, which settles its items.
 
 ### `useHarnessLines(session, options?)`
 
@@ -248,6 +251,74 @@ Fetches the static manifest of public resources for the session's flow. Cached m
 
 Low-level hook for direct action execution without session management.
 
+### `useSubscription(topics, read, options?)`
+
+Runs `read` again when something under `topics` changes, through the provider's
+client (or `options.client`, a client you built yourself) and `fsd.subscribe`. One read runs at a time and at most one more waits,
+so a burst of changes is one more read. `read` gets the notice that woke it, or
+`null` when the screen should read everything again: after a connect or a
+reconnect, on a timer tick, and when push starts or stops reaching every server
+process. It also gets `null` when several changes arrived during one read (one
+follow-up read covers them all). It doesn't read on mount. Its second argument is an
+`AbortSignal`, aborted when the subscription ends (the screen unmounts, or its topics
+or options change): a read that awaits checks `signal.aborted` before it sets state or
+starts more work, since a read already running when the screen goes away still finishes.
+
+```tsx
+import { topic } from "@flow-state-dev/client";
+
+useSubscription([topic.session(sessionId, { resource: "tasks" })], refresh, { pollIntervalMs: 3000 });
+```
+
+Narrow a session topic to the resource or task board the read shows, so a reply
+streaming in the session doesn't wake it. `pollIntervalMs` reads on a timer wherever push can miss a change (a host with
+no push, a socket that is down); omit it for no timer. `enabled: false`
+subscribes nothing. For a session's own items, use `useSession({ live: true })`.
+
+### `useSessionList(options)`
+
+A flow's sessions, kept current. Use it to draw your own list of conversations.
+
+```tsx
+import { useSessionList, sessionLabel, sessionRowState } from "@flow-state-dev/react";
+
+function Conversations() {
+  const { sessions, error, refresh } = useSessionList({ flowKind: "support" });
+  if (error) return <button onClick={refresh}>Retry: {error}</button>;
+  return (
+    <ul>
+      {sessions.map((session) => (
+        <li key={session.id}>
+          {sessionLabel(session)} {sessionRowState(session)?.label}
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+Name the flow by `flowKind`, or by `flowId` for one copy of a collection flow.
+`includeDispatchRuns` also lists the sessions dispatchers ran work in (default
+`false`). `includeStatus` asks for each row's `requestStatus` (default `true`).
+`enabled: false` reads nothing and holds nothing. `client` is your own client,
+as a stable reference; it needs `sessions.list`, plus `subscribe` to stay
+current. Left out, the provider's client.
+
+It returns `{ sessions, isLoading, error, refresh }`: the rows newest first, an
+error message or `null`, and a function that reads again now. It reads on
+mount, again on each `"run"` notice on `topic.user()` (a session of the user's
+created, titled or deleted, or a request started or ended, from any tab, script
+or CLI run), and again when the page becomes visible. A change from another
+server process arrives at once only on a change bus that crosses processes;
+otherwise it shows up at the next read. A client without `subscribe`
+reads once.
+
+`sessionLabel(session)`, `sessionRowState(session)` and `sessionAge(updatedAt, now)`
+are the helpers `FlowNavigator` draws its rows with. `sessionLabel` gives the
+title or a shortened id. `sessionRowState` gives `{ status, label, mark, needsYou }`,
+or `null` for a session with nothing to show. `sessionAge` gives `now`, `4m`,
+`3h`, `2d` or `5w`.
+
 ### `useRequestStream(options)`
 
 Low-level hook for subscribing to a request's SSE stream with reactive item/status views. Message and reasoning text streams in token-by-token.
@@ -330,7 +401,17 @@ function MyApproval({ item }) {
 }
 ```
 
-Returns `{ approve, reject, pendingAction, isResolving, error, resolved, resolvedStatus, outcome, canApprove, canReject }`. Resolution goes through `onApprove`/`onReject` if given, else the nearest `<SuspensionResolverProvider>` (streaming), else a non-streaming resume through the provider's client.
+Returns `{ approve, reject, approveWith, rejectWith, pendingAction, isResolving, error, resolved, resolvedStatus, outcome, canApprove, canReject }`. Resolution goes through `onApprove`/`onReject` if given, else the nearest `<SuspensionResolverProvider>` (streaming), else a non-streaming resume through the provider's client.
+
+`approve` and `reject` take no argument, so they wire straight to `onClick`. `approveWith(data)` and `rejectWith(data)` send `data` with the answer (handed to `onApprove`/`onReject` too). A stop that offers more than one yes lists them under `data.approveOptions`, each `{ label, data }`; `approveOptionsOf(item)` reads them, and a card draws one button per option:
+
+```tsx
+import { approveOptionsOf, useApproval } from "@flow-state-dev/react";
+
+{approveOptionsOf(item).map((option) => (
+  <button key={option.label} onClick={() => a.approveWith(option.data)}>{option.label}</button>
+))}
+```
 
 ### `<ApprovalRenderer>`
 
@@ -363,20 +444,155 @@ import { SuspensionResolverProvider } from "@flow-state-dev/react";
 
 Explicit `onApprove`/`onReject` props still take precedence; with neither a provider nor handlers, the card falls back to a self-contained non-streaming resume (requires `flowKind` on `<FlowProvider>`).
 
-### `useFollowLatest(options?)`
+### `useJumpToLatest(options?)`
 
-Keeps a conversation's newest content in view. Attach `ref` to the scrolling element.
+Scrolls a conversation the way ChatGPT and Claude do. A line the person sends rises to near the top of the view and its reply streams in below it. After that, the view stays where it is until the reader moves it. Attach `ref` to the scrolling element, mark each of the person's own lines with `mine(key)`, and call `sent()` when they send.
 
 ```tsx
-const feed = useFollowLatest({ resetKey: sessionId });
-return <div ref={feed.ref} className="overflow-y-auto">{/* the turns */}</div>;
+const feed = useJumpToLatest({ resetKey: sessionId });
+return (
+  <>
+    <div ref={feed.ref} className="overflow-y-auto">
+      {lines.map((line) => (
+        <div key={line.id} {...(line.role === "user" ? feed.mine(line.id) : {})}>
+          {line.text}
+        </div>
+      ))}
+    </div>
+    {feed.atEnd ? null : <button onClick={feed.jump}>Jump to latest</button>}
+    <Composer
+      onSend={(text) => {
+        feed.sent();
+        return send(text);
+      }}
+    />
+  </>
+);
 ```
 
-A feed that opens is already at its end on the first frame: on mount, when `resetKey` changes (switching to another session), and when its first read fills it. Nothing animates there. Content that arrives after that while the reader is at the end scrolls into view smoothly. A reader who scrolled up stays where they are, and `atEnd` is `false` so you can offer a way back.
+- `ref`: attach to the scrolling element.
+- `mine(key)`: returns `{ "data-sent-line": key }` (typed `SentLineMark`). Spread it on each of the person's lines. `key` names the line and should stay the same while it redraws, such as its id. Put it on an element with a box of its own, not on a `display: contents` wrapper.
+- `sent()`: call when the person sends a line. When their line lands, it scrolls smoothly to near the top of the feed, once, from wherever the reader was. Calling it after the line is already drawn works too, for an app that learns of the send in an effect: the newest marked line the feed had not shown before is the one that rises. Called before the scrolling element mounts, such as from a view that shows an empty state until the first line, the line still rises when the feed mounts with it, with space kept below it for the reply.
+- `atEnd`: `false` when there is content below the view (more than 32 px). Show a jump-to-latest button then.
+- `jump()`: scrolls smoothly to the end of the content.
+- `startAtEnd` (default `true`): `false` opens where the element starts, such as a feed with a lead above its turns. A `resetKey` change doesn't reopen such a feed at its end.
+- `resetKey`: what the feed shows, such as a session id. A change to a different conversation opens the feed at its end again (with `startAtEnd` on) and, with either setting, drops the space kept for the last conversation and cancels a rise that hasn't happened yet. Replacing the scrolling element under the same key leaves the reader where they were. The one exception is a send that creates the conversation: when `resetKey` goes from `null` to a key after `sent()`, the feed doesn't reopen and keeps its space, a line that hasn't risen yet rises when it lands, and one that already rose stays where it is.
 
-- `startAtEnd` (default `true`): `false` opens where the element starts and follows once the reader reaches the end.
-- `follow()`: back to the newest content, smoothly, following again. Call it when the person sends a line.
-- `stay()`: stop following, before you load earlier history above what is shown.
+So the line can reach the top under a short reply, the hook keeps space at the end of the feed, as bottom padding on the scrolling element. The space shrinks as the reply grows and is gone once the reply fills the view. Otherwise it stays until the next send, or until `resetKey` switches to a different conversation (with either `startAtEnd` setting), so a short reply has blank space under it. `atEnd` and `jump()` ignore the space.
+
+A reply growing past the bottom edge never moves the view: `atEnd` turns `false` and the button appears. Content that isn't the person's line, such as another participant's message or a tool result, never moves it either. A feed that never calls `mine` or `sent` behaves this way throughout: the view stays put and the button shows when there is more below.
+
+Any scroll by the person cancels a rise that hasn't happened yet: the wheel, touch, a press on the scrollbar, or a scroll key (arrows, Page Up/Down, Home, End, Space) pressed on the feed. Keys typed into an input, textarea, select or editable element inside the feed don't count.
+
+With `startAtEnd` on, a feed that opens is already at its end on the first frame, with nothing animating: on mount, when `resetKey` changes, and when content first fills a feed that was empty, such as a conversation that loads after the feed mounts.
+
+### `useDraft(namespace, id)`
+
+Keeps what someone has typed in a message box across a reload. The text is stored in `localStorage` under `<namespace>:<id>` and read back when the box opens.
+
+```tsx
+const [draft, setDraft] = useDraft("my-app:composer", sessionId);
+const latest = useRef(draft);
+latest.current = draft;
+const send = async () => {
+  const typed = draft;
+  await sendLine(typed.trim()); // throws when the send fails: the draft stays
+  // The box may have closed and reopened meanwhile: drop the stored copy only if it is still this text.
+  clearDraft("my-app:composer", sessionId, typed);
+  // Clear the box only if nothing was typed while the send ran.
+  if (latest.current === typed) setDraft("");
+};
+return <textarea value={draft} onChange={(e) => setDraft(e.target.value)} />;
+```
+
+Clear the draft only once the send has landed, so a failed send leaves the text where it was. `setDraft("")` drops the stored copy. A setter held from an earlier `id`, such as a slow send that settles after the person switched sessions, stores under that id and leaves the box they're looking at alone. A setter called after the box unmounted does nothing, since the box opened next owns the stored draft.
+
+- `id` may be `undefined` while the box doesn't know where it writes yet. Text typed then is kept in memory and stored once `id` arrives.
+- `clearDraft(namespace, id, sent?)`: drop the stored copy without touching what any box shows, for a send the server took while the person kept typing. With `sent`, it drops the copy only if it still holds that text, surrounding whitespace aside.
+- `readDraft(namespace, id)` and `saveDraft(namespace, id, text)`: read or store the stored copy directly, for a send that settles after its box closed.
+- Storage that throws (quota, private mode) keeps the draft in memory only.
+
+### `useSubmit(action)`
+
+Holds a button or form while its call runs, and keeps the refusal to show. Use it for any call that changes something, so a double click sends it once and a failure never looks like it worked.
+
+```tsx
+const pin = useSubmit(() => adapter.pin(taskId));
+return (
+  <>
+    <button disabled={pin.busy} onClick={() => void pin.submit(undefined)}>Pin</button>
+    {pin.error ? <p role="alert">Couldn't pin: {pin.error}</p> : null}
+  </>
+);
+```
+
+- `submit(event?, ...args)`: runs `action(...args)`. Pass a form's submit event to prevent its default. It never throws.
+- `busy`: `true` while the action runs. A call made while one runs does nothing, even before `busy` re-renders.
+- `error`: the last refusal's message, cleared when the action runs again.
+
+It wraps any async call. To send one flow action, use `useAction`.
+
+### `isSendKey(event, options?)`
+
+The send shortcut for a message box. Cmd+Enter on a Mac and Ctrl+Enter elsewhere send from any box, so a person never has to reach for the button.
+
+```tsx
+<textarea
+  onKeyDown={(event) => {
+    if (!isSendKey(event, { enterSends: true })) return;
+    event.preventDefault();
+    send();
+  }}
+/>
+```
+
+- `enterSends` (default `false`): plain Enter sends too, as in a chat composer. Leave it off in a box for a longer answer, where Enter is a new line.
+- Shift+Enter never sends, and neither does an Enter that confirms an input method's composition (CJK and the like, including Safari's `keyCode` 229).
+
+### `isTypingTarget(target)`
+
+Whether a key landed in something the person types into: an input, a text area, a select, or editable text. A page-wide shortcut that is a printable key checks it first, so `/` or `?` typed into a message box stays text.
+
+```ts
+window.addEventListener("keydown", (event) => {
+  if (event.key === "/" && !isTypingTarget(event.target)) {
+    event.preventDefault();
+    composer.current?.focus();
+  }
+});
+```
+
+### `useInterruptKeys(options)` and `createInterruptKeys(options?)`
+
+The keyboard stop for anything long-running, such as an agent's turn. Esc means "dismiss" everywhere, so one Esc never stops anything. Esc arms, and a second Esc within 1.5 seconds stops. Cmd+. on a Mac, or Ctrl+. elsewhere, stops at once.
+
+```tsx
+const keys = useInterruptKeys({ enabled: running, onInterrupt: () => void stop() });
+
+<div tabIndex={-1} onKeyDown={keys.onKeyDown}>
+  …
+  {keys.armed ? "press Esc again to interrupt" : "esc esc to interrupt"}
+</div>
+```
+
+- `enabled`: whether there is anything to stop. While it is `false`, no key is handled and the gesture disarms.
+- `onInterrupt`: called once for each completed gesture.
+- `windowMs` (default `1500`): how long the first Esc waits for its second.
+- `armed`: `true` while a first Esc waits. Use it for a "press Esc again" hint. It clears itself when the window runs out.
+- `target: "document"`: the hook listens on the document itself, so the keys work wherever focus is. Leave it out and attach `onKeyDown` to the scope that can stop.
+- `onKeyDown`: accepts a React or a DOM keyboard event.
+- Unlike `isSendKey`, this rule has state (the armed first Esc), which is why it comes as a hook.
+
+Some Esc presses never count, and each one also clears an armed first press:
+
+- An Esc typed in a text field (textarea, input, select, contenteditable). The field owns that key. Cmd/Ctrl+. still works there.
+- An Esc whose default is already prevented. A dialog or sheet that closes on Esc should call `event.preventDefault()`, so the press that closed it can't become half of a stop. With `target: "document"`, a dismisser that listens on the document has to use the capture phase, so it runs first.
+- An Esc that ends an input method's composition.
+- An auto-repeat from a held Esc. Holding the key is one press.
+
+`interruptChordLabel()` returns the chord as the platform writes it (`⌘.` or `Ctrl+.`), for a hint or a button title.
+
+`createInterruptKeys` is the same rule without React. Its `press(event)` returns `"interrupt"`, `"armed"`, or `null`.
 
 ## Voice playback
 
@@ -445,11 +661,13 @@ How deep the tree goes comes from each flow's declared `cardinality`. A flow dec
 
 `onSelectSession(sessionId, flow)` fires when a session row is picked. The second argument describes the instance that session was listed under: `{ kind, address, cardinality }`, where `address` is the kind name for a singleton and the instance id for one copy of a collection. Selection is yours to keep; pass it back as `selectedSessionId` to mark the current row.
 
-Sessions load when you open a leaf, a row whose sessions you can open: a singleton's row, or one copy under a collection. Expanding a collection row to see its copies costs no request.
+Sessions load when you open a leaf, a row whose sessions you can open: a singleton's row, or one copy under a collection. Expanding a collection to see its copies costs no request. An open leaf's sessions stay current: when the `client` has `subscribe`, the list reads again whenever one of the user's sessions is created, titled or deleted, or one of its requests starts or ends, and when the page becomes visible. A client narrowed to `flows` and `sessions.list` reads the sessions once each time the leaf opens.
+
+Each session row shows a mark for its latest request's state and how long ago the session changed (`now`, `4m`, `3h`, `2d`, `5w`). The marks are ● Running, ◆ Waiting on you (a question or an approval), ◇ Waiting (on other work, such as another worker's reply), ! Interrupted, ✕ Failed and ! Incomplete; hover one for its label. A completed request, one the user stopped, and a session with no request show no mark. Every mark but Running and Waiting is drawn in `--fsd-nav-attention`, because those sessions need the user.
 
 Pass `includeDispatchRuns` and the listing also covers the sessions dispatchers ran work in, each drawn one level under the session that started it. One level is all there is: a run started by another run sits beside its own parent, and a run whose parent is not in the listing sits at the left margin. The `rowTrailing` slot receives `dispatchRun` on those rows, carrying the id of the session that started it, so you can label the row or link to it. Left out, the rail lists the sessions a person started.
 
-The navigator reads through one `client`: its flow list and its user's sessions. Pass your own when your API needs auth headers or a custom `fetch`, and pass a stable reference, one held in a context or a `useMemo` rather than an object built during render. Any client from `createClient` works; the prop asks only for `flows` and `sessions.list`. Left out, the navigator uses the nearest `FlowProvider`'s user, `baseUrl` and `fetcher`. It lists the client's own user's sessions.
+The navigator reads through one `client`: its flow list and its user's sessions. Pass your own when your API needs auth headers or a custom `fetch`, and pass a stable reference, one held in a context or a `useMemo` rather than an object built during render. Any client from `createClient` works; the prop asks only for `flows` and `sessions.list`, plus `subscribe` for live session lists. Left out, the navigator uses the nearest `FlowProvider`'s user, `baseUrl` and `fetcher`. It lists the client's own user's sessions.
 
 The package brings no CSS framework and no icon set. Style the rows by setting the `--fsd-nav-*` CSS custom properties on any ancestor, and fill in your own affordances through `slots`: `sectionHeader` beside a section label, `rowTrailing` at the end of any row, `leafToolbar` at the end of an open leaf's row, `leafDetail` under an open leaf's row, and `emptySection` for a section whose kinds the server does not have.
 
@@ -535,11 +753,11 @@ import { BoardList } from "@flow-state-dev/react";
 
 It reads the same rows `BoardColumns` does, through the same `sessionId`, `boardRef`, `client` and `limit`, and labels a row the same way, with the assignee beside it when there is one. Nothing is hidden: a finished or cancelled task stays in the list, and a status the component does not recognise shows as its own word. A row without a `createdAt` follows the dated ones, in read order.
 
-`live` re-reads the board whenever the session named by `sessionId` records a change to it. Pass the id of the session whose runs write to the board. A change made in a different session shows after the list remounts, or the next time this session changes the board. With `live` off, the default, it reads on mount like the other panels. If the server doesn't offer the session stream, or refuses it, the list reads once and shows no error.
+`Roster` and `BoardColumns` take `live` too: the panel reads its collection again whenever any session changes it, heard through `client.subscribe`. A live panel makes one extra read on mount. A client that can only read takes no `live`.
 
-Each live list opens its own connection to its session's stream while mounted, so a page that also calls `useSession(..., { live: true })` on that session holds two.
+On `BoardList`, `live` re-reads the board whenever a task on it changes, in any session and on any server process: it subscribes `topic.session(sessionId, { resource: boardRef })`, where every board change is announced on the session that filed the task. Pass the id of the session that files the tasks, usually the conversation. A reply streaming in that session doesn't make it read. Where push can miss a change (a host with no push, a socket that is down) it reads every 3 s instead. With `live` off, the default, it reads on mount like the other panels.
 
-The read and the live stream go through one `client`, so the stream carries the read's credential to the read's origin. Any client from `createClient` works. A client that can only read (it has `resources.listCollectionItems` but no `sessions.stream`) takes no `live`, and TypeScript rejects that pair.
+The read and the live subscription go through one `client`, so the subscription carries the read's credential to the read's origin. Any client from `createClient` works, and every subscription on it shares one connection. A client that can only read (it has `resources.listCollectionItems` but no `subscribe`) takes no `live`, and TypeScript rejects that pair.
 
 The list renders the `<li>` for every row and puts the task's id on it (`data-task-id`), so a `row` slot returns the body that goes inside one.
 

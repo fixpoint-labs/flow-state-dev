@@ -63,3 +63,10 @@ task settles), through the AI Gateway. Claude Code needs `ANTHROPIC_API_KEY`.
 | 2026-10-28 | d86b248 tree, pre-commit | openai/gpt-5.4 | FAIL (control `no-project`) | Signal 0 (header reads *no project*) and signal 6 (no run cloned anything); the composer stayed closed and asked once; lab checkout untouched |
 | 2026-10-28 | d86b248 tree, pre-commit | — | FAIL (control `planted-glue`) | `inventory: other: src/glue.ts is not config, UI, a small flow, a check or a fixture` |
 | 2026-10-28 | e2cdf9a | openai/gpt-5.4 | PASS | Rerun after the review fixes (phase `code`, harness read through `resolveWorker`, graded retries): attempt 1 of 3, 110 polls, 2 task rows, 6 harness entries, the change on the run's branch in the clone |
+| 2026-10-30 | 863a0e13 | openai/gpt-5.4 | FAIL | Closure re-run (FIX-2156), 0 of 6 attempts over two runs gradable: the main session sent its two research pieces to `desk.researcher` with `sendMessage` (`workforceMessagesSent: 2`) and filed no task, so `listTasks` read 0 rows. Same run with FIX-2334's default layer patched out: PASS on attempt 1 |
+| 2026-10-30 | 863a0e13 | openai/gpt-5.4 | FAIL (control `answer-again-off`) | Same 0-task retry as the green run; the control graded nothing on main |
+| 2026-10-30 | 863a0e13 + layer fix | openai/gpt-5.4 | PASS | Attempt 1 of 3, twice. The default layer marks a messageable delegate as taking tasks and says work for one goes as a task; 2 tasks, the card inside the first `respond`, 6 harness entries |
+| 2026-10-30 | 863a0e13 + layer fix | openai/gpt-5.4 | FAIL (control `answer-again-off`) | Signal 4 only: a task settled while the first turn ran and no card showed inside it |
+| 2026-10-30 | 07753056 | openai/gpt-5.4 | PASS | Closure re-run (FIX-2156) after #4262. Attempt 1 of 3: 2 tasks, the card inside the first `respond`, 6 harness entries |
+| 2026-10-30 | 07753056 | openai/gpt-5.4 | FAIL (control `answer-again-off`) | Signal 4 only |
+| 2026-10-31 | 92a0928 | openai/gpt-5.4 | PASS | FIX-2364 regression re-run on the final default-layer wording, merged with main after #4287. Attempt 1 of 3: 2 tasks, 5 harness entries |

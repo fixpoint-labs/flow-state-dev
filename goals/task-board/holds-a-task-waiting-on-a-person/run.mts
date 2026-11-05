@@ -27,7 +27,7 @@
  *   d  stopped: the task is cancelled on try 1
  *   e  a crash after the cancel's row write: a board touch after a restart
  *      resumes the block cancelled
- *   f  the host's setting for a user's stop: read by waitForUser, never by a
+ *   f  the host's setting for a user's stop: read by suspendForUser, never by a
  *      raw ctx.suspend
  *   g  no deadline: still waiting past the sweep's interval and a board touch
  *
@@ -165,7 +165,7 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[] }> = {
   "default-deadline": {
     patches: [
       {
-        module: "packages/core/src/types/wait-for-user.ts",
+        module: "packages/core/src/types/suspend-for-user.ts",
         from: String.raw`options\.deadline \?\? ctx\.requestHost\?\.userDeadlineMs`,
         to: "options.deadline ?? ctx.requestHost?.userDeadlineMs ?? 1500"
       }
@@ -336,7 +336,7 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
         if (raw !== null) {
           result = { raw: await ctx.suspend!({ reason: raw[1]!, message: "A raw stop.", ...(raw[2] !== undefined ? { timeoutMs: Number(raw[2]) } : {}) }) };
         } else if (kind !== undefined) {
-          result = await ctx.waitForUser({ kind, prompt: PROMPTS[kind], ...(deadline !== null ? { deadline: Number(deadline[1]) } : {}) } as never);
+          result = await ctx.suspendForUser({ kind, prompt: PROMPTS[kind], ...(deadline !== null ? { deadline: Number(deadline[1]) } : {}) } as never);
         } else {
           result = "nothing asked";
         }
@@ -525,8 +525,8 @@ async function lastStopOf(run: Run, id: string): Promise<{ requestId: string; su
   return stops.filter((s) => s.requestId === requestId).sort((a, b) => b.createdAt - a.createdAt)[0];
 }
 /** The row's open mirror of its run's stop for a person (FIX-2133 moved FIX-2129's `waitingFor` onto it). */
-const stopHoldOf = (row: { status?: string; questions?: Task["questions"] } | undefined) =>
-  row?.status === "in_progress" ? row.questions?.find((hold) => hold.source.kind === "suspension") : undefined;
+const stopHoldOf = (row: { status?: string; holds?: Task["holds"] } | undefined) =>
+  row?.status === "in_progress" ? row.holds?.find((hold) => hold.source.kind === "suspension") : undefined;
 const waitingOnUser = async (run: Run, id: string) => stopHoldOf(await run.h.byId(id)) !== undefined;
 async function untilWaiting(run: Run, id: string, leg: string): Promise<boolean> {
   if (await run.h.until(() => waitingOnUser(run, id), 15_000)) return true;
@@ -558,7 +558,7 @@ async function legA(run: Run): Promise<void> {
   const row = await run.h.byId(id);
   const shownStop = stopHoldOf(read);
   if (shownStop?.ask.prompt !== PROMPTS.input || shownStop.ask.kind !== "input" || read?.status !== "in_progress") {
-    run.failures.push(`a:shown — wanted getTask to show it in progress, held on a user's stop for "${PROMPTS.input}"; it shows ${show(read && { status: read.status, keptOpenBy: read.keptOpenBy, questions: read.questions })}`);
+    run.failures.push(`a:shown — wanted getTask to show it in progress, held on a user's stop for "${PROMPTS.input}"; it shows ${show(read && { status: read.status, keptOpenBy: read.keptOpenBy, holds: read.holds })}`);
   }
   const listed = (await run.h.act(run.conversation, "listTasks_tasks", {}))?.tasks?.find((t: { id: string }) => t.id === id);
   if (stopHoldOf(listed)?.ask.prompt !== PROMPTS.input) {
@@ -582,7 +582,7 @@ async function legA(run: Run): Promise<void> {
   const queued = await messageRowOf(run, messageId);
   const still = await run.h.byId(id);
   if (heardWhileWaiting.length !== 0 || queued?.status !== "unconfirmed" || queued.queuedBehind !== "user" || stopHoldOf(still) === undefined || proofsOf(id, "work").length !== 1) {
-    run.failures.push(`a:message-while-waiting — wanted a message to the waiting session to queue behind the user's stop (no turn yet, its row unconfirmed and queued behind "user") while the task keeps waiting; turns ${heardWhileWaiting.length}, row ${show(queued && { status: queued.status, queuedBehind: queued.queuedBehind })}, task ${still?.status}/${show(still?.questions)}`);
+    run.failures.push(`a:message-while-waiting — wanted a message to the waiting session to queue behind the user's stop (no turn yet, its row unconfirmed and queued behind "user") while the task keeps waiting; turns ${heardWhileWaiting.length}, row ${show(queued && { status: queued.status, queuedBehind: queued.queuedBehind })}, task ${still?.status}/${show(still?.holds)}`);
   }
   // Another tenant and another org, with the stop's user id: told the stop doesn't exist.
   const tenant = await answer(run, id, { action: "submit", data: "us-east" }, { tenant: "t_other" });
@@ -781,7 +781,7 @@ async function legE(run: Run, dbFile: string, restart: () => Promise<Run>): Prom
   return next;
 }
 
-/** f. The host's setting: waitForUser with none reads it; a raw ctx.suspend keeps its own. */
+/** f. The host's setting: suspendForUser with none reads it; a raw ctx.suspend keeps its own. */
 async function legF(run: Run): Promise<void> {
   const own = await file(run, word("[ask:input] the host's deadline"));
   const rawTimed = await file(run, word(`[raw:user_input:${RAW_TIMEOUT_MS}] a raw stop with its own`));
@@ -798,14 +798,14 @@ async function legF(run: Run): Promise<void> {
   const b = await deadlineOf(rawTimed);
   const c = await deadlineOf(rawNone);
   if (!near(a.record, a.created, HOST_DEADLINE_MS) || a.row !== a.record) {
-    run.failures.push(`f:host-setting — wanted a waitForUser with no deadline to persist the host's ${HOST_DEADLINE_MS} ms; it persisted ${show(a)}`);
+    run.failures.push(`f:host-setting — wanted a suspendForUser with no deadline to persist the host's ${HOST_DEADLINE_MS} ms; it persisted ${show(a)}`);
   }
   if (!near(b.record, b.created, RAW_TIMEOUT_MS) || c.record !== undefined) {
     run.failures.push(`f:raw-keeps-its-own — wanted a raw ctx.suspend to keep its own timeoutMs, none meaning none; with ${RAW_TIMEOUT_MS} it persisted ${show(b)}, with none ${show(c)}`);
   }
   for (const id of [own, rawTimed, rawNone]) await run.h.act(run.conversation, "updateTask_tasks", { id, status: "cancelled" }).catch(() => undefined);
   await run.h.idle();
-  run.notes.push(`f: waitForUser took the host's ${HOST_DEADLINE_MS} ms; a raw stop kept ${RAW_TIMEOUT_MS} ms and none. A held question's half is goals/task-board/waits-on-its-questions, leg f`);
+  run.notes.push(`f: suspendForUser took the host's ${HOST_DEADLINE_MS} ms; a raw stop kept ${RAW_TIMEOUT_MS} ms and none. A held question's half is goals/task-board/waits-on-its-questions, leg f`);
 }
 
 /** g. No deadline: still waiting past the sweep's interval and a board touch. */
@@ -822,7 +822,7 @@ async function legG(run: Run): Promise<void> {
   const listed = await pendingIn((await runOf(run, id)).sessionId);
   const rowStop = stopHoldOf(row);
   if (request?.status !== "suspended" || record?.status !== "pending" || record.expiresAt !== undefined || rowStop === undefined || rowStop.due !== undefined || listed.length !== 1) {
-    run.failures.push(`g:still-suspended — wanted a stop with no deadline still suspended and listed past the sweep's interval; request ${request?.status}, stop ${record?.status} expiring ${record?.expiresAt}, row ${row?.status}/${show(row?.questions)}, listed ${listed.length}`);
+    run.failures.push(`g:still-suspended — wanted a stop with no deadline still suspended and listed past the sweep's interval; request ${request?.status}, stop ${record?.status} expiring ${record?.expiresAt}, row ${row?.status}/${show(row?.holds)}, listed ${listed.length}`);
   }
   await run.h.act(run.conversation, "updateTask_tasks", { id, status: "cancelled" }).catch(() => undefined);
   await run.h.idle();

@@ -67,9 +67,9 @@ describe.each([
   it("a waiting row drops its lease, so a reclaim past the old deadline leaves it running", async () => {
     const { collection, claim, setNow } = await claimed();
 
-    expect(await collection.setKeptOpenBy!("t", "wait", { claim })).toEqual({ outcome: "recorded" });
+    expect(await collection.setKeptOpenBy!("t", "suspended", { claim })).toEqual({ outcome: "recorded" });
     const held = collection.get("t")!;
-    expect(held.keptOpenBy).toBe("wait");
+    expect(held.keptOpenBy).toBe("suspended");
     expect(held.leaseUntil).toBeUndefined();
     expect(held.status).toBe("in_progress");
 
@@ -77,7 +77,7 @@ describe.each([
     expect(isClaimable(held, () => undefined, collection.now())).toBe(false);
     expect(await collection.claim("w2", { leaseDurationMs: 10_000 })).toBeNull();
     expect(await collection.reclaim()).toBe(0);
-    expect(collection.get("t")).toMatchObject({ status: "in_progress", attempts: 1, keptOpenBy: "wait" });
+    expect(collection.get("t")).toMatchObject({ status: "in_progress", attempts: 1, keptOpenBy: "suspended" });
   });
 
   it("admission clears it and starts a lease of the span the claim committed to", async () => {
@@ -106,7 +106,7 @@ describe.each([
   it("refuses a request that does not hold the claim", async () => {
     const { collection, claim } = await claimed();
     const stale = { ...claim, attempt: claim.attempt + 1 };
-    expect(await collection.setKeptOpenBy!("t", "wait", { claim: stale })).toMatchObject({
+    expect(await collection.setKeptOpenBy!("t", "suspended", { claim: stale })).toMatchObject({
       outcome: "declined",
       reason: "lost-claim",
     });

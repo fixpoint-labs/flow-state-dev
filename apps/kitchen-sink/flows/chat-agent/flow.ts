@@ -26,7 +26,7 @@ import { updateArtifact } from "./shared/artifacts";
 import { setSelectedModelHandler, setThinkingEnabledHandler } from "./settings";
 import { taskQueueDemo } from "./task-queue-demo";
 import { approvalGate } from "./approval-gate";
-import { askQuestion, collectForm, chooseOption } from "./human-input";
+import { clarifyingQuestion, collectForm, chooseOption } from "./human-input";
 import { mem } from "./run/cognition";
 import { bashCap } from "./shared/capabilities/features";
 import {
@@ -91,8 +91,8 @@ const chatAgentFlow = defineFlow({
     // Durable non-binary HITL demos: a clarifying question, a flat optional
     // form, and a single-choice selection. Each suspends for typed input and
     // resumes via submit/skip; the default UI renders each shape automatically.
-    askQuestion: {
-      block: askQuestion,
+    clarifyingQuestion: {
+      block: clarifyingQuestion,
       durable: true,
       // The user-bubble represents kicking off the demo; the question itself is
       // asked once, on the suspension card — don't restate it here.

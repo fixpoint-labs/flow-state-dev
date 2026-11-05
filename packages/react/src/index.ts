@@ -17,6 +17,8 @@ export {
   useSession,
   type SessionItemsOptions,
   type SessionChildSessionsOptions,
+  type FollowedRequest,
+  type SessionRefreshOptions,
   type SessionView,
   type UseSessionHookOptions
 } from "./hooks/useSession";
@@ -95,6 +97,8 @@ export {
 export {
   useApproval,
   resolveApprovalOutcome,
+  approveOptionsOf,
+  type ApprovalOption,
   type UseApprovalOptions,
   type UseApprovalResult,
   type ApprovalOutcome
@@ -144,7 +148,11 @@ export {
   type FlowNavigatorProps,
   type FlowNavigatorRow,
   type FlowNavigatorSection,
-  type FlowNavigatorSlots
+  type FlowNavigatorSlots,
+  sessionLabel,
+  sessionRowState,
+  sessionAge,
+  type SessionRowState
 } from "./components/flow-navigator";
 
 export {
@@ -181,10 +189,44 @@ export {
 } from "./hooks/useReadFence";
 
 export {
-  useFollowLatest,
-  type FollowLatest,
-  type FollowLatestOptions
-} from "./hooks/useFollowLatest";
+  useJumpToLatest,
+  type JumpToLatest,
+  type JumpToLatestOptions,
+  type SentLineMark
+} from "./hooks/useJumpToLatest";
+
+export { useDraft, clearDraft, readDraft, saveDraft } from "./hooks/useDraft";
+
+export { useSubscription, type UseSubscriptionOptions } from "./hooks/useSubscription";
+export {
+  useSessionList,
+  type SessionList,
+  type SessionListClient,
+  type UseSessionListOptions
+} from "./hooks/useSessionList";
+
+export {
+  useSubmit,
+  type Submit
+} from "./hooks/useSubmit";
+
+export {
+  isSendKey,
+  isTypingTarget,
+  type SendKeyEvent,
+  type SendKeyOptions
+} from "./send-key";
+
+export {
+  createInterruptKeys,
+  interruptChordLabel,
+  useInterruptKeys,
+  INTERRUPT_WINDOW_MS,
+  type InterruptKeyEvent,
+  type InterruptKeyResult,
+  type InterruptKeysOptions,
+  type UseInterruptKeysOptions
+} from "./interrupt-keys";
 
 export type {
   BlockComponentType,

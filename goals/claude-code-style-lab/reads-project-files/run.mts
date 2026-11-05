@@ -16,12 +16,18 @@
  *   3. a second user, a member when they set the project and taken off its
  *      members since (the stored row edited, the server restarted), asks the
  *      same: no value, and its turn holds a read refused `not-a-member`.
+ * And in the lab's own tool lines (its adapter's entries over the turn's
+ * items): each of leg 1's project reads names what it read (a read its file,
+ * a search its pattern, a listing its pattern); legs 2 and 3's
+ * refused read reads "(failed)".
  *
  * Controls (`GOAL_CONTROL=<name>`, same command):
  *   - `no-read`: `desk.main`'s file names no `projectSource` preset. Leg 1 must
  *     FAIL on `value named` or `0 tasks`.
  *   - `no-gate`: the run source's membership check is patched out as the
  *     server loads it. Leg 3 must FAIL on `no value`.
+ *   - `old-lines`: the lab's lines are graded as its old `lib/tool-line.ts`
+ *     drew them. `lines name what was read` and `refusal reads failed` must FAIL.
  *
  * Run: pnpm tsx goals/claude-code-style-lab/reads-project-files/run.mts
  */
@@ -42,6 +48,7 @@ import {
   stopProcessGroup,
   type ModulePatch,
 } from "../../lib/index.mts";
+import { entriesOf, type Item as LabItem } from "../../../labs/claude-code-style/src/adapter.ts";
 import { git, LAB, labCheckout, startLab } from "../lab.mts";
 
 const fixture = loadFixture<{
@@ -69,7 +76,62 @@ const NO_GATE: ModulePatch[] = [
   },
 ];
 
-type Item = { type: string; role?: string; requestId?: string; blockName?: string; output?: unknown; content?: { text?: string }[] };
+type Item = LabItem;
+
+/**
+ * The tool lines a turn's items draw in the lab: its adapter's entries, each
+ * run's steps. Under `old-lines`, the lab's lines as they were before it read
+ * the registry: one fixed phrase per tool, and no step ever failed.
+ */
+async function linesOf(items: readonly Item[]): Promise<{ tool: string; args: Record<string, unknown>; line: string; failed: boolean }[]> {
+  const calls = items.filter((item) => item.type === "tool_output");
+  const argsOf = (item: Item) => {
+    try {
+      return JSON.parse(item.toolCall?.arguments ?? "{}") as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  };
+  if (CONTROL === "old-lines") {
+    const { toolLine } = await oldToolLine();
+    return calls.map((item) => ({ tool: item.blockName ?? "tool", args: argsOf(item), line: toolLine(item.blockName ?? "tool"), failed: false }));
+  }
+  // The adapter draws one step per call, in the calls' order.
+  const steps = entriesOf(items).flatMap((entry) => (entry.kind === "tool" ? entry.steps : []));
+  if (steps.length !== calls.length) throw new Error(`the lab drew ${steps.length} step(s) for ${calls.length} call(s)`);
+  return calls.map((item, i) => ({ tool: item.blockName ?? "tool", args: argsOf(item), line: steps[i]!.line, failed: steps[i]!.state === "error" }));
+}
+
+/** The lab's `lib/tool-line.ts` from before it read the registry, written to the scratch folder and loaded. */
+let oldLines: Promise<{ toolLine: (name: string) => string }> | undefined;
+function oldToolLine() {
+  oldLines ??= (async () => {
+    const file = join(goalTmpDir("reads-project-files-old-lines"), "tool-line.ts");
+    writeFileSync(file, git(REPO_ROOT, "show", `${OLD_LINES_COMMIT}:labs/claude-code-style/src/lib/tool-line.ts`));
+    return (await import(file)) as { toolLine: (name: string) => string };
+  })();
+  return oldLines;
+}
+
+/**
+ * Whether a line names the file at `path`: the whole path, or the tail a long
+ * one is shortened to on a line ("…/billing/ledger/codes.ts").
+ */
+function namesFile(line: string, path: string): boolean {
+  const words = line.split(/\s+/).map((word) => word.replace(/[,;:]$/, ""));
+  return words.some((word) => word === path || (word.startsWith("…/") && path.endsWith(word.slice(1))));
+}
+
+/** What a project read's line must name: a read its file, a search its pattern, a listing its pattern. */
+function namesWhatItRead(call: { tool: string; args: Record<string, unknown>; line: string }): boolean {
+  const { path, pattern } = call.args;
+  if (call.tool === "readProjectSource") return typeof path === "string" && namesFile(call.line, path);
+  if (call.tool === "grepProjectSource") return typeof pattern === "string" && call.line.includes(`"${pattern}"`);
+  return typeof pattern === "string" ? call.line.includes(pattern) : call.line.includes("the project's files");
+}
+
+/** The last commit whose lab still drew its own tool lines (`lib/tool-line.ts`). */
+const OLD_LINES_COMMIT = "f3b19ba46051525ebf31268a95050ddd30c9e82b";
 
 /** A project repository: the decoys, and the one file whose body holds the value. */
 function makeProjectRepository(dir: string, value: string): string {
@@ -134,7 +196,11 @@ async function ask(fsd: ReturnType<typeof createClient>, sessionId: string, line
     .map((item) => (item.content ?? []).map((part) => part.text ?? "").join(""))
     .join("\n");
   const reads = turn.filter((item) => item.type === "tool_output" && READ_TOOLS.has(item.blockName ?? ""));
-  return { reply, reads: reads.map((item) => ({ tool: item.blockName!, output: item.output as { kind?: string; reason?: string } })) };
+  return {
+    reply,
+    reads: reads.map((item) => ({ tool: item.blockName!, output: item.output as { kind?: string; reason?: string } })),
+    lines: await linesOf(turn),
+  };
 }
 
 /** The tasks on a session's board, as `listTasks` reads them. */
@@ -215,6 +281,12 @@ async function oneRun(n: number, failures: string[], notes: string[]): Promise<v
     const first = await ask(me.fsd, mine, fixture.question);
     const second = await ask(me.fsd, mine, fixture.follow);
     if (!first.reply.includes(value)) fail(`leg 1 · value named: the reply doesn't name ${value}: ${JSON.stringify(first.reply.slice(0, 300))}`);
+    // Every project read's line names what it read: the file, the search's pattern, the listing's.
+    const readLines = [...first.lines, ...second.lines].filter((line) => READ_TOOLS.has(line.tool));
+    const unnamed = readLines.filter((line) => !namesWhatItRead(line));
+    if (readLines.length === 0) fail("leg 1 · lines name what was read: the turns made no read call");
+    else if (unnamed.length > 0) fail(`leg 1 · lines name what was read: ${unnamed.length} of ${readLines.length} don't: ${JSON.stringify(unnamed.map((l) => l.line)).slice(0, 300)}`);
+    const fileNamed = readLines.some((line) => line.tool === "readProjectSource" && namesFile(line.line, fixture.path));
     const filed = await tasksOf(me.fsd, mine);
     if (filed.length !== 0) fail(`leg 1 · 0 tasks: the session filed ${filed.length} (${filed.map((t) => t.assignee).join(", ")})`);
     const harness = await me.fsd.sessions.list({ flowKind: "harness-thread", userId: USER });
@@ -229,7 +301,7 @@ async function oneRun(n: number, failures: string[], notes: string[]): Promise<v
       fail(`leg 1 · one clone, no place: ${disk.clones.length} clone(s), place(s) [${disk.places.join(", ")}] under ${root}`);
     }
     notes.push(
-      `run ${n} leg 1: ${first.reads.length + second.reads.length} read call(s), ${filed.length} task(s), ${disk.clones.length} clone, ${disk.places.length} place(s)`,
+      `run ${n} leg 1: ${first.reads.length + second.reads.length} read call(s)${fileNamed ? " (one names the value's file)" : ""}, ${filed.length} task(s), ${disk.clones.length} clone, ${disk.places.length} place(s)`,
     );
 
     // ── Leg 2: a session with no project asks the same.
@@ -239,6 +311,9 @@ async function oneRun(n: number, failures: string[], notes: string[]): Promise<v
     if (noProject.reads.length === 0) fail("leg 2 · read refused: the turn made no read call");
     else if (!noProject.reads.some((read) => read.output?.kind === "refused" && read.output.reason === "no-project")) {
       fail(`leg 2 · read refused: no read was refused no-project: ${JSON.stringify(noProject.reads).slice(0, 300)}`);
+    }
+    if (!noProject.lines.some((line) => line.failed && line.line.endsWith("(failed)"))) {
+      fail(`leg 2 · refusal reads failed: no tool line says failed: ${JSON.stringify(noProject.lines.map((l) => l.line)).slice(0, 300)}`);
     }
 
     // ── Leg 3: a member sets the project, is taken off its members, and asks.
@@ -255,6 +330,9 @@ async function oneRun(n: number, failures: string[], notes: string[]): Promise<v
     if (offMembers.reads.length === 0) fail("leg 3 · read refused: the turn made no read call");
     else if (!offMembers.reads.some((read) => read.output?.kind === "refused" && read.output.reason === "not-a-member")) {
       fail(`leg 3 · read refused: no read was refused not-a-member: ${JSON.stringify(offMembers.reads).slice(0, 300)}`);
+    }
+    if (!offMembers.lines.some((line) => line.failed && line.line.endsWith("(failed)"))) {
+      fail(`leg 3 · refusal reads failed: no tool line says failed: ${JSON.stringify(offMembers.lines.map((l) => l.line)).slice(0, 300)}`);
     }
     notes.push(`run ${n} legs 2-3: ${noProject.reads.length} and ${offMembers.reads.length} read call(s)`);
 

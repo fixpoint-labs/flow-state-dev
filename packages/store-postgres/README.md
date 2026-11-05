@@ -131,9 +131,13 @@ The schema uses:
 | `active_requests` | `request_id` | In-flight request registry for interrupted request recovery |
 | `resource_content` | `(scope_type, scope_id, resource_key)` | Resource content bodies (`TEXT`), keyed per resource, separate from scope records |
 | `resource_state` | `(scope_type, scope_id, resource_key)` | Resource state (`JSONB`), single + collection instances, keyed per resource, separate from scope records |
+| `resource_index` | none; unique on `(scope_type, scope_id, collection, index_name, md5(value), resource_key)` | Index entries that let a collection be looked up by a declared field. Written in the same statement as the row they describe; indexed on `(scope_type, scope_id, resource_key)`. The unique index keys a digest of the value so a value of any length fits a B-tree entry; lookups match the digest, then the full value |
+| `resource_index_built` | `(scope_type, scope_id, collection, index_name)` | Which indexes have finished their first build in a scope, with the collection pattern as a regular expression so a write can clear the markers covering its key |
 | `request_events` | `(request_id, sequence_number)` | Stream event replay for completed requests |
 | `request_items` | `(request_id, item_id)` | Output items produced by a request (one row per item) |
 | `wakes` | `(tenant_key, session_id, entry)` | When pending work in a session falls due, read by the durability sweeper ([Wakes](https://flow-state.dev/docs/advanced/durable-execution#wakes)); indexed on `due_at` |
+
+Every resource state write keeps `resource_index` and `resource_index_built` in step in the same statement. A `set` that lands then runs one more statement, which clears the build markers of indexes covering its key that it did not list: a marker committed while the write waited on a row lock is invisible to the write's own statement, and a build behind it could otherwise finish without the row. That is one extra round trip per successful `set`. Because the write touches both tables, a database used with `skipSchemaInit: true` must already have them: run `initializeSchema` against it with this version first.
 
 ### Instance ownership
 
@@ -367,6 +371,41 @@ The liveness timeout (how long subscribers wait before yielding a synthetic `req
 - `content.delta` events are in-process only. Cross-process subscribers snap to the next persisted snapshot (`item.added` / `item.done` / item-update) rather than receiving per-token deltas.
 - A dropped originating instance surfaces as a clean stream end with a synthetic `request.interrupted` event after the liveness timeout (default 30s). Clients can reconnect with `Last-Event-ID` to resume.
 - LISTEN/NOTIFY's scaling ceiling is per-NOTIFY-volume — see [Recall.ai's writeup](https://www.recall.ai/blog/postgres-listen-notify-does-not-scale). Below tens of thousands of simultaneous in-flight requests the pattern is fine; above that, look at Redis pub/sub or NATS.
+
+## Cross-process notices
+
+The adapter backs the engine's `bus` slot: a change saved on one process reaches session views open on another as soon as it is saved, instead of at their next once-a-second read, and a view of a quiet session costs the database nothing. `postgresStores` declares the slot, so a profile on Postgres gets this with no extra config. `createPostgresStores` returns it as `registry.bus`.
+
+### How it works
+
+Every request and session write publishes a notice (a topic and a kind, never rows). The writing process's own views hear it at once, in process. It also goes out as `pg_notify('fsd_bus', …)` on the stores' pool, and only once the write has landed: a write that fails, or is refused by a version or status check, sends no notice. A notice is best effort: if it fails to go out, the write still succeeds, and the view picks the change up at its next read. A notice too large for `NOTIFY` (8,000 bytes) is sent for its whole scope instead of one resource, which wakes more views than needed and never fewer. The first time that happens, a warning is logged.
+
+A process listens only while it has a view open. Its first subscriber checks one connection out of `liveTailPool`, issues `LISTEN fsd_bus`, and fans every notice out to that process's views; the last subscriber to leave hands it back. A process with no open view, such as a BullMQ worker or a migration script, publishes and holds no listening connection. With the default tail pool (`max: 10`), that leaves nine connections for request tails.
+
+### Detecting a pooler or a dropped connection
+
+The bus's `crossesProcesses` flag says whether a notice sent by another process reaches this one right now; while it is `true`, session views stop their once-a-second read (see the engine's [Change bus](../engine/README.md#change-bus)). A transaction-mode pooler (PgBouncer, or Supabase's or Neon's pooled endpoint) accepts it and never delivers a notification, and a connection a load balancer drops can go quiet without an error. So the bus pings itself through Postgres every 2 seconds and reports `crossesProcesses: true` only while it hears its own ping come back:
+
+- Until the first ping is heard, a new view uses the once-a-second read, and switches within one ping. When the listening connection opens, each view gets one `resync` notice and reads once, so a change saved after its first read and before the process was listening still arrives.
+- If no ping comes back for 3 seconds, or the connection fails, the bus reports `false` and waiting views go back to the once-a-second read. After a silent drop, the bus reports `false` within 4 seconds of the last ping it heard, and a waiting view reads within a second after that, so about 5 seconds in all. It reconnects with a capped backoff, never giving up, sends each view one `resync` notice so it reads once, and reports `true` again on the next ping it hears.
+- If the first ping never comes back, the process logs one warning naming the likely cause. Pass `liveTailPool` a `pg.Pool` on a direct (session-mode) connection string. There is no other option for it: the auto-created tail pool uses the same connection string as the main pool.
+
+```ts
+import pg from "pg";
+import { postgresStores } from "@flow-state-dev/store-postgres";
+
+// Queries through the pooler; the listening connection goes direct.
+const stores = postgresStores({
+  connectionString: process.env.DATABASE_URL, // e.g. a transaction pooler
+  liveTailPool: new pg.Pool({ connectionString: process.env.DIRECT_DATABASE_URL, max: 10 })
+});
+```
+
+### With no tail pool
+
+`liveTailPool: null`, the `{ pool }` shape without a `liveTailPool`, and the `{ executor }` shape (PGlite) never listen, so the bus reports `crossesProcesses: false` and views use the once-a-second read. The `{ pool }` shape still sends its notices, so views on processes that do listen hear its writes. `vercelPostgresStores` from `@flow-state-dev/vercel/store` passes `liveTailPool: null` and backs the `bus` slot with this bus, so a deployment's instances say they don't cross and keep the once-a-second read.
+
+`close()` stops the ping and hands the listening connection back before it ends the pools.
 
 ## Testing with PGlite
 

@@ -10,6 +10,7 @@
  * - **j3**, someone who runs Shift Manager on their own machine: the host is killed while all six
  *   stops wait; after a restart all six are listed once, and each is answered once and carries on.
  */
+import { crashAndRestart } from "../../lib/server.mts";
 import type { Shipped } from "../workers-message-each-other/legs.mts";
 import { CAST } from "./cast.mts";
 import { checkSix, fileSix, legB, untilWaiting, waiting, type Context, type Filed } from "./legs.mts";
@@ -31,7 +32,7 @@ async function receivedFrom(c: Context, from: string): Promise<Array<{ text: str
 }
 
 /** The midway questions a row has ever had, answered or not: a question's id outlives its answer. */
-const everAsked = (row: Row | undefined): Row[] => ((row?.questions ?? []) as Row[]).filter((h) => h.source?.kind === "row" && h.midway === true);
+const everAsked = (row: Row | undefined): Row[] => ((row?.holds ?? []) as Row[]).filter((h) => h.source?.kind === "row" && h.midway === true);
 
 /**
  * j1: `desk.front`'s model files work and answers for it.
@@ -57,8 +58,8 @@ export async function journeyFiles(c: Context): Promise<void> {
   );
   const mine = (await c.alice.rows()).filter((r) => !before.has(r.id) && r.assignee === CAST.asker);
   // A question at filing is the user's: the task must ask its own, midway.
-  if (filedTurn.status !== "completed" || mine.length !== 1 || ((mine[0]!.questions ?? []) as Row[]).some((h) => h.midway !== true)) {
-    c.fail("j1:filer-files", `desk.front's turn ${filedTurn.status} filed ${mine.length} task(s) for ${CAST.asker}, holds ${show(mine[0]?.questions)}`);
+  if (filedTurn.status !== "completed" || mine.length !== 1 || ((mine[0]!.holds ?? []) as Row[]).some((h) => h.midway !== true)) {
+    c.fail("j1:filer-files", `desk.front's turn ${filedTurn.status} filed ${mine.length} task(s) for ${CAST.asker}, holds ${show(mine[0]?.holds)}`);
     return;
   }
   const id = mine[0]!.id as string;
@@ -66,7 +67,7 @@ export async function journeyFiles(c: Context): Promise<void> {
   const asked = await c.alice.until(() => c.alice.row(id), (r) => everAsked(r).length > 0 || TERMINAL.has(r?.status), 240_000);
   const question = everAsked(asked)[0];
   if (question === undefined) {
-    c.fail("j1:filer-answers-own", `the asker's task never asked midway: ${asked?.status}, holds ${show(asked?.questions)}`);
+    c.fail("j1:filer-answers-own", `the asker's task never asked midway: ${asked?.status}, holds ${show(asked?.holds)}`);
     return;
   }
   if (waiting("midway", asked)) {
@@ -98,7 +99,7 @@ export async function journeyFiles(c: Context): Promise<void> {
   const coderAsked = await c.alice.until(() => c.alice.row(coding.id), (r) => waiting("midway", r) || TERMINAL.has(r?.status), 480_000);
   const coderQuestion = rowHolds(coderAsked)[0];
   if (coderQuestion === undefined) {
-    c.fail("j1b:coder-heard", `the coder's task never asked: ${coderAsked?.status}, holds ${show(coderAsked?.questions)}`);
+    c.fail("j1b:coder-heard", `the coder's task never asked: ${coderAsked?.status}, holds ${show(coderAsked?.holds)}`);
   } else {
     const told = await c.alice.until(() => receivedFrom(c, CAST.coder), (m) => m.some((x) => x.text.includes(coding.id)), 30_000);
     const about = told.filter((m) => m.text.includes(coding.id));
@@ -132,9 +133,9 @@ export async function journeyFiles(c: Context): Promise<void> {
     c.fail("j1:filer-calls", `desk.front's turn ${tried.status} made no updateTask on ${hold.id} that came back question_is_the_users: ${show(calls.map((i) => i.output))}`);
   }
   const still = await c.alice.row(held.id);
-  c.note(`j1: desk.front's turn on the user's question ended ${tried.status}, its updateTask refused ${calls.length} time(s); the row reads ${show({ status: still?.status, questions: still?.questions?.map((h: Row) => h.id), steers: still?.steers })}`);
+  c.note(`j1: desk.front's turn on the user's question ended ${tried.status}, its updateTask refused ${calls.length} time(s); the row reads ${show({ status: still?.status, holds: still?.holds?.map((h: Row) => h.id), steers: still?.steers })}`);
   if (still?.status !== "pending" || !rowHolds(still).some((h) => h.id === hold.id) || (await c.alice.itemOf(held.id)) === undefined) {
-    c.fail("j1:routed-answers-nothing", `the filer's steer answered the user's question: ${show({ status: still?.status, questions: still?.questions, steers: still?.steers })}`);
+    c.fail("j1:routed-answers-nothing", `the filer's steer answered the user's question: ${show({ status: still?.status, holds: still?.holds, steers: still?.steers })}`);
   }
   // Tidy: the user answers it, so the leg leaves nothing waiting.
   const item = await c.alice.itemOf(held.id);
@@ -200,16 +201,21 @@ export async function journeyDeadlines(serving: Serving, shipped: Shipped, conte
 }
 
 /**
- * j3: the six of leg a, the host killed (SIGKILL) while all wait, restarted on the same store.
- * `j3:six-after-restart` all six are listed once, as leg a reads them; `j3:answered-after-restart`
- * each answered once in the Inbox carries on as leg b says.
+ * j3: the six of leg a, the host crashed while all wait (`crashAndRestart`: SIGKILL to its whole
+ * process group, checked gone), restarted on the same store. `j3:crashed` nothing of the killed
+ * host is left running when the next one starts; `j3:six-after-restart` all six are listed once,
+ * as leg a reads them; `j3:answered-after-restart` each answered once in the Inbox carries on as
+ * leg b says.
  */
 export async function journeyRestart(serving: Serving, shipped: Shipped, context: Contextual): Promise<void> {
   let served = await serveLab(serving, "j3-before");
   let filed: Filed;
+  let fail: Context["fail"];
   const retag = (c: Context, tag: string): Context => ({ ...c, fail: (inner, what) => c.fail(tag, `${inner}: ${what}`) });
   try {
-    const c = retag(context(await aliceIn(shipped, served.origin), serving.files), "j3:six-before");
+    const before = context(await aliceIn(shipped, served.origin), serving.files);
+    fail = before.fail;
+    const c = retag(before, "j3:six-before");
     const ids = await fileSix(c);
     const rows = await untilWaiting(c, ids, serving.harness === "claude-code" ? 15 * 60_000 : 180_000);
     const notWaiting = Object.entries(ids).filter(([stop]) => !waiting(stop as never, rows[stop as keyof typeof rows]));
@@ -223,10 +229,16 @@ export async function journeyRestart(serving: Serving, shipped: Shipped, context
     await served.stop();
     throw error;
   }
-  served.child.kill("SIGKILL");
-  await served.exited;
-  await sleep(2_000);
-  served = await serveLab(serving, "j3-after");
+  try {
+    served = await crashAndRestart(served.child, () => serveLab(serving, "j3-after"));
+  } catch (error) {
+    // No restart served, so `served` is still the crashed host: stop it on every exit (its exit is awaited).
+    await served.stop();
+    // Only the crash's own refusal is `j3:crashed`; a restart that never serves throws as before.
+    if (!(error instanceof Error && error.message.startsWith("crashAndRestart:"))) throw error;
+    fail("j3:crashed", error.message);
+    return;
+  }
   try {
     const base = context(await aliceIn(shipped, served.origin), serving.files);
     const rows = await untilWaiting(base, filed.ids, 60_000);

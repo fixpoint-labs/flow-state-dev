@@ -8,15 +8,32 @@
  * workers, one per harness (Claude Code, Codex, Cursor). Your first ask to Chief of Staff makes it message researcher;
  * researcher looks the fact up and replies. Ask Chief of Staff to fix something and Chief of Staff
  * starts a coding task on the agent you name, or on Claude Code, which runs in the working folder;
- * one on a harness the double is told isn't set up fails at once, saying so. A run reports
+ * one on a harness the double is told isn't set up fails at once, saying so. Told to, a run asks
+ * you a question before it edits, and waits for your review once it has committed. A run reports
  * items in its harness's own shape (its tool names and arguments), read into steps by the
- * adapter's own `runSteps`. Ask writer to
+ * adapter's own `runSteps`. A task's buttons act on its row as the board would: Cancel stops its
+ * run, Steer adds a line the run shows, Retry runs it again as the same task, and Re-run files a new
+ * task on another coding worker, refused (`already_open`) while the same work is open there. Ask writer to
  * publish and it waits for your yes first. Each worker
  * answers one request at a time: a line you send, or a message from another
  * worker, waits while the worker is answering, and runs when it is done.
  * Chief of Staff's conversation starts past the 50-turn history window.
  */
-import { runSteps, type ConversationEntry, type LabAdapter, type SessionStep, type TalkRow, type BoardTask, type Unsubscribe, type WindowMark, type WorkerRow } from "../src/adapter";
+import type { SessionConnectionState } from "@flow-state-dev/client";
+import {
+  rerunOverrides,
+  runSteps,
+  type ConversationEntry,
+  type ReviewDetail,
+  type TaskAnswer,
+  type LabAdapter,
+  type SessionStep,
+  type TalkRow,
+  type BoardTask,
+  type Unsubscribe,
+  type WindowMark,
+  type WorkerRow,
+} from "../src/adapter";
 
 /** How the double keeps time, and what it plays. */
 export interface FixtureOptions {
@@ -28,12 +45,30 @@ export interface FixtureOptions {
   summary?: boolean;
   /** Harnesses this machine isn't set up for: a task on one fails at once, saying so. */
   notSetUp?: string[];
+  /** A coding run asks which line has the typo before it edits, and waits for your answer. */
+  asks?: boolean;
+  /** A coding run that committed waits for your review: Accept completes it, Ask for changes runs it once more. */
+  review?: boolean;
+  /** How many roster reads fail as an unreachable server would, before one lands. */
+  unreachableReads?: number;
+  /** Board rows already there when the lab opens, each filed by the conversation of the worker `filer` names. */
+  tasks?: (BoardTask & { filer: string })[];
 }
 
-/** Each coding worker's harness, by name, and the model its run reports, if it reports one. */
-const HARNESS: Record<string, { name: string; model?: string }> = {
-  "claude-code": { name: "Claude Code" },
-  codex: { name: "Codex", model: "gpt-5.5-codex" },
+/** The fixture, plus what a test does to its server. */
+export interface FixtureLab extends LabAdapter {
+  /** Every conversation's feed reports `state` from now on. */
+  setConnection(state: SessionConnectionState): void;
+}
+
+/**
+ * Each coding worker's harness, by name, the model its run reports, if it
+ * reports one, and what its run spent once it has run its check: Codex on an
+ * API key reports a charge; Claude Code on a subscription reports tokens only.
+ */
+const HARNESS: Record<string, { name: string; model?: string; spent?: { inputTokens: number; outputTokens: number; costUsd: number | null } }> = {
+  "claude-code": { name: "Claude Code", spent: { inputTokens: 8_000, outputTokens: 1_200, costUsd: null } },
+  codex: { name: "Codex", model: "gpt-5.5-codex", spent: { inputTokens: 12_400, outputTokens: 2_300, costUsd: 0.42 } },
   cursor: { name: "Cursor" },
 };
 
@@ -79,8 +114,11 @@ const DEFAULT_CODER = "teammates.cursor";
 
 type Job = { kind: "user"; entryId: string; text: string } | { kind: "receive"; message: TalkRow } | { kind: "result"; task: BoardTask };
 
-/** A board row, and the conversation that filed it. */
-type FixtureTask = BoardTask & { sessionId: string };
+/** A board row, and the conversation that filed it. `attempt` counts its runs, so a run a cancel or retry left behind stops. */
+type FixtureTask = BoardTask & { sessionId: string; attempt?: number };
+
+/** The board's words for an action on a task that has ended or is still open, as `updateTask` and `retryTask` refuse. */
+const refusal = (task: FixtureTask, verb: string) => `${verb}: task "${task.title}" (${task.id}) is ${task.boardStatus}.`;
 
 interface FixtureWorker {
   row: WorkerRow;
@@ -105,7 +143,7 @@ const OLDER_TURNS: [string, string][] = [
 ];
 
 /** The double. */
-export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
+export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
   const speed = options.speed ?? 1;
   const now = options.now ?? (() => Date.now());
   const listeners = new Set<() => void>();
@@ -123,10 +161,16 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   };
   const bySession = (sessionId: string) => [...workers.values()].find((w) => w.sessionId === sessionId);
   const fired = new Set<string>();
-  let tasks: FixtureTask[] = [];
+  let tasks: FixtureTask[] = (options.tasks ?? []).map(({ filer, ...task }) => ({ ...task, sessionId: worker(filer).sessionId }));
   /** Each task's run, as the items its harness reports. */
   const runs = new Map<string, Record<string, unknown>[]>();
   const notSetUp = new Set(options.notSetUp ?? []);
+  let unreachable = options.unreachableReads ?? 0;
+  let connection: SessionConnectionState = "live";
+  /** What each run waiting on you is waiting for: the answer it goes on with. */
+  const waits = new Map<string, (answer: TaskAnswer) => void>();
+  /** Each run's latest review, by its run session. */
+  const reviews = new Map<string, ReviewDetail>();
   /** The worker each open approval belongs to, by suspension id. */
   const approvals = new Map<string, FixtureWorker>();
 
@@ -174,7 +218,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
     startNext(recipient);
   };
 
-  const updateTask = (id: string, patch: Partial<BoardTask>) => {
+  const updateTask = (id: string, patch: Partial<FixtureTask>) => {
     tasks = tasks.map((t) => (t.id === id ? { ...t, ...patch } : t));
     notify();
   };
@@ -193,15 +237,40 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   const fileTask = (w: FixtureWorker, title: string, to = DEFAULT_CODER): Step[1] => () => {
     const id = nextId("t");
     const harness = worker(to).row.harness!;
-    const task: FixtureTask = { id, to, title, status: "running", runSessionId: `run:${id}`, sessionId: w.sessionId, harness: HARNESS[harness]!.name };
+    const task: FixtureTask = {
+      id,
+      to,
+      title,
+      goal: title,
+      status: "running",
+      boardStatus: "in_progress",
+      runSessionId: `run:${id}`,
+      sessionId: w.sessionId,
+      harness: HARNESS[harness]!.name,
+    };
     push(w, { kind: "task", id: nextId("k"), taskId: task.id, title, to });
     setTimeout(() => {
       tasks = [...tasks, task];
       notify();
     }, 300 * speed);
-    const end = (status: "done" | "failed", result: string) => () => {
-      updateTask(task.id, { status, result });
-      w.queue.push({ kind: "result", task: { ...task, status, result } });
+    runTask(w, task);
+  };
+
+  /** A coding task's run, on its worker's harness, until it ends, or a cancel or a retry leaves it behind. */
+  const runTask = (w: FixtureWorker, task: FixtureTask) => {
+    const harness = worker(task.to).row.harness!;
+    const attempt = (task.attempt ?? 0) + 1;
+    task.attempt = attempt;
+    if (tasks.some((t) => t.id === task.id)) updateTask(task.id, { attempt });
+    /** The row as it stands now. */
+    const row = () => tasks.find((t) => t.id === task.id);
+    /** This run still owns its task: it wasn't cancelled, nor run again. */
+    const live = () => (row()?.attempt ?? attempt) === attempt && row()?.boardStatus !== "cancelled";
+    const end = (status: "done" | "failed", text: string) => () => {
+      if (!live()) return;
+      const ending = status === "done" ? { result: text } : { error: text };
+      updateTask(task.id, { status, boardStatus: status === "done" ? "completed" : "errored", ...ending });
+      w.queue.push({ kind: "result", task: { ...task, status, ...ending } });
       startNext(w);
     };
     // A harness this machine isn't set up for: the task fails before any run, naming it.
@@ -211,23 +280,59 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       return;
     }
     const model = HARNESS[harness]!.model;
+    const spent = HARNESS[harness]!.spent;
     const calls = RUN_TOOLS[harness]!;
     const call = (which: "read" | "edit" | "check") => report(task.id, harness, tool(...calls[which]));
-    let at = 0;
-    for (const [delay, run] of [
+    const sleep = async (ms: number) => {
+      await new Promise<void>((resolve) => setTimeout(resolve, ms * speed));
+      // A cancelled or re-run task's old run goes no further.
+      if (!live()) throw new Error("left behind");
+    };
+    /** The task waits on you for `waiting`, until you answer. */
+    const waitOn = (waiting: NonNullable<BoardTask["waiting"]>) =>
+      new Promise<TaskAnswer>((resolve) => {
+        waits.set(task.id, (answer) => {
+          waits.delete(task.id);
+          updateTask(task.id, { waiting: undefined });
+          resolve(answer);
+        });
+        updateTask(task.id, { waiting });
+      });
+    void (async () => {
+      await sleep(600);
       // The run reports its model, if its harness reports one, once it starts.
-      [600, () => {
-        if (model !== undefined) updateTask(task.id, { model });
-        call("read")();
-      }],
-      [600, report(task.id, harness, said('The typo is on line 1: "Relay keps".'))],
-      [600, call("edit")],
-      [800, call("check")],
-      [400, end("done", "Fixed the typo in README.md, line 1.")],
-    ] as Step[]) {
-      at += delay;
-      setTimeout(run, at * speed);
-    }
+      if (model !== undefined) updateTask(task.id, { model });
+      call("read")();
+      await sleep(600);
+      report(task.id, harness, said('The typo is on line 1: "Relay keps".'))();
+      if (options.asks) {
+        const answer = await waitOn({ kind: "question", prompt: "Should I fix only line 1, or every typo?", unanswerable: null });
+        report(task.id, harness, { type: "message", role: "user", content: [{ type: "input_text", text: "text" in answer ? answer.text : "" }] })();
+      }
+      await sleep(600);
+      call("edit")();
+      await sleep(800);
+      call("check")();
+      // What the run spent, as the row's folded view reads it once the run has reported.
+      if (spent !== undefined) updateTask(task.id, { spend: { harness, model: model ?? null, ...spent, unreported: false, live: false } });
+      for (let commits = 1; options.review; commits++) {
+        reviews.set(task.runSessionId!, {
+          branch: `teammates/${task.id}--change`,
+          commits,
+          subjects: Array.from({ length: commits }, (_, i) => (i === 0 ? "docs: fix the README typo" : "docs: keep the old wording")).reverse(),
+          judge: { verdict: "done", confidence: 0.91, reason: "The typo on line 1 is fixed." },
+          checks: null,
+        });
+        notify();
+        const answer = await waitOn({ kind: "review", prompt: `${commits} commit${commits === 1 ? "" : "s"} on teammates/${task.id}--change`, unanswerable: null });
+        if ("verdict" in answer && answer.verdict === "accepted") break;
+        report(task.id, harness, said(`Revising: ${"words" in answer ? answer.words : ""}`))();
+        await sleep(600);
+        call("edit")();
+      }
+      await sleep(400);
+      end("done", "Fixed the typo in README.md, line 1.")();
+    })().catch(() => {});
   };
 
   const script = (w: FixtureWorker, job: Job): Step[] => {
@@ -241,7 +346,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       }
       return [[700, say(w, "On it.")], [2000, sendMessage(w, message.from, "Done. It's in the doc.", message.id)]];
     }
-    // writer waits for your yes before it publishes: `waitForUser` with an approval.
+    // writer waits for your yes before it publishes: `suspendForUser` with an approval.
     if (w.row.id === WRITER && /\bpublish\b/i.test(job.text)) {
       const suspensionId = nextId("sus");
       approvals.set(suspensionId, w);
@@ -276,7 +381,7 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
       w.entries = w.entries.map((e) => (e.id === job.entryId && e.kind === "user" ? { ...e, queued: false } : e));
     } else if (job.kind === "result") {
       const { task } = job;
-      w.entries = [...w.entries, { kind: "result", id: nextId("r"), taskId: task.id, from: task.to, text: task.result ?? "", title: task.title, ...(task.status === "failed" ? { failed: true } : {}) }];
+      w.entries = [...w.entries, { kind: "result", id: nextId("r"), taskId: task.id, from: task.to, text: task.result ?? task.error ?? "", title: task.title, ...(task.status === "failed" ? { failed: true } : {}) }];
     } else {
       const { message } = job;
       w.entries = [...w.entries, { kind: "received", id: nextId("r"), messageId: message.id, from: message.from, text: message.text, inReplyTo: message.inReplyTo }];
@@ -359,7 +464,16 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
   );
 
   return {
+    setConnection(state) {
+      connection = state;
+      notify();
+    },
+
     async listWorkers() {
+      if (unreachable > 0) {
+        unreachable -= 1;
+        throw new TypeError("fetch failed");
+      }
       return [...workers.values()].filter((w) => !fired.has(w.row.id)).map((w) => w.row);
     },
 
@@ -382,6 +496,10 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
         if (!w) return;
         onChange({ entries: w.entries, running: w.running });
       });
+    },
+
+    watchConnection(_sessionId, onChange) {
+      return watch(() => onChange(connection));
     },
 
     async answerApproval(_sessionId, { suspensionId }, approve) {
@@ -437,6 +555,77 @@ export function createFixtureLab(options: FixtureOptions = {}): LabAdapter {
 
     watchTasks(sessionId, onChange) {
       return watch(() => onChange(tasks.filter((t) => t.sessionId === sessionId).map(({ sessionId: _, ...card }) => card)));
+    },
+
+    watchReview(runSessionId, onChange) {
+      return watch(() => onChange(reviews.get(runSessionId)));
+    },
+
+    async answerTask(_sessionId, taskId, answer) {
+      const go = waits.get(taskId);
+      if (go === undefined) throw new Error(`This task isn't waiting on you.`);
+      go(answer);
+    },
+
+    taskActions(sessionId) {
+      const filed = (taskId: string) => {
+        const task = tasks.find((t) => t.id === taskId && t.sessionId === sessionId);
+        if (task === undefined) throw new Error(`not_found: no task "${taskId}" on this board.`);
+        return task;
+      };
+      const open = (task: FixtureTask) => ["pending", "held", "in_progress"].includes(task.boardStatus);
+      const filer = () => bySession(sessionId)!;
+      return {
+        async cancel(taskId) {
+          const task = filed(taskId);
+          if (!open(task)) throw new Error(refusal(task, "finished"));
+          waits.delete(taskId);
+          updateTask(taskId, { status: "cancelled", boardStatus: "cancelled", waiting: undefined });
+          return [];
+        },
+        async steer(taskId, message) {
+          const task = filed(taskId);
+          if (!open(task)) throw new Error(refusal(task, "finished"));
+          // The run reads the line as one more given to it.
+          report(taskId, worker(task.to).row.harness!, { type: "message", role: "user", content: [{ type: "input_text", text: message }] })();
+        },
+        async release(taskId) {
+          const task = filed(taskId);
+          if (task.boardStatus !== "held") throw new Error(refusal(task, "not_held"));
+          updateTask(taskId, { boardStatus: "pending" });
+        },
+        async retry(taskId) {
+          const task = filed(taskId);
+          if (task.boardStatus !== "errored" && task.boardStatus !== "cancelled") throw new Error(refusal(task, "not_ended"));
+          updateTask(taskId, { status: "running", boardStatus: "in_progress", error: undefined, result: undefined });
+          runTask(filer(), filed(taskId));
+        },
+        async rerun(task, to) {
+          const { assignee, context } = rerunOverrides(task, to) as { assignee: string; context: string };
+          const same = tasks.find((t) => t.sessionId === sessionId && t.to === assignee && open(t) && t.goal === task.goal);
+          if (same !== undefined) {
+            throw new Error(`already_open: task "${same.title}" (${same.id}) is this same work for ${assignee}, and it is still ${same.boardStatus}. Nothing was filed.`);
+          }
+          const id = nextId("t");
+          const harness = worker(assignee).row.harness!;
+          const next: FixtureTask = {
+            id,
+            to: assignee,
+            title: task.title,
+            goal: task.goal,
+            context,
+            status: "running",
+            boardStatus: "in_progress",
+            runSessionId: `run:${id}`,
+            sessionId,
+            harness: HARNESS[harness]!.name,
+          };
+          tasks = [...tasks, next];
+          notify();
+          runTask(filer(), next);
+          return id;
+        },
+      };
     },
 
     watchRun(runSessionId, onChange) {

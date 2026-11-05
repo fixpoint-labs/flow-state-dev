@@ -13,8 +13,8 @@ import type { Task, TaskRunLink, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import type { TaskSettingsPatch } from "./internal";
 import type { SteerInput } from "../steers";
-import type { QuestionInit, SuspensionQuestion } from "../schema/question";
-import type { QuestionAnswer } from "./questions";
+import type { QuestionInit, SuspensionHold } from "../schema/hold";
+import type { QuestionAnswer } from "./holds";
 import type { NoticeEnding as TaskNoticeEnding } from "../notice/task-notice";
 
 /**
@@ -38,7 +38,7 @@ export type CancelOptions = TaskTransitionOptions & {
    * answer (a yes first, say), and `no-such-question` for an id that isn't a
    * question or a confirm on the row.
    */
-  readonly whileQuestionOpen?: string;
+  readonly whileHoldOpen?: string;
 };
 
 /** What a running task waits on (`Task.keptOpenBy`, FIX-2077). */
@@ -125,7 +125,7 @@ export type TaskWriteDeclineReason =
    */
   | "steer-limit"
   /**
-   * The row is held (FIX-2133, `Task.questions`): a settlement, a lease renewal or
+   * The row is held (FIX-2133, `Task.holds`): a settlement, a lease renewal or
    * a turn's mirror of its stop, refused while a hold is open. A held row
    * settles only by cancel; it starts no turn and renews no lease until its
    * holds close. Its open holds come from one source at a time, so a turn that
@@ -135,7 +135,17 @@ export type TaskWriteDeclineReason =
   /** An answer to a question already answered with other words, or by another sender (FIX-2133). */
   | "answered"
   /** An answer naming no question or confirm on the row (FIX-2133). */
-  | "no-such-question";
+  | "no-such-question"
+  /**
+   * A retry of a row whose last ending is still being delivered (FIX-2383): a
+   * cascade, a resume or a cancel it owes. Try again once the board's touch
+   * has paid it.
+   */
+  | "settling"
+  /** A retry of a row one of whose dependencies failed or was cancelled (FIX-2383): retry that one first. */
+  | "dependency-ended"
+  /** A retry on a board whose `maxTotalRetries` is spent (FIX-2383, FIX-948). */
+  | "retry-budget";
 
 /**
  * What a write actually did (FIX-976).
@@ -394,7 +404,7 @@ export interface TaskTransitionOptions {
    * mirror of its run's stop, one source at a time). Decided on the committed
    * row inside the write. Set by the backings' own verbs, never by a caller.
    */
-  refuseWithOpenQuestion?: "any" | "row";
+  refuseWithOpenHold?: "any" | "row";
 }
 
 /**
@@ -630,6 +640,26 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    */
   patchSettings(id: string, patch: TaskSettingsPatch): Promise<TaskWriteOutcome>;
   /**
+   * Retry a failed or cancelled task (FIX-2383): `errored` or `cancelled` back
+   * to `pending`, keeping its id, its steers, its output and items window, and
+   * its spend. A failure's `error` becomes the next attempt's `feedback`. The
+   * grant is counted in the row's `retryLedger`, the board's one retry count
+   * (FIX-948), and the next claim takes a new attempt, whatever `maxAttempts`
+   * had left. Not an ending: no cascade, notice or recorder runs. Publishes
+   * `retry_requested`.
+   *
+   * Declines `disallowed` on a row that hasn't ended or that completed (a
+   * completed task's output never changes: file a follow-up), `settling` on
+   * one whose last ending is still owed, `dependency-ended` on one whose
+   * dependency failed or was cancelled, and `retry-budget` where the board's
+   * `maxTotalRetries` is enforced and spent.
+   *
+   * A person's or an app's move: the task tools offer it as an action only.
+   * Optional, so a ref written before it keeps compiling (BP-030); a retry is
+   * refused on a board without it.
+   */
+  retry?(id: string): Promise<TaskWriteOutcome>;
+  /**
    * Steer an open task (FIX-2086): keep `steer` on the row (`Task.steers`),
    * for every later attempt to read. Changes nothing else: no status, no
    * claim, no lease, no attempt count, and no ending. A row running nothing
@@ -836,7 +866,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
        * a suspension hold in the same write (FIX-2133). Refused `held` while a
        * row hold is open: the stop arm then cancels the stop.
        */
-      question?: SuspensionQuestion;
+      hold?: SuspensionHold;
       /**
        * With `null`: the run's own resume, which closes the mirror. A later
        * request admitted while the run stays parked passes none and keeps it.
@@ -852,7 +882,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   ): Promise<TaskWriteOutcome>;
   /**
    * Ask questions midway (FIX-2133): the turn holding the task's claim opens
-   * row holds (`Task.questions`), drops the lease and ends its turn unsettled, in
+   * row holds (`Task.holds`), drops the lease and ends its turn unsettled, in
    * one write. The row stays `in_progress` on its attempt with no lease until
    * every question is answered (or a deadline the host set passes), then owes
    * one more turn on that attempt (`turnOwed`), which the claim takes.
@@ -898,7 +928,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    *
    * Optional: both built-in backings implement it.
    */
-  payQuestionDeadlines?(): Promise<string[]>;
+  payHoldDeadlines?(): Promise<string[]>;
   /**
    * Reset stale leases. Tasks whose `leaseUntil` has passed are returned
    * to `pending`. Returns the number of tasks reclaimed; emits one

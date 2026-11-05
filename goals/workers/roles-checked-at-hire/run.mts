@@ -51,7 +51,7 @@ import {
   type ModulePatch
 } from "../../lib/index.mts";
 import { openLab } from "../../../packages/shift-manager/teams/devteam/host.mts";
-import { harnessStub } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
+import { harnessStub } from "@flow-state-dev/harness-manager";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = goalTmpDir("roles-checked-at-hire");

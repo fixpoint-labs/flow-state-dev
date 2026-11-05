@@ -31,6 +31,10 @@
  * session stored before models could be picked, and `codexClientOptions`).
  * Sign-in, history and every other setting still come from Codex's home.
  *
+ * When the operator trusts the repository (`lib/harness-trust.ts`), the MCP
+ * servers your Codex settings name stay on, and the run is handed the keys the
+ * operator named. Codex reads the repository's `AGENTS.md` either way.
+ *
  * Under `KITCHEN_SINK_TEST_MODE=1` the SDK is replaced by the scripted Codex
  * (`lib/scripted-codex.ts`) and the check passes, unless
  * `KITCHEN_SINK_REAL_HARNESS=1` asks for the real one, which the goal check
@@ -44,14 +48,13 @@ import {
   assertTestedSdkVersion,
   CODEX_PASS,
   CodexAgentAbortedError,
+  checkCodexReadiness,
   codexAgent,
   createDefaultResolveCodexClient,
   findCodexProgram,
   listCodexModels,
-  probeCodexAccount,
   readInstalledCodexSdkVersion,
   TESTED_SDK_VERSION,
-  type CodexAccountProbe,
   type CodexAgentOptions,
   type CodexClientOptions,
   type CodexModelList,
@@ -61,9 +64,14 @@ import {
 } from "@flow-state-dev/codex";
 
 import { goalControl } from "./goal-control";
-import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
+import { harnessTrust, type RepoLine } from "./harness-trust";
+import type { HarnessTrust } from "./harness-workspace";
+import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
+import type { HarnessBlock, HarnessReadiness } from "@flow-state-dev/core/types";
+import { kitchenSinkHarnessFlow } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
+import { fromReadiness } from "./mode-readiness";
 import type { ModelChoices } from "./harness-models";
 import { flowKindOf, modeById } from "./modes";
 import { scriptedCodex } from "./scripted-codex";
@@ -100,9 +108,24 @@ export async function codexModelChoices(
   return { models: found.models.map(({ id, label }) => ({ id, label })), defaultId: preselected.id, reason: null, fallbackId: null };
 }
 
-/** The environment Codex's process gets, and the one its sign-in and sandbox are checked over. */
-export function codexEnv(env: Record<string, string | undefined> = process.env): Record<string, string> {
-  return harnessEnv({ pass: CODEX_PASS, env });
+/**
+ * The environment Codex's process gets, and the one its sign-in and sandbox are
+ * checked over: the Codex package's own pass-list, and the keys a trusting
+ * operator named.
+ */
+export function codexEnv(
+  env: Record<string, string | undefined> = process.env,
+  trust: HarnessTrust = harnessTrust(),
+): Record<string, string> {
+  return harnessEnv({ pass: [...CODEX_PASS, ...trust.pass], env });
+}
+
+/** The header's line for a Codex session: `AGENTS.md` always, and whether your MCP servers stay on. */
+export function codexRepoLine(trust: HarnessTrust = harnessTrust()): RepoLine {
+  return {
+    conventions: trust.trusted ? "AGENTS.md, with your Codex MCP servers on" : "AGENTS.md only, your Codex MCP servers off",
+    keys: trust.pass,
+  };
 }
 
 /** Whether this server runs the scripted Codex instead of the SDK. */
@@ -137,14 +160,18 @@ export interface CodexMcpServer {
  * `workspace-write` also lets a run write in `/tmp` and `$TMPDIR` by default,
  * where a repository or another session's files may sit.
  *
+ * Trusted, no server is turned off: `mcpServers` is not read.
+ *
  * @param mcpServers The MCP servers Codex's settings name (`userMcpServers`).
  */
 export function codexClientOptions(
   env: Record<string, string | undefined> = process.env,
   mcpServers: readonly CodexMcpServer[] = [],
+  trust: HarnessTrust = harnessTrust(),
 ): CodexClientOptions {
+  if (trust.trusted) mcpServers = [];
   return {
-    env: codexEnv(env),
+    env: codexEnv(env, trust),
     config: { service_tier: "default" },
     // The inventory can contain plugin/runtime servers absent from config.toml.
     // Even a disabled entry needs a transport; quote names so dots remain literal.
@@ -162,15 +189,17 @@ export function codexClientOptions(
  * said which MCP servers its settings name. Asked once per server process, on
  * the first run: a server added to your settings later stays on until restart.
  * A run stopped while the list is still coming stops then; the list goes on
- * for the next run.
+ * for the next run. Trusted, nothing is listed: no server is turned off.
  */
 export function codexClient(
   listMcpServers: (env: Record<string, string>) => Promise<readonly CodexMcpServer[]> = userMcpServers,
+  trust: HarnessTrust = harnessTrust(),
 ): ResolveCodexClient {
   let resolver: Promise<ResolveCodexClient> | undefined;
   return async (ctx) => {
-    resolver ??= listMcpServers(codexEnv()).then(
-      (names) => createDefaultResolveCodexClient(codexClientOptions(process.env, names)),
+    if (trust.trusted) resolver ??= Promise.resolve(createDefaultResolveCodexClient(codexClientOptions(process.env, [], trust)));
+    resolver ??= listMcpServers(codexEnv(process.env, trust)).then(
+      (names) => createDefaultResolveCodexClient(codexClientOptions(process.env, names, trust)),
       (error: unknown) => {
         // Not kept: the next run asks again. This one starts with whatever
         // servers Codex has, and the session says so, so it is never silent.
@@ -179,7 +208,7 @@ export function codexClient(
           `Codex's MCP servers could not be listed, so this run may start the ones your Codex settings name: ${error instanceof Error ? error.message : String(error)}`,
           { transient: false },
         );
-        return createDefaultResolveCodexClient(codexClientOptions(process.env));
+        return createDefaultResolveCodexClient(codexClientOptions(process.env, [], trust));
       },
     );
     const stopped = ctx.signal;
@@ -207,7 +236,7 @@ export interface CodexSeams {
 }
 
 /** The Codex block's options, built from the session flow's feeds. */
-export function codexBlockOptions(feeds: HarnessFeeds, seams: CodexSeams = {}): CodexAgentOptions {
+export function codexBlockOptions(feeds: HarnessSessionFeeds, seams: CodexSeams = {}): CodexAgentOptions {
   return {
     cwd: feeds.cwd,
     resume: feeds.resume,
@@ -231,7 +260,7 @@ export function codexBlockOptions(feeds: HarnessFeeds, seams: CodexSeams = {}): 
  * neutral `HarnessBlock` (core's own note on that type). The other modes cast
  * the same way.
  */
-export function codexBlock(feeds: HarnessFeeds, seams: CodexSeams = {}): HarnessBlock {
+export function codexBlock(feeds: HarnessSessionFeeds, seams: CodexSeams = {}): HarnessBlock {
   return codexAgent(codexBlockOptions(feeds, seams)) as unknown as HarnessBlock;
 }
 
@@ -254,7 +283,7 @@ async function codexDefaultModel(seams: CodexSeams): Promise<string> {
 /** Codex mode's session flow. `seams` is for tests. */
 export function codexSessionFlow(seams: CodexSeams = {}) {
   // No `defaultModel`: the block fills in Codex's own default (`codexBlockOptions`).
-  return harnessSessionFlow({ kind: CODEX_SESSION, agent: (feeds) => codexBlock(feeds, seams) });
+  return kitchenSinkHarnessFlow({ kind: CODEX_SESSION, agent: (feeds) => codexBlock(feeds, seams) });
 }
 
 /** What the mode's check asks of the host. Each a seam for tests. */
@@ -263,8 +292,8 @@ export interface CodexHostChecks {
   readonly sdk: InstalledSdkVersionReader;
   /** Make the worktree root and return it, or throw why it can't be made. */
   readonly makeRoot: (repository: string) => string;
-  /** The Codex package's answer about its sign-in, over the run's own environment. No run. */
-  readonly probe: (env: Record<string, string>) => Promise<CodexAccountProbe>;
+  /** Whether Codex can run over the run's own environment (its SDK and sign-in), from the Codex package. No run. */
+  readonly readiness: (env: Record<string, string>) => Promise<HarnessReadiness>;
 }
 
 /**
@@ -308,7 +337,7 @@ export const HOST_CHECKS: CodexHostChecks = {
   },
   // A loaded host can take a while to start Codex: give it longer than the package's default.
   // Deliberate: 30 s keeps the limit this check had before it moved, for cold hosts, so it is longer than Claude Code mode's 10 s probe.
-  probe: (env) => probeCodexAccount({ env, timeoutMs: 30_000 }),
+  readiness: (env) => checkCodexReadiness({ env, timeoutMs: 30_000 }),
 };
 
 /**
@@ -344,17 +373,6 @@ export function codexModeCheck(checks: CodexHostChecks = HOST_CHECKS): ModeCheck
       };
     }
     // A key in the run's environment counts, though `codex login status` says otherwise.
-    const account = await checks.probe(codexEnv());
-    if (account.status === "sdk-missing") return { available: false, reason: `The Codex SDK is not installed. ${account.reason}` };
-    if (account.status === "none") {
-      return {
-        available: false,
-        reason:
-          account.unanswered === true
-            ? `${account.reason}, so its sign-in is unknown. Restart the server to ask again.`
-            : `Codex is not signed in on this host (\`codex login status\`: ${account.reason}, and there is no CODEX_API_KEY in the run's environment). Sign in with \`codex login\`, then restart.`,
-      };
-    }
-    return { available: true };
+    return fromReadiness(await checks.readiness(codexEnv()));
   };
 }

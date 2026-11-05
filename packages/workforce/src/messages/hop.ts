@@ -64,9 +64,6 @@ export const messageHopStateShape = {
   [USER_LINES_STATE]: z.number().int().nonnegative().default(0)
 } as const;
 
-/** The request-state field naming the call an `onMessageReceived` request answers (FIX-2239), so its reply step marks the row. */
-export const RECEIVED_CALL_STATE = "workforceReceivedCall";
-
 /** The request-state field saying an `onMessageReceived` request landed its message, so its reply step reads it by construction. */
 export const RECEIVED_LANDED_STATE = "workforceReceivedLanded";
 
@@ -79,7 +76,6 @@ export const messageTurnStateSchema = z.object({
   [TURN_CHAIN_STATE]: z.string().nullable().optional(),
   [TURN_SENT_STATE]: z.number().int().nonnegative().optional(),
   [TURN_PAID_STATE]: z.array(z.string()).optional(),
-  [RECEIVED_CALL_STATE]: z.string().optional(),
   [RECEIVED_LANDED_STATE]: z.boolean().optional(),
   [RECEIVED_REPLY_OWED_STATE]: z.string().optional()
 });

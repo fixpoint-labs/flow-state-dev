@@ -123,8 +123,8 @@ export {
   type TaskToolActionsBoard,
   // A task turn's question and a turn's stop for the user, and the rules for
   // offering them (FIX-2131).
-  createAskQuestion,
-  createWaitForUserTool,
+  createHoldTaskForUser,
+  createSuspendForUserTool,
   type TaskTurnToolOptions,
   // A task turn's own progress report and the rule for offering it (FIX-2081).
   createReportProgress,

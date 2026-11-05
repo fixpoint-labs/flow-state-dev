@@ -22,7 +22,7 @@
 import type { Scene } from "./controls.mts";
 import { faultLines } from "../workers-message-each-other/faults.mts";
 import { resumedAt, talkThrough } from "../workers-message-each-other/legs-calls.mts";
-import { RESEND_FROM, TAKEOVER_MS, requestsFor, senderOf, tookWithin, type Servers } from "../workers-message-each-other/legs-delivery.mts";
+import { RESEND_FROM, TAKEOVER_MS, senderOf, tookWithin, type Servers } from "../workers-message-each-other/legs-delivery.mts";
 import { file, rowOf, sessionOfTask, endOf, startOf } from "../workers-message-each-other/legs-targets.mts";
 import {
   act,
@@ -49,7 +49,7 @@ import {
 
 type SessionSummary = { id: string; flowKind: string };
 type TaskRow = Record<string, any>;
-type CallRow = Row & { at: number; call?: boolean; deadlineAt?: number; repliedAt?: number; queuedBehind?: string; deliveredAs?: string };
+type CallRow = Row & { at: number; replyRequested?: boolean; deadlineAt?: number; waitEndedAt?: number; answeredBy?: string; inReplyTo?: string; queuedBehind?: string; deliveredAs?: string };
 
 /** The two ring workers this goal hires: each passes every message it hears on to the other. */
 export const RING_ONE = "ring-one";
@@ -68,7 +68,9 @@ const tsOf = (item: Record<string, unknown> | undefined) => Number(item?.ts ?? i
 export interface Walked {
   /** Leg a's call: the crashed one. */
   crashedCall?: string;
-  /** Leg e's call: parked, then waited on again. */
+  /** The crashed call's one answer, held for its wait (FIX-2318). */
+  crashedAnswer?: string;
+  /** Leg e's call: parked past its deadline, then answered as a message. */
   parkedCall?: string;
   /** The ring's sent messages in its own chain, by id (the herald's fan may start another exchange through the ring), and the seventh send's refusal. */
   ringIds?: string[];
@@ -181,7 +183,7 @@ export async function sceneAC(world: World, servers: Servers, walked: Walked): P
   // interrupted reads timed-out.
   const ended = await follow(world.alice, helperA().flowKind, requestId, 360_000, OWED_ENDS);
   const calls = (await callsIn(world.alice, helperA().id)).filter((c) => c.requestId === requestId && c.output != null && typeof c.output === "object");
-  const call = calls.find((c) => isWait(c) && c.output?.callId === line.id);
+  const call = calls.find((c) => isWait(c) && c.output?.sent === line.id);
   const lines = await linesIn(world.alice, helperA().id);
   const answer = lines.filter((l) => l.requestId === requestId && l.role === "assistant").at(-1);
   const requests = await world.alice.routes.requests(helperA().id);
@@ -200,22 +202,22 @@ export async function sceneAC(world: World, servers: Servers, walked: Walked): P
   const fresh = ((await logOf(world.alice)) as CallRow[]).filter((m) => !logBefore.has(m.id));
   const fromHelper = fresh.filter((m) => m.from === HELPER_A && m.to === RESEARCHER);
   const row = fresh.find((m) => m.id === line.id);
-  if (fromHelper.length !== 1 || row === undefined || row.call !== true || row.hop !== 1) {
-    r.failures.push(`a:one-place — the log holds ${fromHelper.length} row(s) from Helper A to Researcher since the line, the call's at hop ${String(row?.hop)}: ${show(fromHelper.map((m) => ({ id: m.id, hop: m.hop, call: m.call, status: m.status })))}`);
+  if (fromHelper.length !== 1 || row === undefined || row.deadlineAt === undefined || row.hop !== 1) {
+    r.failures.push(`a:one-place — the log holds ${fromHelper.length} row(s) from Helper A to Researcher since the line, the call's at hop ${String(row?.hop)}: ${show(fromHelper.map((m) => ({ id: m.id, hop: m.hop, deadlineAt: m.deadlineAt, status: m.status })))}`);
   }
 
-  // a:no-relay — Researcher's turn sends nothing back; Helper A's conversation gains no received item from it.
-  const heardIn = new Set((await requestsFor(world.alice, researcher().id, line.id)).map((q) => q.id));
-  const sentBack = (await callsIn(world.alice, researcher().id)).filter((c) => c.requestId !== undefined && heardIn.has(c.requestId) && typeof c.output?.sent === "string");
+  // a:no-relay — the call has one answer (FIX-2318), held for the wait: Helper A's conversation gains no received item from Researcher.
+  const answers = fresh.filter((m) => m.inReplyTo === line.id);
+  walked.crashedAnswer = row?.answeredBy;
   const gained = (await receivedIn(world.alice, helperA().id)).filter((m) => !receivedBefore.has(m.itemId) && m.from === RESEARCHER);
-  if (sentBack.length > 0 || gained.length > 0) {
-    r.failures.push(`a:no-relay — Researcher's turn on the call sent ${sentBack.length} message(s), and Helper A's conversation gained ${gained.length} received item(s) from Researcher`);
+  if (answers.length !== 1 || row?.answeredBy !== answers[0]?.id || gained.length > 0) {
+    r.failures.push(`a:no-relay — the call has ${answers.length} answer row(s) (answeredBy ${String(row?.answeredBy)}), and Helper A's conversation gained ${gained.length} received item(s) from Researcher`);
   }
   return r;
 }
 
 /** The midway questions a row has ever had, answered or not. */
-const everAsked = (row: TaskRow | undefined): TaskRow[] => ((row?.questions ?? []) as TaskRow[]).filter((h) => h.source?.kind === "row" && h.midway === true);
+const everAsked = (row: TaskRow | undefined): TaskRow[] => ((row?.holds ?? []) as TaskRow[]).filter((h) => h.source?.kind === "row" && h.midway === true);
 
 /** Scene ed: a call parked while a midway question reaches its filer, and a ring runs on its own line. */
 export async function sceneED(world: World, walked: Walked, run: { ring: boolean; question: boolean }): Promise<LegResult> {
@@ -229,7 +231,7 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
 
   // Researcher's conversation stops for Alice, so the call to it parks until its deadline.
   const stopTurn = await act(alice, researcher.flowKind, researcher.id, "respond", {
-    message: `Before anything else, call waitForUser with kind "approval" and prompt "May I publish the ${fyi} report?", and wait for my answer.`,
+    message: `Before anything else, call suspendForUser with kind "approval" and prompt "May I publish the ${fyi} report?", and wait for my answer.`,
   });
   const stop = await until(async () => {
     const stops = (await alice.routes.items(researcher.id, "suspension")).filter((i) => i.requestId === stopTurn.requestId && i.reason === "user_approval");
@@ -250,7 +252,7 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
   const logBefore = new Set((await logOf(alice)).map((m) => m.id));
   const words =
     `Do these in order, in this one turn. First, start ${HELPER_B} on a task with createTask, leaving the questions field out entirely (the task asks its own while it works), whose goal is, word for word: ` +
-    `"Write a one-line welcome for the ${topic} gala that names its venue. You don't know the venue. Your first step is to call the askQuestion tool, asking the worker who filed this task for the venue; never finish without that tool call. Then write the line." ` +
+    `"Write a one-line welcome for the ${topic} gala that names its venue. You don't know the venue. Your first step is to call the holdTaskForUser tool, asking the worker who filed this task for the venue; never finish without that tool call. Then write the line." ` +
     `Second, call sendMessage with to "${RESEARCHER}", text "What is seven times six? Answer with the number only.", wait: true and deadline: ${PARKED_CALL_MS}. ` +
     `Then tell me what you got. The ${topic} gala's venue is ${venue}. When ${HELPER_B}'s task asks you for it, answer only by calling updateTask with that task's id, the question's id as answers, and the venue as message. Don't message or call anyone about it.`;
   const requestId = (await alice.flow(helperA.flowKind).send("respond", { message: words }, { sessionId: helperA.id })).id;
@@ -272,7 +274,7 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
   const resumed = resumedAt(turn);
   const calls = (await callsIn(alice, helperA.id)).filter((c) => c.requestId === requestId && c.output != null && typeof c.output === "object");
   const call = calls.find((c) => isWait(c) && c.args.to === RESEARCHER);
-  const callId = typeof call?.output?.callId === "string" ? (call.output.callId as string) : undefined;
+  const callId = typeof call?.output?.sent === "string" ? (call.output.sent as string) : undefined;
   walked.parkedCall = callId;
   const callRow = ((await logOf(alice)) as CallRow[]).find((m) => m.id === callId);
   r.notes.push(`e: Helper A's request ${requestId} went ${turn.seen.join(" > ")}; its call ${callId} answered ${show(call?.output)}; sent ${callRow?.at}, deadline ${callRow?.deadlineAt}, went on ${resumed}`);
@@ -307,7 +309,7 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
     r.notes.push(`e: task ${filed.id} ended ${final?.status} on attempt ${final?.attempts}; question ${question?.id ?? "none"}; ${heard.length} received item(s) about it, the first at ${tsOf(heardItem)} in ${heardAction ?? "?"}`);
     if (question === undefined) {
       // Nothing for e's other assertions to grade either: each says so, so none reads as a pass.
-      for (const a of ["e:filer-hears", "e:heard-while-calling", "e:steer-releases"]) r.failures.push(`${a} — setup: Helper B's task never asked midway: ${final?.status}, questions ${show(final?.questions)}`);
+      for (const a of ["e:filer-hears", "e:heard-while-calling", "e:steer-releases"]) r.failures.push(`${a} — setup: Helper B's task never asked midway: ${final?.status}, questions ${show(final?.holds)}`);
     } else {
       // e:filer-hears — one received item from Helper B naming the task and the question, on onMessageReceived, in the filing session.
       if (heard.length !== 1 || !heard[0]!.text.includes(String(question.id)) || heardAction !== "onMessageReceived") {
@@ -379,27 +381,27 @@ export async function sceneED(world: World, walked: Walked, run: { ring: boolean
     if (!overlap) r.failures.push(`d:seventh-refused — setup: the ring didn't start while leg e's call was parked (seen parked ${parked === true}, ring ${start?.at}, call ${callRow?.at} to ${parkedUntil})`);
   }
 
-  // e:kept-once, second half — Alice answers; Helper A waits again by call id and gets the reply, once.
+  // e:kept-once, second half — Alice answers; the call's one answer reaches Helper A as a message (FIX-2318), and nothing is sent again.
   await alice.flow(researcher.flowKind).request(stopTurn.requestId!).answer({ suspensionId: String(stop.suspensionId), action: "approve" });
   await until(async () => ((await receivedIn(alice, researcher.id)).some((m) => m.id === callId) ? true : undefined), 180_000);
-  await quiet(alice, 240_000);
   if (callId !== undefined) {
-    const rowsBefore = new Set((await logOf(alice)).map((m) => m.id));
-    const callBefore = ((await logOf(alice)) as CallRow[]).find((m) => m.id === callId);
-    const kept = await talkThrough(world, "e", HELPER_A, helperA, `Your call ${callId} to ${RESEARCHER} asking what seven times six is answered running. Get its reply now: wait again on it by calling sendMessage with exactly {"callId": "${callId}"}: no wait, to or text field. Then tell me the reply.`);
-    const again = kept.calls.find((c) => c.args.callId === callId);
+    const heard = await until(async () => {
+      const got = (await receivedIn(alice, helperA.id)).filter((m) => m.from === RESEARCHER && m.inReplyTo === callId);
+      return got.length > 0 ? got : undefined;
+    }, 180_000);
+    await quiet(alice, 240_000);
     const after = (await logOf(alice)) as CallRow[];
-    const newRows = after.filter((m) => !rowsBefore.has(m.id) && m.from === HELPER_A);
     const forCall = after.filter((m) => m.id === callId);
-    if (again === undefined || again.output?.status !== "answered" || !String(again.output?.reply ?? "").includes("42")) {
-      r.failures.push(`e:kept-once — Helper A didn't wait again with call ${callId} and get the reply: ${show(kept.calls.map((c) => ({ args: c.args, output: c.output })))}`);
+    const answers = after.filter((m) => m.inReplyTo === callId);
+    if (heard === undefined || heard.length !== 1 || !heard[0]!.text.includes("42")) {
+      r.failures.push(`e:kept-once — Helper A's conversation didn't hear Researcher's answer with 42 once as a message: ${show(heard)}`);
     }
-    if (newRows.length > 0 || forCall.length !== 1 || callBefore === undefined || forCall[0]!.hop !== callBefore.hop) {
-      r.failures.push(`e:kept-once — waiting again wrote ${newRows.length} new row(s) (${show(newRows.map((m) => m.text.slice(0, 60)))}); the call has ${forCall.length} row(s), at hop ${forCall[0]?.hop} (was ${callBefore?.hop})`);
+    if (forCall.length !== 1 || forCall[0]!.waitEndedAt === undefined || answers.length !== 1) {
+      r.failures.push(`e:kept-once — the call has ${forCall.length} row(s) (wait ended ${String(forCall[0]?.waitEndedAt)}) and ${answers.length} answer row(s), not one each`);
     }
     const sentSince = after.filter((m) => !logBefore.has(m.id) && m.from === HELPER_A && m.to === RESEARCHER);
     if (sentSince.length !== 1) r.failures.push(`e:kept-once — the log holds ${sentSince.length} row(s) from Helper A to Researcher since the line, not one: ${show(sentSince.map((m) => m.id))}`);
-    r.notes.push(`e: waiting again answered ${show(again?.output)}`);
+    r.notes.push(`e: the answer after the deadline: ${show(heard)}`);
   }
   await quiet(alice, 240_000);
   return r;

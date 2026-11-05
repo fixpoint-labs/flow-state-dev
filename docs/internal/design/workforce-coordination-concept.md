@@ -29,7 +29,7 @@ worker's session, or **the engine**, starting a request for a task. It produces 
 session runs one request at a time; the rest wait in its **queue**. A request **ends** when its
 **background work** ends too; until then its session is **busy**. A request **waits** until a task,
 a call or a **condition** (an external signal, such as a webhook or a CI result) ends, or it **stops
-for a person** with `waitForUser`. Either way it is **suspended**: stored, and **resumed** from the same step; its
+for a person** with `suspendForUser`. Either way it is **suspended**: stored, and **resumed** from the same step; its
 session is **waiting**. That needs **durable execution**, a host that stores a waiting request and
 carries it on later.
 
@@ -134,7 +134,7 @@ background work included.
 row's current one before the entry runs, and settles the row once rule 6 holds (rules 2, 6, 18).
 
 **A failed attempt is retried while attempts are left.** An **attempt** fails when one of its
-requests throws or errors, its background work included, including a review or input whose `waitForUser` deadline goes unhandled
+requests throws or errors, its background work included, including a review or input whose `suspendForUser` deadline goes unhandled
 (an unhandled wait or call deadline just carries on). Its open tasks are cancelled, nothing it
 returned is recorded, and the task goes back to pending in its session, or, with no attempts left,
 fails.
@@ -226,7 +226,7 @@ deadline unless the host or the call sets one; at a set deadline the question cl
 goes on, its brief saying no answer came. Cancelling the task closes the item. A question in a turn with no task has nothing to wait on,
 so it is input, and suspends.
 
-**Midway, a request suspends** with `waitForUser({ kind, prompt, deadline? })` when its code reads
+**Midway, a request suspends** with `suspendForUser({ kind, prompt, deadline? })` when its code reads
 the answer next, `kind` being an **approval** (every one, "go ahead with the plan?" included), a
 **review** or **input**, and `deadline` opting in: with none from the call or the host, it waits until answered, stopped or cancelled. A review is a verdict the code
 reads; a revision request is new direction, a steer into a held task. A waited-on task may still
@@ -332,7 +332,7 @@ apart rows filed under one id), which the claim gate checks (`taskDispatchInputS
 `packages/core/src/types/dispatch.ts`).
 
 The model's seven tools: the filer's task tools `createTask`, `getTask`, `listTasks` and
-`updateTask`, the worker's `reportProgress`, plus `sendMessage` and `waitForUser`. `getTask` can
+`updateTask`, the worker's `reportProgress`, plus `sendMessage` and `suspendForUser`. `getTask` can
 also wait (rule 9). The filer's task tools are also public actions, not entries: a screen calls them
 as the user to cancel a task, release a held one or answer its questions. `reportProgress` isn't one. Outside the seven, every worker gets `listDelegates`; only a coordinator the user
 configured at hire to change its own delegates gets `addDelegate`, `removeDelegate` and
@@ -396,7 +396,7 @@ A behavior none of these rules explains is a bug in the model.
 5. A session holds at most one open task from the delegation board above it; another stays pending.
    Plan rows don't count.
 6. A task is done when its request ends, background work included, with a result, not suspended,
-   with no filed task open. Only `waitForUser` makes it waiting on a person.
+   with no filed task open. Only `suspendForUser` makes it waiting on a person.
    A steer is no ending. A failed attempt retries in the task's session while attempts are left.
    Cancelling, retrying or failing a task cancels its open tasks; failing or cancelling it, its
    dependents.
@@ -417,7 +417,7 @@ A behavior none of these rules explains is a bug in the model.
 10. A call returns the recipient's result; nothing is relayed or answered automatically. A send or a
     call to a busy or waiting session queues, a call up to its deadline. A message past the budget
     is refused.
-11. Every stop for a person is one Inbox item: a request suspended by `waitForUser` for an approval,
+11. Every stop for a person is one Inbox item: a request suspended by `suspendForUser` for an approval,
     a review or input its code reads next, or a task held on questions, before it starts or midway.
     Only the user answers approvals, reviews and questions asked at filing; a question asked midway
     is also messaged to the filer (FIX-2070), which may answer it by a steer unless the task is routed.
@@ -487,7 +487,7 @@ rest.
 | Dispatch, `dispatch`, dispatcher | Start work in another session; the pass that drains a delegation board; the block that does it, waiting for the result when its `wait` is true, set or followed from a plan board (a waited dispatch) |
 | Schedule | A row in a user's schedule list that files a task each time it fires |
 | Dependency, held, held on questions | A task on the same board that must end first; not started until the filer releases it; not claimed while it has an open question, asked at filing or midway, and never waiting on a person |
-| Pending, running, waiting on a person | Not yet started; worked, its request on a wait, with filed tasks open, or held midway on a question with no lease; its request suspended by `waitForUser` |
+| Pending, running, waiting on a person | Not yet started; worked, its request on a wait, with filed tasks open, or held midway on a question with no lease; its request suspended by `suspendForUser` |
 | Ending: done, failed, cancelled | Rule 6 met; out of attempts; cancelled |
 | Finished, open, settle | Ended; not ended; record a row's ending |
 | Attempt | One try at a task: every request working it in that try, resumes included; `maxAttempts` caps them |
@@ -498,9 +498,9 @@ rest.
 | Claim, claim gate, task entry | The right to record a task's ending; the step that checks it and settles the row; `work`, the action a task runs through |
 | Debt, due time, durability sweeper | What a row owes; when it's due, a few seconds out; the engine's pass that pays it |
 | Send, call, call id, budget | A message returning nothing; one whose sender waits; the call's message id, which its result is kept under; how many messages a request may still send |
-| Inbox, Inbox item | The user's screen of open Inbox items; one stop for a person: a request suspended by `waitForUser`, or a task held on questions, before it starts or midway |
-| Approval, review, input | `waitForUser`'s kinds: yes or no; the user accepts work or sends it back; a value its code reads next |
-| Question | An answer in words its task holds on, on the row, never a `waitForUser` kind |
+| Inbox, Inbox item | The user's screen of open Inbox items; one stop for a person: a request suspended by `suspendForUser`, or a task held on questions, before it starts or midway |
+| Approval, review, input | `suspendForUser`'s kinds: yes or no; the user accepts work or sends it back; a value its code reads next |
+| Question | An answer in words its task holds on, on the row, never a `suspendForUser` kind |
 | Delegate, coordinator | A worker a session may file tasks with; a worker that routes a user's messages |
 | Routed task, fit check, fallback, rounds | A task with routing's settings, which a judgment coordinator chooses per task; the model call that picks a delegate for best fit, or vets the lead a worker picked when opening a workstream; the delegate the coordinator names to take a weak pick; up to 3 passes sending answers back out |
 | Project, workstream, lead, evaluator | A body of a user's work a coordinator runs, with its own conversation; a piece of a project; the worker that runs it; a block that judges input |
@@ -569,7 +569,7 @@ Superseded:
 - A per-block timeout → a deadline on every wait and call.
 - A default deadline on every stop for a person → none unless the host or the call sets one.
 - An answer starting a new request → resuming the suspended one, same step and attempt.
-- A midway question suspending with `waitForUser` → the task holds on its row, same attempt.
+- A midway question suspending with `suspendForUser` → the task holds on its row, same attempt.
 - One Inbox record over two mechanisms → every stop is one Inbox item.
 - Moving patterns onto the in-request board → patterns are plan boards as they stand.
 - A board-level `wait` → `mode`; `dispatcher({ wait })` stays.

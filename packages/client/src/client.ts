@@ -4,20 +4,20 @@
  * Built from a user and a transport (a `baseUrl` over HTTP, or a `fetcher`
  * such as the engine's `createInProcessFetch`). Its namespaces follow how the
  * server addresses its routes: the root is the user's (flows, sessions,
- * resources, interrupted requests, the user stream); `flow(address)` holds a
+ * resources, interrupted requests, change subscriptions); `flow(address)` holds a
  * flow's actions; a request handle holds one request's lifecycle. Every call
  * and stream goes through the one transport built here.
  */
-import type { ResumeAction } from "@flow-state-dev/contracts";
+import type { ResumeAction, WireTopic } from "@flow-state-dev/contracts";
 import type { ActionConfig, FlowActionInput, RequestStatusSnapshot } from "@flow-state-dev/core/types";
 import { clientError, createTransport, requireValue, seg, topicPath, type Transport } from "./internal/http";
 import {
   openRequestStream,
   openSessionStream,
-  openUserStream,
   type SessionStreamOptions,
   type StreamResumeOptions
 } from "./stream-client/streams";
+import { createPushHub, type SubscribeOptions, type Subscription } from "./subscribe/push-hub";
 import type {
   ChildSessionSummary,
   ClientFetch,
@@ -40,9 +40,7 @@ import type {
   SessionRequestSummary,
   SessionStateSnapshotResponse,
   SessionStreamHandle,
-  SessionSummary,
-  UserSSECallbacks,
-  UserStreamHandle
+  SessionSummary
 } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -76,6 +74,9 @@ export type CreateClientOptions = {
   fetcher?: ClientFetch;
 };
 
+/** What a session listing can add to its rows ({@link ListSessionsOptions.include}). */
+export type SessionListInclude = "dispatch-runs" | "status";
+
 /** Query options for {@link Client.sessions}`.list`. */
 export type ListSessionsOptions = {
   flowKind?: string;
@@ -89,13 +90,17 @@ export type ListSessionsOptions = {
   limit?: number;
   offset?: number;
   /**
-   * Also return the sessions a dispatcher ran work in. Off by default: a
-   * listing without it returns the sessions a person started. It widens
-   * parentage only; a run of another principal, organization or tenant stays
-   * absent. A row that came in this way carries
-   * {@link SessionSummary.parentSessionId}.
+   * What the listing adds, one value or several:
+   *
+   * - `"dispatch-runs"`: also return the sessions a dispatcher ran work in.
+   *   Off by default: a listing without it returns the sessions the user
+   *   started. It widens parentage only; a run of another principal,
+   *   organization or tenant stays absent. A row that came in this way
+   *   carries {@link SessionSummary.parentSessionId}.
+   * - `"status"`: each row's {@link SessionSummary.requestStatus}, the state
+   *   of its latest request, read on the server.
    */
-  include?: "dispatch-runs";
+  include?: SessionListInclude | readonly SessionListInclude[];
   /**
    * Only the sessions whose readonly state fields hold these values: a field
    * the flow's session `stateSchema` declares `.readonly()`, set when the
@@ -253,9 +258,6 @@ export type RequestStreamOptions = RequestSSECallbacks &
     includeTrace?: boolean;
   };
 
-/** Options for {@link Client.stream}, the user stream. */
-export type UserStreamOptions = UserSSECallbacks & StreamResumeOptions;
-
 /** A flow whose actions type-check `send`, as `typeof myFlow` gives it. Types only. */
 export type TypedFlow = { actions: Record<string, ActionConfig> };
 
@@ -317,7 +319,7 @@ export interface RequestHandle {
   resume(body: ResumeSuspensionBody, options: StreamOption): Promise<Response>;
   /**
    * Answer a suspension of this request that waits for a user
-   * (`ctx.waitForUser`, or a raw `user_approval` / `user_input` stop),
+   * (`ctx.suspendForUser`, or a raw `user_approval` / `user_input` stop),
    * whatever started its run, a task's included, which `resume` refuses.
    * The server checks the caller owns the request before it reads the stop,
    * resolves it once, and continues the same request; this resolves to its
@@ -463,8 +465,16 @@ export interface Client {
      */
     interrupted(options?: { staleThresholdMs?: number }): Promise<InterruptedRequest[]>;
   };
-  /** Follow the user stream: resource and scope-state changes for this user. */
-  stream(options: UserStreamOptions): UserStreamHandle;
+  /**
+   * Hear that something under `topics` changed, and read again in
+   * `onChange`. A notice says when, never what: `onChange` gets the notice
+   * (or `null` for a connect, a reconnect or a timer tick) and makes the read
+   * the screen already makes. One socket per client, minted through this
+   * client's fetcher, on a host with push; `pollIntervalMs` reads on a timer
+   * wherever push can miss a change. Build topics with `topic.session(id)`,
+   * `topic.user()` and `topic.org()`.
+   */
+  subscribe(topics: readonly WireTopic[], options: SubscribeOptions): Subscription;
   /** Transcribe audio on the server. */
   transcribe(request: TranscribeRequest): Promise<TranscribeResponse>;
 }
@@ -484,10 +494,14 @@ export function createClient(options: CreateClientOptions): Client {
 
   const sessions: SessionsApi = {
     list: async (listOptions = {}) => {
-      const { state, ...rest } = listOptions;
+      const { state, include, ...rest } = listOptions;
       // The client's own user unless the call names another: a host without
       // sign-in narrows nothing, so no filter would list every user's.
-      const query: Record<string, QueryValue> = { ...rest, userId: rest.userId ?? userId };
+      const query: Record<string, QueryValue> = {
+        ...rest,
+        userId: rest.userId ?? userId,
+        include: typeof include === "string" || include === undefined ? include : include.join(",") || undefined
+      };
       for (const [field, value] of Object.entries(state ?? {})) query[`state.${field}`] = value;
       const payload = await t.json<{ sessions: SessionSummary[] }>("/api/flows/sessions", undefined, query);
       return payload.sessions;
@@ -602,10 +616,13 @@ export function createClient(options: CreateClientOptions): Client {
     getResourceManifest: (sessionId) => t.json(`/api/flows/sessions/${sid(sessionId)}/manifest`)
   };
 
+  const capabilities = (): Promise<FlowCapabilities> => t.json<FlowCapabilities>("/api/flows/capabilities");
+  const push = createPushHub({ transport: t, userId, capabilities });
+
   const client: Client = {
     userId,
     flows: async () => (await t.json<{ flows: FlowListEntry[] }>("/api/flows")).flows,
-    capabilities: () => t.json<FlowCapabilities>("/api/flows/capabilities"),
+    capabilities,
     flow: <TFlow extends TypedFlow = UntypedFlow>(address: string) => flowHandle<TFlow>(t, userId, address),
     sessions,
     resources,
@@ -640,14 +657,7 @@ export function createClient(options: CreateClientOptions): Client {
         );
       }
     },
-    stream: ({ startingAfter, lastEventId, dedupWindowSize, ...callbacks }) =>
-      openUserStream(
-        {
-          fetcher: t.fetcher,
-          url: t.url(`/api/flows/users/${seg(userId)}/stream`, { starting_after: startingAfter })
-        },
-        { ...callbacks, startingAfter, lastEventId, dedupWindowSize }
-      ),
+    subscribe: (topics, subscribeOptions) => push.subscribe(topics, subscribeOptions),
     transcribe: (request) => {
       const mediaType = request.mediaType ?? "audio/webm";
       const body =

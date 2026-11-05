@@ -80,7 +80,7 @@ import {
 } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
-import { RESPOND_ACTION } from "./worker-door";
+import { doorTask, RESPOND_ACTION } from "./worker-door";
 import { declareBuiltInRoles } from "./worker-roles";
 import { routedTaskHistory } from "./coordinator/routed-brief";
 import { withTaskEndingReads } from "./conversation-board/task-ending-read";
@@ -130,6 +130,13 @@ export const AGENT_FLOW = "agent";
  * `"intent/utility"`.
  */
 const DEFAULT_MODEL = "intent/chat";
+
+/**
+ * How many model steps a worker's turn may take when the app sets no
+ * `maxSteps`: above core's generator cap (8), since a worker spends a step per
+ * lookup (glob, read, grep) before it can answer.
+ */
+const DEFAULT_MAX_STEPS = 50;
 
 /**
  * Where up-front skill matching publishes its result, when a worker turns it on.
@@ -374,8 +381,8 @@ export interface AgentWorkerFlowOptions {
    * How many model steps a turn may take: each step is one model call, and a
    * step that calls tools leads to another. The last one offers no tools, so a
    * worker still looking things up answers with what it found. Defaults to
-   * the generator's own cap (8). Raise it for workers that dig: a researcher
-   * reading a large repository spends a step per lookup.
+   * {@link DEFAULT_MAX_STEPS} (50). Raise it for workers that dig further: a
+   * researcher reading a whole repository spends a step per file.
    */
   maxSteps?: number;
   /**
@@ -1125,7 +1132,8 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       //
       // The default layer is the shared default worker prompt (contract C1),
       // owned by FIX-2334: who the worker is and who it can reach, read from
-      // the roster, then one rule on using tools (`messages/worker-identity`).
+      // the roster, then the rule to work things out first (FIX-2364,
+      // `messages/worker-identity`).
       // Fixed text, on an installation only; later default text joins it as a
       // line, not a second entry. Do not grow this into a compose helper, a
       // registry or a type: an org-wide layer of configurable text is the
@@ -1180,7 +1188,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       // A worker still looking things up when its steps run out answers with
       // what it found, rather than ending its turn with nothing said: a sender
       // waiting on its reply would otherwise hear "no answer" (FIX-2347).
-      loop: { answerOnLastStep: true, ...(options.maxSteps === undefined ? {} : { maxIterations: options.maxSteps }) }
+      loop: { answerOnLastStep: true, maxIterations: options.maxSteps ?? DEFAULT_MAX_STEPS }
     });
 
   // The answer's two generator names, which its messages carry as `agentName`.
@@ -1438,7 +1446,7 @@ function defineAgentFlowAround(
       // A reply: its notice waits for it to end. In a task session whose task
       // is open, the line steers the task instead (FIX-2086).
       [RESPOND_ACTION]: {
-        inputSchema: installation !== undefined ? inputSchema.strict() : inputSchema,
+        ...doorTask(installation !== undefined ? inputSchema.strict() : inputSchema),
         block: steerOrTalk(userTurn),
         userMessage: (input) => input.message,
         concurrency: REPLY_CONCURRENCY

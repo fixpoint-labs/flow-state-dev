@@ -1,8 +1,10 @@
 /**
  * A message that asks for a reply gets one (FIX-2310): the obligation a
  * reply-requested message puts on the session that lands it, and the one way
- * it is met. The sender went on without waiting, so nothing waits on the
- * recipient's turn; the answer reaches the sender as a message.
+ * it is met. The answer reaches the sender as a message, or, while the sender
+ * still waits for it (`wait: true`, FIX-2318), as that wait's tool result:
+ * the send holds it for the wait instead of dispatching it
+ * (`./wait-for-reply`). Either way it is one answer, sent one way.
  *
  * There is one reply path: `sendMessage` with `inReplyTo`. The recipient's
  * model may take it itself, during its turn. When it doesn't, the framework
@@ -14,8 +16,7 @@
  * One case the turn's end can't reach: the server died mid-turn. So the
  * landing request owes its session's pass (as a send owes it for delivery,
  * FIX-2240): the pass answers "no answer" for a message whose landing request
- * ended without one. A call (`wait: true`) never owes one here: its reply is
- * its tool's result.
+ * ended without one.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { hasEnded, NOTICE_DUE_MS } from "@flow-state-dev/orchestration/tasks";
@@ -29,9 +30,9 @@ import { sendMessage } from "./send-message";
 /** The block name the framework's answer is dispatched from. */
 const OWED_REPLY_FROM = "message-received-answer";
 
-/** Whether `row` asks its recipient for a reply the framework owes: reply-requested, and not a call. */
-export function wantsReply(row: Pick<WorkerMessageRow, "replyRequested" | "call">): boolean {
-  return row.replyRequested === true && row.call !== true;
+/** Whether `row` asks its recipient for a reply the framework owes. */
+export function wantsReply(row: Pick<WorkerMessageRow, "replyRequested">): boolean {
+  return row.replyRequested === true;
 }
 
 /** The id the framework's answer to `messageId` is sent under: one per message, whichever request sends it. */

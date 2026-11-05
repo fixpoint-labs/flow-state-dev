@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { TaskRow } from "../src/adapter";
-import { columnOf } from "../src/lib/columns";
+import { columnOf, waitingOnYou } from "../src/lib/columns";
 
 const task = (patch: Partial<TaskRow>): TaskRow => ({ id: "t", title: "t", goal: "g", status: "in_progress", ...patch });
 
@@ -28,5 +28,20 @@ describe("columnOf", () => {
   it("puts a pinned task under Pinned whatever its status", () => {
     expect(columnOf(task({ status: "in_progress", waitingOn: { kind: "review", prompt: "x" } }), true)).toBe("pinned");
     expect(columnOf(task({ status: "completed" }), true)).toBe("pinned");
+  });
+});
+
+describe("waitingOnYou", () => {
+  it("counts what you owe a session: questions, input, reviews and failures, never work under way or done", () => {
+    const tasks = [
+      task({ status: "held", waitingOn: { kind: "question", prompt: "EU or US?" } }),
+      task({ status: "in_progress", waitingOn: { kind: "review", prompt: "Draft attached" } }),
+      task({ status: "errored" }),
+      task({}),
+      task({ status: "held" }),
+      task({ status: "completed" }),
+      task({ status: "cancelled" }),
+    ];
+    expect(waitingOnYou(tasks)).toBe(3);
   });
 });

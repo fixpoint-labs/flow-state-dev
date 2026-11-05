@@ -5,25 +5,46 @@
  * unavailable mode, wherever it was reached from.
  *
  * A server component. Each harness address (`app/claude-code`, `app/codex`,
- * `app/cursor`) renders it on every request from the same once-per-start
- * answer the picker reads.
+ * `app/cursor`) renders it on every request from the same answer the picker
+ * reads (`openableAvailability`): a mode whose flow wasn't registered at
+ * start stays closed here even after a Re-check finds it ready. It also works out, per request, the header line
+ * each session shows about what its harness loads from the repository.
  */
 import Link from "next/link";
 
 import { HarnessModeView } from "@/components/harness-mode-view";
-import { modeAvailability } from "@/lib/harness-gate";
+import { claudeCodeRepoLine } from "@/lib/claude-code-mode";
+import { codexRepoLine } from "@/lib/codex-mode";
+import { cursorRepoLine } from "@/lib/cursor-mode";
+import { openableAvailability } from "@/lib/harness-gate";
+import type { RepoLine } from "@/lib/harness-trust";
 import { harnessModelChoices } from "@/lib/harness-models";
 import { flowKindOf, modeById, type HarnessModeId } from "@/lib/modes";
+
+/** Each harness mode's header line, from the same options its runs are built with. */
+const REPO_LINES: Record<HarnessModeId, () => RepoLine> = {
+  "claude-code": () => claudeCodeRepoLine(),
+  codex: () => codexRepoLine(),
+  cursor: () => cursorRepoLine(),
+};
 
 /** The page for the harness mode `id`. */
 export async function HarnessModePage({ id }: { id: HarnessModeId }) {
   const mode = modeById(id);
-  const availability = (await modeAvailability())[id];
+  const availability = (await openableAvailability())[id];
   // Trusted: the gate makes a harness mode available only once it has a flow kind.
   if (availability.available) {
     // Asked on each request, so a list that couldn't be read is asked for again.
     const models = await harnessModelChoices(id);
-    return <HarnessModeView label={mode.label} flowKind={flowKindOf(mode)} note={availability.note} models={models} />;
+    return (
+      <HarnessModeView
+        label={mode.label}
+        flowKind={flowKindOf(mode)}
+        note={availability.note}
+        models={models}
+        repoLine={REPO_LINES[id]()}
+      />
+    );
   }
   const reason = availability.reason;
   return (
@@ -33,6 +54,11 @@ export async function HarnessModePage({ id }: { id: HarnessModeId }) {
         <p className="mt-2 break-words text-sm" data-testid="mode-reason">
           {reason}
         </p>
+        {availability.remedy !== undefined && (
+          <p className="mt-2 break-words text-sm" data-testid="mode-remedy">
+            {availability.remedy}
+          </p>
+        )}
         <Link href="/" className="mt-6 inline-block text-sm underline underline-offset-4">
           Back to the modes
         </Link>

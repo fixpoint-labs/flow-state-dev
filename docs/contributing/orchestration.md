@@ -49,7 +49,9 @@ the project-spec, deliberately has no lifecycle of its own (see below).
 - **Worker sub-agents** — token-isolated agents the coordinator/lifecycle dispatch so heavy
   work happens in *their* context and only a compact summary returns:
   - `issue-worker` (worktree) — advances one issue by one lifecycle step.
-  - `epic-agent` (worktree) — authors/maintains one epic-spec.
+  - `epic-agent` (worktree) — authors/maintains one epic-spec, and writes the epic's
+    [spec set](#the-spec-set-one-pr-for-the-epics-issue-specs) by fanning out to one
+    `issue-spec` sub-agent per child.
   - `poc-agent` (worktree, Sonnet) — settles one disputed factual claim with a throwaway POC.
   - `scout` (Haiku) — read-only status/handle fetches.
   - `spec-implementer` (Opus) — implements one slice of an approved spec, planning its own build.
@@ -66,6 +68,9 @@ the project-spec, deliberately has no lifecycle of its own (see below).
     never appears there.
   - `issue-multi-pr` — one step of a multi-PR issue's DAG: ready set, base selection, rebase
     after a dependency merges, and the assembled end-to-end goal.
+
+  `app-review.js` lives beside them under the same contract and harness. It isn't a lifecycle
+  step; it is the fan-out of the standalone `app-review` skill.
 
   **A script cannot wait, prompt, subscribe, or touch the filesystem.** So every *gate*, every
   PR subscription, the `.orchestration/` store, and turn-ending stay with the coordinator; the
@@ -216,6 +221,7 @@ defines storage and authority; the template defines what each reader is owed.
   Existing branches need not be renamed.
 - **Merge after objective approval and required checks**, before ramping children. The
   original PR then remains the historical review record; wrap does not close it unmerged.
+  The children's specs follow it in one [spec-set PR](#the-spec-set-one-pr-for-the-epics-issue-specs).
 - **Linear carries status and links**, not a second spec copy. Discovery stays native:
   a work issue's epic is its parent carrying the `Epic` Kind label.
 - **Authored/maintained by `epic-agent`**, dispatched for a bounded change to the existing
@@ -400,7 +406,7 @@ route decides whether it has a spec-approval gate at all.
 
 | Route | Taken by | Artifact before code | Gate before code |
 |---|---|---|---|
-| **Spec route** (default) | Feature · Enhancement · Improvement — anything whose *approach* is a decision | A spec (`spec-template.md`), reviewed as its own PR | Spec approval |
+| **Spec route** (default) | Feature · Enhancement · Improvement — anything whose *approach* is a decision | A spec (`spec-template.md`), reviewed in its epic's [spec-set PR](#the-spec-set-one-pr-for-the-epics-issue-specs), or as its own PR outside one | Spec approval |
 | **Direct route** | **Bug** | None. The Linear issue is the contract | **None** — the implementation PR is where the fix is reviewed |
 
 **Why a bug skips it.** The hard part of a bug is the *diagnosis*, and diagnosis happens
@@ -459,11 +465,58 @@ label on every refresh, so relabelling an issue re-routes it. When the category 
 read, the route defaults to **spec** — failing closed keeps the gate, and the cost of
 being wrong in that direction is one unnecessary document rather than ungated code.
 
+## The spec set (one PR for the epic's issue specs)
+
+An epic runs on **two spec PRs**, in order. The first is the epic spec: its outcome and
+cross-cutting decisions, signed off on their own. The second is the **spec set**: every
+spec-route child's issue spec, written at once and reviewed as a set, in one PR. Specs written
+one at a time and reviewed one at a time miss what only shows up across them, such as two specs
+claiming one surface, one deciding what another assumes, or a seam neither owns. The spec set is
+there to catch those before anything is approved.
+
+| Step | What happens | Who |
+|---|---|---|
+| 1. Epic spec merges | The epic's objective gate, unchanged | `epic-agent`, then the owner |
+| 2. Fan out | One `issue-spec` sub-agent per spec-route child, in parallel. Each writes only `specs/issues/<ISSUE-ID>/`, on its own branch off fresh `main`, and opens no PR | `epic-agent` (**Spec set** action) |
+| 3. Assemble | The branches merge into one spec-set branch. The paths don't overlap, so a conflict means a sub-agent wrote outside its directory | `epic-agent` |
+| 4. Review as a set | `cross-spec-review` over the set against the epic spec, then `analysis` and `reuse-review` over the set. Findings are folded before the PR opens | `epic-agent`'s sub-agents |
+| 5. One PR, one gate | Codex reviews it; the two-round budget applies to the PR, not per spec. One approval and one merge release every member | the owner |
+| 6. Implement | Each member implements on its own branch from `main`, in parallel, as today | `issue-worker` |
+
+**The spec set may amend the epic.** When reviewing the set shows an epic decision is wrong,
+the fix goes in the same PR, in `specs/epics/<EPIC-ISSUE-ID>/DECISIONS.md`. Every such edit is
+listed at the top of the PR body under **Epic amendments**, so approving the set is knowingly
+approving them too. This avoids an epic amendment PR that the spec set would have to wait for.
+
+**What the set leaves alone:**
+
+- **Bugs** stay on the [direct route](#which-issues-get-a-spec-the-two-routes). They are not in
+  the set and don't wait for it, only for the epic spec.
+- **A child that joins later**, after the spec-set PR opens, or one the set left out, gets its
+  own spec PR, exactly as before. It missed the set review, so it is held for the
+  [cross-spec pass](../../.agents/skills/epic-lifecycle/SKILL.md#cross-spec-coherence-gated-on-your-approval)
+  against the members before it is built. The members aren't held by it.
+- **Epics already running** finish on per-issue spec PRs. The coordinator opts an epic in
+  (`specSetMode`) when it creates it.
+
+**A decision raised while writing the set pauses all of it.** The set isn't re-formed around the
+open question. Once the user answers, the next set dispatch carries the answer. The same holds once
+the PR is open: a decision on any member parks every member, and the PR gets no gate until it's answered.
+
+**One weak spec holds the set.** Approval covers every member, so a spec that isn't ready
+delays all of them. The way out is to drop that issue from the set PR: it goes back to needing
+a spec and gets its own spec PR, and the rest can be approved.
+
+**The mechanics are `epic-wake`'s.** It collapses the waiting children into one `spec-set`
+dispatch, runs at most one dispatch per unmerged spec-set PR per wake (members share a
+branch), charges a review round to every member at once, and surfaces one approval gate and one
+merge gate per spec-set PR, each naming every member.
+
 ## Gates (direction approval, then confirmed merge)
 
 | Gate | Human direction signal | Release condition | Blocks |
 |---|---|---|---|
-| **Spec approval** | The owner merging the spec PR, in-session human go-ahead on the reviewed head, a non-owner non-author human approving comment or review with no agent header, or an owner-applied `spec approved` label bound to that head. An owner-login review or comment is not this signal | Confirmed spec PR merge (an owner merge is approval and merge at once; any other approval still needs required checks and a MERGE-ONLY merge) | Implementing the issue |
+| **Spec approval** (one per spec PR: a spec-set PR is one gate for all its members) | The owner merging the spec PR, in-session human go-ahead on the reviewed head, a non-owner non-author human approving comment or review with no agent header, or an owner-applied `spec approved` label bound to that head. An owner-login review or comment is not this signal | Confirmed spec PR merge (an owner merge is approval and merge at once; any other approval still needs required checks and a MERGE-ONLY merge) | Implementing the issue |
 | **Epic objective** | The owner merging the epic spec PR, in-session human go-ahead on the reviewed head, a non-owner non-author human approving comment or review with no agent header, or an owner-applied `epic approved` label bound to that head. An owner-login review or comment is not this signal | Confirmed epic spec PR merge (an owner merge is approval and merge at once; any other approval still needs required checks and a MERGE-ONLY merge) | Ramping the epic's children |
 
 Approval signs off **direction**, not finished implementation detail. Ask it as a
@@ -594,7 +647,7 @@ not an approval channel or independently edited full-content mirror.
 flowchart LR
   EP[epic direction approved] --> EC[required checks] --> EM[epic spec merged]
   EM --> RT{issue route}
-  RT -->|feature| SP[spec direction approved] --> SC[required checks] --> SM[spec merged]
+  RT -->|feature| SP[spec-set direction approved] --> SC[required checks] --> SM[spec set merged]
   SM --> I[implement]
   RT -->|bug| I
   I --> F[implementation review] --> M[human-controlled implementation merge]

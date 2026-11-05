@@ -96,9 +96,10 @@ function stubHarness(
   started: () => void,
   whenStopped: Array<() => Promise<void>> = [],
   live: Live = { answers: [], lines: 1, handed: [] },
+  declares?: boolean,
 ) {
   return (feeds: HarnessFeeds): HarnessBlock =>
-    handler({
+    Object.assign(handler({
       name: "stub-harness",
       inputSchema: harnessRunInputSchema,
       outputSchema: harnessRunHandleSchema,
@@ -182,10 +183,14 @@ function stubHarness(
         }
         return handle;
       },
-    }) as unknown as HarnessBlock;
+    }), declares === undefined ? {} : { stopsOnAbort: declares }) as unknown as HarnessBlock;
 }
 
-function host(options: { script: Step[]; stopsOnAbort: boolean; live?: Omit<Live, "handed"> }) {
+/**
+ * `stopsOnAbort` is the manager's option, absent when not given; `declares`
+ * is the harness block's own `stopsOnAbort` (FIX-2312), unstamped when not given.
+ */
+function host(options: { script: Step[]; stopsOnAbort?: boolean; declares?: boolean; live?: Omit<Live, "handed"> }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-steer-"));
   dirs.push(dir);
   const sourceRepo = join(dir, "repo");
@@ -216,8 +221,8 @@ function host(options: { script: Step[]; stopsOnAbort: boolean; live?: Omit<Live
     workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
-    stopsOnAbort: options.stopsOnAbort,
-    harness: stubHarness(options.script, seen, started, whenStopped, live),
+    ...(options.stopsOnAbort === undefined ? {} : { stopsOnAbort: options.stopsOnAbort }),
+    harness: stubHarness(options.script, seen, started, whenStopped, live, options.declares),
   });
   const board = taskBoard({
     name: "steer-board",
@@ -400,6 +405,45 @@ describe("a steer reaches a coding run", () => {
       expect(h.seen[1]!.request).toBe(h.seen[0]!.request);
       expect(done).toMatchObject({ attempts: 1 });
       expect(done.steers).toEqual([expect.objectContaining({ takenBy: 1 })]);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("stops a step on a harness that declares stopsOnAbort, with no manager option", async () => {
+    const h = host({ script: ["until-stopped", "finished"], declares: true });
+    try {
+      await h.act("seed");
+      const first = h.stepStarted();
+      await h.act("drain");
+      await first;
+
+      await h.act("steer", { message: "Use the v2 API instead." });
+      const done = await h.until((t) => t.status === "completed", "the run to complete", 10_000 + STEER_POLL_MS);
+
+      expect(h.seen).toHaveLength(2);
+      expect(h.seen[1]!.prompt).toContain("Use the v2 API instead.");
+      expect(h.seen[1]!.request).toBe(h.seen[0]!.request);
+      expect(done).toMatchObject({ attempts: 1 });
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("leaves a step running on a harness that declares stopsOnAbort when the manager is told not to stop", async () => {
+    // The host's word wins: told off, the manager stops nothing for a steer.
+    const h = host({ script: ["until-stopped", "finished"], stopsOnAbort: false, declares: true });
+    try {
+      await h.act("seed");
+      const first = h.stepStarted();
+      await h.act("drain");
+      await first;
+
+      await h.act("steer", { message: "Use the v2 API instead." });
+      await new Promise((resolve) => setTimeout(resolve, 3 * STEER_POLL_MS));
+      expect(h.seen).toHaveLength(1);
+      expect((await h.row()).steers?.[0]?.takenBy).toBeUndefined();
+      await h.act("cancel");
     } finally {
       await h.dispose();
     }

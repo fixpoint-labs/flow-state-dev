@@ -22,18 +22,20 @@
  *      key and a Claude credential. The checkout's worktrees and branches the
  *      leg made are removed after it, pass or fail.
  *   c  no credential (no ANTHROPIC_API_KEY, no CLAUDE_CODE_OAUTH_TOKEN, an empty
- *      home), as `start` and as `dev` (`--dev`) run it: the process exits
- *      non-zero before it listens, and its output names `ANTHROPIC_API_KEY`
- *      and `DEVFORCE_LAB_HARNESS=stub`.
+ *      home), as `start` and as `dev` (`--dev`) run it: the Lab still listens
+ *      with Claude Code as its coder, its log has a not-ready Claude Code row
+ *      naming `ANTHROPIC_API_KEY`, and the projects flow's `harnessReadiness`
+ *      action returns Claude Code not ready with that remedy (FIX-2391).
  *
  * `GOAL_LEG=a,c` runs only those legs (default: all three). An empty or
  * unknown selection is refused, so no run passes by checking nothing.
  *
  * Controls:
  *   GOAL_CONTROL=silent-stub  `harness.mts` patched, in the process under test only,
- *                             to fall back to the scripted coder when there is no
- *                             account, saying nothing. Leg c must FAIL on
- *                             `c:exit-before-listening`, in both forms.
+ *                             to fall back to the scripted coder, saying nothing
+ *                             about Claude Code. Leg c must FAIL on
+ *                             `c:coder-stays-claude-code` and `c:logs-what-to-set`,
+ *                             in both forms.
  *   GOAL_CONTROL=no-checkout  the profile patched, in the process under test only,
  *                             to open its Lab with no checkout mapping. Leg b must
  *                             FAIL on `b:worktrees-in-checkout`, with each run
@@ -47,6 +49,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync } from "n
 import { join, sep } from "node:path";
 import { goalTmpDir, intentFreeEnv, keysServing, modulePatchEnv, assertPatched, describePatches, runGoal, RUN_STAMP, REPO_ROOT, repoPath, type ModulePatch } from "../../lib/index.mts";
 import { buildShiftManagerPages, devteamShiftCoordinatorModel, labApi, labRoutes, servedAddresses } from "../../lib/shift-manager.mts";
+import { HARNESS_READINESS_ACTION, PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const ALL_LEGS = ["a", "b", "c"] as const;
@@ -58,12 +61,17 @@ const SCRIPT = repoPath("packages", "shift-manager", "scripts", "checkout.mts");
 const TSX = repoPath("node_modules", ".bin", "tsx");
 const REPOSITORY = "https://github.com/fixpoint-labs/flow-state-dev.git";
 
-/** The silent-stub control: no account falls back to the scripted coder, and says nothing. */
+/** The silent-stub control: the Lab falls back to the scripted coder, and says nothing about Claude Code. */
 const SILENT_STUB: ModulePatch[] = [
   {
     module: "packages/shift-manager/teams/devteam/harness.mts",
-    from: 'if \\(account\\.status !== "account"\\) throw new Error\\(refusalOf\\(account\\)\\);',
-    to: 'if (account.status !== "account") return selectHarness("stub", stepMs);',
+    from: "const harness = selectHarness\\(value, stepMs, defaultChoice\\);",
+    to: 'const harness = selectHarness("stub", stepMs, defaultChoice);',
+  },
+  {
+    module: "packages/shift-manager/teams/devteam/harness.mts",
+    from: "const table = readiness\\.read\\(\\)\\.then\\(\\(rows\\) => log\\(formatHarnessReadiness\\(rows\\)\\)\\);",
+    to: "const table = Promise.resolve();",
   },
 ];
 
@@ -302,7 +310,7 @@ await runGoal(async (failures) => {
     }
   }
 
-  // ---- (c) no credential: refused before it listens, as `start` and as `dev` --
+  // ---- (c) no credential: it starts, on Claude Code, and says what to set ---
   if (LEGS.has("c")) {
     for (const form of ["start", "dev"] as const) {
       const home = mkdtempSync(join(SCRATCH, "empty-home-"));
@@ -312,17 +320,28 @@ await runGoal(async (failures) => {
       delete env.CLAUDE_CODE_OAUTH_TOKEN;
       if (CONTROL === "silent-stub" && form === "start") console.error(describePatches(SILENT_STUB, REPO_ROOT));
       const started = await startScript(env, form);
-      const code = started.origin === undefined ? await started.exited : undefined;
-      await started.stop();
-      if (CONTROL === "silent-stub") assertPatched(SILENT_STUB, REPO_ROOT, mark);
-      const log = started.log();
-      if (started.origin !== undefined || code === 0) {
-        note(`c:exit-before-listening (${form})`, started.origin !== undefined ? `it listened at ${started.origin}` : "it exited 0");
+      try {
+        if (started.origin === undefined) {
+          note(`c:starts (${form})`, `it exited ${await started.exited} before listening: ${started.log().slice(-600)}`);
+          continue;
+        }
+        if (CONTROL === "silent-stub") assertPatched(SILENT_STUB, REPO_ROOT, mark);
+        const log = started.log();
+        const coderLine = log.split("\n").find((l) => l.startsWith("Coder:")) ?? "";
+        if (!coderLine.includes("Claude Code")) note(`c:coder-stays-claude-code (${form})`, `start line: ${coderLine || "none"}`);
+        const row = log.split("\n").find((l) => l.includes("✗ Claude Code")) ?? "";
+        if (!row.includes("ANTHROPIC_API_KEY")) note(`c:logs-what-to-set (${form})`, `no not-ready Claude Code row naming ANTHROPIC_API_KEY: ${JSON.stringify(row || log.slice(-600))}`);
+        const user = await pageUser(started.origin);
+        const person = { userId: user.userId, bearer: user.bearerToken ?? "" };
+        const read = await labRoutes(started.origin, person).act(PROJECTS_FLOW, `${PROJECTS_FLOW}-own-${user.userId}`, HARNESS_READINESS_ACTION, {});
+        const claude = ((read.output as { harnesses?: Array<{ harness: string; ready: boolean; remedy: string | null }> } | undefined)?.harnesses ?? []).find((r) => r.harness === "claude-code");
+        if (read.status !== "completed" || claude?.ready !== false || !String(claude.remedy).includes("ANTHROPIC_API_KEY")) {
+          note(`c:read-says-what-to-set (${form})`, `${read.status}: ${JSON.stringify(claude ?? read.error ?? null)}`);
+        }
+        evidence.push(`c (${form}): listened; "${coderLine}"; ${row.trim().slice(0, 200)}; read ${JSON.stringify(claude ?? null).slice(0, 200)}`);
+      } finally {
+        await started.stop();
       }
-      const missing = ["ANTHROPIC_API_KEY", "DEVFORCE_LAB_HARNESS=stub"].filter((v) => !log.includes(v));
-      if (missing.length > 0) note(`c:names-the-variable (${form})`, `the output does not name ${missing.join(" or ")}`);
-      const said = log.split("\n").find((l) => l.includes("ANTHROPIC_API_KEY")) ?? "";
-      evidence.push(`c (${form}): exited ${code} before listening: ${said.trim().slice(0, 200)}`);
     }
   }
 

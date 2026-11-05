@@ -158,13 +158,13 @@ mechanisms:
     doc: docs/architecture/generator-identity.md
 
   - id: token-estimate
-    job: Count or estimate tokens and price a model call. One place for it; a private estimator copy in another package is a duplicate.
+    job: Count or estimate tokens and price a model call. One place for it; a private estimator copy in another package is a duplicate. The engine counts with `estimateTokenCounter` when a flow sets no `tokenCounter`, and hands blocks the flow's counter as `ctx.tokenCounter`.
     package: "@flow-state-dev/core"
-    anchor: modelPricingEstimator
-    file: packages/core/src/adapters/model-lookup.ts
+    anchor: estimateTokenCounter
+    file: packages/core/src/adapters/token-counter.ts
     builtOn: [model]
     overlaps: []
-    status: unconfirmed
+    status: canonical
     doc: packages/core/README.md
 
   - id: prompt
@@ -199,13 +199,13 @@ mechanisms:
 
   # ── Waiting, dispatch and execution ───────────────────────────────────────
   - id: suspension
-    job: Park a request until the user answers. The call site is ctx.waitForUser; the exported function is waitForUserOn.
+    job: Suspend a request (the turn) until the user answers, and resume it with the answer. The call site is ctx.suspendForUser (a model's suspendForUser tool); the exported function is suspendForUserOn; suspendForUserKindOf reads which stop it is.
     package: "@flow-state-dev/core"
-    anchor: waitForUserOn
-    file: packages/core/src/types/wait-for-user.ts
+    anchor: suspendForUserOn
+    file: packages/core/src/types/suspend-for-user.ts
     builtOn: [execution]
     overlaps:
-      - { id: task, relation: distinct-jobs, note: "A suspension parks the request. The task row's `holds` list says what the user holds the row on, and mirrors a suspension hold. One wait, two records; don't add a third." }
+      - { id: task, relation: distinct-jobs, note: "A suspension stops the request; a hold stops the task. A task run's suspension is mirrored as one hold in the row's `holds`, beside its question holds (holdTaskForUser). One stop, two records; don't add a third." }
     status: canonical
     doc: docs/architecture/execution-and-errors.md
 
@@ -216,7 +216,7 @@ mechanisms:
     file: packages/core/src/types/wait-gate.ts
     builtOn: [suspension]
     overlaps:
-      - { id: suspension, relation: distinct-jobs, note: "waitForUser parks for the user; parkOnWait parks on a gate something else releases. The answer shapes differ." }
+      - { id: suspension, relation: distinct-jobs, note: "suspendForUser parks for the user; parkOnWait parks on a gate something else releases. The answer shapes differ." }
     status: canonical
     doc: docs/architecture/execution-and-errors.md
 
@@ -293,6 +293,31 @@ mechanisms:
     overlaps: []
     status: canonical
     doc: packages/engine/README.md
+
+  - id: change-bus
+    job: Tell whoever watches a scope (session, user, org, optionally one resource) that something under it changed, never what. Request and session writes publish through one wrapper; the session stream wakes on it. The `bus` slot of a stores profile; in memory by default, Postgres as the first adapter that crosses processes.
+    package: "@flow-state-dev/engine"
+    anchor: createInMemoryBus
+    file: packages/engine/src/bus/in-memory-bus.ts
+    adapters: ["@flow-state-dev/store-postgres"]
+    builtOn: [store]
+    overlaps:
+      - { id: streaming, relation: distinct-jobs, note: "streaming sends one request's item log and ends with it; a bus topic is a scope's and outlives every request." }
+      - { id: task-notice, relation: distinct-jobs, note: "task-notice turns a task's ending into a notice owed to the session that filed it; a change notice is a best-effort wake with no rows." }
+    status: canonical
+    doc: packages/engine/README.md
+
+  - id: push-delivery
+    job: Carry change notices from the bus to a browser, so a screen reads again when something it shows changes. A mint checks each topic with its scope's read check and signs a short ticket; a socket hears only ticketed topics; `client.subscribe` keeps one socket per client and reads on a timer wherever push can miss a change.
+    package: "@flow-state-dev/engine"
+    anchor: enablePushDelivery
+    file: packages/engine/src/push/push-delivery.ts
+    adapters: ["@flow-state-dev/node"]
+    builtOn: [change-bus]
+    overlaps:
+      - { id: streaming, relation: distinct-jobs, note: "streaming sends a request's or a session's items themselves; push delivery sends only that a topic changed, and the client reads." }
+    status: canonical
+    doc: apps/docs/guides/realtime.md
 
   # ── Transports and hosts ──────────────────────────────────────────────────
   - id: inbound-transport
@@ -433,7 +458,7 @@ mechanisms:
 
   # ── Orchestration ─────────────────────────────────────────────────────────
   - id: task
-    job: One row of work on a board. Claim orders (fifo, priority, topological) pick a pending row; the row carries status, attempts and holds.
+    job: One row of work on a board. Claim orders (fifo, priority, topological) pick a pending row; the row carries status, attempts and holds. A hold keeps a row from being claimed, the filer's (status held) or the user's (`holds`, a question, a confirm, or a run's suspension mirrored). isClaimable is the one claim predicate over both.
     package: "@flow-state-dev/orchestration"
     anchor: defineTaskCollection
     file: packages/orchestration/src/tasks/collection/define-task-collection.ts
@@ -622,13 +647,14 @@ mechanisms:
     doc: packages/workforce/README.md
 
   - id: worker-messages
-    job: Let one worker message another on its user's roster. Talk, not delegation; no task row.
+    job: Let one worker message another on its user's roster. Talk, not delegation; no task row. One way to get an answer (FIX-2318). A message that asks for a reply (replyRequested, or wait to wait for it in the turn) gets exactly one answer, sent through sendMessage inReplyTo; a waited answer is held as the tool's result, a late one lands as a message. consultSessionHistory reads a conversation without waking it.
     package: "@flow-state-dev/workforce"
     anchor: sendMessage
     file: packages/workforce/src/messages/send-message.ts
-    builtOn: [workforce, dispatch]
+    builtOn: [workforce, dispatch, wait-gate]
     overlaps:
       - { id: task, relation: distinct-jobs, note: "Delegation files a task row; a message files nothing. A second way to reach a worker would be a third." }
+      - { id: wait-gate, relation: distinct-jobs, note: "sendMessage({ wait }) parks on the one wait gate, as getTask({ wait }) does; the gate is the park, this row is the reply. There is no second reply path (the call's was removed by FIX-2318)." }
     status: canonical
     doc: packages/workforce/README.md
 
@@ -672,9 +698,20 @@ mechanisms:
     status: unconfirmed
     doc: packages/workforce/README.md
 
+  - id: worker-door
+    job: A worker's door, `respond`, the one public action a user's line enters any worker by, and whether it takes the task the line is sent from (doorTask). The hire's contract check and the inventory row both read it.
+    package: "@flow-state-dev/workforce"
+    anchor: workerDoorOf
+    file: packages/workforce/src/worker-door.ts
+    builtOn: [flow, workforce]
+    overlaps:
+      - { id: worker-messages, relation: distinct-jobs, note: "The door takes a user's line into a worker's session; worker messages are one worker talking to another." }
+    status: unconfirmed
+    doc: packages/workforce/README.md
+
   # ── Coding harnesses ──────────────────────────────────────────────────────
   - id: coding-harness
-    job: Drive a coding agent as a block. Core owns the neutral handle; Claude Code, Codex and Cursor are adapters. Each adapter still keeps its own copy of the event-to-item emit helper.
+    job: Drive a coding agent as a block. Core owns the neutral handle and what a harness declares about its abort (`stopsOnAbort`, read by harness-manager); Claude Code, Codex and Cursor are adapters. Each adapter still keeps its own copy of the event-to-item emit helper.
     package: "@flow-state-dev/core"
     anchor: harnessRunHandleSchema
     file: packages/core/src/types/harness.ts
@@ -683,6 +720,17 @@ mechanisms:
     overlaps: []
     status: canonical
     doc: packages/core/README.md
+
+  - id: harness-readiness
+    job: Say which coding harnesses can run on this machine and what to do about one that can't. Core owns the neutral check; Claude Code, Codex and Cursor each ship one; harness-manager keeps the rows and serves them as a read action, a coordinator context entry and a pre-start refusal.
+    package: "@flow-state-dev/harness-manager"
+    anchor: harnessReadiness
+    file: packages/harness-manager/src/readiness.ts
+    adapters: ["@flow-state-dev/claude-code", "@flow-state-dev/codex", "@flow-state-dev/cursor"]
+    builtOn: [coding-harness, capability]
+    overlaps: []
+    status: canonical
+    doc: packages/harness-manager/README.md
 
   - id: harness-steering
     job: Send a line typed into a harness session into the running turn when the harness takes it, or as the next turn.
@@ -696,11 +744,11 @@ mechanisms:
     doc: packages/core/README.md
 
   - id: harness-manager
-    job: Turn a task-board row into a supervised coding run (own checkout, verdict before settlement, question channel, the harness as a slot).
+    job: Turn a task-board row into a supervised coding run (own checkout, verdict before settlement, question channel, the harness as a slot). Also runs a harness as one long-lived session a user talks to (harnessSessionFlow), and ships the scripted harness model-free checks put in the slot (harnessStub), with the paced preset hosts serve as their scripted coder (scriptedHarness).
     package: "@flow-state-dev/harness-manager"
     anchor: harnessManager
     file: packages/harness-manager/src/manager.ts
-    builtOn: [task-board, coding-harness, workspace]
+    builtOn: [task-board, coding-harness, harness-steering, workspace]
     overlaps:
       - { id: workspace, relation: distinct-jobs, note: "The checkout subpath runs git through the workspace host and re-exports run. It is not a second workspace implementation." }
     status: canonical

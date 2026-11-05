@@ -25,6 +25,10 @@
  * - `invalid-project-id`: the id is `unassigned`, empty, or not one path segment.
  * - `invalid-repository`: the repository is a path, starts with `-`, or carries a
  *   credential. The refusal never repeats the value.
+ * - `repository-unusable`: the host's repository check (`checkRepository`)
+ *   says no run could check it out on this machine: no such folder, not a git
+ *   repository, a remote the host doesn't reach, or one that doesn't ignore the
+ *   directory runs write to. The detail is the host's sentence, with the fix.
  * - `too-many-workstreams`: the owner has as many open workstreams in the project
  *   as their project coordinator holds delegates.
  * - `other-project`: an open from a conversation linked to one project
@@ -47,10 +51,12 @@ export type ProjectRefusalReason =
   | "project-id-held"
   | "invalid-project-id"
   | "invalid-repository"
+  | "repository-unusable"
   | "too-many-workstreams"
   | "other-project"
   | "invalid-mcp-server"
-  | "unknown-mcp-server";
+  | "unknown-mcp-server"
+  | "invalid-check";
 
 /** A project or workstream write refused on the project's own terms. */
 export class ProjectRefusedError extends Error {

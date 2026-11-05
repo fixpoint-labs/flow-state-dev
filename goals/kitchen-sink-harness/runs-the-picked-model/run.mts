@@ -18,7 +18,7 @@ import { launchChromium } from "../../lib/playwright.mts";
 import { refuseIfAnswering, stopProcessGroup } from "../../lib/server.mts";
 import { locateSessionWorktree } from "../../../apps/kitchen-sink/lib/harness-worktree.ts";
 import { KITCHEN_SINK_USER_ID } from "../../../apps/kitchen-sink/lib/kitchen-sink-principal.ts";
-import { FAILED_OUTCOME_ERROR } from "../../../apps/kitchen-sink/lib/harness-session-flow.ts";
+import { HARNESS_SESSION_FAILED_OUTCOME } from "@flow-state-dev/harness-manager";
 
 const PORT = 3051;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
@@ -193,7 +193,7 @@ async function turn(page: Page, prompt: string): Promise<{ kind: string | null; 
  */
 function harnessWords(text: string): string | null {
   const words = /^This turn failed:\s*([\s\S]*?)\s*(?:The session stays on conversation [\s\S]*)?$/.exec(text)?.[1]?.trim() ?? "";
-  return words === "" || words === FAILED_OUTCOME_ERROR ? null : words;
+  return words === "" || words === HARNESS_SESSION_FAILED_OUTCOME ? null : words;
 }
 
 async function openedSession(page: Page): Promise<string> {

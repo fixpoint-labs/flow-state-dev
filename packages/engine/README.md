@@ -81,6 +81,8 @@ Shutdown mostly does not write a terminal status on background work's behalf. It
 
 `stores` is a map of named profiles. A profile maps capability slots (typed containers for a category of storage) to adapters. The required slot is `primary` — the catch-all state store for sessions, requests, users, orgs, active requests, checkpoints, content, and traces. The `blobs`, `queue`, and `scheduler` slots are declared but forward-compatible; no backing store ships for them yet.
 
+The `bus` slot carries change notices: every request and session write publishes one on its session's topic, and the session stream wakes on it (see [Change bus](#change-bus)). Leave it out and the primary backs it when the primary's adapter declares `bus`, as `postgresStores` does (its bus crosses processes over `LISTEN`/`NOTIFY`); otherwise the bus is in memory and reaches this process only. An adapter named in the `bus` slot that doesn't declare it fails at `ready()`.
+
 ```ts
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
@@ -577,6 +579,14 @@ Query parameters, all optional:
   or `403` if the app authenticates and another user or organization holds it.
 - `item_types`: comma-separated item types, applied as on the snapshot route.
 
+A connection reads the store when a change notice for the session wakes it, at
+most once a second. On a bus that crosses processes, the in-memory default
+included (it serves an app that runs as one process), that is its only read, so
+an open view of a session where nothing changes costs the store nothing. On a
+bus that doesn't cross (a Postgres bus with no tail pool, or one that has
+stopped crossing) it also reads about once a second, so a reply written by
+another process still arrives. Pings and the 15-minute close keep their own timers.
+
 Each SSE frame's `event` is the event's `type`, and its `data` is the whole
 event as JSON. Every event carries `stream: "session"`, `sessionId`, and `at`,
 a server time (epoch ms) to resume from. Reconnecting with any event's `at` as
@@ -621,6 +631,82 @@ new session a new id.
 
 A store adapter shows it serves the stream with
 `createSessionStreamConformanceTests`, from `@flow-state-dev/engine/testing`.
+
+## Change bus
+
+A change notice says that something under a topic changed, never what. Whoever
+hears one reads again through the route it already reads with.
+
+```ts
+import type { ChangeBus, ChangeNotice, BusTopic } from "@flow-state-dev/engine";
+
+// A topic: a scope, its id, the tenant ("" when single-tenant), optionally one resource.
+const topic: BusTopic = { scope: "session", id: sessionId, tenantId: "" };
+const stop = stores.bus!.subscribe(topic, (notice: ChangeNotice) => readAgain(notice.kind));
+```
+
+- `ChangeNotice` is `{ topic, kind, origin? }`. Kinds: `items` (a request's
+  items landed), `request` (a request was written), `run` (a session record
+  was written: the topic's own session or a run under it), `state` (the
+  session's, user's or org's state was written), `resource` (a resource a
+  client can read was written, created or deleted; the topic names it in
+  `resource`) and `resync` (the bus may have missed notices; read once).
+  `origin` names the request that made the change, when one did.
+- `state` and `resource` publish from any run, with or without a stream, and
+  from the client's collection routes (with no `origin`). A resource
+  publishes when it has a `client` config, or when its scope declares
+  `client.derived`. Request and block-instance state publish nothing. A row
+  only its owner may read (an `ownerPrivate` collection's) publishes on the
+  bare scope topic, naming no path.
+- A subscriber to a scope's topic hears every notice under it, narrowed to a
+  resource or not, with the notice's own topic. A subscriber narrowed to a
+  resource hears only that resource's.
+- Notices are at most once: no replay, no acks, nothing stored.
+
+**Writing an adapter.** A `bus` adapter declares `"bus"` in its
+`capabilities` and resolves `{ bus }`, a `ChangeBus`:
+
+| Member | Contract |
+|---|---|
+| `publish(notice)` | Called only after the change can be read. A failure never fails the write that caused it |
+| `subscribe(topic, listener)` | Returns the unsubscribe |
+| `crossesProcesses` | Whether a change made in any process that serves this app reaches this one's subscribers *now*. Only `true` turns the session stream's timed read and the client's fallback poll off |
+| `onCrossingChange(listener)` | Each change of `crossesProcesses`. A change to `false` puts waiting streams back on the timed read |
+
+A bus that reconnects sends each subscriber one `resync` notice on its topic.
+`createInMemoryBus()` is the default, and the in-process fan-out an adapter can
+compose. It is the bus for an app that runs as one process, so it always says
+it crosses: with it, the session stream keeps no timed read and a client with
+an open socket stops its fallback poll. An app that writes its stores from
+several processes (several servers, a worker, or `fsdev run` / `fsdev chat` on
+the same SQLite file as a running server) needs a bus that crosses, such as the
+Postgres bus that Postgres stores fill by default. On the in-memory bus, the
+other processes' changes don't push to open pages.
+
+**A registry you build yourself.** `resolveStores`, `createFlowState`,
+`runAction`, BullMQ's job processor and `fsdev` apply `withChangeBus(stores)`,
+which gives the registry its bus (the one you set on `stores.bus`, else an
+in-memory one) and wraps its request and session stores so every write
+publishes. A host that writes to the stores past those entries calls it too,
+and writes through the registry it returns. It is idempotent: every entry gets
+the same wrapped stores.
+
+**Push delivery** carries these notices to a browser. A host that
+serves the socket calls `enablePushDelivery(router, { secret? })`: the router
+then reports `push: { transport: "websocket" }` in `GET /capabilities` and
+answers `POST /users/:userId/stream`, which runs each topic the caller asks for
+through the read check its scope uses and signs a 30-second ticket for the ones
+it grants. The host hands each socket that opens on `/users/:userId/stream` to
+`delivery.openSocket(userId, { send, close })` and moves text frames to the
+returned session's `receive`. The session accepts topics only from a ticket for
+that user, and closes the socket after an hour. It answers each accepted ticket
+with `{ type: "subscribed" }` once the ticket's topics are heard, so a client reads
+after that point and misses nothing. After the first ticket, and each time the
+bus's `crossesProcesses` changes, it sends `{ type: "crossing", crosses }`:
+whether a change from any process serving the app reaches this socket. A client keeps reading on
+its timer until it hears `crosses: true`.
+`serve()` in `@flow-state-dev/node` does all of this; `secret` defaults to a
+random key per router.
 
 ## Store list options
 
@@ -821,6 +907,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom lo
 - `createInMemoryResourceStateStore` / `createFilesystemResourceStateStore` — Resource state store adapters
 - `createInMemoryOrgStore` / `createFilesystemOrgStore` — Org scope store adapters, implementing `OrgStore`. The filesystem adapter keeps org records under `{rootDir}/projects/`.
 - Session, user, and request scope store factories, and CAS/state ops
+- `createInMemoryBus` / `withChangeBus` and the `ChangeBus`, `ChangeNotice`, `BusTopic` types — the change bus (see [Change bus](#change-bus))
 
 **Streaming:**
 - `createResponseEmitter` — Create an SSE emitter for a request
@@ -977,12 +1064,13 @@ type VersionedResourceState = { state: JsonObject; version: number };
 
 interface ResourceStateStore {
   get(scopeType, scopeId, resourceKey): Promise<VersionedResourceState | undefined>;
-  set(scopeType, scopeId, resourceKey, state, expectedVersion): Promise<SetResult<JsonObject>>;
+  set(scopeType, scopeId, resourceKey, state, expectedVersion, options?): Promise<SetResult<JsonObject>>;
   delete(scopeType, scopeId, resourceKey, expectedVersion): Promise<SetResult<JsonObject>>;
   getAll(scopeType, scopeId): Promise<Record<string, VersionedResourceState>>;
   getByPrefix(scopeType, scopeId, keyPrefix): Promise<Record<string, VersionedResourceState>>;
   deleteAll(scopeType, scopeId): Promise<void>;
   purgeTombstones(scopeType, scopeId): Promise<void>;
+  indexes?: ResourceStateIndexes; // optional: see "Index entries" below
 }
 ```
 
@@ -1024,6 +1112,38 @@ It removes tombstones only. A live row is data — state can legitimately be wri
 The engine runs it immediately **before** creating the session record, not after. There is no transaction across the two stores, and creating first would leave a committed record over intact tombstones whenever the reclamation failed — with nothing to retry it, since a second create answers 409 and an action-driven create adopts the record instead. Reclaiming first commits nothing until it has succeeded, and running it twice is a no-op.
 
 **Writing an adapter:** `purgeTombstones` is required. It is one statement in SQL (`DELETE … WHERE scope_type = ? AND scope_id = ? AND lifecycle = 'deleted'`), and the shared conformance suite covers it. Adding a required method to a published store interface breaks every implementer — including test doubles, which are implementers too.
+
+### Index entries
+
+A store can keep **index entries**: rows that let a collection be looked up by a field outside its key without reading the collection. Entries are optional. A store that keeps them has an `indexes` member with four verbs; one that does not (the memory and filesystem adapters) leaves it out, and lookups there read the scope's rows instead. The SQLite and Postgres adapters keep them.
+
+```ts
+type ResourceIndexEntry = { collection: string; index: string; values: string[] };
+
+interface ResourceStateIndexes {
+  state(scopeType, scopeId, collection, index): Promise<"unbuilt" | "building" | "built">;
+  beginBuild(scopeType, scopeId, collection, index): Promise<string>;
+  completeBuild(scopeType, scopeId, collection, index, build: string, entries: { key: string; values: string[] }[]): Promise<boolean>;
+  findKeys(scopeType, scopeId, collection, index, value): Promise<string[]>;
+}
+```
+
+`collection` is the collection's full declared pattern and `index` its stored name, version included; `values` are canonical strings. A writer passes a row's entries as `set(…, expectedVersion, { indexEntries })`. A store without `indexes` ignores that argument.
+
+Entries may be stale but never missing, because a reader checks every hit against its row and can drop a stale one but cannot find a row with no entry. The verbs keep that rule:
+
+| Operation | What it does to entries and markers |
+|---|---|
+| `set` that lands | The key's entries become exactly the ones it lists, in the row's own commit. The build marker of every index whose collection pattern covers the key, and that the call does not list, is cleared, so the next lookup rebuilds it |
+| `set` that conflicts | Changes no entry and clears no marker |
+| `delete`, `deleteAll`, `purgeTombstones` | Remove the entries of the rows they tombstone or reclaim. Markers stay |
+| `beginBuild` | Marks the index `building` in that scope and returns the build's token. A later `beginBuild` replaces the marker with a new token |
+| `completeBuild` | Adds the entries and marks the index `built`, in one commit, only if the `building` marker its token names is still there. Returns whether it did. It only adds, never replaces, because a live write may land during the scan |
+| `findKeys` | The keys with an entry of that value, in ascending order |
+
+Each scope's entries and markers are its own. **Writing an adapter:** implement all four verbs or none. Commit a row and its entries together: SQLite runs both in one transaction, and Postgres puts the entry upkeep in the write's own statement. Pass `indexes: true` to `createResourceStateStoreConformanceTests` to run the index cases against your store.
+
+**Who writes the entries.** The stores `createFlowState` resolves, and the ones a router built with `createFlowApiRouter` resolves, compute every row's entries from the collections the app declares with `indexes`, and pass them on each `set`. So block writes, the resource routes, and host code writing `runtime.stores` all keep the index current. `findBy` on a collection reads `findKeys` once the scope's index is built, and builds it on the first lookup otherwise. To check a whole registry end to end, run `createFindByConformanceTests({ name, createStores, indexes })` from `@flow-state-dev/engine/testing`: it boots an app over the registry and checks which rows `findBy` returns, and, with `indexes: true`, that a lookup on a built index makes no prefix or whole-scope read.
 
 `toBareState` / `toBareStates` are exported for readers that only want the stored value and not the version beside it. `VersionedResourceState` is **branded**, so it is not assignable to `JsonObject` and a missing unwrap fails to compile rather than silently handing the wrong shape downstream. The brand is a phantom optional property that never exists at runtime — adapters still construct a versioned read as a plain object literal. It does not defend against an explicit `as` cast; that stays the caller's assertion to make.
 
@@ -1160,11 +1280,11 @@ Each tick takes a single-holder sentinel lease (co-located hosts serialize), enf
 
 **Stopping a suspended request.** The abort route and `ctx.session.stopRequest` also stop a `suspended` request when the host has durable execution: the stop resolves its pending gate `stopped` through the gate's single pending state. A wait gate continues the request with a stop outcome, so the parked call (`parkOnWait` returns `{ answered: false, stopped: true }`) can end the task it waits on and end its turn; any other gate continues the request with the stop recorded, so it ends `aborted` through its own lifecycle (its `onFinished` hook runs) without running past the gate. A gate a person already resolved (approved, say) whose request has not run again yet, so it waits on the sweep's re-drive, is stopped the same way: the gate is recorded `stopped`, the request ends `aborted`, and the approved step never runs. The person's answer, and any form data they sent, is replaced by the stop and not kept. A stop that finds the gate already resolved, with the request running again or about to, answers `409` on the route and `"already-resolved"` from `stopRequest`. A run a task board started (the `task` source) that is parked on a user's stop ends at that stop instead: it continues through the board's claim gate, which cancels the task, and ends `aborted` at the stop itself, with nothing after it run. Checkpoints of `in_progress` or `suspended` requests are never age-pruned — they are the resume points an active or paused run needs.
 
-**Answering a user's stop.** `POST /api/flows/:flowKind/requests/:requestId/answer` with `{ suspensionId, action, data? }` answers a suspension that waits for a user (`ctx.waitForUser`, or a `user_approval` / `user_input` stop), whatever started its run, a task board included, which the resume route refuses. It runs the resume path's ownership checks on the stop's request (flow instance, user, tenant, organization) before it reads the stop, and answers a stop that isn't the caller's, or isn't a user's, as one that doesn't exist (`404`). The answer is checked against the stop's own `allow` and `resumeSchema`; who answered is the signed-in caller, never a body field. It resolves the stop through its single pending state, so of an answer, a cancel, a deadline and a stop, the first wins and the rest are told `already-resolved` (`409`). The client call is a request handle's `answer`.
+**Answering a user's stop.** `POST /api/flows/:flowKind/requests/:requestId/answer` with `{ suspensionId, action, data? }` answers a suspension that waits for a user (`ctx.suspendForUser`, or a `user_approval` / `user_input` stop), whatever started its run, a task board included, which the resume route refuses. It runs the resume path's ownership checks on the stop's request (flow instance, user, tenant, organization) before it reads the stop, and answers a stop that isn't the caller's, or isn't a user's, as one that doesn't exist (`404`). The answer is checked against the stop's own `allow` and `resumeSchema`; who answered is the signed-in caller, never a body field. It resolves the stop through its single pending state, so of an answer, a cancel, a deadline and a stop, the first wins and the rest are told `already-resolved` (`409`). The client call is a request handle's `answer`.
 
-**A user's stop's deadline.** A `waitForUser` call's `deadline`, else `createFlowState({ userDeadlineMs })` (unset by default, one second to 365 days), else none: a stop with no deadline waits until it is answered, stopped or cancelled, and the sweeper never ends it. A raw `ctx.suspend` keeps its own `timeoutMs`. At a deadline the sweeper continues the request: an approval reads as a no, and a review or an input throws `SuspensionTimeoutError` into the block.
+**A user's stop's deadline.** A `suspendForUser` call's `deadline`, else `createFlowState({ userDeadlineMs })` (unset by default, one second to 365 days), else none: a stop with no deadline waits until it is answered, stopped or cancelled, and the sweeper never ends it. A raw `ctx.suspend` keeps its own `timeoutMs`. At a deadline the sweeper continues the request: an approval reads as a no, and a review or an input throws `SuspensionTimeoutError` into the block.
 
-**Cancelling a user's stop.** `RequestHost.resumeWait({ suspension: { requestId, suspensionId }, outcome: { cancelled: true }, first? })` resolves a pending user's stop `cancelled` under its request's lease and continues the request, so `waitForUser` returns `{ cancelled: true }`. The stop must be this principal's (same user, tenant and organization); `first` runs under the lease before the stop resolves, which is where a board writes its task's cancel. A stop already recorded `cancelled` whose request never continued is continued, and so is one the sweeper finds.
+**Cancelling a user's stop.** `RequestHost.resumeWait({ suspension: { requestId, suspensionId }, outcome: { cancelled: true }, first? })` resolves a pending user's stop `cancelled` under its request's lease and continues the request, so `suspendForUser` returns `{ cancelled: true }`. The stop must be this principal's (same user, tenant and organization); `first` runs under the lease before the stop resolves, which is where a board writes its task's cancel. A stop already recorded `cancelled` whose request never continued is continued, and so is one the sweeper finds.
 
 ## Connection resilience
 

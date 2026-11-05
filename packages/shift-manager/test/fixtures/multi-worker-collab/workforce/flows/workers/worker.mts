@@ -30,7 +30,7 @@
  * does not. `GOAL_CONTROL=ignore-the-answer` swaps that one decision for the
  * wrong one.
  *
- * The ask is written the way the worker's `askQuestion` tool writes it:
+ * The ask is written the way the worker's `holdTaskForUser` tool writes it:
  * `askMidway` on the conversation's own ledger, under the claim this turn
  * holds, so the row holds on a question the user's Inbox lists. The turn is
  * not a model, so it asks itself rather than calling the tool.

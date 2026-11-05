@@ -13,6 +13,7 @@
  * these items, filter by `data.collectionId`, and render the board.
  */
 import type { JsonObject } from "@flow-state-dev/core";
+import { publishBoardChange } from "@flow-state-dev/core/types";
 import type { ItemVisibility, OutputItem } from "@flow-state-dev/core/items";
 import type {
   BlockContext,
@@ -165,7 +166,18 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   // host sets a deadline for a person (the epic's D3): server-set.
   const filing = filingStampOf(options.ctx);
 
+  // A board notice for every committed write of a row, lifecycle change or not,
+  // to the session that filed it (whose view shows the board); server-written
+  // (BP-031). No `Task.filer`: the ledger's legacy filer, else the running session.
+  const legacyFiler = legacyFilerOf(options);
+  const runningSession = options.ctx.session?.identity?.id;
+  const onWrite = (task: Task): void => {
+    const filer = task.filer?.sessionId ?? legacyFiler?.(task) ?? runningSession;
+    if (filer !== undefined) publishBoardChange(options.ctx, { sessionId: filer, board: options.collectionId });
+  };
   const onChange = (event: TaskChangeEvent): void => {
+    // The notice beside the item: the item goes on the writing session's stream.
+    onWrite(event.task);
     options.ctx.emit.component(
       TASK_CHANGE_COMPONENT_TYPE,
       {
@@ -196,6 +208,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
       // one request each get an isolated top-level slot without namespacing.
       stateKey: options.stateKey ?? (passed ? "tasks" : options.collectionId),
       onChange,
+      onWrite,
       getItems,
       now: options.now,
       claimIdentity,
@@ -251,6 +264,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
         ? options.collection
         : partitionedResourceCollection(options.collection, options.collectionId, partition),
     onChange,
+    onWrite,
     getItems,
     now: options.now,
     claimIdentity,
@@ -264,6 +278,14 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     ...(filed !== undefined ? { cascadeFiled: { owes: filed.owes, pay: (row: Task) => filed.pay(ctx, row) } } : {}),
     ...(delivery !== undefined ? { delivery } : {}),
   });
+}
+
+/** The legacy filer a resource-backed ledger declares, bound to the partition it is read at. */
+function legacyFilerOf(options: GetOrCreateTaskCollectionOptions): ((row: Task) => string | undefined) | undefined {
+  if (options.backing !== "resource") return undefined;
+  const declared = options.collection.config;
+  const legacy = isDefinedTaskCollection(declared) ? declared.__taskCollection.delivery?.legacyFiler : undefined;
+  return legacy === undefined ? undefined : (row) => legacy(row, options.partition);
 }
 
 /**
@@ -367,12 +389,12 @@ function filingStampOf(ctx: BlockContext): FilingStamp {
   const identity = ctx.request?.identity ?? ctx.session?.identity;
   const tenantId = identity?.tenantId;
   const orgId = identity?.orgId;
-  const questionDueMs = ctx.requestHost?.userDeadlineMs;
+  const holdDueMs = ctx.requestHost?.userDeadlineMs;
   return {
     ...(tenantId !== undefined || orgId !== undefined
       ? { filedUnder: { ...(tenantId !== undefined ? { tenantId } : {}), ...(orgId !== undefined ? { orgId } : {}) } }
       : {}),
-    ...(typeof questionDueMs === "number" && questionDueMs > 0 ? { questionDueMs } : {}),
+    ...(typeof holdDueMs === "number" && holdDueMs > 0 ? { holdDueMs } : {}),
   };
 }
 

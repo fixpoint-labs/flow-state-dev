@@ -11,18 +11,13 @@
  *
  * Nothing here looks for a run any other way: no listing, no key rebuilt from
  * the task, no "latest session of this worker".
+ *
+ * What the run recorded (its plan, files and pull requests) is the one read
+ * that is not here: `readRecordedWork` from `@flow-state-dev/harness-manager/browser`.
  */
-import { compareItemOrder, type ResourceManifest } from "@flow-state-dev/client";
+import { compareItemOrder, sessionFeed, type SessionConnectionState } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
-import {
-  OBSERVED_PLAN,
-  OBSERVED_PLAN_LIST,
-  OBSERVED_PULL_REQUESTS,
-  planKeySegment,
-  planRowsPrefix,
-  readPlanTarget,
-  type RequestStatus,
-} from "@flow-state-dev/core/types";
+import type { RequestStatus } from "@flow-state-dev/core/types";
 import type { Client } from "@flow-state-dev/client";
 import { describeFailure, type Failure } from "./reads";
 
@@ -35,7 +30,6 @@ export class RunReadError extends Error {
     super(failure.message);
   }
 }
-
 function fail(error: unknown): never {
   throw error instanceof RunReadError ? error : new RunReadError(describeFailure(error));
 }
@@ -59,13 +53,22 @@ export async function resolveRunFlow(client: Client, sessionId: string): Promise
   return flowId;
 }
 
+/** What one read of the run's request record says: its status, and when it ended, if it has. */
+export type RunRecordRead = { status: RequestStatus; endedAtMs?: number };
+
 /** The run's request record, read through the run's flow. */
-export async function readRunStatus(client: Client, run: Pick<OpenRun, "flowId" | "requestId">): Promise<RequestStatus> {
+export async function readRunRecord(client: Client, run: Pick<OpenRun, "flowId" | "requestId">): Promise<RunRecordRead> {
   try {
-    return (await client.flow(run.flowId).request(run.requestId).status()).status;
+    const snapshot = await client.flow(run.flowId).request(run.requestId).status();
+    return snapshot.completedAtMs === undefined ? { status: snapshot.status } : { status: snapshot.status, endedAtMs: snapshot.completedAtMs };
   } catch (error) {
     return fail(error);
   }
+}
+
+/** The run's request status alone. */
+export async function readRunStatus(client: Client, run: Pick<OpenRun, "flowId" | "requestId">): Promise<RequestStatus> {
+  return (await readRunRecord(client, run)).status;
 }
 
 /** Items per session-state page. */
@@ -73,8 +76,13 @@ const ITEM_PAGE = 200;
 /** How many pages the Session reads before it says there is more than it shows. */
 const ITEM_PAGES = 5;
 
-/** A session's stored items, oldest first, and whether there were more than were read. */
-export type SessionItems = { items: OutputItem[]; truncated: boolean };
+/**
+ * A session's stored items, oldest first, and whether there were more than were
+ * read. A followed session ({@link followSessionItems}) also carries
+ * `loadEarlier` while it holds older items: each call adds the page before the
+ * first item, and the follower hears the longer list.
+ */
+export type SessionItems = { items: OutputItem[]; truncated: boolean; loadEarlier?: () => Promise<void> };
 
 /**
  * The run session's stored items, oldest first. At most {@link ITEM_PAGES}
@@ -96,12 +104,90 @@ export async function readSessionItems(client: Client, sessionId: string): Promi
   return { items: items.sort(compareItemOrder), truncated: true };
 }
 
+/** Pages of components {@link readTaskClaims} reads at most. */
+const CLAIM_PAGES = 50;
+
+/**
+ * The board's `task-change` items for `collectionId` in the session, read on
+ * their own. Which task ids belong to a board is learned from these, so a
+ * view that holds only the session's newest items (its first item comes after
+ * the task was claimed) still attributes the task's newer steps to it.
+ */
+export async function readTaskClaims(client: Pick<Client, "sessions">, sessionId: string, collectionId: string): Promise<OutputItem[]> {
+  const claims: OutputItem[] = [];
+  for (let offset = 0, page = 0; page < CLAIM_PAGES; page += 1) {
+    const state = await client.sessions.state(sessionId, { includeItems: true, itemTypes: ["component"], offset, limit: ITEM_PAGE });
+    for (const item of state.items ?? []) {
+      const data = (item as { component?: string; data?: { collectionId?: string } }).data;
+      if ((item as { component?: string }).component === "task-change" && data?.collectionId === collectionId) claims.push(item);
+    }
+    if (state.pagination?.hasMore !== true) break;
+    offset = state.pagination.nextOffset ?? offset + ITEM_PAGE;
+  }
+  return claims;
+}
+
+/** Where {@link followSessionItems} reports to. */
+export type SessionItemsFollower = {
+  /** The session's items now, oldest first: the first read, then again each time the stream brings one. */
+  onRead(read: SessionItems): void;
+  /** The first read failed. Said only until one succeeds: a lapse after that keeps what was read. */
+  onFailure(failure: Failure): void;
+  /** The feed's connection moved (`sessionFeed`'s `state`), for the page's connection bar. */
+  onState?(state: SessionConnectionState): void;
+};
+
+/**
+ * Follow a session's stored items, through the client's `sessionFeed`: its
+ * newest items once, then each finished item from the session stream, which
+ * the bus wakes on another process's write and which reads only what changed
+ * where the bus can't cross. Nothing is read on a clock, and a reply costs no
+ * more reads however long it is. `truncated` says the session holds items
+ * older than the first one read, and `loadEarlier` reaches them a page at a
+ * time. Returns the stop.
+ */
+export function followSessionItems(client: Pick<Client, "sessions">, sessionId: string, to: SessionItemsFollower): () => void {
+  const feed = sessionFeed(client, sessionId);
+  let last: readonly OutputItem[] | undefined;
+  let read = false;
+  let lastState: SessionConnectionState | undefined;
+  const stop = feed.subscribe(({ items, hasEarlier, state, error }) => {
+    if (state !== lastState) {
+      lastState = state;
+      to.onState?.(state);
+    }
+    // Before the history lands the feed publishes only its read's failures: a try that failed, or
+    // the feed giving up (`stopped`, its items empty), neither of which is an empty session. Its
+    // first publish with no error is the history read landing, empty or not, whatever the stream
+    // does after: the stream stays `connecting` until it names the session's runs, which a stream
+    // that keeps failing never does.
+    if (!read) {
+      if (error !== null) {
+        to.onFailure(describeFailure(error));
+        return;
+      }
+    } else if ((items.length === 0 && state === "connecting") || items === last) {
+      // A feed that starts over (its stream lapsed) empties itself until its history is read again;
+      // what was shown stays. A change of connection state alone moves nothing: the feed hands back
+      // the same `items` array until an item changes.
+      return;
+    }
+    last = items;
+    read = true;
+    to.onRead({ items: [...items], truncated: hasEarlier, ...(hasEarlier ? { loadEarlier: () => feed.loadEarlier() } : {}) });
+  });
+  return () => {
+    stop();
+    feed.close();
+  };
+}
+
 /** Where a live request stream reports to. */
 export type RequestFollower = {
   /** A finished item the request stored. */
   onItem(item: OutputItem): void;
-  /** The request's status moved. */
-  onStatus(status: string): void;
+  /** The request's status moved; `at` is the event's time, which for a terminal status is when the run ended. */
+  onStatus(status: string, at?: number): void;
   onError(failure: Failure): void;
 };
 
@@ -117,7 +203,7 @@ export function followRequest(client: Client, run: Pick<OpenRun, "flowId" | "req
       const item = event.item as OutputItem & { transient?: boolean };
       if (item.transient !== true) to.onItem(item);
     },
-    onRequestStatus: (event) => to.onStatus(event.status),
+    onRequestStatus: (event) => to.onStatus(event.status, typeof event.ts === "number" ? event.ts : undefined),
     onError: (error) => to.onError(describeFailure(error)),
   });
 }
@@ -166,8 +252,8 @@ const SETTLE_POLL_MS = 250;
 
 /** What an Interrupt came to. */
 export type InterruptOutcome =
-  /** The request record reads `aborted`. */
-  | { kind: "aborted" }
+  /** The request record reads `aborted`, and says when, if it does. */
+  | { kind: "aborted"; endedAtMs?: number }
   /** The request had already finished, with this status, before the abort landed (BR-12). */
   | { kind: "finished"; status: RequestStatus };
 
@@ -192,146 +278,12 @@ export async function interruptRun(
   for (;;) {
     // The screen that asked has gone: stop reading on its behalf.
     if (options.signal?.aborted === true) throw new RunReadError({ message: "The screen closed before the run's record settled." });
-    const status = await readRunStatus(client, run);
-    if (status === "aborted") return { kind: "aborted" };
+    const { status, endedAtMs } = await readRunRecord(client, run);
+    if (status === "aborted") return endedAtMs === undefined ? { kind: "aborted" } : { kind: "aborted", endedAtMs };
     if (status !== "in_progress") return { kind: "finished", status };
     if (Date.now() > until) {
       throw new RunReadError({ message: "The abort was recorded, but the run has not stopped yet. It may still be running." });
     }
     await new Promise((resolve) => setTimeout(resolve, options.pollMs ?? SETTLE_POLL_MS));
   }
-}
-
-/**
- * The storage prefixes a coding harness records its plan, file operations and
- * pull requests under, when it records them. Found in the run session's
- * manifest by these patterns; a flow that declares none records none.
- */
-const RECORDED = {
-  plan: `${OBSERVED_PLAN}/**`,
-  markers: `${OBSERVED_PLAN_LIST}/**`,
-  files: "observed-file-ops/**",
-  pullRequests: `${OBSERVED_PULL_REQUESTS}/**`,
-} as const;
-
-/** One step of the plan the run recorded. */
-export type PlanStep = { id: string; title: string; status: string | null };
-/** One path the run's file tools touched. */
-export type FileTouch = { path: string; kind: "created" | "edited" | null };
-/** One pull request the run opened, or found on its branch. */
-export type OpenedPullRequest = {
-  url: string;
-  repository: string | null;
-  number: number | null;
-  title: string | null;
-  state: string | null;
-  source: "tool" | "branch" | null;
-};
-
-/** What a run recorded, per section: its rows, `null` when the harness records none. */
-export type RecordedWork = {
-  plan: { rows: PlanStep[]; truncated: boolean } | null;
-  files: { rows: FileTouch[]; truncated: boolean } | null;
-  pullRequests: { rows: OpenedPullRequest[]; truncated: boolean } | null;
-};
-
-/** Rows per recorded-collection read. One page; past it the section says there is more. */
-const RECORDED_PAGE = 200;
-
-function recordedRef(manifest: ResourceManifest, pattern: string): string | undefined {
-  return manifest.resources.find((r) => r.kind === "collection" && r.pattern === pattern && r.client.state?.read === true)?.ref;
-}
-
-/**
- * The plan and files the run recorded, read once. File rows are keyed
- * `<request>/<invocation>/<path>`, so one prefix read selects everything this
- * request did and nothing an earlier run in the same session did. The plan is
- * the harness conversation's: the run leaves a pointer to it under its own
- * request, and a run from before plans were kept by conversation has its plan
- * under the request, as files are. Pull requests are keyed by the pull
- * request, not the request, since a session keeps one row per pull request
- * across its turns: each row names the request that opened it, and only this
- * run's are kept.
- */
-export async function readRecordedWork(client: Client, run: Pick<OpenRun, "sessionId" | "requestId">): Promise<RecordedWork> {
-  let manifest: ResourceManifest;
-  try {
-    manifest = await client.resources.getResourceManifest(run.sessionId);
-  } catch (error) {
-    fail(error);
-  }
-  // Escaped the way the recorder keys it, so a request id holding a `/` still selects its own rows.
-  const underRequest = (pattern: string) => `${pattern.slice(0, -"/**".length)}/${planKeySegment(run.requestId)}/`;
-  const read = async (pattern: string, prefix = underRequest(pattern)) => {
-    const ref = recordedRef(manifest, pattern);
-    if (ref === undefined) return null;
-    try {
-      const page = await client.resources.listCollectionItems(run.sessionId, ref, { limit: RECORDED_PAGE, topicPrefix: prefix });
-      return { items: page.items, truncated: page.nextCursor != null };
-    } catch (error) {
-      fail(error);
-    }
-  };
-  const readPlan = async () => {
-    if (recordedRef(manifest, RECORDED.plan) === undefined) return null;
-    const pointers = await read(RECORDED.markers, planRowsPrefix(run.requestId, OBSERVED_PLAN_LIST));
-    const markers = (pointers?.items ?? []).map((item) => ({
-      topic: item.topic,
-      conversation: field(item.clientData, "conversation") as string | null | undefined,
-    }));
-    return read(RECORDED.plan, readPlanTarget(run.requestId, markers).rowsPrefix);
-  };
-  const field = (data: unknown, key: string) => (data as Record<string, unknown> | undefined)?.[key];
-  const [plan, files, pullRequests] = await Promise.all([
-    readPlan(),
-    read(RECORDED.files),
-    read(RECORDED.pullRequests, `${OBSERVED_PULL_REQUESTS}/`),
-  ]);
-  const text = (data: unknown, key: string) => (typeof field(data, key) === "string" ? (field(data, key) as string) : null);
-  /** The key segments after `<request>/<invocation>/`, or a plan's `conversation/<id>/`. */
-  const rest = (topic: string) => topic.split("/").slice(2).join("/");
-  return {
-    plan:
-      plan === null
-        ? null
-        : {
-            truncated: plan.truncated,
-            rows: plan.items.map((item) => ({
-              id: rest(item.topic),
-              title: typeof field(item.clientData, "title") === "string" ? (field(item.clientData, "title") as string) : rest(item.topic),
-              status: typeof field(item.clientData, "status") === "string" ? (field(item.clientData, "status") as string) : null,
-            })),
-          },
-    files:
-      files === null
-        ? null
-        : {
-            truncated: files.truncated,
-            rows: files.items.map((item) => {
-              const kind = field(item.clientData, "lastKind");
-              return { path: rest(item.topic), kind: kind === "created" || kind === "edited" ? kind : null };
-            }),
-          },
-    pullRequests:
-      pullRequests === null
-        ? null
-        : {
-            truncated: pullRequests.truncated,
-            rows: pullRequests.items
-              .filter((item) => field(item.clientData, "requestId") === run.requestId && text(item.clientData, "url") !== null)
-              .sort((a, b) => Number(field(a.clientData, "firstSeenAt") ?? 0) - Number(field(b.clientData, "firstSeenAt") ?? 0))
-              .map((item) => {
-                const source = field(item.clientData, "source");
-                const number = field(item.clientData, "number");
-                return {
-                  url: text(item.clientData, "url")!,
-                  repository: text(item.clientData, "repository"),
-                  number: typeof number === "number" ? number : null,
-                  title: text(item.clientData, "title"),
-                  state: text(item.clientData, "state"),
-                  source: source === "tool" || source === "branch" ? source : null,
-                };
-              }),
-          },
-  };
 }

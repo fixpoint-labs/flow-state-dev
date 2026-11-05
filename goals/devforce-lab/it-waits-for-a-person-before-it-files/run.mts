@@ -50,7 +50,7 @@ import {
   type Lab,
   type OpenLabOptions,
 } from "../../../packages/shift-manager/teams/devteam/host.mts";
-import { harnessStub, type StubRun } from "../../../packages/shift-manager/teams/devteam/harness-stub.mts";
+import { harnessStub, type StubRun } from "@flow-state-dev/harness-manager";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
 import { RAISE_ASK_STEP, raiseAsk, workerSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
 import { ASK_ENTRY } from "../../../packages/shift-manager/teams/devteam/worker-config.mts";

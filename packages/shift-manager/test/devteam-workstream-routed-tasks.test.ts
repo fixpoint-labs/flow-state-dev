@@ -41,7 +41,7 @@ import { connect } from "../src/lib/connection";
 import { readProject, type ProjectAddress } from "../src/lib/projects";
 import { createLabReader, readerSessionId } from "../src/lib/reads";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
-import { harnessStub } from "../teams/devteam/harness-stub.mts";
+import { harnessStub } from "@flow-state-dev/harness-manager";
 import { LAB_USERS, openLab, type Lab } from "../teams/devteam/host.mts";
 import { commitAll, createBareRemote } from "../teams/devteam/scratch-repo.mts";
 import { EM_TURN } from "../teams/devteam/workforce/flows/workers/em.mts";
@@ -328,6 +328,16 @@ describe("a steer on a routed task in a workstream's session", () => {
     const coder = (await host.coderRow())!;
     expect(coder.status).toBe("completed");
     expect(done.completedAt).toBeGreaterThanOrEqual(coder.completedAt);
+
+    // The routed task's turn, the steer's owed turn and the coder's task
+    // notice are not the `respond` entry, and each still opens with the
+    // default worker layer: the session names its worker, so the layer never
+    // drops out of them.
+    expect(seen.turns.length).toBeGreaterThanOrEqual(2);
+    for (const turn of seen.turns) {
+      expect(turn).toContain("You are Engineering Manager, on the Engineering team.");
+      expect(turn).toContain("Work things out yourself first.");
+    }
   }, 120_000);
 });
 

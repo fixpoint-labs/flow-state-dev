@@ -7,9 +7,9 @@
  * **Model-free.** A real `createFlowState` host on a durable SQLite store, the
  * Workforce session board on two flows (`desk`, the conversation that files,
  * and `doer`, whose task sessions work), and scripted model turns that call
- * the real tools: a model's `askQuestion` and `waitForUser` (the worker's
+ * the real tools: a model's `holdTaskForUser` and `suspendForUser` (the worker's
  * `questions` capability), and the filer's `updateTask` (its task tools). A
- * block's review is `ctx.waitForUser({ kind: "review" })`. The Inbox is Shift
+ * block's review is `ctx.suspendForUser({ kind: "review" })`. The Inbox is Shift
  * Manager's own snapshot (`createLabReader().read()`), every Inbox answer goes
  * through orchestration's Inbox client, a line typed in a task's session goes
  * through Shift Manager's composer (`sendTurn`), and a task is read through
@@ -31,12 +31,12 @@
  *      the oldest open question, and a second line the second
  *   e  a steer into a waiting review is kept and answers nothing; once the
  *      Inbox answers, the task takes one more turn holding it
- *   g  on a turn with no task row, the model's `waitForUser` input: the
+ *   g  on a turn with no task row, the model's `suspendForUser` input: the
  *      person's answer as its result; no deadline unset, still suspended past
  *      the sweeper; at the host's person-stop deadline, a no-answer result,
  *      not a throw (on its own host); on a task turn the tool refuses `input`
- *      naming `askQuestion`, while a block's own input still suspends; a
- *      step calling `askQuestion` and `waitForUser` together opens one wait
+ *      naming `holdTaskForUser`, while a block's own input still suspends; a
+ *      step calling `holdTaskForUser` and `suspendForUser` together opens one wait
  *   h  a `complete-or-blocked` plan board whose only open row is held on a
  *      question reports `waiting-on-a-user` on its first idle pass, and the row stays
  *
@@ -56,8 +56,8 @@ import type { BlockContext, GeneratorModel } from "@flow-state-dev/core/types";
 import { createFlowState, runAction } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { askMidway, taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
-import { getOrCreateTaskCollection, openQuestions, type Task } from "@flow-state-dev/orchestration/tasks";
-import { createInboxClient, type InboxQuestion, type InboxItem } from "@flow-state-dev/orchestration/inbox";
+import { getOrCreateTaskCollection, openHolds, type Task } from "@flow-state-dev/orchestration/tasks";
+import { createInboxClient, type InboxHold, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { reconcileInbox, rowTruthOf, suspensionTruthOf, type InboxTruth } from "@flow-state-dev/orchestration/inbox/check";
 import { TASK_ID_STATE_KEY } from "../../../packages/workforce/src/workers/keys.ts";
 import { steerOrTalk } from "../../../packages/workforce/src/conversation-board/steer.ts";
@@ -196,10 +196,10 @@ const textOf = (message: unknown): string => {
  * it names; once a tool has answered, it ends the turn naming what came back.
  * A turn handed an answer (`answering "…"`) works and ends.
  *
- * - `[askq]` asks `REGION` with `askQuestion`
- * - `[both]` calls `askQuestion` and `waitForUser` review in one step
- * - `[input-on-task]` asks for input with `waitForUser` on a task turn
- * - `[input]` asks for input with `waitForUser` on a turn with no task row
+ * - `[askq]` asks `REGION` with `holdTaskForUser`
+ * - `[both]` calls `holdTaskForUser` and `suspendForUser` review in one step
+ * - `[input-on-task]` asks for input with `suspendForUser` on a task turn
+ * - `[input]` asks for input with `suspendForUser` on a turn with no task row
  * - `[filer]{…}` calls the filer's `updateTask` with that JSON
  */
 const scripted: GeneratorModel = {
@@ -221,12 +221,12 @@ const scripted: GeneratorModel = {
     const filer = /\[filer\](\{.*?\})\[\/filer\]/.exec(said);
     if (filer !== null) return { toolCalls: [call("updateTask", JSON.parse(filer[1]!.replace(/\\"/g, '"')))], finishReason: "tool-calls" };
     if (said.includes("[both]")) {
-      return { toolCalls: [call("askQuestion", { question: REGION }, "ask"), call("waitForUser", { kind: "review", prompt: REVIEW }, "wait")], finishReason: "tool-calls" };
+      return { toolCalls: [call("holdTaskForUser", { question: REGION }, "ask"), call("suspendForUser", { kind: "review", prompt: REVIEW }, "wait")], finishReason: "tool-calls" };
     }
-    if (said.includes("[input-on-task]") || said.includes("[input]")) return { toolCalls: [call("waitForUser", { kind: "input", prompt: INPUT })], finishReason: "tool-calls" };
+    if (said.includes("[input-on-task]") || said.includes("[input]")) return { toolCalls: [call("suspendForUser", { kind: "input", prompt: INPUT })], finishReason: "tool-calls" };
     if (said.includes("[askq]")) {
-      if (!offered.has("askQuestion")) return { text: `askQuestion was not offered: ${[...offered].join(", ")}`, finishReason: "stop" };
-      return { toolCalls: [call("askQuestion", { question: REGION })], finishReason: "tool-calls" };
+      if (!offered.has("holdTaskForUser")) return { text: `holdTaskForUser was not offered: ${[...offered].join(", ")}`, finishReason: "stop" };
+      return { toolCalls: [call("holdTaskForUser", { question: REGION })], finishReason: "tool-calls" };
     }
     return { text: "Noted.", finishReason: "stop" };
   }
@@ -246,7 +246,7 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
   const deskBoard = defineSessionBoard({ installation, flowKind: "desk" });
   const doerBoard = defineSessionBoard({ installation, flowKind: "doer" });
 
-  // The desk's turn: the filer's model (its task tools, and `waitForUser` off a task row), or a note.
+  // The desk's turn: the filer's model (its task tools, and `suspendForUser` off a task row), or a note.
   const deskModel = generator({
     name: "asks-desk-model",
     model: scripted as never,
@@ -286,7 +286,7 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
   /**
    * The doer's code turn. `[review]` asks the user to review a draft (a
    * block's stop); `[ask2]` asks two questions midway (`askMidway`);
-   * `[block-input]` asks for input with the block's own `ctx.waitForUser`.
+   * `[block-input]` asks for input with the block's own `ctx.suspendForUser`.
    */
   const doerCode = handler({
     name: "asks-doer-code",
@@ -299,14 +299,14 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
       const base = { requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, ...(taskId !== undefined ? { taskId } : {}) };
       const answered = /answering "/.test(message);
       if (message.includes("[review]") && !answered) {
-        const review = await ctx.waitForUser({ kind: "review", prompt: REVIEW } as never);
+        const review = await ctx.suspendForUser({ kind: "review", prompt: REVIEW } as never);
         const board = await filingConversationBoard(ctx);
         const row = taskId === undefined ? undefined : (board?.tasks.get(taskId) as Task | undefined);
         prove({ kind: "resumed", ...base, attempt: row?.attempts, outcome: review });
         return { reviewed: review };
       }
       if (message.includes("[block-input]") && !answered) {
-        const asked = await ctx.waitForUser({ kind: "input", prompt: INPUT } as never);
+        const asked = await ctx.suspendForUser({ kind: "input", prompt: INPUT } as never);
         prove({ kind: "resumed", ...base, outcome: asked });
         return { asked };
       }
@@ -373,7 +373,7 @@ function buildHost(filename: string, settings: { userDeadlineMs?: number } = {})
     outputSchema: z.unknown(),
     execute: async (_input, rawCtx) => {
       const ctx = rawCtx as unknown as BlockContext;
-      return (await planCollection(ctx)).list().map((row) => ({ id: row.id, status: row.status, attempts: row.attempts, turn: row.turn, lease: row.leaseUntil ?? null, open: openQuestions(row).map((h) => h.ask.prompt) }));
+      return (await planCollection(ctx)).list().map((row) => ({ id: row.id, status: row.status, attempts: row.attempts, turn: row.turn, lease: row.leaseUntil ?? null, open: openHolds(row).map((h) => h.ask.prompt) }));
     }
   });
   const planFlow = defineFlow({
@@ -476,7 +476,7 @@ async function inbox(run: Run): Promise<InboxItem<unknown>[]> {
 }
 const itemOf = async (run: Run, id: string) => (await inbox(run)).find((item) => item.task?.taskId === id);
 /** Answer one hold as the Inbox does. What it said: `ok`, or the refusal's words. */
-async function answerOne(run: Run, hold: InboxQuestion<unknown>, value: Parameters<ReturnType<typeof createInboxClient>["answerOne"]>[1]): Promise<string> {
+async function answerOne(run: Run, hold: InboxHold<unknown>, value: Parameters<ReturnType<typeof createInboxClient>["answerOne"]>[1]): Promise<string> {
   try {
     await createInboxClient(run.h.http.client).answerOne(hold, value);
     return "ok";
@@ -489,13 +489,13 @@ async function filerSays(run: Run, args: Record<string, unknown>): Promise<void>
   await run.h.http.act("desk", run.conversation, "respond", { message: `[filer]${JSON.stringify(args)}[/filer]` });
   await run.h.idle();
 }
-const openOf = (row: Task | undefined) => (row === undefined ? [] : openQuestions(row));
+const openOf = (row: Task | undefined) => (row === undefined ? [] : openHolds(row));
 
 /** The Inbox's truth, read apart from the list: the board's `listTasks` rows, and every task session's suspended requests. */
 async function truthOf(run: Run): Promise<InboxTruth> {
   const listed = (await run.h.http.act("desk", run.conversation, "listTasks_tasks", {}))?.tasks ?? [];
   const board = `${run.conversation}.tasks`;
-  const rows = listed.map((t: any) => ({ board, id: t.id, status: t.status, questions: t.questions ?? [], steers: [] }));
+  const rows = listed.map((t: any) => ({ board, id: t.id, status: t.status, holds: t.holds ?? [], steers: [] }));
   const sessions = new Set<string>(listed.flatMap((t: any) => (t.run?.sessionId === undefined ? [] : [t.run.sessionId])));
   sessions.add(run.conversation);
   const suspensions = [];
@@ -522,23 +522,23 @@ async function legA(run: Run): Promise<void> {
   await run.h.idle();
   const askedRead = await getTask(run, asked);
   const reviewRead = await getTask(run, reviewed);
-  const askedHolds = (askedRead?.questions ?? []) as Array<{ source: { kind: string }; ask: { kind: string; prompt: string } }>;
+  const askedHolds = (askedRead?.holds ?? []) as Array<{ source: { kind: string }; ask: { kind: string; prompt: string } }>;
   if (!heldOk || askedRead?.status !== "in_progress" || askedRead.leaseUntil != null || askedHolds.length !== 1 || askedHolds[0]?.source.kind !== "row" || askedHolds[0]?.ask.kind !== "question" || askedHolds[0]?.ask.prompt !== REGION) {
-    run.failures.push(`a:question-holds — wanted the asking task running with no lease and one open row hold, a question "${REGION}"; getTask shows ${show(askedRead && { status: askedRead.status, lease: askedRead.leaseUntil, questions: askedRead.questions })}`);
+    run.failures.push(`a:question-holds — wanted the asking task running with no lease and one open row hold, a question "${REGION}"; getTask shows ${show(askedRead && { status: askedRead.status, lease: askedRead.leaseUntil, holds: askedRead.holds })}`);
   }
-  const reviewHolds = (reviewRead?.questions ?? []) as Array<{ source: { kind: string }; ask: { kind: string; prompt: string } }>;
+  const reviewHolds = (reviewRead?.holds ?? []) as Array<{ source: { kind: string }; ask: { kind: string; prompt: string } }>;
   const reviewRow = await run.h.byId(reviewed);
   if (!waitOk || reviewRead?.status !== "in_progress" || reviewHolds.length !== 1 || reviewHolds[0]?.source.kind !== "suspension" || reviewHolds[0]?.ask.kind !== "review" || reviewRow?.claimedBy == null) {
-    run.failures.push(`a:review-suspends — wanted the reviewed task running on its claim with one open suspension hold, a review; getTask shows ${show(reviewRead && { status: reviewRead.status, questions: reviewRead.questions })}, claim ${show(reviewRow?.claimedBy)}`);
+    run.failures.push(`a:review-suspends — wanted the reviewed task running on its claim with one open suspension hold, a review; getTask shows ${show(reviewRead && { status: reviewRead.status, holds: reviewRead.holds })}, claim ${show(reviewRow?.claimedBy)}`);
   }
   const items = await inbox(run);
   const askedItems = items.filter((i) => i.task?.taskId === asked);
   const reviewItems = items.filter((i) => i.task?.taskId === reviewed);
-  if (askedItems.length !== 1 || askedItems[0]!.questions.length !== 1 || askedItems[0]!.questions[0]!.ask.kind !== "question") {
-    run.failures.push(`a:one-question-item — wanted one Inbox item for the asking task, a question; the Inbox lists ${show(askedItems.map((i) => i.questions.map((h) => h.ask)))}`);
+  if (askedItems.length !== 1 || askedItems[0]!.holds.length !== 1 || askedItems[0]!.holds[0]!.ask.kind !== "question") {
+    run.failures.push(`a:one-question-item — wanted one Inbox item for the asking task, a question; the Inbox lists ${show(askedItems.map((i) => i.holds.map((h) => h.ask)))}`);
   }
-  if (reviewItems.length !== 1 || reviewItems[0]!.questions.length !== 1 || reviewItems[0]!.questions[0]!.ask.kind !== "review") {
-    run.failures.push(`a:one-review-item — wanted one Inbox item for the reviewed task, named a review; the Inbox lists ${show(reviewItems.map((i) => i.questions.map((h) => h.ask)))}`);
+  if (reviewItems.length !== 1 || reviewItems[0]!.holds.length !== 1 || reviewItems[0]!.holds[0]!.ask.kind !== "review") {
+    run.failures.push(`a:one-review-item — wanted one Inbox item for the reviewed task, named a review; the Inbox lists ${show(reviewItems.map((i) => i.holds.map((h) => h.ask)))}`);
   }
   const statuses = (await run.h.rows()).map((r) => r.status as string);
   if (statuses.includes("parked")) run.failures.push(`a:no-row-parked — a row reads parked: ${show(statuses)}`);
@@ -580,7 +580,7 @@ async function legB(run: Run): Promise<void> {
   if (answerSteer?.from !== "filer") run.failures.push(`b:from-the-filer — wanted the answer kept from the filer; it is ${show(answerSteer)}`);
   if ((await itemOf(run, id)) !== undefined) run.failures.push("b:item-gone — the answered question is still listed");
   // An Inbox answer after it is told the question is answered.
-  const late = await answerOne(run, staleItem.questions[0]!, { text: "Use us-east." });
+  const late = await answerOne(run, staleItem.holds[0]!, { text: "Use us-east." });
   if (late === "ok" || !/answered/.test(late)) run.failures.push(`b:late-inbox-answer — wanted an Inbox answer after the filer's told the question is answered; it said ${late}`);
   await reconciled(run, "b");
   run.notes.push(`b: the filer's steer naming none left it open; naming it answered it, one more turn on attempt 1 with the answer in its brief; a later Inbox answer: ${late.slice(0, 120)}`);
@@ -590,9 +590,9 @@ async function legB(run: Run): Promise<void> {
 async function legC(run: Run): Promise<void> {
   const id = run.reviewed!;
   const item = await itemOf(run, id);
-  const hold = item?.questions[0];
+  const hold = item?.holds[0];
   if (hold?.ask.kind !== "review" || hold.source.kind !== "suspension" || hold.ask.prompt !== REVIEW) {
-    run.failures.push(`c:listed-as-review — wanted the review listed as one suspension hold named a review; the Inbox shows ${show(item?.questions)}`);
+    run.failures.push(`c:listed-as-review — wanted the review listed as one suspension hold named a review; the Inbox shows ${show(item?.holds)}`);
     return;
   }
   await reconciled(run, "c:held");
@@ -608,7 +608,7 @@ async function legC(run: Run): Promise<void> {
     run.failures.push(`c:verdict-resumes — wanted the verdict to resume the block once, on attempt 1, and the task to complete; resumed ${show(resumed.map((r) => [r.attempt, r.outcome]))}, the row ${show(row && { status: row.status, attempts: row.attempts })}`);
   }
   if ((await itemOf(run, id)) !== undefined) run.failures.push("c:item-gone — the answered review is still listed");
-  if (openOf(row).length !== 0) run.failures.push(`c:hold-closed — the resume left a hold open: ${show(row?.questions)}`);
+  if (openOf(row).length !== 0) run.failures.push(`c:hold-closed — the resume left a hold open: ${show(row?.holds)}`);
   await reconciled(run, "c");
   run.notes.push(`c: the review listed as a review and reconciled from its suspension hold; the Inbox's verdict resumed the block on attempt 1`);
 }
@@ -617,7 +617,7 @@ async function legC(run: Run): Promise<void> {
 async function legD(run: Run): Promise<void> {
   const id = await file(run, word("Reconcile the two exports [ask2]"));
   if (!(await run.h.until(async () => openOf(await run.h.byId(id)).length === 2, 20_000))) {
-    run.failures.push(`d:setup — the task never held on its two questions: ${show((await run.h.byId(id))?.questions)}`);
+    run.failures.push(`d:setup — the task never held on its two questions: ${show((await run.h.byId(id))?.holds)}`);
     return;
   }
   await run.h.idle();
@@ -658,7 +658,7 @@ async function legD(run: Run): Promise<void> {
 async function legE(run: Run): Promise<void> {
   const id = await file(run, word("Draft the migration note [review]"));
   if (!(await run.h.until(async () => openOf(await run.h.byId(id)).some((h) => h.source.kind === "suspension"), 20_000))) {
-    run.failures.push(`e:setup — the task never waited on its review: ${show((await run.h.byId(id))?.questions)}`);
+    run.failures.push(`e:setup — the task never waited on its review: ${show((await run.h.byId(id))?.holds)}`);
     return;
   }
   await run.h.idle();
@@ -667,13 +667,13 @@ async function legE(run: Run): Promise<void> {
   await run.h.idle();
   const item = await itemOf(run, id);
   const kept = ((await run.h.byId(id))?.steers ?? []).find((s) => s.message === steer);
-  if (item?.questions[0]?.ask.kind !== "review" || kept === undefined || kept.answers !== undefined) {
-    run.failures.push(`e:steer-kept — wanted the review still listed and the steer kept, answering nothing; item ${show(item?.questions)}, steer ${show(kept)}`);
+  if (item?.holds[0]?.ask.kind !== "review" || kept === undefined || kept.answers !== undefined) {
+    run.failures.push(`e:steer-kept — wanted the review still listed and the steer kept, answering nothing; item ${show(item?.holds)}, steer ${show(kept)}`);
   }
-  if (item?.questions[0] === undefined) return;
-  const said = await answerOne(run, item.questions[0], { value: "Fine." });
+  if (item?.holds[0] === undefined) return;
+  const said = await answerOne(run, item.holds[0], { value: "Fine." });
   if (said !== "ok") run.failures.push(`e:answered — the Inbox's verdict was refused: ${said}`);
-  run.closed.push(item.questions[0].id);
+  run.closed.push(item.holds[0].id);
   await run.h.until(async () => (await run.h.byId(id))?.status === "completed", 20_000);
   await run.h.idle();
   const turns = proofsOf(id, "turn");
@@ -685,19 +685,19 @@ async function legE(run: Run): Promise<void> {
   run.notes.push(`e: a steer into the waiting review was kept and answered nothing; after the verdict the task took one more turn holding it`);
 }
 
-/** g: the model's `waitForUser` input off a task row, the task-turn refusal, a block's input, and one wait per step. */
+/** g: the model's `suspendForUser` input off a task row, the task-turn refusal, a block's input, and one wait per step. */
 async function legG(run: Run): Promise<void> {
   // A turn with no task row: the desk's own model asks for input.
   const sent = await run.h.http.client.flow("desk").send("respond", { message: "[input] the report" }, { sessionId: run.conversation });
   const suspended = await run.h.until(async () => (await run.h.http.client.sessions.requests(run.conversation, { status: "suspended" })).some((r) => r.id === sent.id), 15_000);
   // No deadline set: past several sweeps, still suspended and still listed.
   await sleep(SWEEP_MS * 4);
-  const lone = (await inbox(run)).find((i) => i.task === null && i.questions[0]?.ask.prompt === INPUT);
+  const lone = (await inbox(run)).find((i) => i.task === null && i.holds[0]?.ask.prompt === INPUT);
   const stillSuspended = (await run.h.http.client.sessions.requests(run.conversation, { status: "suspended" })).some((r) => r.id === sent.id);
-  if (!suspended || !stillSuspended || lone === undefined || lone.questions[0]!.ask.kind !== "input") {
-    run.failures.push(`g:input-waits — wanted the input listed in the Inbox with no task, and the request still suspended past the sweeper; suspended ${suspended}/${stillSuspended}, item ${show(lone?.questions)}`);
+  if (!suspended || !stillSuspended || lone === undefined || lone.holds[0]!.ask.kind !== "input") {
+    run.failures.push(`g:input-waits — wanted the input listed in the Inbox with no task, and the request still suspended past the sweeper; suspended ${suspended}/${stillSuspended}, item ${show(lone?.holds)}`);
   } else {
-    const said = await answerOne(run, lone.questions[0]!, { value: "acct-eu-42" });
+    const said = await answerOne(run, lone.holds[0]!, { value: "acct-eu-42" });
     if (said !== "ok") run.failures.push(`g:input-answered — the Inbox's answer was refused: ${said}`);
     await sent.wait({ pollMs: 20, timeoutMs: 20_000 }).catch(() => undefined);
     const result = toolResultsWith("[input] the report").at(-1)?.message ?? "";
@@ -705,19 +705,19 @@ async function legG(run: Run): Promise<void> {
       run.failures.push(`g:input-is-the-result — wanted the person's answer as the tool's result; the model read ${show(result.slice(0, 400))}`);
     }
   }
-  // On a task turn the tool refuses input and names askQuestion.
+  // On a task turn the tool refuses input and names holdTaskForUser.
   const refusedId = await file(run, word("Find the account [input-on-task]"));
   await run.h.until(async () => (await run.h.byId(refusedId))?.status === "completed", 20_000);
   await run.h.idle();
   const refusal = toolResultsWith("[input-on-task]").at(-1)?.message ?? "";
-  if (!refusal.includes("askQuestion") || (await itemOf(run, refusedId)) !== undefined) {
-    run.failures.push(`g:task-turn-refuses-input — wanted the tool to refuse input on a task turn naming askQuestion, and nothing listed; the model read ${show(refusal.slice(0, 400))}`);
+  if (!refusal.includes("holdTaskForUser") || (await itemOf(run, refusedId)) !== undefined) {
+    run.failures.push(`g:task-turn-refuses-input — wanted the tool to refuse input on a task turn naming holdTaskForUser, and nothing listed; the model read ${show(refusal.slice(0, 400))}`);
   }
   // A block's own input on a task turn still suspends (FIX-2129).
   const blockId = await file(run, word("Ask the block's way [block-input]"));
   const blockWaits = await run.h.until(async () => openOf(await run.h.byId(blockId)).some((h) => h.source.kind === "suspension" && h.ask.kind === "input"), 20_000);
-  if (!blockWaits || (await itemOf(run, blockId))?.questions[0]?.ask.kind !== "input") {
-    run.failures.push(`g:block-input-suspends — wanted a block's own waitForUser input to suspend and list; holds ${show((await run.h.byId(blockId))?.questions)}`);
+  if (!blockWaits || (await itemOf(run, blockId))?.holds[0]?.ask.kind !== "input") {
+    run.failures.push(`g:block-input-suspends — wanted a block's own suspendForUser input to suspend and list; holds ${show((await run.h.byId(blockId))?.holds)}`);
   }
   await run.h.http.act("desk", run.conversation, "updateTask_tasks", { id: blockId, status: "cancelled" }).catch(() => undefined);
   // One step, both tools: one wait opens, the sibling names the other.
@@ -735,7 +735,7 @@ async function legG(run: Run): Promise<void> {
   }
   await run.h.http.act("desk", run.conversation, "updateTask_tasks", { id: bothId, status: "cancelled" }).catch(() => undefined);
   await run.h.idle();
-  run.notes.push(`g: input off a task row came back as the tool's result and waited past the sweeper unanswered; on a task turn the tool refused input naming askQuestion; a block's input suspended; both tools in one step opened one wait`);
+  run.notes.push(`g: input off a task row came back as the tool's result and waited past the sweeper unanswered; on a task turn the tool refused input naming holdTaskForUser; a block's input suspended; both tools in one step opened one wait`);
 }
 
 /** g, on a host with a person-stop deadline: the model's input comes back unanswered at it, not a throw. */

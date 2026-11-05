@@ -3,7 +3,7 @@
  * Agent text renders as Markdown: while it streams, an unfinished code fence
  * already draws as code, and HTML in the text shows as text, never as an element.
  */
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { Entry } from "../src/components/Entry";
 
@@ -39,12 +39,13 @@ describe("agent Markdown", () => {
     expect(view.textContent).toContain("<b>bold</b>");
   });
 
-  it("renders a background result's summary as Markdown too", () => {
+  it("renders a background result's summary as Markdown too, once its line is opened", () => {
     const view = render(
       <Entry
         entry={{ kind: "result", id: "r1", taskId: "t1", title: "Research Acme", status: "completed", summary: "Acme ships **weekly**.", duringTurn: true }}
       />,
     ).container;
+    fireEvent.click(view.querySelector("button")!);
     expect(view.querySelector('[data-streamdown="strong"]')?.textContent).toBe("weekly");
   });
 });

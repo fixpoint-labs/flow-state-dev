@@ -13,9 +13,9 @@
 // the item taxonomy, so their declarations live in the zero-dependency
 // `@flow-state-dev/contracts` layer. Re-exported here to preserve this path's
 // surface; the record/filter machinery below still references them locally.
-import type { ResumeAction, SuspensionReason, SuspensionStatus, WaitForUserKind } from "@flow-state-dev/contracts";
-export type { ResumeAction, SuspensionReason, SuspensionStatus, WaitForUserKind };
-export { isUserSuspension, waitForUserKindOf } from "@flow-state-dev/contracts";
+import type { ResumeAction, SuspensionReason, SuspensionStatus, SuspendForUserKind } from "@flow-state-dev/contracts";
+export type { ResumeAction, SuspensionReason, SuspensionStatus, SuspendForUserKind };
+export { isUserSuspension, suspendForUserKindOf } from "@flow-state-dev/contracts";
 
 /**
  * Returned by `ctx.suspend()` when a human skips an optional suspension (resumed
@@ -49,12 +49,12 @@ export interface SuspensionRecord {
 
   reason: SuspensionReason;
   /**
-   * What a user's suspension asks for, when `ctx.waitForUser` set it
+   * What a user's suspension asks for, when `ctx.suspendForUser` set it
    * (FIX-2129). Absent on a raw `ctx.suspend` and on every other
-   * suspension: read it with `waitForUserKindOf`, which falls back to the
+   * suspension: read it with `suspendForUserKindOf`, which falls back to the
    * reason.
    */
-  kind?: WaitForUserKind;
+  kind?: SuspendForUserKind;
   /**
    * The suspension's short heading; `message` is then its body. Absent when the
    * suspension gave none, including every record persisted before it existed:

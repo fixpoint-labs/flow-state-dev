@@ -27,7 +27,7 @@ import type { RequestStatus } from "@flow-state-dev/core/types";
 import { allRows, type LoadedSnapshot } from "./derive";
 import { useLab } from "./lab-data";
 import { conversationBoardRef, describeFailure, type BoardRow, type Failure } from "./reads";
-import { interruptRun, readRunStatus, resolveRunFlow, RunReadError, type OpenRun } from "./run";
+import { interruptRun, readRunRecord, resolveRunFlow, RunReadError, type OpenRun } from "./run";
 
 /** How often, and how many times, a task screen re-reads its row. */
 export const REREAD_EVERY_MS = 2_000;
@@ -71,14 +71,23 @@ export type TaskView = {
   retryRun(): void;
   /** The run's request status, as its record last read. */
   status: RequestStatus | undefined;
-  /** The request record moved (from the live stream or a read). */
-  reportStatus(status: string): void;
+  /** The request record moved (from the live stream or a read), with when it ended once it has. */
+  reportStatus(status: string, endedAtMs?: number): void;
   interrupt: InterruptState;
   requestInterrupt(): Promise<void>;
+  /** When an aborted run stopped, by its request record; `undefined` when the record has no end time. */
+  stoppedAt: number | undefined;
   devtoolUrl: string | undefined;
-  /** Request ids this composer started, newest last, for this open task only (FIX-2009). */
+  /** Request ids this composer started, newest last, for this open task only (FIX-2009): the Session follows each. */
   sent: readonly string[];
-  noteSent(requestId: string): void;
+  /**
+   * The ones among `sent` whose door keeps no task id, so their items carry no
+   * stamp: the Session shows these by request id. A stamping door's turns are
+   * found by the stamp alone.
+   */
+  unstamped: readonly string[];
+  /** @param stamped Whether the line went with the task's id, to a door that stamps it. */
+  noteSent(requestId: string, stamped: boolean): void;
 };
 
 const TaskContext = createContext<TaskView | null>(null);
@@ -114,11 +123,15 @@ export function TaskProvider({
   devtoolUrl?: string;
   children: ReactNode;
 }) {
-  const { client, reader, refresh } = useLab();
+  const { client, reader } = useLab();
   const fromSnapshot = useMemo(() => allRows(snapshot).filter((r) => r.boardRef === boardRef), [snapshot, boardRef]);
   const [boardRows, setBoardRows] = useState<BoardRow[]>(fromSnapshot);
   const [rowFailure, setRowFailure] = useState<Failure | undefined>(undefined);
   const [reads, setReads] = useState(0);
+  // Set by a re-read someone asked for (a board action in the frame, or Retry):
+  // a row that comes back pending with no run is then followed until the board
+  // hands it to one, which a Release or a Retry leaves to its next dispatch pass.
+  const [following, setFollowing] = useState(false);
 
   useEffect(() => {
     setBoardRows(fromSnapshot);
@@ -176,7 +189,7 @@ export function TaskProvider({
     };
   }, [client, linkedSession, retries]);
 
-  const [status, setStatus] = useState<{ requestId: string; status: RequestStatus } | { requestId: string; failure: Failure } | undefined>();
+  const [status, setStatus] = useState<{ requestId: string; status: RequestStatus; endedAtMs?: number } | { requestId: string; failure: Failure } | undefined>();
   const flowId = flow !== undefined && "flowId" in flow && flow.sessionId === link?.sessionId ? flow.flowId : undefined;
   const linkedRequest = link?.requestId;
   const linkedAttempt = link?.attempt;
@@ -188,18 +201,15 @@ export function TaskProvider({
     [linkedSession, linkedRequest, linkedAttempt, flowId],
   );
 
-  // The run's last known status, so only a move into `suspended` re-reads the Lab.
-  const lastReported = useRef<{ requestId: string; status: string } | null>(null);
   // The request record, once per run opened: it decides whether the run is open at all.
   useEffect(() => {
     if (openRun === undefined) return;
     let live = true;
     setStatus(undefined);
-    readRunStatus(client, openRun)
-      .then((s) => {
+    readRunRecord(client, openRun)
+      .then((read) => {
         if (!live) return;
-        setStatus({ requestId: openRun.requestId, status: s });
-        lastReported.current = { requestId: openRun.requestId, status: s };
+        setStatus({ requestId: openRun.requestId, ...read });
       })
       .catch((error: unknown) => {
         if (live) setStatus({ requestId: openRun.requestId, failure: error instanceof RunReadError ? error.failure : describeFailure(error) });
@@ -228,7 +238,8 @@ export function TaskProvider({
     if (linkSettled) setReads(0);
   }, [linkSettled, link?.requestId]);
   const awaitingNextRun = row !== undefined && row.run !== null && linkSettled && isOpen(row);
-  const waiting = boardKnown && (awaitingLink(row) || awaitingNextRun) && boardFailure === undefined && reads < REREAD_AT_MOST;
+  const awaitingDispatch = following && row !== undefined && row.status === "pending" && row.run === null;
+  const waiting = boardKnown && (awaitingLink(row) || awaitingNextRun || awaitingDispatch) && boardFailure === undefined && reads < REREAD_AT_MOST;
   useEffect(() => {
     if (!waiting) return;
     const timer = setTimeout(() => {
@@ -239,17 +250,14 @@ export function TaskProvider({
 
   const settledOnce = useRef<string | null>(null);
   const reportStatus = useCallback(
-    (next: string) => {
+    (next: string, endedAtMs?: number) => {
       if (openRun === undefined) return;
-      // A run that stops to ask a user: re-read the Lab, so its ask reaches
-      // the Session, the activity line and the inspector with no reload.
-      const before = lastReported.current;
-      lastReported.current = { requestId: openRun.requestId, status: next };
-      if (next === "suspended" && (before?.requestId !== openRun.requestId || before.status !== "suspended")) void refresh();
+      // A run that stops to ask a user needs no read here: the snapshot hears
+      // its request move and reads the ask in (`lab-data.tsx`).
       setStatus((held) =>
-        held !== undefined && held.requestId === openRun.requestId && "status" in held && held.status === next
+        held !== undefined && held.requestId === openRun.requestId && "status" in held && held.status === next && (endedAtMs === undefined || held.endedAtMs !== undefined)
           ? held
-          : { requestId: openRun.requestId, status: next as RequestStatus },
+          : { requestId: openRun.requestId, status: next as RequestStatus, ...(endedAtMs === undefined ? {} : { endedAtMs }) },
       );
       if (next !== "in_progress" && settledOnce.current !== openRun.requestId) {
         settledOnce.current = openRun.requestId;
@@ -257,7 +265,7 @@ export function TaskProvider({
         void readBoardNow();
       }
     },
-    [openRun, readBoardNow, refresh],
+    [openRun, readBoardNow],
   );
 
   // ---- Interrupt: the one write this screen makes.
@@ -276,7 +284,8 @@ export function TaskProvider({
     setInterrupt({ kind: "pending" });
     try {
       const outcome = await interruptRun(client, openRun, signal === undefined ? {} : { signal });
-      reportStatus(outcome.kind === "aborted" ? "aborted" : outcome.status);
+      if (outcome.kind === "aborted") reportStatus("aborted", outcome.endedAtMs);
+      else reportStatus(outcome.status);
       setInterrupt({ kind: "idle" });
     } catch (error) {
       if (signal?.aborted === true) return;
@@ -285,8 +294,17 @@ export function TaskProvider({
   }, [client, openRun, interrupt.kind, reportStatus]);
 
   const [sent, setSent] = useState<string[]>([]);
-  useEffect(() => setSent([]), [boardRef, taskId]);
-  const noteSent = useCallback((requestId: string) => setSent((held) => (held.includes(requestId) ? held : [...held, requestId])), []);
+  const [unstamped, setUnstamped] = useState<string[]>([]);
+  useEffect(() => {
+    setSent([]);
+    setUnstamped([]);
+    setFollowing(false);
+  }, [boardRef, taskId]);
+  const noteSent = useCallback((requestId: string, stamped: boolean) => {
+    const add = (held: string[]) => (held.includes(requestId) ? held : [...held, requestId]);
+    setSent(add);
+    if (!stamped) setUnstamped(add);
+  }, []);
 
   const value: TaskView = {
     boardRef,
@@ -298,6 +316,7 @@ export function TaskProvider({
     gaveUp: boardKnown && awaitingLink(row) && boardFailure === undefined && reads >= REREAD_AT_MOST,
     // A read now, then a fresh re-read window if the row is still waiting.
     retryRow: () => {
+      setFollowing(true);
       setReads(0);
       void readBoardNow();
     },
@@ -307,8 +326,11 @@ export function TaskProvider({
     reportStatus,
     interrupt,
     requestInterrupt,
+    // For "run stopped at": the time the record or the stream gave with the aborted status.
+    stoppedAt: currentStatus === "aborted" && status !== undefined && "status" in status ? status.endedAtMs : undefined,
     devtoolUrl,
     sent,
+    unstamped,
     noteSent,
   };
   return <TaskContext.Provider value={value}>{children}</TaskContext.Provider>;

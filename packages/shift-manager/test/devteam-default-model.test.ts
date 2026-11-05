@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { LAB_DEFAULT_MODEL, openLab, type Lab } from "../teams/devteam/host.mts";
-import { harnessStub } from "../teams/devteam/harness-stub.mts";
+import { harnessStub } from "@flow-state-dev/harness-manager";
 
 let lab: Lab | undefined;
 afterEach(async () => {

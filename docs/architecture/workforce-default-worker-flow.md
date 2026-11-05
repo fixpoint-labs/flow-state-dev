@@ -150,8 +150,11 @@ Generator slots stay `prompt` / `context` / `history` / `user`. Instructions com
 first, then the worker's team, then the worker's own, then the instructions of the packages it holds
 (joined by a blank line, its own packages first), with absent layers dropped rather than joined as
 blanks. The default layer is the worker's identity, read from the roster each request (its
-name, team and `description`, the workers a message reaches and the task-only ones), then one
-rule on using tools. It is present on an installation only; off one there is no roster, and the
+name, team and `description`, the workers a message reaches and the task-only ones, with each
+messageable delegate marked as one that takes the worker's tasks and a line that work for a
+delegate goes as a task), then the rule to work things out first: look with its tools before asking,
+never ask the user for what the system already holds, ask only what depends on the user, and act
+rather than offer (FIX-2364). It is present on an installation only; off one there is no roster, and the
 entry is absent (FIX-2334).
 
 **What that order buys, and what it does not.** The position is fixed and checkable: a worker's own

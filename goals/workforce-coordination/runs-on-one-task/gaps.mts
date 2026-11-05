@@ -43,7 +43,7 @@ export const ROWS: Row[] = [
   { target: "A task's request may wait on a task it filed, up to 5 waits deep", owners: "FIX-2082", checks: ["task-board/waits-on-a-task-it-filed b"] },
   { target: "A request waits on a task it filed, just now or earlier", owners: "FIX-2082", checks: ["task-board/waits-on-a-task-it-filed a", "closure j1:waits-in-request"] },
   { target: "A wait's deadline leaves the task running", owners: "FIX-2082", checks: ["task-board/waits-on-a-task-it-filed c (control deadline-cancels)"] },
-  { target: "A request suspended by `waitForUser`", owners: "FIX-2077", checks: ["task-board/settles-when-its-work-is-over"], carved: "marking a task waiting on a person is FIX-2058's" },
+  { target: "A request suspended by `suspendForUser`", owners: "FIX-2077", checks: ["task-board/settles-when-its-work-is-over"], carved: "marking a task waiting on a person is FIX-2058's" },
   { target: "A message to an open task's session is conversation", owners: "FIX-2077", checks: ["task-board/settles-when-its-work-is-over"] },
   { target: "The row settles only after the request's background work ends", owners: "FIX-2077, FIX-2088", checks: ["task-board/settles-when-its-work-is-over a (control settle-at-return)", "task-board/background-error-fails-the-attempt"] },
   { target: "Splits use delegates and stay running", owners: "FIX-2077, FIX-2081", checks: ["task-board/settles-when-its-work-is-over", "workforce/split-to-roster", "closure a:ends-running"] },

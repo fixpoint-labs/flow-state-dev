@@ -21,7 +21,7 @@ import {
   type Verdict,
   type TaskBoardHandle,
 } from "../../src/task-board";
-import { getOrCreateTaskCollection, openRowQuestions } from "../../src/tasks";
+import { getOrCreateTaskCollection, openRowHolds } from "../../src/tasks";
 import { setNextDrainUnseeded } from "../../src/task-board/blocks/seed-collection";
 
 // ---------------------------------------------------------------------------
@@ -686,7 +686,7 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
       inputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         const collection = await collectionOf(ctx);
-        const [hold] = openRowQuestions(collection.get("a")!);
+        const [hold] = openRowHolds(collection.get("a")!);
         if (hold !== undefined) await collection.answer!("a", { questionId: hold.id, message: "eu-west", from: "user", by: "u1" });
       },
     });
@@ -738,7 +738,7 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
       inputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         const collection = await collectionOf(ctx);
-        const [hold] = openRowQuestions(collection.get("a")!);
+        const [hold] = openRowHolds(collection.get("a")!);
         if (hold !== undefined) await collection.answer!("a", { questionId: hold.id, message: "eu-west", from: "user", by: "u1" });
       },
     });
@@ -829,7 +829,7 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
       execute: async (_input, ctx) => {
         const collection = await collectionOf(ctx);
         for (const row of collection.list()) {
-          const [hold] = openRowQuestions(row);
+          const [hold] = openRowHolds(row);
           if (hold !== undefined) await collection.answer!(row.id, { questionId: hold.id, message: "eu-west", from: "user", by: "u1" });
         }
       },
@@ -880,7 +880,7 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
       inputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         const collection = await collectionOf(ctx);
-        const [hold] = openRowQuestions(collection.get("a")!);
+        const [hold] = openRowHolds(collection.get("a")!);
         if (hold !== undefined) await collection.answer!("a", { questionId: hold.id, message: "eu-west", from: "user", by: "u1" });
       },
     });

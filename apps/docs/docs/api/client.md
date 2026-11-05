@@ -38,8 +38,8 @@ It returns a `Client`:
 | `resources` | Resource content and collections. See [`fsd.resources`](#fsdresources). |
 | `requests.interrupted(options?)` | The user's crash-interrupted requests. See [`fsd.requests.interrupted`](#fsdrequestsinterruptedoptions). |
 | `flows()` | The flows the server hosts, as `FlowListEntry[]`. |
-| `capabilities()` | What the server supports, as `FlowCapabilities`. |
-| `stream(options)` | Follow the user stream: resource and scope-state changes for this user. See [`fsd.stream`](#fsdstreamoptions). |
+| `capabilities()` | What the server supports, as `FlowCapabilities`: `{ userStream, push }`, with `push` `{ transport: "websocket" }` on a host that serves push and `null` elsewhere. |
+| `subscribe(topics, options)` | Run a read again when something under `topics` changes. See [`fsd.subscribe`](#fsdsubscribetopics-options). |
 | `transcribe({ audio, mediaType?, language? })` | Transcribe audio on the server. Resolves to `{ text, language? }`. `mediaType` defaults to `"audio/webm"`. |
 
 A different user or a different server is a different client.
@@ -144,7 +144,7 @@ The React layer (`useSession().resumeSuspension`, `useSuspensions`) wires this u
 
 ### `answer(body)`
 
-An [Inbox](/docs/orchestration/task-board#building-an-inbox) answers a stop that waits for a user (a `ctx.waitForUser`, or a `user_approval` / `user_input` suspension) with `answer`. Unlike `resume`, it works on any run, including one a task board started, because it takes only where the stop is and the answer:
+An [Inbox](/docs/orchestration/task-board#building-an-inbox) answers a stop that waits for a user (a `ctx.suspendForUser`, or a `user_approval` / `user_input` suspension) with `answer`. Unlike `resume`, it works on any run, including one a task board started, because it takes only where the stop is and the answer:
 
 ```ts
 await fsd.flow(flowId).request(item.requestId).answer({
@@ -203,6 +203,11 @@ const withRuns = await fsd.sessions.list({
   flowKind: "research",
   include: "dispatch-runs",
 });
+
+const withStatus = await fsd.sessions.list({
+  flowKind: "research",
+  include: ["dispatch-runs", "status"],
+});
 ```
 
 | Option | Type | Notes |
@@ -211,10 +216,14 @@ const withRuns = await fsd.sessions.list({
 | `flowId` | `string` | One copy of a collection flow, by its exact id. [`sessionQueryFor`](/docs/client/overview#listing-one-flows-sessions) picks `flowKind` or `flowId` for an address. |
 | `userId` | `string` | Whose sessions. Default: the client's own user. A server with sign-in returns only the signed-in user's sessions whatever you pass. |
 | `limit` / `offset` | `number` | Paging. |
-| `include` | `"dispatch-runs"` | Also return the sessions dispatchers ran work in. Any other value answers `400`. |
+| `include` | `SessionListInclude \| SessionListInclude[]` | `"dispatch-runs"`, `"status"`, or both as an array. `"dispatch-runs"` also returns the sessions dispatchers ran work in. `"status"` adds each row's `requestStatus`. Any other value answers `400`. |
 | `state` | `Record<string, string>` | Only sessions whose readonly state fields hold these values. Needs `flowKind` or `flowId`; a field that isn't readonly on that flow is refused. See [Example: one session per project](/docs/fundamentals/state-and-scopes#example-one-session-per-project). |
 
-Without `include`, the response holds the sessions a person started. With it, a row a dispatcher started carries `parentSessionId`, the session it was started from, plus the `topic` and `coordinate` labels below. Sessions belonging to another user, organization or tenant are never returned.
+Without `"dispatch-runs"`, the response holds the sessions a person started. With it, a row a dispatcher started carries `parentSessionId`, the session it was started from, plus the `topic` and `coordinate` labels below. Sessions belonging to another user, organization or tenant are never returned.
+
+With `"status"`, each row carries `requestStatus`, a `RequestStatus`: the status of the session's latest request. A request that is still running or waiting on a person (`in_progress`, `suspended`) wins over a later one that ended. A session with no request has no `requestStatus`, so guard with `== null`. When it is `suspended`, `requestWaitsForUser` says what the request waits on: `true` for the user (a question, an approval), `false` for other work, such as a reply from another worker, which resumes by itself. It lets a list show which conversations are running or waiting on someone, without reading each session's requests.
+
+To keep a list current, [subscribe](#fsdsubscribetopics-options) to `topic.user()` and list again on a `"run"` notice. The server sends one whenever one of the user's sessions is created, titled or deleted, or one of its requests starts or ends, whether the change came from another tab, a script or a CLI run. A change written by another server process reaches the socket only on a [bus that crosses processes](/guides/realtime#one-process-several-processes). In React, [`useSessionList`](/docs/api/react#usesessionlistoptions) does both for you.
 
 ### `sessions.children(parentSessionId, options?)`
 
@@ -300,6 +309,29 @@ Reads the session's state snapshot: the `clientData` values the flow exposes and
 
 The snapshot's `at` is the server time the read began, and `sessionCreatedAt` identifies the session you read. Both feed [`sessions.stream`](#following-a-session).
 
+### `readSessionTail(source, sessionId, options?)`
+
+Reads a session from its newest end. A conversation that runs for days holds more items than one read should carry, and its items come back oldest first, so reading from the start shows its beginning and not the reply someone opened it for. `source` is any object with `state`, such as `fsd.sessions`.
+
+```ts
+import { readSessionEarlier, readSessionTail, refreshSessionWindow } from "@flow-state-dev/client";
+
+let window = await readSessionTail(fsd.sessions, sessionId, { itemTypes: ["message"] });
+if (window.hasEarlier) {
+  // A "Load earlier" button:
+  window = await readSessionEarlier(fsd.sessions, window);
+}
+```
+
+| Option | Type | Notes |
+|--------|------|-------|
+| `limit` | `number` | How many of the newest items to read. 200 by default (`SESSION_WINDOW_PAGE`). |
+| `itemTypes` | `string[]` | Only these item types. The window keeps them for its later reads. |
+
+The window holds `items` (oldest first), `start` (where the first one sits in the session), `total`, `hasEarlier`, and the read's `at` and `sessionCreatedAt` for [`sessions.stream`](#following-a-session).
+
+`readSessionEarlier(source, window, { limit? })` adds up to `limit` earlier items, 200 by default. `refreshSessionWindow(source, window)` reads the window again, for a view that doesn't follow the session's stream. Both read from the window's start to the session's end: a reply is stored while it's still being written and finishes in place, and an item can be stored behind ones you already hold, so reading only what came after the old end would miss both. If the session under the id was deleted and created again, the window starts over at the new session's end.
+
 ## `fsd.resources`
 
 Reads and writes a session's resources. Every method takes the session id and the resource ref.
@@ -354,6 +386,8 @@ Besides the callbacks, it takes `startingAfter` (resume after a sequence number)
 ### Following a session
 
 `fsd.sessions.stream(sessionId, options)` opens one stream for a whole session. It delivers each finished item from any request in the session, with the id of the request that kept it, and a notice naming the session's unfinished background runs whenever that set changes. Items the session snapshot hides are never sent.
+
+The server sends a change once it is saved: each write to the session wakes the stream's read, at most once a second. How much an idle view costs depends on the server's stores. On the default in-memory bus, for an app that runs as one process, and on a bus that carries changes between processes, a view of a quiet session reads nothing. On a bus that doesn't reach every process, such as a Postgres bus with no listening pool, the server also reads about once a second per open view, so a reply another server writes still arrives. Either way the client sees the same events and needs no option for it. See [Store adapters](../persistence/overview.md#store-adapters).
 
 To build a live view, read the whole session snapshot, then open the stream from its first page's `at`, the server time that read began. The pages hold everything saved before that time, and the stream picks up everything saved after. Pass the snapshot's `sessionCreatedAt` too, so the stream follows the session you read and not a later one that takes its id. The example calls `readHistory`, from [Reading a live session's history](#reading-a-live-sessions-history) below, to read every page without missing an item. `useSession` with `live: true` does all of this for you.
 
@@ -431,9 +465,50 @@ async function readHistory() {
 }
 ```
 
-### `fsd.stream(options)`
+### `fsd.subscribe(topics, options)`
 
-Follows the user stream: resource changes and scope-state changes for the client's user, across sessions. Callbacks are `onResourceChanged`, `onResourceContentUpdated`, `onResourceContentCreated`, `onResourceContentDeleted`, `onScopeStateChanged`, `onDebug`, `onEvent` and `onError`. It takes the same `startingAfter`, `lastEventId` and `dedupWindowSize` as a request stream.
+Calls `onChange` when something under one of `topics` may have changed, so you can read it again. The call tells you when to read, never what changed: `onChange` makes the read your screen already makes, and that read is checked on the server like any other.
+
+```ts
+import { createClient, topic } from "@flow-state-dev/client";
+
+const fsd = createClient({ userId, baseUrl: "" });
+
+const sub = fsd.subscribe([topic.session(sessionId), topic.org()], {
+  onChange: (notice) => void reload(),
+  pollIntervalMs: 3000,
+});
+
+// later
+sub.close();
+```
+
+| Option | Type | Notes |
+|--------|------|-------|
+| `onChange` | `(notice: WireNotice \| null) => void` | Required. Gets the notice that woke it, `{ topic, kind, origin? }`, or `null` when the screen should read everything again: after a connect or a reconnect, on a timer tick, and when push starts or stops reaching every server process. |
+| `pollIntervalMs` | `number` | Call `onChange(null)` at this pace wherever push can miss a change: the server has no push, the socket is down, or the server process the socket reached can't hear the others. Omitted, there is no timer. |
+
+It returns `{ close() }`.
+
+The topics come from `topic`, which `@flow-state-dev/client` and `@flow-state-dev/core` both export:
+
+| Topic | Covers |
+|-------|--------|
+| `topic.session(id)` | One session. |
+| `topic.user()` | The caller's own user scope. |
+| `topic.org()` | The caller's organization. |
+
+Each takes an optional `{ resource }` to watch one resource under the scope. A topic without one also hears changes narrowed to a resource under it. User and org topics name no id: the server fills them in from the signed-in caller, so a client can't ask for someone else's.
+
+A notice's `kind` is `"items"`, `"request"`, `"run"`, `"state"`, `"resource"`, `"board"` (a task on one of the session's boards changed, on a topic narrowed to the board's id) or `"resync"`; `origin.requestId` names the request that made the change, when a request did.
+
+**On a host with push** (`serve()` from `@flow-state-dev/node`, `fsdev dev` and `fsdev serve`), the client opens one WebSocket, shared by every `subscribe` call on that client. It asks the server for each topic first, through the client's own `fetcher`, so a bearer token your fetcher adds is what proves who the socket is. A topic the caller may not read is left out, the same way a session that doesn't exist is: `onChange` never hears about it, and with `pollIntervalMs` the client asks for it again at each tick, so access given back recovers without a remount. Each connect and reconnect calls `onChange(null)` once. The server closes a socket after an hour and the client reconnects, which checks every topic again.
+
+**On a host with no push** (Vercel, Next.js, `createServerApp` alone), `onChange(null)` runs on the `pollIntervalMs` timer and nothing else. The same code works on both.
+
+**On several processes**: Each server keeps a *change bus*, the `bus` slot of its stores profile (the stores you hand `createFlowState`; see [Store adapters](/docs/persistence/overview#store-adapters)). A bus that *crosses processes* hands a change made in one server process to every other one. Push reaches every socket only on such a bus. The default in-memory bus is for an app that runs as one process: it counts as crossing, so a subscription's `pollIntervalMs` timer stays off while the socket is up, and a change another process writes reaches an open view only at its next read. Give every process behind one address the same `pushSecret` (see [server setup](/docs/server/setup)).
+
+See the [realtime guide](/guides/realtime) for the whole picture.
 
 ### `createSSEClientFromResponse(options)`
 

@@ -7,12 +7,16 @@ import type { ConversationEntry, TalkRow } from "../adapter";
 
 /**
  * Messages logged to `worker` that its conversation hasn't read yet: each
- * waits for the worker's current answer to end. Joined by message id, so it
- * needs the received entry to carry one.
+ * waits for the worker's current answer to end. The log says when one landed,
+ * which covers a waited send's answer (no received line ever lands for it)
+ * and a received line older than the loaded page. The join by message id
+ * covers the moment a line has landed and the log's next read hasn't caught up.
+ * `since` is when the conversation's window starts: a message sent before it was
+ * read in an older turn the window no longer holds, so it is not waiting.
  */
-export function pendingFor(worker: string, rows: TalkRow[], entries: ConversationEntry[]): TalkRow[] {
+export function pendingFor(worker: string, rows: TalkRow[], entries: ConversationEntry[], since?: number): TalkRow[] {
   const read = new Set(entries.flatMap((e) => (e.kind === "received" ? [e.messageId] : [])));
-  return rows.filter((m) => m.to === worker && !m.undelivered && !read.has(m.id));
+  return rows.filter((m) => m.to === worker && !m.undelivered && !m.delivered && !read.has(m.id) && (since === undefined || m.at >= since));
 }
 
 /**
@@ -23,21 +27,4 @@ export function pendingFor(worker: string, rows: TalkRow[], entries: Conversatio
 export function waitingOn(worker: string, rows: TalkRow[]): string[] {
   const answered = new Set(rows.flatMap((m) => (m.inReplyTo ? [m.inReplyTo] : [])));
   return [...new Set(rows.filter((m) => m.from === worker && m.replyRequested && !m.undelivered && !answered.has(m.id)).map((m) => m.to))];
-}
-
-/** One other worker's exchanges with `worker`. */
-export interface TalkGroup {
-  with: string;
-  rows: TalkRow[];
-  lastAt: number;
-}
-
-/** `worker`'s exchanges grouped by the other worker, the most recent group first. */
-export function groupTalk(worker: string, rows: TalkRow[]): TalkGroup[] {
-  const groups = new Map<string, TalkRow[]>();
-  for (const m of rows) {
-    const other = m.from === worker ? m.to : m.from;
-    groups.set(other, [...(groups.get(other) ?? []), m]);
-  }
-  return [...groups].map(([other, of]) => ({ with: other, rows: of, lastAt: Math.max(...of.map((m) => m.at)) })).sort((a, b) => b.lastAt - a.lastAt);
 }

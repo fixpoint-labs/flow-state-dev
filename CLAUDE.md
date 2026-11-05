@@ -187,7 +187,7 @@ The `stateId`s and team id the lifecycles use are inlined in `issue-lifecycle` �
 
 Development task skills live in `.agents/skills/` — the harness-neutral home, since Claude is our main harness but not our only one. `.claude/skills` is a symlink to it so Claude Code's skill discovery keeps working; don't put files under `.claude/skills` directly. Use these when performing common development tasks:
 
-> **Workflow scripts** live in `.agents/workflows/` (`.claude/workflows` is symlinked the same way): `epic-wake` and `issue-multi-pr`, the pure-mechanism half of the lifecycles. **Run `node .agents/workflows/verify.mjs` after editing either script.** Their contract is [`orchestration.md`](docs/contributing/orchestration.md) → "The pieces at a glance".
+> **Workflow scripts** live in `.agents/workflows/` (`.claude/workflows` is symlinked the same way): `epic-wake` and `issue-multi-pr`, the pure-mechanism half of the lifecycles, and `app-review`, the fan-out of the `app-review` skill. **Run `node .agents/workflows/verify.mjs` after editing any of them.** Their contract is [`orchestration.md`](docs/contributing/orchestration.md) → "The pieces at a glance".
 
 ### Workflow skills
 
@@ -199,6 +199,7 @@ Development task skills live in `.agents/skills/` — the harness-neutral home, 
 | `diagnose` | Hard-bug loop (reproduce → hypothesise → fix). Calls `debug-flow` for flow traces |
 | `debug-flow` | `fsdev run` toolkit (`diagnose` calls it): NDJSON traces, `fsdev block`, failure-pattern table |
 | `statechart` | Mermaid statechart from a TLA+ model of Task status, holds, notice records, or the assemble phase. Scratch dir; no runtime change |
+| `app-review` | Multi-agent review of FSD apps (lead + lens sub-agents per app, one synthesizer): overlaps, and which fixes belong in a package vs. the app, as an interactive Artifact report. Re-runnable; folds new apps into an earlier report |
 | `fsd-coding` | Drive coding through one FSD flow (`fsdev run` + a host-selected Codex, Cursor, or Claude harness). Local / Grok-box only in v1 |
 | `linear-triage` | Review and prioritize Linear issues |
 | `plan-day` | Identify unblocked tasks and generate a daily work plan |

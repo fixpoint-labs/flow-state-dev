@@ -43,7 +43,7 @@ The roster is read on every call, so a worker you hire partway through a convers
 
 When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s task tools in that session: `createTask`, `getTask`, `listTasks` and `updateTask` ([one task, five tools](../orchestration/task-board.md#one-task-five-tools)). `createTask` starts work on a delegate now. With `held: true` it files a task that doesn't start until `updateTask` releases it. With `questions` it files one that doesn't start until the user has answered them from their Inbox, and the answers join the delegate's brief; see [a task's questions](../orchestration/task-board.md#a-tasks-questions). Your app can send the same tools as actions on any of that worker's sessions, named for the board, `tasks`: `createTask_tasks`, `updateTask_tasks` and so on. They act as the signed-in user, and another user's call to them is refused.
 
-A worker working a task also gets `reportProgress`, which writes a status note and a checkpoint of its output on that task, `askQuestion`, which asks the user a question the task then waits on, and `waitForUser`, which stops its turn for the user's approval or review. None is an action.
+A worker working a task also gets `reportProgress`, which writes a status note and a checkpoint of its output on that task, `holdTaskForUser`, which asks the user a question the task then waits on, and `suspendForUser`, which stops its turn for the user's approval or review. None is an action.
 
 A worker with no delegate that takes tasks has no one to hand a task to. On a session of one, the app's actions answer:
 
@@ -191,7 +191,11 @@ The conversation that filed a task hears once when it ends, in a line under the 
 Task "Audit our dependencies' licenses" (task_…) completed by licenses: All 214 dependencies are MIT or Apache-2.0.
 ```
 
-It hears when a task completes, with what came back; when it fails for good, with the error; when it stops on a question, with the question; and when it's cancelled, unless the filing worker cancelled it with its own `updateTask` tool. A cancel your app sends through `updateTask_tasks` is heard like any other ending. A failure or a cancel that took dependent tasks with it names them in the same line, and they send no line of their own. When the line arrives, a coordinator that routes by `judgment` or `best-fit` takes a turn to read it and decide what to do next, such as filing a failed task again. Its model reads the ending as a `getTask` call for that task and its result, not as the line: the task whole, as `getTask_tasks` returns it, with `cancelled` naming any dependents it took with it. One that routes by `round-robin` or `everyone` has no turn of its own, so it shows the line and nothing more. If the coordinator is in the middle of a reply to you, the line starts a second turn at once, and both replies appear in the conversation, each as its own message. Every task gets two attempts, a number you can't change, and a first failure just runs it again without a word. A task whose result goes to the conversation, such as a routed task or its follow-up, gets one.
+It hears when a task completes, with what came back; when it fails for good, with the error; when it stops on a question, with the question; and when it's cancelled, unless the filing worker cancelled it with its own `updateTask` tool. A cancel your app sends through `updateTask_tasks` is heard like any other ending. A failure or a cancel that took dependent tasks with it names them in the same line, and they send no line of their own.
+
+When the line arrives, a coordinator that routes by `judgment` or `best-fit` takes a turn to read it and decide what to do next, such as filing a failed task again. Its model reads the ending as a `getTask` call for that task and its result, not as the line: the task whole, as `getTask_tasks` returns it, with `cancelled` naming any dependents it took with it. One that routes by `round-robin` or `everyone` has no turn of its own, so it shows the line and nothing more. If the coordinator is in the middle of a reply to you, the line starts a second turn at once, and both replies appear in the conversation, each as its own message.
+
+Every task gets two attempts, a number you can't change, and a first failure just runs it again without a word. A task whose result goes to the conversation, such as a routed task or its follow-up, gets one.
 
 The filing session hears each ending once, even if the server stops just after the task ends. On a host with durable execution, an ending whose notice didn't go out is heard within seconds, without anyone opening the conversation: about two seconds after the ending, or as soon as the server is running again. See [Hearing how a task ended](../orchestration/task-board.md#hearing-how-a-task-ended) for the guarantee and what it needs from the host.
 
@@ -199,7 +203,7 @@ The filing session hears each ending once, even if the server stops just after t
 
 | Action | What it does |
 | --- | --- |
-| `listTasks_tasks` | This session's tasks only, even when another session has the same worker and the same delegates |
+| `listTasks_tasks` | This session's tasks, and the steps its worker filed for itself, only: never another session's, even with the same worker and the same delegates |
 | `getTask_tasks` | One task whole: its brief, its fields, how it stands, its delegate's status note, and its output |
 | `createTask_tasks` | Files a task: it starts at once, after its `deps`, or, with `held: true`, when you release it |
 | `updateTask_tasks` | Before the task starts: changes any of its fields, its delegate included, holds it (`status: "held"`) or releases it (`status: "pending"`). Until it finishes: sends it a `message`, or cancels it (`status: "cancelled"`), which the conversation hears like any other ending |
@@ -216,7 +220,7 @@ Two conversations can file a task with the same id for the same worker, and each
 
 ### When a task stops on a question
 
-A delegate working a task sometimes can't go on without you: which region, which account, whether it may delete something. It asks you instead of guessing, with its `askQuestion` tool. The task waits on the question, nothing runs while it waits, and the question shows in your Inbox.
+A delegate working a task sometimes can't go on without you: which region, which account, whether it may delete something. It asks you instead of guessing, with its `holdTaskForUser` tool. The task waits on the question, nothing runs while it waits, and the question shows in your Inbox.
 
 Answer it from the Inbox, or by typing the answer in the task's session: a line there answers the task's oldest open question. An app answers with the board's `updateTask` action, naming the question (`getTask_tasks` lists it under `questions`):
 
@@ -230,7 +234,7 @@ await help.send(
 
 The worker that filed the task, here the coordinator, can answer a question its delegate asked midway, with its `updateTask` tool; it hears the question [as a message](./messaging-workers.md#when-a-task-asks-a-question). It answers a question only when the task runs in a session of its own. When the task runs in the delegate's ongoing session, you answer it. The first answer wins; a later one is kept as an ordinary message to the task. The task takes one more turn in its own task session, the one that asked, on the same attempt, with everything it did before and your answer. When it finishes, the conversation hears that.
 
-An answer doesn't use up the task's retries, and the task can ask again. It has started, so it can't be reassigned. A question waits for as long as it takes, unless your host sets a deadline for the user's answer; cancel the task if nobody will answer. A delegate can also stop for your approval or your review of its work, with its `waitForUser` tool; that shows in your Inbox as well, and only you answer it there. See [A task waiting on a user](../orchestration/task-board.md#a-task-waiting-on-a-user).
+An answer doesn't use up the task's retries, and the task can ask again. It has started, so it can't be reassigned. A question waits for as long as it takes, unless your host sets a deadline for the user's answer; cancel the task if nobody will answer. A delegate can also stop for your approval or your review of its work, with its `suspendForUser` tool; that shows in your Inbox as well, and only you answer it there. See [A task waiting on a user](../orchestration/task-board.md#a-task-waiting-on-a-user).
 
 ### Steering a task while it runs
 

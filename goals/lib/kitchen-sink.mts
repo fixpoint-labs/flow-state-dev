@@ -41,6 +41,8 @@ export function buildKitchenSink(): void {
 export interface KitchenSinkServer {
   /** `http://127.0.0.1:<port>`. */
   readonly origin: string;
+  /** The spawned `pnpm` shim, leader of the server's own process group: what `crashAndRestart` kills. */
+  readonly child: ChildProcess;
   /** Everything the server has written to stdout and stderr so far. */
   log(): string;
   /** Stop the server. Safe to call twice. */
@@ -58,7 +60,8 @@ async function flowIndexStatus(origin: string): Promise<number | undefined> {
 /**
  * Serve the built app with `next start`, on the scripted model and the
  * in-memory store. A control reaches the server through the same environment;
- * the app honours one only in test mode.
+ * the app honours one only in test mode. A goal that restarts the server on
+ * its store passes `{ STORE_TYPE: "sqlite", KITCHEN_SINK_STORE_FILE: <scratch file> }`.
  *
  * @param port The port to serve on. Refused if something already answers there.
  * @param env Extra environment for the server, e.g. `{ AI_GATEWAY_API_KEY: "" }` to run keyless.
@@ -80,6 +83,7 @@ export async function startKitchenSink(port: number, env: Record<string, string>
   server.stderr?.on("data", (chunk: Buffer) => (log += chunk.toString()));
   const handle: KitchenSinkServer = {
     origin,
+    child: server,
     log: () => log,
     stop: () => {
       if (server?.pid !== undefined) {

@@ -11,8 +11,7 @@
  *
  *   1  lead answers your first line in its conversation.
  *   2  a line "Messaged researcher" in lead's conversation, a line "From lead" in
- *      researcher's, the exchange under "with researcher" in the Talk panel,
- *      and a delivered row lead → researcher in the message log.
+ *      researcher's, and a delivered row lead → researcher in the message log.
  *   3  your second line goes in before researcher's reply has landed; the reply
  *      shows in lead's conversation under researcher's name after lead's answer
  *      to you, a delivered reply row is in the log, and a line of lead's after
@@ -451,15 +450,6 @@ await runGoal(async (failures, tell_) => {
     // ---- 2 · lead messages researcher ------------------------------------------
     const cards = await card.count();
     if (cards === 0) fail("2", `no line "Messaged ${researcher}" in lead's conversation`);
-    const talk = page.getByRole("complementary", { name: "Talk" });
-    if ((await talk.count()) === 0) await conversation(page).getByRole("button", { name: "Talk" }).click();
-    // A panel just opened reads the log first: wait for it rather than count at once.
-    const talked = await talk
-      .getByRole("region", { name: `with ${researcher}` })
-      .first()
-      .waitFor({ timeout: 10_000 })
-      .then(() => true, () => false);
-    if (!talked) fail("2", `the Talk panel lists nothing under "with ${researcher}"`);
     const rows = tell_.over("2 · message log rows", await log(), { emptyIs: "no message sent, which a control produces" });
     const asked = rows.filter((r) => r.from === fixture.lead && r.to === fixture.researcher);
     if (!asked.some((r) => r.status === "delivered")) {
@@ -472,7 +462,7 @@ await runGoal(async (failures, tell_) => {
       .waitFor({ timeout: 30_000 })
       .then(() => true, () => false);
     if (!heard) fail("2", `researcher's conversation shows no line "From ${lead}"`);
-    if (cards > 0 && talked && heard) evidence.push(`2: card, Talk group, line in researcher's conversation, ${asked.length} log row(s)`);
+    if (cards > 0 && heard) evidence.push(`2: card, line in researcher's conversation, ${asked.length} log row(s)`);
     await open(page, lead);
 
     // ---- 3 · researcher replies while you are still talking to lead ------------
@@ -524,9 +514,12 @@ await runGoal(async (failures, tell_) => {
     const run = filed.find((e) => e.status !== undefined && /^(done|failed)$/.test(e.status));
     if (filed.length === 0) fail("5", `lead started no coding task within ${fixture.runWithinMs / 1000}s`);
     else if (run?.status !== "done") fail("5", `lead's task ended "${run?.status ?? filed[0]!.status}", not "done"`);
-    // The lab has no projects (FIX-2335): the page never shows one, and no worker says the word.
-    const said = (await page.locator("body").innerText()).match(/[^\n]*\bprojects?\b[^\n]*/i);
-    if (said !== null) fail("5", `the page mentions a project: "${said[0].slice(0, 200)}"`);
+    // The lab has no projects (FIX-2335): nothing on the page offers one or asks which one. A
+    // worker's own wording ("the project notes") isn't a project shown, so it doesn't count.
+    const said = (await page.locator("body").innerText()).match(
+      /[^\n]*(\b(which|what|pick|choose|select|open|no|new|in) (a |the )?projects?\b|\bprojects?:)[^\n]*/i,
+    );
+    if (said !== null) fail("5", `the page offers or asks for a project: "${said[0].slice(0, 200)}"`);
     if (run?.status === "done") {
       // The run, opened from its line in a popup: it went through Claude Code.
       await tasks.nth(earlier + filed.indexOf(run)).click();

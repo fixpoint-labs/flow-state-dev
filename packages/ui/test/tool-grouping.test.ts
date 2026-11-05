@@ -10,6 +10,10 @@ import {
   composeToolGroupLabel,
   TOOL_GROUP_DISTINCT_CAP,
   TOOL_GROUP_INTENT_CAP,
+  toolRunOpen,
+  toolRunState,
+  toolStepState,
+  withToolState,
 } from "../registry/components/tool-grouping";
 
 describe("composeToolGroupLabel", () => {
@@ -113,5 +117,52 @@ describe("composeToolCallsLabel", () => {
     expect(composeToolCallsLabel(calls)).toBe(
       `Step 1 · Step 2 · Step 3 · +${10 - TOOL_GROUP_INTENT_CAP} more`
     );
+  });
+});
+
+describe("workforce and task tools in a run", () => {
+  // A project read is a read: it merges with any other read of a file.
+  it("reads a run of project reads and a search as files read and code searched", () => {
+    expect(composeToolGroupLabel([...Array(5).fill("readProjectSource"), "read_file", "grepProjectSource"])).toBe(
+      "Read 6 files and searched the code"
+    );
+  });
+
+  it("names the task tools by what they did, a board-qualified one as its base", () => {
+    expect(composeToolGroupLabel(["createTask_tasks", "createTask", "getTask"])).toBe("Started 2 tasks and checked on a task");
+    expect(composeToolGroupLabel(["sendMessage", "reportProgress"])).toBe("Sent a message and noted progress");
+  });
+});
+
+describe("a run's state", () => {
+  it("reads a done call whose result was refused as failed, and a thrown one too", () => {
+    expect(toolStepState("done", "readProjectSource", { kind: "refused", reason: "not-a-member", message: "m" })).toBe("error");
+    expect(toolStepState("done", "readProjectSource", { kind: "read", path: "a", status: "missing" })).toBe("error");
+    expect(toolStepState("failed", "Bash")).toBe("error");
+    expect(toolStepState("done", "grepProjectSource", { kind: "grep", matches: [], cut: null })).toBe("completed");
+    // Running and waiting are the call's status; no result is read yet.
+    expect(toolStepState("running", "createTask", { ok: false, error: "x" })).toBe("running");
+    expect(toolStepState("waiting", "suspendForUser")).toBe("waiting");
+  });
+
+  it("is failed over waiting over running over done", () => {
+    expect(toolRunState(["completed", "running", "error"])).toBe("error");
+    expect(toolRunState(["running", "waiting"])).toBe("waiting");
+    expect(toolRunState(["completed", "running"])).toBe("running");
+    expect(toolRunState(["completed"])).toBe("completed");
+  });
+
+  it("says the state in words, counting failures in a run", () => {
+    expect(withToolState("Reading a.ts", "running")).toBe("Reading a.ts…");
+    expect(withToolState("Read a.ts", "error")).toBe("Read a.ts (failed)");
+    expect(withToolState("Read 6 files", "error", 1, 6)).toBe("Read 6 files (1 failed)");
+    expect(withToolState("Ask for your answer", "waiting")).toBe("Ask for your answer (waiting)");
+    expect(withToolState("Read a.ts", "completed")).toBe("Read a.ts");
+  });
+
+  // Steps show while a turn works and fold away once it is over, whatever the outcome.
+  it("is open only while running", () => {
+    expect(toolRunOpen("running")).toBe(true);
+    for (const state of ["completed", "error", "waiting"] as const) expect(toolRunOpen(state)).toBe(false);
   });
 });
