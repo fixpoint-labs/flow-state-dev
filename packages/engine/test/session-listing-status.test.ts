@@ -175,7 +175,7 @@ describe("GET /sessions?include=status", () => {
 
     const registry = createFlowRegistry();
     registry.registerMany([notes() as unknown as FlowInstance]);
-    const router = createFlowApiRouter({ registry, stores, durabilityProvider });
+    const router = createFlowApiRouter({ registry, stores, runtimeConfig: { durabilityProvider } });
     const response = await router.GET(
       new Request("http://localhost/api/flows/sessions?flowKind=notes&include=status"),
       { params: { path: ["sessions"] } }
