@@ -23,6 +23,8 @@
 
     "packages/*/test/**/*.{test,spec}.{ts,tsx}",
     "packages/*/test/**/*.type-test.ts",
+    // Type tests `tsc -p tsconfig.test-d.json` compiles; nothing imports them.
+    "packages/*/test/**/*.test-d.ts",
     "packages/cli/bin/*.ts",
     "packages/cli/test/fixtures/**/*.ts",
     // Fake Codex programs the codex specs spawn by path.

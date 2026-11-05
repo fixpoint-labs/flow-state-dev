@@ -222,6 +222,9 @@ export function createFakeResourceCollection<TState extends JsonObject>(
       }
       return refs;
     },
+    async findBy() {
+      throw new Error("findBy is not used by the task substrate");
+    },
     async delete(key) {
       const k = typeof key === "string" ? key : Object.values(key).join("/");
       instances.delete(k);
