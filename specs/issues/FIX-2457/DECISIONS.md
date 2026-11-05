@@ -24,7 +24,7 @@ flowchart TD
 |---|---|
 | **Instead of** | The issue's proposal: fix `BlockContext`'s variance for request, session and user state schemas, and leave FIX-2091 standalone |
 | **Because** | The probe compiled every state-schema case on today's `main`. With every `ctx as never` stripped, 182 of 196 casts compile; the 14 that don't are preset callbacks and three local narrow types. FIX-2091's `targets` bug is what breaks an adopter's `uses: [cap]` handler, and it is a three-token fix in `InferCapabilityTargetSchemasEntry`: a target-less capability's open default schema map is read as "no targets" |
-| **Locks in** | FIX-2091 closes with this issue, out of the backlog and into the epic. Its five `@ts-expect-error` lines go with it. The epic-agent moves it in Linear |
+| **Locks in** | FIX-2091 closes with this issue: it joins the epic's ER-8 consumed list, and the coordinator moves and closes it in Linear when this merges. Its five `@ts-expect-error` lines go with it |
 
 ![D1: fix the capability path and fold FIX-2091, chosen, beside fixing variance for state schemas. Decides it: what the probe shows breaks today. Price: an issue joins the epic. Flips if a state-schema case fails on another TypeScript version](figures/d1-cause.svg)
 
@@ -69,6 +69,9 @@ It comes down to one helper type: the alternative teaches a second one forever.
 - **The convergence points** are `BlockContext`'s `targets` slot, which every block factory
   passes through, and `CapabilityPresetCtx`, which every preset callback (`tools`,
   `controlTools`, `context`, `model`, `providerOptions`, `caching`) passes through.
+- **The leg c helper is `resolveResourceCollection`, on `orchestration/tasks`.** `payBoardDebts`
+  and `settlePassWake` move to `orchestration/internal`, which an adopter can't import. This one
+  takes `BlockContext` first and has a docs-site example, so it stays public.
 - **No runtime change**, so `pnpm typecheck` is the evidence, not `fsdev run`.
 
 ## Considered and dropped
@@ -108,3 +111,6 @@ whole set.
   sweep rests on two core type changes, plus declared targets so one helper type serves every block.
 - **Goal validation (blind)** — the check now names its test path and the three spellings, forbids
   loosening a helper's parameter, counts `@ts-ignore`, and runs the planted cast through ESLint.
+- **Set review (Nov 5)** — leg c's helper and the parameter assertion move from `payBoardDebts`
+  (going internal) to `resolveResourceCollection` on `./tasks`, as cell `types.typed-handler`;
+  FIX-2091 joins ER-8's consumed list; `eslint.config.mjs` is a seam with the tracker-id rule.
