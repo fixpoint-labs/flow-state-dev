@@ -34,15 +34,28 @@ const agent = generator({
 
 The `prompt` (and `user`) slots can also be authored in a separate `.md` file with YAML frontmatter and a LiquidJS body. Load it with `loadPromptFile(...)` and spread `definePromptFile(pf)` into the generator config. See the [Prompts as Markdown](https://flow-state.dev/docs/advanced/generator-prompts-markdown) reference.
 
-**A handler that validates and transforms:**
+**A handler that computes a typed result:**
+
+```ts
+const analyzeInput = handler({
+  name: "analyze-input",
+  inputSchema: z.object({ message: z.string() }),
+  outputSchema: z.object({ message: z.string(), needsContext: z.boolean() }),
+  execute: (input) => ({
+    message: input.message,
+    needsContext: /\b(our|my) (docs|repo|policy)\b/i.test(input.message),
+  }),
+});
+```
+
+**A state-only handler, attached with `.tap()` so it records the turn without replacing the value:**
 
 ```ts
 const counter = handler({
   name: "counter",
   sessionStateSchema: z.object({ count: z.number().default(0) }),
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     await ctx.session.incState({ count: 1 });
-    return input;
   },
 });
 ```
@@ -54,7 +67,7 @@ const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
   .step(analyzeInput)
   .stepIf((result) => result.needsContext, enrichWithContext)
   .step(agent)
-  .step(counter)
+  .tap(counter)
   .rescue([{ when: [ModelError], block: fallback }]);
 ```
 

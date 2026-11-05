@@ -38,7 +38,7 @@ The default export must be a FlowState. The CLI reads its registry, stores, and 
 
 ```ts title="fsdev.config.ts"
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import chatFlow from "./src/flows/chat/flow";
+import chatFlow from "./src/flows/chat/flow.ts";
 
 export default createFlowState({
   flows: { chat: chatFlow },
@@ -80,20 +80,15 @@ cd apps/my-app && pnpm fsdev run my-flow action -i '{}'
 
 ## Sharing it with your server entry
 
-Your server entry imports the same FlowState. Re-export it from a small server-entry file so both sides reference one object:
+Your server entry imports the same FlowState, straight from the config. A Next.js optional catch-all route mounts it, and answers both the bare `/api/flows` and every path under it:
 
-```ts title="lib/server.ts"
-export { default as flowstate } from "../fsdev.config";
-```
+```ts title="src/app/api/flows/[[...path]]/route.ts"
+import { createNextHandler } from "@flow-state-dev/next";
+import flowstate from "../../../../../fsdev.config.ts";
 
-A Next.js catch-all route handler then awaits the router off that handle:
-
-```ts title="app/api/flows/[...path]/route.ts"
-import { flowstate } from "@/lib/server";
-export async function GET(req: NextRequest, ctx: RouteContext) {
-  const router = await flowstate.getRouter();
-  return router.GET(req, { params: await ctx.params });
-}
+export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 ```
 
 Three in-repo apps ship a config and work as references. `hello-chat` is the minimal case: a couple of flows and in-memory stores, nothing else. `kitchen-sink` is the full case: multiple store profiles, intent-mapped models, and a gateway. Read whichever matches how far along your own setup is.
@@ -196,7 +191,7 @@ A `.ts` config needs a runtime that can load TypeScript. Inside the framework mo
 - Run the CLI under tsx.
 - Use an `fsdev.config.mjs` or `fsdev.config.js` instead.
 
-Native type stripping ignores `tsconfig` path aliases. Keep the config's import chain on relative paths (`./src/flows/chat/flow`), not aliases like `@/flows/chat/flow`, or the import will fail to resolve.
+Native type stripping resolves imports the way Node does, with no bundler: it ignores `tsconfig` path aliases and does not guess file extensions. Keep the config's whole import chain on relative paths that spell out the extension (`./src/flows/chat/flow.ts`), not `./src/flows/chat/flow` or an alias like `@/flows/chat/flow`, or the import fails to resolve. Add `"allowImportingTsExtensions": true` to `tsconfig.json` so TypeScript accepts the `.ts` paths.
 
 One sharp edge: the CLI's `engines` field allows any Node 22, but type stripping is only on by default from Node 22.18. On earlier 22.x releases a `.ts` config will not load. Allowed-to-install is not the same as can-load-a-`.ts`-config. If you're on an earlier 22.x, run under tsx or ship an `.mjs` config.
 

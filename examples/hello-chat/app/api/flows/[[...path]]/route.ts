@@ -1,13 +1,15 @@
-import { flowstate } from "@/lib/server";
+import flowstate from "@/fsdev.config";
 import { type NextRequest } from "next/server";
 
 // Force dynamic rendering — required for SSE streaming. Without this, Next.js
 // may buffer the Response body, preventing real-time token-by-token delivery.
 export const dynamic = "force-dynamic";
 
-// Next.js 15 uses async params — unwrap the promise and forward to the
-// framework's route handlers which expect the sync `{ params: { path } }` shape.
-type RouteContext = { params: Promise<{ path: string[] }> };
+// `[[...path]]` is an optional catch-all: the bare `/api/flows` (the flow list
+// the client reads) arrives with no `path`, everything under it with the
+// segments. Next.js 15 passes `params` as a promise; unwrap it and forward the
+// sync `{ params: { path } }` shape the framework's router expects.
+type RouteContext = { params: Promise<{ path?: string[] }> };
 
 export async function GET(req: NextRequest, ctx: RouteContext) {
   const params = await ctx.params;

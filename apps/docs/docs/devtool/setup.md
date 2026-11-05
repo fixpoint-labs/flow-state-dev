@@ -36,16 +36,21 @@ The flow file should default-export a `FlowInstance` created by `defineFlow`:
 
 ```ts
 import { defineFlow, handler } from "@flow-state-dev/core";
+import { z } from "zod";
 
-const echo = handler({
-  name: "echo",
-  execute: async (input) => input,
+const inputSchema = z.object({ message: z.string() });
+
+const shout = handler({
+  name: "shout",
+  inputSchema,
+  outputSchema: z.object({ reply: z.string() }),
+  execute: async (input) => ({ reply: `${input.message.toUpperCase()}!` }),
 });
 
 export default defineFlow({
   kind: "my-flow",
   actions: {
-    echo: { block: echo },
+    shout: { inputSchema, block: shout },
   },
 })();
 ```

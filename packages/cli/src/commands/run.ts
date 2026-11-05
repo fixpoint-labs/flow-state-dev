@@ -575,6 +575,10 @@ export async function executeRunCommand(
         type: "error",
         message: error!.message,
       });
+      if (resolved.source === "discovery") {
+        const hint = describeMissingConfigIntent(error!.message, resolved.cwd);
+        if (hint !== undefined) process.stderr.write(hint);
+      }
     }
 
     const runResult: FlowRunResult = {
@@ -648,6 +652,23 @@ export async function heldStop(
     ...(item.message === undefined ? {} : { message: item.message }),
     answer,
   };
+}
+
+/** Leading text of core's resolver error for an `intent/*` with nothing to resolve it to. */
+const UNRESOLVED_INTENT_PREFIX = 'No model is configured for "intent/';
+
+/**
+ * The stderr hint for a discovery run that failed on an `intent/*` model: no
+ * `fsdev.config.*` was found, so the intents the app declared in some other
+ * file were never read. Undefined for any other failure.
+ */
+export function describeMissingConfigIntent(message: string, cwd: string): string | undefined {
+  if (!message.startsWith(UNRESOLVED_INTENT_PREFIX)) return undefined;
+  return (
+    `[fsdev] no fsdev.config.* found in ${cwd}; lib/flowstate.ts and other runtime files are not read.\n` +
+    `[fsdev]   fsdev takes the app's models, intents and stores only from fsdev.config.{ts,mts,js,mjs}.\n` +
+    `[fsdev]   Default-export your createFlowState(...) from fsdev.config.ts, or pass --config <path>.\n`
+  );
 }
 
 /** The waiting report on stderr: what waits, its ids, where to answer it, and when its deadline fires. */

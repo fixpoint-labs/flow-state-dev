@@ -144,7 +144,7 @@ A sequencer is composable but not deployable. To call it over HTTP, mount it in 
 
 ```ts title="src/flows/hello-chat/flow.ts"
 import { defineFlow } from "@flow-state-dev/core";
-import { chatPipeline, inputSchema, sessionStateSchema } from "./blocks";
+import { chatPipeline, inputSchema, sessionStateSchema } from "./blocks.ts";
 
 export default defineFlow({
   kind: "hello-chat",
@@ -175,13 +175,13 @@ For agents that need to remember things across turns, see [Memory → Overview](
 
 ## Step 5. Mount it and render it
 
-The server side is a config object plus a single route. Describe the runtime with `createFlowState`:
+The server side is a config object plus a single route. Describe the runtime with `createFlowState`, default-exported from `fsdev.config.ts` at your project root:
 
-```ts title="lib/flowstate.ts"
+```ts title="fsdev.config.ts"
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import chatFlow from "@/flows/hello-chat/flow";
+import chatFlow from "./src/flows/hello-chat/flow.ts";
 
-export const flowstate = createFlowState({
+export default createFlowState({
   flows: { chatFlow },
   models: {
     default: "openai/gpt-6-luna",
@@ -199,14 +199,20 @@ export const flowstate = createFlowState({
 
 The `intents` map is what `model: "intent/chat"` in step 1 resolves against. Keeping it here means the model list lives in one place instead of being spread across every block that calls an LLM.
 
-```ts title="app/api/flows/[...path]/route.ts"
-import { flowstate } from "@/lib/flowstate";
+The file name matters. `fsdev run` and `fsdev dev` read the runtime only from `fsdev.config.*`, so a `createFlowState` in any other file leaves the CLI with no intents, and `intent/chat` has nothing to resolve to. The CLI loads the file with Node's built-in TypeScript support, which is why the imports it reaches (this one, and `./blocks.ts` in the flow) spell out the `.ts` extension. Add `"allowImportingTsExtensions": true` to `compilerOptions` in `tsconfig.json` so TypeScript accepts them.
+
+The route imports the same object:
+
+```ts title="src/app/api/flows/[[...path]]/route.ts"
 import { createNextHandler } from "@flow-state-dev/next";
+import flowstate from "../../../../../fsdev.config.ts";
 
 export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 ```
+
+The double brackets make the catch-all optional. One file then answers both the bare `/api/flows`, which `useFlow` reads to list your flows, and every path beneath it.
 
 The handler returns standard `GET`/`POST`/`PATCH`/`DELETE` handlers. They handle action dispatch, SSE streaming with sequence-based resume, session creation, and state snapshots. `stores` names where state lives; `primary` is the catch-all slot. See [Engine setup](/docs/server/setup) for swapping in SQLite or Postgres.
 
@@ -260,7 +266,7 @@ The counter you bumped in step 2 lives in session state. To surface it in the UI
 
 You wrote four things: a generator, a handler, a sequencer that chains them, and a flow that exposes the sequencer over HTTP. The framework gave you streaming, history, validation, persistence, and a React rendering layer.
 
-<Figure svg={FirstFlowHomesDrawing} caption="Three places took part in your first flow" description={"Three places took part in your first flow. Your browser runs page.tsx: FlowProvider names the flow hello-chat and the user, useFlow picks this user's session or creates one, useSession holds its items, the state you exposed and whether it is streaming, and ItemsRenderer draws the items. The browser sees only the items marked for the client and the state you expose. Your server, in lib/flowstate.ts and the route, holds hello-chat registered with its chat action and runs the chat pipeline, the generator then the counter, streaming each item back as it is made. The store holds one session: its state, messageCount, and its items, your messages and replies, which history reads on the next turn. A page reload reads it back from the store. This example's store is in memory, so a server restart loses it; SQLite or Postgres keeps it. The browser holds a view, not the session: your page sends the chat action with the message, the flow registered on the server runs it, and a reload or the next turn reads the session back from the store"} />
+<Figure svg={FirstFlowHomesDrawing} caption="Three places took part in your first flow" description={"Three places took part in your first flow. Your browser runs page.tsx: FlowProvider names the flow hello-chat and the user, useFlow picks this user's session or creates one, useSession holds its items, the state you exposed and whether it is streaming, and ItemsRenderer draws the items. The browser sees only the items marked for the client and the state you expose. Your server, in fsdev.config.ts and the route, holds hello-chat registered with its chat action and runs the chat pipeline, the generator then the counter, streaming each item back as it is made. The store holds one session: its state, messageCount, and its items, your messages and replies, which history reads on the next turn. A page reload reads it back from the store. This example's store is in memory, so a server restart loses it; SQLite or Postgres keeps it. The browser holds a view, not the session: your page sends the chat action with the message, the flow registered on the server runs it, and a reload or the next turn reads the session back from the store"} />
 
 Three places took part. Your browser holds a session's items and any state you expose. The server runs the flow you registered. The store keeps the session, so a reload picks up where you were; this example's store is in memory, so restarting the server starts over.
 

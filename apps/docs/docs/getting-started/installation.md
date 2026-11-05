@@ -50,40 +50,42 @@ The `react` package depends on `client` internally — you don't need to install
 
 ## Peer Dependencies
 
-- **`zod`** `^3.24.1` — Used for schema validation across all packages
+- **`zod`** `^3.25.76` — You write your schemas with it, and the packages depend on this range, so install the same major (zod 3)
 - **`react`** `^18.0.0 || ^19.0.0` — Required only by `@flow-state-dev/react`
 
-## TypeScript
+## Runtime and TypeScript
 
-flow-state.dev is written in TypeScript and ships type definitions. For best results:
-
-- TypeScript `^5.7`
+- Node.js `22.18` or newer. The `fsdev` CLI loads a TypeScript `fsdev.config.ts` with Node's built-in type stripping, which is on by default from 22.18.
+- TypeScript `^6.0`, the version the packages are built and type-checked with
 - Enable `strict` mode in your `tsconfig.json`
+- Enable `allowImportingTsExtensions` too, so the `.ts` imports in `fsdev.config.ts` type-check (see below)
 
 ## Initialize the server
 
-Describe the runtime once with `createFlowState`. You pass it your flows, a model config, and where to store state. Keep this in its own file so a route handler (and your tests) can import it.
+Describe the runtime once with `createFlowState`. You pass it your flows, a model config, and where to store state. Default-export it from `fsdev.config.ts` at your project root: your route handler imports it from there, and the `fsdev` CLI reads only `fsdev.config.*`, so one file serves both.
 
-```ts title="lib/flowstate.ts"
+```ts title="fsdev.config.ts"
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import myFlow from "@/flows/my-flow/flow";
+import myFlow from "./src/flows/my-flow/flow.ts";
 
-export const flowstate = createFlowState({
+export default createFlowState({
   flows: { myFlow },
   models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```
 
+Node loads this file without a bundler, so its imports are relative and keep the `.ts` extension; `tsconfig` path aliases such as `@/` don't resolve there.
+
 `createFlowState` builds synchronously and initializes stores lazily on the first request, so it works in a Next.js Route Handler with no top-level await. See [Engine setup](/docs/server/setup) for stores, profiles, settings, and error handling.
 
 ## Mount the route
 
-A platform adapter turns the `flowstate` handle into HTTP route handlers. The framework uses one catch-all route. For a Next.js app you run locally with `pnpm dev`:
+A platform adapter turns the FlowState into HTTP route handlers. The framework uses one optional catch-all route, so the bare `/api/flows` and every path under it reach the same handlers. For a Next.js app you run locally with `pnpm dev`:
 
-```ts title="app/api/flows/[...path]/route.ts"
-import { flowstate } from "@/lib/flowstate";
+```ts title="src/app/api/flows/[[...path]]/route.ts"
 import { createNextHandler } from "@flow-state-dev/next";
+import flowstate from "../../../../../fsdev.config.ts";
 
 export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
 export const runtime = "nodejs";

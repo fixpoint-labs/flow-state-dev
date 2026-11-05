@@ -10,7 +10,7 @@ If you already have a Next.js App Router or Node project, start at [Existing pro
 
 ## Prerequisites
 
-- Node.js 22 or newer
+- Node.js 22.18 or newer (the CLI loads `fsdev.config.ts` with Node's built-in TypeScript support)
 - pnpm (or npm/yarn)
 - An API key from OpenAI, Anthropic, or Google. See [Setting Up Models](/docs/getting-started/setting-up-models) for the full list.
 
@@ -42,13 +42,13 @@ export GOOGLE_GENERATIVE_AI_API_KEY=...
 
 The framework auto-detects whichever providers it finds keys for.
 
-Generators in this guide ask for `intent/chat` instead of naming a model. An **intent** is a name you point at an ordered list of models; the framework picks the first candidate it has both a key and an installed SDK package for. You declare that list once, in step 4. That's why the same block code runs whichever of the three keys you set, and why swapping models later is a config edit rather than a search across your blocks.
+Generators in this guide ask for `intent/chat` instead of naming a model. An **intent** is a name you point at an ordered list of models; the framework picks the first candidate it has both a key and an installed SDK package for. You declare that list once, in `fsdev.config.ts` in step 4. That's why the same block code runs whichever of the three keys you set, and why swapping models later is a config edit rather than a search across your blocks.
 
 For gateways and the full set of options, see [Setting Up Models](/docs/getting-started/setting-up-models).
 
 ## 3. Define a flow
 
-Every piece of logic in flow-state.dev is a **block** — a typed unit of work. There are five block kinds: handler, generator, evaluator, sequencer, router. You'll meet all four eventually. The quick-start uses one: a generator, which calls the LLM.
+Every piece of logic in flow-state.dev is a **block** — a typed unit of work. There are five block kinds: handler, generator, evaluator, sequencer, router. You'll meet all five eventually. The quick-start uses one: a generator, which calls the LLM.
 
 A **flow** mounts blocks under named actions and packages everything for the server. `defineFlow` returns the flow factory; calling it with no arguments gives you the registerable instance.
 
@@ -99,13 +99,13 @@ The quick-start doesn't need one yet. [Your First Flow](/docs/getting-started/yo
 
 ## 4. Mount the server
 
-Describe the runtime once, then mount it with one catch-all route. That route gives you action dispatch, SSE streaming, and session state:
+Describe the runtime once, in `fsdev.config.ts` at your project root. Your API route and the `fsdev` CLI both load this one file, so the terminal runs your flows with the same models and stores your server does:
 
-```ts title="lib/flowstate.ts"
+```ts title="fsdev.config.ts"
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import chatFlow from "@/flows/hello-chat/flow";
+import chatFlow from "./src/flows/hello-chat/flow.ts";
 
-export const flowstate = createFlowState({
+export default createFlowState({
   flows: { chatFlow },
   models: {
     default: "openai/gpt-6-luna",
@@ -123,16 +123,28 @@ export const flowstate = createFlowState({
 
 This is where `intent/chat` gets its meaning. The framework takes the first candidate you have a key and an SDK package for, so whichever key you set in step 2 is the one that runs. `default` covers the case where none of an intent's candidates are reachable; declaring any intent makes it required, and it's a plain model string, so point it at a provider you have a key for.
 
-```ts title="app/api/flows/[...path]/route.ts"
-import { flowstate } from "@/lib/flowstate";
+The CLI loads this file with Node's built-in TypeScript support, which needs full relative paths with the `.ts` extension and doesn't read `tsconfig` path aliases. Let TypeScript accept the extension by adding one line to `tsconfig.json`:
+
+```json title="tsconfig.json"
+{
+  "compilerOptions": {
+    "allowImportingTsExtensions": true
+  }
+}
+```
+
+Then mount it with one route file. The double brackets make the catch-all optional, so the same file answers the bare `/api/flows` (the flow list `useFlow` reads) and every path under it:
+
+```ts title="src/app/api/flows/[[...path]]/route.ts"
 import { createNextHandler } from "@flow-state-dev/next";
+import flowstate from "../../../../../fsdev.config.ts";
 
 export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 ```
 
-That's it for the backend. You now have action execution, SSE streaming with resume, and session persistence under `/api/flows/`.
+That's it for the backend. You now have action execution, SSE streaming with resume, and session persistence under `/api/flows`.
 
 ## 5. Render in React
 
@@ -186,7 +198,7 @@ Open the page and start chatting. Behind the scenes you have streaming over SSE 
 
 ## Skip the React layer
 
-You don't need a server or UI to try a flow. The CLI runs it directly and streams NDJSON to stdout:
+You don't need a server or UI to try a flow. From the project root, the CLI loads `fsdev.config.ts`, runs the flow directly, and streams NDJSON to stdout:
 
 ```bash
 fsdev run hello-chat chat -i '{"message": "Hello!"}'

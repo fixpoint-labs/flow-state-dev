@@ -85,4 +85,40 @@ describe("createNextHandler — integration", () => {
 
     await flowstate.dispose();
   });
+
+  // The quick start mounts one `[[...path]]` file. On the bare `/api/flows`
+  // URL Next passes no `path` at all, and the client's `flows()` (which
+  // `useFlow` calls) GETs exactly that URL, so the handler must list flows
+  // from an absent path rather than 404.
+  it("lists flows on the bare mount, where an optional catch-all passes no path", async () => {
+    const flow = defineFlow({
+      kind: "next-bare",
+      actions: {
+        run: {
+          inputSchema: z.object({}).passthrough(),
+          block: handler({
+            name: "run",
+            inputSchema: z.object({}).passthrough(),
+            outputSchema: z.object({ ok: z.boolean() }),
+            execute: () => ({ ok: true })
+          })
+        }
+      }
+    })();
+    const flowstate = createFlowState({
+      flows: { nextBare: flow },
+      stores: { default: { primary: inMemoryStores() } }
+    });
+
+    const { GET } = createNextHandler(flowstate);
+    const res = await GET(new Request("http://localhost/api/flows"), {
+      params: Promise.resolve({})
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { flows: Array<{ kind: string }> };
+    expect(body.flows.map((f) => f.kind)).toContain("next-bare");
+
+    await flowstate.dispose();
+  });
 });
