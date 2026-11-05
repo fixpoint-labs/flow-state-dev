@@ -43,7 +43,7 @@ today's code it must fail on the cells named.
 
 | How we verify | |
 |---|---|
-| **Goal check** | A contract block in Kitchen Sink's existing `test/harness-parity.test.ts`, the one suite that already holds the three harnesses to one table: `pnpm --filter @flow-state-dev/kitchen-sink test harness-parity`. No model, no vendor process. Run by the implementer at completion; verdict in the implementation PR. In the epic's closure manifest it flips the *Surface* assertions scoped to `claude-code`, `codex` and `cursor` to `expect: pass`. Cross-package name collisions stay FIX-2449's export check and leg b's, not a second walker here |
+| **Goal check** | A contract block in Kitchen Sink's existing `test/harness-parity.test.ts`, the one suite that already holds the three harnesses to one table: `pnpm --filter @flow-state-dev/kitchen-sink test harness-parity`. No model, no vendor process. Run by the implementer at completion; verdict in the implementation PR. In the epic's closure manifest it flips the *Surface* cells for `claude-code`, `codex` and `cursor` to `expect: pass`; this issue owns those three cells. Name collisions are not a second walker here: they are the one workspace `surface.collisions` cell, FIX-2449's check over every published root. This issue contributes the harness renames (the 8 names), FIX-2449 the foundation's, and whichever lands last flips the cell. Until D3 lands claude-code has no `"."` entry: the check walks each package's exports map, not an assumed root, so claude-code's names are read from `./sdk` and `./cli` and collide from there; after D3, from `"."` alone |
 | **Signal** | Every cell passes, per harness: a stop is `isAbortLike`, and a refused resume, an absent SDK and a run error are not; an absent SDK gives readiness `ready: false` with a remedy; an SDK one step below and one step above the tested range each give readiness `ready: false` naming both versions, and building the block throws; a refused resume reads `"unknown-conversation"`; the model list equals what the scripted SDK returned, as a `HarnessModelList`; the pass list holds every `HARNESS_BASE_PASS` name, and the base holds the 13 names the three lists share today. A stop is abort-like whatever the signal's reason: none, a timeout, a plain `Error`. Across harnesses: claude-code's entry exports no translate or emit name, no `./cli`, and no name outside `ClaudeCode`/`claudeCode`/`CLAUDE_CODE_` and core's shared names; Kitchen Sink has no hand list of Cursor models |
 | **Input** | Each harness's own seams. A different valid input: a version one step outside the range on either side, a list with no default |
 | **Anti-game** | Import each harness only from its public entry, as a namespace resolved at run time, so a missing name fails its own cell and not the file. Drive it only through each package's public seams (its SDK importer and version reader options). Classify only through core's readers: `instanceof CodexAgentAbortedError` passes today, so the block never names an error class |
@@ -77,14 +77,17 @@ How old names reach adopters is per ER-3 and Q1's answer: every rename and remov
 **Docs:** update `apps/docs/docs/tools/coding-agents.md` (telling a stop, a refusal and an
 unusable SDK apart; the model list; the shared environment), `claude-code-sdk.md` (the entry and
 names), `codex.md` (drop "can't list its models"), `cursor.md` (`listCursorModels`, the version
-in readiness), `orchestration/harness-manager.md`, `workforce/projects.md`, and the core, claude-code (its `/cli` paragraph goes), codex, cursor, harness-manager and shift-manager READMEs. No new page: the harness-line
-guide the issue asks for is already *Steering a running turn* in `coding-agents.md`.
+in readiness; its failure table stops naming a Cursor version class), `orchestration/harness-manager.md`, `workforce/projects.md`, and the core, claude-code (its `/cli` paragraph goes), codex, cursor, harness-manager and shift-manager READMEs. No new page: the harness-line
+guide the issue asks for is already *Steering a running turn* in `coding-agents.md`. On FIX-2448's
+*What each package root is for* (`apps/docs/docs/api/package-roots.md`), add the claude-code,
+codex and cursor rows: each root's job (run one vendor's coding agent as a block), its one
+public entry, and that shared shapes come from `core/harness`.
 
 ## What stays as it is
 
 - `HarnessFailureKind` keeps its one member ([D1](DECISIONS.md#d1)). `harnessFailureKind`, the
   run handle and the readiness type are unchanged.
-- Each package's error classes stay exported as vendor detail; documentation branches on core's
+- Each package's other error classes stay exported as vendor detail; documentation branches on core's
   readers. Each `emit.ts` stays its own copy (LAB-156).
 - Harness lines and `useHarnessLines`; its name is FIX-2557's, outside the set.
 - Where these names live in core: FIX-2448 moves them to `core/harness`. This adds beside them.
@@ -97,7 +100,7 @@ guide the issue asks for is already *Steering a running turn* in `coding-agents.
 | `harness-readiness` (core's `HarnessReadinessCheck`, one check per harness, harness-manager's rows) | **Extends.** Each check reports an absent SDK and one outside the tested range. Kitchen Sink's hand checks for Codex and Cursor go |
 | `coding-harness`: `HarnessFailureKind` (`unknown-conversation`), `harnessEnv` | **Leaves alone** the kind; **builds on** `harnessEnv` with a base list |
 | `listCodexModels`, `listClaudeModels` and their four field-identical types | **Replaced** by one shared type; the functions keep a harness name ([D3](DECISIONS.md#d3)) |
-| Codex's and Cursor's exact pin and build-time gate; claude-code's `*` | **Generalised** into one policy ([D2](DECISIONS.md#d2)) |
+| Codex's and Cursor's exact pin and build-time gate (`assertTestedSdkVersion`, `*SdkVersionMismatchError`, one copy each); claude-code's `*` | **Generalised** into one policy, and the gate **moves** to core once ([D2](DECISIONS.md#d2)) |
 | claude-code's `./cli`: 7 names, no consumer but its own test | **Removes**, per Q1 |
 | [FIX-1174](../FIX-1174/SPEC.md)'s `<package>/<door>` entries | **Superseded in part**: with `./cli` gone claude-code has one door, which becomes its root, as Codex's and Cursor's are |
 
@@ -106,12 +109,12 @@ guide the issue asks for is already *Steering a running turn* in `coding-agents.
 | `HarnessModelInfo`, `HarnessModelList` on `core/harness` | `coding-harness` · `CodexModelInfo`, `ClaudeModelInfo` | The two are field-identical; one moves to core, both go |
 | `HARNESS_BASE_PASS` | `coding-harness` · `harnessEnv`, the three `*_PASS` lists | A value for `harnessEnv`'s `pass`, not a second builder |
 | `listCursorModels` | `listCodexModels`; the Cursor SDK's `Cursor.models.list()` | The third copy of one function, on the shared type |
-| A version gate in claude-code, and a range match | `harness-readiness`; Codex's and Cursor's `assertTestedSdkVersion` (exact string equality) and their two copies of the installed-version reader | The reader and a range match move once to `core/internal` (epic D2: for our packages, outside semver); the three gates call it. No `semver` dependency is added without the implementer's case |
+| One version gate, `assertTestedSdkVersion`, and one `HarnessSdkVersionMismatchError`, on `core/internal` | `harness-readiness`; Codex's and Cursor's `assertTestedSdkVersion` (exact string equality), their `CodexSdkVersionMismatchError` and `CursorSdkVersionMismatchError`, and their two copies of the installed-version reader | **Moved whole**, not copied a third time: the gate takes a package's tested range and its installed-version reader, matches the range, and throws the one class, which names the SDK and the harness. The three harnesses and their readiness checks call it; codex and cursor delete theirs, and claude-code gains no class of its own ([D2](DECISIONS.md#d2)). On `core/internal` (epic D2: for our packages, outside semver). No `semver` dependency is added without the implementer's case |
 
 | The debt | |
 |---|---|
-| **Removes** | Kitchen Sink's hand list of Cursor models and its own model type · its hand SDK checks for Codex and Cursor · four per-harness model types · four copies of 13 environment names (shift-manager's `CODEX_USAGE_PASS` too) · two copies of the installed-version reader · 8 names on two or three entries · claude-code's `./cli`, its translate and emit names, and its second spellings |
-| **Adds** | Three names on `core/harness`; `listCursorModels`, its options and a Cursor variants type; one gate and one error class in claude-code; a range match on `core/internal`. With Q1's alias option, deprecated aliases until the removal minor |
+| **Removes** | Kitchen Sink's hand list of Cursor models and its own model type · its hand SDK checks for Codex and Cursor · four per-harness model types · four copies of 13 environment names (shift-manager's `CODEX_USAGE_PASS` too) · two copies of the installed-version reader, the version gate and its error class · 8 names on two or three entries · claude-code's `./cli`, its translate and emit names, and its second spellings |
+| **Adds** | Three names on `core/harness`; `listCursorModels`, its options and a Cursor variants type; one gate, its range match and one error class on `core/internal`, shared by the three. With Q1's alias option, deprecated aliases until the removal minor |
 | **Leaves** | Three near-copied `emit.ts` and `errors.ts` (LAB-156) · usage's two shapes (FIX-2330) · `useHarnessLines`'s name (FIX-2557) |
 
 **Net: down.** Three copies become one per job; about 35 public names leave the entries for about 7 added.
@@ -130,7 +133,7 @@ adopters little.
    already has; `HarnessFailureKind` stays one kind.** If wrong: a host that only has the
    thrown error can't tell an unusable SDK from a crash.
 2. **[D2](DECISIONS.md#d2) · One SDK policy: the peer range is the tested range, and outside it
-   the harness refuses.** If wrong: claude-code adopters wait on our release for each SDK bump.
+   one gate in core refuses, for all three.** If wrong: claude-code adopters wait on our release for each SDK bump.
 3. **[D3](DECISIONS.md#d3) · Every harness name carries its package's name; shared shapes live
    once in core.** If wrong: one more rename round for claude-code.
 

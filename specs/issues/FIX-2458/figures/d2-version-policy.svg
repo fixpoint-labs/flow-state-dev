@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 422" role="img" aria-label="D2, which versions of its vendor SDK a harness runs against. Chosen: the tested range. Instead of: an exact pin for all three, or any version for all three. It comes down to keeping a gate and a release cadence: the range refuses an untested SDK and lets tested patches run; an exact pin keeps the gate but needs a claude-code release for every SDK patch; any version keeps the cadence but an untested wire gives malformed items. The price: each new span is a release once it is tested; an exact pin needs one per version, and claude-code was measured on 0.3.234 while Kitchen Sink runs 0.3.316 and up. Codex and Cursor are unchanged under the range or the pin and lose their gate under any version. Locks in: the peer range is what was tested, and claude-code refuses an untested SDK when the block is built. Flips if a vendor changes its wire inside a patch: then that range is one version wide."
+<svg viewBox="0 0 940 422" role="img" aria-label="D2, which versions of its vendor SDK a harness runs against. Chosen: the tested range. Instead of: an exact pin for all three, or any version for all three. It comes down to keeping a gate and a release cadence: the range refuses an untested SDK and lets tested patches run; an exact pin keeps the gate but needs a claude-code release for every SDK patch; any version keeps the cadence but an untested wire gives malformed items. The price: each new span is a release once it is tested; an exact pin needs one per version, and claude-code was measured on 0.3.234 while Kitchen Sink runs 0.3.316 and up. Codex and Cursor are unchanged under the range or the pin and lose their gate under any version. Locks in: the peer range is what was tested, and one gate in core, called by all three, refuses an untested SDK when the block is built. Flips if a vendor changes its wire inside a patch: then that range is one version wide."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -96,7 +96,7 @@
     <rect class="foot" x="16" y="332" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="353">LOCKS IN</text>
     <text class="t-b" x="32" y="373">The peer range is what was tested</text>
-    <text class="t-s" x="32" y="391">claude-code refuses an untested SDK when built</text>
+    <text class="t-s" x="32" y="391">one gate in core refuses an untested SDK when built, for all three</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="332" width="446" height="74" rx="5"/>
