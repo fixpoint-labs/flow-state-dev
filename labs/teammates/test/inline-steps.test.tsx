@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * A worker's tool steps show in its conversation during its turn (FIX-2393):
+ * A worker's tool steps show in its conversation during its turn:
  * a run of them is one line, open while a step runs and folded once the run
  * is done, and a step whose result says it failed reads "(failed)" in words,
  * drawn in the lab's red. The entry is the adapter's own, over real-shaped items.

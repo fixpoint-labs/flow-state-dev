@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /**
  * A coding task shows what its runs spent, so you can pick a harness by what
- * it costs (FIX-2398): its line in the thread gives the tokens and, when the
+ * it costs: its line in the thread gives the tokens and, when the
  * vendor reported one, the charge; its popup gives input and output apart;
  * and the teammate's panel totals its coding tasks. A run billed by
  * subscription reports no charge and shows none, never `$0.00`. A row's stored

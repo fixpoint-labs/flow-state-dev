@@ -12,7 +12,7 @@
  * nothing else (BR-3): the sidebar, the tree and every other read wait behind
  * it. A first read that can't reach the Lab gets the couldn't-reach screen,
  * which reads again on its own. Once a read has landed, a later failure keeps
- * the shell and draws the connection bar above it instead (FIX-2373).
+ * the shell and draws the connection bar above it instead.
  */
 import { useEffect, useState } from "react";
 import { GAPS, type Gaps } from "./gaps";

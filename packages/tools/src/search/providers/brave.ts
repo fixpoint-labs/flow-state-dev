@@ -3,9 +3,8 @@
  *
  * Brave has no retrieval-depth knob, so the normalized `tier` is a no-op here;
  * the reduced `capabilities.tiers` steers `deep` requests toward richer
- * providers during auto-selection. It has no domain filter field either, so
- * domain filters are written into the query as `site:` / `-site:` operators,
- * as Serper does.
+ * providers during auto-selection. Domain filters are written into the query
+ * as `site:` / `-site:` operators, as for Serper.
  */
 
 import type { SearchProviderAdapter, SearchOutput } from "../types";

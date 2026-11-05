@@ -57,7 +57,7 @@ import {
   type WorkerManifest,
 } from "@flow-state-dev/workforce";
 import { crossingBus } from "../../lib/crossing-bus.mts";
-import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, silentLogger, type ModulePatch } from "../../lib/index.mts";
+import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, silentLogger, sleep, type ModulePatch } from "../../lib/index.mts";
 import { LabProvider, useLab } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { runAction } from "../../../packages/shift-manager/src/lib/action.ts";
 import { runUsageQuery } from "../../../packages/shift-manager/src/lib/usage.ts";
@@ -126,7 +126,6 @@ if (CONTROLS[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefin
 }
 const legs = new Set((process.env.GOAL_LEGS ?? "a,a2,b,c,d").split(",").map((s) => s.trim()).filter(Boolean));
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 // ---------------------------------------------------------------------------
 // A DOM for react-dom, and nothing else. The provider's fetches are counted
