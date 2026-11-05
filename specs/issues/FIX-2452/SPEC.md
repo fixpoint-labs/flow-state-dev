@@ -19,16 +19,17 @@ examples and fixtures, and 74 tests.
 
 ## The goal, and how we'll know it's met
 
-**An adopter's first runtime file names no store until they want data kept, every store slot
-they can name does something, a chat action that would render empty says so when the flow is
-built, and a store package's root offers one factory.**
+**An adopter's first runtime file names no store until they want data kept, their first flow
+declares no empty `session`, every store slot they can name does something, a chat action that
+would render empty says so when the flow is built, and a store package's root offers one
+factory.**
 
 | Is it the right goal? | |
 |---|---|
 | **The real need** | The epic's *first hour*: the quick start is the adopter's first judgement, and today it shows defaults, not their app ([epic](../../epics/FIX-2447/SPEC.md#the-goal-and-how-well-know-its-met)) |
 | **Smaller, and rejected** | "`stores` accepts a bare adapter." The first file still writes a store line and an import, three slots still promise nothing, and the empty chat stays silent |
-| **Bigger, and not this issue's** | A real scheduler store (review item R-11, outside the epic) and a durable default store |
-| **Not done if** | The quick start still writes a store line · a profile with `scheduler`, `blobs` or `queue` constructs · a silent generator chat action builds with no warning in dev · the warning fires when `itemVisibility` is set, or on an internal, task, webhook or schedule action · a store package's root lists a per-store constructor or `createXStores` · a docs page still calls a slot forward-compatible |
+| **Bigger, and not this issue's** | A real scheduler store (review item R-11, outside the epic) and a durable default store. Engine's own store names leave its root under FIX-2449's split, not as a goal here |
+| **Not done if** | The quick start still writes a store line, or a getting-started page still declares an empty `session` · the in-memory notice fires when `stores` is set, or never fires · a profile with `scheduler`, `blobs` or `queue` constructs, or one with `primary` and `bus` stops constructing · a silent generator chat action builds with no warning in dev, or the warning doesn't name both fixes · the warning fires when `itemVisibility` is set, on an internal, task, webhook or schedule action, or in production · a store package's root lists a per-store constructor or `createXStores`, or a moved name doesn't resolve from `./advanced` · a docs page still lists `blobs`, `queue` or `scheduler` as a slot |
 
 ```mermaid
 flowchart LR
@@ -38,21 +39,21 @@ flowchart LR
   A --> T["what the app sees · answer, stderr, error, module keys"]
   B --> T
   C --> T
-  T -->|"all five signals"| P["PASS · goal met"]
+  T -->|"all six signals"| P["PASS · goal met"]
   X["control · main at d6a38c09"] -.-> T
   T -.->|"under the control"| F["must FAIL"]
 ```
 
 The check reads what an installed app sees: the answer, stderr, the thrown error and the
-module's keys. Under the control, four of the five signals fail.
+module's keys. Under the control, every signal fails.
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/first-hour/runs-without-store-ceremony/` · model-free · packs and installs engine, core, cli and the two store packages into an empty project with `scripts/packed-install/run.mjs`'s pack step · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | (a) A runtime with no `stores` answers a handler action through `fsdev run`, and stderr says it runs in memory. (b) With `stores: sqliteStores({ filename })`, a second `fsdev run` on the same session reads the first run's state. (c) Each of `blobs`, `queue` and `scheduler` in a profile makes `createFlowState` throw, naming the replacement and a version: 3 of 3. (d) A caller action on a generator with no `itemVisibility` gives exactly one warning naming the flow and the action. With `itemVisibility` set, or as an internal action, it gives none. (e) The installed roots export only `sqliteStores` and `createSQLiteScheduleIndex`, or `postgresStores` and `createPostgresScheduleIndex`, as runtime values, and each `./advanced` resolves |
+| **Goal check** | `goals/first-hour/runs-without-store-ceremony/` · model-free · `node goals/first-hour/runs-without-store-ceremony/check.mjs [--control d6a38c09]`, printing PASS or FAIL per signal · packs engine, core, cli and the two store packages (at the control commit under `--control`) with `scripts/packed-install/run.mjs`'s pack step and installs them into an empty project · run by the implementer at completion · verdict in the implementation PR |
+| **Signal** | (a) A runtime with no `stores` and a flow with no `session` block answers a handler action through `fsdev run`, and stderr says it runs in memory; with `stores` set, stderr says nothing about memory. (b) With `stores: sqliteStores({ filename })`, `fsdev run --session <id>` twice: the second reads the first run's state, and the session row is in `filename`; pointed at a fresh `filename`, the second run does not see it. (c) Each of `blobs`, `queue` and `scheduler` in a profile makes `createFlowState` throw with that slot's name, its replacement and a version: 3 of 3; a profile with `primary` and `bus` constructs. (d) A caller action on a generator with no `itemVisibility` gives exactly one warning naming the flow, the action and both fixes. Set `itemVisibility`, put it on an internal, task, webhook or schedule action, or set `NODE_ENV=production`: none. (e) The installed roots export only `sqliteStores` and `createSQLiteScheduleIndex`, or `postgresStores` and `createPostgresScheduleIndex`, as runtime values, and every runtime name removed from a root is exported from its `./advanced`. Importing the store-postgres module needs no database. (f) The census reports 0 store lines and 0 empty `session` blocks in teaching files, and 0 docs pages naming a retired slot |
 | **Input** | A flow whose handler computes a value from the input. A different flow kind, action name or value must pass too; the warning names whatever it is on |
-| **Anti-game** | Don't assert on the normalising helper, `meta.profileKeys` or workspace `src`. Assert on the answer, the stored session, stderr text, the error and the installed module's keys |
-| **Control that must fail** | `main` at `d6a38c09`: (a) throws a `TypeError` at construction, (c) constructs, (d) warns nothing, (e) lists 20 and 22 names. The PR shows those four FAILs before the PASS. (b) is new behaviour and fails there too |
+| **Anti-game** | Don't assert on the normalising helper, `meta.profileKeys` or workspace `src`, and don't let (b) pass through the CLI's own no-config SQLite store: the app has a config, and the row is read from `filename`. Assert on the answer, the stored row, stderr text, the error and the installed module's keys |
+| **Control that must fail** | `main` at `d6a38c09`: (a) throws a `TypeError` at construction, (b) throws, since a bare adapter has no profile, (c) constructs, (d) warns nothing, (e) lists 20 and 22 names, (f) counts 54 store lines. The PR shows those FAILs before the PASS |
 
 **Closure manifest.** This spec owns no whole *Not done if* row. It owns the store packages'
 slice of *Surface*: where FIX-2564's manifest carries assertions for the store-sqlite and
