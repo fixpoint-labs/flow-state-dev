@@ -126,8 +126,11 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, 
       ? []
       : rerunTargets(task, coders).map((worker) => ({ label: harnessName(worker.harness!), run: () => actions.rerun(task, worker.id) }));
   // A verdict you gave here stays in the feed, after the steps it was given over.
-  const [decisions, setDecisions] = useState<readonly Decision[]>([]);
-  const decided = (answer: ReviewAnswer) => setDecisions((all) => [...all, { id: `decision-${all.length}`, after: steps.length, text: decisionLine(answer) }]);
+  // Each is kept with the task and run it was given on: Back can move this popup to another task, and a run's steps can be read again.
+  const [given, setGiven] = useState<readonly Decision[]>([]);
+  const run = `${task?.id}:${task?.runSessionId}`;
+  const decided = (answer: ReviewAnswer) => setGiven((all) => [...all, { id: `decision-${all.length}`, run, after: steps.length, text: decisionLine(answer) }]);
+  const decisions = placeDecisions(given.filter((d) => d.run === run), steps.length);
   const waiting = task?.waiting?.kind;
   // What waits on you is held below the feed, which opens on the latest step, so it can't scroll out of view.
   const pinned =
@@ -181,8 +184,14 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, 
   );
 }
 
-/** A review verdict given in this popup, placed after the steps it was given over (`after` of them). */
-type Decision = { id: string; after: number; text: string };
+/** A review verdict given in this popup on one task's run (`run`), placed after the steps it was given over (`after` of them). */
+type Decision = { id: string; run: string; after: number; text: string };
+
+/** Each verdict no earlier than the one before it and no later than the steps there are now, so no step is drawn twice. */
+const placeDecisions = (decisions: readonly Decision[], count: number): Decision[] => {
+  let at = 0;
+  return decisions.map((d) => ({ ...d, after: (at = Math.min(count, Math.max(at, d.after))) }));
+};
 
 /** "Accepted", or "Asked for changes: …" with the words sent. */
 const decisionLine = (answer: ReviewAnswer) => (answer.verdict === "accepted" ? "Accepted" : `Asked for changes: ${answer.words}`);
