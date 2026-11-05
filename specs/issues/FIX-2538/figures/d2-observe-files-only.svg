@@ -1,5 +1,4 @@
-<svg viewBox="0 0 940 488" role="img" aria-label="D2: in observe, what stops a coordinator&#x27;s turn from starting inferred work? Chosen: the turn is a filing turn. Instead of: an instruction in the coordinator&#x27;s prompt. It comes down to a model that ignores the instruction: a filing turn has only filing and read tools and every task it files is held behind a confirm, so it cannot start work; a prompt only asks. What it can do: file, read, answer, against everything it can do today. Where it lives: the board&#x27;s filing path and the turn&#x27;s tools, against the prompt. What a person sees is a tie: a held task in the Inbox. Locks in that forwarded turns in observe file held, in code. Flips if a coordinator needs to message a delegate to judge work."
-     xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 940 488" role="img" aria-label="D2: in observe, what stops a coordinator&#x27;s turn from starting inferred work? Chosen: the turn is a filing turn. Instead of: an instruction in the coordinator&#x27;s prompt. It comes down to a model that ignores the instruction: a filing turn has only filing and read tools and every task it files is held behind a confirm, so it cannot start work; a prompt only asks. What it can do: file, read, answer, against everything it can do today. Where it lives: a wrapped createTask that adds the existing confirm, and the turn&#x27;s tools, from request state, against the prompt. What a person sees is a tie: a held task in the Inbox. Locks in that forwarded turns in observe file held, in code. Flips if a coordinator needs to message a delegate to judge work."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -58,7 +57,7 @@
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
     <text class="t-b" x="248" y="161">It cannot start work</text>
-    <text class="t-s" x="248" y="179">only filing and read tools; filings held</text>
+    <text class="t-s" x="248" y="179">read tools and createTask; each filing confirmed</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">It starts work</text>
     <text class="t-s" x="612" y="179">a message to a delegate, a task, its own tools</text>
@@ -76,8 +75,8 @@
   <g id="row-2">
     <text class="t-lbl" x="32" y="280">WHERE IT LIVES</text>
     <text class="mark minus" x="228" y="282">−</text>
-    <text class="t-b" x="248" y="281">In the board&#x27;s filing path</text>
-    <text class="t-s" x="248" y="299">and the turn&#x27;s tool set, from request state</text>
+    <text class="t-b" x="248" y="281">A wrapped createTask, and the tool set</text>
+    <text class="t-s" x="248" y="299">from request state; the confirm reused</text>
     <text class="mark plus" x="592" y="282">+</text>
     <text class="t-b" x="612" y="281">In the prompt</text>
     <text class="t-s" x="612" y="299">no code path</text>

@@ -1,6 +1,5 @@
 <svg viewBox="0 0 940 488" role="img" aria-label="D1: how does an event nobody subscribed to reach a coordinator? Chosen: the coordinator subscribes with an unmatched flag. Instead of: the app names one coordinator to forward to. It comes down to a private repo and a second user: the subscription runs the read check and sender screen as its own user already, while a forward address is a second recipient path with its own copy of them. Who hears it: each coordinator that asked, against one user named in app config. New surface: one saved flag, against a forward option and an address. Duplicates are a tie. Locks in a saved unmatched flag for coordinators only. Flips if the service routes as one operator for all users."
      xmlns="http://www.w3.org/2000/svg">
-     xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
