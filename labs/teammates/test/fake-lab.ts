@@ -469,12 +469,37 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       notify();
     },
 
+    async readContext() {
+      return { folder: "/work/launch-site", folderProblem: null, model: "openai/gpt-6-luna", harness: "cursor", delegates: { [LEAD]: "all" as const } };
+    },
+
+    async readHarnesses() {
+      return [
+        { harness: "claude-code", label: "Claude Code", ready: true, reason: null, remedy: null, unanswered: false },
+        { harness: "codex", label: "Codex", ready: false, reason: "Codex has no credential", remedy: "Run `codex login`", unanswered: false },
+        { harness: "cursor", label: "Cursor", ready: true, reason: null, remedy: null, unanswered: false },
+      ];
+    },
+
     async listWorkers() {
+      return [...workers.values()].filter((w) => !fired.has(w.row.id)).map((w) => w.row);
+    },
+
+    watchWorkers(onChange, onError) {
       if (unreachable > 0) {
         unreachable -= 1;
-        throw new TypeError("fetch failed");
+        // Told after the call returns, as a read that failed would be.
+        queueMicrotask(() => onError?.(new TypeError("fetch failed")));
+        return () => {};
       }
-      return [...workers.values()].filter((w) => !fired.has(w.row.id)).map((w) => w.row);
+      let last = "";
+      return watch(() => {
+        const rows = [...workers.values()].filter((w) => !fired.has(w.row.id)).map((w) => w.row);
+        const seen = JSON.stringify(rows);
+        if (seen === last) return;
+        last = seen;
+        onChange(rows);
+      });
     },
 
     async openConversation(workerId) {

@@ -8,13 +8,19 @@
  * their readonly `workerId` and created with it as initial state, which the
  * worker flow's create check confirms.
  *
+ * `watchRoster` follows the roster through the one client's `subscribe`: a
+ * notice under either worker collection's path on the user's topic reads it
+ * again, and the client's fallback timer reads it where push can miss one.
+ *
  * Isomorphic: no Node built-ins, so the browser entry exports it too.
  */
 import {
   ClientHttpError,
   readEveryCollectionPage,
+  topic,
   type Client,
-  type SessionSummary
+  type SessionSummary,
+  type WireNotice
 } from "@flow-state-dev/client";
 import {
   CRITERIA_STATE_KEYS,
@@ -24,7 +30,16 @@ import {
 } from "./derive-session-id";
 import { ownerSegment } from "@flow-state-dev/core/types";
 import { workstreamsAccessor, workstreamStorageKey, type WorkstreamAddress } from "../projects/workstream-ref";
-import { FILING_SESSION_STATE_KEY, ROSTER_FLOW, SET_WORK_PROJECT_ACTION, STANDARD_WORKERS_RESOURCE, WORKER_ID_STATE_KEY, WORKERS_RESOURCE } from "./keys";
+import {
+  FILING_SESSION_STATE_KEY,
+  ROSTER_FLOW,
+  SET_WORK_PROJECT_ACTION,
+  STANDARD_WORKERS_PATTERN,
+  STANDARD_WORKERS_RESOURCE,
+  WORKER_ID_STATE_KEY,
+  WORKERS_PREFIX,
+  WORKERS_RESOURCE
+} from "./keys";
 import { STANDING_RULES_ACTION } from "../standing-rules/keys";
 import type { StandingRulesActionInput, StandingRulesActionOutput } from "../standing-rules/rules-action";
 import type { SetWorkProjectOutput } from "../projects/work-project";
@@ -34,7 +49,7 @@ import type { SetWorkProjectOutput } from "../projects/work-project";
  * Its user is the one whose roster and sessions are read: with
  * authentication, the signed-in user.
  */
-export type WorkforceClientSource = Pick<Client, "userId" | "flow" | "sessions" | "resources">;
+export type WorkforceClientSource = Pick<Client, "userId" | "flow" | "sessions" | "resources" | "subscribe">;
 
 /** One worker on a user's roster. */
 export type RosterEntry = {
@@ -103,6 +118,19 @@ export interface WorkforceClient {
    * or fires changes it.
    */
   roster(): Promise<RosterEntry[]>;
+  /**
+   * Follow the user's roster: `onRoster` gets it once read, and again each
+   * time a hire, fork, edit or fire, from any tab or any worker's turn,
+   * changes it. Only a change is reported. Reads ride the client's
+   * `subscribe` on the user's topic: a notice under either worker
+   * collection, or one naming no path, reads again, as do a connect, a
+   * reconnect and a `resync`; where push can miss a change the client's
+   * timer reads every three seconds. One read runs at a time. A failed read
+   * goes to `onError`, and the next read that lands is reported even if
+   * the roster didn't change. Returns the stop function; nothing is
+   * reported after it.
+   */
+  watchRoster(onRoster: (entries: RosterEntry[]) => void, options?: { onError?: (error: unknown) => void }): () => void;
   /**
    * The user's session with the worker the criteria name, on the worker's
    * current flow, or `undefined` when there is none. With `worker` alone, or
@@ -219,6 +247,56 @@ const WORKER_ONLY: ReadonlySet<string> = new Set([WORKER_ID_STATE_KEY]);
 /** How often an action run through the client checks whether its request ended, and how long it waits. */
 const ACTION_POLL_MS = 100;
 const ACTION_TIMEOUT_MS = 30_000;
+
+/** How often {@link WorkforceClient.watchRoster} reads where push can miss a change, as React's live panels do. */
+const ROSTER_POLL_MS = 3_000;
+
+/** The storage prefixes of the two collections a roster is read from. */
+const ROSTER_PREFIXES = [WORKERS_PREFIX, STANDARD_WORKERS_PATTERN.slice(0, -1)] as const;
+
+/**
+ * Whether a notice on the user's topic may mean the roster changed: a
+ * connect, reconnect or tick (`null`), a `resync`, or a `resource` notice
+ * under either collection or naming no path (a row only its owner may read
+ * publishes bare). A false yes costs one read; a false no leaves a view stale.
+ */
+function rosterMayHaveChanged(notice: WireNotice | null): boolean {
+  if (notice === null || notice.kind === "resync") return true;
+  if (notice.kind !== "resource") return false;
+  const path = notice.topic.resource;
+  return path === undefined || ROSTER_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
+/**
+ * Run `read` on request, one at a time: a request made while a read runs
+ * queues exactly one more. A copy of react's internal `coalescedReads`,
+ * until FIX-2551 lifts one into the client.
+ */
+function coalesced(read: () => Promise<void>): { request: () => void; close: () => void } {
+  let running = false;
+  let queued = false;
+  let closed = false;
+  const run = (): void => {
+    running = true;
+    void read().finally(() => {
+      running = false;
+      if (closed || !queued) return;
+      queued = false;
+      run();
+    });
+  };
+  return {
+    request: () => {
+      if (closed) return;
+      if (running) queued = true;
+      else run();
+    },
+    close: () => {
+      closed = true;
+      queued = false;
+    }
+  };
+}
 
 /**
  * Build a workforce client over the one client, as that client's user.
@@ -376,6 +454,36 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
 
   const client: WorkforceClient = {
     roster: async () => readRoster((await roster()).id),
+    watchRoster: (onRoster, watchOptions) => {
+      let live = true;
+      // What was last reported; cleared by a failure, so the next read that lands is reported.
+      let last: string | undefined;
+      const reads = coalesced(async () => {
+        try {
+          const entries = await client.roster();
+          const seen = JSON.stringify(entries);
+          if (!live || seen === last) return;
+          last = seen;
+          onRoster(entries);
+        } catch (error) {
+          if (!live) return;
+          last = undefined;
+          watchOptions?.onError?.(error);
+        }
+      });
+      const subscription = fsd.subscribe([topic.user()], {
+        onChange: (notice) => {
+          if (rosterMayHaveChanged(notice)) reads.request();
+        },
+        pollIntervalMs: ROSTER_POLL_MS
+      });
+      reads.request();
+      return () => {
+        live = false;
+        reads.close();
+        subscription.close();
+      };
+    },
     findWorkerSession: async (criteria) => {
       const { id, orgId } = await roster();
       return find(criteria, flowOf(await readRoster(id), criteria.worker), id, orgId);

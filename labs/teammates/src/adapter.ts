@@ -6,7 +6,7 @@
  *
  * | Function            | Bound to                                                                     |
  * |---------------------|------------------------------------------------------------------------------|
- * | `listWorkers`       | the workforce client's `roster()`                                            |
+ * | `watchWorkers`      | the workforce client's `watchRoster()`: every hire, edit and fire, anywhere   |
  * | `openConversation`  | `ensureWorkerSession({ worker })`: the worker's default conversation         |
  * | `send`              | the worker's door, `respond`, streamed, so its answer shows as it is written  |
  * | `watchConversation` | the session's items, from its snapshot and then its stream (`sessionFeed`), |
@@ -36,7 +36,7 @@
  * |                     | named by the UI registry's `tool-naming` (`components/flow-state/`)           |
  * | `watchExchange`     | the receiving worker's conversation: the turn that read one message          |
  *
- * `watchTalk` and `watchTasks`' board read still read on a clock (`poll`); every other watch reads on a change.
+ * `watchTalk` still reads on a clock (`poll`); every other watch reads on a change.
  *
  * A received message is drawn from its own item (`workforce:received`), which
  * carries its message id, so the pending line joins the log to the
@@ -96,6 +96,7 @@ import {
 import { harnessName } from "./lib/harness";
 import { sessionFeeds, type SessionFeed } from "./lib/session-feed";
 import { stableList } from "./lib/stable";
+import type { HarnessReadinessChipRow } from "./components/flow-state/harness-readiness";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
@@ -318,9 +319,35 @@ export interface WindowMark {
   summarized: boolean;
 }
 
+/** One coding harness's readiness, as harness-manager's readiness action answers it. */
+export type HarnessRow = HarnessReadinessChipRow;
+
+/** What the lab works on and with, from its `lab-context` flow: the context strip and the first run read it. */
+export interface LabContext {
+  /** The working folder. */
+  folder: string;
+  /** Why a coding run's checkout of the folder would be refused, or `null`. */
+  folderProblem: string | null;
+  model: string;
+  /** The harness a coding worker whose file names none runs on. */
+  harness: string;
+  /** Each worker's declared delegates, by id: ids, or `"all"`. */
+  delegates: Record<string, "all" | string[]>;
+}
+
 /** Everything the screen reads and writes. */
 export interface LabAdapter {
+  /**
+   * The roster's rows, and again each time a hire, an edit or a fire, from
+   * any tab or any worker's turn, changes them. `onError` hears a failed read;
+   * the next read that lands reports the rows.
+   */
+  watchWorkers(onChange: (workers: WorkerRow[]) => void, onError?: (error: unknown) => void): Unsubscribe;
   listWorkers(): Promise<WorkerRow[]>;
+  /** What the lab works on and with, read once for the context strip. */
+  readContext(): Promise<LabContext>;
+  /** Which coding harnesses can run on this machine; `refresh` checks them again (Re-check). */
+  readHarnesses(refresh?: boolean): Promise<HarnessRow[]>;
   /** The worker's one conversation; the same id every time. */
   openConversation(worker: string): Promise<string>;
   send(sessionId: string, text: string): Promise<void>;
@@ -516,7 +543,7 @@ function retryAfterFailure(again: () => void): { failed(): void; succeeded(): vo
 
 /**
  * Read `read` now, and again whenever a notice under `topics` passes `hears`
- * (FIX-2466), reporting a value only when it changed, as {@link poll} does.
+ * reporting a value only when it changed, as {@link poll} does.
  * A connect, a reconnect, a tick and a `resync` read too. One read at a time,
  * and one waiting for any number of notices. Wherever push can miss a change,
  * `client.subscribe` reads every `everyMs` instead, so the view keeps no timer
@@ -578,27 +605,18 @@ function onNotice<T>(
 /** A request notice: one of the session's requests was created, moved or deleted. Never `items`, sent per stored chunk. */
 const isRequest = (notice: WireNotice): boolean => notice.kind === "request";
 
-/** The latest copy of each board row in a conversation's items, oldest filing first. */
-/**
- * Whether `copy` of a row is of the attempt `row` is on: the same try, on the same
- * run. A retry runs the task again, and a copy from before it speaks only for the
- * attempt that ended.
- */
+/** Whether `copy` of a row is of the same attempt (try count and run) as `row`: a retry's copies speak only for it. */
 function sameAttempt(copy: Record<string, any> | undefined, row: Record<string, any>): boolean {
   return copy !== undefined && (copy.attempts ?? 0) === (row.attempts ?? 0) && (copy.run?.sessionId ?? null) === (row.run?.sessionId ?? null);
 }
 
+/** The latest copy of each board row in a conversation's items, oldest filing first. */
 function boardRows(items: readonly Item[]): Map<string, Record<string, any>> {
   const rows = new Map<string, Record<string, any>>();
   for (const item of items) {
     if (item.type === "component" && item.component === TASK_CHANGE && item.data?.task?.id) rows.set(item.data.task.id, item.data.task);
   }
   return rows;
-}
-
-/** What a row's spend says ran it: the harness and model its run reported, or nothing. */
-function spendOf(view: TaskSpendView | null): { harness?: string; model?: string } {
-  return { ...(view?.harness == null ? {} : { harness: view.harness }), ...(view?.model == null ? {} : { model: view.model }) };
 }
 
 /**
@@ -632,7 +650,7 @@ export function toBoardTask(
     ...(Array.isArray(row.labels) ? { labels: row.labels.filter((label: unknown): label is string => typeof label === "string") } : {}),
     ...(typeof row.priority === "number" ? { priority: row.priority } : {}),
     ...(typeof row.run?.sessionId === "string" ? { runSessionId: row.run.sessionId } : {}),
-    ...harnessAndModel(spendOf(spend), harnessOf(row.assignee ?? "")),
+    ...harnessAndModel(spend, harnessOf(row.assignee ?? "")),
     ...(spend === null ? {} : { spend }),
     ...waitingOf(view),
   };
@@ -696,11 +714,11 @@ function inboxAnswerOf(answer: TaskAnswer): InboxAnswer {
 }
 
 /** The harness by its name (the run's, else the worker's), and the run's model. */
-function harnessAndModel(spend: { harness?: string; model?: string }, setting: string | undefined): { harness?: string; model?: string } {
-  const harness = spend.harness ?? setting;
+function harnessAndModel(spend: TaskSpendView | null, setting: string | undefined): { harness?: string; model?: string } {
+  const harness = spend?.harness ?? setting;
   return {
-    ...(harness === undefined ? {} : { harness: harnessName(harness) }),
-    ...(spend.model === undefined ? {} : { model: spend.model }),
+    ...(harness == null ? {} : { harness: harnessName(harness) }),
+    ...(spend?.model == null ? {} : { model: spend.model }),
   };
 }
 
@@ -917,7 +935,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const flowOfSession = new Map<string, string>();
   /** The workers, by id, so a line under a worker's name reads as a task's ending. */
   let workerIds = new Set<string>();
-  /** Each coding worker's `harness:`, from the last roster read. */
+  /** Each coding worker's `harness:`, from the last roster the watch reported. */
   let harnesses = new Map<string, string>();
 
   const conversationOf = async (worker: string) => {
@@ -937,7 +955,46 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const watchFeed = <T>(sessionId: string, map: (items: Item[]) => T, onChange: (value: T) => void): Unsubscribe =>
     (feeds(sessionId) as SessionFeed).watch((items: readonly OutputItem[]) => onChange(map(items as unknown as Item[])));
 
+  /** The user's one session on a lab flow (`harness-readiness`, `lab-context`), found or made once. */
+  const labSessions = new Map<string, Promise<string>>();
+  const labSession = (flow: string) => {
+    const known = labSessions.get(flow);
+    if (known !== undefined) return known;
+    const made = (async () => {
+      const [latest] = (await client.sessions.list({ flowKind: flow, userId: client.userId })).sort((a, b) => b.updatedAt - a.updatedAt);
+      return latest?.id ?? (await client.flow(flow).createSession()).id;
+    })();
+    labSessions.set(flow, made);
+    made.catch(() => labSessions.delete(flow));
+    return made;
+  };
+  /** Run one of a lab flow's actions and hand back its output, or throw why it failed. */
+  const runLab = async (flow: string, action: string, input: unknown): Promise<any> => {
+    const sessionId = await labSession(flow);
+    const sent = await client.flow(flow).send(action, input, { sessionId });
+    const { status } = await sent.wait();
+    const found = (await client.sessions.requests(sessionId, { includeResultOutput: true, limit: 20 })).find((r) => r.id === sent.id);
+    if (status !== "completed") throw new Error(found?.result?.error?.message ?? `${action} ended ${status}`);
+    return found?.result?.output;
+  };
+
   return {
+    watchWorkers(onChange, onError) {
+      return workforce.watchRoster(
+        (roster) => {
+          workerIds = new Set(roster.map((w) => w.id));
+          harnesses = new Map(roster.flatMap((w) => (typeof w.settings?.harness === "string" ? [[w.id, w.settings.harness] as const] : [])));
+          onChange(roster.map(toWorkerRow));
+        },
+        onError === undefined ? undefined : { onError },
+      );
+    },
+    async readContext() {
+      return (await runLab("lab-context", "read", {})) as LabContext;
+    },
+    async readHarnesses(refresh = false) {
+      return ((await runLab("harness-readiness", "read", { refresh })) as { harnesses: HarnessRow[] }).harnesses;
+    },
     async listWorkers() {
       const roster = await workforce.roster();
       workerIds = new Set(roster.map((w) => w.id));
@@ -1106,25 +1163,20 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     watchTasks(sessionId, onChange) {
       const show = stableList(onChange);
       let rows = new Map<string, Record<string, any>>();
-      /**
-       * Each row as the board's last read answered it. A task settles, and its run links itself, in
-       * the task's own session, which the conversation's stream doesn't carry; the board's notice
-       * does, and the read says what changed.
-       */
+      /** Each row as the board's last read answered it: a task settles, and its run links, on its own session. */
       let listed = new Map<string, Record<string, any>>();
       /**
        * Each linked run's own copy of its row. A run writes its row on its own session (its link, its
-       * questions, its review), so the conversation hears of those only when the task ends: the run's
-       * session is followed too.
+       * questions, its review), and the conversation hears of those only when the task ends, so the
+       * run's session is followed too.
        */
       const runRows = new Map<string, Record<string, any>>();
       const runFeeds = new Map<string, Unsubscribe>();
       /**
-       * A row is the board read's (FIX-2429): every committed write of a row sends a board notice, so
-       * the read is never more than one notice behind, and a field it leaves out is cleared (an
-       * answered hold). Until the first read lands, the conversation's copy, else the run's, stands in.
-       * The run's and the conversation's copies give only what the read never carries: the task's
-       * brief ({@link BRIEF}), and an ended task's output and error ({@link UNPROJECTED}).
+       * A row is the board read's: every committed write of a row sends a board notice, so the read
+       * is never more than one notice behind, and a field it leaves out is cleared (an answered hold). Until the first read lands, the conversation's copy, else
+       * the run's, stands in. The copies add only what the read never carries: {@link BRIEF} and
+       * {@link UNPROJECTED}.
        */
       const rowOf = (id: string): Record<string, any> => {
         const board = listed.get(id);
@@ -1198,9 +1250,8 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           }),
         ).then(publish, (error) => console.error("teammates: a session's flow couldn't be read", error));
       };
-      // A run links itself, and a task settles, on its own session: the board's notice says so
-      // (FIX-2429). The topics are narrowed to the ledgers the read returns, so every notice on
-      // them is the board's: a reply streaming in the conversation never reaches them.
+      // Topics narrowed to the ledgers the read returns: every notice on them is the board's,
+      // so a reply streaming in the conversation never wakes the read.
       const stopBoard = onNotice(
         client,
         BOARD_LEDGERS.map((resource) => topic.session(sessionId, { resource })),

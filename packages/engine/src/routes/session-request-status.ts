@@ -1,6 +1,6 @@
 /**
  * A session's latest request status, for the session listing's
- * `include=status` (FIX-2411): what a row in a list of sessions shows about
+ * `include=status`: what a row in a list of sessions shows about
  * its turn.
  *
  * Which request speaks is the runs listing's rule, read through its one

@@ -9,19 +9,24 @@
  * `setWorkProject` checks the same rule on the server.
  */
 import { defineFlow } from "@flow-state-dev/core";
-import { defineProjectBlocks } from "@flow-state-dev/workforce";
+import { defineProjectBlocks, type RepositoryCheck } from "@flow-state-dev/workforce";
 
 /** The flow kind the screen reads projects through. */
 export const PROJECTS_FLOW = "projects";
 
-/** Build the flow: the project blocks' actions and nothing else. */
-export function defineProjectsFlow() {
-  const projects = defineProjectBlocks();
+/**
+ * Build the flow: the project blocks' actions and nothing else. Given the
+ * host's `checkRepository`, a project on a repository no run could use is
+ * refused when it is made, and `checkRepository` answers the picker first.
+ */
+export function defineProjectsFlow(options: { checkRepository?: RepositoryCheck } = {}) {
+  const projects = defineProjectBlocks(options.checkRepository === undefined ? {} : { checkRepository: options.checkRepository });
   return defineFlow({
     kind: PROJECTS_FLOW,
     actions: {
       listProjects: projects.actions.listProjects,
       createProject: projects.actions.createProject,
+      ...(projects.actions.checkRepository === undefined ? {} : { checkRepository: projects.actions.checkRepository }),
     },
   } as never);
 }

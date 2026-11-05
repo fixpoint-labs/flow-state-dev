@@ -21,7 +21,7 @@
  * row past everything under it. A row's slot content shows while the row is
  * pointed at, focused into or selected, and always on a screen with no hover.
  *
- * An open leaf's sessions are live (FIX-2411): through a client that can
+ * An open leaf's sessions are live: through a client that can
  * `subscribe`, they read again when one of the user's sessions changes, and
  * when the page becomes visible. Each session row shows its latest turn's
  * state, marked when it needs its user, and how long ago it changed.

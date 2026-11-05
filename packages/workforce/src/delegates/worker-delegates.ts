@@ -168,8 +168,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
    */
   const seeded = async (ctx: BlockContext, defaults: DelegateDefaults): Promise<DelegateDefaults> => {
     if (options.seed === undefined) return defaults;
-    const stored = (ctx.session.state as Record<string, unknown> | undefined)?.[DELEGATES_STATE];
-    if (stored !== null && stored !== undefined) return defaults;
+    if ((ctx.session.state as Record<string, unknown>)[DELEGATES_STATE] !== null) return defaults;
     const records = await options.seed(ctx);
     return records === undefined ? defaults : { ...defaults, records };
   };

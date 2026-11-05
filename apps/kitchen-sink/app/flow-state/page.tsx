@@ -976,7 +976,7 @@ function ChatPanel({
 
       <div className="border-t">
         {!conversationLoading && session.items.length === 0 && (
-          <SuggestionRow onSuggestionClick={onSetMessage} disabled={isDisabled} />
+          <SuggestionRow mode={mode} onSuggestionClick={onSetMessage} disabled={isDisabled} />
         )}
         <StuckRequestBanner session={session} />
         {/* Outside the conversation, deliberately: a child session's output is not

@@ -127,6 +127,12 @@ isn't ready, the task fails at once with a line that names the agent and what to
 "Codex isn't set up on this machine: Codex has no credential: Not logged in. Run `codex login`, or
 set CODEX_API_KEY. Then start the task again." It never runs on another agent instead.
 
+The page shows the same rows as chips over the conversation, with a Re-check button, next to the
+working folder, the model and the default agent the lab was started with. If the folder's
+`.gitignore` doesn't ignore `.fsdev/`, that line says so too, since a coding task's checkout of it
+would be refused. An empty conversation offers a few lines to start with, built from who that
+worker hands work to; a click puts one in the box and sends nothing.
+
 There is one working folder, a checkout you name when you start the lab (see [Run it](#run-it)),
 and every job that needs files works in it. Nothing on the page picks a folder, and no worker can
 name another one.
@@ -199,7 +205,7 @@ names the package call it makes.
 
 | On screen | Package piece |
 |---|---|
-| The worker list, sending, the conversation, busy status | the workforce client's `roster()` and `ensureWorkerSession`, the flow's `respond`, session items, `listSessionRequests` |
+| The worker list, sending, the conversation, busy status | the workforce client's `watchRoster()` and `ensureWorkerSession`, the flow's `respond`, session items, `listSessionRequests` |
 | Workers messaging each other | `sendMessage`, the received-message item (`workforce:received`), and the message log |
 | Hiring, changing and firing your own teammates | the workforce client's `hire`, `edit` and `fire`, on the roster flow |
 | Task lines | the conversation board's rows |

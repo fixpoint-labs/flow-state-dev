@@ -1,27 +1,29 @@
+"use client";
+
 /**
- * `MessageResponse` from the UI registry (`packages/ui/registry/components/message.tsx`),
- * copied as the registry hands it out, without the rest of that file's message shell.
- * It renders Markdown with Streamdown, which closes an unfinished code fence or
- * emphasis while the text is still streaming.
+ * Markdown, drawn with Streamdown: the renderer chat messages use
+ * ({@link MessageResponse}), and {@link MarkdownText} for text a card shows.
  *
- * Streamdown parses raw HTML in Markdown by default (its `raw` rehype plugin,
- * then sanitized). {@link AgentMarkdown} drops that plugin, so HTML a model
- * writes shows as text and never becomes an element.
+ * Streamdown closes an unfinished code fence or emphasis while the text is
+ * still streaming. It parses raw HTML in Markdown by default (its `raw` rehype
+ * plugin, then sanitized); {@link MarkdownText} drops that plugin, so HTML in
+ * the text shows as text and never becomes an element.
  */
 import type { ComponentProps } from "react";
 import { memo } from "react";
+import { cn } from "@/lib/utils";
 import { cjk } from "@streamdown/cjk";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
 import { defaultRehypePlugins, Streamdown } from "streamdown";
-import { cn } from "../../lib/utils";
 
-type MessageResponseProps = ComponentProps<typeof Streamdown>;
+export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
 const streamdownPlugins = { cjk, code, math, mermaid };
 
-const MessageResponse = memo(
+/** Streamdown with the registry's plugins and spacing. Re-renders only when its text changes. */
+export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <Streamdown
       className={cn(
@@ -41,12 +43,28 @@ MessageResponse.displayName = "MessageResponse";
 
 /** Streamdown's rehype plugins without `raw`: sanitize and harden stay, HTML stays text. */
 const { raw: _raw, ...textOnlyHtml } = defaultRehypePlugins;
-const AGENT_REHYPE = Object.values(textOnlyHtml);
+const TEXT_ONLY_HTML = Object.values(textOnlyHtml);
 
-/** A worker's text, as Markdown, with any HTML in it shown as text. */
-export function AgentMarkdown({ text, className }: { text: string; className?: string }) {
-  return (
-    <MessageResponse className={className} rehypePlugins={AGENT_REHYPE}>
+/** What a one-line text keeps: inline Markdown. Anything else is unwrapped to its text. */
+const INLINE_ELEMENTS = ["strong", "em", "del", "code", "a"];
+
+/**
+ * Text an agent or a tool wrote, as Markdown, with any HTML in it shown as
+ * text. `inline` keeps it to one truncated line: inline Markdown only, and a
+ * list item or heading is unwrapped to its text rather than drawn as a block.
+ */
+export function MarkdownText({ text, className, inline = false }: { text: string; className?: string; inline?: boolean }) {
+  return inline ? (
+    <MessageResponse
+      className={cn("truncate whitespace-nowrap [&_p]:inline", className)}
+      rehypePlugins={TEXT_ONLY_HTML}
+      allowedElements={INLINE_ELEMENTS}
+      unwrapDisallowed
+    >
+      {text}
+    </MessageResponse>
+  ) : (
+    <MessageResponse className={className} rehypePlugins={TEXT_ONLY_HTML}>
       {text}
     </MessageResponse>
   );

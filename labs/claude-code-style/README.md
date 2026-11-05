@@ -50,7 +50,7 @@ threads, each a task in a session of its own, and the right pane is the status b
 - **The page's address** names the view, the open session and the task open in its pane
   (`?session=<id>&task=<id>`), so a reload or a link reopens them, and Back returns to what you
   had open before. A link to a session or task that is gone opens *New session* instead.
-- **A thread's view** replaces the board, with a back arrow. You can talk in it: your line steers
+- **A thread's view** opens as a sheet over the main thread, the same flyout a session's background task opens in, and the board stays in the pane beside it. You can talk in it: your line steers
   the thread's task and answers its open question. Cmd+Enter (Ctrl+Enter) answers, or requests
   changes when it is ready for review; plain Enter is a new line. You can pin it there. Under its
   header, the same actions as a sheet's, without the *Steer* box, since the composer steers.
@@ -114,7 +114,11 @@ are read from the environment, all optional:
 
 *New session* lists your projects and has a *New project* form: a name and the repository its
 coding runs work on. The host allows `file://` repositories only, and the repository must ignore
-`.fsdev/` (a run refuses one that doesn't). A run works in a git worktree of the repository under
+`.fsdev/`. The form checks the repository as you leave its field, with the same check a run's
+checkout gets, and keeps Create off with the problem shown when it fails; the server refuses the
+same project (`repository-unusable`). The picker also says what its view does and shows which
+coding harnesses can run here, with Re-check, and an empty session offers starter lines that fill
+the composer. A run works in a git worktree of the repository under
 the data folder, on a branch of its own that you'll find in the repository, so your checked-out
 branch and files don't change. A repository not in `CLAUDE_CODE_STYLE_REPOSITORIES` gets a clone
 under the data folder instead. Before a run settles, a judge (harness-manager's `goalJudge`) reads
@@ -143,7 +147,8 @@ a package call:
 |---|---|
 | The sessions list | `listWorkerSessions("desk.main")` from `@flow-state-dev/workforce/browser` |
 | *New session* and a session's project | a session of `desk.main`'s flow, then `setWorkProject` |
-| The project picker and *New project* | `listProjects` and `createProject`, from `defineProjectBlocks` (`workforce/flows/projects.mts`) |
+| The project picker and *New project* | `listProjects`, `createProject` and `checkRepository`, from `defineProjectBlocks` with the workspace host's check (`workforce/flows/projects.mts`) |
+| The picker's harness chips | the `harness-readiness` flow's `read` action |
 | Sending and the thread | the `respond` action, and the session's message and tool items |
 | A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
 | The main session reading the project's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |

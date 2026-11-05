@@ -5,6 +5,7 @@ import type { SuspensionItem } from "@flow-state-dev/core/items";
 import type { SuspensionStatus } from "@flow-state-dev/core/types";
 import { resolveApprovalOutcome, useSuspensionResolver } from "@flow-state-dev/react";
 import { CheckIcon, MinusIcon } from "lucide-react";
+import { MarkdownText } from "./message-response";
 import { RunChecks, type RunCheck } from "./run-checks";
 
 /**
@@ -175,8 +176,9 @@ export function ReviewHold({
           {review.subjects.length > 0 ? (
             <ul className="mt-1 text-xs text-muted-foreground">
               {review.subjects.slice(0, SUBJECTS_SHOWN).map((subject, i) => (
-                <li key={i} title={subject} className="truncate [overflow-wrap:normal]">
-                  · {subject}
+                <li key={i} title={subject} className="flex min-w-0 gap-1 [overflow-wrap:normal]">
+                  <span className="shrink-0">·</span>
+                  <MarkdownText inline text={subject} className="min-w-0" />
                 </li>
               ))}
               {more > 0 ? <li>· and {more} more</li> : null}
@@ -194,9 +196,9 @@ export function ReviewHold({
           </div>
         </>
       ) : prompt ? (
-        <p className="mt-0.5 text-xs whitespace-pre-wrap" data-review-prompt>
-          {prompt}
-        </p>
+        <div className="mt-0.5 text-xs" data-review-prompt>
+          <MarkdownText text={prompt} />
+        </div>
       ) : null}
       {review ? null : children}
       {canAnswer ? (

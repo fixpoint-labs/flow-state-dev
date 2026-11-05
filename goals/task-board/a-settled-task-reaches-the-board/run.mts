@@ -60,6 +60,7 @@ import {
   modulePatchEnv,
   runGoal,
   silentLogger,
+  sleep,
   type ModulePatch
 } from "../../lib/index.mts";
 import { createLabAdapter as teammatesLab } from "../../../labs/teammates/src/adapter.ts";
@@ -119,7 +120,6 @@ if (PATCHES[CONTROL] !== undefined && process.env.GOAL_MODULE_PATCH === undefine
 }
 const legs = new Set((process.env.GOAL_LEGS ?? "a,b,c").split(",").map((s) => s.trim()).filter(Boolean));
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ---------------------------------------------------------------------------
 // Observing the sockets (taps only: nothing here changes what a client does)

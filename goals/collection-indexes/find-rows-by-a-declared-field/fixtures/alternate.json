@@ -1,0 +1,18 @@
+{
+  "legacyRows": [
+    { "partition": "s_legacy", "id": "job-a" },
+    { "partition": "s_legacy", "id": "job-b" },
+    { "partition": "s_legacy/two", "id": "job-c" },
+    { "partition": "s_légacy", "id": "job-a" }
+  ],
+  "legacyMarkers": [
+    { "partition": "s_gone", "id": "job-b" }
+  ],
+  "filed": [
+    { "partition": "s_1", "ids": ["job-x"] },
+    { "partition": "s_2", "ids": ["job-x", "job-y", "job-c"] },
+    { "partition": "s_3", "ids": ["job-z"] },
+    { "partition": "s_4", "ids": ["job-x"] }
+  ],
+  "absent": ["job", "job-a2", "s_legacy"]
+}

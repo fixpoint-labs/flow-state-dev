@@ -1,20 +1,14 @@
 /**
- * `useSessionList(options)` (FIX-2411): a flow's sessions, read again when
- * one of them changes.
+ * `useSessionList(options)`: a flow's sessions, read again when one of them
+ * changes. The list `FlowNavigator` draws under an open leaf; each row can
+ * carry its latest request's state (`requestStatus`) from the same listing.
  *
- * The list `FlowNavigator` draws under an open leaf, and the one any other
- * rail draws from. Each row can carry its latest request's state
- * (`SessionSummary.requestStatus`), read by the server in the same listing,
- * so a rail shows which session needs its user without a read per row.
- *
- * Live through the client's `subscribe`, on the caller's user topic, where
- * the server publishes a `run` notice for every write to one of the user's
- * sessions: a session created, titled or deleted, and a request started or
- * ended, from any tab, script or process the bus reaches. A burst of notices
- * is one read in flight and one waiting. It also reads when the page becomes
- * visible, for a change the bus could not carry (another process on a bus
- * that doesn't cross). A client without `subscribe` reads once, as the
- * navigator always has.
+ * Live through the client's `subscribe` on the caller's user topic, where the
+ * server publishes a `run` notice for every write to one of the user's
+ * sessions (created, titled, deleted, a request started or ended) from any
+ * tab or process the bus reaches. A burst of notices is one read in flight and
+ * one queued. It also reads when the page becomes visible, for a change the
+ * bus could not carry. A client without `subscribe` reads once.
  */
 import type { Client, SessionsApi, SessionSummary } from "@flow-state-dev/client";
 import { useLiveSessionRead } from "../internal/useLiveSessionRead";

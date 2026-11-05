@@ -1,5 +1,5 @@
 /**
- * The board-notice seam (FIX-2429): how a task board's change reaches the
+ * The board-notice seam: how a task board's change reaches the
  * change bus, so every open view of the board reads again.
  *
  * Orchestration calls {@link publishBoardChange} where every board change

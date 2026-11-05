@@ -59,6 +59,7 @@ const SHIFT_MANAGER_WORDS: Record<string, string> = {
   worker: "the Tasks screen's group-by key (State / Worker / Stream); multi-worker-collab also names a worker flow `worker`",
   "shift-coordinator":
     "the worker id the Shift Coordinator screen finds its worker by; DevTeam declares an org worker under it so it has one",
+  em: "the HTML emphasis element the registry copy `message-response.tsx` keeps on a one-line text; DevTeam also names a worker `eng.em`",
 };
 
 /** Quoted string literals in a file that equal a tree name. */

@@ -65,8 +65,8 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 - Scope: Docs — package READMEs.
 - Rule:
   - Maintain `README.md` in each public package directory (`packages/*`): purpose, current public API surface, basic usage, and package-local verification commands.
-  - Update a package README in the same change set when that package's exported surface, runtime behavior, or setup scripts materially change.
-- Why: Docs next to the code that owns each contract reduce integration friction and drift.
+  - Bring a package README up to date at release, in the release docs PR (`/release-docs`), when that package's exported surface, runtime behavior, or setup scripts materially changed. A normal PR doesn't edit it; CI enforces that ([release-docs.md](../release-docs.md)).
+- Why: Docs next to the code that owns each contract reduce integration friction and drift. The README ships to npm, so it describes the released package, not `main`.
 
 ### BP-037: Retain issue and epic specs as reviewed design history
 

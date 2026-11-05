@@ -111,7 +111,7 @@ export type { RequestResume } from "./request-resume";
 export { suspendForUserOn } from "./suspend-for-user";
 export type { ApprovalAnswer, UserAnswer, SuspendForUser, SuspendForUserCancelled, SuspendForUserContext, SuspendForUserOptions } from "./suspend-for-user";
 
-/** The board-notice seam (FIX-2429): a task board's change reaches the change bus. */
+/** The board-notice seam: a task board's change reaches the change bus. */
 export { BOARD_NOTICE_SEAM, publishBoardChange } from "./board-notice";
 export type { BoardChange, BoardNoticeSeam } from "./board-notice";
 
@@ -246,6 +246,14 @@ export type {
 
 export { defineWebhookBinding, validateWebhookConfig } from "./webhooks";
 
+export {
+  MAX_SUBSCRIPTION_EVENT_TEXT,
+  SUBSCRIPTION_SENDER_ROLES,
+  subscriptionEventSchema,
+  type SubscriptionEvent,
+  type SubscriptionSenderRole
+} from "./subscription-event";
+
 export type {
   CompositeVoiceProviderConfig,
   ListVoicesCapable,
@@ -354,6 +362,18 @@ export {
   encodeUserSegment,
   ownerSegment,
 } from "./resource-collection";
+
+export type {
+  DeclaredResourceIndex,
+  ResourceIndexDeclaration,
+  ResourceIndexFunction,
+  ResourceIndexValue,
+} from "./resource-index";
+export {
+  canonicalIndexValue,
+  canonicalIndexValues,
+  declaredIndexes,
+} from "./resource-index";
 
 export { isCollectionConfig, resourceStorageKeys } from "./storage-identity";
 

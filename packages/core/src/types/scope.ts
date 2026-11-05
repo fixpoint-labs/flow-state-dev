@@ -105,8 +105,11 @@ export type HistoryTurn = {
   startedAtMs: number;
   /**
    * Whether the turn has finished for good. A turn still running, suspended on
-   * a gate, or interrupted and parked to run again has not, and carries no
-   * messages: what it says is not final until it settles.
+   * a gate, or interrupted and parked to run again has not, and `items.turns()`
+   * gives it no messages: what it says is not final until it settles. A
+   * session's history read (`RequestSessions.history`) lists a turn waiting
+   * on a call with what it has settled so far, as a model reads it, and
+   * `settled: false`.
    */
   settled: boolean;
   messages: LLMMessage[];
