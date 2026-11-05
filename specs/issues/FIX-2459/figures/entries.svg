@@ -1,0 +1,73 @@
+<svg viewBox="0 0 940 440" role="img" aria-label="Orchestration's entry points, before and after. Before: the root carries 346 names, all 222 task names that ./tasks also carries plus skills, Node-only seams and about 60 names only our own packages read; ./tasks carries the same 222; ./task-board and ./inbox stand alone; ./inbox/check is hidden for repo tests. After: the root carries skills and Node-only seams; ./tasks carries the task substrate once and stays the one browser-safe barrel; ./task-board and ./inbox are unchanged. Below a fence marked not for apps, ./internal holds what only our packages read, published and outside semver, and ./inbox/check stays hidden for repo tests."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-in  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-dup { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .n-hid { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .fence { stroke:var(--gone); stroke-width:1.6; stroke-dasharray:7 5; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-f   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="440"/>
+
+  <g id="before">
+    <text class="t-lbl" x="16" y="26">BEFORE · 0.5.0</text>
+    <rect class="n-dup" x="16" y="38" width="436" height="92" rx="5"/>
+    <text class="t-b" x="32" y="62">.  root · 346 names</text>
+    <text class="t-x" x="32" y="82">all 222 task names, again</text>
+    <text class="t-s" x="32" y="100">skills · Node-only seams</text>
+    <text class="t-x" x="32" y="118">~60 names only our own packages read</text>
+    <rect class="n-box" x="16" y="142" width="436" height="58" rx="5"/>
+    <text class="t-b" x="32" y="166">./tasks · 222 names</text>
+    <text class="t-s" x="32" y="186">the task substrate · guarded browser-safe</text>
+    <rect class="n-box" x="16" y="212" width="212" height="44" rx="5"/>
+    <text class="t-b" x="32" y="239">./task-board</text>
+    <rect class="n-box" x="240" y="212" width="212" height="44" rx="5"/>
+    <text class="t-b" x="256" y="239">./inbox</text>
+    <rect class="n-hid" x="16" y="376" width="436" height="50" rx="5"/>
+    <text class="t-b" x="32" y="398">./inbox/check</text>
+    <text class="t-s" x="32" y="416">hidden by publishConfig · repo tests</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="488" y="26">AFTER</text>
+    <rect class="n-in" x="488" y="38" width="436" height="92" rx="5"/>
+    <text class="t-b" x="504" y="62">.  root</text>
+    <text class="t-s" x="504" y="82">skills · frontmatter · catalog keys</text>
+    <text class="t-s" x="504" y="100">Node-only seams: lease-renewal scope, task turn</text>
+    <text class="t-s" x="504" y="118">the filer's settled entry</text>
+    <rect class="n-in" x="488" y="142" width="436" height="58" rx="5"/>
+    <text class="t-b" x="504" y="166">./tasks · the one home for task names</text>
+    <text class="t-s" x="504" y="186">the one browser-safe barrel · fifo and priority</text>
+    <rect class="n-in" x="488" y="212" width="212" height="44" rx="5"/>
+    <text class="t-b" x="504" y="239">./task-board</text>
+    <rect class="n-in" x="712" y="212" width="212" height="44" rx="5"/>
+    <text class="t-b" x="728" y="239">./inbox</text>
+  </g>
+
+  <g id="fence">
+    <line class="fence" x1="488" y1="276" x2="924" y2="276"/>
+    <text class="t-f" x="488" y="294">D2 FENCE · NOT FOR APPS</text>
+  </g>
+
+  <g id="behind">
+    <rect class="n-hid" x="488" y="306" width="436" height="58" rx="5"/>
+    <text class="t-b" x="504" y="330">./internal</text>
+    <text class="t-s" x="504" y="350">published · read only by @flow-state-dev/* · outside semver</text>
+    <rect class="n-hid" x="488" y="376" width="436" height="50" rx="5"/>
+    <text class="t-b" x="504" y="398">./inbox/check</text>
+    <text class="t-s" x="504" y="416">unchanged · repo tests</text>
+  </g>
+</svg>
