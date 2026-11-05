@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 470" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What is in the box. In the box, what an app author imports: curated package roots for core, engine, client, react and testing, where every name has an outside consumer or a README entry; one call per job, to answer a stop, to read an action's output, to scroll a conversation; a quick start and examples that run as written; no tracker ids in anything that ships. Composed in by the adopter who goes further: named public subpaths, documented and semver-covered: core/harness, engine/host, testing/benchmark, the stores' advanced entry, and orchestration/tasks, the browser-safe entry it already has. Behind a fence, ours: internal subpaths, published for our own packages and outside semver, and workspace-only entries for repo tests and tools. Not built here: the review's unfiled items.">
+     aria-label="What is in the box. In the box, what an app author imports: curated package roots for core, engine, client, react and testing, where every name has an outside consumer or a README entry; one call per job, to answer a stop, to read an action's output, to scroll a conversation; a quick start and examples that run as written; no tracker ids in anything that ships. Composed in by the adopter who goes further: named public subpaths, documented and semver-covered: core/harness, engine/host, testing/benchmark, patterns/benchmark, react/workforce, each store's advanced entry, and orchestration/tasks, the browser-safe entry it already has. Behind a fence, ours: internal subpaths in core, engine, orchestration, react and contracts, one each, published for our own packages and outside semver, and workspace-only entries for repo tests and tools. Not built here: the review's unfiled items.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -51,7 +51,7 @@
   <g id="composed-in">
     <rect class="app" x="16" y="198" width="908" height="80" rx="8"/>
     <text class="t-ac" x="32" y="220">COMPOSED IN BY THE ADOPTER WHO GOES FURTHER · NAMED PUBLIC SUBPATHS · DOCUMENTED · SEMVER</text>
-    <text class="t-b" x="32" y="246">core/harness · engine/host · testing/benchmark · a store’s ./advanced · orchestration/tasks, as today</text>
+    <text class="t-b" x="32" y="246">core/harness · engine/host · testing/benchmark · patterns/benchmark · react/workforce · each store’s ./advanced · orchestration/tasks</text>
     <text class="t-s" x="32" y="266">for harness, adapter and store authors; each listed on one docs page, what each package root is for</text>
   </g>
 
@@ -62,9 +62,8 @@
 
   <g id="ours">
     <rect class="ours" x="16" y="328" width="446" height="62" rx="6"/>
-    <text class="t-lbl" x="32" y="348">/INTERNAL · PUBLISHED · OUTSIDE SEMVER</text>
-    <text class="t-b" x="32" y="370">core/internal, orchestration/internal</text>
-    <text class="t-s" x="300" y="370">our packages only</text>
+    <text class="t-lbl" x="32" y="348">/INTERNAL · PUBLISHED · OUTSIDE SEMVER · OUR PACKAGES ONLY</text>
+    <text class="t-b" x="32" y="370">core · engine · orchestration · react · contracts, one each</text>
     <rect class="ours" x="478" y="328" width="446" height="62" rx="6"/>
     <text class="t-lbl" x="494" y="348">WORKSPACE-ONLY · HIDDEN BY PUBLISHCONFIG</text>
     <text class="t-b" x="494" y="370">entries like ./inbox/check</text>
