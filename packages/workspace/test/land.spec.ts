@@ -222,6 +222,57 @@ describe("a merge that git reports done but that didn't commit the run's work", 
   });
 });
 
+describe("a merge never runs a program the run could have planted in the shared config", () => {
+  /** A script that leaves `marker` behind when it runs, then does what `then` says. */
+  function planted(marker: string, then: string): string {
+    const bin = tempDir("land-planted");
+    const script = join(bin, "planted");
+    writeFileSync(script, `#!/bin/sh\ntouch '${marker}'\n${then}\n`);
+    chmodSync(script, 0o755);
+    return script;
+  }
+
+  it("runs no planted fsmonitor or filter while it checks and merges the person's checkout", async () => {
+    const marker = join(tempDir("land-marker"), "ran");
+    const h = host();
+    const place = await h.provision({ kind: "repo", repo }, { place: ["run-1"], branch: "fsd/run-1" });
+    // The run shares the repository's config: it plants programs there, and attributes on its branch.
+    git(place.cwd, "config", "core.fsmonitor", planted(marker, "exit 1"));
+    git(place.cwd, "config", "filter.evil.smudge", `${planted(marker, "cat")}`);
+    git(place.cwd, "config", "filter.evil.clean", `${planted(marker, "cat")}`);
+    writeFileSync(join(place.cwd, ".gitattributes"), "*.txt filter=evil\n");
+    writeFileSync(join(place.cwd, "change.txt"), "the run's change\n");
+    git(place.cwd, "-c", "filter.evil.clean=cat", "-c", "core.fsmonitor=false", "add", ".gitattributes", "change.txt");
+    git(place.cwd, "-c", "filter.evil.clean=cat", "-c", "core.fsmonitor=false", "commit", "-q", "-m", "The run's change");
+
+    const landed = await h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "merge" });
+
+    expect(landed).toMatchObject({ kind: "merge", branch: "main" });
+    expect(readFileSync(join(repo, "change.txt"), "utf8")).toBe("the run's change\n");
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("runs no planted merge driver on a conflict, and still stops on it", async () => {
+    const marker = join(tempDir("land-marker"), "ran");
+    // The attribute is on the base already; only the driver it names is the run's.
+    writeFileSync(join(repo, ".gitattributes"), "marker.txt merge=evil\n");
+    git(repo, "add", ".gitattributes");
+    git(repo, "commit", "-q", "-m", "Attributes");
+    const h = host();
+    const place = await h.provision({ kind: "repo", repo }, { place: ["run-1"], branch: "fsd/run-1" });
+    git(place.cwd, "config", "merge.evil.driver", planted(marker, "exit 0"));
+    writeFileSync(join(place.cwd, "marker.txt"), "the run's marker\n");
+    git(place.cwd, "add", "marker.txt");
+    git(place.cwd, "commit", "-q", "-m", "The run's marker");
+    writeFileSync(join(repo, "marker.txt"), "the person's marker\n");
+    git(repo, "commit", "-q", "-am", "The person's marker");
+
+    await expect(h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "merge" })).rejects.toMatchObject({ reason: "merge-conflict" });
+    expect(existsSync(marker)).toBe(false);
+    expect(readFileSync(join(repo, "marker.txt"), "utf8")).toBe("the person's marker\n");
+  });
+});
+
 describe("a merge that runs out of the landing's time", () => {
   it("still puts the checkout back, with its own time to do it, so Retry can run", async () => {
     const { h, place } = await runWithCommit();

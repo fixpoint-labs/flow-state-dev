@@ -192,7 +192,7 @@ async function resolveBase(git: Git, repo: string, pins: KeptFetchPins | undefin
  * whatever the repository's merge config says (`--commit --no-squash`), never
  * overwriting an ignored file. A conflict aborts and says which files.
  */
-async function merge(git: Git, restoreGit: Git, repo: string, resolved: Base, from: string): Promise<Landed> {
+async function merge(git: Git, hostRestoreGit: Git, repo: string, resolved: Base, from: string): Promise<Landed> {
   const base = resolved.local;
   if (base === undefined) {
     throw new WorkspaceRefusedError(
@@ -215,7 +215,12 @@ async function merge(git: Git, restoreGit: Git, repo: string, resolved: Base, fr
         `Check it out there, then try again. The run's commits are still on "${from}".`,
     );
   }
-  if ((await git(checkout, ["status", "--porcelain", "--untracked-files=no"])) !== "") {
+  // From here every command runs in the person's checkout, whose config the run shares and can write:
+  // nothing in it that names a program is obeyed (`programsOff`).
+  const off = await programsOff(git, checkout);
+  const checkoutGit: Git = (cwd, args) => git(cwd, [...off, ...args]);
+  const restoreGit: Git = (cwd, args) => hostRestoreGit(cwd, [...off, ...args]);
+  if ((await checkoutGit(checkout, ["status", "--porcelain", "--untracked-files=no"])) !== "") {
     throw new WorkspaceRefusedError(
       "checkout-dirty",
       `${checkout} has uncommitted changes on "${base}", so nothing was merged. ` +
@@ -226,7 +231,7 @@ async function merge(git: Git, restoreGit: Git, repo: string, resolved: Base, fr
   // starting, so every merge state this function aborts or resets below is one it began.
   const busy: string[] = [];
   for (const name of ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "REBASE_HEAD", "rebase-merge", "rebase-apply"]) {
-    if (existsSync(await git(checkout, ["rev-parse", "--path-format=absolute", "--git-path", name]))) busy.push(name);
+    if (existsSync(await checkoutGit(checkout, ["rev-parse", "--path-format=absolute", "--git-path", name]))) busy.push(name);
   }
   if (busy.length > 0) {
     throw new WorkspaceRefusedError(
@@ -235,12 +240,12 @@ async function merge(git: Git, restoreGit: Git, repo: string, resolved: Base, fr
         `Finish or abort it, then try again. The run's commits are still on "${from}".`,
     );
   }
-  const fromCommit = await git(checkout, ["rev-parse", "--verify", `refs/heads/${from}^{commit}`]);
-  const before = await git(checkout, ["rev-parse", "--verify", "HEAD"]);
+  const fromCommit = await checkoutGit(checkout, ["rev-parse", "--verify", `refs/heads/${from}^{commit}`]);
+  const before = await checkoutGit(checkout, ["rev-parse", "--verify", "HEAD"]);
   try {
     // Explicit, so `merge.ff`/`branch.<base>.mergeOptions` can't make it a squash or leave it uncommitted,
     // and an ignored file in the checkout is refused, not overwritten.
-    await git(checkout, ["merge", "--no-edit", "--quiet", "--commit", "--no-squash", "--no-overwrite-ignore", from]);
+    await checkoutGit(checkout, ["merge", "--no-edit", "--quiet", "--commit", "--no-squash", "--no-overwrite-ignore", from]);
   } catch (error) {
     // The index's unmerged entries, not git's wording: `<mode> <object> <stage>\t<path>` per stage.
     // Read and undone on their own time: the merge may have failed by running out the landing's.
@@ -260,9 +265,9 @@ async function merge(git: Git, restoreGit: Git, repo: string, resolved: Base, fr
         `The run's commits are still on "${from}".`,
     );
   }
-  const commit = await git(checkout, ["rev-parse", "HEAD"]);
+  const commit = await checkoutGit(checkout, ["rev-parse", "HEAD"]);
   // Success means the run's commit is on the base now, whatever git printed.
-  if (!(await git(checkout, ["merge-base", "--is-ancestor", fromCommit, commit]).then(() => true, () => false))) {
+  if (!(await checkoutGit(checkout, ["merge-base", "--is-ancestor", fromCommit, commit]).then(() => true, () => false))) {
     if (!(await restore(restoreGit, checkout, before))) throw notRestored(checkout, base, from, before, null);
     throw new WorkspaceRefusedError(
       "merge-failed",
@@ -271,6 +276,45 @@ async function merge(git: Git, restoreGit: Git, repo: string, resolved: Base, fr
     );
   }
   return { kind: "merge", branch: base, commit, checkout, from };
+}
+
+/**
+ * Config keys that name a program git would run while it checks, merges or
+ * resets a checkout: the fsmonitor hook, content filters, merge drivers and
+ * signing programs. Lowercase, as `git config --get-regexp` prints keys.
+ */
+const PROGRAM_KEYS = /^(core\.fsmonitor|core\.sshcommand|core\.askpass|gpg\.(.+\.)?program|gpg\.ssh\.defaultkeycommand|filter\..+\.(clean|smudge|process)|merge\..+\.driver)$/;
+
+/**
+ * `-c` pairs that keep a checkout's own config from running a program. That
+ * config (`local`, `worktree`) is shared with every run's worktree, so a run
+ * can write it; the person's `global` and `system` config can't be. Each key
+ * that names a program and is set in the checkout's own config is put back to
+ * its last `global`/`system` value, or else switched off: an empty filter
+ * leaves content as it is, an empty merge driver can't run and so stops on the
+ * conflict, an empty signing program fails the merge. The fsmonitor is off
+ * always, as it is for every read the host makes.
+ */
+async function programsOff(git: Git, cwd: string): Promise<string[]> {
+  // `-z --show-scope`: `<scope>\0<key>\n<value>\0` per entry.
+  const fields = (await git(cwd, ["config", "-z", "--show-scope", "--includes", "--get-regexp", PROGRAM_KEYS.source]).catch(() => "")).split("\0");
+  const trusted = new Map<string, string>();
+  const untrusted = new Set<string>();
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const scope = fields[i]!;
+    const entry = fields[i + 1]!;
+    const newline = entry.indexOf("\n");
+    const key = newline < 0 ? entry : entry.slice(0, newline);
+    const value = newline < 0 ? "true" : entry.slice(newline + 1);
+    if (scope === "global" || scope === "system") trusted.set(key, value);
+    else untrusted.add(key);
+  }
+  const pairs = ["-c", "core.fsmonitor=false"];
+  for (const key of untrusted) {
+    if (key === "core.fsmonitor") continue;
+    pairs.push("-c", `${key}=${trusted.get(key) ?? (key === "core.sshcommand" ? "ssh" : "")}`);
+  }
+  return pairs;
 }
 
 /**
