@@ -79,39 +79,48 @@ It comes down to the pick: three names for one job is the choice the epic exists
 - **The verb and its arguments are FIX-2450's.** `run.answer({ action, data? })` mirrors the
   client's `answer`; `suspensionId` defaults to the run's one pending stop and is required when
   there are several. `run.resume` mirrors the client's `resume`, for a developer's own
-  `ctx.suspend`. This issue is blocked by FIX-2450 for the name.
+  `ctx.suspend`. This issue is blocked by FIX-2450 for the name, and by FIX-2455 for the status read below.
 - **What `answer` returns** is the same `TestFlowResult` shape, for the same request: status,
   output and the items emitted after the stop (the first result already holds the ones before
-  it). A refusal throws an error carrying the route's status and message. With no pending stop
-  on this request (a task-board stop sits on the worker's request), `answer` throws saying so,
-  before any route call.
+  it). It reads them as a client does, in process: the request's stream route for the items,
+  closing when the run settles, then one status-route read by request id with
+  `include_result_output` (FIX-2455's) for status and output. No wait loop or store read of
+  its own, so a third way to wait for a request is not added. A refusal throws an error
+  carrying the route's status and message. With no pending stop on this request (a task-board
+  stop sits on the worker's request), `answer` throws saying so, before any route call.
 - **A flow's own sign-in.** The route checks the principal's user and org against the request,
   so the README names the case: the headers must make the flow's resolver return the test's
   user and the org `testFlow` ran in, or the answer is told the stop doesn't exist.
 - **Convergence point:** every answer or resume in a test goes through its engine route. The
   only writers are `run.answer` and `run.resume`; neither calls `continueRequest`.
-- **No timer outlives `testFlow`.** The router is built for an answer and disposed when the run
-  it continues settles.
+- **No timer outlives `testFlow`.** The router is built for an answer and disposed after the
+  status read that follows the stream's close.
 - **The scanners** (`findImportsFromEntry`, `findNodeBuiltinsFromEntry`) move to a `./bundle`
   entry hidden by `publishConfig`, epic D2's second kind. All four importers are repo tests.
 - **Moved and retired names follow ER-3 / Q1's answer**: the benchmark names, the core types,
   the patterns adapters, the scanners and the two folded helpers. Under the alias option each
   stays on its root as a deprecated alias naming its new home until the removal minor; under the
   others it goes. The direction holds either way.
-- **The goal check's rows.** The closure manifest's *One path* row gains this issue's leg c
-  assertion (proposed id `testing-answers-a-stop`) and *Surface* its census of the testing and
-  core roots; FIX-2564 names the ids, and this issue's PR flips them to `expect: pass`.
+- **The goal check is this issue's own, not a manifest cell.** No *Not done if* in the epic's
+  *One path* row names `testFlow`, so the manifest carries no stop-answer cell. The leg c
+  assertion and the subpath-presence check run under `run.mjs --goal`, with
+  `--control=adopter-goal` as the control; the closure re-runs them.
+- **Surface cells.** This issue owns `surface.root.testing` and flips it. It contributes to
+  core's (the six `Benchmark*` types) and patterns' (the benchmark adapters) cells, which
+  name every contributor and are flipped by the last one to land.
 - **Seams.** The router, in-process fetch, dispose and durability entries this uses may move to
   `engine/host` under FIX-2449; testing imports them from wherever that split puts them, and
   counts as their outside consumer for ER-1. FIX-2448 lands first on `core/src/index.ts`; this issue removes the six types from
-  its split. Moving the adapters touches patterns' root, FIX-2459's surface: this issue edits
-  only the benchmark block. The testing package marker is FIX-2449's, with the other three.
+  its split. This issue owns both benchmark entries. FIX-2459 × FIX-2460: patterns' root is
+  FIX-2459's surface, and this issue edits only patterns' benchmark export block and its
+  `package.json` peer entry. FIX-2455 × FIX-2460: the status route's flag and the client's
+  `client.ts` handle are FIX-2455's; this issue reads the route in process and edits neither. The testing package marker is FIX-2449's, with the other three.
 - **Changesets** per ER-7: testing, core and patterns, one line each naming the new homes.
 
 ## Notes for the implementer
 
-From validation, below the bar: the route's busy-wait and any settle wait stall under
-`vi.useFakeTimers()`, so the README says so; about 130 `testFlow` call sites, `evalFlow`
+From validation, below the bar: the route's busy-wait and the stream's close stall
+under `vi.useFakeTimers()`, so the README says so; about 130 `testFlow` call sites, `evalFlow`
 included, now write checkpoints, so run the full suite before and after; the POC passed flat
 router options and had no generator after the answer, so "one runtime config" is the
 implementer's first test (the router also stamps `requestHost`); the optional peer publishes as
@@ -155,3 +164,8 @@ Run by the epic-agent over the whole spec set, with `reuse-review` on *Builds on
 - **Validation** — the goal check now proves the route by a screen's answer first, covers the
   patterns root and the subpaths' presence, and checks `resume` and timers; the docs line gained
   two pages and the repo guides; D3's count corrected.
+- **Set review (Nov 5)** — `run.answer` learns the outcome from the request's stream and
+  FIX-2455's by-id status read, not a wait of its own; both benchmark entries and patterns'
+  optional peer are this issue's, with the FIX-2459 and FIX-2455 seams named; the stop-answer
+  check is this issue's own goal check, re-run by the closure, beside the Surface cells it owns
+  or contributes to; testing's row on the package-roots page.
