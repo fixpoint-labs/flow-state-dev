@@ -9,6 +9,8 @@ import { JumpToLatestButton } from "./JumpToLatest";
 import { LoadEarlier } from "./LoadEarlier";
 import { Entry } from "./Entry";
 import { ThreadCard } from "./ThreadCard";
+import { STARTER_LINES } from "../lib/first-run";
+import { useState } from "react";
 
 /**
  * The center: the open session's thread, its working indicator, and the
@@ -48,8 +50,10 @@ export function Thread({
   const now = useNow(running && !stale);
   const count = view?.entries.length ?? 0;
   const feed = useJumpToLatest({ resetKey: session.id });
-  // On the document, so the keys work wherever focus is; a sheet's Esc arrives already spent.
   const retryOf = (requestId: string) => () => adapter.retry(session.id, requestId);
+  // A starter line picked from the empty thread: the composer takes it as its text, and nothing is sent.
+  const [seed, setSeed] = useState<{ text: string; at: number }>();
+  // On the document, so the keys work wherever focus is; a sheet's Esc arrives already spent.
   const keys = useInterruptKeys({
     enabled: running && session.projectId !== null,
     onInterrupt: () => void adapter.interrupt(session.id),
@@ -77,6 +81,21 @@ export function Thread({
             {mode?.pane === "board"
               ? "Ask the main session for something. It hands each piece to a task of its own, and each comes back to you when it needs you."
               : "Ask the main session for something. It does what it can itself and starts background tasks for the long pieces."}
+            {mode === undefined || session.projectId === null ? null : (
+              <ul aria-label="Starter lines" className="mt-4 flex flex-col gap-2">
+                {STARTER_LINES[mode.id].map((line) => (
+                  <li key={line}>
+                    <button
+                      type="button"
+                      onClick={() => setSeed({ text: line, at: Date.now() })}
+                      className="w-full border border-border bg-background px-3 py-1.5 text-left text-xs text-foreground hover:bg-accent"
+                    >
+                      {line}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         ) : (
           <div className="mx-auto flex max-w-2xl flex-col gap-3">
@@ -122,6 +141,7 @@ export function Thread({
           sessionId={session.id}
           running={running}
           armed={keys.armed}
+          seed={seed}
           onSend={(text) => {
             // Your own line brings you back to the end, wherever you had scrolled to.
             feed.sent();

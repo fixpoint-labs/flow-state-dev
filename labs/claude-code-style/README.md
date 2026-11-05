@@ -114,7 +114,11 @@ are read from the environment, all optional:
 
 *New session* lists your projects and has a *New project* form: a name and the repository its
 coding runs work on. The host allows `file://` repositories only, and the repository must ignore
-`.fsdev/` (a run refuses one that doesn't). A run works in a git worktree of the repository under
+`.fsdev/`. The form checks the repository as you leave its field, with the same check a run's
+checkout gets, and keeps Create off with the problem shown when it fails; the server refuses the
+same project (`repository-unusable`). The picker also says what its view does and shows which
+coding harnesses can run here, with Re-check, and an empty session offers starter lines that fill
+the composer. A run works in a git worktree of the repository under
 the data folder, on a branch of its own that you'll find in the repository, so your checked-out
 branch and files don't change. A repository not in `CLAUDE_CODE_STYLE_REPOSITORIES` gets a clone
 under the data folder instead. Before a run settles, a judge (harness-manager's `goalJudge`) reads
@@ -143,7 +147,8 @@ a package call:
 |---|---|
 | The sessions list | `listWorkerSessions("desk.main")` from `@flow-state-dev/workforce/browser` |
 | *New session* and a session's project | a session of `desk.main`'s flow, then `setWorkProject` |
-| The project picker and *New project* | `listProjects` and `createProject`, from `defineProjectBlocks` (`workforce/flows/projects.mts`) |
+| The project picker and *New project* | `listProjects`, `createProject` and `checkRepository`, from `defineProjectBlocks` with the workspace host's check (`workforce/flows/projects.mts`) |
+| The picker's harness chips | the `harness-readiness` flow's `read` action |
 | Sending and the thread | the `respond` action, and the session's message and tool items |
 | A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
 | The main session reading the project's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |

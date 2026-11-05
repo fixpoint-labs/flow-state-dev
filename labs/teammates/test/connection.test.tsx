@@ -87,7 +87,13 @@ describe("the server going away", () => {
 
   it("a roster read the server answered with an error shows its status, so a 502 reads apart from a dead socket", async () => {
     const lab = createFixtureLab({ speed: 0.05 });
-    const failing = { ...lab, listWorkers: () => Promise.reject(new ClientHttpError("Bad Gateway", { status: 502, body: undefined })) };
+    const failing = {
+      ...lab,
+      watchWorkers: (_onChange: unknown, onError?: (error: unknown) => void) => {
+        queueMicrotask(() => onError?.(new ClientHttpError("Bad Gateway", { status: 502, body: undefined })));
+        return () => {};
+      },
+    };
     render(<App adapter={failing} />);
     expect((await screen.findByTestId("unreachable-message")).textContent).toBe("502 · Bad Gateway");
   });
@@ -96,13 +102,20 @@ describe("the server going away", () => {
     const lab = createFixtureLab({ speed: 0.05 });
     let rejectSlow: (error: Error) => void = () => {};
     let call = 0;
-    const flaky = {
+    const flaky: typeof lab = {
       ...lab,
-      listWorkers: () => {
+      watchWorkers: (onChange, onError) => {
         call += 1;
-        if (call === 1) return Promise.reject(new Error("fetch failed"));
-        if (call === 2) return new Promise<never>((_, reject) => (rejectSlow = reject));
-        return lab.listWorkers();
+        if (call === 1) {
+          queueMicrotask(() => onError?.(new Error("fetch failed")));
+          return () => {};
+        }
+        // A watch whose read is still out: its failure arrives after the next Retry.
+        if (call === 2) {
+          rejectSlow = (error) => onError?.(error);
+          return () => {};
+        }
+        return lab.watchWorkers(onChange, onError);
       }
     };
     render(<App adapter={flaky} />);

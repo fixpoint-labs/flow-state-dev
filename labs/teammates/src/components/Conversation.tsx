@@ -1,6 +1,7 @@
 import { useJumpToLatest } from "@flow-state-dev/react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import type { ConversationEntry, LabAdapter, WorkerRow } from "../adapter";
+import type { ConversationEntry, HarnessRow, LabAdapter, LabContext, WorkerRow } from "../adapter";
+import { delegatesOf, emptyLine, starterLines } from "../lib/first-run";
 import type { Look } from "../lib/looks";
 import { useStatusLine } from "../lib/status";
 import { pendingFor } from "../lib/talk";
@@ -8,6 +9,7 @@ import { useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
+import { ContextStrip } from "./ContextStrip";
 import { ConnectionBanner, isFeedStale, STALE_CLASS } from "./flow-state/connection-banner";
 import { JumpToLatestButton } from "./JumpToLatest";
 import { LoadEarlier } from "./LoadEarlier";
@@ -53,9 +55,19 @@ export function Conversation({
   harnessOf,
   onFire,
   onOpen,
+  workers = [],
+  context,
+  harnesses,
+  onRecheck,
 }: {
   adapter: LabAdapter;
   worker: WorkerRow;
+  /** The roster as read: an empty conversation names the worker's delegates from it. */
+  workers?: readonly WorkerRow[];
+  /** What the lab works on and with; drawn over the conversation. */
+  context?: LabContext;
+  harnesses?: HarnessRow[];
+  onRecheck?: () => Promise<unknown>;
   sessionId: string;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
@@ -79,6 +91,9 @@ export function Conversation({
   const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
   const status = useStatusLine(adapter, worker, sessionId, nameOf, isCoding, stale);
   const [panel, setPanel] = useState<"fire">();
+  const delegates = delegatesOf(worker, workers, context);
+  // A starter line picked from the empty conversation: the composer takes it as its text, and nothing is sent.
+  const [seed, setSeed] = useState<{ text: string; at: number }>();
   const keep = useRef<HTMLButtonElement>(null);
   const fireButton = useRef<HTMLButtonElement>(null);
   // Keep (or Esc) closes the row and puts focus back on the header's Fire, where the person was.
@@ -131,6 +146,7 @@ export function Conversation({
           </span>
         ) : null}
       </header>
+      {onRecheck === undefined ? null : <ContextStrip context={context} harnesses={harnesses} onRecheck={onRecheck} />}
       {/* A stopped feed comes back with the page: every conversation's feed reopens on load. */}
       <ConnectionBanner feed={{ state: connection }} onRetry={() => window.location.reload()} />
       {panel === "fire" ? (
@@ -158,7 +174,22 @@ export function Conversation({
         <div data-column className="mx-auto flex max-w-(--thread-width) flex-col gap-3">
           <LoadEarlier load={view?.loadEarlier} />
           {entries.length === 0 ? (
-            <div className="mt-24 text-center text-sm text-muted-foreground">Say hello to {worker.name}. This is your one conversation with it.</div>
+            <div className="mt-24 flex flex-col items-center gap-3 text-center text-sm text-muted-foreground">
+              <p data-testid="conversation-empty">{emptyLine(worker, delegates)}</p>
+              <ul aria-label="Starter lines" className="flex flex-col gap-1.5">
+                {starterLines(worker, delegates).map((line) => (
+                  <li key={line}>
+                    <button
+                      type="button"
+                      onClick={() => setSeed({ text: line, at: Date.now() })}
+                      className="rounded-full border border-border bg-card px-3 py-1 text-xs text-foreground hover:bg-muted"
+                    >
+                      {line}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ) : null}
           {entries.map((entry, i) => (
             <Fragment key={entry.id}>
@@ -213,7 +244,7 @@ export function Conversation({
         </div>
         <JumpToLatestButton feed={feed} />
       </div>
-      <Composer sessionId={sessionId} workerName={worker.name} running={running} onSend={(text) => {
+      <Composer sessionId={sessionId} workerName={worker.name} running={running} seed={seed} onSend={(text) => {
           // Your own line takes you to the end, wherever you had scrolled to.
           feed.sent();
           return adapter.send(sessionId, text);

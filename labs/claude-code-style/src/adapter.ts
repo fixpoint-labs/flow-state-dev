@@ -59,6 +59,7 @@ import {
 import { isSuspensionWait } from "@flow-state-dev/core/items";
 import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
 import { projectIdOf, refuseExisting } from "./lib/new-project";
+import type { HarnessReadinessChipRow } from "./components/flow-state/harness-readiness";
 import { waitingOnYou } from "./lib/columns";
 import { resultSummary } from "./lib/result-summary";
 import { toolRun, type ToolCallOf, type ToolRun } from "./lib/tool-steps";
@@ -186,6 +187,12 @@ export interface TaskWork {
   loadEarlier?: () => Promise<void>;
 }
 
+/** One coding harness's readiness, as harness-manager's readiness action answers it. */
+export type HarnessRow = HarnessReadinessChipRow;
+
+/** Whether a run could check a repository out on this machine: the projects flow's `checkRepository`. */
+export type RepositoryCheck = { usable: true; how: "worktree" | "clone" } | { usable: false; problem: string };
+
 /** Everything the screen reads and writes. */
 export interface LabAdapter {
   /** The modes this adapter runs; the view switch shows the others disabled. */
@@ -194,6 +201,10 @@ export interface LabAdapter {
   listProjects(): Promise<ProjectRow[]>;
   /** A new project of yours on a git repository, which you may then work in. */
   createProject(name: string, repository: string): Promise<ProjectRow>;
+  /** Whether a coding run could use `repository` here, and what happens to it; the same check `createProject` refuses with. */
+  checkRepository(repository: string): Promise<RepositoryCheck>;
+  /** Which coding harnesses can run on this machine; `refresh` checks them again (Re-check). */
+  readHarnesses(refresh?: boolean): Promise<HarnessRow[]>;
   openSession(mode: ModeId, projectId: string): Promise<SessionRow>;
   send(sessionId: string, text: string): Promise<void>;
   interrupt(sessionId: string): Promise<void>;
@@ -215,6 +226,9 @@ export interface LabAdapter {
   pin(taskId: string): Promise<void>;
   unpin(taskId: string): Promise<void>;
 }
+
+/** The lab flow whose `read` action is harness-manager's readiness action (`fsdev.config.mts`). */
+const READINESS_FLOW = "harness-readiness";
 
 /** How often an open view reads again, in ms. */
 const READ_EVERY_MS = 1500;
@@ -961,6 +975,9 @@ export function createWiredLab(fsd: Client): LabAdapter {
       refuseExisting(created, name);
       return { id: projectRef({ visibility: created.visibility, id: created.project.id }), name: created.project.title };
     },
+    checkRepository: async (repository) => await run("projects", await projects(), "checkRepository", { repository }),
+    readHarnesses: async (refresh = false) =>
+      (await run(READINESS_FLOW, await ownSession(READINESS_FLOW), "read", { refresh })).harnesses as HarnessRow[],
     openSession: async (mode, projectId) => {
       const { worker } = modeById(mode);
       const project = parseProjectRef(projectId);
