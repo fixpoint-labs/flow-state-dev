@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "../src";
 import { mergeScopeStateSchemas, ScopeStateSchemaConflictError } from "../src/helpers/scope-state-merge";
-import { getReadonlyStateKeys } from "../src/helpers/zod-introspect";
+import { getReadonlyStateKeys, STRUCTURAL_SIGNATURE_KINDS, zodSchemaSignature } from "../src/helpers/zod-introspect";
 
 const decl = (schema: z.ZodTypeAny, source: string) => ({ schema, source });
 
@@ -292,6 +292,77 @@ describe("a static default's fingerprint ignores key order, not array order", ()
   it("two defaults listing an array in another order are still refused", () => {
     const list = (v: string[]) => z.array(z.object({ tags: z.array(z.string()).default(v) }));
     expect(() => merge(list(["a", "b"]), list(["b", "a"]))).toThrow(ScopeStateSchemaConflictError);
+  });
+});
+
+describe("the fingerprint models only what it reads in full; everything else compares by identity", () => {
+  // Every zod 3 first-party kind is classified here. A new kind fails this
+  // table until it is classified, and until then compares by identity.
+  const IDENTITY = new Set([
+    "ZodNaN", "ZodSymbol", "ZodNever", "ZodVoid", "ZodIntersection", "ZodMap", "ZodSet", "ZodFunction",
+    "ZodLazy", "ZodEffects", "ZodCatch", "ZodPromise", "ZodBranded", "ZodPipeline"
+  ]);
+
+  it("classifies every ZodFirstPartyTypeKind exactly once", () => {
+    const kinds = Object.values(z.ZodFirstPartyTypeKind) as string[];
+    const unclassified = kinds.filter((k) => !STRUCTURAL_SIGNATURE_KINDS.has(k) && !IDENTITY.has(k));
+    const both = kinds.filter((k) => STRUCTURAL_SIGNATURE_KINDS.has(k) && IDENTITY.has(k));
+    expect({ unclassified, both }).toEqual({ unclassified: [], both: [] });
+    expect([...STRUCTURAL_SIGNATURE_KINDS].filter((k) => !kinds.includes(k))).toEqual([]);
+  });
+
+  it("an identity kind fingerprints by reference: two equal-looking schemas differ, one schema matches itself", () => {
+    const samples: Record<string, () => z.ZodTypeAny> = {
+      ZodNaN: () => z.nan(),
+      ZodSymbol: () => z.symbol(),
+      ZodNever: () => z.never(),
+      ZodVoid: () => z.void(),
+      ZodIntersection: () => z.intersection(z.object({ a: z.string() }), z.object({ b: z.string() })),
+      ZodMap: () => z.map(z.string(), z.number()),
+      ZodSet: () => z.set(z.string()),
+      ZodFunction: () => z.function(),
+      ZodLazy: () => z.lazy(() => z.string()),
+      ZodEffects: () => z.string().refine(() => true),
+      ZodCatch: () => z.string().catch("x"),
+      ZodPromise: () => z.promise(z.string()),
+      ZodBranded: () => z.string().brand<"id">(),
+      ZodPipeline: () => z.string().pipe(z.string())
+    };
+    expect(Object.keys(samples).sort()).toEqual([...IDENTITY].sort());
+    for (const [kind, make] of Object.entries(samples)) {
+      const one = make();
+      expect(zodSchemaSignature(one), kind).toBe(zodSchemaSignature(one));
+      expect(zodSchemaSignature(make()), kind).not.toBe(zodSchemaSignature(one));
+    }
+  });
+
+  const refuses = (a: z.ZodTypeAny, b: z.ZodTypeAny) =>
+    expect(() =>
+      mergeScopeStateSchemas("Flow \"f\"", "session", [
+        decl(z.object({ f: a }), "block \"a\""),
+        decl(z.object({ f: b }), "block \"b\"")
+      ])
+    ).toThrow(/session\.state\.f is declared twice with different types/);
+  const options = () => [z.object({ kind: z.literal("a"), n: z.number() }), z.object({ kind: z.literal("b"), s: z.string() })] as const;
+
+  it("a union and a discriminated union over the same options are refused", () => {
+    refuses(z.union(options()), z.discriminatedUnion("kind", [...options()]));
+  });
+
+  it("two discriminated unions over the same options with another discriminator are refused", () => {
+    const two = () => [z.object({ kind: z.literal("a"), tag: z.literal("x") }), z.object({ kind: z.literal("b"), tag: z.literal("y") })] as const;
+    refuses(z.discriminatedUnion("kind", [...two()]), z.discriminatedUnion("tag", [...two()]));
+  });
+
+  it("a union's options in another order are refused: a parse picks the first that matches", () => {
+    refuses(z.union([z.string(), z.string().optional()]), z.union([z.string().optional(), z.string()]));
+  });
+
+  it("identical unions and discriminated unions still merge", () => {
+    const merge = (a: z.ZodTypeAny, b: z.ZodTypeAny) =>
+      mergeScopeStateSchemas("Flow \"f\"", "session", [decl(z.object({ f: a }), "block \"a\""), decl(z.object({ f: b }), "block \"b\"")]);
+    expect(() => merge(z.union(options()), z.union(options()))).not.toThrow();
+    expect(() => merge(z.discriminatedUnion("kind", [...options()]), z.discriminatedUnion("kind", [...options()]))).not.toThrow();
   });
 });
 

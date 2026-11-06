@@ -520,6 +520,25 @@ function hasNoChecks(def: { checks?: unknown[]; coerce?: unknown }): boolean {
 }
 
 /**
+ * The zod kinds {@link zodSchemaSignature} reads structurally, each with every
+ * `_def` parameter that changes what it accepts: a primitive's checks and
+ * coercion, an enum's values, a literal's type and value, an array's length
+ * checks and items, a record's key and value types, a tuple's items and rest,
+ * an object's keys, unknown-keys mode and catchall, a union's options in
+ * order, a discriminated union's discriminator and options, and the optional,
+ * nullable, readonly and default wrappers. Every other kind, and any kind zod
+ * adds later, compares by identity.
+ */
+export const STRUCTURAL_SIGNATURE_KINDS: ReadonlySet<string> = new Set([
+  "ZodString", "ZodNumber", "ZodBigInt", "ZodDate", "ZodBoolean",
+  "ZodAny", "ZodUnknown", "ZodNull", "ZodUndefined",
+  "ZodEnum", "ZodNativeEnum", "ZodLiteral",
+  "ZodArray", "ZodRecord", "ZodTuple", "ZodObject",
+  "ZodUnion", "ZodDiscriminatedUnion",
+  "ZodOptional", "ZodNullable", "ZodReadonly", "ZodDefault"
+]);
+
+/**
  * A conservative fingerprint of a schema: two schemas with one signature
  * accept the same values and declare the same defaults, in the same wrapper
  * order.
@@ -539,6 +558,7 @@ function hasNoChecks(def: { checks?: unknown[]; coerce?: unknown }): boolean {
 export function zodSchemaSignature(schema: ZodTypeAny): string {
   const def = (schema as any)._def;
   const name = getZodTypeName(schema) ?? "?";
+  if (!STRUCTURAL_SIGNATURE_KINDS.has(name)) return `opaque${identityOf(schema)}`;
   switch (name) {
     case "ZodString":
     case "ZodNumber":
@@ -576,10 +596,13 @@ export function zodSchemaSignature(schema: ZodTypeAny): string {
       return `object${JSON.stringify(Object.keys(shape).sort().map((k) => [k, zodSchemaSignature(shape[k]!)]))}`;
     }
     case "ZodUnion":
-    case "ZodDiscriminatedUnion": {
-      const options = def.options instanceof Map ? [...def.options.values()] : (def.options as ZodTypeAny[]);
-      return `union${JSON.stringify(options.map(zodSchemaSignature).sort())}`;
-    }
+      // In order: a parse takes the first option that matches.
+      return `union${JSON.stringify((def.options as ZodTypeAny[]).map(zodSchemaSignature))}`;
+    case "ZodDiscriminatedUnion":
+      return `discriminatedUnion${JSON.stringify([
+        def.discriminator,
+        (def.options as ZodTypeAny[]).map(zodSchemaSignature)
+      ])}`;
     case "ZodOptional":
       return `optional${JSON.stringify([zodSchemaSignature(def.innerType)])}`;
     case "ZodNullable":

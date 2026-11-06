@@ -154,7 +154,6 @@ export function refuseUnstoredFactoryDefaults(
         .filter((d): d is Extract<ZodDeclaredDefault, { kind: "dynamic" }> => d?.kind === "dynamic")
         .map((d) => d.factory)
     );
-  const subset = (a: Set<() => unknown>, b: Set<() => unknown>) => [...a].every((f) => b.has(f));
   const base = `${scope}.state`;
 
   if (scope !== "session") {
