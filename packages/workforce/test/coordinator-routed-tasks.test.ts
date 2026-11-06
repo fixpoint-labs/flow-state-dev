@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../src/workers/keys";
-import { ORG, SLOW_MS, bootHost, messageOf, standardWorkers } from "./coordinator-harness";
+import { SLOW_MS, bootHost, messageOf, standardWorkers } from "./coordinator-harness";
 
 type Host = ReturnType<typeof bootHost>;
 

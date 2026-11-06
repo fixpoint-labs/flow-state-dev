@@ -106,8 +106,10 @@ function entryOf(table: RetiredTable, name: string): RetiredEntry | undefined {
 
 /**
  * Throw {@link RetiredNameError} for the first key of `given` the table holds.
- * `only` narrows the lookup to some entries, for an entry point that accepts
- * just those.
+ * A key counts as passed when `given` has it as its own property with a value
+ * other than `undefined`, so a config spread from a base that clears the key
+ * (`{ ...base, dispatcher: undefined }`) passes. `only` narrows the lookup to
+ * some entries, for an entry point that accepts just those.
  */
 export function refuseRetired<Name extends string>(
   table: RetiredTable<Name>,
@@ -117,7 +119,9 @@ export function refuseRetired<Name extends string>(
 ): void {
   if (given == null) return;
   for (const name of only ?? (Object.keys(table.entries) as Name[])) {
-    if (name in given) throw new RetiredNameError(table, name, where);
+    if (Object.hasOwn(given, name) && (given as Record<string, unknown>)[name] !== undefined) {
+      throw new RetiredNameError(table, name, where);
+    }
   }
 }
 

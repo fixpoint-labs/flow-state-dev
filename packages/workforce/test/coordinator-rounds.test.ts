@@ -42,7 +42,7 @@ import {
 } from "../src/coordinator/coordinator-rounds";
 import type { RoundTask, RoundRows } from "../src/coordinator/coordinator-rounds";
 import type { OpenRound } from "../src/coordinator/coordinator-state";
-import { ORG, bootHost, messageOf, quiet, standardWorkers } from "./coordinator-harness";
+import { bootHost, messageOf, quiet, standardWorkers } from "./coordinator-harness";
 
 type Host = ReturnType<typeof bootHost>;
 

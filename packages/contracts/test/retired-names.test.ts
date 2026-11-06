@@ -54,6 +54,14 @@ describe("the retired-name helper", () => {
     expect(() => refuseRetiredValue(TABLE, "oldValue", "ctx.thing", "kind", ["oldKey"])).not.toThrow();
   });
 
+  // A spread config that sets a retired key to undefined passes nothing; the
+  // entry points this replaced checked `!== undefined`, and a refusal there broke them.
+  it("passes a retired key whose value is undefined, and still refuses one with a value", () => {
+    expect(() => refuseRetired(TABLE, { oldKey: undefined }, "createThing")).not.toThrow();
+    expect(() => refuseRetired(TABLE, { oldKey: null }, "createThing")).toThrow(/"oldKey" was retired/);
+    expect(() => refuseRetired(TABLE, { oldKey: 0 }, "createThing")).toThrow(/"oldKey" was retired/);
+  });
+
   it("passes what the table does not hold, and inherited names", () => {
     expect(() => refuseRetired(TABLE, { newKey: 1 }, "createThing")).not.toThrow();
     expect(() => refuseRetired(TABLE, undefined, "createThing")).not.toThrow();

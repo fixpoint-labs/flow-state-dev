@@ -272,7 +272,7 @@ const postStateSchema = z.object({
   evaluationFailed: z.string().optional()
 });
 
-export type PostState = z.infer<typeof postStateSchema>;
+type PostState = z.infer<typeof postStateSchema>;
 
 const requestStateSchema = z.object({ [POST_STATE]: postStateSchema.optional() });
 

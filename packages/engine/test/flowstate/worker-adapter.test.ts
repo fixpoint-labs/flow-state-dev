@@ -219,4 +219,16 @@ describe("createFlowState — worker adapter", () => {
       } as never)
     ).toThrow(/createFlowState: "dispatcher" was retired\. Use `runner`, with the same FlowRunner\. This refusal is removed in @flow-state-dev\/engine 0\.7\.0\./);
   });
+
+  // A config spread from a base that clears the old key (`dispatcher: undefined`) passes nothing.
+  it("accepts `dispatcher: undefined`, as the option it replaced did", () => {
+    expect(() =>
+      createFlowState({
+        flows: { noop: noopFlow },
+        stores: { default: { primary: inMemoryStores() } },
+        modelResolver: stubModelResolver,
+        dispatcher: undefined
+      } as never)
+    ).not.toThrow();
+  });
 });
