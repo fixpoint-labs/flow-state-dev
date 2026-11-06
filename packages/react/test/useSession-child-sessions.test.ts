@@ -472,8 +472,6 @@ describe("useSession childSessions — every interaction path is classified (FIX
     "sendAction",
     "resumeLatestRequest",
     "answerSuspension",
-    // The deprecated alias of answerSuspension: the same function.
-    "resumeSuspension",
     "continueRequest"
   ];
 
@@ -541,12 +539,6 @@ describe("useSession childSessions — every interaction path is classified (FIX
       resumeLatestRequest: () => result.current.resumeLatestRequest(),
       answerSuspension: () =>
         result.current.answerSuspension({
-          suspensionId: "susp1",
-          requestId: "req1",
-          action: "approve" as never
-        }),
-      resumeSuspension: () =>
-        result.current.resumeSuspension({
           suspensionId: "susp1",
           requestId: "req1",
           action: "approve" as never

@@ -538,15 +538,6 @@ export type SessionView = {
    * own player.
    */
   subscribeAudioDelta: (handler: (event: ContentAudioDeltaEvent) => void) => () => void;
-
-  // -------------------------------------------------------------------------
-  // Deprecated aliases: renamed members, kept until the minor that removes
-  // them all. Each names its new home. Deleting this block (and its twin at
-  // the end of `useSession`) is the whole removal.
-  // -------------------------------------------------------------------------
-
-  /** @deprecated Renamed: use `answerSuspension`. Removed in a future minor. */
-  resumeSuspension: SessionView["answerSuspension"];
 };
 
 function normalizeFlowKind(flowKind: string): string {
@@ -2679,8 +2670,6 @@ export function useSession(
     followRequest,
     refresh,
     followedRequest,
-    subscribeAudioDelta,
-    // Deprecated aliases (see the block at the end of `SessionView`).
-    resumeSuspension: answerSuspension
+    subscribeAudioDelta
   };
 }

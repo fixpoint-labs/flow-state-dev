@@ -87,11 +87,6 @@ describe("session.answerSuspension", () => {
     expect(requestMock.answer).not.toHaveBeenCalled();
   });
 
-  it("keeps resumeSuspension as a deprecated alias: the same call, so old code answers the same way", async () => {
-    const { result } = await mountWith([]);
-    expect(result.current.resumeSuspension).toBe(result.current.answerSuspension);
-  });
-
   it("answers a stop it hasn't seen as a user's", async () => {
     const { result } = await mountWith([suspensionItem("sus_other", "budget_check")]);
     await act(async () => {
