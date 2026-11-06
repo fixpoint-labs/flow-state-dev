@@ -35,6 +35,7 @@
 import { z, type ZodTypeAny } from "zod";
 import { deepEqual } from "./deep-equal";
 import {
+  containsZodLazy,
   dynamicDefaultFactories,
   getZodDeclaredDefault,
   getZodInnerType,
@@ -145,7 +146,7 @@ export function refuseUnstoredFactoryDefaults(
     path: string,
     root: boolean,
     ownDefaultedDown: boolean
-  ): string | undefined => {
+  ): { at: string; lazy: boolean } | undefined => {
     const shape = objectShape(declared, root);
     const ownShape = own === undefined ? undefined : objectShape(own, root);
     for (const [key, field] of Object.entries(shape ?? {})) {
@@ -162,24 +163,36 @@ export function refuseUnstoredFactoryDefaults(
           ownFill?.kind === "default" &&
           ownFill.declared.kind === "dynamic" &&
           ownFill.declared.factory === factory;
-        if (!restated) return at;
+        if (!restated) return { at, lazy: false };
       }
       if (objectShape(field, false) !== undefined) {
         const deeper = find(field, ownField, at, false, defaultedHere);
         if (deeper !== undefined) return deeper;
         continue;
       }
+      // What a lazy holds can't be read, so it can't be shown factory-free.
+      if (containsZodLazy(field)) return { at, lazy: true };
       const inside = [...dynamicDefaultFactories(field)].filter((factory) => !onField.includes(factory));
       if (inside.length === 0) continue;
       const ownInside = ownField === undefined ? new Set<() => unknown>() : dynamicDefaultFactories(ownField);
-      if (inside.some((factory) => !ownInside.has(factory))) return at;
+      if (inside.some((factory) => !ownInside.has(factory))) return { at, lazy: false };
     }
     return undefined;
   };
   for (const declaration of declarations) {
     if (scope === "session" && declaration.schema === flowOwn) continue;
-    const at = find(declaration.schema, scope === "session" ? flowOwn : undefined, `${scope}.state`, true, true);
-    if (at === undefined) continue;
+    const found = find(declaration.schema, scope === "session" ? flowOwn : undefined, `${scope}.state`, true, true);
+    if (found === undefined) continue;
+    const at = found.at;
+    if (found.lazy) {
+      throw new Error(
+        `${owner}: ${at} holds a z.lazy, declared by ${declaration.source}. What a lazy holds can't be read, ` +
+          `so it can't be shown to declare no default factory, and a factory there would run on every read. ` +
+          (scope === "session"
+            ? `To keep it, declare it on the flow's session stateSchema, or avoid z.lazy.`
+            : `A ${scope} record is stored as written; avoid z.lazy in ${scope} state.`)
+      );
+    }
     throw new Error(
       scope === "session"
         ? `${owner}: ${at} has a default factory declared by ${declaration.source}. A read never runs a default ` +

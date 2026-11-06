@@ -29,6 +29,7 @@ export {
   getZodInnerType,
   getReadonlyStateKeys,
   compareZodSchemasStructurally,
+  containsZodLazy,
   dynamicDefaultFactories,
   getZodDeclaredDefault,
   type ZodDeclaredDefault,

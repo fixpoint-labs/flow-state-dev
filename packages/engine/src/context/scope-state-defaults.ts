@@ -34,6 +34,7 @@
 import type { ZodTypeAny } from "zod";
 import type { FlowInstance, JsonObject } from "@flow-state-dev/core/types";
 import {
+  containsZodLazy,
   dynamicDefaultFactories,
   getZodDeclaredDefault,
   getZodInnerType,
@@ -91,95 +92,20 @@ export function applyScopeStateDefaults(
 
 /**
  * Whether `value` fits `schema`, checked without running a default factory.
- * A parse runs every default it reaches, so the check parses a copy of the
- * schema with each author's factory default made `.optional()` instead
- * ({@link factoryFree}). A schema that copy can't be built for is treated as
- * not fitting, so its value is left as stored rather than guessed at.
+ *
+ * A parse runs every default it reaches, so a schema that declares an
+ * author's factory anywhere, or holds a `z.lazy` (whose contents can't be
+ * read), is never parsed: its value doesn't count as fitting, and the field is
+ * left exactly as stored, static defaults inside it included. Any other
+ * schema is parsed; a refinement that throws on stored junk means it doesn't
+ * fit.
  */
 function parsesWithoutFactories(schema: ZodTypeAny, value: unknown): boolean {
-  const guard = factoryFree(schema);
-  return guard !== undefined && guard.safeParse(value).success;
-}
-
-/** {@link factoryFree}'s result per schema: built once, `null` when it can't be. */
-const factoryFreeCache = new WeakMap<ZodTypeAny, ZodTypeAny | null>();
-
-/**
- * `schema` with every author's factory default replaced by `.optional()`, so
- * a parse of it accepts exactly what `schema` accepts but runs no factory. The
- * schema itself when it declares none. Each node is rebuilt with its own
- * `_def` and only its children swapped, so its checks, unknown-keys mode,
- * refinements and static defaults stay. `undefined` for a kind holding a
- * factory that this can't rebuild.
- */
-function factoryFree(schema: ZodTypeAny): ZodTypeAny | undefined {
-  const cached = factoryFreeCache.get(schema);
-  if (cached !== undefined) return cached ?? undefined;
-  const built = dynamicDefaultFactories(schema).size === 0 ? schema : rebuildFactoryFree(schema);
-  factoryFreeCache.set(schema, built ?? null);
-  return built;
-}
-
-function rebuildFactoryFree(schema: ZodTypeAny): ZodTypeAny | undefined {
-  const def = (schema as unknown as { _def: Record<string, unknown> })._def;
-  const Ctor = (schema as unknown as { constructor: new (def: Record<string, unknown>) => ZodTypeAny }).constructor;
-  const child = (key: string): ZodTypeAny | undefined => factoryFree(def[key] as ZodTypeAny);
-  const remake = (changes: Record<string, unknown>): ZodTypeAny | undefined =>
-    Object.values(changes).some((value) => value === undefined) ? undefined : new Ctor({ ...def, ...changes });
-  const many = (list: unknown): ZodTypeAny[] | undefined => {
-    const out = (list as ZodTypeAny[]).map(factoryFree);
-    return out.some((item) => item === undefined) ? undefined : (out as ZodTypeAny[]);
-  };
-  switch (getZodTypeName(schema)) {
-    case "ZodDefault": {
-      const inner = child("innerType");
-      if (inner === undefined) return undefined;
-      return getZodDeclaredDefault(schema)?.kind === "dynamic" ? inner.optional() : remake({ innerType: inner });
-    }
-    case "ZodOptional":
-    case "ZodNullable":
-    case "ZodReadonly":
-    case "ZodCatch":
-      return remake({ innerType: child("innerType") });
-    case "ZodArray":
-    case "ZodBranded":
-    case "ZodPromise":
-      return remake({ type: child("type") });
-    case "ZodSet":
-      return remake({ valueType: child("valueType") });
-    case "ZodRecord":
-    case "ZodMap":
-      return remake({ keyType: child("keyType"), valueType: child("valueType") });
-    case "ZodEffects":
-      return remake({ schema: child("schema") });
-    case "ZodPipeline":
-      return remake({ in: child("in"), out: child("out") });
-    case "ZodIntersection":
-      return remake({ left: child("left"), right: child("right") });
-    case "ZodUnion": {
-      const options = many(def.options);
-      return options === undefined ? undefined : remake({ options });
-    }
-    case "ZodTuple": {
-      const items = many(def.items);
-      const rest = def.rest === null || def.rest === undefined ? def.rest : child("rest");
-      return items === undefined || rest === undefined ? undefined : remake({ items, rest });
-    }
-    case "ZodObject": {
-      const shape = getZodObjectShape(schema) ?? {};
-      const fields: Record<string, ZodTypeAny> = {};
-      for (const [key, field] of Object.entries(shape)) {
-        const rebuilt = factoryFree(field);
-        if (rebuilt === undefined) return undefined;
-        fields[key] = rebuilt;
-      }
-      const catchall = factoryFree(def.catchall as ZodTypeAny);
-      return catchall === undefined ? undefined : new Ctor({ ...def, shape: () => fields, catchall });
-    }
-    default:
-      // A discriminated union keeps a value-to-option map, a lazy a getter:
-      // rather than rebuild those, a factory inside one isn't validated.
-      return undefined;
+  if (dynamicDefaultFactories(schema).size > 0 || containsZodLazy(schema)) return false;
+  try {
+    return schema.safeParse(value).success;
+  } catch {
+    return false;
   }
 }
 

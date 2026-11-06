@@ -468,6 +468,50 @@ export function dynamicDefaultFactories(
   return out;
 }
 
+/**
+ * Whether `schema` holds a `z.lazy` anywhere: under its wrappers, in an
+ * object's fields, an array's or a set's items, a record's or a map's values,
+ * a tuple, a union, an intersection, a refinement, a pipe. A lazy is never
+ * expanded (a recursive one builds a fresh schema on each call), so what it
+ * holds can't be read: a schema holding one can't be shown to declare no
+ * default factory.
+ */
+export function containsZodLazy(schema: ZodTypeAny, seen: Set<ZodTypeAny> = new Set()): boolean {
+  if (seen.has(schema)) return false;
+  seen.add(schema);
+  const def = (schema as any)._def;
+  const walk = (child: unknown): boolean =>
+    child !== undefined && child !== null && containsZodLazy(child as ZodTypeAny, seen);
+  switch (getZodTypeName(schema)) {
+    case "ZodLazy":
+      return true;
+    case "ZodObject":
+      return Object.values(getZodObjectShape(schema) ?? {}).some(walk) || walk(def.catchall);
+    case "ZodArray":
+    case "ZodSet":
+      return walk(def.type ?? def.valueType);
+    case "ZodRecord":
+    case "ZodMap":
+      return walk(def.keyType) || walk(def.valueType);
+    case "ZodTuple":
+      return (def.items as ZodTypeAny[]).some(walk) || walk(def.rest);
+    case "ZodUnion":
+    case "ZodDiscriminatedUnion":
+      return [...(def.options instanceof Map ? def.options.values() : def.options)].some(walk);
+    case "ZodIntersection":
+      return walk(def.left) || walk(def.right);
+    case "ZodBranded":
+    case "ZodPromise":
+      return walk(def.type);
+    case "ZodPipeline":
+      return walk(def.in) || walk(def.out);
+    case "ZodCatch":
+      return walk(def.innerType);
+    default:
+      return walk(getZodInnerType(schema));
+  }
+}
+
 /** `true` for a `z.object` with no catchall, no strict or passthrough mode and no refinement. */
 export function isPlainZodObject(schema: ZodTypeAny): boolean {
   if (!isZodObject(schema)) return false;

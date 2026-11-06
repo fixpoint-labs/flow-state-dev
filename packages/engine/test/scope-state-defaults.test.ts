@@ -669,6 +669,21 @@ describe("reading one stored record always gives one value", () => {
     expect(Object.keys((flow.scopeStateSchemas?.session as z.AnyZodObject).shape).sort()).toEqual(["a", "b"]);
   });
 
+  it("refuses a lazy a block declares, and a lazy in user or org state, the flow's own included", () => {
+    const node = (): z.ZodTypeAny => z.object({ name: z.string(), children: z.array(z.lazy(node)).default([]) });
+    const lazyBlock = handler({ name: "lazy-block", inputSchema: z.object({}), sessionStateSchema: z.object({ tree: node() }), execute: () => ({}) });
+    expect(() => defineFlow({ kind: "block-lazy", actions: { a: { inputSchema: z.object({}), block: lazyBlock } } })).toThrow(
+      /session\.state\.tree\.children holds a z\.lazy, declared by block "lazy-block"[\s\S]*declare it on the flow's session stateSchema, or avoid z\.lazy/
+    );
+    expect(() =>
+      defineFlow({
+        kind: "user-lazy",
+        user: { stateSchema: z.object({ tree: node() }) },
+        actions: { a: { inputSchema: z.object({}), block: handler({ name: "n", inputSchema: z.object({}), execute: () => ({}) }) } }
+      })
+    ).toThrow(/user\.state\.tree\.children holds a z\.lazy, declared by flow "user-lazy"/);
+  });
+
   it("allows a static default in user and org scope", () => {
     expect(() =>
       defineFlow({
@@ -1021,27 +1036,65 @@ describe("declarations that disagree are refused before anything runs", () => {
 });
 
 describe("applyScopeStateDefaults", () => {
-  it("runs a field's refinement while validating it without its factory", () => {
+  it("leaves a field that declares a factory exactly as stored, refinement or not: no parse, no static fill inside", () => {
     let calls = 0;
     const schema = z.object({
       prefs: z
         .object({ size: z.number(), id: z.string().default(() => `id-${++calls}`), theme: z.string().default("plain") })
-        .refine((value) => value.size > 0)
+        .refine((value) => value.size > 0),
+      other: z.number().default(1)
     });
-    // Fails the refinement: left as stored.
-    expect(applyScopeStateDefaults(schema, { prefs: { size: -1 } })).toEqual({ prefs: { size: -1 } });
-    expect(applyScopeStateDefaults(schema, { prefs: { size: 2 } })).toEqual({ prefs: { size: 2, theme: "plain" } });
+    expect(applyScopeStateDefaults(schema, { prefs: { size: -1 } })).toEqual({ prefs: { size: -1 }, other: 1 });
+    // The cost: a static default nested in a factory-bearing field no longer fills.
+    expect(applyScopeStateDefaults(schema, { prefs: { size: 2 } })).toEqual({ prefs: { size: 2 }, other: 1 });
     expect(calls).toBe(0);
   });
 
-  it("reads a generative recursive lazy schema without expanding it", () => {
+  it("leaves a field whose factory default feeds a transform as stored, without throwing", () => {
+    const schema = z.object({ s: z.string().default(() => "abc").transform((value) => value.toUpperCase()) });
+    expect(applyScopeStateDefaults(schema, {})).toEqual({});
+    expect(applyScopeStateDefaults(schema, { s: "kept" })).toEqual({ s: "kept" });
+  });
+
+  it("still fills the static defaults of a field that declares no factory and no lazy", () => {
+    const schema = z.object({ prefs: z.object({ theme: z.string().default("plain"), size: z.number() }) });
+    expect(applyScopeStateDefaults(schema, { prefs: { size: 2 } })).toEqual({ prefs: { size: 2, theme: "plain" } });
+    expect(applyScopeStateDefaults(schema, { prefs: { size: "bad" } })).toEqual({ prefs: { size: "bad" } });
+  });
+
+  it("treats a refinement that throws on stored junk as not fitting", () => {
+    const schema = z.object({
+      p: z.object({ name: z.string().optional(), theme: z.string().default("plain") }).refine((v) => v.name!.length > 0)
+    });
+    expect(applyScopeStateDefaults(schema, { p: {} })).toEqual({ p: {} });
+  });
+
+  it("leaves a field holding a lazy as stored, never parsing it: a generative recursive tree reads without expanding", () => {
     // A getter that builds a fresh schema on every call.
     const node = (): z.ZodTypeAny => z.object({ name: z.string(), children: z.array(z.lazy(node)).default([]) });
-    const schema = z.object({ tree: node().default({ name: "root" }) });
-    expect(applyScopeStateDefaults(schema, {})).toEqual({ tree: { name: "root", children: [] } });
+    const schema = z.object({ tree: node().default({ name: "root" }), other: z.number().default(1) });
+    // `tree` holds a lazy, so it can't be shown factory-free: left as stored; `other` still fills.
+    expect(applyScopeStateDefaults(schema, {})).toEqual({ other: 1 });
     expect(applyScopeStateDefaults(schema, { tree: { name: "a", children: [{ name: "b" }] } })).toEqual({
-      tree: { name: "a", children: [{ name: "b" }] }
+      tree: { name: "a", children: [{ name: "b" }] },
+      other: 1
     });
+  });
+
+  it("never runs a factory inside a lazy on a read", () => {
+    let calls = 0;
+    const schema = z.object({ t: z.lazy(() => z.object({ id: z.string().default(() => `id-${++calls}`) })) });
+    expect(applyScopeStateDefaults(schema, { t: {} })).toEqual({ t: {} });
+    expect(calls).toBe(0);
+  });
+
+  it("leaves a value as stored when the factory-free check's refinement throws on the missing factory field", () => {
+    const schema = z.object({
+      p: z
+        .object({ id: z.string().default(() => "x1"), theme: z.string().default("plain") })
+        .refine((value) => value.id.startsWith("x"))
+    });
+    expect(applyScopeStateDefaults(schema, { p: {} })).toEqual({ p: {} });
   });
 
   it("leaves a field that fails its schema as stored, though the field declares a factory, and runs no factory", () => {
@@ -1054,8 +1107,8 @@ describe("applyScopeStateDefaults", () => {
       })
     });
     expect(applyScopeStateDefaults(schema, { prefs: { mode: "bad" } })).toEqual({ prefs: { mode: "bad" } });
-    // A valid value still gets its static defaults, and never the factory's.
-    expect(applyScopeStateDefaults(schema, { prefs: { mode: "dark" } })).toEqual({ prefs: { mode: "dark", theme: "plain" } });
+    // A field that declares a factory is left as stored, valid or not.
+    expect(applyScopeStateDefaults(schema, { prefs: { mode: "dark" } })).toEqual({ prefs: { mode: "dark" } });
     expect(calls).toBe(0);
   });
 
