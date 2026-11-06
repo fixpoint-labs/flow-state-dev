@@ -450,6 +450,22 @@ describe("a readonly session field a block declares is protected like the flow's
     const session = ownerFlow.scopeStateSchemas?.session;
     expect(getReadonlyStateKeys(session)).toEqual(["owner"]);
   });
+
+  it("is not a session-list filter: the store filters stored state, which holds no block default", async () => {
+    const registry = createFlowRegistry();
+    registry.register(ownerFlow);
+    const stores = createInMemoryStores();
+    await run(stores, "read", {});
+    const router = createFlowApiRouter({ registry, stores });
+    const res = await router.GET(
+      new Request(`http://localhost/api/flows/sessions?userId=${USER}&orgId=${ORG}&flowKind=block-readonly&state.owner=alice`),
+      { params: { path: ["sessions"] } }
+    );
+    // Refused by name, rather than answering an empty list for a session whose
+    // owner reads "alice".
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error?: string }).error).toContain('"owner"');
+  });
 });
 
 describe("declarations that disagree are refused before anything runs", () => {

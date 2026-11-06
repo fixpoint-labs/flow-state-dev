@@ -19,7 +19,8 @@ const DIRECT_READ = /\.(session|user|org)\??\.stateSchema\b/;
 
 /** Reads that must take the flow's own schema, by file, with why. */
 const ALLOWED: Record<string, { count: number; why: string }> = {
-  "context/session-birth.ts": { count: 1, why: "a new session's initial state is a write, validated against the flow's own schema" }
+  "context/session-birth.ts": { count: 1, why: "a new session's initial state is a write, validated against the flow's own schema" },
+  "routes/session-routes.ts": { count: 1, why: "the list's state filter runs on stored state, which holds only what the flow's own schema births" }
 };
 
 function sources(dir: string, out: string[] = []): string[] {

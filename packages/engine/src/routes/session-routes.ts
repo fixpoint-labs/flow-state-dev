@@ -19,7 +19,6 @@ import { generateId } from "../utils/generate-id";
 import { casMaxRetries, waitForCASRetry } from "../stores/cas";
 import { birthSession, SessionCreateRefusedError } from "../context/session-birth";
 import { getReadonlyStateKeys, mapLimit } from "@flow-state-dev/core/helpers";
-import { scopeStateSchema } from "../context/scope-state-defaults";
 import { resolveRecordOwner } from "../context/record-owner";
 import { pinRejectsCaller, unknownFlowMessage } from "../context/instance-pin";
 import { isOrgAttributed } from "../context/org-attribution";
@@ -195,7 +194,10 @@ function resolveStateFilter(
         "the flowKind of a registered flow."
     };
   }
-  const readonly = new Set(getReadonlyStateKeys(scopeStateSchema(flow, "session")));
+  // The flow's own schema, not the merged one: the store filters the state it
+  // holds, and a field only a block declares is filled at read time, never
+  // stored at birth, so filtering on it would answer an empty list.
+  const readonly = new Set(getReadonlyStateKeys(flow.session?.stateSchema));
   const state: Record<string, string> = {};
   for (const [name, value] of entries) {
     const field = name.slice(STATE_FILTER_PREFIX.length);
