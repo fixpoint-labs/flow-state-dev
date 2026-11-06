@@ -64,7 +64,7 @@ import {
   WORKER_ID_STATE_KEY,
 } from "@flow-state-dev/workforce/browser";
 import { isSuspensionWait } from "@flow-state-dev/core/items";
-import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/types";
+import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness";
 import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
 import { projectIdOf, refuseExisting } from "./lib/new-project";
 import type { HarnessReadinessChipRow } from "./components/flow-state/harness-readiness";

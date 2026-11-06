@@ -1,14 +1,14 @@
 /**
  * Claude Code's side of the shared plan record.
  *
- * The shape lives in `@flow-state-dev/core` now. Code that imported it from
+ * The shape lives in `@flow-state-dev/core/harness` now. Code that imported it from
  * this package before the move must get the very same objects, or two
  * definitions would be two storage slots that look like one. And when a plan
  * row fails to write, the run's list marker must say the plan is incomplete,
  * so a reader never shows the rows that did land as the plan.
  */
 import { describe, expect, it } from "vitest";
-import * as core from "@flow-state-dev/core";
+import * as core from "@flow-state-dev/core/harness";
 import * as sdk from "../../src/sdk";
 import { createWorkRecorder, type UpsertableCollection } from "../../src/sdk/work-recorder";
 import type { TranslatedEvent } from "../../src/sdk/types";

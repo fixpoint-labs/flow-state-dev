@@ -21,7 +21,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { OBSERVED_PLAN, OBSERVED_PLAN_LIST, readPlanTarget } from "@flow-state-dev/core";
+import { OBSERVED_PLAN, OBSERVED_PLAN_LIST, readPlanTarget } from "@flow-state-dev/core/harness";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import type { ResolveCursorClient } from "@flow-state-dev/cursor";

@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { testBlock } from "@flow-state-dev/testing";
-import { harnessFailureKind } from "@flow-state-dev/core";
+import { harnessFailureKind } from "@flow-state-dev/core/harness";
 import { claudeCodeAgent } from "../../src/sdk/agent";
 import { ClaudeAgentRunError } from "../../src/sdk/errors";
 import type { ResolveClaudeAgent, SdkMessageLike } from "../../src/sdk/types";

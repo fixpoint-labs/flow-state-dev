@@ -7,7 +7,12 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineCapability, defineFlow, handler } from "@flow-state-dev/core";
-import type { BlockContext, HarnessUsageReader, HarnessUsageReading, HarnessUsageReport } from "@flow-state-dev/core/types";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type {
+  HarnessUsageReader,
+  HarnessUsageReading,
+  HarnessUsageReport,
+} from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   HARNESS_USAGE,

@@ -38,7 +38,7 @@ import {
   type PhaseSpec,
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import {
   assertSafeSegment,
   canonicalSegment,

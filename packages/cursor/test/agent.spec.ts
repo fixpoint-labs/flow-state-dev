@@ -13,8 +13,8 @@ import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
-import { harnessFailureKind, harnessRunHandleSchema } from "@flow-state-dev/core";
-import type { HarnessSteer } from "@flow-state-dev/core/types";
+import { harnessFailureKind, harnessRunHandleSchema } from "@flow-state-dev/core/harness";
+import type { HarnessSteer } from "@flow-state-dev/core/harness";
 import { cursorAgent, INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
 import {
   CursorAgentAbortedError,

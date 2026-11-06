@@ -15,14 +15,14 @@
  * working tree: which path the run's file tools touched, how, when, and how the
  * attempt settled.
  */
+import { defineResourceCollection } from "@flow-state-dev/core";
 import {
   OBSERVED_PLAN,
   OBSERVED_PLAN_LIST,
-  defineResourceCollection,
   observedOutcomeSchema,
   observedPlanCollection,
   observedPlanListCollection,
-} from "@flow-state-dev/core";
+} from "@flow-state-dev/core/harness";
 import type { DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
@@ -38,7 +38,7 @@ export {
   observedPlanItemStateSchema,
   observedPlanListCollection,
   type ObservedOutcome,
-} from "@flow-state-dev/core";
+} from "@flow-state-dev/core/harness";
 
 /**
  * Accessor key AND storage prefix for the observed file operations. The two are

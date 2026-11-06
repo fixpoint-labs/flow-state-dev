@@ -19,7 +19,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readCodexUsage } from "@flow-state-dev/codex";
-import { harnessEnv } from "@flow-state-dev/core";
+import { harnessEnv } from "@flow-state-dev/core/harness";
 import { resolveUserStorageKey } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";

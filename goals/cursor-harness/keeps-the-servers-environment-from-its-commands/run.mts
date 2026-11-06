@@ -15,7 +15,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { harnessEnv } from "@flow-state-dev/core";
+import { harnessEnv } from "@flow-state-dev/core/harness";
 import { cursorAgent } from "@flow-state-dev/cursor";
 import { testBlock } from "@flow-state-dev/testing";
 import { loadFixture, runGoal } from "../../lib/index.mts";

@@ -45,7 +45,7 @@
 
 import { CLAUDE_CODE_PASS, checkClaudeCodeReadiness, claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
-import { harnessEnv } from "@flow-state-dev/core";
+import { harnessEnv } from "@flow-state-dev/core/harness";
 import { CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
 import {
   mcpCredentialsCapability,
@@ -53,7 +53,7 @@ import {
   type ErrorReporterHarnessFeeds,
   type ProjectMcpToolsResolver,
 } from "@flow-state-dev/workforce";
-import type { HarnessBlock, HarnessReadinessCheck } from "@flow-state-dev/core/types";
+import type { HarnessBlock, HarnessReadinessCheck } from "@flow-state-dev/core/harness";
 import type { HarnessFeeds as ManagerHarnessFeeds } from "@flow-state-dev/harness-manager";
 import {
   formatHarnessReadiness,

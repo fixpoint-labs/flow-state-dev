@@ -43,8 +43,10 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, w
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { handler, harnessRunInputSchema, sequencer } from "@flow-state-dev/core";
-import type { FlowInstance, GeneratorModel, HarnessBlock, ModelResolver } from "@flow-state-dev/core/types";
+import { handler, sequencer } from "@flow-state-dev/core";
+import { harnessRunInputSchema } from "@flow-state-dev/core/harness";
+import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { runAction } from "@flow-state-dev/engine";
 import { serve } from "@flow-state-dev/node";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";

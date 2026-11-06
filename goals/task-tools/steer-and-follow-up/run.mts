@@ -3,8 +3,10 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { defineFlow, handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
-import type { GeneratorModel, HarnessBlock } from "@flow-state-dev/core/types";
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
+import type { GeneratorModel } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";

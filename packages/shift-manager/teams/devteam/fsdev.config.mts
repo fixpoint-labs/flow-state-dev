@@ -71,7 +71,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readClaudeUsage } from "@flow-state-dev/claude-code/sdk";
 import { readCodexUsage } from "@flow-state-dev/codex";
-import { harnessEnv } from "@flow-state-dev/core";
+import { harnessEnv } from "@flow-state-dev/core/harness";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { parseCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";

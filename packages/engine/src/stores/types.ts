@@ -5,7 +5,8 @@ import type {
   SuspensionFilter,
   SuspensionRecord
 } from "@flow-state-dev/core/types";
-import type { HarnessRunSpend, JsonObject, ModelUsageEntry } from "@flow-state-dev/core/types";
+import type { JsonObject, ModelUsageEntry } from "@flow-state-dev/core/types";
+import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
 import type { ExpectedVersion as SharedExpectedVersion } from "@flow-state-dev/core/helpers";
 import type {
   BlockTraceItem,

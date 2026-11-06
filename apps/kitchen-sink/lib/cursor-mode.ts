@@ -27,7 +27,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
-import { harnessEnv } from "@flow-state-dev/core";
+import { harnessEnv } from "@flow-state-dev/core/harness";
 import {
   CURSOR_PASS,
   TESTED_SDK_VERSION,
@@ -44,7 +44,7 @@ import { goalControl } from "./goal-control";
 import { harnessTrust, type RepoLine } from "./harness-trust";
 import type { HarnessTrust } from "./harness-workspace";
 import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
-import type { HarnessBlock, HarnessReadiness } from "@flow-state-dev/core/types";
+import type { HarnessBlock, HarnessReadiness } from "@flow-state-dev/core/harness";
 import { kitchenSinkHarnessFlow } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";

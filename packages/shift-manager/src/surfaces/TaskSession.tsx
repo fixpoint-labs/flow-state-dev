@@ -23,7 +23,8 @@ import { buildItemRenderStream, FlowProvider, ItemRenderer, useFlowContext, useJ
 import { AskCard } from "../components/AskCard";
 import { shiftManagerRenderers } from "../components/ToolLine";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
-import { EmptyState, JumpToLatestButton, LoadEarlierButton, SectionFailure } from "../components/ui";
+import { ConversationScrollButton } from "../components/flow-state/conversation";
+import { EmptyState, LoadEarlierButton, SectionFailure } from "../components/ui";
 import { asksOfTask, waitsOnYou } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { useReportFeedState } from "../lib/feed-health";
@@ -272,7 +273,7 @@ function RunItems({ run }: { run: OpenRun }) {
           The run hasn't recorded a step yet.
         </p>
       ) : null}
-      <JumpToLatestButton feed={feed} />
+      <ConversationScrollButton feed={feed} className="size-8 rounded-none" />
     </div>
   );
 }

@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
-import { harnessFailureKind, harnessRunHandleSchema } from "@flow-state-dev/core";
+import { harnessFailureKind, harnessRunHandleSchema } from "@flow-state-dev/core/harness";
 import { codexAgent, INTERNAL_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
 import { CodexAgentAbortedError, CodexAgentConfigError, CodexAgentRunError } from "../src/errors";
 import {

@@ -10,7 +10,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { createTestContext } from "@flow-state-dev/testing";
-import { REQUEST_SPEND_SEAM, type HarnessRunSpend } from "@flow-state-dev/core/types";
+import { REQUEST_SPEND_SEAM } from "@flow-state-dev/core/types";
+import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
 import { claudeCodeAgent } from "../../src/sdk/agent";
 import type { ResolveClaudeAgent, SdkMessageLike } from "../../src/sdk/types";
 

@@ -10,8 +10,8 @@
 import { z } from "zod";
 import type { ClaudeAgentSpawnOptions } from "./process-exit";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { harnessRunHandleSchema } from "@flow-state-dev/core";
-import type { HarnessRunHandle, HarnessRunOutcome } from "@flow-state-dev/core/types";
+import { harnessRunHandleSchema } from "@flow-state-dev/core/harness";
+import type { HarnessRunHandle, HarnessRunOutcome } from "@flow-state-dev/core/harness";
 import type { ObservedFileOpKind, ObservedGapKind, ObservedOutcome } from "./work-collections";
 
 /** Terminal result subtype reported by the SDK's `result` message. */
