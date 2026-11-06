@@ -28,7 +28,7 @@ root shows no workforce panels.**
 | **The real need** | The epic's *one way to do each thing* and a root that shows *only what an app author needs* ([FIX-2447](../../epics/FIX-2447/SPEC.md#the-goal-and-how-well-know-its-met)); the issue: registry users don't get the FIX-2360 rule |
 | **Smaller, and rejected** | "Delete `ScrollOnNewRequest` and call the hook." The registry's 70dvh last group would still fight the hook's kept room, and the four button copies stay |
 | **Bigger, and not this issue's** | Every component off the react root. Renderers and `FlowNavigator` are the package's job ([What stays](#what-stays-as-it-is)). A refresh command for Kitchen Sink's registry copies, which stay, is FIX-2461's |
-| **Not done if** | A fresh registry install or Kitchen Sink still goes to the bottom on a send · a line the reader didn't send rises · a send with no marked line moves the view · a jump button is still written by hand anywhere but DevTool · `ScrollOnNewRequest` or the 50px rule survives as dead code · a panel name is still a plain react root export (with Q1's alias option, a `@deprecated` one naming `/workforce` is allowed until its minor) · the registry composer keeps its own Enter rule · a copy this issue installs in a lab has no byte-equal test · happy-dom tests pass and the browser check never ran on the registry surfaces |
+| **Not done if** | A fresh registry install or Kitchen Sink still goes to the bottom on a send · a line the reader didn't send rises · a send with no marked line moves the view · a jump button is still written by hand anywhere but DevTool · `ScrollOnNewRequest` or the 50px rule survives as dead code · a panel name is still a react root export, a `@deprecated` alias included · the registry composer keeps its own Enter rule · a copy this issue installs in a lab has no byte-equal test · happy-dom tests pass and the browser check never ran on the registry surfaces |
 
 ```mermaid
 flowchart LR
@@ -154,7 +154,7 @@ still reopens at its end on a switch.
 | The debt | |
 |---|---|
 | **Removes** | `ScrollOnNewRequest`, the 50px rule and their context; the 70dvh last group; three hand-written jump buttons; the registry composer's own Enter rule; 25 workforce names from react's root (the undocumented `*PropNames` lists leave public surface entirely) |
-| **Adds** | A subpath to keep. Three more installed copies of `conversation.tsx` in place of three 20-line buttons: Shift Manager's held by its existing byte-equal test, each lab's by a new one over the copies this issue installs (the labs' older copies stay untested). With Q1's alias option, deprecated root names until its removal minor |
+| **Adds** | A subpath to keep. Three more installed copies of `conversation.tsx` in place of three 20-line buttons: Shift Manager's held by its existing byte-equal test, each lab's by a new one over the copies this issue installs (the labs' older copies stay untested). No deprecated root names (Q1 answered break) |
 | **Leaves** | Kitchen Sink's registry copies, drift-tested (FIX-2461 adds their refresh command). DevTool's own button, permanent by design: a published package can't take a copy-in (FIX-1477 D1) |
 
 **Net: down.** Two scroll rules become one and five buttons two; the root sheds 25 names for one
@@ -176,8 +176,8 @@ and 25 root names go; one subpath is added. If wrong: a subpath nobody needed.
 3. **[D3](DECISIONS.md#d3) · The panels move to `@flow-state-dev/react/workforce`.** If wrong: a
    public path named for one family.
 
-**Open: none.** How old root imports reach adopters follows [Q1](../../epics/FIX-2447/DECISIONS.md#q1)'s
-answer (ER-3); this spec settles where the names go, not that.
+**Open: none.** Old root imports reach adopters with no alias: the epic's
+[Q1](../../epics/FIX-2447/DECISIONS.md#q1) was answered break (ER-3).
 
 Improvement · `react`, `ui` registry, Shift Manager, DevTool, both labs, Kitchen Sink · medium, 6
 packages and apps, 3 public surfaces, 5 removals · epic FIX-2447

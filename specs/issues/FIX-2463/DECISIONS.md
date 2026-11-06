@@ -101,6 +101,10 @@ flow is never hired or defined with it. Then that entry keeps a constant, on its
 
 ## How it got here
 
+- **Owner amendment (Nov 6)** — [epic Q1 answered, break](../../epics/FIX-2447/DECISIONS.md#q1), and [epic D4, no
+  backward-compat code](../../epics/FIX-2447/DECISIONS.md#d4) ([owner's comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)). The five `*_ENTRY` constants go private with no `@deprecated` alias;
+  the cell no longer accepts one. The new hire rule is a check on today's input, not compat code,
+  and stays. Direction unchanged.
 - **Draft** — framed as the epic's one candidate for a new primitive; the census and the hire's
   role table showed the existing pieces carry it, so the direction is a removal of seven root
   constants behind one hire rule, building on `board.entries()`, `markRolePiece` and FIX-2084 D2.

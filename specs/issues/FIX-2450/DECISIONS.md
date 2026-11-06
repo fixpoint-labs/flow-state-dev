@@ -35,15 +35,15 @@ It comes down to a custom stop answered from the default card: answer-only 404s 
 screen. Then React calls one verb, and the card shows such a stop without actions.
 
 <a name="d2"></a>
-## D2 · React's session call is renamed `answerSuspension`, meeting adopters as Q1 decides
+## D2 · React's session call is renamed `answerSuspension`, with no alias for the old name (Q1, answered break)
 
 | | |
 |---|---|
 | **Instead of** | Keeping `session.resumeSuspension` and changing only what it calls |
 | **Because** | The epic's *one path* row is about what an adopter reads: one verb for one job. An adopter wiring `SuspensionResolverProvider` copies `session.resumeSuspension` from the docs, then reads in the client README that `resume` is for their own `ctx.suspend`. The name would teach the wrong verb on the screen every approval inbox starts from |
-| **Locks in** | `answerSuspension` is React's public name for answering a stop from a session. `resumeSuspension` reaches adopters as [ER-3](../../epics/FIX-2447/DECISIONS.md#who-owns-what) and [Q1](../../epics/FIX-2447/DECISIONS.md#q1)'s answer say. Five docs pages and two Kitchen Sink call sites change with it |
+| **Locks in** | `answerSuspension` is React's public name for answering a stop from a session. `resumeSuspension` goes with no alias ([ER-3](../../epics/FIX-2447/DECISIONS.md#who-owns-what); [Q1](../../epics/FIX-2447/DECISIONS.md#q1) answered break), and the changeset names `answerSuspension`. Five docs pages and two Kitchen Sink call sites change with it |
 
-![D2: answerSuspension, chosen, beside keeping resumeSuspension. Decides it: an adopter reading React beside the client sees one verb. Price: one more moved name, met as Q1 decides. Flips if renames stay at the package roots](figures/d2-name-the-call.svg)
+![D2: answerSuspension, chosen, beside keeping resumeSuspension. Decides it: an adopter reading React beside the client sees one verb. Price: one more moved name, met with no alias. Flips if renames stay at the package roots](figures/d2-name-the-call.svg)
 
 It comes down to the docs an adopter copies: `resumeSuspension` names the verb the client reserves for something else.
 
@@ -63,12 +63,11 @@ method on a returned object stays put. Then the name stays and its doc says it a
 - **`answer` takes `{ stream: true }`** and returns the route's SSE `Response`, as `resume` and
   `continue` do; the answer route already streams. Without it the session's call loses live output
   on serverless.
-- **`resumedBy` leaves the types; D3's refusal does not apply.** `@deprecated` since client 0.3.0,
-  and no route has read it since; the server records who answered, before and after. No old call
-  misbehaves silently, which is D3's case. On the wire it is D3's dual-read case (a published React
-  bundle sends it), and the engine needs no change because no route reads it. A refusal would 400
-  every approval from an app still serving a 0.4.0 bundle. FIX-2454's helper is not used; the type
-  removal follows ER-3 and Q1's answer, and its deprecation since 0.3.0 is already the warning.
+- **`resumedBy` leaves the types, with nothing added for it** ([epic D4](../../epics/FIX-2447/DECISIONS.md#d4)).
+  `@deprecated` since client 0.3.0, and no route has read it since; the server records who
+  answered, before and after. An older React bundle that still sends it is unaffected, because
+  no route reads it: no reader or refusal is added, and none removed. A refusal would 400 every
+  approval from an app still serving a 0.4.0 bundle, and D4 rules one out anyway.
 - **The routes don't change** ([FIX-2129 D2](../FIX-2129/DECISIONS.md#d2)).
 - **Older tracker ids in these files** are FIX-2453's sweep, not this issue's.
 
@@ -88,6 +87,9 @@ Not run on this spec alone: in spec-set member mode the epic-agent runs `analysi
 
 ## How it got here
 
+- **Owner amendment (Nov 6)** — [epic Q1 answered, break](../../epics/FIX-2447/DECISIONS.md#q1), and [epic D4, no
+  backward-compat code](../../epics/FIX-2447/DECISIONS.md#d4) ([owner's comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)). D2's old name `resumeSuspension` goes with no alias; the `resumedBy` note
+  cites epic D4 in place of D3's refusal and dual-read cases. Direction unchanged.
 - **Draft** (spec-set member, Nov 5) — framed as the epic's *one path* row for answering a stop;
   React routes a user's stop to the existing `answer` and keeps `resume` for custom stops; the
   session call renamed; `resumedBy` removed from the types with no wire change. Builds on FIX-2129 D2.

@@ -61,13 +61,14 @@ Each name sits in one box. Below the fence (the epic's D2) is ours, published bu
 + import { createSkillsLibrary } from "@flow-state-dev/orchestration";
 
 - taskBoard({ collection, claimOrder: "topological" })
-+ taskBoard({ collection })                      // fifo is the default; "topological" refuses, naming "fifo"
++ taskBoard({ collection })                      // fifo is the default; "topological" is a type error
 
 - import { eventActors } from "@flow-state-dev/patterns/eventActors";
 + import { eventActors } from "@flow-state-dev/patterns/event-actors";
 ```
 
-How each moved name reaches an adopter is ER-3, per Q1's answer; this spec doesn't pick it.
+Each moved name reaches an adopter as a compile error, with no alias, and the changeset names
+its new home (ER-3, ER-7; Q1 answered break).
 
 **Underneath, in its own PR after the moves:** the 38 collection methods are written once, in one
 method table over a storage interface each backing supplies (read a row, read it committed, list,
@@ -119,7 +120,7 @@ page. The method table has no docs impact.
 | The debt | |
 |---|---|
 | **Removes** | 222 duplicate paths; orchestration's own `camelToKebab`, which collides with `contracts/helpers`' copy (FIX-2449's collision check), replaced by a re-export or dropped; about 60 first-party-only names from public view; unread, undocumented exports; `topologicalClaimOrder`; two public collection constructors; patterns' copy of the `taskBoard` docs; two false dependency claims; the second copy of 38 method bodies and one of two decline forms |
-| **Adds** | One `./internal` entry to keep. An internal storage interface and a source test. A `"topological"` row in orchestration's retired table until its removal version (epic D3). With Q1's alias option, deprecated aliases for a minor |
+| **Adds** | One `./internal` entry to keep. An internal storage interface and a source test. No retired-table row and no deprecated aliases (epic D4; Q1 answered break) |
 | **Leaves** | `delivery.passEntry`, a typed option only workforce sets ([Decided](DECISIONS.md#decided-not-asked)). Workforce's wrapper re-runs filing checks before it reserves chain room, so seven filing names stay behind `./internal` |
 
 **Net: down.** Two packages' roots shrink to what an app author uses, one duplicate mechanism
@@ -139,13 +140,15 @@ never used.
    skills and Node-only seams.** If wrong: Node apps write two import lines for nothing.
 2. **[D2](DECISIONS.md#d2) · `./internal` holds what only our packages read, README entry or
    not.** If wrong: an adopter's own delegating board loses a semver-covered path.
-3. **[D3](DECISIONS.md#d3) · One claim order, `fifo`; `"topological"` refuses.** If wrong: 15
+3. **[D3](DECISIONS.md#d3) · One claim order, `fifo`; `"topological"` leaves the type
+   (amended Nov 6: no runtime refusal).** If wrong: 15
    repo sites and some adopters change a string for no behaviour change.
 
 **Folded in, under the epic's D1 as signed:** FIX-2462's method table, as this issue's last PR,
 after the surface moves and constructor placement, so the PRs the manifest cells wait on aren't
 held by it. If wrong: this issue carries an internal rewrite it didn't need.
 
-**Open: none.** D2 is the one to weigh. Q1 (the epic's) decides how moved names reach adopters.
+**Open: none.** D2 is the one to weigh. Moved names reach adopters with no alias (the epic's
+Q1, answered break).
 
 Improvement · `orchestration` + `patterns`, imports in `workforce` and `harness-manager`, plus the collection rewrite · large · epic FIX-2447

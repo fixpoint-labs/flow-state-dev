@@ -11,7 +11,7 @@
 | **sends an action that fails, or stops for a person** | Each copy words the ending its own way, after the same search | `result()` resolves with `status: "failed"` and its `error`, or `"suspended"`; the app words it |
 | **sends an action from React** | `useAction`'s `execute` resolves when the server accepts, so the app builds a second client to read the answer | `useAction({ action, result: true })`: `execute` resolves to the result, and `loading` holds until it settles |
 | **closes a screen while it waits** | Shift Manager's loops each roll their own stop; some keep reading | `wait` and `result` take an `AbortSignal`. Stopping the wait never stops the run |
-| **autocompletes `@flow-state-dev/react`** | Sees `useReadFence`, which only the DevTool uses and no page documents | It is not on the root ([per ER-3 / Q1's answer](../../epics/FIX-2447/DECISIONS.md#q1)) |
+| **autocompletes `@flow-state-dev/react`** | Sees `useReadFence`, which only the DevTool uses and no page documents | It is not on the root, and no alias is left there ([Q1, answered break](../../epics/FIX-2447/DECISIONS.md#q1)) |
 
 ## The goal, and how we'll know it's met
 
@@ -125,7 +125,7 @@ record and checks the caller reaches it; the flag only stops it dropping the sto
 | **Reading an action's output from outside the process.** `client` · `sessions.requests({ includeResultOutput })`, the only HTTP read of it: a session list, searched by six copies. `client` · `request.status()` / `wait()`: one request by id, no output (**the closest entry**). `streaming` · `request.stream()`: items, not the stored result. The engine's in-process `runAction`: server only. `flow.read`: a different job, it stores nothing | **Extends the closest entry.** Not a new way: the by-id read gains the output behind a flag, and `result()` composes `wait()`. Searched `result`, `output`, `includeResultOutput`, `wait(`, `.status()` across `packages/`, `labs/`, `apps/` |
 | Six list-and-find output reads: orchestration's `sendBoardAction`, the client's `steerRunningTurn`, Shift Manager's `runAction`, Workforce's `runIn`, and the claude-code-style and teammates labs | **Removes.** Each calls `result()` and keeps its own wording. Counted by the [census](poc/output-read-census/census.mjs) |
 | Five hand-rolled status loops: Shift Manager's `runAction`, `sendTurn`, `interruptRun` and `settled`, and `runIn` | **Moved onto `wait()`.** `sendTurn` keeps its read of whether the session holds the line |
-| `useReadFence` on the react root; the DevTool its one outside caller | **Moves** to `@flow-state-dev/react/internal`, [D2](../../epics/FIX-2447/DECISIONS.md#d2)'s kind; the root removal follows [ER-3 / Q1's answer](../../epics/FIX-2447/DECISIONS.md#q1) |
+| `useReadFence` on the react root; the DevTool its one outside caller | **Moves** to `@flow-state-dev/react/internal`, [D2](../../epics/FIX-2447/DECISIONS.md#d2)'s kind; the root export goes with no alias ([ER-3; Q1 answered break](../../epics/FIX-2447/DECISIONS.md#q1)) |
 | [FIX-1661 D1](../FIX-1661/DECISIONS.md#d1): the result on the record; the list carries the output on request; no result route | **Amended in part.** The status route carries the same stored result on the same flag. Still no new route and no stream event |
 | [FIX-2162 D2](../FIX-2162/DECISIONS.md#d2): a request is an object and its lifecycle lives on it | **Builds on.** `result()` is on every request handle |
 | FIX-2043 (Linear only): read a result by request id, through an id filter on the session list | **Consumed, not re-parented** (ER-8). Its need and *done when* are met here; its list filter is not taken ([D1](DECISIONS.md#d1)) |
@@ -170,7 +170,7 @@ waits someone keeps in step.
    reads stay on `useSubscription`; no new hook.** If wrong: a React screen that wants the
    output as state hand-rolls one.
 
-**Open: none.** D2 is the one to weigh. The root removal of `useReadFence` waits on the
-epic's Q1.
+**Open: none.** D2 is the one to weigh. `useReadFence` leaves the root with no alias: the
+epic's Q1 was answered break on Nov 6.
 
 Improvement · `client` + `engine` + `react`, one optional field on `core/types`' `RequestStatusSnapshot`, with `orchestration`, `workforce`, `shift-manager`, `devtool` and two labs migrating · medium: 3 public surfaces extended, 11 copies removed · epic FIX-2447

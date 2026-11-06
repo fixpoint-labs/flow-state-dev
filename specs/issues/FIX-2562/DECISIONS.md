@@ -4,8 +4,8 @@
 
 The plan's four rows are the [closure rule's](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa),
 and its legs are FIX-2564's, built to the [epic's goal](../../epics/FIX-2447/SPEC.md#the-goal-and-how-well-know-its-met).
-One call is this spec's: what keeps the first hour green after the wrap (D1). How the plan holds
-under each answer to the epic's open Q1 is [below](#q1).
+One call is this spec's: what keeps the first hour green after the wrap (D1). What the epic's Q1,
+answered break on Nov 6, fixes in the plan is [below](#q1).
 
 ## The tree
 
@@ -13,7 +13,7 @@ under each answer to the epic's open Q1 is [below](#q1).
 flowchart TD
   I["FIX-2562"] --> D1["D1 · at the wrap legs and journeys fold into CHECKS and gate every PR · the manifest goes"]
   D1 -.->|"rejected · a red job on main is read after the merge"| X1["keep the manifest · a non-gating job on main"]
-  I --> Q["Q1 is the epic's · the plan holds under each answer"]
+  I --> Q["Q1 answered break · one pinned commit · j5 takes one hop"]
   I --> R["run the manifest whole · not rebuilt"]
   R -.->|"rejected · FIX-2564 owns the assertions"| X2["a second copy of legs a to c"]
   R --> J["one journey · only what no cell or child check grades"]
@@ -40,18 +40,20 @@ on a clean commit. Then they gate the release (`changeset publish`) instead, and
 today's checks. The manifest goes either way.
 
 <a name="q1"></a>
-## How the plan holds under epic Q1
+## How the plan reads epic Q1
 
-[Q1](../../epics/FIX-2447/DECISIONS.md#q1) is the owner's and still open. Only two things in this
-plan depend on it: **which commit is pinned**, and **how many hops j5 takes**.
+> **Amended (Nov 6).** [Q1](../../epics/FIX-2447/DECISIONS.md#q1) is answered: break, no alias, and [epic D4](../../epics/FIX-2447/DECISIONS.md#d4) rules out
+> compat code of any kind. The alias row this section once carried is gone; the plan below is the
+> one it had written for *break as each lands*.
+
+Two things in the plan depended on Q1: **which commit is pinned**, and **how many hops j5 takes**.
 
 | Q1's answer | The pinned commit | j5's upgrade | *Shims* |
 |---|---|---|---|
-| **Alias, then one removal** | At or after the removal's merge, once that minor has shipped to npm, whether a 19th child or the named minor carries it | Two hops: 0.4.0 → the last alias minor from npm, pinned by integrity, where each moved name compiles with a `@deprecated` naming its new path and removal version → the pinned commit, where the name is gone and the changelog line names its home | The aliases' exemption has ended, so the row must pass with no alias left |
-| **Hold**, or **break as each lands** | After the last child merges | One hop: 0.4.0 → the pinned commit. Each moved name fails to compile, and the package's changelog line names its new home ([ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what)). A TypeScript "no exported member" error names nothing, so the changelog line is the only thing that does: j5 grades that line and the report records the gap against the epic's *upgrades across a rename* row. The epic's Q1 ask states this | No exemption |
+| **Break as each lands** (the owner, Nov 6) | After the last child merges | One hop: 0.4.0 → the pinned commit. Each moved name fails to compile, and the package's changelog line names its new home ([ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what)). A TypeScript "no exported member" error names nothing, so the changelog line is the only thing that does: j5 grades that line, which is now the epic's whole *upgrades across a rename* promise | No exemption: `shims.never-published` only |
 
-A retired runtime value ([epic D3](../../epics/FIX-2447/DECISIONS.md#d3)) refuses loudly under
-every answer, so FIX-2454's *Shims* cells don't move.
+A retired runtime value is not refused under D4, so the closure grades no refusal; it checks that
+the changeset names the replacement, inside j5.
 
 ## The plan in full
 
@@ -63,7 +65,7 @@ every answer, so FIX-2454's *Shims* cells don't move.
 | 4 | The gap sweep below, the docs pages followed as written, every *Not done if* state checked absent | The *Surface* row as narrowed; every seam two-sided; every page holds |
 
 **Must be green first:** every other child merged with its goal check's PASS and its control's
-FAIL, FIX-2564 among them; under Q1's alias, the removal minor shipped. At drafting, no child's
+FAIL, FIX-2564 among them. At drafting, no child's
 spec has merged.
 
 ### The gap sweep
@@ -86,8 +88,7 @@ ratchet baseline.
 | Kitchen Sink · FIX-2554, 2461, 2458, 2456, 2452, 2450 | Builds, its tests pass, and each mode opens in a browser after all six edits |
 | `eslint.config.mjs` · FIX-2453, 2457 | Both rules are on for their file sets, neither entry overwrites the other, and `pnpm lint` passes with each rule's planted case reported |
 | Task-collection storage primitives · FIX-2459's method-table PR × FIX-2532 (#4757) | `findBy` is written on those primitives, with no second copy of the method; `partition.ts` sits behind `orchestration/internal` with #4757's edit intact |
-| Scope-state defaults · FIX-2457 × FIX-2576 | A block- or capability-declared default reads on a fresh session through the same merge the type-level `extendSchema` describes; one field declared in two places with a different type or default is refused at flow definition, naming the field and both declaring blocks (identical declarations merge silently), with no tracker id and not through `refuseRetired` |
-| Retired `sessionId` · FIX-2535 × FIX-2454 | It refuses through `refuseRetired` on its package's retired table. If FIX-2535 hasn't merged at the pinned commit, the seam is recorded on FIX-2535, not graded |
+| Scope-state defaults · FIX-2457 × FIX-2576 | A block- or capability-declared default reads on a fresh session through the same merge the type-level `extendSchema` describes; one field declared in two places with a different type or default is refused at flow definition, naming the field and both declaring blocks (identical declarations merge silently), with no tracker id |
 | React's notice coalescer · FIX-2551 × FIX-2455 | One coalescer, resolved from the client; no copy left in react's internals; no name on both react's root and `react/internal`. Recorded on FIX-2551 if it hasn't merged |
 | `useJumpToLatest` · FIX-2540 × FIX-2456 | FIX-2540's edge-case tests pass on FIX-2456's change, whichever landed second. Recorded on FIX-2540 if it hasn't merged |
 | The closure manifest · FIX-2564 × every cell owner | `git log -p` on the manifest: each child's commits change only its cells' `expect`, a cell with several contributors flipped by the last to land; every assertion change is FIX-2564's; the closure's commit only adds rows, then deletes the file |
@@ -118,8 +119,7 @@ FIX-2447 blocks this issue in Linear.
   are dropped.
 - **The controls are FIX-2564's.** `run.mjs --control=adopter-goal` is the goal control; plain
   `--control` stays the 0.1.1 control.
-- **Packed tarballs at the pinned commit, not the registry,** except j5's 0.4.0 and alias-minor
-  installs. One commit is the closure rule, and the packer is the one `changeset publish` uses.
+- **Packed tarballs at the pinned commit, not the registry,** except j5's 0.4.0 install. One commit is the closure rule, and the packer is the one `changeset publish` uses.
 - **Journey ids, titles and fixtures** name behaviour only.
 - **j5's fixture lives beside the legs' fixtures** in `scripts/packed-install/fixtures/`, and must pass on 0.4.0 before it is upgraded, so a broken fixture can't pass as a refusal.
 - **Model `n/a`.** The quick start's first snippets and the journey computes with handlers; an example that needs a key is its `first-hour.example.*` cell's concern.
@@ -131,7 +131,7 @@ FIX-2447 blocks this issue in Linear.
 | Alternative | Why not |
 |---|---|
 | Re-run the children's checks and stop | Each passed on its own commit; workspace ratchets read source, not an editor's view of the install |
-| A journey per team: examples copied out, completions documented, no id in a hover, output by id, a suspension test, a retired value refused | Each restates a cell (`first-hour.example.*`, *Surface*, *Leakage*, `onepath.output-read`, *Shims*) or FIX-2460's goal check, which item 3 re-runs. A second copy grades the same thing twice |
+| A journey per team: examples copied out, completions documented, no id in a hover, output by id, a suspension test, a retired name's replacement named | Each restates a cell (`first-hour.example.*`, *Surface*, *Leakage*, `onepath.output-read`, *Shims*) or FIX-2460's goal check, which item 3 re-runs. A second copy grades the same thing twice |
 | A journey for *answers a stop from React* | Leg c walks it |
 | Keep the manifest after the wrap, the journeys as its rows | An expectations file has no job once every cell is `pass`, and FIX-2564 deletes it; D1 keeps the gate without it |
 | Kitchen Sink as the adopter | It resolves workspace packages; it is graded as a seam instead |
@@ -149,6 +149,13 @@ Spec-set review round 1 (Nov 5), recorded, not folded.
 - **Second look, finding 2** ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4772#issuecomment-6647549943)): "The gap is non-gating, not detection... once a row flips to `expect: pass`, make it a gating ratchet (or alert on `main` red). Then the closure shrinks to what no row covers: j2, j5 and the fifteen-seam sweep. Drop item 3: it re-runs every child's own goal check on the pinned commit... Keep only the checks that span children." Not folded this round; the implementer weighs item 3's re-run cost against D1, which already makes the legs gating at the wrap.
 
 ## How it got here
+
+- **Owner amendment (Nov 6)** — [epic Q1 answered, break](../../epics/FIX-2447/DECISIONS.md#q1), and [epic D4, no
+  backward-compat code](../../epics/FIX-2447/DECISIONS.md#d4) ([owner's comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)). The Q1 section keeps only the
+  break row: one pinned commit after the last child, j5 one hop with no `@deprecated` arm. The
+  alias-minor install and the removal-minor precondition go. The `refuseRetired` seam row
+  (FIX-2535 × FIX-2454) and the scope-state row's `refuseRetired` clause go, since no helper is
+  built. *Shims* is `shims.never-published` alone.
 
 - **Draft** — the closure rule's four rows over FIX-2564's manifest, run whole on one pinned
   commit; four journeys for the teams leg c doesn't walk; the ten seams; D1 for after the wrap;

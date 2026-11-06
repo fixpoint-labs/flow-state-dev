@@ -45,10 +45,9 @@ It comes down to `RetryPolicy`: a roots-only check can't see two in core.
 - **From the epic, cited, not restated:** [ER-1](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-3](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-4](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what) · **cells owned** in [FIX-2564's grid](../FIX-2564/SPEC.md#what-changes): `surface.root.engine` (with FIX-2452), `surface.root.client`, `surface.root.react` (with FIX-2450, 2455, 2456), `surface.collisions` (with FIX-2452, 2458, 2459).
 - **The convergence point for "one name, one meaning"** is the collision assertion in FIX-2448's
   export check, over its per-entry index of `packageExports`. Every writer passes it: hand-written
-  barrels, a subpath that points at a whole module (`core/blocks/sequencer` today), a type alias
-  of a shared type, and a deprecated alias. Under Q1's alias answer it accepts a colliding name
-  only while that name is a `@deprecated` alias naming its replacement, and fails it at the
-  removal minor.
+  barrels, a subpath that points at a whole module (`core/blocks/sequencer` today) and a type
+  alias of a shared type. It accepts no `@deprecated` alias: Q1 was answered break, so a renamed
+  name leaves its old export in the same change.
 - **Which side renames:** the one an app author doesn't import. Engine's `DispatchHandle`,
   `isRetryableError` and `StreamEvent` are adapter-side; core's `SessionView` is a peer read,
   React's is `useSession`'s; core/models' `RetryPolicy` configures fallback, the block's is in
@@ -61,7 +60,6 @@ It comes down to `RetryPolicy`: a roots-only check can't see two in core.
 - **A collision whose side has no reader** (engine's `isRetryableError`, the child-session pair, react's `RosterWorker`) is resolved by unexporting it. Its new name in SPEC.md binds only if a reader keeps it.
 - **Vercel's `FlowApiRouter`** is a hand copy of engine's router shape, so it re-exports engine's from `engine/host`. Vercel already depends on engine.
 - **Client's root** keeps `CollectionItemHandle`, now in its README: React's collection hooks return it. FIX-2448's census, which stops at a package edge, counts it sibling-only.
-- **Under Q1's alias answer**, about 200 deprecated names sit on engine's root until the removal minor.
 - **Seams** are [the epic's](../../epics/FIX-2447/DECISIONS.md#coordination-seams). This issue's share: engine's list; on react's root the
   markers, the proof, `RosterWorker` and `FlowCardinality`'s copy; on core, `SessionView`,
   `core/models`' `RetryPolicy` and `core/blocks/sequencer`.
@@ -98,6 +96,9 @@ whole FIX-2447 set, by the epic's agent.
 
 ## How it got here
 
+- **Owner amendment (Nov 6)** — [epic Q1 answered, break](../../epics/FIX-2447/DECISIONS.md#q1), and [epic D4, no
+  backward-compat code](../../epics/FIX-2447/DECISIONS.md#d4) ([owner's comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)). The collision assertion's `@deprecated`-alias acceptance is removed, and so
+  is the note on about 200 deprecated names on engine's root. Moves and renames land with no alias.
 - **Draft** — engine's root and the foundation's collisions, framed by who imports a name;
   three engine entries over `packageExports` and FIX-2448's export check; a census that found ten
   collisions where the issue named three.

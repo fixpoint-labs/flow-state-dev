@@ -3,9 +3,9 @@
 [Spec](SPEC.md) · **Decisions**
 
 What was chosen, what lost, and what each choice locks in. D1 to D3 are the sign-off. The
-epic's D1 (which folds FIX-2462's method table in here), D2 (two kinds of hidden surface), D3 (a
-loud refusal for a retired value) and ER-1 to ER-9, with ER-1 as amended at set review, bind this
-spec; none is reopened here.
+epic's D1 (which folds FIX-2462's method table in here), D2 (two kinds of hidden surface),
+[D4](../../epics/FIX-2447/DECISIONS.md#d4) (no backward-compat code, which amended D3's loud refusal on Nov 6) and ER-1 to ER-9,
+with ER-1 as amended at set review, bind this spec; none is reopened here.
 
 ## The tree
 
@@ -29,7 +29,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Keeping `export * from "./tasks"`, so a Node app imports everything from the root. And the issue's `./browser` entry, which the owner declined: `./tasks` stays the one browser-safe entry (epic ER-6) |
 | **Because** | The root is Node-only (it reaches `node:fs` through skills and `node:async_hooks` through the lease-renewal scope). With every task name on both paths, the docs mix them, and a root import copied into a UI component breaks that app's bundle in their build, not ours |
-| **Locks in** | The root's job is skills, the frontmatter helpers, `resolveCatalogTools`, the task-turn test, the lease-renewal scope and the filer's settled entry. Every task-substrate name is reached through `./tasks`. Removing 222 names from the root is a breaking move for anyone on 0.5.0, delivered per ER-3 / Q1's answer |
+| **Locks in** | The root's job is skills, the frontmatter helpers, `resolveCatalogTools`, the task-turn test, the lease-renewal scope and the filer's settled entry. Every task-substrate name is reached through `./tasks`. Removing 222 names from the root is a breaking move for anyone on 0.5.0, with no alias (ER-3; Q1 answered break) |
 
 ![D1: one home per name, chosen, beside the root re-exporting ./tasks. Decides it: a docs import copied into a browser component, which bundles under the chosen option and breaks the bundle under the other. Price: a Node app writes two import lines. Locks in the root as skills and Node-only seams. Flips if adopters never bundle orchestration names for a browser](figures/d1-one-home.svg)
 
@@ -56,11 +56,16 @@ stays on the root.
 <a name="d3"></a>
 ## D3 · One claim order, `fifo`; `"topological"` refuses and names it
 
+> **Amended (Nov 6) by [epic D4](../../epics/FIX-2447/DECISIONS.md#d4).** `"topological"` leaves the `claimOrder` type and is
+> not refused at runtime: no `refuseRetired`, no retired table row, no removal version. A typed
+> caller fails to compile; the changeset names `"fifo"`. The PR no longer waits on FIX-2454. The
+> choice of one order, `fifo`, is unchanged.
+
 | | |
 |---|---|
 | **Instead of** | The issue's other option: keep `topologicalClaimOrder` as an alias, named `defaultClaimOrder`. Or keep `topological` and retire `fifo` |
 | **Because** | The two have one body, `collection.claim(workerId)`. The substrate's admission rule already gates on deps (since FIX-1005), so `topological` orders by nothing it doesn't share with `fifo`. An alias keeps the docs line "behave identically" forever, and `default` names a scenario, not what varies. `fifo` says what varies: the order is creation time |
-| **Locks in** | The board's default becomes `"fifo"`; callers that pass nothing see no change. `claimOrder: "topological"` fails through FIX-2454's `refuseRetired` on `@flow-state-dev/contracts/internal`, from a `"topological"` row in orchestration's retired table, naming `"fifo"` and a removal version (epic D3). That PR is blocked by FIX-2454; without the table row, FIX-2454's retired-name check flags the string. The `topologicalClaimOrder` export goes per ER-3 / Q1's answer |
+| **Locks in** | The board's default becomes `"fifo"`; callers that pass nothing see no change. `claimOrder: "topological"` is a type error: the value leaves the union (amended: epic D4 replaced the `refuseRetired` refusal and its retired-table row). The `topologicalClaimOrder` export goes with no alias (ER-3; Q1 answered break) |
 
 ![D3: one claim order named fifo, chosen, beside keeping topological as an alias. Decides it: what a reader comparing claim orders sees, two that differ or three names with two identical. Price: callers passing topological change one string. Flips if topological ordering becomes real](figures/d3-one-claim-order.svg)
 
@@ -94,7 +99,7 @@ It comes down to two names for one body: the alias keeps "behave identically" in
   table's PR is where `findBy` is written on the storage primitives. Whichever lands second
   rebases ([epic seam](../../epics/FIX-2447/DECISIONS.md#coordination-seams)).
 - **PR order.** The surface moves and the constructor placement first, since the manifest cells
-  wait on them; the claim-order refusal when FIX-2454 lands; the method table last, editing files
+  wait on them; the claim-order removal with them, since it waits on nothing now; the method table last, editing files
   at their final paths. A surface review never reads through the rewrite.
 - **`delivery.passEntry` stays a typed option on `defineTaskCollection`, documented with the pass
   pair in `docs/architecture/`.** Only workforce sets it, but taking it off the public type needs a
@@ -127,6 +132,10 @@ Not run at member time: `epic-agent` runs `analysis` and `reuse-review` over the
 
 ## How it got here
 
+- **Owner amendment (Nov 6)** — [epic Q1 answered, break](../../epics/FIX-2447/DECISIONS.md#q1), and [epic D4, no
+  backward-compat code](../../epics/FIX-2447/DECISIONS.md#d4) ([owner's comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)). D3 keeps one claim order, `fifo`, but `"topological"` now leaves the type
+  with no `refuseRetired` refusal, retired-table row or removal version, and its PR no longer
+  waits on FIX-2454. Moved names go with no alias. D3's figure, the PR order and the debt follow.
 - **Drafted (Nov 5)** as a spec-set member of FIX-2447. The owner's answer on ER-6 removed the
   issue's `./browser`. The issue's import-graph test already existed, so it became a Builds on row.
 - **Set review (Nov 5):** FIX-2462's method table folded in as the last PR (epic D1), with
@@ -135,4 +144,4 @@ Not run at member time: `epic-agent` runs `analysis` and `reuse-review` over the
   FIX-2448's census, with `goals/` counted as ours; orchestration's entry names placed under D2;
   the Surface cells and the leg b assertion named.
 
-**Open: none.** Q1 is the epic's.
+**Open: none.** The epic's Q1 was answered break on Nov 6.
