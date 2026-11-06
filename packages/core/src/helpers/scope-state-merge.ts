@@ -130,7 +130,37 @@ function peel(schema: ZodTypeAny, root: boolean): { chain: Wrapper[]; core: ZodT
   return { chain, core };
 }
 
-type Common = { chain: Wrapper[]; source: string; declared: ZodTypeAny | undefined };
+/**
+ * What a field's wrappers mean to a read, the order they were declared in
+ * folded away. `.nullable()` is part of the type, so it is counted and
+ * compared strictly; optional, readonly and a default are flags.
+ *
+ * `fill` is what a read of a missing value gets: the default when one is
+ * reached before any `.optional()` (outermost first), `absent` when an
+ * `.optional()` is reached first (it suppresses any default inside it), else
+ * `required`.
+ */
+type Flags = {
+  nullable: number;
+  readonly: boolean;
+  fill: { kind: "default"; declared: ZodDeclaredDefault } | { kind: "absent" } | { kind: "required" };
+};
+
+function flagsOf(chain: readonly Wrapper[]): Flags {
+  let fill: Flags["fill"] | undefined;
+  for (const wrapper of chain) {
+    if (fill !== undefined) break;
+    if (wrapper.kind === "optional") fill = { kind: "absent" };
+    else if (wrapper.kind === "default") fill = { kind: "default", declared: wrapper.declared! };
+  }
+  return {
+    nullable: chain.filter((w) => w.kind === "nullable").length,
+    readonly: chain.some((w) => w.kind === "readonly"),
+    fill: fill ?? { kind: "required" }
+  };
+}
+
+type Common = { flags: Flags; source: string; declared: ZodTypeAny | undefined };
 type ObjectNode = Common & { kind: "object"; fields: Map<string, MergeNode> };
 type LeafNode = Common & { kind: "leaf"; core: ZodTypeAny; signature: string };
 type MergeNode = ObjectNode | LeafNode;
@@ -142,9 +172,9 @@ function toNode(schema: ZodTypeAny, source: string, root: boolean): MergeNode {
   if (shape !== undefined) {
     const fields = new Map<string, MergeNode>();
     for (const [key, field] of Object.entries(shape)) fields.set(key, toNode(field, source, false));
-    return { kind: "object", fields, chain, source, declared: schema };
+    return { kind: "object", fields, flags: flagsOf(chain), source, declared: schema };
   }
-  return { kind: "leaf", core, signature: zodSchemaSignature(core), chain, source, declared: schema };
+  return { kind: "leaf", core, signature: zodSchemaSignature(core), flags: flagsOf(chain), source, declared: schema };
 }
 
 function showDefault(declared: ZodDeclaredDefault | undefined): string {
@@ -160,32 +190,29 @@ function typeOf(node: MergeNode): string {
       : node.signature.startsWith("opaque#")
         ? `a ${(getZodTypeName(node.core) ?? "custom").replace(/^Zod/, "").toLowerCase()} schema that only matches itself`
         : node.signature;
-  return [...node.chain].reverse().reduce(
-    (out, w) => `${out}.${w.kind}(${w.kind === "default" ? showDefault(w.declared) : ""})`,
-    core
+  const { flags } = node;
+  return (
+    core +
+    ".nullable()".repeat(flags.nullable) +
+    (flags.fill.kind === "default" ? `.default(${showDefault(flags.fill.declared)})` : "") +
+    (flags.fill.kind === "absent" ? ".optional()" : "") +
+    (flags.readonly ? ".readonly()" : "")
   );
 }
 
-/**
- * The chain both declarations agree on: equal, or one the other's with outer
- * `.optional()`, `.readonly()` or `.default()` wrappers added, the longer kept.
- * `undefined` when they differ otherwise: `.nullable()` is part of the type.
- */
-function joinChains(a: Wrapper[], b: Wrapper[]): Wrapper[] | undefined {
-  const [long, short] = a.length >= b.length ? [a, b] : [b, a];
-  const offset = long.length - short.length;
-  if (long.slice(0, offset).some((w) => w.kind === "nullable")) return undefined;
-  for (let i = 0; i < short.length; i++) if (long[offset + i]!.kind !== short[i]!.kind) return undefined;
-  return long;
+/** Whether `node`'s own wrappers already mean `flags` to a read, so it can be kept as declared. */
+function covers(node: MergeNode, flags: Flags): boolean {
+  const own = node.flags;
+  return own.readonly === flags.readonly && own.fill.kind === flags.fill.kind;
 }
 
 /** Merge `b` into `a` at `path`, or throw a conflict naming both declarers. */
 function mergeNodes(owner: string, a: MergeNode, b: MergeNode, path: string): MergeNode {
   if (a.declared !== undefined && a.declared === b.declared) return a;
-  const typeConflict = (why = "different types") => {
+  const typeConflict = () => {
     const opaque = [a, b].some((n) => n.kind === "leaf" && n.signature.startsWith("opaque#"));
     return new ScopeStateSchemaConflictError(
-      owner, "type", path, why,
+      owner, "type", path, "different types",
       `${a.source} types it as ${typeOf(a)} and ${b.source} as ${typeOf(b)}`,
       opaque
         ? "A schema that can't be compared by its structure agrees only with itself: share one schema for the field."
@@ -195,61 +222,71 @@ function mergeNodes(owner: string, a: MergeNode, b: MergeNode, path: string): Me
   };
   if (a.kind !== b.kind) throw typeConflict();
   if (a.kind === "leaf" && a.signature !== (b as LeafNode).signature) throw typeConflict();
-  const chain = joinChains(a.chain, b.chain);
-  if (chain === undefined) {
-    const nullable = (n: MergeNode) => n.chain.filter((w) => w.kind === "nullable").length;
-    throw typeConflict(nullable(a) !== nullable(b) ? "different types" : "different wrappers");
-  }
+  if (a.flags.nullable !== b.flags.nullable) throw typeConflict();
 
-  // The defaults both chains declare at the same depth must agree.
-  const offsetA = chain.length - a.chain.length;
-  const offsetB = chain.length - b.chain.length;
-  for (let i = Math.max(offsetA, offsetB); i < chain.length; i++) {
-    const left = a.chain[i - offsetA]!.declared;
-    const right = b.chain[i - offsetB]!.declared;
-    if (left === undefined || right === undefined) continue;
-    if (left.kind === "static" && right.kind === "static") {
-      if (deepEqual(left.value(), right.value())) continue;
+  // Two defaults that would fill must agree; a default on one side only is taken.
+  const left = a.flags.fill;
+  const right = b.flags.fill;
+  if (left.kind === "default" && right.kind === "default") {
+    const l = left.declared;
+    const r = right.declared;
+    if (l.kind === "static" && r.kind === "static") {
+      if (!deepEqual(l.value(), r.value())) {
+        throw new ScopeStateSchemaConflictError(
+          owner, "default", path, "different defaults",
+          `${a.source} defaults it to ${showDefault(l)} and ${b.source} to ${showDefault(r)}`,
+          "Declare one default, or share one schema for the field.",
+          a.source, b.source
+        );
+      }
+    } else if (l.factory !== r.factory) {
       throw new ScopeStateSchemaConflictError(
-        owner, "default", path, "different defaults",
-        `${a.source} defaults it to ${showDefault(left)} and ${b.source} to ${showDefault(right)}`,
-        "Declare one default, or share one schema for the field.",
+        owner, "default", path, "a dynamic default",
+        `${a.source} and ${b.source} each declare a default factory (or one a factory and one a value), and a factory can't be compared`,
+        "Share one schema for the field.",
         a.source, b.source
       );
     }
-    if (left.factory === right.factory) continue;
-    throw new ScopeStateSchemaConflictError(
-      owner, "default", path, "a dynamic default",
-      `${a.source} and ${b.source} each declare a default factory (or one a factory and one a value), and a factory can't be compared`,
-      "Share one schema for the field.",
-      a.source, b.source
-    );
   }
+  const flags: Flags = {
+    nullable: a.flags.nullable,
+    readonly: a.flags.readonly || b.flags.readonly,
+    fill:
+      left.kind === "default" ? left
+      : right.kind === "default" ? right
+      : left.kind === "absent" || right.kind === "absent" ? { kind: "absent" }
+      : { kind: "required" }
+  };
 
-  const kept = chain === a.chain ? a : b;
-  if (a.kind === "leaf") return kept;
+  if (a.kind === "leaf") {
+    // Keep a declared leaf that already means the merged flags; rebuild the
+    // wrappers around the first declarer's own core only when neither does.
+    if (covers(a, flags)) return a;
+    if (covers(b, flags)) return b;
+    return { ...a, flags, declared: undefined };
+  }
   const fields = new Map(a.fields);
   for (const [key, child] of (b as ObjectNode).fields) {
     const have = fields.get(key);
     fields.set(key, have === undefined ? child : mergeNodes(owner, have, child, `${path}.${key}`));
   }
-  return { kind: "object", fields, chain, source: a.source, declared: undefined };
+  return { kind: "object", fields, flags, source: a.source, declared: undefined };
 }
 
 /** The schema a merged node stands for: the declared one when nothing was merged into it. */
 function toSchema(node: MergeNode): ZodTypeAny {
   if (node.declared !== undefined) return node.declared;
-  // Only an object is ever rebuilt: its fields, then its wrappers inside out,
-  // each as declared (a default keeps its own factory).
-  let schema: ZodTypeAny = z.object(
-    Object.fromEntries([...(node as ObjectNode).fields].map(([key, child]) => [key, toSchema(child)]))
-  );
-  for (const wrapper of [...node.chain].reverse()) {
-    if (wrapper.kind === "optional") schema = schema.optional();
-    else if (wrapper.kind === "nullable") schema = schema.nullable();
-    else if (wrapper.kind === "readonly") schema = schema.readonly();
-    else schema = schema.default(wrapper.declared!.factory as never);
-  }
+  // An object is rebuilt from its fields; a leaf keeps its own core schema
+  // object, so its constraints and identity survive. Either way the wrappers
+  // are put back from the merged flags, a default with its declared factory.
+  let schema: ZodTypeAny =
+    node.kind === "leaf"
+      ? node.core
+      : z.object(Object.fromEntries([...node.fields].map(([key, child]) => [key, toSchema(child)])));
+  for (let i = 0; i < node.flags.nullable; i++) schema = schema.nullable();
+  if (node.flags.fill.kind === "default") schema = schema.default(node.flags.fill.declared.factory as never);
+  else if (node.flags.fill.kind === "absent") schema = schema.optional();
+  if (node.flags.readonly) schema = schema.readonly();
   return schema;
 }
 

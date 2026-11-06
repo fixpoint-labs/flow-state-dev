@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "../src";
 import { mergeScopeStateSchemas, ScopeStateSchemaConflictError } from "../src/helpers/scope-state-merge";
+import { getReadonlyStateKeys } from "../src/helpers/zod-introspect";
 
 const decl = (schema: z.ZodTypeAny, source: string) => ({ schema, source });
 
@@ -126,6 +127,48 @@ describe("a leaf is never rebuilt, and a factory is never called", () => {
     const leaf = z.number().min(1).default(5);
     const merged = merge(z.object({ n: leaf }), z.object({ n: leaf, m: z.number().default(0) }));
     expect(merged.shape.n).toBe(leaf);
+  });
+});
+
+describe("optional, readonly and a default are flags on a field, not its type", () => {
+  const merge = (a: z.ZodTypeAny, b: z.ZodTypeAny) =>
+    (mergeScopeStateSchemas("Flow \"f\"", "session", [
+      decl(z.object({ x: a, onlyA: z.number().default(1) }), "block \"a\""),
+      decl(z.object({ x: b, onlyB: z.number().default(2) }), "block \"b\"")
+    ]) as z.AnyZodObject).shape.x as z.ZodTypeAny;
+
+  it("a default on one side and .optional() on the other merge, and the default fills; the defaulted leaf is kept", () => {
+    const planned = z.string().default("plan");
+    for (const x of [merge(planned, z.string().optional()), merge(z.string().optional(), planned)]) {
+      expect(x).toBe(planned);
+      expect(x.safeParse(undefined).data).toBe("plan");
+    }
+  });
+
+  it(".readonly() on one side and .optional() on the other merge into a field that is both", () => {
+    const core = z.string();
+    const x = merge(core.readonly(), core.optional());
+    expect(getReadonlyStateKeys(z.object({ x }))).toEqual(["x"]);
+    expect(x.safeParse(undefined).success).toBe(true);
+  });
+
+  it("a default with .readonly() against .optional(): readonly, and the default fills", () => {
+    const x = merge(z.string().default("plan").readonly(), z.string().optional());
+    expect(getReadonlyStateKeys(z.object({ x }))).toEqual(["x"]);
+    expect(x.safeParse(undefined).data).toBe("plan");
+  });
+
+  it("a rebuilt field keeps its core schema object, so constraints survive", () => {
+    const code = z.string().min(3);
+    const x = merge(code.readonly(), code.optional());
+    expect(x.safeParse("ab").success).toBe(false);
+    expect(x.safeParse("abc").success).toBe(true);
+  });
+
+  it("still refuses two different defaults, and a nullable on one side only", () => {
+    expect(() => merge(z.string().default("a").optional(), z.string().default("b"))).not.toThrow();
+    expect(() => merge(z.string().default("a"), z.string().default("b").readonly())).toThrow(/different defaults/);
+    expect(() => merge(z.string().nullable(), z.string().optional())).toThrow(/different types/);
   });
 });
 
