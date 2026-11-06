@@ -36,7 +36,7 @@ function row(id: string, title: string, status: TaskStatus, times: { updatedAt: 
   };
 }
 
-const adapter = { watchPins: () => () => {} } as unknown as LabAdapter;
+const adapter = { watchPins: () => () => {}, watchDismissed: () => () => {} } as unknown as LabAdapter;
 
 describe("a task's time in the tasks pane", () => {
   it("times a working run, marks one that stopped answering quiet, ages a finished one, and counts each state", () => {
