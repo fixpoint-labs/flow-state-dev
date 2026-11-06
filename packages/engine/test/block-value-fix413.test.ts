@@ -15,7 +15,7 @@ import {
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { buildItemLookup } from "@flow-state-dev/core/items";
-import { resolveBlockValueInternal, type BlockValueInternal } from "@flow-state-dev/core/items/internal";
+import { resolveBlockValueInternal, type BlockValueInternal } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores, runAction } from "../src";

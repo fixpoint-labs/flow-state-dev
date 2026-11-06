@@ -6,7 +6,7 @@
  * Once the wait has ended, at the deadline with no answer yet, the tool answers
  * `running` and the same answer arrives later as a message.
  */
-import { waitOnRequest } from "@flow-state-dev/core";
+import { requestHostOf, waitOnRequest } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { checkWaitable, toolCallOf, hasEnded } from "@flow-state-dev/orchestration/internal";
 import type { WorkerInstallation } from "../workers/installation";
@@ -82,7 +82,7 @@ export async function sendAndWaitForReply(
   };
   // The park is owed before the row (FIX-2269): a process that dies between
   // the row and the park leaves the request for the engine to continue.
-  const waits = ctx.requestHost?.waits;
+  const waits = requestHostOf(ctx)?.waits;
   return waits?.owingPark !== undefined ? waits.owingPark(sendThenWait) : sendThenWait();
 }
 
@@ -107,7 +107,7 @@ export async function wakeHeldWait(ctx: BlockContext, row: Pick<WorkerMessageRow
     const asked = (await log.getOptional(row.inReplyTo))?.state;
     if (asked === undefined || asked.answeredBy !== row.id || asked.deadlineAt === undefined || asked.waitEndedAt !== undefined) return "not-held";
     if (asked.fromSession !== ctx.session.identity.id) return "not-held";
-    const resumeWait = ctx.requestHost?.resumeWait;
+    const resumeWait = requestHostOf(ctx)?.resumeWait;
     // No host that resumes waits holds none: the wait read the answer at its request's end.
     if (resumeWait === undefined) return "woken";
     // Not parked yet: look again shortly.

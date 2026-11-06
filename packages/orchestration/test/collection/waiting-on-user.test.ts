@@ -7,7 +7,8 @@
  * (refused).
  */
 import { describe, expect, it } from "vitest";
-import type { BlockContext, ResumeWaitInput, ResumeWaitResult } from "@flow-state-dev/core/types";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { ResumeWaitInput, ResumeWaitResult } from "@flow-state-dev/core/internal";
 import {
   openHolds,
   ticketForClaim,

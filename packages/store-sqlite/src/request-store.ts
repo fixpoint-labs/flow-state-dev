@@ -14,7 +14,7 @@
  */
 import type Database from "better-sqlite3";
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import type {
   ConditionalRequestFields,
   ConditionalWriteResult,

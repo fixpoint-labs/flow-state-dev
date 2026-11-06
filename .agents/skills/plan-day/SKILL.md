@@ -102,10 +102,8 @@ Select up to **8 tasks**. If $ARGUMENTS specifies a focus area, weight tasks in 
 
 **The ceiling of 8 is deliberate and stays.** A human team focusing on one or two goals is
 solving an attention-splitting problem we don't have — these run in isolated worktrees and
-cost each other nothing. What *does* need bounding is how many distinct **objectives** are
-in flight, and that cap lives on epics
-([`orchestration.md`](../../../docs/contributing/orchestration.md) → "How many epics run at
-once"), not here. So: don't trim the list to look focused. Mark which tasks serve the
+cost each other nothing. How many objectives are in flight is the product owner's call. So:
+don't trim the list to look focused. Mark which tasks serve the
 objective and let the count be what it is — **a day where zero of the eight carry ⭑ is the
 signal**, and it is one you can only see if the eight are all still listed.
 

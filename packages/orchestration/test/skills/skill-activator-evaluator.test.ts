@@ -145,7 +145,11 @@ function readTurn(response: ReturnType<typeof createResponseEmitter>) {
         (i.provenance as { blockName?: string }).blockName === "skill-activator",
     )
     .reduce<ActivatorDelta>((acc, i) => ({ ...acc, ...(i.delta as ActivatorDelta) }), {});
-  /** Whether the activator wrote the active-skills field at all, and what. */
+  /**
+   * Whether the activator wrote the active-skills field at all, and what. The
+   * skills capability defaults the field to `[]`, so a turn that activates
+   * nothing may write nothing: "activates nothing" reads `activeSkills ?? []`.
+   */
   const sessionWrite = stateChanges.find(
     (i) => i.scope === "session" && "activeSkills" in (i.delta as Record<string, unknown>),
   );
@@ -302,7 +306,7 @@ describe("with an evaluator: when it runs and what it is offered", () => {
       expect(result.error).toBeUndefined();
       expect(model.calls).toHaveLength(0);
       expect(classifier.calls).toHaveLength(0);
-      expect(activeSkills).toEqual([]);
+      expect(activeSkills ?? []).toEqual([]);
     }
   });
 
@@ -347,7 +351,7 @@ describe("with an evaluator: the pick is final", () => {
       classifier: classifierMock([{ name: "research", confidence: 0.1 }]),
     });
     expect(result.error).toBeUndefined();
-    expect(activeSkills).toEqual([]);
+    expect(activeSkills ?? []).toEqual([]);
   });
 
   it("activates a pick that carries no confidence, with no confidence key and a null aggregate (BR-11)", async () => {
@@ -397,7 +401,7 @@ describe("with an evaluator: the pick is final", () => {
       const criteria = (model.calls[0]!.questions.skill as { criteria: Record<string, unknown> }).criteria;
       expect(Object.keys(criteria)).toContain("research");
       // ...but it is gone now, so nothing activates.
-      expect(activeSkills).toEqual([]);
+      expect(activeSkills ?? []).toEqual([]);
     });
   }
 
@@ -409,7 +413,7 @@ describe("with an evaluator: the pick is final", () => {
       activator: createSkillActivator({ initialSkills: withNone, evaluator: skillEvaluator(noSkill) }),
     });
     expect(first.result.error).toBeUndefined();
-    expect(first.activeSkills).toEqual([]);
+    expect(first.activeSkills ?? []).toEqual([]);
     expect(first.activatorState.classifierConfidence).toBeNull();
     const criteria = (noSkill.calls[0]!.questions.skill as { criteria: Record<string, unknown> }).criteria;
     expect(Object.keys(criteria)).toContain("none");
@@ -1098,7 +1102,7 @@ describe("recentMessages: when it reads, and what it keeps", () => {
     expect(result.error).toBeUndefined();
     expect((inner.calls[0]!.state as { recentMessages: unknown[] }).recentMessages).toHaveLength(2);
     expect(Object.keys((inner.calls[0]!.questions.skill as { criteria: object }).criteria)).toContain("research");
-    expect(activeSkills).toEqual([]);
+    expect(activeSkills ?? []).toEqual([]);
   });
 });
 

@@ -100,6 +100,7 @@
 import { z, type ZodTypeAny } from "zod";
 import type { BlockContext, BlockDefinition } from "../types/block";
 import { canHoldWait, MAX_WAIT_DEPTH } from "../types/wait-gate";
+import { requestHostOf } from "../types/request-host";
 import { waitOnRequest } from "./wait-on-request";
 import {
   DispatchRefusedError,
@@ -476,7 +477,7 @@ export function dispatcher(
  * after the park sends nothing again and parks on the same gate.
  */
 async function sendAndWait(name: string, ctx: BlockContext, send: () => Promise<DispatchHandle>): Promise<DispatchWaitResult> {
-  const waits = ctx.requestHost?.waits;
+  const waits = requestHostOf(ctx)?.waits;
   if (waits === undefined || !canHoldWait(ctx) || ctx.runOnce === undefined || ctx.suspend === undefined) {
     throw new Error(
       `[dispatcher] "${name}": wait_unavailable: this host can't hold a wait (it needs a durable ` +

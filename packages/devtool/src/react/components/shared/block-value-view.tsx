@@ -11,8 +11,8 @@
  * the producing block in the trace tree (FIX-556).
  */
 import type { ItemLookup } from "@flow-state-dev/core/items";
-import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
-import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
+import type { BlockValueInternal } from "@flow-state-dev/core/internal";
+import { resolveBlockValueInternal } from "@flow-state-dev/core/internal";
 import { Link2, Package } from "lucide-react";
 import { JsonViewer } from "./json-viewer";
 import { useTraceLookup } from "../../context/trace-context";

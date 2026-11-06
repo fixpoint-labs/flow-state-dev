@@ -20,17 +20,20 @@
  * session, and a refused turn leaves the row and the session for a fix.
  */
 import type { InitialSkill } from "@flow-state-dev/core";
-import { SESSION_REQUEST_END_HOOK } from "@flow-state-dev/core/types";
+import { SESSION_REQUEST_END_HOOK } from "@flow-state-dev/core/internal";
 import type {
   FlowInstance,
   ResourceCollectionRef,
-  SessionRequestEndHook,
   SessionCreateCheck,
   SessionCreateCheckInput,
   SessionCreateCheckResult
 } from "@flow-state-dev/core/types";
+import type {
+  SessionRequestEndHook
+} from "@flow-state-dev/core/internal";
 import type { DeclaredResources, ResourceVisibilityRule } from "@flow-state-dev/core";
 import { z } from "zod";
+import { routedFromStateSchema } from "./routed-from";
 import { AGENT_FLOW, defineAgentWorkerFlow } from "../agent-worker-flow";
 import {
   hireRefusalReasons,
@@ -481,7 +484,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     [FILING_SESSION_STATE_KEY]: z.string().min(1).readonly().optional(),
     [WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional(),
     // Written by the `work` entry when it starts a routed task here (FIX-2083): server-owned.
-    [ROUTED_FROM_STATE_KEY]: z.string().min(1).optional(),
+    [ROUTED_FROM_STATE_KEY]: routedFromStateSchema,
     [TASK_ID_STATE_KEY]: z.string().min(1).readonly().optional(),
     [FILING_FLOW_STATE_KEY]: z.string().min(1).readonly().optional(),
     [FILING_WORKER_STATE_KEY]: z.string().min(1).readonly().optional(),

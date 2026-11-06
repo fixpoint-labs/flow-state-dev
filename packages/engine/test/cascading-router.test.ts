@@ -23,7 +23,7 @@ import {
 } from "@flow-state-dev/core";
 import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
 import { buildItemLookup } from "@flow-state-dev/core/items";
-import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
+import { resolveBlockValueInternal } from "@flow-state-dev/core/internal";
 import { mockEvaluationModel, testBlock, type MockEvaluationAnswer } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";

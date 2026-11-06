@@ -46,8 +46,16 @@ import type {
   StateSnapshotItem,
   StatusItem
 } from "@flow-state-dev/core/items";
-import type { BlockValueInternal, RuntimeItem } from "@flow-state-dev/core/items/internal";
-import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
+import type { BlockValueInternal, RuntimeItem, ReplayLog } from "@flow-state-dev/core/internal";
+import {
+  resolveAllowedActions,
+  BOARD_NOTICE_SEAM,
+  DISPATCH_SEAM,
+  REQUEST_RESUME_SEAM,
+  REQUEST_SPEND_SEAM,
+  type RequestResume,
+  type RequestSpendSeam
+} from "@flow-state-dev/core/internal";
 import type { BlockContext, BlockOutputHint, EmitMessageOptions, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import {
@@ -71,7 +79,7 @@ import type {
   UserRecord
 } from "../stores/types";
 import { createModelResolver } from "@flow-state-dev/core/models";
-import type { ModelResolver, ReplayLog } from "@flow-state-dev/core";
+import type { ModelResolver } from "@flow-state-dev/core";
 import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestSideChainPool } from "../execution/request-side-chain-pool";
 import { createRequestHost } from "./create-request-host";
@@ -84,7 +92,7 @@ function waitedByStamp(source: string | undefined, metadata: unknown) {
   return waitedBy === undefined ? {} : { waitedBy };
 }
 import { ensureSessionRecord, refuseReadonlyStateChange } from "./session-birth";
-import { applyScopeStateDefaults } from "./scope-state-defaults";
+import { applyScopeStateDefaults, scopeStateSchema } from "./scope-state-defaults";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { isTraceObservabilityEnabled, errorDetailsWithCause, estimateTokenCounter, isValidOrgId, buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
@@ -99,18 +107,12 @@ import {
   type ErrorCaptureBlockInfo,
   type ErrorCaptureIdentity
 } from "../errors/error-capture";
-import { SuspensionError, SuspensionRejectedError, SuspensionTimeoutError, resolveAllowedActions, type SuspendOptions } from "@flow-state-dev/core";
+import { SuspensionError, SuspensionRejectedError, SuspensionTimeoutError, type SuspendOptions } from "@flow-state-dev/core";
 import {
-  BOARD_NOTICE_SEAM,
-  DISPATCH_SEAM,
-  REQUEST_RESUME_SEAM,
-  REQUEST_SPEND_SEAM,
   SUSPENSION_SKIPPED,
   isUserSuspension,
   suspendForUserOn,
-  type RequestResume,
-  type RequestSpendSeam,
-  type SuspendForUser,
+  type SuspendForUser
 } from "@flow-state-dev/core/types";
 import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
 import { matchesPattern } from "@flow-state-dev/core/types";
@@ -2496,15 +2498,16 @@ export async function createExecutionContext<
   );
   // Scope state reads with its schema's defaults filled in, so a
   // defaulted field is present on a fresh or older record, as the state's
-  // type promises. Nothing else of the stored blob changes. Every read of a
+  // type promises. The schema is the flow's merged one, so a default a block
+  // or capability declares fills too. Nothing else of the stored blob changes. Every read of a
   // stored record goes through these: the load here, and the records a write
   // or a conflict hands back (`createScopePersist`, `createScopeReread`).
   const readUserState = (state: unknown) =>
-    applyScopeStateDefaults(flow.user?.stateSchema, state) as TUserState;
+    applyScopeStateDefaults(scopeStateSchema(flow, "user"), state) as TUserState;
   const readSessionState = (state: unknown) =>
-    applyScopeStateDefaults(flow.session?.stateSchema, state) as TSessionState;
+    applyScopeStateDefaults(scopeStateSchema(flow, "session"), state) as TSessionState;
   const readOrgState = (state: unknown) =>
-    applyScopeStateDefaults(flow.org?.stateSchema, state) as TOrgState;
+    applyScopeStateDefaults(scopeStateSchema(flow, "org"), state) as TOrgState;
   const userContainer = createStateContainer<TUserState>(
     readUserState(userRef.current.state),
     userRef.current.version
@@ -2605,7 +2608,8 @@ export async function createExecutionContext<
   // The session's readonly state fields, as it was created with them. A
   // mutation that would change one is refused before anything is written,
   // whichever path proposed it: a block, a tool, an action.
-  const readonlyFields = getReadonlyStateKeys(flow.session?.stateSchema);
+  // Off the merged schema, so a readonly field a block declares is guarded too.
+  const readonlyFields = getReadonlyStateKeys(scopeStateSchema(flow, "session"));
   const createdWith = sessionContainer.read() as Record<string, unknown>;
   const sessionOps = createScopeStateOps(sessionContainer, {
     cas: flow.session?.cas,

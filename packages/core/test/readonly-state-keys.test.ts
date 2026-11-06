@@ -32,7 +32,8 @@ describe("getReadonlyStateKeys", () => {
 
   it("finds none in anything but a plain object at the top", () => {
     expect(getReadonlyStateKeys(undefined)).toEqual([]);
-    expect(getReadonlyStateKeys(z.object({ a: z.string().readonly() }).default({ a: "x" }))).toEqual([]);
+    // A wrapped root object still has its readonly keys: a scope record is that object.
+    expect(getReadonlyStateKeys(z.object({ a: z.string().readonly() }).default({ a: "x" }))).toEqual(["a"]);
     expect(
       getReadonlyStateKeys(z.union([z.object({ a: z.string().readonly() }), z.object({ b: z.string() })]))
     ).toEqual([]);

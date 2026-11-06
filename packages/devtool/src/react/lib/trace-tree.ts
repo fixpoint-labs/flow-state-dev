@@ -1,6 +1,6 @@
 import type { BlockTraceItem, OutputItem, StateSnapshotItem, StatusItem } from "@flow-state-dev/core/items";
 import { sideChainTaskCount } from "./side-chain-task-count";
-import { parseBlockInstanceId } from "@flow-state-dev/core/items/internal";
+import { parseBlockInstanceId } from "@flow-state-dev/core/internal";
 import type { DevtoolItem } from "./item-types";
 import type { RequestGroup } from "../components/workspace/stream-view";
 

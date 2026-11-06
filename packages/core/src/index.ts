@@ -134,65 +134,13 @@ export type {
 export { defineCapability, getBaseCapability } from "./capability";
 
 /**
- * The request-host seam (FIX-999) — how a capability's helpers reach facilities
- * only the runtime can provide, without casting the context.
- */
-export { NoRequestHostError, requireRequestHost } from "./types/request-host";
-export type {
-  LivenessAnswers,
-  ParentTaskOutcome,
-  RequestHost,
-  ResumeWaitInput,
-  ResumeWaitResult,
-  RequestWaits,
-  RequestSessions,
-  SessionHistory,
-  SessionHistoryQuery,
-  PeerSessionView,
-  RequestWakes,
-  SettleParentTaskInput,
-  SettleParentTaskResult,
-  WaitDeadlines,
-  WakeSettleResult,
-  WakeView
-} from "./types/request-host";
-
-/**
- * The wait gate — what a request parks on while work it started runs
- * elsewhere, and how the wait ends: the work's ending, its deadline, or a stop.
+ * One dispatch protocol — typed entries addressed `(type, name)`, and the
+ * `dispatcher()` block that sends to one.
  */
 export {
-  MAX_WAIT_DEPTH,
-  WAIT_DEADLINE_ENTRY,
-  WAIT_DEADLINE_OUTCOME,
-  WAIT_GATE_REASON,
-  isWaitGate,
-  parkOnWait,
-  canHoldWait,
-  parseWaitOutcome,
-  recordedWaitOutcome,
-  waitGateDataOf
-} from "./types/wait-gate";
-export type {
-  WaitEndingErrorCode,
-  WaitGateBinding,
-  WaitGateData,
-  WaitOutcome,
-  WaitRow,
-  ParkOnWaitInput
-} from "./types/wait-gate";
-
-/**
- * One dispatch protocol — typed entries addressed `(type, name)`, the
- * `dispatcher()` block that sends to one, and the seam the runtime attaches.
- */
-export {
-  DISPATCH_SEAM,
   DISPATCH_TYPES,
   DispatchRefusedError,
-  NoDispatchSeamError,
   bindTaskDispatcher,
-  dispatchThroughSeam,
   markDispatcher,
   taskBindingOf,
   framed,
@@ -211,7 +159,6 @@ export type {
   DispatchAddress,
   DispatchOutcome,
   DispatchRefusal,
-  DispatchSeam,
   DispatchSpec,
   DispatchType,
   InternalEntry,
@@ -247,7 +194,6 @@ export { mapLimit } from "./helpers/concurrency";
 export { SLASH_COMMAND_PATTERN } from "./helpers/slash-command";
 export { lifecycleSchema } from "./helpers/lifecycle-schema";
 export { isTraceObservabilityEnabled } from "./helpers/trace-observability";
-export { cacheTokensOf } from "./helpers/cache-tokens";
 export { resolveTracingLevel } from "./helpers/tracing-level";
 export type { TracingLevel } from "./helpers/tracing-level";
 export { transientSlot } from "./helpers/transient-slot";
@@ -272,12 +218,6 @@ export {
   logicalBlockIdOf,
   ROOT_BLOCK_PATH
 } from "./blocks/internal/block-instance-id";
-export { resolveActiveStatusMessage } from "./blocks/internal/resolve-active-status-message";
-// Log-as-source-of-truth resume read model (FIX-811). Exported so the server
-// can build a ReplayLog from a request's persisted items at re-entry and assign
-// it to `ctx._replayLog`; the core `executeBlock` seam consumes the interface.
-export { buildReplayLog } from "./blocks/internal/replay-log";
-export type { ReplayLog } from "./blocks/internal/replay-log";
 // Canonical item-log view (FIX-811): collapse a resumed request's superseded
 // re-emissions for the read paths (GET history, useSession, SSE replay seed).
 export { collapseToCanonicalLog } from "./items/canonical-log";
@@ -302,9 +242,6 @@ export {
   sequencer,
   type DispatchHandle,
   type DispatchWaitResult,
-  waitOnRequest,
-  type RequestWaitOutcome,
-  type WaitOnRequestInput,
   type DispatcherConfig,
   type DispatcherSession,
   type InternalDispatcherConfig,
@@ -430,7 +367,6 @@ export type {
 
 export {
   defineScheduleBinding,
-  isFiveFieldCron,
   isKnownTimeZone,
   validateScheduleConfig,
   validateSchedulesConfig
@@ -571,15 +507,6 @@ export type {
   MakeSchemaStrictOptions,
   StrictViolation
 } from "./models";
-export type {
-  RequestSideChainPool,
-  RequestSideChainPoolResult,
-  RequestSideChainPoolDrainOptions,
-  RequestSideChainPoolDrainAllOptions,
-  RequestSideChainPoolDrainToQuiescenceOptions,
-  RequestSideChainTaskMeta
-} from "./execution/request-side-chain-pool";
-export { getRequestSideChainPool } from "./execution/request-side-chain-pool";
 
 export {
   FlowError,
@@ -590,7 +517,6 @@ export {
   SuspensionError,
   SuspensionRejectedError,
   SuspensionTimeoutError,
-  resolveAllowedActions,
   RouteUnavailableError,
   RecordedValueOmittedError,
   RECORDED_VALUE_OMITTED,

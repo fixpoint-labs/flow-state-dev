@@ -12,7 +12,7 @@
  */
 import { DEFAULT_ORG_ID, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
-import { parseBlockInstanceId } from "@flow-state-dev/core/items/internal";
+import { parseBlockInstanceId } from "@flow-state-dev/core/internal";
 import type { FlowInstance, GeneratorModel } from "@flow-state-dev/core/types";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";

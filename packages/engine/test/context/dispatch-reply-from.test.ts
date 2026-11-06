@@ -17,9 +17,11 @@ import {
   defineFlow,
   dispatcher,
   handler,
-  requireRequestHost,
   sequencer
 } from "@flow-state-dev/core";
+import {
+  requireRequestHost
+} from "@flow-state-dev/core/internal";
 import { createFlowState, createInMemoryStores, inMemoryStores, runAction } from "../../src";
 import { createRequestHost } from "../../src/context/create-request-host";
 import { readDispatchStamp } from "../../src/execution/dispatch-metadata";

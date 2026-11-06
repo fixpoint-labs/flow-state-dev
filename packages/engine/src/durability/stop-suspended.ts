@@ -46,7 +46,8 @@
  * skipped) whose turn never continued (FIX-1850): the turn continues with the
  * person's recorded resolution, as their resume would have.
  */
-import { isUserSuspension, isWaitGate, continuesAtExpiry, RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
+import { isUserSuspension, RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
+import { isWaitGate, continuesAtExpiry } from "@flow-state-dev/core/internal";
 import type { ResumeAction, ResumeContext, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { RequestRecord, StoreRegistry, WakeStore } from "../stores/types";
 import type { DurabilityProvider } from "./types";

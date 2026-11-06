@@ -40,13 +40,13 @@
       "types": "./dist/harness/index.d.ts",
       "default": "./src/harness/index.ts"
     },
+    "./internal": {
+      "types": "./dist/internal/index.d.ts",
+      "default": "./src/internal/index.ts"
+    },
     "./items": {
       "types": "./dist/items/index.d.ts",
       "default": "./src/items/index.ts"
-    },
-    "./items/internal": {
-      "types": "./dist/items/internal.d.ts",
-      "default": "./src/items/internal.ts"
     },
     "./prompt": {
       "types": "./dist/prompt/index.d.ts",
@@ -115,13 +115,13 @@
         "types": "./dist/harness/index.d.ts",
         "default": "./dist/harness/index.js"
       },
+      "./internal": {
+        "types": "./dist/internal/index.d.ts",
+        "default": "./dist/internal/index.js"
+      },
       "./items": {
         "types": "./dist/items/index.d.ts",
         "default": "./dist/items/index.js"
-      },
-      "./items/internal": {
-        "types": "./dist/items/internal.d.ts",
-        "default": "./dist/items/internal.js"
       },
       "./prompt": {
         "types": "./dist/prompt/index.d.ts",

@@ -83,12 +83,14 @@ import { handler, SuspensionError } from "@flow-state-dev/core";
 import {
   bindTaskDispatcher,
   DispatchRefusedError,
-  dispatchThroughSeam,
   markDispatcher,
   resolveTaskAction,
   resolveTaskFlowKind,
-  resolveTaskSessionTarget,
+  resolveTaskSessionTarget
 } from "@flow-state-dev/core/types";
+import {
+  dispatchThroughSeam
+} from "@flow-state-dev/core/internal";
 import type {
   BlockContext,
   BlockDefinition,

@@ -594,62 +594,6 @@ export interface BlockContext<
    */
   saveCheckpoint?(): Promise<void>;
 
-  /**
-   * The one declared seam through which a capability reaches facilities only the
-   * runtime can provide — starting a detached child request, settling the row
-   * this request was dispatched for, asking whether dispatched work is still
-   * running (FIX-999).
-   *
-   * Framework-facing, not an app-author surface: there is nothing to declare to
-   * get one. A host built through the shipped entry points supplies it.
-   *
-   * Optional in the *type* so a hand-built test context still type-checks; not
-   * optional in *deployment* — a host that executes requests without one fails at
-   * construction. Read it with `requireRequestHost(ctx)`, which throws by name
-   * when it is absent rather than failing as `undefined is not a function`.
-   *
-   * What crosses is behaviour, never handles: no verb takes an identity or a
-   * session id, and nothing here names a store or a flow. That is the whole point
-   * — reaching the runtime used to require casting this context to a shape
-   * TypeScript said it did not have.
-   */
-  requestHost?: RequestHost;
-
-  /**
-   * @internal The runtime's dispatch operation, attached under a symbol key so
-   * it is not a named member any handler body reaches. Read only by
-   * `dispatchThroughSeam`, which `dispatcher()` and the task board's dispatch
-   * call — the blocks that carry a `DispatchAddress`. See `types/dispatch.ts`.
-   */
-  [DISPATCH_SEAM]?: DispatchSeam;
-
-  /**
-   * @internal The running request's request-end registry (FIX-2077), under a
-   * symbol key. Read only by `onRequestEnded`, which a framework package calls
-   * to run after the request's last drain. See `types/request-end.ts`.
-   */
-  [REQUEST_END_SEAM]?: RequestEndSeam;
-
-  /**
-   * @internal The running request's spend ledger (FIX-2145), under a symbol
-   * key. Read only by `reportHarnessSpend`, which a harness calls when a run
-   * ends. See `types/request-end.ts`.
-   */
-  [REQUEST_SPEND_SEAM]?: RequestSpendSeam;
-
-  /**
-   * @internal The running request's board-notice seam, under a
-   * symbol key. Read only by `publishBoardChange`, which the task
-   * collection's change adapter calls. See `types/board-notice.ts`.
-   */
-  [BOARD_NOTICE_SEAM]?: BoardNoticeSeam;
-
-  /**
-   * @internal How the running request resumed (FIX-2129), under a symbol key.
-   * Read only by `requestResumeOf`. See `types/request-resume.ts`.
-   */
-  [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined;
-
   /** @internal Server-side instrumentation hooks. Not part of the public API. */
   _runtimeHooks?: {
     onBlockStart?: (blockName: string, blockKind: string, input: unknown, transient?: boolean) => void;
@@ -932,6 +876,76 @@ export interface BlockContext<
    * public surface — user code reads `meta.model`, never this slot.
    */
   _currentModelIdentity?: ModelIdentity;
+}
+
+/**
+ * The context the engine builds: the public {@link BlockContext} plus the
+ * runtime's wiring, which a handler body never reaches by name.
+ *
+ * Exported from `@flow-state-dev/core/internal` only, for our own packages. A
+ * framework package holding a public `ctx` reads these members through the
+ * seam readers (`requestHostOf`, `requireRequestHost`, `dispatchThroughSeam`,
+ * `onRequestEnded`, `reportHarnessSpend`, `publishBoardChange`,
+ * `requestResumeOf`), each of which takes any context and answers for a
+ * hand-built one that carries none.
+ */
+export interface InternalBlockContext extends BlockContext {
+  /**
+   * The one declared seam through which a capability reaches facilities only the
+   * runtime can provide — starting a detached child request, settling the row
+   * this request was dispatched for, asking whether dispatched work is still
+   * running (FIX-999).
+   *
+   * Framework-facing, not an app-author surface: there is nothing to declare to
+   * get one. A host built through the shipped entry points supplies it.
+   *
+   * Optional in the *type* so a hand-built test context still type-checks; not
+   * optional in *deployment* — a host that executes requests without one fails at
+   * construction. Read it with `requestHostOf(ctx)`, `undefined` when none is
+   * wired, or `requireRequestHost(ctx)`, which throws by name when it is absent
+   * rather than failing as `undefined is not a function`.
+   *
+   * What crosses is behaviour, never handles: no verb takes an identity or a
+   * session id, and nothing here names a store or a flow. That is the whole point
+   * — reaching the runtime used to require casting this context to a shape
+   * TypeScript said it did not have.
+   */
+  requestHost?: RequestHost;
+
+  /**
+   * The runtime's dispatch operation, attached under a symbol key so
+   * it is not a named member any handler body reaches. Read only by
+   * `dispatchThroughSeam`, which `dispatcher()` and the task board's dispatch
+   * call — the blocks that carry a `DispatchAddress`. See `types/dispatch.ts`.
+   */
+  [DISPATCH_SEAM]?: DispatchSeam;
+
+  /**
+   * The running request's request-end registry (FIX-2077), under a
+   * symbol key. Read only by `onRequestEnded`, which a framework package calls
+   * to run after the request's last drain. See `types/request-end.ts`.
+   */
+  [REQUEST_END_SEAM]?: RequestEndSeam;
+
+  /**
+   * The running request's spend ledger (FIX-2145), under a symbol
+   * key. Read only by `reportHarnessSpend`, which a harness calls when a run
+   * ends. See `types/request-end.ts`.
+   */
+  [REQUEST_SPEND_SEAM]?: RequestSpendSeam;
+
+  /**
+   * The running request's board-notice seam, under a
+   * symbol key. Read only by `publishBoardChange`, which the task
+   * collection's change adapter calls. See `types/board-notice.ts`.
+   */
+  [BOARD_NOTICE_SEAM]?: BoardNoticeSeam;
+
+  /**
+   * How the running request resumed (FIX-2129), under a symbol key.
+   * Read only by `requestResumeOf`. See `types/request-resume.ts`.
+   */
+  [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined;
 }
 
 /**

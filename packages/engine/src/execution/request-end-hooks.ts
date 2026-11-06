@@ -16,7 +16,7 @@ import {
   type RequestEndSeam,
   type RequestEnding,
   type RequestSpend
-} from "@flow-state-dev/core/types";
+} from "@flow-state-dev/core/internal";
 import type { RuntimeLogger } from "./logging";
 import { logRuntimeEvent } from "./logging";
 

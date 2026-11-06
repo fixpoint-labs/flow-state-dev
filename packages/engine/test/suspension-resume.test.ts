@@ -4,9 +4,10 @@
  * Verifies the ctx.suspend() → suspended status → resume endpoint → flow
  * completion lifecycle for durable actions.
  */
-import { buildReplayLog, collapseToCanonicalLog, defineFlow, handler, parseBlockInstanceId, sequencer } from "@flow-state-dev/core";
+import { collapseToCanonicalLog, defineFlow, handler, parseBlockInstanceId, sequencer } from "@flow-state-dev/core";
+import { buildReplayLog } from "@flow-state-dev/core/internal";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";

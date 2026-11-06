@@ -68,14 +68,15 @@
 
 import type { RequestRecord, StoreRegistry, WakeRecord } from "../stores/types";
 import { terminalAtMs } from "../stores/request-ended-at";
-import type { RequestStatus, SuspensionRecord, WaitOutcome } from "@flow-state-dev/core/types";
+import type { RequestStatus, SuspensionRecord } from "@flow-state-dev/core/types";
+import type { WaitOutcome } from "@flow-state-dev/core/internal";
 import {
   DEFAULT_RUNTIME_LOGGER,
   logRuntimeEvent,
   type RuntimeLogger
 } from "../execution/logging";
 import type { DurabilityProvider } from "./types";
-import { WAIT_DEADLINE_ENTRY, WAIT_DEADLINE_OUTCOME, isWaitGate, waitGateDataOf } from "@flow-state-dev/core/types";
+import { WAIT_DEADLINE_ENTRY, WAIT_DEADLINE_OUTCOME, isWaitGate, waitGateDataOf } from "@flow-state-dev/core/internal";
 import { resumeWaitGate } from "./resume-wait-gate";
 import { registerWaitSweeper } from "./wait-deadlines";
 import { outcomeOfRequest } from "./wait-chain";

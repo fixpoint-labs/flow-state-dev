@@ -13,7 +13,7 @@
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import { createResponseEmitter } from "@flow-state-dev/engine/host";
 import { runAction } from "@flow-state-dev/engine";
 import type { RequestRecord } from "@flow-state-dev/engine/host";

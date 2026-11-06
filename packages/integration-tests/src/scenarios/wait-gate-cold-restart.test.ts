@@ -20,17 +20,21 @@ import {
   defineFlow,
   generator,
   handler,
-  parkOnWait,
-  requireRequestHost,
   sequencer,
   type FlowInstance
 } from "@flow-state-dev/core";
+import {
+  parkOnWait,
+  requireRequestHost
+} from "@flow-state-dev/core/internal";
 import type {
-  WaitOutcome,
   GeneratorModel,
   GeneratorModelCallOptions,
   GeneratorModelResult
 } from "@flow-state-dev/core/types";
+import type {
+  WaitOutcome
+} from "@flow-state-dev/core/internal";
 import { createFlowState, type FlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 

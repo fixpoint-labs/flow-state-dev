@@ -12,7 +12,7 @@
  * says what waits on a person now; it says nothing about which turn opened it,
  * so it never decides this.
  */
-import { onRequestEnded } from "@flow-state-dev/core/types";
+import { onRequestEnded } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { Task, TaskClaimTicket } from "../tasks";
 import { askedOnTicket } from "../tasks/collection/holds";

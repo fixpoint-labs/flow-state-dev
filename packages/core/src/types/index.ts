@@ -30,50 +30,6 @@ export type {
 export { asRuntime, itemScope } from "./block";
 
 export type {
-  LivenessAnswers,
-  ParentTaskOutcome,
-  RequestHost,
-  ResumeWaitInput,
-  ResumeWaitResult,
-  RequestWaits,
-  RequestSessions,
-  SessionHistory,
-  SessionHistoryQuery,
-  PeerSessionView,
-  RequestWakes,
-  SettleParentTaskInput,
-  SettleParentTaskResult,
-  SuspensionAddress,
-  WaitDeadlines,
-  WakeSettleResult,
-  WakeView
-} from "./request-host";
-
-export { NoRequestHostError, requireRequestHost } from "./request-host";
-
-export type {
-  WaitEndingErrorCode,
-  WaitGateBinding,
-  WaitGateData,
-  WaitOutcome,
-  WaitRow,
-  ParkOnWaitInput
-} from "./wait-gate";
-export {
-  MAX_WAIT_DEPTH,
-  WAIT_DEADLINE_ENTRY,
-  WAIT_DEADLINE_OUTCOME,
-  WAIT_GATE_REASON,
-  isWaitGate,
-  continuesAtExpiry,
-  parkOnWait,
-  canHoldWait,
-  parseWaitOutcome,
-  recordedWaitOutcome,
-  waitGateDataOf
-} from "./wait-gate";
-
-export type {
   SessionCreateCheck,
   SessionCreateCheckInput,
   SessionCreateCheckResult,
@@ -86,7 +42,6 @@ export type {
   DispatchAddress,
   DispatchOutcome,
   DispatchRefusal,
-  DispatchSeam,
   DispatchSpec,
   DispatchType,
   InternalEntry,
@@ -103,49 +58,14 @@ export type {
   TaskTargetQuery
 } from "./dispatch";
 
-/** How the running request resumed (FIX-2129): read where a resumed request is admitted. */
-export { REQUEST_RESUME_SEAM, requestResumeOf } from "./request-resume";
-export type { RequestResume } from "./request-resume";
-
 /** Waiting for a user (FIX-2129): `ctx.suspendForUser`, its options and what it returns. */
 export { suspendForUserOn } from "./suspend-for-user";
 export type { ApprovalAnswer, UserAnswer, SuspendForUser, SuspendForUserCancelled, SuspendForUserContext, SuspendForUserOptions } from "./suspend-for-user";
 
-/** The board-notice seam: a task board's change reaches the change bus. */
-export { BOARD_NOTICE_SEAM, publishBoardChange } from "./board-notice";
-export type { BoardChange, BoardNoticeSeam } from "./board-notice";
-
-/** The request-end seam (FIX-2077): a framework package's hook after a request's last drain. */
 export {
-  REQUEST_END_SEAM,
-  REQUEST_SPEND_SEAM,
-  SESSION_REQUEST_END_HOOK,
-  addRequestSpendSource,
-  onRequestEnded,
-  readRequestSpend,
-  readRequestTotalSpend,
-  requestSpendSources
-} from "./request-end";
-export type {
-  BackgroundFailure,
-  RequestEndHook,
-  RequestEndSeam,
-  RequestEndStatus,
-  RequestEndVerdict,
-  RequestEnding,
-  RequestSpend,
-  RequestSpendSeam,
-  RequestSpendSource,
-  SessionRequestEndHook
-} from "./request-end";
-
-export {
-  DISPATCH_SEAM,
   DISPATCH_TYPES,
   DispatchRefusedError,
-  NoDispatchSeamError,
   bindTaskDispatcher,
-  dispatchThroughSeam,
   markDispatcher,
   taskBindingOf,
   framed,
@@ -219,7 +139,6 @@ export type {
 
 export {
   defineScheduleBinding,
-  isFiveFieldCron,
   isKnownTimeZone,
   validateScheduleConfig,
   validateSchedulesConfig

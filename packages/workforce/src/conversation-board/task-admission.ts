@@ -27,6 +27,7 @@ import { boardAboveOf } from "./board-above";
 import { CHECK_TASK_ENTRY, PIECE_OF, STEER_TURN_ENTRY } from "./board-entries";
 import { conversationLedgerAt, conversationLedgerResources, ledgerAboveOf, ownConversationLedger } from "./ledger";
 import { anotherTurnWaitsOnItsPlan } from "./plan";
+import { requestHostOf } from "@flow-state-dev/core/internal";
 
 /** The running row this session works, on the board above it (`./board-above`), or none. */
 async function ownTaskRow(ctx: BlockContext): Promise<{ ref: TaskCollectionRef; row: Task } | undefined> {
@@ -84,7 +85,7 @@ export function checkTaskEntry(concurrency: ConcurrencyConfig) {
       await afterTaskCheck(ctx, async () => {
         const own = await ownTaskRow(ctx);
         if (own !== undefined && own.row.keptOpenBy == null) return;
-        const wakes = ctx.requestHost?.wakes;
+        const wakes = requestHostOf(ctx)?.wakes;
         const read = await wakes?.read(CHECK_TASK_ENTRY);
         if (wakes !== undefined && read !== undefined) await wakes.settle(CHECK_TASK_ENTRY, read, null);
       });

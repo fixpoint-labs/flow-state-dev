@@ -14,7 +14,7 @@
  * characters are ever built.
  */
 import type { OmittedValue, StructureShape } from "@flow-state-dev/core/items";
-import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
+import type { BlockValueInternal } from "@flow-state-dev/core/internal";
 
 /** The limit an emitter applies when none is passed: 256 KiB. */
 export const DEFAULT_MAX_RECORDED_VALUE_BYTES = 256 * 1024;

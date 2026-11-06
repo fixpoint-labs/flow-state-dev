@@ -30,7 +30,8 @@
  */
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import { getBaseCapability, type CapabilityRef } from "@flow-state-dev/core";
-import { dispatchThroughSeam, type BlockContext, type DispatchOutcome, type DispatchRefusal, type ResourceRef } from "@flow-state-dev/core/types";
+import { type BlockContext, type DispatchOutcome, type DispatchRefusal, type ResourceRef } from "@flow-state-dev/core/types";
+import { requestHostOf, dispatchThroughSeam } from "@flow-state-dev/core/internal";
 import { decideTake, hasEnded, nextResendAt, NOTICE_DUE_MS } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { DISPATCH_ENTRY } from "../conversation-board/board-entries";
@@ -140,7 +141,7 @@ export function sendWithoutPassProblem(name: string, flow: unknown): string | un
  */
 export async function oweMessage(ctx: BlockContext, id: string): Promise<void> {
   try {
-    await ctx.requestHost?.wakes?.owe({ entry: DISPATCH_ENTRY, dueAt: Date.now() + NOTICE_DUE_MS });
+    await requestHostOf(ctx)?.wakes?.owe({ entry: DISPATCH_ENTRY, dueAt: Date.now() + NOTICE_DUE_MS });
   } catch {
     // The owed list still holds it; the next pass pays it.
   }
@@ -313,7 +314,7 @@ export async function payMessageDebts(ctx: BlockContext, recheck: RecheckRecipie
   const owed = owedOf(ctx.session.state);
   if (owed.length === 0) return undefined;
   const log = messageLogOf(ctx);
-  const maxAge = ctx.requestHost?.wakes?.maxDebtAgeMs ?? DEFAULT_DEBT_AGE_MS;
+  const maxAge = requestHostOf(ctx)?.wakes?.maxDebtAgeMs ?? DEFAULT_DEBT_AGE_MS;
   const drop: string[] = [];
   let next: number | undefined;
   const later = (at: number) => {

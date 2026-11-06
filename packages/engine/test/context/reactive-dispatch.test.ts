@@ -18,7 +18,7 @@ import {
   resourceContentChangeSchema,
 } from "@flow-state-dev/core";
 import type { ResourceChange, ResourceContentChange } from "@flow-state-dev/core";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import { createExecutionContext, createInMemoryStores } from "../../src";
 import { createInternalResponseEmitter } from "../../src/streaming/response-emitter";
 

@@ -6,7 +6,7 @@
  * for a touch of the board.
  */
 import { DEFAULT_ORG_ID, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
-import { onRequestEnded } from "@flow-state-dev/core/types";
+import { onRequestEnded } from "@flow-state-dev/core/internal";
 import type {
   BlockContext,
   FlowInstance,

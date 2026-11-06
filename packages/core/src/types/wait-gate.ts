@@ -38,6 +38,7 @@
 
 import { isUserSuspension } from "@flow-state-dev/contracts";
 import { SuspensionError, type SuspendOptions } from "../errors/suspension-error";
+import { requestHostOf } from "./request-host";
 
 /** The suspension reason a wait gate carries. */
 export const WAIT_GATE_REASON = "wait" as const;
@@ -229,10 +230,8 @@ export function waitGateDataOf(record: { readonly data?: Record<string, unknown>
  * server's request host, never from input. Every wait checks it before
  * anything is written.
  */
-export function canHoldWait(ctx: {
-  readonly requestHost?: { readonly resumeWait?: unknown; readonly hasWaitSweeper?: boolean; readonly waits?: unknown };
-}): boolean {
-  const host = ctx.requestHost;
+export function canHoldWait(ctx: object): boolean {
+  const host = requestHostOf(ctx);
   return host?.resumeWait !== undefined && host.hasWaitSweeper === true && host.waits !== undefined;
 }
 

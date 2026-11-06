@@ -15,7 +15,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { handler, defineFlow } from "@flow-state-dev/core";
-import { onRequestEnded, type BlockContext } from "@flow-state-dev/core/types";
+import { type BlockContext } from "@flow-state-dev/core/types";
+import { onRequestEnded } from "@flow-state-dev/core/internal";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { defineSessionBoard, workerConfigSchema, type WorkerManifest } from "../src";

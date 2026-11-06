@@ -6,7 +6,7 @@
  * another process, or skipped for good on a host with no wakes.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DISPATCH_SEAM } from "@flow-state-dev/core/types";
+import { DISPATCH_SEAM } from "@flow-state-dev/core/internal";
 import { notePassEnded, notePassStarted, triggerPass } from "../src/conversation-board/board";
 
 let next = 0;

@@ -42,16 +42,18 @@
  */
 import {
   isUserSuspension,
-  isWaitGate,
   taskDispatchInputSchema,
+  type SuspensionRecord
+} from "@flow-state-dev/core/types";
+import {
+  isWaitGate,
   waitGateDataOf,
   type RequestWaits,
-  type SuspensionRecord,
   type WaitDeadlines,
   type WaitGateBinding,
   type WaitOutcome,
   type WaitRow
-} from "@flow-state-dev/core/types";
+} from "@flow-state-dev/core/internal";
 import type { ActiveRequestEntry, RequestRecord, StoreRegistry, WakeStore } from "../stores/types";
 import { isFresh } from "../context/liveness-read";
 import type { DurabilityProvider } from "./types";

@@ -10,7 +10,7 @@ import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost, ResolvedPrincipal } from "../transports/types";
 import type { DurabilityProvider } from "../durability/types";
 import { isPublicReentryAllowed } from "./public-reentry";
-import { isWaitGate } from "@flow-state-dev/core/types";
+import { isWaitGate } from "@flow-state-dev/core/internal";
 import { expireUnderLease, resumeUnderLease } from "../durability/resume-under-lease";
 import {
   callerReachesRequest,

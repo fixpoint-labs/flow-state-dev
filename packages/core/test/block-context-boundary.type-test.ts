@@ -18,10 +18,13 @@
  *    That is strictly more precise than the all-or-nothing assertion it replaces.
  *    Re-aim these when the boundary moves; deleting them reopens the door.
  *
- * 2. **The runtime is reachable without a type assertion.** A capability helper
- *    calls the verbs through the declared member. There is deliberately no cast
- *    anywhere in this file: if reaching the runtime required one, this file would
- *    not compile, which is the compile-time half of the deliverable.
+ * 2. **The runtime is reachable without a type assertion, and not from the
+ *    public context.** `requestHost` and the five symbol-keyed seam slots live on
+ *    `InternalBlockContext` in `core/internal`, which the engine builds; a handler
+ *    hovering `ctx` sees none of them. A framework package reaches the host
+ *    through `requestHostOf(ctx)` or `requireRequestHost(ctx)`. There is
+ *    deliberately no cast anywhere in this file: if reaching the runtime required
+ *    one, this file would not compile.
  *
  * 3. **Dispatch is not a named member of the context.** A block that sends a
  *    dispatch is a `dispatcher()`, and the runtime's operation is reachable only
@@ -34,8 +37,12 @@
 import type { BlockContext } from "../src/types/block";
 import type { AnyResourceRef } from "../src/types/resource";
 import type { RequestHost } from "../src/types/request-host";
-import { requireRequestHost } from "../src/types/request-host";
+import { requestHostOf, requireRequestHost } from "../src/types/request-host";
 import { DISPATCH_SEAM, dispatchThroughSeam, type DispatchOutcome } from "../src/types/dispatch";
+import { REQUEST_END_SEAM, REQUEST_SPEND_SEAM } from "../src/types/request-end";
+import { BOARD_NOTICE_SEAM } from "../src/types/board-notice";
+import { REQUEST_RESUME_SEAM } from "../src/types/request-resume";
+import type { InternalBlockContext } from "../src/internal";
 
 declare const ctx: BlockContext;
 
@@ -97,13 +104,36 @@ ctx.flow.config = {};
 
 // ── 2. The seam: the runtime is reachable, with no assertion in this file ──
 
-// The member is DECLARED on the public context. This is the line that fails if
-// someone removes it — `requireRequestHost` alone would not catch that, because
-// its parameter is structural and a context *missing* an optional property still
-// satisfies it.
-const declared: RequestHost | undefined = ctx.requestHost;
+// The host and the seam slots are NOT on the public context: a handler hovering
+// `ctx` sees no runtime wiring. If a directive below reports "unused", a slot
+// came back onto `BlockContext`.
+
+// @ts-expect-error `requestHost` is on the internal context type only.
+void ctx.requestHost;
+
+// @ts-expect-error the request-end seam slot is internal.
+void ctx[REQUEST_END_SEAM];
+
+// @ts-expect-error the spend seam slot is internal.
+void ctx[REQUEST_SPEND_SEAM];
+
+// @ts-expect-error the board-notice seam slot is internal.
+void ctx[BOARD_NOTICE_SEAM];
+
+// @ts-expect-error the resume seam slot is internal.
+void ctx[REQUEST_RESUME_SEAM];
+
+// The internal context type the engine builds declares them. This is the line
+// that fails if someone removes the member — the readers alone would not catch
+// that, because they take any context.
+declare const internalCtx: InternalBlockContext;
+const declared: RequestHost | undefined = internalCtx.requestHost;
 void declared;
 
+// A framework package holding the public `ctx` reads the host without a cast:
+// `requestHostOf` is `undefined` on a hand-built context, `requireRequestHost` throws.
+const maybeHost: RequestHost | undefined = requestHostOf(ctx);
+void maybeHost;
 const host: RequestHost = requireRequestHost(ctx);
 
 // Settlement addresses the stamped row and takes no claim.
@@ -133,9 +163,12 @@ void ctx.startDetached;
 // @ts-expect-error and not on the request host either — a child is started by a dispatch.
 void host.startDetached;
 
-// The slot is declared under the symbol, and only there.
-const seam = ctx[DISPATCH_SEAM];
+// The slot is declared under the symbol, on the internal context only.
+const seam = internalCtx[DISPATCH_SEAM];
 void seam;
+
+// @ts-expect-error the dispatch slot is not on the public context.
+void ctx[DISPATCH_SEAM];
 
 // The substrate call takes the whole spec, and identity is never a field of it.
 const dispatched: Promise<DispatchOutcome> = dispatchThroughSeam(ctx, {

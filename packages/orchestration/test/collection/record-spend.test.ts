@@ -10,7 +10,7 @@
  * and say whether a request is still running.
  */
 import { describe, expect, it } from "vitest";
-import type { RequestSpend } from "@flow-state-dev/core/types";
+import type { RequestSpend } from "@flow-state-dev/core/internal";
 import {
   taskSpendView,
   ticketForClaim,

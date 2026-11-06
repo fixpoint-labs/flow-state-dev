@@ -184,7 +184,7 @@ here** at epic altitude. Then the links line and the collapsed contract.
 >
 > ### A dropped connection is worth three issues and a closure run, now · D1
 >
-> <img src="…/<sha>/specs/epics/<EPIC-ISSUE-ID>/figures/d1-worth-it.svg" width="940" alt="Three issues and a closure run now, chosen, beside two issues without the backoff default, and beside waiting until an app asks. Decides it: a silently dead connection, which only heartbeats catch. Price: an epic slot for a mostly serial set" />
+> <img src="…/<sha>/specs/epics/<EPIC-ISSUE-ID>/figures/d1-worth-it.svg" width="940" alt="Three issues and a closure run now, chosen, beside two issues without the backoff default, and beside waiting until an app asks. Decides it: a silently dead connection, which only heartbeats catch. Price: an epic's overhead for a mostly serial set" />
 >
 > It comes down to a connection that dies silently: without heartbeats, resume never fires.
 > **If wrong:** a cycle on resilience nobody notices, which the closure run exists to make
@@ -502,12 +502,12 @@ Sections, in order:
 > |---|---|
 > | **Instead of** | Two issues, dropping the backoff default · or waiting until an app asks |
 > | **Because** | Every app on mobile is re-implementing the defence today. Heartbeats exist to make a reconnect *detectable*; without them resume never fires. The default mostly saves a config line, and is kept scoped to exactly that |
-> | **Locks in** | An epic slot for a mostly serial set. A collapse trigger on FIX-777: if it grows a knob during implementation, it should have been dropped |
+> | **Locks in** | An epic's overhead for a mostly serial set. A collapse trigger on FIX-777: if it grows a knob during implementation, it should have been dropped |
 >
 > **What would change my mind:** evidence that reconnects are rare enough that apps don't notice
 > them. Then this is polish, and the epic should not finish.
 >
-> ![Is resilience worth an epic now: three issues and a closure run, chosen, beside two issues and beside waiting. Decides it: a silently dead connection, which only heartbeats catch. Price: an epic slot. Flips if reconnects are rare enough that apps don't notice](figures/d1-worth-it.svg)
+> ![Is resilience worth an epic now: three issues and a closure run, chosen, beside two issues and beside waiting. Decides it: a silently dead connection, which only heartbeats catch. Price: an epic's overhead. Flips if reconnects are rare enough that apps don't notice](figures/d1-worth-it.svg)
 >
 > It comes down to a connection that dies silently: without heartbeats, resume never fires.
 >

@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { createTestContext } from "@flow-state-dev/testing";
-import { REQUEST_SPEND_SEAM } from "@flow-state-dev/core/types";
+import { REQUEST_SPEND_SEAM } from "@flow-state-dev/core/internal";
 import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
 import { cursorAgent, INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
 import { TESTED_SDK_VERSION, type CursorAgentLike, type CursorRunLike, type CursorSdkMessage, type ResolvedCursorClient } from "../src/types";

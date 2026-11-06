@@ -31,8 +31,10 @@
  * cancel whose continuation never started (a crash after the write): it is
  * continued, as the sweep's re-drive continues it.
  */
-import { isUserSuspension, isWaitGate } from "@flow-state-dev/core/types";
-import type { ResumeWaitResult, SuspensionAddress, SuspensionRecord } from "@flow-state-dev/core/types";
+import { isUserSuspension } from "@flow-state-dev/core/types";
+import { isWaitGate } from "@flow-state-dev/core/internal";
+import type { SuspensionRecord } from "@flow-state-dev/core/types";
+import type { ResumeWaitResult, SuspensionAddress } from "@flow-state-dev/core/internal";
 import type { WaitResumeDeps } from "./resume-wait-gate";
 import { continueUnderLease, latestGateIdOf, resumeUnderLease } from "./resume-under-lease";
 import { loggedUserStop, PARKED } from "./stop-suspended";

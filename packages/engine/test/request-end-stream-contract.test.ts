@@ -10,7 +10,7 @@
  * that every later reader replays without an end.
  */
 import { DEFAULT_ORG_ID, defineFlow, handler, sequencer } from "@flow-state-dev/core";
-import { onRequestEnded } from "@flow-state-dev/core/types";
+import { onRequestEnded } from "@flow-state-dev/core/internal";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {

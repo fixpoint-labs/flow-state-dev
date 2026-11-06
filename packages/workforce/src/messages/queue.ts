@@ -21,8 +21,9 @@
  * A message whose park would pass `MAX_WAIT_DEPTH` isn't admitted: its request
  * ends without landing it, and the sending session's pass sends it again.
  */
-import { canHoldWait, MAX_WAIT_DEPTH, parkOnWait } from "@flow-state-dev/core";
-import type { BlockContext, WaitGateBinding } from "@flow-state-dev/core/types";
+import { requestHostOf, canHoldWait, MAX_WAIT_DEPTH, parkOnWait } from "@flow-state-dev/core/internal";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { WaitGateBinding } from "@flow-state-dev/core/internal";
 import { findTaskPartitions, hasOpenHold, rowsInSession } from "@flow-state-dev/orchestration/internal";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt } from "../conversation-board/ledger";
 import { TASK_ID_STATE_KEY } from "../workers/keys";
@@ -33,7 +34,7 @@ export const QUESTION_RECHECK_MS = 30_000;
 
 /** What holds the running session for the user now, as a wait binds to it; `null` when nothing does. */
 async function userHoldOf(ctx: BlockContext): Promise<WaitGateBinding | null> {
-  const stop = await ctx.requestHost?.waits?.userStop?.();
+  const stop = await requestHostOf(ctx)?.waits?.userStop?.();
   if (stop !== undefined) return { requestId: stop.requestId };
   const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY];
   if (typeof taskId !== "string" || taskId.length === 0) return null;
@@ -54,7 +55,7 @@ async function userHoldOf(ctx: BlockContext): Promise<WaitGateBinding | null> {
  *   would be too deep, or the request was stopped while it waited.
  */
 export async function queueBehindUser(ctx: BlockContext, row: Pick<WorkerMessageRow, "id">): Promise<"admitted" | "not_admitted"> {
-  const waits = ctx.requestHost?.waits;
+  const waits = requestHostOf(ctx)?.waits;
   // A host that can't hold a wait can't queue a message: it lands as before. That includes a host
   // with no sweeper, since a question's park looks again only when its deadline resumes it.
   if (waits === undefined || !canHoldWait(ctx) || ctx.runOnce === undefined || ctx.suspend === undefined) return "admitted";
