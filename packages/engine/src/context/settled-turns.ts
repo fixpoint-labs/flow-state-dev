@@ -24,8 +24,8 @@
  * session as it left it), a wait on a task, or work still in progress.
  */
 import { collapseToCanonicalLog, isSuspensionWait, resolveItemVisibility, type MessageItem, type ToolOutputItem } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
-import { isWaitGate, waitGateDataOf } from "@flow-state-dev/core/types";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
+import { isWaitGate, waitGateDataOf } from "@flow-state-dev/core/internal";
 import type { DurabilityProvider } from "../durability/types";
 import { parkedInterruptedIds } from "../durability/stop-suspended";
 import { PAST_TURN_STATUSES, retriedIds } from "../execution/past-turns";

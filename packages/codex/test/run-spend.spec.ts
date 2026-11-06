@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { createTestContext } from "@flow-state-dev/testing";
-import { REQUEST_SPEND_SEAM } from "@flow-state-dev/core/types";
+import { REQUEST_SPEND_SEAM } from "@flow-state-dev/core/internal";
 import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
 import { codexAgent, INTERNAL_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
 import { TESTED_SDK_VERSION, type CodexThreadEvent } from "../src/types";

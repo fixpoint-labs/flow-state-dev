@@ -13,7 +13,7 @@
  * these items, filter by `data.collectionId`, and render the board.
  */
 import type { JsonObject } from "@flow-state-dev/core";
-import { publishBoardChange } from "@flow-state-dev/core/types";
+import { requestHostOf, publishBoardChange } from "@flow-state-dev/core/internal";
 import type { ItemVisibility, OutputItem } from "@flow-state-dev/core/items";
 import type {
   BlockContext,
@@ -366,7 +366,7 @@ function filingStampOf(ctx: BlockContext): FilingStamp {
   const identity = ctx.request?.identity ?? ctx.session?.identity;
   const tenantId = identity?.tenantId;
   const orgId = identity?.orgId;
-  const holdDueMs = ctx.requestHost?.userDeadlineMs;
+  const holdDueMs = requestHostOf(ctx)?.userDeadlineMs;
   return {
     ...(tenantId !== undefined || orgId !== undefined
       ? { filedUnder: { ...(tenantId !== undefined ? { tenantId } : {}), ...(orgId !== undefined ? { orgId } : {}) } }

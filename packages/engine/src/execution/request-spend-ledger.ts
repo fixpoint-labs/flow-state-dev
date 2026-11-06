@@ -20,10 +20,10 @@
  * and core's `readRequestSpend` reads {@link RequestSpendLedger.pending}, the
  * same slice, without taking it (FIX-2288).
  */
-import { cacheTokensOf } from "@flow-state-dev/core";
+import { cacheTokensOf } from "@flow-state-dev/core/internal";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
-import type { GeneratorModelResultPayload, ModelUsageEntry, RequestSpend } from "@flow-state-dev/core/types";
+import type { RuntimeItem, RequestSpend } from "@flow-state-dev/core/internal";
+import type { GeneratorModelResultPayload, ModelUsageEntry } from "@flow-state-dev/core/types";
 import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
 import { storeIdentity } from "../bus/publish-writes";
 

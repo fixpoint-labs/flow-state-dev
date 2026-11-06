@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { BlockTraceItem, OutputItem, ItemLookup } from "@flow-state-dev/core/items";
 import { sideChainTaskCount, sideChainTaskLabel } from "../../lib/side-chain-task-count";
-import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
+import { resolveBlockValueInternal } from "@flow-state-dev/core/internal";
 import type { DevtoolItem } from "../../lib/item-types";
 import { ChevronDown, ChevronRight, Minus, Inbox } from "lucide-react";
 import type { TraceNode } from "../../lib/trace-tree";

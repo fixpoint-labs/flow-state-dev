@@ -29,7 +29,7 @@ import {
 } from "@flow-state-dev/core";
 import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
 import { buildItemLookup } from "@flow-state-dev/core/items";
-import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
+import { resolveBlockValueInternal } from "@flow-state-dev/core/internal";
 import { createInMemoryStores, createResponseEmitter, runAction } from "@flow-state-dev/engine";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";

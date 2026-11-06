@@ -11,7 +11,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
-import { dispatchThroughSeam, markDispatcher } from "@flow-state-dev/core/types";
+import { markDispatcher } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam } from "@flow-state-dev/core/internal";
 import type { SessionCreateCheckInput } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { createFlowState, inMemoryStores, runAction } from "../../src";

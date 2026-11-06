@@ -45,6 +45,7 @@
 
 import type { WaitGateBinding, WaitOutcome, WaitRow } from "./wait-gate";
 import type { HistoryTurn, MessageLimit } from "./scope";
+import type { InternalBlockContext } from "./block";
 
 /** How a parent-board row is being settled. */
 export type ParentTaskOutcome = "complete" | "fail";
@@ -509,15 +510,28 @@ export class NoRequestHostError extends Error {
 }
 
 /**
+ * Read the request host off a context, or `undefined` when none is wired: a
+ * hand-built test context, or a block run outside a request.
+ *
+ * `requestHost` is a member of the engine's {@link InternalBlockContext}, not
+ * of the public `BlockContext`, so a framework package holding a public `ctx`
+ * reads it here. Takes any context.
+ */
+export function requestHostOf(ctx: object): RequestHost | undefined {
+  return (ctx as Pick<InternalBlockContext, "requestHost">).requestHost;
+}
+
+/**
  * Read the request host off a context, throwing by name when it is absent.
  *
  * The member is optional in the *type* so a hand-built test context still
  * type-checks; it is not optional in *deployment* — a host that executes requests
  * without one fails at construction. This accessor is what turns the residual
- * absence into a named error instead of `undefined is not a function`.
+ * absence into a named error instead of `undefined is not a function`. The
+ * non-throwing form is {@link requestHostOf}.
  */
-export function requireRequestHost(ctx: { requestHost?: RequestHost }): RequestHost {
-  const host = ctx.requestHost;
+export function requireRequestHost(ctx: object): RequestHost {
+  const host = requestHostOf(ctx);
   if (host == null) throw new NoRequestHostError();
   return host;
 }

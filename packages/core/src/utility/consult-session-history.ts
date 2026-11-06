@@ -4,7 +4,7 @@
  * waking it.
  *
  * `consultSessionHistoryTool()` is a tool a generator calls. It reads the other
- * session's settled turns through `ctx.requestHost.sessions.history` (the
+ * session's settled turns through `requestHostOf(ctx).sessions.history` (the
  * principal's own sessions only, by the rule of `sessions.read`), cuts them to
  * a hard token budget from the newest back (counted by the flow's
  * `ctx.tokenCounter` for the answering model), and runs one generator with no
@@ -25,7 +25,7 @@ import type { GeneratorConfig } from "../blocks/generator";
 import { handler } from "../blocks/handler";
 import { sequencer } from "../blocks/sequencer";
 import type { BlockContext } from "../types/block";
-import type { SessionHistory } from "../types/request-host";
+import { requestHostOf, type SessionHistory } from "../types/request-host";
 import type { LLMMessage } from "../types/scope";
 
 /** The default hard cap on the history tokens the consult's generator receives. */
@@ -212,7 +212,7 @@ export function consultSessionHistoryTool(options: ConsultSessionHistoryOptions 
         return { ok: false, error: "self: that is this conversation, and its history is already yours." };
       }
       const noSession = `no_session: no conversation "${target.sessionId}" of yours.`;
-      const sessions = ctx.requestHost?.sessions;
+      const sessions = requestHostOf(ctx)?.sessions;
       if (sessions?.history === undefined) return { ok: false, error: `${noSession} (This host can't read another conversation.)` };
       const history = await sessions.history(target.sessionId, { limit: { tokens: budgetTokens } });
       if (history === undefined) return { ok: false, error: noSession };

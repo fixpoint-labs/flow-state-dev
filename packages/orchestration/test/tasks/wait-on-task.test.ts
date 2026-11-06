@@ -39,6 +39,7 @@ import {
   type StepFn
 } from "./wait-fixture";
 import { heard } from "../fixtures/heard";
+import { requestHostOf } from "@flow-state-dev/core/internal";
 
 /** Deadlines the tests can wait out. */
 const SHORT = { minMs: 10 };
@@ -149,7 +150,7 @@ describe("wait on a task: take the slot, park, and resume on the row's ending", 
         inputSchema: z.object({}).passthrough(),
         outputSchema: z.any(),
         execute: async (_i, ctx) =>
-          ctx.requestHost!.resumeWait!({ gateId: row!.wait!.gateId, outcome: { answered: true, answer: "answer" } })
+          requestHostOf(ctx)!.resumeWait!({ gateId: row!.wait!.gateId, outcome: { answered: true, answer: "answer" } })
       });
       const resumer = defineFlow({ internal: { actions: { ...heard } }, kind: "wait-board", actions: { go: { block: resumeOnly } } })({ id: "wait-board" });
       const resumed = await runAction({

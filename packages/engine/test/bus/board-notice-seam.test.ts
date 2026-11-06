@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
-import { publishBoardChange } from "@flow-state-dev/core/types";
+import { publishBoardChange } from "@flow-state-dev/core/internal";
 import { createInMemoryBus, createInMemoryStores, runAction, type ChangeNotice } from "../../src";
 
 const inputSchema = z.object({ filer: z.string(), board: z.string() });

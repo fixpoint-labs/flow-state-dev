@@ -29,8 +29,19 @@ export {
   getZodInnerType,
   getReadonlyStateKeys,
   compareZodSchemasStructurally,
+  containsZodLazy,
+  dynamicDefaultFactories,
+  getZodDeclaredDefault,
+  type ZodDeclaredDefault,
   type ZodSchemaCompareResult,
 } from "./zod-introspect";
+export {
+  mergeScopeStateSchemas,
+  isMergeableScopeStateSchema,
+  ScopeStateSchemaConflictError,
+  type ScopeStateDeclaration,
+  type ScopeStateConflictKind,
+} from "./scope-state-merge";
 export { shortId, tokenize, tokenOverlap, findBestOverlap } from "./text-match";
 export {
   withOutcome,

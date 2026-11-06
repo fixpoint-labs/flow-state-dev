@@ -45,6 +45,7 @@ import { decideTake, requestStates } from "../helpers/request-states";
 import { cancelledDependents, clearNotice, deferredNoticePatch, isNoticeOwed, noticeTakenBy, type TaskNotice } from "./task-notice";
 import { filerResolver, TASK_SETTLED_ENTRY, type DeclaredDelivery } from "./delivery";
 import { delegatingBoardsOf, payBoardDebts, settlePassWake, type BoardDebts } from "./pass";
+import { requestHostOf } from "@flow-state-dev/core/internal";
 
 /** A notice, as `onTaskSettled` and a flow's block take it. */
 export const taskSettledInputSchema = z
@@ -205,7 +206,7 @@ export function taskSettledEntry(options: TaskSettledEntryOptions) {
         // A wake: pay every delegating ledger this flow declares, at this
         // session's partition. A scan of each, which is fine at a session's
         // scale; Workforce's board runs its own pass entry instead.
-        const wake = await ctx.requestHost?.wakes?.read(TASK_SETTLED_ENTRY);
+        const wake = await requestHostOf(ctx)?.wakes?.read(TASK_SETTLED_ENTRY);
         let nextDue: BoardDebts["nextDue"];
         for (const { ref, delivery } of await delegatingBoardsOf(ctx)) {
           const debts = await payBoardDebts(ctx, ref, {

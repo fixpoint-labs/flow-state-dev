@@ -33,8 +33,8 @@ vi.mock("../src/messages/hop", async (original) => {
   };
 });
 
-vi.mock("@flow-state-dev/core/types", async (original) => {
-  const actual = await original<typeof import("@flow-state-dev/core/types")>();
+vi.mock("@flow-state-dev/core/internal", async (original) => {
+  const actual = await original<typeof import("@flow-state-dev/core/internal")>();
   return {
     ...actual,
     dispatchThroughSeam: (ctx: never, spec: { action: string; from?: string }) => {

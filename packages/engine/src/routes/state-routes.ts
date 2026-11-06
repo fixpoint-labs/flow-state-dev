@@ -24,7 +24,7 @@ import {
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { sessionRequestScope } from "../context/session-request-scope";
-import { applyScopeStateDefaults } from "../context/scope-state-defaults";
+import { applyScopeStateDefaults, scopeStateSchema } from "../context/scope-state-defaults";
 import {
   buildProjectedResourceContextFromSession,
   getPersistedData
@@ -190,21 +190,21 @@ export async function handleGetSessionState(
     config: flow.session?.client,
     scope: "session",
     filter: clientDataFilter,
-    state: applyScopeStateDefaults(flow.session?.stateSchema, session.state),
+    state: applyScopeStateDefaults(scopeStateSchema(flow, "session"), session.state),
     resources: sessionResources
   });
   const userClientData = await computeClientData({
     config: flow.user?.client,
     scope: "user",
     filter: clientDataFilter,
-    state: applyScopeStateDefaults(flow.user?.stateSchema, user?.state),
+    state: applyScopeStateDefaults(scopeStateSchema(flow, "user"), user?.state),
     resources: userResources
   });
   const orgClientData = await computeClientData({
     config: flow.org?.client,
     scope: "org",
     filter: clientDataFilter,
-    state: applyScopeStateDefaults(flow.org?.stateSchema, org?.state),
+    state: applyScopeStateDefaults(scopeStateSchema(flow, "org"), org?.state),
     resources: orgResources
   });
 

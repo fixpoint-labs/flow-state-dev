@@ -6,7 +6,7 @@
  * across scenarios; everything else stays in the test file so the
  * assertions speak for themselves.
  */
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 
 /** Returns every item of the given top-level `type`. */
 export function itemsByType<T extends RuntimeItem["type"]>(

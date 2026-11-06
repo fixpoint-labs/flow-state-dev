@@ -7,16 +7,19 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  buildReplayLog,
   DEFAULT_ORG_ID,
   defineFlow,
   generator,
   handler,
-  parkOnWait,
   sequencer,
   SUSPENSION_SKIPPED
 } from "@flow-state-dev/core";
-import type { WaitOutcome, FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
+import {
+  buildReplayLog,
+  parkOnWait
+} from "@flow-state-dev/core/internal";
+import type { FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
+import type { WaitOutcome } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import { continueRequest, createFlowRegistry, createFlowState, createInMemoryStores, inMemoryStores, runAction } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";

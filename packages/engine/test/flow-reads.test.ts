@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, dispatcher, handler, sequencer } from "@flow-state-dev/core";
-import { onRequestEnded } from "@flow-state-dev/core/types";
+import { onRequestEnded } from "@flow-state-dev/core/internal";
 import { createFlowApiRouter, createFlowRegistry, createInMemoryStores, disposeFlowApiRouter } from "../src";
 import { drainRequestEnds } from "../src/execution/request-end-hooks";
 import type { StoreRegistry } from "../src";

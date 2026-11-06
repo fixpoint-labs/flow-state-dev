@@ -1,4 +1,4 @@
-import type { BlockContext, BlockDefinition, ResponseEmitterHandle } from "../src/types/block";
+import type { BlockContext, BlockDefinition, InternalBlockContext, ResponseEmitterHandle } from "../src/types/block";
 import { asRuntime } from "../src/types/block";
 import type { GeneratorModel, ModelResolver } from "../src/types/model";
 import type { ScopeStateOps } from "../src/types/state";
@@ -32,8 +32,11 @@ export function createStateOps<TState extends object>(): ScopeStateOps<TState> {
   };
 }
 
-/** Overrides a test may pass. `resolveModel` and `response` may be partial. */
-export type MockContextOverrides = Omit<Partial<BlockContext>, "resolveModel" | "response"> & {
+/**
+ * Overrides a test may pass. `resolveModel` and `response` may be partial; the
+ * runtime's wiring (`requestHost`, the seam slots) may be set as the engine sets it.
+ */
+export type MockContextOverrides = Omit<Partial<InternalBlockContext>, "resolveModel" | "response"> & {
   resolveModel?: (modelId: string, blockName?: string) => GeneratorModel;
   response?: Partial<ResponseEmitterHandle>;
 };

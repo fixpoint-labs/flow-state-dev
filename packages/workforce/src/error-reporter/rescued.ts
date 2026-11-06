@@ -3,7 +3,7 @@
  * engine sends no final event. A leaf, so the flow does not import the
  * reporter. Never throws.
  */
-import { dispatchThroughSeam } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { ERROR_REPORTER_INTAKE_FLOW, INTAKE_ENTRY, INTAKE_SESSION_ID } from "./keys";
 

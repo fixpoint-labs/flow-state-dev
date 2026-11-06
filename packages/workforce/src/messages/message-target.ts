@@ -16,7 +16,8 @@
  * {@link checkTargetSession} is the check on its own, for a send that already
  * knows the session: a resend reruns it on the session its row names.
  */
-import type { BlockContext, PeerSessionView } from "@flow-state-dev/core/types";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { PeerSessionView } from "@flow-state-dev/core/internal";
 import {
   isTerminalStatus,
   type TaskCollectionRef
@@ -26,6 +27,7 @@ import { CONVERSATION_LEDGER_ID, conversationLedgerAt } from "../conversation-bo
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
 import { messageHearingOf } from "./received-mark";
+import { requestHostOf } from "@flow-state-dev/core/internal";
 
 /** A message's target: a worker by its id, a task by its id, or one of the user's conversations by its session id. */
 export type MessageTarget = string | { readonly task: string } | { readonly session: string };
@@ -58,7 +60,7 @@ export async function checkTargetSession(
   const notFound = viaTask
     ? `no_task_session: no task "${of.task}" of yours has a session to message. A task that hasn't started has none.`
     : `no_session: no conversation "${sessionId}" of yours.`;
-  const sessions = ctx.requestHost?.sessions;
+  const sessions = requestHostOf(ctx)?.sessions;
   if (sessions === undefined) return refuse(`${notFound} (This host can't check a session, so only a worker's name reaches one.)`);
   const view: PeerSessionView | undefined = await sessions.read(sessionId);
   if (view === undefined) return refuse(notFound);

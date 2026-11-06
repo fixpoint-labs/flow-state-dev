@@ -40,7 +40,7 @@ const CONTROLS: Record<string, { does: string; assertion: string; patches: Modul
   "round-timer": {
     does: "a round's deadline is kept on an in-process timer, as before FIX-2083, never a wake: the coordinator reads the host as keeping no wakes",
     assertion: "b:restart",
-    patches: [{ module: COORDINATOR, from: "const wakes = ctx\\.requestHost\\?\\.wakes;", to: "const wakes = undefined;" }],
+    patches: [{ module: COORDINATOR, from: "const wakes = requestHostOf\\(ctx\\)\\?\\.wakes;", to: "const wakes = undefined;" }],
   },
   "post-map-off": {
     does: "FIX-2080's map entry `post` reads nothing: a post row stored before the upgrade is read as the row it is",

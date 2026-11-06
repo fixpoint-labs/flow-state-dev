@@ -13,7 +13,7 @@
  * filer's pass sends each such marker once as the task occurrence, and drops
  * it once the intake took it ({@link sendLegacyReports}). Nothing writes one now.
  */
-import { dispatchThroughSeam } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { Task, TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 import { ERROR_REPORTER_INTAKE_FLOW, INTAKE_ENTRY, INTAKE_SESSION_ID } from "../error-reporter/keys";

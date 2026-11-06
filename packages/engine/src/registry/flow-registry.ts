@@ -24,10 +24,14 @@
  * admitted only when its id equals its kind, and is normalized to singleton.
  *
  * The registry also enforces cross-flow schema compatibility: at registration
- * time, a flow's `user.stateSchema`, `org.stateSchema`, and user/org resource
- * schemas are validated against every other already-registered flow's
- * declarations. Incompatible pairs throw a `CrossFlowSchemaConflictError` —
- * see `registry/errors.ts` and the `state-and-scopes` architecture doc.
+ * time, a flow's user and org state schemas, and user/org resource schemas,
+ * are validated against every other already-registered flow's declarations.
+ * The state schemas compared are the flow's merged ones (`scopeStateSchema`),
+ * so a field a block declares counts, and they are held to the same rule
+ * `defineFlow` holds one flow's declarations to: a field two flows type or
+ * default differently is refused. Incompatible pairs throw a
+ * `CrossFlowSchemaConflictError` — see `registry/errors.ts` and the
+ * `state-and-scopes` architecture doc.
  *
  * The two halves are gated at different granularities (see
  * {@link collectScopeDeclaration}): the scope record is a single blob per
@@ -56,6 +60,12 @@ import type {
 } from "@flow-state-dev/core/types";
 import { isProjectedResourceCollection } from "@flow-state-dev/core/types";
 import type { ZodTypeAny } from "zod";
+import {
+  isMergeableScopeStateSchema,
+  mergeScopeStateSchemas,
+  ScopeStateSchemaConflictError
+} from "@flow-state-dev/core/helpers";
+import { scopeStateSchema } from "../context/scope-state-defaults";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { resolveResourceIsolation } from "../stores/scope-keys";
@@ -370,6 +380,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
 
       if (incoming.stateSchema !== undefined && existing.stateSchema !== undefined) {
         checkPair(scope, "stateSchema", existing.flowKind, flowKind, existing.stateSchema, incoming.stateSchema);
+        checkStatePairStrictly(scope, existing.flowKind, flowKind, existing.stateSchema, incoming.stateSchema);
       }
 
       // Exact-ref comparison — exclusion 1 above. Every incoming declaration
@@ -526,13 +537,10 @@ function collectScopeDeclaration(
   flow: FlowInstance,
   scope: ConflictScope
 ): ScopeDeclaration | undefined {
-  const scopeConfig = scope === "user" ? flow.user : flow.org;
   const flowIsolatesScope =
     scope === "user" ? flow.isolateUserState : flow.isolateOrgState;
 
-  const stateSchema = flowIsolatesScope
-    ? undefined
-    : (scopeConfig as { stateSchema?: ZodTypeAny } | undefined)?.stateSchema;
+  const stateSchema = flowIsolatesScope ? undefined : scopeStateSchema(flow, scope);
 
   const resourceSchemas = emptySchemaMap<ResourceDeclarations>();
   // Same-flow cell occupancy, keyed by `(effective isolation, ref)`. Separate
@@ -632,6 +640,43 @@ function checkResourcePair(
     detail: `one marks secret ${list(a.secret)}, the other ${list(b.secret)}; declare the same secret fields`,
     collection,
   });
+}
+
+/**
+ * Two flows' scope state schemas, held to the rule `defineFlow` holds one
+ * flow's declarations to (`mergeScopeStateSchemas`): a field the two type or
+ * default differently is refused, naming both flows. One user or org record is
+ * shared by both, so a value one writes is a value the other reads.
+ *
+ * Runs after {@link checkPair}, which already refuses what it can tell apart;
+ * this adds what it lets through (a different default, a nullable on one side).
+ * A root that is not a `z.object` can't be merged, so the pair is left to
+ * `checkPair` alone. Any other error is a bug and propagates.
+ */
+function checkStatePairStrictly(
+  scope: ConflictScope,
+  flowA: string,
+  flowB: string,
+  schemaA: ZodTypeAny,
+  schemaB: ZodTypeAny
+): void {
+  if (!isMergeableScopeStateSchema(schemaA) || !isMergeableScopeStateSchema(schemaB)) return;
+  try {
+    mergeScopeStateSchemas(`Flows "${flowA}" and "${flowB}"`, scope, [
+      { schema: schemaA, source: `flow "${flowA}"` },
+      { schema: schemaB, source: `flow "${flowB}"` }
+    ]);
+  } catch (error) {
+    if (!(error instanceof ScopeStateSchemaConflictError)) throw error;
+    throw new CrossFlowSchemaConflictError({
+      scope,
+      field: `stateSchema${error.path.slice(`${scope}.state`.length)}`,
+      flowA,
+      flowB,
+      reason: error.conflict === "default" ? "incompatible-default" : "incompatible-types",
+      detail: error.detail
+    });
+  }
 }
 
 function checkPair(

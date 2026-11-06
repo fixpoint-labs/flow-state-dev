@@ -10,6 +10,7 @@
  * resume (a first run, or a crash recovery's continuation) reads `undefined`.
  */
 import type { SuspensionStatus } from "./suspension";
+import type { InternalBlockContext } from "./block";
 
 /** How the suspension this request resumed from was resolved. */
 export interface RequestResume {
@@ -26,6 +27,6 @@ export const REQUEST_RESUME_SEAM: unique symbol = Symbol.for("@flow-state-dev/re
  * How the running request resumed, or `undefined` when it is not a resume or
  * the context carries no seam (a hand-built test context).
  */
-export function requestResumeOf(ctx: { readonly [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined }): RequestResume | undefined {
-  return ctx[REQUEST_RESUME_SEAM]?.();
+export function requestResumeOf(ctx: object): RequestResume | undefined {
+  return (ctx as Pick<InternalBlockContext, typeof REQUEST_RESUME_SEAM>)[REQUEST_RESUME_SEAM]?.();
 }

@@ -32,7 +32,8 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
-import { defineFlow, dispatchThroughSeam, handler, markDispatcher } from "@flow-state-dev/core";
+import { defineFlow, handler, markDispatcher } from "@flow-state-dev/core";
+import { dispatchThroughSeam } from "@flow-state-dev/core/internal";
 import type { DispatchOutcome, ModelResolver } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "../../src";
 import type { FlowStateRuntime, WorkerAdapter } from "../../src/flowstate/types";

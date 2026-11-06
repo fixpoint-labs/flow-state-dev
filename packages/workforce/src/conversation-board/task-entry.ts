@@ -57,6 +57,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, ROUTED_FROM_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
+import { routedFromStateSchema } from "../workers/routed-from";
 import { DISPATCH_ENTRY, FILED_HOP } from "./board-entries";
 import { hopMarkOf, messageTurnStateSchema, startTurnAtHop } from "../messages/hop";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
@@ -188,7 +189,7 @@ const noteRoutedFrom = handler({
   inputSchema: z.unknown(),
   outputSchema: z.object({}),
   resources: { ...routedSessionResources },
-  sessionStateSchema: z.object({ [ROUTED_FROM_STATE_KEY]: z.string().min(1).optional() }),
+  sessionStateSchema: z.object({ [ROUTED_FROM_STATE_KEY]: routedFromStateSchema }),
   execute: async (_task: unknown, ctx) => {
     const state = (ctx.session.state ?? {}) as Record<string, unknown>;
     if (typeof state[FILING_SESSION_STATE_KEY] === "string") return {};

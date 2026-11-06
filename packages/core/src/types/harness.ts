@@ -53,9 +53,9 @@
  * ({@link HarnessBlock}'s `stopsOnAbort`).
  */
 import { z } from "zod";
-import type { BlockContext, BlockDefinition } from "./block";
+import type { BlockContext, BlockDefinition, InternalBlockContext } from "./block";
 import type { AnyResourceRef } from "./resource";
-import { REQUEST_SPEND_SEAM, type RequestSpendSeam } from "./request-end";
+import { REQUEST_SPEND_SEAM } from "./request-end";
 
 /**
  * Which harness, and which of its doors, produced a handle.
@@ -549,7 +549,7 @@ export interface HarnessRunSpend {
  *   test context, or a block run outside a request. Nothing is counted then.
  */
 export function reportHarnessSpend(ctx: object, spend: HarnessRunSpend): boolean {
-  const seam = (ctx as { readonly [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM];
+  const seam = (ctx as Pick<InternalBlockContext, typeof REQUEST_SPEND_SEAM>)[REQUEST_SPEND_SEAM];
   if (seam == null) return false;
   seam.reportHarnessRun(spend);
   return true;

@@ -13,6 +13,7 @@
 import type { ZodTypeAny } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import type { ResumeAction, SuspensionReason, SuspendForUserKind } from "../types/suspension";
+import { resolveAllowedActions } from "./resolve-allowed-actions";
 
 export interface SuspendOptions {
   reason: SuspensionReason;
@@ -55,19 +56,6 @@ export interface SuspendOptions {
    * same on every replay of the call that suspends. Omit to have one minted.
    */
   suspensionId?: string;
-}
-
-/**
- * Resolve the permitted resolution actions for a suspension, applying the
- * reason-based default when the author did not pass `allow` explicitly. Shared
- * by the suspension-record builder and any caller that needs the concrete set.
- */
-export function resolveAllowedActions(
-  reason: SuspensionReason,
-  allow: ResumeAction[] | undefined
-): ResumeAction[] {
-  if (allow !== undefined) return allow;
-  return reason === "user_input" || reason === "human_input" ? ["submit"] : ["approve", "reject"]; // retired-name-refusal: a stop core 0.2.0 stored
 }
 
 /**

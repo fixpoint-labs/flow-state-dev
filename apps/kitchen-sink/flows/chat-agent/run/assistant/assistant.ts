@@ -9,7 +9,7 @@
 import { generator } from "@flow-state-dev/core";
 import { voiceContext } from "@flow-state-dev/engine";
 import { z } from "zod";
-import { inputSchema, userStateSchema, modeSchema } from "../../shared/schemas";
+import { inputSchema, userStateSchema, modeSchema, thinkingStyleSchema } from "../../shared/schemas";
 import { featuresCapability } from "../../shared/capabilities/features";
 import { mem, analystPerspective } from "../cognition";
 import { resolveModePrompt } from "./mode-prompt";
@@ -18,7 +18,7 @@ import { coalesceKitchenSinkModel } from "../../../../lib/models";
 export const assistantGenerator = generator({
   name: "assistant-generator",
   userStateSchema,
-  sessionStateSchema: z.object({ mode: modeSchema.default("ask"), thinkingStyle: z.string().optional() }),
+  sessionStateSchema: z.object({ mode: modeSchema.default("ask"), thinkingStyle: thinkingStyleSchema.optional() }),
 
   // Capabilities: auto-install resources, context formatters, and tools.
   // mem.capability defaults: `digest`, `working`, `recall` all on — renders
