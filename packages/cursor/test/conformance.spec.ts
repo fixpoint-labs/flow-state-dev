@@ -8,7 +8,7 @@
  * schema, not merely against its own.
  */
 import { describe, it, expect } from "vitest";
-import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
+import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
 import { CURSOR_SOURCE, cursorAgentHandleSchema, type CursorAgentHandle } from "../src/types";
 import { cursorAgent, INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
 import { TESTED_SDK_VERSION } from "../src/types";

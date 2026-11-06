@@ -8,7 +8,7 @@
  * schema, not merely against its own.
  */
 import { describe, it, expect } from "vitest";
-import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
+import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
 import {
   CODEX_SOURCE,
   codexAgentHandleSchema,

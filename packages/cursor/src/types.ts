@@ -20,8 +20,9 @@
  * fields (tenet 4).
  */
 import { z } from "zod";
-import { harnessRunHandleSchema } from "@flow-state-dev/core";
-import type { BlockContext, HarnessRunHandle, PlanListItem } from "@flow-state-dev/core/types";
+import { harnessRunHandleSchema } from "@flow-state-dev/core/harness";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { HarnessRunHandle, PlanListItem } from "@flow-state-dev/core/harness";
 
 /**
  * This harness's `<package>/<door>` name — the convention every writer of a

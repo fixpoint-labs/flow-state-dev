@@ -12,7 +12,7 @@ import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
-import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
+import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
 import { harnessSessionFlow, harnessStub, workPlace, type HarnessSessionFeeds, type PhaseSpec } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, type WorktreeRow } from "@flow-state-dev/workspace";
 import { z } from "zod";

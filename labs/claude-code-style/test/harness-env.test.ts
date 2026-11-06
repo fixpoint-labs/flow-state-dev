@@ -33,7 +33,7 @@ const { HARNESSES } = await import("../workforce/flows/harness-thread.mts");
 const { CLAUDE_CODE_PASS } = await import("@flow-state-dev/claude-code/sdk");
 const { CODEX_PASS } = await import("@flow-state-dev/codex");
 const { CURSOR_PASS } = await import("@flow-state-dev/cursor");
-const { harnessEnv } = await import("@flow-state-dev/core");
+const { harnessEnv } = await import("@flow-state-dev/core/harness");
 
 const SECRET = "LAB_SERVER_ONLY_SECRET";
 const feeds = { cwd: () => "/tmp/run", resume: () => undefined, onSession: () => {}, onActivity: () => {} };

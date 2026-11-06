@@ -11,7 +11,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { createTestContext } from "@flow-state-dev/testing";
-import { OBSERVED_PULL_REQUESTS, observedPullRequestsCollection } from "@flow-state-dev/core";
+import { OBSERVED_PULL_REQUESTS, observedPullRequestsCollection } from "@flow-state-dev/core/harness";
 import { REQUEST_END_SEAM, type RequestEndHook } from "@flow-state-dev/core/types";
 import { claudeCodeAgent, type ClaudeCodeAgentOptions } from "../../src/sdk/agent";
 import type { ResolveClaudeAgent, SdkMessageLike } from "../../src/sdk/types";

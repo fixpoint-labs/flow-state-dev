@@ -20,7 +20,8 @@
  * one talk path. A message never steers, so the turn refuses an open task.
  */
 import { defineCapability, handler, sequencer, type DefinedCapability } from "@flow-state-dev/core";
-import type { BlockContext, HarnessBlock } from "@flow-state-dev/core/types";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import {
   isTerminalStatus,
   type Task,

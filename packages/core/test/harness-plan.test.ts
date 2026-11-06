@@ -10,6 +10,7 @@
  * that fails partway must never read as the plan.
  */
 import { describe, expect, it } from "vitest";
+import { planConversationPrefix } from "../src/types/harness-plan";
 import {
   OBSERVED_PLAN,
   OBSERVED_PLAN_LIST,
@@ -18,13 +19,12 @@ import {
   observedPlanListCollection,
   observedPlanListStateSchema,
   harnessConversationNamespace,
-  planConversationPrefix,
   planKeySegment,
   planRowsPrefix,
   readPlanTarget,
   replacePlanList,
   type PlanListItem,
-} from "@flow-state-dev/core";
+} from "@flow-state-dev/core/harness";
 
 /**
  * An in-memory stand-in for a collection ref, with the three methods the

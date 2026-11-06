@@ -14,12 +14,8 @@ import { mkdirSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import { getPatternPrefix, isParameterizedPattern } from "@flow-state-dev/core/types";
-import type {
-  BlockContext,
-  HarnessResolver,
-  JsonObject,
-  ResourceCollectionRef,
-} from "@flow-state-dev/core/types";
+import type { BlockContext, JsonObject, ResourceCollectionRef } from "@flow-state-dev/core/types";
+import type { HarnessResolver } from "@flow-state-dev/core/harness";
 import {
   collectionIdFor,
   createHostPlace,

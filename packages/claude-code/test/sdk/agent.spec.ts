@@ -18,7 +18,7 @@ import {
   SDK_SESSION_ID_KEY,
   SDK_AGENT_RUNS_KEY,
 } from "../../src/sdk/agent";
-import { harnessRunHandleSchema } from "@flow-state-dev/core";
+import { harnessRunHandleSchema } from "@flow-state-dev/core/harness";
 import { createDefaultResolveClaudeAgent } from "../../src/sdk/sdk-client";
 import { ClaudeAgentSdkNotInstalledError, ClaudeAgentRunError } from "../../src/sdk/errors";
 import {

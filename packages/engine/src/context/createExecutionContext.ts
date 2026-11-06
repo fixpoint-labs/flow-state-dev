@@ -108,11 +108,11 @@ import {
   SUSPENSION_SKIPPED,
   isUserSuspension,
   suspendForUserOn,
-  type HarnessRunSpend,
   type RequestResume,
   type RequestSpendSeam,
-  type SuspendForUser
+  type SuspendForUser,
 } from "@flow-state-dev/core/types";
+import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
 import { matchesPattern } from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
 import {

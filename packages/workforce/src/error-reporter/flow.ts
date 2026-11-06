@@ -4,7 +4,8 @@
  * through the Shift Coordinator, which is the part most likely to have failed.
  */
 import { defineFlow, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
-import type { BlockContext, HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
 import { z } from "zod";
 import { agentWorkerTurn, type AgentWorkerFlowOptions } from "../agent-worker-flow";
 import type { ProjectMcpToolsResolver, RelayedMcpServer } from "../projects/project-mcp-tools";

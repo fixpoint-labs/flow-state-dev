@@ -19,7 +19,7 @@
  */
 import { execFile } from "node:child_process";
 import { delimiter } from "node:path";
-import type { HarnessReadiness } from "@flow-state-dev/core/types";
+import type { HarnessReadiness } from "@flow-state-dev/core/harness";
 import { findCodexProgram, type CodexProgram } from "./usage";
 
 /** What {@link probeCodexAccount} found. */

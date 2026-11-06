@@ -34,7 +34,8 @@
  */
 import { z } from "zod";
 import { defineFlow, handler, router } from "@flow-state-dev/core";
-import type { BlockDefinition, HarnessBlock } from "@flow-state-dev/core/types";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { commandCheck, goalJudge, harnessManager, type HarnessFeeds, type PhaseSpec } from "@flow-state-dev/harness-manager";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { TaskWorker } from "@flow-state-dev/orchestration/tasks";

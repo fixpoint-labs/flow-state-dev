@@ -53,16 +53,16 @@
  * No model. The "harness" is the scripted run below, the turn each task
  * entry runs.
  */
+import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import {
-  DEFAULT_ORG_ID,
   OBSERVED_PULL_REQUESTS,
-  defineFlow,
-  handler,
   observedPullRequestsCollection,
   writePullRequests,
   type PullRequestCollection,
-} from "@flow-state-dev/core";
-import { harnessConversationNamespace, reportHarnessSpend, type BlockContext, type FlowInstance } from "@flow-state-dev/core/types";
+  harnessConversationNamespace,
+  reportHarnessSpend,
+} from "@flow-state-dev/core/harness";
+import type { BlockContext, FlowInstance } from "@flow-state-dev/core/types";
 import {
   OBSERVED_FILE_OPS,
   OBSERVED_PLAN,

@@ -34,12 +34,12 @@
  * pull-request record. It is a session resource, not session state, so a task
  * board still dispatches the block.
  */
+import { handler } from "@flow-state-dev/core";
 import {
   OBSERVED_PLAN,
   OBSERVED_PLAN_LIST,
   OBSERVED_PULL_REQUESTS,
   formatRunDuration,
-  handler,
   harnessConversationNamespace,
   harnessRunInputSchema,
   harnessRunNamespace,
@@ -50,11 +50,11 @@ import {
   replacePlanList,
   reportHarnessActivity,
   type PlanListCollection,
-} from "@flow-state-dev/core";
+  reportHarnessSpend,
+} from "@flow-state-dev/core/harness";
 import { randomUUID } from "node:crypto";
-import { reportHarnessSpend } from "@flow-state-dev/core/types";
+import type { DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import type {
-  DeclaredResourceEntry,
   HarnessActivityHook,
   HarnessCallbackContext,
   HarnessResolver,
@@ -63,7 +63,7 @@ import type {
   HarnessSteer,
   HarnessSteerHook,
   PlanListItem,
-} from "@flow-state-dev/core/types";
+} from "@flow-state-dev/core/harness";
 import type { UsesSlot } from "@flow-state-dev/core";
 import {
   assertTestedSdkVersion,

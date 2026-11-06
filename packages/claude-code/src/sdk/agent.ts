@@ -21,24 +21,26 @@
  * still leaves a block a task board dispatches.
  */
 import { randomUUID } from "node:crypto";
+import { handler } from "@flow-state-dev/core";
 import {
   OBSERVED_PULL_REQUESTS,
   formatRunDuration,
-  handler,
   harnessRunInputSchema,
   harnessRunNamespace,
   observedPullRequestsCollection,
   recordPullRequests as startPullRequestRecorder,
   reportHarnessActivity,
-} from "@flow-state-dev/core";
-import { reportHarnessSpend, type BlockContext, type HarnessBilling } from "@flow-state-dev/core/types";
+  reportHarnessSpend,
+  type HarnessBilling,
+} from "@flow-state-dev/core/harness";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import type {
   HarnessActivityHook,
   HarnessCallbackContext,
   HarnessResolver,
   HarnessSessionHook,
   HarnessUsageHook,
-} from "@flow-state-dev/core/types";
+} from "@flow-state-dev/core/harness";
 import type { UsesSlot } from "@flow-state-dev/core";
 import { z } from "zod";
 import {

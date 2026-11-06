@@ -54,10 +54,9 @@ import {
   encodeUserSegment,
   type BlockContext,
   type FlowInstance,
-  type HarnessBlock,
-  type HarnessUsageReader,
   type ModelResolver,
 } from "@flow-state-dev/core/types";
+import type { HarnessBlock, HarnessUsageReader } from "@flow-state-dev/core/harness";
 import {
   commandCheck,
   harnessDrainBudgetMs,

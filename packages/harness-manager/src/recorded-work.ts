@@ -19,7 +19,7 @@ import {
   planKeySegment,
   planRowsPrefix,
   readPlanTarget,
-} from "@flow-state-dev/core/types";
+} from "@flow-state-dev/core/harness";
 
 /** The two resource reads this module makes: any `Client` from `@flow-state-dev/client` fits. */
 export type RecordedWorkClient = { resources: Pick<ResourcesApi, "getResourceManifest" | "listCollectionItems"> };

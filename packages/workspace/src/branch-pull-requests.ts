@@ -29,7 +29,7 @@ import {
   writePullRequests,
   type PullRequestCollection,
   type PullRequestRef,
-} from "@flow-state-dev/core";
+} from "@flow-state-dev/core/harness";
 import { run } from "./exec";
 import { addWorktreePullRequests, type WorktreeCollection } from "./worktrees";
 import { WorkspaceRefusedError } from "./refused";

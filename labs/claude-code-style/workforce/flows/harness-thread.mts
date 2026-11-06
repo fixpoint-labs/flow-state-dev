@@ -26,8 +26,10 @@
  * that changed nothing (a question) skips them, so a project whose branch is
  * already red can still be asked about.
  */
-import { defineFlow, handler, harnessEnv, router, sequencer } from "@flow-state-dev/core";
-import type { BlockDefinition, HarnessBlock } from "@flow-state-dev/core/types";
+import { defineFlow, handler, router, sequencer } from "@flow-state-dev/core";
+import { harnessEnv } from "@flow-state-dev/core/harness";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
 import { CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";

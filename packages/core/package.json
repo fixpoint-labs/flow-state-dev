@@ -36,6 +36,10 @@
       "types": "./dist/types/index.d.ts",
       "default": "./src/types/index.ts"
     },
+    "./harness": {
+      "types": "./dist/harness/index.d.ts",
+      "default": "./src/harness/index.ts"
+    },
     "./items": {
       "types": "./dist/items/index.d.ts",
       "default": "./src/items/index.ts"
@@ -106,6 +110,10 @@
       "./types": {
         "types": "./dist/types/index.d.ts",
         "default": "./dist/types/index.js"
+      },
+      "./harness": {
+        "types": "./dist/harness/index.d.ts",
+        "default": "./dist/harness/index.js"
       },
       "./items": {
         "types": "./dist/items/index.d.ts",
