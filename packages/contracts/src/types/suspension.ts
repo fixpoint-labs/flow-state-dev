@@ -5,7 +5,7 @@
  * in `core/types/suspension.ts`, which re-exports these from here.
  */
 
-import { readRetired } from "../internal/retired";
+import { readRetired } from "../retired-names";
 import { REFUSALS } from "../retired";
 
 /** Lifecycle status of a suspension. `pending` is the sole non-terminal state. */
@@ -64,6 +64,9 @@ export type SuspendForUserKind = "approval" | "review" | "input";
  * A suspension's reason as the current version reads it: a reason core 0.2.0
  * stored under its retired `human_*` name reads as the `user_*` one. A new use
  * of the old name is refused where it is written.
+ *
+ * Internal: exported only from `@flow-state-dev/contracts/internal`, for the
+ * framework's own readers. Making it public is a separate decision.
  */
 export function currentSuspensionReason(reason: string): string {
   return readRetired(REFUSALS, reason);

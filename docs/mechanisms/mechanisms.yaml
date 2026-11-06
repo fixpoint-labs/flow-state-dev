@@ -47,7 +47,7 @@ mechanisms:
     job: Refuse or read a name a published version accepted or wrote and the current one retired, through one table per package (`src/retired.ts`), one error and one message, each entry dated by the package version that removes it. The vocabulary sweep fails CI on an entry past its version and on a refusal outside a table.
     package: "@flow-state-dev/contracts"
     anchor: retiredNames
-    file: packages/contracts/src/internal/retired.ts
+    file: packages/contracts/src/retired-names.ts
     builtOn: [contracts]
     overlaps: []
     status: canonical

@@ -13,7 +13,10 @@
  * The vocabulary sweep reads the same tables and fails CI on an entry whose
  * `removeIn` is at or below its package's version, so an expiry cannot drift.
  *
- * Internal: for the framework's own packages, not adopters.
+ * Internal: for the framework's own packages, not adopters, who reach it only
+ * through `@flow-state-dev/contracts/internal`. It sits outside `internal/` so a
+ * public module (`types/suspension.ts`) can read through it without depending
+ * on the internal entry point.
  */
 
 /** A package version, `major.minor.patch`. */
@@ -145,8 +148,9 @@ export function refuseRetiredValue<Name extends string>(
 
 /**
  * A stored value as the current version reads it: the entry's `readAs` when
- * the table holds one for it, else the value unchanged.
+ * the table holds one for it, else the value unchanged. A plain `string`,
+ * since a retired value reads as a different one.
  */
-export function readRetired<Value extends string>(table: RetiredTable, value: Value): Value | string {
+export function readRetired(table: RetiredTable, value: string): string {
   return entryOf(table, value)?.readAs ?? value;
 }

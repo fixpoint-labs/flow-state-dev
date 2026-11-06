@@ -12,6 +12,6 @@ export {
   type RetiredEntry,
   type RetiredTable,
   type RetiredVersion
-} from "./retired";
+} from "../retired-names";
 export { REFUSALS as CONTRACTS_REFUSALS } from "../retired";
 export { currentSuspensionReason } from "../types/suspension";

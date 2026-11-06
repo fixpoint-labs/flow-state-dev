@@ -7,7 +7,7 @@
  * reads as a user's stop (`isUserSuspension`); a new `ctx.suspend` or a
  * `useSuspensions` filter with one is refused.
  */
-import { retiredNames } from "./internal/retired";
+import { retiredNames } from "./retired-names";
 
 export const REFUSALS = retiredNames("@flow-state-dev/contracts", {
   human_approval: { replacement: '"user_approval"', readAs: "user_approval", removeIn: "0.6.0" },
