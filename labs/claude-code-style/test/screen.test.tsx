@@ -383,23 +383,57 @@ describe("the session-mode screen", () => {
     await ask("Compare Acme and Globex for us.");
     await waitFor(() => expect(row("Research Globex")).toBeTruthy());
     const sheet = () => screen.queryByRole("dialog", { name: "Work: Research Globex" });
+    // Opened from the row, then worked in: focus is in the sheet when it closes, and goes back to the row.
+    const open = () => {
+      row("Research Globex").focus();
+      fireEvent.click(row("Research Globex"));
+      within(sheet()!).getByRole("button", { name: "Close" }).focus();
+    };
 
-    fireEvent.click(row("Research Globex"));
-    fireEvent.keyDown(document, { key: "Escape" });
+    open();
+    // The Esc that closes is spent, so it never also stops a turn.
+    expect(fireEvent.keyDown(document, { key: "Escape" })).toBe(false);
     expect(sheet()).toBeNull();
+    expect(document.activeElement).toBe(row("Research Globex"));
 
-    fireEvent.click(row("Research Globex"));
+    open();
     fireEvent.click(within(sheet()!).getByRole("button", { name: "Close" }));
     expect(sheet()).toBeNull();
+    expect(document.activeElement).toBe(row("Research Globex"));
 
-    fireEvent.click(row("Research Globex"));
+    open();
     // A click inside the sheet keeps it; one on the backdrop over the thread closes it.
     fireEvent.click(within(sheet()!).getByText(/Starting:/));
     expect(sheet()).not.toBeNull();
     fireEvent.click(sheet()!.parentElement!);
     expect(sheet()).toBeNull();
+    expect(document.activeElement).toBe(row("Research Globex"));
     expect(within(thread()).getByRole("textbox", { name: "Message the main session" })).toBeTruthy();
     expect(within(thread()).getAllByText("Compare Acme and Globex for us.").length).toBeGreaterThan(0);
+  });
+
+  it("keeps the pane live under the sheet: another task picked there shows in the same sheet, and focus goes back to that row", async () => {
+    render(<App adapter={fast()} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"));
+    fireEvent.click(row("Research Globex"));
+    expect(screen.getByRole("dialog", { name: "Work: Research Globex" })).toBeTruthy();
+
+    // The sheet holds no focus: the pane's other row takes it, and a click there swaps what the sheet shows.
+    const done = within(pane()).getByText(/Done · 1/).closest("details")!;
+    done.open = true;
+    const acme = within(done).getByRole("button", { name: /Research Acme/ });
+    acme.focus();
+    fireEvent.click(acme);
+    expect(document.activeElement).toBe(acme);
+    const work = screen.getByRole("dialog", { name: "Work: Research Acme" });
+    expect(screen.queryByRole("dialog", { name: "Work: Research Globex" })).toBeNull();
+
+    within(work).getByRole("button", { name: "Close" }).focus();
+    fireEvent.click(within(work).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(acme);
   });
 
   it("folds finished tasks into a collapsed Done group of one-line rows, and counts each state", async () => {

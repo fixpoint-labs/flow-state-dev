@@ -4,7 +4,7 @@ import { PaneHeader } from "./components/PaneHeader";
 import { PaneResizer } from "./components/PaneResizer";
 import { PanelToggle } from "./components/PanelToggle";
 import { ProjectPicker } from "./components/ProjectPicker";
-import { SheetArea, SheetProvider } from "./components/Sheet";
+import { SessionOverlayArea, SessionOverlayProvider } from "./components/flow-state/session-overlay";
 import { KeysSheet } from "./components/KeysSheet";
 import { SessionsList } from "./components/SessionsList";
 import { Switcher } from "./components/Switcher";
@@ -24,7 +24,7 @@ import { modeById, modeOfWorker, PANE_TITLE, type ModeId } from "./modes";
  * The screen: the view's sessions on the left, the open session's main thread
  * in the center, and its mode's right pane: background tasks in session mode,
  * the threads board in threads mode. A pane opens a task's work in a sheet
- * over the main thread (`SheetArea`). The widths of the sessions list and the right pane are yours to drag,
+ * over the main thread (`SessionOverlayArea`). The widths of the sessions list and the right pane are yours to drag,
  * and stay across reloads (`usePaneWidth`, `useSidebarWidth`). The app opens in the Sessions view on
  * *New session*, which asks for a project before the composer opens, unless
  * the page's address names what was open (`lib/address`): a reload, a link and
@@ -209,7 +209,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     pane: () => (selected && pane ? slideThen(panels.togglePane)() : undefined),
   });
   return (
-    <SheetProvider>
+    <SessionOverlayProvider>
       <div
         className={cn("grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden", sliding && "transition-[grid-template-columns] duration-[180ms] ease-out motion-reduce:transition-none")}
         style={{
@@ -230,7 +230,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
           />
           {panels.navCollapsed ? null : <PaneResizer side="right" width={sidebarWidth} onResize={setSidebarWidth} />}
         </div>
-        <SheetArea>
+        <SessionOverlayArea>
           {selected ? (
             <Thread
               key={selected.id}
@@ -254,7 +254,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
               }}
             />
           )}
-        </SheetArea>
+        </SessionOverlayArea>
         <div className="relative min-h-0 min-w-0">
           {paneCollapsed ? null : <PaneResizer width={paneWidth} onResize={setPaneWidth} />}
           {pane === undefined ? null : paneCollapsed ? (
@@ -313,6 +313,6 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         }}
       />
       <KeysSheet open={keysOpen} onOpenChange={setKeysOpen} keys={KEYS} />
-    </SheetProvider>
+    </SessionOverlayProvider>
   );
 }
