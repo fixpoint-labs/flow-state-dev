@@ -21,9 +21,9 @@ import type { GeneratorModel, ResponseEmitterHandle } from "@flow-state-dev/core
 import {
   createExecutionContext,
   createInMemoryStores,
-  createResponseEmitter,
   executeBlock
 } from "../src";
+import { createResponseEmitter } from "../src/host";
 
 describe("untyped response fallback", () => {
   const originalEnv = { ...process.env };

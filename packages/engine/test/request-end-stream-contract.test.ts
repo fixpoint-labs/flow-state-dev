@@ -18,10 +18,10 @@ import {
   createFlowApiRouter,
   createFlowRegistry,
   createInMemoryStores,
-  detectInterruptedRequests,
   disposeFlowApiRouter,
   runAction
 } from "../src";
+import { detectInterruptedRequests } from "../src/execution/request-recovery";
 import type { StoreRegistry } from "../src";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

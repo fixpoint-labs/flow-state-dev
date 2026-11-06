@@ -13,7 +13,8 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { createInMemoryBus, createInMemoryStores, runAction, type ChangeNotice } from "@flow-state-dev/engine";
+import { createInMemoryBus, type ChangeNotice } from "@flow-state-dev/engine/host";
+import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import { z } from "zod";
 import { defineTaskCollection, getOrCreateTaskCollection, resolveResourceCollection, ticketForClaim } from "../../src/tasks";
 

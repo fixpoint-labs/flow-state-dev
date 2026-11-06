@@ -18,20 +18,22 @@ import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev
 import type { ConcurrencyConfig } from "@flow-state-dev/core";
 import {
   ConcurrencyRejectedError,
-  createFlowRegistry,
-  createFlowState,
   createInboundTransportHost,
-  createInMemoryLeaseBackend,
-  createInMemoryStores,
-  defaultBodyUserIdPrincipalResolver,
-  inMemoryStores,
   planQueueWait,
-  runAction,
   type ConcurrencyLeaseBackend,
   type DispatchEnvelope,
   type FlowRunner,
   type WorkerAdapter
+} from "../../src/host";
+import {
+  createFlowRegistry,
+  createFlowState,
+  createInMemoryStores,
+  defaultBodyUserIdPrincipalResolver,
+  inMemoryStores,
+  runAction
 } from "../../src";
+import { createInMemoryLeaseBackend } from "../../src/internal";
 import type { FlowStateRuntime } from "../../src/flowstate/types";
 import type { ExecutionResult } from "../../src/execution/types";
 import type { StoreAdapter } from "../../src/stores";

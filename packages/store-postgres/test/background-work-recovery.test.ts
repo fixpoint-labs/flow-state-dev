@@ -37,7 +37,8 @@ import {
   createCheckpointDurabilityProvider,
   createFlowRegistry
 } from "@flow-state-dev/engine";
-import type { DurabilityProvider, StoreRegistry } from "@flow-state-dev/engine";
+import type { DurabilityProvider } from "@flow-state-dev/engine/host";
+import type { StoreRegistry } from "@flow-state-dev/engine";
 import { runAction } from "@flow-state-dev/engine";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";

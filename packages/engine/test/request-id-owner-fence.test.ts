@@ -16,10 +16,9 @@ import {
   createFlowApiRouter,
   createFlowRegistry,
   createInMemoryStores,
-  createInboundTransportHost,
-  defaultBodyUserIdPrincipalResolver,
-  RequestOwnerMismatchError
+  defaultBodyUserIdPrincipalResolver
 } from "../src";
+import { createInboundTransportHost, RequestOwnerMismatchError } from "../src/host";
 import { createInitialRequestRecord } from "../src/context/initial-request-record";
 import type { FlowRunner } from "../src/transports/runner";
 import type { StoreRegistry } from "../src/stores/types";

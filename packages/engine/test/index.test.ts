@@ -1,18 +1,17 @@
 import { describe, expect, it } from "vitest";
+import { createResponseEmitter, parseFlowRoute } from "../src/host";
 import {
-  createResponseEmitter,
   createExecutionContext,
   createFlowApiRouter,
   createFlowRegistry,
   createInMemoryStores,
   executeBlock,
-  normalizeError,
-  parseFlowRoute,
-  replayRequestEvents,
-  runAction,
-  runWithCAS,
-  serializeSSEFrame
+  runAction
 } from "../src";
+import { normalizeError } from "../src/errors/normalize-error";
+import { replayRequestEvents } from "../src/streaming/resume";
+import { runWithCAS } from "../src/stores/cas";
+import { serializeSSEFrame } from "../src/streaming/sse";
 
 describe("@flow-state-dev/engine", () => {
   it("exports server runtime primitives", () => {

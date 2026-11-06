@@ -42,8 +42,10 @@
 import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createFlowApiRouter, createFlowRegistry, createInMemoryStores, enablePushDelivery } from "../src";
-import type { FlowApiRouter, StoreRegistry } from "../src";
+import { createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "../src";
+import { enablePushDelivery } from "../src/host";
+import type { FlowApiRouter } from "../src/host";
+import type { StoreRegistry } from "../src";
 import { listFlowRoutes, matchFlowRoute } from "../src/routes/router";
 import { routeSubject } from "../src/routes/route-auth";
 

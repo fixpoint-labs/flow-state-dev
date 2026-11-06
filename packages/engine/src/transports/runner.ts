@@ -92,7 +92,7 @@ export type LeaseTurn = { kind: "now" } | { kind: "when-free"; key: string };
  * Handle returned by FlowRunner.dispatch(). Exposes the request id
  * and a promise that resolves when execution finishes, plus an abort hook.
  */
-export interface FlowDispatchHandle {
+export interface RunnerHandle {
   readonly requestId: string;
   readonly finished: Promise<ExecutionResult>;
   /**
@@ -119,7 +119,7 @@ export interface FlowRunner {
   dispatch(
     envelope: DispatchEnvelope,
     bridge?: StreamBridge
-  ): Promise<FlowDispatchHandle>;
+  ): Promise<RunnerHandle>;
   close(): Promise<void>;
 }
 

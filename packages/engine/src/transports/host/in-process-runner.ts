@@ -12,7 +12,7 @@ import { runAction } from "../../execution/runAction";
 import { UnknownFlowError } from "../../context/instance-pin";
 import type {
   DispatchEnvelope,
-  FlowDispatchHandle,
+  RunnerHandle,
   FlowRunner,
   StreamBridge
 } from "../runner";
@@ -52,7 +52,7 @@ export interface InProcessRunner extends FlowRunner {
   dispatchLocal(
     envelope: DispatchEnvelope,
     local: InProcessDispatchContext
-  ): FlowDispatchHandle;
+  ): RunnerHandle;
 }
 
 /**
@@ -88,7 +88,7 @@ export function createInProcessRunner(
   const dispatchLocal = (
     envelope: DispatchEnvelope,
     local: InProcessDispatchContext
-  ): FlowDispatchHandle => {
+  ): RunnerHandle => {
     const flow = registry.get(envelope.flowKind);
     if (flow === undefined) {
       throw new UnknownFlowError(envelope.flowKind);
@@ -157,7 +157,7 @@ export function createInProcessRunner(
     async dispatch(
       envelope: DispatchEnvelope,
       _bridge?: StreamBridge
-    ): Promise<FlowDispatchHandle> {
+    ): Promise<RunnerHandle> {
       return dispatchLocal(envelope, {
         effectiveRuntimeConfig: runtimeConfig
       });

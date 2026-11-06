@@ -44,11 +44,11 @@ import type {
   ResourceStateSetOptions,
   ResourceStateStore,
   StorageScopeType,
-  ExpectedVersion,
   ResourceStateRow,
   SetResult,
   VersionedResourceState
-} from "@flow-state-dev/engine";
+} from "@flow-state-dev/engine/host";
+import type { ExpectedVersion } from "@flow-state-dev/core/helpers";
 import type { QueryExecutor } from "./types";
 import { collectionKeyRegex } from "./collection-key-regex";
 

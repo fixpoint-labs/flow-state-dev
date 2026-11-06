@@ -10,7 +10,7 @@
  * conditional on the version a pass read. `due_at` is indexed for the
  * sweeper's due read.
  */
-import type { WakeInput, WakeKey, WakeRecord, WakeStore } from "@flow-state-dev/engine";
+import type { WakeInput, WakeKey, WakeRecord, WakeStore } from "@flow-state-dev/engine/host";
 import type { QueryExecutor } from "./types";
 
 /** The tenant column: `""` for no tenant, so the primary key has no NULL in it. */

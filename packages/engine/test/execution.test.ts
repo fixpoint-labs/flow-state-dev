@@ -11,19 +11,17 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { StateChangeItem } from "@flow-state-dev/core/items";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { describe, expect, it } from "vitest";
+import { FlowError } from "@flow-state-dev/core";
+import { NetworkError, ValidationError } from "../src/errors/flow-error";
 import {
-  FlowError,
-  NetworkError,
-  ValidationError,
   createExecutionContext,
   createInMemoryStores,
-  createResponseEmitter,
   executeBlock,
-  mergeRetryPolicy,
-  normalizeError,
-  retryWithPolicy,
   runAction
 } from "../src";
+import { createResponseEmitter } from "../src/host";
+import { mergeRetryPolicy, retryWithPolicy } from "../src/execution/retry";
+import { normalizeError } from "../src/errors/normalize-error";
 import { isRetryableError } from "../src/execution/retry";
 import {
   NOOP_INTERNAL_EXECUTION_SEAMS

@@ -7,7 +7,7 @@ import {
   createBearerSecretPrincipalResolver,
   PrincipalResolutionError
 } from "../../src";
-import type { PrincipalResolutionContext } from "../../src";
+import type { PrincipalResolutionContext } from "@flow-state-dev/core/types";
 
 const SECRET = "scheduler-secret-do-not-share";
 const SYSTEM_PRINCIPAL = { userId: "system", orgId: DEFAULT_ORG_ID };

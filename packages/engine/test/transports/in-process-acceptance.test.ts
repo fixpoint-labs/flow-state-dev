@@ -25,9 +25,9 @@ import { z } from "zod";
 import {
   createFlowRegistry,
   createInMemoryStores,
-  createInboundTransportHost,
   defaultBodyUserIdPrincipalResolver
 } from "../../src";
+import { createInboundTransportHost } from "../../src/host";
 import type { ActiveRequestEntry, SessionRecord } from "../../src/stores/types";
 
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));

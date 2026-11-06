@@ -185,6 +185,6 @@ export function foreignRecordRefusal(
  * This is a label, not an authorization — a reader deciding access resolves
  * the owner through {@link resolveRecordOwner} instead.
  */
-export function recordOwnerId(record: OwnedRecord): string {
+function recordOwnerId(record: OwnedRecord): string {
   return record.flowId ?? record.flowKind;
 }

@@ -9,10 +9,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
-  parseFlowRoute
+  createInMemoryStores
 } from "../src";
-import type { SessionRecord, StoreRegistry } from "../src";
+import { parseFlowRoute } from "../src/host";
+import type { SessionRecord } from "../src/host";
+import type { StoreRegistry } from "../src";
 
 function makeFlow(kind: string): FlowInstance {
   return defineFlow({

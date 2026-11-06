@@ -27,10 +27,9 @@ import type { JsonObject } from "@flow-state-dev/core/types";
 import {
   createExecutionContext,
   createInMemoryStores,
-  ResourceAlreadyExistsError,
-  ResourceDeletedError,
   type StoreRegistry
 } from "../src";
+import { ResourceAlreadyExistsError, ResourceDeletedError } from "../src/errors/flow-error";
 
 const spine = defineResource({
   scope: "session",

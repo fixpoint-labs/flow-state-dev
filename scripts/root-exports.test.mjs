@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { fsReader } from "./mechanism-exports.mjs";
+import { fsReader, packageEntryExports } from "./mechanism-exports.mjs";
 import { ROOT, collisions, compare, render, rootReport } from "./check-root-exports.mjs";
 import { importCensus, importsIn, importsInCode } from "./import-census.mjs";
 
@@ -274,6 +274,19 @@ describe("the collision assertion", () => {
     const names = new Set(violations.map((v) => v.name));
     assert.deepEqual([...names].sort(), [...collisions(real).keys()].sort());
     for (const v of violations) assert.match(v.package, /^@flow-state-dev\//);
+  });
+});
+
+describe("engine's entries", () => {
+  it("re-export no name another package declares, and each name sits on one entry", () => {
+    // Core's and contracts' names are imported from core, so an engine import never shadows them.
+    const engine = packageEntryExports(real).get("@flow-state-dev/engine");
+    const entries = [".", "./host", "./internal"].map((k) => [k, engine.get(k)]);
+    const foreign = entries.flatMap(([k, m]) => [...m].filter(([, e]) => !e.file.startsWith("packages/engine/")).map(([n]) => `${k} ${n}`));
+    assert.deepEqual(foreign, []);
+    const seen = new Map();
+    for (const [k, m] of entries) for (const n of m.keys()) seen.set(n, [...(seen.get(n) ?? []), k]);
+    assert.deepEqual([...seen].filter(([, ks]) => ks.length > 1), []);
   });
 });
 

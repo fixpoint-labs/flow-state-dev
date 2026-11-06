@@ -17,9 +17,9 @@ import {
   createExecutionContext,
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
-  createResponseEmitter
+  createInMemoryStores
 } from "../src";
+import { createResponseEmitter } from "../src/host";
 import { applyScopeStateDefaults } from "../src/context/scope-state-defaults";
 
 const ORG = "org_defaults";

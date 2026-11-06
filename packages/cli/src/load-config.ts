@@ -13,7 +13,8 @@
  */
 import { existsSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
-import { isFlowState, type FlowState } from "@flow-state-dev/engine";
+import { isFlowState } from "@flow-state-dev/engine/host";
+import { type FlowState } from "@flow-state-dev/engine";
 import { CliError } from "./resolve-block";
 import { EXIT_CONFIG_ERROR } from "./exit-codes";
 import { importConfigModule } from "./import-config-module";

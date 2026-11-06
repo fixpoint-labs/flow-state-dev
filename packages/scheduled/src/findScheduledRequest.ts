@@ -5,10 +5,7 @@
  * singleton its kind implies — so two copies of one definition never skip
  * each other's ticks.
  */
-import type {
-  ActiveRequestEntry,
-  ActiveRequestRegistry
-} from "@flow-state-dev/engine";
+import type { ActiveRequestEntry, ActiveRequestRegistry } from "@flow-state-dev/engine/host";
 import { SCHEDULED_TRANSPORT_SOURCE } from "./createScheduledTransportAdapter";
 
 export async function findScheduledRequest(

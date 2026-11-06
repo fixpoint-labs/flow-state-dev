@@ -15,12 +15,12 @@
  */
 import {
   ConcurrencyRejectedError,
-  PrincipalResolutionError,
   resolveSharedUserCellKey,
   type InboundRequestEnvelope,
-  type InboundTransportHost,
-  type ResolvedPrincipal
-} from "@flow-state-dev/engine";
+  type InboundTransportHost
+} from "@flow-state-dev/engine/host";
+import { PrincipalResolutionError } from "@flow-state-dev/engine";
+import { type ResolvedPrincipal } from "@flow-state-dev/core/types";
 import {
   validateScheduleConfig,
   type ScheduleConfig,

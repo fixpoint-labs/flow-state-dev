@@ -17,7 +17,8 @@
  * Run: pnpm tsx goals/structured-output/recovers-off-schema-output/run.mts
  */
 import { defineFlow, DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { runAction, createInMemoryStores, createModelResolver } from "@flow-state-dev/engine";
+import { runAction, createInMemoryStores } from "@flow-state-dev/engine";
+import { createModelResolver } from "@flow-state-dev/core";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { z } from "zod";
 import { forceModelResolver } from "../../../packages/cli/src/model-override.ts";

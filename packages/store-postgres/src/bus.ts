@@ -31,7 +31,7 @@
  * wake, never a lost one.
  */
 import { randomUUID } from "node:crypto";
-import { createInMemoryBus, type BusTopic, type ChangeBus, type ChangeListener, type ChangeNotice } from "@flow-state-dev/engine";
+import { createInMemoryBus, type BusTopic, type ChangeBus, type ChangeListener, type ChangeNotice } from "@flow-state-dev/engine/host";
 import type { Pool } from "pg";
 import type { QueryExecutor } from "./types";
 import { openListen, reconnectDelay, type ListenConnection } from "./listen";

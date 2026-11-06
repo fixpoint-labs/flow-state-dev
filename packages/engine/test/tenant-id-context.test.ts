@@ -12,9 +12,9 @@ import {
   createFlowApiRouter,
   createFlowRegistry,
   createInMemoryStores,
-  createResponseEmitter,
   runAction
 } from "../src";
+import { createResponseEmitter } from "../src/host";
 
 function buildCapturingFlow(capture: { tenantId?: string; sessionTenantId?: string }) {
   const probe = handler({

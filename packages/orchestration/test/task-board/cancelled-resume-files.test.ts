@@ -18,9 +18,9 @@ import {
   createCheckpointDurabilityProvider,
   createFlowRegistry,
   createInMemoryStores,
-  runAction,
-  type RuntimeConfig,
+  runAction
 } from "@flow-state-dev/engine";
+import { type RuntimeConfig } from "@flow-state-dev/engine/host";
 import { createMockModelResolver, runForTest } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { createTaskToolsCapability } from "../../src/skills";

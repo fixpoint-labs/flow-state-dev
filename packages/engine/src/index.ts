@@ -1,272 +1,76 @@
+/**
+ * `@flow-state-dev/engine`: what an app author imports to run flows on a
+ * server — `createFlowState`, the stores, `createFlowApiRouter`, the in-process
+ * fetch, `runAction`, and the auth and webhook helpers an app wires in.
+ *
+ * Two more entries split the rest by reader. `@flow-state-dev/engine/host` is
+ * for host, transport and store adapter authors: the contracts they implement
+ * and the types the root's functions take and return. `@flow-state-dev/engine/internal`
+ * is for FSD's own packages, with no semver promise. A name is on the entry
+ * its readers import it from; core and contracts names are imported from core.
+ */
 export { createExecutionContext } from "./context/createExecutionContext";
 export {
-  ensureSessionRecord,
-  ReadonlySessionStateError,
-  refuseReadonlyStateChange,
-  refuseServerOwnedState,
-  SessionCreateRefusedError
-} from "./context/session-birth";
-export type { SessionCreateRequest, SessionRecordSeed } from "./context/session-birth";
-export type {
-  CreateExecutionContextOptions,
-  ExecutionContext,
-  RequestRuntime
-} from "./context/types";
-export {
+  type CapabilitySlot,
+  type CapabilitySlotMap,
   ConcurrentModificationError,
-  ResourceAlreadyExistsError,
-  ResourceDeletedError,
-  ScopeMutationTimeoutError,
   createFilesystemContentStore,
-  createFilesystemResourceStateStore,
   createFilesystemOrgStore,
   createFilesystemRequestStore,
+  createFilesystemResourceStateStore,
   createFilesystemSessionStore,
   createFilesystemStores,
   createFilesystemTraceStore,
   createFilesystemUserStore,
+  createFilesystemWakeStore,
   createInMemoryContentStore,
-  createInMemoryResourceStateStore,
-  toBareState,
-  toBareStates,
+  createInMemoryLeaseStore,
   createInMemoryOrgStore,
   createInMemoryRequestStore,
+  createInMemoryResourceStateStore,
   createInMemorySessionStore,
   createInMemoryStores,
+  createInMemorySuspensionStore,
   createInMemoryTraceStore,
   createInMemoryUserStore,
-  createInMemorySuspensionStore,
-  createInMemoryLeaseStore,
   createInMemoryWakeStore,
-  createFilesystemWakeStore,
-  createScopeStateOps,
-  createStateContainer,
   filesystemStores,
   inMemoryStores,
-  resolveOrgStorageKey,
-  resolveRequestIncarnation,
-  resolveSharedUserCellKey,
-  resolveTraceMaxRequests,
   resolveUserStorageKey,
-  runWithCAS,
-  withStoredAbortRequested
+  type StoreAdapter,
+  type StoreRegistry,
+  type StoresConfig,
+  toBareStates
 } from "./stores";
-export type {
-  CapabilitySlot,
-  CapabilitySlotMap,
-  StoreAdapter,
-  StoresConfig
-} from "./stores";
-// The change bus (FIX-2426): the `bus` slot's contract, its in-memory
-// default, and the wrap that makes a raw registry's writes publish.
-export { createInMemoryBus } from "./bus/in-memory-bus";
-export { withChangeBus } from "./bus/publish-writes";
-// Push delivery (FIX-2428): a host that serves the socket turns it on, then
-// hands each socket that opens on `/users/:userId/stream` to the delivery.
-export { enablePushDelivery } from "./push/push-delivery";
-export type { EnablePushDeliveryOptions, PushDelivery } from "./push/push-delivery";
-export type { PushSocket, PushSocketIO } from "./push/socket-session";
-export type { BusTopic, ChangeBus, ChangeListener, ChangeNotice } from "./bus/types";
-export { createFlowState, isFlowState } from "./flowstate/createFlowState";
-export type {
-  CreateFlowStateOptions,
-  DevToolConnectionConfig,
-  FlowState,
-  FlowStateModelsConfig,
-  FlowStateRuntime,
-  FlowStateVoiceConfig,
-  WorkerAdapter,
-  WorkerHandle,
-  WorkerMode
-} from "./flowstate/types";
-export type {
-  ActiveRequestEntry,
-  ActiveRequestRegistry,
-  CheckpointStore,
-  ConditionalRequestFields,
-  ConditionalStatusTransition,
-  ConditionalWriteResult,
-  ContentScopeType,
-  StorageScopeType,
-  ContentStore,
-  LeaseStore,
-  WakeInput,
-  WakeKey,
-  WakeRecord,
-  WakeStore,
-  ResourceStateStore,
-  VersionedResourceState,
-  ExpectedVersion,
-  ResourceIndexEntry,
-  ResourceStateSetOptions,
-  ResourceIndexBuildState,
-  ResourceIndexBuildEntry,
-  ResourceStateIndexes,
-  ResourceStateConflict,
-  ResourceStateRow,
-  OrgListOptions,
-  OrgRecord,
-  OrgStore,
-  RequestActionResult,
-  RequestListOptions,
-  RequestRecord,
-  RequestStatus,
-  PersistErrorHandler,
-  PersistErrorInfo,
-  RequestStore,
-  SessionListOptions,
-  SessionParentage,
-  SessionRecord,
-  SessionStore,
-  SetResult,
-  StoreRegistry,
-  SuspensionStore,
-  SubscribeToEventsOptions,
-  TraceEvent,
-  TraceStore,
-  UserListOptions,
-  UserRecord,
-  UserStore
-} from "./stores";
-export * from "./streaming";
-export * from "./execution";
-export * from "./registry";
-export * from "./routes";
-export * from "./transports";
-// Internal runtime-config bundle (type only — see runtime-config.ts). The
-// factory stays unexported; sibling packages construct the bundle inline.
-export type { RuntimeConfig } from "./runtime-config";
-// Model infrastructure — re-exported from core.
-// Prefer importing from @flow-state-dev/core or @flow-state-dev/core/models.
+export { createFlowState } from "./flowstate/createFlowState";
+export { type FlowState } from "./flowstate/types";
 export {
-  createAiSdkModelResolver,
-  wrapAiSdkModel,
-  createModelResolver,
-  detectAvailableProviders,
-  parseModelString,
-  createFallbackModel
-} from "@flow-state-dev/core/models";
-export type {
-  ResolveAiSdkLanguageModel,
-  CreateModelResolverOptions,
-  IntentDefaults,
-  ModelGroupDefaults,
-  GatewayConfig,
-  ModelRetryPolicy,
-  GatewayType,
-  ProviderName,
-  ProviderAvailability,
-  ParsedModelString,
-  FallbackModelEntry,
-  ProviderPreference
-} from "@flow-state-dev/core/models";
+  continueRequest,
+  executeBlock,
+  runAction
+} from "./execution";
+export { createFlowRegistry } from "./registry";
 export {
-  FlowError,
-  ModelError,
-  NetworkError,
-  RateLimitError,
-  TimeoutError,
-  ContextLengthError,
-  ProviderUnavailableError,
-  ToolExecutionError,
-  ValidationError,
-  AmbiguousBlockNameError,
-  FlowStateConfigError,
-  FlowStateDisposedError
-} from "./errors/flow-error";
-export { normalizeError } from "./errors/normalize-error";
-export type {
-  ErrorCaptureEvent,
-  ErrorCaptureHandler
-} from "./errors/error-capture";
+  createFlowApiRouter,
+  createInProcessFetch,
+  decodePathSegments,
+  disposeFlowApiRouter,
+  PUBLIC_REENTRY_SOURCES
+} from "./routes";
 export {
-  StoreSubscriptionError,
-  STORE_SUBSCRIPTION_ERROR_CODES,
-  type StoreSubscriptionErrorCode
-} from "./errors/store-subscription-error";
-export { BoundedQueue } from "./utils/bounded-queue";
-export type { BoundedQueuePushResult } from "./utils/bounded-queue";
-export {
-  isTerminalRequestStreamEvent,
-  endsRequestStream,
-  isTerminalRequestStatus,
-  synthesizeRequestInterrupted,
-  pollEvents,
-  abortableSleep,
-  isBatchStillAuthorized,
-  type ReadEventsFn
-} from "./stores/subscribe-helpers";
-export {
-  FlowInstanceBindingMismatchError,
-  OrgBindingMismatchError,
-  RequestOwnerMismatchError,
-  TenantBindingMismatchError,
-  UserBindingMismatchError
-} from "./context/binding-errors";
-export {
-  ownsRecord,
-  recordOwnerId,
-  resolveRecordOwner,
-  type OwnedRecord,
-  type OwnerResolution,
-  type OwnerResolutionRefusal
-} from "./context/record-owner";
-// The rules an in-process caller (`fsdev run`, `fsdev chat`) applies before it
-// writes, so it refuses exactly what the transport host refuses (FIX-1551).
-export { pinRejectsCaller, type InstancePinCaller } from "./context/instance-pin";
-export { isOrgAttributed, UnattributedOrgError } from "./context/org-attribution";
-
-export {
-  createSentenceBuffer,
-  createTTSPipeline,
-  createTTSEmitterHook,
-  voiceContext,
-  type SentenceBuffer,
-  type TTSPipeline,
-  type TTSPipelineOptions,
-  type TTSEmitterHook
-} from "./voice";
-
+  createBearerSecretPrincipalResolver,
+  createHmacVerifier,
+  createHs256JwtVerifier,
+  createWebhookTransportAdapter,
+  createWebhookVerifier,
+  defaultBodyUserIdPrincipalResolver,
+  extractBearerToken,
+  githubWebhookVerifier,
+  PrincipalResolutionError,
+  slackWebhookVerifier,
+  stripeWebhookVerifier
+} from "./transports";
+export { type ErrorCaptureEvent } from "./errors/error-capture";
+export { voiceContext } from "./voice";
 export { createCheckpointDurabilityProvider } from "./durability/checkpoint-durability-provider";
 export { resolveDurabilityProvider } from "./durability/default-durability";
-export type { DurabilityProvider, Lease, LeaseOptions } from "./durability/types";
-export {
-  createDurabilitySweeper
-} from "./durability/durability-sweeper";
-export type {
-  DurabilityRetentionConfig,
-  CreateDurabilitySweeperOptions,
-  DurabilitySweeper
-} from "./durability/durability-sweeper";
-// A run as a row's owner, fired host-side, and the routing that fires one per
-// subscriber a service flow nominates (FIX-2534 D2).
-export {
-  fireOwnerRunThrough,
-  routeServiceEvent,
-  type MalformedOwnerRun,
-  type OwnerRun,
-  type OwnerRunFired,
-  type OwnerRunRefusal,
-  type RoutedOwnerRun,
-  type RoutedServiceEvent
-} from "./durability/owner-runs";
-
-// ---------------------------------------------------------------------------
-// Internal resource helpers exposed for sibling-package consumption
-// (e.g. @flow-state-dev/mcp). Prefixed `unstable_` — not part of the
-// long-term public API.
-// ---------------------------------------------------------------------------
-export {
-  findResourceConfig as unstable_findResourceConfig,
-  getPersistedData as unstable_getPersistedData,
-  isCollectionConfig as unstable_isCollectionConfig,
-  listExposedResources as unstable_listExposedResources,
-  renderContent as unstable_renderContent
-} from "./resources/internal";
-export type {
-  ExposedResourceEntry as unstable_ExposedResourceEntry,
-  ResolvedResourceScope as unstable_ResolvedResourceScope,
-  ResourceFlowLike as unstable_ResourceFlowLike,
-  ResourceOwnerFlow as unstable_ResourceOwnerFlow,
-  ResourcePersistenceContext as unstable_ResourcePersistenceContext
-} from "./resources/internal";

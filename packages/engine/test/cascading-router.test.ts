@@ -27,7 +27,8 @@ import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import { mockEvaluationModel, testBlock, type MockEvaluationAnswer } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
-import { continueRequest, createFlowRegistry, createInMemoryStores, createResponseEmitter, runAction } from "../src";
+import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { createResponseEmitter } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 
 const ticket = { id: "T-1", message: "I was charged twice for one order" };

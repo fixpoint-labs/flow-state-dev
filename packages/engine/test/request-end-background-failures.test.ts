@@ -8,7 +8,8 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { onRequestEnded, type RequestEnding } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
-import { abortRequest, createInMemoryStores, runAction } from "../src";
+import { abortRequest } from "../src/host";
+import { createInMemoryStores, runAction } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

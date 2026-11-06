@@ -8,7 +8,8 @@ import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createExecutionContext, createInMemoryStores, createResponseEmitter, executeBlock } from "../src";
+import { createExecutionContext, createInMemoryStores, executeBlock } from "../src";
+import { createResponseEmitter } from "../src/host";
 import { NetworkError } from "../src/errors/flow-error";
 import { getResponseItems } from "../src/execution/internal/response";
 import {

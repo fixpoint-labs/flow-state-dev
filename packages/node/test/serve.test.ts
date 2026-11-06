@@ -5,10 +5,9 @@ import { join } from "node:path";
 import {
   createFlowState,
   inMemoryStores,
-  type FlowApiRouter,
-  type InboundTransportAdapter,
-  type StoreAdapter,
+  type StoreAdapter
 } from "@flow-state-dev/engine";
+import { type FlowApiRouter, type InboundTransportAdapter } from "@flow-state-dev/engine/host";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";

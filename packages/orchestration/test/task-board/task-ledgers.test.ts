@@ -14,7 +14,8 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import type { ActionCore, BlockContext } from "@flow-state-dev/core/types";
 import { createFlowState, createInMemoryStores, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import type { FlowStateRuntime, StoreRegistry } from "@flow-state-dev/engine";
+import type { FlowStateRuntime } from "@flow-state-dev/engine/host";
+import type { StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {

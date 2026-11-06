@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createPlainTextRenderer } from "../src/chat/render";
-import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
+import type { RequestStreamEventWithId } from "@flow-state-dev/engine/host";
 import type { FlowActionTarget } from "../src/chat/targets";
 
 /** Collects everything written, so assertions run against the full transcript. */

@@ -30,12 +30,11 @@ import {
   createFlowApiRouter,
   createFlowRegistry,
   createInMemoryStores,
-  ReadonlySessionStateError,
   resolveUserStorageKey,
   runAction,
-  SessionCreateRefusedError,
   type StoreRegistry
 } from "../src";
+import { ReadonlySessionStateError, SessionCreateRefusedError } from "../src/host";
 import { createRequestHost } from "../src/context/create-request-host";
 import { ensureSessionForWebhook } from "../src/transports/webhook/session-resolver";
 

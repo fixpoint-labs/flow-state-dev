@@ -30,7 +30,8 @@ import {
   createInMemoryStores,
   runAction
 } from "@flow-state-dev/engine";
-import type { RequestRecord, StoreRegistry } from "@flow-state-dev/engine";
+import type { RequestRecord } from "@flow-state-dev/engine/host";
+import type { StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 
