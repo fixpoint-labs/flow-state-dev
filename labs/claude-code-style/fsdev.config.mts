@@ -126,6 +126,9 @@ const workspace = localWorkspaceHost({
 const tree = await readWorkforce(fileURLToPath(new URL("./workforce", import.meta.url)));
 if (tree.errors.length > 0) throw new Error(`workforce/ did not load: ${tree.errors.map((e) => e.error.message).join("; ")}`);
 
+/** Core's session title generator, one per flow that runs it. */
+const titler = () => utility.sessionTitleGenerator({ name: "auto-title", model: utilityModel });
+
 let flows = {};
 const installation = createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => flows });
 flows = {
@@ -134,10 +137,11 @@ flows = {
     installation,
     model,
     ...answerAgain,
-    afterAnswer: utility.sessionTitleGenerator({ name: "auto-title", model: utilityModel }),
+    afterAnswer: titler(),
     uses: [projectSourceCapability({ workspace }), consultSessionsCapability(installation)],
   }),
-  coordinator: defineCoordinatorFlow({ installation, routeModel: model, agent: { model } }),
+  // Threads mode's main session is titled the same way, so its row names what the session is about.
+  coordinator: defineCoordinatorFlow({ installation, routeModel: model, agent: { model, afterAnswer: titler() } }),
   // Its runs work in the session's project: a task filed with none is refused at filing (FIX-2333).
   [HARNESS_THREAD_FLOW]: { flow: defineHarnessThreadFlow({ installation, workspace, ...scripted }), roles: ["contributor"], needsProject: true },
 };
