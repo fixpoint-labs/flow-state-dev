@@ -1,0 +1,73 @@
+entry sizes: {
+  contracts: 121,
+  core: 563,
+  engine: 383,
+  client: 119,
+  react: 167,
+  testing: 90
+}
+engine root: 383 names {
+  context: 26,
+  errors: 20,
+  stores: 91,
+  bus: 6,
+  push: 5,
+  flowstate: 11,
+  streaming: 27,
+  execution: 43,
+  registry: 11,
+  routes: 14,
+  transports: 73,
+  'runtime-config': 1,
+  utils: 2,
+  voice: 8,
+  durability: 9,
+  index: 1,
+  resources: 9
+}
+engine root names declared in another package (26):
+   RequestStatus ← packages/contracts/src/types/request-status.ts
+   InboundSource ← packages/core/src/types/auth.ts
+   PrincipalResolutionContext ← packages/core/src/types/auth.ts
+   ResolvedPrincipal ← packages/core/src/types/auth.ts
+   AuthenticationConfig ← packages/core/src/types/auth.ts
+   ResolvePrincipalFn ← packages/core/src/types/auth.ts
+   createAiSdkModelResolver ← packages/core/src/models/createAiSdkModelResolver.ts
+   wrapAiSdkModel ← packages/core/src/models/createAiSdkModelResolver.ts
+   createModelResolver ← packages/core/src/models/createModelResolver.ts
+   detectAvailableProviders ← packages/core/src/models/providerDetection.ts
+   parseModelString ← packages/core/src/models/providerDetection.ts
+   createFallbackModel ← packages/core/src/models/fallbackModel.ts
+   ResolveAiSdkLanguageModel ← packages/core/src/models/createAiSdkModelResolver.ts
+   CreateModelResolverOptions ← packages/core/src/models/createModelResolver.ts
+   IntentDefaults ← packages/core/src/models/types.ts
+   ModelGroupDefaults ← packages/core/src/models/types.ts
+   GatewayConfig ← packages/core/src/models/types.ts
+   RetryPolicy ← packages/core/src/models/types.ts
+   GatewayType ← packages/core/src/models/types.ts
+   ProviderName ← packages/core/src/models/types.ts
+   ProviderAvailability ← packages/core/src/models/providerDetection.ts
+   ParsedModelString ← packages/core/src/models/providerDetection.ts
+   FallbackModelEntry ← packages/core/src/models/fallbackModel.ts
+   ProviderPreference ← packages/core/src/models/types.ts
+   FlowError ← packages/core/src/errors/flow-error.ts
+   unstable_isCollectionConfig ← packages/core/src/types/storage-identity.ts
+collisions — one name, different declarations (8):
+   StreamEvent: contracts (packages/contracts/src/items/events.ts) vs engine (packages/engine/src/transports/runner.ts)
+   SessionView: core (packages/core/src/types/request-host.ts) vs react (packages/react/src/hooks/useSession.ts)
+   DispatchHandle: core (packages/core/src/blocks/dispatcher.ts) vs engine (packages/engine/src/transports/types.ts)
+   FlowCardinality: core (packages/core/src/types/flow.ts) vs react (packages/react/src/components/flow-navigator/grouping.ts)
+   isRetryableError: core (packages/core/src/models/fallbackModel.ts) vs engine (packages/engine/src/execution/retry.ts)
+   ChildSessionStatus: engine (packages/engine/src/routes/child-session-routes.ts) vs client (packages/client/src/types/index.ts)
+   ChildSessionSummary: engine (packages/engine/src/routes/child-session-routes.ts) vs client (packages/client/src/types/index.ts)
+   CensusPlant: client (packages/client/src/index.ts) vs react (packages/react/src/index.ts)
+shared re-exports — one declaration on several entries: 67
+markers and import proofs (7):
+   engine → enginePackageMarker
+   client → clientPackageMarker
+   react → CoreItemImportProof
+   react → CoreTypeImportProof
+   react → coreItemImportProof
+   react → reactPackageMarker
+   testing → testingPackageMarker
+FAIL: 8 collision(s)

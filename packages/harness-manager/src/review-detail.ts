@@ -3,8 +3,9 @@
  *
  * With `reviewChanges` on, a run that made commits stops with
  * `suspendForUser({ kind: "review" })`, and the stop's `data` holds its
- * branch, commit count, commit subjects, the judge's verdict and the checks
- * the phase ran (`commandCheck`). This reads
+ * branch, commit count, commit subjects, the judge's verdict, the checks
+ * the phase ran (`commandCheck`), and the ways an accept can land the work
+ * (with the last landing that failed). This reads
  * that data as {@link ReviewDetail}, the shape the registry's `review-hold`
  * card takes as plain props, so an app never spells this package's field
  * names itself. Browser-safe: it imports nothing.
@@ -20,6 +21,15 @@ export interface ReviewDetail {
   subjects: string[];
   /** The judge's verdict on the run, or `null` when no judge read it. */
   judge: { verdict: string; confidence: number; reason: string } | null;
+  /**
+   * The ways an accept can land the run's work on this host:
+   * `pull-request` and `merge`, sent as the accept's `land`. Empty when the
+   * host can't land, and then a plain accept is the only one. The reader always
+   * sets it; optional so a review built by hand (a test double) needn't.
+   */
+  lands?: ReviewLand[];
+  /** The last landing that failed, when the review is asked again for a retry; `null` otherwise. */
+  landFailed?: { land: ReviewLand; message: string } | null;
   /**
    * The checks the phase ran before stopping for review (`commandCheck`), in
    * order: each command, how it ended and the end of its output. `null` when
@@ -37,6 +47,11 @@ export interface ReviewCheck {
   durationMs: number;
   tail: string;
 }
+
+/** A way an accept lands a run's work: push and open a pull request, or merge into the person's checkout. */
+export type ReviewLand = "pull-request" | "merge";
+
+const isLand = (value: unknown): value is ReviewLand => value === "pull-request" || value === "merge";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -77,6 +92,11 @@ export function reviewDetail(data: unknown): ReviewDetail | null {
     commits: typeof data.commits === "number" && Number.isInteger(data.commits) && data.commits >= 0 ? data.commits : null,
     subjects: Array.isArray(data.subjects) ? data.subjects.filter((s): s is string => typeof s === "string") : [],
     judge: judgeOf(data.judge),
+    lands: Array.isArray(data.lands) ? data.lands.filter(isLand) : [],
+    landFailed:
+      isRecord(data.landFailed) && isLand(data.landFailed.land) && typeof data.landFailed.message === "string"
+        ? { land: data.landFailed.land, message: data.landFailed.message }
+        : null,
     checks: checksOf(data.checks),
   };
   // Nothing readable is no review: the card then shows the stop's prompt instead.

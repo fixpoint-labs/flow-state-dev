@@ -1,0 +1,171 @@
+entry sizes: {
+  bullmq: 33,
+  'bullmq/worker': 4,
+  'bullmq/schedules': 4,
+  'claude-code/cli': 7,
+  'claude-code/sdk': 81,
+  client: 118,
+  codex: 48,
+  contracts: 121,
+  'contracts/items': 84,
+  'contracts/items/*': 88,
+  'contracts/block-instance-id': 12,
+  'contracts/types/*': 27,
+  'contracts/helpers': 15,
+  'contracts/helpers/*': 16,
+  core: 563,
+  'core/types': 442,
+  'core/items': 84,
+  'core/prompt': 17,
+  'core/prompt-file': 20,
+  'core/models': 43,
+  'core/capability': 33,
+  'core/graph': 18,
+  'core/helpers': 45,
+  'core/resource-template': 8,
+  'core/errors/suspension-error': 5,
+  'core/blocks/handler': 3,
+  'core/blocks/sequencer': 11,
+  cursor: 46,
+  devtool: 1,
+  'devtool/react': 16,
+  'devtool/react/styles.css': 0,
+  engine: 383,
+  'engine/testing': 29,
+  'engine/prompt-file': 8,
+  'engine/resource-template': 3,
+  fsdev: 58,
+  'harness-manager': 207,
+  'harness-manager/checkout': 21,
+  'harness-manager/browser': 15,
+  'harness-manager/work-place': 5,
+  mcp: 10,
+  memory: 202,
+  next: 1,
+  node: 12,
+  'node/app': 3,
+  'node/aws-lambda': 1,
+  orchestration: 346,
+  'orchestration/tasks': 222,
+  'orchestration/task-board': 116,
+  'orchestration/inbox': 25,
+  patterns: 130,
+  'patterns/plan-and-execute': 26,
+  'patterns/supervisor': 17,
+  'patterns/routedSpecialists': 9,
+  'patterns/response-auditor': 14,
+  'patterns/eventActors': 15,
+  'patterns/round-robin': 22,
+  'patterns/debate': 26,
+  react: 166,
+  scheduled: 18,
+  'scheduled/collection': 14,
+  'scheduled/testing': 2,
+  'shift-manager': 0,
+  'store-postgres': 22,
+  'store-sqlite': 20,
+  testing: 90,
+  'testing/conformance': 7,
+  tools: 48,
+  'tools/search': 22,
+  'tools/fetch': 12,
+  'tools/crawl': 11,
+  'tools/bash': 22,
+  'tools/mcp': 22,
+  vercel: 5,
+  'vercel/pg': 1,
+  'vercel/schedules': 4,
+  'vercel/store': 3,
+  'vercel/next': 1,
+  'voice-openai': 3,
+  workforce: 439,
+  'workforce/browser': 64,
+  'workforce/loader': 55,
+  'workforce/codegen': 19,
+  'workforce/fsdev-gen': 2,
+  workspace: 117
+}
+engine root: 383 names {
+  context: 26,
+  errors: 20,
+  stores: 91,
+  bus: 6,
+  push: 5,
+  flowstate: 11,
+  streaming: 27,
+  execution: 43,
+  registry: 11,
+  routes: 14,
+  transports: 73,
+  'runtime-config': 1,
+  utils: 2,
+  voice: 8,
+  durability: 9,
+  index: 1,
+  resources: 9
+}
+engine root names declared in another package (26):
+   RequestStatus ← packages/contracts/src/types/request-status.ts
+   InboundSource ← packages/core/src/types/auth.ts
+   PrincipalResolutionContext ← packages/core/src/types/auth.ts
+   ResolvedPrincipal ← packages/core/src/types/auth.ts
+   AuthenticationConfig ← packages/core/src/types/auth.ts
+   ResolvePrincipalFn ← packages/core/src/types/auth.ts
+   createAiSdkModelResolver ← packages/core/src/models/createAiSdkModelResolver.ts
+   wrapAiSdkModel ← packages/core/src/models/createAiSdkModelResolver.ts
+   createModelResolver ← packages/core/src/models/createModelResolver.ts
+   detectAvailableProviders ← packages/core/src/models/providerDetection.ts
+   parseModelString ← packages/core/src/models/providerDetection.ts
+   createFallbackModel ← packages/core/src/models/fallbackModel.ts
+   ResolveAiSdkLanguageModel ← packages/core/src/models/createAiSdkModelResolver.ts
+   CreateModelResolverOptions ← packages/core/src/models/createModelResolver.ts
+   IntentDefaults ← packages/core/src/models/types.ts
+   ModelGroupDefaults ← packages/core/src/models/types.ts
+   GatewayConfig ← packages/core/src/models/types.ts
+   RetryPolicy ← packages/core/src/models/types.ts
+   GatewayType ← packages/core/src/models/types.ts
+   ProviderName ← packages/core/src/models/types.ts
+   ProviderAvailability ← packages/core/src/models/providerDetection.ts
+   ParsedModelString ← packages/core/src/models/providerDetection.ts
+   FallbackModelEntry ← packages/core/src/models/fallbackModel.ts
+   ProviderPreference ← packages/core/src/models/types.ts
+   FlowError ← packages/core/src/errors/flow-error.ts
+   unstable_isCollectionConfig ← packages/core/src/types/storage-identity.ts
+collisions — one name, different declarations (27):
+   createEmitState: claude-code/sdk (packages/claude-code/src/sdk/emit.ts) vs codex (packages/codex/src/emit.ts) vs cursor (packages/cursor/src/emit.ts)
+   emitTranslatedEvent: claude-code/sdk (packages/claude-code/src/sdk/emit.ts) vs codex (packages/codex/src/emit.ts) vs cursor (packages/cursor/src/emit.ts)
+   finalizeOpenItems: claude-code/sdk (packages/claude-code/src/sdk/emit.ts) vs codex (packages/codex/src/emit.ts) vs cursor (packages/cursor/src/emit.ts)
+   EmitState: claude-code/sdk (packages/claude-code/src/sdk/emit.ts) vs codex (packages/codex/src/emit.ts) vs cursor (packages/cursor/src/emit.ts)
+   TranslatedEvent: claude-code/sdk (packages/claude-code/src/sdk/types.ts) vs codex (packages/codex/src/types.ts) vs cursor (packages/cursor/src/types.ts)
+   ChildSessionStatus: client (packages/client/src/types/index.ts) vs engine (packages/engine/src/routes/child-session-routes.ts)
+   ChildSessionSummary: client (packages/client/src/types/index.ts) vs engine (packages/engine/src/routes/child-session-routes.ts)
+   assertTestedSdkVersion: codex (packages/codex/src/codex-client.ts) vs cursor (packages/cursor/src/cursor-client.ts)
+   TESTED_SDK_VERSION: codex (packages/codex/src/types.ts) vs cursor (packages/cursor/src/types.ts)
+   InstalledSdkVersionReader: codex (packages/codex/src/types.ts) vs cursor (packages/cursor/src/types.ts)
+   StreamEvent: contracts (packages/contracts/src/items/events.ts) vs contracts/items (packages/contracts/src/items/events.ts) vs contracts/items/* (packages/contracts/src/items/events.ts) vs core/items (packages/contracts/src/items/events.ts) vs engine (packages/engine/src/transports/runner.ts)
+   camelToKebab: contracts/helpers (packages/contracts/src/helpers/string-case.ts) vs contracts/helpers/* (packages/contracts/src/helpers/string-case.ts) vs orchestration (packages/orchestration/src/skills/skill-md.ts)
+   ExpectedVersion: contracts/helpers (packages/contracts/src/helpers/write-version.ts) vs contracts/helpers/* (packages/contracts/src/helpers/write-version.ts) vs core/helpers (packages/contracts/src/helpers/write-version.ts) vs engine (packages/engine/src/stores/types.ts)
+   SessionView: core (packages/core/src/types/request-host.ts) vs core/types (packages/core/src/types/request-host.ts) vs react (packages/react/src/hooks/useSession.ts)
+   generator: core (packages/core/src/blocks/generator.ts) vs workforce/fsdev-gen (packages/workforce/src/codegen/fsdev-gen.ts)
+   DispatchHandle: core (packages/core/src/blocks/dispatcher.ts) vs engine (packages/engine/src/transports/types.ts)
+   FlowCardinality: core (packages/core/src/types/flow.ts) vs core/types (packages/core/src/types/flow.ts) vs react (packages/react/src/components/flow-navigator/grouping.ts)
+   isRetryableError: core (packages/core/src/models/fallbackModel.ts) vs core/models (packages/core/src/models/fallbackModel.ts) vs engine (packages/engine/src/execution/retry.ts)
+   RetryPolicy: core/types (packages/core/src/types/block.ts) vs core/models (packages/core/src/models/types.ts) vs engine (packages/core/src/models/types.ts)
+   executeBlock: core/blocks/sequencer (packages/core/src/blocks/sequencer.ts) vs engine (packages/engine/src/execution/executeBlock.ts)
+   FlowApiRouter: engine (packages/engine/src/routes/createFlowApiRouter.ts) vs vercel (packages/vercel/src/types.ts)
+   SubTaskErrorStrategy: patterns (packages/patterns/src/parallelTasks/schemas.ts) vs patterns/supervisor (packages/patterns/src/supervisor/schemas.ts)
+   createCaptureAndPlan: patterns (packages/patterns/src/plan-and-execute/blocks/capture-and-plan.ts) vs patterns/plan-and-execute (packages/patterns/src/plan-and-execute/blocks/capture-and-plan.ts) vs patterns/supervisor (packages/patterns/src/supervisor/blocks/capture-and-plan.ts)
+   createSynthesize: patterns (packages/patterns/src/plan-and-execute/blocks/synthesize.ts) vs patterns/plan-and-execute (packages/patterns/src/plan-and-execute/blocks/synthesize.ts) vs patterns/supervisor (packages/patterns/src/supervisor/blocks/synthesize.ts) vs patterns/round-robin (packages/patterns/src/round-robin/blocks/default-synthesizer.ts) vs patterns/debate (packages/patterns/src/debate/blocks/default-synthesizer.ts)
+   RosterEntry: patterns (packages/patterns/src/round-robin/index.ts) vs patterns/round-robin (packages/patterns/src/round-robin/index.ts) vs workforce/browser (packages/workforce/src/workers/client.ts)
+   RosterWorker: react (packages/react/src/components/panels/Roster.ts) vs workforce (packages/workforce/src/workers/installation.ts)
+   initializeSchema: store-postgres (packages/store-postgres/src/schema.ts) vs store-sqlite (packages/store-sqlite/src/schema.ts)
+shared re-exports — one declaration on several entries: 946
+markers and import proofs (7):
+   client → clientPackageMarker
+   engine → enginePackageMarker
+   react → CoreItemImportProof
+   react → CoreTypeImportProof
+   react → coreItemImportProof
+   react → reactPackageMarker
+   testing → testingPackageMarker
+FAIL: 27 collision(s)

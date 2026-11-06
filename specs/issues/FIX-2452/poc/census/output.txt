@@ -1,0 +1,67 @@
+
+@flow-state-dev/store-sqlite: 20 root exports → root 3 · ./host 17
+  host      SQLiteStoreRegistry                  packages/integration-tests
+  host      createSQLiteStores                   packages/cli packages/integration-tests packages/shift-manager apps/docs goals/devforce-lab goals/devtool-workforce-visibility goals/durable-claim-safety goals/flow-instances goals/oversized-output goals/pentest-lab goals/resource-concurrency goals/shift-manager goals/user-scope goals/workers-as-resources goals/workforce-conventions goals/workforce-workers
+  host      createSQLiteSessionStore             — no outside consumer
+  host      createSQLiteRequestStore             — no outside consumer
+  host      createSQLiteUserStore                — no outside consumer
+  host      createSQLiteOrgStore                 — no outside consumer
+  host      createSQLiteActiveRequestRegistry    — no outside consumer
+  host      createSQLiteCheckpointStore          — no outside consumer
+  host      createSQLiteTraceStore               — no outside consumer
+  host      createSQLiteSuspensionStore          — no outside consumer
+  host      createSQLiteLeaseStore               — no outside consumer
+  host      createSQLiteWakeStore                — no outside consumer
+  host      SQLiteTraceStoreOptions              — no outside consumer
+  host      CreateSQLiteRequestStoreOptions      — no outside consumer
+  host      initializeSchema                     — no outside consumer
+  host      initializeSchemaDDL                  — no outside consumer
+  host      applyConnectionPragmas               — no outside consumer
+  per-store constructors: 10, imported outside the package: 0
+
+@flow-state-dev/store-postgres: 22 root exports → root 4 · ./host 18
+  host      PostgresStoreRegistry                packages/vercel
+  host      createPostgresStores                 packages/vercel apps/docs apps/kitchen-sink goals/realtime goals/session-stream
+  host      createPostgresSessionStore           — no outside consumer
+  host      createPostgresRequestStore           — no outside consumer
+  host      createPostgresUserStore              — no outside consumer
+  host      createPostgresOrgStore               — no outside consumer
+  host      createPostgresActiveRequestRegistry  — no outside consumer
+  host      createPostgresContentStore           — no outside consumer
+  host      createPostgresResourceStateStore     — no outside consumer
+  host      createPostgresCheckpointStore        — no outside consumer
+  host      createPostgresSuspensionStore        — no outside consumer
+  host      createPostgresLeaseStore             — no outside consumer
+  host      createPostgresWakeStore              — no outside consumer
+  host      initializeSchema                     — no outside consumer
+  host      createPgPoolTx                       packages/vercel
+  host      QueryExecutor                        packages/vercel goals/personal-knowledge-mcp goals/realtime goals/session-stream
+  host      TxClient                             — no outside consumer
+  host      PostgresBus                          — no outside consumer
+  per-store constructors: 11, imported outside the package: 0
+
+@flow-state-dev/engine: 26 store names on the root → root 6 · engine/host 20
+  host      createFilesystemContentStore         — no outside consumer
+  host      createFilesystemResourceStateStore   — no outside consumer
+  host      createFilesystemOrgStore             — no outside consumer
+  host      createFilesystemRequestStore         — no outside consumer
+  host      createFilesystemSessionStore         — no outside consumer
+  host      createFilesystemStores               packages/cli apps/docs goals/cli-principal goals/suspension
+  host      createFilesystemTraceStore           — no outside consumer
+  host      createFilesystemUserStore            — no outside consumer
+  host      createInMemoryContentStore           — no outside consumer
+  host      createInMemoryResourceStateStore     packages/scheduled
+  host      createInMemoryOrgStore               — no outside consumer
+  host      createInMemoryRequestStore           — no outside consumer
+  host      createInMemorySessionStore           — no outside consumer
+  host      createInMemoryStores                 packages/bullmq packages/cli packages/harness-manager packages/integration-tests packages/mcp packages/orchestration packages/scheduled packages/store-sqlite packages/testing packages/vercel packages/workforce apps/docs apps/kitchen-sink examples/guides examples/knowledge-base goals/agent-discovery goals/block-as goals/cascading-router goals/context-supply goals/cursor-harness goals/evaluator goals/goal-seek-loop goals/harness-manager goals/index-time-facets goals/kitchen-sink-harness goals/lib goals/memory-evaluator-seam goals/model-strings goals/realtime goals/resource-collections goals/shift-manager goals/skill-activator goals/structured-output goals/suspension goals/task-board goals/webhook-transport goals/workspace
+  host      createInMemoryTraceStore             packages/store-postgres
+  host      createInMemoryUserStore              — no outside consumer
+  host      createInMemorySuspensionStore        — no outside consumer
+  host      createInMemoryLeaseStore             — no outside consumer
+  host      createInMemoryWakeStore              — no outside consumer
+  host      createFilesystemWakeStore            — no outside consumer
+
+ceremony "default: { primary: inMemoryStores() }": 128 files · 74 tests · 54 docs, READMEs, examples, fixtures
+
+RESULT  PASS

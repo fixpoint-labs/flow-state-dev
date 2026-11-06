@@ -121,6 +121,13 @@ export interface TeammatesOptions {
    * apart and finishes, with no model and no sign-in. Absent: the real harnesses.
    */
   scriptedHarnessStepMs?: number;
+  /**
+   * For goal checks only: how long a request's heartbeat may be silent before
+   * the server takes it as interrupted (the engine's `staleSweepThresholdMs`),
+   * which is what lets the board take a dead run's row back. Absent: the
+   * engine's default, one minute.
+   */
+  staleThresholdMs?: number;
 }
 
 /** How long a coding run's checks may take together. */
@@ -400,6 +407,7 @@ export async function openTeammates(options: TeammatesOptions) {
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
     durable: true,
     dispatchDrainTimeoutMs,
+    ...(options.staleThresholdMs === undefined ? {} : { staleSweepThresholdMs: options.staleThresholdMs }),
     devtool: { userId: options.userId },
     // A consult reads on `intent/utility`: a smaller model than the workers answer on.
     models: { default: options.model, intents: { utility: [UTILITY_MODEL] } },

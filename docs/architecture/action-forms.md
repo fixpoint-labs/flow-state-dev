@@ -18,7 +18,7 @@ type ActionCore<TBlock extends BlockDefinition = BlockDefinition> = {
   inputSchema?: TBlock["inputSchema"];
   onCompleted?: BlockDefinition;
   onErrored?: BlockDefinition;
-  userMessage?: (input) => string;
+  userMessage?: (input) => string | { text: string; metadata?: Record<string, unknown> };
   tokenBudget?: { maxTotalTokens: number; warnAt?: number; onExceeded?: ... };
   durable?: boolean;
 };

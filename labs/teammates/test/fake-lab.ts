@@ -18,8 +18,11 @@
  * answers one request at a time: a line you send, or a message from another
  * worker, waits while the worker is answering, and runs when it is done.
  * Chief of Staff's conversation starts past the 50-turn history window.
+ * `failTurn` leaves a failed turn in a conversation, as an engine `error` item
+ * would; Retry runs that turn's line again.
  */
 import type { SessionConnectionState } from "@flow-state-dev/client";
+import { taskRowView } from "@flow-state-dev/orchestration/inbox";
 import {
   rerunOverrides,
   runSteps,
@@ -49,6 +52,12 @@ export interface FixtureOptions {
   asks?: boolean;
   /** A coding run that committed waits for your review: Accept completes it, Ask for changes runs it once more. */
   review?: boolean;
+  /**
+   * The review offers both ways to land an accept, Open a PR and Merge locally,
+   * as harness-manager's does on a host that can land. A merge conflicts the
+   * first time, and the review is asked again with the error.
+   */
+  lands?: boolean;
   /** How many roster reads fail as an unreachable server would, before one lands. */
   unreachableReads?: number;
   /** Board rows already there when the lab opens, each filed by the conversation of the worker `filer` names. */
@@ -59,6 +68,10 @@ export interface FixtureOptions {
 export interface FixtureLab extends LabAdapter {
   /** Every conversation's feed reports `state` from now on. */
   setConnection(state: SessionConnectionState): void;
+  /** The newest turn of conversation `sessionId` failed with `reason`: a reply under way is left incomplete. */
+  failTurn(sessionId: string, reason: string): void;
+  /** Each `retry` the screen made, in order. */
+  readonly retries: { sessionId: string; requestId: string }[];
 }
 
 /**
@@ -290,6 +303,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       if (!live()) throw new Error("left behind");
     };
     /** The task waits on you for `waiting`, until you answer. */
+    let holdCount = 0;
     const waitOn = (waiting: NonNullable<BoardTask["waiting"]>) =>
       new Promise<TaskAnswer>((resolve) => {
         waits.set(task.id, (answer) => {
@@ -297,7 +311,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
           updateTask(task.id, { waiting: undefined });
           resolve(answer);
         });
-        updateTask(task.id, { waiting });
+        updateTask(task.id, { waiting: { ...waiting, holdId: `hold-${++holdCount}` } });
       });
     void (async () => {
       await sleep(600);
@@ -316,22 +330,38 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       call("check")();
       // What the run spent, as the row's folded view reads it once the run has reported.
       if (spent !== undefined) updateTask(task.id, { spend: { harness, model: model ?? null, ...spent, unreported: false, live: false } });
+      let landFailed: ReviewDetail["landFailed"] = null;
+      let landed: BoardTask["landed"];
       for (let commits = 1; options.review; commits++) {
+        const branch = `teammates/${task.id}--change`;
         reviews.set(task.runSessionId!, {
-          branch: `teammates/${task.id}--change`,
+          branch,
           commits,
           subjects: Array.from({ length: commits }, (_, i) => (i === 0 ? "docs: fix the README typo" : "docs: keep the old wording")).reverse(),
           judge: { verdict: "done", confidence: 0.91, reason: "The typo on line 1 is fixed." },
           checks: null,
+          lands: options.lands ? ["pull-request", "merge"] : [],
+          landFailed,
         });
         notify();
-        const answer = await waitOn({ kind: "review", prompt: `${commits} commit${commits === 1 ? "" : "s"} on teammates/${task.id}--change`, unanswerable: null });
-        if ("verdict" in answer && answer.verdict === "accepted") break;
+        const answer = await waitOn({ kind: "review", prompt: `${commits} commit${commits === 1 ? "" : "s"} on ${branch}`, unanswerable: null });
+        if ("verdict" in answer && answer.verdict === "accepted" && answer.land === "merge") {
+          // Every merge conflicts, the same way each time: asked again, nothing changed.
+          landFailed = { land: "merge", message: "Merging conflicts in README.md, so it was stopped." };
+          commits--;
+          continue;
+        }
+        if ("verdict" in answer && answer.verdict === "accepted") {
+          if (answer.land === "pull-request") landed = { kind: "pull-request", url: "https://github.com/acme/relay/pull/7", number: 7, branch, base: "main" };
+          if (answer.land === "merge") landed = { kind: "merge", branch: "main", commit: "c15d6f098abc", checkout: "/work/relay", from: branch };
+          break;
+        }
         report(task.id, harness, said(`Revising: ${"words" in answer ? answer.words : ""}`))();
         await sleep(600);
         call("edit")();
       }
       await sleep(400);
+      if (landed !== undefined) updateTask(task.id, { landed });
       end("done", "Fixed the typo in README.md, line 1.")();
     })().catch(() => {});
   };
@@ -464,10 +494,33 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
     now() - 2 * 60 * MINUTE,
   );
 
+  const retries: { sessionId: string; requestId: string }[] = [];
+
   return {
     setConnection(state) {
       connection = state;
       notify();
+    },
+    retries,
+    failTurn(sessionId, reason) {
+      const w = bySession(sessionId);
+      if (!w) throw new Error(`no conversation ${sessionId}`);
+      // The turn's line names it, so Retry can run it again; an older failure is no longer the newest turn.
+      const line = [...w.entries].reverse().find((e) => e.kind === "user");
+      const last = w.entries[w.entries.length - 1];
+      w.entries = w.entries.map((e) =>
+        e.kind === "failed" ? { ...e, retryable: false } : e === last && e.kind === "assistant" ? { kind: "assistant", id: e.id, text: e.text, incomplete: true } : e,
+      );
+      push(w, { kind: "failed", id: nextId("f"), requestId: `turn-${line?.id ?? nextId("r")}`, reason, retryable: true });
+    },
+    async retry(sessionId, requestId) {
+      retries.push({ sessionId, requestId });
+      const w = bySession(sessionId);
+      const line = w?.entries.find((e) => e.kind === "user" && `turn-${e.id}` === requestId);
+      if (!w || line?.kind !== "user") throw new Error(`No failed turn "${requestId}" to retry.`);
+      w.entries = w.entries.map((e) => (e.kind === "failed" ? { ...e, retryable: false } : e));
+      w.queue.push({ kind: "user", entryId: line.id, text: line.text });
+      startNext(w);
     },
 
     async readContext() {
@@ -580,7 +633,14 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
     },
 
     watchTasks(sessionId, onChange) {
-      return watch(() => onChange(tasks.filter((t) => t.sessionId === sessionId).map(({ sessionId: _, ...card }) => card)));
+      // Each row with its view, as the adapter reads one from the board's row (no holds: a fixture's wait is its `waiting`).
+      return watch(() =>
+        onChange(
+          tasks
+            .filter((t) => t.sessionId === sessionId)
+            .map(({ sessionId: _, ...card }) => ({ ...card, view: taskRowView({ id: card.id, status: card.boardStatus, title: card.title, goal: card.goal, board: sessionId }) })),
+        ),
+      );
     },
 
     watchReview(runSessionId, onChange) {

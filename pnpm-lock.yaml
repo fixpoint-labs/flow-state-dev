@@ -599,6 +599,9 @@ importers:
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@flow-state-dev/next':
+        specifier: workspace:*
+        version: link:../../packages/next
       '@flow-state-dev/react':
         specifier: workspace:*
         version: link:../../packages/react
@@ -1217,6 +1220,9 @@ importers:
       commander:
         specifier: ^13.1.0
         version: 13.1.0
+      jiti:
+        specifier: ^2.7.0
+        version: 2.7.0
     devDependencies:
       '@flow-state-dev/devtool':
         specifier: workspace:*
@@ -2045,6 +2051,9 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
+      '@flow-state-dev/orchestration':
+        specifier: workspace:*
+        version: link:../orchestration
       '@flow-state-dev/react':
         specifier: workspace:*
         version: link:../react

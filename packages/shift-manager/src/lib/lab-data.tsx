@@ -9,9 +9,12 @@
  * app costs no reads. Inbox, the Stream's asks, the sidebar counts and the
  * Tasks list all come from the same snapshot.
  *
- * It also reads again, with no sign, when another session changes what it
- * shows (the notices `snapshot-subscribe.ts` names), and every
- * {@link SNAPSHOT_POLL_MS} wherever push can miss a change.
+ * It also reads again on its own when another session changes what it shows
+ * (FIX-2409): one subscription through the provider's client, on the topics
+ * and notices `snapshot-subscribe.ts` names, and every
+ * {@link SNAPSHOT_POLL_MS} wherever push can miss a change. Those reads give
+ * no sign while they run; only a read the user asked for dims the counts
+ * ({@link LabData.asking}).
  *
  * A read that can't reach the Lab after a good one keeps the last snapshot,
  * reports `lapsed`, and retries on its own at 2, 4, 8… seconds until one

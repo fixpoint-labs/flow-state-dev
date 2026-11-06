@@ -1,0 +1,123 @@
+<svg viewBox="0 0 940 770" role="img" aria-label="The closure manifest as a grid. Six Not done if rows down the side; across the top, where each is checked: a workspace ratchet run strictly on the tree, leg a the quick start, leg b tarball-only gaps, and leg c an app on the install. Surface: surface.root per package root the epic owns and surface.collisions over every root, both in the ratchet column, and surface.core-installed-dts in leg b, FIX-2448. One path: onepath.answer-task-stop, FIX-2450, and onepath.output-read, FIX-2455, both in leg c. First hour: first-hour.quickstart, FIX-2451, and first-hour.example per example, FIX-2461, both in leg a. Leakage: leakage.tracker-ids in the ratchet column, FIX-2453. Shims: shims.never-published, shims.human-approval-throws and shims.stored-human-approval in leg b, all FIX-2454. Types: types.typed-handler, FIX-2457, and types.fresh-session-default, FIX-2554 and FIX-2576, both in leg c. Every cell starts at expect fail; a cell names every contributor and the last to land flips it. A row passes when all its cells pass."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .head  { fill:var(--surface-2); }
+    .rule  { stroke:var(--rule); stroke-width:1; }
+    .cell  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-row { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; font-weight:600; letter-spacing:.08em; }
+    .t-q   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-id  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .t-fail { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:700; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="770"/>
+
+  <g id="title">
+    <rect class="head" x="16" y="14" width="908" height="36" rx="6"/>
+    <text class="t-q" x="32" y="37">The manifest · six rows, where each is checked, who flips each cell</text>
+  </g>
+
+  <g id="columns">
+    <text class="t-lbl" x="148" y="70">WORKSPACE RATCHET</text>
+    <text class="t-s" x="148" y="84">strict run, on the tree</text>
+    <text class="t-lbl" x="346" y="70">LEG A</text>
+    <text class="t-s" x="346" y="84">the quick start</text>
+    <text class="t-lbl" x="544" y="70">LEG B</text>
+    <text class="t-s" x="544" y="84">tarball-only gaps</text>
+    <text class="t-lbl" x="742" y="70">LEG C</text>
+    <text class="t-s" x="742" y="84">an app on the install</text>
+  </g>
+
+  <g id="row-surface">
+    <line class="rule" x1="16" y1="96" x2="924" y2="96"/>
+    <text class="t-row" x="24" y="150">SURFACE</text>
+    <rect class="cell" x="148" y="104" width="190" height="40" rx="4"/>
+    <text class="t-id" x="156" y="120">surface.root.‹package›</text>
+    <text class="t-s" x="156" y="135">owned roots · see below</text>
+    <text class="t-fail" x="330" y="135" text-anchor="end">fail</text>
+    <rect class="cell" x="148" y="150" width="190" height="40" rx="4"/>
+    <text class="t-id" x="156" y="166">surface.collisions</text>
+    <text class="t-s" x="156" y="181">every root · 2449, 2458</text>
+    <text class="t-fail" x="330" y="181" text-anchor="end">fail</text>
+    <rect class="cell" x="544" y="104" width="190" height="40" rx="4"/>
+    <text class="t-id" x="552" y="120">surface.core-installed-dts</text>
+    <text class="t-s" x="552" y="135">core's .d.ts · FIX-2448</text>
+    <text class="t-fail" x="726" y="135" text-anchor="end">fail</text>
+  </g>
+  <g id="row-one-path">
+    <line class="rule" x1="16" y1="196" x2="924" y2="196"/>
+    <text class="t-row" x="24" y="250">ONE PATH</text>
+    <rect class="cell" x="742" y="204" width="190" height="40" rx="4"/>
+    <text class="t-id" x="750" y="220">onepath.answer-task-stop</text>
+    <text class="t-s" x="750" y="235">React · FIX-2450</text>
+    <text class="t-fail" x="924" y="235" text-anchor="end">fail</text>
+    <rect class="cell" x="742" y="250" width="190" height="40" rx="4"/>
+    <text class="t-id" x="750" y="266">onepath.output-read</text>
+    <text class="t-s" x="750" y="281">client · FIX-2455</text>
+    <text class="t-fail" x="924" y="281" text-anchor="end">fail</text>
+  </g>
+  <g id="row-first-hour">
+    <line class="rule" x1="16" y1="296" x2="924" y2="296"/>
+    <text class="t-row" x="24" y="350">FIRST HOUR</text>
+    <rect class="cell" x="346" y="304" width="190" height="40" rx="4"/>
+    <text class="t-id" x="354" y="320">first-hour.quickstart</text>
+    <text class="t-s" x="354" y="335">the docs · FIX-2451</text>
+    <text class="t-fail" x="528" y="335" text-anchor="end">fail</text>
+    <rect class="cell" x="346" y="350" width="190" height="40" rx="4"/>
+    <text class="t-id" x="354" y="366">first-hour.example.‹name›.*</text>
+    <text class="t-s" x="354" y="381">each example · FIX-2461</text>
+    <text class="t-fail" x="528" y="381" text-anchor="end">fail</text>
+  </g>
+  <g id="row-leakage">
+    <line class="rule" x1="16" y1="396" x2="924" y2="396"/>
+    <text class="t-row" x="24" y="427">LEAKAGE</text>
+    <rect class="cell" x="148" y="404" width="190" height="40" rx="4"/>
+    <text class="t-id" x="156" y="420">leakage.tracker-ids</text>
+    <text class="t-s" x="156" y="435">the lint · FIX-2453</text>
+    <text class="t-fail" x="330" y="435" text-anchor="end">fail</text>
+  </g>
+  <g id="row-shims">
+    <line class="rule" x1="16" y1="450" x2="924" y2="450"/>
+    <text class="t-row" x="24" y="527">SHIMS</text>
+    <rect class="cell" x="544" y="458" width="190" height="40" rx="4"/>
+    <text class="t-id" x="552" y="474">shims.never-published</text>
+    <text class="t-s" x="552" y="489">the census's 19 · FIX-2454</text>
+    <text class="t-fail" x="726" y="489" text-anchor="end">fail</text>
+    <rect class="cell" x="544" y="504" width="190" height="40" rx="4"/>
+    <text class="t-id" x="552" y="520">shims.human-approval-throws</text>
+    <text class="t-s" x="552" y="535">throws · FIX-2454</text>
+    <text class="t-fail" x="726" y="535" text-anchor="end">fail</text>
+    <rect class="cell" x="544" y="550" width="190" height="40" rx="4"/>
+    <text class="t-id" x="552" y="566">shims.stored-human-approval</text>
+    <text class="t-s" x="552" y="581">a user's stop · FIX-2454</text>
+    <text class="t-fail" x="726" y="581" text-anchor="end">fail</text>
+  </g>
+  <g id="row-types">
+    <line class="rule" x1="16" y1="596" x2="924" y2="596"/>
+    <text class="t-row" x="24" y="650">TYPES</text>
+    <rect class="cell" x="742" y="604" width="190" height="40" rx="4"/>
+    <text class="t-id" x="750" y="620">types.typed-handler</text>
+    <text class="t-s" x="750" y="635">uses: [cap] · FIX-2457</text>
+    <text class="t-fail" x="924" y="635" text-anchor="end">fail</text>
+    <rect class="cell" x="742" y="650" width="190" height="40" rx="4"/>
+    <text class="t-id" x="750" y="666">types.fresh-session-default</text>
+    <text class="t-s" x="750" y="681">scope state · 2554, 2576</text>
+    <text class="t-fail" x="924" y="681" text-anchor="end">fail</text>
+  </g>
+
+  <g id="foot">
+    <line class="rule" x1="16" y1="696" x2="924" y2="696"/>
+    <text class="t-s" x="24" y="718">Every cell starts at expect: fail, shown in red. A cell names every contributor and the last to land flips it; a row passes when all its cells do.</text>
+    <text class="t-s" x="24" y="736">Surface roots: core 2448, 2460 · engine 2449, 2452 · client 2449 · react 2449, 2450, 2455, 2456 · orchestration 2459 · patterns 2459, 2460</text>
+    <text class="t-s" x="24" y="754">testing 2460 · claude-code, codex, cursor 2458 · store-sqlite, store-postgres 2452 · workforce's entry names 2463. Other roots: held by the ratchet, no cell</text>
+  </g>
+</svg>

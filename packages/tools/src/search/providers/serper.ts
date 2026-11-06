@@ -19,6 +19,9 @@ export const serperAdapter: SearchProviderAdapter = {
         ? "https://google.serper.dev/news"
         : "https://google.serper.dev/search";
 
+    // Multiple includes are OR-grouped: `site:a site:b` would require both
+    // domains at once (Google ANDs them) and return nothing. Excludes stay
+    // AND-chained — every `-site:` must hold.
     const q = withSiteOperators(query, options.includeDomains, options.excludeDomains);
 
     const response = await globalThis.fetch(endpoint, {

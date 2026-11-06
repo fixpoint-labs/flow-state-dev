@@ -53,7 +53,8 @@ async function openReviewThread() {
 describe("the threads-mode screen", () => {
   it("starts a session in the Projects view with the lead and the threads board", async () => {
     await startThreadsSession(0.01);
-    expect(within(thread()).getByText("Tasks")).toBeTruthy();
+    // The view switch names the mode once; the thread header carries no second, inert label for it.
+    expect(within(thread()).queryByText("Tasks")).toBeNull();
     expect(within(thread()).getByText("in project: vendor-notes")).toBeTruthy();
     expect(within(board()).getByRole("heading", { name: "Tasks" })).toBeTruthy();
     expect(screen.queryByRole("complementary", { name: "Background tasks" })).toBeNull();
@@ -275,6 +276,23 @@ describe("the threads-mode screen", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Keys" })).toBeNull());
     expect(view.isConnected).toBe(true);
     expect(screen.getByRole("dialog", { name: "Task: Vendor C · summary" })).toBeTruthy();
+  });
+
+  it("widens the sessions list from its right edge and remembers the width", async () => {
+    localStorage.clear();
+    await startThreadsSession(0.01);
+    const edge = screen.getByRole("separator", { name: "Resize the sessions list" });
+    // The window here is narrow, so the list opens at the narrow default.
+    expect(edge.getAttribute("aria-valuenow")).toBe("240");
+    // Its edge is on its right, so Right widens it (the side panel's is the other way round).
+    fireEvent.keyDown(edge, { key: "ArrowRight" });
+    fireEvent.keyDown(edge, { key: "ArrowRight" });
+    expect(edge.getAttribute("aria-valuenow")).toBe("272");
+    expect(localStorage.getItem("claude-code-style:sidebar-width")).toBe("272");
+    cleanup();
+    await startThreadsSession(0.01);
+    expect(screen.getByRole("separator", { name: "Resize the sessions list" }).getAttribute("aria-valuenow")).toBe("272");
+    localStorage.clear();
   });
 
   it("widens the side panel from its edge and remembers the width", async () => {

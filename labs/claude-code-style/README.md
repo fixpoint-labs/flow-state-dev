@@ -16,7 +16,11 @@ needs is a gap filed against the package.
   so a question about the code is answered in the same turn, and a code change goes to `desk.coder`.
   A background result shows as one line, its title and status, at the point the main session took
   it, even while its turn is still running. Click it to read the task's reply; the main session
-  adds only what's new rather than repeating it. Tool calls read as plain words ("Waiting for your
+  adds only what's new rather than repeating it. *Open task* on the line opens the task's sheet,
+  the same one its row in the pane opens, and so does *Open task* on the line where the main
+  session started the task. The dot on either line shows the task's status now: a task retried
+  after it failed reads "failed · now running", since the line's words keep what it reported.
+  A line from a task the board doesn't list has no *Open task*. Tool calls read as plain words ("Waiting for your
   answer", "Sent for review"). Enter sends; Cmd+Enter (Ctrl+Enter) sends from every box in the lab.
 - **The *Coder* chip** beside Send picks who makes a code change you ask for, in either mode:
   *Auto* (Claude Code, as above), *Plan first* (Claude Code in plan mode, which reads, changes
@@ -27,7 +31,8 @@ needs is a gap filed against the package.
   by its status: *Cancel* (it asks once, since tasks waiting on it go too) and a *Steer* box while
   it runs or waits, *Release* when it is held, *Retry* once it failed or was cancelled. A failed
   task shows its error. Each action is the board's own, and a refusal shows in the board's words.
-  You can still ask the main session to stop or steer a task.
+  You can still ask the main session to stop or steer a task. The open task's row is marked,
+  whether you opened it here or from the main thread; *Done* opens to show it when it is finished.
 - **Keys:** ⌘K (Ctrl+K) finds any session by its title, in either view, or starts a new one.
   Alt+↑ and Alt+↓ move to the previous or next session in the view. `/` puts the cursor in the
   composer, and `?` lists every key. Opening a session puts the cursor in its composer. The view
@@ -40,7 +45,8 @@ threads, each a task in a session of its own, and the right pane is the status b
 
 - **Center:** your line is marked *Sent to a task*, and each thread is a compact card where the
   lead filed it, with *View task*, *Answer* when it asks you something, and *Resolve* and
-  *Request changes* when it is ready for review.
+  *Request changes* when it is ready for review. A result line's *Open task* opens the thread's
+  view, as *View task* does.
 - **Right:** the board groups threads by what you owe them: *Pinned*, *Working*, *Waiting on you*,
   *Ready for review* and *Resolved*, collapsed to a count. A column is read from the task's
   status and what it waits on, never a mark the lab keeps. A failed thread waits on you; its view
@@ -135,6 +141,16 @@ task's sheet or thread view splits it into input and output. A count no run has 
 "no tokens reported yet", never 0, and one still missing a source is marked partial. All of it comes from the `spend` the
 board's `listTasks` rows carry; the lab sums nothing itself.
 
+Every task also shows its time. A running card reads *working · 4m 12s*, counted from when this
+attempt's run started, so a retried task starts again from zero. A running task whose run has
+stopped answering reads *quiet for 40m* in amber: the run stopped renewing its claim on the task
+(the board's lease lapsed), as when the server running it died, and it stays quiet until the
+board hands the task to a new run. A run that is alive but slow keeps renewing, so it never reads
+quiet; a long clock is the sign there. While the page can't read the tasks (its connection
+dropped), it keeps the last rows and never calls a task quiet from them. A finished row says how long ago it ended, the threads
+board's rows carry the same time, and the pane's heading counts the tasks running, waiting, failed
+and done.
+
 Both modes are wired. The screen tests run on a test double, `test/fake-lab.ts`, which the app
 never imports.
 
@@ -153,6 +169,7 @@ a package call:
 | A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
 | The main session reading the project's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |
 | Interrupting | aborting the session's running turn; its tasks keep running |
+| A failed turn and *Retry* | the engine's `error` item for the turn, drawn by the UI registry's `request-recovery` (installed in `src/components/flow-state/`); Retry is the client's `request(id).retry()`, on the newest turn only |
 | The tasks pane and a task's work | the `listTasks_tasks` read (stores nothing per poll), and the items of the task's run session |
 | Threads mode's sessions | the same, with `desk.lead`, a `coordinator`, as the main worker |
 | A thread card, and *Sent to a task* | the lead's `createTask` call in the session's items |

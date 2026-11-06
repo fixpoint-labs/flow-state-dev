@@ -87,6 +87,8 @@ describe("a completed run's output", () => {
       judged: false,
       // No review was asked: a manager built without `reviewChanges`.
       review: null,
+      // So nothing was landed (FIX-2543).
+      landed: null,
     });
   }, 60_000);
 });

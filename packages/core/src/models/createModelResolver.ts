@@ -34,6 +34,7 @@ import { wrapAiSdkModel } from "./createAiSdkModelResolver";
 import { markEvaluationModelGateway } from "./evaluationModelGateway";
 import { reorderByPreference, normalizePreference } from "./reorderByPreference";
 import { warnOnceDev } from "../helpers/deprecation";
+import { UnresolvedIntentError } from "../errors/unresolved-intent-error";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -1139,12 +1140,7 @@ export function createModelResolver(
 
   function resolveDefaultModel(intentName: string): GeneratorModel {
     if (!options?.defaultModel) {
-      throw new Error(
-        `No model is configured for "intent/${intentName}": the app sets no \`models.intents.${intentName}\` ` +
-          `and no \`models.default\` to fall back on. Set one where the app creates its FlowState ` +
-          `(\`createFlowState({ models: { default: "<provider>/<model>" } })\`, or \`defaultModel\` on ` +
-          `\`createModelResolver\`), or set the FSDEV_DEFAULT_MODEL environment variable.`
-      );
+      throw new UnresolvedIntentError(intentName);
     }
     return resolveSingleModel(options.defaultModel);
   }

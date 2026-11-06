@@ -1800,6 +1800,13 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             updatedAt: z.number().optional(),
             /** A request is waiting on this task's ending (`getTask` with `wait`). */
             waitedOn: z.literal(true).optional(),
+            /**
+             * A running row's lease deadline (epoch ms), as the board holds it,
+             * so a reader tells a run that stopped answering by the board's own
+             * rule, `leaseLapsed`. Absent while no claim holds the row. On the
+             * board's action only, like `spend`.
+             */
+            leaseUntil: z.number().optional(),
             ...waitingShape,
             /** The latest completed follow-up in its chain, by id; read its output with getTask (FIX-2086). */
             current: z.object({ id: z.string() }).optional(),
@@ -1834,6 +1841,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           // A client's read, never a model's (FIX-2288): the action carries it, the tool doesn't.
           ...(claimless ? { spend: taskSpendView(t), updatedAt: t.updatedAt } : {}),
           ...(t.wait != null && t.wait.lapsed !== true && !isTerminalStatus(t.status) ? { waitedOn: true as const } : {}),
+          ...(claimless && t.leaseUntil != null ? { leaseUntil: t.leaseUntil } : {}),
           ...waitingOf(t),
           ...withCurrentId(currentFor(t, latest.get(t.followUpOf ?? t.id))),
         })),

@@ -35,8 +35,8 @@ function LoadedThreadCard({
 }) {
   const resolve = useSubmit(() => adapter.resolve(sessionId, task.id));
   const column = statusColumn(task);
-  const button = "border border-border bg-muted px-2 py-0.5 text-xs hover:bg-accent";
-  const primary = "bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground";
+  const button = "rounded-md border border-border bg-muted px-2 py-0.5 text-xs hover:bg-accent";
+  const primary = "rounded-md bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground";
   const viewThread = (
     <button type="button" className={button} onClick={() => onOpen(task.id)}>
       View task
@@ -49,10 +49,11 @@ function LoadedThreadCard({
       data-column={column}
       data-task-id={task.id}
       className={cn(
-        "flex items-start gap-3 border px-3 py-2",
-        column === "waiting" && "border-attention bg-attention/10",
-        column === "review" && "border-success bg-success/10",
-        (column === "working" || column === "resolved") && "border-border bg-card",
+        // The card is quiet; only its tint says what it needs from you: red for a failure, the highlighter for a question, green for a review.
+        "flex items-start gap-3 rounded-lg border border-border bg-card px-3.5 py-3",
+        task.status === "errored" && "border-destructive/40 bg-destructive/5",
+        task.status !== "errored" && column === "waiting" && "border-attention/50 bg-attention/5",
+        column === "review" && "border-success/40 bg-success/5",
       )}
     >
       <ThreadIcon task={task} />

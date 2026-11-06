@@ -78,9 +78,9 @@ describe("a running task's view ends in a live working line", () => {
     vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
     vi.setSystemTime(STARTED + 4 * 60_000 + 12_000);
     const view = open(RUNNING);
-    expect(within(view.pane).getByTestId("run-timer").textContent).toBe("(4m 12s)");
+    expect(within(view.pane).getByTestId("run-timer").textContent).toBe("4m 12s");
     act(() => vi.advanceTimersByTime(3_000));
-    expect(within(view.pane).getByTestId("run-timer").textContent).toBe("(4m 15s)");
+    expect(within(view.pane).getByTestId("run-timer").textContent).toBe("4m 15s");
   });
 
   it.each(["completed", "errored", "cancelled"] as const)("is gone once the task is %s", (status) => {
@@ -98,14 +98,8 @@ describe("a running task's view ends in a live working line", () => {
 
 /** Session mode's opened background task: the same line, in the sheet the tasks pane opens. */
 function openInPane(task: TaskRow) {
-  let showTasks: (rows: TaskRow[]) => void = () => {};
   let showWork: (work: TaskWork) => void = () => {};
   const adapter = {
-    watchTasks: (_: string, onChange: (rows: TaskRow[]) => void) => {
-      showTasks = onChange;
-      onChange([task]);
-      return () => {};
-    },
     watchTaskWork: (_: string, __: string, onChange: (work: TaskWork) => void) => {
       showWork = onChange;
       onChange({ entries: DONE_SO_FAR });
@@ -113,13 +107,16 @@ function openInPane(task: TaskRow) {
     },
     taskActions: () => ({}),
   } as unknown as LabAdapter;
-  render(
+  // The app reads the rows and hands them to the pane (FIX-2399 E1): a row change is a new `tasks` prop.
+  const pane = (rows: TaskRow[]) => (
     <SheetProvider>
       <SheetArea>
-        <TasksPane adapter={adapter} sessionId="s-1" openId={task.id} onOpen={() => {}} onMissing={() => {}} />
+        <TasksPane adapter={adapter} sessionId="s-1" tasks={rows} openId={task.id} onOpen={() => {}} onMissing={() => {}} />
       </SheetArea>
-    </SheetProvider>,
+    </SheetProvider>
   );
+  const { rerender } = render(pane([task]));
+  const showTasks = (rows: TaskRow[]) => rerender(pane(rows));
   const sheet = () => screen.getByRole("dialog", { name: `Work: ${task.title}` });
   return {
     line: () => within(sheet()).queryByTestId("streaming-indicator"),

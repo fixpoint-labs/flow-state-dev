@@ -7,9 +7,9 @@ import { Entry } from "./Entry";
 import { LoadEarlier } from "./LoadEarlier";
 import { ReviewCard } from "./ReviewCard";
 import { Sheet } from "./Sheet";
+import { WorkingLine } from "./WorkingLine";
 import { ErrorBody } from "./flow-state/error";
 import { Spend } from "./flow-state/spend";
-import { StreamingIndicator } from "./flow-state/streaming-indicator";
 import { TaskActions } from "./flow-state/task-actions";
 import { workingStatus } from "./flow-state/working-status";
 import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus";
@@ -93,15 +93,29 @@ export function ThreadView({
           <HarnessTag task={task} />
         </span>
       }
-      subtitle={<Spend spend={task.spend} split />}
+      meta={<Spend spend={task.spend} split />}
+      toolbar={
+        <>
+          {/* No Steer box: the composer below steers the task. */}
+          <TaskActions key={task.id} id={task.id} status={task.status} actions={actions} />
+          <button
+            type="button"
+            aria-pressed={pinned}
+            disabled={pin.busy}
+            onClick={() => void pin.submit(undefined)}
+            className="ml-auto rounded-md border border-border px-2 py-1 text-xs transition-colors hover:bg-accent disabled:opacity-40"
+          >
+            {pinned ? "Unpin" : "Pin"}
+          </button>
+        </>
+      }
       footer={
         <div className="flex flex-col gap-2">
           {question ? (
-            <div role="note" className="border border-attention bg-attention/10 px-3 py-2 text-sm [overflow-wrap:anywhere]">
+            <div role="note" className="max-h-40 overflow-y-auto rounded-md border border-attention/40 bg-attention/10 px-3 py-2 text-sm [overflow-wrap:anywhere]">
               <span className="font-semibold">Waiting on you</span> · {question.prompt}
             </div>
           ) : null}
-          {column === "review" ? <ReviewCard task={task} review={work?.review} /> : null}
           {finished ? (
             <p role="note" className="text-xs text-muted-foreground">
               This task is finished.
@@ -115,7 +129,7 @@ export function ThreadView({
                 onChange={(event) => setText(event.target.value)}
                 onKeyDown={onKeyDown}
                 placeholder={question ? "Answer the task…" : column === "review" ? "What should change…" : "Say something in this task…"}
-                className="block w-full resize-none border border-border bg-card px-3 py-2 text-sm outline-none focus:border-ring"
+                className="block w-full resize-none rounded-lg border border-border/60 bg-card px-3 py-2 text-sm outline-none focus:border-ring"
               />
               {failure !== undefined ? (
                 <p role="alert" className="mt-1 text-xs text-destructive">
@@ -137,16 +151,16 @@ export function ThreadView({
                       type="button"
                       disabled={held}
                       onClick={() => void resolve.submit(undefined)}
-                      className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40"
+                      className="rounded-md bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40"
                     >
                       {resolve.busy ? "Resolving…" : "Resolve"}
                     </button>
-                    <button type="button" disabled={!words || held} onClick={requestChanges} className="border border-border px-2 py-1 text-xs disabled:opacity-40">
+                    <button type="button" disabled={!words || held} onClick={requestChanges} className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-40">
                       Request changes
                     </button>
                   </>
                 ) : (
-                  <button type="submit" disabled={!words || held} className="bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40">
+                  <button type="submit" disabled={!words || held} className="rounded-md bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-40">
                     {question ? "Answer" : "Send"}
                   </button>
                 )}
@@ -156,38 +170,27 @@ export function ThreadView({
         </div>
       }
     >
-      <div className="flex flex-wrap items-center gap-2">
-        {/* No Steer box: the composer below steers the task. */}
-        <TaskActions key={task.id} id={task.id} status={task.status} actions={actions} />
-        <button
-          type="button"
-          aria-pressed={pinned}
-          disabled={pin.busy}
-          onClick={() => void pin.submit(undefined)}
-          className="ml-auto border border-border px-1.5 text-xs hover:bg-accent disabled:opacity-40"
-        >
-          {pinned ? "Unpin" : "Pin"}
-        </button>
-      </div>
       {pin.error === undefined ? null : (
         <p role="alert" className="text-xs text-destructive">
           Couldn't {pinned ? "unpin" : "pin"}: {pin.error}
         </p>
       )}
       {task.status === "errored" && task.error !== undefined ? (
-        <div role="alert" className="flex flex-col gap-1 border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div role="alert" className="flex flex-col gap-1 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive [overflow-wrap:anywhere]">
           <ErrorBody message={task.error} />
         </div>
       ) : null}
-      {/* Ready for review is said once, by its card in the footer. */}
-      {column === "review" ? null : <div className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{statusLine(task)}</div>}
+      {/* Ready for review is said once, by its card at the end of the feed; a failure's reason, by the alert above. */}
+      {column === "review" || (task.status === "errored" && task.error !== undefined) ? null : <div className="truncate text-xs text-muted-foreground" title={statusLine(task)}>{statusLine(task)}</div>}
       <LoadEarlier load={work?.loadEarlier} />
       {work?.entries.map((entry) => (
         <Entry key={entry.id} entry={entry} mark={entry.kind === "user" ? feed.mine(entry.id) : undefined} />
       ))}
+      {/* Ready for review closes the feed, in the one scroll area, so a long review reads like the rest of it. Resolve and the request for changes stay under it. */}
+      {column === "review" ? <ReviewCard task={task} review={work?.review} /> : null}
       {/* The live line: what it is doing now, else "Working...", and for how long. A task waiting on you isn't working. */}
       {task.status === "in_progress" && task.waitingOn === undefined ? (
-        <StreamingIndicator message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
+        <WorkingLine message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
       ) : null}
     </Sheet>
   );
