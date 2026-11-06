@@ -96,8 +96,13 @@ function changesetDocs(read) {
   return byReadme;
 }
 
-/** The names a declaration mentions in type positions, function bodies skipped. Memoized per reader. */
-function typeMentions(read, memo, file, name) {
+/**
+ * The declarations a declaration mentions in type positions, function bodies skipped, each as
+ * `file#name` (the file and name it is declared under). A mention resolves to this file's own
+ * declaration or through this file's import of it; one that resolves to neither (a global, a
+ * third-party type) names no root export. Memoized per reader.
+ */
+function typeMentions(read, memo, resolve, file, name) {
   const key = `${file}#${name}`;
   if (memo.has(key)) return memo.get(key);
   const out = new Set();
@@ -107,13 +112,29 @@ function typeMentions(read, memo, file, name) {
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, false);
   const declared = (st) =>
     ts.isVariableStatement(st) ? st.declarationList.declarations.map((d) => (ts.isIdentifier(d.name) ? d.name.text : "")) : [st.name?.text];
+  const local = new Set(sf.statements.flatMap(declared));
+  const imported = new Map(); // local name → [specifier, imported name]
+  for (const st of sf.statements) {
+    if (!ts.isImportDeclaration(st)) continue;
+    const spec = st.moduleSpecifier.text;
+    const b = st.importClause?.namedBindings;
+    if (b && ts.isNamedImports(b)) for (const el of b.elements) imported.set(el.name.text, [spec, (el.propertyName ?? el.name).text]);
+    if (st.importClause?.name) imported.set(st.importClause.name.text, [spec, "default"]);
+  }
+  const identity = (m) => {
+    if (local.has(m)) return `${file}#${m}`;
+    const via = imported.get(m);
+    const found = via && resolve(file, via[0], via[1]);
+    return found ? `${found.file}#${found.decl ?? via[1]}` : null;
+  };
   const walk = (n) => {
     if ((ts.isFunctionLike(n) || ts.isClassStaticBlockDeclaration(n)) && n.body) {
       for (const c of [n.typeParameters, n.parameters, n.type].flat().filter(Boolean)) walk(c);
       return;
     }
     const ref = ts.isTypeReferenceNode(n) ? n.typeName : ts.isExpressionWithTypeArguments(n) ? n.expression : ts.isTypeQueryNode(n) ? n.exprName : null;
-    if (ref) out.add(ref.getText(sf).split(".")[0]);
+    const id = ref && identity(ref.getText(sf).split(".")[0]);
+    if (id) out.add(id);
     ts.forEachChild(n, walk);
   };
   for (const st of sf.statements) if (declared(st).includes(name)) walk(st);
@@ -141,19 +162,25 @@ export function rootReport(read) {
     const readme = (read(readmePath) ?? "") + (pending.get(readmePath) ?? "");
     const out = new Map();
     const declOf = new Map();
+    const rootNames = new Map(); // `file#declared name` → the root names it is published as
     for (const [name, { file, decl }] of exp) {
       const u = uses.get(pkg)?.get(name);
       const why = u?.has("adopter") ? "adopter" : u?.has("docs") ? "docs" : names(readme, name) ? "readme" : "failing";
       out.set(name, { file, why });
-      declOf.set(name, decl);
+      declOf.set(name, decl ?? name);
+      const id = `${file}#${decl ?? name}`;
+      rootNames.set(id, [...(rootNames.get(id) ?? []), name]);
     }
-    // A name a used name's declaration mentions is met through that signature. The declaration
-    // is found by the name it is declared under, which an aliased re-export changes.
+    // A name a used name's declaration mentions is met through that signature. Both ends go by
+    // declaration, not by root name: an aliased re-export renames either one, and an unrelated
+    // root name that only shares the bare name is not reached.
     const queue = [...out].filter(([, v]) => v.why !== "failing").map(([n]) => n);
     while (queue.length) {
       const n = queue.pop();
-      for (const m of typeMentions(read, memo, out.get(n).file, declOf.get(n) ?? n)) {
-        if (out.get(m)?.why === "failing") { out.get(m).why = "reached"; queue.push(m); }
+      for (const id of typeMentions(read, memo, entries.resolve, out.get(n).file, declOf.get(n))) {
+        for (const m of rootNames.get(id) ?? []) {
+          if (out.get(m).why === "failing") { out.get(m).why = "reached"; queue.push(m); }
+        }
       }
     }
     roots.set(pkg, out);

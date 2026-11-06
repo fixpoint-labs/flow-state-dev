@@ -67,7 +67,8 @@ export const zzRequired = 1;
 export const zzDynamicNs = 1;
 export const zzThen = 1;
 export const zzComputed = 1;
-export { impl as used, type Options } from "./zz-plant/impl";
+export { impl as used, type Options as UsedOptions } from "./zz-plant/impl";
+export type { Options } from "./zz-plant/other";
 export interface ZzOptions { a: number }
 export interface ZzBodyOnly { b: number }
 export function zzSigned(options: ZzOptions): void { const x: ZzBodyOnly = { b: options.a }; void x; }
@@ -93,8 +94,11 @@ export function zzSigned(options: ZzOptions): void { const x: ZzBodyOnly = { b: 
   "apps/kitchen-sink/zz-probe.ts":
     "const m = `hi ${name}`;\n// import { zzUnused } from \"@flow-state-dev/probe\";\n" +
     "const message = \"import { zzUnused } from '@flow-state-dev/probe'\";\n",
-  // An aliased re-export: the adopter imports `used`, and `impl`'s signature names `Options`.
+  // Aliased re-exports: the adopter imports `used`, and `impl`'s signature names impl.ts's
+  // `Options`, which the root publishes as `UsedOptions`. The root's own `Options` is another
+  // declaration nothing reaches, so the shared bare name must not clear it.
   "packages/core/src/zz-plant/impl.ts": "export interface Options { a: number }\nexport function impl(o: Options): void { void o; }\n",
+  "packages/core/src/zz-plant/other.ts": "export interface Options { z: string }\n",
   "apps/kitchen-sink/zz-alias.ts": `import { used } from "@flow-state-dev/core";\nused({ a: 1 });\n`,
   // Names taken through import() and require(): destructured, read off the module, or via .then.
   // A computed read (`m[k]`) names nothing the census can know, so zzComputed stays failing.
@@ -135,6 +139,7 @@ describe("the export check", () => {
 
   it("fails each root name nobody outside the framework uses, and only those", () => {
     assert.deepEqual(failingNames(), [
+      "@flow-state-dev/core Options", // shares a bare name with what `used` reaches, but is another declaration
       "@flow-state-dev/core ZzBodyOnly", // named only inside a function body, not by its signature
       "@flow-state-dev/core zzBlockCommented", // an import inside a comment is not a use
       "@flow-state-dev/core zzChangesetElsewhere", // its changeset's Docs: line doesn't list the README
@@ -164,7 +169,7 @@ describe("the export check", () => {
     for (const n of ["zzDestructured", "zzRequired", "zzDynamicNs", "zzThen"]) assert.equal(core.get(n).why, "adopter", n);
     // An aliased re-export is reached through the declaration it names, not its alias.
     assert.equal(core.get("used").why, "adopter");
-    assert.equal(core.get("Options").why, "reached");
+    assert.equal(core.get("UsedOptions").why, "reached");
     assert.equal(core.get("ZzOptions").why, "reached");
     for (const n of ["zzTicked", "zzCalled", "zzImported", "zzChangesetDoc"]) assert.equal(core.get(n).why, "readme", n);
   });

@@ -90,6 +90,17 @@ function resolveRelative(read, fromFile, spec) {
   return null;
 }
 
+/** The file a module specifier in `file` loads, or null. `w` is { read, bare, dirs }. */
+function resolveSpec(w, file, spec) {
+  if (!spec) return null;
+  if (spec.startsWith(".")) return resolveRelative(w.read, file, spec);
+  if (w.bare.has(spec)) return w.bare.get(spec);
+  // A deep import the exports map doesn't list (`@flow-state-dev/contracts/items/internal`)
+  // resolves under that package's src/, as tsconfig.base.json's paths do.
+  const [, name, sub] = /^(@[^/]+\/[^/]+)\/(.+)$/.exec(spec) ?? [];
+  return w.dirs.has(name) ? resolveRelative(w.read, `packages/${w.dirs.get(name)}/src/x`, `./${sub}`) : null;
+}
+
 /**
  * name → { file, type, decl }: the declaring file, whether the name is type-only, and the name
  * it is declared under in that file (`impl` for `export { impl as used }`; unset for
@@ -103,16 +114,7 @@ function moduleExports(w, file) {
   if (text == null) return out;
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, false);
   const imports = new Map(); // local name → [module file, imported name]
-  const from = (node) => {
-    const spec = node.moduleSpecifier?.text;
-    if (!spec) return null;
-    if (spec.startsWith(".")) return resolveRelative(w.read, file, spec);
-    if (w.bare.has(spec)) return w.bare.get(spec);
-    // A deep import the exports map doesn't list (`@flow-state-dev/contracts/items/internal`)
-    // resolves under that package's src/, as tsconfig.base.json's paths do.
-    const [, name, sub] = /^(@[^/]+\/[^/]+)\/(.+)$/.exec(spec) ?? [];
-    return w.dirs.has(name) ? resolveRelative(w.read, `packages/${w.dirs.get(name)}/src/x`, `./${sub}`) : null;
-  };
+  const from = (node) => resolveSpec(w, file, node.moduleSpecifier?.text);
   for (const node of sf.statements) {
     if (ts.isImportDeclaration(node)) {
       const mod = from(node);
@@ -149,6 +151,7 @@ function moduleExports(w, file) {
  * name → { file, type })). The subpath is the `exports` key as an importer writes it after the
  * package name: `"."` for the root, `"./types"`, and one key per file a wildcard entry matches
  * (`"./items/foo"`). The export check reads the `"."` entry; `packageExports` merges them.
+ * `index.resolve(file, spec, name)` finds where a name `file` imports from `spec` is declared.
  */
 export function packageEntryExports(read) {
   const w = { read, memo: new Map(), bare: new Map(), dirs: new Map() };
@@ -180,6 +183,11 @@ export function packageEntryExports(read) {
     for (const [key, file] of files) byEntry.set(key, moduleExports(w, file));
     index.set(name, byEntry);
   }
+  // Where a name `file` imports from `spec` is declared: { file, type, decl }, or null.
+  index.resolve = (file, spec, name) => {
+    const mod = resolveSpec(w, file, spec);
+    return mod ? moduleExports(w, mod).get(name) ?? null : null;
+  };
   return index;
 }
 
