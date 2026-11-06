@@ -27,7 +27,8 @@ export function useConversationFeed(): JumpToLatest | null {
 // Conversation (the scrolling element + the feed's provider)
 // ---------------------------------------------------------------------------
 
-export type ConversationProps = ComponentProps<"div"> & {
+/** No `ref`: the scrolling element's ref is the feed's. */
+export type ConversationProps = Omit<ComponentProps<"div">, "ref"> & {
   /**
    * The feed from `useJumpToLatest`, made by the app so its composer can call
    * `feed.sent()` as the person's line goes out: that line then rises to near
