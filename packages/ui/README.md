@@ -43,6 +43,7 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `sources` | Citation and source display with collapsible list |
 | `suggestion` | Horizontal scrollable suggestion pills |
 | `shimmer` | Animated text shimmer for streaming/loading states |
+| `working-status` | Pure `toolInFlight` and `workingStatus` helpers that say in one line what a running task is doing now: the tool call in flight, else the plan step in progress, else its progress note. Pass the line to `streaming-indicator` |
 | `streaming-indicator` | In-flight status indicator with a "Working..." fallback (muted "Tidying up..." during background drain) |
 | `request-group` | Groups items by request ID with streaming and sources |
 | `request-recovery` | The line a turn that didn't finish leaves: a failed turn's error text with an optional Retry, or a turn a restart cut off with Continue and Discard. A refused call shows inline |
