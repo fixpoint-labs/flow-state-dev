@@ -250,6 +250,25 @@ describe("a default JSON and deepEqual can't read never crashes defineFlow", () 
   });
 });
 
+describe("a static default's fingerprint ignores key order, not array order", () => {
+  const item = (prefs: unknown) =>
+    z.array(z.object({ prefs: z.record(z.string()).default(prefs as Record<string, string>) }));
+  const merge = (a: z.ZodTypeAny, b: z.ZodTypeAny) =>
+    mergeScopeStateSchemas("Flow \"f\"", "session", [
+      decl(z.object({ items: a, onlyA: z.number().default(1) }), "block \"a\""),
+      decl(z.object({ items: b, onlyB: z.number().default(2) }), "block \"b\"")
+    ]);
+
+  it("two equal defaults listing their keys in another order merge, nested in an array item", () => {
+    expect(() => merge(item({ theme: "dark", lang: "en" }), item({ lang: "en", theme: "dark" }))).not.toThrow();
+  });
+
+  it("two defaults listing an array in another order are still refused", () => {
+    const list = (v: string[]) => z.array(z.object({ tags: z.array(z.string()).default(v) }));
+    expect(() => merge(list(["a", "b"]), list(["b", "a"]))).toThrow(ScopeStateSchemaConflictError);
+  });
+});
+
 describe("a fingerprint has no delimiter ambiguity", () => {
   // Each pair accepts different values, so it must fingerprint apart.
   const pairs: Array<[string, z.ZodTypeAny, z.ZodTypeAny]> = [

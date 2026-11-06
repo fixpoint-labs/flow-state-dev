@@ -405,10 +405,20 @@ function exactJson(value: unknown): string | undefined {
   try {
     const json = JSON.stringify(value);
     if (json === undefined) return undefined;
-    return deepEqual(JSON.parse(json), value) ? json : undefined;
+    // Canonical: object keys sorted at every depth, as `deepEqual` ignores
+    // their order; array order is kept, as it compares arrays in order.
+    return deepEqual(JSON.parse(json), value) ? JSON.stringify(sortedKeys(JSON.parse(json))) : undefined;
   } catch {
     return undefined;
   }
+}
+
+/** A JSON value with every object's keys sorted, recursively; arrays keep their order. */
+function sortedKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortedKeys);
+  if (value === null || typeof value !== "object") return value;
+  const record = value as Record<string, unknown>;
+  return Object.fromEntries(Object.keys(record).sort().map((key) => [key, sortedKeys(record[key])]));
 }
 
 /** Whether a `_def.checks` list (a string's `.min()`, a number's `.int()`, …) is empty. */
