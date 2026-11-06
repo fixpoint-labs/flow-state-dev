@@ -1,0 +1,100 @@
+<svg viewBox="0 0 940 418" role="img" aria-label="D2: where do an attachment's bytes live. Chosen: a blob storage adapter, local disk by default. Instead of: inline bytes in the message. It comes down to the first row: on a hosted server, a session read with references stays small, while inline passes the 4.5 MB response limit after two full turns. The price: a store interface and two routes, and a serverless deploy must configure a hosted adapter. Locks in: every attachment is a reference. Flips if no host capped request or response size."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Where do an attachment's bytes live?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">A blob storage adapter</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Inline in the message</text>
+  </g>
+
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">A SESSION READ</text>
+    <text class="t-lbl" x="32" y="169">ON A HOST</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">A few hundred bytes a file</text>
+    <text class="t-s" x="248" y="179">references only, on any host</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Over 4.5 MB after two turns</text>
+    <text class="t-s" x="612" y="179">Vercel refuses the response</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="224">NEW PIECES</text>
+    <text class="mark minus" x="228" y="227">−</text>
+    <text class="t-b" x="248" y="226">A store and two routes</text>
+    <text class="t-s" x="248" y="244">upload and read, beside the action route</text>
+    <text class="mark plus" x="592" y="227">+</text>
+    <text class="t-b" x="612" y="226">None</text>
+    <text class="t-s" x="612" y="244">FileContent.data holds the bytes</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="282">A SERVERLESS</text>
+    <text class="t-lbl" x="32" y="295">DEPLOY</text>
+    <text class="mark minus" x="228" y="285">−</text>
+    <text class="t-b" x="248" y="284">Must configure an adapter</text>
+    <text class="t-s" x="248" y="302">local disk doesn't persist there</text>
+    <text class="mark minus" x="592" y="285">−</text>
+    <text class="t-b" x="612" y="284">A 3 MB message cap</text>
+    <text class="t-s" x="612" y="302">the request limit, less base64</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">Every attachment is a reference</text>
+    <text class="t-s" x="32" y="387">bytes live only in the store (ER-2)</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">No host capped request or response size</text>
+    <text class="t-s" x="494" y="387">then inline would cost nothing</text>
+  </g>
+</svg>
