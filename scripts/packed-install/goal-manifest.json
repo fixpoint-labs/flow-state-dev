@@ -26,7 +26,8 @@
       "id": "onepath",
       "title": "One path",
       "assertions": [
-        "onepath.output-read"
+        "onepath.output-read",
+        "onepath.answer-task-stop"
       ]
     },
     {
@@ -76,6 +77,7 @@
     "surface.collisions": "fail",
     "surface.core-installed-dts": "fail",
     "onepath.output-read": "fail",
+    "onepath.answer-task-stop": "fail",
     "leakage.tracker-ids": "fail",
     "shims.never-published": "fail",
     "shims.human-approval-throws": "fail",
